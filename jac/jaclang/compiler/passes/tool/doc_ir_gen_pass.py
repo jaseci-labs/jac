@@ -266,14 +266,26 @@ class DocIRGenPass(UniPass):
         """Generate DocIR for function signatures."""
         parts: list[doc.DocType] = []
         indent_parts: list[doc.DocType] = []
-        in_params = False
         has_parens = False
+        is_lambda = isinstance(node.parent, uni.LambdaExpr)
+
         for i in node.kid:
-            if isinstance(i, uni.Token) and i.name == Tok.LPAREN and node.params:
-                in_params = True
+            if node.params and self.is_within(i, node.params) and not is_lambda:
+                if isinstance(i, uni.Token) and i.name == Tok.COMMA:
+                    indent_parts.append(i.gen.doc_ir)
+                    indent_parts.append(self.space())
+                else:
+                    indent_parts.append(i.gen.doc_ir)
+            elif node.params and self.is_within(i, node.params) and is_lambda:
+                if isinstance(i, uni.Token) and i.name == Tok.COMMA:
+                    parts.append(i.gen.doc_ir)
+                    parts.append(self.space())
+                else:
+                    parts.append(i.gen.doc_ir)
+                    parts.append(self.space())
+            elif isinstance(i, uni.Token) and i.name == Tok.LPAREN and node.params:
                 parts.append(i.gen.doc_ir)
             elif isinstance(i, uni.Token) and i.name == Tok.RPAREN and node.params:
-                in_params = False
                 has_parens = True
                 parts.append(
                     self.indent(self.concat([self.tight_line(), *indent_parts]))
@@ -285,12 +297,6 @@ class DocIRGenPass(UniPass):
                 parts.pop()
                 parts.append(i.gen.doc_ir)
                 parts.append(self.space())
-            elif in_params:
-                if isinstance(i, uni.Token) and i.name == Tok.COMMA:
-                    indent_parts.append(i.gen.doc_ir)
-                    indent_parts.append(self.space())
-                else:
-                    indent_parts.append(i.gen.doc_ir)
             else:
                 if (
                     isinstance(i, uni.Token)
@@ -300,7 +306,9 @@ class DocIRGenPass(UniPass):
                     parts.append(self.space())
                 parts.append(i.gen.doc_ir)
                 parts.append(self.space())
-        parts.pop()
+
+        if parts:
+            parts.pop()
         node.gen.doc_ir = self.group(self.concat(parts))
 
     def exit_param_var(self, node: uni.ParamVar) -> None:
