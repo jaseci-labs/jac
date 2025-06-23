@@ -83,6 +83,6 @@ with entry {
             print(f"'  y_train.shape = '{y_train.shape}");
             print(f"'  X_train = '{X_train}");
         }
-        
+
     }
 }

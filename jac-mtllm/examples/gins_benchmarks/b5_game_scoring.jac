@@ -13,14 +13,14 @@ class Player {
         self.active_bonuses = {};
         self.game_state = 'active';
     }
-    
+
     """Add a score multiplier from various sources."""
     def add_multiplier(self: Player, multiplier: Any, source: Any) {
         self.multiplier_stack.append(
             {'value' : multiplier , 'source' : source , 'timestamp' : time.time() }
         );
     }
-    
+
     """Calculate effective multiplier from all sources."""
     def get_effective_multiplier(self: Player) {
         if not self.multiplier_stack {
@@ -33,7 +33,7 @@ class Player {
         level_bonus = (1.0 + ((self.level - 1) * 0.1));
         return (total * level_bonus);
     }
-    
+
     """Add temporary bonus."""
     def add_bonus(self: Player, bonus_type: Any, value: Any) {
         self.active_bonuses[bonus_type] = value;
@@ -49,12 +49,12 @@ class GameEngine {
         self.special_event_active = False;
         self.last_score_time = 0;
     }
-    
+
     """Add a player to the game."""
     def add_player(self: GameEngine, player_name: Any, level: Any = 1) {
         self.players[player_name] = Player(player_name, level);
     }
-    
+
     """Start special event with score bonuses."""
     def start_special_event(self: GameEngine) {
         self.special_event_active = True;
@@ -63,7 +63,7 @@ class GameEngine {
         }
         self.difficulty_modifier = 1.5;
     }
-    
+
     """Calculate bonus based on round number."""
     def calculate_round_bonus(self: GameEngine) {
         if (self.round_number <= 5) {
@@ -72,7 +72,7 @@ class GameEngine {
             return (2.0 + ((self.round_number - 5) * 0.1));
         }
     }
-    
+
     """Award points to player with all modifiers applied."""
     def award_score(self: GameEngine, player_name: Any, base_points: Any) {
         if (player_name not in self.players) {
@@ -91,7 +91,7 @@ class GameEngine {
         assert (final_score <= max_reasonable_score) , f"Score multiplier exceeded reasonable bounds" ;
         return final_score;
     }
-    
+
     """Advance to next round."""
     def advance_round(self: GameEngine) {
         self.round_number += 1;

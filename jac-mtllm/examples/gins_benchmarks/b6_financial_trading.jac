@@ -3,7 +3,7 @@
 import os;
 import random;
 import time;
-import from datetime { datetime, timedelta } 
+import from datetime { datetime, timedelta }
 
 
 class Config {
@@ -66,14 +66,14 @@ class MarketDataProvider {
         self.cache[cache_key] = price;
         return price;
     }
-    
+
     """Get base price for symbol."""
     def _get_base_price(self: MarketDataProvider, symbol: Any) {
-        base_prices = 
+        base_prices =
         {'AAPL' : 150.0 , 'GOOGL' : 2500.0 , 'TSLA' : 800.0 , 'MSFT' : 300.0 };
         return base_prices.get(symbol, 100.0);
     }
-    
+
     """Calculate historical volatility."""
     def get_historical_volatility(self: MarketDataProvider, symbol: Any, days: Any = 30) {
         prices = [];
@@ -109,12 +109,12 @@ class Position {
         self.timestamp = (timestamp or datetime.now() );
         self.unrealized_pnl = 0.0;
     }
-    
+
     """Update unrealized P&L."""
     def update_pnl(self: Position, current_price: Any) {
         self.unrealized_pnl = ((current_price - self.entry_price) * self.quantity);
     }
-    
+
     """Get current market value."""
     def get_market_value(self: Position, current_price: Any) {
         return (current_price * <>abs(self.quantity));
@@ -146,11 +146,11 @@ class Portfolio {
         }
         self.cash -= (quantity * price);
         self.transaction_history.append(
-            
+
             {'symbol' : symbol , 'quantity' : quantity , 'price' : price , 'timestamp' : datetime.now() , 'type' : 'BUY' if (quantity > 0) else 'SELL'  }
         );
     }
-    
+
     """Calculate total portfolio exposure."""
     def get_total_exposure(self: Portfolio) {
         total_exposure = 0;
@@ -161,7 +161,7 @@ class Portfolio {
         }
         return total_exposure;
     }
-    
+
     """Calculate total portfolio value."""
     def get_portfolio_value(self: Portfolio) {
         portfolio_value = self.cash;
@@ -195,7 +195,7 @@ class TradingEngine {
         self._post_trade_validation(symbol, quantity, price);
         return True;
     }
-    
+
     """Critical post-trade validation - this is where the complex assert will fail."""
     def _post_trade_validation(
         self: TradingEngine,
@@ -218,7 +218,7 @@ class TradingEngine {
         adjusted_leverage_limit = (((base_leverage_limit * volatility_adjustment) * time_adjustment) * concentration_penalty);
         assert (effective_leverage <= adjusted_leverage_limit) , f"Leverage limit exceeded:" ;
     }
-    
+
     """Calculate weighted average volatility of portfolio."""
     def _calculate_average_portfolio_volatility(self: TradingEngine) {
         if not self.portfolio.positions {
@@ -234,7 +234,7 @@ class TradingEngine {
         }
         return (weighted_vol / total_weight) if (total_weight > 0) else 0.02 ;
     }
-    
+
     """Get time-of-day adjustment factor."""
     def _get_time_of_day_adjustment(self: TradingEngine) {
         hour = datetime.now().hour;
@@ -246,7 +246,7 @@ class TradingEngine {
         }
         return 1.0;
     }
-    
+
     """Calculate penalty for portfolio concentration."""
     def _calculate_concentration_penalty(self: TradingEngine) {
         if not self.portfolio.positions {
@@ -336,7 +336,7 @@ def simulate_trading() {
         #     print(f"'Other error: '{e}");
         #     return False;
         # }
-        
+
     }
     print('All trades completed successfully!');
     return True;
@@ -350,6 +350,6 @@ with entry {
             print('\nThis demonstrates how complex financial calculations');
             print('can fail due to subtle interactions between multiple factors.');
         }
-        
+
     }
 }

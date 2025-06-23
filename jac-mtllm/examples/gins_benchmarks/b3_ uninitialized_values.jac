@@ -96,6 +96,6 @@ with entry {
         print(f"'Number of data points: '{len(train_data)}");
         bigX = generate_polynomial_features(X_train, 1);
         print('Polynomial features generated successfully');
-        
+
     }
 }
