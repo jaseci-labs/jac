@@ -1,6 +1,8 @@
 """Plugin for Jac's with_llm feature."""
 
 import ast as ast3
+import inspect
+import traceback
 from typing import Any, Callable, Mapping, Optional, Sequence, cast
 
 import jaclang.compiler.unitree as uni
@@ -13,6 +15,7 @@ from mtllm.aott import (
     aott_raise,
     get_all_type_explanations,
 )
+from mtllm.gins import GetAssertNodes, fetch_altering_code, format_code_dict_printable
 from mtllm.llms.base import BaseLLM
 from mtllm.semtable import SemInfo, SemRegistry, SemScope
 from mtllm.types import Information, InputInformation, OutputHint, Tool
@@ -909,3 +912,107 @@ class JacMachine:
         if isinstance(attr_sem_info, SemInfo) and isinstance(attr_scope, SemScope):
             return attr_sem_info.semstr, attr_scope.as_type_str
         return "", ""
+
+    @staticmethod
+    @hookimpl
+    def smart_assert(
+        condition: bool,
+        e: AssertionError,
+        msg: Optional[str] = None,
+        condition_str: str = "",
+    ) -> None:
+        """Raise an AssertionError with enhanced traceback reporting if --gins is enabled."""
+        if condition:
+            return
+        print("Smart Assert Enabled")
+        try:
+            import mtllm  # noqa: F401
+        except ImportError:
+            print(
+                "mtllm is not installed. Please install it with `pip install mtllm` to enable smart assert behavior."
+            )
+            raise e from None
+        (llm,) = Jac.jac_import(
+            target="utils/smart_assert",
+            base_path=__file__,
+        )
+        tb = traceback.format_exception(type(e), e, e.__traceback__)
+        tb_str = "".join(tb)
+        # Remove jaclang-related function calls from the callstack
+        stack = traceback.extract_stack()
+        filtered_stack = stack[6:-5]
+
+        current_frames = inspect.stack()
+        variable_context = []
+
+        for frame_info in current_frames:
+            frame = frame_info.frame
+            local_vars = {k: repr(v) for k, v in frame.f_locals.items()}
+
+            # Match only the filtered frames
+            if any(
+                frame_info.filename == filtered.filename
+                and frame_info.lineno == filtered.lineno
+                for filtered in filtered_stack
+            ):
+                variable_context.append(
+                    {
+                        "file": frame_info.filename,
+                        "function": frame_info.function,
+                        "line": frame_info.lineno,
+                        "locals": local_vars,
+                        # "globals": global_vars,
+                    }
+                )
+        stack_str = "".join(traceback.format_list(filtered_stack))
+
+        assert_nodes = GetAssertNodes(
+            ir_in=Jac.program.mod, prog=Jac.program
+        ).assert_nodes
+
+        # Get the last frame from the traceback of the exception
+        tb_last = e.__traceback__
+        while tb_last and tb_last.tb_next:
+            tb_last = tb_last.tb_next
+        if tb_last:
+            last_frame = tb_last.tb_frame
+            last_file = last_frame.f_code.co_filename
+            last_line = tb_last.tb_lineno
+
+        # Find the assert node that matches the last frame
+        for node in assert_nodes:
+            if last_file == node.loc.mod_path and last_line == node.loc.first_line:
+                current_assert = node
+                break
+        symbols = current_assert.gather_external_symbols()
+        code = []
+        for symbol in symbols:
+            new_code, _ = fetch_altering_code(
+                node=current_assert,
+                symbol=symbol,
+            )
+            for code_item in new_code:
+                if code_item not in code:
+                    code.append(code_item)
+
+        code_dict: dict = {}
+        for code_item in code:
+            if code_item.loc.mod_path not in code_dict.keys():
+                code_dict[code_item.loc.mod_path] = [code_item]
+            else:
+                code_dict[code_item.loc.mod_path].append(code_item)
+
+        # Format and print the code dict in a readable format
+        formatted_output = format_code_dict_printable(code_dict)
+
+        text = llm.smart_assert_explanation(
+            condition=condition_str,
+            traceback=tb_str,
+            call_stack=stack_str,
+            msg=msg,
+            variable_context=variable_context,
+            use_def_chain=formatted_output,
+        )
+        print(f"GinS Explanation: \n{text}")
+
+        raise e from None  # Has an extra lines, need to figure out
