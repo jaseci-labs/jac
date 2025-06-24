@@ -1,635 +1,722 @@
-### Chapter 6: Introduction to Object-Spatial Concepts
+# Chapter 6: Imports System and File Operations
 
-Welcome to the heart of what makes Jac revolutionary. In this chapter, we'll explore Object-Spatial Programming (OSP), a paradigm that fundamentally changes how we think about and structure computation. If you've ever felt that traditional programming models don't naturally express the interconnected, graph-like nature of modern applications, you're about to discover a better way.
+Jac provides a powerful module system for organizing code across multiple files and seamless integration with external systems. This chapter demonstrates building a simple configuration management system that showcases import patterns and file operations.
 
-#### 6.1 The Paradigm Shift
+!!! topic "Module Organization"
+    Well-organized modules make your code maintainable, reusable, and easier to test. Jac's import system supports both local modules and Python libraries.
 
-### Traditional: Moving Data to Functions
+## Import Statements and Module Organization
 
-In traditional programming, we've always moved data to computation. This model is so ingrained that we rarely question it:
+### Basic Import Patterns
 
-```python
-# Traditional Python - Data moves to functions
-def calculate_social_influence(user_data, follower_data, post_data):
-    influence_score = len(follower_data) * 0.3
-    engagement_rate = sum(p['likes'] for p in post_data) / len(post_data)
-    return influence_score + engagement_rate * 0.7
+!!! example "Basic Import Statements"
+    === "Jac"
+        <div class="code-block">
+        ```jac
+        # Import Python modules
+        import os;
+        import json;
+        import sys;
 
-# Gather all data first
-user = load_user(user_id)
-followers = load_followers(user_id)  # Potentially huge dataset
-posts = load_posts(user_id)        # More data movement
+        # Import specific functions from Python modules
+        import from datetime  {datetime}
+        import from pathlib {Path}
 
-# Then pass to function
-score = calculate_social_influence(user, followers, posts)
-```
+        # Import Jac modules
+        # include my_module;
+        # include utils.file_helper;
 
-This approach has fundamental limitations:
-
-1. **Data Movement Overhead**: We load entire datasets into memory
-2. **Loss of Context**: Functions don't know where data came from
-3. **Artificial Separation**: Data and its processing logic are disconnected
-4. **Poor Locality**: Related data may be scattered across memory
-
-```mermaid
-graph LR
-    subgraph "Traditional Model: Data → Computation"
-        DB[(Database)]
-        MEM[Memory/<br/>Data Structures]
-        F1[Function 1]
-        F2[Function 2]
-        F3[Function 3]
-        R[Result]
-
-        DB -->|Load| MEM
-        MEM -->|Pass| F1
-        F1 -->|Return| MEM
-        MEM -->|Pass| F2
-        F2 -->|Return| MEM
-        MEM -->|Pass| F3
-        F3 -->|Return| R
-    end
-
-    style DB fill:#e3f2fd
-    style MEM fill:#fff3e0
-    style F1 fill:#e8f5e9
-    style F2 fill:#e8f5e9
-    style F3 fill:#e8f5e9
-```
-
-### Object-Spatial: Moving Computation to Data
-
-Object-Spatial Programming inverts this relationship. Instead of bringing data to functions, we send computation to where data lives:
-
-```jac
-// Jac - Computation moves to data
-walker CalculateInfluence {
-    has influence_score: float = 0.0;
-    has engagement_total: float = 0.0;
-    has post_count: int = 0;
-
-    can calculate with User entry {
-        // Computation happens AT the user node
-        self.influence_score = len([<--:Follows:]) * 0.3;
-
-        // Visit posts without loading them all
-        visit [-->:Authored:];
-    }
-
-    can calculate with Post entry {
-        // Computation happens AT each post
-        self.engagement_total += here.likes;
-        self.post_count += 1;
-    }
-
-    can finalize with User exit {
-        // Back at user node to finalize
-        if self.post_count > 0 {
-            engagement_rate = self.engagement_total / self.post_count;
-            self.influence_score += engagement_rate * 0.7;
+        with entry {
+            # Use imported modules
+            current_time = datetime.now();
+            current_dir = os.getcwd();
+            print(f"Current time: {current_time}");
+            print(f"Current directory: {current_dir}");
         }
-        report self.influence_score;
-    }
-}
-```
+        ```
+        </div>
+    === "Python"
+        ```python
+        # Import Python modules
+        import os
+        import json
+        import sys
 
-```mermaid
-graph TB
-    subgraph "Object-Spatial Model: Computation → Data"
-        U[User Node<br/>≪data≫]
-        P1[Post 1<br/>≪data≫]
-        P2[Post 2<br/>≪data≫]
-        P3[Post 3<br/>≪data≫]
-        F1[Follower<br/>≪data≫]
-        F2[Follower<br/>≪data≫]
+        # Import specific functions
+        from datetime import datetime
+        from pathlib import Path
 
-        W[Walker<br/>≪computation≫]
+        # Import local modules
+        import my_module
+        from utils import file_helper
 
-        U -->|Authored| P1
-        U -->|Authored| P2
-        U -->|Authored| P3
-        F1 -->|Follows| U
-        F2 -->|Follows| U
+        if __name__ == "__main__":
+            # Use imported modules
+            current_time = datetime.now()
+            current_dir = os.getcwd()
+            print(f"Current time: {current_time}")
+            print(f"Current directory: {current_dir}")
+        ```
 
-        W -.->|visits| U
-        W -.->|visits| P1
-        W -.->|visits| P2
-        W -.->|visits| P3
+### Implementation Separation
 
-        style U fill:#e1f5fe
-        style P1 fill:#fff3e0
-        style P2 fill:#fff3e0
-        style P3 fill:#fff3e0
-        style F1 fill:#e8f5e9
-        style F2 fill:#e8f5e9
-        style W fill:#ff9999,stroke:#333,stroke-width:2px,stroke-dasharray: 5 5
-    end
-```
+!!! topic "Implementation Files"
+    Jac supports separating interface definitions from implementations using `.impl.jac` files, promoting clean architecture and modularity. This separation makes it easier to test, maintain, and update implementations without changing interfaces.
 
-### Real-World Analogies and Use Cases
+!!! example "Interface and Implementation Separation"
+    === "math_ops.jac"
+        <div class="code-block">
+        ```jac
+        # Interface definition
+        obj Calculator {
+            has precision: int = 2;
 
-The Object-Spatial paradigm mirrors how we naturally think about many real-world scenarios:
-
-##### 1. **The Inspector Analogy**
-Imagine a quality inspector in a factory:
-- Traditional: Bring all products to the inspector's office
-- Object-Spatial: Inspector walks through the factory, examining products where they are
-
-```jac
-walker QualityInspector {
-    has defects_found: list = [];
-
-    can inspect with ProductionLine entry {
-        print(f"Inspecting line: {here.name}");
-        visit [-->:Contains:];  // Walk to products on this line
-    }
-
-    can inspect with Product entry {
-        if here.quality_score < 0.95 {
-            self.defects_found.append({
-                "product": here.id,
-                "score": here.quality_score,
-                "line": here[<--:Contains:][0].name
-            });
+            def add(a: float, b: float) -> float;
+            def subtract(a: float, b: float) -> float;
+            def multiply(a: float, b: float) -> float;
+            def divide(a: float, b: float) -> float;
         }
-    }
-}
-```
+        ```
+        </div>
+    === "math_ops.impl.jac"
+        <div class="code-block">
+        ```jac
+        # Implementation file
+        impl Calculator.add {
+            result = a + b;
+            return round(result, self.precision);
+        }
 
-##### 2. **The Social Network**
-People don't physically move to a central location to interact:
+        impl Calculator.subtract {
+            result = a - b;
+            return round(result, self.precision);
+        }
 
-```jac
-walker ViralContentTracker {
-    has content: Post;
-    has reach: int = 0;
-    has depth: int = 0;
-    has max_depth: int = 3;
+        impl Calculator.multiply {
+            result = a * b;
+            return round(result, self.precision);
+        }
 
-    can track with User entry {
-        self.reach += 1;
+        impl Calculator.divide {
+            if b == 0.0 {
+                raise ValueError("Division by zero");
+            }
+            result = a / b;
+            return round(result, self.precision);
+        }
+        ```
+        </div>
+    === "Python Equivalent"
+        ```python
+        # Python class definition
+        class Calculator:
+            def __init__(self, precision: int = 2):
+                self.precision = precision
 
-        if self.depth < self.max_depth {
-            // Content spreads through network
-            self.depth += 1;
-            visit [-->:Follows:] where (
-                ?interested_in(here, self.content.topic)
+            def add(self, a: float, b: float) -> float:
+                result = a + b
+                return round(result, self.precision)
+
+            def subtract(self, a: float, b: float) -> float:
+                result = a - b
+                return round(result, self.precision)
+
+            def multiply(self, a: float, b: float) -> float:
+                result = a * b
+                return round(result, self.precision)
+
+            def divide(self, a: float, b: float) -> float:
+                if b == 0.0:
+                    raise ValueError("Division by zero")
+                result = a / b
+                return round(result, self.precision)
+        ```
+### Namespace Injection
+!!! topic "Namespace Injection"
+    Jac provides several mechanisms to manage namespaces clearly and effectively:
+
+    * **import**: Loads an entire Python module or package, preserving its namespace.
+
+    ```jac
+    import os;
+    os.getcwd();
+    ```
+
+    * **include**: Imports all exported symbols from a Jac module directly into the current namespace, flattening it and simplifying access.
+
+    ```jac
+    include my_utils;
+    utility_function();
+    ```
+
+    * **import from**: Explicitly imports selected symbols from a module, improving clarity and avoiding namespace pollution.
+
+    ```jac
+    import from datetime {datetime};
+    now = datetime.now();
+    ```
+
+    * **Aliasing**: Allows renaming imported modules or symbols, helping avoid naming conflicts.
+
+    ```jac
+    import json as js;
+    data = js.load(file);
+    ```
+
+### Jac Import Internals
+!!! topic "Import Resolution Workflow"
+    Jac resolves imports using a structured process:
+
+    * Parses import statements to determine modules.
+    * Searches for modules in the caller directory, `JAC_PATH`, and Python's `sys.path`.
+    * Compiles `.jac` files to bytecode (`.jir`) if necessary.
+    * Executes bytecode to populate module namespaces.
+    * Caches modules to improve performance.
+
+    Common issues include missing bytecode, syntax errors, and circular dependencies.
+
+## File Operations and External Integration
+
+!!! topic "File Handling"
+    File operations are essential for configuration management, data processing, and system integration.
+
+### Basic File Operations
+
+!!! example "File Reading and Writing"
+    === "Jac"
+        <div class="code-block">
+        ```jac
+        import os;
+        import json;
+
+        # Read text file safely
+        def read_file(filepath: str) -> str | None {
+            try {
+                with open(filepath, 'r') as file {
+                    return file.read();
+                }
+            } except FileNotFoundError {
+                print(f"File not found: {filepath}");
+                return None;
+            } except Exception as e {
+                print(f"Error reading file: {e}");
+                return None;
+            }
+        }
+
+        # Write text file safely
+        def write_file(filepath: str, content: str) -> bool {
+            try {
+                with open(filepath, 'w') as file {
+                    file.write(content);
+                }
+                return True;
+            } except Exception as e {
+                print(f"Error writing file: {e}");
+                return False;
+            }
+        }
+
+        # Read JSON file
+        def read_json(filepath: str) -> dict | None {
+            try {
+                with open(filepath, 'r') as file {
+                    return json.load(file);
+                }
+            } except FileNotFoundError {
+                print(f"JSON file not found: {filepath}");
+                return None;
+            } except json.JSONDecodeError {
+                print(f"Invalid JSON in file: {filepath}");
+                return None;
+            }
+        }
+
+        with entry {
+            # Test file operations
+            test_content = "Hello from Jac!";
+            if write_file("test.txt", test_content) {
+                content = read_file("test.txt");
+                print(f"File content: {content}");
+            }
+        }
+        ```
+        </div>
+    === "Python"
+        ```python
+        import os
+        import json
+        from typing import Optional
+
+        # Read text file safely
+        def read_file(filepath: str) -> Optional[str]:
+            try:
+                with open(filepath, 'r') as file:
+                    return file.read()
+            except FileNotFoundError:
+                print(f"File not found: {filepath}")
+                return None
+            except Exception as e:
+                print(f"Error reading file: {e}")
+                return None
+
+        # Write text file safely
+        def write_file(filepath: str, content: str) -> bool:
+            try:
+                with open(filepath, 'w') as file:
+                    file.write(content)
+                return True
+            except Exception as e:
+                print(f"Error writing file: {e}")
+                return False
+
+        # Read JSON file
+        def read_json(filepath: str) -> Optional[dict]:
+            try:
+                with open(filepath, 'r') as file:
+                    return json.load(file)
+            except FileNotFoundError:
+                print(f"JSON file not found: {filepath}")
+                return None
+            except json.JSONDecodeError:
+                print(f"Invalid JSON in file: {filepath}")
+                return None
+
+        if __name__ == "__main__":
+            # Test file operations
+            test_content = "Hello from Python!"
+            if write_file("test.txt", test_content):
+                content = read_file("test.txt")
+                print(f"File content: {content}")
+        ```
+
+## Complete Example: Configuration Management System
+
+!!! topic "Multi-Module Application"
+    This example demonstrates how to build a configuration system using multiple modules working together.
+
+### Configuration Reader Module
+
+!!! example "Configuration Reader (config_reader.jac)"
+    === "Jac"
+        <div class="code-block">
+        ```jac
+        # config_reader.jac
+        import json;
+        import os;
+        import from pathlib { Path }
+
+        obj ConfigReader {
+            has config_file: str;
+            has config_data: dict[str, any] = {};
+
+            def load_config() -> bool;
+            def get_value(key: str, default: any = None) -> any;
+            def set_value(key: str, value: any) -> None;
+            def save_config() -> bool;
+            def create_default_config() -> None;
+        }
+
+        impl ConfigReader.load_config {
+            if not os.path.exists(self.config_file) {
+                print(f"Config file {self.config_file} not found, creating default");
+                self.create_default_config();
+                return True;
+            }
+
+            try {
+                with open(self.config_file, 'r') as file {
+                    self.config_data = json.load(file);
+                }
+                print(f"Config loaded from {self.config_file}");
+                return True;
+            } except json.JSONDecodeError {
+                print(f"Invalid JSON in {self.config_file}");
+                return False;
+            } except Exception as e {
+                print(f"Error loading config: {e}");
+                return False;
+            }
+        }
+
+        impl ConfigReader.get_value {
+            return self.config_data.get(key, default);
+        }
+
+        impl ConfigReader.set_value {
+            self.config_data[key] = value;
+        }
+
+        impl ConfigReader.save_config {
+            try {
+                with open(self.config_file, 'w') as file {
+                    json.dump(self.config_data, file, indent=2);
+                }
+                print(f"Config saved to {self.config_file}");
+                return True;
+            } except Exception as e {
+                print(f"Error saving config: {e}");
+                return False;
+            }
+        }
+
+        impl ConfigReader.create_default_config {
+            self.config_data = {
+                "app_name": "My Jac App",
+                "version": "1.0.0",
+                "debug": False,
+                "database": {
+                    "host": "localhost",
+                    "port": 5432,
+                    "name": "myapp_db"
+                },
+                "logging": {
+                    "level": "INFO",
+                    "file": "app.log"
+                }
+            };
+            self.save_config();
+        }
+        ```
+        </div>
+    === "Python"
+        ```python
+        # config_reader.py
+        import json
+        import os
+        from pathlib import Path
+        from typing import Any, Dict, Optional
+
+        class ConfigReader:
+            def __init__(self, config_file: str):
+                self.config_file = config_file
+                self.config_data: Dict[str, Any] = {}
+
+            def load_config(self) -> bool:
+                if not os.path.exists(self.config_file):
+                    print(f"Config file {self.config_file} not found, creating default")
+                    self.create_default_config()
+                    return True
+
+                try:
+                    with open(self.config_file, 'r') as file:
+                        self.config_data = json.load(file)
+                    print(f"Config loaded from {self.config_file}")
+                    return True
+                except json.JSONDecodeError:
+                    print(f"Invalid JSON in {self.config_file}")
+                    return False
+                except Exception as e:
+                    print(f"Error loading config: {e}")
+                    return False
+
+            def get_value(self, key: str, default: Any = None) -> Any:
+                return self.config_data.get(key, default)
+
+            def set_value(self, key: str, value: Any) -> None:
+                self.config_data[key] = value
+
+            def save_config(self) -> bool:
+                try:
+                    with open(self.config_file, 'w') as file:
+                        json.dump(self.config_data, file, indent=2)
+                    print(f"Config saved to {self.config_file}")
+                    return True
+                except Exception as e:
+                    print(f"Error saving config: {e}")
+                    return False
+
+            def create_default_config(self) -> None:
+                self.config_data = {
+                    "app_name": "My Python App",
+                    "version": "1.0.0",
+                    "debug": False,
+                    "database": {
+                        "host": "localhost",
+                        "port": 5432,
+                        "name": "myapp_db"
+                    },
+                    "logging": {
+                        "level": "INFO",
+                        "file": "app.log"
+                    }
+                }
+                self.save_config()
+        ```
+
+### Application Module
+
+!!! example "Application Module (app.jac)"
+    === "Jac"
+        <div class="code-block">
+        ```jac
+        # app.jac
+        # include config_reader;
+        import logging;
+
+        obj Application {
+            has config: ConfigReader;
+            has logger: any;
+
+            def start() -> None;
+            def setup_logging() -> None;
+            def get_database_config() -> dict[str, any];
+            def run_debug_mode() -> None;
+            def run_normal_mode() -> None;
+        }
+
+        impl Application.start {
+            print("=== Starting Application ===");
+
+            # Load configuration
+            if self.config.load_config() {
+                self.setup_logging();
+
+                # Display app info
+                app_name = self.config.get_value("app_name", "Unknown App");
+                version = self.config.get_value("version", "1.0.0");
+                debug_mode = self.config.get_value("debug", False);
+
+                print(f"App: {app_name} v{version}");
+                print(f"Debug mode: {debug_mode}");
+
+                # Show database config
+                db_config = self.get_database_config();
+                print(f"Database: {db_config['host']}:{db_config['port']}/{db_config['name']}");
+
+                if debug_mode {
+                    self.run_debug_mode();
+                } else {
+                    self.run_normal_mode();
+                }
+            } else {
+                print("Failed to load configuration");
+            }
+        }
+
+        impl Application.setup_logging {
+            log_config = self.config.get_value("logging", {});
+            log_level = log_config.get("level", "INFO");
+            log_file = log_config.get("file", "app.log");
+
+            logging.basicConfig(
+                level=getattr(logging, log_level),
+                format='%(asctime)s - %(levelname)s - %(message)s',
+                handlers=[
+                    logging.FileHandler(log_file),
+                    logging.StreamHandler()
+                ]
             );
-            self.depth -= 1;
-        }
-    }
-}
-```
 
-##### 3. **The Delivery System**
-Packages move through a network of locations:
-
-```jac
-walker PackageDelivery {
-    has package_id: str;
-    has destination: Location;
-    has route: list = [];
-
-    can deliver with Location entry {
-        self.route.append(here);
-
-        if here == self.destination {
-            here.receive_package(self.package_id);
-            report "Delivered!";
-            disengage;
+            self.logger = logging.getLogger("app");
+            self.logger.info("Logging configured");
         }
 
-        // Find next hop
-        next_hop = here.get_next_hop(self.destination);
-        if next_hop {
-            visit next_hop;
-        } else {
-            report "No route found!";
-            disengage;
-        }
-    }
-}
-```
-
-### Benefits of the Paradigm Shift
-
-##### 1. **Natural Problem Modeling**
-Many problems are inherently graph-like:
-- Social networks
-- Transportation systems
-- Organizational hierarchies
-- Biological systems
-- Computer networks
-- Supply chains
-
-##### 2. **Improved Locality**
-Computation happens where data lives:
-```jac
-// Traditional: Load all data
-recommendations = []
-for user in all_users:  # Load millions of users
-    for friend in user.friends:  # Load all friends
-        for post in friend.posts:  # Load all posts
-            if matches_interests(user, post):
-                recommendations.append(post)
-
-// Object-Spatial: Process in place
-walker RecommendationEngine {
-    has user_interests: list;
-    has recommendations: list = [];
-
-    can find with User entry {
-        self.user_interests = here.interests;
-        visit [-->:Follows:];  # Only visit friends
-    }
-
-    can find with User entry via Follows {
-        // At friend node, check recent posts
-        for post in [-->:Authored:][0:10] {  # Only recent posts
-            if self.matches_interests(post) {
-                self.recommendations.append(post);
-            }
-        }
-    }
-}
-```
-
-##### 3. **Distributed-Ready**
-The paradigm naturally extends across machines:
-
-```mermaid
-graph TB
-    subgraph "Machine A"
-        UA[User A]
-        P1[Posts]
-        UA --> P1
-    end
-
-    subgraph "Machine B"
-        UB[User B]
-        P2[Posts]
-        UB --> P2
-    end
-
-    subgraph "Machine C"
-        UC[User C]
-        P3[Posts]
-        UC --> P3
-    end
-
-    W[Walker<br/>≪crosses machines≫]
-
-    UA -.->|Follows| UB
-    UB -.->|Follows| UC
-
-    W -.->|visits| UA
-    W -.->|visits| UB
-    W -.->|visits| UC
-
-    style W fill:#ff9999,stroke:#333,stroke-width:2px,stroke-dasharray: 5 5
-```
-
-#### 6.2 Core Archetypes
-
-### Nodes: Data Locations with Computation
-
-Nodes are the fundamental data containers in OSP, but unlike traditional objects, they're aware of their position in the topology and can respond to visitors:
-
-```jac
-node UserProfile {
-    has username: str;
-    has bio: str;
-    has joined_date: str;
-    has reputation: int = 0;
-
-    // Node ability - triggered by walker visits
-    can update_reputation with ReputationCalculator entry {
-        old_rep = self.reputation;
-        self.reputation = visitor.calculate_for(self);
-
-        if self.reputation > old_rep {
-            print(f"{self.username} gained {self.reputation - old_rep} reputation!");
-        }
-    }
-
-    // Nodes can have regular methods too
-    can get_account_age() -> int {
-        import:py from datetime import datetime;
-        joined = datetime.fromisoformat(self.joined_date);
-        return (datetime.now() - joined).days;
-    }
-}
-```
-
-Key characteristics of nodes:
-1. **Persistent by Connection**: Connect to `root` for automatic persistence
-2. **Location-Aware**: Know their connections and position
-3. **Reactive**: Respond to walker visits with abilities
-4. **Stateful**: Maintain data between visits
-
-### Edges: First-Class Relationships
-
-Edges aren't just connections—they're full objects with behavior:
-
-```jac
-edge Friendship {
-    has since: str;
-    has strength: float = 1.0;
-    has interaction_count: int = 0;
-
-    // Edges can have abilities too!
-    can strengthen with SocialInteraction entry {
-        self.interaction_count += 1;
-        self.strength = min(10.0, self.strength * 1.1);
-
-        print(f"Friendship strengthened to {self.strength:.1f}");
-    }
-
-    // Regular methods
-    can get_duration_days() -> int {
-        import:py from datetime import datetime;
-        start = datetime.fromisoformat(self.since);
-        return (datetime.now() - start).days;
-    }
-}
-
-edge Follows {
-    has notifications: bool = true;
-    has categories: list[str] = [];
-
-    can should_notify(post_category: str) -> bool {
-        return self.notifications and (
-            not self.categories or
-            post_category in self.categories
-        );
-    }
-}
-```
-
-Why edges as first-class objects matter:
-1. **Rich Relationships**: Model complex relationship properties
-2. **Relationship Evolution**: Relationships can change over time
-3. **Traversal Control**: Filter traversals based on edge properties
-4. **Behavioral Relationships**: Edges can have their own logic
-
-### Walkers: Mobile Computational Entities
-
-Walkers are the "programs" of OSP—they move through the graph executing computation:
-
-```jac
-walker DataAggregator {
-    // Walker state - travels with the walker
-    has totals: dict = {};
-    has visit_count: int = 0;
-    has max_depth: int = 3;
-    has current_depth: int = 0;
-
-    // Entry ability for Department nodes
-    can aggregate with Department entry {
-        dept_name = here.name;
-        dept_total = here.budget;
-
-        // Aggregate sub-departments
-        if self.current_depth < self.max_depth {
-            self.current_depth += 1;
-            visit [-->:Contains:];
-            self.current_depth -= 1;
+        impl Application.get_database_config {
+            default_db = {"host": "localhost", "port": 5432, "name": "default_db"};
+            return self.config.get_value("database", default_db);
         }
 
-        // Store results
-        if dept_name not in self.totals {
-            self.totals[dept_name] = 0;
-        }
-        self.totals[dept_name] += dept_total;
-        self.visit_count += 1;
-    }
-
-    // Exit ability - cleanup or final processing
-    can summarize with Department exit {
-        if self.current_depth == 0 {  // Back at starting node
-            print(f"Visited {self.visit_count} departments");
-            print(f"Totals: {self.totals}");
-        }
-    }
-}
-```
-
-Walker characteristics:
-1. **Stateful**: Carry data as they traverse
-2. **Reactive**: Different behavior for different node/edge types
-3. **Autonomous**: Make traversal decisions based on discoveries
-4. **Composable**: Multiple walkers can work together
-
-### How They Extend Traditional OOP
-
-Traditional OOP gives us encapsulation and inheritance. OSP adds:
-
-1. **Topology**: Objects know their relationships
-2. **Mobility**: Computation can move between objects
-3. **Reactivity**: Objects respond to computational visitors
-4. **Distribution**: Natural support for distributed systems
-
-```mermaid
-graph TD
-    subgraph "Traditional OOP"
-        O1[Object]
-        O2[Object]
-        O3[Object]
-        M1[method()]
-        M2[method()]
-        M3[method()]
-
-        O1 --> M1
-        O2 --> M2
-        O3 --> M3
-    end
-
-    subgraph "Object-Spatial"
-        N1[Node]
-        N2[Node]
-        N3[Node]
-        E1[Edge]
-        E2[Edge]
-        W[Walker]
-
-        N1 ---|E1| N2
-        N2 ---|E2| N3
-        W -.->|visits| N1
-        W -.->|visits| N2
-        W -.->|visits| N3
-    end
-
-    style O1 fill:#e3f2fd
-    style O2 fill:#e3f2fd
-    style O3 fill:#e3f2fd
-    style N1 fill:#e8f5e9
-    style N2 fill:#e8f5e9
-    style N3 fill:#e8f5e9
-    style E1 fill:#fff3e0
-    style E2 fill:#fff3e0
-    style W fill:#ff9999
-```
-
-### Complete Example: Task Management System
-
-Let's see all archetypes working together:
-
-```jac
-// Nodes represent data locations
-node Project {
-    has name: str;
-    has deadline: str;
-    has status: str = "active";
-
-    can update_status with StatusUpdater entry {
-        old_status = self.status;
-        self.status = visitor.new_status;
-        print(f"Project {self.name}: {old_status} → {self.status}");
-    }
-}
-
-node Task {
-    has title: str;
-    has completed: bool = false;
-    has estimated_hours: float;
-    has actual_hours: float = 0.0;
-
-    can mark_complete with TaskCompleter entry {
-        self.completed = true;
-        self.actual_hours = visitor.hours_spent;
-        visitor.tasks_completed += 1;
-    }
-}
-
-node Developer {
-    has name: str;
-    has skills: list[str];
-    has capacity: float = 40.0;  // hours per week
-}
-
-// Edges represent relationships
-edge Contains {
-    has created_at: str;
-}
-
-edge AssignedTo {
-    has assigned_date: str;
-    has priority: int = 5;
-
-    can is_overdue() -> bool {
-        // Check if task is overdue based on project deadline
-        task = self.target;
-        project = task[<--:Contains:][0];
-        return not task.completed and now() > project.deadline;
-    }
-}
-
-// Walkers perform computations
-walker ProjectAnalyzer {
-    has total_tasks: int = 0;
-    has completed_tasks: int = 0;
-    has total_hours: float = 0.0;
-    has overdue_tasks: list = [];
-
-    can analyze with Project entry {
-        print(f"Analyzing project: {here.name}");
-        visit [-->:Contains:];
-    }
-
-    can analyze with Task entry {
-        self.total_tasks += 1;
-
-        if here.completed {
-            self.completed_tasks += 1;
-            self.total_hours += here.actual_hours;
+        impl Application.run_debug_mode {
+            print(">>> Running in DEBUG mode");
+            print(f">>> Full config: {self.config.config_data}");
         }
 
-        // Check assignments
-        for assignment in [-->:AssignedTo:] {
-            if assignment.is_overdue() {
-                self.overdue_tasks.append({
-                    "task": here.title,
-                    "developer": assignment.target.name
-                });
-            }
+        impl Application.run_normal_mode {
+            print(">>> Running in NORMAL mode");
+            print(">>> Application ready");
         }
-    }
+        ```
+        </div>
+    === "Python"
+        ```python
+        # app.py
+        from config_reader import ConfigReader
+        import logging
+        from typing import Dict, Any
 
-    can report with Project exit {
-        completion_rate = (self.completed_tasks / self.total_tasks * 100)
-                         if self.total_tasks > 0 else 0;
+        class Application:
+            def __init__(self, config_file: str):
+                self.config = ConfigReader(config_file)
+                self.logger = None
 
-        report {
-            "project": here.name,
-            "total_tasks": self.total_tasks,
-            "completed": self.completed_tasks,
-            "completion_rate": f"{completion_rate:.1f}%",
-            "total_hours": self.total_hours,
-            "overdue": self.overdue_tasks
-        };
-    }
-}
+            def start(self) -> None:
+                print("=== Starting Application ===")
 
-// Using it all together
-with entry {
-    // Create project structure
-    web_project = Project(
-        name="Website Redesign",
-        deadline="2024-12-31"
-    );
-    root ++> web_project;
+                # Load configuration
+                if self.config.load_config():
+                    self.setup_logging()
 
-    // Add tasks
-    task1 = web_project ++>:Contains:++> Task(
-        title="Design Homepage",
-        estimated_hours=20
-    );
+                    # Display app info
+                    app_name = self.config.get_value("app_name", "Unknown App")
+                    version = self.config.get_value("version", "1.0.0")
+                    debug_mode = self.config.get_value("debug", False)
 
-    task2 = web_project ++>:Contains:++> Task(
-        title="Implement Backend",
-        estimated_hours=40
-    );
+                    print(f"App: {app_name} v{version}")
+                    print(f"Debug mode: {debug_mode}")
 
-    // Assign to developers
-    alice = root ++> Developer(
-        name="Alice",
-        skills=["design", "frontend"]
-    );
+                    # Show database config
+                    db_config = self.get_database_config()
+                    print(f"Database: {db_config['host']}:{db_config['port']}/{db_config['name']}")
 
-    bob = root ++> Developer(
-        name="Bob",
-        skills=["backend", "database"]
-    );
+                    if debug_mode:
+                        self.run_debug_mode()
+                    else:
+                        self.run_normal_mode()
+                else:
+                    print("Failed to load configuration")
 
-    task1 ++>:AssignedTo(priority=8):++> alice;
-    task2 ++>:AssignedTo(priority=9):++> bob;
+            def setup_logging(self) -> None:
+                log_config = self.config.get_value("logging", {})
+                log_level = log_config.get("level", "INFO")
+                log_file = log_config.get("file", "app.log")
 
-    // Analyze the project
-    analyzer = ProjectAnalyzer();
-    result = analyzer spawn web_project;
-    print(result);
-}
-```
+                logging.basicConfig(
+                    level=getattr(logging, log_level),
+                    format='%(asctime)s - %(levelname)s - %(message)s',
+                    handlers=[
+                        logging.FileHandler(log_file),
+                        logging.StreamHandler()
+                    ]
+                )
 
-### Why This Matters
+                self.logger = logging.getLogger("app")
+                self.logger.info("Logging configured")
 
-The Object-Spatial approach provides:
+            def get_database_config(self) -> Dict[str, Any]:
+                default_db = {"host": "localhost", "port": 5432, "name": "default_db"}
+                return self.config.get_value("database", default_db)
 
-1. **Natural Modeling**: The code structure mirrors the problem domain
-2. **Separation of Concerns**: Data (nodes), relationships (edges), and algorithms (walkers) are clearly separated
-3. **Reusability**: Walkers can traverse any compatible graph structure
-4. **Scalability**: The same code works for 10 nodes or 10 million
-5. **Maintainability**: Changes to structure don't break algorithms
+            def run_debug_mode(self) -> None:
+                print(">>> Running in DEBUG mode")
+                print(f">>> Full config: {self.config.config_data}")
 
-In the next chapters, we'll dive deeper into building and traversing these graph structures, exploring the full power of Object-Spatial Programming.
+            def run_normal_mode(self) -> None:
+                print(">>> Running in NORMAL mode")
+                print(">>> Application ready")
+        ```
 
-### Summary
+### Main Application Entry Point
 
-In this chapter, we've introduced the revolutionary concepts of Object-Spatial Programming:
+!!! example "Main Entry Point (main.jac)"
+    === "Jac"
+        <div class="code-block">
+        ```jac
+        # main.jac
+        include app;
 
-- **The Paradigm Shift**: From moving data to computation → moving computation to data
-- **Nodes**: Data locations that can react to visitors
-- **Edges**: First-class relationships with properties and behavior
-- **Walkers**: Mobile computational entities that traverse and process
+        with entry {
+            print("=== Configuration Management Demo ===");
 
-This isn't just a new syntax—it's a fundamentally different way of thinking about program structure that aligns with how we naturally model interconnected systems. Next, we'll get hands-on with building your first graph structures in Jac.
+            # Create and run application
+            application = Application(config=ConfigReader(config_file="app_config.json"));
+            application.start();
+
+            print("\n=== Configuration Update Demo ===");
+
+            # Update configuration at runtime
+            application.config.set_value("debug", True);
+            application.config.set_value("app_name", "Updated Jac App");
+            application.config.save_config();
+
+            # Restart with new config
+            print("\nRestarting with updated configuration:");
+            application.start();
+        }
+        ```
+        </div>
+    === "Python"
+        ```python
+        # main.py
+        from app import Application
+
+        if __name__ == "__main__":
+            print("=== Configuration Management Demo ===")
+
+            # Create and run application
+            application = Application("app_config.json")
+            application.start()
+
+            print("\n=== Configuration Update Demo ===")
+
+            # Update configuration at runtime
+            application.config.set_value("debug", True)
+            application.config.set_value("app_name", "Updated Python App")
+            application.config.save_config()
+
+            # Restart with new config
+            print("\nRestarting with updated configuration:")
+            application.start()
+        ```
+
+## Package Structure and Organization
+
+!!! topic "Project Structure"
+    Well-organized project structure makes your code maintainable and scalable.
+
+!!! example "Recommended Project Structure"
+    === "Jac Project Structure"
+        ```
+        my_jac_project/
+        ├── main.jac                 # Main entry point
+        ├── app.jac                  # Application logic
+        ├── app.test.jac             # App tests
+        ├── config_reader.jac        # Config management
+        ├── config_reader.impl.jac   # Config implementation
+        ├── config_reader.test.jac   # Config tests
+        ├── utils/
+        │   ├── file_utils.jac       # File utilities
+        │   └── data_utils.jac       # Data processing
+        ├── models/
+        │   ├── user.jac             # User model
+        │   └── user.impl.jac        # User implementation
+        ├── docs/
+        │   └── README.md            # Documentation
+        └── config/
+            └── app_config.json      # Configuration files
+        ```
+    === "Python Project Structure"
+        ```
+        my_python_project/
+        ├── main.py                  # Main entry point
+        ├── app.py                   # Application logic
+        ├── config_reader.py         # Config management
+        ├── utils/
+        │   ├── __init__.py
+        │   ├── file_utils.py        # File utilities
+        │   └── data_utils.py        # Data processing
+        ├── models/
+        │   ├── __init__.py
+        │   └── user.py              # User model
+        ├── tests/
+        │   ├── __init__.py
+        │   ├── test_config.py       # Config tests
+        │   └── test_app.py          # App tests
+        ├── docs/
+        │   └── README.md            # Documentation
+        └── config/
+            └── app_config.json      # Configuration files
+        ```
+
+## Best Practices
+
+!!! summary "Import and File Operation Best Practices"
+    - **Organize by functionality**: Group related code into logical modules
+    - **Use explicit imports**: Import only what you need for clarity
+    - **Handle errors gracefully**: Always use try-catch for file operations
+    - **Separate interface from implementation**: Use `.impl.jac` files for complex objects
+    - **Validate file inputs**: Check file existence and format before processing
+    - **Use configuration files**: Externalize settings for flexibility
+    - **Document your modules**: Clear documentation helps team collaboration
+
+## Key Takeaways
+
+!!! summary "Chapter Summary"
+    - **Import System**: Jac supports both local modules and Python libraries seamlessly
+    - **Implementation Separation**: `.impl.jac` files promote clean architecture
+    - **File Operations**: Safe file handling with proper error management
+    - **Configuration Management**: External configuration files improve flexibility
+    - **Module Organization**: Well-structured projects are easier to maintain and scale
+    - **Python Integration**: Leverage existing Python ecosystem alongside Jac features
+
+In the next chapter, we'll explore Jac's unique pipe operations and AI integration features that make data processing and AI workflows much more intuitive.

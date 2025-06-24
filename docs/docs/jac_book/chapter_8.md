@@ -1,871 +1,719 @@
-### Chapter 8: Walkers - Computation in Motion
+# Chapter 8: OSP Introduction and Paradigm Shift
 
-Walkers are the beating heart of Object-Spatial Programming. They embody the paradigm shift from static functions to mobile computational entities that traverse your data graph, processing information where it lives. In this chapter, we'll master the art of creating and controlling walkers to build powerful, scalable algorithms.
+Object-Spatial Programming (OSP) represents a fundamental shift in how we think about and organize computation. Instead of the traditional approach of moving data to computation, OSP moves computation to data. This chapter introduces this revolutionary paradigm through simple examples that demonstrate the power and elegance of spatial thinking.
 
-#### 8.1 Walker Basics
+!!! topic "The Core Paradigm Shift"
+    Traditional programming brings all data to a central location for processing. OSP sends computation to where the data lives, creating more natural, efficient, and scalable programs.
 
-### Declaring Walker Classes
+## From "Data to Computation" to "Computation to Data"
 
-Walkers are declared using the `walker` keyword and can contain state, abilities, and methods:
+!!! topic "Traditional vs Object-Spatial"
+    Understanding the difference between these approaches is key to unlocking the power of Jac's unique programming model.
 
-```jac
-walker SimpleVisitor {
-    # Walker state - travels with the walker
-    has visits: int = 0;
-    has path: list[str] = [];
+### Traditional Programming: Centralized Processing
 
-    # Regular method
-    def get_stats() -> dict {
-        return {
-            "total_visits": self.visits,
-            "path_length": len(self.path),
-            "current_path": self.path
-        };
-    }
+In traditional programming, we gather all data in one place and then process it:
 
-    # Walker ability - triggered on node entry
-    can visit_node with entry {
-        self.visits += 1;
-        self.path.append(here.name if hasattr(here, 'name') else str(here));
-        print(f"Visit {self.visits}: {self.path[-1]}");
-    }
-}
-```
+!!! example "Traditional Data Processing"
+    === "Jac (Traditional Style)"
+        <div class="code-block">
+        ```jac
+        # Traditional approach - bring all data to one place
+        obj FamilyTraditional {
+            has members: list[dict] = [];
 
-Key walker components:
-
-- **State Variables** (`has`): Data that travels with the walker
-- **Methods** (`def`): Regular functions for computation
-- **Abilities** (`can ... with`): Event-triggered behaviors
-
-### Spawning Walkers on Nodes
-
-Walkers start as inactive objects and must be "spawned" to begin traversal:
-
-```jac
-node Location {
-    has name: str;
-    has description: str;
-}
-
-with entry {
-    # Create a simple graph
-    home = root ++> Location(name="Home", description="Starting point");
-    park = home ++> Location(name="Park", description="Green space");
-    store = home ++> Location(name="Store", description="Shopping center");
-
-    # Create walker instance (inactive)
-    visitor1 = SimpleVisitor();
-    print(f"Walker created. Stats: {visitor1.get_stats()}");
-
-    # Spawn walker on a node (activates it)
-    home spawn visitor1;
-
-    # Or use alternative syntax
-    visitor2 = SimpleVisitor();
-    visitor2 spawn home;
-}
-```
-
-```mermaid
-graph LR
-    subgraph "Walker Lifecycle"
-        I[Inactive<br/>Walker Object]
-        A[Active<br/>Walker on Node]
-        T[Traversing<br/>Graph]
-        D[Done<br/>Disengaged]
-
-        I -->|spawn| A
-        A -->|visit| T
-        T -->|visit| T
-        T -->|disengage| D
-        T -->|queue empty| D
-    end
-
-    style I fill:#ffcdd2
-    style A fill:#c8e6c9
-    style T fill:#fff9c4
-    style D fill:#e1bee7
-```
-
-### The Walker Lifecycle
-
-Understanding the walker lifecycle is crucial:
-
-```jac
-walker LifecycleDemo {
-    has state: str = "created";
-    has nodes_visited: list = [];
-
-    # Called when walker is created (optional)
-    can init(mission: str = "explore") {
-        print(f"Walker initialized with mission: {mission}");
-        self.state = "initialized";
-    }
-
-    # Entry ability - when arriving at a node
-    can on_entry with entry {
-        self.state = "active";
-        self.nodes_visited.append(here);
-        print(f"Entered node. Total visits: {len(self.nodes_visited)}");
-
-        # Decide whether to continue
-        if len(self.nodes_visited) < 5 {
-            visit [-->];  # Continue to connected nodes
-        } else {
-            print("Mission complete!");
-            self.state = "completed";
-            disengage;  # End traversal
-        }
-    }
-
-    # Exit ability - when leaving a node
-    can on_exit with exit {
-        print(f"Leaving node after processing");
-    }
-
-    # Final cleanup (if needed)
-    def cleanup {
-        print(f"Walker finished. State: {self.state}");
-        print(f"Visited {len(self.nodes_visited)} nodes");
-    }
-}
-```
-
-#### 8.2 Traversal Patterns
-
-### `visit` Statements for Navigation
-
-The `visit` statement is how walkers move through the graph:
-
-```jac
-walker Explorer {
-    has max_depth: int = 3;
-    has current_depth: int = 0;
-
-    can explore with entry {
-        print(f"At depth {self.current_depth}: {here.name}");
-
-        if self.current_depth < self.max_depth {
-            # Visit all connected nodes
-            visit [-->];
-
-            # Or visit specific nodes
-            important_nodes = [-->].filter(
-                lambda n: n.priority > 5 if hasattr(n, 'priority') else False
-            );
-            visit important_nodes;
-
-            # Or visit with type filtering
-            visit [->:ImportantEdge:->];
-        }
-    }
-}
-```
-
-### `disengage` for Early Termination
-
-Use `disengage` to stop traversal immediately:
-
-```jac
-walker SearchWalker {
-    has target_name: str;
-    has found: bool = false;
-    has result: node? = None;
-
-    can search with entry {
-        print(f"Checking: {here.name if hasattr(here, 'name') else 'unknown'}");
-
-        if hasattr(here, 'name') and here.name == self.target_name {
-            print(f"Found target: {here.name}!");
-            self.found = True;
-            self.result = here;
-            report here;  # Report finding
-            disengage;    # Stop searching
-        }
-
-        # Continue search if not found
-        visit [-->];
-    }
-}
-
-with entry {
-    searcher = SearchWalker(target_name="Store");
-    result = spawn searcher on root;
-
-    if searcher.found {
-        print(f"Search successful! Found: {searcher.result.name}");
-    } else {
-        print("Target not found in graph");
-    }
-}
-```
-
-### `skip` for Conditional Processing
-
-The `skip` statement ends processing at the current node but continues traversal:
-
-```jac
-walker ConditionalProcessor {
-    has process_count: int = 0;
-    has skip_count: int = 0;
-
-    can process with entry {
-        # Skip nodes that don't meet criteria
-        if hasattr(here, 'active') and not here.active {
-            self.skip_count += 1;
-            print(f"Skipping inactive node");
-            skip;  # Move to next node without further processing
-        }
-
-        # Process active nodes
-        print(f"Processing node {self.process_count + 1}");
-        self.process_count += 1;
-
-        # Expensive operation only for active nodes
-        self.perform_expensive_operation();
-
-        # Continue traversal
-        visit [-->];
-    }
-
-    can perform_expensive_operation {
-        import:py time;
-        time.sleep(0.1);  # Simulate work
-        print("  - Expensive operation completed");
-    }
-}
-```
-
-### Queue-Based Traversal Model
-
-Walkers use an internal queue for traversal:
-
-```jac
-walker QueueDemo {
-    has visited_order: list = [];
-
-    can demonstrate with entry {
-        self.visited_order.append(here.name);
-        print(f"Current queue after visiting {here.name}:");
-
-        # The visit statement adds to queue
-        neighbors = [-->];
-        for i, neighbor in enumerate(neighbors) {
-            print(f"  Adding to queue: {neighbor.name}");
-            visit neighbor;
-        }
-
-        print(f"Queue will be processed in order\n");
-    }
-
-    can summarize with exit {
-        if len([-->]) == 0 {  # At a leaf node
-            print(f"Traversal order: {' -> '.join(self.visited_order)}");
-        }
-    }
-}
-```
-
-### Advanced Traversal Patterns
-
-#### Breadth-First Search (BFS)
-
-```jac
-walker BFSWalker {
-    has visited: set = {};
-    has level: dict = {};
-    has current_level: int = 0;
-
-    can bfs with entry {
-        # Mark as visited
-        if here in self.visited {
-            skip;
-        }
-
-        self.visited.add(here);
-        self.level[here] = self.current_level;
-
-        print(f"Level {self.current_level}: {here.name}");
-
-        # Queue all unvisited neighbors (BFS behavior)
-        unvisited = [-->].filter(lambda n: n not in self.visited);
-        visit unvisited;
-
-        # Increment level for next wave
-        if all(n in self.visited for n in [-->]) {
-            self.current_level += 1;
-        }
-    }
-}
-```
-
-#### Depth-First Search (DFS)
-
-```jac
-walker DFSWalker {
-    has visited: set = {};
-    has stack: list = [];
-    has dfs_order: list = [];
-
-    can dfs with entry {
-        if here in self.visited {
-            skip;
-        }
-
-        self.visited.add(here);
-        self.dfs_order.append(here.name);
-        self.stack.append(here.name);
-
-        print(f"DFS visiting: {here.name}");
-        print(f"  Stack: {self.stack}");
-
-        # Visit one unvisited neighbor at a time (DFS)
-        unvisited = [-->].filter(lambda n: n not in self.visited);
-        if unvisited {
-            visit unvisited[0];  # Visit first unvisited
-        } else {
-            # Backtrack
-            self.stack.pop();
-        }
-
-        # After exploring all children, visit siblings
-        for neighbor in unvisited[1:] {
-            visit neighbor;
-        }
-    }
-}
-```
-
-#### Bidirectional Search
-
-```jac
-walker BidirectionalSearch {
-    has target: node;
-    has forward_visited: set = {};
-    has backward_visited: set = {};
-    has meeting_point: node? = None;
-    has search_forward: bool = true;
-
-    can search with entry {
-        if self.search_forward {
-            # Forward search from source
-            if here in self.backward_visited {
-                self.meeting_point = here;
-                print(f"Paths met at: {here.name}!");
-                disengage;
-            }
-
-            self.forward_visited.add(here);
-            visit [-->];
-
-        } else {
-            # Backward search from target
-            if here in self.forward_visited {
-                self.meeting_point = here;
-                print(f"Paths met at: {here.name}!");
-                disengage;
-            }
-
-            self.backward_visited.add(here);
-            visit [<--];  # Reverse direction
-        }
-    }
-}
-
-# Usage: Spawn two walkers
-with entry {
-    source = get_node("A");
-    target = get_node("Z");
-
-    # Forward search
-    forward = BidirectionalSearch(target=target, search_forward=true);
-    spawn forward on source;
-
-    # Backward search
-    backward = BidirectionalSearch(target=source, search_forward=false);
-    spawn backward on target;
-}
-```
-
-#### 8.3 Walker Abilities
-
-### Entry and Exit Abilities
-
-Abilities are event-driven methods that execute automatically:
-
-```jac
-node Store {
-    has name: str;
-    has inventory: dict = {};
-    has revenue: float = 0.0;
-}
-
-walker InventoryChecker {
-    has low_stock_items: list = [];
-    has total_value: float = 0.0;
-    has stores_checked: int = 0;
-
-    # Entry ability - main processing
-    can check_inventory with Store entry {
-        print(f"\nChecking store: {here.name}");
-        self.stores_checked += 1;
-
-        store_value = 0.0;
-        for item, details in here.inventory.items() {
-            quantity = details["quantity"];
-            price = details["price"];
-
-            store_value += quantity * price;
-
-            if quantity < 10 {
-                self.low_stock_items.append({
-                    "store": here.name,
-                    "item": item,
-                    "quantity": quantity
+            def add_member(name: str, age: int, generation: int) -> None {
+                self.members.append({
+                    "name": name,
+                    "age": age,
+                    "generation": generation
                 });
             }
-        }
 
-        self.total_value += store_value;
-        print(f"  Store value: ${store_value:.2f}");
-    }
-
-    # Exit ability - cleanup or summary
-    can summarize with Store exit {
-        if len([-->]) == 0 {  # Last store
-            print(f"\n=== Inventory Check Complete ===");
-            print(f"Stores checked: {self.stores_checked}");
-            print(f"Total inventory value: ${self.total_value:.2f}");
-            print(f"Low stock items: {len(self.low_stock_items)}");
-
-            for item in self.low_stock_items {
-                print(f"  - {item['store']}: {item['item']} ({item['quantity']} left)");
-            }
-        }
-    }
-}
-```
-
-### Context References: `here`, `self`, `visitor`
-
-Understanding context references is crucial for walker abilities:
-
-```jac
-node Server {
-    has name: str;
-    has status: str = "running";
-    has load: float = 0.0;
-    has last_check: str = "";
-
-    # Node ability - 'visitor' refers to the walker
-    can log_visit with HealthChecker entry {
-        print(f"Server {self.name} being checked by {visitor.checker_id}");
-        self.last_check = visitor.check_time;
-    }
-
-    can provide_metrics with HealthChecker entry {
-        return {
-            "name": self.name,
-            "status": self.status,
-            "load": self.load
-        };
-    }
-}
-
-walker HealthChecker {
-    has checker_id: str;
-    has check_time: str;
-    has unhealthy_servers: list = [];
-
-    # Walker ability - 'here' refers to current node, 'self' to walker
-    can check_health with Server entry {
-        print(f"Checker {self.checker_id} at server {here.name}");
-
-        # Get metrics from the server (node calling its method)
-        metrics = here.provide_metrics();
-
-        # Check health criteria
-        if here.status != "running" or here.load > 0.8 {
-            self.unhealthy_servers.append({
-                "server": here.name,
-                "status": here.status,
-                "load": here.load,
-                "checked_at": self.check_time
-            });
-
-            # Try to fix issues
-            if here.load > 0.8 {
-                self.rebalance_load(here);
-            }
-        }
-
-        # Continue to connected servers
-        visit [->:NetworkLink:];
-    }
-
-    can rebalance_load(server: Server) {
-        print(f"  Attempting to rebalance load on {server.name}");
-        # Rebalancing logic here
-        server.load *= 0.7;  # Simplified rebalancing
-    }
-}
-```
-
-### Bidirectional Computation Model
-
-The power of OSP comes from bidirectional interaction between walkers and nodes:
-
-```jac
-node SmartDevice {
-    has device_id: str;
-    has device_type: str;
-    has settings: dict = {};
-    has metrics: dict = {};
-
-    # Node responds to configuration walker
-    can apply_config with ConfigUpdater entry {
-        print(f"Device {self.device_id} receiving config");
-
-        # Node can access walker data
-        new_settings = visitor.get_settings_for(self.device_type);
-
-        # Node updates itself
-        self.settings.update(new_settings);
-
-        # Node can modify walker state
-        visitor.devices_updated += 1;
-        visitor.log_update(self.device_id, new_settings);
-    }
-
-    # Node provides data to analytics walker
-    can share_metrics with AnalyticsCollector entry {
-        # Complex computation at the node
-        processed_metrics = self.process_raw_metrics();
-
-        # Give data to walker
-        visitor.collect_metrics(self.device_id, processed_metrics);
-    }
-
-    can process_raw_metrics() -> dict {
-        # Node's own complex logic
-        return {
-            "uptime": self.metrics.get("uptime", 0),
-            "efficiency": self.calculate_efficiency(),
-            "health_score": self.calculate_health()
-        };
-    }
-
-    can calculate_efficiency() -> float {
-        # Complex calculation
-        return 0.85;  # Simplified
-    }
-
-    can calculate_health() -> float {
-        return 0.92;  # Simplified
-    }
-}
-
-walker ConfigUpdater {
-    has config_version: str;
-    has devices_updated: int = 0;
-    has update_log: list = [];
-
-    can get_settings_for(device_type: str) -> dict {
-        # Walker provides configuration based on device type
-        configs = {
-            "thermostat": {"temp_unit": "celsius", "schedule": "auto"},
-            "camera": {"resolution": "1080p", "night_mode": true},
-            "sensor": {"sensitivity": "high", "interval": 60}
-        };
-
-        return configs.get(device_type, {});
-    }
-
-    can log_update(device_id: str, settings: dict) {
-        self.update_log.append({
-            "device": device_id,
-            "settings": settings,
-            "timestamp": now()
-        });
-    }
-
-    can update_devices with SmartDevice entry {
-        # Walker's main logic is in the node ability
-        # This is just navigation
-        visit [->:ConnectedTo:];
-    }
-
-    can report with exit {
-        print(f"\nConfiguration Update Complete:");
-        print(f"  Version: {self.config_version}");
-        print(f"  Devices updated: {self.devices_updated}");
-    }
-}
-
-walker AnalyticsCollector {
-    has metrics_db: dict = {};
-    has device_count: int = 0;
-
-    can collect_metrics(device_id: str, metrics: dict) {
-        self.metrics_db[device_id] = metrics;
-        self.device_count += 1;
-    }
-
-    can analyze with SmartDevice entry {
-        # Trigger node's ability
-        # Node will call walker's collect_metrics
-        visit [-->];
-    }
-
-    can generate_report with exit {
-        if self.device_count > 0 {
-            print(f"\n=== Analytics Report ===");
-            print(f"Devices analyzed: {self.device_count}");
-
-            # Calculate aggregates
-            avg_uptime = sum(m["uptime"] for m in self.metrics_db.values()) / self.device_count;
-            avg_health = sum(m["health_score"] for m in self.metrics_db.values()) / self.device_count;
-
-            print(f"Average uptime: {avg_uptime:.1f} hours");
-            print(f"Average health score: {avg_health:.2%}");
-        }
-    }
-}
-```
-
-### Practical Walker Patterns
-
-#### The Aggregator Pattern
-
-```jac
-walker DataAggregator {
-    has aggregation: dict = {};
-    has visit_count: int = 0;
-
-    can aggregate with DataNode entry {
-        category = here.category;
-        if category not in self.aggregation {
-            self.aggregation[category] = {
-                "count": 0,
-                "total": 0.0,
-                "items": []
-            };
-        }
-
-        self.aggregation[category]["count"] += 1;
-        self.aggregation[category]["total"] += here.value;
-        self.aggregation[category]["items"].append(here.name);
-
-        self.visit_count += 1;
-        visit [-->];
-    }
-
-    can report_summary with exit {
-        print(f"\nAggregation complete. Visited {self.visit_count} nodes.");
-
-        for category, data in self.aggregation.items() {
-            avg = data["total"] / data["count"];
-            print(f"\n{category}:");
-            print(f"  Count: {data['count']}");
-            print(f"  Average: {avg:.2f}");
-            print(f"  Total: {data['total']:.2f}");
-        }
-    }
-}
-```
-
-#### The Validator Pattern
-
-```jac
-walker GraphValidator {
-    has errors: list = [];
-    has warnings: list = [];
-    has nodes_validated: int = 0;
-
-    can validate with entry {
-        self.nodes_validated += 1;
-
-        # Check node properties
-        if not hasattr(here, 'name') or not here.name {
-            self.errors.append({
-                "node": here,
-                "error": "Missing or empty name"
-            });
-        }
-
-        # Check connections
-        outgoing = [-->];
-        incoming = [<--];
-
-        if len(outgoing) == 0 and len(incoming) == 0 {
-            self.warnings.append({
-                "node": here.name if hasattr(here, 'name') else "unknown",
-                "warning": "Isolated node (no connections)"
-            });
-        }
-
-        # Type-specific validation
-        if hasattr(here, 'validate') {
-            validation_result = here.validate();
-            if not validation_result["valid"] {
-                self.errors.extend(validation_result["errors"]);
-            }
-        }
-
-        visit [-->];
-    }
-
-    can report with exit {
-        print(f"\n=== Validation Report ===");
-        print(f"Nodes validated: {self.nodes_validated}");
-        print(f"Errors found: {len(self.errors)}");
-        print(f"Warnings: {len(self.warnings)}");
-
-        if self.errors {
-            print("\nErrors:");
-            for error in self.errors {
-                print(f"  - {error}");
-            }
-        }
-
-        if self.warnings {
-            print("\nWarnings:");
-            for warning in self.warnings {
-                print(f"  - {warning}");
-            }
-        }
-    }
-}
-```
-
-#### The Transformer Pattern
-
-```jac
-walker DataTransformer {
-    has transformation_rules: dict;
-    has transformed_count: int = 0;
-    has backup: dict = {};
-
-    can init(rules: dict) {
-        self.transformation_rules = rules;
-    }
-
-    can transform with entry {
-        # Backup original data
-        if hasattr(here, 'data') {
-            self.backup[here] = here.data.copy();
-
-            # Apply transformations
-            for field, rule in self.transformation_rules.items() {
-                if field in here.data {
-                    here.data[field] = self.apply_rule(here.data[field], rule);
+            def count_by_generation() -> dict[int, int] {
+                counts = {};
+                # Process all data in one loop
+                for member in self.members {
+                    gen = member["generation"];
+                    counts[gen] = counts.get(gen, 0) + 1;
                 }
+                return counts;
+            }
+        }
+
+        with entry {
+            family = FamilyTraditional();
+
+            # Add all family members
+            family.add_member("Grandpa Joe", 75, 1);
+            family.add_member("Grandma Sue", 72, 1);
+            family.add_member("Dad Mike", 45, 2);
+            family.add_member("Mom Lisa", 43, 2);
+            family.add_member("Son Alex", 16, 3);
+            family.add_member("Daughter Emma", 14, 3);
+
+            # Process all data centrally
+            generation_counts = family.count_by_generation();
+            print(f"Generation counts: {generation_counts}");
+        }
+        ```
+        </div>
+    === "Python"
+        ```python
+        class FamilyTraditional:
+            def __init__(self):
+                self.members = []
+
+            def add_member(self, name: str, age: int, generation: int):
+                self.members.append({
+                    "name": name,
+                    "age": age,
+                    "generation": generation
+                })
+
+            def count_by_generation(self):
+                counts = {}
+                # Process all data in one loop
+                for member in self.members:
+                    gen = member["generation"]
+                    counts[gen] = counts.get(gen, 0) + 1
+                return counts
+
+        if __name__ == "__main__":
+            family = FamilyTraditional()
+
+            # Add all family members
+            family.add_member("Grandpa Joe", 75, 1)
+            family.add_member("Grandma Sue", 72, 1)
+            family.add_member("Dad Mike", 45, 2)
+            family.add_member("Mom Lisa", 43, 2)
+            family.add_member("Son Alex", 16, 3)
+            family.add_member("Daughter Emma", 14, 3)
+
+            # Process all data centrally
+            generation_counts = family.count_by_generation()
+            print(f"Generation counts: {generation_counts}")
+        ```
+
+### Object-Spatial Programming: Distributed Processing
+
+In OSP, computation moves to where the data naturally lives:
+
+!!! example "Object-Spatial Family Tree"
+    === "Jac"
+        <div class="code-block">
+        ```jac
+        # OSP approach - computation goes to data
+        node Person {
+            has name: str;
+            has age: int;
+            has generation: int;
+        }
+
+        edge Relationship{}
+        edge MarriedTo(Relationship){}
+        edge ParentOf(Relationship){}
+
+        walker GenerationCounter {
+            has generation_counts: dict[int, int] = {};
+            has visited: set[Person] = set();
+
+            can count with Person entry {
+                if here in self.visited {
+                    return;  # Skip if already visited
+                }
+
+                self.visited.add(here);  # Mark this person as visited
+
+                # Computation happens AT each person
+                gen = here.generation;
+                self.generation_counts[gen] = self.generation_counts.get(gen, 0) + 1;
+
+                visit [<-:MarriedTo:->];  # Visit married partners
+
+                print(f"Counted {here.name} (Generation {gen})");
+
+                # Visit children
+                visit [->:ParentOf:->];
+            }
+        }
+
+        with entry {
+            # Create family tree structure
+            grandpa = root ++> Person(name="Grandpa Joe", age=75, generation=1);
+            grandma = root ++> Person(name="Grandma Sue", age=72, generation=1);
+
+            grandpa <+:MarriedTo:+> grandma;  # Connect grandparents
+
+            # Second generation
+            dad = grandpa[0] +>:ParentOf:+> Person(name="Dad Mike", age=45, generation=2);
+            mom = grandma[0] +>:ParentOf:+> Person(name="Mom Lisa", age=43, generation=2);
+            dad <+:MarriedTo:+> mom;  # Connect parents
+
+            # Third generation
+            son = dad[0] +>:ParentOf:+> Person(name="Son Alex", age=16, generation=3);
+            daughter = mom[0] +>:ParentOf:+> Person(name="Daughter Emma", age=14, generation=3);
+
+            # Send computation to the data
+            counter = GenerationCounter();
+            counter spawn grandpa[0];  # Start traversal from grandpa
+
+            print(f"Final counts: {counter.generation_counts}");
+        }
+        ```
+        </div>
+    === "Python"
+        ```python
+        # Python simulation of OSP concepts
+        class Person:
+            def __init__(self, name: str, age: int, generation: int):
+                self.name = name
+                self.age = age
+                self.generation = generation
+                self.children = []
+
+            def add_child(self, child):
+                self.children.append(child)
+
+        class GenerationCounter:
+            def __init__(self):
+                self.generation_counts = {}
+
+            def count(self, person):
+                # Simulate "computation goes to data"
+                gen = person.generation
+                self.generation_counts[gen] = self.generation_counts.get(gen, 0) + 1
+
+                print(f"Counted {person.name} (Generation {gen})")
+
+                # Visit children recursively
+                for child in person.children:
+                    self.count(child)
+
+        if __name__ == "__main__":
+            # Create family tree structure
+            grandpa = Person("Grandpa Joe", 75, 1)
+            grandma = Person("Grandma Sue", 72, 1)
+
+            # Second generation
+            dad = Person("Dad Mike", 45, 2)
+            mom = Person("Mom Lisa", 43, 2)
+            grandpa.add_child(dad)
+            grandma.add_child(mom)
+
+            # Third generation
+            son = Person("Son Alex", 16, 3)
+            daughter = Person("Daughter Emma", 14, 3)
+            dad.add_child(son)
+            mom.add_child(daughter)
+
+            # Send computation to the data
+            counter = GenerationCounter()
+            counter.count(grandpa)  # Start traversal from grandpa
+
+            print(f"Final counts: {counter.generation_counts}")
+        ```
+
+## Data Spatial Programming Foundation
+
+!!! topic "Spatial Awareness"
+    In OSP, data structures are inherently spatial - they know their relationships and can react to visitors. This creates more intuitive and natural program organization.
+
+### Spatial Relationships in Data
+
+!!! example "Family Relationships"
+    === "Jac"
+        <div class="code-block">
+        ```jac
+        node FamilyMember {
+            has name: str;
+            has birth_year: int;
+
+            def get_age() -> int {
+                return 2024 - self.birth_year;
+            }
+        }
+
+        edge MarriedTo {
+            has marriage_year: int;
+
+            def get_marriage_duration() -> int {
+                return 2024 - self.marriage_year;
+            }
+        }
+
+        edge ChildOf {
+            has birth_order: int;  # 1st child, 2nd child, etc.
+        }
+
+        walker RelationshipFinder {
+            has relationships: list[str] = [];
+
+            can find_relationships with FamilyMember entry {
+                name = here.name;
+
+                # Find spouse
+                spouses= [->:MarriedTo:->];
+                for spouse in spouses {
+                    duration = [edge here --> spouse][0].get_marriage_duration();
+                    self.relationships.append(f"{name} married to {spouse.name} for {duration} years");
+                }
+
+                # Find children
+                children = [->:ChildOf:->];
+                if children {
+                    child_names = [child.name for child in children];
+                    self.relationships.append(f"{name} has children: {', '.join(child_names)}");
+                }
+
+                # Continue exploring family tree
+                visit [-->];
+            }
+        }
+
+        with entry {
+            # Create a simple family
+            john = root ++> FamilyMember(name="John", birth_year=1980);
+            mary = root ++> FamilyMember(name="Mary", birth_year=1982);
+
+            # Marriage relationship
+            john[0] +>:MarriedTo(marriage_year=2005):+> mary;
+
+            # Children
+            alice = john[0] +>:ChildOf(birth_order=1):+> FamilyMember(name="Alice", birth_year=2008);
+            bob = john[0] +>:ChildOf(birth_order=2):+> FamilyMember(name="Bob", birth_year=2010);
+
+            # Explore relationships
+            finder = RelationshipFinder();
+            finder spawn john[0];
+
+            for relationship in finder.relationships {
+                print(relationship);
+            }
+        }
+        ```
+        </div>
+    === "Python"
+        ```python
+        from typing import List
+
+        class FamilyMember:
+            def __init__(self, name: str, birth_year: int):
+                self.name = name
+                self.birth_year = birth_year
+                self.spouse = None
+                self.children = []
+                self.marriage_year = None
+
+            def get_age(self) -> int:
+                return 2024 - self.birth_year
+
+            def marry(self, spouse, marriage_year: int):
+                self.spouse = spouse
+                self.marriage_year = marriage_year
+                spouse.spouse = self
+                spouse.marriage_year = marriage_year
+
+            def add_child(self, child):
+                self.children.append(child)
+
+        class RelationshipFinder:
+            def __init__(self):
+                self.relationships = []
+                self.visited = set()
+
+            def find_relationships(self, person: FamilyMember):
+                if person in self.visited:
+                    return
+
+                self.visited.add(person)
+                name = person.name
+
+                # Find spouse
+                if person.spouse:
+                    duration = 2024 - person.marriage_year
+                    self.relationships.append(f"{name} married to {person.spouse.name} for {duration} years")
+
+                # Find children
+                if person.children:
+                    child_names = [child.name for child in person.children]
+                    self.relationships.append(f"{name} has children: {', '.join(child_names)}")
+
+                # Continue exploring family tree
+                if person.spouse:
+                    self.find_relationships(person.spouse)
+                for child in person.children:
+                    self.find_relationships(child)
+
+        if __name__ == "__main__":
+            # Create a simple family
+            john = FamilyMember("John", 1980)
+            mary = FamilyMember("Mary", 1982)
+
+            # Marriage relationship
+            john.marry(mary, 2005)
+
+            # Children
+            alice = FamilyMember("Alice", 2008)
+            bob = FamilyMember("Bob", 2010)
+            john.add_child(alice)
+            john.add_child(bob)
+
+            # Explore relationships
+            finder = RelationshipFinder()
+            finder.find_relationships(john)
+
+            for relationship in finder.relationships:
+                print(relationship)
+        ```
+
+## Graph Thinking vs Object Thinking
+
+!!! topic "Mental Models"
+    OSP encourages thinking in terms of connections and relationships rather than isolated objects. This leads to more natural representations of real-world problems.
+
+### Object-Oriented Thinking
+
+In traditional OOP, we think about individual objects with their own data and methods:
+
+```python
+# Traditional OO thinking - isolated objects
+class Student:
+    def __init__(self, name):
+        self.name = name
+        self.grades = []
+
+    def add_grade(self, grade):
+        self.grades.append(grade)
+
+class Teacher:
+    def __init__(self, name):
+        self.name = name
+        self.students = []  # List of student references
+
+    def add_student(self, student):
+        self.students.append(student)
+```
+
+### Graph-Oriented Thinking
+
+In OSP, we think about entities and their relationships as a connected graph:
+
+!!! example "Classroom as a Graph"
+    === "Jac"
+        <div class="code-block">
+        ```jac
+        # Graph thinking - connected entities
+        node Student {
+            has name: str;
+            has grade_level: int;
+        }
+
+        node Teacher {
+            has name: str;
+            has subject: str;
+        }
+
+        edge Teaches {
+            has semester: str;
+            has classroom: str;
+        }
+
+        edge Attends {
+            has grade: str = "Not Set";
+        }
+
+        walker ClassroomAnalyzer {
+            has teacher_student_count: dict[str, int] = {};
+            has student_subjects: dict[str, list[str]] = {};
+
+            can analyze_teacher with Teacher entry {
+                # Count students for this teacher
+                students = [->:Teaches:->];
+                self.teacher_student_count[here.name] = len(students);
+
+                print(f"{here.name} teaches {here.subject} to {len(students)} students");
+
+                # Visit students to gather more info
+                visit students;
             }
 
-            self.transformed_count += 1;
+            can analyze_student with Student entry {
+                # Find what subjects this student takes
+                teachers = [<-:Teaches:<-];
+                subjects = [teacher.subject for teacher in teachers];
+                self.student_subjects[here.name] = subjects;
+
+                print(f"{here.name} (Grade {here.grade_level}) takes: {', '.join(subjects)}");
+            }
         }
 
-        visit [-->];
-    }
+        with entry {
+            # Create classroom graph
+            ms_smith = Teacher(name="Ms. Smith", subject="Math");
+            mr_jones = Teacher(name="Mr. Jones", subject="Science");
 
-    can apply_rule(value: any, rule: dict) -> any {
-        if rule["type"] == "multiply" {
-            return value * rule["factor"];
-        } elif rule["type"] == "uppercase" {
-            return str(value).upper();
-        } elif rule["type"] == "round" {
-            return round(float(value), rule["decimals"]);
+            # Create students
+            alice = Student(name="Alice", grade_level=9);
+            bob = Student(name="Bob", grade_level=9);
+            charlie = Student(name="Charlie", grade_level=10);
+
+            # Create teaching relationships
+            ms_smith +>:Teaches(semester="Fall 2024", classroom="Room 101"):+> alice;
+            ms_smith +>:Teaches(semester="Fall 2024", classroom="Room 101"):+> bob;
+            mr_jones +>:Teaches(semester="Fall 2024", classroom="Room 205"):+> alice;
+            mr_jones +>:Teaches(semester="Fall 2024", classroom="Room 205"):+> charlie;
+
+            # Analyze the classroom network
+            analyzer = ClassroomAnalyzer();
+            analyzer spawn ms_smith;
+            analyzer spawn mr_jones;
+
+
+
+            print(f"Teacher-student counts: {analyzer.teacher_student_count}");
+            print(f"Student subjects: {analyzer.student_subjects}");
         }
-        return value;
-    }
+        ```
+        </div>
+    === "Python"
+        ```python
+        from typing import List, Dict
 
-    can rollback {
-        # Restore original data if needed
-        for node, original_data in self.backup.items() {
-            node.data = original_data;
+        class Student:
+            def __init__(self, name: str, grade_level: int):
+                self.name = name
+                self.grade_level = grade_level
+                self.teachers = []  # References to teachers
+
+        class Teacher:
+            def __init__(self, name: str, subject: str):
+                self.name = name
+                self.subject = subject
+                self.students = []  # References to students
+
+            def add_student(self, student: Student):
+                self.students.append(student)
+                student.teachers.append(self)
+
+        class ClassroomAnalyzer:
+            def __init__(self):
+                self.teacher_student_count = {}
+                self.student_subjects = {}
+                self.visited = set()
+
+            def analyze(self, entity):
+                if entity in self.visited:
+                    return
+
+                self.visited.add(entity)
+
+                if isinstance(entity, Teacher):
+                    # Count students for this teacher
+                    self.teacher_student_count[entity.name] = len(entity.students)
+                    print(f"{entity.name} teaches {entity.subject} to {len(entity.students)} students")
+
+                    # Visit students
+                    for student in entity.students:
+                        self.analyze(student)
+
+                elif isinstance(entity, Student):
+                    # Find what subjects this student takes
+                    subjects = [teacher.subject for teacher in entity.teachers]
+                    self.student_subjects[entity.name] = subjects
+                    print(f"{entity.name} (Grade {entity.grade_level}) takes: {', '.join(subjects)}")
+
+        if __name__ == "__main__":
+            # Create classroom network
+            ms_smith = Teacher("Ms. Smith", "Math")
+            mr_jones = Teacher("Mr. Jones", "Science")
+
+            # Create students
+            alice = Student("Alice", 9)
+            bob = Student("Bob", 9)
+            charlie = Student("Charlie", 10)
+
+            # Create teaching relationships
+            ms_smith.add_student(alice)
+            ms_smith.add_student(bob)
+            mr_jones.add_student(alice)
+            mr_jones.add_student(charlie)
+
+            # Analyze the classroom network
+            analyzer = ClassroomAnalyzer()
+            analyzer.analyze(ms_smith)
+            analyzer.analyze(mr_jones)
+
+            print(f"Teacher-student counts: {analyzer.teacher_student_count}")
+            print(f"Student subjects: {analyzer.student_subjects}")
+        ```
+
+## Benefits of the OSP Paradigm
+
+!!! topic "Why OSP Matters"
+    The spatial approach to programming offers several key advantages over traditional centralized processing.
+
+### Natural Problem Modeling
+
+OSP allows you to model problems the way they naturally exist in the real world:
+
+!!! example "Three-Generation Family Tree"
+    === "Jac"
+        <div class="code-block">
+        ```jac
+        node Person {
+            has name: str;
+            has birth_year: int;
+            has generation: int;
+
+            def get_age() -> int {
+                return 2024 - self.birth_year;
+            }
         }
-    }
-}
-```
 
-### Walker Composition
-
-Multiple walkers can work together:
-
-```jac
-# First walker identifies targets
-walker TargetIdentifier {
-    has criteria: dict;
-    has targets: list = [];
-
-    can identify with entry {
-        if self.matches_criteria(here) {
-            self.targets.append(here);
-            here.mark_as_target();  # Mark for second walker
+        edge ParentChild {
+            has relationship: str;  # "father", "mother", "son", "daughter"
         }
-        visit [-->];
-    }
 
-    can matches_criteria(node: any) -> bool {
-        # Check criteria
-        return true;  # Simplified
-    }
-}
+        walker FamilyTreeExplorer {
+            has family_info: list[str] = [];
 
-# Second walker processes marked targets
-walker TargetProcessor {
-    has processed: int = 0;
+            can explore with Person entry {
+                age = here.get_age();
+                gen = here.generation;
 
-    can process with entry {
-        if hasattr(here, 'is_target') and here.is_target {
-            self.perform_processing(here);
-            self.processed += 1;
+                # Find parents
+                parents = [<-:ParentChild:<-];
+                parent_names = [p.name for p in parents];
+
+                # Find children
+                children = [->:ParentChild:->];
+                child_names = [c.name for c in children];
+
+                info = f"Generation {gen}: {here.name} (age {age})";
+                if parent_names {
+                    info += f" - Parents: {', '.join(parent_names)}";
+                }
+                if child_names {
+                    info += f" - Children: {', '.join(child_names)}";
+                }
+
+                self.family_info.append(info);
+
+                # Continue exploring
+                visit [->:ParentChild:->];
+            }
         }
-        visit [-->];
-    }
 
-    can perform_processing(node: any) {
-        print(f"Processing target: {node.name if hasattr(node, 'name') else node}");
-        # Processing logic
-    }
-}
+        with entry {
+            # Generation 1 (Grandparents)
+            grandpa = root ++> Person(name="Robert", birth_year=1945, generation=1);
+            grandma = root ++> Person(name="Helen", birth_year=1948, generation=1);
 
-# Orchestrator walker coordinates others
-walker Orchestrator {
-    has phase: str = "identify";
+            # Generation 2 (Parents)
+            dad = grandpa[0] +>:ParentChild(relationship="father"):+> Person(name="Michael", birth_year=1975, generation=2);
+            mom = grandma[0] +>:ParentChild(relationship="mother"):+> Person(name="Sarah", birth_year=1977, generation=2);
 
-    can orchestrate with entry {
-        if self.phase == "identify" {
-            # Spawn identifier
-            identifier = TargetIdentifier(criteria={"type": "important"});
-            spawn identifier on here;
+            # Generation 3 (Children)
+            son = dad[0] +>:ParentChild(relationship="father"):+> Person(name="David", birth_year=2005, generation=3);
+            daughter = mom[0] +>:ParentChild(relationship="mother"):+> Person(name="Emma", birth_year=2007, generation=3);
+            youngest = dad[0] +>:ParentChild(relationship="father"):+> Person(name="Luke", birth_year=2010, generation=3);
 
-            # Move to next phase
-            self.phase = "process";
-            visit here;  # Revisit this node
+            # Explore the family tree
+            explorer = FamilyTreeExplorer();
+            explorer spawn grandpa[0];
 
-        } elif self.phase == "process" {
-            # Spawn processor
-            processor = TargetProcessor();
-            spawn processor on here;
-
-            self.phase = "complete";
+            print("=== Family Tree ===");
+            for info in explorer.family_info {
+                print(info);
+            }
         }
-    }
-}
-```
+        ```
+        </div>
+    === "Python"
+        ```python
+        class Person:
+            def __init__(self, name: str, birth_year: int, generation: int):
+                self.name = name
+                self.birth_year = birth_year
+                self.generation = generation
+                self.parents = []
+                self.children = []
 
-### Summary
+            def get_age(self) -> int:
+                return 2024 - self.birth_year
 
-In this chapter, we've mastered walkers—the mobile computational entities that make Object-Spatial Programming unique:
+            def add_child(self, child):
+                self.children.append(child)
+                child.parents.append(self)
 
-- **Walker Basics**: Creating, spawning, and managing walker lifecycle
-- **Traversal Control**: Using `visit`, `disengage`, and `skip` effectively
-- **Walker Abilities**: Writing entry/exit abilities with proper context usage
-- **Bidirectional Computation**: Leveraging the interplay between walkers and nodes
-- **Advanced Patterns**: Implementing search algorithms and walker composition
+        class FamilyTreeExplorer:
+            def __init__(self):
+                self.family_info = []
+                self.visited = set()
 
-Walkers transform static data structures into dynamic, reactive systems. They enable algorithms that naturally adapt to the shape and content of your data, scaling from simple traversals to complex distributed computations.
+            def explore(self, person: Person):
+                if person in self.visited:
+                    return
 
-Next, we'll explore abilities in depth—the event-driven computation model that makes the interaction between walkers and nodes so powerful.
+                self.visited.add(person)
+
+                age = person.get_age()
+                gen = person.generation
+
+                # Find family relationships
+                parent_names = [p.name for p in person.parents]
+                child_names = [c.name for c in person.children]
+
+                info = f"Generation {gen}: {person.name} (age {age})"
+                if parent_names:
+                    info += f" - Parents: {', '.join(parent_names)}"
+                if child_names:
+                    info += f" - Children: {', '.join(child_names)}"
+
+                self.family_info.append(info)
+
+                # Continue exploring
+                for child in person.children:
+                    self.explore(child)
+
+        if __name__ == "__main__":
+            # Generation 1 (Grandparents)
+            grandpa = Person("Robert", 1945, 1)
+            grandma = Person("Helen", 1948, 1)
+
+            # Generation 2 (Parents)
+            dad = Person("Michael", 1975, 2)
+            mom = Person("Sarah", 1977, 2)
+            grandpa.add_child(dad)
+            grandma.add_child(mom)
+
+            # Generation 3 (Children)
+            son = Person("David", 2005, 3)
+            daughter = Person("Emma", 2007, 3)
+            youngest = Person("Luke", 2010, 3)
+            dad.add_child(son)
+            mom.add_child(daughter)
+            dad.add_child(youngest)
+
+            # Explore the family tree
+            explorer = FamilyTreeExplorer()
+            explorer.explore(grandpa)
+
+            print("=== Family Tree ===")
+            for info in explorer.family_info:
+                print(info)
+        ```
+
+## Key Takeaways
+
+!!! summary "OSP Paradigm Fundamentals"
+    - **Computation to Data**: Instead of gathering data centrally, send computation to where data lives
+    - **Spatial Relationships**: Model data with its natural connections and relationships
+    - **Graph Thinking**: Think in terms of nodes, edges, and traversal patterns
+    - **Natural Modeling**: Represent real-world problems in their natural graph structure
+    - **Distributed Processing**: Each piece of data can be processed independently where it lives
+
+The Object-Spatial Programming paradigm opens up new ways of thinking about and solving problems. By modeling the world as connected entities rather than isolated objects, we create more intuitive, efficient, and scalable programs.
+
+In the next chapter, we'll dive deeper into the building blocks of OSP: nodes and edges, and learn how to create rich, connected data structures that form the foundation of your spatial programs.

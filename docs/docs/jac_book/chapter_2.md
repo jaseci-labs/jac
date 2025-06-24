@@ -1,508 +1,526 @@
-# Chapter 2: Setting Up Your Jac Environment
+# Chapter 2: Environment Setup and First Program
 
-## 2.1 Installation and Setup
+Getting started with Jac is straightforward - you'll have your development environment ready and your first program running in just a few minutes. This chapter covers installation, IDE setup, and writing your first Jac programs.
 
-Getting started with Jac is straightforward, especially for Python developers and integrates well with familiar development tools.
+!!! topic "Development Environment"
+    Jac builds on Python's ecosystem while adding powerful new features. You'll need Python 3.12+ and can use any text editor, though VS Code provides the best experience with syntax highlighting and debugging tools.
 
-### Installing Jac Compiler and Runtime
+## Installation and IDE Setup
 
-#### Method 1: Using pip (Recommended)
+### Installing Jac
+
+!!! topic "System Requirements"
+    - Python 3.12 or higher
+    - pip package manager
+    - 4GB RAM minimum (8GB recommended)
+    - 500MB storage for Jac and dependencies
+
+Installing Jac is as simple as installing any Python package:
 
 ```bash
-# Install the latest stable version
+# Install Jac from PyPI
 pip install jaclang
 
 # Verify installation
 jac --version
-# Output: Jac 0.7.19 (or current version)
 ```
 
-#### Method 2: From Source
-
-```bash
-# Clone the repository
-git clone https://github.com/jaseci-labs/jaseci.git
-cd jaseci/jac
-
-# Install in development mode
-pip install -e .
-
-# Run tests to verify
-python -m pytest
-```
-
-### System Requirements
-
-- **Python**: 3.10 or higher (Jac compiles to Python)
-- **Memory**: 4GB RAM minimum, 8GB recommended
-- **OS**: Linux, macOS, Windows (WSL recommended)
-- **Storage**: 500MB for Jac + dependencies
-
-### IDE Support and Extensions
-
-#### Visual Studio Code (Recommended)
-
-Install the official Jac extension for syntax highlighting, auto-completion, and debugging:
-
-```bash
-# Install via VS Code marketplace
-code --install-extension jaseci.jac-lang
-```
-
-**Features:**
-- Syntax highlighting for `.jac` files
-- IntelliSense for Jac keywords and types
-- Integrated debugging support
-- Graph visualization for nodes and edges
-- Automatic formatting
-
-#### JetBrains IDEs (PyCharm, IntelliJ)
-
-```xml
-<!-- Add to your .idea/fileTypes.xml -->
-<component name="FileTypeManager">
-  <extensionMap>
-    <mapping pattern="*.jac" type="Python" />
-    <mapping pattern="*.impl.jac" type="Python" />
-    <mapping pattern="*.test.jac" type="Python" />
-  </extensionMap>
-</component>
-```
-
-#### Vim/Neovim
-
-```vim
-" Add to your .vimrc or init.vim
-autocmd BufRead,BufNewFile *.jac set filetype=python
-autocmd BufRead,BufNewFile *.jac set syntax=python
-
-" Better: Install jac.vim plugin
-Plug 'jaseci-labs/jac.vim'
-```
-
-#### Project Structure Conventions
-
-Jac projects follow a structured organization that supports its unique features like implementation separation:
-
-```
-my-jac-project/
-│
-├── src/
-│   ├── main.jac                 # Main entry point
-│   ├── models/
-│   │   ├── user.jac            # User node definition
-│   │   ├── user.impl.jac       # User implementation
-│   │   └── user.test.jac       # User tests
-│   │
-│   ├── walkers/
-│   │   ├── auth.jac            # Authentication walkers
-│   │   └── auth.impl/          # Implementation folder
-│   │       ├── login.impl.jac
-│   │       └── register.impl.jac
-│   │
-│   └── edges/
-│       └── relationships.jac    # Edge definitions
-│
-├── tests/
-│   ├── integration/
-│   └── unit/
-│
-├── data/                        # Persistent data (auto-generated)
-│   └── .jac_db/                # Jac's persistence layer
-│
-├── jac.toml                     # Project configuration
-└── README.md
-```
-
-#### jac.toml Configuration
-
-```toml
-[project]
-name = "my-jac-project"
-version = "0.1.0"
-description = "A Jac application"
-
-[runtime]
-persist_path = "./data/.jac_db"
-log_level = "INFO"
-enable_distributed = false
-
-[build]
-target = "optimized"  # or "debug"
-include_tests = false
-
-[dependencies]
-# External Jac modules
-```
-
-#### Environment Setup
-
-##### Development Environment Variables
-
-```bash
-# .env file
-JAC_PERSIST_PATH=./data/.jac_db
-JAC_LOG_LEVEL=DEBUG
-JAC_USER_CONTEXT=development
-JAC_ENABLE_METRICS=true
-```
-
-##### Python Virtual Environment (Recommended)
+For project isolation, consider using a virtual environment:
 
 ```bash
 # Create virtual environment
 python -m venv jac-env
 
-# Activate it
+# Activate it (Linux/Mac)
 source jac-env/bin/activate
 
+# Activate it (Windows)
+jac-env\Scripts\activate
 
-# Install Jac in the virtual environment
+# Install Jac
 pip install jaclang
 ```
 
-## 2.2 Your First Jac Program
+### VS Code Extension
 
-Let's create your first Jac program and understand the key differences from Python.
+For the best development experience, install the Jac VS Code extension:
 
-### Hello World Comparison: Python vs Jac
+1. Open VS Code
+2. Go to Extensions (Ctrl+Shift+X)
+3. Search for "Jac"
+4. Install the official Jac extension
 
-#### Python Version
+Alternatively, visit the [VS Code marketplace](https://marketplace.visualstudio.com/items?itemName=jaseci-labs.jaclang-extension) directly.
 
-```python
-# hello.py
-def greet(name):
-    return f"Hello, {name}!"
+The extension provides:
 
-if __name__ == "__main__":
-    message = greet("World")
-    print(message)
-```
+- Syntax highlighting for Jac-specific constructs
+- Error detection and type checking
+- Code formatting and snippets
+- Graph visualization for nodes and edges
 
-#### Jac Version
-
-<div class="code-block">
-
-```jac
-# hello.jac
-def greet(name:str) {
-    return f"Hello, {name}!";
-}
-
-with entry {
-    message = greet("World");
-    print(message);
-}
-```
-</div>
-
-
-##### Key differences:
-1. **Type annotations**: Required in Jac (`name: str`)
-2. **Semicolons**: Required for statements
-3. **Entry point**: `with entry` instead of `if __name__ == "__main__"`
-4. **Curly braces**: Instead of indentation
-
-### Understanding Entry Blocks
-
-Entry blocks are Jac's way of organizing executable code at the module level:
-
-<div class="code-block">
-
-```jac
-# Imports (similar to Python)
-import from datetime { datetime }
-import random;
-
-# Global variables must be declared
-glob start_time: str = datetime.now().isoformat();
-
-# Function definitions
-def setup_application() -> bool {
-    print(f"Application started at {start_time}");
-    return True;
-}
-
-# Classes (called objects in Jac)
-obj Application {
-    has name: str;
-    has version: str = "1.0.0";
-
-    def display_info {
-        print(f"{self.name} v{self.version}");
-    }
-}
-
-# Entry block - code that runs when module executes
-with entry {
-    print("=== Jac Module Demo ===");
-
-    if setup_application() {
-        app = Application(name="MyApp");
-        app.display_info();
-    }
-}
-```
-</div>
-
-
-### Your First Object-Spatial Program
-Let's create a simple but complete object-spatial program:
-
-<div class="code-block">
-
-```jac
-# social_hello.jac
-# Define a Person node
-node Person {
-    has name: str;
-    has joined: str;
-}
-
-# Define a Knows edge
-edge Knows {
-    has since: str;
-}
-
-# Define a Greeter walker
-walker Greeter {
-    has greeting_count: int = 0;
-
-    # Ability triggered when entering a Person node
-    can greet with Person entry {
-        print(f"Hello, {here.name}! You joined on {here.joined}");
-        self.greeting_count += 1;
-
-        # Visit all people this person knows
-        visit [->:Knows:->];
-    }
-
-    # Ability triggered when walker finishes
-    can summarize with `root exit {
-        print(f"Greeted {self.greeting_count} people total!");
-    }
-}
-
-# Main program
-with entry {
-    # Create a small social network
-    person1 = Person(name="Alice", joined="2024-01-15");
-    person2 = Person(name="Bob", joined="2024-02-20");
-    person3 = Person(name="Charlie", joined="2024-03-10");
-
-    # Create relationships
-    person1 +>:Knows(since="2024-02-01"):+> person2;
-    person2 +>:Knows(since="2024-03-01"):+> person3;
-
-    # Spawn walker to greet everyone
-    greeter = Greeter();
-    greeter spawn person1;
-}
-```
-</div>
-
-#### Running Jac Programs
-
-##### Basic Execution
+### Basic CLI Commands
 
 ```bash
 # Run a Jac file
-jac run social_hello.jac
+jac run filename.jac
+
+# Get help
+jac --help
+
+# Serve as web application (advanced)
+jac serve filename.jac
 ```
 
 ##### Jac REPL
 
 Note: Currently, the Jac REPL feature is not available. Please use standard Jac script execution for testing and running your code.
 
-#### Testing Your Programs
+## Project Structure Conventions
 
-```jac
-# social_hello.test.jac
+!!! topic "Clean Organization"
+    Jac encourages separating interface declarations from implementations, making code more maintainable as projects grow.
 
-test greet_function_works_correctly {
-    assert greet("Jac") == "Hello, Jac!";
-    assert greet("") == "Hello, !";
-}
+As your projects grow, following these conventions will help:
 
-test greet_with_special_characters {
-    assert greet("世界") == "Hello, 世界!";
-    assert greet("O'Brien") == "Hello, O'Brien!";
-}
-
-# Run tests
-# Command: jac test social_hello.jac
+```
+my_project/
+├── main.jac              # Main program
+├── models/
+│   ├── user.jac          # User interface
+│   ├── user.impl.jac     # User implementation
+│   └── user.test.jac     # User tests
+└── utils/
+    ├── helpers.jac       # Helper functions
+    └── constants.jac     # Application constants
 ```
 
-### Building a Complete Example
+### Interface and Implementation Separation
 
-Let's build a simple todo list application that showcases basic Jac features:
+!!! example "Separation Pattern"
+    === "Jac"
+        <!-- <div class="code-block"> -->
+        ```jac
+        # user.jac - Interface declaration
+        obj User {
+            has name: str;
+            has email: str;
 
-<div class="code-block">
-
-```jac
-# todo_app.jac
-import from datetime { datetime }
-import json;
-
-# Define our data structures
-node TodoList {
-    has name: str;
-    has created_at: str;
-}
-
-node TodoItem {
-    has title: str;
-    has created_at: str;
-    has completed: bool = False;
-    has due_date: str = "";
-
-}
-
-edge Contains{}
-edge NextItem{}
-
-# Walker to add new todos
-walker AddTodo {
-    has title: str;
-    has due_date: str = "";
-
-    can add with TodoList entry {
-        new_item = here +>:Contains:+> TodoItem(
-            title=self.title,
-            created_at=datetime.now().isoformat(),
-            due_date=self.due_date
-        );
-
-        # Link to previous items
-        last_item = [->:Contains:->(`?TodoItem)][-2:];
-        if last_item {
-            last_item[0] +>:NextItem:+> new_item;
+            def validate() -> bool;
+            def get_display_name() -> str;
         }
 
-        report f"Added: {self.title}";
-    }
-}
+        # user.impl.jac - Implementation
+        impl User.validate {
+            return "@" in self.email and len(self.name) > 0;
+        }
 
-# Walker to list todos
-walker ListTodos {
-    has show_completed: bool = False;
-    has items: list = [];
+        impl User.get_display_name {
+            return f"{self.name} <{self.email}>";
+        }
+        ```
+        <!-- </div> -->
+    === "Python"
+        ```python
+        # Python equivalent - everything in one file
+        class User:
+            def __init__(self, name: str, email: str):
+                self.name = name
+                self.email = email
 
-    can collect with TodoList entry {
-        temp = [->:Contains:->(`?TodoItem)];
-        for item in [->:Contains:->(`?TodoItem)] {
-            if not item.completed or self.show_completed {
-                self.items.append({
-                    "title": item.title,
-                    "completed": item.completed,
-                    "created": item.created_at,
-                    "due": item.due_date
-                });
+            def validate(self) -> bool:
+                return "@" in self.email and len(self.name) > 0
+
+            def get_display_name(self) -> str:
+                return f"{self.name} <{self.email}>"
+        ```
+
+## Entry Blocks and Basic Execution
+
+!!! topic "Entry Points"
+    The `with entry` block is Jac's equivalent to Python's `if __name__ == "__main__":` - it defines where program execution begins.
+
+### Understanding Entry Blocks
+
+!!! example "Entry Block Usage"
+    === "Jac"
+        <div class="code-block">
+        ```jac
+        # Variables and functions can be defined outside entry
+        glob app_name: str = "My Jac App";
+        glob version: str = "1.0.0";
+
+        def greet(name: str) -> str {
+            return f"Hello, {name}!";
+        }
+
+        # Entry block - program starts here
+        with entry {
+            print(f"Starting {app_name} v{version}");
+
+            user_name: str = "Alice";
+            greeting: str = greet(user_name);
+            print(greeting);
+
+            print("Program finished!");
+        }
+        ```
+        </div>
+    === "Python"
+        ```python
+        # Python equivalent
+        app_name = "My Python App"
+        version = "1.0.0"
+
+        def greet(name: str) -> str:
+            return f"Hello, {name}!"
+
+        if __name__ == "__main__":
+            print(f"Starting {app_name} v{version}")
+
+            user_name = "Alice"
+            greeting = greet(user_name)
+            print(greeting)
+
+            print("Program finished!")
+        ```
+
+### Multiple Entry Blocks
+
+Jac allows multiple entry blocks that execute in order:
+
+!!! example "Multiple Entries"
+    === "Jac"
+        <div class="code-block">
+        ```jac
+        # setup.jac - Multiple entry blocks execute in sequence
+        glob counter: int = 0;
+
+        # First entry block
+        with entry {
+            print("Initialization phase");
+            counter = 1;
+        }
+
+        # Second entry block
+        with entry {
+            print("Processing phase");
+            counter += 1;
+            print(f"Counter is now: {counter}");
+        }
+
+        # Third entry block
+        with entry {
+            print("Cleanup phase");
+            print(f"Final counter value: {counter}");
+        }
+        ```
+        </div>
+    === "Python"
+        ```python
+        # Python - need to structure manually
+        counter = 0
+
+        def initialization():
+            global counter
+            print("Initialization phase")
+            counter = 1
+
+        def processing():
+            global counter
+            print("Processing phase")
+            counter += 1
+            print(f"Counter is now: {counter}")
+
+        def cleanup():
+            print("Cleanup phase")
+            print(f"Final counter value: {counter}")
+
+        if __name__ == "__main__":
+            initialization()
+            processing()
+            cleanup()
+        ```
+
+## Basic Calculator Program
+
+Let's build a simple calculator to demonstrate Jac's syntax:
+
+!!! example "Simple Calculator"
+    === "Jac"
+        <div class="code-block">
+        ```jac
+        # calculator.jac
+        def add(a: float, b: float) -> float {
+            return a + b;
+        }
+
+        def subtract(a: float, b: float) -> float {
+            return a - b;
+        }
+
+        def multiply(a: float, b: float) -> float {
+            return a * b;
+        }
+
+        def divide(a: float, b: float) -> float | str {
+            if b == 0.0 {
+                return "Error: Cannot divide by zero!";
+            }
+            return a / b;
+        }
+
+        def calculate(operation: str, x: float, y: float) -> float | str {
+            match operation {
+                case "add": return add(x, y);
+                case "sub": return subtract(x, y);
+                case "mul": return multiply(x, y);
+                case "div": return divide(x, y);
+                case _:
+                    return f"Unknown operation: {operation}";
             }
         }
-    }
 
-    can display with TodoList exit {
-        print("=== Todo List ===");
-        for (i, item) in enumerate(self.items) {
-            status = f"✓" if item["completed"] else f"○";
-            due = f" (due: {item['due']})" if item["due"] else "";
-            print(f"{i+1}. {status} {item['title']}{due}");
+        with entry {
+            print("=== Simple Calculator ===");
+
+            # Test calculations
+            num1: float = 10.0;
+            num2: float = 3.0;
+
+            print(f"{num1} + {num2} = {calculate('add', num1, num2)}");
+            print(f"{num1} - {num2} = {calculate('sub', num1, num2)}");
+            print(f"{num1} * {num2} = {calculate('mul', num1, num2)}");
+            print(f"{num1} / {num2} = {calculate('div', num1, num2)}");
+
+            # Test division by zero
+            print(f"{num1} / 0 = {calculate('div', num1, 0.0)}");
         }
-        print(f"Total: {len(self.items)} items");
-    }
-}
+        ```
+        </div>
+    === "Python"
+        ```python
+        # calculator.py
+        def add(a: float, b: float) -> float:
+            return a + b
 
-# Walker to complete todos
-walker CompleteTodo {
-    has item_index: int;
+        def subtract(a: float, b: float) -> float:
+            return a - b
 
-    can complete with TodoList entry {
-        items = [->:Contains:->(`?TodoItem)];
-        if 0 <= self.item_index < len(items) {
-            items[self.item_index].completed = True;
-            report f"Completed: {items[self.item_index].title}";
-        } else {
-            report "Invalid item index!";
-        }
-    }
-}
+        def multiply(a: float, b: float) -> float:
+            return a * b
 
-# Main program
-with entry {
-    # Create or get existing todo list
-    my_list = TodoList(
-        name="My Tasks",
-        created_at=datetime.now().isoformat()
-    );
+        def divide(a: float, b: float) -> float:
+            if b == 0.0:
+                print("Error: Cannot divide by zero!")
+                return 0.0
+            return a / b
 
-    # Example: Add some todos
-    AddTodo(title="Learn Jac basics", due_date="2024-12-31") spawn my_list;
-    AddTodo(title="Build first Jac app") spawn my_list;
-    AddTodo(title="Master object-spatial programming") spawn my_list;
+        def calculate(operation: str, x: float, y: float) -> float:
+            match operation:
+                case "add": return add(x, y)
+                case "sub": return subtract(x, y)
+                case "mul": return multiply(x, y)
+                case "div": return divide(x, y)
+                case _:
+                    print(f"Unknown operation: {operation}")
+                    return 0.0
 
-    # List all todos
-    ListTodos(show_completed=True) spawn my_list;
-}
+        if __name__ == "__main__":
+            print("=== Simple Calculator ===")
+
+            # Test calculations
+            num1 = 10.0
+            num2 = 3.0
+
+            print(f"{num1} + {num2} = {calculate('add', num1, num2)}")
+            print(f"{num1} - {num2} = {calculate('sub', num1, num2)}")
+            print(f"{num1} * {num2} = {calculate('mul', num1, num2)}")
+            print(f"{num1} / {num2} = {calculate('div', num1, num2)}")
+
+            # Test division by zero
+            print(f"{num1} / 0 = {calculate('div', num1, 0.0)}")
+        ```
+
+**Output:**
 ```
-</div>
+=== Simple Calculator ===
+10.0 + 3.0 = 13.0
+10.0 - 3.0 = 7.0
+10.0 * 3.0 = 30.0
+10.0 / 3.0 = 3.3333333333333335
+Error: Cannot divide by zero!
+10.0 / 0 = 0.0
+```
 
-#### Running the Todo App
+### Enhanced Calculator with Object-Oriented Design
+
+!!! example "OOP Calculator"
+    === "Jac"
+        <div class="code-block">
+        ```jac
+        # oop_calculator.jac
+        obj Calculator {
+            has history: list[str] = [];
+
+            def add(a: float, b: float) -> float {
+                result: float = a + b;
+                self.history.append(f"{a} + {b} = {result}");
+                return result;
+            }
+
+            def subtract(a: float, b: float) -> float {
+                result: float = a - b;
+                self.history.append(f"{a} - {b} = {result}");
+                return result;
+            }
+
+            def get_history() -> list[str] {
+                return self.history;
+            }
+
+            def clear_history() {
+                self.history = [];
+            }
+        }
+
+        with entry {
+            calc = Calculator();
+
+            # Perform calculations
+            result1: float = calc.add(5.0, 3.0);
+            result2: float = calc.subtract(10.0, 4.0);
+
+            print(f"Results: {result1}, {result2}");
+
+            # Show history
+            print("Calculation History:");
+            for entry in calc.get_history() {
+                print(f"  {entry}");
+            }
+        }
+        ```
+        </div>
+    === "Python"
+        ```python
+        # oop_calculator.py
+        class Calculator:
+            def __init__(self):
+                self.history = []
+
+            def add(self, a: float, b: float) -> float:
+                result = a + b
+                self.history.append(f"{a} + {b} = {result}")
+                return result
+
+            def subtract(self, a: float, b: float) -> float:
+                result = a - b
+                self.history.append(f"{a} - {b} = {result}")
+                return result
+
+            def get_history(self):
+                return self.history
+
+            def clear_history(self):
+                self.history = []
+
+        if __name__ == "__main__":
+            calc = Calculator()
+
+            # Perform calculations
+            result1 = calc.add(5.0, 3.0)
+            result2 = calc.subtract(10.0, 4.0)
+
+            print(f"Results: {result1}, {result2}")
+
+            # Show history
+            print("Calculation History:")
+            for entry in calc.get_history():
+                print(f"  {entry}")
+        ```
+
+## Interactive Mode (REPL)
+
+For quick experimentation, you can use Jac interactively:
 
 ```bash
-# First run - creates the list
-jac run todo_app.jac
+# Start interactive mode
+jac
+
+# Try some basic operations
+> x: int = 42;
+> print(x * 2);
+84
+> greeting: str = "Hello from REPL!";
+> print(greeting);
+Hello from REPL!
 ```
 
+## Common Beginner Mistakes and Solutions
 
+!!! topic "Troubleshooting"
+    Most beginner issues stem from Jac's stricter type requirements compared to Python. Here are the most common mistakes and their solutions.
 
-### Development Workflow
+| **Issue** | **Solution** |
+|-----------|--------------|
+| Missing semicolons | Add `;` at the end of statements |
+| Missing type annotations | Add types to all variables: `x: int = 5;` |
+| No entry block | Add `with entry { ... }` for executable scripts |
+| Python-style indentation | Use `{ }` braces instead of indentation |
 
-```mermaid
-graph TD
-    A[Write Jac Code] --> B{Syntax Valid?}
-    B -->|No| C[Fix Syntax Errors]
-    C --> A
-    B -->|Yes| D[Run Tests]
-    D --> E{Tests Pass?}
-    E -->|No| F[Debug & Fix]
-    F --> A
-    E -->|Yes| G[Run Program]
-    G --> H{Works as Expected?}
-    H -->|No| I[Debug with Logging]
-    I --> A
-    H -->|Yes| J[Deploy/Share]
+### Example of Common Fixes
 
-    style A fill:#1565C0,stroke:#FFFFFF,stroke-width:2px,color:#FFFFFF
-    style B fill:#37474F,stroke:#FFFFFF,stroke-width:2px,color:#FFFFFF
-    style C fill:#D32F2F,stroke:#FFFFFF,stroke-width:2px,color:#FFFFFF
-    style D fill:#388E3C,stroke:#FFFFFF,stroke-width:2px,color:#FFFFFF
-    style E fill:#be6400,stroke:#FFFFFF,stroke-width:2px,color:#FFFFFF
-    style F fill:#D32F2F,stroke:#FFFFFF,stroke-width:2px,color:#FFFFFF
-    style G fill:#00796B,stroke:#FFFFFF,stroke-width:2px,color:#FFFFFF
-    style H fill:#37474F,stroke:#FFFFFF,stroke-width:2px,color:#FFFFFF
-    style I fill:#F57C00,stroke:#FFFFFF,stroke-width:2px,color:#FFFFFF
-    style J fill:#4CAF50,stroke:#FFFFFF,stroke-width:2px,color:#FFFFFF
-```
+!!! example "Common Fixes"
+    === "Jac (Incorrect)"
+        <div class="code-block">
+        ```jac
+        # This won't work - missing types and semicolons
+        def greet(name) {
+            return f"Hello, {name}"
+        }
 
-### Common Issues and Solutions
+        # Missing entry block
+        print(greet("World"))
+        ```
+        </div>
+    === "Jac (Correct)"
+        <div class="code-block">
+        ```jac
+        # This works - proper types and syntax
+        def greet(name: str) -> str {
+            return f"Hello, {name}";
+        }
 
-| Issue | Solution |
-|-------|----------|
-| `ModuleNotFoundError` | Ensure Jac is installed: `pip install jaclang` |
-| `SyntaxError: Missing semicolon` | Add `;` at end of statements |
-| `TypeError: Missing type annotation` | Add type hints to all function parameters |
-| `RuntimeError: No entry point` | Add `with entry { ... }` block |
-| `PersistenceError` | Check write permissions for `JAC_PERSIST_PATH` |
+        with entry {
+            print(greet("World"));
+        }
+        ```
+        </div>
 
-### Next Steps
+## Key Differences from Python
 
-Now that you have Jac installed and have written your first programs, you're ready to dive deeper into the language. In the next chapter, we'll explore how Jac's syntax relates to Python and learn about the enhanced features that make Jac powerful for modern application development.
+!!! topic "Syntax Comparison"
+    While Jac is inspired by Python, it introduces stricter typing and slightly different syntax conventions for better safety and clarity.
 
-Try modifying the todo app to add new features:
-- Add priority levels to todos
-- Implement due date notifications
-- Create categories for todos
-- Add a search walker to find specific items
+| **Feature** | **Python** | **Jac** |
+|-------------|------------|---------|
+| Entry point | `if __name__ == "__main__":` | `with entry { }` |
+| Code blocks | Indentation | Curly braces `{ }` |
+| Type hints | Optional | Required |
+| Statement termination | Newlines | Semicolons `;` |
+| Global variables | `global` keyword | `glob` declaration |
 
-Remember: every Jac program you write is automatically persistent and ready for multi-user scenarios. The same todo app could serve thousands of users without any code changes - that's the power of scale-agnostic programming!
+## What's Next?
+
+You now have:
+
+- Jac installed and working
+- VS Code extension set up
+- Your first programs running
+- Understanding of entry blocks and basic syntax
+
+In the next chapter, we'll explore Jac's core language features, including variables, types, control flow, and how they differ from Python while remaining familiar.
+
+!!! topic "Coming Up"
+    Next, we'll dive into Jac's enhanced syntax features, including mandatory type annotations, improved control flow, and collection operations that make your code both safer and more expressive.
+

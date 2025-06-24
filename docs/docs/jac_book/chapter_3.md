@@ -1,756 +1,799 @@
-# Chapter 3: Familiar Syntax with New Semantics
-As a Python developer, you'll find Jac's syntax comfortably familiar while discovering powerful enhancements that make your code more robust and expressive. This chapter explores the core language features, highlighting what's similar, what's enhanced, and what's new.
+# Chapter 3: Variables, Types, and Basic Syntax
 
-## 3.1 Variables and Types
-### Type Annotations are Mandatory (Unlike Python's Optional Hints)
+Jac emphasizes type safety and clear variable declarations. Unlike Python's optional typing, Jac requires type annotations for all variables and function parameters, preventing runtime type errors and improving code clarity.
 
-In Python, type hints are optional and primarily serve as documentation:
+## Variable Declarations with Mandatory Typing
 
-```python
-# Python - types are optional hints
-name = "Alice"  # Type inferred
-age = 30        # Type inferred
-score = 95.5    # Type inferred
+!!! topic "Type Safety"
+    Jac requires explicit type annotations for all variables, making your code more reliable and self-documenting.
 
-# Type hints can be added but aren't enforced
-def calculate_grade(score: float) -> str:  # Optional
-    return "A" if score >= 90 else "B"
-```
+### Basic Variable Declaration
 
-In Jac, type annotations are mandatory and enforced at compile time:
+!!! example "Variable Declaration"
+    === "Jac"
+        <div class="code-block">
+        ```jac
+        with entry {
+            # Basic type annotations (mandatory)
+            student_name: str = "Alice";
+            grade: int = 95;
+            gpa: float = 3.8;
+            is_honor_student: bool = True;
 
-<div class="code-block">
-
-```jac
-# Function parameters and returns MUST have types
-def calculate_grade(score: float) -> str {
-    return "A" if score >= 90.0 else "B";
-}
-
-with entry{
-    # Jac - types are required and enforced
-    name: str = "Alice";    # Explicit type required
-    age: int = 30;          # Must specify type
-    score: float = 95.5;    # Type checking enforced
-
-    # This would cause a compile error:
-    # mystery = "something";  # Error: missing type annotation
-}
-
-```
-</div>
-
-### Benefits of Mandatory Types
-
-<div class="code-block">
-
-```jac
-# Type safety prevents runtime errors
-obj Student {
-    has name: str;
-    has grades: list[float];
-
-    def add_grade(grade: float) {
-        # This would fail at compile time if grade wasn't a float
-        self.grades.append(grade);
-    }
-
-    def get_average() -> float {
-        if len(self.grades) == 0 {
-            return 0.0;  # Must return float, not int
+            # Type inference (type can be inferred from value)
+            total_points = 285.5;  # Inferred as float
+            course_count = 3;      # Inferred as int
+            print(f"{student_name} has GPA: {gpa}");
         }
-        return sum(self.grades) / len(self.grades);
-    }
-}
+        ```
+        </div>
+    === "Python"
+        ```python
+        # Python equivalent (typing is optional)
+        student_name: str = "Alice"  # Optional typing
+        grade: int = 95
+        gpa: float = 3.8
+        is_honor_student: bool = True
 
-# Type errors caught at compile time
-with entry {
-    student = Student(name="Bob", grades=[]);
+        # Python also supports type inference
+        total_points = 285.5  # Inferred as float
+        course_count = 3      # Inferred as int
+        print(f"{student_name} has GPA: {gpa}")
+        ```
 
-    # student.add_grade("95");  # Compile error: string != float
-    student.add_grade(95.0);     # Correct
+### Global Variables
 
-    avg: float = student.get_average();  # Type-safe assignment
-    print(f"{student.name}'s average grade: {avg}");  # Should print "Bob's average grade: 95.0"
-}
-```
-</div>
+!!! example "Global Variables"
+    === "Jac"
+        <div class="code-block">
+        ```jac
+        glob school_name: str = "Jac High School";
+        glob passing_grade: int = 60;
+        glob honor_threshold: float = 3.5;
 
-### `glob` for Global Variables
-
-While Python uses the `global` keyword to modify globals within functions, Jac uses `glob` for declaration and `:g:` for access:
-
-```python
-# Python
-counter = 0  # Global variable
-
-def increment():
-    global counter  # Declare intent to modify global
-    counter += 1
-```
-
-<div class="code-block">
-
-```jac
-glob counter: int = 0;  # Explicitly global variable
-
-def increment() {
-    :g: counter;    # Declare access to global
-    counter += 1;
-}
-
-# Access control for globals
-glob:pub api_version: str = "1.0";      # Public global
-glob:priv secret_key: str = "hidden";   # Private global
-glob:protect internal_state: dict = {}; # Protected global
-
-# Module-level globals with entry block
-with entry {
-    increment();
-    increment();
-
-    print(f"Counter: {counter}, API Version: {api_version}");
-}
-```
-</div>
-
-
-
-### Working with Collection Types
-
-<div class="code-block">
-
-```jac
-with entry{
-    # Lists with explicit typing
-    numbers: list[int] = [1, 2, 3, 4, 5];
-    names: list[str] = ["Alice", "Bob", "Charlie"];
-    matrix: list[list[float]] = [[1.0, 2.0], [3.0, 4.0]];
-
-    # Dictionaries with key-value types
-    scores: dict[str, int] = {"Alice": 95, "Bob": 87};
-    config: dict[str, any] = {"debug": True, "port": 8080};
-
-    # Sets with element types
-    unique_ids: set[int] = {101, 102, 103};
-    tags: set[str] = {"python", "jac", "programming"};
-
-    # Tuples - both positional and keyword (Jac special!)
-    point: tuple = (3, 4);                    # Positional
-}
-```
-</div>
-
-### Working with Any Type
-
-Sometimes you need dynamic typing. Jac provides `any` as an escape hatch:
-
-<div class="code-block">
-
-```jac
-with entry{
-    # Using 'any' for flexible types
-    flexible: any = 42;
-    print(flexible);
-
-    flexible = "now a string";  # Allowed with 'any'
-    print(flexible);
-
-    flexible = [1, 2, 3];      # Still allowed
-    print(flexible);
-
-
-    # Useful for JSON-like data
-    json_data: dict[str, any] = {
-        "name": "Alice",
-        "age": 30,
-        "tags": ["developer", "python"],
-        "active": True
-    };
-    print(json_data);
-
-}
-```
-</div>
-
-## 3.2 Control Flow
-
-### Curly Braces Instead of Indentation
-
-The most visible difference from Python is the use of curly braces for code blocks:
-
-```python
-# Python uses indentation
-if temperature > 30:
-    print("It's hot!")
-    if temperature > 40:
-        print("It's very hot!")
-else:
-    print("It's comfortable")
-```
-
-<div class="code-block">
-
-```jac
-with entry{
-    temperature = 35;  # Temperature in Celsius
-
-    # Jac uses curly braces
-    if temperature > 30 {
-        print("It's hot!");
-        if temperature > 40 {
-            print("It's very hot!");
+        def get_school_info() -> str {
+            :g: school_name;
+            return f"Welcome to {school_name}";
         }
-    } else {
-        print("It's comfortable");
-    }
-}
-```
-</div>
 
-### Enhanced For Loops: `for-to-by` Syntax
-
-Jac provides multiple for loop syntaxes, including a unique `for-to-by` construct:
-
-<div class="code-block">
-
-```jac
-with entry{
-    # Traditional for-in loop (like Python)
-    items: list[str] = ["apple", "banana", "cherry"];
-    for item in items {
-        print(item);
-    }
-
-    # Range-based loop (like Python)
-    for i in range(5) {
-        print(i);  # 0, 1, 2, 3, 4
-    }
-
-    # Jac's unique for-to-by loop
-    for i = 0 to i < 10 by i += 2 {
-        print(i);  # 0, 2, 4, 6, 8
-    }
-
-    # Complex for-to-by examples
-    # Countdown
-    for count = 10 to count > 0 by count -= 1 {
-        print(f"{count}...");
-    }
-    print("Liftoff!");
-
-    # Exponential growth
-    for value = 1 to value <= 1000 by value *= 2 {
-        print(value);  # 1, 2, 4, 8, 16, 32, 64, 128, 256, 512
-    }
-}
-```
-</div>
-
-### Match Statements (Pattern Matching)
-
-Jac includes the familiar pattern matching from similar Python 3.10+':
-<div class="code-block">
-
-```jac
-# Basic pattern matching
-def describe_number(n: int) -> str {
-    match n {
-        case 0: return "zero";
-        case 1: return "one";
-        case 2: return "two";
-        case x if x < 0: return "negative";
-        case x if x > 100: return "large";
-        case _: return "other";
-    }
-}
-
-# Structural pattern matching
-def process_data(data: any) -> str {
-    match data {
-        case None:
-            return "No data";
-
-        case list() if data == []:
-            return "Empty list";
-
-        case [x]:
-            return f"Single item: {x}";
-
-        case [first, *rest]:
-            return f"List starting with {first}";
-
-        case {"type": "user", "name": name}:
-            return f"User: {name}";
-
-        case {"type": t, **kwargs}:
-            return f"Object of type {t}";
-
-        case _:
-            return "Unknown data";
-    }
-}
-
-# Type pattern matching
-node Animal {
-    has name: str;
-}
-
-node Dog(Animal) {
-    has breed: str;
-}
-
-node Cat(Animal) {
-    has indoor: bool;
-}
-
-walker AnimalHandler {
-    can handle with Animal entry {
-        match here {
-            case Dog():
-                print(f"{here.name} is a {here.breed} dog");
-
-            case Cat() if here.indoor:
-                print(f"{here.name} is an indoor cat");
-
-            case Cat():
-                print(f"{here.name} is an outdoor cat");
-
-            case _:
-                print(f"{here.name} is some other animal");
+        with entry {
+            print(get_school_info());
+            print(f"Honor threshold is {honor_threshold}");
         }
-    }
-}
+        ```
+        </div>
+    === "Python"
+        ```python
+        # Python global variables
+        school_name: str = "Jac High School"
+        passing_grade: int = 60
+        honor_threshold: float = 3.5
 
-with entry {
-    dog = Dog(name = "Buddy", breed = "Golden Retriever");
-    cat = Cat(name = "Whiskers", indoor = True);
-    unknown_animal = Animal(name = "Mystery");
+        def get_school_info() -> str:
+            global school_name
+            return f"Welcome to {school_name}"
 
-    AnimalHandler() spawn dog;
-    AnimalHandler() spawn cat;
-    AnimalHandler() spawn unknown_animal;
+        if __name__ == "__main__":
+            print(get_school_info())
+            print(f"Honor threshold is {honor_threshold}")
+        ```
 
-    result = process_data([3, 4]);
-    print(result);  # Should print "List starting with 3"
-}
-```
-</div>
+## Basic Data Types and Type Inference
 
-### Walrus Operator (`:=`)
+!!! topic "Data Types"
+    Jac supports all standard data types with mandatory type annotations for clarity and safety.
 
-Both Python and Jac support the walrus operator for assignment expressions:
+### Primitive Types
 
-```python
-# Python walrus operator
-while (line := file.readline()):
-    process(line)
+!!! example "Basic Data Types"
+    === "Jac"
+        <div class="code-block">
+        ```jac
+        with entry {
+            # Student information
+            student_id: int = 12345;
+            gpa: float = 3.85;
+            student_name: str = "Alice Johnson";
+            is_enrolled: bool = True;
 
-if (n := len(items)) > 10:
-    print(f"Large list with {n} items")
-```
-<div class="code-block">
+            # Optional values
+            middle_name: str | None = None;
+            graduation_year: int | None = 2024;
 
-```jac
-with entry {
-    # Jac walrus operator - same syntax, similar usage
-    while (line := file.readline()) {
-        process(line);
-    }
-
-    if (n := len(items)) > 10 {
-        print(f"Large list with {n} items");
-    }
-
-    # Useful in comprehensions
-    results: list[int] = [
-        y for x in data
-        if (y := expensive_computation(x)) > threshold
-    ];
-
-    # In match statements
-    match get_user() {
-        case user if (role := user.get_role()) == "admin":
-            grant_admin_access(role);
-        case _:
-            grant_basic_access();
-    }
-}
-```
-</div>
-
-### Control Flow Comparison
-
-```mermaid
-graph TD
-    subgraph "Python Control Flow"
-        A1[if/elif/else] --> A2[for in]
-        A2 --> A3[while]
-        A3 --> A4[try/except]
-        A4 --> A5[match/case<br/>≪3.10+≫]
-    end
-
-    subgraph "Jac Control Flow"
-        B1[if/elif/else<br/>+ braces] --> B2[for in<br/>for-to-by]
-        B2 --> B3[while<br/>+ braces]
-        B3 --> B4[try/except<br/>+ braces]
-        B4 --> B5[match/case<br/>≪enhanced≫]
-        B5 --> B6[visit<br/>≪new≫]
-        B6 --> B7[disengage<br/>≪new≫]
-    end
-
-    A1 -.->|similar| B1
-    A2 -.->|enhanced| B2
-    A3 -.->|similar| B3
-    A4 -.->|similar| B4
-    A5 -.->|enhanced| B5
-```
-
-### Exception Handling
-
-Exception handling in Jac follows Python patterns with brace syntax:
-
-<div class="code-block">
-
-```jac
-# Basic pattern matching
-def safe_divide(a: float, b: float) -> float {
-    try {
-        return a / b;
-    } except ZeroDivisionError {
-        print("Cannot divide by zero!");
-        return 0.0;
-    }
-}
-
-# Raising exceptions
-def validate_age(age: int) {
-    if age < 0 {
-        raise ValueError("Age cannot be negative");
-    }
-    if age > 150 {
-        raise ValueError("Age seems unrealistic");
-    }
-}
-
-with entry {
-    print(safe_divide(10, 2));  # Should print 5.0
-    print(safe_divide(10, 0));  # Should print "Cannot divide by zero!" and return 0.0
-
-    try {
-        validate_age(-5);  # Should raise ValueError
-    } except ValueError as e {
-        print(f"Validation error: {e}");
-    }
-}
-```
-</div>
-
-## 3.3 Functions to Abilities
-
-
-
-Jac uses the same `def` as Python for function definitions:
-
-```python
-# Python function
-def calculate_area(radius: float) -> float:
-    return 3.14159 * radius ** 2
-```
-<div class="code-block">
-
-```jac
-# Jac function
-def calculate_area(radius: float) -> float {
-    return 3.14159 * radius ** 2;
-}
-with entry {
-    # Functions are first-class objects
-    area_calculator: func = calculate_area;
-    result: float = area_calculator(5.0);
-}
-```
-</div>
-
-### Type Safety and Return Types
-
-Jac enforces return type consistency:
-
-<div class="code-block">
-
-```jac
-# Return types are enforced
-def get_grade(score: float) -> str {
-    if score >= 90.0 {
-        return "A";
-    } elif score >= 80.0 {
-        return "B";
-    }
-    # return;  # Error: must return str
-    return "F";  # Must cover all paths
-}
-
-# Multiple return values via tuples
-def divmod(a: int, b: int) -> tuple[int, int] {
-    return (a // b, a % b);
-}
-
-
-def find_item(items: list[str], target: str) -> int {
-    for (i, item) in enumerate(items) {
-        if item == target {
-            return i;
+            print(f"Student: {student_name} (ID: {student_id})");
         }
-    }
-    return None;  # Explicitly return None for not found
-}
+        ```
+        </div>
+    === "Python"
+        ```python
+        from typing import Optional
 
-with entry {
-    print(get_grade(85));  # Should print "B"
-    print(divmod(10, 3));  # Should print (3, 1)
-    print(find_item(["apple", "banana", "cherry"], "banana"));  # Should print 1
-}
-```
-</div>
+        # Student information
+        student_id: int = 12345
+        gpa: float = 3.85
+        student_name: str = "Alice Johnson"
+        is_enrolled: bool = True
 
-### Lambda Expressions with Required Type Annotations
+        # Optional values
+        middle_name: Optional[str] = None
+        graduation_year: Optional[int] = 2024
 
-Python's lambdas can infer types, but Jac requires explicit annotations:
+        print(f"Student: {student_name} (ID: {student_id})")
+        ```
 
-```python
-# Python lambdas - types optional
-square = lambda x: x ** 2
-add = lambda x, y: x + y
-```
+### Any Type for Flexibility
 
-<div class="code-block">
+!!! example "Dynamic Typing with Any"
+    === "Jac"
+        <div class="code-block">
+        ```jac
+        with entry {
+            # Flexible grade storage
+            grade_data: any = 95;
+            print(f"Grade as number: {grade_data}");
 
-```jac
-with entry {
-    # Jac lambdas - types required
-    square = lambda x: int : x ** 2;
-    add = lambda x: int, y: int : x + y;
+            grade_data = "A";  # Now a letter grade
+            print(f"Grade as letter: {grade_data}");
 
-    # Using lambdas with higher-order functions
-    numbers: list[int] = [1, 2, 3, 4, 5];
-    squared: list[int] = map(lambda x: int : x ** 2, numbers);
-    evens: list[int] = filter(lambda x: int : x % 2 == 0, numbers);
+            # Mixed student data
+            student_info: dict[str, any] = {
+                "name": "Bob Smith",
+                "age": 16,
+                "grades": [88, 92, 85],
+                "is_active": True
+            };
+            print(student_info);
+        }
+        ```
+        </div>
+    === "Python"
+        ```python
+        from typing import Any, Dict, List
 
+        # Flexible grade storage
+        grade_data: Any = 95
+        print(f"Grade as number: {grade_data}")
 
-    # Lambda in sort
-    people: list[dict] = [
-        {"name": "Alice", "age": 30},
-        {"name": "Bob", "age": 25},
-        {"name": "Charlie", "age": 35}
-    ];
-    people.sort(key=lambda p: dict : p["age"]);
-    print(people);
-}
-```
-</div>
+        grade_data = "A"  # Now a letter grade
+        print(f"Grade as letter: {grade_data}")
 
-### Function Decorators and Metadata
+        # Mixed student data
+        student_info: Dict[str, Any] = {
+            "name": "Bob Smith",
+            "age": 16,
+            "grades": [88, 92, 85],
+            "is_active": True
+        }
+        print(student_info)
+        ```
 
-Jac supports Python-style decorators with enhanced integration:
+## Collections and Data Structures
 
-<div class="code-block">
+!!! topic "Collections"
+    Jac provides type-safe collections that are perfect for managing student data like grades, names, and course information.
 
-```jac
-import from functools { lru_cache }
+### Lists for Student Data
 
-# Using Python decorators
-@lru_cache(maxsize=128)
-def fibonacci(n: int) -> int {
-    if n <= 1 {
-        return n;
-    }
-    return fibonacci(n - 1) + fibonacci(n - 2);
-}
+!!! example "Working with Student Lists"
+    === "Jac"
+        <div class="code-block">
+        ```jac
+        def calculate_average(grades: list[int]) -> float {
+            if len(grades) == 0 {
+                return 0.0;
+            }
+            return sum(grades) / len(grades);
+        }
 
-# Custom decorators
-def timing_decorator(func: callable) -> callable {
-    def wrapper(*args: any, **kwargs: any) -> any {
-        import time;
-        start = time.time();
-        result = func(*args, **kwargs);
-        end = time.time();
-        print(f"{func.__name__} took {end - start} seconds");
-        return result;
-    }
-    return wrapper;
-}
+        with entry {
+            # Student grades
+            alice_grades: list[int] = [88, 92, 85, 90];
+            student_names: list[str] = ["Alice", "Bob", "Charlie"];
 
-@timing_decorator
-def slow_operation(n: int) -> int {
-    result: int = 0;
-    for i in range(n) {
-        result += i ** 2;
-    }
-    return result;
-}
+            # Calculate Alice's average
+            average = calculate_average(alice_grades);
+            print(f"Alice's average: {average}");
 
+            # Add new grade
+            alice_grades.append(95);
+            print(f"Updated average: {calculate_average(alice_grades)}");
+        }
+        ```
+        </div>
+    === "Python"
+        ```python
+        from typing import List
 
-with entry {
-    print("=== Decorators Example ===");
+        def calculate_average(grades: List[int]) -> float:
+            if len(grades) == 0:
+                return 0.0
+            return sum(grades) / len(grades)
 
-    # Using the cached Fibonacci function
-    for i in range(10){
-        print(f"Fibonacci({i}) = {fibonacci(i)}");
-    }
+        if __name__ == "__main__":
+            # Student grades
+            alice_grades: List[int] = [88, 92, 85, 90]
+            student_names: List[str] = ["Alice", "Bob", "Charlie"]
 
+            # Calculate Alice's average
+            average = calculate_average(alice_grades)
+            print(f"Alice's average: {average}")
 
-    # Using the slow operation with timing decorator
-    result = slow_operation(1000000);
-    print(f"Result of slow operation: {result}");
-}
-```
-</div>
+            # Add new grade
+            alice_grades.append(95)
+            print(f"Updated average: {calculate_average(alice_grades)}")
+        ```
 
-### Async Functions
+### Dictionaries for Grade Books
 
-Jac supports asynchronous programming similar to Python:
+!!! example "Student Grade Dictionary"
+    === "Jac"
+        <div class="code-block">
+        ```jac
+        def get_student_grade(gradebook: dict[str, int], student: str) -> str {
+            grade = gradebook.get(student, 0);
+            if grade >= 90 {
+                return "A";
+            } elif grade >= 80 {
+                return "B";
+            } elif grade >= 70 {
+                return "C";
+            } else {
+                return "F";
+            }
+        }
 
-<div class="code-block">
+        with entry {
+            # Class gradebook
+            math_grades: dict[str, int] = {
+                "Alice": 92,
+                "Bob": 85,
+                "Charlie": 78
+            };
 
-```jac
-import asyncio;
+            # Get letter grades
+            for (student, score) in math_grades.items() {
+                letter = get_student_grade(math_grades, student);
+                print(f"{student}: {score} ({letter})");
+            }
+        }
+        ```
+        </div>
+    === "Python"
+        ```python
+        from typing import Dict
 
-async def fetch_data(){
-    print("Starting fetch...");
-    # simulate an I/O-bound operation
-    await asyncio.sleep(2);
-    print("Fetch complete");
-    return {"data": 123};
-}
+        def get_student_grade(gradebook: Dict[str, int], student: str) -> str:
+            grade = gradebook.get(student, 0)
+            if grade >= 90:
+                return "A"
+            elif grade >= 80:
+                return "B"
+            elif grade >= 70:
+                return "C"
+            else:
+                return "F"
 
-async def main(){
-    print("Before fetch");
-    result = await fetch_data();   # pause here until fetch_data() finishes
-    print("After fetch:", result);
-}
+        if __name__ == "__main__":
+            # Class gradebook
+            math_grades: Dict[str, int] = {
+                "Alice": 92,
+                "Bob": 85,
+                "Charlie": 78
+            }
 
-with entry {
-    asyncio.run(main());
-}
-```
-</div>
+            # Get letter grades
+            for student, score in math_grades.items():
+                letter = get_student_grade(math_grades, student)
+                print(f"{student}: {score} ({letter})")
+        ```
 
-### Method Resolution and Super
+### Sets for Course Management
 
-Jac provides clear method resolution with the `super` keyword:
+!!! example "Unique Course Tracking"
+    === "Jac"
+        <div class="code-block">
+        ```jac
+        with entry {
+            # Track unique courses
+            alice_courses: set[str] = {"Math", "Science", "English"};
+            bob_courses: set[str] = {"Math", "History", "Art"};
 
-<div class="code-block">
+            # Find common courses
+            common_courses = alice_courses.intersection(bob_courses);
+            print(f"Common courses: {common_courses}");
 
-```jac
-obj Animal {
-    has name: str;
+            # All unique courses
+            all_courses = alice_courses.union(bob_courses);
+            print(f"All courses: {all_courses}");
+        }
+        ```
+        </div>
+    === "Python"
+        ```python
+        from typing import Set
 
-    def speak() -> str {
-        return f"{self.name} makes a sound";
-    }
-}
+        if __name__ == "__main__":
+            # Track unique courses
+            alice_courses: Set[str] = {"Math", "Science", "English"}
+            bob_courses: Set[str] = {"Math", "History", "Art"}
 
-obj Dog(Animal) {
-    has breed: str;
+            # Find common courses
+            common_courses = alice_courses.intersection(bob_courses)
+            print(f"Common courses: {common_courses}")
 
-    def speak() -> str {
-        # Call parent method
-        base_sound = super.speak();
-        return f"{base_sound}: Woof!";
-    }
+            # All unique courses
+            all_courses = alice_courses.union(bob_courses)
+            print(f"All courses: {all_courses}")
+        ```
 
-    def fetch() {
-        print(f"{self.name} the {self.breed} is fetching!");
-    }
-}
+## Collection Comprehensions
 
-obj GuideDog(Dog) {
-    has handler: str;
+!!! topic "Comprehensions"
+    Use comprehensions to process student data efficiently and readably.
 
-    def speak() -> str {
-        # Chain through inheritance
-        return f"{super.speak()} (Guide dog for {self.handler})";
-    }
-}
+### List Comprehensions for Grade Processing
 
-with entry {
-    my_dog = Dog(name="Buddy", breed="Golden Retriever");
-    print(my_dog.speak());  # Buddy makes a sound: Woof!
-    my_dog.fetch();
+!!! example "Grade Processing with Comprehensions"
+    === "Jac"
+        <div class="code-block">
+        ```jac
+        with entry {
+            # Raw test scores
+            test_scores = [78, 85, 92, 69, 88, 95, 72];
 
-    guide_dog = GuideDog(name="Max", breed="Labrador", handler="Alice");
-    print(guide_dog.speak());  # Max makes a sound (Guide dog for Alice): Woof!
-    guide_dog.fetch();
-}
-```
-</div>
+            # Get passing grades (70 and above)
+            passing_scores = [score for score in test_scores if score >= 70];
+            print(f"Passing scores: {passing_scores}");
 
-### Best Practices for Functions and Abilities
+            # Apply curve (+5 points)
+            curved_scores = [score + 5 for score in test_scores];
+            print(f"Curved scores: {curved_scores}");
 
-1. **Use Functions for Algorithms**: Pure computations without side effects
-2. **Use Abilities for Behavior**: Context-dependent actions in graph traversal
-3. **Type Everything**: Clear types prevent errors and improve readability
-4. **Avoid Deep Nesting**: Use early returns and guard clauses
-5. **Document Complex Logic**: Use docstrings for non-obvious behavior
+            # Get letter grades
+            letter_grades = ["A" if score >= 90 else "B" if score >= 80 else "C" if score >= 70 else "F" for score in test_scores];
+            print(f"Letter grades: {letter_grades}");
+        }
+        ```
+        </div>
+    === "Python"
+        ```python
+        if __name__ == "__main__":
+            # Raw test scores
+            test_scores = [78, 85, 92, 69, 88, 95, 72]
 
-<div class="code-block">
+            # Get passing grades (70 and above)
+            passing_scores = [score for score in test_scores if score >= 70]
+            print(f"Passing scores: {passing_scores}")
 
-```jac
-# Well-structured function example
-def calculate_discount(
-    price: float,
-    customer_type: str,
-    quantity: int
-) -> float {
-    # Guard clauses
-    if price <= 0.0 {
-        return 0.0;
-    }
+            # Apply curve (+5 points)
+            curved_scores = [score + 5 for score in test_scores]
+            print(f"Curved scores: {curved_scores}")
 
-    # Base discount by customer type
-    base_discount: float = 0.0;
+            # Get letter grades
+            letter_grades = ["A" if score >= 90 else "B" if score >= 80 else "C" if score >= 70 else "F" for score in test_scores]
+            print(f"Letter grades: {letter_grades}")
+        ```
 
+## Control Flow with Curly Braces
 
-    match customer_type {
-        case "premium": base_discount = 0.15;
-        case "regular": base_discount = 0.05;
-    };
+!!! topic "Control Flow"
+    Jac uses curly braces for all code blocks, making the structure clear and consistent.
 
-    # Quantity bonus
-    quantity_bonus: float = 0.0;
-    match quantity {
-        case n if n >= 100: quantity_bonus = 0.10;
-        case n if n >= 50: quantity_bonus = 0.05;
-        case n if n >= 10: quantity_bonus = 0.02;
-    };
+### Conditional Logic for Grading
 
-    # Calculate total discount
-    total_rate = min(base_discount + quantity_bonus, 0.25);
-    return price * total_rate;
-}
+!!! example "Grade Classification"
+    === "Jac"
+        <div class="code-block">
+        ```jac
+        def classify_grade(score: int) -> str {
+            if score >= 97 {
+                return "A+";
+            } elif score >= 93 {
+                return "A";
+            } elif score >= 90 {
+                return "A-";
+            } elif score >= 87 {
+                return "B+";
+            } elif score >= 83 {
+                return "B";
+            } elif score >= 80 {
+                return "B-";
+            } elif score >= 70 {
+                return "C";
+            } else {
+                return "F";
+            }
+        }
 
-with entry {
-    # Example usage
-    price = 200.0;
-    customer_type = "premium";
-    quantity = 75;
+        with entry {
+            student_score = 94;
+            grade = classify_grade(student_score);
+            status = "Excellent!" if grade.startswith("A") else "Good job!" if grade.startswith("B") else "Needs improvement";
+            print(f"Score: {student_score} -> Grade: {grade} ({status})");
+        }
+        ```
+        </div>
+    === "Python"
+        ```python
+        def classify_grade(score: int) -> str:
+            if score >= 97:
+                return "A+"
+            elif score >= 93:
+                return "A"
+            elif score >= 90:
+                return "A-"
+            elif score >= 87:
+                return "B+"
+            elif score >= 83:
+                return "B"
+            elif score >= 80:
+                return "B-"
+            elif score >= 70:
+                return "C"
+            else:
+                return "F"
 
-    discount = calculate_discount(price, customer_type, quantity);
-    print(f"Discount for {customer_type} customer buying {quantity} items at ${price} each: ${discount}");
-}
-```
-</div>
+        if __name__ == "__main__":
+            student_score = 94
+            grade = classify_grade(student_score)
+            status = "Excellent!" if grade.startswith("A") else "Good job!" if grade.startswith("B") else "Needs improvement"
+            print(f"Score: {student_score} -> Grade: {grade} ({status})")
+        ```
 
-## Summary
+### Loops for Processing Student Data
 
-In this chapter, we've seen how Jac builds on Python's familiar syntax while adding:
+!!! example "Processing Multiple Students"
+    === "Jac"
+        <div class="code-block">
+        ```jac
+        def process_class_grades(grades: dict[str, list[int]]) -> None {
+            for (student, student_grades) in grades.items() {
+                total = 0;
+                for grade in student_grades {
+                    total += grade;
+                }
+                average = total / len(student_grades);
+                print(f"{student}: Average = {average}");
+            }
+        }
 
-- **Mandatory type safety** for more robust code
-- **Explicit variable declaration** for clarity
-- **Enhanced control flow** with for-to-by loops and pattern matching
-- **Implicit self** for cleaner method definitions
-- **Context-aware abilities** alongside traditional functions
+        with entry {
+            class_grades = {
+                "Alice": [88, 92, 85],
+                "Bob": [79, 83, 77],
+                "Charlie": [95, 89, 92]
+            };
 
-These enhancements make Jac code more explicit, safer, and better suited for the complex, distributed systems you'll build with object-spatial programming.
+            # Process all students
+            process_class_grades(class_grades);
 
-In the next chapter, we'll explore Jac's data structures and unique features like keyword tuples and pipe operators that make data manipulation even more powerful and expressive.
+            # Jac's unique for-to-by loop for grade scaling
+            print("Scaled scores (0-100 to 0-4.0 GPA):");
+            for score = 60 to score <= 100 by score += 10 {
+                gpa = (score - 60) * 4.0 / 40.0;
+                print(f"Score {score} -> GPA {gpa}");
+            }
+        }
+        ```
+        </div>
+    === "Python"
+        ```python
+        from typing import Dict, List
+
+        def process_class_grades(grades: Dict[str, List[int]]) -> None:
+            for student, student_grades in grades.items():
+                total = 0
+                for grade in student_grades:
+                    total += grade
+                average = total / len(student_grades)
+                print(f"{student}: Average = {average}")
+
+        if __name__ == "__main__":
+            class_grades = {
+                "Alice": [88, 92, 85],
+                "Bob": [79, 83, 77],
+                "Charlie": [95, 89, 92]
+            }
+
+            # Process all students
+            process_class_grades(class_grades)
+
+            # Python equivalent of for-to-by loop
+            print("Scaled scores (0-100 to 0-4.0 GPA):")
+            score = 60
+            while score <= 100:
+                gpa = (score - 60) * 4.0 / 40.0
+                print(f"Score {score} -> GPA {gpa:.1f}")
+                score += 10
+        ```
+
+## Pattern Matching for Complex Logic
+
+!!! topic "Pattern Matching"
+    Use pattern matching to handle complex grading scenarios elegantly.
+
+!!! example "Advanced Grade Processing"
+    === "Jac"
+        <div class="code-block">
+        ```jac
+        def process_grade_input(input: any) -> str {
+            match input {
+                case int() if 90 <= input <= 100:
+                    return f"Excellent work! Score: {input}";
+                case int() if 80 <= input < 90:
+                    return f"Good job! Score: {input}";
+                case int() if 70 <= input < 80:
+                    return f"Satisfactory. Score: {input}";
+                case int() if 0 <= input < 70:
+                    return f"Needs improvement. Score: {input}";
+                case str() if input in ["A", "B", "C", "D", "F"]:
+                    return f"Letter grade received: {input}";
+                case list() if len(input) > 0:
+                    avg = sum(input) / len(input);
+                    return f"Average of {len(input)} grades: {avg}";
+                case _:
+                    return "Invalid grade input";
+            }
+        }
+
+        with entry {
+            print(process_grade_input(95));        # Number grade
+            print(process_grade_input("A"));       # Letter grade
+            print(process_grade_input([88, 92, 85])); # List of grades
+        }
+        ```
+        </div>
+    === "Python"
+        ```python
+        from typing import Any, List, Union
+
+        def process_grade_input(input: Any) -> str:
+            match input:
+                case int(x) if 90 <= x <= 100:
+                    return f"Excellent work! Score: {x}"
+                case int(x) if 80 <= x < 90:
+                    return f"Good job! Score: {x}"
+                case int(x) if 70 <= x < 80:
+                    return f"Satisfactory. Score: {x}"
+                case int(x) if 0 <= x < 70:
+                    return f"Needs improvement. Score: {x}"
+                case str(x) if x in ["A", "B", "C", "D", "F"]:
+                    return f"Letter grade received: {x}"
+                case list(x) if len(x) > 0:
+                    avg = sum(x) / len(x)
+                    return f"Average of {len(x)} grades: {avg:.1f}"
+                case _:
+                    return "Invalid grade input"
+
+        if __name__ == "__main__":
+            print(process_grade_input(95))        # Number grade
+            print(process_grade_input("A"))       # Letter grade
+            print(process_grade_input([88, 92, 85])) # List of grades
+        ```
+
+## Exception Handling
+
+!!! topic "Error Handling"
+    Handle errors gracefully when processing student data.
+
+!!! example "Safe Grade Calculations"
+    === "Jac"
+        <div class="code-block">
+        ```jac
+        def safe_calculate_gpa(grades: list[int]) -> float {
+            try {
+                if len(grades) == 0 {
+                    raise ValueError("No grades provided");
+                }
+                total = sum(grades);
+                return total / len(grades);
+            } except ValueError as e {
+                print(f"Error: {e}");
+                return 0.0;
+            }
+        }
+
+        def validate_grade(grade: int) -> None {
+            if grade < 0 or grade > 100 {
+                raise ValueError(f"Grade {grade} is out of valid range (0-100)");
+            }
+        }
+
+        with entry {
+            # Test safe calculation
+            valid_grades = [85, 90, 78];
+            gpa = safe_calculate_gpa(valid_grades);
+            print(f"GPA: {gpa}");
+
+            # Test error handling
+            try {
+                validate_grade(150);  # Invalid grade
+            } except ValueError as e {
+                print(f"Validation error: {e}");
+            }
+        }
+        ```
+        </div>
+    === "Python"
+        ```python
+        from typing import List
+
+        def safe_calculate_gpa(grades: List[int]) -> float:
+            try:
+                if len(grades) == 0:
+                    raise ValueError("No grades provided")
+                total = sum(grades)
+                return total / len(grades)
+            except ValueError as e:
+                print(f"Error: {e}")
+                return 0.0
+
+        def validate_grade(grade: int) -> None:
+            if grade < 0 or grade > 100:
+                raise ValueError(f"Grade {grade} is out of valid range (0-100)")
+
+        if __name__ == "__main__":
+            # Test safe calculation
+            valid_grades = [85, 90, 78]
+            gpa = safe_calculate_gpa(valid_grades)
+            print(f"GPA: {gpa:.2f}")
+
+            # Test error handling
+            try:
+                validate_grade(150)  # Invalid grade
+            except ValueError as e:
+                print(f"Validation error: {e}")
+        ```
+
+## Complete Example: Simple Grade Book System
+
+!!! example "Grade Book System"
+    === "Jac"
+        <div class="code-block">
+        ```jac
+        obj GradeBook {
+            has students: dict[str, list[int]] = {};
+
+            def add_student(name: str) -> None;
+            def add_grade(student: str, grade: int) -> None;
+            def get_average(student: str) -> float;
+            def get_all_averages() -> dict[str, float];
+        }
+
+        impl GradeBook.add_student(name: str) -> None {
+            if name not in self.students {
+                self.students[name] = [];
+                print(f"Added student: {name}");
+            } else {
+                print(f"Student {name} already exists");
+            }
+        }
+
+        impl GradeBook.add_grade(student: str, grade: int) -> None {
+            if grade < 0 or grade > 100 {
+                print(f"Invalid grade: {grade}");
+                return;
+            }
+
+            if student in self.students {
+                self.students[student].append(grade);
+                print(f"Added grade {grade} for {student}");
+            } else {
+                print(f"Student {student} not found");
+            }
+        }
+
+        impl GradeBook.get_average(student: str) -> float {
+            if student not in self.students or len(self.students[student]) == 0 {
+                return 0.0;
+            }
+            grades = self.students[student];
+            return sum(grades) / len(grades);
+        }
+
+        impl GradeBook.get_all_averages() -> dict[str, float] {
+            averages: dict[str, float] = {};
+            for (student, grades) in self.students.items() {
+                if len(grades) > 0 {
+                    averages[student] = sum(grades) / len(grades);
+                }
+            }
+            return averages;
+        }
+
+        with entry {
+            # Create gradebook
+            gradebook = GradeBook();
+
+            # Add students
+            gradebook.add_student("Alice");
+            gradebook.add_student("Bob");
+
+            # Add grades
+            gradebook.add_grade("Alice", 88);
+            gradebook.add_grade("Alice", 92);
+            gradebook.add_grade("Bob", 85);
+            gradebook.add_grade("Bob", 79);
+
+            # Get results
+            all_averages = gradebook.get_all_averages();
+            for (student, avg) in all_averages.items() {
+                letter = "A" if avg >= 90 else "B" if avg >= 80 else "C" if avg >= 70 else "F";
+                print(f"{student}: {avg} ({letter})");
+            }
+        }
+        ```
+        </div>
+    === "Python"
+        ```python
+        from typing import Dict, List
+
+        class GradeBook:
+            def __init__(self):
+                self.students: Dict[str, List[int]] = {}
+
+            def add_student(self, name: str) -> None:
+                if name not in self.students:
+                    self.students[name] = []
+                    print(f"Added student: {name}")
+                else:
+                    print(f"Student {name} already exists")
+
+            def add_grade(self, student: str, grade: int) -> None:
+                if grade < 0 or grade > 100:
+                    print(f"Invalid grade: {grade}")
+                    return
+
+                if student in self.students:
+                    self.students[student].append(grade)
+                    print(f"Added grade {grade} for {student}")
+                else:
+                    print(f"Student {student} not found")
+
+            def get_average(self, student: str) -> float:
+                if student not in self.students or len(self.students[student]) == 0:
+                    return 0.0
+                grades = self.students[student]
+                return sum(grades) / len(grades)
+
+            def get_all_averages(self) -> Dict[str, float]:
+                averages: Dict[str, float] = {}
+                for student, grades in self.students.items():
+                    if len(grades) > 0:
+                        averages[student] = sum(grades) / len(grades)
+                return averages
+
+        if __name__ == "__main__":
+            # Create gradebook
+            gradebook = GradeBook()
+
+            # Add students
+            gradebook.add_student("Alice")
+            gradebook.add_student("Bob")
+
+            # Add grades
+            gradebook.add_grade("Alice", 88)
+            gradebook.add_grade("Alice", 92)
+            gradebook.add_grade("Bob", 85)
+            gradebook.add_grade("Bob", 79)
+
+            # Get results
+            all_averages = gradebook.get_all_averages()
+            for student, avg in all_averages.items():
+                letter = "A" if avg >= 90 else "B" if avg >= 80 else "C" if avg >= 70 else "F"
+                print(f"{student}: {avg:.1f} ({letter})")
+        ```
+
+## Key Takeaways
+
+!!! summary "Chapter Summary"
+    - **Mandatory Typing**: All variables require type annotations for safety and clarity
+    - **Type Inference**: Types can be inferred when obvious from the assigned value
+    - **Collections**: Lists, dicts, sets, and tuples provide type-safe data structures
+    - **Comprehensions**: Process data efficiently with list, dict, and set comprehensions
+    - **Control Flow**: Use curly braces for clear, consistent code structure
+    - **Pattern Matching**: Handle complex conditional logic elegantly
+    - **Error Handling**: Use try/except blocks to handle errors gracefully
+
+!!! topic "Coming Up"
+    Next, we'll explore Jac's function system and decorators to build more modular and reusable code. You'll learn about function definitions with type annotations, parameter handling, decorators in the Jac context, lambda functions, and async programming patterns.
