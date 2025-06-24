@@ -310,21 +310,9 @@ with entry {
 jac run social_hello.jac
 ```
 
-##### Interactive Mode (REPL)
+##### Jac REPL
 
-```bash
-# Start Jac REPL
-jac
-
-# In the REPL:
-> x = 42;
-> print(x * 2);
-84
-> node TestNode { has value: int; }
-> n = TestNode(value=100);
-> print(n.value);
-100
-```
+Note: Currently, the Jac REPL feature is not available. Please use standard Jac script execution for testing and running your code.
 
 #### Testing Your Programs
 
