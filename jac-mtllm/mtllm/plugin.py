@@ -1,7 +1,7 @@
 """Plugin for Jac's with_llm feature."""
 
 import ast as ast3
-from typing import Any, Callable, Mapping, Optional, Sequence, cast
+from typing import Any, Mapping, Optional, Sequence, cast
 
 import jaclang.compiler.unitree as uni
 from jaclang.compiler.passes.main.pyast_gen_pass import PyastGenPass
@@ -120,17 +120,6 @@ def extract_type(node: uni.UniNode) -> list[str]:
     return extracted_type
 
 
-def callable_to_tool(tool: Callable, mod_registry: SemRegistry) -> Tool:
-    """Convert a callable to a Tool."""
-    assert callable(tool), f"{tool} cannot be used as a tool"
-    tool_name = tool.__name__
-    _, tool_info = mod_registry.lookup(name=tool_name)
-    assert tool_info and isinstance(
-        tool_info, SemInfo
-    ), f"Tool {tool_name} not found in the registry"
-    return Tool(tool, tool_info, tool_info.get_children(mod_registry, uni.ParamVar))
-
-
 class JacMachine:
     """Jac's with_llm feature."""
 
@@ -200,10 +189,7 @@ class JacMachine:
         tools = model_params.pop("tools") if "tools" in model_params else None
         if method == "ReAct":
             assert tools, "Tools must be provided for the ReAct method."
-            _tools = [
-                tool if isinstance(tool, Tool) else callable_to_tool(tool, mod_registry)
-                for tool in tools
-            ]
+            _tools = [tool if isinstance(tool, Tool) else Tool(tool) for tool in tools]
         else:
             _tools = []
 

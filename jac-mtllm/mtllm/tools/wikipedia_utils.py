@@ -1,11 +1,18 @@
 """Wikipedia Tools for the MTLLM framework."""
 
-from mtllm.semtable import SemInfo
+from jaclang import JacMachineInterface as _
+
 from mtllm.types import Tool
 
 import wikipedia as wikipedia_lib
 
 
+@_.sem(
+    "A tool that gets the summary of a Wikipedia article.",
+    {
+        "title": "Title of the Wikipedia article to get the summary for.",
+    },
+)
 def get_wikipedia_summary(title: str) -> str:
     """Get the summary of the related article from Wikipedia."""
     try:
@@ -17,27 +24,19 @@ def get_wikipedia_summary(title: str) -> str:
 
 wikipedia_summary = Tool(
     get_wikipedia_summary,
-    SemInfo(
-        None,
-        "wikipedia_summary",
-        "ability",
-        "Gets the Summary of the related article from Wikipedia",
-    ),
-    [SemInfo(None, "title", "str", "Title to search")],
 )
 
 wikipedia_get_related_titles = Tool(
     wikipedia_lib.search,
-    SemInfo(
-        None,
-        "wikipedia_get_related_titles",
-        "ability",
-        "Gets the related titles from Wikipedia",
-    ),
-    [SemInfo(None, "title", "str", "Title to search")],
 )
 
 
+@_.sem(
+    "A tool that gets the whole page from Wikipedia.",
+    {
+        "title": "Title of the Wikipedia article to get the whole page for.",
+    },
+)
 def wikipedia_get_page(title: str) -> dict:
     """Get the page from Wikipedia."""
     try:
@@ -54,11 +53,4 @@ def wikipedia_get_page(title: str) -> dict:
 
 wikipedia_get_whole_page = Tool(
     wikipedia_get_page,
-    SemInfo(
-        None,
-        "wikipedia_get_whole_page",
-        "ability",
-        "Gets the whole page from Wikipedia",
-    ),
-    [SemInfo(None, "title", "str", "Title to search")],
 )

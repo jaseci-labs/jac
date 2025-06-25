@@ -1,5 +1,4 @@
-import from mtllm.llms { OpenAI }
-import from mtllm.tools.math_utils { math_tool }
+mport from mtllm.llms { OpenAI }
 import from PIL { Image }
 
 glob llm = OpenAI(verbose=True, model_name="gpt-4o");
@@ -27,6 +26,12 @@ Receipt {
         print(f"Total: {self.total}");
     }
 }
+
+def math_tool(expr: str) -> str {
+    return str(eval(expr));
+}
+sem math_tool = "Evaluate mathematical expressions";
+sem math_tool.expr = "Expression to evaluate";
 
 def 'Get Reciept Object'
 get_reciept(reciept_img: 'Image of the Receipt': Image) -> 'Reciept Object': Receipt by llm();

@@ -159,7 +159,7 @@ Files involved:
 - [`plugin.py`](mtllm/plugin.py) # callable_to_tool
 - [`types.py`](mtllm/types.py) # Tool class
 - [`tools/base.py`](mtllm/tools/base.py) # Tool class
-- [`tools/<math_utils.py/serper.py/wikipedia.py>](mtllm/tools) # Predefined tools
+- [`tools/<serper.py/wikipedia.py>](mtllm/tools) # Predefined tools
 
 ## 3. Inference Process
 

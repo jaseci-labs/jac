@@ -42,7 +42,7 @@ def aott_raise(
     _locals: Mapping,
 ) -> str:
     """AOTT Raise uses the information (Meanings types values) provided to generate a prompt(meaning in)."""
-    _globals["finish_tool"] = finish_tool
+    _globals[finish_tool.get_name()] = finish_tool
     contains_media: bool = any(
         isinstance(x.value, (Image, Video, PILImage.Image)) for x in inputs_information
     )
@@ -214,7 +214,8 @@ def execute_react(
         )
         if model.verbose:
             logger.info(f"React Output\n{react_output}")
-        if "finish_tool" in react_output.action:
+        # FIXME: This is brittle but after litellm this will be gone.
+        if react_output.action.startswith("finish"):
             return react_output.observation
         if reached_max_iterations:
             raise Exception("Reached max iterations.")

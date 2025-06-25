@@ -3,6 +3,7 @@
 import base64
 import importlib
 import importlib.util
+import inspect
 from io import BytesIO
 from typing import Any, Callable
 
@@ -268,13 +269,23 @@ class Information:
 class Tool:
     """Base class for tools."""
 
-    def __init__(
-        self, func: Callable, sem_info: SemInfo, params: list[SemInfo]
-    ) -> None:
+    def __init__(self, func: Callable) -> None:
         """Initialize the tool."""
-        self.sem_info = sem_info
         self.func = func
-        self.params = params
+        self.semstr: str = ""
+        self.semstr_params: dict[str, str] = {}
+
+        if hasattr(func, "_jac_semstr"):
+            self.semstr = func._jac_semstr  # type: ignore[attr-defined]
+        else:
+            self.semstr = func.__doc__ or ""
+
+        if hasattr(func, "_jac_semstr_inner"):
+            self.semstr_params = func._jac_semstr_inner  # type: ignore[attr-defined]
+
+    def get_name(self) -> str:
+        """Get the name of the tool."""
+        return self.func.__name__
 
     def __call__(self, *args, **kwargs) -> str:  # noqa
         """Forward function of the tool."""
@@ -282,15 +293,19 @@ class Tool:
 
     def get_usage_example(self) -> str:
         """Get the usage example of the tool."""
-        get_param_str = lambda x: (  # noqa E731
-            f'{x.name}="{x.semstr}":{x.type}' if x.semstr else f"{x.name}={x.type}"
-        )
-        return f"{self.sem_info.name}({', '.join([get_param_str(x) for x in self.params])})"
+        params_example: list[str] = []
+        sig = inspect.signature(self.func)
+        for name, param in sig.parameters.items():
+            if param_semstr := self.semstr_params.get(name, ""):
+                params_example.append(f'{name}="{param_semstr}":{param.annotation}')
+            else:
+                params_example.append(f"{name}={param.annotation}")
+        return f"{self.func.__name__}({', '.join(params_example)})"
 
     def __str__(self) -> str:
         """Return a string representation of the tool."""
-        tool_str = f"tool_name={self.sem_info.name}\n"
-        tool_str += f"tool_description={self.sem_info.semstr.strip()}\n"
+        tool_str = f"tool_name={self.func.__name__}\n"
+        tool_str += f"tool_description={self.semstr}\n"
         tool_str += f"usage_example={self.get_usage_example()}\n"
         return tool_str
 

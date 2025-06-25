@@ -3,7 +3,7 @@
 import json
 import os
 
-from jaclang.compiler.semtable import SemInfo
+from jaclang import JacMachineInterface as _
 
 from mtllm.types import Tool
 
@@ -16,6 +16,12 @@ API_HEADERS = {
 assert API_HEADERS["X-API-KEY"], "Please set the SERPER_API_KEY environment variable."
 
 
+@_.sem(
+    "A tool that performs a web search using the Serper API.",
+    {
+        "query": "Query to search for on the web.",
+    },
+)
 def serper_search_tool(query: str) -> str:
     """Search the Serper API."""
     payload = json.dumps(
@@ -31,16 +37,15 @@ def serper_search_tool(query: str) -> str:
 
 search = Tool(
     serper_search_tool,
-    SemInfo(
-        None,
-        "search",
-        "ability",
-        "Perform a Web Search",
-    ),
-    [SemInfo(None, "query", "str", "Query to search")],
 )
 
 
+@_.sem(
+    "A tool that scrapes a webpage using the Serper API.",
+    {
+        "url": "URL of the webpage to scrape.",
+    },
+)
 def serper_scrape_webpage(url: str) -> str:
     """Scrapes the Serper API."""
     payload = json.dumps(
@@ -56,11 +61,4 @@ def serper_scrape_webpage(url: str) -> str:
 
 scrape = Tool(
     serper_scrape_webpage,
-    SemInfo(
-        None,
-        "scrape",
-        "ability",
-        "Scrape Information from a Webpage",
-    ),
-    [SemInfo(None, "url", "str", "URL to scrape")],
 )
