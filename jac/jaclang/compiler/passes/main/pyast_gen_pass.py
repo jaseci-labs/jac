@@ -212,6 +212,44 @@ class PyastGenPass(UniPass):
             ),
         )
 
+    def _make_sem_decorator(
+        self, semstr: str, inner_semstr: dict[str, str]
+    ) -> ast3.Call:
+        """Create a semstring decorator for the given semantic strings.
+
+        Example:
+            @_.sem(
+                "Returns the weather for a given city.", {
+                    "city" : "Name of the city to get the weather for.",
+                }
+            )
+            def get_weather(city: str) {}
+
+        This the second parameter (dict) will also used in the class `has` variables
+        enum values etc.
+        """
+        return self.sync(
+            ast3.Call(
+                func=self.jaclib_obj("sem"),
+                args=[
+                    self.sync(ast3.Constant(value=semstr)),
+                    self.sync(
+                        ast3.Dict(
+                            keys=[
+                                self.sync(ast3.Constant(value=k))
+                                for k in inner_semstr.keys()
+                            ],
+                            values=[
+                                self.sync(ast3.Constant(value=v))
+                                for v in inner_semstr.values()
+                            ],
+                        )
+                    ),
+                ],
+                keywords=[],
+            )
+        )
+
     def flatten(self, body: list[T | list[T] | None]) -> list[T]:
         """Flatten a list of items or lists into a single list."""
         new_body: list[T] = []
@@ -585,6 +623,25 @@ class PyastGenPass(UniPass):
             if node.decorators
             else []
         )
+
+        # Collect semstrings and add a decorator if semstrings available.
+        has_var_semstrs: dict[str, str] = {}
+        jac_ast_body: list[uni.UniNode] = []
+        if isinstance(node.body, list):
+            jac_ast_body = node.body
+        elif isinstance(node.body, uni.ImplDef) and isinstance(node.body.body, list):
+            # Type check will fail because of the invariant between codeblock and enum block
+            # but since we're only reading the list (and python doesn't have const) the type
+            # error is irrelevent here.
+            jac_ast_body = node.body.body  # type: ignore
+        for stmt in jac_ast_body:
+            if isinstance(stmt, uni.ArchHas):
+                for has_var in stmt.vars:
+                    if has_var.semstr:
+                        has_var_semstrs[has_var.sym_name] = has_var.semstr
+        if node.semstr or has_var_semstrs:
+            decorators.append(self._make_sem_decorator(node.semstr, has_var_semstrs))
+
         base_classes = [cast(ast3.expr, i.gen.py_ast[0]) for i in node.base_classes]
         if node.arch_type.name != Tok.KW_CLASS:
             base_classes.append(self.jaclib_obj(node.arch_type.value.capitalize()))
@@ -621,6 +678,24 @@ class PyastGenPass(UniPass):
             if node.decorators
             else []
         )
+
+        # Collect semstrings and add a decorator if semstrings available.
+        values_semstr: dict[str, str] = {}
+        jac_ast_body: list[uni.UniNode] = []
+        if isinstance(node.body, list):
+            jac_ast_body = node.body
+        elif isinstance(node.body, uni.ImplDef) and isinstance(node.body.body, list):
+            jac_ast_body = node.body.body  # type: ignore
+        for stmt in jac_ast_body:
+            if isinstance(stmt, uni.Assignment) and isinstance(
+                stmt.target[0], uni.AstSymbolNode
+            ):
+                name = stmt.target[0].sym_name
+                semstr = stmt.target[0].semstr
+                values_semstr[name] = semstr
+        if node.semstr or values_semstr:
+            decorators.append(self._make_sem_decorator(node.semstr, values_semstr))
+
         base_classes = [cast(ast3.expr, i.gen.py_ast[0]) for i in node.base_classes]
         base_classes.append(self.sync(ast3.Name(id="Enum", ctx=ast3.Load())))
         node.gen.py_ast = [
@@ -714,6 +789,20 @@ class PyastGenPass(UniPass):
             if node.decorators
             else []
         )
+
+        # Collect semstrings and add a decorator if semstrings available.
+        param_semstr: dict[str, str] = (
+            {
+                param.sym_name: param.semstr
+                for param in node.signature.params
+                if param.semstr
+            }
+            if isinstance(node.signature, uni.FuncSignature)
+            else {}
+        )
+        if node.semstr or param_semstr:
+            decorator_list.append(self._make_sem_decorator(node.semstr, param_semstr))
+
         if isinstance(node.signature, uni.EventSignature):
             decorator_list.append(
                 self.jaclib_obj(

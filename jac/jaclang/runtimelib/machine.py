@@ -1341,6 +1341,17 @@ class JacBasics:
         return func
 
     @staticmethod
+    def sem(semstr: str, inner_semstr: dict[str, str]) -> Callable:
+        """Attach the semstring to the given object."""
+
+        def decorator(obj: object) -> object:
+            setattr(obj, "_jac_semstr", semstr)  # noqa:B010
+            setattr(obj, "_jac_semstr_inner", inner_semstr)  # noqa:B010
+            return obj
+
+        return decorator
+
+    @staticmethod
     def with_llm(
         file_loc: str,
         model: Any,  # noqa: ANN401
