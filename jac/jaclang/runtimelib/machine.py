@@ -1557,6 +1557,13 @@ class JacBasics:
         """Jac's get_semstr_type implementation."""
         return None, None
 
+    @staticmethod
+    def call_llm(model: object, caller: Callable, args: tuple[object, ...]) -> object:
+        """Call the LLM model."""
+        raise ImportError(
+            "mtllm is not installed. Please install it with `pip install mtllm` and run `jac clean`."
+        )
+
 
 class JacUtils:
     """Jac Machine Utilities."""

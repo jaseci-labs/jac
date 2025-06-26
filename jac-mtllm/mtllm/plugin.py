@@ -23,6 +23,7 @@ from mtllm.aott import (
     aott_raise,
     get_all_type_explanations,
 )
+from mtllm.llm import JacLLM
 from mtllm.llms.base import (
     BaseLLM,
     CompletionRequest,
@@ -1006,3 +1007,31 @@ class JacMachine:
         if isinstance(attr_sem_info, SemInfo) and isinstance(attr_scope, SemScope):
             return attr_sem_info.semstr, attr_scope.as_type_str
         return "", ""
+
+    # -----------------------------------------------------------------------------
+    # NOTE: Below this line is the new implementation of the MTLLM plugin. Where
+    #       we're not using *ANY* of the old plugin features and eventually we can
+    #       completely remove the old implementation.
+    # -----------------------------------------------------------------------------
+
+    @staticmethod
+    @hookimpl
+    def call_llm(
+        model: JacLLM, caller: Callable, args: dict[str | int, object]
+    ) -> object:
+        """Call JacLLM and return the result.
+
+        ```jac
+        def get_weather(city: str, unit: str = "") -> str
+            by llm(
+                temperature=0.7,
+                top_k=50,
+                top_p=0.95,
+                max_tokens=100,
+            );
+        ```
+        For body llm override the args dictionary will be like this as the
+        parameter names are not resolvable at compiletime (unless keywords):
+            { 0 : "moratuwa", "unit" : "celsius" }
+        """
+        return model.invoke(caller, args)

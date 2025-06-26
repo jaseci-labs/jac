@@ -10,6 +10,7 @@ keywords = ["llm", "jaclang", "jaseci", "mtllm"]
 
 [tool.poetry.dependencies]
 jaclang = "0.8.3"
+litellm = "~1.73.1"
 loguru = "~0.7.2"
 pillow = "~10.4.0"
 openai = { version = "~1.82.1", optional = true }
