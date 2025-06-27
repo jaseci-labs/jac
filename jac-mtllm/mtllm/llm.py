@@ -11,7 +11,7 @@ from typing import Callable, get_type_hints
 import litellm
 from litellm._logging import _disable_debugging
 
-from .types import (
+from .llm_types import (
     CompletionRequest,
     CompletionResult,
     LiteLLMMessage,
@@ -21,8 +21,6 @@ from .types import (
     Tool,
     ToolCall,
 )
-
-_disable_debugging()
 
 
 SYSTEM_PERSONA = """\
@@ -53,12 +51,15 @@ class JacLLM:
             api_key: API key for the model provider
             **kwargs: Additional configuration options
         """
+        _disable_debugging()
+
         self.model_name = model_name
         self.config = kwargs
 
         # The parameters for the llm call like temprature, top_k, max_token, etc.
         # This is only applicable for the next call passed from `by llm(**kwargs)`.
         self.call_params: dict[str, object] = {}
+
 
     def __call__(self, **kwargs: object) -> "JacLLM":
         """Construct the call parameters and return self (factory pattern).

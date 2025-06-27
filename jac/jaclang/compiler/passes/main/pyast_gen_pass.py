@@ -752,8 +752,6 @@ class PyastGenPass(UniPass):
         example:
             foo() by llm();
         """
-        # from jaclang.runtimelib.machine import JacMachineInterface
-        # return JacMachineInterface.gen_llm_call_override(self, node)
         if node.body_genai_call is None:
             raise self.ice()
 
@@ -780,19 +778,6 @@ class PyastGenPass(UniPass):
 
     def gen_llm_body(self, node: uni.Ability) -> list[ast3.stmt]:
         """Generate the by LLM body."""
-        # to Avoid circular import
-        # from jaclang.runtimelib.machine import JacMachineInterface
-        #
-        # body: list[ast3.AST] = JacMachineInterface.gen_llm_body(self, node)
-        # if node.doc:
-        #     body.insert(
-        #         0,
-        #         self.sync(
-        #             ast3.Expr(value=cast(ast3.expr, node.doc.gen.py_ast[0])),
-        #             jac_node=node.doc,
-        #         ),
-        #     )
-        # return body
         assert isinstance(node.body, uni.FuncCall)
         assert isinstance(node.signature, uni.FuncSignature)
 
@@ -2463,40 +2448,6 @@ class PyastGenPass(UniPass):
     def exit_atom_unit(self, node: uni.AtomUnit) -> None:
         node.gen.py_ast = node.value.gen.py_ast
 
-    def by_llm_call(
-        self,
-        model: ast3.AST,
-        model_params: dict[str, uni.Expr],
-        scope: ast3.AST,
-        inputs: Sequence[Optional[ast3.AST]],
-        outputs: Sequence[Optional[ast3.AST]] | ast3.Call,
-        action: Optional[ast3.AST],
-        include_info: list[tuple[str, ast3.AST]],
-        exclude_info: list[tuple[str, ast3.AST]],
-    ) -> ast3.Call:
-        """Return the LLM Call, e.g. _Jac.with_llm()."""
-        # to avoid circular import
-        from jaclang.runtimelib.machine import JacMachineInterface
-
-        return JacMachineInterface.by_llm_call(
-            self,
-            model,
-            model_params,
-            scope,
-            inputs,
-            outputs,
-            action,
-            include_info,
-            exclude_info,
-        )
-
-    def get_by_llm_call_args(self, node: uni.FuncCall) -> dict:
-        """Get the arguments for the by_llm_call."""
-        # to avoid circular import
-        from jaclang.runtimelib.machine import JacMachineInterface
-
-        return JacMachineInterface.get_by_llm_call_args(self, node)
-
     def gen_call_args(
         self, node: uni.FuncCall
     ) -> tuple[list[ast3.expr], list[ast3.keyword]]:
@@ -2530,8 +2481,9 @@ class PyastGenPass(UniPass):
 
         # TODO: This needs to be changed to only generate parameters no the body.
         elif node.genai_call:
-            by_llm_call_args = self.get_by_llm_call_args(node)
-            node.gen.py_ast = [self.sync(self.by_llm_call(**by_llm_call_args))]
+            raise self.ice(
+                "Object construction by llm() not supported temporarily."
+            )
 
         else:
             func = node.target.gen.py_ast[0]
