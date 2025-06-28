@@ -70,6 +70,10 @@ class JUnionType(JType):
         Returns:
             bool: True if any union member can accept `other`.
         """
+        if isinstance(other, JUnionType):
+            return all(
+                any(t.can_assign_from(o) for t in self.options) for o in other.options
+            )
         return any(t.can_assign_from(other) for t in self.options)
 
     def get_members(self) -> dict[str, JClassMember]:
