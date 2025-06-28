@@ -33,7 +33,12 @@ class JTypeCheckPass(UniPass):
     def enter_node(self, node: ast.UniNode) -> None:
         """Enter Node"""
         if settings.enable_jac_typing_asserts:
-            return super().enter_node(node)
+            try:
+                super().enter_node(node)
+            except AssertionError as e:
+                raise AssertionError(
+                    f"{node.loc.mod_path} {node.loc} {str(e)}"
+                ).with_traceback(e.__traceback__)
         else:
             with suppress(Exception):
                 super().enter_node(node)
@@ -41,7 +46,12 @@ class JTypeCheckPass(UniPass):
     def exit_node(self, node: ast.UniNode) -> None:
         """Exit node."""
         if settings.enable_jac_typing_asserts:
-            return super().exit_node(node)
+            try:
+                super().exit_node(node)
+            except AssertionError as e:
+                raise AssertionError(
+                    f"{node.loc.mod_path} {node.loc}: {str(e)}"
+                ).with_traceback(e.__traceback__)
         else:
             with suppress(Exception):
                 super().exit_node(node)
@@ -344,7 +354,7 @@ class JTypeCheckPass(UniPass):
         if isinstance(base_type, jtype.JAnyType):
             self.log_warning("This node is not supported yet")
             return
-        assert isinstance(base_type, jtype.JClassInstanceType), type(base_type)
+        assert isinstance(base_type, jtype.JClassInstanceType)
 
         indexes = []
         if isinstance(node.slices[0].start, ast.TupleVal):
@@ -467,3 +477,6 @@ class JTypeCheckPass(UniPass):
             self.__debug_print(
                 f"Normal binary operation are supported for now {node.op}"
             )
+
+    # def after_pass(self):
+    #     print(self.prog.type_registry)

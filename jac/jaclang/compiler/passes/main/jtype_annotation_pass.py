@@ -54,7 +54,12 @@ class JTypeAnnotatePass(UniPass):
     def enter_node(self, node: uni.UniNode) -> None:
         """Enter Node"""
         if settings.enable_jac_typing_asserts:
-            return super().enter_node(node)
+            try:
+                super().enter_node(node)
+            except AssertionError as e:
+                raise AssertionError(
+                    f"{node.loc.mod_path} {node.loc} {str(e)}"
+                ).with_traceback(e.__traceback__)
         else:
             with suppress(Exception):
                 super().enter_node(node)
@@ -62,7 +67,12 @@ class JTypeAnnotatePass(UniPass):
     def exit_node(self, node: uni.UniNode) -> None:
         """Exit node."""
         if settings.enable_jac_typing_asserts:
-            return super().exit_node(node)
+            try:
+                super().exit_node(node)
+            except AssertionError as e:
+                raise AssertionError(
+                    f"{node.loc.mod_path} {node.loc}: {str(e)}"
+                ).with_traceback(e.__traceback__)
         else:
             with suppress(Exception):
                 super().exit_node(node)
