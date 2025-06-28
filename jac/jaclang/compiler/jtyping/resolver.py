@@ -286,21 +286,35 @@ class JTypeResolver:
         parent = node.parent
         assert isinstance(parent, ast.AtomTrailer)
         base_type = self.get_type(parent.to_list[-2])
+
+        if isinstance(base_type, jtype.JAnyType):
+            return jtype.JAnyType()
+
         assert isinstance(base_type, jtype.JClassInstanceType)
 
         if node.find_parent_of_type(ast.SubTag) or node.find_parent_of_type(
             ast.FuncSignature
         ):
-            generic_vars: list[
-                jtype.JClassType | jtype.JGenericType | jtype.JUnionType
-            ] = []
+            generic_vars: list[jtype.JClassInstanceType | jtype.JUnionType] = []
             if isinstance(node.slices[0].start, ast.TupleVal):
                 for v in node.slices[0].start.values:
                     assert isinstance(v, ast.Expr)
                     expression_type = self.get_type(v)
+                    if isinstance(
+                        expression_type, (jtype.JClassType, jtype.JGenericType)
+                    ):
+                        expression_type = jtype.JClassInstanceType(expression_type)
+                    assert isinstance(
+                        expression_type, (jtype.JUnionType, jtype.JClassInstanceType)
+                    )
                     generic_vars.append(expression_type)
             else:
                 expression_type = self.get_type(node.slices[0].start)
+                if isinstance(expression_type, (jtype.JClassType, jtype.JGenericType)):
+                    expression_type = jtype.JClassInstanceType(expression_type)
+                assert isinstance(
+                    expression_type, (jtype.JUnionType, jtype.JClassInstanceType)
+                )
                 generic_vars = [expression_type]
             assert isinstance(base_type.class_type, jtype.JClassType)
             return jtype.JClassInstanceType(
@@ -310,7 +324,13 @@ class JTypeResolver:
             index_method = base_type.get_member("__getitem__")
             if index_method:
                 assert isinstance(index_method.type, jtype.JFunctionType)
-                return index_method.type.return_type
+                if node.slices[0].stop is not None:
+                    list_type = self.__get_list_type()
+                    return jtype.JClassInstanceType(
+                        jtype.JGenericType(list_type, [index_method.type.return_type])
+                    )
+                else:
+                    return index_method.type.return_type
             else:
                 return jtype.JAnyType()
 
@@ -364,8 +384,7 @@ class JTypeResolver:
             val_type = self.get_type(val)
             union_types[str(val_type)] = val_type
 
-        list_type = self.type_registry.get("builtins.list")
-        assert isinstance(list_type, jtype.JClassType)
+        list_type = self.__get_list_type()
         if len(list(union_types.values())) == 0:
             return jtype.JClassInstanceType(list_type)
         elif len(list(union_types.values())) == 1:
@@ -441,3 +460,13 @@ class JTypeResolver:
         self, node: ast.AtomTrailer, expr_type: jtype.JType
     ) -> None:
         node.expr_type = expr_type
+
+    def __get_list_type(self) -> jtype.JClassType:
+        out = self.type_registry.get("builtins.list")
+        assert isinstance(out, jtype.JClassType)
+        return out
+
+    def __get_dict_type(self) -> jtype.JClassType:
+        out = self.type_registry.get("builtins.dict")
+        assert isinstance(out, jtype.JClassType)
+        return out

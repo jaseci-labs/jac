@@ -8,10 +8,10 @@ from jaclang.compiler.jtyping import (
     JClassType,
     JFuncArgument,
     JFunctionType,
-    JType,
-    JUnionType,
-    JTypeVar,
     JNoneType,
+    JType,
+    JTypeVar,
+    JUnionType,
 )
 from jaclang.compiler.jtyping.types.jclassmember import MemberKind, Visibility
 
@@ -204,3 +204,13 @@ class JTypeRegistry:
                 )
             ),
         )
+
+    def __repr__(self) -> str:
+        """
+        Return a string representation of the JTypeRegistry instance.
+
+        Returns:
+            str: Summary of the registered types.
+        """
+        registered_types = ", ".join(sorted(self._types.keys()))
+        return f"<JTypeRegistry: {len(self._types)} types registered: [{registered_types}]>"
