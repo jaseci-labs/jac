@@ -1,4 +1,4 @@
-import:py streamlit as st ;
+import streamlit as st ;
 
 with entry {
     st.title("Simple Streamlit App") ;
