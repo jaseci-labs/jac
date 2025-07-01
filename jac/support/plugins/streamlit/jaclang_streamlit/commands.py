@@ -5,7 +5,12 @@ import sys
 import tempfile
 
 from jaclang.cli.cmdreg import cmd_registry
-from jaclang.plugin.default import hookimpl
+# from jaclang.plugin.default import hookimpl
+
+# from jaclang.runtimelib.machine import hookimpl
+import pluggy
+
+hookimpl = pluggy.HookimplMarker("jac")
 
 import streamlit.web.bootstrap as bootstrap
 
