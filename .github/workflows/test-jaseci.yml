@@ -41,6 +41,7 @@ jobs:
         pip install -e jac-splice-orc
         pip install -e jac-cloud
         pip install -e jac-mtllm
+        pip install jac/support/plugins/streamlit
         pip install pytest
         pip install pytest-asyncio
 
