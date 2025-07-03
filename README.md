@@ -9,9 +9,9 @@
 
   [Jac]: https://www.jac-lang.org/
   [Jac Website]: https://www.jac-lang.org/
-  [Getting Started]: https://www.jac-lang.org//start/
-  [Learn]: https://www.jac-lang.org//learn
-  [Documentation]: https://www.jac-lang.org//learn/guide/
+  [Getting Started]: https://www.jac-lang.org/learn/getting_started/
+  [Learn]: https://www.jac-lang.org/learn/getting_started/
+  [Documentation]: https://www.jac-lang.org/learn/getting_started/
   [Contributing]: .github/CONTRIBUTING.md
 </div>
 
