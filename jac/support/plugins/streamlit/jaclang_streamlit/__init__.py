@@ -2,6 +2,15 @@
 
 from jaclang_streamlit.app_test import JacAppTest as AppTest
 
+import typing
+
+try:  # pragma: no cover - provide fallback for Python<3.12
+    typing.override  # type: ignore[attr-defined]
+except AttributeError:  # pragma: no cover
+    from typing_extensions import override as _override
+
+    typing.override = _override  # type: ignore[attr-defined]
+
 
 def run_streamlit(basename: str, dirname: str) -> None:
     """Run the Streamlit application."""
