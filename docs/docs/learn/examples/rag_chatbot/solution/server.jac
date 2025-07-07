@@ -36,12 +36,26 @@ obj WebSearch {
 
 glob web_search: WebSearch = WebSearch();
 
+def search_web(query: str) -> str {
+    return web_search.search(query=query);
+}
+
+def search_docs(query: str) -> str {
+    return rag_engine.search(query=query);
+}
+
 node Session {
     has id: str;
     has chat_history: list[dict];
     has status: int = 1;
 
-    def respond(message:str, chat_history:str, agent_role:str,  context:str) -> str by llm();
+    """Generate a response using uploaded documents and web search."""
+    def respond(message:str, chat_history:list[dict]) -> str
+        by llm(
+            method="ReAct",
+            tools=[search_docs, search_web],
+            max_react_iterations=6
+        );
 }
 
 
@@ -60,14 +74,9 @@ walker interact {
 
     can chat with Session entry {
         here.chat_history.append({"role": "user", "content": self.message});
-        docs = rag_engine.get_from_chroma(query=self.message);
-        web = web_search.search(query=self.message);
-        context = {"docs": docs, "web": web};
         response = here.respond(
             message=self.message,
-            chat_history=here.chat_history,
-            agent_role="You are a conversation agent designed to help users with their queries based on the documents provided and web search results",
-            context=context
+            chat_history=here.chat_history
         );
 
         here.chat_history.append({"role": "assistant", "content": response});

@@ -106,4 +106,16 @@ obj RagEngine {
         results = db.similarity_search_with_score(query,k=chunck_nos);
         return results;
     }
+
+    def search(query: str, chunck_nos: int=5) {
+        results = self.get_from_chroma(query=query, chunck_nos=chunck_nos);
+        summary = "";
+        for (doc, score) in results {
+            page = doc.metadata.get('page');
+            source = doc.metadata.get('source');
+            chunk_txt = doc.page_content[:400];
+            summary += f"{source} page {page}: {chunk_txt}\n";
+        }
+        return summary;
+    }
 }

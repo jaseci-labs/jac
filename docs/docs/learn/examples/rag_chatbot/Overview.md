@@ -1,11 +1,12 @@
 # RAG Chatbot Overview
 
-This project demonstrates a modern Retrieval-Augmented Generation (RAG) chatbot built using the Jac programming language, MTLLM, Jac Cloud. It combines document ingestion, semantic search, and large language models (LLMs) to deliver a conversational AI experience that can answer questions based on your own documents.
+This project demonstrates a modern Retrieval-Augmented Generation (RAG) chatbot built using the Jac programming language, MTLLM, and Jac Cloud. It combines document ingestion, semantic search, and large language models (LLMs) to deliver a conversational AI experience that can answer questions based on your own documents. The latest version uses **Agentic RAG** where the LLM autonomously decides when to retrieve documents or search the web using the ReAct method.
 
 ## Key Features
 
 - **Document Upload & Ingestion**: Upload PDF files, which are automatically processed and indexed for semantic search.
 - **Retrieval-Augmented Generation**: Combines LLMs with document retrieval for accurate, context-aware answers.
+- **Agentic RAG with ReAct**: The LLM decides when to fetch documents or perform web search using specialized tools.
 - **Web Search Integration**: Optionally augments responses with real-time web search results.
 - **Streamlit Frontend**: User-friendly chat interface for interacting with the bot and uploading documents.
 - **API Server**: RESTful endpoints for chat, document upload, and more, powered by Jac Cloud.

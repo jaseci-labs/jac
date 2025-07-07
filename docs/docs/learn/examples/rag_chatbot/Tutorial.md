@@ -154,7 +154,8 @@ node Session {
     has id: str;
     has chat_history: list[dict];
     ...
-    def respond(message:str, chat_history:str, agent_role:str,  context:str) -> str by llm();
+    def respond(message:str, chat_history:list[dict]) -> str
+        by llm(method="ReAct", tools=[search_docs, search_web]);
 }
 ```
 - Each user session has a unique ID and chat history. The `respond` method uses an LLM to generate answers, optionally using context from documents and web search.
@@ -167,16 +168,17 @@ walker interact {
     ...
     can chat with Session entry {
         here.chat_history.append({"role": "user", "content": self.message});
-        docs = rag_engine.get_from_chroma(query=self.message);
-        web = web_search.search(query=self.message);
-        context = {"docs": docs, "web": web};
-        response = here.respond(..., context=context);
+        response = here.respond(
+            message=self.message,
+            chat_history=here.chat_history
+        );
         here.chat_history.append({"role": "assistant", "content": response});
         report {"response": response};
     }
 }
 ```
 - Handles incoming chat messages, retrieves relevant docs and web results, and generates a response using the LLM.
+- Handles incoming messages and lets the LLM use tools to search docs or the web when needed, producing a final answer.
 
 **PDF Upload Walker:**
 ```jac
