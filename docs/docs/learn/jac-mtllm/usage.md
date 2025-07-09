@@ -2,36 +2,43 @@
 
 This guide covers all the ways you can use MTLLM to build AI-integrated software in Jaclang. From simple AI-powered functions to complex multi-agent systems, MTLLM provides the tools to seamlessly integrate Large Language Models into your applications. For truly agentic behavior that can reason, plan, and act autonomously, MTLLM offers the ReAct method with tool integration.
 
-## Core Concepts
+## Available Models
 
-### The `by` Keyword
+MTLLM use [LiteLLM](https://docs.litellm.ai/docs) under the hood allowing seamless integration of a wide range of models.
 
-The `by` keyword is the foundation of MTLLM's AI-integration model. It transforms ordinary functions and methods into intelligent, AI-powered components that can:
+=== "OpenAI"
+    ```jac linenums="1"
+    import from mtllm {Model}
 
-- Understand natural language inputs
-- Process and transform data intelligently
-- Generate structured outputs
-- Adapt behavior based on context
-- Generate responses using semantic understanding
+    glob llm = Model(model_name = "gpt-4o")
+    ```
+=== "Gemini"
+    ```jac linenums="1"
+    import from mtllm {Model}
 
-For truly agentic behavior (autonomous reasoning, planning, and tool usage), you'll use the ReAct method described later in this guide.
+    glob llm = Model(model_name = "gemini/gemini-2.0-flash")
+    ```
+=== "Anthropic"
+    ```jac linenums="1"
+    import from mtllm {Model}
 
-### AI-Integration vs Agentic Behavior
+    glob llm = Model(model_name = "claude-3-5-sonnet-20240620")
+    ```
+=== "Ollama"
+    ```jac linenums="1"
+    import from mtllm {Model}
 
-MTLLM provides different levels of intelligence:
+    glob llm = Model(model_name = "ollama/llama3:70b")
+    ```
+=== "HuggingFace Models"
+    ```jac linenums="1"
+    import from mtllm {Model}
 
-- **AI-Integrated Functions**: Smart functions that understand natural language and generate intelligent responses using the `by llm` syntax
-- **Enhanced Reasoning**: Functions that can think step-by-step using `method='Reason'`
-- **Agentic Behavior**: Truly autonomous agents that can reason, plan, and use tools with `method="ReAct"`
+    glob llm = Model(model_name = "huggingface/meta-llama/Llama-3.3-70B-Instruct")
+    ```
 
-### Key MTLLM Features
-
-- **Zero Prompt Engineering**: Define function signatures and let MTLLM handle implementation
-- **Type Safety**: Maintain strong typing while adding AI capabilities
-- **Tool Integration**: Connect AI functions to external APIs and services
-- **Function Overriding**: Transform existing functions with LLM behavior at runtime
-- **Object Methods**: AI-powered methods that understand object context
-- **Structured Outputs**: Generate complex, typed data structures automatically
+??? Note
+    There are Many other supported models and model serving platforms available with LiteLLM, please check their [documentation](https://docs.litellm.ai/docs/providers) for model names.
 
 ## Intelligent Functions
 
@@ -40,25 +47,25 @@ MTLLM provides different levels of intelligence:
 Transform any function into an intelligent agent by adding the `by llm` declaration. Instead of writing manual API calls and prompt engineering, simply define the function signature and let MTLLM handle the implementation:
 
 ```jac linenums="1"
-import from mtllm.llms {OpenAI}
+import from mtllm {Model}
 
-glob llm = OpenAI(model_name="gpt-4o");
+glob llm = Model(model_name="gpt-4o");
 
 def translate(text: str, target_language: str) -> str by llm();
 def analyze_sentiment(text: str) -> str by llm();
 def summarize(content: str, max_words: int) -> str by llm();
 ```
 
-These functions become intelligent agents that can understand natural language inputs and produce contextually appropriate outputs.
+These functions become intelligent functions that can understand inputs and produce contextually appropriate outputs with zero prompt engineering.
 
 ### Enhanced Functions with Reasoning
 
 Add the `method='Reason'` parameter to enable step-by-step reasoning for complex tasks:
 
 ```jac linenums="1"
-import from mtllm.llms {OpenAI}
+import from mtllm {Model}
 
-glob llm = OpenAI(model_name="gpt-4o");
+glob llm = Model(model_name="gpt-4o");
 
 def analyze_sentiment(text: str) -> str by llm(method='Reason');
 def generate_response(original_text: str, sentiment: str) -> str by llm();
@@ -77,20 +84,38 @@ with entry {
 }
 ```
 
-### Structured Output Functions
+### Functions using custom types
 
-MTLLM excels at generating structured outputs. Define functions that return complex types:
+MTLLM excels at understandiong typed input and generating typed outputs. Define functions that return complex types:
 
 ```jac linenums="1"
-import from mtllm.llms {OpenAI}
+import from mtllm {Model}
 
-glob llm = OpenAI(model_name="gpt-4o");
+glob llm = Model(model_name="gpt-4o-mini");
 
-def get_joke_with_punchline() -> tuple[str, str] by llm();
+enum Personality {
+    INTROVERT = "Introvert",
+    EXTROVERT = "Extrovert"
+    AMBIVERT = "Ambivert"
+}
+
+obj Person {
+    has full_name: str,
+        yod: int,
+        personality: Personality;
+}
+sem Person.yod = "Year of Death of the person";
+
+def get_person_info(name: str) -> Person by llm(
+    method="Reason",
+    temperature=0.0
+);
 
 with entry {
-    (joke, punchline) = get_joke_with_punchline();
-    print(f"{joke}: {punchline}");
+    person_obj = get_person_info('Martin Luther King Jr.');
+    print(
+        f"{person_obj.full_name} was a {person_obj.personality.value} person who died in {person_obj.yod}"
+    );
 }
 ```
 
@@ -101,65 +126,27 @@ A more complex example of using object schema for adding context to LLM and cons
 
 Transform object methods into intelligent components that can reason about their state and context:
 
-### Basic Object Methods
+### Object Methods
+
+The "by llm" methods of the Person object inherently have access to all object attributes to pass in more context.
 
 ```jac linenums="1"
-import from mtllm.llms {OpenAI}
+import from mtllm {Model}
 
-glob llm = OpenAI(model_name="gpt-4o");
+glob llm = Model(model_name="gpt-4o");
 
 obj Person {
     has name: str;
     has age: int;
 
-    def introduce() -> str by llm(incl_info=(self.name, self.age));
-    def suggest_hobby() -> str by llm(incl_info=(self.age));
+    def introduce() -> str by llm();
+    def suggest_hobby() -> str by llm();
 }
 
 with entry {
     alice = Person("Alice", 25);
     print(alice.introduce());
     print(alice.suggest_hobby());
-}
-```
-
-### Complex AI-Integrated Workflows with Objects
-
-Create sophisticated multi-agent systems using object methods:
-
-```jac linenums="1"
-import from mtllm.llms {OpenAI}
-
-glob llm = OpenAI(model_name="gpt-4o");
-
-obj Essay {
-    has essay: str;
-
-    def get_essay_judgement(criteria: str) -> str by llm(incl_info=(self.essay));
-    def get_reviewer_summary(judgements: dict) -> str by llm(incl_info=(self.essay));
-    def give_grade(summary: str) -> 'A to D': str by llm();
-}
-
-with entry {
-    essay = "With a population of approximately 45 million Spaniards and 3.5 million immigrants,"
-        "Spain is a country of contrasts where the richness of its culture blends it up with"
-        "the variety of languages and dialects used. Being one of the largest economies worldwide,"
-        "and the second largest country in Europe, Spain is a very appealing destination for tourists"
-        "as well as for immigrants from around the globe. Almost all Spaniards are used to speaking at"
-        "least two different languages, but protecting and preserving that right has not been"
-        "easy for them.Spaniards have had to struggle with war, ignorance, criticism and the governments,"
-        "in order to preserve and defend what identifies them, and deal with the consequences.";
-    essay = Essay(essay);
-    criterias = ["Clarity", "Originality", "Evidence"];
-    judgements = {};
-    for criteria in criterias {
-        judgement = essay.get_essay_judgement(criteria);
-        judgements[criteria] = judgement;
-    }
-    summary = essay.get_reviewer_summary(judgements);
-    grade = essay.give_grade(summary);
-    print("Reviewer Notes: ", summary);
-    print("Grade: ", grade);
 }
 ```
 
@@ -172,9 +159,9 @@ When building AI-integrated applications, providing the right amount of context 
 Docstrings serve as crucial context for your intelligent functions. MTLLM uses docstrings to understand the function's purpose and expected behavior. Keep them concise and focused - they should guide the LLM, not replace its reasoning.
 
 ```jac linenums="1"
-import from mtllm.llms {OpenAI}
+import from mtllm {Model}
 
-glob llm = OpenAI(model_name="gpt-4o");
+glob llm = Model(model_name="gpt-4o");
 
 """Translate text to the target language."""
 def translate(text: str, target_language: str) -> str by llm();
@@ -222,6 +209,8 @@ def check_eligibility(person: Person, service_type: str) -> bool by llm();
 When using object methods with MTLLM, you can include specific object attributes as context using the `incl_info` parameter:
 
 ```jac linenums="1"
+glob current_promotions = ["summer_sale", "loyalty_bonus", "new_member_discount"];
+
 obj Customer {
     has name: str;
     has purchase_history: list[str];
@@ -235,10 +224,10 @@ sem Customer.membership_tier = "bronze, silver, gold, or platinum";
 
 obj Customer {
     """Generate personalized product recommendations."""
-    def get_recommendations(self, category: str) -> list[str] by llm(incl_info=(self.purchase_history, self.membership_tier));
+    def get_recommendations(category: str) -> list[str] by llm();
 
-    """Create a tailored marketing message."""
-    def create_marketing_message(self, promotion_type: str) -> str by llm(incl_info=(self.satisfaction_score, self.membership_tier));
+    """Create a tailored marketing message using current promotions."""
+    def create_marketing_message(promotion_type: str) -> str by llm(incl_info=(current_promotions));
 }
 ```
 
@@ -246,7 +235,7 @@ obj Customer {
 
 - **Docstrings**: Use for function-level context and behavior description
 - **Semstrings**: Use for attribute-level descriptions and domain-specific terminology
-- **incl_info**: Use to selectively include relevant object state in method calls
+- **incl_info**: Use to selectively include relevant objects/variables in method calls
 
 The `sem` keyword can be used in [separate implementation files](../../jac_book/chapter_5.md#declaring-interfaces-vs-implementations), allowing for cleaner code organization and better maintainability.
 
@@ -257,9 +246,9 @@ In addition to defining functions and methods with the `by llm()` syntax, Jaclan
 You can override any function call by appending `by llm()` to the function call:
 
 ```jac linenums="1"
-import from mtllm.llms {OpenAI}
+import from mtllm {Model}
 
-glob llm = OpenAI(model_name="gpt-4o");
+glob llm = Model(model_name="gpt-4o");
 
 """Greet the user with the given name."""
 def greet(name: str) -> str {
@@ -296,10 +285,10 @@ In this example:
 The ReAct (Reasoning and Acting) method enables true agentic behavior by allowing agents to reason about problems and use external tools to solve them. This is where functions become genuinely agentic - they can autonomously decide what tools they need and how to use them.
 
 ```jac linenums="1"
-import from mtllm.llms {OpenAI}
+import from mtllm {Model}
 import from datetime {datetime}
 
-glob llm = OpenAI(model_name="gpt-4o");
+glob llm = Model(model_name="gpt-4o");
 
 obj Person {
     has name: str;
