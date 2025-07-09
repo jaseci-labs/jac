@@ -8,37 +8,6 @@ To get started with MTLLM, install the base package:
 pip install mtllm
 ```
 
-MTLLM supports multiple LLM providers. Choose and install the integration you need:
-
-=== "OpenAI"
-    ```bash
-    pip install mtllm[openai]
-    ```
-=== "Anthropic"
-    ```bash
-    pip install mtllm[anthropic]
-    ```
-=== "Google"
-    ```bash
-    pip install mtllm[google]
-    ```
-=== "Groq"
-    ```bash
-    pip install mtllm[groq]
-    ```
-=== "Huggingface"
-    ```bash
-    pip install mtllm[huggingface]
-    ```
-=== "Ollama"
-    ```bash
-    pip install mtllm[ollama]
-    ```
-=== "Together"
-    ```bash
-    pip install mtllm[together]
-    ```
-
 ## Your First AI Integrated Function
 
 Let's build a simple translation function that demonstrates how MTLLM transforms ordinary functions into intelligent, reasoning components.
@@ -47,7 +16,7 @@ Let's build a simple translation function that demonstrates how MTLLM transforms
 
 Here's how you'd typically handle translation with manual API integration:
 
-```jac
+```jac linenums="1"
 def translate(eng_sentence: str, target_lang: str) -> str {
     # Traditional approach: manual API calls, prompt engineering, response parsing
     # Lots of boilerplate code would go here...
@@ -68,20 +37,17 @@ With the `by` keyword abstraction in MTLLM, your functions become intelligent ag
 
 #### Step 1: Import Your LLM
 
-```jac
-import from mtllm.llms {OpenAI}
+```jac linenums="1"
+import from mtllm {Model}
 
-glob llm = OpenAI(model_name="gpt-4o");
+glob llm = Model(model_name="gpt-4o");
 ```
 
-#### Step 2: Transform Your Function into an Agent
+#### Step 2: Transform Your Function into an Inteligent Function
 
 Simply add `by llm` to make your function AI-integrated:
 
-```jac
-import from mtllm.llms {OpenAI}
-
-glob llm = OpenAI();
+```jac linenums="1"
 
 def translate(eng_sentence: str, target_lang: str) -> str by llm();
 
