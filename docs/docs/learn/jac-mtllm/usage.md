@@ -4,7 +4,7 @@ This guide covers all the ways you can use MTLLM to build AI-integrated software
 
 ## Available Models
 
-MTLLM use [LiteLLM](https://docs.litellm.ai/docs) under the hood allowing seamless integration of a wide range of models.
+MTLLM use [LiteLLM](https://docs.litellm.ai/docs) under the hood allowing seamless integration with a wide range of models.
 
 === "OpenAI"
     ```jac linenums="1"
