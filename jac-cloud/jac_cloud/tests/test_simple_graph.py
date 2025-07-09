@@ -1,5 +1,6 @@
 """JacLang Jaseci Unit Test."""
 
+from concurrent.futures import ThreadPoolExecutor
 from os import getenv
 from pathlib import Path
 from time import sleep
@@ -1283,6 +1284,28 @@ class SimpleGraphTest(JacCloudTest):
             self.post_api(f"visit_nested_node/{nested_node['id']}", expect_error=True),
         )
 
+    def trigger_flood_request(self) -> None:
+        """Test multiple simultaneous request."""
+        with ThreadPoolExecutor(max_workers=20) as exc:
+            futures = [exc.submit(self.post_api, "traverse_graph") for i in range(20)]
+
+        for future in futures:
+            res = future.result()
+
+            self.assertEqual(200, res["status"])
+
+            root_node = res["reports"].pop(0)
+            self.assertTrue(root_node["id"].startswith("n::"))
+            self.assertEqual({}, root_node["context"])
+
+            for idx, report in enumerate(res["reports"]):
+                self.assertEqual({"val": idx + 1}, report["context"])
+
+                res = self.post_api(f"traverse_graph/{report["id"]}")
+                self.assertEqual(200, res["status"])
+                for _idx, report in enumerate(res["reports"]):
+                    self.assertEqual({"val": idx + _idx + 1}, report["context"])
+
     # Individual test methods for each feature
 
     def test_01_openapi_specs(self) -> None:
@@ -1421,3 +1444,7 @@ class SimpleGraphTest(JacCloudTest):
     def test_19_custom_access_validation(self) -> None:
         """Test custom access validation."""
         self.trigger_custom_access_validation_test()
+
+    def test_20_flood_request(self) -> None:
+        """Test multiple simultaneous request."""
+        self.trigger_flood_request()
