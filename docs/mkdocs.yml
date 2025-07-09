@@ -44,7 +44,6 @@ nav:
         - "learn/jac-mtllm/with_llm.md"
         - Quick-start: "learn/jac-mtllm/quickstart.md"
         - How to use MTP: "learn/jac-mtllm/usage.md"
-        - Available Models: "learn/jac-mtllm/model_declaration.md"
         - Using Multimodal models: "learn/jac-mtllm/multimodality.md"
         - Bring your own LM: "learn/jac-mtllm/create_own_lm.md"
         - Python MTLLM Interface: "learn/jac-mtllm/python_integration.md"
