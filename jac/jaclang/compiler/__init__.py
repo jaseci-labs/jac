@@ -47,8 +47,8 @@ TOKEN_MAP = {
 # fmt: off
 TOKEN_MAP.update(
     {
-        "CARROW_L": "<++", "CARROW_R": "++>", "GLOBAL_OP": ":global:",
-        "NONLOCAL_OP": ":nonlocal:", "WALKER_OP": ":walker:", "NODE_OP": ":node:",
+        "CARROW_L": "<++", "CARROW_R": "++>", "GLOBAL_OP": "global",
+        "NONLOCAL_OP": "nonlocal", "WALKER_OP": ":walker:", "NODE_OP": ":node:",
         "EDGE_OP": ":edge:", "CLASS_OP": ":class:", "OBJECT_OP": ":obj:",
         "TYPE_OP": "`", "ABILITY_OP": ":can:", "NULL_OK": "?",
         "KW_OR": "|", "ARROW_BI": "<-->", "ARROW_L": "<--",

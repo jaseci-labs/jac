@@ -1026,6 +1026,8 @@ class DocIRGenPass(UniPass):
         parts: list[doc.DocType] = []
         for i in node.kid:
             parts.append(i.gen.doc_ir)
+            if isinstance(i, uni.Token) and i.name == Tok.GLOBAL_OP:
+                parts.append(self.space())
         node.gen.doc_ir = self.group(self.concat(parts))
 
     def exit_non_local_stmt(self, node: uni.NonLocalStmt) -> None:
