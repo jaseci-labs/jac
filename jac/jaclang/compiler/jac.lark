@@ -452,9 +452,9 @@ builtin_type: TYP_TYPE
 // ************************************************************************* //
 
 PYNLINE: /::py::(.|\n|\r)*?::py::/
-GLOBAL_OP: /:g:|:global:/
-NONLOCAL_OP: /:nl:|:nonlocal:/
 TYPE_OP: /`/
+GLOBAL_OP: "global"
+NONLOCAL_OP: "nonlocal"
 
 // [Heading]: f-string tokens.
 FSTR_START.1: "f\""

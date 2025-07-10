@@ -1,12 +1,12 @@
 glob x = "Jaclang ";
 
 def outer_func -> None {
-    :g: x;
+    global x;
 
     x = 'Jaclang is ';
     y = 'Awesome';
     def inner_func -> tuple[str, str] {
-        :nl: y;
+        nonlocal y;
 
         y = "Fantastic";
         return (x, y);

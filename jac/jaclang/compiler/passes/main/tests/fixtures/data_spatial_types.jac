@@ -82,7 +82,7 @@ walker walker2 {
 }
 
 impl walker2.process {
-    :g: list1 ;
+    global list1 ;
 
     for j in range(0, len(list1) - (here.no)) {
         here ++> inner_node(main=here.no, sub=j + 1);
@@ -108,7 +108,7 @@ walker walker4 {
     }
 
     can skipin with inner_node entry {
-        :g: list1 ;
+        global list1 ;
 
         j = here.sub - 1;
         if list1[j] > list1[j + 1] {

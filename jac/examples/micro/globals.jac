@@ -5,10 +5,10 @@ glob fruits = ["apple", "banana", "orange"];
 glob person = {"name": "Alice", "age": 30, "city": "New York"};
 
 def print_globs() -> None {
-    :global:fruits,age; # :g: and :global: are equivalent
+    global fruits,age;
     age = 30;
     fruits = ["pear", "grape", "kiwi"];
-    print(age, temperature, name);  # :g:<name> references global vs local
+    print(age, temperature, name);  # global <name> references global vs local
     fruits |> print;
     person |> print;
 }
