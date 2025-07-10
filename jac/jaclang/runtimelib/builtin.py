@@ -6,6 +6,7 @@ import json
 from abc import abstractmethod
 from typing import ClassVar, Optional, override
 
+from jaclang.runtimelib.archetype import AccessLevel
 from jaclang.runtimelib.constructs import Archetype, NodeArchetype, Root
 from jaclang.runtimelib.machine import JacMachineInterface as Jac
 
@@ -51,6 +52,16 @@ def jobj(id: str) -> Archetype | None:
     return Jac.get_object(id)
 
 
+def grant(obj: Archetype, level: AccessLevel) -> None:
+    """Grant permission for the object."""
+    Jac.perm_grant(obj, level=level)
+
+
+def revoke(obj: Archetype) -> None:
+    """Revoke permission for the object."""
+    Jac.perm_revoke(obj)
+
+
 def _jac_graph_json(file: Optional[str] = None) -> str:
     """Get the graph in json string."""
     processed: list[Root | NodeArchetype] = []
@@ -92,4 +103,6 @@ __all__ = [
     "printgraph",
     "jid",
     "jobj",
+    "grant",
+    "revoke",
 ]
