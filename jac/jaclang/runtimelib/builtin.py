@@ -62,6 +62,11 @@ def revoke(obj: Archetype) -> None:
     Jac.perm_revoke(obj)
 
 
+def get_all_root() -> list[Jac.Root]:
+    """Get all the roots."""
+    return Jac.get_all_root()
+
+
 def _jac_graph_json(file: Optional[str] = None) -> str:
     """Get the graph in json string."""
     processed: list[Root | NodeArchetype] = []
@@ -105,4 +110,5 @@ __all__ = [
     "jobj",
     "grant",
     "revoke",
+    "get_all_root",
 ]

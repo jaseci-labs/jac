@@ -1247,6 +1247,12 @@ class JacBasics:
         return JacMachine.get_context().get_root()
 
     @staticmethod
+    def get_all_root() -> list[Root]:
+        """Get all the roots."""
+        jmem = JacMachineInterface.get_context().mem
+        return list(jmem.all_root())
+
+    @staticmethod
     def build_edge(
         is_undirected: bool,
         conn_type: Optional[Type[EdgeArchetype] | EdgeArchetype],

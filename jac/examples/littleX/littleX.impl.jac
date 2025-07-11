@@ -97,10 +97,10 @@ impl visit_profile.visit_profile {
 impl load_user_profiles.load_profiles {
         self.profiles: list = [];
 
-        for user in NodeAnchor.Collection.find({"name": "Profile"}) {
-            user_node = user.archetype;
+        for each_root in get_all_root() {
+            profile = [each_root --> (`?Profile)][0];
             self.profiles.append(
-                {"name": user_node.username, "id": jid(user_node)}
+                {"name": profile.username, "id": jid(profile)}
             );
         }
     }

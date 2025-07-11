@@ -59,6 +59,11 @@ class MongoDB(Memory[ObjectId, BaseAnchor]):
                     cnodes.add(edge.target)
             self.find(cnodes)
 
+    def all_root(self) -> Generator[Root, None, None]:  # type: ignore[override]
+        """Get all the roots."""
+        for anchor in NodeAnchor.Collection.find({"name": ""}):
+            yield cast(Root, anchor.archetype)
+
     def find(  # type: ignore[override]
         self,
         anchors: BA | Iterable[BA],

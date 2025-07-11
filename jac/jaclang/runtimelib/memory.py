@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pickle import dumps
 from shelve import Shelf, open
-from typing import Callable, Generator, Generic, Iterable, TypeVar
+from typing import Any, Callable, Generator, Generic, Iterable, TypeVar, cast
 from uuid import UUID
 
 from .archetype import Anchor, NodeAnchor, Root, TANCH
@@ -28,6 +28,20 @@ class Memory(Generic[ID, TANCH]):
     def is_cached(self, id: ID) -> bool:
         """Check if id if already cached."""
         return id in self.__mem__
+
+    def query(
+        self,
+        filter: Callable[[TANCH], bool] | None = None,
+    ) -> Generator[TANCH, None, None]:
+        """Find anchors from memory with filter."""
+        return (
+            anchor for anchor in self.__mem__.values() if not filter or filter(anchor)
+        )
+
+    def all_root(self) -> Generator[Root, None, None]:
+        """Find all the roots."""
+        for anchor in self.query(lambda anchor: isinstance(anchor.archetype, Root)):
+            yield cast(Root, anchor.archetype)
 
     def find(
         self,
@@ -136,6 +150,20 @@ class ShelfStorage(Memory[UUID, Anchor]):
                         and not d.edges
                     ):
                         self.__shelf__[_id] = d
+
+    def query(
+        self,
+        filter: Callable[[Anchor], bool] | None = None,
+    ) -> Generator[Any, None, None]:
+        """Find anchors from memory by ids with filter."""
+        if isinstance(self.__shelf__, Shelf):
+            for anchor in self.__shelf__.values():
+                if not filter or filter(anchor):
+                    if anchor.id not in self.__mem__:
+                        self.__mem__[anchor.id] = anchor
+                    yield anchor
+        else:
+            yield from super().query(filter)
 
     def find(
         self,
