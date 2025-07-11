@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 from abc import abstractmethod
-from typing import ClassVar, Optional, override
+from typing import ClassVar, Generator, Optional, override
+
+from jac_cloud.core.archetype import NodeAnchor
 
 from jaclang.runtimelib.archetype import AccessLevel
 from jaclang.runtimelib.constructs import Archetype, NodeArchetype, Root
@@ -60,6 +62,11 @@ def grant(obj: Archetype, level: AccessLevel) -> None:
 def revoke(obj: Archetype) -> None:
     """Revoke permission for the object."""
     Jac.perm_revoke(obj)
+
+
+def find_data(archetype: str, by: str) -> Generator:
+    """Find from database."""
+    return NodeAnchor.Collection.find({by: archetype})
 
 
 def _jac_graph_json(file: Optional[str] = None) -> str:
