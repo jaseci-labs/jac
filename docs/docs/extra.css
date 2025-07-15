@@ -425,3 +425,32 @@ hr {
     border-top-width: 2px;
     border-color: #404040;
 }
+
+/* Version Selector Responsive Styles */
+@media (max-width: 768px) {
+    .version-selector {
+        flex-direction: column;
+        gap: 4px;
+        align-items: flex-start;
+    }
+
+    .version-label {
+        font-size: 10px;
+    }
+
+    .version-dropdown {
+        min-width: 100px;
+        font-size: 12px;
+        padding: 6px 24px 6px 8px;
+    }
+}
+
+@media (max-width: 480px) {
+    .version-selector .version-label {
+        display: none;
+    }
+
+    .version-dropdown {
+        min-width: 80px;
+    }
+}

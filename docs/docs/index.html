@@ -64,6 +64,49 @@
             align-items: center;
         }
 
+        /* Version Selector Styles */
+        .version-selector {
+            position: relative;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .version-dropdown {
+            background-color: #404040;
+            border: 1px solid #555;
+            border-radius: 6px;
+            padding: 8px 12px;
+            color: #ffffff;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s;
+            min-width: 120px;
+            appearance: none;
+            background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23ffffff' d='M4.427 9.573L8 6l3.573 3.573 1.414-1.414L8 3.172 3.013 8.159z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 8px center;
+            background-size: 12px;
+            padding-right: 32px;
+        }
+
+        .version-dropdown:hover {
+            border-color: #ff6b35;
+            background-color: #4a4a4a;
+        }
+
+        .version-dropdown:focus {
+            outline: none;
+            border-color: #ff6b35;
+            box-shadow: 0 0 0 2px rgba(255, 107, 53, 0.2);
+        }
+
+        .version-label {
+            font-size: 12px;
+            color: #888;
+            font-weight: 500;
+        }
+
         .search-input {
             background-color: #404040;
             border: 1px solid #555;
@@ -1308,6 +1351,16 @@
                             ⭐ <span id="github-stars">--</span> 🍴 <span id="github-forks">--</span>
                         </span>
                     </a>
+
+                    <!-- Version Selector -->
+                    <div class="version-selector">
+                        <span class="version-label">Version:</span>
+                        <select id="version-select" class="version-dropdown">
+                            <option value="latest">Latest</option>
+                            <option value="stable">Stable</option>
+                            <option value="beta">Beta</option>
+                        </select>
+                    </div>
                 </div>
             </div>
         </div>

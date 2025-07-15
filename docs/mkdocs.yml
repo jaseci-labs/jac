@@ -196,6 +196,10 @@ extra:
     provider: mike
     default: latest
     alias: true
+  version_info:
+    provider: mike
+    default: latest
+    versions: []
   generator: false
   social:
     - icon: fontawesome/brands/mastodon
@@ -211,6 +215,7 @@ extra_javascript:
   - https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.2/min/vs/loader.min.js
   - js/jac.monarch.js
   - js/run-code.js
+  - assets/versions-handler.js
 
 plugins:
   - mike

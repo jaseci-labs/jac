@@ -1,0 +1,27 @@
+[
+  {
+    "version": "latest",
+    "title": "Latest (Development)",
+    "aliases": ["latest"]
+  },
+  {
+    "version": "v0.8.4",
+    "title": "v0.8.4 (Stable)",
+    "aliases": []
+  },
+  {
+    "version": "v0.8.3",
+    "title": "v0.8.3",
+    "aliases": []
+  },
+  {
+    "version": "v0.8.1",
+    "title": "v0.8.1",
+    "aliases": []
+  },
+  {
+    "version": "v0.8.0",
+    "title": "v0.8.0",
+    "aliases": []
+  }
+]
