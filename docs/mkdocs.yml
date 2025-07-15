@@ -192,6 +192,10 @@ extra_css:
   - extra.css
 
 extra:
+  version:
+    provider: mike
+    default: latest
+    alias: true
   generator: false
   social:
     - icon: fontawesome/brands/mastodon
@@ -209,6 +213,7 @@ extra_javascript:
   - js/run-code.js
 
 plugins:
+  - mike
   - search
   - open-in-new-tab
   - mkdocs-video:
