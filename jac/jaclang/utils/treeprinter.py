@@ -409,16 +409,16 @@ def _build_symbol_tree_common(
     for sym in syms_to_iterate:
         symbol_node = SymbolTree(node_name=f"{sym.sym_name}", parent=symbols)
         SymbolTree(node_name=f"{sym.access} {sym.sym_type}", parent=symbol_node)
-
+        import re
         if sym.decl and sym.decl.loc.first_line > 0:
             SymbolTree(
-                node_name=f"decl: line {sym.decl.loc.first_line}, col {sym.decl.loc.col_start}",
+                node_name=f"decl: line {sym.decl.loc.first_line}, col {sym.decl.loc.col_start} {re.search(r'[^/]+$', sym.decl.loc.mod_path).group()}",
                 parent=symbol_node,
             )
             defn = SymbolTree(node_name="defn", parent=symbol_node)
             [
                 SymbolTree(
-                    node_name=f"line {n.loc.first_line}, col {n.loc.col_start}",
+                    node_name=f"line {n.loc.first_line}, col {n.loc.col_start} {re.search(r'[^/]+$', n.loc.mod_path).group()}",
                     parent=defn,
                 )
                 for n in sym.defn
@@ -426,7 +426,7 @@ def _build_symbol_tree_common(
             uses = SymbolTree(node_name="uses", parent=symbol_node)
             [
                 SymbolTree(
-                    node_name=f"line {n.loc.first_line}, col {n.loc.col_start}",
+                    node_name=f"line {n.loc.first_line}, col {n.loc.col_start} {re.search(r'[^/]+$', n.loc.mod_path).group()}",
                     parent=uses,
                 )
                 for n in sym.uses

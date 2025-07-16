@@ -6,7 +6,7 @@ import lsprotocol.types as lspt
 import pytest
 from jaclang import JacMachineInterface as _
 from jaclang.langserve.engine import JacLangServer
-from .session import LspSession
+from jaclang.langserve.tests.session import LspSession
 
 
 class TestJacLangServer(TestCase):
@@ -599,5 +599,8 @@ class TestJacLangServer(TestCase):
         lsp.deep_check(guess_game_file)
         self.assertIn(
             "/tests/fixtures/M1.jac:0:0-0:0",
-            str(lsp.get_definition(guess_game_file, lspt.Position(29, 9))),
+            str(lsp.get_references(guess_game_file, lspt.Position(49, 14))),
         )
+
+
+TestJacLangServer().test_binder_go_to_module()

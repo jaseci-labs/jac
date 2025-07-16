@@ -128,6 +128,7 @@ class BinderPass(UniPass):
     def _handle_imported_chain(self, node: uni.AtomTrailer, operation: str) -> bool:
         """Handle chains that start with imported symbols."""
         try:
+            # print(f"Resolving import for chain: {node.unparse()}")
             self.resolve_import(node)
             return True
         except Exception:
@@ -146,14 +147,17 @@ class BinderPass(UniPass):
                 first_sym.add_use(attr_list[0].name_spec)
 
             for attr_node in attr_list[1:]:
+                # print(f"Resolving attribute '{attr_node.sym_name}' in chain")
                 if not current_sym_tab:
                     break
 
                 attr_sym = current_sym_tab.lookup(attr_node.sym_name)
                 if not attr_sym:
-                    # TODO # self.log_error(
-                    #     f"Could not resolve attribute '{attr_node.sym_name}' in chain"
-                    # )
+                    # print(f"Could not resolve attribute '{attr_node.sym_name}' in chain")
+                    # TODO # 
+                    self.log_error(
+                        f"Could not resolve attribute '{attr_node.sym_name}' in chain"
+                    )
                     return False
 
                 if operation == "define":
@@ -208,7 +212,7 @@ class BinderPass(UniPass):
         else:
             pass
             # TODO
-            # self.log_error("Assignment target not valid")
+            self.log_error("Assignment target not valid")
 
     def enter_ability(self, node: uni.Ability) -> None:
         """Enter ability node and set up method context."""
@@ -243,7 +247,7 @@ class BinderPass(UniPass):
         except Exception:
             pass
             # TODO
-            # self.log_error(f"Error while setting up event context: {str(e)}")
+            self.log_error(f"Error while setting up event context: {str(e)}")
 
     def _setup_walker_context(self, node: uni.Ability) -> None:
         """Init 'here' for walker; link symbol table to parent."""
@@ -341,7 +345,7 @@ class BinderPass(UniPass):
         else:
             pass
             # TODO
-            # self.log_error("Function call target not valid")
+            self.log_error("Function call target not valid")
 
     ##################################
     ##    Comprehensions support    ##
@@ -377,7 +381,7 @@ class BinderPass(UniPass):
         else:
             pass
             # TODO
-            # self.log_error("Named target not valid")
+            self.log_error("Named target not valid")
 
     #####################
     ## Collecting uses ##
@@ -444,18 +448,20 @@ class BinderPass(UniPass):
         import_node = self._find_import_for_symbol(first_obj_sym)
         if not import_node:
             # TODO
-            # self.log_error(
-            #     f"Could not find import statement for symbol '{first_obj_sym.sym_name}'"
-            # )
+            self.log_error(
+                f"Could not find import statement for symbol '{first_obj_sym.sym_name}'"
+            )
             return
 
         module_path = self._get_module_path_from_symbol(first_obj_sym)
         if not module_path:
             # TODO
-            # self.log_error("Could not resolve module path for import")
+            self.log_error("Could not resolve module path for import")
             return
 
         linked_module = self._parse_and_link_module(module_path, first_obj_sym)
+        # print(f"Linked module: {linked_module.__repr__()}")
+        # print('attr_list:', [attr.unparse() for attr in attr_list])
         if linked_module:
             self._link_attribute_chain(attr_list, first_obj_sym, linked_module)
 
@@ -490,27 +496,39 @@ class BinderPass(UniPass):
         """Link the full attribute chain by resolving each symbol."""
         current_symbol = first_symbol
         current_sym_table = current_module.sym_tab
-
+        # from icecream import ic
+        # ic(current_symbol)
+        # ic(current_sym_table)
         # Add use for the first symbol
         first_obj = attr_list[0]
-        current_symbol.add_use(first_obj)
+        # ic(first_obj)
+        current_symbol.add_use(first_obj.name_spec)
+        # print(current_symbol.decl)
+        # print(current_symbol.uses)
 
         # Iterate through remaining attributes in the chain
         for attr_node in attr_list[1:]:
+            # print(f"Resolving attribute '{attr_node.sym_name}' in chain")
             if not current_sym_table:
+                # print(f"Current symbol table is None, breaking chain resolution")
                 return
-
-            attr_symbol = current_sym_table.lookup(attr_node.sym_name)
+            # print(f"Current symbol table: {current_sym_table}")
+            attr_symbol = current_sym_table.use_lookup(attr_node.sym_name)
             if not attr_symbol:
-                # self.log_error(
-                #     f"Could not resolve attribute '{attr_node.sym_name}' in chain"
-                # )
+                # print(f"Could not resolve attribute '{attr_node.sym_name}' in chain")
+
+                self.log_error(
+                    f"Could not resolve attribute '{attr_node.sym_name}' in chain"
+                )
                 # TODO:
                 break
 
             attr_symbol.add_use(attr_node)
+            # print(f"Linked attribute '{attr_node.sym_name}' to symbol '{current_symbol.sym_name}'")
             current_symbol = attr_symbol
             current_sym_table = current_symbol.symbol_table
+        # print(f"Final symbol in chain: {current_symbol.sym_name} with table {current_sym_table}")
+        # print(f"cur sym decl>> {current_symbol.decl}")
 
     # TODO:move this to Jac Program
     def _parse_and_link_module(
@@ -536,7 +554,7 @@ class BinderPass(UniPass):
 
         except Exception:
             # TODO
-            # self.log_error(f"Failed to parse module '{module_path}': {str(e)}")
+            self.log_error(f"Failed to parse module '{module_path}': {str(e)}")
             return None
 
     def load_builtins(self) -> None:

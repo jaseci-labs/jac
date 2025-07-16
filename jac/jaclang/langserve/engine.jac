@@ -554,6 +554,7 @@ class JacLangServer(JacProgram , LanguageServer) {
         }
         index1 =
             utils.find_index(sem_mgr.sem_tokens, position.line, position.character);
+        print(sem_mgr.sem_tokens);
         if index1 is None {
             return [];
         }
