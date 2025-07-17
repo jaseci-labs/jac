@@ -83,17 +83,17 @@ This syntax makes loop components explicit and reduces common iteration errors.
 
 ```jac
 # Basic counting
-for i=0 to i<10 by i+=1 {
+for i=0; i<10; i+=1 {
     print(i);  # Prints 0 through 9
 }
 
 # Custom increments
-for count=100 to count>0 by count-=5 {
+for count=100; count>0; count-=5 {
     print(f"Countdown: {count}");
 }
 
 # Complex conditions
-for x=1.0 to x<=100.0 by x*=1.5 {
+for x=1.0; x<=100.0; x*=1.5 {
     # Exponential growth pattern
     process_value(x);
 }
@@ -106,7 +106,7 @@ Different loop syntaxes can be combined for complex iteration patterns:
 ```jac
 for outer_char in "abc" {
     for inner_num in range(1, 3) {
-        for counter=1 to counter<=2 by counter+=1 {
+        for counter=1; counter<=2; counter+=1 {
             print(f"{outer_char}-{inner_num}-{counter}");
         }
     }
@@ -218,7 +218,7 @@ Async for loops enable efficient processing of streaming data and concurrent ope
 
 **Multi-Variable For-To-By**:
 ```jac
-for i=0, j=len(array)-1 to i<j by i+=1, j-=1 {
+for i=0, j=len(array)-1; i<j; i+=1, j-=1 {
     # Two-pointer technique
     if array[i] + array[j] == target {
         return (i, j);
@@ -258,9 +258,9 @@ walker PathAnalyzer {
             path_length = calculate_distance(here, target_node);
             self.path_lengths[target_node.id] = path_length;
         }
-        
+
         # Process paths by length
-        for length=1 to length<=max_depth by length+=1 {
+        for length=1; length<=max_depth; length+=1 {
             nodes_at_distance = [n for n, d in self.path_lengths.items() if d == length];
             for node in nodes_at_distance {
                 process_node_at_distance(node, length);

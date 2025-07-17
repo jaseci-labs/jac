@@ -1186,15 +1186,15 @@ class JacParser(Transform[uni.Source, uni.Module]):
         def for_stmt(self, _: None) -> uni.IterForStmt | uni.InForStmt:
             """Grammar rule.
 
-            for_stmt: KW_ASYNC? KW_FOR assignment KW_TO expression KW_BY assignment code_block else_stmt?
+            for_stmt: KW_ASYNC? KW_FOR assignment SEMI expression SEMI assignment code_block else_stmt?
                     | KW_ASYNC? KW_FOR atomic_chain KW_IN expression code_block else_stmt?
             """
             is_async = bool(self.match_token(Tok.KW_ASYNC))
             self.consume_token(Tok.KW_FOR)
             if iter := self.match(uni.Assignment):
-                self.consume_token(Tok.KW_TO)
+                self.consume_token(Tok.SEMI)
                 condition = self.consume(uni.Expr)
-                self.consume_token(Tok.KW_BY)
+                self.consume_token(Tok.SEMI)
                 count_by = self.consume(uni.Assignment)
                 body = self.consume(list)
                 else_body = self.match(uni.ElseStmt)

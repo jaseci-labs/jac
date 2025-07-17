@@ -15,7 +15,7 @@ impl node_1.func_1 {
 
 impl Creator.func2 {
     end = here;
-    for i=0 to i<5 by i+=1  {
+    for i=0; i<5; i+=1  {
         end ++> (end := node_1(val=i + 1));
     }
     visit [-->];

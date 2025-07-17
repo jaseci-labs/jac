@@ -10,7 +10,7 @@ obj TestObj {
 with entry {
     random.seed(42);
     apple = [];
-    for i=0 to i<100 by i+=1  {
+    for i=0; i<100; i+=1  {
         apple.append(TestObj());
     }
 

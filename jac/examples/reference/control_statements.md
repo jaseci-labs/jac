@@ -73,7 +73,7 @@ for item in collection {
 
 **For-To-By Loops**
 ```jac
-for i=0 to i<10 by i+=1 {
+for i=0; i<10; i+=1 {
     if i % 2 == 0 {
         continue;  # Skip even numbers
     }

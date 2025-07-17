@@ -109,7 +109,7 @@ def grade_score(score: int) -> str {
 **Complex Control Flow**
 ```jac
 def search_array(arr: list, target: int) -> int {
-    for i=0 to i<len(arr) by i+=1 {
+    for i=0; i<len(arr); i+=1 {
         if arr[i] == target {
             return i;  # Return index when found
         }
@@ -268,7 +268,7 @@ def is_prime(n: int) -> bool {
     if n < 2 {
         return false;
     }
-    for i=2 to i*i<=n by i+=1 {
+    for i=2; i*i<=n; i+=1 {
         if n % i == 0 {
             return false;
         }

@@ -14,7 +14,7 @@ node item {
 }
 
 with entry {
-    for i=0 to i<5 by i+=1  {
+    for i=0; i<5; i+=1  {
         root ++> item();
     }
     root spawn Visitor();

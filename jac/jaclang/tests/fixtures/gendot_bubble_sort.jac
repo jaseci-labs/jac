@@ -17,7 +17,7 @@ walker walker1 {
 
 impl walker1.create_main_node {
     end = here;
-    for i=0 to i<len(list1)+1 by i+=1  {
+    for i=0; i<len(list1)+1; i+=1  {
         end ++> (end := main_node(no=i + 1));
         visit [-->];
     }

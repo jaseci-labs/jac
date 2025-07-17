@@ -24,11 +24,11 @@ jac dot_view [-h] filename
 >}
 >:walker:Creator:can:create {
 >    end = here;
->   for i=0 to i<3 by i+=1  {
+>   for i=0; i<3; i+=1  {
 >        end ++> (end := node_a(val=i + 1));
 >    }
 >    visit [-->];
->    for i=0 to i<3 by i+=1  {
+>    for i=0; i<3; i+=1  {
 >        here ++> node_a(val=i + 1);
 >    }
 >}

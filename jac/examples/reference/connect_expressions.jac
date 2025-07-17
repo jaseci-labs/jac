@@ -13,7 +13,7 @@ edge MyEdge {
 
 impl Creator.create {
     end = here;
-    for i=0 to i<7 by i+=1  {
+    for i=0; i<7; i+=1  {
         if i % 2 == 0 {
             end ++> (end := node_a(value=i));
         } else {
