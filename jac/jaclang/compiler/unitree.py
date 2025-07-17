@@ -3647,6 +3647,9 @@ class AtomTrailer(Expr):
             left = left.target
         if isinstance(left, AstSymbolNode):
             trag_list.insert(0, left)
+        elif isinstance(left, FuncCall):
+            if isinstance(left.target, AstSymbolNode):
+                trag_list.insert(0, left.target)
         return trag_list
 
 

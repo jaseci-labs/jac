@@ -111,12 +111,16 @@ class BinderPass(UniPass):
     def handle_symbol_chain(self, node: uni.AtomTrailer, operation: str) -> bool:
         """Handle symbol chains in AtomTrailer nodes."""
         attr_list = node.as_attr_list
+        # print([attr.unparse() for attr in attr_list])
         if not attr_list:
             return False
 
         first_obj = attr_list[0]
         first_obj_sym = self.cur_scope.lookup(first_obj.sym_name)
-
+        # print(f"first_obj.sym_name: {first_obj.sym_name} ")
+        if not self.ir_in.name == "builtins":
+            pass
+            # print(f"first_obj {first_obj.unparse()} sym: {first_obj_sym}")
         if not first_obj_sym:
             return False
 
@@ -201,10 +205,14 @@ class BinderPass(UniPass):
     def enter_assignment(self, node: uni.Assignment) -> None:
         """Enter assignment node."""
         for target in node.target:
+            # if not self.ir_in.name == 'builtins':
+            #     print(f"Processing assignment target: {target}")
             self._process_assignment_target(target)
 
     def _process_assignment_target(self, target: uni.Expr) -> None:
         """Process individual assignment target."""
+        # if not self.ir_in.name == 'builtins':
+        #     print(f"Processing assignment target: {target.unparse()}")
         if isinstance(target, uni.AtomTrailer):
             self.handle_symbol_chain(target, "define")
         elif isinstance(target, uni.AstSymbolNode):
@@ -512,8 +520,7 @@ class BinderPass(UniPass):
             if not current_sym_table:
                 # print(f"Current symbol table is None, breaking chain resolution")
                 return
-            # print(f"Current symbol table: {current_sym_table}")
-            attr_symbol = current_sym_table.use_lookup(attr_node.sym_name)
+            attr_symbol = current_sym_table.use_lookup(attr_node.name_spec,sym_table=current_sym_table)
             if not attr_symbol:
                 # print(f"Could not resolve attribute '{attr_node.sym_name}' in chain")
 
@@ -523,7 +530,7 @@ class BinderPass(UniPass):
                 # TODO:
                 break
 
-            attr_symbol.add_use(attr_node)
+            # attr_symbol.add_use(attr_node)
             # print(f"Linked attribute '{attr_node.sym_name}' to symbol '{current_symbol.sym_name}'")
             current_symbol = attr_symbol
             current_sym_table = current_symbol.symbol_table
