@@ -232,6 +232,41 @@ def build(filename: str) -> None:
 
 
 @cmd_registry.register
+def bind(filename: str, typecheck: bool = False) -> None:
+    """Bind the specified .jac file.
+
+    Parses and binds a Jac source file, resolving symbols and preparing it for execution.
+    This step is necessary before running the program, as it ensures all references
+    are correctly linked and the program structure is validated.
+    TODO: performs type checking.
+
+    Args:
+        filename: Path to the .jac file to bind
+        typecheck: Print the symbol table after binding (default: False)
+
+    Examples:
+        jac bind myprogram.jac
+        jac bind myprogram.jac -t
+    """
+    if filename.endswith((".jac", ".py")):
+        (out := JacProgram()).bind(file_path=filename)
+        errs = len(out.errors_had)
+        warnings = len(out.warnings_had)
+        if typecheck:
+            for mods in out.mod.hub.values():
+                if mods.name == "builtins":
+                    continue
+                header = (
+                    f"{'=' * 6} SymTable({mods.name}) {'=' * (22 - len(mods.name))}"
+                )
+                divider = "=" * 40
+                print(f"{divider}\n{header}\n{divider}\n{mods.sym_tab.sym_pp()}")
+        print(f"Errors: {errs}, Warnings: {warnings}")
+    else:
+        print("Not a .jac/.py file.", file=sys.stderr)
+
+
+@cmd_registry.register
 def check(filename: str, print_errs: bool = True) -> None:
     """Run type checker for a specified .jac file.
 

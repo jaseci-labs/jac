@@ -34,7 +34,7 @@ classDiagram
         +sym_name
         +sym_type
         +sym_dotted_name
-        +fetch_sym_tab
+        +symbol_table
         +add_defn(node)
         +add_use(node)
     }
@@ -100,7 +100,7 @@ Key properties:
 - `sym_name`: The name of the symbol
 - `sym_type`: The type of the symbol (var, function, class, etc.)
 - `sym_dotted_name`: The fully qualified name of the symbol (including module path)
-- `fetch_sym_tab`: The symbol table associated with this symbol (if applicable)
+- `symbol_table`: The symbol table associated with this symbol (if applicable)
 
 ### InheritedSymbolTable
 

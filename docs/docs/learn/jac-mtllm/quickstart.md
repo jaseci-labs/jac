@@ -69,9 +69,9 @@ With the `by` keyword abstraction in MTLLM, your functions become intelligent ag
 #### Step 1: Import Your LLM
 
 ```jac
-import from mtllm.llms {OpenAI}
+import from mtllm.llm {Model}
 
-glob llm = OpenAI(model_name="gpt-4o");
+glob llm = Model(model_name="gpt-4o");
 ```
 
 #### Step 2: Transform Your Function into an Agent
@@ -79,9 +79,9 @@ glob llm = OpenAI(model_name="gpt-4o");
 Simply add `by llm` to make your function AI-integrated:
 
 ```jac
-import from mtllm.llms {OpenAI}
+import from mtllm.llm {Model}
 
-glob llm = OpenAI();
+glob llm = Model(model_name="gpt-4o");
 
 def translate(eng_sentence: str, target_lang: str) -> str by llm();
 

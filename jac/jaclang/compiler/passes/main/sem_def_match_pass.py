@@ -47,7 +47,7 @@ class SemDefMatchPass(Transform[uni.Module, uni.Module]):
             sym = current_sym_tab.lookup(part, deep=False)
             if sym is None:
                 return None
-            current_sym_tab = sym.fetch_sym_tab
+            current_sym_tab = sym.symbol_table
         return sym
 
     def connect_sems(

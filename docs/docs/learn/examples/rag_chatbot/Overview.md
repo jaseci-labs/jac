@@ -1,4 +1,4 @@
-# RAG Chatbot Overview
+# Jac MCP Chatbot Overview
 
 This project demonstrates a modern Retrieval-Augmented Generation (RAG) chatbot built using the Jac programming language, MTLLM, Jac Cloud, and Model Context Protocol (MCP) servers. It combines document ingestion, semantic search, and large language models (LLMs) to deliver a conversational AI experience that can answer questions based on your own documents.
 

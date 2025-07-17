@@ -50,43 +50,43 @@ class PyastGenPassTests(TestCaseMicroSuite, AstSyncTestMixin):
         # Function (full).
         sym_fn1 = code_gen.lookup("fn1")
         self.assertEqual(sym_fn1.semstr, "A function that takes two integers and returns nothing.")
-        self.assertEqual(sym_fn1.fetch_sym_tab.lookup("bar").semstr, "The first integer parameter.")
+        self.assertEqual(sym_fn1.symbol_table.lookup("bar").semstr, "The first integer parameter.")
 
         # Function (Missing baz)
         sym_fn2 = code_gen.lookup("fn2")
         self.assertEqual(sym_fn2.semstr, "A function that takes one integer and returns nothing.")
-        self.assertEqual(sym_fn2.fetch_sym_tab.lookup("bar").semstr, "The first integer parameter.")
-        self.assertEqual(sym_fn2.fetch_sym_tab.lookup("baz").semstr, "")
+        self.assertEqual(sym_fn2.symbol_table.lookup("bar").semstr, "The first integer parameter.")
+        self.assertEqual(sym_fn2.symbol_table.lookup("baz").semstr, "")
 
         # Function (Without sem at all)
         sym_fn3 = code_gen.lookup("fn3")
         self.assertTrue(sym_fn3.semstr == "")
-        self.assertEqual(sym_fn3.fetch_sym_tab.lookup("bar").semstr, "")
-        self.assertEqual(sym_fn3.fetch_sym_tab.lookup("baz").semstr, "")
+        self.assertEqual(sym_fn3.symbol_table.lookup("bar").semstr, "")
+        self.assertEqual(sym_fn3.symbol_table.lookup("baz").semstr, "")
 
         # Architype (with body).
         sym_arch1 = code_gen.lookup("Arch1")
         self.assertEqual(sym_arch1.semstr, "An object that contains two integer properties.")
-        self.assertEqual(sym_arch1.fetch_sym_tab.lookup("bar").semstr, "The first integer property.")
-        self.assertEqual(sym_arch1.fetch_sym_tab.lookup("baz").semstr, "The second integer property.")
+        self.assertEqual(sym_arch1.symbol_table.lookup("bar").semstr, "The first integer property.")
+        self.assertEqual(sym_arch1.symbol_table.lookup("baz").semstr, "The second integer property.")
 
         # Architype (without body).
         sym_arch2 = code_gen.lookup("Arch2")
         self.assertEqual(sym_arch2.semstr, "An object that contains two integer properties.")
-        self.assertEqual(sym_arch2.fetch_sym_tab.lookup("bar").semstr, "The first integer property.")
-        self.assertEqual(sym_arch2.fetch_sym_tab.lookup("baz").semstr, "The second integer property.")
+        self.assertEqual(sym_arch2.symbol_table.lookup("bar").semstr, "The first integer property.")
+        self.assertEqual(sym_arch2.symbol_table.lookup("baz").semstr, "The second integer property.")
 
         # Enum (with body).
         sym_enum1 = code_gen.lookup("Enum1")
         self.assertEqual(sym_enum1.semstr, "An enumeration that defines two values: Bar and Baz.")
-        self.assertEqual(sym_enum1.fetch_sym_tab.lookup("Bar").semstr, "The Bar value of the Enum1 enumeration.")
-        self.assertEqual(sym_enum1.fetch_sym_tab.lookup("Baz").semstr, "The Baz value of the Enum1 enumeration.")
+        self.assertEqual(sym_enum1.symbol_table.lookup("Bar").semstr, "The Bar value of the Enum1 enumeration.")
+        self.assertEqual(sym_enum1.symbol_table.lookup("Baz").semstr, "The Baz value of the Enum1 enumeration.")
 
         # Enum (without body).
         sym_enum2 = code_gen.lookup("Enum2")
         self.assertEqual(sym_enum2.semstr, "An enumeration that defines two values: Bar and Baz.")
-        self.assertEqual(sym_enum2.fetch_sym_tab.lookup("Bar").semstr, "The Bar value of the Enum2 enumeration.")
-        self.assertEqual(sym_enum2.fetch_sym_tab.lookup("Baz").semstr, "The Baz value of the Enum2 enumeration.")
+        self.assertEqual(sym_enum2.symbol_table.lookup("Bar").semstr, "The Bar value of the Enum2 enumeration.")
+        self.assertEqual(sym_enum2.symbol_table.lookup("Baz").semstr, "The Baz value of the Enum2 enumeration.")
 
         if code_gen.gen.py_ast and isinstance(code_gen.gen.py_ast[0], ast3.Module):
             prog = compile(code_gen.gen.py_ast[0], filename="<ast>", mode="exec")

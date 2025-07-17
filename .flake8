@@ -22,3 +22,4 @@ per-file-ignores =
     jac/jaclang/compiler/passes/tool/jac_formatter_pass.py:D102,D105,D107
     jac/jaclang/compiler/passes/tool/fuse_comments_pass.py:D102,D105,D107
     jac/jaclang/compiler/passes/tool/doc_ir.py:D102,D105,D107
+    jac/jaclang/compiler/passes/main/binder_pass.py:D102,E266

@@ -60,6 +60,28 @@ with entry {
 }
 ```
 
+#### 2. `mtllm.llms` Module Replaced with Unified `mtllm.llm {Model}`
+
+The mtllm library now uses a single unified Model class under the `mtllm.llm` module, instead of separate classes like `Gemini` and `OpenAI`. This simplifies usage and aligns model loading with HuggingFace-style naming conventions.
+
+**Before**
+
+```jac
+import from mtllm.llms { Gemini, OpenAI }
+
+glob llm1 = Gemini(model_name="gemini-2.0-flash");
+glob llm2 = OpenAI();
+```
+
+**After**
+
+```jac
+import from mtllm.llm { Model }
+
+glob llm1 = Model(model_name="gemini/gemini-2.0-flash");
+glob llm2 = Model(model_name="gpt-4o");
+```
+
 ### Version 0.8.1
 
 #### 1. `dotgen` builtin function is now name `printgraph`

@@ -72,7 +72,7 @@ for element in {1, 2, 3, 4} {
 For-to-by loops provide explicit control over counter-based iteration:
 
 ```jac
-for initialization to condition by increment {
+for initialization; condition; increment {
     # loop body
 }
 ```
