@@ -2454,9 +2454,9 @@ class IterForStmt(AstAsyncNode, AstElseBodyNode, CodeBlockStmt, UniScopeNode):
             new_kid.append(self.gen_token(Tok.KW_ASYNC))
         new_kid.append(self.gen_token(Tok.KW_FOR))
         new_kid.append(self.iter)
-        new_kid.append(self.gen_token(Tok.KW_TO))
+        new_kid.append(self.gen_token(Tok.SEMI))
         new_kid.append(self.condition)
-        new_kid.append(self.gen_token(Tok.KW_BY))
+        new_kid.append(self.gen_token(Tok.SEMI))
         new_kid.append(self.count_by)
         new_kid.append(self.gen_token(Tok.LBRACE))
         for stmt in self.body:
