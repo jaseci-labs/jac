@@ -13,14 +13,6 @@ jaclang = "0.8.4"
 litellm = "~1.73.1"
 loguru = "~0.7.2"
 pillow = "~10.4.0"
-openai = { version = "~1.82.1", optional = true }
-anthropic = { version = "~0.26.1", optional = true }
-ollama = { version = "~0.5.1", optional = true }
-together = { version = "~1.2.0", optional = true }
-transformers = { version = "~4.41.1", optional = true }
-groq = { version = "~0.8.0", optional = true }
-google-genai = { version = "~0.1.0", optional = true }
-google-generativeai = { version = "~0.1.0", optional = true }
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.2"
@@ -28,13 +20,6 @@ pytest = "^8.3.2"
 [tool.poetry.extras]
 tools = ["wikipedia"]
 video = ["opencv-python-headless"]
-groq = ["groq"]
-transformers = ["transformers"]
-ollama = ["ollama"]
-anthropic = ["anthropic"]
-openai = ["openai"]
-together = ["together"]
-google = ["google-genai", "google-generativeai"]
 
 [tool.poetry.plugins."jac"]
 mtllm = "mtllm.plugin:JacMachine"

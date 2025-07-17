@@ -1,14 +1,13 @@
 """A Number Guessing Game"""
 
 import random;
-import from mtllm.llms { OpenAI, Gemini }
+import from mtllm.llm { Model }
 
-# glob llm = OpenAI(model_name="gpt-4o",verbose=False);
- glob llm =
-    Gemini(model_name="gemini-1.5-flash", verbose=False);
+# glob llm = Model(model_name="gpt-4o",verbose=False);
+ glob llm = Model(model_name="gemini/gemini-2.0-flash", verbose=False);
 
 """Provide a fun hint if guess is incorrect"""
-def give_hint(guess: int, correct_number: int) -> str byllm();
+def give_hint(guess: int, correct_number: int) -> str by llm();
 
 walker GuessGame {
     has guess: int;

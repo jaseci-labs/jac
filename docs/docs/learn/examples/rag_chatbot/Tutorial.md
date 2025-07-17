@@ -1,4 +1,4 @@
-# RAG Chatbot Full Guide
+# Jac MCP Chatbot Full Guide
 
 ## 1. Introduction & Overview
 This guide will walk you through building a state-of-the-art Retrieval-Augmented Generation (RAG) chatbot using Jac Cloud, Jac-Streamlit, Model Context Protocol (MCP), LangChain, ChromaDB, and modern LLMs. You'll learn to:
@@ -17,6 +17,7 @@ This guide will walk you through building a state-of-the-art Retrieval-Augmented
 - **Session Management**: Maintains chat history and user sessions.
 
 **Project Structure:**
+
 - `client.jac`: Streamlit frontend for chat and document upload
 - `server.jac`: Jac Cloud API server with session management and ReAct orchestration
 - `mcp_server.jac`: MCP server exposing document search and web search tools

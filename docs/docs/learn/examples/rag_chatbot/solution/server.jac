@@ -1,6 +1,6 @@
 import sys;
 import from mtllm.llm {Model}
-import from rag {RagEngine, WebSearch}
+import from tools {RagEngine, WebSearch}
 import os;
 import base64;
 import requests;

@@ -102,8 +102,8 @@ A walker travels through game stages using edges, demonstrating Object-Spatial P
 Jac provides novel constructs for integrating LLMs into code. A function body can simply be replaced with a call to an LLM, removing the need for prompt engineering or extensive use of new libraries.
 
 ```jac
-import from mtllm.llms { Gemini }
-glob llm = Gemini(model_name="gemini-2.0-flash");
+import from mtllm.llm { Model }
+glob llm = Model(model_name="gemini/gemini-2.0-flash");
 
 enum Personality {
     INTROVERT = "Introvert",

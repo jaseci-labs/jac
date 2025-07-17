@@ -13,7 +13,7 @@ nav:
       - LittleX (your own twitter):
         - "learn/examples/littleX/tutorial.md"
         - "learn/examples/littleX/full_guide.md"
-      - RAG-based Conversational Chatbot:
+      - Jac MCP Conversational Chatbot:
         - "learn/examples/rag_chatbot/Overview.md"
         - "learn/examples/rag_chatbot/Tutorial.md"
       - RPG game with AI Genarated Maps: "learn/examples/mtp_examples/rpg_game.md"
@@ -44,7 +44,6 @@ nav:
         - "learn/jac-mtllm/with_llm.md"
         - Quick-start: "learn/jac-mtllm/quickstart.md"
         - How to use MTP: "learn/jac-mtllm/usage.md"
-        - Available Models: "learn/jac-mtllm/model_declaration.md"
         - Using Multimodal models: "learn/jac-mtllm/multimodality.md"
         - Build your own MTLLM plugin: "learn/jac-mtllm/creating_mtllm_plugins.md"
         - Python MTLLM Interface: "learn/jac-mtllm/python_integration.md"
