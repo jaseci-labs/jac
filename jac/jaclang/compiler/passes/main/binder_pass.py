@@ -208,6 +208,19 @@ class BinderPass(UniPass):
             # if not self.ir_in.name == 'builtins':
             #     print(f"Processing assignment target: {target}")
             self._process_assignment_target(target)
+        if node.value and self.ir_in.name != "builtins":
+            if isinstance(node.value, (uni.ListVal,uni.FuncCall,uni.DictVal,uni.TupleVal,uni.String,uni.Int,uni.Float,uni.Null,uni.Bool,uni.MultiString,uni.ListCompr)):
+                return
+            if isinstance(node.value, uni.AtomTrailer):
+                self.handle_symbol_chain(node.value, "use")
+            elif isinstance(node.value, uni.AstSymbolNode):
+                if self._handle_builtin_symbol(node.value.sym_name, node.value):
+                    return
+                self.handle_simple_symbol(node.value, "use")
+            else:
+                pass
+                # TODO
+                self.log_error("Function call target not valid")
 
     def _process_assignment_target(self, target: uni.Expr) -> None:
         """Process individual assignment target."""
@@ -285,13 +298,42 @@ class BinderPass(UniPass):
         """Enter import statement."""
         if node.is_absorb:
             return None
-        for item in node.items:
-            if item.alias:
-                self.cur_scope.def_insert(
-                    item.alias, imported=True, single_decl="import"
+        if node.from_loc and self.prog.mod.main == self.ir_in:
+            parsed_mod = self._parse_and_link_module(
+                module_path=node.from_loc.resolve_relative_path(),
+                symbol=node,
+            )
+            print(f"Parsed module: {parsed_mod.name}")
+            for mod_item in node.items:
+                if mod_item.alias:
+                    # self.cur_scope.def_insert(
+                    #     mod_item.alias, imported=True, single_decl="import"
+                    # )
+                    mod_item.alias.name_spec._sym = parsed_mod.sym_tab.use_lookup(
+                        mod_item.name_spec.sym_name,
+                        sym_table=parsed_mod.sym_tab,
+                    )
+                else:
+                    self.cur_scope.use_lookup(
+                        mod_item.name_spec, sym_table=parsed_mod.sym_tab
+                    )
+                    # print(f"Importing {mod_item.name_spec.sym_name} from {parsed_mod.name}")
+                    # # exit()
+                    # print('checkkk> ', mod_item.name_spec.sym_name)
+                    # print('checkkk> ', mod_item.sym.decl)
+            if not parsed_mod:
+                self.log_error(
+                    f"Failed to parse and link module from import: {node.from_loc.resolve_relative_path()}"
                 )
-            else:
-                self.cur_scope.def_insert(item, imported=True)
+                return None
+        # for item in node.items:
+        #     if item.alias:
+        #         # self.cur_scope.def_insert(
+        #         #     item.alias, imported=True, single_decl="import"
+        #         # )
+        #     else:
+        #         self.cur_scope.def_insert(item, imported=True)
+
 
     def enter_test(self, node: uni.Test) -> None:
         """Enter test node and add unittest methods."""

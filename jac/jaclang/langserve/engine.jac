@@ -134,7 +134,7 @@ class JacLangServer(JacProgram , LanguageServer) {
             file_path_fs = file_path.removeprefix('file://');
             document = self.workspace.get_text_document(file_path);
             self._clear_alerts_for_file(file_path_fs);
-            build = self.build(use_str=document.source, file_path=document.path);
+            build = self.bind(use_str=document.source, file_path=document.path);
             self.update_modules(file_path_fs, build);
             if build.annexable_by {
                 return self.deep_check(
@@ -436,6 +436,7 @@ class JacLangServer(JacProgram , LanguageServer) {
         if file_path_fs not in self.mod.hub {
             return None;
         }
+        print('file_path_fs: ', file_path_fs);
         sem_mgr = self.sem_managers.get(file_path_fs);
         if not sem_mgr {
             return None;
@@ -447,6 +448,8 @@ class JacLangServer(JacProgram , LanguageServer) {
         }
         node_selected = sem_mgr.static_sem_tokens[token_index][3];
         if node_selected {
+            print('node selected is: ', node_selected);
+            print('node selected sym is: ', node_selected.sym);
             if (node_selected.sym.sym_type == SymbolType.MODULE) {
                 spec = node_selected.sym.decl.parent.resolve_relative_path();
                 if spec {
@@ -463,12 +466,15 @@ class JacLangServer(JacProgram , LanguageServer) {
                 }
             }
             if isinstance(node_selected.sym, uni.NameAtom) {
+                print('beofre name_of: ', node_selected);
                 node_selected = node_selected.name_of;
+                print('after name_of: ', node_selected);
             }
             elif isinstance(node_selected, uni.Name)
             and node_selected.parent
             and isinstance(node_selected.parent, uni.ModulePath)
              {
+                print('elif name: ', node_selected);
                 spec = node_selected.parent.parent.abs_path;
                 if spec {
                     spec = spec[ 5 : ] if spec.startswith('File:') else spec;
@@ -485,10 +491,17 @@ class JacLangServer(JacProgram , LanguageServer) {
             } elif node_selected.parent
             and isinstance(node_selected.parent, uni.ModuleItem)
              {
-                path =
-                    node_selected.parent.abs_path
-                    or node_selected.parent.from_mod_path.abs_path
-                    ;
+                print(
+                    f"'Warning: No definition found for '{node_selected.sym_name}'"
+                );
+                print('node_selected: ', node_selected);
+                print('node_selected.parent: ', node_selected.parent);
+                print('node_selected.parent.from_mod_path: ', node_selected.parent.from_mod_path);
+                path = node_selected.parent.from_mod_path.resolve_relative_path();
+                    # node_selected.parent.abs_path
+                    # or node_selected.parent.from_mod_path.abs_path
+                    # ;
+                print('path: ', path);
                 loc_range = (0, 0, 0, 0);
                 if path and loc_range  {
                     path = path[ 5 : ] if path.startswith('File:') else path;
@@ -554,7 +567,6 @@ class JacLangServer(JacProgram , LanguageServer) {
         }
         index1 =
             utils.find_index(sem_mgr.sem_tokens, position.line, position.character);
-        print(sem_mgr.sem_tokens);
         if index1 is None {
             return [];
         }

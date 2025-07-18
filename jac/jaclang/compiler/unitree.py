@@ -1379,11 +1379,10 @@ class ModuleItem(AstSymbolNode):
         """Get import parent."""
         if (
             not self.parent
-            or not self.parent.parent
-            or not isinstance(self.parent.parent, Import)
+            or not isinstance(self.parent, Import)
         ):
             raise ValueError("Import parent not found. Not Possible.")
-        return self.parent.parent
+        return self.parent
 
     @property
     def from_mod_path(self) -> ModulePath:

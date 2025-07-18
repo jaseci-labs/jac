@@ -599,7 +599,8 @@ class TestJacLangServer(TestCase):
         lsp.deep_check(guess_game_file)
         self.assertIn(
             "/tests/fixtures/M1.jac:0:0-0:0",
-            str(lsp.get_references(guess_game_file, lspt.Position(49, 14))),
+            # str(lsp.get_definition(guess_game_file, lspt.Position(24, 31))),
+            str(lsp.get_definition(guess_game_file, lspt.Position(24, 15))),
         )
 
 

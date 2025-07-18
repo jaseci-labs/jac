@@ -2,9 +2,9 @@
 # import M2 as m2alias;
 # import M3, M4;
 # import M5 as m5alias, M6 as m6alias;
-# import from M7 {M7S1}
-# import from M8 {M8S1 as m8s1alias, M8S2 as m8s2alias}
-# include M9;
+# # import from M7 {M7S1}
+# # import from M8 {M8S1 as m8s1alias, M8S2 as m8s2alias}
+# # include M9;
 # glob a = 5, k = 9;
 # glob aa = 9;
 # with entry{
@@ -18,7 +18,12 @@
 # with entry {
 #     Y = 99;
 
+
 # }
+# import math,pandas,numpy as np, random as r;
+
+import from math {sqrt, sin, cos, tan}
+
 # def ccc() {
 #     # aa = 99; #Error:name 'aa' is assigned to before global declaration
 #     if (0) {
@@ -44,19 +49,38 @@
 
 # with entry{
 #     d = random.randint(1, 100);
+#     d = random.Random;
 # }
 
-with entry{
-    import sym_bin;
-    sym_bin.foo();
-}
+# with entry{
+#     import sym_bin;
+#     sym_bin.foo();
+# }
 
 
 
-obj A{
-    has a: int;
-}
-with entry{
-    A.a;
-    print(A.a);
-}
+# obj A{
+#     has a: int;
+# }
+# with entry{
+#     A().a = 90;
+#     s = A();
+#     s.a= 9;
+#     print(A().a);
+# }
+
+# import sym_bin;
+# with entry{
+#     sym_bin.foo();
+# }
+
+
+# import random as r;
+# import from math {sqrt}
+
+# with entry{
+#     d = r.randint(1, 100);
+#     d = r.randint;
+#     a = {'a': 1, 'b': 2, 'c': 3};
+# }
+
