@@ -346,8 +346,9 @@ class JacParser(Transform[uni.Source, uni.Module]):
         def free_code(self, _: None) -> uni.ModuleCode:
             """Grammar rule.
 
-            free_code: KW_WITH KW_ENTRY (COLON NAME)? code_block
+            free_code: KW_ASYNC KW_WITH KW_ENTRY (COLON NAME)? code_block
             """
+            tok_async = self.match_token(Tok.KW_ASYNC)
             self.consume_token(Tok.KW_WITH)
             self.consume_token(Tok.KW_ENTRY)
             name = None

@@ -84,7 +84,7 @@ global_var: (KW_LET | KW_GLOBAL) access_tag? assignment_list SEMI
 assignment_list: (assignment_list COMMA)? (assignment | named_ref)
 
 // [Heading]: Free code.
-free_code: KW_WITH KW_ENTRY (COLON NAME)? code_block
+free_code: KW_ASYNC KW_WITH KW_ENTRY (COLON NAME)? code_block
 
 // [Heading]: Inline python.
 py_code_block: PYNLINE
