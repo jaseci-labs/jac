@@ -209,7 +209,6 @@ class Tokens(str, Enum):
     KW_ELIF = "KW_ELIF"
     KW_ELSE = "KW_ELSE"
     KW_FOR = "KW_FOR"
-    KW_TO = "KW_TO"
     KW_BY = "KW_BY"
     KW_WHILE = "KW_WHILE"
     KW_CONTINUE = "KW_CONTINUE"
