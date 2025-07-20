@@ -148,105 +148,98 @@ class Importer:
 class PythonImporter(Importer):
     """Importer for Python modules."""
 
+    def _create_module_from_file(
+        self, target_name: str, file_path: str, module_name: str
+    ) -> types.ModuleType:
+        """Create and execute a module from a file path."""
+        imp_spec = importlib.util.spec_from_file_location(target_name, file_path)
+        if not imp_spec or not imp_spec.loader:
+            raise ImportError(f"Cannot create import spec for {file_path}")
+
+        imported_module = importlib.util.module_from_spec(imp_spec)
+        imported_module.__name__ = module_name
+        sys.modules[module_name] = imported_module
+        imp_spec.loader.exec_module(imported_module)
+        return imported_module
+
+    def _handle_relative_import(self, spec: ImportPathSpec) -> types.ModuleType:
+        """Handle relative imports (starting with '.')."""
+        target = spec.target.lstrip(".")
+        if len(target.split(".")) > 1:
+            target = target.split(".")[-1]
+
+        full_target = path.normpath(path.join(spec.caller_dir, target))
+        return self._create_module_from_file(target, full_target + ".py", target)
+
+    def _handle_absolute_import(self, spec: ImportPathSpec) -> types.ModuleType:
+        """Handle absolute imports."""
+        local_py_file = spec.full_target + ".py"
+
+        if os.path.exists(local_py_file):
+            # Handle local Python file
+            module_name = spec.override_name or spec.target
+            target_name = "__main__" if spec.override_name == "__main__" else spec.target
+            return self._create_module_from_file(target_name, local_py_file, module_name)
+        else:
+            # Handle standard library or installed package
+            return importlib.import_module(name=spec.target)
+
+    def _process_absorb_import(self, imported_module: types.ModuleType) -> None:
+        """Process absorb import by copying all public attributes to main module."""
+        main_module = __import__("__main__")
+        for name in dir(imported_module):
+            if not name.startswith("_"):
+                setattr(main_module, name, getattr(imported_module, name))
+
+    def _process_selective_import(
+        self, imported_module: types.ModuleType, spec: ImportPathSpec
+    ) -> list:
+        """Process selective import of specific items."""
+        main_module = __import__("__main__")
+        loaded_items = []
+
+        for name, alias in spec.items.items():
+            alias = name if isinstance(alias, bool) else alias
+
+            try:
+                item = getattr(imported_module, name)
+            except AttributeError:
+                if hasattr(imported_module, "__path__"):
+                    item = importlib.import_module(f"{spec.target}.{name}")
+                else:
+                    raise
+
+            if item not in loaded_items:
+                setattr(main_module, alias or name, item)
+                loaded_items.append(item)
+
+        return loaded_items
+
+    def _process_module_import(self, imported_module: types.ModuleType, spec: ImportPathSpec) -> None:
+        """Process regular module import."""
+        main_module = __import__("__main__")
+        module_alias = spec.mdl_alias or spec.target
+        setattr(main_module, module_alias, imported_module)
+
     def run_import(self, spec: ImportPathSpec) -> ImportReturn:
         """Run the import process for Python modules."""
         try:
-            loaded_items: list = []
+            # Determine import type and get module
             if spec.target.startswith("."):
-                spec.target = spec.target.lstrip(".")
-                if len(spec.target.split(".")) > 1:
-                    spec.target = spec.target.split(".")[-1]
-                full_target = path.normpath(path.join(spec.caller_dir, spec.target))
-                imp_spec = importlib.util.spec_from_file_location(
-                    spec.target, full_target + ".py"
-                )
-                if imp_spec and imp_spec.loader:
-                    imported_module = importlib.util.module_from_spec(imp_spec)
-                    sys.modules[imp_spec.name] = imported_module
-                    imp_spec.loader.exec_module(imported_module)
-                else:
-                    raise ImportError(
-                        f"Cannot find module {spec.target} at {full_target}"
-                    )
+                imported_module = self._handle_relative_import(spec)
             else:
-                # Check if this is a local Python file (when spec.full_target exists as .py file)
-                local_py_file = spec.full_target + ".py"
-                if os.path.exists(local_py_file):
-                    if spec.override_name == "__main__":
-                        # For __main__, create spec with __main__ name from the start
-                        imp_spec = importlib.util.spec_from_file_location(
-                            "__main__", local_py_file
-                        )
-                        if imp_spec and imp_spec.loader:
-                            imported_module = importlib.util.module_from_spec(imp_spec)
-                            imported_module.__name__ = "__main__"
-                            # Only register in sys.modules as __main__
-                            sys.modules["__main__"] = imported_module
-                            imp_spec.loader.exec_module(imported_module)
-                        else:
-                            raise ImportError(
-                                f"Cannot create import spec for {local_py_file}"
-                            )
-                    else:
-                        # Use file-based import for local Python files
-                        imp_spec = importlib.util.spec_from_file_location(
-                            spec.target, local_py_file
-                        )
-                        if imp_spec and imp_spec.loader:
-                            imported_module = importlib.util.module_from_spec(imp_spec)
-                            module_name = (
-                                spec.override_name
-                                if spec.override_name
-                                else imp_spec.name
-                            )
-                            imported_module.__name__ = module_name
-                            sys.modules[module_name] = imported_module
-                            imp_spec.loader.exec_module(imported_module)
-                        else:
-                            raise ImportError(
-                                f"Cannot create import spec for {local_py_file}"
-                            )
-                else:
-                    imported_module = importlib.import_module(name=spec.target)
+                imported_module = self._handle_absolute_import(spec)
 
-            main_module = __import__("__main__")
+            # Process based on import mode
             if spec.absorb:
-                for name in dir(imported_module):
-                    if not name.startswith("_"):
-                        setattr(main_module, name, getattr(imported_module, name))
-
+                self._process_absorb_import(imported_module)
+                loaded_items = []
             elif spec.items:
-                for name, alias in spec.items.items():
-                    if isinstance(alias, bool):
-                        alias = name
-                    try:
-                        item = getattr(imported_module, name)
-                        if item not in loaded_items:
-                            setattr(
-                                main_module,
-                                alias if isinstance(alias, str) else name,
-                                item,
-                            )
-                            loaded_items.append(item)
-                    except AttributeError as e:
-                        if hasattr(imported_module, "__path__"):
-                            item = importlib.import_module(f"{spec.target}.{name}")
-                            if item not in loaded_items:
-                                setattr(
-                                    main_module,
-                                    alias if isinstance(alias, str) else name,
-                                    item,
-                                )
-                                loaded_items.append(item)
-                        else:
-                            raise e
-
+                loaded_items = self._process_selective_import(imported_module, spec)
             else:
-                setattr(
-                    __import__("__main__"),
-                    spec.mdl_alias if isinstance(spec.mdl_alias, str) else spec.target,
-                    imported_module,
-                )
+                self._process_module_import(imported_module, spec)
+                loaded_items = []
+
             self.result = ImportReturn(imported_module, loaded_items, self)
             return self.result
 
