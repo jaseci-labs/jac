@@ -2,28 +2,24 @@
 
 import random;
 import from mtllm.llm { Model }
-
 # glob llm = Model(model_name="gpt-4o",verbose=False);
- glob llm = Model(model_name="gemini/gemini-2.0-flash", verbose=False);
+glob llm = Model(model_name="gemini/gemini-2.0-flash", verbose=False);
 
 """Provide a fun hint if guess is incorrect"""
 def give_hint(guess: int, correct_number: int) -> str by llm();
 
 walker GuessGame {
-    has guess: int;
+    has correct_number: int = random.randint(1, 10);
 
-    can start with `root entry;
-    can process_guess with turn entry;
+    can start_game with `root entry;
+    def process_guess(guess: int);
 }
 
 node turn {
-    has correct_number: int = random.randint(1, 10);
+    can check with GuessGame entry;
 }
 
-# Will run when in CLI mode (not in cloud)
+# Run the game
  with entry:__main__ {
-    root spawn GuessGame(3);
-    root spawn GuessGame(4);
-    root spawn GuessGame(5);
-    root spawn GuessGame(6);
+    GuessGame() spawn root;
 }
