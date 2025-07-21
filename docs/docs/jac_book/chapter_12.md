@@ -1,521 +1,564 @@
-# Chapter 12: Walkers as API Endpoints
+# Chapter 12: Persistence and the Root Node
 
-In this chapter, we'll explore how Jac automatically transforms walkers into RESTful API endpoints with our **Jac Cloud** Plugin. Jac Cloud, is a revolutionary cloud platform that transforms your Jac programs into scalable web services without code changes. This means you can focus on building your application logic while Jac handles the HTTP details for you.
-
-
-We'll build a simple shared notebook system that demonstrates automatic API generation, request handling, and parameter validation through a practical example.
+In this chapter, we'll explore Jac's automatic persistence system and the fundamental concept of the root node. We'll build a simple counter application that demonstrates how Jac automatically maintains state when running as a service with a database backend.
 
 !!! info "What You'll Learn"
-    - Understanding Jac Cloud's scale-agnostic architecture
-    - Converting walkers into API endpoints automatically
-    - Deploying applications with zero configuration
-    - Managing persistence and state in the cloud
+    - Understanding Jac's automatic persistence mechanism with jac serve
+    - The root node as the entry point for all persistent data
+    - State consistency across API requests and service restarts
+    - Building stateful applications with jac-cloud
 
 ---
 
-## What is Jac Cloud?
+## What is Automatic Persistence?
 
-Jac Cloud is a cloud-native execution environment designed specifically for Jac programs. It enables developers to write code once and run it anywhere - from local development to production-scale deployments - without any modifications.
+Traditional programming requires explicit database setup, connection management, and data serialization. Jac eliminates this complexity by making persistence a core language feature when running as a service. When you use `jac serve` with a database backend, nodes and their connections automatically persist across requests and service restarts.
 
-!!! success "Key Benefits"
-    - **Zero Code Changes**: Same code runs locally and in the cloud
-    - **Automatic APIs**: Walkers become REST endpoints automatically
-    - **Built-in Persistence**: Data storage handled transparently
-    - **Instant Scaling**: Scale by increasing service replicas
-    - **Developer Focus**: No infrastructure management needed
+!!! warning "Persistence Requirements"
+    - **Database Backend**: Persistence requires `jac serve` with a configured database
+    - **Service Mode**: `jac run` executions are stateless and don't persist data
+    - **Root Connection**: Nodes must be connected to root to persist
+    - **API Context**: Persistence works within the context of API endpoints
 
+!!! success "Persistence Benefits"
+    - **Zero Configuration**: No manual database schema or ORM setup
+    - **Automatic State**: Data persists without explicit save/load operations
+    - **Graph Integrity**: Relationships between nodes are maintained
+    - **Type Safety**: Persistent data maintains type information
+    - **Instant Recovery**: Services resume exactly where they left off
 
-## Quick Setup and Deployment
-Let's start with a minimal weather API example and gradually enhance it throughout this chapter.
+### Traditional vs Jac Persistence
 
-First, ensure you have the Jac Cloud plugin installed:
-
-```bash
-pip install jac-cloud
-```
-
-Next, crate a simple Jac program that contains a single walker that produces weather information based on a city name. This program creates a REST API endpoint that accepts a city name and returns the weather information. The walker has a property `city` which is automatically mapped to an expected request parameter in the request body.
-
-
-!!! example "Basic Weather API"
-    === "Jac Cloud"
-        ```jac
-        # weather.jac - No manual API setup needed
-        walker get_weather {
-            has city: str;
-
-            obj __specs__ {
-                static has auth: bool = False;
-            }
-
-            can get_weather_data with `root entry {
-                # Your weather logic here
-                weather_info = f"Weather in {self.city}: Sunny, 25°C";
-                report {"city": self.city, "weather": weather_info};
-            }
-        }
-        ```
-
+!!! example "Persistence Comparison"
     === "Traditional Approach"
         ```python
-        # app.py - Manual API setup required
-        from flask import Flask, jsonify
+        # counter_api.py - Manual database setup required
+        from flask import Flask, jsonify, request
+        import sqlite3
+        import os
 
         app = Flask(__name__)
 
-        @app.route('/weather/<city>', methods=['GET'])
-        def get_weather(city):
-            weather_info = f"Weather in {city}: Sunny, 25°C"
-            return jsonify({"city": city, "weather": weather_info})
+        class Counter:
+            def __init__(self):
+                self.db_path = "counter.db"
+                self.init_db()
 
-        if __name__ == '__main__':
+            def init_db(self):
+                conn = sqlite3.connect(self.db_path)
+                cursor = conn.cursor()
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS counter (
+                        id INTEGER PRIMARY KEY,
+                        value INTEGER
+                    )
+                ''')
+                cursor.execute('SELECT value FROM counter WHERE id = 1')
+                if not cursor.fetchone():
+                    cursor.execute('INSERT INTO counter (id, value) VALUES (1, 0)')
+                conn.commit()
+                conn.close()
+
+            def get_value(self):
+                conn = sqlite3.connect(self.db_path)
+                cursor = conn.cursor()
+                cursor.execute('SELECT value FROM counter WHERE id = 1')
+                value = cursor.fetchone()[0]
+                conn.close()
+                return value
+
+            def increment(self):
+                conn = sqlite3.connect(self.db_path)
+                cursor = conn.cursor()
+                cursor.execute('UPDATE counter SET value = value + 1 WHERE id = 1')
+                conn.commit()
+                conn.close()
+                return self.get_value()
+
+        counter = Counter()
+
+        @app.route('/counter')
+        def get_counter():
+            return jsonify({"value": counter.get_value()})
+
+        @app.route('/counter/increment', methods=['POST'])
+        def increment_counter():
+            new_value = counter.increment()
+            return jsonify({"value": new_value})
+
+        if __name__ == "__main__":
             app.run(debug=True)
         ```
 
-
-### Deploying to Cloud
-To deploy your Jac program as a cloud service, use the `jac serve` command:
-
-```bash
-jac serve weather_service.jac
-```
-
-!!! success "Instant Deployment"
-    ```
-    INFO:     Started server process [26286]
-    INFO:     Waiting for application startup.
-    INFO:     Application startup complete.
-    INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
-    ```
-
-Your walker is now automatically available as a REST API endpoint!
-
-To test the API, you can use `curl` or any HTTP client:
-
-```bash
-curl -X POST http://localhost:8000/walker/get_weather \
-  -H "Content-Type: application/json" \
-  -d '{"city": "New York"}'
-```
-
-In this example the endpoint is defined as `/walker/get_weather`, however, the endpoint also expects a JSON request body with a `city` field.
-
-The response will be a JSON object containing the weather information.
-
-!!! success "API Response"
-    ```json
-    {
-        "returns": [
-            {
-                "city": "New York",
-                "weather": "Weather in New York: Sunny, 25°C"
-            }
-        ]
-    }
-    ```
-
-
-!!! note "Authentication"
-    - Jac Cloud provides built-in support for authentication and authorization.
-    - You can define authentication requirements using the `auth` property in the `__specs__` object.
-    - By default, all walkers are private, but you can make them public by setting `auth: False`.
-    - To learn more about authentication, see the [Jac Cloud Section of the Documentation](../learn/jac-cloud/introduction.md).
-
----
-
-## Going Beyond: Building a Shared Notebook API
-Now that we have a basic understanding of Jac Cloud and how it automatically generates APIs from walkers, let's build a more complex application: a shared notebook system.
-
-First lets develop a walker that allows users to create and retrieve notes in a notebook. This will demonstrate how Jac handles request/response mapping, parameter validation, and persistence automatically.
-
-!!! example "API Development Comparison"
-    === "Jac Automatic APIs"
+    === "Jac Automatic Persistence"
         ```jac
-        import uuid;
+        # main.jac - No database setup needed
+        node Counter {
+            has value: int = 0;
 
-        # notebook.jac - No manual API setup needed
-        node Note {
-            has title: str;
-            has content: str;
-            has author: str;
-            has created_at: str = "2024-01-15";
-            has id: str = "note_" + str(uuid.uuid4());
+            def increment() -> int {
+                self.value += 1;
+                return self.value;
+            }
+
+            def get_value() -> int {
+                return self.value;
+            }
         }
 
-
-
-        walker create_note {
-            has title: str;
-            has content: str;
-            has author: str;
-
+        walker get_counter {
             obj __specs__ {
                 static has auth: bool = False;
             }
 
-            can create_new_note with `root entry {
-                new_note = Note(
-                    title=self.title,
-                    content=self.content,
-                    author=self.author
-                );
+            can get_counter_endpoint with `root entry {
+                counter_nodes = [root --> Counter];
 
-                here ++> new_note;
-                report {"message": "Note created", "id": new_note.id};
+
+                if not counter_nodes {
+                    counter = Counter();
+                    root ++> counter;
+                } else {
+                    counter = counter_nodes[0];
+                }
+
+                report {"value": counter.get_value()};
             }
         }
 
-        walker get_notes {
+        walker increment_counter {
             obj __specs__ {
                 static has auth: bool = False;
             }
 
-            can fetch_all_notes with `root entry {
-                all_notes = [-->(`?Note)];
-                notes_data = [
-                    {"id": n.id, "title": n.title, "author": n.author}
-                    for n in all_notes
-                ];
-                report {"notes": notes_data, "total": len(notes_data)};
+            can increment_counter_endpoint with `root entry {
+                counter_nodes = [root --> Counter];
+                if not counter_nodes {
+                    counter = Counter();
+                    root ++> counter;
+                } else {
+                    counter = counter_nodes[0];
+                }
+                new_value = counter.increment();
+                report {"value": new_value};
             }
         }
         ```
-    === "Traditional Approach"
-        ```python
-        # app.py - Manual API setup required
-        from flask import Flask, request, jsonify
-        from typing import Dict, List
-
-        app = Flask(__name__)
-
-        # Global storage (in production, use a database)
-        notebooks = {}
-
-        @app.route('/create_note', methods=['POST'])
-        def create_note():
-            try:
-                data = request.get_json()
-                title = data.get('title')
-                content = data.get('content')
-                author = data.get('author')
-
-                # Manual validation
-                if not title or not content or not author:
-                    return jsonify({"error": "Missing required fields"}), 400
-
-                note_id = len(notebooks) + 1
-                notebooks[note_id] = {
-                    "id": note_id,
-                    "title": title,
-                    "content": content,
-                    "author": author
-                }
-
-                return jsonify({"message": "Note created", "id": note_id})
-            except Exception as e:
-                return jsonify({"error": str(e)}), 500
-
-        @app.route('/get_notes', methods=['GET'])
-        def get_notes():
-            return jsonify(list(notebooks.values()))
-
-        if __name__ == '__main__':
-            app.run(debug=True)
-        ```
-
-
-Deploy your notebook API:
-
-```bash
-jac serve simple_notebook.jac
-```
-
-We can now test the API using `curl` or any HTTP client via the POST method. The `create_note` walker will accept a JSON request body with `title`, `content`, and `author` fields, and return a response indicating the note was created.
-
-```bash
-curl -X POST http://localhost:8000/walker/create_note \
-  -H "Content-Type: application/json" \
-  -d '{
-    "title": "My First Note",
-    "content": "This is a test note",
-    "author": "Alice"
-  }'
-```
-
-!!! success "API Response"
-    ```json
-    {
-        "returns": [
-            {
-                "status": "created",
-                "note": {
-                    "title": "My First Note",
-                    "author": "Alice"
-                }
-            }
-        ]
-    }
-    ```
-
-To retrieve all notes, we can use the `get_notes` walker:
-
-```bash
-curl -X POST http://localhost:8000/walker/get_notes \
-  -H "Content-Type: application/json" \
-  -d '{}'
-```
-
-### Convert to GET request
-To convert the `get_notes` walker to a GET request, we can simply change the walker `___specs__` to indicate that it can be accessed via a GET request. This is done by setting the `methods` attribute in the `__specs__` object.
-
-```jac
-walker get_notes {
-    obj __specs__ {
-        static has auth: bool = False;
-        static has methods: list = ["get"];
-    }
-
-    can fetch_all_notes with `root entry {
-        all_notes = [-->(`?Note)];
-        notes_data = [
-            {"id": n.id, "title": n.title, "author": n.author}
-            for n in all_notes
-        ];
-        report {"notes": notes_data, "total": len(notes_data)};
-    }
-}
-```
-
-The `get_notes` walker can now be accessed via a GET request at the endpoint `/walker/get_notes`.
-
-```bash
-curl -X GET http://localhost:8000/walker/get_notes \
-  -H "Content-Type: application/json" \
-  -d '{}'
-```
 
 ---
 
-## Parameter Validation
+## Setting Up a Jac Cloud Project
 
-Jac automatically validates request parameters based on walker attribute types. This eliminates manual validation code and ensures type safety.
+To demonstrate persistence, we need to create a proper jac-cloud project structure:
 
-### Enhanced Notebook with Validation
+!!! example "Project Structure"
+    ```
+    counter-app/
+    ├── .env                 # Environment configuration
+    ├── main.jac            # Main application logic
+    ├── server.py           # Optional custom server setup
+    └── requirements.txt    # Python dependencies
+    ```
 
-!!! example "Notebook with Type Validation"
+Let's create our counter application:
 
+!!! example "Complete Counter Project"
+    === ".env"
+        ```bash
+        # .env - Database configuration
+        DATABASE_URL=sqlite:///./app.db
+        SECRET_KEY=your-secret-key-here
+        ```
+
+    === "main.jac"
+        ```jac
+        # main.jac
+        node Counter {
+            has value: int = 0;
+            has created_at: str;
+
+            can increment() -> int {
+                self.value += 1;
+                return self.value;
+            }
+
+            can reset() -> int {
+                self.value = 0;
+                return self.value;
+            }
+        }
+
+        walker get_counter {
+            can get_counter_endpoint with `root entry {
+                counter_nodes = [root --> Counter];
+                if not counter_nodes {
+                    counter = Counter(created_at="2024-01-15");
+                    root ++> counter;
+                    report {"value": 0, "status": "created"};
+                } else {
+                    counter = counter_nodes[0];
+                    report {"value": counter.value, "status": "existing"};
+                }
+            }
+        }
+
+        walker increment_counter {
+            can increment_counter_endpoint with `root entry {
+                counter_nodes = [root --> Counter];
+                if not counter_nodes {
+                    counter = Counter(created_at="2024-01-15");
+                    root ++> counter;
+                } else {
+                    counter = counter_nodes[0];
+                }
+                new_value = counter.increment();
+                report {"value": new_value, "previous": new_value - 1};
+            }
+        }
+
+        walker reset_counter {
+            can reset_counter_endpoint with `root entry {
+                counter_nodes = [root --> Counter];
+                if counter_nodes {
+                    counter = counter_nodes[0];
+                    counter.reset();
+                    report {"value": 0, "status": "reset"};
+                } else {
+                    report {"value": 0, "status": "no_counter_found"};
+                }
+            }
+        }
+        ```
+
+    === "requirements.txt"
+        ```
+        jaclang
+        fastapi
+        uvicorn
+        python-dotenv
+        ```
+
+---
+
+## The Root Node Concept
+
+The root node is Jac's fundamental concept for persistent data organization. When running with `jac serve`, every request has access to a special `root` node that serves as the entry point for all persistent graph structures.
+
+### Understanding Root Node
+
+!!! info "Root Node Properties"
+    - **Request Context**: Available in every API request when using jac serve
+    - **Persistence Gateway**: Starting point for all persistent data
+    - **Graph Anchor**: All persistent nodes must be reachable from root
+    - **Automatic Creation**: Exists automatically with database backend
+    - **Transaction Boundary**: Changes persist at the end of each request
+
+### Running the Service
+
+```bash
+# Navigate to project directory
+cd counter-app
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Start the service with database persistence
+jac serve main.jac
+
+# Service starts on http://localhost:8000
+# API documentation available at http://localhost:8000/docs
+```
+
+### Testing Persistence
+
+```bash
+# First request - Create counter
+curl -X POST http://localhost:8000/walker/get_counter \
+  -H "Content-Type: application/json" \
+  -d '{}'
+# Response: {"returns": [{"value": 0, "status": "created"}]}
+
+# Increment the counter
+curl -X POST http://localhost:8000/walker/increment_counter \
+  -H "Content-Type: application/json" \
+  -d '{}'
+# Response: {"returns": [{"value": 1, "previous": 0}]}
+
+# Increment again
+curl -X POST http://localhost:8000/walker/increment_counter \
+  -H "Content-Type: application/json" \
+  -d '{}'
+# Response: {"returns": [{"value": 2, "previous": 1}]}
+
+# Check counter value
+curl -X POST http://localhost:8000/walker/get_counter \
+  -H "Content-Type: application/json" \
+  -d '{}'
+# Response: {"returns": [{"value": 2, "status": "existing"}]}
+
+# Restart the service (Ctrl+C, then jac serve main.jac again)
+
+# Counter value persists after restart
+curl -X POST http://localhost:8000/walker/get_counter \
+  -H "Content-Type: application/json" \
+  -d '{}'
+# Response: {"returns": [{"value": 2, "status": "existing"}]}
+```
+
+!!! tip "Persistence in Action"
+    Notice how the counter value persists between requests and even service restarts when using `jac serve` with a database!
+
+---
+
+## State Consistency
+
+Jac maintains state consistency through its graph-based persistence model when running as a service. All connected nodes and their relationships are automatically maintained across requests and service restarts.
+
+### Enhanced Counter with History
+
+Let's enhance our counter to track increment history:
+
+!!! example "Counter with History Tracking"
     ```jac
-    # validated_notebook.jac
-    node Note {
-        has title: str;
-        has content: str;
-        has author: str;
-        has priority: int = 1;  # 1-5 priority level
-        has tags: list[str] = [];
+    # main.jac - Enhanced with history
+    import from datetime { datetime }
+
+    node Counter {
+        has created_at: str;
+        has value: int = 0;
+
+        def increment() -> int {
+            old_value = self.value;
+            self.value += 1;
+
+            # Create history entry
+            history = HistoryEntry(
+                timestamp=str(datetime.now()),
+                old_value=old_value,
+                new_value=self.value
+            );
+            self ++> history;
+            return self.value;
+        }
+
+        def get_history() -> list[dict] {
+            history_nodes = [self --> HistoryEntry];
+            return [
+                {
+                    "timestamp": h.timestamp,
+                    "old_value": h.old_value,
+                    "new_value": h.new_value
+                }
+                for h in history_nodes
+            ];
+        }
     }
 
-    walker create_note {
-        has title: str;
-        has content: str;
-        has author: str;
-        has priority: int = 1;
-        has tags: list[str] = [];
+    node HistoryEntry {
+        has timestamp: str;
+        has old_value: int = 0;
+        has new_value: int = 0;
+    }
+
+    walker get_counter_with_history {
+        obj __specs__ {
+            static has auth: bool = False;
+        }
+
+        can get_counter_with_history_endpoint with `root entry {
+            counter_nodes = [root --> Counter];
+            if not counter_nodes {
+                counter = Counter(created_at=str(datetime.now()));
+                root ++> counter;
+                report {
+                    "value": 0,
+                    "status": "created",
+                    "history": []
+                };
+            } else {
+                counter = counter_nodes[0];
+                report {
+                    "value": counter.value,
+                    "status": "existing",
+                    "history": counter.get_history()
+                };
+            }
+        }
+    }
+
+    walker increment_with_history {
+        obj __specs__ {
+            static has auth: bool = False;
+        }
+
+        can increment_with_history_endpoint with `root entry {
+            counter_nodes = [root --> Counter];
+            if not counter_nodes {
+                counter = Counter(created_at=str(datetime.now()));
+                root ++> counter;
+            } else {
+                counter = counter_nodes[0];
+            }
+
+            new_value = counter.increment();
+            report {
+                "value": new_value,
+                "history": counter.get_history()
+            };
+        }
+    }
+    ```
+
+### Testing History Persistence
+
+```bash
+# Start fresh service
+jac serve main.jac
+
+# Multiple increments to build history
+curl -X POST http://localhost:8000/walker/increment_with_history \
+  -H "Content-Type: application/json" \
+  -d '{}'
+
+curl -X POST http://localhost:8000/walker/increment_with_history \
+  -H "Content-Type: application/json" \
+  -d '{}'
+
+curl -X POST http://localhost:8000/walker/increment_with_history \
+  -H "Content-Type: application/json" \
+  -d '{}'
+
+# Check counter with complete history
+curl -X POST http://localhost:8000/walker/get_counter_with_history \
+  -H "Content-Type: application/json" \
+  -d '{}'
+# Response includes value and complete history array
+
+# Restart service - history persists
+# jac serve main.jac (after restart)
+curl -X POST http://localhost:8000/walker/get_counter_with_history \
+  -H "Content-Type: application/json" \
+  -d '{}'
+# All history entries remain intact
+```
+
+---
+
+## Building Stateful Applications
+
+The automatic persistence enables building sophisticated stateful applications. Let's create a multi-counter management system:
+
+!!! example "Multi-Counter Management System"
+    ```jac
+    # main.jac - Multi-counter system
+    import from datetime { datetime }
+
+    node CounterManager {
+        has created_at: str;
+
+        def create_counter(name: str) -> dict {
+            # Check if counter already exists
+            existing = [self --> Counter](?name == name);
+            if existing {
+                return {"status": "exists", "counter": existing[0].name};
+            }
+
+            new_counter = Counter(name=name, value=0);
+            self ++> new_counter;
+            return {"status": "created", "counter": name};
+        }
+
+        def list_counters() -> list[dict] {
+            counters = [self --> Counter];
+            return [
+                {"name": c.name, "value": c.value}
+                for c in counters
+            ];
+        }
+
+        def get_total() -> int {
+            counters = [self --> Counter];
+            return sum([c.value for c in counters]);
+        }
+    }
+
+    node Counter {
+        has name: str;
+        has value: int = 0;
+
+        def increment(amount: int = 1) -> int {
+            self.value += amount;
+            return self.value;
+        }
+    }
+
+    walker create_counter {
+        has name: str;
 
         obj __specs__ {
             static has auth: bool = False;
         }
 
-        can validate_and_create with `root entry {
-            # Jac automatically validates types before this runs
+        can create_counter_endpoint with `root entry {
+            manager_nodes = [root --> CounterManager];
+            if not manager_nodes {
+                manager = CounterManager(created_at=str(datetime.now()));
+                root ++> manager;
+            } else {
+                manager = manager_nodes[0];
+            }
 
-            # Additional business logic validation
-            if len(self.title) < 3 {
-                report {"error": "Title must be at least 3 characters"};
+            result = manager.create_counter(self.name);
+            report result;
+        }
+    }
+
+    walker increment_named_counter {
+        has name: str;
+        has amount: int = 1;
+
+        obj __specs__ {
+            static has auth: bool = False;
+        }
+
+        can increment_named_counter_endpoint with `root entry {
+            manager_nodes = [root --> CounterManager];
+            if not manager_nodes {
+                report {"error": "No counter manager found"};
                 return;
             }
 
-            if self.priority < 1 or self.priority > 5 {
-                report {"error": "Priority must be between 1 and 5"};
+            manager = manager_nodes[0];
+            counters = [manager --> Counter](?name == self.name);
+
+            if not counters {
+                report {"error": f"Counter {self.name} not found"};
                 return;
             }
 
-            # Create note with validated data
-            new_note = Note(
-                title=self.title,
-                content=self.content,
-                author=self.author,
-                priority=self.priority,
-                tags=self.tags
-            );
-            here ++> new_note;
+            counter = counters[0];
+            new_value = counter.increment(self.amount);
+            report {"name": self.name, "value": new_value};
+        }
+    }
 
+    walker get_all_counters {
+        obj __specs__ {
+            static has auth: bool = False;
+        }
+
+        can get_all_counters_endpoint with `root entry {
+            manager_nodes = [root --> CounterManager];
+            if not manager_nodes {
+                report {"counters": [], "total": 0};
+                return;
+            }
+
+            manager = manager_nodes[0];
             report {
-                "message": "Note created successfully",
-                "note_title": new_note.title,
-                "priority": new_note.priority
+                "counters": manager.list_counters(),
+                "total": manager.get_total()
             };
-        }
-    }
-    ```
-
-### Testing Validation
-
-```bash
-# Valid request
-curl -X POST http://localhost:8000/walker/create_note \
-  -H "Content-Type: application/json" \
-  -d '{
-    "title": "Important Meeting",
-    "content": "Discuss project timeline",
-    "author": "Bob",
-    "priority": 3,
-    "tags": ["work", "meeting"]
-  }'
-
-# Invalid request - priority out of range
-curl -X POST http://localhost:8000/walker/create_note \
-  -H "Content-Type: application/json" \
-  -d '{
-    "title": "Test",
-    "content": "Test content",
-    "author": "Bob",
-    "priority": 10
-  }'
-```
-
-!!! tip "Automatic Type Validation"
-    Jac validates types before your walker code runs. Invalid types return HTTP 400 automatically.
-
----
-
-## REST Patterns with Walkers
-
-Walkers naturally map to REST operations, creating intuitive API patterns for common CRUD operations.
-
-### Complete Notebook API
-
-!!! example "Full CRUD Notebook System"
-
-    ```jac
-    import from uuid { uuid4 }
-
-    # complete_notebook.jac
-    node Note {
-        has title: str;
-        has content: str;
-        has author: str;
-        has priority: int = 1;
-        has created_at: str = "2024-01-15";
-        has id: str;
-    }
-
-    # CREATE - Add new note
-    walker create_note {
-        has title: str;
-        has content: str;
-        has author: str;
-        has priority: int = 1;
-
-        can add_note with `root entry {
-            new_note = Note(
-                title=self.title, content=self.content,
-                author=self.author, priority=self.priority,
-                id="note_" + str(uuid4())
-            );
-            here ++> new_note;
-            report {"message": "Note created", "id": new_note.id};
-        }
-    }
-
-    # READ - Get all notes
-    walker list_notes {
-        can get_all_notes with `root entry {
-            all_notes = [-->(`?Note)];
-            report {
-                "notes": [
-                    {
-                        "id": n.id,
-                        "title": n.title,
-                        "author": n.author,
-                        "priority": n.priority
-                    }
-                    for n in all_notes
-                ],
-                "total": len(all_notes)
-            };
-        }
-    }
-
-    # READ - Get specific note
-    walker get_note {
-        has note_id: str;
-
-        can fetch_note with `root entry {
-            target_note = [-->(`?Note)](?id == self.note_id);
-
-            if target_note {
-                note = target_note[0];
-                report {
-                    "note": {
-                        "id": note.id,
-                        "title": note.title,
-                        "content": note.content,
-                        "author": note.author,
-                        "priority": note.priority
-                    }
-                };
-            } else {
-                report {"error": "Note not found"};
-            }
-        }
-    }
-
-    # UPDATE - Modify note
-    walker update_note {
-        has note_id: str;
-        has title: str = "";
-        has content: str = "";
-        has priority: int = 0;
-
-        can modify_note with `root entry {
-            target_note = [-->(`?Note)](?id == self.note_id);
-
-            if target_note {
-                note = target_note[0];
-
-                # Update only provided fields
-                if self.title {
-                    note.title = self.title;
-                }
-                if self.content {
-                    note.content = self.content;
-                }
-                if self.priority > 0 {
-                    note.priority = self.priority;
-                }
-
-                report {"message": "Note updated", "id": note.id};
-            } else {
-                report {"error": "Note not found"};
-            }
-        }
-    }
-
-    # DELETE - Remove note
-    walker delete_note {
-        has note_id: str;
-
-        can remove_note with `root entry {
-            target_note = [-->(`?Note)](?id == self.note_id);
-
-            if target_note {
-                note = target_note[0];
-                # Delete the node and its connections
-                del note;
-                report {"message": "Note deleted", "id": self.note_id};
-            } else {
-                report {"error": "Note not found"};
-            }
         }
     }
     ```
@@ -523,221 +566,83 @@ Walkers naturally map to REST operations, creating intuitive API patterns for co
 ### API Usage Examples
 
 ```bash
-# Create a note
-curl -X POST http://localhost:8000/walker/create_note \
-  -H "Content-Type: application/json" \
-  -d '{"title": "Shopping List", "content": "Milk, Bread, Eggs", "author": "Alice"}'
+# Create multiple counters
+curl -X POST "http://localhost:8000/walker/create_counter" \
+     -H "Content-Type: application/json" \
+     -d '{"name": "page_views"}'
 
-# List all notes
-curl -X POST http://localhost:8000/walker/list_notes \
+curl -X POST "http://localhost:8000/walker/create_counter" \
+     -H "Content-Type: application/json" \
+     -d '{"name": "user_signups"}'
+
+# Increment specific counters
+curl -X POST "http://localhost:8000/walker/increment_named_counter" \
+     -H "Content-Type: application/json" \
+     -d '{"name": "page_views", "amount": 5}'
+
+curl -X POST "http://localhost:8000/walker/increment_named_counter" \
+     -H "Content-Type: application/json" \
+     -d '{"name": "user_signups", "amount": 2}'
+
+# View all counters
+curl -X POST http://localhost:8000/walker/get_all_counters \
   -H "Content-Type: application/json" \
   -d '{}'
-
-# Get specific note (replace with actual ID)
-curl -X POST http://localhost:8000/walker/get_note \
-  -H "Content-Type: application/json" \
-  -d '{"note_id": "note_123"}'
-
-# Update a note
-curl -X POST http://localhost:8000/walker/update_note \
-  -H "Content-Type: application/json" \
-  -d '{"note_id": "note_123", "priority": 5}'
-
-# Delete a note
-curl -X POST http://localhost:8000/walker/delete_note \
-  -H "Content-Type: application/json" \
-  -d '{"note_id": "note_123"}'
-```
-
----
-
-## Shared Notebook with Permissions
-
-Let's add basic permission checking to demonstrate multi-user patterns:
-
-!!! example "Notebook with User Permissions"
-    ```jac
-    import from uuid { uuid4 }
-
-    # shared_notebook.jac
-    node Note {
-        has title: str;
-        has content: str;
-        has author: str;
-        has shared_with: list[str] = [];
-        has is_public: bool = false;
-        has id: str;
-    }
-
-    walker create_shared_note {
-        has title: str;
-        has content: str;
-        has author: str;
-        has shared_with: list[str] = [];
-        has is_public: bool = false;
-
-        can create_note with `root entry {
-            new_note = Note(
-                title=self.title,
-                content=self.content,
-                author=self.author,
-                shared_with=self.shared_with,
-                is_public=self.is_public,
-                id="note_" + str(uuid4())
-            );
-            here ++> new_note;
-
-            report {
-                "message": "Shared note created",
-                "id": new_note.id,
-                "shared_with": len(self.shared_with),
-                "is_public": self.is_public
-            };
-        }
-    }
-
-    walker get_user_notes {
-        has user: str;
-
-        can fetch_accessible_notes with `root entry {
-            all_notes = [-->(`?Note)];
-            accessible_notes = [];
-
-            for note in all_notes {
-                # User can access if they're the author, note is public,
-                # or they're in the shared_with list
-                if (note.author == self.user or
-                    note.is_public or
-                    self.user in note.shared_with) {
-                    accessible_notes.append({
-                        "id": note.id,
-                        "title": note.title,
-                        "author": note.author,
-                        "is_mine": note.author == self.user
-                    });
-                }
-            }
-
-            report {
-                "user": self.user,
-                "notes": accessible_notes,
-                "count": len(accessible_notes)
-            };
-        }
-    }
-
-    walker share_note {
-        has note_id: str;
-        has user: str;
-        has share_with: str;
-
-        can add_share_permission with `root entry {
-            target_note = [-->(`?Note)](?id == self.note_id);
-
-            if target_note {
-                note = target_note[0];
-
-                # Only author can share
-                if note.author == self.user {
-                    if self.share_with not in note.shared_with {
-                        note.shared_with.append(self.share_with);
-                    }
-
-                    report {
-                        "message": f"Note shared with {self.share_with}",
-                        "shared_with": note.shared_with
-                    };
-                } else {
-                    report {"error": "Only author can share notes"};
-                }
-            } else {
-                report {"error": "Note not found"};
-            }
-        }
-    }
-    ```
-
-### Testing Shared Notebook
-
-```bash
-# Create a shared note
-curl -X POST http://localhost:8000/walker/create_shared_note \
-  -H "Content-Type: application/json" \
-  -d '{
-    "title": "Team Meeting Notes",
-    "content": "Discussed project milestones",
-    "author": "Alice",
-    "shared_with": ["Bob", "Charlie"],
-    "is_public": false
-  }'
-
-# Get notes for a user
-curl -X POST http://localhost:8000/walker/get_user_notes \
-  -H "Content-Type: application/json" \
-  -d '{"user": "Bob"}'
-
-# Share note with another user
-curl -X POST http://localhost:8000/walker/share_note \
-  -H "Content-Type: application/json" \
-  -d '{
-    "note_id": "note_123",
-    "user": "Alice",
-    "share_with": "David"
-  }'
+# Response: {"returns": [{"counters": [{"name": "page_views", "value": 5}, {"name": "user_signups", "value": 2}], "total": 7}]}
 ```
 
 ---
 
 ## Best Practices
 
-!!! summary "API Development Guidelines"
-    - **Use descriptive walker names**: Names become part of your API surface
-    - **Validate input early**: Check parameters before processing
-    - **Provide clear error messages**: Help API consumers understand failures
-    - **Keep walkers focused**: Each walker should have a single responsibility
-    - **Use consistent response formats**: Standardize success and error responses
-    - **Document with types**: Type annotations serve as API documentation
+!!! summary "Persistence Guidelines"
+    - **Service mode only**: Use `jac serve` for persistent applications, not `jac run`
+    - **Connect to root**: All persistent data must be reachable from root
+    - **Initialize gracefully**: Check for existing data before creating new instances
+    - **Use proper IDs**: Generate unique identifiers for nodes that need them
+    - **Plan for concurrency**: Consider multiple users accessing the same data
+    - **Database configuration**: Set up proper database connections for production
 
 ## Key Takeaways
 
 !!! summary "What We've Learned"
-    **Automatic API Generation:**
+    **Persistence Fundamentals:**
 
-    - **Zero configuration**: Walkers become REST endpoints without setup
-    - **Type-safe parameters**: Request validation handled automatically
-    - **Natural REST patterns**: CRUD operations map intuitively to walker semantics
-    - **Instant deployment**: Deploy APIs with a single command
+    - **Service requirement**: Persistence only works with `jac serve` and database backends
+    - **Root connection**: All persistent nodes must be connected to the root node
+    - **Automatic behavior**: Data persists without explicit save/load operations
+    - **Request isolation**: Each API request has access to the same persistent graph
 
-    **Request/Response Handling:**
+    **Root Node Concept:**
 
-    - **JSON mapping**: Request bodies automatically map to walker attributes
-    - **Response formatting**: Walker reports become structured JSON responses
-    - **Parameter validation**: Type system validates requests before execution
-    - **Error handling**: Built-in patterns for graceful error responses
+    - **Graph anchor**: Starting point for all persistent data structures
+    - **Request context**: Available automatically in every API endpoint
+    - **Transaction boundary**: Changes persist at the end of each successful request
+    - **State consistency**: Maintains graph integrity across service restarts
 
-    **Shared Data Applications:**
+    **State Management:**
 
-    - **Persistent nodes**: Data survives between API requests
-    - **Graph operations**: Complex data relationships handled naturally
-    - **User permissions**: Implement access control with business logic
-    - **Multi-user patterns**: Support shared and private data seamlessly
+    - **Automatic persistence**: Connected nodes survive service restarts
+    - **Graph integrity**: Relationships between nodes are maintained
+    - **Type preservation**: Node properties retain their types across persistence
+    - **Concurrent access**: Multiple requests can safely access the same data
 
-    **Development Benefits:**
+    **Development Patterns:**
 
-    - **Focus on logic**: No HTTP handling, routing, or serialization code
-    - **Type safety**: Compile-time validation for API contracts
-    - **Rapid iteration**: Changes take effect immediately
-    - **Scale-ready**: Same code works from development to production
+    - **Initialization checks**: Use filtering to find existing data before creating new
+    - **Unique identification**: Generate proper IDs for nodes that need them
+    - **Data validation**: Implement business rules at the application level
+    - **Error handling**: Graceful handling of missing or invalid data
 
 !!! tip "Try It Yourself"
-    Build sophisticated APIs by adding:
-    - Authentication and user sessions
-    - File upload and processing capabilities
-    - Real-time notifications and webhooks
-    - Integration with external services
+    Build persistent applications by creating:
+    - A todo list API with persistent tasks
+    - A blog system with posts and comments
+    - An inventory management system
+    - A user profile system with preferences
 
-    Remember: Every walker you create automatically becomes an API endpoint when deployed!
+    Remember: Only nodes connected to root (directly or indirectly) will persist when using `jac serve`!
 
 ---
 
-*Ready to learn about persistent data? Continue to [Chapter 13: Persistence and the Root Node](chapter_13.md)!*
+*Ready to explore cloud deployment? Continue to [Chapter 14: Jac Cloud Introduction](chapter_14.md)!*

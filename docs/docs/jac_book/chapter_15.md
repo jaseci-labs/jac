@@ -1,894 +1,733 @@
-# Chapter 15: Advanced Jac Cloud Features
+# Chapter 15: Type System Deep Dive
 
-In this chapter, we'll explore advanced Jac Cloud capabilities that enable configuration management, monitoring, and external integrations. We'll build a comprehensive chat room system that demonstrates environment configuration, logging, and webhook integration through practical examples.
+In this chapter, we'll explore Jac's advanced type system that provides powerful generic programming capabilities, type constraints, and graph-aware type checking. We'll build a generic data processing system that demonstrates type safety, constraints, and runtime validation through practical examples.
 
 !!! info "What You'll Learn"
-    - Environment variables and application configuration
-    - Logging and monitoring capabilities
-    - Webhook integration for external services
-    - Advanced deployment patterns
-    - Performance optimization strategies
+    - Advanced generic programming with the `any` type
+    - Type constraints and validation patterns
+    - Graph-aware type checking for nodes and edges
+    - Building type-safe, reusable components
+    - Runtime type validation and guards
 
 ---
 
-## Environment Variables and Configuration
+## Advanced Type System Features
 
-Production applications require flexible configuration management. Jac Cloud provides built-in support for environment variables and configuration patterns that work seamlessly across local and cloud deployments.
+Jac's type system goes beyond basic types to provide powerful features that work seamlessly with Object-Spatial Programming. The `any` type enables flexible programming while maintaining type safety through runtime validation.
 
-!!! success "Configuration Benefits"
-    - **Environment Isolation**: Different settings for dev, staging, and production
-    - **Security**: Sensitive data kept in environment variables
-    - **Flexibility**: Runtime configuration without code changes
-    - **Cloud Integration**: Automatic configuration injection in cloud environments
+!!! success "Type System Benefits"
+    - **Flexible Typing**: Use `any` for maximum flexibility when needed
+    - **Runtime Safety**: Validate types at runtime with built-in guards
+    - **Graph Integration**: Type safety extends to nodes, edges, and walkers
+    - **Constraint Validation**: Enforce business rules through type checking
 
-### Traditional vs Jac Configuration
+### Traditional vs Jac Type System
 
-!!! example "Configuration Comparison"
+!!! example "Type System Comparison"
     === "Traditional Approach"
         ```python
-        # config.py - Manual configuration management
-        import os
-        from typing import Optional
+        # python_generics.py - Complex generic setup
+        from typing import TypeVar, Generic, List, Any, Union, Optional
+        from abc import ABC, abstractmethod
 
-        class Config:
+        T = TypeVar('T')
+        U = TypeVar('U')
+
+        class Processable(ABC):
+            @abstractmethod
+            def process(self) -> str:
+                pass
+
+        class DataProcessor(Generic[T]):
             def __init__(self):
-                self.database_url = os.getenv('DATABASE_URL', 'sqlite:///app.db')
-                self.redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379')
-                self.secret_key = os.getenv('SECRET_KEY', 'dev-secret')
-                self.debug = os.getenv('DEBUG', 'False').lower() == 'true'
+                self.items: List[T] = []
 
-                # Validate required settings
-                if not self.secret_key or self.secret_key == 'dev-secret':
-                    if not self.debug:
-                        raise ValueError("SECRET_KEY must be set in production")
+            def add(self, item: T) -> None:
+                self.items.append(item)
 
-        # app.py
-        from flask import Flask
-        from config import Config
+            def process_all(self, func) -> List[Any]:
+                return [func(item) for item in self.items]
 
-        config = Config()
-        app = Flask(__name__)
-        app.config.from_object(config)
+            def find(self, predicate) -> Optional[T]:
+                for item in self.items:
+                    if predicate(item):
+                        return item
+                return None
 
-        @app.route('/chat')
-        def chat():
-            return f"Chat room (Debug: {config.debug})"
+        # Usage requires explicit type parameters
+        processor: DataProcessor[int] = DataProcessor()
+        processor.add(42)
+        processor.add(24)
         ```
 
-    === "Jac Configuration"
+    === "Jac Type System"
+        <div class="code-block">
         ```jac
-        # chat_room.jac - Built-in configuration support
-        import from os { getenv }
+        # data_processor.jac - Simple and flexible
+        obj DataProcessor {
+            has items: list[any] = [];
 
-        glob chat_config = {
-            "max_users": int(getenv("MAX_CHAT_USERS", "100")),
-            "message_limit": int(getenv("MESSAGE_LIMIT", "1000")),
-            "room_timeout": int(getenv("ROOM_TIMEOUT", "3600")),
-            "debug_mode": getenv("DEBUG", "false").lower() == "true"
+            def add(item: any) -> None {
+                self.items.append(item);
+            }
+
+            def process_all(func: any) -> list[any] {
+                return [func(item) for item in self.items];
+            }
+
+            def find(predicate: any) -> any | None {
+                for item in self.items {
+                    if predicate(item) {
+                        return item;
+                    }
+                }
+                return None;
+            }
+
+            def filter_by_type(target_type: any) -> list[any] {
+                return [item for item in self.items if isinstance(item, target_type)];
+            }
+        }
+
+        with entry {
+            # Simple usage with type inference
+            processor = DataProcessor();
+            processor.add(42);
+            processor.add("hello");
+            processor.add(3.14);
+
+            # Type-safe operations with runtime validation
+            numbers = processor.filter_by_type(int);
+            print(f"Numbers: {numbers}");
+        }
+        ```
+        </div>
+
+---
+
+## Runtime Type Validation
+
+Jac provides powerful runtime type checking capabilities that complement the flexible `any` type, enabling robust error handling and dynamic type validation.
+
+### Type Guards and Validation
+
+!!! example "Runtime Type Validation System"
+    <div class="code-block">
+    ```jac
+    # type_validator.jac
+    obj TypeValidator {
+        has strict_mode: bool = False;
+
+        """Check if value matches expected type."""
+        def validate_type(value: any, expected_type: any) -> bool {
+            if expected_type == int {
+                return isinstance(value, int);
+            } elif expected_type == str {
+                return isinstance(value, str);
+            } elif expected_type == float {
+                return isinstance(value, float);
+            } elif expected_type == list {
+                return isinstance(value, list);
+            } elif expected_type == dict {
+                return isinstance(value, dict);
+            }
+            return True;  # Allow any for unknown types
+        }
+
+        """Safely cast value to target type."""
+        def safe_cast(value: any, target_type: any) -> any | None {
+            try {
+                if target_type == int {
+                    return int(value);
+                } elif target_type == str {
+                    return str(value);
+                } elif target_type == float {
+                    return float(value);
+                } elif target_type == bool {
+                    return bool(value);
+                }
+                return value;
+            } except ValueError {
+                if self.strict_mode {
+                    raise ValueError(f"Cannot cast {value} to {target_type}");
+                }
+                return None;
+            }
+        }
+
+        """Validate value is within specified range."""
+        def validate_range(value: any, min_val: any = None, max_val: any = None) -> bool {
+            if min_val is not None and value < min_val {
+                return False;
+            }
+            if max_val is not None and value > max_val {
+                return False;
+            }
+            return True;
+        }
+    }
+
+    with entry {
+        validator = TypeValidator(strict_mode=True);
+
+        # Test type validation
+        test_values = [42, "hello", 3.14, True, [1, 2, 3]];
+        expected_types = [int, str, float, bool, list];
+
+        for i in range(len(test_values)) {
+            value = test_values[i];
+            expected = expected_types[i];
+            is_valid = validator.validate_type(value, expected);
+            print(f"{value} is {expected}: {is_valid}");
+        }
+
+        # Test safe casting
+        cast_result = validator.safe_cast("123", int);
+        print(f"Cast '123' to int: {cast_result}");
+
+        # Test range validation
+        in_range = validator.validate_range(50, 0, 100);
+        print(f"50 in range [0, 100]: {in_range}");
+    }
+    ```
+    </div>
+
+### Advanced Type Guards
+
+!!! example "Complex Type Validation Patterns"
+    <div class="code-block">
+    ```jac
+    # advanced_validator.jac
+    obj SchemaValidator {
+        has schema: dict[str, any] = {};
+
+        """Define expected type for a field."""
+        def set_field_type(field_name: str, field_type: any) -> None {
+            self.schema[field_name] = field_type;
+        }
+
+        """Validate object against schema."""
+        def validate_object(obj: any) -> dict[str, any] {
+            results = {
+                "valid": True,
+                "errors": [],
+                "field_results": {}
+            };
+
+            if not isinstance(obj, dict) {
+                results["valid"] = False;
+                results["errors"].append("Object must be a dictionary");
+                return results;
+            }
+
+            for (field_name, expected_type) in self.schema.items() {
+                if field_name not in obj {
+                    results["valid"] = False;
+                    results["errors"].append(f"Missing required field: {field_name}");
+                    results["field_results"][field_name] = False;
+                } else {
+                    field_value = obj[field_name];
+                    is_valid = self.validate_field(field_value, expected_type);
+                    results["field_results"][field_name] = is_valid;
+                    if not is_valid {
+                        results["valid"] = False;
+                        results["errors"].append(f"Invalid type for {field_name}: expected {expected_type}, got {type(field_value)}");
+                    }
+                }
+            }
+
+            return results;
+        }
+
+        """Validate individual field value."""
+        def validate_field(value: any, expected_type: any) -> bool {
+            if expected_type == "string" {
+                return isinstance(value, str);
+            } elif expected_type == "number" {
+                return isinstance(value, (int, float));
+            } elif expected_type == "boolean" {
+                return isinstance(value, bool);
+            } elif expected_type == "list" {
+                return isinstance(value, list);
+            } elif expected_type == "dict" {
+                return isinstance(value, dict);
+            }
+            return True;
+        }
+    }
+
+    with entry {
+        # Create schema for user data
+        user_validator = SchemaValidator();
+        user_validator.set_field_type("name", "string");
+        user_validator.set_field_type("age", "number");
+        user_validator.set_field_type("email", "string");
+        user_validator.set_field_type("active", "boolean");
+
+        # Test valid user
+        valid_user = {
+            "name": "Alice",
+            "age": 30,
+            "email": "alice@example.com",
+            "active": True
         };
 
-        node ChatRoom {
-            has name: str;
-            has users: list[str] = [];
-            has messages: list[dict] = [];
-            has created_at: str;
+        result = user_validator.validate_object(valid_user);
+        print(f"Valid user validation: {result}");
 
-            can add_user(username: str) -> bool {
-                if len(self.users) >= chat_config["max_users"] {
+        # Test invalid user
+        invalid_user = {
+            "name": "Bob",
+            "age": "thirty",  # Wrong type
+            "email": "bob@example.com"
+            # Missing 'active' field
+        };
+
+        result = user_validator.validate_object(invalid_user);
+        print(f"Invalid user validation: {result}");
+    }
+    ```
+    </div>
+
+---
+
+## Graph-Aware Type Checking
+
+Jac's type system extends to Object-Spatial Programming constructs, providing compile-time and runtime guarantees about graph structure and walker behavior.
+
+### Node and Edge Type Safety
+
+!!! example "Type-Safe Graph Operations"
+    <div class="code-block">
+    ```jac
+    # typed_graph.jac
+    node Person {
+        has name: str;
+        has age: int;
+
+        def validate_person() -> bool {
+            return len(self.name) > 0 and self.age >= 0;
+        }
+    }
+
+    node Company {
+        has company_name: str;
+        has industry: str;
+
+        def validate_company() -> bool {
+            return len(self.company_name) > 0 and len(self.industry) > 0;
+        }
+    }
+
+    edge WorksAt {
+        has position: str;
+        has salary: float;
+        has start_date: str;
+
+        def validate_employment() -> bool {
+            return len(self.position) > 0 and self.salary > 0;
+        }
+    }
+
+    edge FriendsWith {
+        has since: str;
+        has closeness: int;  # 1-10 scale
+
+        def validate_friendship() -> bool {
+            return self.closeness >= 1 and self.closeness <= 10;
+        }
+    }
+
+    obj GraphValidator {
+        has validation_errors: list[str] = [];
+
+        """Validate any node type."""
+        def validate_node(node: any) -> bool {
+            self.validation_errors = [];
+
+            if isinstance(node, Person) {
+                if not node.validate_person() {
+                    self.validation_errors.append(f"Invalid person: {node.name}");
                     return False;
                 }
-                if username not in self.users {
-                    self.users.append(username);
+            } elif isinstance(node, Company) {
+                if not node.validate_company() {
+                    self.validation_errors.append(f"Invalid company: {node.company_name}");
+                    return False;
                 }
-                return True;
+            } else {
+                self.validation_errors.append(f"Unknown node type: {type(node)}");
+                return False;
+            }
+
+            return True;
+        }
+
+        """Validate edge connection between nodes."""
+        def validate_edge_connection(from_node: any, edge: any, to_node: any) -> bool {
+            # Check if edge type is appropriate for node types
+            if isinstance(edge, WorksAt) {
+                # Person should work at Company
+                if not (isinstance(from_node, Person) and isinstance(to_node, Company)) {
+                    self.validation_errors.append("WorksAt edge must connect Person to Company");
+                    return False;
+                }
+                return edge.validate_employment();
+            } elif isinstance(edge, FriendsWith) {
+                # Both nodes should be Person
+                if not (isinstance(from_node, Person) and isinstance(to_node, Person)) {
+                    self.validation_errors.append("FriendsWith edge must connect Person to Person");
+                    return False;
+                }
+                return edge.validate_friendship();
+            }
+
+            self.validation_errors.append(f"Unknown edge type: {type(edge)}");
+            return False;
+        }
+    }
+
+    with entry {
+        # Create graph elements
+        alice = Person(name="Alice", age=30);
+        bob = Person(name="Bob", age=25);
+        tech_corp = Company(company_name="TechCorp", industry="Technology");
+
+        # Create relationships
+        works_edge = WorksAt(position="Developer", salary=75000.0, start_date="2023-01-15");
+        friend_edge = FriendsWith(since="2020-01-01", closeness=8);
+
+        # Validate graph elements
+        validator = GraphValidator();
+
+        # Validate nodes
+        alice_valid = validator.validate_node(alice);
+        print(f"Alice valid: {alice_valid}");
+
+        # Validate edge connections
+        work_connection_valid = validator.validate_edge_connection(alice, works_edge, tech_corp);
+        print(f"Work connection valid: {work_connection_valid}");
+
+        friend_connection_valid = validator.validate_edge_connection(alice, friend_edge, bob);
+        print(f"Friend connection valid: {friend_connection_valid}");
+
+        # Test invalid connection
+        invalid_connection = validator.validate_edge_connection(alice, works_edge, bob);  # Wrong types
+        print(f"Invalid connection valid: {invalid_connection}");
+        print(f"Validation errors: {validator.validation_errors}");
+    }
+    ```
+    </div>
+
+### Walker Type Validation
+
+!!! example "Type-Safe Walker Patterns"
+    <div class="code-block">
+    ```jac
+    # typed_walkers.jac
+
+    node Person {
+        has name: str;
+        has age: int;
+
+        def validate_person() -> bool {
+            return len(self.name) > 0 and self.age >= 0;
+        }
+    }
+
+    node Company {
+        has company_name: str;
+        has industry: str;
+
+        def validate_company() -> bool {
+            return len(self.company_name) > 0 and len(self.industry) > 0;
+        }
+    }
+
+    edge WorksAt {
+        has position: str;
+        has salary: float;
+        has start_date: str;
+
+        def validate_employment() -> bool {
+            return len(self.position) > 0 and self.salary > 0;
+        }
+    }
+
+    edge FriendsWith {
+        has since: str;
+        has closeness: int;  # 1-10 scale
+
+        def validate_friendship() -> bool {
+            return self.closeness >= 1 and self.closeness <= 10;
+        }
+    }
+
+    walker PersonVisitor {
+        has visited_count: int = 0;
+        has person_names: list[str] = [];
+        has validation_errors: list[str] = [];
+
+        can visit_person with Person entry {
+            # Type-safe person processing
+            if self.validate_person_node(here) {
+                self.visited_count += 1;
+                self.person_names.append(here.name);
+                print(f"Visited person: {here.name} (age {here.age})");
+
+                # Continue to connected persons
+                friends = [->:FriendsWith:->(`?Person)];
+                if friends {
+                    visit friends;
+                }
+            } else {
+                print(f"Invalid person node encountered: {here.name}");
             }
         }
 
-        walker create_chat_room {
-            has room_name: str;
+        can visit_company with Company entry {
+            # Companies are not processed by PersonVisitor
+            print(f"Skipping company: {here.company_name}");
+        }
 
-            can setup_room with `root entry {
-                new_room = ChatRoom(
-                    name=self.room_name,
-                    created_at="2024-01-15"
-                );
-                here ++> new_room;
+        """Validate person node before processing."""
+        def validate_person_node(person: any) -> bool {
+            if not isinstance(person, Person) {
+                self.validation_errors.append(f"Expected Person, got {type(person)}");
+                return False;
+            }
 
-                report {
-                    "room_id": new_room.id,
-                    "name": new_room.name,
-                    "max_users": chat_config["max_users"]
-                };
+            if not person.validate_person() {
+                self.validation_errors.append(f"Invalid person data: {person.name}");
+                return False;
+            }
+
+            return True;
+        }
+    }
+
+    walker CompanyAnalyzer {
+        has companies_visited: list[str] = [];
+        has total_employees: int = 0;
+
+        can analyze_company with Company entry {
+            if self.validate_company_node(here) {
+                self.companies_visited.append(here.company_name);
+                print(f"Analyzing company: {here.company_name} in {here.industry}");
+
+                # Count employees (people working at this company)
+                employees = [<-:WorksAt:<-(`?Person)];
+                employee_count = len(employees);
+                self.total_employees += employee_count;
+
+                print(f"  Employees: {employee_count}");
+                for employee in employees {
+                    print(f"    - {employee.name}");
+                }
             }
         }
-        ```
 
-### Basic Chat Room Setup
-
-Let's start with a simple chat room that uses environment configuration:
-
-!!! example "Configurable Chat Room"
-    === "Jac"
-        ```jac
-        # simple_chat.jac
-        import from os { getenv }
-        import from datetime { datetime }
-
-        glob config = {
-            "max_rooms": int(getenv("MAX_ROOMS", "10")),
-            "max_users_per_room": int(getenv("MAX_USERS_PER_ROOM", "50")),
-            "message_history": int(getenv("MESSAGE_HISTORY", "100"))
-        };
-
-        node ChatRoom {
-            has name: str;
-            has users: list[str] = [];
-            has message_count: int = 0;
-        }
-
-        walker join_room {
-            has room_name: str;
-            has username: str;
-
-            can join_chat with `root entry {
-                # Find or create room
-                room = [-->(`?ChatRoom)](?name == self.room_name);
-
-                if not room {
-                    # Check room limit
-                    total_rooms = len([-->(`?ChatRoom)]);
-                    if total_rooms >= config["max_rooms"] {
-                        report {"error": "Maximum rooms reached"};
-                        return;
-                    }
-
-                    room = ChatRoom(name=self.room_name);
-                    here ++> room;
-                } else {
-                    room = room[0];
-                }
-
-                # Check user limit
-                if len(room.users) >= config["max_users_per_room"] {
-                    report {"error": "Room is full"};
-                    return;
-                }
-
-                # Add user if not already in room
-                if self.username not in room.users {
-                    room.users.append(self.username);
-                }
-
-                report {
-                    "room": room.name,
-                    "users": room.users,
-                    "user_count": len(room.users)
-                };
+        """Validate company node before processing."""
+        def validate_company_node(company: any) -> bool {
+            if not isinstance(company, Company) {
+                return False;
             }
+            return company.validate_company();
         }
-        ```
+    }
 
-    === "Python Equivalent"
-        ```python
-        # simple_chat.py - Requires manual setup
-        import os
-        from flask import Flask, request, jsonify
+    with entry {
+        # Create network
+        alice = root ++> Person(name="Alice", age=30);
+        bob = root ++> Person(name="Bob", age=25);
+        tech_corp = root ++> Company(company_name="TechCorp", industry="Technology");
 
-        app = Flask(__name__)
+        # Create connections
+        alice[0] +>:WorksAt(position="Developer", salary=75000.0, start_date="2023-01-15"):+> tech_corp[0];
+        bob[0] +>:WorksAt(position="Designer", salary=65000.0, start_date="2023-02-01"):+> tech_corp[0];
+        alice[0] +>:FriendsWith(since="2020-01-01", closeness=8):+> bob[0];
 
-        # Configuration
-        MAX_ROOMS = int(os.getenv("MAX_ROOMS", "10"))
-        MAX_USERS_PER_ROOM = int(os.getenv("MAX_USERS_PER_ROOM", "50"))
-        MESSAGE_HISTORY = int(os.getenv("MESSAGE_HISTORY", "100"))
+        # Test type-safe walkers
+        person_visitor = PersonVisitor();
+        alice[0] spawn person_visitor;
 
-        # In-memory storage
-        chat_rooms = {}
+        print(f"Person visitor results:");
+        print(f"  Visited: {person_visitor.visited_count} people");
+        print(f"  Names: {person_visitor.person_names}");
 
-        @app.route('/join_room', methods=['POST'])
-        def join_room():
-            data = request.get_json()
-            room_name = data.get('room_name')
-            username = data.get('username')
+        company_analyzer = CompanyAnalyzer();
+        tech_corp[0] spawn company_analyzer;
 
-            # Check room limit
-            if len(chat_rooms) >= MAX_ROOMS and room_name not in chat_rooms:
-                return jsonify({"error": "Maximum rooms reached"}), 400
-
-            # Create room if doesn't exist
-            if room_name not in chat_rooms:
-                chat_rooms[room_name] = {
-                    "name": room_name,
-                    "users": [],
-                    "message_count": 0
-                }
-
-            room = chat_rooms[room_name]
-
-            # Check user limit
-            if len(room["users"]) >= MAX_USERS_PER_ROOM:
-                return jsonify({"error": "Room is full"}), 400
-
-            # Add user
-            if username not in room["users"]:
-                room["users"].append(username)
-
-            return jsonify({
-                "room": room["name"],
-                "users": room["users"],
-                "user_count": len(room["users"])
-            })
-
-        if __name__ == '__main__':
-            app.run()
-        ```
-
-### Environment Setup
-
-Create a `.env` file for local development:
-
-```bash
-# .env file
-MAX_ROOMS=20
-MAX_USERS_PER_ROOM=100
-MESSAGE_HISTORY=500
-DEBUG=true
-```
-
-Deploy with environment variables:
-
-```bash
-# Local with environment variables
-MAX_ROOMS=20 jac serve simple_chat.jac
-
-# Or using .env file (if supported by your environment)
-jac serve simple_chat.jac
-```
+        print(f"Company analyzer results:");
+        print(f"  Companies: {company_analyzer.companies_visited}");
+        print(f"  Total employees: {company_analyzer.total_employees}");
+    }
+    ```
+    </div>
 
 ---
 
-## Message Management and Storage
+## Building Type-Safe Components
 
-Instead of WebSockets, let's focus on RESTful message management that works with jac-cloud's current capabilities:
+Using Jac's flexible type system, we can build reusable components that are both type-safe and adaptable.
 
-### Message Storage Implementation
+### Generic Data Structures
 
-!!! example "RESTful Chat Implementation"
+!!! example "Type-Safe Generic Collections"
+    <div class="code-block">
     ```jac
-        # message_chat.jac
-        import from datetime { datetime }
-        import from os { getenv}
-        import from uuid { uuid4 }
+    # generic_collections.jac
+    obj SafeList {
+        has items: list[any] = [];
+        has item_type: any = None;
+        has allow_mixed_types: bool = False;
 
-        node ChatMessage {
-            has content: str;
-            has sender: str;
-            has timestamp: str;
-            has room_name: str;
-            has id: str = "msg_" + str(uuid4());
+        """Set type constraint for list items."""
+        def set_type_constraint(expected_type: any) -> None {
+            self.item_type = expected_type;
         }
 
-        node ChatRoom {
-            has name: str;
-            has users: list[str] = [];
-            has message_count: int = 0;
-
-            def add_message(sender: str, content: str) -> ChatMessage {
-                new_message = ChatMessage(
-                    content=content,
-                    sender=sender,
-                    timestamp=datetime.now().isoformat(),
-                    room_name=self.name
-                );
-                self ++> new_message;
-                self.message_count += 1;
-                return new_message;
-            }
-
-            def get_recent_messages(limit: int = 20) -> list[dict] {
-                messages = [self --> (`?ChatMessage)];
-                recent = messages[-limit:] if len(messages) > limit else messages;
-                return [
-                    {
-                        "content": msg.content,
-                        "sender": msg.sender,
-                        "timestamp": msg.timestamp
-                    }
-                    for msg in recent
-                ];
-
-            }
-        }
-
-        walker join_room {
-            has room_name: str;
-            has username: str;
-
-            obj __specs__ {
-                static has auth: bool = False;
-            }
-
-            can join_chat with `root entry {
-                # Find or create room
-                room = [-->(`?ChatRoom)](?name == self.room_name);
-
-                if not room {
-                    # Check room limit
-                    total_rooms = len([-->(`?ChatRoom)]);
-                    if total_rooms >= int(getenv("MAX_ROOMS", "100")) {
-                        report {"error": "Maximum rooms reached"};
-                        return;
-                    }
-
-                    room = ChatRoom(name=self.room_name);
-                    here ++> room;
-                } else {
-                    room = room[0];
-                }
-
-                # Check user limit
-                if len(room.users) >= int(getenv("MAX_USERS_PER_ROOM", "100")) {
-                    report {"error": "Room is full"};
-                    return;
-                }
-
-                # Add user if not already in room
-                if self.username not in room.users {
-                    room.users.append(self.username);
-                }
-
-                report {
-                    "room": room.name,
-                    "users": room.users,
-                    "user_count": len(room.users)
-                };
-                # return room;
-            }
-        }
-
-
-        walker send_message {
-            has room_name: str;
-            has username: str;
-            has message: str;
-
-            obj __specs__ {
-                static has auth: bool = False;
-            }
-
-            can process_message with `root entry {
-                # Find the room
-                room = [-->(`?ChatRoom)](?name == self.room_name);
-
-                if not room {
-                    report {"error": "Room not found"};
-                    return;
-                }
-
-                room = room[0];
-
-                # Check if user is in room
-                if self.username not in room.users {
-                    report {"error": "User not in room"};
-                    return;
-                }
-
-                # Add message
-                new_message = room.add_message(self.username, self.message);
-
-                report {
-                    "status": "message_sent",
-                    "message_id": new_message.id,
-                    "timestamp": new_message.timestamp
-                };
-            }
-        }
-
-        walker get_chat_history {
-            has room_name: str;
-            has limit: int = 20;
-
-            obj __specs__ {
-                static has auth: bool = False;
-            }
-
-            can fetch_history with `root entry {
-                room = [-->(`?ChatRoom)](?name == self.room_name);
-
-                if room {
-                    messages = room[0].get_recent_messages(self.limit);
-                    report {"room": self.room_name, "messages": messages};
-                } else {
-                    report {"error": "Room not found"};
+        """Add item with type checking."""
+        def add(item: any) -> bool {
+            if self.item_type is not None and not self.allow_mixed_types {
+                if not self.check_type(item, self.item_type) {
+                    print(f"Type error: expected {self.item_type}, got {type(item)}");
+                    return False;
                 }
             }
+
+            self.items.append(item);
+            return True;
         }
-    ```
 
-### Testing Message API
-
-Deploy the message-enabled chat:
-
-```bash
-jac serve message_chat.jac
-```
-
-Test with curl (all walker endpoints are POST):
-
-```bash
-# Join a room first
-curl -X POST http://localhost:8000/walker/join_room \
-  -H "Content-Type: application/json" \
-  -d '{"room_name": "general", "username": "alice"}'
-
-# Send a message
-curl -X POST http://localhost:8000/walker/send_message \
-  -H "Content-Type: application/json" \
-  -d '{"room_name": "general", "username": "alice", "message": "Hello everyone!"}'
-
-# Get chat history
-curl -X POST http://localhost:8000/walker/get_chat_history \
-  -H "Content-Type: application/json" \
-  -d '{"room_name": "general", "limit": 10}'
-```
-
----
-
-## Webhook Integration
-
-Webhooks enable your Jac applications to receive real-time notifications from external services. This is essential for integrating with third-party APIs and building event-driven architectures.
-
-### Webhook Receiver Implementation
-
-!!! example "Chat Notification Webhooks"
-    ```jac
-    # webhook_chat.jac
-    import from datetime { datetime }
-
-    node WebhookLog {
-        has source: str;
-        has event_type: str;
-        has data: dict;
-        has received_at: str;
-    }
-
-    # Webhook receiver walker
-    walker receive_webhook {
-        has source: str = "unknown";
-        has event_type: str;
-        has data: dict;
-
-        can process_webhook with `root entry {
-            # Log the webhook
-            webhook_log = WebhookLog(
-                source=self.source,
-                event_type=self.event_type,
-                data=self.data,
-                received_at=datetime.now().isoformat()
-            );
-            here ++> webhook_log;
-
-            # Process different webhook types
-            if self.source == "github" and self.event_type == "push" {
-                self.handle_github_push();
-            } elif self.source == "slack" and self.event_type == "message" {
-                self.handle_slack_message();
-            } else {
-                print(f"Unknown webhook: {self.source}/{self.event_type}");
+        """Safely get item by index."""
+        def get(index: int) -> any | None {
+            if 0 <= index < len(self.items) {
+                return self.items[index];
             }
-
-            report {"status": "webhook_processed", "log_id": webhook_log.id};
+            return None;
         }
 
-        can handle_github_push() {
-            # Extract commit information
-            commits = self.data.get("commits", []);
-            repo_name = self.data.get("repository", {}).get("name", "unknown");
+        """Get all items of specific type."""
+        def filter_by_type(target_type: any) -> list[any] {
+            return [item for item in self.items if self.check_type(item, target_type)];
+        }
 
-            # Send notification to chat
-            for commit in commits {
-                message = f"🔨 New commit in {repo_name}: {commit.get('message', 'No message')}";
-                self.send_to_chat("dev-updates", "GitBot", message);
+        """Check if value matches expected type."""
+        def check_type(value: any, expected_type: any) -> bool {
+            if expected_type == int {
+                return isinstance(value, int);
+            } elif expected_type == str {
+                return isinstance(value, str);
+            } elif expected_type == float {
+                return isinstance(value, float);
+            } elif expected_type == bool {
+                return isinstance(value, bool);
+            } elif expected_type == list {
+                return isinstance(value, list);
+            } elif expected_type == dict {
+                return isinstance(value, dict);
             }
+            return True;
         }
 
-        can handle_slack_message() {
-            # Forward Slack messages to our chat
-            user = self.data.get("user_name", "SlackUser");
-            text = self.data.get("text", "");
-            channel = self.data.get("channel_name", "general");
-
-            message = f"[Slack] {text}";
-            self.send_to_chat(channel, user, message);
-        }
-
-        can send_to_chat(room_name: str, sender: str, message: str) {
-            # Find or create room
-            room = [-->(`?ChatRoom)](?name == room_name);
-            if not room {
-                room = ChatRoom(name=room_name);
-                here ++> room;
-            } else {
-                room = room[0];
+        """Get summary of types in the list."""
+        def get_type_summary() -> dict[str, int] {
+            type_counts = {};
+            for item in self.items {
+                type_name = type(item).__name__;
+                type_counts[type_name] = type_counts.get(type_name, 0) + 1;
             }
-
-            # Add message
-            room.add_message(sender, message);
+            return type_counts;
         }
     }
 
-    walker get_webhook_logs {
-        has source: str = "";
-        has limit: int = 50;
+    with entry {
+        # Create type-constrained list
+        number_list = SafeList();
+        number_list.set_type_constraint(int);
 
-        can fetch_logs with `root entry {
-            all_logs = [-->(`?WebhookLog)];
+        # Add valid items
+        success1 = number_list.add(42);
+        success2 = number_list.add(24);
+        success3 = number_list.add("hello");  # Should fail
 
-            # Filter by source if specified
-            if self.source {
-                filtered_logs = [log for log in all_logs if log.source == self.source];
-            } else {
-                filtered_logs = all_logs;
-            }
+        print(f"Added 42: {success1}");
+        print(f"Added 24: {success2}");
+        print(f"Added 'hello': {success3}");
 
-            # Get recent logs
-            recent_logs = filtered_logs[-self.limit:];
+        # Create mixed-type list
+        mixed_list = SafeList(allow_mixed_types=True);
+        mixed_list.add(42);
+        mixed_list.add("hello");
+        mixed_list.add(3.14);
+        mixed_list.add(True);
 
-            report {
-                "logs": [
-                    {
-                        "source": log.source,
-                        "event_type": log.event_type,
-                        "received_at": log.received_at
-                    }
-                    for log in recent_logs
-                ],
-                "total": len(filtered_logs)
-            };
-        }
+        print(f"Mixed list type summary: {mixed_list.get_type_summary()}");
+
+        # Filter by type
+        numbers = mixed_list.filter_by_type(int);
+        strings = mixed_list.filter_by_type(str);
+
+        print(f"Numbers: {numbers}");
+        print(f"Strings: {strings}");
     }
     ```
-
-### Testing Webhooks
-
-Test webhook locally:
-
-```bash
-curl -X POST http://localhost:8000/walker/receive_webhook \
-  -H "Content-Type: application/json" \
-  -d '{
-    "source": "github",
-    "event_type": "push",
-    "data": {
-      "repository": {"name": "my-repo"},
-      "commits": [{"message": "Fix critical bug"}]
-    }
-  }'
-```
-
----
-
-## Logging and Monitoring
-
-Production applications require comprehensive logging and monitoring. Jac Cloud provides built-in observability features that integrate with your application logic.
-
-### Application Logging
-
-!!! example "Structured Logging System"
-    ```jac
-    # logging_chat.jac
-    import from datetime { datetime }
-    import from logging { getLogger }
-
-    glob logger = getLogger("chat_app");
-
-    node LogEntry {
-        has level: str;
-        has message: str;
-        has timestamp: str;
-        has context: dict = {};
-    }
-
-    walker log_activity {
-        has level: str = "info";
-        has message: str;
-        has context: dict = {};
-
-        can record_log with `root entry {
-            # Create log entry
-            log_entry = LogEntry(
-                level=self.level,
-                message=self.message,
-                timestamp=datetime.now().isoformat(),
-                context=self.context
-            );
-            here ++> log_entry;
-
-            # Also log to system logger
-            if self.level == "error" {
-                logger.error(f"{self.message} | Context: {self.context}");
-            } elif self.level == "warning" {
-                logger.warning(f"{self.message} | Context: {self.context}");
-            } else {
-                logger.info(f"{self.message} | Context: {self.context}");
-            }
-
-            report {"log_id": log_entry.id, "logged_at": log_entry.timestamp};
-        }
-    }
-
-    # Enhanced chat with logging
-    walker send_logged_message {
-        has room_name: str;
-        has username: str;
-        has message: str;
-
-        can send_with_logging with `root entry {
-            # Log the attempt
-            log_activity(
-                level="info",
-                message="Message send attempt",
-                context={
-                    "room": self.room_name,
-                    "user": self.username,
-                    "message_length": len(self.message)
-                }
-            ) spawn here;
-
-            # Find room
-            room = [-->(`?ChatRoom)](?name == self.room_name);
-
-            if not room {
-                log_activity(
-                    level="warning",
-                    message="Message failed - room not found",
-                    context={"room": self.room_name, "user": self.username}
-                ) spawn here;
-
-                report {"error": "Room not found"};
-                return;
-            }
-
-            room = room[0];
-
-            # Check if user can send
-            if self.username not in room.users {
-                log_activity(
-                    level="warning",
-                    message="Message failed - user not in room",
-                    context={"room": self.room_name, "user": self.username}
-                ) spawn here;
-
-                report {"error": "User not in room"};
-                return;
-            }
-
-            # Send message
-            new_message = room.add_message(self.username, self.message);
-
-            # Log success
-            log_activity(
-                level="info",
-                message="Message sent successfully",
-                context={
-                    "room": self.room_name,
-                    "user": self.username,
-                    "message_id": new_message.id
-                }
-            ) spawn here;
-
-            report {"status": "sent", "message_id": new_message.id};
-        }
-    }
-
-    walker get_logs {
-        has level: str = "";
-        has limit: int = 100;
-
-        can fetch_logs with `root entry {
-            all_logs = [-->(`?LogEntry)];
-
-            # Filter by level if specified
-            if self.level {
-                filtered_logs = [log for log in all_logs if log.level == self.level];
-            } else {
-                filtered_logs = all_logs;
-            }
-
-            # Get recent logs
-            recent_logs = filtered_logs[-self.limit:];
-
-            report {
-                "logs": [
-                    {
-                        "level": log.level,
-                        "message": log.message,
-                        "timestamp": log.timestamp,
-                        "context": log.context
-                    }
-                    for log in recent_logs
-                ],
-                "total": len(filtered_logs)
-            };
-        }
-    }
-    ```
-
----
-
-## Background Tasks and Cleanup
-
-Automated tasks are essential for maintenance, cleanup, and periodic operations.
-
-### Scheduled Chat Maintenance
-
-!!! example "Chat Room Cleanup Tasks"
-    ```jac
-    # scheduled_chat.jac
-    import from datetime { datetime, timedelta }
-
-    # Cleanup walker for maintenance tasks
-    walker cleanup_inactive_rooms {
-        has max_age_hours: int = 24;
-
-        can perform_cleanup with `root entry {
-            current_time = datetime.now();
-            cleanup_count = 0;
-
-            # Find all rooms
-            all_rooms = [-->(`?ChatRoom)];
-
-            for room in all_rooms {
-                # Check if room has been inactive
-                if len(room.users) == 0 {
-                    # Get latest message
-                    messages = [room --> ChatMessage];
-
-                    if not messages {
-                        # No messages, delete empty room
-                        del room;
-                        cleanup_count += 1;
-                    } else {
-                        # Check last message age
-                        latest_message = messages[-1];
-                        message_time = datetime.fromisoformat(latest_message.timestamp);
-
-                        if (current_time - message_time).total_seconds() > (self.max_age_hours * 3600) {
-                            # Room is too old, cleanup
-                            for msg in messages {
-                                del msg;
-                            }
-                            del room;
-                            cleanup_count += 1;
-                        }
-                    }
-                }
-            }
-
-            # Log cleanup results
-            log_activity(
-                level="info",
-                message="Cleanup task completed",
-                context={
-                    "rooms_cleaned": cleanup_count,
-                    "total_rooms": len([-->(`?ChatRoom)])
-                }
-            ) spawn here;
-
-            report {
-                "status": "cleanup_completed",
-                "rooms_cleaned": cleanup_count,
-                "timestamp": current_time.isoformat()
-            };
-        }
-    }
-
-    # Daily statistics walker
-    walker generate_daily_stats {
-        can collect_stats with `root entry {
-            # Count active rooms and users
-            all_rooms = [-->(`?ChatRoom)];
-            total_rooms = len(all_rooms);
-            total_users = sum(len(room.users) for room in all_rooms);
-
-            # Count messages sent today
-            today = datetime.now().date();
-            all_messages = [-->(`?ChatMessage)];
-
-            today_messages = 0;
-            for msg in all_messages {
-                msg_date = datetime.fromisoformat(msg.timestamp).date();
-                if msg_date == today {
-                    today_messages += 1;
-                }
-            }
-
-            # Create stats report
-            stats = {
-                "date": today.isoformat(),
-                "active_rooms": total_rooms,
-                "active_users": total_users,
-                "messages_today": today_messages,
-                "generated_at": datetime.now().isoformat()
-            };
-
-            # Log daily stats
-            log_activity(
-                level="info",
-                message="Daily statistics generated",
-                context=stats
-            ) spawn here;
-
-            report stats;
-        }
-    }
-    ```
-
-### Manual Task Execution
-
-```bash
-# Run cleanup manually
-curl -X POST http://localhost:8000/walker/cleanup_inactive_rooms \
-  -H "Content-Type: application/json" \
-  -d '{"max_age_hours": 48}'
-
-# Generate daily stats
-curl -X POST http://localhost:8000/walker/generate_daily_stats \
-  -H "Content-Type: application/json" \
-  -d '{}'
-```
+    </div>
 
 ---
 
 ## Best Practices
 
-!!! summary "Cloud Development Guidelines"
-    - **Use environment variables**: Keep configuration flexible and secure
-    - **Structure your logs**: Use consistent logging patterns for debugging
-    - **Validate webhooks**: Always verify webhook sources and data
-    - **Monitor performance**: Track application metrics and health
-    - **Handle failures gracefully**: Implement retry logic and fallback patterns
-    - **Secure sensitive data**: Never commit secrets or API keys to code
+!!! summary "Type System Guidelines"
+    - **Use `any` strategically**: Apply `any` type for maximum flexibility while implementing runtime validation
+    - **Validate at boundaries**: Check types when data enters your system from external sources
+    - **Leverage runtime checks**: Use isinstance() and custom validation functions for type safety
+    - **Design for flexibility**: Build components that can handle multiple types when appropriate
+    - **Document type expectations**: Make type requirements clear in function and method documentation
+    - **Test with multiple types**: Verify your code works correctly with different type combinations
 
 ## Key Takeaways
 
 !!! summary "What We've Learned"
-    **Configuration Management:**
+    **Advanced Type Features:**
 
-    - **Environment variables**: Flexible application configuration without code changes
-    - **Security patterns**: Keep sensitive data in environment variables, not code
-    - **Multi-environment support**: Different settings for development, staging, production
-    - **Runtime configuration**: Adjust application behavior without redeployment
+    - **Flexible typing**: Use `any` type for maximum flexibility when needed
+    - **Runtime validation**: Dynamic type checking complements static analysis
+    - **Graph-aware types**: Compile-time safety for spatial programming constructs
+    - **Type guards**: Runtime validation patterns for dynamic typing
 
-    **Integration Capabilities:**
+    **Practical Applications:**
 
-    - **Webhook support**: Receive real-time notifications from external services
-    - **RESTful architecture**: All walkers become scalable API endpoints
-    - **External service integration**: Connect with third-party APIs and services
-    - **Event-driven patterns**: Build reactive applications that respond to external events
+    - **Reusable components**: Build libraries that work with multiple data types
+    - **Safe graph operations**: Prevent type errors in node and edge relationships
+    - **Data validation**: Robust input validation with clear error messages
+    - **Performance optimization**: Type information enables better optimization
 
-    **Monitoring and Observability:**
+    **Development Benefits:**
 
-    - **Structured logging**: Built-in logging patterns for debugging and monitoring
-    - **Performance tracking**: Monitor application health and performance metrics
-    - **Error handling**: Graceful error recovery and reporting
-    - **Audit trails**: Track important application events and user actions
+    - **Early error detection**: Catch type mismatches through validation
+    - **Better documentation**: Types and validation serve as executable documentation
+    - **IDE support**: Enhanced development experience with type information
+    - **Refactoring safety**: Type system helps prevent breaking changes
 
-    **Production Features:**
+    **Advanced Features:**
 
-    - **Background tasks**: Automated maintenance and cleanup operations
-    - **Data management**: Efficient patterns for data lifecycle management
-    - **Scalability**: Built-in support for horizontal scaling
-    - **Reliability**: Robust patterns for production deployment
+    - **Schema validation**: Complex object validation with custom rules
+    - **Type constraints**: Enforce business rules through type checking
+    - **Generic patterns**: Type-safe graph traversal and processing
+    - **Protocol support**: Interface-based programming with validation
 
 !!! tip "Try It Yourself"
-    Enhance your cloud applications by adding:
-    - Real-time chat with webhook integrations
-    - Automated data backup and cleanup tasks
-    - External service integrations (email, SMS, payments)
-    - Comprehensive monitoring and alerting systems
+    Master the type system by building:
 
-    Remember: All these advanced features work seamlessly with Jac's scale-agnostic architecture!
+    - A generic data processing pipeline with runtime validation
+    - Type-safe graph algorithms with proper node/edge validation
+    - Runtime validation systems for API endpoints
+    - Generic walker patterns for different graph structures
+
+    Remember: Jac's type system provides flexibility through `any` while enabling powerful runtime validation!
 
 ---
 
-*Ready to master Jac's type system? Continue to [Chapter 17: Type System Deep Dive](chapter_16.md)!*
+*Ready to learn about testing and debugging? Continue to [Chapter 18: Testing and Debugging](chapter_17.md)!*

@@ -1,733 +1,1183 @@
-# Chapter 17: Type System Deep Dive
+# Chapter 16: Testing and Debugging
 
-In this chapter, we'll explore Jac's advanced type system that provides powerful generic programming capabilities, type constraints, and graph-aware type checking. We'll build a generic data processing system that demonstrates type safety, constraints, and runtime validation through practical examples.
+In this chapter, we'll explore Jac's built-in testing framework and debugging strategies for spatial applications. We'll build a comprehensive test suite for a social media system that demonstrates testing nodes, edges, walkers, and complex graph operations.
 
 !!! info "What You'll Learn"
-    - Advanced generic programming with the `any` type
-    - Type constraints and validation patterns
-    - Graph-aware type checking for nodes and edges
-    - Building type-safe, reusable components
-    - Runtime type validation and guards
+    - Jac's built-in testing framework with `.test.jac` files
+    - Testing spatial applications with nodes, edges, and walkers
+    - Debugging techniques for graph traversal and walker behavior
+    - Performance testing and optimization strategies
+    - Test-driven development patterns for OSP
 
 ---
 
-## Advanced Type System Features
+## Jac's Built-in Testing Framework
 
-Jac's type system goes beyond basic types to provide powerful features that work seamlessly with Object-Spatial Programming. The `any` type enables flexible programming while maintaining type safety through runtime validation.
+Jac provides a powerful testing framework that automatically discovers and runs tests. When you run `jac test myfile.jac`, it automatically looks for `myfile.test.jac` and executes all test blocks within it.
 
-!!! success "Type System Benefits"
-    - **Flexible Typing**: Use `any` for maximum flexibility when needed
-    - **Runtime Safety**: Validate types at runtime with built-in guards
-    - **Graph Integration**: Type safety extends to nodes, edges, and walkers
-    - **Constraint Validation**: Enforce business rules through type checking
+!!! success "Testing Framework Benefits"
+    - **Automatic Discovery**: `.test.jac` files are automatically found and executed
+    - **Graph-Aware Testing**: Native support for testing spatial relationships
+    - **Walker Testing**: Test mobile computation patterns naturally
+    - **Type-Safe Assertions**: Leverage Jac's type system in test validation
+    - **Zero Configuration**: No external testing frameworks required
 
-### Traditional vs Jac Type System
+### Traditional vs Jac Testing
 
-!!! example "Type System Comparison"
+!!! example "Testing Comparison"
     === "Traditional Approach"
         ```python
-        # python_generics.py - Complex generic setup
-        from typing import TypeVar, Generic, List, Any, Union, Optional
-        from abc import ABC, abstractmethod
+        # test_social_media.py - External framework required
+        import unittest
+        from social_media import Profile, Tweet, Comment
 
-        T = TypeVar('T')
-        U = TypeVar('U')
+        class TestSocialMedia(unittest.TestCase):
+            def setUp(self):
+                self.profile = Profile("test_user")
+                self.tweet = Tweet("Hello world!")
 
-        class Processable(ABC):
-            @abstractmethod
-            def process(self) -> str:
-                pass
+            def test_create_profile(self):
+                self.assertEqual(self.profile.username, "test_user")
+                self.assertIsInstance(self.profile, Profile)
 
-        class DataProcessor(Generic[T]):
-            def __init__(self):
-                self.items: List[T] = []
+            def test_create_tweet(self):
+                self.profile.add_tweet(self.tweet)
+                self.assertEqual(len(self.profile.tweets), 1)
+                self.assertEqual(self.profile.tweets[0].content, "Hello world!")
 
-            def add(self, item: T) -> None:
-                self.items.append(item)
+            def test_follow_user(self):
+                other_user = Profile("other_user")
+                self.profile.follow(other_user)
+                self.assertIn(other_user, self.profile.following)
 
-            def process_all(self, func) -> List[Any]:
-                return [func(item) for item in self.items]
-
-            def find(self, predicate) -> Optional[T]:
-                for item in self.items:
-                    if predicate(item):
-                        return item
-                return None
-
-        # Usage requires explicit type parameters
-        processor: DataProcessor[int] = DataProcessor()
-        processor.add(42)
-        processor.add(24)
+        if __name__ == '__main__':
+            unittest.main()
         ```
 
-    === "Jac Type System"
-        <div class="code-block">
+    === "Jac Testing"
         ```jac
-        # data_processor.jac - Simple and flexible
-        obj DataProcessor {
-            has items: list[any] = [];
+        # social_media.test.jac - Built-in testing
 
-            def add(item: any) -> None {
-                self.items.append(item);
-            }
-
-            def process_all(func: any) -> list[any] {
-                return [func(item) for item in self.items];
-            }
-
-            def find(predicate: any) -> any | None {
-                for item in self.items {
-                    if predicate(item) {
-                        return item;
-                    }
-                }
-                return None;
-            }
-
-            def filter_by_type(target_type: any) -> list[any] {
-                return [item for item in self.items if isinstance(item, target_type)];
-            }
+        test create_profile {
+            root spawn visit_profile();
+            profile = [root --> Profile][0];
+            check isinstance(profile, Profile);
+            check profile.username == "";  # Default value
         }
 
-        with entry {
-            # Simple usage with type inference
-            processor = DataProcessor();
-            processor.add(42);
-            processor.add("hello");
-            processor.add(3.14);
+        test update_profile {
+            root spawn update_profile(new_username="test_user");
+            profile = [root --> Profile][0];
+            check profile.username == "test_user";
+        }
 
-            # Type-safe operations with runtime validation
-            numbers = processor.filter_by_type(int);
-            print(f"Numbers: {numbers}");
+        test create_tweet {
+            root spawn create_tweet(content="Hello world!");
+            tweet = [root --> Profile --> Tweet][0];
+            check tweet.content == "Hello world!";
+            check isinstance(tweet, Tweet);
+        }
+
+        test follow_user {
+            # Create another profile to follow
+            other_profile = Profile(username="other_user");
+            other_profile spawn follow_request();
+
+            # Check follow relationship exists
+            followed = [root --> Profile ->:Follow:-> Profile][0];
+            check followed.username == "other_user";
         }
         ```
-        </div>
 
 ---
 
-## Runtime Type Validation
+## Testing Graph Structures
 
-Jac provides powerful runtime type checking capabilities that complement the flexible `any` type, enabling robust error handling and dynamic type validation.
+Testing spatial applications requires verifying both node properties and relationship integrity. Let's build a comprehensive social media system and test it thoroughly.
 
-### Type Guards and Validation
+### Basic Social Media System
 
-!!! example "Runtime Type Validation System"
-    <div class="code-block">
-    ```jac
-    # type_validator.jac
-    obj TypeValidator {
-        has strict_mode: bool = False;
+!!! example "Social Media Implementation"
+    === "social_media.jac"
+        ```jac
+        # social_media.jac
+        import from datetime { datetime }
 
-        """Check if value matches expected type."""
-        def validate_type(value: any, expected_type: any) -> bool {
-            if expected_type == int {
-                return isinstance(value, int);
-            } elif expected_type == str {
-                return isinstance(value, str);
-            } elif expected_type == float {
-                return isinstance(value, float);
-            } elif expected_type == list {
-                return isinstance(value, list);
-            } elif expected_type == dict {
-                return isinstance(value, dict);
-            }
-            return True;  # Allow any for unknown types
+        node Profile {
+            has username: str = "";
+            has bio: str = "";
+            has follower_count: int = 0;
+
+            can update with update_profile entry;
+            can follow with follow_request entry;
+            can unfollow with unfollow_request entry;
         }
 
-        """Safely cast value to target type."""
-        def safe_cast(value: any, target_type: any) -> any | None {
-            try {
-                if target_type == int {
-                    return int(value);
-                } elif target_type == str {
-                    return str(value);
-                } elif target_type == float {
-                    return float(value);
-                } elif target_type == bool {
-                    return bool(value);
+        node Tweet {
+            has content: str;
+            has created_at: str = datetime.now().strftime("%Y-%m-%d %H:%M:%S");
+            has like_count: int = 0;
+
+            can update with update_tweet exit;
+            can delete with remove_tweet exit;
+            can like with like_tweet entry;
+            can unlike with unlike_tweet entry;
+        }
+
+        node Comment {
+            has content: str;
+            has created_at: str = datetime.now().strftime("%Y-%m-%d %H:%M:%S");
+
+            can update with update_comment entry;
+            can delete with remove_comment entry;
+        }
+
+        edge Follow {
+            has followed_at: str = datetime.now().strftime("%Y-%m-%d %H:%M:%S");
+        }
+
+        edge Post {
+            has posted_at: str = datetime.now().strftime("%Y-%m-%d %H:%M:%S");
+        }
+
+        edge Like {
+            has liked_at: str = datetime.now().strftime("%Y-%m-%d %H:%M:%S");
+        }
+
+        edge CommentOn {}
+
+        walker visit_profile {
+            can visit_profile with `root entry {
+                visit [-->Profile] else {
+                    new_profile = here ++> Profile();
+                    visit new_profile;
                 }
-                return value;
-            } except ValueError {
-                if self.strict_mode {
-                    raise ValueError(f"Cannot cast {value} to {target_type}");
-                }
-                return None;
             }
         }
 
-        """Validate value is within specified range."""
-        def validate_range(value: any, min_val: any = None, max_val: any = None) -> bool {
-            if min_val is not None and value < min_val {
-                return False;
-            }
-            if max_val is not None and value > max_val {
-                return False;
-            }
-            return True;
-        }
-    }
-
-    with entry {
-        validator = TypeValidator(strict_mode=True);
-
-        # Test type validation
-        test_values = [42, "hello", 3.14, True, [1, 2, 3]];
-        expected_types = [int, str, float, bool, list];
-
-        for i in range(len(test_values)) {
-            value = test_values[i];
-            expected = expected_types[i];
-            is_valid = validator.validate_type(value, expected);
-            print(f"{value} is {expected}: {is_valid}");
+        walker update_profile(visit_profile) {
+            has new_username: str;
+            has new_bio: str = "";
         }
 
-        # Test safe casting
-        cast_result = validator.safe_cast("123", int);
-        print(f"Cast '123' to int: {cast_result}");
-
-        # Test range validation
-        in_range = validator.validate_range(50, 0, 100);
-        print(f"50 in range [0, 100]: {in_range}");
-    }
-    ```
-    </div>
-
-### Advanced Type Guards
-
-!!! example "Complex Type Validation Patterns"
-    <div class="code-block">
-    ```jac
-    # advanced_validator.jac
-    obj SchemaValidator {
-        has schema: dict[str, any] = {};
-
-        """Define expected type for a field."""
-        def set_field_type(field_name: str, field_type: any) -> None {
-            self.schema[field_name] = field_type;
-        }
-
-        """Validate object against schema."""
-        def validate_object(obj: any) -> dict[str, any] {
-            results = {
-                "valid": True,
-                "errors": [],
-                "field_results": {}
-            };
-
-            if not isinstance(obj, dict) {
-                results["valid"] = False;
-                results["errors"].append("Object must be a dictionary");
-                return results;
-            }
-
-            for (field_name, expected_type) in self.schema.items() {
-                if field_name not in obj {
-                    results["valid"] = False;
-                    results["errors"].append(f"Missing required field: {field_name}");
-                    results["field_results"][field_name] = False;
+        walker follow_request {
+            can follow_user with Profile entry {
+                current_profile = [root --> Profile][0];
+                if current_profile != here {
+                    current_profile +>:Follow:+> here;
+                    here.follower_count += 1;
+                    report {"message": f"Now following {here.username}"};
                 } else {
-                    field_value = obj[field_name];
-                    is_valid = self.validate_field(field_value, expected_type);
-                    results["field_results"][field_name] = is_valid;
-                    if not is_valid {
-                        results["valid"] = False;
-                        results["errors"].append(f"Invalid type for {field_name}: expected {expected_type}, got {type(field_value)}");
-                    }
+                    report {"error": "Cannot follow yourself"};
                 }
             }
-
-            return results;
         }
 
-        """Validate individual field value."""
-        def validate_field(value: any, expected_type: any) -> bool {
-            if expected_type == "string" {
-                return isinstance(value, str);
-            } elif expected_type == "number" {
-                return isinstance(value, (int, float));
-            } elif expected_type == "boolean" {
-                return isinstance(value, bool);
-            } elif expected_type == "list" {
-                return isinstance(value, list);
-            } elif expected_type == "dict" {
-                return isinstance(value, dict);
+        walker unfollow_request {
+            can unfollow_user with Profile entry {
+                current_profile = [root --> Profile][0];
+                follow_edges = [edge current_profile ->:Follow:-> here];
+                if follow_edges {
+                    del follow_edges[0];
+                    here.follower_count -= 1;
+                    report {"message": f"Unfollowed {here.username}"};
+                } else {
+                    report {"error": "Not following this user"};
+                }
             }
-            return True;
         }
-    }
 
-    with entry {
-        # Create schema for user data
-        user_validator = SchemaValidator();
-        user_validator.set_field_type("name", "string");
-        user_validator.set_field_type("age", "number");
-        user_validator.set_field_type("email", "string");
-        user_validator.set_field_type("active", "boolean");
+        walker create_tweet(visit_profile) {
+            has content: str;
 
-        # Test valid user
-        valid_user = {
-            "name": "Alice",
-            "age": 30,
-            "email": "alice@example.com",
-            "active": True
-        };
+            can post_tweet with Profile entry {
+                tweet = here +>:Post:+> Tweet(content=self.content);
+                report {"message": "Tweet created", "tweet_id": tweet[0].id};
+            }
+        }
 
-        result = user_validator.validate_object(valid_user);
-        print(f"Valid user validation: {result}");
+        walker update_tweet {
+            has updated_content: str;
+        }
 
-        # Test invalid user
-        invalid_user = {
-            "name": "Bob",
-            "age": "thirty",  # Wrong type
-            "email": "bob@example.com"
-            # Missing 'active' field
-        };
+        walker remove_tweet {}
 
-        result = user_validator.validate_object(invalid_user);
-        print(f"Invalid user validation: {result}");
-    }
-    ```
-    </div>
+        walker like_tweet {
+            can like_post with Tweet entry {
+                current_profile = [root --> Profile][0];
+                existing_likes = [edge current_profile ->:Like:-> here];
+
+                if not existing_likes {
+                    current_profile +>:Like:+> here;
+                    here.like_count += 1;
+                    report {"message": "Tweet liked"};
+                } else {
+                    report {"error": "Already liked this tweet"};
+                }
+            }
+        }
+
+        walker unlike_tweet {
+            can unlike_post with Tweet entry {
+                current_profile = [root --> Profile][0];
+                like_edges = [edge current_profile ->:Like:-> here];
+
+                if like_edges {
+                    del like_edges[0];
+                    here.like_count -= 1;
+                    report {"message": "Tweet unliked"};
+                } else {
+                    report {"error": "Haven't liked this tweet"};
+                }
+            }
+        }
+
+        walker comment_on_tweet {
+            has content: str;
+
+            can add_comment with Tweet entry {
+                current_profile = [root --> Profile][0];
+                comment = current_profile ++> Comment(content=self.content);
+                here +>:CommentOn:+> comment[0];
+                report {"message": "Comment added", "comment_id": comment[0].id};
+            }
+        }
+        ```
+
+    === "Python Equivalent"
+        ```python
+        # social_media.py - Manual implementation
+        from datetime import datetime
+        from typing import List, Optional
+
+        class Profile:
+            def __init__(self, username: str = "", bio: str = ""):
+                self.username = username
+                self.bio = bio
+                self.follower_count = 0
+                self.following = []
+                self.followers = []
+                self.tweets = []
+
+            def follow(self, other_profile):
+                if other_profile not in self.following and other_profile != self:
+                    self.following.append(other_profile)
+                    other_profile.followers.append(self)
+                    other_profile.follower_count += 1
+                    return True
+                return False
+
+            def unfollow(self, other_profile):
+                if other_profile in self.following:
+                    self.following.remove(other_profile)
+                    other_profile.followers.remove(self)
+                    other_profile.follower_count -= 1
+                    return True
+                return False
+
+        class Tweet:
+            def __init__(self, content: str, author: Profile):
+                self.content = content
+                self.author = author
+                self.created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                self.like_count = 0
+                self.liked_by = []
+                self.comments = []
+
+            def like(self, user: Profile):
+                if user not in self.liked_by:
+                    self.liked_by.append(user)
+                    self.like_count += 1
+                    return True
+                return False
+
+            def unlike(self, user: Profile):
+                if user in self.liked_by:
+                    self.liked_by.remove(user)
+                    self.like_count -= 1
+                    return True
+                return False
+
+        class Comment:
+            def __init__(self, content: str, author: Profile, tweet: Tweet):
+                self.content = content
+                self.author = author
+                self.tweet = tweet
+                self.created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        ```
+
+### Comprehensive Test Suite
+
+!!! example "Complete Test Coverage"
+    === "social_media.test.jac"
+        ```jac
+        # social_media.test.jac
+
+        # Test basic profile creation and updates
+        test create_and_update_profile {
+            # Test profile creation
+            root spawn visit_profile();
+            profile = [root --> Profile][0];
+            check isinstance(profile, Profile);
+            check profile.username == "";
+            check profile.follower_count == 0;
+
+            # Test profile update
+            root spawn update_profile(
+                new_username="alice",
+                new_bio="Software developer"
+            );
+            updated_profile = [root --> Profile][0];
+            check updated_profile.username == "alice";
+            check updated_profile.bio == "Software developer";
+        }
+
+        # Test following functionality
+        test follow_and_unfollow_users {
+            # Create main user profile
+            root spawn visit_profile();
+            root spawn update_profile(new_username="alice");
+
+            # Create another user to follow
+            bob_profile = Profile(username="bob");
+
+            # Test following
+            bob_profile spawn follow_request();
+            follow_edge = [root --> Profile ->:Follow:-> Profile][0];
+            check follow_edge.username == "bob";
+            check bob_profile.follower_count == 1;
+
+            # Test follow edge properties
+            follow_edges = [edge [root --> Profile] ->:Follow:-> bob_profile];
+            check len(follow_edges) == 1;
+            check hasattr(follow_edges[0], "followed_at");
+
+            # Test unfollowing
+            bob_profile spawn unfollow_request();
+            remaining_follows = [root --> Profile ->:Follow:-> Profile];
+            check len(remaining_follows) == 0;
+            check bob_profile.follower_count == 0;
+        }
+
+        # Test tweet creation and management
+        test tweet_lifecycle {
+            # Ensure we have a profile
+            root spawn visit_profile();
+            root spawn update_profile(new_username="alice");
+
+            # Test tweet creation
+            root spawn create_tweet(content="Hello world!");
+            tweet = [root --> Profile ->:Post:-> Tweet][0];
+            check tweet.content == "Hello world!";
+            check isinstance(tweet, Tweet);
+            check hasattr(tweet, "created_at");
+
+            # Test tweet update
+            tweet spawn update_tweet(updated_content="Hello updated world!");
+            check tweet.content == "Hello updated world!";
+
+            # Test multiple tweets
+            root spawn create_tweet(content="Second tweet");
+            all_tweets = [root --> Profile ->:Post:-> Tweet];
+            check len(all_tweets) == 2;
+
+            # Test tweet deletion
+            tweet spawn remove_tweet();
+            remaining_tweets = [root --> Profile ->:Post:-> Tweet];
+            check len(remaining_tweets) == 1;
+            check remaining_tweets[0].content == "Second tweet";
+        }
+
+        # Test liking functionality
+        test like_and_unlike_tweets {
+            # Setup: Create profile and tweet
+            root spawn visit_profile();
+            root spawn update_profile(new_username="alice");
+            root spawn create_tweet(content="Likeable tweet");
+
+            tweet = [root --> Profile ->:Post:-> Tweet][0];
+            check tweet.like_count == 0;
+
+            # Test liking
+            tweet spawn like_tweet();
+            check tweet.like_count == 1;
+
+            # Verify like relationship exists
+            like_edges = [edge [root --> Profile] ->:Like:-> tweet];
+            check len(like_edges) == 1;
+
+            # Test double-liking (should fail)
+            result = tweet spawn like_tweet();
+            check tweet.like_count == 1;  # Should remain 1
+
+            # Test unliking
+            tweet spawn unlike_tweet();
+            check tweet.like_count == 0;
+
+            # Verify like relationship removed
+            remaining_likes = [edge [root --> Profile] ->:Like:-> tweet];
+            check len(remaining_likes) == 0;
+        }
+
+        # Test commenting functionality
+        test comment_system {
+            # Setup: Create profile and tweet
+            root spawn visit_profile();
+            root spawn update_profile(new_username="alice");
+            root spawn create_tweet(content="Tweet for comments");
+
+            tweet = [root --> Profile ->:Post:-> Tweet][0];
+
+            # Test commenting
+            tweet spawn comment_on_tweet(content="Great tweet!");
+            comments = [tweet ->:CommentOn:-> Comment];
+            check len(comments) == 1;
+            check comments[0].content == "Great tweet!";
+
+            # Test multiple comments
+            tweet spawn comment_on_tweet(content="I agree!");
+            all_comments = [tweet ->:CommentOn:-> Comment];
+            check len(all_comments) == 2;
+
+            # Test comment update
+            first_comment = all_comments[0];
+            first_comment spawn update_comment(updated_content="Updated comment");
+            check first_comment.content == "Updated comment";
+
+            # Test comment deletion
+            first_comment spawn remove_comment();
+            remaining_comments = [tweet ->:CommentOn:-> Comment];
+            check len(remaining_comments) == 1;
+        }
+
+        # Test complex graph relationships
+        test complex_social_graph {
+            # Create multiple users
+            root spawn visit_profile();
+            root spawn update_profile(new_username="alice");
+
+            bob = Profile(username="bob");
+            charlie = Profile(username="charlie");
+
+            # Create follow relationships: alice -> bob -> charlie
+            bob spawn follow_request();
+            charlie spawn follow_request();  # alice follows charlie too
+
+            # Alice creates a tweet
+            root spawn create_tweet(content="Alice's tweet");
+            alice_tweet = [root --> Profile ->:Post:-> Tweet][0];
+
+            # Bob likes Alice's tweet
+            # (Note: In a real system, you'd switch user context)
+            alice_tweet spawn like_tweet();
+
+            # Verify complex relationships
+            alice_profile = [root --> Profile][0];
+            alice_following = [alice_profile ->:Follow:-> Profile];
+            check len(alice_following) == 2;  # follows bob and charlie
+
+            alice_tweets = [alice_profile ->:Post:-> Tweet];
+            check len(alice_tweets) == 1;
+
+            tweet_likes = [alice_tweets[0] <-:Like:<- Profile];
+            check len(tweet_likes) == 1;  # liked by alice (herself)
+        }
+
+        # Test error conditions and edge cases
+        test error_conditions {
+            # Test operations without profile
+            try {
+                root spawn create_tweet(content="No profile tweet");
+                check False;  # Should not reach here
+            } except Exception {
+                check True;  # Expected behavior
+            }
+
+            # Create profile for other tests
+            root spawn visit_profile();
+            root spawn update_profile(new_username="test_user");
+
+            # Test self-follow prevention
+            alice_profile = [root --> Profile][0];
+            result = alice_profile spawn follow_request();
+
+            # Should not create self-follow
+            self_follows = [alice_profile ->:Follow:-> alice_profile];
+            check len(self_follows) == 0;
+        }
+
+        # Performance and stress testing
+        test performance_operations {
+            # Setup
+            root spawn visit_profile();
+            root spawn update_profile(new_username="performance_user");
+
+            # Create multiple tweets quickly
+            for i in range(10) {
+                root spawn create_tweet(content=f"Tweet number {i}");
+            }
+
+            all_tweets = [root --> Profile ->:Post:-> Tweet];
+            check len(all_tweets) == 10;
+
+            # Like all tweets
+            for tweet in all_tweets {
+                tweet spawn like_tweet();
+            }
+
+            # Verify all likes
+            for tweet in all_tweets {
+                check tweet.like_count == 1;
+            }
+
+            # Test batch operations work correctly
+            total_likes = sum([tweet.like_count for tweet in all_tweets]);
+            check total_likes == 10;
+        }
+        ```
+
+    === "Python Test Equivalent"
+        ```python
+        # test_social_media.py
+        import unittest
+        from social_media import Profile, Tweet, Comment
+
+        class TestSocialMedia(unittest.TestCase):
+            def setUp(self):
+                self.alice = Profile("alice", "Software developer")
+                self.bob = Profile("bob", "Designer")
+
+            def test_create_and_update_profile(self):
+                profile = Profile()
+                self.assertEqual(profile.username, "")
+                self.assertEqual(profile.follower_count, 0)
+
+                profile.username = "alice"
+                profile.bio = "Software developer"
+                self.assertEqual(profile.username, "alice")
+
+            def test_follow_and_unfollow_users(self):
+                # Test following
+                success = self.alice.follow(self.bob)
+                self.assertTrue(success)
+                self.assertIn(self.bob, self.alice.following)
+                self.assertEqual(self.bob.follower_count, 1)
+
+                # Test unfollowing
+                success = self.alice.unfollow(self.bob)
+                self.assertTrue(success)
+                self.assertNotIn(self.bob, self.alice.following)
+                self.assertEqual(self.bob.follower_count, 0)
+
+            def test_tweet_lifecycle(self):
+                tweet = Tweet("Hello world!", self.alice)
+                self.alice.tweets.append(tweet)
+
+                self.assertEqual(tweet.content, "Hello world!")
+                self.assertEqual(len(self.alice.tweets), 1)
+
+                # Update tweet
+                tweet.content = "Hello updated world!"
+                self.assertEqual(tweet.content, "Hello updated world!")
+
+            def test_like_and_unlike_tweets(self):
+                tweet = Tweet("Likeable tweet", self.alice)
+
+                # Test liking
+                success = tweet.like(self.bob)
+                self.assertTrue(success)
+                self.assertEqual(tweet.like_count, 1)
+
+                # Test double-liking
+                success = tweet.like(self.bob)
+                self.assertFalse(success)
+                self.assertEqual(tweet.like_count, 1)
+
+                # Test unliking
+                success = tweet.unlike(self.bob)
+                self.assertTrue(success)
+                self.assertEqual(tweet.like_count, 0)
+
+        if __name__ == '__main__':
+            unittest.main()
+        ```
 
 ---
 
-## Graph-Aware Type Checking
+## Debugging Spatial Applications
 
-Jac's type system extends to Object-Spatial Programming constructs, providing compile-time and runtime guarantees about graph structure and walker behavior.
+Debugging spatial applications requires understanding graph state and walker movement patterns.
 
-### Node and Edge Type Safety
+### Debug Output and Tracing
 
-!!! example "Type-Safe Graph Operations"
-    <div class="code-block">
+!!! example "Debug Walker for Graph Inspection"
     ```jac
-    # typed_graph.jac
-    node Person {
-        has name: str;
-        has age: int;
+    # debug_walker.jac
+    walker debug_graph {
+        has visited_nodes: list[str] = [];
+        has visited_edges: list[str] = [];
+        has max_depth: int = 3;
+        has current_depth: int = 0;
 
-        def validate_person() -> bool {
-            return len(self.name) > 0 and self.age >= 0;
-        }
-    }
-
-    node Company {
-        has company_name: str;
-        has industry: str;
-
-        def validate_company() -> bool {
-            return len(self.company_name) > 0 and len(self.industry) > 0;
-        }
-    }
-
-    edge WorksAt {
-        has position: str;
-        has salary: float;
-        has start_date: str;
-
-        def validate_employment() -> bool {
-            return len(self.position) > 0 and self.salary > 0;
-        }
-    }
-
-    edge FriendsWith {
-        has since: str;
-        has closeness: int;  # 1-10 scale
-
-        def validate_friendship() -> bool {
-            return self.closeness >= 1 and self.closeness <= 10;
-        }
-    }
-
-    obj GraphValidator {
-        has validation_errors: list[str] = [];
-
-        """Validate any node type."""
-        def validate_node(node: any) -> bool {
-            self.validation_errors = [];
-
-            if isinstance(node, Person) {
-                if not node.validate_person() {
-                    self.validation_errors.append(f"Invalid person: {node.name}");
-                    return False;
-                }
-            } elif isinstance(node, Company) {
-                if not node.validate_company() {
-                    self.validation_errors.append(f"Invalid company: {node.company_name}");
-                    return False;
-                }
-            } else {
-                self.validation_errors.append(f"Unknown node type: {type(node)}");
-                return False;
+        can debug_node with Profile entry {
+            if self.current_depth >= self.max_depth {
+                print(f"Max depth {self.max_depth} reached at {here.username}");
+                return;
             }
 
-            return True;
+            node_info = f"Profile: {here.username} (followers: {here.follower_count})";
+            self.visited_nodes.append(node_info);
+            print(f"Depth {self.current_depth}: {node_info}");
+
+            # Debug outgoing relationships
+            following = [->:Follow:->];
+            tweets = [->:Post:->];
+
+            print(f"  Following: {len(following)} users");
+            print(f"  Posted: {len(tweets)} tweets");
+
+            # Visit connected nodes
+            self.current_depth += 1;
+            visit following;
+            visit tweets;
+            self.current_depth -= 1;
         }
 
-        """Validate edge connection between nodes."""
-        def validate_edge_connection(from_node: any, edge: any, to_node: any) -> bool {
-            # Check if edge type is appropriate for node types
-            if isinstance(edge, WorksAt) {
-                # Person should work at Company
-                if not (isinstance(from_node, Person) and isinstance(to_node, Company)) {
-                    self.validation_errors.append("WorksAt edge must connect Person to Company");
-                    return False;
-                }
-                return edge.validate_employment();
-            } elif isinstance(edge, FriendsWith) {
-                # Both nodes should be Person
-                if not (isinstance(from_node, Person) and isinstance(to_node, Person)) {
-                    self.validation_errors.append("FriendsWith edge must connect Person to Person");
-                    return False;
-                }
-                return edge.validate_friendship();
-            }
+        can debug_tweet with Tweet entry {
+            tweet_info = f"Tweet: '{here.content[:30]}...' (likes: {here.like_count})";
+            self.visited_nodes.append(tweet_info);
+            print(f"Depth {self.current_depth}: {tweet_info}");
 
-            self.validation_errors.append(f"Unknown edge type: {type(edge)}");
-            return False;
+            # Debug tweet relationships
+            likes = [<-:Like:<-];
+            comments = [->:CommentOn:->];
+
+            print(f"  Liked by: {len(likes)} users");
+            print(f"  Comments: {len(comments)}");
+        }
+
+        can debug_comment with Comment entry {
+            comment_info = f"Comment: '{here.content[:20]}...'";
+            self.visited_nodes.append(comment_info);
+            print(f"Depth {self.current_depth}: {comment_info}");
         }
     }
 
-    with entry {
-        # Create graph elements
-        alice = Person(name="Alice", age=30);
-        bob = Person(name="Bob", age=25);
-        tech_corp = Company(company_name="TechCorp", industry="Technology");
+    # Usage in tests
+    test debug_graph_structure {
+        # Setup complex graph
+        root spawn visit_profile();
+        root spawn update_profile(new_username="alice");
+        root spawn create_tweet(content="Alice's first tweet");
 
-        # Create relationships
-        works_edge = WorksAt(position="Developer", salary=75000.0, start_date="2023-01-15");
-        friend_edge = FriendsWith(since="2020-01-01", closeness=8);
+        bob = Profile(username="bob");
+        bob spawn follow_request();
 
-        # Validate graph elements
-        validator = GraphValidator();
+        # Debug the graph
+        debugger = debug_graph(max_depth=2);
+        root spawn debugger;
 
-        # Validate nodes
-        alice_valid = validator.validate_node(alice);
-        print(f"Alice valid: {alice_valid}");
-
-        # Validate edge connections
-        work_connection_valid = validator.validate_edge_connection(alice, works_edge, tech_corp);
-        print(f"Work connection valid: {work_connection_valid}");
-
-        friend_connection_valid = validator.validate_edge_connection(alice, friend_edge, bob);
-        print(f"Friend connection valid: {friend_connection_valid}");
-
-        # Test invalid connection
-        invalid_connection = validator.validate_edge_connection(alice, works_edge, bob);  # Wrong types
-        print(f"Invalid connection valid: {invalid_connection}");
-        print(f"Validation errors: {validator.validation_errors}");
+        print("=== Debug Summary ===");
+        print(f"Visited {len(debugger.visited_nodes)} nodes");
+        for node in debugger.visited_nodes {
+            print(f"  {node}");
+        }
     }
     ```
-    </div>
 
-### Walker Type Validation
+### Walker State Inspection
 
-!!! example "Type-Safe Walker Patterns"
-    <div class="code-block">
+!!! example "Walker State Testing"
     ```jac
-    # typed_walkers.jac
+    # walker_testing.jac
+    walker feed_loader {
+        has user_id: str;
+        has loaded_tweets: list[dict] = [];
+        has users_visited: set[str] = set();
+        has errors: list[str] = [];
 
-    node Person {
-        has name: str;
-        has age: int;
-
-        def validate_person() -> bool {
-            return len(self.name) > 0 and self.age >= 0;
-        }
-    }
-
-    node Company {
-        has company_name: str;
-        has industry: str;
-
-        def validate_company() -> bool {
-            return len(self.company_name) > 0 and len(self.industry) > 0;
-        }
-    }
-
-    edge WorksAt {
-        has position: str;
-        has salary: float;
-        has start_date: str;
-
-        def validate_employment() -> bool {
-            return len(self.position) > 0 and self.salary > 0;
-        }
-    }
-
-    edge FriendsWith {
-        has since: str;
-        has closeness: int;  # 1-10 scale
-
-        def validate_friendship() -> bool {
-            return self.closeness >= 1 and self.closeness <= 10;
-        }
-    }
-
-    walker PersonVisitor {
-        has visited_count: int = 0;
-        has person_names: list[str] = [];
-        has validation_errors: list[str] = [];
-
-        can visit_person with Person entry {
-            # Type-safe person processing
-            if self.validate_person_node(here) {
-                self.visited_count += 1;
-                self.person_names.append(here.name);
-                print(f"Visited person: {here.name} (age {here.age})");
-
-                # Continue to connected persons
-                friends = [->:FriendsWith:->(`?Person)];
-                if friends {
-                    visit friends;
-                }
-            } else {
-                print(f"Invalid person node encountered: {here.name}");
-            }
-        }
-
-        can visit_company with Company entry {
-            # Companies are not processed by PersonVisitor
-            print(f"Skipping company: {here.company_name}");
-        }
-
-        """Validate person node before processing."""
-        def validate_person_node(person: any) -> bool {
-            if not isinstance(person, Person) {
-                self.validation_errors.append(f"Expected Person, got {type(person)}");
-                return False;
+        can load_user_feed with Profile entry {
+            if here.username in self.users_visited {
+                self.errors.append(f"Duplicate visit to {here.username}");
+                return;
             }
 
-            if not person.validate_person() {
-                self.validation_errors.append(f"Invalid person data: {person.name}");
-                return False;
+            self.users_visited.add(here.username);
+
+            # Load user's tweets
+            user_tweets = [->:Post:-> Tweet];
+            for tweet in user_tweets {
+                tweet_data = {
+                    "author": here.username,
+                    "content": tweet.content,
+                    "likes": tweet.like_count,
+                    "created_at": tweet.created_at
+                };
+                self.loaded_tweets.append(tweet_data);
             }
 
-            return True;
+            # Visit followed users
+            following = [->:Follow:-> Profile];
+            visit following;
         }
     }
 
-    walker CompanyAnalyzer {
-        has companies_visited: list[str] = [];
-        has total_employees: int = 0;
+    test walker_state_management {
+        # Setup test data
+        root spawn visit_profile();
+        root spawn update_profile(new_username="alice");
+        root spawn create_tweet(content="Alice tweet 1");
+        root spawn create_tweet(content="Alice tweet 2");
 
-        can analyze_company with Company entry {
-            if self.validate_company_node(here) {
-                self.companies_visited.append(here.company_name);
-                print(f"Analyzing company: {here.company_name} in {here.industry}");
+        bob = Profile(username="bob");
+        bob spawn follow_request();
+        bob spawn create_tweet(content="Bob's tweet");
 
-                # Count employees (people working at this company)
-                employees = [<-:WorksAt:<-(`?Person)];
-                employee_count = len(employees);
-                self.total_employees += employee_count;
+        # Test walker state
+        loader = feed_loader(user_id="alice");
+        root spawn loader;
 
-                print(f"  Employees: {employee_count}");
-                for employee in employees {
-                    print(f"    - {employee.name}");
-                }
-            }
+        # Verify walker state
+        check len(loader.loaded_tweets) >= 2;  # At least Alice's tweets
+        check "alice" in loader.users_visited;
+        check "bob" in loader.users_visited;
+        check len(loader.errors) == 0;
+
+        # Verify tweet data structure
+        alice_tweets = [t for t in loader.loaded_tweets if t["author"] == "alice"];
+        check len(alice_tweets) == 2;
+
+        for tweet in alice_tweets {
+            check "content" in tweet;
+            check "likes" in tweet;
+            check "created_at" in tweet;
         }
-
-        """Validate company node before processing."""
-        def validate_company_node(company: any) -> bool {
-            if not isinstance(company, Company) {
-                return False;
-            }
-            return company.validate_company();
-        }
-    }
-
-    with entry {
-        # Create network
-        alice = root ++> Person(name="Alice", age=30);
-        bob = root ++> Person(name="Bob", age=25);
-        tech_corp = root ++> Company(company_name="TechCorp", industry="Technology");
-
-        # Create connections
-        alice[0] +>:WorksAt(position="Developer", salary=75000.0, start_date="2023-01-15"):+> tech_corp[0];
-        bob[0] +>:WorksAt(position="Designer", salary=65000.0, start_date="2023-02-01"):+> tech_corp[0];
-        alice[0] +>:FriendsWith(since="2020-01-01", closeness=8):+> bob[0];
-
-        # Test type-safe walkers
-        person_visitor = PersonVisitor();
-        alice[0] spawn person_visitor;
-
-        print(f"Person visitor results:");
-        print(f"  Visited: {person_visitor.visited_count} people");
-        print(f"  Names: {person_visitor.person_names}");
-
-        company_analyzer = CompanyAnalyzer();
-        tech_corp[0] spawn company_analyzer;
-
-        print(f"Company analyzer results:");
-        print(f"  Companies: {company_analyzer.companies_visited}");
-        print(f"  Total employees: {company_analyzer.total_employees}");
     }
     ```
-    </div>
 
 ---
 
-## Building Type-Safe Components
+## Performance Testing and Optimization
 
-Using Jac's flexible type system, we can build reusable components that are both type-safe and adaptable.
+Performance testing ensures your spatial applications scale effectively.
 
-### Generic Data Structures
+### Benchmark Testing
 
-!!! example "Type-Safe Generic Collections"
-    <div class="code-block">
+!!! example "Performance Benchmarks"
     ```jac
-    # generic_collections.jac
-    obj SafeList {
-        has items: list[any] = [];
-        has item_type: any = None;
-        has allow_mixed_types: bool = False;
+    # performance_tests.jac
+    import time;
 
-        """Set type constraint for list items."""
-        def set_type_constraint(expected_type: any) -> None {
-            self.item_type = expected_type;
+    test large_graph_performance {
+        start_time = time.time();
+
+        # Create large social network
+        root spawn visit_profile();
+        root spawn update_profile(new_username="central_user");
+
+        # Create many users and connections
+        num_users = 100;
+        users = [];
+
+        for i in range(num_users) {
+            user = Profile(username=f"user_{i}");
+            users.append(user);
+
+            # Every 10th user follows central user
+            if i % 10 == 0 {
+                user spawn follow_request();
+            }
         }
 
-        """Add item with type checking."""
-        def add(item: any) -> bool {
-            if self.item_type is not None and not self.allow_mixed_types {
-                if not self.check_type(item, self.item_type) {
-                    print(f"Type error: expected {self.item_type}, got {type(item)}");
-                    return False;
+        creation_time = time.time() - start_time;
+        print(f"Created {num_users} users in {creation_time:.2f} seconds");
+
+        # Test graph traversal performance
+        start_time = time.time();
+
+        # Count all followers
+        central_user = [root --> Profile][0];
+        followers = [central_user <-:Follow:<- Profile];
+
+        traversal_time = time.time() - start_time;
+        print(f"Traversed {len(followers)} followers in {traversal_time:.4f} seconds");
+
+        # Performance assertions
+        check creation_time < 5.0;  # Should create 100 users in under 5 seconds
+        check traversal_time < 0.1;  # Should traverse quickly
+        check len(followers) == 10;  # Every 10th user = 10 followers
+    }
+
+    test memory_efficiency {
+        # Test memory usage with large datasets
+        initial_profiles = len([root --> Profile]);
+
+        # Create and delete many objects
+        for batch in range(5) {
+            # Create batch of tweets
+            for i in range(20) {
+                root spawn create_tweet(content=f"Batch {batch} tweet {i}");
+            }
+
+            # Delete half of them
+            tweets = [root --> Profile ->:Post:-> Tweet];
+            for i in range(10) {
+                if len(tweets) > i {
+                    tweets[i] spawn remove_tweet();
+                }
+            }
+        }
+
+        # Check memory cleanup
+        final_tweets = [root --> Profile ->:Post:-> Tweet];
+        check len(final_tweets) <= 50;  # Should not accumulate indefinitely
+
+        final_profiles = len([root --> Profile]);
+        check final_profiles == initial_profiles + 1;  # Only the test profile added
+    }
+
+    test concurrent_operations {
+        # Simulate concurrent-like operations
+        root spawn visit_profile();
+        root spawn update_profile(new_username="concurrent_user");
+
+        # Create multiple walkers that operate simultaneously
+        walkers = [];
+        for i in range(10) {
+            walker = create_tweet(content=f"Concurrent tweet {i}");
+            walkers.append(walker);
+        }
+
+        # Execute all walkers
+        start_time = time.time();
+        for walker in walkers {
+            root spawn walker;
+        }
+        execution_time = time.time() - start_time;
+
+        # Verify all operations completed
+        all_tweets = [root --> Profile ->:Post:-> Tweet];
+        check len(all_tweets) == 10;
+
+        # Performance check
+        check execution_time < 1.0;  # Should complete quickly
+
+        print(f"Executed {len(walkers)} operations in {execution_time:.4f} seconds");
+    }
+    ```
+
+### Memory and Resource Testing
+
+!!! example "Resource Usage Tests"
+    ```jac
+    # resource_tests.jac
+    import gc;
+    import psutil;
+    import os;
+
+    test memory_usage_monitoring {
+        # Get initial memory usage
+        process = psutil.Process(os.getpid());
+        initial_memory = process.memory_info().rss;
+
+        # Create large graph structure
+        root spawn visit_profile();
+        root spawn update_profile(new_username="memory_test_user");
+
+        # Create many interconnected objects
+        for i in range(1000) {
+            root spawn create_tweet(content=f"Memory test tweet {i}");
+        }
+
+        # Force garbage collection
+        gc.collect();
+
+        # Check memory after creation
+        after_creation_memory = process.memory_info().rss;
+        memory_increase = after_creation_memory - initial_memory;
+
+        print(f"Memory increase: {memory_increase / 1024 / 1024:.2f} MB");
+
+        # Clean up
+        tweets = [root --> Profile ->:Post:-> Tweet];
+        for tweet in tweets {
+            tweet spawn remove_tweet();
+        }
+
+        # Force garbage collection again
+        gc.collect();
+
+        # Check memory after cleanup
+        final_memory = process.memory_info().rss;
+        memory_recovered = after_creation_memory - final_memory;
+
+        print(f"Memory recovered: {memory_recovered / 1024 / 1024:.2f} MB");
+
+        # Memory should not grow indefinitely
+        check memory_increase < 100 * 1024 * 1024;  # Less than 100MB increase
+        check memory_recovered > memory_increase * 0.5;  # At least 50% recovered
+    }
+    ```
+
+---
+
+## Test-Driven Development with OSP
+
+TDD works naturally with Jac's spatial programming model.
+
+### TDD Example: Building a Recommendation System
+
+!!! example "TDD Recommendation System"
+    ```jac
+    # recommendation_system.test.jac
+
+    # Test 1: Basic recommendation structure
+    test recommendation_system_structure {
+        # Red: This will fail initially
+        root spawn visit_profile();
+        root spawn update_profile(new_username="test_user");
+
+        # Should be able to get recommendations
+        recommendations = root spawn get_recommendations(limit=5);
+        check isinstance(recommendations, list);
+        check len(recommendations) <= 5;
+    }
+
+    # Test 2: Friend-based recommendations
+    test friend_based_recommendations {
+        # Setup: Create network
+        root spawn visit_profile();
+        root spawn update_profile(new_username="alice");
+
+        bob = Profile(username="bob");
+        charlie = Profile(username="charlie");
+
+        # Alice follows Bob, Bob follows Charlie
+        bob spawn follow_request();
+        # Switch context to Bob and follow Charlie
+        # (In real system, would handle user context switching)
+
+        # Alice should get Charlie recommended (friend of friend)
+        recommendations = root spawn get_recommendations(limit=5);
+        recommended_usernames = [rec["username"] for rec in recommendations];
+
+        # Charlie should be recommended as friend of friend
+        check "charlie" in recommended_usernames;
+    }
+
+    # Test 3: Interest-based recommendations
+    test interest_based_recommendations {
+        # Setup users with similar interests (tweets)
+        root spawn visit_profile();
+        root spawn update_profile(new_username="alice");
+        root spawn create_tweet(content="I love programming");
+
+        bob = Profile(username="bob");
+        bob spawn create_tweet(content="Programming is awesome");
+
+        charlie = Profile(username="charlie");
+        charlie spawn create_tweet(content="I hate programming");
+
+        # Get recommendations
+        recommendations = root spawn get_recommendations(
+            limit=5,
+            algorithm="interest_based"
+        );
+
+        # Bob should rank higher than Charlie due to similar interests
+        bob_score = 0;
+        charlie_score = 0;
+
+        for rec in recommendations {
+            if rec["username"] == "bob" {
+                bob_score = rec["score"];
+            }
+            if rec["username"] == "charlie" {
+                charlie_score = rec["score"];
+            }
+        }
+
+        check bob_score > charlie_score;
+    }
+
+    # Test 4: Recommendation filtering
+    test recommendation_filtering {
+        # Setup
+        root spawn visit_profile();
+        root spawn update_profile(new_username="alice");
+
+        # Create users alice already follows
+        bob = Profile(username="bob");
+        bob spawn follow_request();
+
+        # Create users alice doesn't follow
+        charlie = Profile(username="charlie");
+        diana = Profile(username="diana");
+
+        # Get recommendations
+        recommendations = root spawn get_recommendations(limit=10);
+        recommended_usernames = [rec["username"] for rec in recommendations];
+
+        # Should not recommend users already followed
+        check "bob" not in recommended_usernames;
+
+        # Should recommend unfollowed users
+        check "charlie" in recommended_usernames or "diana" in recommended_usernames;
+    }
+    ```
+
+    Now implement the actual recommendation system to make tests pass:
+
+    ```jac
+    # recommendation_system.jac
+    walker get_recommendations(visit_profile) {
+        has limit: int = 5;
+        has algorithm: str = "hybrid";
+        has recommendations: list[dict] = [];
+
+        can generate_recommendations with Profile entry {
+            current_user = here;
+            followed_users = [->:Follow:-> Profile];
+            followed_usernames = set([user.username for user in followed_users]);
+
+            # Get all users except current and already followed
+            all_users = [root --> Profile](?username != current_user.username);
+            candidate_users = [user for user in all_users
+                             if user.username not in followed_usernames];
+
+            # Score each candidate
+            for candidate in candidate_users {
+                score = self.calculate_recommendation_score(
+                    current_user, candidate, followed_users
+                );
+
+                if score > 0 {
+                    self.recommendations.append({
+                        "username": candidate.username,
+                        "score": score,
+                        "reason": self.get_recommendation_reason(
+                            current_user, candidate, followed_users
+                        )
+                    });
                 }
             }
 
-            self.items.append(item);
-            return True;
+            # Sort by score and limit results
+            self.recommendations.sort(key=lambda x: x["score"], reverse=True);
+            self.recommendations = self.recommendations[:self.limit];
+
+            report self.recommendations;
         }
 
-        """Safely get item by index."""
-        def get(index: int) -> any | None {
-            if 0 <= index < len(self.items) {
-                return self.items[index];
+        def calculate_recommendation_score(
+            current_user: Profile,
+            candidate: Profile,
+            followed_users: list[Profile]
+        ) -> float {
+            score = 0.0;
+
+            if self.algorithm in ["friend_based", "hybrid"] {
+                # Friend of friend scoring
+                candidate_followers = [candidate <-:Follow:<- Profile];
+                mutual_connections = set([u.username for u in followed_users]) &
+                                   set([u.username for u in candidate_followers]);
+                score += len(mutual_connections) * 2.0;
             }
-            return None;
-        }
 
-        """Get all items of specific type."""
-        def filter_by_type(target_type: any) -> list[any] {
-            return [item for item in self.items if self.check_type(item, target_type)];
-        }
+            if self.algorithm in ["interest_based", "hybrid"] {
+                # Interest-based scoring using tweet content
+                current_tweets = [current_user ->:Post:-> Tweet];
+                candidate_tweets = [candidate ->:Post:-> Tweet];
 
-        """Check if value matches expected type."""
-        def check_type(value: any, expected_type: any) -> bool {
-            if expected_type == int {
-                return isinstance(value, int);
-            } elif expected_type == str {
-                return isinstance(value, str);
-            } elif expected_type == float {
-                return isinstance(value, float);
-            } elif expected_type == bool {
-                return isinstance(value, bool);
-            } elif expected_type == list {
-                return isinstance(value, list);
-            } elif expected_type == dict {
-                return isinstance(value, dict);
+                # Simple keyword matching (in real system, use embeddings)
+                current_words = set();
+                for tweet in current_tweets {
+                    current_words.update(tweet.content.lower().split());
+                }
+
+                candidate_words = set();
+                for tweet in candidate_tweets {
+                    candidate_words.update(tweet.content.lower().split());
+                }
+
+                common_words = current_words & candidate_words;
+                score += len(common_words) * 0.5;
             }
-            return True;
+
+            return score;
         }
 
-        """Get summary of types in the list."""
-        def get_type_summary() -> dict[str, int] {
-            type_counts = {};
-            for item in self.items {
-                type_name = type(item).__name__;
-                type_counts[type_name] = type_counts.get(type_name, 0) + 1;
+        def get_recommendation_reason(
+            current_user: Profile,
+            candidate: Profile,
+            followed_users: list[Profile]
+        ) -> str {
+            # Determine primary reason for recommendation
+            candidate_followers = [candidate <-:Follow:<- Profile];
+            mutual_connections = set([u.username for u in followed_users]) &
+                               set([u.username for u in candidate_followers]);
+
+            if mutual_connections {
+                return f"Friends with {list(mutual_connections)[0]}";
             }
-            return type_counts;
+
+            return "Similar interests";
         }
-    }
-
-    with entry {
-        # Create type-constrained list
-        number_list = SafeList();
-        number_list.set_type_constraint(int);
-
-        # Add valid items
-        success1 = number_list.add(42);
-        success2 = number_list.add(24);
-        success3 = number_list.add("hello");  # Should fail
-
-        print(f"Added 42: {success1}");
-        print(f"Added 24: {success2}");
-        print(f"Added 'hello': {success3}");
-
-        # Create mixed-type list
-        mixed_list = SafeList(allow_mixed_types=True);
-        mixed_list.add(42);
-        mixed_list.add("hello");
-        mixed_list.add(3.14);
-        mixed_list.add(True);
-
-        print(f"Mixed list type summary: {mixed_list.get_type_summary()}");
-
-        # Filter by type
-        numbers = mixed_list.filter_by_type(int);
-        strings = mixed_list.filter_by_type(str);
-
-        print(f"Numbers: {numbers}");
-        print(f"Strings: {strings}");
     }
     ```
-    </div>
 
 ---
 
 ## Best Practices
 
-!!! summary "Type System Guidelines"
-    - **Use `any` strategically**: Apply `any` type for maximum flexibility while implementing runtime validation
-    - **Validate at boundaries**: Check types when data enters your system from external sources
-    - **Leverage runtime checks**: Use isinstance() and custom validation functions for type safety
-    - **Design for flexibility**: Build components that can handle multiple types when appropriate
-    - **Document type expectations**: Make type requirements clear in function and method documentation
-    - **Test with multiple types**: Verify your code works correctly with different type combinations
+!!! summary "Testing Best Practices"
+    - **Write tests first**: Use test-driven development for complex walker logic
+    - **Test graph structures**: Verify node and edge relationships are correct
+    - **Use descriptive names**: Make test intentions clear from the test name
+    - **Test edge cases**: Include boundary conditions and error scenarios
+    - **Isolate test data**: Ensure tests don't interfere with each other
+    - **Mock external dependencies**: Test walker logic independently of external services
 
 ## Key Takeaways
 
 !!! summary "What We've Learned"
-    **Advanced Type Features:**
+    **Testing Framework:**
 
-    - **Flexible typing**: Use `any` type for maximum flexibility when needed
-    - **Runtime validation**: Dynamic type checking complements static analysis
-    - **Graph-aware types**: Compile-time safety for spatial programming constructs
-    - **Type guards**: Runtime validation patterns for dynamic typing
+    - **Built-in testing**: Native test blocks eliminate external framework dependencies
+    - **Graph testing**: Specialized patterns for testing spatial relationships
+    - **Walker testing**: Comprehensive testing of mobile computation patterns
+    - **Type-safe assertions**: Leverage Jac's type system in test validation
 
-    **Practical Applications:**
+    **Debugging Techniques:**
 
-    - **Reusable components**: Build libraries that work with multiple data types
-    - **Safe graph operations**: Prevent type errors in node and edge relationships
-    - **Data validation**: Robust input validation with clear error messages
-    - **Performance optimization**: Type information enables better optimization
+    - **Debug output**: Strategic print statements and debug flags
+    - **Walker tracing**: Track walker movement through graph structures
+    - **State inspection**: Examine node and edge states during execution
+    - **Error handling**: Graceful handling of edge cases and failures
 
-    **Development Benefits:**
+    **Test Organization:**
 
-    - **Early error detection**: Catch type mismatches through validation
-    - **Better documentation**: Types and validation serve as executable documentation
-    - **IDE support**: Enhanced development experience with type information
-    - **Refactoring safety**: Type system helps prevent breaking changes
+    - **Modular testing**: Organize tests by functionality and complexity
+    - **Helper functions**: Reusable setup code for consistent test environments
+    - **Performance testing**: Monitor execution time and resource usage
+    - **Integration testing**: Test interactions between multiple walkers
 
-    **Advanced Features:**
+    **Quality Assurance:**
 
-    - **Schema validation**: Complex object validation with custom rules
-    - **Type constraints**: Enforce business rules through type checking
-    - **Generic patterns**: Type-safe graph traversal and processing
-    - **Protocol support**: Interface-based programming with validation
+    - **Comprehensive coverage**: Test all code paths and error conditions
+    - **Regression prevention**: Automated tests prevent breaking changes
+    - **Documentation value**: Tests serve as executable specifications
+    - **Continuous validation**: Automated testing in CI/CD pipelines
 
 !!! tip "Try It Yourself"
-    Master the type system by building:
+    Enhance your testing skills by:
+    - Writing comprehensive test suites for existing walker logic
+    - Implementing performance benchmarks for graph operations
+    - Creating integration tests for multi-walker scenarios
+    - Adding debug instrumentation to complex graph traversals
 
-    - A generic data processing pipeline with runtime validation
-    - Type-safe graph algorithms with proper node/edge validation
-    - Runtime validation systems for API endpoints
-    - Generic walker patterns for different graph structures
-
-    Remember: Jac's type system provides flexibility through `any` while enabling powerful runtime validation!
+    Remember: Good tests make development faster and more reliable!
 
 ---
 
-*Ready to learn about testing and debugging? Continue to [Chapter 18: Testing and Debugging](chapter_17.md)!*
+*Ready to learn about deployment strategies? Continue to [Chapter 19: Deployment Strategies](chapter_18.md)!*

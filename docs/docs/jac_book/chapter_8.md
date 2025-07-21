@@ -245,6 +245,108 @@ Start walking, visiting A, visiting B, reached the end
 ```
 <br />
 
+## Walker Control Flow
+---
+Walkers in Jac aren’t limited to blindly traversing the entire graph. They can make decisions about where to go next, how far to travel, and when to stop entirely. This control over execution flow is what makes walkers not just mobile functions, but **graph-native agents**.
+
+
+So far, we’ve used the `visit` statement to control how walkers move across edges, but Jac also provides other flow control tools—most notably, the `disengage` keyword, which tells a walker to **terminate** early and stop its traversal.
+
+This is useful when:
+
+- The walker has completed its goal (e.g. visited enough nodes),
+- The graph has no more useful connections,
+- A logical condition signals an early exit.
+
+Let’s look at an example where we simulate a school attendance checker that visits students, randomly determines if they're present, and halts after a set number of checks.
+
+### Example: Attendance Checker
+In this example, we define a walker called AttendanceChecker that visits student nodes and checks attendance. It stops automatically when it reaches the maximum number of checks or runs out of connections.
+
+```jac
+node Student {
+    has name: str;
+    has grade_level: int;
+}
+
+walker AttendanceChecker {
+    has present_students: list[str] = [];
+    has absent_students: list[str] = [];
+    has max_checks: int = 5;
+    has checks_done: int = 0;
+
+    can check_attendance with Student entry {
+        self.checks_done += 1;
+
+        # Simulate checking if student is present (random for demo)
+        import random;
+        is_present = random.choice([True, False]);
+
+        if is_present {
+            print(f"{here.name} is present");
+            self.present_students.append(here.name);
+        } else {
+            print(f"{here.name} is absent");
+            self.absent_students.append(here.name);
+        }
+
+        # Stop if we've reached our checking limit
+        if self.checks_done >= self.max_checks {
+            print(f"Reached maximum checks ({self.max_checks})");
+            self.report_final();
+            disengage;  # Stop the walker
+        }
+
+        # Stop if there are no more connected nodes
+        connections = [-->];
+        if not connections {
+            print("No more students to check");
+            self.report_final();
+            disengage;
+        }
+
+        # Continue to the next student
+        visit [-->];
+    }
+
+    def report_final() -> None {
+        print(f" Attendance Report:");
+        print(f"   Present: {self.present_students}");
+        print(f"   Absent: {self.absent_students}");
+        print(f"   Total checked: {self.checks_done}");
+    }
+}
+```
+
+### Spawning the Walker
+We create a chain of students and start the attendance check from the first student:
+```jac
+with entry {
+    # Create a chain of students
+    alice = root ++> Student(name="Alice", grade_level=9);
+    bob = alice ++> Student(name="Bob", grade_level=9);
+    charlie = bob ++> Student(name="Charlie", grade_level=9);
+    diana = charlie ++> Student(name="Diana", grade_level=9);
+    eve = diana ++> Student(name="Eve", grade_level=9);
+
+    # Start attendance check
+    checker = AttendanceChecker(max_checks=3);
+    alice[0] spawn checker;
+}
+```
+<br />
+
+### Walker Traversal Summary
+This is a practical example of how walkers can combine structured graph navigation with flexible, stateful logic—ideal for simulating processes like search, survey, auditing, or propagation in spatial environments.
+
+
+| Feature         | Description                                               |
+|-----------------|-----------------------------------------------------------|
+| `disengage`     | Used to explicitly halt the walker and stop traversal     |
+| `visit`         | Moves the walker to connected nodes via specified edges   |
+| `here`          | Refers to the current node the walker is visiting         |
+| `[-->]`         | Selects all outgoing connections from the current node    |
+| Conditional control | Logic-based flow control within walker abilities      |
 
 ## Wrapping Up
 ---

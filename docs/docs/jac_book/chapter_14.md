@@ -1,217 +1,168 @@
-# Chapter 14: Multi-User Architecture and Permissions
+# Chapter 14: Advanced Jac Cloud Features
 
-In this chapter, we'll explore how to build secure, multi-user applications in Jac Cloud. We'll develop a shared notebook system that demonstrates user isolation, permission systems, and access control strategies through practical examples that evolve throughout the chapter.
+In this chapter, we'll explore advanced Jac Cloud capabilities that enable configuration management, monitoring, and external integrations. We'll build a comprehensive chat room system that demonstrates environment configuration, logging, and webhook integration through practical examples.
 
 !!! info "What You'll Learn"
-    - Building secure multi-user applications
-    - User isolation and data privacy patterns
-    - Permission-based access control
-    - Shared data management strategies
-    - Security considerations for cloud applications
+    - Environment variables and application configuration
+    - Logging and monitoring capabilities
+    - Webhook integration for external services
+    - Advanced deployment patterns
+    - Performance optimization strategies
 
 ---
 
-## User Isolation and Permission Systems
+## Environment Variables and Configuration
 
-Multi-user applications require careful consideration of data access and user permissions. Jac provides built-in patterns for user management that integrate seamlessly with your application logic, allowing you to focus on business rules rather than authentication infrastructure.
+Production applications require flexible configuration management. Jac Cloud provides built-in support for environment variables and configuration patterns that work seamlessly across local and cloud deployments.
 
-!!! success "Multi-User Benefits"
-    - **User Context**: Access to user information in walkers
-    - **Data Isolation**: Users can only access their authorized data
-    - **Flexible Permissions**: Fine-grained access control patterns
-    - **Secure by Default**: Application-level security patterns
-    - **Shared Data Support**: Controlled sharing between users
+!!! success "Configuration Benefits"
+    - **Environment Isolation**: Different settings for dev, staging, and production
+    - **Security**: Sensitive data kept in environment variables
+    - **Flexibility**: Runtime configuration without code changes
+    - **Cloud Integration**: Automatic configuration injection in cloud environments
 
-### Traditional vs Jac Multi-User Development
+### Traditional vs Jac Configuration
 
-!!! example "Multi-User Comparison"
+!!! example "Configuration Comparison"
     === "Traditional Approach"
         ```python
-        # app.py - Manual user management required
-        from flask import Flask, request, jsonify
-        from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
-        from werkzeug.security import generate_password_hash, check_password_hash
+        # config.py - Manual configuration management
+        import os
+        from typing import Optional
 
+        class Config:
+            def __init__(self):
+                self.database_url = os.getenv('DATABASE_URL', 'sqlite:///app.db')
+                self.redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379')
+                self.secret_key = os.getenv('SECRET_KEY', 'dev-secret')
+                self.debug = os.getenv('DEBUG', 'False').lower() == 'true'
+
+                # Validate required settings
+                if not self.secret_key or self.secret_key == 'dev-secret':
+                    if not self.debug:
+                        raise ValueError("SECRET_KEY must be set in production")
+
+        # app.py
+        from flask import Flask
+        from config import Config
+
+        config = Config()
         app = Flask(__name__)
-        app.config['JWT_SECRET_KEY'] = 'your-secret-key'
-        jwt = JWTManager(app)
+        app.config.from_object(config)
 
-        # Global storage (in production, use a database)
-        users = {}
-        notebooks = {}
-
-        @app.route('/register', methods=['POST'])
-        def register():
-            data = request.get_json()
-            username = data.get('username')
-            password = data.get('password')
-
-            if username in users:
-                return jsonify({'error': 'User already exists'}), 400
-
-            users[username] = {
-                'password': generate_password_hash(password),
-                'notebooks': []
-            }
-
-            return jsonify({'message': 'User created successfully'})
-
-        @app.route('/login', methods=['POST'])
-        def login():
-            data = request.get_json()
-            username = data.get('username')
-            password = data.get('password')
-
-            if username not in users or not check_password_hash(users[username]['password'], password):
-                return jsonify({'error': 'Invalid credentials'}), 401
-
-            access_token = create_access_token(identity=username)
-            return jsonify({'access_token': access_token})
-
-        @app.route('/create_note', methods=['POST'])
-        @jwt_required()
-        def create_note():
-            current_user = get_jwt_identity()
-            data = request.get_json()
-
-            # Manual permission checking
-            note_id = len(notebooks)
-            notebooks[note_id] = {
-                'id': note_id,
-                'title': data.get('title'),
-                'content': data.get('content'),
-                'owner': current_user,
-                'shared_with': []
-            }
-
-            users[current_user]['notebooks'].append(note_id)
-            return jsonify({'message': 'Note created', 'id': note_id})
-
-        if __name__ == '__main__':
-            app.run()
+        @app.route('/chat')
+        def chat():
+            return f"Chat room (Debug: {config.debug})"
         ```
 
-    === "Jac Multi-User"
+    === "Jac Configuration"
         ```jac
-        # shared_notebook.jac - User patterns built-in
-        node Note {
-            has title: str;
-            has content: str;
-            has owner: str;
-            has shared_with: list[str] = [];
-            has created_at: str = "2024-01-15";
+        # chat_room.jac - Built-in configuration support
+        import from os { getenv }
+
+        glob chat_config = {
+            "max_users": int(getenv("MAX_CHAT_USERS", "100")),
+            "message_limit": int(getenv("MESSAGE_LIMIT", "1000")),
+            "room_timeout": int(getenv("ROOM_TIMEOUT", "3600")),
+            "debug_mode": getenv("DEBUG", "false").lower() == "true"
+        };
+
+        node ChatRoom {
+            has name: str;
+            has users: list[str] = [];
+            has messages: list[dict] = [];
+            has created_at: str;
+
+            can add_user(username: str) -> bool {
+                if len(self.users) >= chat_config["max_users"] {
+                    return False;
+                }
+                if username not in self.users {
+                    self.users.append(username);
+                }
+                return True;
+            }
         }
 
-        walker create_note {
-            has title: str;
-            has content: str;
-            has owner: str;
+        walker create_chat_room {
+            has room_name: str;
 
-            can create_user_note with `root entry {
-                # Create note with specified owner
-                new_note = Note(
-                    title=self.title,
-                    content=self.content,
-                    owner=self.owner
+            can setup_room with `root entry {
+                new_room = ChatRoom(
+                    name=self.room_name,
+                    created_at="2024-01-15"
                 );
-                here ++> new_note;
+                here ++> new_room;
 
                 report {
-                    "message": "Note created successfully",
-                    "id": new_note.id,
-                    "owner": new_note.owner
+                    "room_id": new_room.id,
+                    "name": new_room.name,
+                    "max_users": chat_config["max_users"]
                 };
             }
         }
-
-        walker get_my_notes {
-            has user_id: str;
-
-            can fetch_user_notes with `root entry {
-                # Filter by specified user
-                my_notes = [-->(`?Note)](?owner == self.user_id);
-
-                notes_data = [
-                    {"id": n.id, "title": n.title, "created_at": n.created_at}
-                    for n in my_notes
-                ];
-
-                report {"notes": notes_data, "total": len(notes_data)};
-            }
-        }
         ```
 
----
+### Basic Chat Room Setup
 
-## Basic User Authentication
+Let's start with a simple chat room that uses environment configuration:
 
-For multi-user applications, you need to implement user identification patterns. Let's start with a simple notebook system that supports multiple users.
-
-### Setting Up User-Aware Notebook
-
-!!! example "User-Isolated Notebook System"
+!!! example "Configurable Chat Room"
     === "Jac"
         ```jac
-        # user_notebook.jac
-        import uuid;
+        # simple_chat.jac
+        import from os { getenv }
+        import from datetime { datetime }
 
-        node Note {
-            has title: str;
-            has content: str;
-            has owner: str;
-            has is_private: bool = True;
-            has id: str = "note_" + str(uuid.uuid4());
+        glob config = {
+            "max_rooms": int(getenv("MAX_ROOMS", "10")),
+            "max_users_per_room": int(getenv("MAX_USERS_PER_ROOM", "50")),
+            "message_history": int(getenv("MESSAGE_HISTORY", "100"))
+        };
+
+        node ChatRoom {
+            has name: str;
+            has users: list[str] = [];
+            has message_count: int = 0;
         }
 
-        walker create_note {
-            has title: str;
-            has content: str;
-            has owner: str;
-            has is_private: bool = True;
+        walker join_room {
+            has room_name: str;
+            has username: str;
 
-            obj __specs__ {
-                static has auth: bool = False;
-            }
+            can join_chat with `root entry {
+                # Find or create room
+                room = [-->(`?ChatRoom)](?name == self.room_name);
 
-            can add_note with `root entry {
-                new_note = Note(
-                    title=self.title,
-                    content=self.content,
-                    owner=self.owner,
-                    is_private=self.is_private
-                );
-                here ++> new_note;
+                if not room {
+                    # Check room limit
+                    total_rooms = len([-->(`?ChatRoom)]);
+                    if total_rooms >= config["max_rooms"] {
+                        report {"error": "Maximum rooms reached"};
+                        return;
+                    }
 
-                report {
-                    "status": "created",
-                    "note_id": new_note.id,
-                    "private": new_note.is_private
-                };
-            }
-        }
+                    room = ChatRoom(name=self.room_name);
+                    here ++> room;
+                } else {
+                    room = room[0];
+                }
 
-        walker list_my_notes {
-            has user_id: str;
+                # Check user limit
+                if len(room.users) >= config["max_users_per_room"] {
+                    report {"error": "Room is full"};
+                    return;
+                }
 
-            obj __specs__ {
-                static has auth: bool = False;
-            }
-
-            can get_user_notes with `root entry {
-                # Only get notes owned by specified user
-                user_notes = [-->(`?Note)](?owner == self.user_id);
+                # Add user if not already in room
+                if self.username not in room.users {
+                    room.users.append(self.username);
+                }
 
                 report {
-                    "user": self.user_id,
-                    "notes": [
-                        {
-                            "id": n.id,
-                            "title": n.title,
-                            "private": n.is_private
-                        }
-                        for n in user_notes
-                    ],
-                    "count": len(user_notes)
+                    "room": room.name,
+                    "users": room.users,
+                    "user_count": len(room.users)
                 };
             }
         }
@@ -219,613 +170,725 @@ For multi-user applications, you need to implement user identification patterns.
 
     === "Python Equivalent"
         ```python
-        # user_notebook.py - Requires manual auth setup
+        # simple_chat.py - Requires manual setup
+        import os
         from flask import Flask, request, jsonify
-        from flask_jwt_extended import JWTManager, jwt_required, get_jwt_identity
 
         app = Flask(__name__)
-        app.config['JWT_SECRET_KEY'] = 'secret-key'
-        jwt = JWTManager(app)
 
-        notes = []
+        # Configuration
+        MAX_ROOMS = int(os.getenv("MAX_ROOMS", "10"))
+        MAX_USERS_PER_ROOM = int(os.getenv("MAX_USERS_PER_ROOM", "50"))
+        MESSAGE_HISTORY = int(os.getenv("MESSAGE_HISTORY", "100"))
 
-        @app.route('/create_note', methods=['POST'])
-        @jwt_required()
-        def create_note():
-            current_user = get_jwt_identity()
+        # In-memory storage
+        chat_rooms = {}
+
+        @app.route('/join_room', methods=['POST'])
+        def join_room():
             data = request.get_json()
+            room_name = data.get('room_name')
+            username = data.get('username')
 
-            note = {
-                'id': len(notes),
-                'title': data.get('title'),
-                'content': data.get('content'),
-                'owner': current_user,
-                'is_private': data.get('is_private', True)
-            }
-            notes.append(note)
+            # Check room limit
+            if len(chat_rooms) >= MAX_ROOMS and room_name not in chat_rooms:
+                return jsonify({"error": "Maximum rooms reached"}), 400
+
+            # Create room if doesn't exist
+            if room_name not in chat_rooms:
+                chat_rooms[room_name] = {
+                    "name": room_name,
+                    "users": [],
+                    "message_count": 0
+                }
+
+            room = chat_rooms[room_name]
+
+            # Check user limit
+            if len(room["users"]) >= MAX_USERS_PER_ROOM:
+                return jsonify({"error": "Room is full"}), 400
+
+            # Add user
+            if username not in room["users"]:
+                room["users"].append(username)
 
             return jsonify({
-                'status': 'created',
-                'note_id': note['id'],
-                'private': note['is_private']
+                "room": room["name"],
+                "users": room["users"],
+                "user_count": len(room["users"])
             })
 
-        @app.route('/list_my_notes', methods=['GET'])
-        @jwt_required()
-        def list_my_notes():
-            current_user = get_jwt_identity()
-            user_notes = [n for n in notes if n['owner'] == current_user]
-
-            return jsonify({
-                'user': current_user,
-                'notes': [
-                    {'id': n['id'], 'title': n['title'], 'private': n['is_private']}
-                    for n in user_notes
-                ],
-                'count': len(user_notes)
-            })
+        if __name__ == '__main__':
+            app.run()
         ```
 
-### Deploying and Testing
+### Environment Setup
 
-Deploy your user-aware application:
+Create a `.env` file for local development:
 
 ```bash
-jac serve user_notebook.jac
+# .env file
+MAX_ROOMS=20
+MAX_USERS_PER_ROOM=100
+MESSAGE_HISTORY=500
+DEBUG=true
 ```
 
-### Testing User Authentication
+Deploy with environment variables:
 
 ```bash
-# Create a note for Alice
-curl -X POST http://localhost:8000/walker/create_note \
-  -H "Content-Type: application/json" \
-  -d '{
-    "title": "Alice Private Note",
-    "content": "Secret content",
-    "owner": "alice@example.com"
-  }'
+# Local with environment variables
+MAX_ROOMS=20 jac serve simple_chat.jac
 
-# Create a note for Bob
-curl -X POST http://localhost:8000/walker/create_note \
-  -H "Content-Type: application/json" \
-  -d '{
-    "title": "Bob Note",
-    "content": "Bob content",
-    "owner": "bob@example.com"
-  }'
-
-# Get Alice's notes only
-curl -X POST http://localhost:8000/walker/list_my_notes \
-  -H "Content-Type: application/json" \
-  -d '{"user_id": "alice@example.com"}'
+# Or using .env file (if supported by your environment)
+jac serve simple_chat.jac
 ```
 
 ---
 
-## Shared Data Patterns
+## Message Management and Storage
 
-Multi-user applications often need controlled sharing of data between users. Let's enhance our notebook to support sharing notes with specific users.
+Instead of WebSockets, let's focus on RESTful message management that works with jac-cloud's current capabilities:
 
-### Note Sharing Implementation
+### Message Storage Implementation
 
-!!! example "Shared Notebook with Permissions"
+!!! example "RESTful Chat Implementation"
     ```jac
-    # shared_permissions.jac
-    import uuid;
+        # message_chat.jac
+        import from datetime { datetime }
+        import from os { getenv}
+        import from uuid { uuid4 }
 
-    node Note {
-        has title: str;
-        has content: str;
-        has owner: str;
-        has shared_with: list[str] = [];
-        has is_public: bool = False;
-        has permissions: dict = {"read": True, "write": False};
-        has id: str = "note_" + str(uuid.uuid4());
-    }
-
-    walker create_note {
-        has title: str;
-        has content: str;
-        has owner: str;
-        has is_public: bool = False;
-
-        obj __specs__ {
-            static has auth: bool = False;
+        node ChatMessage {
+            has content: str;
+            has sender: str;
+            has timestamp: str;
+            has room_name: str;
+            has id: str = "msg_" + str(uuid4());
         }
 
-        can add_note with `root entry {
-            new_note = Note(
-                title=self.title,
-                content=self.content,
-                owner=self.owner,
-                is_public=self.is_public
-            );
-            here ++> new_note;
+        node ChatRoom {
+            has name: str;
+            has users: list[str] = [];
+            has message_count: int = 0;
 
-            report {
-                "status": "created",
-                "note_id": new_note.id,
-                "public": new_note.is_public
-            };
-        }
-    }
-
-    walker share_note {
-        has note_id: str;
-        has current_user: str;
-        has target_user: str;
-        has permission_level: str = "read";  # "read" or "write"
-
-        obj __specs__ {
-            static has auth: bool = False;
-        }
-
-        can add_sharing_permission with `root entry {
-            target_note = [-->(`?Note)](?id == self.note_id);
-
-            if not target_note {
-                report {"error": "Note not found"};
-                return;
-            }
-
-            note = target_note[0];
-
-            # Only owner can share notes
-            if note.owner != self.current_user {
-                report {"error": "Only note owner can share"};
-                return;
-            }
-
-            # Add user to shared list if not already there
-            if self.target_user not in note.shared_with {
-                note.shared_with.append(self.target_user);
-            }
-
-            report {
-                "message": f"Note shared with {self.target_user}",
-                "permission": self.permission_level,
-                "shared_count": len(note.shared_with)
-            };
-        }
-    }
-
-    walker get_accessible_notes {
-        has user_id: str;
-
-        obj __specs__ {
-            static has auth: bool = False;
-        }
-
-        can fetch_all_accessible with `root entry {
-            all_notes = [-->(`?Note)];
-            accessible_notes = [];
-
-            for note in all_notes {
-                # User can access if:
-                # 1. They own it
-                # 2. It's shared with them
-                # 3. It's public
-                if (note.owner == self.user_id or
-                    self.user_id in note.shared_with or
-                    note.is_public) {
-
-                    accessible_notes.append({
-                        "id": note.id,
-                        "title": note.title,
-                        "owner": note.owner,
-                        "is_mine": note.owner == self.user_id,
-                        "access_type": "owner" if note.owner == self.user_id
-                                    else ("shared" if self.user_id in note.shared_with
-                                        else "public")
-                    });
-                }
-            }
-
-            report {
-                "user": self.user_id,
-                "accessible_notes": accessible_notes,
-                "total": len(accessible_notes)
-            };
-        }
-    }
-    ```
-
-### Testing Note Sharing
-
-```bash
-# Alice creates a note
-curl -X POST http://localhost:8000/walker/create_note \
-  -H "Content-Type: application/json" \
-  -d '{
-    "title": "Team Project",
-    "content": "Project details",
-    "owner": "alice@example.com"
-  }'
-
-# Alice shares note with Bob
-curl -X POST http://localhost:8000/walker/share_note \
-  -H "Content-Type: application/json" \
-  -d '{
-    "note_id": "note_123",
-    "current_user": "alice@example.com",
-    "target_user": "bob@example.com"
-  }'
-
-# Bob views accessible notes
-curl -X POST http://localhost:8000/walker/get_accessible_notes \
-  -H "Content-Type: application/json" \
-  -d '{"user_id": "bob@example.com"}'
-```
-
----
-
-## Security Considerations
-
-When building multi-user systems, security must be a primary concern. Application-level security patterns are essential for protecting user data.
-
-### Secure Data Access Patterns
-
-!!! example "Security-First Note Access"
-    ```jac
-    # rbac_notebook.jac
-    enum Role {
-        VIEWER = "viewer",
-        EDITOR = "editor",
-        ADMIN = "admin"
-    }
-
-    node UserProfile {
-        has email: str;
-        has role: Role = Role.VIEWER;
-        has created_at: str = "2024-01-15";
-    }
-
-    node Note {
-        has title: str;
-        has content: str;
-        has owner: str;
-        has required_role: Role = Role.VIEWER;
-        has is_sensitive: bool = False;
-    }
-
-    walker check_user_role {
-        has user_id: str;
-
-        obj __specs__ {
-            static has auth: bool = False;
-        }
-
-        can get_current_user_role with `root entry {
-            user_profile = [-->(`?UserProfile)](?email == self.user_id);
-
-            if user_profile {
-                current_role = user_profile[0].role;
-            } else {
-                # Create default profile for new user
-                new_profile = UserProfile(email=self.user_id);
-                here ++> new_profile;
-                current_role = Role.VIEWER;
-            }
-
-            report {"user": self.user_id, "role": current_role.value};
-        }
-    }
-
-    walker create_role_based_note {
-        has title: str;
-        has content: str;
-        has owner: str;
-        has required_role: str = "viewer";
-        has is_sensitive: bool = False;
-
-        obj __specs__ {
-            static has auth: bool = False;
-        }
-
-        can create_with_role_check with `root entry {
-            # Get user's role
-            user_profile = [-->(`?UserProfile)](?email == self.owner);
-
-            if not user_profile {
-                report {"error": "User profile not found"};
-                return;
-            }
-
-            user_role = user_profile[0].role;
-
-            # Check if user can create sensitive notes
-            if self.is_sensitive and user_role == Role.VIEWER {
-                report {"error": "Insufficient permissions for sensitive content"};
-                return;
-            }
-
-            new_note = Note(
-                title=self.title,
-                content=self.content,
-                owner=self.owner,
-                required_role=Role(self.required_role),
-                is_sensitive=self.is_sensitive
-            );
-            here ++> new_note;
-
-            report {
-                "message": "Note created with role requirements",
-                "id": new_note.id,
-                "required_role": self.required_role
-            };
-        }
-    }
-
-    walker get_role_filtered_notes {
-        has user_id: str;
-
-        obj __specs__ {
-            static has auth: bool = False;
-        }
-
-        can fetch_accessible_by_role with `root entry {
-            # Get user's role
-            user_profile = [-->(`?UserProfile)](?email == self.user_id);
-
-            if not user_profile {
-                report {"notes": [], "message": "No user profile found"};
-                return;
-            }
-
-            user_role = user_profile[0].role;
-            all_notes = [-->(`?Note)];
-            accessible_notes = [];
-
-            for note in all_notes {
-                # Check if user meets role requirement
-                can_access = (
-                    note.owner == self.user_id or  # Always access own notes
-                    (user_role == Role.ADMIN) or  # Admins see everything
-                    (user_role == Role.EDITOR and note.required_role != Role.ADMIN) or
-                    (user_role == Role.VIEWER and note.required_role == Role.VIEWER)
+            def add_message(sender: str, content: str) -> ChatMessage {
+                new_message = ChatMessage(
+                    content=content,
+                    sender=sender,
+                    timestamp=datetime.now().isoformat(),
+                    room_name=self.name
                 );
-
-                if can_access {
-                    accessible_notes.append({
-                        "id": note.id,
-                        "title": note.title,
-                        "owner": note.owner,
-                        "required_role": note.required_role.value,
-                        "is_sensitive": note.is_sensitive
-                    });
-                }
+                self ++> new_message;
+                self.message_count += 1;
+                return new_message;
             }
 
-            report {
-                "user_role": user_role.value,
-                "notes": accessible_notes,
-                "total": len(accessible_notes)
-            };
+            def get_recent_messages(limit: int = 20) -> list[dict] {
+                messages = [self --> (`?ChatMessage)];
+                recent = messages[-limit:] if len(messages) > limit else messages;
+                return [
+                    {
+                        "content": msg.content,
+                        "sender": msg.sender,
+                        "timestamp": msg.timestamp
+                    }
+                    for msg in recent
+                ];
+
+            }
         }
-    }
+
+        walker join_room {
+            has room_name: str;
+            has username: str;
+
+            obj __specs__ {
+                static has auth: bool = False;
+            }
+
+            can join_chat with `root entry {
+                # Find or create room
+                room = [-->(`?ChatRoom)](?name == self.room_name);
+
+                if not room {
+                    # Check room limit
+                    total_rooms = len([-->(`?ChatRoom)]);
+                    if total_rooms >= int(getenv("MAX_ROOMS", "100")) {
+                        report {"error": "Maximum rooms reached"};
+                        return;
+                    }
+
+                    room = ChatRoom(name=self.room_name);
+                    here ++> room;
+                } else {
+                    room = room[0];
+                }
+
+                # Check user limit
+                if len(room.users) >= int(getenv("MAX_USERS_PER_ROOM", "100")) {
+                    report {"error": "Room is full"};
+                    return;
+                }
+
+                # Add user if not already in room
+                if self.username not in room.users {
+                    room.users.append(self.username);
+                }
+
+                report {
+                    "room": room.name,
+                    "users": room.users,
+                    "user_count": len(room.users)
+                };
+                # return room;
+            }
+        }
+
+
+        walker send_message {
+            has room_name: str;
+            has username: str;
+            has message: str;
+
+            obj __specs__ {
+                static has auth: bool = False;
+            }
+
+            can process_message with `root entry {
+                # Find the room
+                room = [-->(`?ChatRoom)](?name == self.room_name);
+
+                if not room {
+                    report {"error": "Room not found"};
+                    return;
+                }
+
+                room = room[0];
+
+                # Check if user is in room
+                if self.username not in room.users {
+                    report {"error": "User not in room"};
+                    return;
+                }
+
+                # Add message
+                new_message = room.add_message(self.username, self.message);
+
+                report {
+                    "status": "message_sent",
+                    "message_id": new_message.id,
+                    "timestamp": new_message.timestamp
+                };
+            }
+        }
+
+        walker get_chat_history {
+            has room_name: str;
+            has limit: int = 20;
+
+            obj __specs__ {
+                static has auth: bool = False;
+            }
+
+            can fetch_history with `root entry {
+                room = [-->(`?ChatRoom)](?name == self.room_name);
+
+                if room {
+                    messages = room[0].get_recent_messages(self.limit);
+                    report {"room": self.room_name, "messages": messages};
+                } else {
+                    report {"error": "Room not found"};
+                }
+            }
+        }
     ```
 
-!!! warning "Security Best Practices"
-    - **Always Verify Access**: Check user permissions before any data operation
-    - **Validate Input**: Sanitize all user input to prevent injection attacks
-    - **Principle of Least Privilege**: Grant minimum necessary permissions
-    - **Audit Access**: Log sensitive operations for security monitoring
-    - **Secure Defaults**: Make restrictive permissions the default
+### Testing Message API
+
+Deploy the message-enabled chat:
+
+```bash
+jac serve message_chat.jac
+```
+
+Test with curl (all walker endpoints are POST):
+
+```bash
+# Join a room first
+curl -X POST http://localhost:8000/walker/join_room \
+  -H "Content-Type: application/json" \
+  -d '{"room_name": "general", "username": "alice"}'
+
+# Send a message
+curl -X POST http://localhost:8000/walker/send_message \
+  -H "Content-Type: application/json" \
+  -d '{"room_name": "general", "username": "alice", "message": "Hello everyone!"}'
+
+# Get chat history
+curl -X POST http://localhost:8000/walker/get_chat_history \
+  -H "Content-Type: application/json" \
+  -d '{"room_name": "general", "limit": 10}'
+```
 
 ---
 
-## Access Control Strategies
+## Webhook Integration
 
-Different applications require different access control models. Let's implement a role-based access control system for our notebook.
+Webhooks enable your Jac applications to receive real-time notifications from external services. This is essential for integrating with third-party APIs and building event-driven architectures.
 
-### Role-Based Access Control
+### Webhook Receiver Implementation
 
-!!! example "RBAC Notebook System"
+!!! example "Chat Notification Webhooks"
     ```jac
-    # rbac_notebook.jac
-    enum Role {
-        VIEWER = "viewer",
-        EDITOR = "editor",
-        ADMIN = "admin"
+    # webhook_chat.jac
+    import from datetime { datetime }
+
+    node WebhookLog {
+        has source: str;
+        has event_type: str;
+        has data: dict;
+        has received_at: str;
     }
 
-    node UserProfile {
-        has email: str;
-        has role: Role = Role.VIEWER;
-        has created_at: str = "2024-01-15";
-    }
+    # Webhook receiver walker
+    walker receive_webhook {
+        has source: str = "unknown";
+        has event_type: str;
+        has data: dict;
 
-    node Note {
-        has title: str;
-        has content: str;
-        has owner: str;
-        has required_role: Role = Role.VIEWER;
-        has is_sensitive: bool = False;
-    }
-
-    walker check_user_role {
-        has user_id: str;
-
-        can get_current_user_role with `root entry {
-            user_profile = [-->(`?UserProfile)](?email == self.user_id);
-
-            if user_profile {
-                current_role = user_profile[0].role;
-            } else {
-                # Create default profile for new user
-                new_profile = UserProfile(email=self.user_id);
-                here ++> new_profile;
-                current_role = Role.VIEWER;
-            }
-
-            report {"user": self.user_id, "role": current_role.value};
-        }
-    }
-
-    walker create_role_based_note {
-        has title: str;
-        has content: str;
-        has owner: str;
-        has required_role: str = "viewer";
-        has is_sensitive: bool = False;
-
-        can create_with_role_check with `root entry {
-            # Get user's role
-            user_profile = [-->(`?UserProfile)](?email == self.owner);
-
-            if not user_profile {
-                report {"error": "User profile not found"};
-                return;
-            }
-
-            user_role = user_profile[0].role;
-
-            # Check if user can create sensitive notes
-            if self.is_sensitive and user_role == Role.VIEWER {
-                report {"error": "Insufficient permissions for sensitive content"};
-                return;
-            }
-
-            new_note = Note(
-                title=self.title,
-                content=self.content,
-                owner=self.owner,
-                required_role=Role(self.required_role),
-                is_sensitive=self.is_sensitive
+        can process_webhook with `root entry {
+            # Log the webhook
+            webhook_log = WebhookLog(
+                source=self.source,
+                event_type=self.event_type,
+                data=self.data,
+                received_at=datetime.now().isoformat()
             );
-            here ++> new_note;
+            here ++> webhook_log;
 
-            report {
-                "message": "Note created with role requirements",
-                "id": new_note.id,
-                "required_role": self.required_role
-            };
+            # Process different webhook types
+            if self.source == "github" and self.event_type == "push" {
+                self.handle_github_push();
+            } elif self.source == "slack" and self.event_type == "message" {
+                self.handle_slack_message();
+            } else {
+                print(f"Unknown webhook: {self.source}/{self.event_type}");
+            }
+
+            report {"status": "webhook_processed", "log_id": webhook_log.id};
+        }
+
+        can handle_github_push() {
+            # Extract commit information
+            commits = self.data.get("commits", []);
+            repo_name = self.data.get("repository", {}).get("name", "unknown");
+
+            # Send notification to chat
+            for commit in commits {
+                message = f"🔨 New commit in {repo_name}: {commit.get('message', 'No message')}";
+                self.send_to_chat("dev-updates", "GitBot", message);
+            }
+        }
+
+        can handle_slack_message() {
+            # Forward Slack messages to our chat
+            user = self.data.get("user_name", "SlackUser");
+            text = self.data.get("text", "");
+            channel = self.data.get("channel_name", "general");
+
+            message = f"[Slack] {text}";
+            self.send_to_chat(channel, user, message);
+        }
+
+        can send_to_chat(room_name: str, sender: str, message: str) {
+            # Find or create room
+            room = [-->(`?ChatRoom)](?name == room_name);
+            if not room {
+                room = ChatRoom(name=room_name);
+                here ++> room;
+            } else {
+                room = room[0];
+            }
+
+            # Add message
+            room.add_message(sender, message);
         }
     }
 
-    walker get_role_filtered_notes {
-        has user_id: str;
+    walker get_webhook_logs {
+        has source: str = "";
+        has limit: int = 50;
 
-        can fetch_accessible_by_role with `root entry {
-            # Get user's role
-            user_profile = [-->(`?UserProfile)](?email == self.user_id);
+        can fetch_logs with `root entry {
+            all_logs = [-->(`?WebhookLog)];
 
-            if not user_profile {
-                report {"notes": [], "message": "No user profile found"};
-                return;
+            # Filter by source if specified
+            if self.source {
+                filtered_logs = [log for log in all_logs if log.source == self.source];
+            } else {
+                filtered_logs = all_logs;
             }
 
-            user_role = user_profile[0].role;
-            all_notes = [-->(`?Note)];
-            accessible_notes = [];
-
-            for note in all_notes {
-                # Check if user meets role requirement
-                can_access = (
-                    note.owner == self.user_id or  # Always access own notes
-                    (user_role == Role.ADMIN) or  # Admins see everything
-                    (user_role == Role.EDITOR and note.required_role != Role.ADMIN) or
-                    (user_role == Role.VIEWER and note.required_role == Role.VIEWER)
-                );
-
-                if can_access {
-                    accessible_notes.append({
-                        "id": note.id,
-                        "title": note.title,
-                        "owner": note.owner,
-                        "required_role": note.required_role.value,
-                        "is_sensitive": note.is_sensitive
-                    });
-                }
-            }
+            # Get recent logs
+            recent_logs = filtered_logs[-self.limit:];
 
             report {
-                "user_role": user_role.value,
-                "notes": accessible_notes,
-                "total": len(accessible_notes)
+                "logs": [
+                    {
+                        "source": log.source,
+                        "event_type": log.event_type,
+                        "received_at": log.received_at
+                    }
+                    for log in recent_logs
+                ],
+                "total": len(filtered_logs)
             };
         }
     }
     ```
 
-### Testing Role-Based Access
+### Testing Webhooks
+
+Test webhook locally:
 
 ```bash
-# Check user role
-curl -X POST http://localhost:8000/walker/check_user_role \
-  -H "Content-Type: application/json" \
-  -d '{"user_id": "alice@example.com"}'
-
-# Create a note requiring editor role
-curl -X POST http://localhost:8000/walker/create_role_based_note \
+curl -X POST http://localhost:8000/walker/receive_webhook \
   -H "Content-Type: application/json" \
   -d '{
-    "title": "Editor Note",
-    "content": "Only editors can see this",
-    "owner": "alice@example.com",
-    "required_role": "editor",
-    "is_sensitive": true
+    "source": "github",
+    "event_type": "push",
+    "data": {
+      "repository": {"name": "my-repo"},
+      "commits": [{"message": "Fix critical bug"}]
+    }
   }'
+```
 
-# Get notes filtered by role
-curl -X POST http://localhost:8000/walker/get_role_filtered_notes \
+---
+
+## Logging and Monitoring
+
+Production applications require comprehensive logging and monitoring. Jac Cloud provides built-in observability features that integrate with your application logic.
+
+### Application Logging
+
+!!! example "Structured Logging System"
+    ```jac
+    # logging_chat.jac
+    import from datetime { datetime }
+    import from logging { getLogger }
+
+    glob logger = getLogger("chat_app");
+
+    node LogEntry {
+        has level: str;
+        has message: str;
+        has timestamp: str;
+        has context: dict = {};
+    }
+
+    walker log_activity {
+        has level: str = "info";
+        has message: str;
+        has context: dict = {};
+
+        can record_log with `root entry {
+            # Create log entry
+            log_entry = LogEntry(
+                level=self.level,
+                message=self.message,
+                timestamp=datetime.now().isoformat(),
+                context=self.context
+            );
+            here ++> log_entry;
+
+            # Also log to system logger
+            if self.level == "error" {
+                logger.error(f"{self.message} | Context: {self.context}");
+            } elif self.level == "warning" {
+                logger.warning(f"{self.message} | Context: {self.context}");
+            } else {
+                logger.info(f"{self.message} | Context: {self.context}");
+            }
+
+            report {"log_id": log_entry.id, "logged_at": log_entry.timestamp};
+        }
+    }
+
+    # Enhanced chat with logging
+    walker send_logged_message {
+        has room_name: str;
+        has username: str;
+        has message: str;
+
+        can send_with_logging with `root entry {
+            # Log the attempt
+            log_activity(
+                level="info",
+                message="Message send attempt",
+                context={
+                    "room": self.room_name,
+                    "user": self.username,
+                    "message_length": len(self.message)
+                }
+            ) spawn here;
+
+            # Find room
+            room = [-->(`?ChatRoom)](?name == self.room_name);
+
+            if not room {
+                log_activity(
+                    level="warning",
+                    message="Message failed - room not found",
+                    context={"room": self.room_name, "user": self.username}
+                ) spawn here;
+
+                report {"error": "Room not found"};
+                return;
+            }
+
+            room = room[0];
+
+            # Check if user can send
+            if self.username not in room.users {
+                log_activity(
+                    level="warning",
+                    message="Message failed - user not in room",
+                    context={"room": self.room_name, "user": self.username}
+                ) spawn here;
+
+                report {"error": "User not in room"};
+                return;
+            }
+
+            # Send message
+            new_message = room.add_message(self.username, self.message);
+
+            # Log success
+            log_activity(
+                level="info",
+                message="Message sent successfully",
+                context={
+                    "room": self.room_name,
+                    "user": self.username,
+                    "message_id": new_message.id
+                }
+            ) spawn here;
+
+            report {"status": "sent", "message_id": new_message.id};
+        }
+    }
+
+    walker get_logs {
+        has level: str = "";
+        has limit: int = 100;
+
+        can fetch_logs with `root entry {
+            all_logs = [-->(`?LogEntry)];
+
+            # Filter by level if specified
+            if self.level {
+                filtered_logs = [log for log in all_logs if log.level == self.level];
+            } else {
+                filtered_logs = all_logs;
+            }
+
+            # Get recent logs
+            recent_logs = filtered_logs[-self.limit:];
+
+            report {
+                "logs": [
+                    {
+                        "level": log.level,
+                        "message": log.message,
+                        "timestamp": log.timestamp,
+                        "context": log.context
+                    }
+                    for log in recent_logs
+                ],
+                "total": len(filtered_logs)
+            };
+        }
+    }
+    ```
+
+---
+
+## Background Tasks and Cleanup
+
+Automated tasks are essential for maintenance, cleanup, and periodic operations.
+
+### Scheduled Chat Maintenance
+
+!!! example "Chat Room Cleanup Tasks"
+    ```jac
+    # scheduled_chat.jac
+    import from datetime { datetime, timedelta }
+
+    # Cleanup walker for maintenance tasks
+    walker cleanup_inactive_rooms {
+        has max_age_hours: int = 24;
+
+        can perform_cleanup with `root entry {
+            current_time = datetime.now();
+            cleanup_count = 0;
+
+            # Find all rooms
+            all_rooms = [-->(`?ChatRoom)];
+
+            for room in all_rooms {
+                # Check if room has been inactive
+                if len(room.users) == 0 {
+                    # Get latest message
+                    messages = [room --> ChatMessage];
+
+                    if not messages {
+                        # No messages, delete empty room
+                        del room;
+                        cleanup_count += 1;
+                    } else {
+                        # Check last message age
+                        latest_message = messages[-1];
+                        message_time = datetime.fromisoformat(latest_message.timestamp);
+
+                        if (current_time - message_time).total_seconds() > (self.max_age_hours * 3600) {
+                            # Room is too old, cleanup
+                            for msg in messages {
+                                del msg;
+                            }
+                            del room;
+                            cleanup_count += 1;
+                        }
+                    }
+                }
+            }
+
+            # Log cleanup results
+            log_activity(
+                level="info",
+                message="Cleanup task completed",
+                context={
+                    "rooms_cleaned": cleanup_count,
+                    "total_rooms": len([-->(`?ChatRoom)])
+                }
+            ) spawn here;
+
+            report {
+                "status": "cleanup_completed",
+                "rooms_cleaned": cleanup_count,
+                "timestamp": current_time.isoformat()
+            };
+        }
+    }
+
+    # Daily statistics walker
+    walker generate_daily_stats {
+        can collect_stats with `root entry {
+            # Count active rooms and users
+            all_rooms = [-->(`?ChatRoom)];
+            total_rooms = len(all_rooms);
+            total_users = sum(len(room.users) for room in all_rooms);
+
+            # Count messages sent today
+            today = datetime.now().date();
+            all_messages = [-->(`?ChatMessage)];
+
+            today_messages = 0;
+            for msg in all_messages {
+                msg_date = datetime.fromisoformat(msg.timestamp).date();
+                if msg_date == today {
+                    today_messages += 1;
+                }
+            }
+
+            # Create stats report
+            stats = {
+                "date": today.isoformat(),
+                "active_rooms": total_rooms,
+                "active_users": total_users,
+                "messages_today": today_messages,
+                "generated_at": datetime.now().isoformat()
+            };
+
+            # Log daily stats
+            log_activity(
+                level="info",
+                message="Daily statistics generated",
+                context=stats
+            ) spawn here;
+
+            report stats;
+        }
+    }
+    ```
+
+### Manual Task Execution
+
+```bash
+# Run cleanup manually
+curl -X POST http://localhost:8000/walker/cleanup_inactive_rooms \
   -H "Content-Type: application/json" \
-  -d '{"user_id": "alice@example.com"}'
+  -d '{"max_age_hours": 48}'
+
+# Generate daily stats
+curl -X POST http://localhost:8000/walker/generate_daily_stats \
+  -H "Content-Type: application/json" \
+  -d '{}'
 ```
 
 ---
 
 ## Best Practices
 
-!!! summary "Multi-User Development Guidelines"
-    - **Always validate access**: Check user permissions before any data operation
-    - **Use consistent user identification**: Establish clear patterns for user IDs
-    - **Implement graceful sharing**: Make sharing intuitive and secure
-    - **Audit sensitive operations**: Log important user actions for security
-    - **Design for privacy**: Default to private data with explicit sharing
-    - **Test permission scenarios**: Verify access control works as expected
+!!! summary "Cloud Development Guidelines"
+    - **Use environment variables**: Keep configuration flexible and secure
+    - **Structure your logs**: Use consistent logging patterns for debugging
+    - **Validate webhooks**: Always verify webhook sources and data
+    - **Monitor performance**: Track application metrics and health
+    - **Handle failures gracefully**: Implement retry logic and fallback patterns
+    - **Secure sensitive data**: Never commit secrets or API keys to code
 
 ## Key Takeaways
 
 !!! summary "What We've Learned"
-    **Multi-User Patterns:**
+    **Configuration Management:**
 
-    - **User identification**: Implement user context in walker parameters
-    - **Data isolation**: Filter data based on ownership and permissions
-    - **Permission systems**: Multiple access control strategies for different needs
-    - **Shared data management**: Controlled sharing between users with fine-grained permissions
+    - **Environment variables**: Flexible application configuration without code changes
+    - **Security patterns**: Keep sensitive data in environment variables, not code
+    - **Multi-environment support**: Different settings for development, staging, production
+    - **Runtime configuration**: Adjust application behavior without redeployment
 
-    **Security Considerations:**
+    **Integration Capabilities:**
 
-    - **Access validation**: Always verify user permissions before data operations
-    - **Default privacy**: Make restrictive permissions the default setting
-    - **Input validation**: Sanitize all user input to prevent security issues
-    - **Audit trails**: Log sensitive operations for security monitoring
+    - **Webhook support**: Receive real-time notifications from external services
+    - **RESTful architecture**: All walkers become scalable API endpoints
+    - **External service integration**: Connect with third-party APIs and services
+    - **Event-driven patterns**: Build reactive applications that respond to external events
 
-    **Application Architecture:**
+    **Monitoring and Observability:**
 
-    - **Role-based access**: Implement hierarchical permission systems
-    - **Flexible sharing**: Support various sharing patterns for different use cases
-    - **User profiles**: Manage user information and preferences
-    - **Data ownership**: Clear patterns for who can access and modify data
+    - **Structured logging**: Built-in logging patterns for debugging and monitoring
+    - **Performance tracking**: Monitor application health and performance metrics
+    - **Error handling**: Graceful error recovery and reporting
+    - **Audit trails**: Track important application events and user actions
 
-    **Development Benefits:**
+    **Production Features:**
 
-    - **Built-in isolation**: Graph filtering provides natural data separation
-    - **Flexible permissions**: Implement custom access control with business logic
-    - **Scalable patterns**: Multi-user code scales automatically with Jac Cloud
-    - **Type safety**: User permissions validated through the type system
+    - **Background tasks**: Automated maintenance and cleanup operations
+    - **Data management**: Efficient patterns for data lifecycle management
+    - **Scalability**: Built-in support for horizontal scaling
+    - **Reliability**: Robust patterns for production deployment
 
 !!! tip "Try It Yourself"
-    Build multi-user systems by adding:
-    - Team-based collaboration features
-    - Real-time notifications for shared data changes
-    - Advanced permission hierarchies with groups and roles
-    - Activity feeds showing user actions
+    Enhance your cloud applications by adding:
+    - Real-time chat with webhook integrations
+    - Automated data backup and cleanup tasks
+    - External service integrations (email, SMS, payments)
+    - Comprehensive monitoring and alerting systems
 
-    Remember: Always validate user permissions before any data operation!
+    Remember: All these advanced features work seamlessly with Jac's scale-agnostic architecture!
 
 ---
 
-*Ready to learn about advanced cloud features? Continue to [Chapter 16: Advanced Jac Cloud Features](chapter_15.md)!*
+*Ready to master Jac's type system? Continue to [Chapter 17: Type System Deep Dive](chapter_16.md)!*

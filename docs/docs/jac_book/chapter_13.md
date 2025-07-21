@@ -1,648 +1,831 @@
-# Chapter 13: Persistence and the Root Node
+# Chapter 13: Multi-User Architecture and Permissions
 
-In this chapter, we'll explore Jac's automatic persistence system and the fundamental concept of the root node. We'll build a simple counter application that demonstrates how Jac automatically maintains state when running as a service with a database backend.
+In this chapter, we'll explore how to build secure, multi-user applications in Jac Cloud. We'll develop a shared notebook system that demonstrates user isolation, permission systems, and access control strategies through practical examples that evolve throughout the chapter.
 
 !!! info "What You'll Learn"
-    - Understanding Jac's automatic persistence mechanism with jac serve
-    - The root node as the entry point for all persistent data
-    - State consistency across API requests and service restarts
-    - Building stateful applications with jac-cloud
+    - Building secure multi-user applications
+    - User isolation and data privacy patterns
+    - Permission-based access control
+    - Shared data management strategies
+    - Security considerations for cloud applications
 
 ---
 
-## What is Automatic Persistence?
+## User Isolation and Permission Systems
 
-Traditional programming requires explicit database setup, connection management, and data serialization. Jac eliminates this complexity by making persistence a core language feature when running as a service. When you use `jac serve` with a database backend, nodes and their connections automatically persist across requests and service restarts.
+Multi-user applications require careful consideration of data access and user permissions. Jac provides built-in patterns for user management that integrate seamlessly with your application logic, allowing you to focus on business rules rather than authentication infrastructure.
 
-!!! warning "Persistence Requirements"
-    - **Database Backend**: Persistence requires `jac serve` with a configured database
-    - **Service Mode**: `jac run` executions are stateless and don't persist data
-    - **Root Connection**: Nodes must be connected to root to persist
-    - **API Context**: Persistence works within the context of API endpoints
+!!! success "Multi-User Benefits"
+    - **User Context**: Access to user information in walkers
+    - **Data Isolation**: Users can only access their authorized data
+    - **Flexible Permissions**: Fine-grained access control patterns
+    - **Secure by Default**: Application-level security patterns
+    - **Shared Data Support**: Controlled sharing between users
 
-!!! success "Persistence Benefits"
-    - **Zero Configuration**: No manual database schema or ORM setup
-    - **Automatic State**: Data persists without explicit save/load operations
-    - **Graph Integrity**: Relationships between nodes are maintained
-    - **Type Safety**: Persistent data maintains type information
-    - **Instant Recovery**: Services resume exactly where they left off
+### Traditional vs Jac Multi-User Development
 
-### Traditional vs Jac Persistence
-
-!!! example "Persistence Comparison"
+!!! example "Multi-User Comparison"
     === "Traditional Approach"
         ```python
-        # counter_api.py - Manual database setup required
-        from flask import Flask, jsonify, request
-        import sqlite3
-        import os
+        # app.py - Manual user management required
+        from flask import Flask, request, jsonify
+        from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
+        from werkzeug.security import generate_password_hash, check_password_hash
 
         app = Flask(__name__)
+        app.config['JWT_SECRET_KEY'] = 'your-secret-key'
+        jwt = JWTManager(app)
 
-        class Counter:
-            def __init__(self):
-                self.db_path = "counter.db"
-                self.init_db()
+        # Global storage (in production, use a database)
+        users = {}
+        notebooks = {}
 
-            def init_db(self):
-                conn = sqlite3.connect(self.db_path)
-                cursor = conn.cursor()
-                cursor.execute('''
-                    CREATE TABLE IF NOT EXISTS counter (
-                        id INTEGER PRIMARY KEY,
-                        value INTEGER
-                    )
-                ''')
-                cursor.execute('SELECT value FROM counter WHERE id = 1')
-                if not cursor.fetchone():
-                    cursor.execute('INSERT INTO counter (id, value) VALUES (1, 0)')
-                conn.commit()
-                conn.close()
+        @app.route('/register', methods=['POST'])
+        def register():
+            data = request.get_json()
+            username = data.get('username')
+            password = data.get('password')
 
-            def get_value(self):
-                conn = sqlite3.connect(self.db_path)
-                cursor = conn.cursor()
-                cursor.execute('SELECT value FROM counter WHERE id = 1')
-                value = cursor.fetchone()[0]
-                conn.close()
-                return value
+            if username in users:
+                return jsonify({'error': 'User already exists'}), 400
 
-            def increment(self):
-                conn = sqlite3.connect(self.db_path)
-                cursor = conn.cursor()
-                cursor.execute('UPDATE counter SET value = value + 1 WHERE id = 1')
-                conn.commit()
-                conn.close()
-                return self.get_value()
+            users[username] = {
+                'password': generate_password_hash(password),
+                'notebooks': []
+            }
 
-        counter = Counter()
+            return jsonify({'message': 'User created successfully'})
 
-        @app.route('/counter')
-        def get_counter():
-            return jsonify({"value": counter.get_value()})
+        @app.route('/login', methods=['POST'])
+        def login():
+            data = request.get_json()
+            username = data.get('username')
+            password = data.get('password')
 
-        @app.route('/counter/increment', methods=['POST'])
-        def increment_counter():
-            new_value = counter.increment()
-            return jsonify({"value": new_value})
+            if username not in users or not check_password_hash(users[username]['password'], password):
+                return jsonify({'error': 'Invalid credentials'}), 401
 
-        if __name__ == "__main__":
-            app.run(debug=True)
+            access_token = create_access_token(identity=username)
+            return jsonify({'access_token': access_token})
+
+        @app.route('/create_note', methods=['POST'])
+        @jwt_required()
+        def create_note():
+            current_user = get_jwt_identity()
+            data = request.get_json()
+
+            # Manual permission checking
+            note_id = len(notebooks)
+            notebooks[note_id] = {
+                'id': note_id,
+                'title': data.get('title'),
+                'content': data.get('content'),
+                'owner': current_user,
+                'shared_with': []
+            }
+
+            users[current_user]['notebooks'].append(note_id)
+            return jsonify({'message': 'Note created', 'id': note_id})
+
+        if __name__ == '__main__':
+            app.run()
         ```
 
-    === "Jac Automatic Persistence"
+    === "Jac Multi-User"
         ```jac
-        # main.jac - No database setup needed
-        node Counter {
-            has value: int = 0;
-
-            def increment() -> int {
-                self.value += 1;
-                return self.value;
-            }
-
-            def get_value() -> int {
-                return self.value;
-            }
+        # shared_notebook.jac - User patterns built-in
+        node Note {
+            has title: str;
+            has content: str;
+            has owner: str;
+            has shared_with: list[str] = [];
+            has created_at: str = "2024-01-15";
         }
 
-        walker get_counter {
-            obj __specs__ {
-                static has auth: bool = False;
-            }
+        walker create_note {
+            has title: str;
+            has content: str;
+            has owner: str;
 
-            can get_counter_endpoint with `root entry {
-                counter_nodes = [root --> Counter];
+            can create_user_note with `root entry {
+                # Create note with specified owner
+                new_note = Note(
+                    title=self.title,
+                    content=self.content,
+                    owner=self.owner
+                );
+                here ++> new_note;
 
-
-                if not counter_nodes {
-                    counter = Counter();
-                    root ++> counter;
-                } else {
-                    counter = counter_nodes[0];
-                }
-
-                report {"value": counter.get_value()};
-            }
-        }
-
-        walker increment_counter {
-            obj __specs__ {
-                static has auth: bool = False;
-            }
-
-            can increment_counter_endpoint with `root entry {
-                counter_nodes = [root --> Counter];
-                if not counter_nodes {
-                    counter = Counter();
-                    root ++> counter;
-                } else {
-                    counter = counter_nodes[0];
-                }
-                new_value = counter.increment();
-                report {"value": new_value};
-            }
-        }
-        ```
-
----
-
-## Setting Up a Jac Cloud Project
-
-To demonstrate persistence, we need to create a proper jac-cloud project structure:
-
-!!! example "Project Structure"
-    ```
-    counter-app/
-    ├── .env                 # Environment configuration
-    ├── main.jac            # Main application logic
-    ├── server.py           # Optional custom server setup
-    └── requirements.txt    # Python dependencies
-    ```
-
-Let's create our counter application:
-
-!!! example "Complete Counter Project"
-    === ".env"
-        ```bash
-        # .env - Database configuration
-        DATABASE_URL=sqlite:///./app.db
-        SECRET_KEY=your-secret-key-here
-        ```
-
-    === "main.jac"
-        ```jac
-        # main.jac
-        node Counter {
-            has value: int = 0;
-            has created_at: str;
-
-            can increment() -> int {
-                self.value += 1;
-                return self.value;
-            }
-
-            can reset() -> int {
-                self.value = 0;
-                return self.value;
-            }
-        }
-
-        walker get_counter {
-            can get_counter_endpoint with `root entry {
-                counter_nodes = [root --> Counter];
-                if not counter_nodes {
-                    counter = Counter(created_at="2024-01-15");
-                    root ++> counter;
-                    report {"value": 0, "status": "created"};
-                } else {
-                    counter = counter_nodes[0];
-                    report {"value": counter.value, "status": "existing"};
-                }
-            }
-        }
-
-        walker increment_counter {
-            can increment_counter_endpoint with `root entry {
-                counter_nodes = [root --> Counter];
-                if not counter_nodes {
-                    counter = Counter(created_at="2024-01-15");
-                    root ++> counter;
-                } else {
-                    counter = counter_nodes[0];
-                }
-                new_value = counter.increment();
-                report {"value": new_value, "previous": new_value - 1};
-            }
-        }
-
-        walker reset_counter {
-            can reset_counter_endpoint with `root entry {
-                counter_nodes = [root --> Counter];
-                if counter_nodes {
-                    counter = counter_nodes[0];
-                    counter.reset();
-                    report {"value": 0, "status": "reset"};
-                } else {
-                    report {"value": 0, "status": "no_counter_found"};
-                }
-            }
-        }
-        ```
-
-    === "requirements.txt"
-        ```
-        jaclang
-        fastapi
-        uvicorn
-        python-dotenv
-        ```
-
----
-
-## The Root Node Concept
-
-The root node is Jac's fundamental concept for persistent data organization. When running with `jac serve`, every request has access to a special `root` node that serves as the entry point for all persistent graph structures.
-
-### Understanding Root Node
-
-!!! info "Root Node Properties"
-    - **Request Context**: Available in every API request when using jac serve
-    - **Persistence Gateway**: Starting point for all persistent data
-    - **Graph Anchor**: All persistent nodes must be reachable from root
-    - **Automatic Creation**: Exists automatically with database backend
-    - **Transaction Boundary**: Changes persist at the end of each request
-
-### Running the Service
-
-```bash
-# Navigate to project directory
-cd counter-app
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Start the service with database persistence
-jac serve main.jac
-
-# Service starts on http://localhost:8000
-# API documentation available at http://localhost:8000/docs
-```
-
-### Testing Persistence
-
-```bash
-# First request - Create counter
-curl -X POST http://localhost:8000/walker/get_counter \
-  -H "Content-Type: application/json" \
-  -d '{}'
-# Response: {"returns": [{"value": 0, "status": "created"}]}
-
-# Increment the counter
-curl -X POST http://localhost:8000/walker/increment_counter \
-  -H "Content-Type: application/json" \
-  -d '{}'
-# Response: {"returns": [{"value": 1, "previous": 0}]}
-
-# Increment again
-curl -X POST http://localhost:8000/walker/increment_counter \
-  -H "Content-Type: application/json" \
-  -d '{}'
-# Response: {"returns": [{"value": 2, "previous": 1}]}
-
-# Check counter value
-curl -X POST http://localhost:8000/walker/get_counter \
-  -H "Content-Type: application/json" \
-  -d '{}'
-# Response: {"returns": [{"value": 2, "status": "existing"}]}
-
-# Restart the service (Ctrl+C, then jac serve main.jac again)
-
-# Counter value persists after restart
-curl -X POST http://localhost:8000/walker/get_counter \
-  -H "Content-Type: application/json" \
-  -d '{}'
-# Response: {"returns": [{"value": 2, "status": "existing"}]}
-```
-
-!!! tip "Persistence in Action"
-    Notice how the counter value persists between requests and even service restarts when using `jac serve` with a database!
-
----
-
-## State Consistency
-
-Jac maintains state consistency through its graph-based persistence model when running as a service. All connected nodes and their relationships are automatically maintained across requests and service restarts.
-
-### Enhanced Counter with History
-
-Let's enhance our counter to track increment history:
-
-!!! example "Counter with History Tracking"
-    ```jac
-    # main.jac - Enhanced with history
-    import from datetime { datetime }
-
-    node Counter {
-        has created_at: str;
-        has value: int = 0;
-
-        def increment() -> int {
-            old_value = self.value;
-            self.value += 1;
-
-            # Create history entry
-            history = HistoryEntry(
-                timestamp=str(datetime.now()),
-                old_value=old_value,
-                new_value=self.value
-            );
-            self ++> history;
-            return self.value;
-        }
-
-        def get_history() -> list[dict] {
-            history_nodes = [self --> HistoryEntry];
-            return [
-                {
-                    "timestamp": h.timestamp,
-                    "old_value": h.old_value,
-                    "new_value": h.new_value
-                }
-                for h in history_nodes
-            ];
-        }
-    }
-
-    node HistoryEntry {
-        has timestamp: str;
-        has old_value: int = 0;
-        has new_value: int = 0;
-    }
-
-    walker get_counter_with_history {
-        obj __specs__ {
-            static has auth: bool = False;
-        }
-
-        can get_counter_with_history_endpoint with `root entry {
-            counter_nodes = [root --> Counter];
-            if not counter_nodes {
-                counter = Counter(created_at=str(datetime.now()));
-                root ++> counter;
                 report {
-                    "value": 0,
+                    "message": "Note created successfully",
+                    "id": new_note.id,
+                    "owner": new_note.owner
+                };
+            }
+        }
+
+        walker get_my_notes {
+            has user_id: str;
+
+            can fetch_user_notes with `root entry {
+                # Filter by specified user
+                my_notes = [-->(`?Note)](?owner == self.user_id);
+
+                notes_data = [
+                    {"id": n.id, "title": n.title, "created_at": n.created_at}
+                    for n in my_notes
+                ];
+
+                report {"notes": notes_data, "total": len(notes_data)};
+            }
+        }
+        ```
+
+---
+
+## Basic User Authentication
+
+For multi-user applications, you need to implement user identification patterns. Let's start with a simple notebook system that supports multiple users.
+
+### Setting Up User-Aware Notebook
+
+!!! example "User-Isolated Notebook System"
+    === "Jac"
+        ```jac
+        # user_notebook.jac
+        import uuid;
+
+        node Note {
+            has title: str;
+            has content: str;
+            has owner: str;
+            has is_private: bool = True;
+            has id: str = "note_" + str(uuid.uuid4());
+        }
+
+        walker create_note {
+            has title: str;
+            has content: str;
+            has owner: str;
+            has is_private: bool = True;
+
+            obj __specs__ {
+                static has auth: bool = False;
+            }
+
+            can add_note with `root entry {
+                new_note = Note(
+                    title=self.title,
+                    content=self.content,
+                    owner=self.owner,
+                    is_private=self.is_private
+                );
+                here ++> new_note;
+
+                report {
                     "status": "created",
-                    "history": []
+                    "note_id": new_note.id,
+                    "private": new_note.is_private
                 };
-            } else {
-                counter = counter_nodes[0];
+            }
+        }
+
+        walker list_my_notes {
+            has user_id: str;
+
+            obj __specs__ {
+                static has auth: bool = False;
+            }
+
+            can get_user_notes with `root entry {
+                # Only get notes owned by specified user
+                user_notes = [-->(`?Note)](?owner == self.user_id);
+
                 report {
-                    "value": counter.value,
-                    "status": "existing",
-                    "history": counter.get_history()
+                    "user": self.user_id,
+                    "notes": [
+                        {
+                            "id": n.id,
+                            "title": n.title,
+                            "private": n.is_private
+                        }
+                        for n in user_notes
+                    ],
+                    "count": len(user_notes)
                 };
             }
         }
-    }
+        ```
 
-    walker increment_with_history {
-        obj __specs__ {
-            static has auth: bool = False;
-        }
+    === "Python Equivalent"
+        ```python
+        # user_notebook.py - Requires manual auth setup
+        from flask import Flask, request, jsonify
+        from flask_jwt_extended import JWTManager, jwt_required, get_jwt_identity
 
-        can increment_with_history_endpoint with `root entry {
-            counter_nodes = [root --> Counter];
-            if not counter_nodes {
-                counter = Counter(created_at=str(datetime.now()));
-                root ++> counter;
-            } else {
-                counter = counter_nodes[0];
+        app = Flask(__name__)
+        app.config['JWT_SECRET_KEY'] = 'secret-key'
+        jwt = JWTManager(app)
+
+        notes = []
+
+        @app.route('/create_note', methods=['POST'])
+        @jwt_required()
+        def create_note():
+            current_user = get_jwt_identity()
+            data = request.get_json()
+
+            note = {
+                'id': len(notes),
+                'title': data.get('title'),
+                'content': data.get('content'),
+                'owner': current_user,
+                'is_private': data.get('is_private', True)
             }
+            notes.append(note)
 
-            new_value = counter.increment();
-            report {
-                "value": new_value,
-                "history": counter.get_history()
-            };
-        }
-    }
-    ```
+            return jsonify({
+                'status': 'created',
+                'note_id': note['id'],
+                'private': note['is_private']
+            })
 
-### Testing History Persistence
+        @app.route('/list_my_notes', methods=['GET'])
+        @jwt_required()
+        def list_my_notes():
+            current_user = get_jwt_identity()
+            user_notes = [n for n in notes if n['owner'] == current_user]
+
+            return jsonify({
+                'user': current_user,
+                'notes': [
+                    {'id': n['id'], 'title': n['title'], 'private': n['is_private']}
+                    for n in user_notes
+                ],
+                'count': len(user_notes)
+            })
+        ```
+
+### Deploying and Testing
+
+Deploy your user-aware application:
 
 ```bash
-# Start fresh service
-jac serve main.jac
+jac serve user_notebook.jac
+```
 
-# Multiple increments to build history
-curl -X POST http://localhost:8000/walker/increment_with_history \
-  -H "Content-Type: application/json" \
-  -d '{}'
+### Testing User Authentication
 
-curl -X POST http://localhost:8000/walker/increment_with_history \
+```bash
+# Create a note for Alice
+curl -X POST http://localhost:8000/walker/create_note \
   -H "Content-Type: application/json" \
-  -d '{}'
+  -d '{
+    "title": "Alice Private Note",
+    "content": "Secret content",
+    "owner": "alice@example.com"
+  }'
 
-curl -X POST http://localhost:8000/walker/increment_with_history \
+# Create a note for Bob
+curl -X POST http://localhost:8000/walker/create_note \
   -H "Content-Type: application/json" \
-  -d '{}'
+  -d '{
+    "title": "Bob Note",
+    "content": "Bob content",
+    "owner": "bob@example.com"
+  }'
 
-# Check counter with complete history
-curl -X POST http://localhost:8000/walker/get_counter_with_history \
+# Get Alice's notes only
+curl -X POST http://localhost:8000/walker/list_my_notes \
   -H "Content-Type: application/json" \
-  -d '{}'
-# Response includes value and complete history array
-
-# Restart service - history persists
-# jac serve main.jac (after restart)
-curl -X POST http://localhost:8000/walker/get_counter_with_history \
-  -H "Content-Type: application/json" \
-  -d '{}'
-# All history entries remain intact
+  -d '{"user_id": "alice@example.com"}'
 ```
 
 ---
 
-## Building Stateful Applications
+## Shared Data Patterns
 
-The automatic persistence enables building sophisticated stateful applications. Let's create a multi-counter management system:
+Multi-user applications often need controlled sharing of data between users. Let's enhance our notebook to support sharing notes with specific users.
 
-!!! example "Multi-Counter Management System"
+### Note Sharing Implementation
+
+!!! example "Shared Notebook with Permissions"
     ```jac
-    # main.jac - Multi-counter system
-    import from datetime { datetime }
+    # shared_permissions.jac
+    import uuid;
 
-    node CounterManager {
-        has created_at: str;
-
-        def create_counter(name: str) -> dict {
-            # Check if counter already exists
-            existing = [self --> Counter](?name == name);
-            if existing {
-                return {"status": "exists", "counter": existing[0].name};
-            }
-
-            new_counter = Counter(name=name, value=0);
-            self ++> new_counter;
-            return {"status": "created", "counter": name};
-        }
-
-        def list_counters() -> list[dict] {
-            counters = [self --> Counter];
-            return [
-                {"name": c.name, "value": c.value}
-                for c in counters
-            ];
-        }
-
-        def get_total() -> int {
-            counters = [self --> Counter];
-            return sum([c.value for c in counters]);
-        }
+    node Note {
+        has title: str;
+        has content: str;
+        has owner: str;
+        has shared_with: list[str] = [];
+        has is_public: bool = False;
+        has permissions: dict = {"read": True, "write": False};
+        has id: str = "note_" + str(uuid.uuid4());
     }
 
-    node Counter {
-        has name: str;
-        has value: int = 0;
-
-        def increment(amount: int = 1) -> int {
-            self.value += amount;
-            return self.value;
-        }
-    }
-
-    walker create_counter {
-        has name: str;
+    walker create_note {
+        has title: str;
+        has content: str;
+        has owner: str;
+        has is_public: bool = False;
 
         obj __specs__ {
             static has auth: bool = False;
         }
 
-        can create_counter_endpoint with `root entry {
-            manager_nodes = [root --> CounterManager];
-            if not manager_nodes {
-                manager = CounterManager(created_at=str(datetime.now()));
-                root ++> manager;
-            } else {
-                manager = manager_nodes[0];
-            }
+        can add_note with `root entry {
+            new_note = Note(
+                title=self.title,
+                content=self.content,
+                owner=self.owner,
+                is_public=self.is_public
+            );
+            here ++> new_note;
 
-            result = manager.create_counter(self.name);
-            report result;
-        }
-    }
-
-    walker increment_named_counter {
-        has name: str;
-        has amount: int = 1;
-
-        obj __specs__ {
-            static has auth: bool = False;
-        }
-
-        can increment_named_counter_endpoint with `root entry {
-            manager_nodes = [root --> CounterManager];
-            if not manager_nodes {
-                report {"error": "No counter manager found"};
-                return;
-            }
-
-            manager = manager_nodes[0];
-            counters = [manager --> Counter](?name == self.name);
-
-            if not counters {
-                report {"error": f"Counter {self.name} not found"};
-                return;
-            }
-
-            counter = counters[0];
-            new_value = counter.increment(self.amount);
-            report {"name": self.name, "value": new_value};
-        }
-    }
-
-    walker get_all_counters {
-        obj __specs__ {
-            static has auth: bool = False;
-        }
-
-        can get_all_counters_endpoint with `root entry {
-            manager_nodes = [root --> CounterManager];
-            if not manager_nodes {
-                report {"counters": [], "total": 0};
-                return;
-            }
-
-            manager = manager_nodes[0];
             report {
-                "counters": manager.list_counters(),
-                "total": manager.get_total()
+                "status": "created",
+                "note_id": new_note.id,
+                "public": new_note.is_public
+            };
+        }
+    }
+
+    walker share_note {
+        has note_id: str;
+        has current_user: str;
+        has target_user: str;
+        has permission_level: str = "read";  # "read" or "write"
+
+        obj __specs__ {
+            static has auth: bool = False;
+        }
+
+        can add_sharing_permission with `root entry {
+            target_note = [-->(`?Note)](?id == self.note_id);
+
+            if not target_note {
+                report {"error": "Note not found"};
+                return;
+            }
+
+            note = target_note[0];
+
+            # Only owner can share notes
+            if note.owner != self.current_user {
+                report {"error": "Only note owner can share"};
+                return;
+            }
+
+            # Add user to shared list if not already there
+            if self.target_user not in note.shared_with {
+                note.shared_with.append(self.target_user);
+            }
+
+            report {
+                "message": f"Note shared with {self.target_user}",
+                "permission": self.permission_level,
+                "shared_count": len(note.shared_with)
+            };
+        }
+    }
+
+    walker get_accessible_notes {
+        has user_id: str;
+
+        obj __specs__ {
+            static has auth: bool = False;
+        }
+
+        can fetch_all_accessible with `root entry {
+            all_notes = [-->(`?Note)];
+            accessible_notes = [];
+
+            for note in all_notes {
+                # User can access if:
+                # 1. They own it
+                # 2. It's shared with them
+                # 3. It's public
+                if (note.owner == self.user_id or
+                    self.user_id in note.shared_with or
+                    note.is_public) {
+
+                    accessible_notes.append({
+                        "id": note.id,
+                        "title": note.title,
+                        "owner": note.owner,
+                        "is_mine": note.owner == self.user_id,
+                        "access_type": "owner" if note.owner == self.user_id
+                                    else ("shared" if self.user_id in note.shared_with
+                                        else "public")
+                    });
+                }
+            }
+
+            report {
+                "user": self.user_id,
+                "accessible_notes": accessible_notes,
+                "total": len(accessible_notes)
             };
         }
     }
     ```
 
-### API Usage Examples
+### Testing Note Sharing
 
 ```bash
-# Create multiple counters
-curl -X POST "http://localhost:8000/walker/create_counter" \
-     -H "Content-Type: application/json" \
-     -d '{"name": "page_views"}'
-
-curl -X POST "http://localhost:8000/walker/create_counter" \
-     -H "Content-Type: application/json" \
-     -d '{"name": "user_signups"}'
-
-# Increment specific counters
-curl -X POST "http://localhost:8000/walker/increment_named_counter" \
-     -H "Content-Type: application/json" \
-     -d '{"name": "page_views", "amount": 5}'
-
-curl -X POST "http://localhost:8000/walker/increment_named_counter" \
-     -H "Content-Type: application/json" \
-     -d '{"name": "user_signups", "amount": 2}'
-
-# View all counters
-curl -X POST http://localhost:8000/walker/get_all_counters \
+# Alice creates a note
+curl -X POST http://localhost:8000/walker/create_note \
   -H "Content-Type: application/json" \
-  -d '{}'
-# Response: {"returns": [{"counters": [{"name": "page_views", "value": 5}, {"name": "user_signups", "value": 2}], "total": 7}]}
+  -d '{
+    "title": "Team Project",
+    "content": "Project details",
+    "owner": "alice@example.com"
+  }'
+
+# Alice shares note with Bob
+curl -X POST http://localhost:8000/walker/share_note \
+  -H "Content-Type: application/json" \
+  -d '{
+    "note_id": "note_123",
+    "current_user": "alice@example.com",
+    "target_user": "bob@example.com"
+  }'
+
+# Bob views accessible notes
+curl -X POST http://localhost:8000/walker/get_accessible_notes \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "bob@example.com"}'
+```
+
+---
+
+## Security Considerations
+
+When building multi-user systems, security must be a primary concern. Application-level security patterns are essential for protecting user data.
+
+### Secure Data Access Patterns
+
+!!! example "Security-First Note Access"
+    ```jac
+    # rbac_notebook.jac
+    enum Role {
+        VIEWER = "viewer",
+        EDITOR = "editor",
+        ADMIN = "admin"
+    }
+
+    node UserProfile {
+        has email: str;
+        has role: Role = Role.VIEWER;
+        has created_at: str = "2024-01-15";
+    }
+
+    node Note {
+        has title: str;
+        has content: str;
+        has owner: str;
+        has required_role: Role = Role.VIEWER;
+        has is_sensitive: bool = False;
+    }
+
+    walker check_user_role {
+        has user_id: str;
+
+        obj __specs__ {
+            static has auth: bool = False;
+        }
+
+        can get_current_user_role with `root entry {
+            user_profile = [-->(`?UserProfile)](?email == self.user_id);
+
+            if user_profile {
+                current_role = user_profile[0].role;
+            } else {
+                # Create default profile for new user
+                new_profile = UserProfile(email=self.user_id);
+                here ++> new_profile;
+                current_role = Role.VIEWER;
+            }
+
+            report {"user": self.user_id, "role": current_role.value};
+        }
+    }
+
+    walker create_role_based_note {
+        has title: str;
+        has content: str;
+        has owner: str;
+        has required_role: str = "viewer";
+        has is_sensitive: bool = False;
+
+        obj __specs__ {
+            static has auth: bool = False;
+        }
+
+        can create_with_role_check with `root entry {
+            # Get user's role
+            user_profile = [-->(`?UserProfile)](?email == self.owner);
+
+            if not user_profile {
+                report {"error": "User profile not found"};
+                return;
+            }
+
+            user_role = user_profile[0].role;
+
+            # Check if user can create sensitive notes
+            if self.is_sensitive and user_role == Role.VIEWER {
+                report {"error": "Insufficient permissions for sensitive content"};
+                return;
+            }
+
+            new_note = Note(
+                title=self.title,
+                content=self.content,
+                owner=self.owner,
+                required_role=Role(self.required_role),
+                is_sensitive=self.is_sensitive
+            );
+            here ++> new_note;
+
+            report {
+                "message": "Note created with role requirements",
+                "id": new_note.id,
+                "required_role": self.required_role
+            };
+        }
+    }
+
+    walker get_role_filtered_notes {
+        has user_id: str;
+
+        obj __specs__ {
+            static has auth: bool = False;
+        }
+
+        can fetch_accessible_by_role with `root entry {
+            # Get user's role
+            user_profile = [-->(`?UserProfile)](?email == self.user_id);
+
+            if not user_profile {
+                report {"notes": [], "message": "No user profile found"};
+                return;
+            }
+
+            user_role = user_profile[0].role;
+            all_notes = [-->(`?Note)];
+            accessible_notes = [];
+
+            for note in all_notes {
+                # Check if user meets role requirement
+                can_access = (
+                    note.owner == self.user_id or  # Always access own notes
+                    (user_role == Role.ADMIN) or  # Admins see everything
+                    (user_role == Role.EDITOR and note.required_role != Role.ADMIN) or
+                    (user_role == Role.VIEWER and note.required_role == Role.VIEWER)
+                );
+
+                if can_access {
+                    accessible_notes.append({
+                        "id": note.id,
+                        "title": note.title,
+                        "owner": note.owner,
+                        "required_role": note.required_role.value,
+                        "is_sensitive": note.is_sensitive
+                    });
+                }
+            }
+
+            report {
+                "user_role": user_role.value,
+                "notes": accessible_notes,
+                "total": len(accessible_notes)
+            };
+        }
+    }
+    ```
+
+!!! warning "Security Best Practices"
+    - **Always Verify Access**: Check user permissions before any data operation
+    - **Validate Input**: Sanitize all user input to prevent injection attacks
+    - **Principle of Least Privilege**: Grant minimum necessary permissions
+    - **Audit Access**: Log sensitive operations for security monitoring
+    - **Secure Defaults**: Make restrictive permissions the default
+
+---
+
+## Access Control Strategies
+
+Different applications require different access control models. Let's implement a role-based access control system for our notebook.
+
+### Role-Based Access Control
+
+!!! example "RBAC Notebook System"
+    ```jac
+    # rbac_notebook.jac
+    enum Role {
+        VIEWER = "viewer",
+        EDITOR = "editor",
+        ADMIN = "admin"
+    }
+
+    node UserProfile {
+        has email: str;
+        has role: Role = Role.VIEWER;
+        has created_at: str = "2024-01-15";
+    }
+
+    node Note {
+        has title: str;
+        has content: str;
+        has owner: str;
+        has required_role: Role = Role.VIEWER;
+        has is_sensitive: bool = False;
+    }
+
+    walker check_user_role {
+        has user_id: str;
+
+        can get_current_user_role with `root entry {
+            user_profile = [-->(`?UserProfile)](?email == self.user_id);
+
+            if user_profile {
+                current_role = user_profile[0].role;
+            } else {
+                # Create default profile for new user
+                new_profile = UserProfile(email=self.user_id);
+                here ++> new_profile;
+                current_role = Role.VIEWER;
+            }
+
+            report {"user": self.user_id, "role": current_role.value};
+        }
+    }
+
+    walker create_role_based_note {
+        has title: str;
+        has content: str;
+        has owner: str;
+        has required_role: str = "viewer";
+        has is_sensitive: bool = False;
+
+        can create_with_role_check with `root entry {
+            # Get user's role
+            user_profile = [-->(`?UserProfile)](?email == self.owner);
+
+            if not user_profile {
+                report {"error": "User profile not found"};
+                return;
+            }
+
+            user_role = user_profile[0].role;
+
+            # Check if user can create sensitive notes
+            if self.is_sensitive and user_role == Role.VIEWER {
+                report {"error": "Insufficient permissions for sensitive content"};
+                return;
+            }
+
+            new_note = Note(
+                title=self.title,
+                content=self.content,
+                owner=self.owner,
+                required_role=Role(self.required_role),
+                is_sensitive=self.is_sensitive
+            );
+            here ++> new_note;
+
+            report {
+                "message": "Note created with role requirements",
+                "id": new_note.id,
+                "required_role": self.required_role
+            };
+        }
+    }
+
+    walker get_role_filtered_notes {
+        has user_id: str;
+
+        can fetch_accessible_by_role with `root entry {
+            # Get user's role
+            user_profile = [-->(`?UserProfile)](?email == self.user_id);
+
+            if not user_profile {
+                report {"notes": [], "message": "No user profile found"};
+                return;
+            }
+
+            user_role = user_profile[0].role;
+            all_notes = [-->(`?Note)];
+            accessible_notes = [];
+
+            for note in all_notes {
+                # Check if user meets role requirement
+                can_access = (
+                    note.owner == self.user_id or  # Always access own notes
+                    (user_role == Role.ADMIN) or  # Admins see everything
+                    (user_role == Role.EDITOR and note.required_role != Role.ADMIN) or
+                    (user_role == Role.VIEWER and note.required_role == Role.VIEWER)
+                );
+
+                if can_access {
+                    accessible_notes.append({
+                        "id": note.id,
+                        "title": note.title,
+                        "owner": note.owner,
+                        "required_role": note.required_role.value,
+                        "is_sensitive": note.is_sensitive
+                    });
+                }
+            }
+
+            report {
+                "user_role": user_role.value,
+                "notes": accessible_notes,
+                "total": len(accessible_notes)
+            };
+        }
+    }
+    ```
+
+### Testing Role-Based Access
+
+```bash
+# Check user role
+curl -X POST http://localhost:8000/walker/check_user_role \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "alice@example.com"}'
+
+# Create a note requiring editor role
+curl -X POST http://localhost:8000/walker/create_role_based_note \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Editor Note",
+    "content": "Only editors can see this",
+    "owner": "alice@example.com",
+    "required_role": "editor",
+    "is_sensitive": true
+  }'
+
+# Get notes filtered by role
+curl -X POST http://localhost:8000/walker/get_role_filtered_notes \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "alice@example.com"}'
 ```
 
 ---
 
 ## Best Practices
 
-!!! summary "Persistence Guidelines"
-    - **Service mode only**: Use `jac serve` for persistent applications, not `jac run`
-    - **Connect to root**: All persistent data must be reachable from root
-    - **Initialize gracefully**: Check for existing data before creating new instances
-    - **Use proper IDs**: Generate unique identifiers for nodes that need them
-    - **Plan for concurrency**: Consider multiple users accessing the same data
-    - **Database configuration**: Set up proper database connections for production
+!!! summary "Multi-User Development Guidelines"
+    - **Always validate access**: Check user permissions before any data operation
+    - **Use consistent user identification**: Establish clear patterns for user IDs
+    - **Implement graceful sharing**: Make sharing intuitive and secure
+    - **Audit sensitive operations**: Log important user actions for security
+    - **Design for privacy**: Default to private data with explicit sharing
+    - **Test permission scenarios**: Verify access control works as expected
 
 ## Key Takeaways
 
 !!! summary "What We've Learned"
-    **Persistence Fundamentals:**
+    **Multi-User Patterns:**
 
-    - **Service requirement**: Persistence only works with `jac serve` and database backends
-    - **Root connection**: All persistent nodes must be connected to the root node
-    - **Automatic behavior**: Data persists without explicit save/load operations
-    - **Request isolation**: Each API request has access to the same persistent graph
+    - **User identification**: Implement user context in walker parameters
+    - **Data isolation**: Filter data based on ownership and permissions
+    - **Permission systems**: Multiple access control strategies for different needs
+    - **Shared data management**: Controlled sharing between users with fine-grained permissions
 
-    **Root Node Concept:**
+    **Security Considerations:**
 
-    - **Graph anchor**: Starting point for all persistent data structures
-    - **Request context**: Available automatically in every API endpoint
-    - **Transaction boundary**: Changes persist at the end of each successful request
-    - **State consistency**: Maintains graph integrity across service restarts
+    - **Access validation**: Always verify user permissions before data operations
+    - **Default privacy**: Make restrictive permissions the default setting
+    - **Input validation**: Sanitize all user input to prevent security issues
+    - **Audit trails**: Log sensitive operations for security monitoring
 
-    **State Management:**
+    **Application Architecture:**
 
-    - **Automatic persistence**: Connected nodes survive service restarts
-    - **Graph integrity**: Relationships between nodes are maintained
-    - **Type preservation**: Node properties retain their types across persistence
-    - **Concurrent access**: Multiple requests can safely access the same data
+    - **Role-based access**: Implement hierarchical permission systems
+    - **Flexible sharing**: Support various sharing patterns for different use cases
+    - **User profiles**: Manage user information and preferences
+    - **Data ownership**: Clear patterns for who can access and modify data
 
-    **Development Patterns:**
+    **Development Benefits:**
 
-    - **Initialization checks**: Use filtering to find existing data before creating new
-    - **Unique identification**: Generate proper IDs for nodes that need them
-    - **Data validation**: Implement business rules at the application level
-    - **Error handling**: Graceful handling of missing or invalid data
+    - **Built-in isolation**: Graph filtering provides natural data separation
+    - **Flexible permissions**: Implement custom access control with business logic
+    - **Scalable patterns**: Multi-user code scales automatically with Jac Cloud
+    - **Type safety**: User permissions validated through the type system
 
 !!! tip "Try It Yourself"
-    Build persistent applications by creating:
-    - A todo list API with persistent tasks
-    - A blog system with posts and comments
-    - An inventory management system
-    - A user profile system with preferences
+    Build multi-user systems by adding:
+    - Team-based collaboration features
+    - Real-time notifications for shared data changes
+    - Advanced permission hierarchies with groups and roles
+    - Activity feeds showing user actions
 
-    Remember: Only nodes connected to root (directly or indirectly) will persist when using `jac serve`!
+    Remember: Always validate user permissions before any data operation!
 
 ---
 
-*Ready to explore cloud deployment? Continue to [Chapter 14: Jac Cloud Introduction](chapter_14.md)!*
+*Ready to learn about advanced cloud features? Continue to [Chapter 16: Advanced Jac Cloud Features](chapter_15.md)!*

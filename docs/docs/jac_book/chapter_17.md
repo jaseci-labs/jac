@@ -1,1183 +1,1004 @@
-# Chapter 18: Testing and Debugging
+# Chapter 17: Deployment Strategies
 
-In this chapter, we'll explore Jac's built-in testing framework and debugging strategies for spatial applications. We'll build a comprehensive test suite for a social media system that demonstrates testing nodes, edges, walkers, and complex graph operations.
+In this chapter, we'll explore how to deploy Jac applications to production environments. We'll take our weather API from development to production using various deployment strategies including Docker, Kubernetes, and Jac Cloud.
 
 !!! info "What You'll Learn"
-    - Jac's built-in testing framework with `.test.jac` files
-    - Testing spatial applications with nodes, edges, and walkers
-    - Debugging techniques for graph traversal and walker behavior
-    - Performance testing and optimization strategies
-    - Test-driven development patterns for OSP
+    - Local vs cloud deployment comparison
+    - Docker containerization for Jac applications
+    - Kubernetes orchestration and scaling
+    - Jac Cloud deployment with real examples
+    - Production monitoring and maintenance
 
 ---
 
-## Jac's Built-in Testing Framework
+## Local to Cloud Deployment
 
-Jac provides a powerful testing framework that automatically discovers and runs tests. When you run `jac test myfile.jac`, it automatically looks for `myfile.test.jac` and executes all test blocks within it.
+One of Jac's most powerful features is its scale-agnostic nature - the same code that runs locally can be deployed to production without changes.
 
-!!! success "Testing Framework Benefits"
-    - **Automatic Discovery**: `.test.jac` files are automatically found and executed
-    - **Graph-Aware Testing**: Native support for testing spatial relationships
-    - **Walker Testing**: Test mobile computation patterns naturally
-    - **Type-Safe Assertions**: Leverage Jac's type system in test validation
-    - **Zero Configuration**: No external testing frameworks required
+!!! success "Deployment Benefits"
+    - **Zero Code Changes**: Same application runs locally and in production
+    - **Automatic Scaling**: Built-in support for horizontal scaling
+    - **Container Ready**: Applications naturally containerize
+    - **Kubernetes Native**: Seamless Kubernetes integration
+    - **Production Features**: Built-in monitoring, logging, and health checks
 
-### Traditional vs Jac Testing
+### Development to Production Pipeline
 
-!!! example "Testing Comparison"
-    === "Traditional Approach"
-        ```python
-        # test_social_media.py - External framework required
-        import unittest
-        from social_media import Profile, Tweet, Comment
+Let's start with our weather API and show how it progresses from development to production:
 
-        class TestSocialMedia(unittest.TestCase):
-            def setUp(self):
-                self.profile = Profile("test_user")
-                self.tweet = Tweet("Hello world!")
-
-            def test_create_profile(self):
-                self.assertEqual(self.profile.username, "test_user")
-                self.assertIsInstance(self.profile, Profile)
-
-            def test_create_tweet(self):
-                self.profile.add_tweet(self.tweet)
-                self.assertEqual(len(self.profile.tweets), 1)
-                self.assertEqual(self.profile.tweets[0].content, "Hello world!")
-
-            def test_follow_user(self):
-                other_user = Profile("other_user")
-                self.profile.follow(other_user)
-                self.assertIn(other_user, self.profile.following)
-
-        if __name__ == '__main__':
-            unittest.main()
-        ```
-
-    === "Jac Testing"
+!!! example "Weather API Deployment Journey"
+    === "Development (Local)"
         ```jac
-        # social_media.test.jac - Built-in testing
+        # weather_api.jac - Same code at every stage
+        import from os { getenv }
 
-        test create_profile {
-            root spawn visit_profile();
-            profile = [root --> Profile][0];
-            check isinstance(profile, Profile);
-            check profile.username == "";  # Default value
+        glob config = {
+            "api_key": getenv("WEATHER_API_KEY", "dev-key"),
+            "cache_timeout": int(getenv("CACHE_TIMEOUT", "300")),
+            "debug": getenv("DEBUG", "true").lower() == "true"
+        };
+
+        node WeatherData {
+            has city: str;
+            has temperature: float;
+            has description: str;
+            has last_updated: str;
         }
 
-        test update_profile {
-            root spawn update_profile(new_username="test_user");
-            profile = [root --> Profile][0];
-            check profile.username == "test_user";
-        }
+        walker get_weather {
+            has city: str;
 
-        test create_tweet {
-            root spawn create_tweet(content="Hello world!");
-            tweet = [root --> Profile --> Tweet][0];
-            check tweet.content == "Hello world!";
-            check isinstance(tweet, Tweet);
-        }
+            can fetch_weather with `root entry {
+                # Check cache first
+                cached = [-->(`?WeatherData)](?city == self.city);
 
-        test follow_user {
-            # Create another profile to follow
-            other_profile = Profile(username="other_user");
-            other_profile spawn follow_request();
-
-            # Check follow relationship exists
-            followed = [root --> Profile ->:Follow:-> Profile][0];
-            check followed.username == "other_user";
-        }
-        ```
-
----
-
-## Testing Graph Structures
-
-Testing spatial applications requires verifying both node properties and relationship integrity. Let's build a comprehensive social media system and test it thoroughly.
-
-### Basic Social Media System
-
-!!! example "Social Media Implementation"
-    === "social_media.jac"
-        ```jac
-        # social_media.jac
-        import from datetime { datetime }
-
-        node Profile {
-            has username: str = "";
-            has bio: str = "";
-            has follower_count: int = 0;
-
-            can update with update_profile entry;
-            can follow with follow_request entry;
-            can unfollow with unfollow_request entry;
-        }
-
-        node Tweet {
-            has content: str;
-            has created_at: str = datetime.now().strftime("%Y-%m-%d %H:%M:%S");
-            has like_count: int = 0;
-
-            can update with update_tweet exit;
-            can delete with remove_tweet exit;
-            can like with like_tweet entry;
-            can unlike with unlike_tweet entry;
-        }
-
-        node Comment {
-            has content: str;
-            has created_at: str = datetime.now().strftime("%Y-%m-%d %H:%M:%S");
-
-            can update with update_comment entry;
-            can delete with remove_comment entry;
-        }
-
-        edge Follow {
-            has followed_at: str = datetime.now().strftime("%Y-%m-%d %H:%M:%S");
-        }
-
-        edge Post {
-            has posted_at: str = datetime.now().strftime("%Y-%m-%d %H:%M:%S");
-        }
-
-        edge Like {
-            has liked_at: str = datetime.now().strftime("%Y-%m-%d %H:%M:%S");
-        }
-
-        edge CommentOn {}
-
-        walker visit_profile {
-            can visit_profile with `root entry {
-                visit [-->Profile] else {
-                    new_profile = here ++> Profile();
-                    visit new_profile;
-                }
-            }
-        }
-
-        walker update_profile(visit_profile) {
-            has new_username: str;
-            has new_bio: str = "";
-        }
-
-        walker follow_request {
-            can follow_user with Profile entry {
-                current_profile = [root --> Profile][0];
-                if current_profile != here {
-                    current_profile +>:Follow:+> here;
-                    here.follower_count += 1;
-                    report {"message": f"Now following {here.username}"};
+                if cached {
+                    weather = cached[0];
+                    report {
+                        "city": weather.city,
+                        "temperature": weather.temperature,
+                        "description": weather.description,
+                        "cached": True
+                    };
                 } else {
-                    report {"error": "Cannot follow yourself"};
+                    # Simulate API call
+                    new_weather = WeatherData(
+                        city=self.city,
+                        temperature=22.5,
+                        description="Sunny",
+                        last_updated="2024-01-15T10:00:00Z"
+                    );
+                    here ++> new_weather;
+
+                    report {
+                        "city": self.city,
+                        "temperature": 22.5,
+                        "description": "Sunny",
+                        "cached": False
+                    };
                 }
             }
         }
 
-        walker unfollow_request {
-            can unfollow_user with Profile entry {
-                current_profile = [root --> Profile][0];
-                follow_edges = [edge current_profile ->:Follow:-> here];
-                if follow_edges {
-                    del follow_edges[0];
-                    here.follower_count -= 1;
-                    report {"message": f"Unfollowed {here.username}"};
-                } else {
-                    report {"error": "Not following this user"};
-                }
-            }
-        }
-
-        walker create_tweet(visit_profile) {
-            has content: str;
-
-            can post_tweet with Profile entry {
-                tweet = here +>:Post:+> Tweet(content=self.content);
-                report {"message": "Tweet created", "tweet_id": tweet[0].id};
-            }
-        }
-
-        walker update_tweet {
-            has updated_content: str;
-        }
-
-        walker remove_tweet {}
-
-        walker like_tweet {
-            can like_post with Tweet entry {
-                current_profile = [root --> Profile][0];
-                existing_likes = [edge current_profile ->:Like:-> here];
-
-                if not existing_likes {
-                    current_profile +>:Like:+> here;
-                    here.like_count += 1;
-                    report {"message": "Tweet liked"};
-                } else {
-                    report {"error": "Already liked this tweet"};
-                }
-            }
-        }
-
-        walker unlike_tweet {
-            can unlike_post with Tweet entry {
-                current_profile = [root --> Profile][0];
-                like_edges = [edge current_profile ->:Like:-> here];
-
-                if like_edges {
-                    del like_edges[0];
-                    here.like_count -= 1;
-                    report {"message": "Tweet unliked"};
-                } else {
-                    report {"error": "Haven't liked this tweet"};
-                }
-            }
-        }
-
-        walker comment_on_tweet {
-            has content: str;
-
-            can add_comment with Tweet entry {
-                current_profile = [root --> Profile][0];
-                comment = current_profile ++> Comment(content=self.content);
-                here +>:CommentOn:+> comment[0];
-                report {"message": "Comment added", "comment_id": comment[0].id};
-            }
-        }
-        ```
-
-    === "Python Equivalent"
-        ```python
-        # social_media.py - Manual implementation
-        from datetime import datetime
-        from typing import List, Optional
-
-        class Profile:
-            def __init__(self, username: str = "", bio: str = ""):
-                self.username = username
-                self.bio = bio
-                self.follower_count = 0
-                self.following = []
-                self.followers = []
-                self.tweets = []
-
-            def follow(self, other_profile):
-                if other_profile not in self.following and other_profile != self:
-                    self.following.append(other_profile)
-                    other_profile.followers.append(self)
-                    other_profile.follower_count += 1
-                    return True
-                return False
-
-            def unfollow(self, other_profile):
-                if other_profile in self.following:
-                    self.following.remove(other_profile)
-                    other_profile.followers.remove(self)
-                    other_profile.follower_count -= 1
-                    return True
-                return False
-
-        class Tweet:
-            def __init__(self, content: str, author: Profile):
-                self.content = content
-                self.author = author
-                self.created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                self.like_count = 0
-                self.liked_by = []
-                self.comments = []
-
-            def like(self, user: Profile):
-                if user not in self.liked_by:
-                    self.liked_by.append(user)
-                    self.like_count += 1
-                    return True
-                return False
-
-            def unlike(self, user: Profile):
-                if user in self.liked_by:
-                    self.liked_by.remove(user)
-                    self.like_count -= 1
-                    return True
-                return False
-
-        class Comment:
-            def __init__(self, content: str, author: Profile, tweet: Tweet):
-                self.content = content
-                self.author = author
-                self.tweet = tweet
-                self.created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        ```
-
-### Comprehensive Test Suite
-
-!!! example "Complete Test Coverage"
-    === "social_media.test.jac"
-        ```jac
-        # social_media.test.jac
-
-        # Test basic profile creation and updates
-        test create_and_update_profile {
-            # Test profile creation
-            root spawn visit_profile();
-            profile = [root --> Profile][0];
-            check isinstance(profile, Profile);
-            check profile.username == "";
-            check profile.follower_count == 0;
-
-            # Test profile update
-            root spawn update_profile(
-                new_username="alice",
-                new_bio="Software developer"
-            );
-            updated_profile = [root --> Profile][0];
-            check updated_profile.username == "alice";
-            check updated_profile.bio == "Software developer";
-        }
-
-        # Test following functionality
-        test follow_and_unfollow_users {
-            # Create main user profile
-            root spawn visit_profile();
-            root spawn update_profile(new_username="alice");
-
-            # Create another user to follow
-            bob_profile = Profile(username="bob");
-
-            # Test following
-            bob_profile spawn follow_request();
-            follow_edge = [root --> Profile ->:Follow:-> Profile][0];
-            check follow_edge.username == "bob";
-            check bob_profile.follower_count == 1;
-
-            # Test follow edge properties
-            follow_edges = [edge [root --> Profile] ->:Follow:-> bob_profile];
-            check len(follow_edges) == 1;
-            check hasattr(follow_edges[0], "followed_at");
-
-            # Test unfollowing
-            bob_profile spawn unfollow_request();
-            remaining_follows = [root --> Profile ->:Follow:-> Profile];
-            check len(remaining_follows) == 0;
-            check bob_profile.follower_count == 0;
-        }
-
-        # Test tweet creation and management
-        test tweet_lifecycle {
-            # Ensure we have a profile
-            root spawn visit_profile();
-            root spawn update_profile(new_username="alice");
-
-            # Test tweet creation
-            root spawn create_tweet(content="Hello world!");
-            tweet = [root --> Profile ->:Post:-> Tweet][0];
-            check tweet.content == "Hello world!";
-            check isinstance(tweet, Tweet);
-            check hasattr(tweet, "created_at");
-
-            # Test tweet update
-            tweet spawn update_tweet(updated_content="Hello updated world!");
-            check tweet.content == "Hello updated world!";
-
-            # Test multiple tweets
-            root spawn create_tweet(content="Second tweet");
-            all_tweets = [root --> Profile ->:Post:-> Tweet];
-            check len(all_tweets) == 2;
-
-            # Test tweet deletion
-            tweet spawn remove_tweet();
-            remaining_tweets = [root --> Profile ->:Post:-> Tweet];
-            check len(remaining_tweets) == 1;
-            check remaining_tweets[0].content == "Second tweet";
-        }
-
-        # Test liking functionality
-        test like_and_unlike_tweets {
-            # Setup: Create profile and tweet
-            root spawn visit_profile();
-            root spawn update_profile(new_username="alice");
-            root spawn create_tweet(content="Likeable tweet");
-
-            tweet = [root --> Profile ->:Post:-> Tweet][0];
-            check tweet.like_count == 0;
-
-            # Test liking
-            tweet spawn like_tweet();
-            check tweet.like_count == 1;
-
-            # Verify like relationship exists
-            like_edges = [edge [root --> Profile] ->:Like:-> tweet];
-            check len(like_edges) == 1;
-
-            # Test double-liking (should fail)
-            result = tweet spawn like_tweet();
-            check tweet.like_count == 1;  # Should remain 1
-
-            # Test unliking
-            tweet spawn unlike_tweet();
-            check tweet.like_count == 0;
-
-            # Verify like relationship removed
-            remaining_likes = [edge [root --> Profile] ->:Like:-> tweet];
-            check len(remaining_likes) == 0;
-        }
-
-        # Test commenting functionality
-        test comment_system {
-            # Setup: Create profile and tweet
-            root spawn visit_profile();
-            root spawn update_profile(new_username="alice");
-            root spawn create_tweet(content="Tweet for comments");
-
-            tweet = [root --> Profile ->:Post:-> Tweet][0];
-
-            # Test commenting
-            tweet spawn comment_on_tweet(content="Great tweet!");
-            comments = [tweet ->:CommentOn:-> Comment];
-            check len(comments) == 1;
-            check comments[0].content == "Great tweet!";
-
-            # Test multiple comments
-            tweet spawn comment_on_tweet(content="I agree!");
-            all_comments = [tweet ->:CommentOn:-> Comment];
-            check len(all_comments) == 2;
-
-            # Test comment update
-            first_comment = all_comments[0];
-            first_comment spawn update_comment(updated_content="Updated comment");
-            check first_comment.content == "Updated comment";
-
-            # Test comment deletion
-            first_comment spawn remove_comment();
-            remaining_comments = [tweet ->:CommentOn:-> Comment];
-            check len(remaining_comments) == 1;
-        }
-
-        # Test complex graph relationships
-        test complex_social_graph {
-            # Create multiple users
-            root spawn visit_profile();
-            root spawn update_profile(new_username="alice");
-
-            bob = Profile(username="bob");
-            charlie = Profile(username="charlie");
-
-            # Create follow relationships: alice -> bob -> charlie
-            bob spawn follow_request();
-            charlie spawn follow_request();  # alice follows charlie too
-
-            # Alice creates a tweet
-            root spawn create_tweet(content="Alice's tweet");
-            alice_tweet = [root --> Profile ->:Post:-> Tweet][0];
-
-            # Bob likes Alice's tweet
-            # (Note: In a real system, you'd switch user context)
-            alice_tweet spawn like_tweet();
-
-            # Verify complex relationships
-            alice_profile = [root --> Profile][0];
-            alice_following = [alice_profile ->:Follow:-> Profile];
-            check len(alice_following) == 2;  # follows bob and charlie
-
-            alice_tweets = [alice_profile ->:Post:-> Tweet];
-            check len(alice_tweets) == 1;
-
-            tweet_likes = [alice_tweets[0] <-:Like:<- Profile];
-            check len(tweet_likes) == 1;  # liked by alice (herself)
-        }
-
-        # Test error conditions and edge cases
-        test error_conditions {
-            # Test operations without profile
-            try {
-                root spawn create_tweet(content="No profile tweet");
-                check False;  # Should not reach here
-            } except Exception {
-                check True;  # Expected behavior
-            }
-
-            # Create profile for other tests
-            root spawn visit_profile();
-            root spawn update_profile(new_username="test_user");
-
-            # Test self-follow prevention
-            alice_profile = [root --> Profile][0];
-            result = alice_profile spawn follow_request();
-
-            # Should not create self-follow
-            self_follows = [alice_profile ->:Follow:-> alice_profile];
-            check len(self_follows) == 0;
-        }
-
-        # Performance and stress testing
-        test performance_operations {
-            # Setup
-            root spawn visit_profile();
-            root spawn update_profile(new_username="performance_user");
-
-            # Create multiple tweets quickly
-            for i in range(10) {
-                root spawn create_tweet(content=f"Tweet number {i}");
-            }
-
-            all_tweets = [root --> Profile ->:Post:-> Tweet];
-            check len(all_tweets) == 10;
-
-            # Like all tweets
-            for tweet in all_tweets {
-                tweet spawn like_tweet();
-            }
-
-            # Verify all likes
-            for tweet in all_tweets {
-                check tweet.like_count == 1;
-            }
-
-            # Test batch operations work correctly
-            total_likes = sum([tweet.like_count for tweet in all_tweets]);
-            check total_likes == 10;
-        }
-        ```
-
-    === "Python Test Equivalent"
-        ```python
-        # test_social_media.py
-        import unittest
-        from social_media import Profile, Tweet, Comment
-
-        class TestSocialMedia(unittest.TestCase):
-            def setUp(self):
-                self.alice = Profile("alice", "Software developer")
-                self.bob = Profile("bob", "Designer")
-
-            def test_create_and_update_profile(self):
-                profile = Profile()
-                self.assertEqual(profile.username, "")
-                self.assertEqual(profile.follower_count, 0)
-
-                profile.username = "alice"
-                profile.bio = "Software developer"
-                self.assertEqual(profile.username, "alice")
-
-            def test_follow_and_unfollow_users(self):
-                # Test following
-                success = self.alice.follow(self.bob)
-                self.assertTrue(success)
-                self.assertIn(self.bob, self.alice.following)
-                self.assertEqual(self.bob.follower_count, 1)
-
-                # Test unfollowing
-                success = self.alice.unfollow(self.bob)
-                self.assertTrue(success)
-                self.assertNotIn(self.bob, self.alice.following)
-                self.assertEqual(self.bob.follower_count, 0)
-
-            def test_tweet_lifecycle(self):
-                tweet = Tweet("Hello world!", self.alice)
-                self.alice.tweets.append(tweet)
-
-                self.assertEqual(tweet.content, "Hello world!")
-                self.assertEqual(len(self.alice.tweets), 1)
-
-                # Update tweet
-                tweet.content = "Hello updated world!"
-                self.assertEqual(tweet.content, "Hello updated world!")
-
-            def test_like_and_unlike_tweets(self):
-                tweet = Tweet("Likeable tweet", self.alice)
-
-                # Test liking
-                success = tweet.like(self.bob)
-                self.assertTrue(success)
-                self.assertEqual(tweet.like_count, 1)
-
-                # Test double-liking
-                success = tweet.like(self.bob)
-                self.assertFalse(success)
-                self.assertEqual(tweet.like_count, 1)
-
-                # Test unliking
-                success = tweet.unlike(self.bob)
-                self.assertTrue(success)
-                self.assertEqual(tweet.like_count, 0)
-
-        if __name__ == '__main__':
-            unittest.main()
-        ```
-
----
-
-## Debugging Spatial Applications
-
-Debugging spatial applications requires understanding graph state and walker movement patterns.
-
-### Debug Output and Tracing
-
-!!! example "Debug Walker for Graph Inspection"
-    ```jac
-    # debug_walker.jac
-    walker debug_graph {
-        has visited_nodes: list[str] = [];
-        has visited_edges: list[str] = [];
-        has max_depth: int = 3;
-        has current_depth: int = 0;
-
-        can debug_node with Profile entry {
-            if self.current_depth >= self.max_depth {
-                print(f"Max depth {self.max_depth} reached at {here.username}");
-                return;
-            }
-
-            node_info = f"Profile: {here.username} (followers: {here.follower_count})";
-            self.visited_nodes.append(node_info);
-            print(f"Depth {self.current_depth}: {node_info}");
-
-            # Debug outgoing relationships
-            following = [->:Follow:->];
-            tweets = [->:Post:->];
-
-            print(f"  Following: {len(following)} users");
-            print(f"  Posted: {len(tweets)} tweets");
-
-            # Visit connected nodes
-            self.current_depth += 1;
-            visit following;
-            visit tweets;
-            self.current_depth -= 1;
-        }
-
-        can debug_tweet with Tweet entry {
-            tweet_info = f"Tweet: '{here.content[:30]}...' (likes: {here.like_count})";
-            self.visited_nodes.append(tweet_info);
-            print(f"Depth {self.current_depth}: {tweet_info}");
-
-            # Debug tweet relationships
-            likes = [<-:Like:<-];
-            comments = [->:CommentOn:->];
-
-            print(f"  Liked by: {len(likes)} users");
-            print(f"  Comments: {len(comments)}");
-        }
-
-        can debug_comment with Comment entry {
-            comment_info = f"Comment: '{here.content[:20]}...'";
-            self.visited_nodes.append(comment_info);
-            print(f"Depth {self.current_depth}: {comment_info}");
-        }
-    }
-
-    # Usage in tests
-    test debug_graph_structure {
-        # Setup complex graph
-        root spawn visit_profile();
-        root spawn update_profile(new_username="alice");
-        root spawn create_tweet(content="Alice's first tweet");
-
-        bob = Profile(username="bob");
-        bob spawn follow_request();
-
-        # Debug the graph
-        debugger = debug_graph(max_depth=2);
-        root spawn debugger;
-
-        print("=== Debug Summary ===");
-        print(f"Visited {len(debugger.visited_nodes)} nodes");
-        for node in debugger.visited_nodes {
-            print(f"  {node}");
-        }
-    }
-    ```
-
-### Walker State Inspection
-
-!!! example "Walker State Testing"
-    ```jac
-    # walker_testing.jac
-    walker feed_loader {
-        has user_id: str;
-        has loaded_tweets: list[dict] = [];
-        has users_visited: set[str] = set();
-        has errors: list[str] = [];
-
-        can load_user_feed with Profile entry {
-            if here.username in self.users_visited {
-                self.errors.append(f"Duplicate visit to {here.username}");
-                return;
-            }
-
-            self.users_visited.add(here.username);
-
-            # Load user's tweets
-            user_tweets = [->:Post:-> Tweet];
-            for tweet in user_tweets {
-                tweet_data = {
-                    "author": here.username,
-                    "content": tweet.content,
-                    "likes": tweet.like_count,
-                    "created_at": tweet.created_at
+        walker health_check {
+            can check_health with `root entry {
+                weather_count = len([-->(`?WeatherData)]);
+                report {
+                    "status": "healthy",
+                    "cached_cities": weather_count,
+                    "debug_mode": config["debug"]
                 };
-                self.loaded_tweets.append(tweet_data);
             }
-
-            # Visit followed users
-            following = [->:Follow:-> Profile];
-            visit following;
         }
-    }
+        ```
 
-    test walker_state_management {
-        # Setup test data
-        root spawn visit_profile();
-        root spawn update_profile(new_username="alice");
-        root spawn create_tweet(content="Alice tweet 1");
-        root spawn create_tweet(content="Alice tweet 2");
+    === "Local Development"
+        ```bash
+        # Development workflow
+        export DEBUG=true
+        export WEATHER_API_KEY=dev-key
 
-        bob = Profile(username="bob");
-        bob spawn follow_request();
-        bob spawn create_tweet(content="Bob's tweet");
+        # Run locally for development
+        jac run weather_api.jac
 
-        # Test walker state
-        loader = feed_loader(user_id="alice");
-        root spawn loader;
+        # Test as service locally
+        jac serve weather_api.jac --port 8000
 
-        # Verify walker state
-        check len(loader.loaded_tweets) >= 2;  # At least Alice's tweets
-        check "alice" in loader.users_visited;
-        check "bob" in loader.users_visited;
-        check len(loader.errors) == 0;
-
-        # Verify tweet data structure
-        alice_tweets = [t for t in loader.loaded_tweets if t["author"] == "alice"];
-        check len(alice_tweets) == 2;
-
-        for tweet in alice_tweets {
-            check "content" in tweet;
-            check "likes" in tweet;
-            check "created_at" in tweet;
-        }
-    }
-    ```
+        # Test the endpoints
+        curl -X POST http://localhost:8000/walker/get_weather \
+          -H "Content-Type: application/json" \
+          -d '{"city": "New York"}'
+        ```
 
 ---
 
-## Performance Testing and Optimization
+## Docker Containerization
 
-Performance testing ensures your spatial applications scale effectively.
+Docker packaging makes your Jac applications portable and consistent across environments.
 
-### Benchmark Testing
+### Basic Dockerfile for Jac Applications
 
-!!! example "Performance Benchmarks"
-    ```jac
-    # performance_tests.jac
-    import time;
+!!! example "Jac Application Dockerfile"
+    === "Dockerfile"
+        ```dockerfile
+        # Dockerfile
+        FROM python:3.11-slim
 
-    test large_graph_performance {
-        start_time = time.time();
+        # Set working directory
+        WORKDIR /app
 
-        # Create large social network
-        root spawn visit_profile();
-        root spawn update_profile(new_username="central_user");
+        # Install system dependencies
+        RUN apt-get update && apt-get install -y \
+            curl \
+            && rm -rf /var/lib/apt/lists/*
 
-        # Create many users and connections
-        num_users = 100;
-        users = [];
+        # Install Jac
+        RUN pip install jaclang
 
-        for i in range(num_users) {
-            user = Profile(username=f"user_{i}");
-            users.append(user);
+        # Copy application files
+        COPY weather_api.jac .
+        COPY requirements.txt .
 
-            # Every 10th user follows central user
-            if i % 10 == 0 {
-                user spawn follow_request();
-            }
-        }
+        # Install Python dependencies if any
+        RUN pip install -r requirements.txt
 
-        creation_time = time.time() - start_time;
-        print(f"Created {num_users} users in {creation_time:.2f} seconds");
+        # Expose port
+        EXPOSE 8000
 
-        # Test graph traversal performance
-        start_time = time.time();
+        # Set environment variables
+        ENV JAC_FILE=weather_api.jac
+        ENV PORT=8000
+        ENV DEBUG=false
 
-        # Count all followers
-        central_user = [root --> Profile][0];
-        followers = [central_user <-:Follow:<- Profile];
+        # Health check
+        HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+            CMD curl -f http://localhost:$PORT/walker/health_check -X POST -H "Content-Type: application/json" -d '{}' || exit 1
 
-        traversal_time = time.time() - start_time;
-        print(f"Traversed {len(followers)} followers in {traversal_time:.4f} seconds");
+        # Run the application
+        CMD jac serve $JAC_FILE --port $PORT
+        ```
 
-        # Performance assertions
-        check creation_time < 5.0;  # Should create 100 users in under 5 seconds
-        check traversal_time < 0.1;  # Should traverse quickly
-        check len(followers) == 10;  # Every 10th user = 10 followers
-    }
+    === "requirements.txt"
+        ```txt
+        # requirements.txt
+        jaclang
+        requests
+        python-dotenv
+        ```
 
-    test memory_efficiency {
-        # Test memory usage with large datasets
-        initial_profiles = len([root --> Profile]);
+    === "docker-compose.yml"
+        ```yaml
+        # docker-compose.yml
+        version: '3.8'
 
-        # Create and delete many objects
-        for batch in range(5) {
-            # Create batch of tweets
-            for i in range(20) {
-                root spawn create_tweet(content=f"Batch {batch} tweet {i}");
-            }
+        services:
+          weather-api:
+            build: .
+            ports:
+              - "8000:8000"
+            environment:
+              - DEBUG=false
+              - WEATHER_API_KEY=${WEATHER_API_KEY}
+              - CACHE_TIMEOUT=600
+            volumes:
+              - weather_data:/app/data
+            restart: unless-stopped
+            healthcheck:
+              test: ["CMD", "curl", "-f", "http://localhost:8000/walker/health_check", "-X", "POST", "-H", "Content-Type: application/json", "-d", "{}"]
+              interval: 30s
+              timeout: 10s
+              retries: 3
 
-            # Delete half of them
-            tweets = [root --> Profile ->:Post:-> Tweet];
-            for i in range(10) {
-                if len(tweets) > i {
-                    tweets[i] spawn remove_tweet();
-                }
-            }
-        }
+        volumes:
+          weather_data:
+        ```
 
-        # Check memory cleanup
-        final_tweets = [root --> Profile ->:Post:-> Tweet];
-        check len(final_tweets) <= 50;  # Should not accumulate indefinitely
+### Building and Testing Docker Images
 
-        final_profiles = len([root --> Profile]);
-        check final_profiles == initial_profiles + 1;  # Only the test profile added
-    }
+```bash
+# Build the image
+docker build -t weather-api:latest .
 
-    test concurrent_operations {
-        # Simulate concurrent-like operations
-        root spawn visit_profile();
-        root spawn update_profile(new_username="concurrent_user");
+# Test locally
+docker run -p 8000:8000 \
+  -e WEATHER_API_KEY=your-key \
+  -e DEBUG=true \
+  weather-api:latest
 
-        # Create multiple walkers that operate simultaneously
-        walkers = [];
-        for i in range(10) {
-            walker = create_tweet(content=f"Concurrent tweet {i}");
-            walkers.append(walker);
-        }
+# Test with docker-compose
+echo "WEATHER_API_KEY=your-key" > .env
+docker-compose up -d
 
-        # Execute all walkers
-        start_time = time.time();
-        for walker in walkers {
-            root spawn walker;
-        }
-        execution_time = time.time() - start_time;
+# View logs
+docker-compose logs -f weather-api
 
-        # Verify all operations completed
-        all_tweets = [root --> Profile ->:Post:-> Tweet];
-        check len(all_tweets) == 10;
+# Test the containerized API
+curl -X POST http://localhost:8000/walker/get_weather \
+  -H "Content-Type: application/json" \
+  -d '{"city": "London"}'
 
-        # Performance check
-        check execution_time < 1.0;  # Should complete quickly
-
-        print(f"Executed {len(walkers)} operations in {execution_time:.4f} seconds");
-    }
-    ```
-
-### Memory and Resource Testing
-
-!!! example "Resource Usage Tests"
-    ```jac
-    # resource_tests.jac
-    import gc;
-    import psutil;
-    import os;
-
-    test memory_usage_monitoring {
-        # Get initial memory usage
-        process = psutil.Process(os.getpid());
-        initial_memory = process.memory_info().rss;
-
-        # Create large graph structure
-        root spawn visit_profile();
-        root spawn update_profile(new_username="memory_test_user");
-
-        # Create many interconnected objects
-        for i in range(1000) {
-            root spawn create_tweet(content=f"Memory test tweet {i}");
-        }
-
-        # Force garbage collection
-        gc.collect();
-
-        # Check memory after creation
-        after_creation_memory = process.memory_info().rss;
-        memory_increase = after_creation_memory - initial_memory;
-
-        print(f"Memory increase: {memory_increase / 1024 / 1024:.2f} MB");
-
-        # Clean up
-        tweets = [root --> Profile ->:Post:-> Tweet];
-        for tweet in tweets {
-            tweet spawn remove_tweet();
-        }
-
-        # Force garbage collection again
-        gc.collect();
-
-        # Check memory after cleanup
-        final_memory = process.memory_info().rss;
-        memory_recovered = after_creation_memory - final_memory;
-
-        print(f"Memory recovered: {memory_recovered / 1024 / 1024:.2f} MB");
-
-        # Memory should not grow indefinitely
-        check memory_increase < 100 * 1024 * 1024;  # Less than 100MB increase
-        check memory_recovered > memory_increase * 0.5;  # At least 50% recovered
-    }
-    ```
+# Check health
+curl -X POST http://localhost:8000/walker/health_check \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
 
 ---
 
-## Test-Driven Development with OSP
+## Kubernetes Deployment
 
-TDD works naturally with Jac's spatial programming model.
+Kubernetes provides orchestration, scaling, and reliability for production deployments.
 
-### TDD Example: Building a Recommendation System
+### Kubernetes Manifests
 
-!!! example "TDD Recommendation System"
-    ```jac
-    # recommendation_system.test.jac
+!!! example "Complete Kubernetes Deployment"
+    === "namespace.yaml"
+        ```yaml
+        # k8s/namespace.yaml
+        apiVersion: v1
+        kind: Namespace
+        metadata:
+          name: weather-app
+          labels:
+            app: weather-api
+        ```
 
-    # Test 1: Basic recommendation structure
-    test recommendation_system_structure {
-        # Red: This will fail initially
-        root spawn visit_profile();
-        root spawn update_profile(new_username="test_user");
+    === "configmap.yaml"
+        ```yaml
+        # k8s/configmap.yaml
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: weather-config
+          namespace: weather-app
+        data:
+          DEBUG: "false"
+          CACHE_TIMEOUT: "600"
+          PORT: "8000"
+        ```
 
-        # Should be able to get recommendations
-        recommendations = root spawn get_recommendations(limit=5);
-        check isinstance(recommendations, list);
-        check len(recommendations) <= 5;
-    }
+    === "secret.yaml"
+        ```yaml
+        # k8s/secret.yaml
+        apiVersion: v1
+        kind: Secret
+        metadata:
+          name: weather-secrets
+          namespace: weather-app
+        type: Opaque
+        data:
+          weather-api-key: eW91ci1iYXNlNjQtZW5jb2RlZC1hcGkta2V5  # Base64 encoded
+        ```
 
-    # Test 2: Friend-based recommendations
-    test friend_based_recommendations {
-        # Setup: Create network
-        root spawn visit_profile();
-        root spawn update_profile(new_username="alice");
+    === "deployment.yaml"
+        ```yaml
+        # k8s/deployment.yaml
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: weather-api
+          namespace: weather-app
+          labels:
+            app: weather-api
+        spec:
+          replicas: 3
+          selector:
+            matchLabels:
+              app: weather-api
+          template:
+            metadata:
+              labels:
+                app: weather-api
+            spec:
+              containers:
+              - name: weather-api
+                image: weather-api:latest
+                ports:
+                - containerPort: 8000
+                env:
+                - name: WEATHER_API_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: weather-secrets
+                      key: weather-api-key
+                envFrom:
+                - configMapRef:
+                    name: weather-config
+                resources:
+                  limits:
+                    cpu: "1"
+                    memory: "1Gi"
+                  requests:
+                    cpu: "500m"
+                    memory: "512Mi"
+                livenessProbe:
+                  httpPost:
+                    path: /walker/health_check
+                    port: 8000
+                    httpHeaders:
+                    - name: Content-Type
+                      value: application/json
+                  initialDelaySeconds: 30
+                  periodSeconds: 30
+                readinessProbe:
+                  httpPost:
+                    path: /walker/health_check
+                    port: 8000
+                    httpHeaders:
+                    - name: Content-Type
+                      value: application/json
+                  initialDelaySeconds: 5
+                  periodSeconds: 10
+        ```
 
-        bob = Profile(username="bob");
-        charlie = Profile(username="charlie");
+    === "service.yaml"
+        ```yaml
+        # k8s/service.yaml
+        apiVersion: v1
+        kind: Service
+        metadata:
+          name: weather-api-service
+          namespace: weather-app
+        spec:
+          selector:
+            app: weather-api
+          ports:
+          - protocol: TCP
+            port: 80
+            targetPort: 8000
+          type: ClusterIP
+        ```
 
-        # Alice follows Bob, Bob follows Charlie
-        bob spawn follow_request();
-        # Switch context to Bob and follow Charlie
-        # (In real system, would handle user context switching)
+    === "ingress.yaml"
+        ```yaml
+        # k8s/ingress.yaml
+        apiVersion: networking.k8s.io/v1
+        kind: Ingress
+        metadata:
+          name: weather-api-ingress
+          namespace: weather-app
+          annotations:
+            kubernetes.io/ingress.class: "nginx"
+            nginx.ingress.kubernetes.io/rewrite-target: /
+        spec:
+          rules:
+          - host: weather-api.yourdomain.com
+            http:
+              paths:
+              - path: /
+                pathType: Prefix
+                backend:
+                  service:
+                    name: weather-api-service
+                    port:
+                      number: 80
+        ```
 
-        # Alice should get Charlie recommended (friend of friend)
-        recommendations = root spawn get_recommendations(limit=5);
-        recommended_usernames = [rec["username"] for rec in recommendations];
+### Deploying to Kubernetes
 
-        # Charlie should be recommended as friend of friend
-        check "charlie" in recommended_usernames;
-    }
+```bash
+# Deploy everything in order
+kubectl apply -f k8s/namespace.yaml
+kubectl apply -f k8s/configmap.yaml
 
-    # Test 3: Interest-based recommendations
-    test interest_based_recommendations {
-        # Setup users with similar interests (tweets)
-        root spawn visit_profile();
-        root spawn update_profile(new_username="alice");
-        root spawn create_tweet(content="I love programming");
+# Create secret with your actual API key
+echo -n "your-actual-api-key" | base64
+# Update secret.yaml with the base64 value
+kubectl apply -f k8s/secret.yaml
 
-        bob = Profile(username="bob");
-        bob spawn create_tweet(content="Programming is awesome");
+kubectl apply -f k8s/deployment.yaml
+kubectl apply -f k8s/service.yaml
+kubectl apply -f k8s/ingress.yaml
 
-        charlie = Profile(username="charlie");
-        charlie spawn create_tweet(content="I hate programming");
+# Check deployment status
+kubectl get all -n weather-app
 
-        # Get recommendations
-        recommendations = root spawn get_recommendations(
-            limit=5,
-            algorithm="interest_based"
-        );
+# Watch pods come online
+kubectl get pods -n weather-app -w
 
-        # Bob should rank higher than Charlie due to similar interests
-        bob_score = 0;
-        charlie_score = 0;
+# Check logs
+kubectl logs -f deployment/weather-api -n weather-app
 
-        for rec in recommendations {
-            if rec["username"] == "bob" {
-                bob_score = rec["score"];
+# Test the service
+kubectl port-forward service/weather-api-service 8080:80 -n weather-app
+
+# Test from another terminal
+curl -X POST http://localhost:8080/walker/get_weather \
+  -H "Content-Type: application/json" \
+  -d '{"city": "Tokyo"}'
+```
+
+---
+
+## Jac Cloud Deployment
+
+Jac Cloud provides a Kubernetes-based deployment system using the `jac-splice-orc` plugin for running JAC applications with built-in scaling and module management.
+
+### Jac Cloud Setup
+
+!!! example "Jac Cloud Deployment"
+    === "Directory Structure"
+        ```
+        jac-cloud/
+        ├── scripts/
+        │   ├── Dockerfile
+        │   ├── init_jac_cloud.sh
+        │   ├── jac-cloud.yml
+        │   └── module-config.yml
+        └── weather_api.jac
+        ```
+
+    === "Prerequisites"
+        ```bash
+        # Prerequisites for Jac Cloud deployment
+        # 1. Kubernetes cluster access
+        kubectl cluster-info
+
+        # 2. Docker for building images
+        docker --version
+
+        # 3. kubectl configured
+        kubectl config current-context
+
+        # 4. Target namespace should be created before deployment
+        kubectl create namespace littlex
+
+        # 5. Optional: OpenAI API key
+        echo "OPENAI_API_KEY=your-key-here" > .env
+        ```
+
+    === "Build and Deploy"
+        ```bash
+        # 1. Build and push Docker image
+        docker build -t your-dockerhub-username/jac-cloud:latest -f jac-cloud/scripts/Dockerfile .
+        docker push your-dockerhub-username/jac-cloud:latest
+
+        # 2. Update image reference in jac-cloud.yml
+        sed -i 's|image: .*|image: your-dockerhub-username/jac-cloud:latest|' jac-cloud/scripts/jac-cloud.yml
+
+        # 3. Apply module configuration first
+        kubectl apply -f jac-cloud/scripts/module-config.yml
+
+        # 4. Deploy Jac Cloud application
+        kubectl apply -f jac-cloud/scripts/jac-cloud.yml
+
+        # 5. Verify deployment
+        kubectl get all -n littlex
+        ```
+
+### Jac Cloud Configuration Files
+
+!!! example "Complete Jac Cloud Configuration"
+    === "jac-cloud.yml"
+        ```yaml
+        # jac-cloud/scripts/jac-cloud.yml
+        apiVersion: v1
+        kind: Namespace
+        metadata:
+          name: littlex
+        ---
+        apiVersion: v1
+        kind: ServiceAccount
+        metadata:
+          name: jac-cloud-sa
+          namespace: littlex
+        ---
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: ClusterRole
+        metadata:
+          name: jac-cloud-role
+        rules:
+        - apiGroups: [""]
+          resources: ["pods", "services", "configmaps"]
+          verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+        - apiGroups: ["apps"]
+          resources: ["deployments"]
+          verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+        ---
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: ClusterRoleBinding
+        metadata:
+          name: jac-cloud-binding
+        roleRef:
+          apiGroup: rbac.authorization.k8s.io
+          kind: ClusterRole
+          name: jac-cloud-role
+        subjects:
+        - kind: ServiceAccount
+          name: jac-cloud-sa
+          namespace: littlex
+        ---
+        apiVersion: v1
+        kind: Secret
+        metadata:
+          name: openai-secret
+          namespace: littlex
+        type: Opaque
+        data:
+          openai-key: eW91ci1iYXNlNjQtZW5jb2RlZC1rZXk=  # Replace with your base64 encoded key
+        ---
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: jac-cloud
+          namespace: littlex
+        spec:
+          replicas: 1
+          selector:
+            matchLabels:
+              app: jac-cloud
+          template:
+            metadata:
+              labels:
+                app: jac-cloud
+            spec:
+              serviceAccountName: jac-cloud-sa
+              containers:
+              - name: jac-cloud
+                image: your-dockerhub-username/jac-cloud:latest
+                ports:
+                - containerPort: 8000
+                env:
+                - name: NAMESPACE
+                  value: "littlex"
+                - name: CONFIGMAP_NAME
+                  value: "module-config"
+                - name: FILE_NAME
+                  value: "weather_api.jac"
+                - name: OPENAI_API_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: openai-secret
+                      key: openai-key
+                volumeMounts:
+                - name: config-volume
+                  mountPath: /app/config
+                resources:
+                  limits:
+                    cpu: "1"
+                    memory: "2Gi"
+                  requests:
+                    cpu: "500m"
+                    memory: "1Gi"
+              volumes:
+              - name: config-volume
+                configMap:
+                  name: module-config
+        ---
+        apiVersion: v1
+        kind: Service
+        metadata:
+          name: jac-cloud-service
+          namespace: littlex
+        spec:
+          selector:
+            app: jac-cloud
+          ports:
+          - protocol: TCP
+            port: 80
+            targetPort: 8000
+          type: LoadBalancer
+        ```
+
+    === "module-config.yml"
+        ```yaml
+        # jac-cloud/scripts/module-config.yml
+        apiVersion: v1
+        kind: Namespace
+        metadata:
+          name: littlex
+        ---
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: module-config
+          namespace: littlex
+        data:
+          config.json: |
+            {
+              "numpy": {
+                "lib_mem_size_req": "100Mi",
+                "dependency": [],
+                "lib_cpu_req": "500m",
+                "load_type": "remote"
+              },
+              "transformers": {
+                "lib_mem_size_req": "2000Mi",
+                "dependency": ["torch", "transformers"],
+                "lib_cpu_req": "1.0",
+                "load_type": "remote"
+              },
+              "sentence_transformers": {
+                "lib_mem_size_req": "2000Mi",
+                "dependency": ["sentence-transformers"],
+                "lib_cpu_req": "1.0",
+                "load_type": "remote"
+              },
+              "requests": {
+                "lib_mem_size_req": "50Mi",
+                "dependency": ["requests"],
+                "lib_cpu_req": "100m",
+                "load_type": "remote"
+              }
             }
-            if rec["username"] == "charlie" {
-                charlie_score = rec["score"];
-            }
-        }
+        ```
 
-        check bob_score > charlie_score;
-    }
+    === "Dockerfile"
+        ```dockerfile
+        # jac-cloud/scripts/Dockerfile
+        FROM python:3.11-slim
 
-    # Test 4: Recommendation filtering
-    test recommendation_filtering {
-        # Setup
-        root spawn visit_profile();
-        root spawn update_profile(new_username="alice");
+        # Set working directory
+        WORKDIR /app
 
-        # Create users alice already follows
-        bob = Profile(username="bob");
-        bob spawn follow_request();
+        # Install system dependencies
+        RUN apt-get update && apt-get install -y \
+            curl \
+            git \
+            && rm -rf /var/lib/apt/lists/*
 
-        # Create users alice doesn't follow
-        charlie = Profile(username="charlie");
-        diana = Profile(username="diana");
+        # Install Jac and required packages
+        RUN pip install jaclang jac-splice-orc
 
-        # Get recommendations
-        recommendations = root spawn get_recommendations(limit=10);
-        recommended_usernames = [rec["username"] for rec in recommendations];
+        # Copy application files
+        COPY weather_api.jac .
+        COPY jac-cloud/scripts/init_jac_cloud.sh .
 
-        # Should not recommend users already followed
-        check "bob" not in recommended_usernames;
+        # Make scripts executable
+        RUN chmod +x init_jac_cloud.sh
 
-        # Should recommend unfollowed users
-        check "charlie" in recommended_usernames or "diana" in recommended_usernames;
-    }
-    ```
+        # Expose port
+        EXPOSE 8000
 
-    Now implement the actual recommendation system to make tests pass:
+        # Set environment variables
+        ENV JAC_FILE=weather_api.jac
+        ENV PORT=8000
+        ENV NAMESPACE=littlex
+        ENV CONFIGMAP_NAME=module-config
 
+        # Health check
+        HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+            CMD curl -f http://localhost:$PORT/walker/health_check -X POST -H "Content-Type: application/json" -d '{}' || exit 1
+
+        # Run the application
+        CMD ["./init_jac_cloud.sh"]
+        ```
+
+### Environment Variables and Configuration
+
+The Jac Cloud deployment supports the following environment variables:
+
+| Variable          | Description                              | Default Value |
+|--------------------|------------------------------------------|---------------|
+| `NAMESPACE`        | Target namespace for the deployment     | `default`     |
+| `CONFIGMAP_NAME`   | Name of the ConfigMap to mount          | `module-config` |
+| `FILE_NAME`        | JAC file to execute in the pod          | `example.jac` |
+| `OPENAI_API_KEY`   | OpenAI API key (from secret)            | None          |
+
+### Step-by-Step Deployment Guide
+
+Follow these steps to deploy your Jac application to Kubernetes:
+
+```bash
+# 1. Build and push Docker image
+docker build -t your-dockerhub-username/jac-cloud:latest -f jac-cloud/scripts/Dockerfile .
+docker push your-dockerhub-username/jac-cloud:latest
+
+# 2. Update image reference in jac-cloud.yml
+sed -i 's|image: .*|image: your-dockerhub-username/jac-cloud:latest|' jac-cloud/scripts/jac-cloud.yml
+
+# 3. Apply module configuration first
+kubectl apply -f jac-cloud/scripts/module-config.yml
+
+# 4. Deploy Jac Cloud application
+kubectl apply -f jac-cloud/scripts/jac-cloud.yml
+
+# 5. Verify deployment
+kubectl get all -n littlex
+```
+
+### Monitoring and Updating
+
+```bash
+# Monitor logs in real-time
+kubectl logs -f deployment/jac-cloud -n littlex
+
+# Update configurations
+# 1. Modify the YAML files as needed
+# 2. Apply the changes:
+kubectl apply -f jac-cloud/scripts/module-config.yml
+kubectl apply -f jac-cloud/scripts/jac-cloud.yml
+
+# Scale for handling more traffic
+kubectl scale deployment jac-cloud --replicas=3 -n littlex
+
+# Configure resource limits (edit jac-cloud.yml first)
+# Then apply:
+kubectl apply -f jac-cloud/scripts/jac-cloud.yml
+```
+
+### Troubleshooting and Validation
+
+```bash
+# Verify namespace exists
+kubectl get namespaces
+
+# Verify ConfigMap is properly applied
+kubectl get configmap -n littlex
+
+# Verify deployment status
+kubectl get pods -n littlex
+
+# View logs for troubleshooting
+kubectl logs -f deployment/jac-cloud -n littlex
+
+# Check all resources in the namespace
+kubectl get all -n littlex
+```
+
+### Advanced Configuration Management
+
+```bash
+# Update module configurations dynamically
+kubectl patch configmap module-config -n littlex --patch '{"data":{"config.json":"{\"numpy\":{\"lib_mem_size_req\":\"200Mi\",\"dependency\":[],\"lib_cpu_req\":\"1.0\",\"load_type\":\"remote\"}}"}}'
+
+# Restart deployment to pick up config changes
+kubectl rollout restart deployment/jac-cloud -n littlex
+
+# Scale the deployment for increased capacity
+kubectl scale deployment jac-cloud --replicas=3 -n littlex
+
+# Check rollout status
+kubectl rollout status deployment/jac-cloud -n littlex
+
+# Adjust CPU and memory limits in jac-cloud.yml
+# Then apply the changes:
+kubectl apply -f jac-cloud/scripts/jac-cloud.yml
+```
+
+---
+
+### Cleanup
+
+To remove all deployed resources when you're done:
+
+```bash
+# Remove the entire namespace and all resources
+kubectl delete namespace littlex
+
+# This will delete all resources associated with your Jac Cloud deployment
+```
+
+---
+
+## Production Monitoring and Maintenance
+
+### Enhanced Health Checks and Metrics
+
+!!! example "Production-Ready Weather API"
     ```jac
-    # recommendation_system.jac
-    walker get_recommendations(visit_profile) {
-        has limit: int = 5;
-        has algorithm: str = "hybrid";
-        has recommendations: list[dict] = [];
+    # production_weather.jac
+    import from datetime { datetime }
+    import from time { time }
 
-        can generate_recommendations with Profile entry {
-            current_user = here;
-            followed_users = [->:Follow:-> Profile];
-            followed_usernames = set([user.username for user in followed_users]);
+    glob metrics = {
+        "requests_total": 0,
+        "requests_per_city": {},
+        "cache_hits": 0,
+        "cache_misses": 0,
+        "start_time": time()
+    };
 
-            # Get all users except current and already followed
-            all_users = [root --> Profile](?username != current_user.username);
-            candidate_users = [user for user in all_users
-                             if user.username not in followed_usernames];
+    node WeatherData {
+        has city: str;
+        has temperature: float;
+        has description: str;
+        has last_updated: str;
+    }
 
-            # Score each candidate
-            for candidate in candidate_users {
-                score = self.calculate_recommendation_score(
-                    current_user, candidate, followed_users
+    walker get_weather {
+        has city: str;
+
+        can fetch_weather with `root entry {
+            # Update metrics
+            metrics["requests_total"] += 1;
+            metrics["requests_per_city"][self.city] = metrics["requests_per_city"].get(self.city, 0) + 1;
+
+            # Check cache first
+            cached = [-->(`?WeatherData)](?city == self.city);
+
+            if cached {
+                metrics["cache_hits"] += 1;
+                weather = cached[0];
+                report {
+                    "city": weather.city,
+                    "temperature": weather.temperature,
+                    "description": weather.description,
+                    "cached": True
+                };
+            } else {
+                metrics["cache_misses"] += 1;
+                # Simulate external API call
+                new_weather = WeatherData(
+                    city=self.city,
+                    temperature=22.5,
+                    description="Sunny",
+                    last_updated=datetime.now().isoformat()
                 );
+                here ++> new_weather;
 
-                if score > 0 {
-                    self.recommendations.append({
-                        "username": candidate.username,
-                        "score": score,
-                        "reason": self.get_recommendation_reason(
-                            current_user, candidate, followed_users
-                        )
-                    });
-                }
+                report {
+                    "city": self.city,
+                    "temperature": 22.5,
+                    "description": "Sunny",
+                    "cached": False
+                };
             }
-
-            # Sort by score and limit results
-            self.recommendations.sort(key=lambda x: x["score"], reverse=True);
-            self.recommendations = self.recommendations[:self.limit];
-
-            report self.recommendations;
         }
+    }
 
-        def calculate_recommendation_score(
-            current_user: Profile,
-            candidate: Profile,
-            followed_users: list[Profile]
-        ) -> float {
-            score = 0.0;
+    walker health_check {
+        can check_health with `root entry {
+            uptime = time() - metrics["start_time"];
+            cache_hit_rate = metrics["cache_hits"] / max(metrics["requests_total"], 1) * 100;
 
-            if self.algorithm in ["friend_based", "hybrid"] {
-                # Friend of friend scoring
-                candidate_followers = [candidate <-:Follow:<- Profile];
-                mutual_connections = set([u.username for u in followed_users]) &
-                                   set([u.username for u in candidate_followers]);
-                score += len(mutual_connections) * 2.0;
-            }
-
-            if self.algorithm in ["interest_based", "hybrid"] {
-                # Interest-based scoring using tweet content
-                current_tweets = [current_user ->:Post:-> Tweet];
-                candidate_tweets = [candidate ->:Post:-> Tweet];
-
-                # Simple keyword matching (in real system, use embeddings)
-                current_words = set();
-                for tweet in current_tweets {
-                    current_words.update(tweet.content.lower().split());
-                }
-
-                candidate_words = set();
-                for tweet in candidate_tweets {
-                    candidate_words.update(tweet.content.lower().split());
-                }
-
-                common_words = current_words & candidate_words;
-                score += len(common_words) * 0.5;
-            }
-
-            return score;
+            report {
+                "status": "healthy",
+                "uptime_seconds": uptime,
+                "total_requests": metrics["requests_total"],
+                "cache_hit_rate_percent": round(cache_hit_rate, 2),
+                "cached_cities": len([-->(`?WeatherData)]),
+                "timestamp": datetime.now().isoformat()
+            };
         }
+    }
 
-        def get_recommendation_reason(
-            current_user: Profile,
-            candidate: Profile,
-            followed_users: list[Profile]
-        ) -> str {
-            # Determine primary reason for recommendation
-            candidate_followers = [candidate <-:Follow:<- Profile];
-            mutual_connections = set([u.username for u in followed_users]) &
-                               set([u.username for u in candidate_followers]);
+    walker metrics_endpoint {
+        can get_metrics with `root entry {
+            uptime = time() - metrics["start_time"];
+            cache_hit_rate = metrics["cache_hits"] / max(metrics["requests_total"], 1) * 100;
 
-            if mutual_connections {
-                return f"Friends with {list(mutual_connections)[0]}";
+            report {
+                "uptime_seconds": uptime,
+                "total_requests": metrics["requests_total"],
+                "cache_hit_rate_percent": round(cache_hit_rate, 2),
+                "requests_by_city": metrics["requests_per_city"],
+                "timestamp": datetime.now().isoformat()
+            };
+        }
+    }
+
+    walker detailed_health_check {
+        can comprehensive_health with `root entry {
+            cached_cities = len([-->(`?WeatherData)]);
+            memory_usage = "healthy";  # Simplified for demo
+
+            # Check if service is responding normally
+            status = "healthy";
+            if metrics["requests_total"] == 0 and time() - metrics["start_time"] > 300 {
+                status = "warning";  # No requests in 5 minutes
             }
 
-            return "Similar interests";
+            report {
+                "status": status,
+                "cached_cities": cached_cities,
+                "total_requests": metrics["requests_total"],
+                "memory_status": memory_usage,
+                "uptime_seconds": time() - metrics["start_time"],
+                "version": "1.0.0"
+            };
         }
     }
     ```
+
+### Scaling and Performance
+
+```bash
+# Manual scaling
+kubectl scale deployment jac-cloud --replicas=3 -n littlex
+
+# Horizontal Pod Autoscaler
+kubectl apply -f - <<EOF
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: jac-cloud-hpa
+  namespace: littlex
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: jac-cloud
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+EOF
+
+# Monitor scaling
+kubectl get hpa -n littlex -w
+
+# Load testing (using hey or similar)
+hey -n 1000 -c 10 -m POST \
+  -H "Content-Type: application/json" \
+  -d '{"city":"London"}' \
+  http://your-service-url/walker/get_weather
+
+# Check resource usage during load test
+kubectl top pods -n littlex
+```
 
 ---
 
 ## Best Practices
 
-!!! summary "Testing Best Practices"
-    - **Write tests first**: Use test-driven development for complex walker logic
-    - **Test graph structures**: Verify node and edge relationships are correct
-    - **Use descriptive names**: Make test intentions clear from the test name
-    - **Test edge cases**: Include boundary conditions and error scenarios
-    - **Isolate test data**: Ensure tests don't interfere with each other
-    - **Mock external dependencies**: Test walker logic independently of external services
+!!! summary "Deployment Guidelines"
+    - **Create namespaces beforehand**: Ensure target namespaces exist before deployment
+    - **Use the Jac Cloud system**: Leverage the built-in `jac-splice-orc` plugin for dynamic module management
+    - **Configure modules properly**: Define resource requirements for each module in the ConfigMap
+    - **Monitor resource usage**: Track CPU and memory consumption for optimal scaling
+    - **Secure API keys**: Use Kubernetes secrets for sensitive configuration
+    - **Plan for module dependencies**: Configure dependencies correctly in the module configuration
+    - **Test locally first**: Verify your JAC application works before deploying to the cloud
+    - **Version your deployments**: Tag Docker images with specific versions for reproducible deployments
+    - **Clean up resources**: Always clean up test deployments to avoid unnecessary costs
 
 ## Key Takeaways
 
 !!! summary "What We've Learned"
-    **Testing Framework:**
+    **Deployment Strategies:**
 
-    - **Built-in testing**: Native test blocks eliminate external framework dependencies
-    - **Graph testing**: Specialized patterns for testing spatial relationships
-    - **Walker testing**: Comprehensive testing of mobile computation patterns
-    - **Type-safe assertions**: Leverage Jac's type system in test validation
+    - **Local development**: Same code runs everywhere without modifications
+    - **Docker containerization**: Package applications for consistent deployment
+    - **Kubernetes orchestration**: Production-grade scaling and reliability
+    - **Jac Cloud integration**: Kubernetes-based deployment with built-in module management
 
-    **Debugging Techniques:**
+    **Production Features:**
 
-    - **Debug output**: Strategic print statements and debug flags
-    - **Walker tracing**: Track walker movement through graph structures
-    - **State inspection**: Examine node and edge states during execution
-    - **Error handling**: Graceful handling of edge cases and failures
+    - **Module management**: Dynamic loading of Python modules with resource control
+    - **RBAC security**: Proper service accounts and role-based access control
+    - **Health checks**: Monitor application health and readiness
+    - **Resource management**: Control CPU and memory usage effectively
+    - **Scaling strategies**: Manual and automatic scaling based on demand
+    - **Configuration management**: Secure and flexible environment configuration
 
-    **Test Organization:**
+    **Monitoring and Maintenance:**
 
-    - **Modular testing**: Organize tests by functionality and complexity
-    - **Helper functions**: Reusable setup code for consistent test environments
-    - **Performance testing**: Monitor execution time and resource usage
-    - **Integration testing**: Test interactions between multiple walkers
+    - **Metrics collection**: Track application performance and usage
+    - **Log aggregation**: Centralized logging for debugging and analysis
+    - **Resource monitoring**: Track module resource usage and optimization
+    - **Performance optimization**: Identify and resolve bottlenecks
+    - **Troubleshooting tools**: Use kubectl commands for debugging deployments
 
-    **Quality Assurance:**
+    **Best Practices:**
 
-    - **Comprehensive coverage**: Test all code paths and error conditions
-    - **Regression prevention**: Automated tests prevent breaking changes
-    - **Documentation value**: Tests serve as executable specifications
-    - **Continuous validation**: Automated testing in CI/CD pipelines
+    - **Infrastructure as Code**: Version control your deployment configurations
+    - **Module optimization**: Configure appropriate resource limits for each module
+    - **Security hardening**: Implement security best practices at every layer
+    - **Namespace isolation**: Use dedicated namespaces for different environments
+    - **Progressive deployment**: Test in staging before production rollout
 
 !!! tip "Try It Yourself"
-    Enhance your testing skills by:
-    - Writing comprehensive test suites for existing walker logic
-    - Implementing performance benchmarks for graph operations
-    - Creating integration tests for multi-walker scenarios
-    - Adding debug instrumentation to complex graph traversals
+    Practice deployment by:
+    - Setting up the Jac Cloud deployment with your own Docker registry
+    - Experimenting with different module configurations and resource limits
+    - Implementing comprehensive monitoring and alerting systems
+    - Testing scaling behavior under different load conditions
+    - Creating CI/CD pipelines for automated deployment workflows
 
-    Remember: Good tests make development faster and more reliable!
+    Remember: Jac Cloud provides a production-ready platform with built-in best practices for JAC applications!
 
 ---
 
-*Ready to learn about deployment strategies? Continue to [Chapter 19: Deployment Strategies](chapter_18.md)!*
+*Ready to optimize performance? Continue to [Chapter 20: Performance Optimization](chapter_19.md)!*

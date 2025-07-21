@@ -1,1004 +1,787 @@
-# Chapter 19: Deployment Strategies
+# Chapter 18: Performance Optimization
 
-In this chapter, we'll explore how to deploy Jac applications to production environments. We'll take our weather API from development to production using various deployment strategies including Docker, Kubernetes, and Jac Cloud.
+In this chapter, we'll explore techniques for optimizing Jac applications to achieve better performance in both local and distributed environments. We'll build and progressively optimize a friend-finding algorithm that demonstrates graph structure optimization, traversal efficiency, and memory management strategies.
 
 !!! info "What You'll Learn"
-    - Local vs cloud deployment comparison
-    - Docker containerization for Jac applications
-    - Kubernetes orchestration and scaling
-    - Jac Cloud deployment with real examples
-    - Production monitoring and maintenance
+    - Graph structure optimization techniques
+    - Efficient traversal patterns and algorithms
+    - Memory management strategies in Jac
+    - Performance monitoring and profiling
+    - Distributed performance considerations
 
 ---
 
-## Local to Cloud Deployment
+## Graph Structure Optimization
 
-One of Jac's most powerful features is its scale-agnostic nature - the same code that runs locally can be deployed to production without changes.
+The foundation of Jac performance lies in how you structure your graph data. Efficient graph design can dramatically improve traversal performance and reduce memory usage.
 
-!!! success "Deployment Benefits"
-    - **Zero Code Changes**: Same application runs locally and in production
-    - **Automatic Scaling**: Built-in support for horizontal scaling
-    - **Container Ready**: Applications naturally containerize
-    - **Kubernetes Native**: Seamless Kubernetes integration
-    - **Production Features**: Built-in monitoring, logging, and health checks
+!!! success "Optimization Benefits"
+    - **Faster Traversals**: Well-structured graphs enable efficient pathfinding
+    - **Reduced Memory**: Optimized node relationships minimize storage overhead
+    - **Better Scaling**: Efficient structures handle larger datasets gracefully
+    - **Improved Caching**: Predictable access patterns enhance cache performance
 
-### Development to Production Pipeline
+### Traditional vs Optimized Graph Design
 
-Let's start with our weather API and show how it progresses from development to production:
+!!! example "Graph Design Comparison"
+    === "Traditional Approach"
+        ```python
+        # inefficient_friends.py - Nested loops and redundant data
+        class Person:
+            def __init__(self, name, age):
+                self.name = name
+                self.age = age
+                self.friends = []  # Direct list storage
+                self.friend_data = {}  # Redundant friend information
 
-!!! example "Weather API Deployment Journey"
-    === "Development (Local)"
-        ```jac
-        # weather_api.jac - Same code at every stage
-        import from os { getenv }
-
-        glob config = {
-            "api_key": getenv("WEATHER_API_KEY", "dev-key"),
-            "cache_timeout": int(getenv("CACHE_TIMEOUT", "300")),
-            "debug": getenv("DEBUG", "true").lower() == "true"
-        };
-
-        node WeatherData {
-            has city: str;
-            has temperature: float;
-            has description: str;
-            has last_updated: str;
-        }
-
-        walker get_weather {
-            has city: str;
-
-            can fetch_weather with `root entry {
-                # Check cache first
-                cached = [-->(`?WeatherData)](?city == self.city);
-
-                if cached {
-                    weather = cached[0];
-                    report {
-                        "city": weather.city,
-                        "temperature": weather.temperature,
-                        "description": weather.description,
-                        "cached": True
-                    };
-                } else {
-                    # Simulate API call
-                    new_weather = WeatherData(
-                        city=self.city,
-                        temperature=22.5,
-                        description="Sunny",
-                        last_updated="2024-01-15T10:00:00Z"
-                    );
-                    here ++> new_weather;
-
-                    report {
-                        "city": self.city,
-                        "temperature": 22.5,
-                        "description": "Sunny",
-                        "cached": False
-                    };
+            def add_friend(self, friend):
+                self.friends.append(friend)
+                friend.friends.append(self)  # Bidirectional
+                # Store redundant data
+                self.friend_data[friend.name] = {
+                    'age': friend.age,
+                    'mutual_friends': []
                 }
+
+            def find_mutual_friends(self, other_person):
+                mutual = []
+                # Inefficient nested loop
+                for my_friend in self.friends:
+                    for their_friend in other_person.friends:
+                        if my_friend.name == their_friend.name:
+                            mutual.append(my_friend)
+                return mutual
+
+            def friends_of_friends(self, max_depth=2):
+                found = set()
+                # Inefficient recursive traversal
+                def traverse(person, depth):
+                    if depth <= 0:
+                        return
+                    for friend in person.friends:
+                        if friend.name != self.name:
+                            found.add(friend.name)
+                            traverse(friend, depth - 1)
+
+                traverse(self, max_depth)
+                return list(found)
+        ```
+
+    === "Jac Optimized Structure"
+        ```jac
+        # optimized_friends.jac - Efficient graph-native design
+        node Person {
+            has name: str;
+            has age: int;
+            has friend_count: int = 0;  # Cached for quick access
+
+            def add_friend(friend: Person) -> bool {
+                # Check if already connected to avoid duplicates
+                existing = [self --> Friend --> Person](?name == friend.name);
+                if existing {
+                    return false;
+                }
+
+                # Create bidirectional connection efficiently
+                friendship = Friend(since="2024-01-15");
+                self ++> friendship ++> friend;
+
+                # Update cached counters
+                self.friend_count += 1;
+                friend.friend_count += 1;
+                return true;
             }
         }
 
-        walker health_check {
-            can check_health with `root entry {
-                weather_count = len([-->(`?WeatherData)]);
+        edge Friend {
+            has since: str;
+            has strength: int = 1;  # Relationship strength for weighted algorithms
+        }
+
+        walker find_mutual_friends {
+            has person1_name: str;
+            has person2_name: str;
+
+            can find_efficiently with `root entry {
+                # Direct graph traversal - no nested loops
+                person1 = [-->(`?Person)](?name == self.person1_name);
+                person2 = [-->(`?Person)](?name == self.person2_name);
+
+                if not person1 or not person2 {
+                    report {"error": "Person not found"};
+                    return;
+                }
+
+                # Get friends using graph navigation
+                person1_friends = [person1[0] --> Friend --> Person];
+                person2_friends = [person2[0] --> Friend --> Person];
+
+                # Efficient set intersection
+                mutual_names = {f.name for f in person1_friends} & {f.name for f in person2_friends};
+
                 report {
-                    "status": "healthy",
-                    "cached_cities": weather_count,
-                    "debug_mode": config["debug"]
+                    "mutual_friends": list(mutual_names),
+                    "count": len(mutual_names)
                 };
             }
         }
         ```
+---
 
-    === "Local Development"
-        ```bash
-        # Development workflow
-        export DEBUG=true
-        export WEATHER_API_KEY=dev-key
+## Traversal Efficiency
 
-        # Run locally for development
-        jac run weather_api.jac
+Efficient graph traversal is crucial for performance in Object-Spatial Programming. Let's examine different approaches to finding friends-of-friends and optimize them progressively.
 
-        # Test as service locally
-        jac serve weather_api.jac --port 8000
+### Basic Friend-Finding Algorithm
 
-        # Test the endpoints
-        curl -X POST http://localhost:8000/walker/get_weather \
-          -H "Content-Type: application/json" \
-          -d '{"city": "New York"}'
+!!! example "Simple Friend Discovery"
+    === "Jac"
+        ```jac
+        # basic_friend_finder.jac
+        walker find_friends_of_friends {
+            has person_name: str;
+            has max_depth: int = 2;
+            has visited: set[str] = set();
+            has results: set[str] = set();
+
+            can traverse_network with `root entry {
+                start_person = [-->(`?Person)](?name == self.person_name);
+
+                if not start_person {
+                    report {"error": "Person not found"};
+                    return;
+                }
+
+                # Start traversal from the person
+                self.traverse_from_person(start_person[0], self.max_depth);
+
+                # Remove the starting person from results
+                self.results.discard(self.person_name);
+
+                report {
+                    "person": self.person_name,
+                    "friends_of_friends": list(self.results),
+                    "total_found": len(self.results)
+                };
+            }
+
+            def traverse_from_person(person: Person, remaining_depth: int) {
+                if remaining_depth <= 0 or person.name in self.visited {
+                    return;
+                }
+
+                self.visited.add(person.name);
+                self.results.add(person.name);
+
+                # Navigate to friends and continue traversal
+                friends = [person --> Friend --> Person];
+                for friend in friends {
+                    self.traverse_from_person(friend, remaining_depth - 1);
+                }
+            }
+        }
         ```
+
+    === "Python Equivalent"
+        ```python
+        # basic_friend_finder.py - Less efficient traversal
+        def find_friends_of_friends(person_name, people_data, max_depth=2):
+            visited = set()
+            results = set()
+
+            def traverse(current_name, depth):
+                if depth <= 0 or current_name in visited:
+                    return
+
+                visited.add(current_name)
+                results.add(current_name)
+
+                # Manual lookup in data structure
+                if current_name in people_data:
+                    friends = people_data[current_name].get('friends', [])
+                    for friend_name in friends:
+                        traverse(friend_name, depth - 1)
+
+            traverse(person_name, max_depth)
+            results.discard(person_name)  # Remove starting person
+
+            return {
+                "person": person_name,
+                "friends_of_friends": list(results),
+                "total_found": len(results)
+            }
+        ```
+
+### Optimized Breadth-First Traversal
+
+!!! example "Performance-Optimized Friend Finding"
+    ```jac
+    # optimized_friend_finder.jac
+    import from collections { deque }
+
+    walker find_friends_optimized {
+        has person_name: str;
+        has max_depth: int = 2;
+
+        can breadth_first_search with `root entry {
+            start_person = [-->(`?Person)](?name == self.person_name);
+
+            if not start_person {
+                report {"error": "Person not found"};
+                return;
+            }
+
+            # Use BFS for more predictable performance
+            queue = deque([(start_person[0], 0)]);  # (person, depth)
+            visited = {self.person_name};
+            results = set();
+
+            while queue {
+                current_person, depth = queue.popleft();
+
+                if depth >= self.max_depth {
+                    continue;
+                }
+
+                # Get friends efficiently
+                friends = [current_person --> Friend --> Person];
+
+                for friend in friends {
+                    if friend.name not in visited {
+                        visited.add(friend.name);
+                        results.add(friend.name);
+                        queue.append((friend, depth + 1));
+                    }
+                }
+            }
+
+            report {
+                "person": self.person_name,
+                "friends_of_friends": list(results),
+                "total_found": len(results),
+                "algorithm": "breadth_first"
+            };
+        }
+    }
+
+    # Cached version for repeated queries
+    walker find_friends_cached {
+        has person_name: str;
+        has max_depth: int = 2;
+
+        can cached_search with `root entry {
+            start_person = [-->(`?Person)](?name == self.person_name);
+
+            if not start_person {
+                report {"error": "Person not found"};
+                return;
+            }
+
+            person = start_person[0];
+
+            # Check if we have cached results
+            cache_nodes = [person --> CacheEntry](?depth == self.max_depth);
+
+            if cache_nodes {
+                cache = cache_nodes[0];
+                report {
+                    "person": self.person_name,
+                    "friends_of_friends": cache.friend_names,
+                    "total_found": len(cache.friend_names),
+                    "cached": true
+                };
+                return;
+            }
+
+            # Compute and cache results
+            queue = deque([(person, 0)]);
+            visited = {self.person_name};
+            results = set();
+
+            while queue {
+                current_person, depth = queue.popleft();
+
+                if depth >= self.max_depth {
+                    continue;
+                }
+
+                friends = [current_person --> Friend --> Person];
+                for friend in friends {
+                    if friend.name not in visited {
+                        visited.add(friend.name);
+                        results.add(friend.name);
+                        queue.append((friend, depth + 1));
+                    }
+                }
+            }
+
+            # Cache the results
+            cache = CacheEntry(
+                depth=self.max_depth,
+                friend_names=list(results),
+                computed_at="2024-01-15"
+            );
+            person ++> cache;
+
+            report {
+                "person": self.person_name,
+                "friends_of_friends": list(results),
+                "total_found": len(results),
+                "cached": false
+            };
+        }
+    }
+
+    node CacheEntry {
+        has depth: int;
+        has friend_names: list[str];
+        has computed_at: str;
+    }
+    ```
 
 ---
 
-## Docker Containerization
+## Memory Management
 
-Docker packaging makes your Jac applications portable and consistent across environments.
+Efficient memory usage is critical for large-scale graph applications. Let's explore techniques to minimize memory footprint while maintaining performance.
 
-### Basic Dockerfile for Jac Applications
+### Memory-Efficient Data Structures
 
-!!! example "Jac Application Dockerfile"
-    === "Dockerfile"
-        ```dockerfile
-        # Dockerfile
-        FROM python:3.11-slim
+!!! example "Optimized Memory Usage"
+    ```jac
+    # memory_optimized.jac
+    # Use lightweight nodes for large-scale networks
+    node LightPerson {
+        has name: str;
+        has age: int;
+        # Remove unnecessary cached data to save memory
 
-        # Set working directory
-        WORKDIR /app
+        def get_friend_count() -> int {
+            # Calculate on-demand instead of caching
+            return len([self --> (`?Friend) --> (`?LightPerson)]);
+        }
 
-        # Install system dependencies
-        RUN apt-get update && apt-get install -y \
-            curl \
-            && rm -rf /var/lib/apt/lists/*
+        def get_connections_summary() -> dict {
+            friends = [self --> (`?Friend) --> (`?LightPerson)];
 
-        # Install Jac
-        RUN pip install jaclang
+            return {
+                "friend_count": len(friends),
+                "avg_age": sum(f.age for f in friends) / len(friends) if friends else 0,
+                "friend_names": [f.name for f in friends[:5]]  # Limit for memory
+            };
+        }
+    }
 
-        # Copy application files
-        COPY weather_api.jac .
-        COPY requirements.txt .
+    # Memory-conscious walker with cleanup
+    walker find_friends_memory_efficient {
+        has person_name: str;
+        has max_depth: int = 2;
+        has batch_size: int = 100;  # Process in batches
 
-        # Install Python dependencies if any
-        RUN pip install -r requirements.txt
+        can memory_conscious_search with `root entry {
+            start_person = [-->](`?LightPerson)(?name == self.person_name);
 
-        # Expose port
-        EXPOSE 8000
+            if not start_person {
+                report {"error": "Person not found"};
+                return;
+            }
 
-        # Set environment variables
-        ENV JAC_FILE=weather_api.jac
-        ENV PORT=8000
-        ENV DEBUG=false
+            results = [];
+            processed = 0;
+            queue = deque([(start_person[0], 0)]);
+            visited = {self.person_name};
 
-        # Health check
-        HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-            CMD curl -f http://localhost:$PORT/walker/health_check -X POST -H "Content-Type: application/json" -d '{}' || exit 1
+            while queue and processed < self.batch_size {
+                current_person, depth = queue.popleft();
+                processed += 1;
 
-        # Run the application
-        CMD jac serve $JAC_FILE --port $PORT
-        ```
+                if depth >= self.max_depth {
+                    continue;
+                }
 
-    === "requirements.txt"
-        ```txt
-        # requirements.txt
-        jaclang
-        requests
-        python-dotenv
-        ```
+                # Get only essential friend data
+                friends = [current_person --> Friend --> LightPerson];
 
-    === "docker-compose.yml"
-        ```yaml
-        # docker-compose.yml
-        version: '3.8'
+                for friend in friends[:10] {  # Limit friends per iteration
+                    if friend.name not in visited {
+                        visited.add(friend.name);
+                        results.append({
+                            "name": friend.name,
+                            "age": friend.age,
+                            "depth": depth + 1
+                        });
 
-        services:
-          weather-api:
-            build: .
-            ports:
-              - "8000:8000"
-            environment:
-              - DEBUG=false
-              - WEATHER_API_KEY=${WEATHER_API_KEY}
-              - CACHE_TIMEOUT=600
-            volumes:
-              - weather_data:/app/data
-            restart: unless-stopped
-            healthcheck:
-              test: ["CMD", "curl", "-f", "http://localhost:8000/walker/health_check", "-X", "POST", "-H", "Content-Type: application/json", "-d", "{}"]
-              interval: 30s
-              timeout: 10s
-              retries: 3
+                        if depth + 1 < self.max_depth {
+                            queue.append((friend, depth + 1));
+                        }
+                    }
+                }
 
-        volumes:
-          weather_data:
-        ```
+                # Periodic cleanup of references
+                if processed % 50 == 0 {
+                    # Force cleanup of temporary variables
+                    friends = None;
+                }
+            }
 
-### Building and Testing Docker Images
+            report {
+                "person": self.person_name,
+                "friends_found": results,
+                "total_processed": processed,
+                "memory_optimized": true
+            };
+        }
+    }
+    ```
+
+### Performance Monitoring
+
+!!! example "Performance Tracking Walker"
+    ```jac
+    # performance_monitor.jac
+    import from time { time }
+    import from psutil { Process }
+
+    walker benchmark_friend_finding {
+        has person_name: str;
+        has algorithm: str = "optimized";  # "basic", "optimized", "cached"
+
+        can run_benchmark with `root entry {
+            start_time = time();
+            process = Process();
+            start_memory = process.memory_info().rss / 1024 / 1024;  # MB
+
+            # Run the specified algorithm
+            if self.algorithm == "basic" {
+                result = find_friends_of_friends(person_name=self.person_name) spawn here;
+            } elif self.algorithm == "optimized" {
+                result = find_friends_optimized(person_name=self.person_name) spawn here;
+            } elif self.algorithm == "cached" {
+                result = find_friends_cached(person_name=self.person_name) spawn here;
+            } else {
+                report {"error": "Unknown algorithm"};
+                return;
+            }
+
+            end_time = time();
+            end_memory = process.memory_info().rss / 1024 / 1024;  # MB
+
+            # Performance metrics
+            execution_time = end_time - start_time;
+            memory_used = end_memory - start_memory;
+
+            report {
+                "algorithm": self.algorithm,
+                "execution_time_ms": round(execution_time * 1000, 2),
+                "memory_used_mb": round(memory_used, 2),
+                "friends_found": len(result[0].get("friends_of_friends", [])),
+                "performance_ratio": round(len(result[0].get("friends_of_friends", [])) / execution_time, 2)
+            };
+        }
+    }
+
+    # Batch benchmarking for statistical analysis
+    walker run_performance_suite {
+        has test_count: int = 10;
+        has test_persons: list[str] = ["Alice", "Bob", "Charlie"];
+
+        can comprehensive_benchmark with `root entry {
+            algorithms = ["basic", "optimized", "cached"];
+            results = [];
+
+            for algorithm in algorithms {
+                algorithm_results = [];
+
+                for person in self.test_persons {
+                    for i in range(self.test_count) {
+                        benchmark = benchmark_friend_finding(
+                            person_name=person,
+                            algorithm=algorithm
+                        );
+                        result = benchmark spawn here;
+                        algorithm_results.append(result[0]);
+                    }
+                }
+
+                # Calculate averages
+                avg_time = sum(r["execution_time_ms"] for r in algorithm_results) / len(algorithm_results);
+                avg_memory = sum(r["memory_used_mb"] for r in algorithm_results) / len(algorithm_results);
+                avg_friends = sum(r["friends_found"] for r in algorithm_results) / len(algorithm_results);
+
+                results.append({
+                    "algorithm": algorithm,
+                    "avg_execution_time_ms": round(avg_time, 2),
+                    "avg_memory_used_mb": round(avg_memory, 2),
+                    "avg_friends_found": round(avg_friends, 2),
+                    "total_tests": len(algorithm_results)
+                });
+            }
+
+            report {
+                "benchmark_suite": results,
+                "test_configuration": {
+                    "test_count": self.test_count,
+                    "test_persons": self.test_persons
+                }
+            };
+        }
+    }
+    ```
+
+---
+
+## Distributed Performance
+
+When deploying to Jac Cloud, consider performance implications of distributed execution and data locality.
+
+### Cloud-Optimized Friend Finding
+
+!!! example "Distributed Performance Patterns"
+    ```jac
+    # distributed_friends.jac
+    walker find_friends_distributed {
+        has person_name: str;
+        has max_depth: int = 2;
+        has partition_size: int = 50;  # Optimize for cloud chunks
+
+        can cloud_optimized_search with `root entry {
+            start_person = [-->](`?LightPerson)(?name == self.person_name);
+
+            if not start_person {
+                report {"error": "Person not found"};
+                return;
+            }
+
+            # Partition the search for distributed processing
+            person = start_person[0];
+            immediate_friends = [person --> Friend --> LightPerson];
+
+            # Process in chunks optimized for cloud deployment
+            friend_chunks = [
+                immediate_friends[i:i + self.partition_size]
+                for i in range(0, len(immediate_friends), self.partition_size)
+            ];
+
+            all_results = [];
+            chunk_count = 0;
+
+            for chunk in friend_chunks {
+                chunk_results = [];
+                chunk_count += 1;
+
+                for friend in chunk {
+                    # Second-degree friends
+                    if self.max_depth > 1 {
+                        second_degree = [friend --> Friend --> LightPerson];
+                        for second_friend in second_degree {
+                            if second_friend.name != self.person_name {
+                                chunk_results.append({
+                                    "name": second_friend.name,
+                                    "age": second_friend.age,
+                                    "via": friend.name,
+                                    "depth": 2
+                                });
+                            }
+                        }
+                    }
+
+                    chunk_results.append({
+                        "name": friend.name,
+                        "age": friend.age,
+                        "via": "direct",
+                        "depth": 1
+                    });
+                }
+
+                all_results.extend(chunk_results);
+            }
+
+            # Remove duplicates efficiently
+            unique_results = {};
+            for result in all_results {
+                unique_results[result["name"]] = result;
+            }
+
+            report {
+                "person": self.person_name,
+                "friends_network": list(unique_results.values()),
+                "total_found": len(unique_results),
+                "chunks_processed": chunk_count,
+                "distributed": true
+            };
+        }
+    }
+
+    # Health check for performance monitoring
+    walker performance_health_check {
+        can check_system_health with `root entry {
+            # Count total nodes and relationships
+            all_persons = [-->](`?LightPerson);
+            total_friendships = [-->](`?Friend);
+
+            # Calculate network density
+            max_possible_connections = len(all_persons) * (len(all_persons) - 1) / 2;
+            density = len(total_friendships) / max_possible_connections if max_possible_connections > 0 else 0;
+
+            # Sample performance with a quick test
+            start_time = time();
+            if all_persons {
+                sample_person = all_persons[0];
+                sample_friends = [sample_person --> Friend --> LightPerson];
+            }
+            sample_time = time() - start_time;
+
+            report {
+                "total_persons": len(all_persons),
+                "total_friendships": len(total_friendships),
+                "network_density": round(density, 4),
+                "sample_query_time_ms": round(sample_time * 1000, 2),
+                "health_status": "good" if sample_time < 0.1 else "degraded"
+            };
+        }
+    }
+    ```
+
+---
+
+## Performance Testing and Deployment
+
+### Creating Test Data
+
+!!! example "Performance Test Setup"
+    ```jac
+    # test_data_generator.jac
+    import from random { randint, choice }
+
+    walker generate_test_network {
+        has person_count: int = 100;
+        has avg_friends: int = 5;
+
+        can create_test_network with `root entry {
+            # Clear existing test data
+            existing_persons = [-->](`?LightPerson);
+            existing_friends = [-->](`?Friend);
+
+            for person in existing_persons {
+                del person;
+            }
+            for friendship in existing_friends {
+                del friendship;
+            }
+
+            # Create people
+            people = [];
+            for i in range(self.person_count) {
+                person = LightPerson(
+                    name=f"Person{i}",
+                    age=randint(18, 65)
+                );
+                here ++> person;
+                people.append(person);
+            }
+
+            # Create friendships
+            total_friendships = 0;
+            for person in people {
+                friends_to_add = randint(1, self.avg_friends * 2);
+
+                for _ in range(friends_to_add) {
+                    potential_friend = choice(people);
+                    if potential_friend != person {
+                        # Check if friendship already exists
+                        existing = [person --> Friend --> LightPerson](?name == potential_friend.name);
+                        if not existing {
+                            friendship = Friend(since="2024-01-15");
+                            person ++> friendship ++> potential_friend;
+                            total_friendships += 1;
+                        }
+                    }
+                }
+            }
+
+            report {
+                "people_created": len(people),
+                "friendships_created": total_friendships,
+                "avg_friends_per_person": round(total_friendships * 2 / len(people), 2)
+            };
+        }
+    }
+    ```
+
+### Testing Performance
 
 ```bash
-# Build the image
-docker build -t weather-api:latest .
+# Deploy the optimized version
+jac serve distributed_friends.jac
 
-# Test locally
-docker run -p 8000:8000 \
-  -e WEATHER_API_KEY=your-key \
-  -e DEBUG=true \
-  weather-api:latest
-
-# Test with docker-compose
-echo "WEATHER_API_KEY=your-key" > .env
-docker-compose up -d
-
-# View logs
-docker-compose logs -f weather-api
-
-# Test the containerized API
-curl -X POST http://localhost:8000/walker/get_weather \
+# Generate test data
+curl -X POST http://localhost:8000/walker/generate_test_network \
   -H "Content-Type: application/json" \
-  -d '{"city": "London"}'
+  -d '{"person_count": 1000, "avg_friends": 10}'
 
-# Check health
-curl -X POST http://localhost:8000/walker/health_check \
+# Run performance benchmarks
+curl -X POST http://localhost:8000/walker/run_performance_suite \
+  -H "Content-Type: application/json" \
+  -d '{"test_count": 5, "test_persons": ["Person1", "Person50", "Person100"]}'
+
+# Check system health
+curl -X POST http://localhost:8000/walker/performance_health_check \
   -H "Content-Type: application/json" \
   -d '{}'
 ```
 
 ---
 
-## Kubernetes Deployment
-
-Kubernetes provides orchestration, scaling, and reliability for production deployments.
-
-### Kubernetes Manifests
-
-!!! example "Complete Kubernetes Deployment"
-    === "namespace.yaml"
-        ```yaml
-        # k8s/namespace.yaml
-        apiVersion: v1
-        kind: Namespace
-        metadata:
-          name: weather-app
-          labels:
-            app: weather-api
-        ```
-
-    === "configmap.yaml"
-        ```yaml
-        # k8s/configmap.yaml
-        apiVersion: v1
-        kind: ConfigMap
-        metadata:
-          name: weather-config
-          namespace: weather-app
-        data:
-          DEBUG: "false"
-          CACHE_TIMEOUT: "600"
-          PORT: "8000"
-        ```
-
-    === "secret.yaml"
-        ```yaml
-        # k8s/secret.yaml
-        apiVersion: v1
-        kind: Secret
-        metadata:
-          name: weather-secrets
-          namespace: weather-app
-        type: Opaque
-        data:
-          weather-api-key: eW91ci1iYXNlNjQtZW5jb2RlZC1hcGkta2V5  # Base64 encoded
-        ```
-
-    === "deployment.yaml"
-        ```yaml
-        # k8s/deployment.yaml
-        apiVersion: apps/v1
-        kind: Deployment
-        metadata:
-          name: weather-api
-          namespace: weather-app
-          labels:
-            app: weather-api
-        spec:
-          replicas: 3
-          selector:
-            matchLabels:
-              app: weather-api
-          template:
-            metadata:
-              labels:
-                app: weather-api
-            spec:
-              containers:
-              - name: weather-api
-                image: weather-api:latest
-                ports:
-                - containerPort: 8000
-                env:
-                - name: WEATHER_API_KEY
-                  valueFrom:
-                    secretKeyRef:
-                      name: weather-secrets
-                      key: weather-api-key
-                envFrom:
-                - configMapRef:
-                    name: weather-config
-                resources:
-                  limits:
-                    cpu: "1"
-                    memory: "1Gi"
-                  requests:
-                    cpu: "500m"
-                    memory: "512Mi"
-                livenessProbe:
-                  httpPost:
-                    path: /walker/health_check
-                    port: 8000
-                    httpHeaders:
-                    - name: Content-Type
-                      value: application/json
-                  initialDelaySeconds: 30
-                  periodSeconds: 30
-                readinessProbe:
-                  httpPost:
-                    path: /walker/health_check
-                    port: 8000
-                    httpHeaders:
-                    - name: Content-Type
-                      value: application/json
-                  initialDelaySeconds: 5
-                  periodSeconds: 10
-        ```
-
-    === "service.yaml"
-        ```yaml
-        # k8s/service.yaml
-        apiVersion: v1
-        kind: Service
-        metadata:
-          name: weather-api-service
-          namespace: weather-app
-        spec:
-          selector:
-            app: weather-api
-          ports:
-          - protocol: TCP
-            port: 80
-            targetPort: 8000
-          type: ClusterIP
-        ```
-
-    === "ingress.yaml"
-        ```yaml
-        # k8s/ingress.yaml
-        apiVersion: networking.k8s.io/v1
-        kind: Ingress
-        metadata:
-          name: weather-api-ingress
-          namespace: weather-app
-          annotations:
-            kubernetes.io/ingress.class: "nginx"
-            nginx.ingress.kubernetes.io/rewrite-target: /
-        spec:
-          rules:
-          - host: weather-api.yourdomain.com
-            http:
-              paths:
-              - path: /
-                pathType: Prefix
-                backend:
-                  service:
-                    name: weather-api-service
-                    port:
-                      number: 80
-        ```
-
-### Deploying to Kubernetes
-
-```bash
-# Deploy everything in order
-kubectl apply -f k8s/namespace.yaml
-kubectl apply -f k8s/configmap.yaml
-
-# Create secret with your actual API key
-echo -n "your-actual-api-key" | base64
-# Update secret.yaml with the base64 value
-kubectl apply -f k8s/secret.yaml
-
-kubectl apply -f k8s/deployment.yaml
-kubectl apply -f k8s/service.yaml
-kubectl apply -f k8s/ingress.yaml
-
-# Check deployment status
-kubectl get all -n weather-app
-
-# Watch pods come online
-kubectl get pods -n weather-app -w
-
-# Check logs
-kubectl logs -f deployment/weather-api -n weather-app
-
-# Test the service
-kubectl port-forward service/weather-api-service 8080:80 -n weather-app
-
-# Test from another terminal
-curl -X POST http://localhost:8080/walker/get_weather \
-  -H "Content-Type: application/json" \
-  -d '{"city": "Tokyo"}'
-```
-
----
-
-## Jac Cloud Deployment
-
-Jac Cloud provides a Kubernetes-based deployment system using the `jac-splice-orc` plugin for running JAC applications with built-in scaling and module management.
-
-### Jac Cloud Setup
-
-!!! example "Jac Cloud Deployment"
-    === "Directory Structure"
-        ```
-        jac-cloud/
-        ├── scripts/
-        │   ├── Dockerfile
-        │   ├── init_jac_cloud.sh
-        │   ├── jac-cloud.yml
-        │   └── module-config.yml
-        └── weather_api.jac
-        ```
-
-    === "Prerequisites"
-        ```bash
-        # Prerequisites for Jac Cloud deployment
-        # 1. Kubernetes cluster access
-        kubectl cluster-info
-
-        # 2. Docker for building images
-        docker --version
-
-        # 3. kubectl configured
-        kubectl config current-context
-
-        # 4. Target namespace should be created before deployment
-        kubectl create namespace littlex
-
-        # 5. Optional: OpenAI API key
-        echo "OPENAI_API_KEY=your-key-here" > .env
-        ```
-
-    === "Build and Deploy"
-        ```bash
-        # 1. Build and push Docker image
-        docker build -t your-dockerhub-username/jac-cloud:latest -f jac-cloud/scripts/Dockerfile .
-        docker push your-dockerhub-username/jac-cloud:latest
-
-        # 2. Update image reference in jac-cloud.yml
-        sed -i 's|image: .*|image: your-dockerhub-username/jac-cloud:latest|' jac-cloud/scripts/jac-cloud.yml
-
-        # 3. Apply module configuration first
-        kubectl apply -f jac-cloud/scripts/module-config.yml
-
-        # 4. Deploy Jac Cloud application
-        kubectl apply -f jac-cloud/scripts/jac-cloud.yml
-
-        # 5. Verify deployment
-        kubectl get all -n littlex
-        ```
-
-### Jac Cloud Configuration Files
-
-!!! example "Complete Jac Cloud Configuration"
-    === "jac-cloud.yml"
-        ```yaml
-        # jac-cloud/scripts/jac-cloud.yml
-        apiVersion: v1
-        kind: Namespace
-        metadata:
-          name: littlex
-        ---
-        apiVersion: v1
-        kind: ServiceAccount
-        metadata:
-          name: jac-cloud-sa
-          namespace: littlex
-        ---
-        apiVersion: rbac.authorization.k8s.io/v1
-        kind: ClusterRole
-        metadata:
-          name: jac-cloud-role
-        rules:
-        - apiGroups: [""]
-          resources: ["pods", "services", "configmaps"]
-          verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-        - apiGroups: ["apps"]
-          resources: ["deployments"]
-          verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-        ---
-        apiVersion: rbac.authorization.k8s.io/v1
-        kind: ClusterRoleBinding
-        metadata:
-          name: jac-cloud-binding
-        roleRef:
-          apiGroup: rbac.authorization.k8s.io
-          kind: ClusterRole
-          name: jac-cloud-role
-        subjects:
-        - kind: ServiceAccount
-          name: jac-cloud-sa
-          namespace: littlex
-        ---
-        apiVersion: v1
-        kind: Secret
-        metadata:
-          name: openai-secret
-          namespace: littlex
-        type: Opaque
-        data:
-          openai-key: eW91ci1iYXNlNjQtZW5jb2RlZC1rZXk=  # Replace with your base64 encoded key
-        ---
-        apiVersion: apps/v1
-        kind: Deployment
-        metadata:
-          name: jac-cloud
-          namespace: littlex
-        spec:
-          replicas: 1
-          selector:
-            matchLabels:
-              app: jac-cloud
-          template:
-            metadata:
-              labels:
-                app: jac-cloud
-            spec:
-              serviceAccountName: jac-cloud-sa
-              containers:
-              - name: jac-cloud
-                image: your-dockerhub-username/jac-cloud:latest
-                ports:
-                - containerPort: 8000
-                env:
-                - name: NAMESPACE
-                  value: "littlex"
-                - name: CONFIGMAP_NAME
-                  value: "module-config"
-                - name: FILE_NAME
-                  value: "weather_api.jac"
-                - name: OPENAI_API_KEY
-                  valueFrom:
-                    secretKeyRef:
-                      name: openai-secret
-                      key: openai-key
-                volumeMounts:
-                - name: config-volume
-                  mountPath: /app/config
-                resources:
-                  limits:
-                    cpu: "1"
-                    memory: "2Gi"
-                  requests:
-                    cpu: "500m"
-                    memory: "1Gi"
-              volumes:
-              - name: config-volume
-                configMap:
-                  name: module-config
-        ---
-        apiVersion: v1
-        kind: Service
-        metadata:
-          name: jac-cloud-service
-          namespace: littlex
-        spec:
-          selector:
-            app: jac-cloud
-          ports:
-          - protocol: TCP
-            port: 80
-            targetPort: 8000
-          type: LoadBalancer
-        ```
-
-    === "module-config.yml"
-        ```yaml
-        # jac-cloud/scripts/module-config.yml
-        apiVersion: v1
-        kind: Namespace
-        metadata:
-          name: littlex
-        ---
-        apiVersion: v1
-        kind: ConfigMap
-        metadata:
-          name: module-config
-          namespace: littlex
-        data:
-          config.json: |
-            {
-              "numpy": {
-                "lib_mem_size_req": "100Mi",
-                "dependency": [],
-                "lib_cpu_req": "500m",
-                "load_type": "remote"
-              },
-              "transformers": {
-                "lib_mem_size_req": "2000Mi",
-                "dependency": ["torch", "transformers"],
-                "lib_cpu_req": "1.0",
-                "load_type": "remote"
-              },
-              "sentence_transformers": {
-                "lib_mem_size_req": "2000Mi",
-                "dependency": ["sentence-transformers"],
-                "lib_cpu_req": "1.0",
-                "load_type": "remote"
-              },
-              "requests": {
-                "lib_mem_size_req": "50Mi",
-                "dependency": ["requests"],
-                "lib_cpu_req": "100m",
-                "load_type": "remote"
-              }
-            }
-        ```
-
-    === "Dockerfile"
-        ```dockerfile
-        # jac-cloud/scripts/Dockerfile
-        FROM python:3.11-slim
-
-        # Set working directory
-        WORKDIR /app
-
-        # Install system dependencies
-        RUN apt-get update && apt-get install -y \
-            curl \
-            git \
-            && rm -rf /var/lib/apt/lists/*
-
-        # Install Jac and required packages
-        RUN pip install jaclang jac-splice-orc
-
-        # Copy application files
-        COPY weather_api.jac .
-        COPY jac-cloud/scripts/init_jac_cloud.sh .
-
-        # Make scripts executable
-        RUN chmod +x init_jac_cloud.sh
-
-        # Expose port
-        EXPOSE 8000
-
-        # Set environment variables
-        ENV JAC_FILE=weather_api.jac
-        ENV PORT=8000
-        ENV NAMESPACE=littlex
-        ENV CONFIGMAP_NAME=module-config
-
-        # Health check
-        HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-            CMD curl -f http://localhost:$PORT/walker/health_check -X POST -H "Content-Type: application/json" -d '{}' || exit 1
-
-        # Run the application
-        CMD ["./init_jac_cloud.sh"]
-        ```
-
-### Environment Variables and Configuration
-
-The Jac Cloud deployment supports the following environment variables:
-
-| Variable          | Description                              | Default Value |
-|--------------------|------------------------------------------|---------------|
-| `NAMESPACE`        | Target namespace for the deployment     | `default`     |
-| `CONFIGMAP_NAME`   | Name of the ConfigMap to mount          | `module-config` |
-| `FILE_NAME`        | JAC file to execute in the pod          | `example.jac` |
-| `OPENAI_API_KEY`   | OpenAI API key (from secret)            | None          |
-
-### Step-by-Step Deployment Guide
-
-Follow these steps to deploy your Jac application to Kubernetes:
-
-```bash
-# 1. Build and push Docker image
-docker build -t your-dockerhub-username/jac-cloud:latest -f jac-cloud/scripts/Dockerfile .
-docker push your-dockerhub-username/jac-cloud:latest
-
-# 2. Update image reference in jac-cloud.yml
-sed -i 's|image: .*|image: your-dockerhub-username/jac-cloud:latest|' jac-cloud/scripts/jac-cloud.yml
-
-# 3. Apply module configuration first
-kubectl apply -f jac-cloud/scripts/module-config.yml
-
-# 4. Deploy Jac Cloud application
-kubectl apply -f jac-cloud/scripts/jac-cloud.yml
-
-# 5. Verify deployment
-kubectl get all -n littlex
-```
-
-### Monitoring and Updating
-
-```bash
-# Monitor logs in real-time
-kubectl logs -f deployment/jac-cloud -n littlex
-
-# Update configurations
-# 1. Modify the YAML files as needed
-# 2. Apply the changes:
-kubectl apply -f jac-cloud/scripts/module-config.yml
-kubectl apply -f jac-cloud/scripts/jac-cloud.yml
-
-# Scale for handling more traffic
-kubectl scale deployment jac-cloud --replicas=3 -n littlex
-
-# Configure resource limits (edit jac-cloud.yml first)
-# Then apply:
-kubectl apply -f jac-cloud/scripts/jac-cloud.yml
-```
-
-### Troubleshooting and Validation
-
-```bash
-# Verify namespace exists
-kubectl get namespaces
-
-# Verify ConfigMap is properly applied
-kubectl get configmap -n littlex
-
-# Verify deployment status
-kubectl get pods -n littlex
-
-# View logs for troubleshooting
-kubectl logs -f deployment/jac-cloud -n littlex
-
-# Check all resources in the namespace
-kubectl get all -n littlex
-```
-
-### Advanced Configuration Management
-
-```bash
-# Update module configurations dynamically
-kubectl patch configmap module-config -n littlex --patch '{"data":{"config.json":"{\"numpy\":{\"lib_mem_size_req\":\"200Mi\",\"dependency\":[],\"lib_cpu_req\":\"1.0\",\"load_type\":\"remote\"}}"}}'
-
-# Restart deployment to pick up config changes
-kubectl rollout restart deployment/jac-cloud -n littlex
-
-# Scale the deployment for increased capacity
-kubectl scale deployment jac-cloud --replicas=3 -n littlex
-
-# Check rollout status
-kubectl rollout status deployment/jac-cloud -n littlex
-
-# Adjust CPU and memory limits in jac-cloud.yml
-# Then apply the changes:
-kubectl apply -f jac-cloud/scripts/jac-cloud.yml
-```
-
----
-
-### Cleanup
-
-To remove all deployed resources when you're done:
-
-```bash
-# Remove the entire namespace and all resources
-kubectl delete namespace littlex
-
-# This will delete all resources associated with your Jac Cloud deployment
-```
-
----
-
-## Production Monitoring and Maintenance
-
-### Enhanced Health Checks and Metrics
-
-!!! example "Production-Ready Weather API"
-    ```jac
-    # production_weather.jac
-    import from datetime { datetime }
-    import from time { time }
-
-    glob metrics = {
-        "requests_total": 0,
-        "requests_per_city": {},
-        "cache_hits": 0,
-        "cache_misses": 0,
-        "start_time": time()
-    };
-
-    node WeatherData {
-        has city: str;
-        has temperature: float;
-        has description: str;
-        has last_updated: str;
-    }
-
-    walker get_weather {
-        has city: str;
-
-        can fetch_weather with `root entry {
-            # Update metrics
-            metrics["requests_total"] += 1;
-            metrics["requests_per_city"][self.city] = metrics["requests_per_city"].get(self.city, 0) + 1;
-
-            # Check cache first
-            cached = [-->(`?WeatherData)](?city == self.city);
-
-            if cached {
-                metrics["cache_hits"] += 1;
-                weather = cached[0];
-                report {
-                    "city": weather.city,
-                    "temperature": weather.temperature,
-                    "description": weather.description,
-                    "cached": True
-                };
-            } else {
-                metrics["cache_misses"] += 1;
-                # Simulate external API call
-                new_weather = WeatherData(
-                    city=self.city,
-                    temperature=22.5,
-                    description="Sunny",
-                    last_updated=datetime.now().isoformat()
-                );
-                here ++> new_weather;
-
-                report {
-                    "city": self.city,
-                    "temperature": 22.5,
-                    "description": "Sunny",
-                    "cached": False
-                };
-            }
-        }
-    }
-
-    walker health_check {
-        can check_health with `root entry {
-            uptime = time() - metrics["start_time"];
-            cache_hit_rate = metrics["cache_hits"] / max(metrics["requests_total"], 1) * 100;
-
-            report {
-                "status": "healthy",
-                "uptime_seconds": uptime,
-                "total_requests": metrics["requests_total"],
-                "cache_hit_rate_percent": round(cache_hit_rate, 2),
-                "cached_cities": len([-->(`?WeatherData)]),
-                "timestamp": datetime.now().isoformat()
-            };
-        }
-    }
-
-    walker metrics_endpoint {
-        can get_metrics with `root entry {
-            uptime = time() - metrics["start_time"];
-            cache_hit_rate = metrics["cache_hits"] / max(metrics["requests_total"], 1) * 100;
-
-            report {
-                "uptime_seconds": uptime,
-                "total_requests": metrics["requests_total"],
-                "cache_hit_rate_percent": round(cache_hit_rate, 2),
-                "requests_by_city": metrics["requests_per_city"],
-                "timestamp": datetime.now().isoformat()
-            };
-        }
-    }
-
-    walker detailed_health_check {
-        can comprehensive_health with `root entry {
-            cached_cities = len([-->(`?WeatherData)]);
-            memory_usage = "healthy";  # Simplified for demo
-
-            # Check if service is responding normally
-            status = "healthy";
-            if metrics["requests_total"] == 0 and time() - metrics["start_time"] > 300 {
-                status = "warning";  # No requests in 5 minutes
-            }
-
-            report {
-                "status": status,
-                "cached_cities": cached_cities,
-                "total_requests": metrics["requests_total"],
-                "memory_status": memory_usage,
-                "uptime_seconds": time() - metrics["start_time"],
-                "version": "1.0.0"
-            };
-        }
-    }
-    ```
-
-### Scaling and Performance
-
-```bash
-# Manual scaling
-kubectl scale deployment jac-cloud --replicas=3 -n littlex
-
-# Horizontal Pod Autoscaler
-kubectl apply -f - <<EOF
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: jac-cloud-hpa
-  namespace: littlex
-spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: jac-cloud
-  minReplicas: 1
-  maxReplicas: 5
-  metrics:
-  - type: Resource
-    resource:
-      name: cpu
-      target:
-        type: Utilization
-        averageUtilization: 70
-  - type: Resource
-    resource:
-      name: memory
-      target:
-        type: Utilization
-        averageUtilization: 80
-EOF
-
-# Monitor scaling
-kubectl get hpa -n littlex -w
-
-# Load testing (using hey or similar)
-hey -n 1000 -c 10 -m POST \
-  -H "Content-Type: application/json" \
-  -d '{"city":"London"}' \
-  http://your-service-url/walker/get_weather
-
-# Check resource usage during load test
-kubectl top pods -n littlex
-```
-
----
-
 ## Best Practices
 
-!!! summary "Deployment Guidelines"
-    - **Create namespaces beforehand**: Ensure target namespaces exist before deployment
-    - **Use the Jac Cloud system**: Leverage the built-in `jac-splice-orc` plugin for dynamic module management
-    - **Configure modules properly**: Define resource requirements for each module in the ConfigMap
-    - **Monitor resource usage**: Track CPU and memory consumption for optimal scaling
-    - **Secure API keys**: Use Kubernetes secrets for sensitive configuration
-    - **Plan for module dependencies**: Configure dependencies correctly in the module configuration
-    - **Test locally first**: Verify your JAC application works before deploying to the cloud
-    - **Version your deployments**: Tag Docker images with specific versions for reproducible deployments
-    - **Clean up resources**: Always clean up test deployments to avoid unnecessary costs
+!!! summary "Performance Optimization Guidelines"
+    - **Measure before optimizing**: Always profile before making performance changes
+    - **Optimize hot paths**: Focus on frequently executed code sections
+    - **Use appropriate data structures**: Choose the right graph patterns for your use case
+    - **Cache intelligently**: Cache expensive computations but avoid memory leaks
+    - **Batch operations**: Process multiple items together when possible
+    - **Monitor continuously**: Track performance metrics in production
 
 ## Key Takeaways
 
 !!! summary "What We've Learned"
-    **Deployment Strategies:**
+    **Graph Structure Optimization:**
 
-    - **Local development**: Same code runs everywhere without modifications
-    - **Docker containerization**: Package applications for consistent deployment
-    - **Kubernetes orchestration**: Production-grade scaling and reliability
-    - **Jac Cloud integration**: Kubernetes-based deployment with built-in module management
+    - **Efficient relationships**: Well-designed edges and nodes improve traversal speed
+    - **Index strategy**: Cache frequently accessed data for faster retrieval
+    - **Memory management**: Batch processing and cleanup reduce memory footprint
+    - **Connection patterns**: Optimize graph topology for common access patterns
 
-    **Production Features:**
+    **Algorithm Optimization:**
 
-    - **Module management**: Dynamic loading of Python modules with resource control
-    - **RBAC security**: Proper service accounts and role-based access control
-    - **Health checks**: Monitor application health and readiness
-    - **Resource management**: Control CPU and memory usage effectively
-    - **Scaling strategies**: Manual and automatic scaling based on demand
-    - **Configuration management**: Secure and flexible environment configuration
+    - **Traversal strategies**: Choose BFS vs DFS based on your specific requirements
+    - **Caching patterns**: Strategic caching reduces redundant computations
+    - **Batch processing**: Handle large datasets efficiently with chunking
+    - **Early termination**: Stop processing when results are sufficient
 
-    **Monitoring and Maintenance:**
+    **Performance Monitoring:**
 
-    - **Metrics collection**: Track application performance and usage
-    - **Log aggregation**: Centralized logging for debugging and analysis
-    - **Resource monitoring**: Track module resource usage and optimization
-    - **Performance optimization**: Identify and resolve bottlenecks
-    - **Troubleshooting tools**: Use kubectl commands for debugging deployments
+    - **Built-in metrics**: Track execution time, memory usage, and throughput
+    - **Benchmarking**: Compare different implementation strategies objectively
+    - **Real-world testing**: Test with production-scale data and load patterns
+    - **Continuous profiling**: Monitor performance trends over time
 
-    **Best Practices:**
+    **Distributed Performance:**
 
-    - **Infrastructure as Code**: Version control your deployment configurations
-    - **Module optimization**: Configure appropriate resource limits for each module
-    - **Security hardening**: Implement security best practices at every layer
-    - **Namespace isolation**: Use dedicated namespaces for different environments
-    - **Progressive deployment**: Test in staging before production rollout
+    - **Cloud optimization**: Design for distributed execution and data locality
+    - **Scaling patterns**: Horizontal scaling through partitioning and parallelization
+    - **Resource efficiency**: Optimize for cloud computing cost and performance
+    - **Load balancing**: Distribute work evenly across available resources
 
 !!! tip "Try It Yourself"
-    Practice deployment by:
-    - Setting up the Jac Cloud deployment with your own Docker registry
-    - Experimenting with different module configurations and resource limits
-    - Implementing comprehensive monitoring and alerting systems
-    - Testing scaling behavior under different load conditions
-    - Creating CI/CD pipelines for automated deployment workflows
+    Apply performance optimization by:
+    - Profiling your graph applications to identify bottlenecks
+    - Implementing different caching strategies and measuring their impact
+    - Testing with larger datasets to understand scaling characteristics
+    - Optimizing walker traversal patterns for your specific use cases
 
-    Remember: Jac Cloud provides a production-ready platform with built-in best practices for JAC applications!
+    Remember: Performance optimization is an iterative process - measure, optimize, and verify!
 
 ---
 
-*Ready to optimize performance? Continue to [Chapter 20: Performance Optimization](chapter_19.md)!*
+*Ready to learn about migration strategies? Continue to [Chapter 21: Python to Jac Migration](chapter_20.md)!*
