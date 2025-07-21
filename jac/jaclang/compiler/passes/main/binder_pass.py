@@ -105,6 +105,7 @@ class BinderPass(UniPass):
             self.globals_stack.pop()
         super().exit_node(node)
 
+
     #########################################
     ## AtomTrailer and Symbol Chain Helpers ##
     #########################################
@@ -298,12 +299,28 @@ class BinderPass(UniPass):
         """Enter import statement."""
         if node.is_absorb:
             return None
-        if node.from_loc and self.prog.mod.main == self.ir_in:
+        # print('main mod is: ', self.prog.mod.main.name)
+        # print('self.ir_in: ', self.ir_in.name)
+        # print('node.from_loc: ', node.from_loc.unparse() if node.from_loc else 'None')
+        # print('2 ', self.prog.mod.main == self.ir_in)
+
+        if node.from_loc and self.prog.mod.main.source.file_path == self.ir_in.source.file_path:
             parsed_mod = self._parse_and_link_module(
                 module_path=node.from_loc.resolve_relative_path(),
                 symbol=node,
             )
-            print(f"Parsed module: {parsed_mod.name}")
+            if not parsed_mod:
+
+                self.log_error(
+                    f"Failed to parse and link module from import: {node.from_loc.resolve_relative_path()}"
+                )
+                return None
+            #link the from_loc module to the import
+            self.cur_scope.def_insert(
+                node.from_loc, imported=True, single_decl="import"
+            )
+
+            # print(f"Parsed module: {parsed_mod.name}")
             for mod_item in node.items:
                 if mod_item.alias:
                     # self.cur_scope.def_insert(
@@ -321,18 +338,15 @@ class BinderPass(UniPass):
                     # # exit()
                     # print('checkkk> ', mod_item.name_spec.sym_name)
                     # print('checkkk> ', mod_item.sym.decl)
-            if not parsed_mod:
-                self.log_error(
-                    f"Failed to parse and link module from import: {node.from_loc.resolve_relative_path()}"
-                )
-                return None
-        # for item in node.items:
-        #     if item.alias:
-        #         # self.cur_scope.def_insert(
-        #         #     item.alias, imported=True, single_decl="import"
-        #         # )
-        #     else:
-        #         self.cur_scope.def_insert(item, imported=True)
+        else:
+            # print('else: ', node.unparse())
+            for item in node.items:
+                if item.alias:
+                    self.cur_scope.def_insert(
+                        item.alias, imported=True, single_decl="import"
+                    )
+                else:
+                    self.cur_scope.def_insert(item, imported=True)
 
 
     def enter_test(self, node: uni.Test) -> None:
@@ -460,6 +474,23 @@ class BinderPass(UniPass):
         """Enter expression as item (for with statements)."""
         if node.alias:
             self._process_assignment_target(node.alias)
+
+    def enter_param_var(self, node: uni.ParamVar) -> None:
+        """Enter parameter variable."""
+        # add use for type_tag attr of ParamVar and hanlde atom trailer
+        # this if `node.type_tag` is for python as type is not mandatory  
+        if node.type_tag  and len(node.type_tag.kid)>=2 and isinstance(node.type_tag.kid[1], uni.AtomTrailer):
+            # print(f"ParamVar type_tag: {node.type_tag.unparse()}")
+            self.handle_symbol_chain(node.type_tag.kid[1], "use")
+        elif node.type_tag  and len(node.type_tag.kid)>=2 and isinstance(node.type_tag.kid[1], uni.AstSymbolNode):
+            if self._handle_builtin_symbol(node.type_tag.kid[1].sym_name, node.type_tag.kid[1]):
+                return
+            self.handle_simple_symbol(node.type_tag.kid[1], "use")
+        # add use for the name of ParamVar
+        if node.name_spec:
+            if self._handle_builtin_symbol(node.name_spec.sym_name, node.name_spec):
+                return
+            self.handle_simple_symbol(node.name_spec, "define")
 
     ############################
     ## Import Resolution Logic ##
@@ -601,7 +632,7 @@ class BinderPass(UniPass):
 
             return parsed_module
 
-        except Exception:
+        except Exception as e:
             # TODO
             self.log_error(f"Failed to parse module '{module_path}': {str(e)}")
             return None
@@ -637,6 +668,9 @@ class BinderPass(UniPass):
                 BinderPass(ir_in=mod, prog=self.prog)
 
         except Exception as e:
+            raise RuntimeError(
+                f"Failed to load builtins from {builtins_path}: {str(e)}"
+            ) from e
             self.log_error(f"Failed to load builtins: {str(e)}")
 
     def _is_builtin_symbol(self, symbol_name: str) -> bool:

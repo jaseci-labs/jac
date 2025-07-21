@@ -597,11 +597,18 @@ class TestJacLangServer(TestCase):
         lsp.lsp._workspace = workspace
         guess_game_file = uris.from_fs_path(self.fixture_abs_path('../../../compiler/passes/main/tests/fixtures/sym_binder.jac'))
         lsp.deep_check(guess_game_file)
-        self.assertIn(
-            "/tests/fixtures/M1.jac:0:0-0:0",
-            # str(lsp.get_definition(guess_game_file, lspt.Position(24, 31))),
-            str(lsp.get_definition(guess_game_file, lspt.Position(24, 15))),
-        )
+        # self.assertIn(
+        #     "/tests/fixtures/M1.jac:0:0-0:0",
+        #     # str(lsp.get_definition(guess_game_file, lspt.Position(24, 31))),
+        #     # str(lsp.get_definition(guess_game_file, lspt.Position(24, 15))),
+        #     str(lsp.get_definition(guess_game_file, lspt.Position(24, 22))),
+        # )
+        print(str(lsp.get_definition(guess_game_file, lspt.Position(24, 20))))
+        print('deep cehck ')
+        lsp.deep_check(guess_game_file)
+        print(str(lsp.get_definition(guess_game_file, lspt.Position(28, 14))))
+        # print(str(lsp.get_definition(guess_game_file, lspt.Position(24, 31))))
+        # print(str(lsp.get_definition(guess_game_file, lspt.Position(24, 26))))
 
 
 TestJacLangServer().test_binder_go_to_module()

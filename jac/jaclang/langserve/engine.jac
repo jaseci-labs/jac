@@ -45,7 +45,7 @@ class ModuleManager {
             }
         }
     }
-
+ 
     """Remove errors and warnings for a specific file from the lists."""
     def clear_alerts_for_file(self: ModuleManager, file_path_fs: str) -> None {
         self.program.errors_had =
@@ -436,7 +436,7 @@ class JacLangServer(JacProgram , LanguageServer) {
         if file_path_fs not in self.mod.hub {
             return None;
         }
-        print('file_path_fs: ', file_path_fs);
+        # print('file_path_fs: ', file_path_fs);
         sem_mgr = self.sem_managers.get(file_path_fs);
         if not sem_mgr {
             return None;
@@ -448,8 +448,9 @@ class JacLangServer(JacProgram , LanguageServer) {
         }
         node_selected = sem_mgr.static_sem_tokens[token_index][3];
         if node_selected {
-            print('node selected is: ', node_selected);
-            print('node selected sym is: ', node_selected.sym);
+            # print('node selected is: ', node_selected);
+            # print('node selected sym is: ', node_selected.sym);
+            # print('node selected.sym.sym_type is: ', node_selected.sym.sym_type);
             if (node_selected.sym.sym_type == SymbolType.MODULE) {
                 spec = node_selected.sym.decl.parent.resolve_relative_path();
                 if spec {
@@ -466,15 +467,15 @@ class JacLangServer(JacProgram , LanguageServer) {
                 }
             }
             if isinstance(node_selected.sym, uni.NameAtom) {
-                print('beofre name_of: ', node_selected);
+                # print('beofre name_of: ', node_selected);
                 node_selected = node_selected.name_of;
-                print('after name_of: ', node_selected);
+                # print('after name_of: ', node_selected);
             }
             elif isinstance(node_selected, uni.Name)
             and node_selected.parent
             and isinstance(node_selected.parent, uni.ModulePath)
              {
-                print('elif name: ', node_selected);
+                # print('elif name: ', node_selected);
                 spec = node_selected.parent.parent.abs_path;
                 if spec {
                     spec = spec[ 5 : ] if spec.startswith('File:') else spec;
@@ -491,29 +492,21 @@ class JacLangServer(JacProgram , LanguageServer) {
             } elif node_selected.parent
             and isinstance(node_selected.parent, uni.ModuleItem)
              {
-                print(
-                    f"'Warning: No definition found for '{node_selected.sym_name}'"
-                );
-                print('node_selected: ', node_selected);
-                print('node_selected.parent: ', node_selected.parent);
-                print('node_selected.parent.from_mod_path: ', node_selected.parent.from_mod_path);
+                # print(
+                #     f"'Warning: No definition found for '{node_selected.sym_name}'"
+                # );
+                # print('node_selected: ', node_selected);
+                # print('node_selected.parent: ', node_selected.parent);
+                # print('node_selected.parent.from_mod_path: ', node_selected.parent.from_mod_path);
                 path = node_selected.parent.from_mod_path.resolve_relative_path();
-                    # node_selected.parent.abs_path
-                    # or node_selected.parent.from_mod_path.abs_path
-                    # ;
-                print('path: ', path);
-                loc_range = (0, 0, 0, 0);
+                # print('path: ', path);
+                # print('node slelected sym is: ', node_selected.sym);
+                loc_range = utils.create_range(node_selected.sym.decl.loc);
                 if path and loc_range  {
                     path = path[ 5 : ] if path.startswith('File:') else path;
                     return lspt.Location(
                         uri=uris.from_fs_path(path),
-                        range=lspt.Range(
-                            start=lspt.Position(
-                                line=loc_range[0],
-                                character=loc_range[1]
-                            ),
-                            end=lspt.Position(line=loc_range[2], character=loc_range[3])
-                        )
+                        range=loc_range
                     );
                 }
             } elif isinstance(node_selected, uni.ElementStmt) {
@@ -634,6 +627,10 @@ class JacLangServer(JacProgram , LanguageServer) {
         self.show_message_log(message, lspt.MessageType.Error);
         self.show_message(message, lspt.MessageType.Error);
     }
+
+
+
+
 
     """Log a warning message."""
     def log_warning(self: JacLangServer, message: str) -> None {

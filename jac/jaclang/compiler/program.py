@@ -118,7 +118,20 @@ class JacProgram:
         with open(file_path, "r", encoding="utf-8") as file:
             use_str = file.read()
         mod_targ = self.parse_str(use_str, file_path)
+        import logging
+        from datetime import datetime
+        start1 = datetime.now()
         BinderPass(ir_in=mod_targ, prog=self)
+        logging.info(
+            f'BinderPass1 took {datetime.now() - start1} to run on {file_path}'
+        )
+        start2 = datetime.now()
+        BinderPass(ir_in=mod_targ, prog=self)
+        logging.info(
+            f'BinderPass2 took {datetime.now() - start2} to run on {file_path}'
+        )
+        # for mod in self.mod.hub.values():
+        #     print(mod.sym_pp())
         return mod_targ
 
     def build(self, file_path: str, use_str: str | None = None) -> uni.Module:

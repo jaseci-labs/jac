@@ -434,6 +434,8 @@ class UniScopeNode(UniNode):
     ) -> Optional[Symbol]:
         """Link to symbol."""
         if node.sym:
+            # if node.sym_name == 'cos':
+            #     print(f"Using symbol {node.sym_name} with sym: {node.sym}")
             return node.sym
         if not sym_table:
             sym_table = node.sym_tab

@@ -13,6 +13,7 @@ import from jaclang.settings { settings }
 import lsprotocol.types as lspt;
 
 
+
 with entry {
     server = JacLangServer();
 }
