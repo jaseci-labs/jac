@@ -126,6 +126,9 @@ This shift—from pulling data into centralized logic to pushing computation out
 
 Getting back to our graph structure, lets define a simple walker that will traverse our graph and gather the names of the nodes it visits. When it reaches the terminal node, it will stop and return the collected names as a string:
 
+
+### Creating a Walker
+
 First we define our walker archetype, that has a `input` field to store the names of the nodes it visits:
 ```jac
 walker PathWalker {
@@ -134,7 +137,12 @@ walker PathWalker {
 ```
 <br />
 
-Next, we define the methods that the walker will use to traverse the graph. The `start` method is the entry point for the walker, and it will begin visiting nodes from the root node. The `visit_node` method will be called for each node it visits, and it will append the node's name to the `input` field. Finally, the `visit_end` method will be called when it reaches the terminal node, and it will return the collected names:
+### Walker Abilities
+> Abilities are methods that execute automatically when certain events occur during graph traversal. They create reactive, context-aware behavior.
+
+Next, we define the methods that the walker will use to traverse the graph: we refer to these as "abilities." These abilities can be trigger when a walker visits and exits nodes in the graph. In our case, we will define three abilities: `start`, `visit_node`, and `visit_end` that will trigger when the walker encounters the `root`, `Node` and `EndNode` nodes respectively. We can use the `can` keyword to define these abilities while the `def` is used to define regular methods that the walker can call explicitly.
+
+The `start` ability is the entry point for the walker, and it will begin visiting nodes from the root node. The `visit_node` method will be called for each node it visits, and it will append the node's name to the `input` field. Finally, the `visit_end` method will be called when it reaches the terminal node, and it will return the collected names:
 
 ```jac
 walker PathWalker {
@@ -171,6 +179,23 @@ Let's walk through what each part means:
 - `visit [-->-->];`: Move along two forward edges in succession, allowing for deeper traversal into the graph.
 
 Jac supports more complex edge selectors as well which we'll explore in subsequent chapters. For now, the key takeaway is that `visit` combined with edge selectors allows walkers to navigate the graph structure dynamically, processing nodes and edges as they go.
+
+### Spawning the Walker
+Now that we have defined our walker, we can spawn it from the entry point of our program. This is done using the `spawn` keyword, which creates an instance of the walker and starts its traversal.
+
+```jac
+with entry {
+    root ++> Node(name="A")
+         ++> Node(name="B")
+         ++> END;
+
+    my_walker = PathWalker(input="Start walking") spawn root;
+
+    print(my_walker.input);
+}
+```
+<br />
+In this example, the walker is spawned from the `root` node, however, this can be spawned from any node in the graph. Conversely, nodes can also spawn walkers, allowing for more complex interactions and behaviors.
 
 
 ### Putting it All Together

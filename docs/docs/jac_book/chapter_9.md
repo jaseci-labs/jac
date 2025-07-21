@@ -440,6 +440,182 @@ visit [->:graded: score > 80:->];
 ```
 This pattern is especially useful when edges carry contextual data, such as timestamps, weights, relationships, or scores.
 
+## Delivering Messages Through the Graph
+---
+One of the strengths of Jac’s object-spatial model is how it allows computation to flow across structured environments, reacting dynamically to the type and attributes of nodes and edges. This makes it easy to model systems like classrooms, organizations, or networks where relationships and roles matter just as much as the data itself.
+
+Let’s look at a practical example: **delivering announcements through a classroom graph.** We'll explore how a message can travel through a network of students and teachers, with walkers responding differently based on the node types they encounter and logging metadata about the journey.
+
+### Modeling the Classroom
+To start, we define our node types—`Student` and `Teacher`—each with their own properties:
+
+```jac
+node Student {
+    has name: str;
+    has grade_level: int;
+    has messages: list[str] = [];
+}
+
+node Teacher {
+    has name: str;
+    has subject: str;
+}
+```
+Students will collect messages in a list, while teachers will simply acknowledge them.
+
+### A Simple Message Delivery Agent
+We then define a walker called `MessageDelivery`, which knows how to deliver messages differently depending on the node type:
+
+- When it visits a `Student`, it appends the message to their inbox.
+- When it visits a `Teacher`, it prints an acknowledgment.
+- It also logs each node it leaves using a generic `entry` clause, demonstrating Jac's ability to define **entry** and **exit** logic in walkers.
+
+```jac
+walker MessageDelivery {
+    has message: str;
+    has delivery_count: int = 0;
+    has visited_locations: list[str] = [];
+
+    can deliver_to_student with Student entry {
+        # ...
+    }
+
+    can deliver_to_teacher with Teacher entry {
+        # ...
+    }
+
+    can log_visit with entry {
+        # Triggered on exit
+    }
+}
+```
+<br />
+This pattern shows how **walkers** can react to the structure of the graph—invoking the right behavior based on the node they enter, and even logging or performing cleanup as they exit.
+
+### Graph-Aware Traversal with Edge Metadata
+We take things further with a second walker: `ClassroomMessenger`. This walker doesn't just deliver a message—it also:
+
+- Tracks which rooms it visits (by reading edge attributes),
+- Counts how many people it reached,
+- Traverses through connected nodes using directional edge traversal.
+
+To support this, we define a custom edge type called `InClass`, which includes a `room` attribute:
+
+```jac
+edge InClass {
+    has room: str;
+}
+```
+
+This allows us to encode not just relationships (e.g. “connected to”) but contextual information about those relationships—like being in the same physical classroom.
+
+### Putting It All Together
+Now we can put it all together in a real use case: sending an emergency announcement through a connected classroom of students and a teacher.
+
+```jac
+# Basic classroom nodes
+node Student {
+    has name: str;
+    has messages: list[str] = [];
+}
+
+node Teacher {
+    has name: str;
+    has subject: str;
+}
+
+walker MessageDelivery {
+    has message: str;
+    has delivery_count: int = 0;
+    has visited_locations: list[str] = [];
+
+    # Entry ability - triggered when entering any Student
+    can deliver_to_student with Student entry {
+        print(f"Delivering message to student {here.name}");
+        here.messages.append(self.message);
+        self.delivery_count += 1;
+        self.visited_locations.append(here.name);
+    }
+
+    # Entry ability - triggered when entering any Teacher
+    can deliver_to_teacher with Teacher entry {
+        print(f"Delivering message to teacher {here.name} ({here.subject})");
+        # Teachers just acknowledge the message
+        print(f"  {here.name} says: 'Message received!'");
+        self.delivery_count += 1;
+        self.visited_locations.append(here.name);
+    }
+
+    # Exit ability - triggered when leaving any node
+    can log_visit with entry {
+        node_type = type(here).__name__;
+        print(f"  Visited {node_type}");
+    }
+}
+
+edge InClass {
+    has room: str;
+}
+
+walker ClassroomMessenger {
+    has announcement: str;
+    has rooms_visited: set[str] = {};
+    has people_reached: int = 0;
+
+    can deliver_student with Student entry {
+        print(f" Student {here.name}: {self.announcement}");
+        self.people_reached += 1;
+
+        # Continue to connected nodes
+        visit [-->];
+    }
+
+    can deliver_teacher with Teacher entry {
+        print(f" Teacher {here.name}: {self.announcement}");
+        self.people_reached += 1;
+
+        # Continue to connected nodes
+        visit [-->];
+    }
+
+    can track_room with InClass entry {
+        room = here.room;
+        if room not in self.rooms_visited {
+            self.rooms_visited.add(room);
+            print(f" Now in {room}");
+        }
+    }
+
+    can summarize with Student exit {
+        # Only report once at the end
+        if len([-->]) == 0 {  # At a node with no outgoing connections
+            print(f" Delivery complete!");
+            print(f"   People reached: {self.people_reached}");
+            print(f"   Rooms visited: {list(self.rooms_visited)}");
+        }
+    }
+}
+
+with entry {
+    # Create classroom structure
+    alice = root ++> Student(name="Alice");
+    bob = root ++> Student(name="Bob");
+    charlie = root ++> Student(name="Charlie");
+    ms_jones = root ++> Teacher(name="Ms. Jones", subject="Science");
+
+    # Connect them in the same classroom
+    alice +>:InClass(room="Room 101"):+> bob;
+    bob +>:InClass(room="Room 101"):+> charlie;
+    charlie +>:InClass(room="Room 101"):+> ms_jones;
+
+    # Send a message through the classroom
+    messenger = ClassroomMessenger(announcement="Fire drill in 5 minutes");
+    alice[0] spawn messenger;
+}
+```
+<br />
+
+
 ## Wrapping Up
 ---
 In this chapter, we explored the foundational concepts of nodes and edges in Jac. We learned how to define nodes with properties, create edges to represent relationships, and navigate the graph using walkers. We also saw how to filter nodes and edges based on types and attributes, enabling powerful queries and interactions.
