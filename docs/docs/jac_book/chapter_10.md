@@ -7,11 +7,13 @@ Now that you understand basic walkers and abilities, let's explore advanced patt
 
 ## Advanced Filtering
 ---
-Advanced filtering allows you to create sophisticated queries that combine multiple criteria, making complex graph searches simple and readable.
+In earlier chapters, we explored how to navigate and filter nodes based on type and attributes, as well as how to filter edges by type and metadata. These foundational operations enable us to traverse structured graphs intelligently. In this section, we’ll take those concepts further by applying them to a real-world-inspired scenario: a social graph that models people and their relationships.
 
 
+### Usecase: Advanced Filtering in Social Networks
 
-### Property-Based Filtering
+### Modeling Relationships with Attributes
+We define a simple `Person` node type, representing individuals in a network:
 
 ```jac
 node Person {
@@ -19,51 +21,83 @@ node Person {
     has age: int;
     has city: str;
 }
+```
+And a custom edge type `FriendsWith`, representing social or family ties. This edge includes:
+- `since`: the year the relationship began
+- `closeness`: an integer score (1–10) to reflect relationship strength
 
+```jac
 edge FriendsWith {
     has since: str;
-    has closeness: int; # 1-10 scale
-}
-
-with entry {
-    # Create a social network
-    alice = root ++> Person(name="Alice", age=25, city="NYC");
-    bob = root ++> Person(name="Bob", age=30, city="SF");
-    charlie = root ++> Person(name="Charlie", age=22, city="NYC");
-    diana = root ++> Person(name="Diana", age=28, city="LA");
-
-    # Create friendships
-    alice +>:FriendsWith(since="2020", closeness=8):+> bob;
-    alice +>:FriendsWith(since="2021", closeness=9):+> charlie;
-    bob +>:FriendsWith(since="2019", closeness=6):+> diana;
-
-    # Find all young people in NYC (age < 25)
-    nyc = [root-->(`?Person)](?city == "NYC");
-    print("People in NYC:");
-    for person in nyc {
-        print(f"  {person.name}, age {person.age}");
-    }
-    young_nyc = nyc(?age < 25);
-    print("Young people in NYC:");
-    for person in young_nyc {
-        print(f"  {person.name}, age {person.age}");
-    }
-
-    # Find Alice's close friends (closeness >= 8)
-    close_friends = [alice->:FriendsWith:closeness >= 8:->(`?Person)];
-    print(f"Alice's close friends:");
-    for friend in close_friends {
-        print(f"  {friend.name}");
-    }
-
-    # Find all friendships that started before 2021
-    old_friendships = [root->:FriendsWith:since < "2021":->];
-    print(f"Old friendships: {len(old_friendships)} found");
+    has closeness: int;  # 1–10 scale
 }
 ```
+These edge attributes allow us to represent not just connections, but contextual strength and history—a key part of reasoning over real-world graphs.
 
+### Building the Graph
+We construct a small family network, establishing strong (`closeness = 10`) `FriendsWith` edges between parents and children:
 
-### Complex Relationship Filtering
+```jac
+with entry {
+    # Create extended family network
+    john = root ++> Person(name="John", age=45, city="NYC");
+    emma = root ++> Person(name="Emma", age=43, city="NYC");
+    alice = root ++> Person(name="Alice", age=20, city="SF");
+    bob = root ++> Person(name="Bob", age=18, city="NYC");
+
+    # Family relationships
+    john +>:FriendsWith(since="1995", closeness=10):+> emma;
+    [john[0], emma[0]] +>:FriendsWith(since="2004", closeness=10):+> alice;
+    [john[0], emma[0]] +>:FriendsWith(since="2006", closeness=10):+> bob;
+```
+
+### Query 1: Filtering by Edge and Node Attributes
+Let’s find all of John’s close family members under the age of 25. We’ll filter for:
+
+- `FriendsWith` **edges with** `closeness == 10`
+- `Person` **nodes where** `age < 25`
+
+```jac
+    young_family = [john[0]->:FriendsWith:closeness == 10:->(`?Person)](?age < 25);
+    print("John's young family members:");
+    for person in young_family {
+        print(f"  {person.name}, age {person.age}");
+    }
+```
+This combines edge filtering and post-traversal node filtering to answer a nuanced question: *Which people closely connected to John are young?*
+
+### Query 2: Location-Based Filtering
+Next, we want to find all people connected to John who currently live in **New York City**. This time, we don’t care about edge closeness—we’re only filtering the **target nodes**:
+
+```jac
+    nyc_connections = [john[0]->:FriendsWith:->(`?Person)](?city == "NYC");
+    print(f"John's NYC connections:");
+    for person in nyc_connections {
+        print(f"  {person.name}");
+    }
+```
+This is a great example of layered filtering, where edge traversal is followed by node-level projection.
+
+### Query 3: Friends of Friends
+Finally, we can go one step further and perform a 2-hop traversal, discovering John’s extended social network:
+
+```jac
+    friends_of_friends = [john[0]->:FriendsWith:->->:FriendsWith:->(`?Person)];
+    print(f"Friend of friends: {len(friends_of_friends)} found");
+    for person in friends_of_friends {
+        print(f"  {person.name}");
+    }
+}
+```
+This query:
+- Starts at John
+- Follows one FriendsWith edge
+- Then follows another from the intermediate person
+- Collects any resulting people
+This is equivalent to saying: “Show me who my friends are connected to,” and lays the foundation for building more advanced features like social distance estimation, recommendation systems, or community clustering.
+
+### Putting It All Together
+Here’s the complete code for our advanced filtering example:
 
 ```jac
 node Person {
@@ -111,7 +145,134 @@ with entry {
     }
 }
 ```
+<br />
 
+```terminal
+$ jac run foaf.jac
+
+John's young family members:
+  Alice, age 20
+  Bob, age 18
+John's NYC connections:
+  Emma
+  Bob
+Friend of friends: 2 found
+  Alice
+  Bob
+
+```
+
+## Traversal Strategies: BFS and DFS with Walkers
+---
+In previous sections, we focused on how to filter nodes and edges during traversal. Now, we turn our attention to how the graph is actually traversed—that is, the order in which nodes are visited.
+
+Two classic traversal strategies are:
+
+- Breadth-First Search (BFS): visits all immediate neighbors before going deeper.
+- Depth-First Search (DFS): dives deep along one path before backtracking.
+
+In Jac, we can control traversal behavior explicitly through walker design, particularly by modifying how the `visit` command consumes nodes.
+
+Let’s walk through an example that compares BFS and DFS in a family tree graph.
+
+### The Graph: A Family Tree
+
+We define a simple `Person` node with a `name` and a `level` attribute. The level indicates how far the node is from the root node in terms of generations.
+
+```jac
+node Person {
+    has name: str;
+    has level: int = 0;
+}
+
+edge ParentOf {}
+```
+We then construct a simple family tree with `ParentOf` edges connecting generations.
+
+### BFS: Level-by-Level Traversal
+In our `BFSWalker`, the traversal is performed using default queue semantics. This means that all neighbors at the current level are visited before any of their children:
+
+```jac
+walker BFSWalker {
+    can traverse with Person entry {
+        print(f"BFS visiting: {here.name} (level {here.level})");
+
+        children = [->:ParentOf:->(`?Person)];
+        for child in children {
+            child.level = here.level + 1;
+        }
+        visit children;  # Queue-based order (breadth-first)
+    }
+}
+```
+
+### DFS: Deep Dive Traversal
+In contrast, the `DFSWalker` uses the `:0:` modifier in the `visit` statement, which causes the walker to treat the visit list as a stack, resulting in depth-first behavior:
+
+```jac
+walker DFSWalker {
+    can traverse with Person entry {
+        print(f"DFS visiting: {here.name} (level {here.level})");
+
+        children = [->:ParentOf:->(`?Person)];
+        for child in children {
+            child.level = here.level + 1;
+        }
+        visit :0: children;  # Stack-based order (depth-first)
+    }
+}
+```
+
+### Running the Walkers
+We create a simple family tree and spawn both walkers to see how they traverse the graph:
+```jac
+with entry {
+    # Create family tree
+    grandpa = root ++> Person(name="Grandpa");
+    dad = root ++> Person(name="Dad");
+    mom = root ++> Person(name="Mom");
+    child1 = root ++> Person(name="Alice");
+    child2 = root ++> Person(name="Bob");
+    grandchild = root ++> Person(name="Charlie");
+
+    # Create relationships
+    grandpa +>:ParentOf:+> dad;
+    grandpa +>:ParentOf:+> mom;
+    dad +>:ParentOf:+> child1;
+    mom +>:ParentOf:+> child2;
+    child1 +>:ParentOf:+> grandchild;
+
+    print("=== Breadth-First Search ===");
+    grandpa[0] spawn BFSWalker();
+
+    # Reset levels
+    all_people = [root-->(`?Person)];
+    for person in all_people {
+        person.level = 0;
+    }
+
+    print("=== Depth-First Search ===");
+    grandpa[0] spawn DFSWalker();
+}
+```
+
+```terminal
+$ jac run family_tree.jac
+=== Breadth-First Search ===
+BFS visiting: Grandpa (level 0)
+BFS visiting: Dad (level 1)
+BFS visiting: Mom (level 1)
+BFS visiting: Alice (level 2)
+BFS visiting: Bob (level 2)
+BFS visiting: Charlie (level 3)
+=== Depth-First Search ===
+DFS visiting: Grandpa (level 0)
+DFS visiting: Dad (level 1)
+DFS visiting: Alice (level 2)
+DFS visiting: Charlie (level 3)
+DFS visiting: Mom (level 1)
+DFS visiting: Bob (level 2)
+```
 
 ## Visit Patterns
 ---
@@ -181,7 +342,7 @@ with entry {
         person.level = 0;
     }
 
-    print("\n=== Depth-First Search ===");
+    print("=== Depth-First Search ===");
     grandpa[0] spawn DFSWalker();
 }
 ```

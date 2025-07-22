@@ -440,6 +440,61 @@ visit [->:graded: score > 80:->];
 ```
 This pattern is especially useful when edges carry contextual data, such as timestamps, weights, relationships, or scores.
 
+
+#### Full Example
+
+```jac
+node Person {
+    has name: str;
+    has age: int;
+    has city: str;
+}
+
+edge FriendsWith {
+    has since: str;
+    has closeness: int; # 1-10 scale
+}
+
+with entry {
+    # Create a social network
+    alice = root ++> Person(name="Alice", age=25, city="NYC");
+    bob = root ++> Person(name="Bob", age=30, city="SF");
+    charlie = root ++> Person(name="Charlie", age=22, city="NYC");
+    diana = root ++> Person(name="Diana", age=28, city="LA");
+
+    # Create friendships
+    alice +>:FriendsWith(since="2020", closeness=8):+> bob;
+    alice +>:FriendsWith(since="2021", closeness=9):+> charlie;
+    bob +>:FriendsWith(since="2019", closeness=6):+> diana;
+
+    # Find all young people in NYC (age < 25)
+    nyc = [root-->(`?Person)](?city == "NYC");
+    print("People in NYC:");
+    for person in nyc {
+        print(f"  {person.name}, age {person.age}");
+    }
+    young_nyc = nyc(?age < 25);
+    print("Young people in NYC:");
+    for person in young_nyc {
+        print(f"  {person.name}, age {person.age}");
+    }
+
+    # Find Alice's close friends (closeness >= 8)
+    close_friends = [alice->:FriendsWith:closeness >= 8:->(`?Person)];
+    print(f"Alice's close friends:");
+    for friend in close_friends {
+        print(f"  {friend.name}");
+    }
+
+    # Find all friendships that started before 2021
+    old_friendships = [root->:FriendsWith:since < "2021":->];
+    print(f"Old friendships: {len(old_friendships)} found");
+}
+```
+<br />
+
+
+
 ## Delivering Messages Through the Graph
 ---
 One of the strengths of Jac’s object-spatial model is how it allows computation to flow across structured environments, reacting dynamically to the type and attributes of nodes and edges. This makes it easy to model systems like classrooms, organizations, or networks where relationships and roles matter just as much as the data itself.
