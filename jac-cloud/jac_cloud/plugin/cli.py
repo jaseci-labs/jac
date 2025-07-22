@@ -1,6 +1,7 @@
 """Module for registering CLI plugins for jaseci."""
 
 from getpass import getpass
+from os import environ
 from os.path import split
 from pickle import load
 from typing import Any
@@ -53,8 +54,6 @@ class JacCmd:
         def create_system_admin(
             filename: str, email: str = "", password: str = ""
         ) -> str:
-            from jaclang import JacMachineInterface as Jac
-
             base, mod = split(filename)
             base = base if base else "./"
             mod = mod[:-4]
@@ -162,3 +161,60 @@ class JacCmd:
                         raise
 
             raise Exception("Can't process registration. Please try again!")
+
+        @cmd_registry.register
+        def cloud_test(
+            filepath: str,
+            test_name: str = "",
+            filter: str = "",
+            xit: bool = False,
+            maxfail: int = None,  # type:ignore
+            directory: str = "",
+            verbose: bool = False,
+            use_db: bool = False,
+        ) -> None:
+            """Run the test suite in the specified .jac file or directory.
+
+            Executes test functions in Jac files to verify code correctness. Tests are
+            identified by functions with names starting with 'test_'. Provides various
+            options to control test execution and reporting.
+
+            Args:
+                filepath: Path to the .jac file or directory containing tests
+                test_name: Run a specific test (without the 'test_' prefix)
+                filter: Filter test files using Unix shell style patterns
+                xit: Stop running tests as soon as an error is found
+                maxfail: Stop running tests after specified number of failures
+                directory: Run tests from the specified directory
+                verbose: Show detailed test information and results
+
+            Examples:
+                jac test                     # Run all tests in current directory
+                jac test mytest.jac          # Run all tests in mytest.jac
+                jac test --test_name my_test # Run only test_my_test
+                jac test --directory tests/  # Run all tests in tests/ directory
+                jac test --filter "*_unit_*" # Run tests matching the pattern
+                jac test --xit               # Stop on first failure
+                jac test --verbose           # Show detailed output
+            """
+            FastAPI.enable()
+            JaseciContext.create(None)
+
+            if not use_db:
+                del environ["DATABASE_HOST"]
+                environ["DATABASE_NAME"] = "test"
+                del environ["SOCKET_REDIS_HOST"]
+                del environ["REDIS_HOST"]
+
+            failcount = Jac.run_test(
+                filepath=filepath,
+                func_name=("test_" + test_name) if test_name else None,
+                filter=filter,
+                xit=xit,
+                maxfail=maxfail,
+                directory=directory,
+                verbose=verbose,
+            )
+
+            if failcount:
+                raise SystemExit(f"Tests failed: {failcount}")

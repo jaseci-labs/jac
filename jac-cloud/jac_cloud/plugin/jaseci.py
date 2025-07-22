@@ -2,7 +2,9 @@
 
 from concurrent.futures import Future
 from contextlib import suppress
+from functools import wraps
 from typing import Callable, Type
+from unittest import FunctionTestCase
 
 from jaclang.runtimelib.archetype import Archetype, DataSpatialDestination
 from jaclang.runtimelib.machine import (
@@ -10,6 +12,7 @@ from jaclang.runtimelib.machine import (
     JacMachineInterface as Jac,
     hookimpl,
 )
+from jaclang.runtimelib.test import JacTestCheck
 
 from ..core.archetype import (
     AccessLevel,
@@ -29,6 +32,39 @@ from ..core.archetype import (
 )
 from ..core.context import ExecutionContext, JaseciContext
 from ..jaseci.main import FastAPI
+
+
+def wrap_test(test_func: Callable) -> Callable:
+    """Append context builder."""
+
+    @wraps(test_func)
+    def test(*args: object, **kwargs: object) -> object:
+        ctx = JaseciContext.create(None)
+        result = test_func(*args, **kwargs)
+        ctx.close()
+
+        return result
+
+    return test
+
+
+def add_test(filepath: str, func_name: str, test_func: Callable) -> None:
+    """Create a new test."""
+    if filepath and filepath.endswith(".test.jac"):
+        filepath = filepath[:-9]
+    elif filepath and filepath.endswith(".jac"):
+        filepath = filepath[:-4]
+
+    if filepath not in JacTestCheck.test_suite_path:
+        JacTestCheck.test_suite_path[filepath] = []
+
+    test_func = wrap_test(test_func)
+
+    test_case = FunctionTestCase(test_func)
+    JacTestCheck.test_suite_path[filepath].append(
+        JacTestCheck.TestSuite(test_case=test_case, func_name=func_name)
+    )
+    JacTestCheck.test_suite.addTest(test_case)
 
 
 class JacAccessValidationPlugin:
@@ -226,6 +262,8 @@ class JacPlugin(JacAccessValidationPlugin, JacNodePlugin, JacEdgePlugin):
 
         Jac.Root = Root  # type: ignore[assignment]
         Jac.GenericEdge = GenericEdge  # type: ignore[assignment]
+
+        JacTestCheck.add_test = add_test
 
     @staticmethod
     @hookimpl
