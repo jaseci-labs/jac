@@ -11,257 +11,202 @@ In this chapter, we'll explore Jac's automatic persistence system and the fundam
 ---
 
 ## What is Automatic Persistence?
+---
 
 Traditional programming requires explicit database setup, connection management, and data serialization. Jac eliminates this complexity by making persistence a core language feature when running as a service. When you use `jac serve` with a database backend, nodes and their connections automatically persist across requests and service restarts.
 
-!!! warning "Persistence Requirements"
-    - **Database Backend**: Persistence requires `jac serve` with a configured database
-    - **Service Mode**: `jac run` executions are stateless and don't persist data
-    - **Root Connection**: Nodes must be connected to root to persist
-    - **API Context**: Persistence works within the context of API endpoints
-
-!!! success "Persistence Benefits"
-    - **Zero Configuration**: No manual database schema or ORM setup
-    - **Automatic State**: Data persists without explicit save/load operations
-    - **Graph Integrity**: Relationships between nodes are maintained
-    - **Type Safety**: Persistent data maintains type information
-    - **Instant Recovery**: Services resume exactly where they left off
-
-### Traditional vs Jac Persistence
-
-!!! example "Persistence Comparison"
-    === "Traditional Approach"
-        ```python
-        # counter_api.py - Manual database setup required
-        from flask import Flask, jsonify, request
-        import sqlite3
-        import os
-
-        app = Flask(__name__)
-
-        class Counter:
-            def __init__(self):
-                self.db_path = "counter.db"
-                self.init_db()
-
-            def init_db(self):
-                conn = sqlite3.connect(self.db_path)
-                cursor = conn.cursor()
-                cursor.execute('''
-                    CREATE TABLE IF NOT EXISTS counter (
-                        id INTEGER PRIMARY KEY,
-                        value INTEGER
-                    )
-                ''')
-                cursor.execute('SELECT value FROM counter WHERE id = 1')
-                if not cursor.fetchone():
-                    cursor.execute('INSERT INTO counter (id, value) VALUES (1, 0)')
-                conn.commit()
-                conn.close()
-
-            def get_value(self):
-                conn = sqlite3.connect(self.db_path)
-                cursor = conn.cursor()
-                cursor.execute('SELECT value FROM counter WHERE id = 1')
-                value = cursor.fetchone()[0]
-                conn.close()
-                return value
-
-            def increment(self):
-                conn = sqlite3.connect(self.db_path)
-                cursor = conn.cursor()
-                cursor.execute('UPDATE counter SET value = value + 1 WHERE id = 1')
-                conn.commit()
-                conn.close()
-                return self.get_value()
-
-        counter = Counter()
-
-        @app.route('/counter')
-        def get_counter():
-            return jsonify({"value": counter.get_value()})
-
-        @app.route('/counter/increment', methods=['POST'])
-        def increment_counter():
-            new_value = counter.increment()
-            return jsonify({"value": new_value})
-
-        if __name__ == "__main__":
-            app.run(debug=True)
-        ```
-
-    === "Jac Automatic Persistence"
-        ```jac
-        # main.jac - No database setup needed
-        node Counter {
-            has value: int = 0;
-
-            def increment() -> int {
-                self.value += 1;
-                return self.value;
-            }
-
-            def get_value() -> int {
-                return self.value;
-            }
-        }
-
-        walker get_counter {
-            obj __specs__ {
-                static has auth: bool = False;
-            }
-
-            can get_counter_endpoint with `root entry {
-                counter_nodes = [root --> Counter];
+### Persistence Benefits
+- **Zero Configuration**: No manual database schema or ORM setup
+- **Automatic State**: Data persists without explicit save/load operations
+- **Graph Integrity**: Relationships between nodes are maintained
+- **Type Safety**: Persistent data maintains type information
+- **Instant Recovery**: Services resume exactly where they left off
 
 
-                if not counter_nodes {
-                    counter = Counter();
-                    root ++> counter;
-                } else {
-                    counter = counter_nodes[0];
-                }
-
-                report {"value": counter.get_value()};
-            }
-        }
-
-        walker increment_counter {
-            obj __specs__ {
-                static has auth: bool = False;
-            }
-
-            can increment_counter_endpoint with `root entry {
-                counter_nodes = [root --> Counter];
-                if not counter_nodes {
-                    counter = Counter();
-                    root ++> counter;
-                } else {
-                    counter = counter_nodes[0];
-                }
-                new_value = counter.increment();
-                report {"value": new_value};
-            }
-        }
-        ```
-
+## Simple Counter Application
 ---
+To illustrate Jac's persistence, we'll create a simple counter application. This application will allow us to increment a counter, reset it, and check its value. The key feature is that the counter's state will persist across service restarts, thanks to Jac's automatic persistence.
 
-## Setting Up a Jac Cloud Project
 
-To demonstrate persistence, we need to create a proper jac-cloud project structure:
+### Counter Node Definition
 
-!!! example "Project Structure"
-    ```
-    counter-app/
-    ├── .env                 # Environment configuration
-    ├── main.jac            # Main application logic
-    ├── server.py           # Optional custom server setup
-    └── requirements.txt    # Python dependencies
-    ```
+First, we define a `Counter` node that holds an initial counter property that is set to 0 when the node is created. When the jac program is finished executing, this node will be automatically persisted in the database as long as it is connected to the `root` node.
 
-Let's create our counter application:
+```jac
+node Counter {
+    has value: int = 0;
+    has status: str = "created";
+    has created_at: str by postinit;
 
-!!! example "Complete Counter Project"
-    === ".env"
-        ```bash
-        # .env - Database configuration
-        DATABASE_URL=sqlite:///./app.db
-        SECRET_KEY=your-secret-key-here
-        ```
+    def postinit() {
+        self.created_at = datetime.now().isoformat();
+    }
 
-    === "main.jac"
-        ```jac
-        # main.jac
-        node Counter {
-            has value: int = 0;
-            has created_at: str;
+    def increment() -> int {
+        self.value += 1;
+        return self.value;
+    }
 
-            can increment() -> int {
-                self.value += 1;
-                return self.value;
-            }
+    def reset() -> int {
+        self.value = 0;
+        return self.value;
+    }
+}
+```
 
-            can reset() -> int {
-                self.value = 0;
-                return self.value;
-            }
+### Walkers for Counter Operations
+We will create a `CounterAgent` walker that provides methods to get the counter, increment it, and reset it. This walker has a method that checks if a `Counter` node already exists in the graph. If it does, it returns that node; if not, it creates a new `Counter` node and connects it to the `root`.
+
+
+```jac
+walker CounterAgent{
+    obj __specs__ {
+        static has auth: bool = False;
+    }
+
+    def get_counter() -> Counter {
+        counter_nodes = [root --> Counter];
+        counter: Counter = None;
+
+        if not counter_nodes {
+            counter = Counter();
+            root ++> counter;
+        } else {
+            counter = counter_nodes[0];
         }
 
-        walker get_counter {
-            can get_counter_endpoint with `root entry {
-                counter_nodes = [root --> Counter];
-                if not counter_nodes {
-                    counter = Counter(created_at="2024-01-15");
-                    root ++> counter;
-                    report {"value": 0, "status": "created"};
-                } else {
-                    counter = counter_nodes[0];
-                    report {"value": counter.value, "status": "existing"};
-                }
-            }
+        return counter;
+    }
+}
+```
+
+#### Get Counter Endpoint
+The `get_counter` method retrieves the counter value and its status. If the counter is newly created, it sets the status to "created"; otherwise, it returns the existing counter's value and status.
+
+```jac
+walker get_counter(CounterAgent) {
+    can get_counter_endpoint with `root entry {
+        counter: Counter = self.get_counter();
+
+        if counter.status == "created" {
+            counter.status = "existing";
+            report {"value": counter.value, "status": "created"};
+        } else {
+            report {"value": counter.value, "status": counter.status};
         }
+    }
+}
+```
 
-        walker increment_counter {
-            can increment_counter_endpoint with `root entry {
-                counter_nodes = [root --> Counter];
-                if not counter_nodes {
-                    counter = Counter(created_at="2024-01-15");
-                    root ++> counter;
-                } else {
-                    counter = counter_nodes[0];
-                }
-                new_value = counter.increment();
-                report {"value": new_value, "previous": new_value - 1};
-            }
+#### Increment Counter Endpoint
+The `increment_counter` method increments the counter's value and returns the new value along with the previous value.
+
+```jac
+walker increment_counter(CounterAgent) {
+    can increment_counter_endpoint with `root entry {
+        counter: Counter = self.get_counter();
+
+        new_value = counter.increment();
+        report {"value": new_value, "previous": new_value - 1};
+    }
+}
+```
+
+#### Reset Counter Endpoint
+The `reset_counter` method resets the counter's value to 0 and returns the reset status.
+
+```jac
+walker reset_counter(CounterAgent) {
+    can reset_counter_endpoint with `root entry {
+        counter_nodes = [root --> Counter];
+        if counter_nodes {
+            counter = counter_nodes[0];
+            counter.reset();
+            report {"value": counter.value, "status": "reset"};
+        } else {
+            report {"value": 0, "status": "no_counter_found"};
         }
+    }
+}
+```
 
-        walker reset_counter {
-            can reset_counter_endpoint with `root entry {
-                counter_nodes = [root --> Counter];
-                if counter_nodes {
-                    counter = counter_nodes[0];
-                    counter.reset();
-                    report {"value": 0, "status": "reset"};
-                } else {
-                    report {"value": 0, "status": "no_counter_found"};
-                }
-            }
+### Complete Jac Code for Counter Application
+
+```jac
+import from datetime { datetime }
+
+# main.jac
+node Counter {
+    has value: int = 0;
+    has created_at: str by postinit;
+
+    def postinit() {
+        self.created_at = datetime.now().isoformat();
+    }
+
+    def increment() -> int {
+        self.value += 1;
+        return self.value;
+    }
+
+    def reset() -> int {
+        self.value = 0;
+        return self.value;
+    }
+}
+
+walker CounterAgent{
+    obj __specs__ {
+        static has auth: bool = False;
+    }
+}
+
+walker get_counter(CounterAgent) {
+    can get_counter_endpoint with `root entry {
+        counter_nodes = [root --> Counter];
+        if not counter_nodes {
+            counter = Counter();
+            root ++> counter;
+            report {"value": 0, "status": "created"};
+        } else {
+            counter = counter_nodes[0];
+            report {"value": counter.value, "status": "existing"};
         }
-        ```
+    }
+}
 
-    === "requirements.txt"
-        ```
-        jaclang
-        fastapi
-        uvicorn
-        python-dotenv
-        ```
+walker increment_counter(CounterAgent) {
+    can increment_counter_endpoint with `root entry {
+        counter_nodes = [root --> Counter];
+        if not counter_nodes {
+            counter = Counter();
+            root ++> counter;
+        } else {
+            counter = counter_nodes[0];
+        }
+        new_value = counter.increment();
+        report {"value": new_value, "previous": new_value - 1};
+    }
+}
 
----
+walker reset_counter(CounterAgent) {
+    can reset_counter_endpoint with `root entry {
+        counter_nodes = [root --> Counter];
+        if counter_nodes {
+            counter = counter_nodes[0];
+            counter.reset();
+            report {"value": 0, "status": "reset"};
+        } else {
+            report {"value": 0, "status": "no_counter_found"};
+        }
+    }
+}
+```
 
-## The Root Node Concept
-
-The root node is Jac's fundamental concept for persistent data organization. When running with `jac serve`, every request has access to a special `root` node that serves as the entry point for all persistent graph structures.
-
-### Understanding Root Node
-
-!!! info "Root Node Properties"
-    - **Request Context**: Available in every API request when using jac serve
-    - **Persistence Gateway**: Starting point for all persistent data
-    - **Graph Anchor**: All persistent nodes must be reachable from root
-    - **Automatic Creation**: Exists automatically with database backend
-    - **Transaction Boundary**: Changes persist at the end of each request
 
 ### Running the Service
 
 ```bash
-# Navigate to project directory
-cd counter-app
-
-# Install dependencies
-pip install -r requirements.txt
-
 # Start the service with database persistence
 jac serve main.jac
 
@@ -308,106 +253,105 @@ curl -X POST http://localhost:8000/walker/get_counter \
 !!! tip "Persistence in Action"
     Notice how the counter value persists between requests and even service restarts when using `jac serve` with a database!
 
----
 
 ## State Consistency
-
+---
 Jac maintains state consistency through its graph-based persistence model when running as a service. All connected nodes and their relationships are automatically maintained across requests and service restarts.
 
 ### Enhanced Counter with History
 
 Let's enhance our counter to track increment history:
 
-!!! example "Counter with History Tracking"
-    ```jac
-    # main.jac - Enhanced with history
-    import from datetime { datetime }
 
-    node Counter {
-        has created_at: str;
-        has value: int = 0;
+```jac
+# main.jac - Enhanced with history
+import from datetime { datetime }
 
-        def increment() -> int {
-            old_value = self.value;
-            self.value += 1;
+node Counter {
+    has created_at: str;
+    has value: int = 0;
 
-            # Create history entry
-            history = HistoryEntry(
-                timestamp=str(datetime.now()),
-                old_value=old_value,
-                new_value=self.value
-            );
-            self ++> history;
-            return self.value;
-        }
+    def increment() -> int {
+        old_value = self.value;
+        self.value += 1;
 
-        def get_history() -> list[dict] {
-            history_nodes = [self --> HistoryEntry];
-            return [
-                {
-                    "timestamp": h.timestamp,
-                    "old_value": h.old_value,
-                    "new_value": h.new_value
-                }
-                for h in history_nodes
-            ];
-        }
+        # Create history entry
+        history = HistoryEntry(
+            timestamp=str(datetime.now()),
+            old_value=old_value,
+            new_value=self.value
+        );
+        self ++> history;
+        return self.value;
     }
 
-    node HistoryEntry {
-        has timestamp: str;
-        has old_value: int = 0;
-        has new_value: int = 0;
-    }
-
-    walker get_counter_with_history {
-        obj __specs__ {
-            static has auth: bool = False;
-        }
-
-        can get_counter_with_history_endpoint with `root entry {
-            counter_nodes = [root --> Counter];
-            if not counter_nodes {
-                counter = Counter(created_at=str(datetime.now()));
-                root ++> counter;
-                report {
-                    "value": 0,
-                    "status": "created",
-                    "history": []
-                };
-            } else {
-                counter = counter_nodes[0];
-                report {
-                    "value": counter.value,
-                    "status": "existing",
-                    "history": counter.get_history()
-                };
+    def get_history() -> list[dict] {
+        history_nodes = [self --> HistoryEntry];
+        return [
+            {
+                "timestamp": h.timestamp,
+                "old_value": h.old_value,
+                "new_value": h.new_value
             }
-        }
+            for h in history_nodes
+        ];
+    }
+}
+
+node HistoryEntry {
+    has timestamp: str;
+    has old_value: int = 0;
+    has new_value: int = 0;
+}
+
+walker get_counter_with_history {
+    obj __specs__ {
+        static has auth: bool = False;
     }
 
-    walker increment_with_history {
-        obj __specs__ {
-            static has auth: bool = False;
-        }
-
-        can increment_with_history_endpoint with `root entry {
-            counter_nodes = [root --> Counter];
-            if not counter_nodes {
-                counter = Counter(created_at=str(datetime.now()));
-                root ++> counter;
-            } else {
-                counter = counter_nodes[0];
-            }
-
-            new_value = counter.increment();
+    can get_counter_with_history_endpoint with `root entry {
+        counter_nodes = [root --> Counter];
+        if not counter_nodes {
+            counter = Counter(created_at=str(datetime.now()));
+            root ++> counter;
             report {
-                "value": new_value,
+                "value": 0,
+                "status": "created",
+                "history": []
+            };
+        } else {
+            counter = counter_nodes[0];
+            report {
+                "value": counter.value,
+                "status": "existing",
                 "history": counter.get_history()
             };
         }
     }
-    ```
+}
+
+walker increment_with_history {
+    obj __specs__ {
+        static has auth: bool = False;
+    }
+
+    can increment_with_history_endpoint with `root entry {
+        counter_nodes = [root --> Counter];
+        if not counter_nodes {
+            counter = Counter(created_at=str(datetime.now()));
+            root ++> counter;
+        } else {
+            counter = counter_nodes[0];
+        }
+
+        new_value = counter.increment();
+        report {
+            "value": new_value,
+            "history": counter.get_history()
+        };
+    }
+}
+```
 
 ### Testing History Persistence
 
@@ -442,126 +386,124 @@ curl -X POST http://localhost:8000/walker/get_counter_with_history \
 # All history entries remain intact
 ```
 
----
-
 ## Building Stateful Applications
-
+---
 The automatic persistence enables building sophisticated stateful applications. Let's create a multi-counter management system:
 
-!!! example "Multi-Counter Management System"
-    ```jac
-    # main.jac - Multi-counter system
-    import from datetime { datetime }
 
-    node CounterManager {
-        has created_at: str;
+```jac
+# main.jac - Multi-counter system
+import from datetime { datetime }
 
-        def create_counter(name: str) -> dict {
-            # Check if counter already exists
-            existing = [self --> Counter](?name == name);
-            if existing {
-                return {"status": "exists", "counter": existing[0].name};
-            }
+node CounterManager {
+    has created_at: str;
 
-            new_counter = Counter(name=name, value=0);
-            self ++> new_counter;
-            return {"status": "created", "counter": name};
+    def create_counter(name: str) -> dict {
+        # Check if counter already exists
+        existing = [self --> Counter](?name == name);
+        if existing {
+            return {"status": "exists", "counter": existing[0].name};
         }
 
-        def list_counters() -> list[dict] {
-            counters = [self --> Counter];
-            return [
-                {"name": c.name, "value": c.value}
-                for c in counters
-            ];
-        }
-
-        def get_total() -> int {
-            counters = [self --> Counter];
-            return sum([c.value for c in counters]);
-        }
+        new_counter = Counter(name=name, value=0);
+        self ++> new_counter;
+        return {"status": "created", "counter": name};
     }
 
-    node Counter {
-        has name: str;
-        has value: int = 0;
-
-        def increment(amount: int = 1) -> int {
-            self.value += amount;
-            return self.value;
-        }
+    def list_counters() -> list[dict] {
+        counters = [self --> Counter];
+        return [
+            {"name": c.name, "value": c.value}
+            for c in counters
+        ];
     }
 
-    walker create_counter {
-        has name: str;
+    def get_total() -> int {
+        counters = [self --> Counter];
+        return sum([c.value for c in counters]);
+    }
+}
 
-        obj __specs__ {
-            static has auth: bool = False;
-        }
+node Counter {
+    has name: str;
+    has value: int = 0;
 
-        can create_counter_endpoint with `root entry {
-            manager_nodes = [root --> CounterManager];
-            if not manager_nodes {
-                manager = CounterManager(created_at=str(datetime.now()));
-                root ++> manager;
-            } else {
-                manager = manager_nodes[0];
-            }
+    def increment(amount: int = 1) -> int {
+        self.value += amount;
+        return self.value;
+    }
+}
 
-            result = manager.create_counter(self.name);
-            report result;
-        }
+walker create_counter {
+    has name: str;
+
+    obj __specs__ {
+        static has auth: bool = False;
     }
 
-    walker increment_named_counter {
-        has name: str;
-        has amount: int = 1;
-
-        obj __specs__ {
-            static has auth: bool = False;
-        }
-
-        can increment_named_counter_endpoint with `root entry {
-            manager_nodes = [root --> CounterManager];
-            if not manager_nodes {
-                report {"error": "No counter manager found"};
-                return;
-            }
-
+    can create_counter_endpoint with `root entry {
+        manager_nodes = [root --> CounterManager];
+        if not manager_nodes {
+            manager = CounterManager(created_at=str(datetime.now()));
+            root ++> manager;
+        } else {
             manager = manager_nodes[0];
-            counters = [manager --> Counter](?name == self.name);
-
-            if not counters {
-                report {"error": f"Counter {self.name} not found"};
-                return;
-            }
-
-            counter = counters[0];
-            new_value = counter.increment(self.amount);
-            report {"name": self.name, "value": new_value};
         }
+
+        result = manager.create_counter(self.name);
+        report result;
+    }
+}
+
+walker increment_named_counter {
+    has name: str;
+    has amount: int = 1;
+
+    obj __specs__ {
+        static has auth: bool = False;
     }
 
-    walker get_all_counters {
-        obj __specs__ {
-            static has auth: bool = False;
+    can increment_named_counter_endpoint with `root entry {
+        manager_nodes = [root --> CounterManager];
+        if not manager_nodes {
+            report {"error": "No counter manager found"};
+            return;
         }
 
-        can get_all_counters_endpoint with `root entry {
-            manager_nodes = [root --> CounterManager];
-            if not manager_nodes {
-                report {"counters": [], "total": 0};
-                return;
-            }
+        manager = manager_nodes[0];
+        counters = [manager --> Counter](?name == self.name);
 
-            manager = manager_nodes[0];
-            report {
-                "counters": manager.list_counters(),
-                "total": manager.get_total()
-            };
+        if not counters {
+            report {"error": f"Counter {self.name} not found"};
+            return;
         }
+
+        counter = counters[0];
+        new_value = counter.increment(self.amount);
+        report {"name": self.name, "value": new_value};
     }
-    ```
+}
+
+walker get_all_counters {
+    obj __specs__ {
+        static has auth: bool = False;
+    }
+
+    can get_all_counters_endpoint with `root entry {
+        manager_nodes = [root --> CounterManager];
+        if not manager_nodes {
+            report {"counters": [], "total": 0};
+            return;
+        }
+
+        manager = manager_nodes[0];
+        report {
+            "counters": manager.list_counters(),
+            "total": manager.get_total()
+        };
+    }
+}
+```
 
 ### API Usage Examples
 
@@ -591,48 +533,38 @@ curl -X POST http://localhost:8000/walker/get_all_counters \
 # Response: {"returns": [{"counters": [{"name": "page_views", "value": 5}, {"name": "user_signups", "value": 2}], "total": 7}]}
 ```
 
----
-
-## Best Practices
-
-!!! summary "Persistence Guidelines"
-    - **Service mode only**: Use `jac serve` for persistent applications, not `jac run`
-    - **Connect to root**: All persistent data must be reachable from root
-    - **Initialize gracefully**: Check for existing data before creating new instances
-    - **Use proper IDs**: Generate unique identifiers for nodes that need them
-    - **Plan for concurrency**: Consider multiple users accessing the same data
-    - **Database configuration**: Set up proper database connections for production
 
 ## Key Takeaways
+---
 
-!!! summary "What We've Learned"
-    **Persistence Fundamentals:**
 
-    - **Service requirement**: Persistence only works with `jac serve` and database backends
-    - **Root connection**: All persistent nodes must be connected to the root node
-    - **Automatic behavior**: Data persists without explicit save/load operations
-    - **Request isolation**: Each API request has access to the same persistent graph
+**Persistence Fundamentals:**
 
-    **Root Node Concept:**
+- **Service requirement**: Persistence only works with `jac serve` and database backends
+- **Root connection**: All persistent nodes must be connected to the root node
+- **Automatic behavior**: Data persists without explicit save/load operations
+- **Request isolation**: Each API request has access to the same persistent graph
 
-    - **Graph anchor**: Starting point for all persistent data structures
-    - **Request context**: Available automatically in every API endpoint
-    - **Transaction boundary**: Changes persist at the end of each successful request
-    - **State consistency**: Maintains graph integrity across service restarts
+**Root Node Concept:**
 
-    **State Management:**
+- **Graph anchor**: Starting point for all persistent data structures
+- **Request context**: Available automatically in every API endpoint
+- **Transaction boundary**: Changes persist at the end of each successful request
+- **State consistency**: Maintains graph integrity across service restarts
 
-    - **Automatic persistence**: Connected nodes survive service restarts
-    - **Graph integrity**: Relationships between nodes are maintained
-    - **Type preservation**: Node properties retain their types across persistence
-    - **Concurrent access**: Multiple requests can safely access the same data
+**State Management:**
 
-    **Development Patterns:**
+- **Automatic persistence**: Connected nodes survive service restarts
+- **Graph integrity**: Relationships between nodes are maintained
+- **Type preservation**: Node properties retain their types across persistence
+- **Concurrent access**: Multiple requests can safely access the same data
 
-    - **Initialization checks**: Use filtering to find existing data before creating new
-    - **Unique identification**: Generate proper IDs for nodes that need them
-    - **Data validation**: Implement business rules at the application level
-    - **Error handling**: Graceful handling of missing or invalid data
+**Development Patterns:**
+
+- **Initialization checks**: Use filtering to find existing data before creating new
+- **Unique identification**: Generate proper IDs for nodes that need them
+- **Data validation**: Implement business rules at the application level
+- **Error handling**: Graceful handling of missing or invalid data
 
 !!! tip "Try It Yourself"
     Build persistent applications by creating:
