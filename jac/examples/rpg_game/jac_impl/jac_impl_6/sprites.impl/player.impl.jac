@@ -27,30 +27,18 @@ impl Player.update {
 impl Player.movement {
     keys = pygame.key.get_pressed();
     if keys[pygame.K_LEFT] {
-        for sprite in self.game.all_sprites {
-            sprite.rect.x+=PLAYER_SPEED;
-        }
         self.x_change-=PLAYER_SPEED;
         self.facing = 'left';
     }
     if keys[pygame.K_RIGHT] {
-        for sprite in self.game.all_sprites {
-            sprite.rect.x-=PLAYER_SPEED;
-        }
         self.x_change+=PLAYER_SPEED;
         self.facing = 'right';
     }
     if keys[pygame.K_UP] {
-        for sprite in self.game.all_sprites {
-            sprite.rect.y+=PLAYER_SPEED;
-        }
         self.y_change-=PLAYER_SPEED;
         self.facing = 'up';
     }
     if keys[pygame.K_DOWN] {
-        for sprite in self.game.all_sprites {
-            sprite.rect.y-=PLAYER_SPEED;
-        }
         self.y_change+=PLAYER_SPEED;
         self.facing = 'down';
     }
@@ -125,15 +113,9 @@ impl Player.collide_blocks
         if hits {
             if self.x_change > 0 {
                 self.rect.x = hits[0].rect.left - self.rect.width;
-                for sprite in self.game.all_sprites {
-                    sprite.rect.x+=PLAYER_SPEED;
-                }
             }
             if self.x_change < 0 {
                 self.rect.x = hits[0].rect.right;
-                for sprite in self.game.all_sprites {
-                    sprite.rect.x-=PLAYER_SPEED;
-                }
             }
         }
     }
@@ -142,15 +124,9 @@ impl Player.collide_blocks
         if hits {
             if self.y_change > 0 {
                 self.rect.y = hits[0].rect.top - self.rect.height;
-                for sprite in self.game.all_sprites {
-                    sprite.rect.y+=PLAYER_SPEED;
-                }
             }
             if self.y_change < 0 {
                 self.rect.y = hits[0].rect.bottom;
-                for sprite in self.game.all_sprites {
-                    sprite.rect.y-=PLAYER_SPEED;
-                }
             }
         }
     }
