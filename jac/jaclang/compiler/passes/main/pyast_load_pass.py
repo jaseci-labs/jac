@@ -2338,20 +2338,30 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
         arg: _Identifier | None
         value: expr
         """
-        arg = uni.Name(
-            orig_src=self.orig_src,
-            name=Tok.NAME,
-            value=node.arg if node.arg else "_",
-            line=node.lineno,
-            end_line=node.end_lineno if node.end_lineno else node.lineno,
-            col_start=node.col_offset,
-            col_end=node.col_offset + len(node.arg if node.arg else "_"),
-            pos_start=0,
-            pos_end=0,
-        )
+        arg = None
+        if node.arg:
+            from jaclang.compiler import TOKEN_MAP
+
+            reserved_keywords = [v for _, v in TOKEN_MAP.items()]
+            arg_value = (
+                node.arg if node.arg not in reserved_keywords else f"<>{node.arg}"
+            )
+            arg = uni.Name(
+                orig_src=self.orig_src,
+                name=Tok.NAME,
+                value=arg_value,
+                line=node.lineno,
+                end_line=node.end_lineno if node.end_lineno else node.lineno,
+                col_start=node.col_offset,
+                col_end=node.col_offset + len(node.arg if node.arg else "_"),
+                pos_start=0,
+                pos_end=0,
+            )
         value = self.convert(node.value)
         if isinstance(value, uni.Expr):
-            return uni.KWPair(key=arg, value=value, kid=[arg, value])
+            return uni.KWPair(
+                key=arg, value=value, kid=[arg, value] if arg else [value]
+            )
         else:
             raise self.ice()
 
