@@ -4650,12 +4650,11 @@ class String(Literal):
             return self.value
 
     def normalize(self, deep: bool = True) -> bool:
-        self.value = r"%s" % self.value
         return True
 
     def unparse(self) -> str:
         super().unparse()
-        return repr(self.value)
+        return self.value
 
 
 class Bool(Literal):
