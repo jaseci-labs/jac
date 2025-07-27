@@ -975,9 +975,49 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
                 token_type = f"{value_type.__name__.upper()}"
 
             if value_type == str:
-                raw_repr = repr(node.value)
-                quote = "'" if raw_repr.startswith("'") else '"'
-                value = f"{quote}{raw_repr[1:-1]}{quote}"
+                # Check if the original source contains triple quotes
+                if (
+                    hasattr(node, "lineno")
+                    and hasattr(node, "col_offset")
+                    and self.orig_src
+                ):
+                    try:
+                        lines = self.orig_src.value.split("\n")
+                        if node.lineno <= len(lines):
+                            start_line = max(0, node.lineno - 1)
+                            source_text = "\n".join(lines[start_line:])
+                            if (
+                                '"""'
+                                in source_text[
+                                    : source_text.find(node.value)
+                                    + len(node.value)
+                                    + 10
+                                ]
+                                if node.value in source_text
+                                else False
+                            ):
+                                value = f'"""{node.value}"""'
+                            elif (
+                                "'''"
+                                in source_text[
+                                    : source_text.find(node.value)
+                                    + len(node.value)
+                                    + 10
+                                ]
+                                if node.value in source_text
+                                else False
+                            ):
+                                value = f"'''{node.value}'''"
+                            else:
+                                raw_repr = repr(node.value)
+                                value = raw_repr
+                    except (IndexError, AttributeError):
+                        print(
+                            f"Error processing string constant at line {node.lineno}, col {node.col_offset}"
+                        )
+                        value = repr(node.value)
+                else:
+                    value = repr(node.value)
             else:
                 value = str(node.value)
             return type_mapping[value_type](
@@ -2423,7 +2463,7 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
 
     def convert_to_doc(self, string: uni.String) -> None:
         """Convert a string to a docstring."""
-        string.value = f'"""{string.value[1:-1]}"""'
+        string.value = string.value
 
     def aug_op_map(self, tok_dict: dict, op: uni.Token) -> str:
         """aug_mapper."""
