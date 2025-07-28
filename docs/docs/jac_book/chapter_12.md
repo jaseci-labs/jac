@@ -1,5 +1,5 @@
 # Chapter 12: Persistence and the Root Node
-
+---
 In this chapter, we'll explore Jac's automatic persistence system and the fundamental concept of the root node. We'll build a simple counter application that demonstrates how Jac automatically maintains state when running as a service with a database backend.
 
 !!! info "What You'll Learn"
@@ -8,7 +8,7 @@ In this chapter, we'll explore Jac's automatic persistence system and the fundam
     - State consistency across API requests and service restarts
     - Building stateful applications with jac-cloud
 
----
+
 
 ## What is Automatic Persistence?
 ---
