@@ -22,130 +22,291 @@ Multi-user applications require careful consideration of data access and user pe
 - **Secure by Default**: Application-level security patterns
 - **Shared Data Support**: Controlled sharing between users
 
-### Traditional vs Jac Multi-User Development
 
+### Building a Simple Multi-User Application
+---
+
+Modern applications often need to handle multiple users, each with their own data and permissions. Even something as simple as a personal notes application changes significantly when multiple users are involved. Instead of a single user owning all notes, we need to track who created what, and ensure that users only see and manage their own content.
+
+In this chapter, we’ll explore how to build a basic multi-user application in Jac. We will:
+
+- Model users and their notes as separate entities.
+- Create relationships between users and the notes they own.
+- Write walkers to handle adding and listing notes for specific users.
+- Lay the foundation for advanced topics like permissions, sharing, and roles.
+
+
+
+
+### Desigining the Data Model
+We need three key pieces for our notebook system:
+
+1. **User Node** – stores user-specific information like an email address and unique ID.
+2. **Note Node** – stores note details including a title and content.
+3. **CreatedBy Edge** – links each note to the user who created it, while storing when it was created.
+
+In Jac, we can represent this as follows:
 
 ```jac
-# shared_notebook.jac - User patterns built-in
+import from uuid { uuid4 }
+import from datetime { datetime }
+
+node User {
+    has email: str;
+    has id: str = str(uuid4());
+}
+
 node Note {
     has title: str;
-    has content: str;
-    has owner: str;
-    has shared_with: list[str] = [];
-    has created_at: str = "2024-01-15";
+    has content: str = "";
+    has id: str = str(uuid4());
 }
 
-walker create_note {
-    has title: str;
-    has content: str;
-    has owner: str;
+edge CreatedBy {
+    has created_at: str by postinit;
 
-    can create_user_note with `root entry {
-        # Create note with specified owner
-        new_note = Note(
-            title=self.title,
-            content=self.content,
-            owner=self.owner
-        );
-        here ++> new_note;
-
-        report {
-            "message": "Note created successfully",
-            "id": new_note.id,
-            "owner": new_note.owner
-        };
+    def postinit() {
+        self.created_at = datetime.now().isoformat();
     }
 }
+```
+<br />
 
-walker get_my_notes {
-    has user_id: str;
+### Initializing Users
 
-    can fetch_user_notes with `root entry {
-        # Filter by specified user
-        my_notes = [-->(`?Note)](?owner == self.user_id);
+When the system starts, we want at least some sample users to work with. In production, you would typically have a user registration system, where the users would be stored in a database. For our example, we can create a few users directly in the Jac code.
 
-        notes_data = [
-            {"id": n.id, "title": n.title, "created_at": n.created_at}
-            for n in my_notes
-        ];
+```jac
+# Base walker to initialize demo users and helper functions
+walker NoteWalker {
+    def postinit() {
+        users = [root ->:has_user:->(`?User)];
+        if not users {
+            self.create_users();
+        }
+    }
 
-        report {"notes": notes_data, "total": len(notes_data)};
+    obj __specs__ {
+        static has auth: bool = False;
+    }
+
+    # Create demo users if none exist
+    def create_users() -> None {
+        user1 = User(email="user1@example.com");
+        user2 = User(email="user2@example.com");
+        root +>:has_user:+> user1;
+        root +>:has_user:+> user2;
+    }
+
+    # Helper function to get user by email
+    def get_user(email: str) -> User {
+        user = [root ->:has_user:->(`?User)](?email == email);
+        if not user {
+            raise Exception();
+        }
+        return user[0];
+    }
+}
+```
+<br />
+
+When the `NoteWalker` is initialized, we first check if there are any users connected to our graph. If not, we create two demo users and add them to the root node. This ensures that our application has users to work with right from the start.
+
+### Working With Notes
+Next, we’ll create two walkers:
+
+- `add_note`: Adds a note for a specific user.
+- `list_notes`: Lists all notes created by a specific user.
+
+This small feature set is enough to demonstrate:
+
+- Multi-user ownership of data.
+- Traversing graph edges to find user-specific content.
+- Returning structured responses for a REST API.
+
+#### Creating Notes
+The `add_note` walker allows users to create notes by specifying their email, title, and content. It first retrieves the user based on the provided email, and if the user exists, it creates a new note and links it to the user using the `CreatedBy` edge. If the user is not found, it reports an error.
+
+```jac
+walker add_note(NoteWalker){
+    has email: str;
+    has title: str;
+    has content: str = "";
+
+    can create with `root entry {
+        try {
+            user = self.get_user(self.email);
+        }
+        except Exception as e {
+            report {
+                "error": f"User with email {self.email} not found."
+            };
+            disengage;
+        }
+
+        note = Note(title=self.title, content=self.content);
+        user <+:CreatedBy:<+ note;
+
+        report {
+            "message": "Note created successfully."
+        };
     }
 }
 ```
 
-## Basic User Authentication
----
-For multi-user applications, you need to implement user identification patterns. Let's start with a simple notebook system that supports multiple users.
+#### Listing Notes
+The `list_notes` walker retrieves all notes created by a specific user. It uses the `CreatedBy` edge to find notes linked to the user. If no notes are found, it reports a message indicating that. If notes are found, it returns the list of notes along with the user's email.
 
-### Setting Up User-Aware Notebook
+```jac
+walker list_notes(NoteWalker) {
+    has email: str;
 
+    can list with `root entry {
+        try {
+            user = self.get_user(self.email);
+        }
+        except Exception as e {
+            report {
+                "error": f"User with email {self.email} not found."
+            };
+            disengage;
+        }
+
+        notes = [user <-:CreatedBy:<-(`?Note)];
+
+        if not notes {
+            report {
+                "message": f"No notes found for {self.email}."
+            };
+        }else{
+            report {
+                "notes": notes,
+                "user_email": user.email
+            };
+        }
+    }
+}
+```
+
+
+
+### Putting It All Together
+Now we can create a simple user-aware application that allows users to create and list their notes.
 ```jac
 # user_notebook.jac
-import uuid;
+import from uuid { uuid4 }
+import from datetime { datetime }
+
+
+node User {
+    has email: str;
+    has id: str = str(uuid4());
+}
 
 node Note {
     has title: str;
-    has content: str;
-    has owner: str;
-    has is_private: bool = True;
-    has id: str = "note_" + str(uuid.uuid4());
+    has content: str = "";
+    has id: str = str(uuid4());
 }
 
-walker create_note {
+# Edge representing the creation relationship between users and notes
+edge CreatedBy {
+    has created_at: str by postinit;
+
+    def postinit() {
+        self.created_at = datetime.now().isoformat();
+    }
+}
+
+# Root's edge to connect users
+edge has_user {}
+
+# Parent NoteWalker to manage note operations
+walker NoteWalker {
+    def postinit() {
+        users = [root ->:has_user:->(`?User)];
+        if not users {
+            self.create_users();
+        }
+    }
+
+    obj __specs__ {
+        static has auth: bool = False;
+    }
+
+    # Create demo users if none exist
+    def create_users() -> None {
+        user1 = User(email="user1@example.com");
+        user2 = User(email="user2@example.com");
+        root +>:has_user:+> user1;
+        root +>:has_user:+> user2;
+    }
+
+    # Helper function to get user by email
+    def get_user(email: str) -> User {
+        user = [root ->:has_user:->(`?User)](?email == email);
+        if not user {
+            raise Exception();
+        }
+        return user[0];
+    }
+}
+
+walker add_note(NoteWalker){
+    has email: str;
     has title: str;
-    has content: str;
-    has owner: str;
-    has is_private: bool = True;
+    has content: str = "";
 
-    obj __specs__ {
-        static has auth: bool = False;
-    }
+    can create with `root entry {
+        try {
+            user = self.get_user(self.email);
+        }
+        except Exception as e {
+            report {
+                "error": f"User with email {self.email} not found."
+            };
+            disengage;
+        }
 
-    can add_note with `root entry {
-        new_note = Note(
-            title=self.title,
-            content=self.content,
-            owner=self.owner,
-            is_private=self.is_private
-        );
-        here ++> new_note;
+        note = Note(title=self.title, content=self.content);
+        user <+:CreatedBy:<+ note;
 
         report {
-            "status": "created",
-            "note_id": new_note.id,
-            "private": new_note.is_private
+            "message": "Note created successfully."
         };
     }
 }
 
-walker list_my_notes {
-    has user_id: str;
+walker list_notes(NoteWalker) {
+    has email: str;
 
-    obj __specs__ {
-        static has auth: bool = False;
-    }
+    can list with `root entry {
+        try {
+            user = self.get_user(self.email);
+        }
+        except Exception as e {
+            report {
+                "error": f"User with email {self.email} not found."
+            };
+            disengage;
+        }
 
-    can get_user_notes with `root entry {
-        # Only get notes owned by specified user
-        user_notes = [-->(`?Note)](?owner == self.user_id);
+        notes = [user <-:CreatedBy:<-(`?Note)];
 
-        report {
-            "user": self.user_id,
-            "notes": [
-                {
-                    "id": n.id,
-                    "title": n.title,
-                    "private": n.is_private
-                }
-                for n in user_notes
-            ],
-            "count": len(user_notes)
-        };
+        if not notes {
+            report {
+                "message": f"No notes found for {self.email}."
+            };
+        }else{
+            report {
+                "notes": notes,
+                "user_email": user.email
+            };
+        }
     }
 }
+
 ```
-
 
 ### Deploying and Testing
 
@@ -158,28 +319,19 @@ jac serve user_notebook.jac
 ### Testing User Authentication
 
 ```bash
-# Create a note for Alice
-curl -X POST http://localhost:8000/walker/create_note \
+# Create a note for user1
+curl -X POST http://localhost:8000/walker/add_note \
   -H "Content-Type: application/json" \
   -d '{
-    "title": "Alice Private Note",
-    "content": "Secret content",
-    "owner": "alice@example.com"
+    "email": "user1@example.com",
+    "title": "User1 Note",
+    "content": "This is a note for user1."
   }'
 
-# Create a note for Bob
-curl -X POST http://localhost:8000/walker/create_note \
-  -H "Content-Type: application/json" \
-  -d '{
-    "title": "Bob Note",
-    "content": "Bob content",
-    "owner": "bob@example.com"
-  }'
-
-# Get Alice's notes only
-curl -X POST http://localhost:8000/walker/list_my_notes \
-  -H "Content-Type: application/json" \
-  -d '{"user_id": "alice@example.com"}'
+# List notes for user1
+curl -X POST http://localhost:8000/walker/list_notes \
+    -H "Content-Type: application/json" \
+    -d '{"email": "user1@example.com"}'
 ```
 
 ## Shared Data Patterns
