@@ -69,6 +69,21 @@ class JacCliTests(TestCase):
         self.assertIn("Left aligned: Apple | Price: 1.23", stdout_value)
         self.assertIn("name = Peter 🤔", stdout_value)
 
+    def test_jac_run_py_docstr(self) -> None:
+        """Test running Python files with jac run command."""
+        captured_output = io.StringIO()
+        sys.stdout = captured_output
+
+        cli.run(self.fixture_abs_path("pyfunc_docstr.py"))
+
+        sys.stdout = sys.__stdout__
+        stdout_value = captured_output.getvalue()
+
+        self.assertIn("(13, (), {'a': 1, 'b': 2})", stdout_value)
+        self.assertEqual(11, stdout_value.count("JACLANG EDIT BLOCKS"))
+        self.assertIn("Hello Peter Peter", stdout_value)
+
+
     def test_jac_run_py_fmt(self) -> None:
         """Test running Python files with jac run command."""
         captured_output = io.StringIO()

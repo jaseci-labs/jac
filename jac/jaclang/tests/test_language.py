@@ -492,6 +492,28 @@ class JacLanguageTests(TestCase):
         stdout_value = captured_output.getvalue()
         self.assertIn("2 Accessing privileged Data", stdout_value)
 
+    def test_pyfunc_docstr(self) -> None:
+        """Test py ast to Jac ast conversion."""
+        from jaclang.compiler.passes.main import PyastBuildPass
+        import jaclang.compiler.unitree as uni
+        import ast as py_ast
+
+        py_out_path = os.path.join(self.fixture_abs_path("./"), "pyfunc_docstr.py")
+        with open(py_out_path) as f:
+            file_source = f.read()
+            output = PyastBuildPass(
+                ir_in=uni.PythonModuleAst(
+                    py_ast.parse(file_source),
+                    orig_src=uni.Source(file_source, py_out_path),
+                ),
+                prog=JacProgram(),
+            ).ir_out.unparse()
+        self.assertIn("```JACLANG EDIT BLO", output)
+        self.assertIn("    \"\"\"To suggest changes to a file y", output)
+        self.assertIn(" `--- /dev/null` to `+++ path/to/new/file.ext`.", output)
+        self.assertEqual(9, output.count("JACLANG EDIT BLOCKS"))
+
+
     def test_pyfunc_1(self) -> None:
         """Test py ast to Jac ast conversion."""
         from jaclang.compiler.passes.main import PyastBuildPass
