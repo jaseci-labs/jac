@@ -336,157 +336,193 @@ curl -X POST http://localhost:8000/walker/list_notes \
 
 ## Shared Data Patterns
 ---
-Multi-user applications often need controlled sharing of data between users. Let's enhance our notebook to support sharing notes with specific users.
+In the previous section, we built a simple multi-user notes application. Each note belonged exclusively to the user who created it, and only that user could view or manage their content. While this model works for personal note-taking, collaboration is often a core feature in modern applications.
 
-### Note Sharing Implementation
+### Why Sharing?
+Consider the following scenarios:
 
+- A user wants to share project notes with a teammate.
+- A manager needs to distribute reference material to staff.
+- A research team collaborates on a shared list of findings.
+
+To support these workflows, our notes app needs a sharing mechanism—allowing users to grant read access to notes they own, without transferring ownership.
+
+
+### Updated Data Model
+To implement sharing, we need to extend our data model. We will add a new edge called `SharedWith` to represent the relationship between notes and users they are shared with. This allows us to track who can view each note.
 
 ```jac
-# shared_permissions.jac
-import uuid;
+edge SharedWith {}
+```
+
+This edge links a `Note` to additional `User` nodes beyond the creator.
+
+- **CreatedBy Edge** → Indicates the note owner.
+- **SharedWith Edge** → Indicates a user who has been granted read access.
+
+The `Note` and `User` node definitions remain unchanged.
+
+### Updated Walkers
+
+We extend our walkers to support sharing:
+
+1. `list_notes` – Now returns notes owned by the user and any notes shared with them.
+2. `share_note` – A new walker that allows an owner to share their note with another user.
+
+To help with these operations, we will also implement a few utility functions:
+- `find_user(email: str)` → quickly fetches user nodes.
+- `report_error(message: str)` → simplifies error handling.
+
+
+### Full Example: Shared Notes
+
+```jac
+import from uuid { uuid4 }
+import from datetime { datetime }
+
+
+node User {
+    has email: str;
+    has id: str = str(uuid4());
+}
 
 node Note {
     has title: str;
-    has content: str;
-    has owner: str;
-    has shared_with: list[str] = [];
-    has is_public: bool = False;
-    has permissions: dict = {"read": True, "write": False};
-    has id: str = "note_" + str(uuid.uuid4());
+    has content: str = "";
+    has id: str = str(uuid4());
 }
 
-walker create_note {
+# Edge representing the creation relationship between users and notes
+edge CreatedBy {
+    has created_at: str by postinit;
+
+    def postinit() {
+        self.created_at = datetime.now().isoformat();
+    }
+}
+
+edge SharedWith {}
+
+# Root's edge to connect users
+edge has_user {}
+
+# Helper function to create demo users
+def create_demo_users() -> None {
+    user1 = User(email="user1@example.com");
+    user2 = User(email="user2@example.com");
+    root +>:has_user:+> user1;
+    root +>:has_user:+> user2;
+}
+
+# Helper function to get user by email
+def find_user(email: str) -> User | None {
+    users: list[User] = [root ->:has_user:->(`?User)](?email == email);
+    if not users {
+        return None;
+    }
+    return users[0];
+}
+
+# Helper function to report errors
+def report_error(message: str) -> None {
+    report {
+        "error": message
+    };
+    disengage;
+}
+
+# Parent NoteWalker to manage note operations
+walker NoteWalker {
+    def postinit() {
+        users = [root ->:has_user:->(`?User)];
+        if not users {
+            create_demo_users();
+        }
+    }
+
+    obj __specs__ {
+        static has auth: bool = False;
+    }
+}
+
+
+walker add_note(NoteWalker){
+    has email: str;
     has title: str;
-    has content: str;
-    has owner: str;
-    has is_public: bool = False;
+    has content: str = "";
 
-    obj __specs__ {
-        static has auth: bool = False;
-    }
+    can create with `root entry {
+        user = find_user(self.email);
+        if not user {
+            report_error(f"User with email {self.email} not found.");
+            disengage;
+        }
 
-    can add_note with `root entry {
-        new_note = Note(
-            title=self.title,
-            content=self.content,
-            owner=self.owner,
-            is_public=self.is_public
-        );
-        here ++> new_note;
+        note = Note(title=self.title, content=self.content);
+        user <+:CreatedBy:<+ note;
 
         report {
-            "status": "created",
-            "note_id": new_note.id,
-            "public": new_note.is_public
+            "message": "Note created successfully."
         };
     }
 }
 
-walker share_note {
+walker list_notes(NoteWalker) {
+    has email: str;
+
+    can list with `root entry {
+        user = find_user(self.email);
+        if not user {
+            report_error(f"User with email {self.email} not found.");
+            disengage;
+        }
+
+        notes = [user <-:CreatedBy:<-(`?Note)] + [user <-:SharedWith:<-(`?Note)];
+
+        if not notes {
+            report_error(f"No notes found for user {self.email}.");
+        }else{
+            report {
+                "notes": notes,
+                "user_email": user.email
+            };
+        }
+    }
+}
+
+walker share_note(NoteWalker) {
+    has owner_email: str;
     has note_id: str;
-    has current_user: str;
-    has target_user: str;
-    has permission_level: str = "read";  # "read" or "write"
+    has shared_with_email: str;
 
-    obj __specs__ {
-        static has auth: bool = False;
-    }
-
-    can add_sharing_permission with `root entry {
-        target_note = [-->(`?Note)](?id == self.note_id);
-
-        if not target_note {
-            report {"error": "Note not found"};
-            return;
+    can share with `root entry {
+        user = find_user(self.owner_email);
+        if not user {
+            report_error(f"User with email {self.owner_email} not found.");
+            disengage;
         }
 
-        note = target_note[0];
-
-        # Only owner can share notes
-        if note.owner != self.current_user {
-            report {"error": "Only note owner can share"};
-            return;
+        note = [user <-:CreatedBy:<-(`?Note)](?id == self.note_id);
+        if not note {
+            report_error(f"Note with ID {self.note_id} not found for user {self.owner_email}.");
+            disengage;
         }
 
-        # Add user to shared list if not already there
-        if self.target_user not in note.shared_with {
-            note.shared_with.append(self.target_user);
+        note = note[0];
+
+        shared_user = find_user(self.shared_with_email);
+        if not shared_user {
+            report_error(f"User with email {self.shared_with_email} not found.");
+            disengage;
         }
+
+        note +>:SharedWith:+> shared_user;
 
         report {
-            "message": f"Note shared with {self.target_user}",
-            "permission": self.permission_level,
-            "shared_count": len(note.shared_with)
+            "message" : f"Note with ID {self.note_id} shared successfully."
         };
     }
 }
-
-walker get_accessible_notes {
-    has user_id: str;
-
-    obj __specs__ {
-        static has auth: bool = False;
-    }
-
-    can fetch_all_accessible with `root entry {
-        all_notes = [-->(`?Note)];
-        accessible_notes = [];
-
-        for note in all_notes {
-            # User can access if:
-            # 1. They own it
-            # 2. It's shared with them
-            # 3. It's public
-            if (note.owner == self.user_id or
-                self.user_id in note.shared_with or
-                note.is_public) {
-
-                accessible_notes.append({
-                    "id": note.id,
-                    "title": note.title,
-                    "owner": note.owner,
-                    "is_mine": note.owner == self.user_id,
-                    "access_type": "owner" if note.owner == self.user_id
-                                else ("shared" if self.user_id in note.shared_with
-                                    else "public")
-                });
-            }
-        }
-
-        report {
-            "user": self.user_id,
-            "accessible_notes": accessible_notes,
-            "total": len(accessible_notes)
-        };
-    }
-}
-```
-
-### Testing Note Sharing
-
-```bash
-# Alice creates a note
-curl -X POST http://localhost:8000/walker/create_note \
-  -H "Content-Type: application/json" \
-  -d '{
-    "title": "Team Project",
-    "content": "Project details",
-    "owner": "alice@example.com"
-  }'
-
-# Alice shares note with Bob
-curl -X POST http://localhost:8000/walker/share_note \
-  -H "Content-Type: application/json" \
-  -d '{
-    "note_id": "note_123",
-    "current_user": "alice@example.com",
-    "target_user": "bob@example.com"
-  }'
-
-# Bob views accessible notes
-curl -X POST http://localhost:8000/walker/get_accessible_notes \
-  -H "Content-Type: application/json" \
-  -d '{"user_id": "bob@example.com"}'
 ```
 
 
