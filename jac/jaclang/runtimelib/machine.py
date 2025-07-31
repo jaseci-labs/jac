@@ -1358,9 +1358,7 @@ class JacBasics:
         return decorator
 
     @staticmethod
-    def call_llm(
-        model: object, caller: Callable, args: dict[str | int, object]
-    ) -> Any:  # noqa: ANN401
+    def call_llm(model: object, mtir: object) -> Any:  # noqa: ANN401
         """Call the LLM model."""
         raise ImportError(
             "mtllm is not installed. Please install it with `pip install mtllm` and run `jac clean`."

@@ -187,6 +187,15 @@ class PyastGenPass(UniPass):
             ),
         )
 
+    def needs_mtllm(self) -> None:
+        """Ensure MTLLM is imported only once."""
+        self._add_preamble_once(
+            self.needs_mtllm.__name__,
+            ast3.Import(
+                names=[self.sync(ast3.alias(name="mtllm"), jac_node=self.ir_out)]
+            ),
+        )
+
     def needs_enum(self) -> None:
         """Ensure Enum utilities are imported only once."""
         self._add_preamble_once(
@@ -735,6 +744,52 @@ class PyastGenPass(UniPass):
         self, model: ast3.expr, caller: ast3.expr, args: ast3.Dict
     ) -> ast3.Call:
         """Reusable method to codegen call_llm(model, caller, args)."""
+        self.needs_mtllm()
+        mtir_cls_ast = self.sync(
+            ast3.Attribute(
+                value=self.sync(ast3.Name(id="mtllm", ctx=ast3.Load())),
+                attr="MTIR",
+                ctx=ast3.Load(),
+            )
+        )
+        mtir_ast = self.sync(
+            ast3.Call(
+                func=self.sync(
+                    ast3.Attribute(
+                        value=mtir_cls_ast,
+                        attr="factory",
+                        ctx=ast3.Load(),
+                    )
+                ),
+                args=[],
+                keywords=[
+                    self.sync(
+                        ast3.keyword(
+                            arg="caller",
+                            value=caller,
+                        )
+                    ),
+                    self.sync(
+                        ast3.keyword(
+                            arg="args",
+                            value=args,
+                        )
+                    ),
+                    self.sync(
+                        ast3.keyword(
+                            arg="call_params",
+                            value=self.sync(
+                                ast3.Attribute(
+                                    value=model,
+                                    attr="call_params",
+                                    ctx=ast3.Load(),
+                                ),
+                            ),
+                        )
+                    ),
+                ],
+            )
+        )
         return self.sync(
             ast3.Call(
                 func=self.jaclib_obj("call_llm"),
@@ -748,14 +803,8 @@ class PyastGenPass(UniPass):
                     ),
                     self.sync(
                         ast3.keyword(
-                            arg="caller",
-                            value=caller,
-                        )
-                    ),
-                    self.sync(
-                        ast3.keyword(
-                            arg="args",
-                            value=args,
+                            arg="mtir",
+                            value=mtir_ast,
                         )
                     ),
                 ],
