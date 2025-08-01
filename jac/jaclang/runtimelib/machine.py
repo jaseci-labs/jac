@@ -181,7 +181,7 @@ class JacAccessValidation:
 
     @staticmethod
     def check_read_access(to: Anchor) -> bool:
-        """Read Access Validation."""
+        """Read Access Validation for anchor."""
         if not (
             access_level := JacMachineInterface.check_access_level(to)
             > AccessLevel.NO_ACCESS
@@ -194,7 +194,7 @@ class JacAccessValidation:
 
     @staticmethod
     def check_connect_access(to: Anchor) -> bool:
-        """Write Access Validation."""
+        """Connect Access Validation for anchor."""
         if not (
             access_level := JacMachineInterface.check_access_level(to)
             > AccessLevel.READ
@@ -207,7 +207,7 @@ class JacAccessValidation:
 
     @staticmethod
     def check_write_access(to: Anchor) -> bool:
-        """Write Access Validation."""
+        """Write Access Validation for anchor."""
         if not (
             access_level := JacMachineInterface.check_access_level(to)
             > AccessLevel.CONNECT
