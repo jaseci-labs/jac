@@ -416,7 +416,7 @@ class JacEdge:
 
 
 class JacWalker:
-    """Jac Edge Operations."""
+    """Jac Walker Operations."""
 
     @staticmethod
     def visit(
@@ -743,7 +743,7 @@ class JacWalker:
 
 
 class JacClassReferences:
-    """Default Classes References."""
+    """Jac Default Classes References."""
 
     TYPE_CHECKING: bool = TYPE_CHECKING
     EdgeDir: TypeAlias = EdgeDir
