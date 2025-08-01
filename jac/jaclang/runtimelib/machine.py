@@ -406,7 +406,11 @@ class JacEdge:
 
     @staticmethod
     def detach(edge: EdgeAnchor) -> None:
-        """Detach edge from nodes."""
+        """
+        Detach the edge from its source and target nodes.
+
+        Removes the edge reference from both connected nodes.
+        """
         JacMachineInterface.remove_edge(node=edge.source, edge=edge)
         JacMachineInterface.remove_edge(node=edge.target, edge=edge)
 
