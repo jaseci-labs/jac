@@ -4,6 +4,31 @@ This page documents significant breaking changes in Jac and Jaseci that may affe
 
 ## Latest Breaking Changes
 
+### Version 0.8.5
+
+#### 1. Ability execution order updated.
+This update aims to leverage the usage of entry and exit abilities.
+
+Consider this graph. `root --> Node1() --> Node2`
+
+**Before**
+Ability execution during traversal from `root` to `Node2`.
+1. `root` entry
+2. `root` exit
+3. `Node1` entry
+4. `Node1` exit
+5. `Node2` entry
+6. `Node2` exit
+
+**After**
+Ability execution
+1. `root` entry
+2. `Node1` entry
+3. `Node2` entry
+4. `root` exit
+5. `Node1` exit
+6. `Node2` exit
+
 ### Version 0.8.4
 
 #### 1. Global, Nonlocal Operators Updated to `global`, `nonlocal`
