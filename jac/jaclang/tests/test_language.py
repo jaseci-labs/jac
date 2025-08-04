@@ -816,7 +816,7 @@ class JacLanguageTests(TestCase):
         # Define the new behavior to be added
         new_behavior = """
         # New behavior added during runtime
-        can end with `root exit {
+        can end with `root entry {
             "bar_walk has been updated with new behavior!" |> print;
             disengage;
             }

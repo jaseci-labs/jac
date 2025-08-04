@@ -11,7 +11,7 @@ walker bar_walk {
     has count: int = 0;
 
     # Start walking from the root node or an Item node
-    can start with `root | Item entry {
+    can start with `root | Item exit {
         here ++> Item();
         if self.count < 5 {
             visit [-->];
@@ -22,7 +22,7 @@ walker bar_walk {
     }
 
     # Walk over Item nodes and update their values
-    can walk with Item entry {
+    can walk with Item exit {
         here.value = self.count;
         f"Item value: {here.value}" |> print;
         self.count += 1;
