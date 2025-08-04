@@ -449,6 +449,9 @@ class JacWalker:
         else:
             raise TypeError("Invalid walker object")
 
+    # @staticmethod
+    # def viait_by_llm()
+
     @staticmethod
     def ignore(
         walker: WalkerArchetype,
