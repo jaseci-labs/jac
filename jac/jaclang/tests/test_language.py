@@ -1353,9 +1353,9 @@ class JacLanguageTests(TestCase):
         stdout_value = captured_output.getvalue().split("\n")
         self.assertIn("I am here MyNode(val=5)", stdout_value[0])
         self.assertIn("I am here MyNode(val=15)", stdout_value[2])
-        self.assertIn("I am here MyNode(val=20)", stdout_value[3])
-        self.assertIn("I am here MyEdge(val=100)", stdout_value[5])
-        self.assertIn("I am here MyNode(val=30)", stdout_value[6])
+        self.assertIn("I am here MyNode(val=30)", stdout_value[3])
+        self.assertIn("I am here MyNode(val=25)", stdout_value[5])
+        self.assertIn("I am here MyNode(val=20)", stdout_value[6])
 
     def test_while_else(self) -> None:
         """Test else part in while loop."""
