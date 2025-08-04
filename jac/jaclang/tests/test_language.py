@@ -998,10 +998,9 @@ class JacLanguageTests(TestCase):
             "walker entry\nwalker enter to root\n"
             "a-1\na-2\na-3\n"
             "b-1\nb-2\nb-3\n"
-            "c-1\nc-2\nc-3\n"
-            "a-4\na-5\na-6\n"
+            "c-1\nc-2\nc-3\nc-4\nc-5\nc-6\n"
             "b-4\nb-5\nb-6\n"
-            "c-4\nc-5\nc-6\n"
+            "a-4\na-5\na-6\n"           
             "walker exit\n",
             captured_output.getvalue(),
         )
