@@ -451,6 +451,7 @@ class JacWalker:
                 + next_entry
                 + wanch.next_entry[insert_loc:]
             )
+            insert_loc = len(wanch.next_exit) + insert_loc + 1
             wanch.next_exit = (
                 wanch.next_exit[:insert_loc] + next_exit + wanch.next_exit[insert_loc:]
             )
@@ -540,7 +541,7 @@ class JacWalker:
                         return warch
 
         while len(walker.next_exit):
-            if current_loc := walker.next_exit.pop(0).archetype:
+            if current_loc := walker.next_exit.pop().archetype:
 
                 # loc ability with walker exit
                 for i in current_loc._jac_exit_funcs_:

@@ -25,9 +25,9 @@ Ability execution
 1. `root` entry
 2. `Node1` entry
 3. `Node2` entry
-4. `root` exit
+4. `Node2` exit
 5. `Node1` exit
-6. `Node2` exit
+6. `root` exit
 
 ### Version 0.8.4
 
