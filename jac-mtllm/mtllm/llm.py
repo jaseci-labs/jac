@@ -7,13 +7,13 @@ enhanced functionality and interface for language model operations.
 # flake8: noqa: E402
 
 import random
-import inspect
 import json
 import logging
 import os
 import time
-from types import MethodType
-from typing import Callable, get_type_hints, Generator
+from typing import Generator
+
+from mtllm.mtir import MTIR
 
 # This will prevent LiteLLM from fetching pricing information from
 # the bellow URL every time we import the litellm and use a cached
@@ -27,17 +27,9 @@ from litellm._logging import _disable_debugging
 from litellm.types.utils import Delta, ModelResponse
 
 from .types import (
-    CompletionRequest,
     CompletionResult,
-    Image,
     LiteLLMMessage,
-    Media,
-    Message,
-    MessageRole,
-    MessageType,
     MockToolCall,
-    Text,
-    Tool,
     ToolCall,
 )
 
@@ -99,153 +91,56 @@ class Model:
         self.call_params = kwargs
         return self
 
-    def invoke(self, caller: Callable, args: dict[str | int, object]) -> object:
+    def invoke(self, mtir: MTIR) -> object:
         """Invoke the LLM with the given caller and arguments."""
-        # Prepare the tools for the LLM call.
-        tools = [
-            Tool(func) for func in self.call_params.get("tools", [])  # type: ignore
-        ]
-
-        # Construct the input information from the arguments.
-        param_names = list(inspect.signature(caller).parameters.keys())
-        inputs_detail: list[str] = []
-        media_inputs: list[Media] = []
-
-        for key, value in args.items():
-            if isinstance(value, Media):
-                media_inputs.append(value)
-                continue
-
-            if isinstance(key, str):
-                inputs_detail.append(f"{key} = {value}")
-            else:
-                # TODO: Handle *args, **kwargs properly.
-                if key < len(param_names):
-                    inputs_detail.append(f"{param_names[key]} = {value}")
-                else:
-                    inputs_detail.append(f"arg = {value}")
-
-        if incl_info := self.call_params.get("incl_info"):
-            if isinstance(incl_info, dict):
-                for key, value in incl_info.items():
-                    if isinstance(value, Media):
-                        media_inputs.append(value)
-                    else:
-                        inputs_detail.append(f"{key} = {value}")
-
-        if isinstance(caller, MethodType):
-            inputs_detail.insert(0, f"self = {caller.__self__}")
-
-        # Prepare the messages for the LLM call.
-        messages: list[MessageType] = [
-            Message(
-                role=MessageRole.SYSTEM,
-                content=SYSTEM_PERSONA + (INSTRUCTION_TOOL if tools else ""),
-            ),
-            Message(
-                role=MessageRole.USER,
-                content=[
-                    Text(
-                        Tool.get_func_description(caller)
-                        + "\n\n"
-                        + "\n".join(inputs_detail)
-                    ),
-                    *media_inputs,
-                ],
-            ),
-        ]
-
-        # Prepare return type.
-        return_type = get_type_hints(caller).get("return")
-        is_streaming = bool(self.call_params.get("stream", False))
-
-        if is_streaming:
-            if return_type is not str:
-                raise RuntimeError(
-                    "Streaming responses are only supported for str return types."
-                )
-            if tools:
-                raise RuntimeError(
-                    "Streaming responses are not supported with tool calls yet."
-                )
-
-        # Prepare the llm call request.
-        req = CompletionRequest(
-            messages=messages,
-            tools=tools,
-            resp_type=return_type,
-            stream=is_streaming,
-            params={},
-        )
-
-        # TODO: Support mockllm for mocktesting.
-        # Invoke streaming request, this will result in a generator that the caller
-        # should either do .next() or .__iter__() by calling `for tok in resp: ...`
-        if req.stream:
-            if req.tools:
-                raise RuntimeError(
-                    "Streaming responses are not supported with tool calls yet."
-                )
-            return self._completion_streaming(req)
+        if mtir.stream:
+            return self._completion_streaming(mtir)
 
         # Invoke the LLM and handle tool calls.
         while True:
-            resp = self._completion_no_streaming(req)
+            resp = self._completion_no_streaming(mtir)
             if resp.tool_calls:
                 for tool_call in resp.tool_calls:
                     if tool_call.is_finish_call():
                         return tool_call.get_output()
                     else:
-                        req.add_message(tool_call())
+                        mtir.add_message(tool_call())
             else:
                 break
 
         return resp.output
 
-    def _completion_no_streaming(self, req: CompletionRequest) -> CompletionResult:
-        """Perform a completion request with the LLM."""
-        if self.model_name.lower().strip() == "mockllm":
-            return self._dispatch_no_streaming_mock_response(req)  # type: ignore
-        return self._dispatch_no_streaming_call(req)
-
-    def _completion_streaming(
-        self, req: CompletionRequest
-    ) -> Generator[str, None, None]:
-        """Perform a streaming completion request with the LLM."""
-        if self.model_name.lower().strip() == "mockllm":
-            return self._dispatch_streaming_mock_response(req)  # type: ignore
-        return self._dispatch_streaming_response(req)
-
-    def _make_model_params(self, req: CompletionRequest) -> dict:
-        """Prepare the parameters for the LLM call."""
-        params = {
+    def _get_dispatch_params(self, mtir: MTIR) -> dict[str, object]:
+        return mtir.dispatch_params() | {
             "model": self.model_name,
             "api_base": self.config.get("host") or self.config.get("api_base"),
-            "messages": req.get_msg_list(),
-            "tools": req.get_tool_list() or None,
-            "response_format": req.get_output_schema(),
-            "temperature": self.call_params.get("temperature", 0.7),
-            # "max_tokens": self.call_params.get("max_tokens", 100),
-            # "top_k": self.call_params.get("top_k", 50),
-            # "top_p": self.call_params.get("top_p", 0.9),
         }
-        return params
+
+    def _completion_no_streaming(self, mtir: MTIR) -> CompletionResult:
+        """Perform a completion request with the LLM."""
+        if self.model_name.lower().strip() == "mockllm":
+            return self._dispatch_no_streaming_mock_response(mtir)  # type: ignore
+        return self._dispatch_no_streaming_call(mtir)
+
+    def _completion_streaming(self, mtir: MTIR) -> Generator[str, None, None]:
+        """Perform a streaming completion request with the LLM."""
+        if self.model_name.lower().strip() == "mockllm":
+            return self._dispatch_streaming_mock_response(mtir)  # type: ignore
+        return self._dispatch_streaming_response(mtir)
 
     def _dispatch_streaming_mock_response(
-        self, req: CompletionRequest
+        self, mtir: MTIR
     ) -> Generator[str, None, None]:
         """Dispatch the mock LLM call with the given request."""
         output = self.config["outputs"].pop(0)  # type: ignore
-        if req.stream:
+        if mtir.stream:
             while output:
                 chunk_len = random.randint(3, 10)
                 yield output[:chunk_len]  # Simulate token chunk
                 time.sleep(random.uniform(0.01, 0.05))  # Simulate network delay
                 output = output[chunk_len:]
 
-    def _dispatch_no_streaming_mock_response(
-        self, req: CompletionRequest
-    ) -> CompletionResult:
+    def _dispatch_no_streaming_mock_response(self, mtir: MTIR) -> CompletionResult:
         """Dispatch the mock LLM call with the given request."""
         output = self.config["outputs"].pop(0)  # type: ignore
 
@@ -272,28 +167,27 @@ class Model:
         if bool(self.config.get("verbose", False)):
             print(message)
 
-    def _dispatch_no_streaming_call(self, req: CompletionRequest) -> CompletionResult:
+    def _dispatch_no_streaming_call(self, mtir: MTIR) -> CompletionResult:
         # Construct the parameters for the LLM call
-        params = self._make_model_params(req)
-
         # Call the LiteLLM API
+        params = self._get_dispatch_params(mtir)
         self._log_info(f"Calling LLM: {self.model_name} with params:\n{params}")
-        response = litellm.completion(**params)
+        response = litellm.completion(**params)  # type: ignore
 
         # Output format:
         # https://docs.litellm.ai/docs/#response-format-openai-format
         #
         # TODO: Handle stream output (type ignoring stream response)
         message: LiteLLMMessage = response.choices[0].message  # type: ignore
-        req.add_message(message)
+        mtir.add_message(message)
 
         output_content: str = message.content or " "  # type: ignore
         self._log_info(f"LLM call completed with response:\n{output_content}")
-        output_value = req.parse_response(output_content)
+        output_value = mtir.parse_response(output_content)
 
         tool_calls: list[ToolCall] = []
         for tool_call in message.tool_calls or []:  # type: ignore
-            if tool := req.get_tool(tool_call["function"]["name"]):
+            if tool := mtir.get_tool(tool_call["function"]["name"]):
                 args_json = json.loads(tool_call["function"]["arguments"])
                 args = tool.parse_arguments(args_json)
                 tool_calls.append(
@@ -309,13 +203,8 @@ class Model:
             tool_calls=tool_calls,
         )
 
-    def _dispatch_streaming_response(
-        self, req: CompletionRequest
-    ) -> Generator[str, None, None]:
-        # Construct the parameters for the LLM call
-        params = self._make_model_params(req)
-
-        # Call the LiteLLM API
+    def _dispatch_streaming_response(self, mtir: MTIR) -> Generator[str, None, None]:
+        params = self._get_dispatch_params(mtir)
         self._log_info(f"Calling LLM: {self.model_name} with params:\n{params}")
         response: CustomStreamWrapper = litellm.completion(**params, stream=True)  # type: ignore
 

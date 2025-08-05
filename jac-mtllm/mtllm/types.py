@@ -6,7 +6,6 @@ tool calls, and tools that can be used in LLM requests and responses.
 """
 
 import base64
-import json
 import mimetypes
 import os
 from dataclasses import dataclass
@@ -20,7 +19,7 @@ from litellm.types.utils import Message as LiteLLMMessage
 
 from pydantic import TypeAdapter
 
-from .schema import json_to_instance, tool_to_schema, type_to_schema
+from .schema import tool_to_schema
 
 # The message can be a jaclang defined message or what ever the llm
 # returned object that was feed back to the llm as it was given (dict).
@@ -209,72 +208,6 @@ class MockToolCall:
             tool=Tool(self.tool),
             args=self.args,
         )
-
-
-@dataclass
-class CompletionRequest:
-    """Request for completion from the LLM."""
-
-    # The message can be both Message instance or a dictionary (that was
-    # returned by the llm, and we're feeding back).
-    messages: list[MessageType]
-    tools: list[Tool]
-    params: dict  # Additional parameters for the LLM request.
-    stream: bool = False  # Whether to stream the response.
-    resp_type: type | None = None  # Type from which the json schema is generated.
-
-    def __post_init__(self) -> None:
-        """Post-initialization to ensure the tools list contains a finish tool."""
-        if len(self.tools) > 0:
-            finish_tool = Tool.make_finish_tool(self.resp_type or str)
-            self.tools.append(finish_tool)
-
-    def get_msg_list(self) -> list[dict[str, object] | LiteLLMMessage]:
-        """Return the messages in a format suitable for LLM API."""
-        return [
-            msg.to_dict() if isinstance(msg, Message) else msg for msg in self.messages
-        ]
-
-    def get_tool_list(self) -> list[dict]:
-        """Return the tools in a format suitable for LLM API."""
-        return [tool.get_json_schema() for tool in self.tools]
-
-    def get_output_schema(self) -> dict | None:
-        """Return the JSON schema for the response type."""
-        assert (
-            len(self.tools) == 0 or self.get_tool("finish_tool") is not None
-        ), "Finish tool should be present in the tools list."
-        if len(self.tools) == 0 and self.resp_type:
-            if self.resp_type is str:
-                return None  # Strings are default and not using a schema.
-            return type_to_schema(self.resp_type)
-        # If the are tools, the final output will be sent to the finish_tool
-        # thus there is no output schema.
-        return None
-
-    def parse_response(self, response: str) -> object:
-        """Parse the response from the LLM."""
-        # To use validate_json the string should contains quotes.
-        #     example: '"The weather at New York is sunny."'
-        # but the response from LLM will not have quotes, so
-        # we need to check if it's string and return early.
-        if self.resp_type is None or self.resp_type is str or response.strip() == "":
-            return response
-        if self.resp_type:
-            json_dict = json.loads(response)
-            return json_to_instance(json_dict, self.resp_type)
-        return response
-
-    def add_message(self, message: MessageType) -> None:
-        """Add a message to the request."""
-        self.messages.append(message)
-
-    def get_tool(self, tool_name: str) -> Tool | None:
-        """Get a tool by its name."""
-        for tool in self.tools:
-            if tool.func.__name__ == tool_name:
-                return tool
-        return None
 
 
 @dataclass

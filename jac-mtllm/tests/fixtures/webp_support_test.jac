@@ -1,4 +1,4 @@
-import from mtllm.llm {Model, Image}
+import from mtllm {Model, Image}
 import os;
 
 'Personality of the Person'
