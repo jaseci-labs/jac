@@ -1,0 +1,27 @@
+{
+    "compilerOptions": {
+        "target": "es2020",
+        "module": "node16",
+        "lib": [
+            "es2020"
+        ],
+        "skipLibCheck": true,
+        "esModuleInterop": true,
+        "allowSyntheticDefaultImports": true,
+        "strict": true,
+        "forceConsistentCasingInFileNames": true,
+        "moduleResolution": "node16",
+        "resolveJsonModule": true,
+        "sourceMap": true,
+        "outDir": "./out",
+        "noImplicitReturns": true,
+        "noImplicitOverride": true,
+        "checkJs": true,
+        "experimentalDecorators": true
+    },
+    "exclude": [
+        "node_modules",
+        "dist",
+        "out"
+    ]
+}
