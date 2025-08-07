@@ -20,7 +20,7 @@ class JacMachine:
         mtir = MTIR.factory(
             caller=caller,
             args=args,
-            call_params=model.llm_connector.call_params,
+            call_params=model.call_params,
         )
         return model.invoke(mtir=mtir)
 
