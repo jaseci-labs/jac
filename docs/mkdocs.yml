@@ -48,7 +48,6 @@ nav:
         - Python MTLLM Interface: "learn/jac-mtllm/python_integration.md"
         - Using Multimodal models: "learn/jac-mtllm/multimodality.md"
         - Build your own MTLLM plugin: "learn/jac-mtllm/creating_mtllm_plugins.md"
-        - Python MTLLM Interface: "learn/jac-mtllm/python_integration.md"
         - LiteLLM Proxy Server: "learn/jac-mtllm/litellm_proxy.md"
     - Scale-Native Programming:
       - "learn/jac-cloud/introduction.md"
