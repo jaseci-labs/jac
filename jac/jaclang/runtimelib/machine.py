@@ -1,4 +1,4 @@
-"""Jac Language Features."""
+"""Translation layer from jac syntax to granular operations while leveraging pluggy to have a overridable behavior."""
 
 # TODO: Need a good description for machine.py
 from __future__ import annotations
@@ -76,9 +76,24 @@ P = ParamSpec("P")
 
 
 class ExecutionContext:
-    """Execution Context."""
+    """
+    Represents the runtime environment and state for a Jac program execution.
 
-    # TODO: need better explaintation here for what execution context does
+    The ExecutionContext manages memory storage, key anchor nodes, and system roots,
+    providing a consistent context for tracking and manipulating graph state
+    during program execution.
+
+    Key responsibilities:
+    - Initializes and maintains the system root anchor node (a unique global entry point).
+    - Loads and manages the current root state and entry node anchors.
+    - Provides access to persistent memory through ShelfStorage.
+    - Handles cleanup and resource release via the close() method.
+    - Facilitates retrieval of important anchors like the system root and program root.
+
+    This context acts as a container for execution-specific data and facilitates
+    interaction with the Jac graph machine during runtime.
+    """
+
     def __init__(
         self,
         session: Optional[str] = None,
@@ -112,8 +127,7 @@ class ExecutionContext:
         return default
 
     def set_entry_node(self, entry_node: str | None) -> None:
-        """Override entry."""
-        # TODO: need better function description
+        """Override entry node."""
         self.entry_node = self.init_anchor(entry_node, self.root_state)
 
     def close(self) -> None:
@@ -136,7 +150,6 @@ class JacAccessValidation:
     @staticmethod
     def elevate_root() -> None:
         """Elevate context root to system_root."""
-        # TODO: need better function description what is the difference between context_root and system_root
         jctx = JacMachineInterface.get_context()
         jctx.root_state = jctx.system_root
 
@@ -147,7 +160,6 @@ class JacAccessValidation:
         level: AccessLevel | int | str = AccessLevel.READ,
     ) -> None:
         """Allow all access from target root graph to current Archetype."""
-        # TODO: THis function does more than what mentioned need good description
         level = AccessLevel.cast(level)
         access = archetype.__jac__.access.roots
 
@@ -171,8 +183,7 @@ class JacAccessValidation:
     def perm_grant(
         archetype: Archetype, level: AccessLevel | int | str = AccessLevel.READ
     ) -> None:
-        """Allow everyone to access current Archetype."""
-        # TODO: BETTER TO CHANGE THE NAME OF THE FUNCTION because it gives access permission to all
+        """Grant the specified access level to all users for the given Archetype."""
         anchor = archetype.__jac__
         level = AccessLevel.cast(level)
         if level != anchor.access.all:
@@ -180,8 +191,7 @@ class JacAccessValidation:
 
     @staticmethod
     def perm_revoke(archetype: Archetype) -> None:
-        """Disallow others to access current Archetype."""
-        # TODO: BETTER TO CHANGE THE NAME OF THE FUNCTION because it gives revokes pemission of all
+        """Revoke all access permissions on the given Archetype, effectively disallowing others."""
         anchor = archetype.__jac__
         if anchor.access.all > AccessLevel.NO_ACCESS:
             anchor.access.all = AccessLevel.NO_ACCESS
@@ -227,8 +237,11 @@ class JacAccessValidation:
 
     @staticmethod
     def check_access_level(to: Anchor, no_custom: bool = False) -> AccessLevel:
-        """Access validation."""
-        # TODO: NEED description regardingwhat no_custom do
+        """
+        Determine the access level for given Anchor based on persistence, root ownership, and custom access rules.
+
+        Returns the access level considering persistence, root status, and any custom permissions.
+        """
         if not to.persistent or to.hash == 0:
             return AccessLevel.WRITE
 
@@ -303,10 +316,6 @@ class JacNode:
         origin: list[NodeArchetype], destination: DataSpatialDestination
     ) -> list[EdgeArchetype]:
         """Get edges connected to this node."""
-        # TODO: this function doesnt return edges for a single node but rather returns all edges connected to the given
-        # origin nodes that meet direction, filtering, and access criteria, and returns them as a list of edge
-        # archetypes. so I would name and description of function.Also a quick desciption regarding destination is also
-        # needed
         edges: OrderedDict[EdgeAnchor, EdgeArchetype] = OrderedDict()
         for node in origin:
             nanch = node.__jac__
@@ -341,7 +350,6 @@ class JacNode:
         from_visit: bool = False,
     ) -> list[EdgeArchetype | NodeArchetype]:
         """Get edges connected to this node and the node."""
-        # TODO: from_visit is not used inside that function.shall we remove it
         loc: OrderedDict[
             Union[NodeAnchor, EdgeAnchor], Union[NodeArchetype, EdgeArchetype]
         ] = OrderedDict()
@@ -378,7 +386,6 @@ class JacNode:
         origin: list[NodeArchetype], destination: DataSpatialDestination
     ) -> list[NodeArchetype]:
         """Get set of nodes connected to this node."""
-        # TODO: function name should be changed like get_connected_nodes_to_node
         nodes: OrderedDict[NodeAnchor, NodeArchetype] = OrderedDict()
         for node in origin:
             nanch = node.__jac__
@@ -408,8 +415,7 @@ class JacNode:
 
     @staticmethod
     def remove_edge(node: NodeAnchor, edge: EdgeAnchor) -> None:
-        """Remove reference without checking sync status."""
-        # TODO: function name should change like remove_edge_from_node
+        """Remove an edge reference from a node's edge list without sync checks."""
         for idx, ed in enumerate(node.edges):
             if ed.id == edge.id:
                 node.edges.pop(idx)
@@ -426,15 +432,40 @@ class JacEdge:
 
         Removes the edge reference from both connected nodes.
         """
-        # TODO: SO even if i remove the edge does it still stays in the memory context?
         JacMachineInterface.remove_edge(node=edge.source, edge=edge)
         JacMachineInterface.remove_edge(node=edge.target, edge=edge)
 
 
 class JacWalker:
-    """Jac Walker Operations."""
+    """
+    Manages the traversal and control flow of Jac walkers over graph structures.
 
-    # TODO: A good description for JacWalker is needed by example.Alexie can you give a reference
+    A 'walker' represents a cursor or agent moving through nodes and edges in a Jac
+    program's graph. This class provides static methods to control walker behaviors such as:
+
+    - Visiting nodes or edges and updating the walker's path (`visit`).
+    - Marking nodes or edges to be ignored during traversal (`ignore`).
+    - Spawning walker execution on specified graph locations (`spawn_call` and `async_spawn_call`).
+    - Starting or scheduling walker execution on given targets (`spawn`).
+    - Stopping or disengaging a walker (`disengage`).
+
+    Example:
+        # Create a walker and visit nodes
+        JacWalker.visit(walker, [node1, node2])
+
+        # Spawn walker execution asynchronously at a node
+        await JacWalker.async_spawn_call(walker, node)
+
+        # Mark certain edges to be ignored by the walker
+        JacWalker.ignore(walker, [edge1, edge2])
+
+        # Spawn a walker on targets
+        JacWalker.spawn(walker, target_node_or_edge)
+
+        # Disengage a walker
+        JacWalker.disengage(walker)
+    """
+
     @staticmethod
     def visit(
         walker: WalkerArchetype,
@@ -448,7 +479,6 @@ class JacWalker:
         insert_loc: int = -1,
     ) -> bool:  # noqa: ANN401
         """Jac's visit stmt feature."""
-        # TODO: What is stmt feature?
         if isinstance(walker, WalkerArchetype):
             """Walker visits node."""
             wanch = walker.__jac__
@@ -483,7 +513,6 @@ class JacWalker:
         ),
     ) -> bool:  # noqa: ANN401
         """Jac's ignore stmt feature."""
-        # TODO: What is stmt feature?
         if isinstance(walker, WalkerArchetype):
             wanch = walker.__jac__
             before_len = len(wanch.ignores)
@@ -507,8 +536,7 @@ class JacWalker:
         walker: WalkerAnchor,
         node: NodeAnchor | EdgeAnchor,
     ) -> WalkerArchetype:
-        """Jac's spawn operator feature."""
-        # TODO: What is spawn call a better explaination is needed
+        """Execute the walker’s traversal starting from the given node or edge."""
         warch = walker.archetype
         walker.path = []
         current_loc = node.archetype
@@ -600,7 +628,7 @@ class JacWalker:
         walker: WalkerAnchor,
         node: NodeAnchor | EdgeAnchor,
     ) -> WalkerArchetype:
-        """Jac's async spawn operator feature."""
+        """Asynchronously execute the walker’s traversal starting from the given node or edge."""
         warch = walker.archetype
         walker.path = []
         current_loc = node.archetype
@@ -707,8 +735,7 @@ class JacWalker:
     def spawn(
         op1: Archetype | list[Archetype], op2: Archetype | list[Archetype]
     ) -> Union[WalkerArchetype, Coroutine]:
-        # TODO: Same function description is used for spawn_call.we need to clearly differentiate it
-        """Jac's spawn operator feature."""
+        """Schedule the walker to traverse one or more target archetypes without immediate execution."""
 
         def collect_targets(
             walker: WalkerAnchor, items: list[Archetype]
@@ -893,17 +920,26 @@ class JacCmd:
 
 
 class JacBasics:
-    """Jac Feature."""
+    """
+    Core utility class providing basic operations for managing Jac execution context and graph lifecycle.
+
+    This class includes methods to setup references, access and modify the current
+    execution context, and reset or purge parts of the Jac object graph.
+    """
 
     @staticmethod
     def setup() -> None:
         """Set Class References."""
 
-    # TODO: what does thisfunction do
     @staticmethod
     def get_context() -> ExecutionContext:
         """Get current execution context."""
         return JacMachine.exec_ctx
+
+    @staticmethod
+    def set_context(context: ExecutionContext) -> None:
+        """Set the context for the machine."""
+        JacMachine.exec_ctx = context
 
     @staticmethod
     def reset_graph(root: Optional[Root] = None) -> int:
@@ -972,8 +1008,7 @@ class JacBasics:
     def impl_patch_filename(
         file_loc: str,
     ) -> Callable[[Callable[P, T]], Callable[P, T]]:
-        # TODO: This function need more description what it does
-        """Update impl file location."""
+        """Override a function’s filename in tracebacks with a custom path using a decorator."""
 
         def decorator(func: Callable[P, T]) -> Callable[P, T]:
             try:
@@ -1015,9 +1050,11 @@ class JacBasics:
         items: Optional[dict[str, Union[str, Optional[str]]]] = None,
         reload_module: Optional[bool] = False,
     ) -> tuple[types.ModuleType, ...]:
-        """Core Import Process."""
-        # TODO: This function needs a detailed explaination because it dynamically identify what modules
-        # to use better give example
+        """Dynamically import a Jac or Python module.
+
+        This function allows dynamic loading of modules with enhanced flexibility, including the ability to import
+        specific members, rename imports, import entire modules, and force reloads.
+        """
         from jaclang.runtimelib.importer import (
             ImportPathSpec,
             JacImporter,
@@ -1134,7 +1171,6 @@ class JacBasics:
     @staticmethod
     def field(factory: Callable[[], T] | None = None, init: bool = True) -> T:
         """Jac's field handler."""
-        # TODO: this need to be elobrated
         if factory:
             return field(default_factory=factory)
         return field(init=init)
@@ -1142,7 +1178,6 @@ class JacBasics:
     @staticmethod
     def report(expr: Any, custom: bool = False) -> None:  # noqa: ANN401
         """Jac's report stmt feature."""
-        # TODO: this need to be elobrated
         ctx = JacMachineInterface.get_context()
         if custom:
             ctx.custom = expr
@@ -1155,8 +1190,7 @@ class JacBasics:
     ) -> (
         list[NodeArchetype] | list[EdgeArchetype] | list[NodeArchetype | EdgeArchetype]
     ):
-        """Jac's apply_dir stmt feature."""
-        # TODO: this function name is confused and better descrition is needed
+        """Retrieve node and edge references via a DataSpatialPath."""
         if not isinstance(path, DataSpatialPath):
             path = DataSpatialPath(path, [DataSpatialDestination(EdgeDir.OUT)])
 
@@ -1290,8 +1324,7 @@ class JacBasics:
         conn_type: Optional[Type[EdgeArchetype] | EdgeArchetype],
         conn_assign: Optional[tuple[tuple, tuple]],
     ) -> Callable[[NodeAnchor, NodeAnchor], EdgeArchetype]:
-        """Jac's root getter."""
-        # TODO: this description need to be changed
+        """Build and connect an edge between two nodes."""
         ct = conn_type if conn_type else GenericEdge
 
         def builder(source: NodeAnchor, target: NodeAnchor) -> EdgeArchetype:
@@ -1322,8 +1355,7 @@ class JacBasics:
     def save(
         obj: Archetype | Anchor,
     ) -> None:
-        """Destroy object."""
-        # TODO:the function name is mentioning save while it destroys the object function name need to be changed
+        """Save an Archetype or Anchor object into the current execution context memory."""
         anchor = obj.__jac__ if isinstance(obj, Archetype) else obj
 
         jctx = JacMachineInterface.get_context()
@@ -1349,9 +1381,12 @@ class JacBasics:
 
     @staticmethod
     def destroy(objs: Archetype | Anchor | list[Archetype | Anchor]) -> None:
-        """Destroy multiple objects passed in a tuple or list."""
-        # TODO:this function description has a issue it not only accept list it also accept direct object too
-        # so lets change the description
+        """Destroy one or more Archetype or Anchor objects in a tuple or list.
+
+            This method accepts a single object or a list of objects, and performs cleanup
+        depending on whether the object is a NodeAnchor or EdgeAnchor. For nodes,
+        all connected edges are also destroyed. For edges, they are detached first.
+        """
         obj_list = objs if isinstance(objs, list) else [objs]
         for obj in obj_list:
             if not isinstance(obj, (Archetype, Anchor)):
@@ -1384,8 +1419,7 @@ class JacBasics:
 
     @staticmethod
     def sem(semstr: str, inner_semstr: dict[str, str]) -> Callable:
-        # TODO: a good description is needed for this function
-        """Attach the semstring to the given object."""
+        """Attach the semstring to the given object as a decorator."""
 
         def decorator(obj: object) -> object:
             setattr(obj, "_jac_semstr", semstr)  # noqa:B010
@@ -1399,7 +1433,6 @@ class JacBasics:
         model: object, caller: Callable, args: dict[str | int, object]
     ) -> Any:  # noqa: ANN401
         """Call the LLM model."""
-        # TODO: why do we need to always raise a import error? why does return is Any.cant we specify the returned part
         raise ImportError(
             "mtllm is not installed. Please install it with `pip install mtllm` and run `jac clean`."
         )
@@ -1523,8 +1556,13 @@ class JacUtils:
         module_name: str,
         items: Optional[dict[str, Union[str, Optional[str]]]],
     ) -> tuple[types.ModuleType, ...]:
-        """Reimport the module."""
-        # TODO: A good description is needed for this function or a example
+        """Reload and update a previously loaded Jac module, optionally updating specified items in place.
+
+        This method attempts to reload the module identified by `module_name` using
+        the JacImporter, then updates attributes specified in `items` within the existing
+        loaded module to reflect the latest definitions. This enables dynamic hot-reloading
+        of module contents without fully replacing the module reference.
+        """
         from .importer import JacImporter, ImportPathSpec
 
         if module_name in JacMachine.loaded_modules:
@@ -1595,7 +1633,6 @@ class JacUtils:
     @staticmethod
     def get_archetype(module_name: str, archetype_name: str) -> Optional[Archetype]:
         """Retrieve an archetype class from a module."""
-        # TODO: what is a module? also shall we change function name to get_archetype_of_module
         module = JacMachine.loaded_modules.get(module_name)
         if module:
             return getattr(module, archetype_name, None)
@@ -1643,12 +1680,6 @@ class JacMachine(JacMachineInterface):
         JacMachine.base_path_dir = (
             base_path if os.path.isdir(base_path) else os.path.dirname(base_path)
         )
-
-    @staticmethod
-    def set_context(context: ExecutionContext) -> None:
-        """Set the context for the machine."""
-        # TODO: cant we move this function near place where get_context is available
-        JacMachine.exec_ctx = context
 
     @staticmethod
     def reset_machine() -> None:
