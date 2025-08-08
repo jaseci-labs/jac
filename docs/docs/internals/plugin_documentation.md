@@ -1,6 +1,9 @@
-#  Plugin Foundation Documentation
+#  Jac Plugins
 
-## Overview
+## What is a JAC Plugin?
+JAC is a powerful language that can be extended with plugins. JAC plugins are Python packages that extend the functionality of JAC. You can create custom commands, functions, and modules that can be used in JAC scripts.
+
+## How is it enabled by Jaseci?
 
 The `machine.py` file forms the **foundation of plugin functionality** in the Jaseci Cloud architecture. It leverages the **Pluggy** library to define a flexible and modular **plugin system** using a **hook mechanism**.
 
@@ -162,15 +165,15 @@ This class is the core **interface layer** of the plugin system. It:
 
 ### Inherited Static Classes
 
-- `JacClassReferences`
-- `JacAccessValidation`: Static functions related to access/permission managment in Jac are implemented
-- `JacNode`: Static functions related to nodes are implemented
-- `JacEdge`: Static functions related to edges are implemented(only one function can be merged with JacNode)
-- `JacWalker` : Missing documentation.
-- `JacBuiltin`: Centralized reference holder for core Jaseci class and type aliases.
+- `JacAccessValidation`: Static functions related to access/permission managment in Jac
+- `JacNode`: Static functions related to nodes
+- `JacEdge`: Static functions related to edges
+- `JacWalker` : Static functions related to managing the traversal and control flow of Jac walkers
+- `JacClassReferences`: Centralized reference holder for core Jaseci class and type aliases
+- `JacBuiltin`: Jac Builtins
 - `JacCmd`: Static functions related to cmd implementation
-- `JacBasics` : Missing documentation.
-- `JacUtils`: utility functions related to Jac are implemented
+- `JacBasics` :  Core utility class providing basic operations for managing Jac execution context and graph lifecycle.
+- `JacUtils`: utility functions
 
 ---
 
@@ -195,25 +198,157 @@ plugin_manager.register(YourPluginClass())
 
 The following static methods are exposed through the plugin interface and can be improved using hook implementation
 
-| **Function**             | **Notes**                                                                 |
-|--------------------------|---------------------------------------------------------------------------|
-| `connect`                | Needs better description — what kind of connection? What parameters?      |
-| `disconnect`             | Clarify whether it's object-to-object disconnection or session-related.   |
-| `perm_grant`             | Rename or clarify — it grants permission to everyone.                     |
-| `perm_revoke`            | Removes all permissions — state scope and cascading effects.              |
-| `check_read_access`      | Widely used — should include examples and return behavior.                |
-| `check_write_access`     | Add detailed context on when and why it’s triggered.                      |
-| `check_connect_access`   | Explain with use case and expected outcome.                               |
-| `check_access_level`     | Critical access logic — needs detailed breakdown.                         |
-| `get_edges_with_node`    | Clarify difference from `get_edges`. Add real-world usage scenarios.      |
-| `edges_to_nodes`         | Misleading name — it means “get connected nodes”. Rename or explain.      |
-| `remove_edge`            | Common function — include code samples or visual diagrams.                |
-| `visit` / `ignore`       | Missing docstrings — clarify usage context and purpose.                   |
-| `spawn_call`             | Describe lifecycle and execution flow clearly.                            |
-| `async_spawn_call`       | Needs distinct async-specific explanation (currently same as `spawn_call`).|
-| `disengage`              | Explain context — e.g., walker termination, access cleanup, etc.          |
-| `setup`                  | Clarify what is being setup — graph, context, permissions, etc.?          |
-| `reset_graph`            | Clarify whether it's a full or partial reset — and when to use it.        |
-| `make_archetype`         | Add explanation about its role in object/class/type creation.             |
-| `impl_patch_filename`    | Explain purpose — dynamic patching, hot reloading, etc.                   |
-| `jac_import`             | Key function — handles `.jac` and `.py` imports. Needs examples and context. |
+| **Function**                  | **Description**                                                                 |
+|-------------------------------|---------------------------------------------------------------------------------|
+| `setup`                       | Set Class References|
+| `get_context`                 | Get current execution context|
+| `set_context`                 | Set the context for the machin|
+| `reset_graph`                 | Purge current or target graph|
+| `get_object`                  | Get object given id|
+| `object_ref`                  | Get object reference id|
+| `make_archetype`              | Create a obj archetype|
+| `impl_patch_filename`         | Override a function’s filename in tracebacks with a custom path using a decorator|
+| `jac_import`                  | Dynamically import a Jac or Python module|
+| `jac_test`                    | Create a test|
+| `run_test`                    | Run the test suite in the specified .jac file|
+| `refs`                        | Retrieve node and edge references via a DataSpatialPath|
+| `filter`                      | filter by archetype|
+| `connect`                     | Jac's connect operator feature.Defines how 2 nodes should be connected|
+| `disconnect`                  | Jac's disconnect operator feature|
+| `assign`                      | Jac's assign comprehension feature|
+| `root`                        | Jac's root getter|
+| `get_all_root`                | Get all the roots|
+| `build_edge`                  | Build and connect an edge between two nodes|
+| `save`                        | Save an Archetype or Anchor object into the current execution context memory|
+| `destroy`                     | Destroy one or more Archetype or Anchor objects|
+| `entry`                       | Mark a method as jac entry using decorator|
+| `exit`                        | Mark a method as jac exit using decorator|
+| `sem`                         | Attach the semstring to the given object with this decorator|
+| `call_llm`                    |Call the LLM model|
+| `attach_program`              | Attach a JacProgram to the machine|
+| `load_module`                 | Load a module into the machine|
+| `list_modules`                | List all loaded modules|
+| `list_walkers`                |List all walkers in a specific module |
+| `list_nodes`                  | List all nodes in a specific module|
+| `load_edges`                  | List all edges in a specific module|
+| `create_archetype_from_source`| Dynamically creates archetypes (nodes, walkers, etc.) from Jac source code|
+| `update_walker`               | Reload and update a previously loaded Jac module|
+| `spawn_node`                  |Spawn a node instance of the given node_name with attributes|
+| `spawn_walker`                | pawn a walker instance of the given walker_name|
+| `get_archetype`               |Retrieve an archetype class from a module|
+| `thread_run`                  |Run a function in a thread|
+| `thread_wait`                 |Wait for a thread to finish|
+| `set_base_path`               | Set the base path for the machine|
+| `reset_machine`               |Reset the machine|
+| `elevate_root`                | Elevate context root to system_root|
+| `allow_root`                  | Allow all access from target root graph to current Archetype|
+| `disallow_root`               | Disallow all access from target root graph to current Archetype|
+| `perm_grant`                  | Grant the specified access level to all users for the given Archetype|
+| `perm_revoke`                 | Revoke all access permissions on the given Archetype, effectively disallowing others|
+| `check_read_access`           | Read Access Validation for anchor|
+| `check_write_access`          | Write Access Validation for anchor|
+| `check_connect_access`        | Connect Access Validation for anchor|
+| `check_access_level`          |Determine the access level for given|
+| `node_dot`                    | Generate Dot file for visualizing nodes and edges|
+| `get_edges`                   | Get edges connected to the node|
+| `get_edges_with_node`         | Get edges connected to the origin node and the desitnation node|
+| `edges_to_nodes`              | Get set of nodes connected to this node|
+| `remove_edge`                 | Remove an edge reference from a node's edge list without sync checks|
+| `jac_test`                    | Create a test|
+| `run_test`                    | Run the test suite in the specified .jac file|
+| `visit`                       | Jac's visit stmt feature|
+| `ignore`                      | Jac's visit stmt feature|
+| `report`                      | Jac's report stmt feature|
+| `disengage`                   | Jac's disengage stmt feature|
+| `spawn_call`                  | Execute the walker’s traversal starting from the given node or edge|
+| `async_spawn_call`            | Execute the walker’s traversal starting from the given node or edge asynchronously|
+| `spawn`                       | Schedule the walker to traverse one or more target archetypes without immediate execution|
+| `printgraph`                  | Generate graph for visualizing nodes and edges |
+| `create_cmd`                  | Create Jac CLI cmds |
+
+## How to Create a JAC Plugin?
+
+Let's create a simple plugin that will add a new command to Jac CLI. The command will be called `hello` and will print `Hello, World!` to the console.
+
+**Step 1: Create a new directory for your plugin.** I will call mine `my_plugin`.
+```bash
+mkdir my_plugin
+cd my_plugin
+```
+
+**Step 2: Install necessary dependencies.** (It is recommended to use a virtual environment)
+```bash
+pip install poetry
+```
+
+**Step 3: Create a new Python package.**
+```bash
+poetry init
+# Fill in the details
+# for compatible python version, use 3.12
+```
+
+**Step 4: Add necessary dependencies.**
+```bash
+poetry add jaclang
+poetry add pytest --group dev
+```
+
+**Step 5: Create the necessary folders and files.**
+```bash
+mkdir my_plugin # Use the name of your plugin. This is where the plugin code will go.
+touch my_plugin/__init__.py
+touch my_plugin/plugin.py
+```
+
+**Step 6: Link your plugin to Jaclang.**
+Open the `pyproject.toml` file and add the following lines before `[build-system]`
+```toml
+[tool.poetry.plugins."jac"]
+"my_plugin" = "my_plugin.plugin:JacCmd"
+```
+
+**Step 7: Implement the plugin.**
+Open `my_plugin/plugin.py` and add the following code.
+```python
+from jaclang.cli.cmdreg import cmd_registry
+from jaclang.runtimelib.default import hookimpl
+
+class JacCmd:
+    """Jac CLI."""
+
+    @staticmethod
+    @hookimpl
+    def create_cmd() -> None:
+        """Creating Jac CLI cmds."""
+
+        @cmd_registry.register
+        def hello():
+            """Prints Hello, World!"""
+            print("Hello, World!")
+```
+
+**Step 8: Install the plugin.**
+```bash
+poetry install
+```
+
+**Step 9: Run the plugin.**
+```bash
+jac hello
+```
+
+You should see `Hello, World!` printed to the console.
+
+That's it! You have created your first JAC plugin. You can now extend JAC with your own custom commands.
+
+### Next Steps
+- Now you can publish your plugin to PyPI and share it with the world. Follow the [Publishing Python Packages](https://packaging.python.org/tutorials/packaging-projects/) guide to learn how to publish your plugin.
+- Don't forget to create a nice README and add some examples to help users understand how to use your plugin.
+
+> **Note:**
+> For more examples, check out the [JAC Plugin Examples](https://github.com/Jaseci-Labs/jaclang/tree/main/examples/plugins)
+
+>Check out the [MTLLM Plugin](https://github.com/Jaseci-Labs/mtllm) for a more complex example. Where we have created a plugin that adds LLM functionality to JAC.
+
+If you have any questions, feel free to ask in the [Community Channel]().

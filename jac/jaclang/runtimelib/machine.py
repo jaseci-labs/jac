@@ -349,7 +349,7 @@ class JacNode:
         destination: DataSpatialDestination,
         from_visit: bool = False,
     ) -> list[EdgeArchetype | NodeArchetype]:
-        """Get edges connected to this node and the node."""
+        """Get edges connected to the origin node and the desitnation node."""
         loc: OrderedDict[
             Union[NodeAnchor, EdgeAnchor], Union[NodeArchetype, EdgeArchetype]
         ] = OrderedDict()
@@ -1229,7 +1229,12 @@ class JacBasics:
         conn_assign: tuple[tuple, tuple] | None = None,
         edges_only: bool = False,
     ) -> list[NodeArchetype] | list[EdgeArchetype]:
-        """Jac's connect operator feature."""
+        """Jac's connect operator feature.
+
+        Connect nodes using Jac's connect operator feature.Establishes edges between the provided
+        left and right nodes, optionally using a specified edge archetype, directionality,
+        connection assignments, or returning edges only.
+        """
         left = [left] if isinstance(left, NodeArchetype) else left
         right = [right] if isinstance(right, NodeArchetype) else right
         edges = []
@@ -1419,7 +1424,7 @@ class JacBasics:
 
     @staticmethod
     def sem(semstr: str, inner_semstr: dict[str, str]) -> Callable:
-        """Attach the semstring to the given object as a decorator."""
+        """Attach the semstring to the given object with this decorator."""
 
         def decorator(obj: object) -> object:
             setattr(obj, "_jac_semstr", semstr)  # noqa:B010
@@ -1661,7 +1666,7 @@ class JacMachineInterface(
     JacBasics,
     JacUtils,
 ):
-    """Jac Feature."""
+    """Interface class that joins all the individual classes."""
 
 
 class JacMachine(JacMachineInterface):
