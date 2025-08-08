@@ -156,6 +156,9 @@ class LiteLLMConnector(LLMConnector):
         logging.getLogger("httpx").setLevel(logging.WARNING)
         _disable_debugging()
 
+        # Drop unsupported parameters for specific models (e.g., gpt-5 models)
+        litellm.drop_params = True
+
     @override
     def dispatch_no_streaming(self, mtir: MTIR) -> CompletionResult:
         """Dispatch the LLM call without streaming."""

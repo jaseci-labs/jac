@@ -10,7 +10,7 @@ keywords = ["llm", "jaclang", "jaseci", "mtllm"]
 
 [tool.poetry.dependencies]
 jaclang = "0.8.4"
-litellm = "~1.73.1"
+litellm = "~1.75.2"
 loguru = "~0.7.2"
 pillow = "~10.4.0"
 
