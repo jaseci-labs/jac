@@ -225,7 +225,7 @@ ctrl_stmt: KW_SKIP | KW_BREAK | KW_CONTINUE
 spatial_stmt: visit_stmt | disenage_stmt
 
 // [Heading]: Visit statements.
-visit_stmt: KW_VISIT (COLON expression COLON)? expression (else_stmt | SEMI)
+visit_stmt: KW_VISIT (COLON expression COLON)? expression by_llm? (else_stmt | SEMI)
 
 // [Heading]: Disengage statements.
 disenage_stmt: KW_DISENGAGE SEMI

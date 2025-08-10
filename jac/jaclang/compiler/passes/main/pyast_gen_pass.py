@@ -1719,6 +1719,7 @@ class PyastGenPass(UniPass):
                     )
                 )
             )
+        # add llm call if genai_call is present
 
         node.gen.py_ast = [
             (

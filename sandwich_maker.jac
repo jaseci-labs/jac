@@ -1,6 +1,6 @@
 import from mtllm {Model, __by__}
 
-glob llm = Model(model_name="gpt-4o");
+glob llm: Model = Model(model_name = "gemini/gemini-2.5-flash");
 
 
 obj BreadSlice {
@@ -72,7 +72,8 @@ walker SandwichMaker{
     can start_making_the_sandwitch with `root entry {
         print("👨‍🍳 Starting the sandwich-making process!");
         self.sandwich = Sandwich();
-        visit __by__(llm, self, here);
+        # visit __by__(llm, self, here);
+        visit here by llm();
     }
 }
 

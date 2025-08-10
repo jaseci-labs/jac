@@ -2819,11 +2819,13 @@ class VisitStmt(WalkerStmtOnlyNode, AstElseBodyNode, CodeBlockStmt):
         self,
         insert_loc: Optional[Expr],
         target: Expr,
+        genai_call: Optional[Expr],
         else_body: Optional[ElseStmt],
         kid: Sequence[UniNode],
     ) -> None:
         self.insert_loc = insert_loc
         self.target = target
+        self.genai_call = genai_call
         UniNode.__init__(self, kid=kid)
         WalkerStmtOnlyNode.__init__(self)
         AstElseBodyNode.__init__(self, else_body=else_body)
@@ -2842,6 +2844,9 @@ class VisitStmt(WalkerStmtOnlyNode, AstElseBodyNode, CodeBlockStmt):
             new_kid.append(self.insert_loc)
             new_kid.append(self.gen_token(Tok.COLON))
         new_kid.append(self.target)
+        if self.genai_call:
+            new_kid.append(self.gen_token(Tok.KW_BY))
+            new_kid.append(self.genai_call)
         if self.else_body:
             new_kid.append(self.else_body)
         else:

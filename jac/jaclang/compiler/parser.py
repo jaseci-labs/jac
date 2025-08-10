@@ -1392,7 +1392,7 @@ class JacParser(Transform[uni.Source, uni.Module]):
             """Grammar rule.
 
             visit_stmt: KW_VISIT (COLON expression COLON)?
-                expression (else_stmt | SEMI)
+                expression by_llm? (else_stmt | SEMI)
             """
             self.consume_token(Tok.KW_VISIT)
             insert_loc = None
@@ -1400,12 +1400,14 @@ class JacParser(Transform[uni.Source, uni.Module]):
                 insert_loc = self.consume(uni.Expr)
                 self.consume_token(Tok.COLON)
             target = self.consume(uni.Expr)
+            genai_call = self.match(uni.Expr)
             else_body = self.match(uni.ElseStmt)
             if else_body is None:
                 self.consume_token(Tok.SEMI)
             return uni.VisitStmt(
                 insert_loc=insert_loc,
                 target=target,
+                genai_call=genai_call,
                 else_body=else_body,
                 kid=self.cur_nodes,
             )
