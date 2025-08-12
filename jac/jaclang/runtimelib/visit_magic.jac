@@ -35,7 +35,7 @@ def __by__(model: Model, walker:WalkerArchetype, node: NodeArchetype) -> (
         | EdgeArchetype
     ) {
 
-    
+
     if not isinstance(model, Model) {
         raise TypeError("Invalid llm object");
     }

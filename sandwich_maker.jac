@@ -1,4 +1,4 @@
-import from mtllm {Model, __by__}
+import from mtllm {Model, visit_by}
 
 glob llm: Model = Model(model_name = "gemini/gemini-2.5-flash");
 
@@ -21,10 +21,13 @@ obj Sandwich {
     has assembled: bool = False;
 
     def __str__(){
-        if self.assembled {
+        has_ingredients = (self.slice1 and self.slice1.contents != []) or (self.slice2 and self.slice2.contents != []);
+        if not has_ingredients {
+            return "Incomplete Sandwich";
+        } elif self.assembled {
             return "Sandwich with " + str(self.slice1) + " and " + str(self.slice2);
         } else {
-            return "Incomplete Sandwich";
+            return "Open-faced sandwich with " + str(self.slice1) + " and " + str(self.slice2);
         }
     }
 }
@@ -37,10 +40,10 @@ node BakerBob{
     }
 }
 
-node SpreadSam {
+node PeanutbutterPam {
     can act with SandwichMaker entry {
-        print("👨‍🍳 Spread Sam: Adding peanut butter to the first slice.");
-        visitor.sandwich.slice1.add("peanut_butter");
+        print("👨‍🍳 Peanut Butter Pam: Adding peanut butter to the first slice.");
+        visitor.sandwich.slice1.add("peanut butter");
     }
 }
 
@@ -59,6 +62,20 @@ node VeggieVicky {
     }
 }
 
+node SalamiSam {
+    can act with SandwichMaker entry {
+        print("👨‍🍳 Salami Sam: Adding salami to the first slice.");
+        visitor.sandwich.slice1.add("salami");
+    }
+}
+
+node TunaTina {
+    can act with SandwichMaker entry {
+        print("👩‍🍳 Tuna Tina: Spreading tuna on the second slice.");
+        visitor.sandwich.slice2.add("tuna");
+    }
+}
+
 node PlatingPat {
     can act with SandwichMaker entry {
         print("👨‍🍳 Plating Pat: Closing and plating the sandwich.");
@@ -68,12 +85,13 @@ node PlatingPat {
 
 walker SandwichMaker{
     has sandwich: Sandwich  = Sandwich() ;
+    has request: str = input("What kind of a sandwich do you want to make? (Options: 'peanut butter and jelly', 'veggie', 'salami and tuna')\n");
 
     can start_making_the_sandwitch with `root entry {
         print("👨‍🍳 Starting the sandwich-making process!");
         self.sandwich = Sandwich();
-        # visit __by__(llm, self, here);
-        visit here by llm();
+        visit visit_by(llm, self, here, [-->]);
+        # visit [-->] by llm();
     }
 }
 
@@ -82,10 +100,12 @@ with entry{
     print("👨‍🍳 Let's make a delicious sandwich!");
 
     root ++> BakerBob();
-    root ++> SpreadSam();
+    root ++> PeanutbutterPam();
     root ++> JellyJenny();
     root ++> VeggieVicky();
     root ++> PlatingPat();
+    root ++> SalamiSam();
+    root ++> TunaTina();
 
     maker = SandwichMaker();
     root spawn maker;
