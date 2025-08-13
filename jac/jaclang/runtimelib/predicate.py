@@ -1,5 +1,6 @@
 """Predicates."""
 
+from collections.abc import Iterable
 from enum import StrEnum
 from itertools import islice
 from re import compile, match
@@ -7,7 +8,7 @@ from typing import Any, Callable, Generic, TypeVar, cast
 
 
 T = TypeVar("T")
-GROUP = compile(r'([^\.\[\]\"]+)|\["([^"]+)"\]|\[(\d+)\]')
+GROUP = compile(r"([^\.\[\]\"]+)|\[([^\]]+)\]")
 
 
 class PredicateType(StrEnum):
@@ -174,34 +175,111 @@ class PredicateTranslator(Generic[T]):
 def get_attr(source: Any, field: str) -> Any:  # noqa: ANN401
     """Get attribute."""
     for mat in GROUP.finditer(field):
-        f = mat.group()
+        f: str = next((m for m in mat.groups() if m is not None))
         if f.isdigit():
             if source and (_f := int(f)) < len(source):
                 source = source[_f]
             else:
                 source = None
         else:
-            source = getattr(source, f, None)
+            match source:
+                case dict():
+                    source = source.get(f)
+                case Iterable():
+                    if source:
+                        src = next(iter(source))
+                        if isinstance(src, Iterable):
+                            source = [
+                                (
+                                    s.get(f)
+                                    if isinstance(s, dict)
+                                    else getattr(s, f, None)
+                                )
+                                for src in source
+                                for s in src
+                            ]
+                        else:
+                            source = [
+                                (
+                                    src.get(f)
+                                    if isinstance(src, dict)
+                                    else getattr(src, f, None)
+                                )
+                                for src in source
+                            ]
+                    else:
+                        source = []
+                case _:
+                    source = getattr(source, f, None)
     return source
 
 
 def has_attr(source: Any, field: str) -> Any:  # noqa: ANN401
     """Has attribute."""
     attrs = GROUP.findall(field)
-    for f, _, _ in islice(attrs, 0, len(attrs) - 1):
+    for mat in islice(attrs, 0, len(attrs) - 1):
+        f: str = next((m for m in mat if m is not None))
         if f.isdigit():
-            if source and (f := int(f)) < len(source):
-                source = source[f]
+            if source and (_f := int(f)) < len(source):
+                source = source[_f]
             else:
                 source = None
         else:
-            source = getattr(source, f, None)
+            match source:
+                case dict():
+                    source = source.get(f)
+                case Iterable():
+                    if source:
+                        src = next(iter(source))
+                        if isinstance(src, Iterable):
+                            source = [
+                                (
+                                    s.get(f)
+                                    if isinstance(s, dict)
+                                    else getattr(s, f, None)
+                                )
+                                for src in source
+                                for s in src
+                            ]
+                        else:
+                            source = [
+                                (
+                                    src.get(f)
+                                    if isinstance(src, dict)
+                                    else getattr(src, f, None)
+                                )
+                                for src in source
+                            ]
+                    else:
+                        source = []
+                case _:
+                    source = getattr(source, f, None)
 
     f = attrs[-1]
     if f.isdigit():
         return source and int(f) < len(source)
     else:
-        return has_attr(source, f)
+        match source:
+            case dict():
+                return f in source
+            case Iterable():
+                if source:
+                    src = next(iter(source))
+                    if isinstance(src, Iterable):
+                        return any(
+                            (f in s if isinstance(s, dict) else hasattr(s, f))
+                            for src in source
+                            for s in src
+                        )
+                    else:
+                        return any(
+                            (f in src if isinstance(src, dict) else hasattr(src, f))
+                            for src in source
+                        )
+                else:
+                    return False
+            case _:
+                return hasattr(source, f)
 
 
 def traversal_parsing(predicate: Predicate) -> Callable[[object], bool]:
@@ -220,69 +298,168 @@ def traversal_parsing(predicate: Predicate) -> Callable[[object], bool]:
             pred = traversal_parsing(predicate.predicates[0])
             return lambda x: not pred(x)
         case PredicateType.EQUAL:
-            return lambda x: get_attr(x, predicate.field) == predicate.value
+            return lambda x: (
+                any(val == predicate.value for val in value)
+                if isinstance(value := get_attr(x, predicate.field), Iterable)
+                and not isinstance(value, str)
+                else value == predicate.value
+            )
         case PredicateType.NOT_EQUAL:
-            return lambda x: get_attr(x, predicate.field) != predicate.value
+            return lambda x: (
+                any(val != predicate.value for val in value)
+                if isinstance(value := get_attr(x, predicate.field), Iterable)
+                and not isinstance(value, str)
+                else value != predicate.value
+            )
         case PredicateType.GREATER_THAN:
-            return lambda x: get_attr(x, predicate.field) > predicate.value
+            return lambda x: (
+                any(val > predicate.value for val in value)
+                if isinstance(value := get_attr(x, predicate.field), Iterable)
+                and not isinstance(value, str)
+                else value > predicate.value
+            )
         case PredicateType.LESS_THAN:
-            return lambda x: get_attr(x, predicate.field) < predicate.value
+            return lambda x: (
+                any(val < predicate.value for val in value)
+                if isinstance(value := get_attr(x, predicate.field), Iterable)
+                and not isinstance(value, str)
+                else value < predicate.value
+            )
         case PredicateType.GREATER_THAN_OR_EQUAL:
-            return lambda x: get_attr(x, predicate.field) >= predicate.value
+            return lambda x: (
+                any(val >= predicate.value for val in value)
+                if isinstance(value := get_attr(x, predicate.field), Iterable)
+                and not isinstance(value, str)
+                else value >= predicate.value
+            )
         case PredicateType.LESS_THAN_OR_EQUAL:
-            return lambda x: get_attr(x, predicate.field) <= predicate.value
+            return lambda x: (
+                any(val <= predicate.value for val in value)
+                if isinstance(value := get_attr(x, predicate.field), Iterable)
+                and not isinstance(value, str)
+                else value <= predicate.value
+            )
         case PredicateType.IN:
-            return lambda x: get_attr(x, predicate.field) in predicate.value
+            return lambda x: (
+                any(val in predicate.value for val in value)
+                if isinstance(value := get_attr(x, predicate.field), Iterable)
+                and not isinstance(value, str)
+                else value in predicate.value
+            )
         case PredicateType.NOT_IN:
-            return lambda x: get_attr(x, predicate.field) not in predicate.value
+            return lambda x: (
+                any(val not in predicate.value for val in value)
+                if isinstance(value := get_attr(x, predicate.field), Iterable)
+                and not isinstance(value, str)
+                else value not in predicate.value
+            )
         case PredicateType.LIKE:
             if predicate.value.startswith("%"):
                 if predicate.value.endsswith("%"):
-                    return (
-                        lambda x: (field := get_attr(x, predicate.field)) is not None
-                        and predicate.value in field
+                    return lambda x: (
+                        any(
+                            predicate.value in val
+                            for val in value
+                            if isinstance(val, str)
+                        )
+                        if isinstance(value := get_attr(x, predicate.field), Iterable)
+                        and not isinstance(value, str)
+                        else (isinstance(value, str) and predicate.value in value)
                     )
                 else:
                     return lambda x: (
-                        field := get_attr(x, predicate.field)
-                    ) is not None and field.endswith(predicate.value)
+                        any(
+                            val.endswith(predicate.value)
+                            for val in value
+                            if isinstance(val, str)
+                        )
+                        if isinstance(value := get_attr(x, predicate.field), Iterable)
+                        and not isinstance(value, str)
+                        else (
+                            isinstance(value, str) and value.endswith(predicate.value)
+                        )
+                    )
             elif predicate.value.endsswith("%"):
                 return lambda x: (
-                    field := get_attr(x, predicate.field)
-                ) is not None and field.startswith(predicate.value)
-            return (
-                lambda x: (field := get_attr(x, predicate.field)) is not None
-                and field == predicate.value
+                    any(
+                        val.startswith(predicate.value)
+                        for val in value
+                        if isinstance(val, str)
+                    )
+                    if isinstance(value := get_attr(x, predicate.field), Iterable)
+                    and not isinstance(value, str)
+                    else (isinstance(value, str) and value.startswith(predicate.value))
+                )
+            return lambda x: (
+                any(val == predicate.value for val in value if isinstance(val, str))
+                if isinstance(value := get_attr(x, predicate.field), Iterable)
+                and not isinstance(value, str)
+                else (isinstance(value, str) and value == predicate.value)
             )
         case PredicateType.ILIKE:
-            if predicate.value.startswith("%"):
-                if predicate.value.endsswith("%"):
-                    return (
-                        lambda x: (field := get_attr(x, predicate.field)) is not None
-                        and predicate.value.lower() in field.lower()
+            pvalue = predicate.value.lower()
+            if pvalue.startswith("%"):
+                if pvalue.endsswith("%"):
+                    return lambda x: (
+                        any(
+                            pvalue in val.lower()
+                            for val in value
+                            if isinstance(val, str)
+                        )
+                        if isinstance(value := get_attr(x, predicate.field), Iterable)
+                        and not isinstance(value, str)
+                        else (isinstance(value, str) and pvalue in value.lower())
                     )
                 else:
                     return lambda x: (
-                        field := get_attr(x, predicate.field)
-                    ) is not None and field.lower().endswith(predicate.value.lower())
-            elif predicate.value.endsswith("%"):
+                        any(
+                            val.lower().endswith(pvalue)
+                            for val in value
+                            if isinstance(val, str)
+                        )
+                        if isinstance(value := get_attr(x, predicate.field), Iterable)
+                        and not isinstance(value, str)
+                        else (isinstance(value, str) and value.lower().endswith(pvalue))
+                    )
+            elif pvalue.endsswith("%"):
                 return lambda x: (
-                    field := get_attr(x, predicate.field)
-                ) is not None and field.lower().startswith(predicate.value.lower())
-            return (
-                lambda x: (field := get_attr(x, predicate.field)) is not None
-                and field.lower() == predicate.value.lower()
+                    any(
+                        val.lower().startswith(pvalue)
+                        for val in value
+                        if isinstance(val, str)
+                    )
+                    if isinstance(value := get_attr(x, predicate.field), Iterable)
+                    and not isinstance(value, str)
+                    else (isinstance(value, str) and value.lower().startswith(pvalue))
+                )
+            return lambda x: (
+                any(val.lower() == pvalue for val in value if isinstance(val, str))
+                if isinstance(value := get_attr(x, predicate.field), Iterable)
+                and not isinstance(value, str)
+                else (isinstance(value, str) and value.lower() == pvalue)
             )
         case PredicateType.EXISTS:
             return lambda x: has_attr(x, predicate.field)
         case PredicateType.CONTAINS:
-            return lambda x: predicate.value in get_attr(x, predicate.field)
+            return lambda x: (
+                any(predicate.value in val for val in value)
+                if isinstance(value := get_attr(x, predicate.field), Iterable)
+                and not isinstance(value, str)
+                else predicate.value in value
+            )
         case PredicateType.TYPE:
-            return lambda x: get_attr(x, predicate.field).__class__ == predicate.value
+            return lambda x: (
+                any(val.__class__.__name__ == predicate.value for val in value)
+                if isinstance(value := get_attr(x, predicate.field), Iterable)
+                and not isinstance(value, str)
+                else value.__class__.__name__ == predicate.value
+            )
         case PredicateType.REGEX:
-            return (
-                lambda x: match(predicate.value, get_attr(x, predicate.field))
-                is not None
+            return lambda x: (
+                any(match(predicate.value, val) is not None for val in value)
+                if isinstance(value := get_attr(x, predicate.field), Iterable)
+                and not isinstance(value, str)
+                else match(predicate.value, value) is not None
             )
         case _:
             raise TypeError("Not a valid predicate type!")

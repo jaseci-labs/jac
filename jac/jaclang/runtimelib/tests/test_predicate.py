@@ -58,3 +58,9 @@ class TestPredicate(TestCase):
         self.assertTrue(
             T(P._ne("son.name", "boy2")).query(parent),
         )
+        self.assertTrue(
+            T(P._eq("daughters.name", "girl1")).query(parent),
+        )
+        self.assertTrue(
+            T(P._eq("daughters[2].name", "girl3")).query(parent),
+        )
