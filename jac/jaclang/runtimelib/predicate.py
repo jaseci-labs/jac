@@ -4,7 +4,10 @@ from collections.abc import Iterable
 from enum import StrEnum
 from itertools import islice
 from re import compile, match
-from typing import Any, Callable, Generic, TypeVar, cast
+from typing import Any, Callable, Generic, TYPE_CHECKING, TypeVar, cast
+
+if TYPE_CHECKING:
+    from jaclang.runtimelib.archetype import Anchor
 
 
 T = TypeVar("T")
@@ -158,7 +161,7 @@ class Predicate:
         return Predicate(PredicateType.REGEX, field=field, value=value)
 
 
-class PredicateTranslator(Generic[T]):
+class PredicateQuery(Generic[T]):
     """Predicate Translator handler."""
 
     def __init__(self, predicate: Predicate) -> None:
@@ -282,7 +285,7 @@ def has_attr(source: Any, field: str) -> Any:  # noqa: ANN401
                 return hasattr(source, f)
 
 
-def traversal_parsing(predicate: Predicate) -> Callable[[object], bool]:
+def traversal_parsing(predicate: Predicate) -> Callable[["Anchor"], bool]:
     """Parse while traversing."""
     match predicate.type:
         case PredicateType.AND | PredicateType.ALL:
@@ -465,4 +468,4 @@ def traversal_parsing(predicate: Predicate) -> Callable[[object], bool]:
             raise TypeError("Not a valid predicate type!")
 
 
-JacPredicateTranslator = PredicateTranslator[Callable[..., bool]]
+JacPredicateQuery = PredicateQuery[Callable[["Anchor"], bool]]

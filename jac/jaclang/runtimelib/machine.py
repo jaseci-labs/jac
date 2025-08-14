@@ -55,6 +55,7 @@ from jaclang.runtimelib.constructs import (
     WalkerArchetype,
 )
 from jaclang.runtimelib.memory import Memory, Shelf, ShelfStorage
+from jaclang.runtimelib.predicate import JacPredicateQuery, Predicate, PredicateQuery
 from jaclang.runtimelib.utils import (
     all_issubclass,
     collect_node_connections,
@@ -296,27 +297,29 @@ class JacNode:
     ) -> list[EdgeArchetype]:
         """Get edges connected to this node."""
         edges: OrderedDict[EdgeAnchor, EdgeArchetype] = OrderedDict()
+        edge_filter = cast(JacPredicateQuery, destination.edge)
+        node_filter = cast(JacPredicateQuery, destination.node)
         for node in origin:
             nanch = node.__jac__
             for anchor in nanch.edges:
                 if (
                     (source := anchor.source)
                     and (target := anchor.target)
-                    and destination.edge_filter(anchor.archetype)
+                    and (not edge_filter or edge_filter.query(anchor))
                     and source.archetype
                     and target.archetype
                 ):
                     if (
                         destination.direction in [EdgeDir.OUT, EdgeDir.ANY]
                         and nanch == source
-                        and destination.node_filter(target.archetype)
+                        and (not node_filter or node_filter.query(target))
                         and JacMachineInterface.check_read_access(target)
                     ):
                         edges[anchor] = anchor.archetype
                     if (
                         destination.direction in [EdgeDir.IN, EdgeDir.ANY]
                         and nanch == target
-                        and destination.node_filter(source.archetype)
+                        and (not node_filter or node_filter.query(source))
                         and JacMachineInterface.check_read_access(source)
                     ):
                         edges[anchor] = anchor.archetype
@@ -332,20 +335,22 @@ class JacNode:
         loc: OrderedDict[
             Union[NodeAnchor, EdgeAnchor], Union[NodeArchetype, EdgeArchetype]
         ] = OrderedDict()
+        edge_filter = cast(JacPredicateQuery, destination.edge)
+        node_filter = cast(JacPredicateQuery, destination.node)
         for node in origin:
             nanch = node.__jac__
             for anchor in nanch.edges:
                 if (
                     (source := anchor.source)
                     and (target := anchor.target)
-                    and destination.edge_filter(anchor.archetype)
+                    and (not edge_filter or edge_filter.query(anchor))
                     and source.archetype
                     and target.archetype
                 ):
                     if (
                         destination.direction in [EdgeDir.OUT, EdgeDir.ANY]
                         and nanch == source
-                        and destination.node_filter(target.archetype)
+                        and (not node_filter or node_filter.query(target))
                         and JacMachineInterface.check_read_access(target)
                     ):
                         loc[anchor] = anchor.archetype
@@ -353,7 +358,7 @@ class JacNode:
                     if (
                         destination.direction in [EdgeDir.IN, EdgeDir.ANY]
                         and nanch == target
-                        and destination.node_filter(source.archetype)
+                        and (not node_filter or node_filter.query(source))
                         and JacMachineInterface.check_read_access(source)
                     ):
                         loc[anchor] = anchor.archetype
@@ -366,27 +371,29 @@ class JacNode:
     ) -> list[NodeArchetype]:
         """Get set of nodes connected to this node."""
         nodes: OrderedDict[NodeAnchor, NodeArchetype] = OrderedDict()
+        edge_filter = cast(JacPredicateQuery, destination.edge)
+        node_filter = cast(JacPredicateQuery, destination.node)
         for node in origin:
             nanch = node.__jac__
             for anchor in nanch.edges:
                 if (
                     (source := anchor.source)
                     and (target := anchor.target)
-                    and destination.edge_filter(anchor.archetype)
+                    and (not edge_filter or edge_filter.query(anchor))
                     and source.archetype
                     and target.archetype
                 ):
                     if (
                         destination.direction in [EdgeDir.OUT, EdgeDir.ANY]
                         and nanch == source
-                        and destination.node_filter(target.archetype)
+                        and (not node_filter or node_filter.query(target))
                         and JacMachineInterface.check_read_access(target)
                     ):
                         nodes[target] = target.archetype
                     if (
                         destination.direction in [EdgeDir.IN, EdgeDir.ANY]
                         and nanch == target
-                        and destination.node_filter(source.archetype)
+                        and (not node_filter or node_filter.query(source))
                         and JacMachineInterface.check_read_access(source)
                     ):
                         nodes[source] = source.archetype
@@ -1119,6 +1126,11 @@ class JacBasics:
             ctx.reports.append(expr)
 
     @staticmethod
+    def query(predicate: Predicate) -> PredicateQuery:
+        """Jac's query abstractions."""
+        return JacPredicateQuery(predicate)
+
+    @staticmethod
     def refs(
         path: DataSpatialPath | NodeArchetype | list[NodeArchetype],
     ) -> (
@@ -1262,10 +1274,15 @@ class JacBasics:
         ct = conn_type if conn_type else GenericEdge
 
         def builder(source: NodeAnchor, target: NodeAnchor) -> EdgeArchetype:
-            edge = ct() if isinstance(ct, type) else ct
+            edge = (
+                ct(**(dict(zip(conn_assign[0], conn_assign[1])) if conn_assign else {}))
+                if isinstance(ct, type)
+                else ct
+            )
 
             eanch = edge.__jac__ = EdgeAnchor(
                 archetype=edge,
+                name=("" if isinstance(edge, GenericEdge) else edge.__class__.__name__),
                 source=source,
                 target=target,
                 is_undirected=is_undirected,
@@ -1273,12 +1290,6 @@ class JacBasics:
             source.edges.append(eanch)
             target.edges.append(eanch)
 
-            if conn_assign:
-                for fld, val in zip(conn_assign[0], conn_assign[1]):
-                    if hasattr(edge, fld):
-                        setattr(edge, fld, val)
-                    else:
-                        raise ValueError(f"Invalid attribute: {fld}")
             if source.persistent or target.persistent:
                 JacMachineInterface.save(eanch)
             return edge

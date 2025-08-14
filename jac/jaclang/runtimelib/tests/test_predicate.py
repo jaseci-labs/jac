@@ -1,10 +1,11 @@
 """Test for jaseci predicate."""
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from jaclang.utils.test import TestCase
-from jaclang.runtimelib.predicate import Predicate as P, JacPredicateTranslator as T
+from jaclang.runtimelib.archetype import Anchor
+from jaclang.runtimelib.predicate import Predicate as P, JacPredicateQuery as T
 
 
 @dataclass
@@ -26,30 +27,42 @@ class TestPredicate(TestCase):
 
     def test_predicate(self) -> None:
         """Test predicate."""
-        parent = Parent(
-            son=Child(
-                children={"field1": True, "field2": "abcdefghijklmnopqrstuvwxyz"},
-                name="boy1",
-                age=1,
+        parent = cast(
+            Anchor,
+            Parent(
+                son=Child(
+                    children={"field1": True, "field2": "abcdefghijklmnopqrstuvwxyz"},
+                    name="boy1",
+                    age=1,
+                ),
+                daughters=[
+                    Child(
+                        children={
+                            "field1": True,
+                            "field2": "abcdefghijklmnopqrstuvwxyz",
+                        },
+                        name="girl1",
+                        age=2,
+                    ),
+                    Child(
+                        children={
+                            "field1": True,
+                            "field2": "abcdefghijklmnopqrstuvwxyz",
+                        },
+                        name="girl2",
+                        age=3,
+                    ),
+                    Child(
+                        children={
+                            "field1": True,
+                            "field2": "abcdefghijklmnopqrstuvwxyz",
+                        },
+                        name="girl3",
+                        age=4,
+                    ),
+                ],
+                cars=["tesls", "toyota"],
             ),
-            daughters=[
-                Child(
-                    children={"field1": True, "field2": "abcdefghijklmnopqrstuvwxyz"},
-                    name="girl1",
-                    age=2,
-                ),
-                Child(
-                    children={"field1": True, "field2": "abcdefghijklmnopqrstuvwxyz"},
-                    name="girl2",
-                    age=3,
-                ),
-                Child(
-                    children={"field1": True, "field2": "abcdefghijklmnopqrstuvwxyz"},
-                    name="girl3",
-                    age=4,
-                ),
-            ],
-            cars=["tesls", "toyota"],
         )
 
         self.assertTrue(

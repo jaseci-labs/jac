@@ -9,9 +9,10 @@ from inspect import _empty, signature
 from logging import getLogger
 from pickle import dumps
 from types import UnionType
-from typing import Any, Callable, ClassVar, Optional, TypeAlias, TypeVar
+from typing import Any, Callable, ClassVar, Optional, TypeVar
 from uuid import UUID, uuid4
 
+from .predicate import PredicateQuery
 from ..compiler.constant import EdgeDir
 
 
@@ -69,26 +70,13 @@ class AnchorReport:
     context: dict[str, Any]
 
 
-DataSpatialFilter: TypeAlias = (
-    Callable[["Archetype"], bool] | "Archetype" | list["Archetype"] | None
-)
-
-
 @dataclass(eq=False, repr=False)
 class DataSpatialDestination:
     """Object-Spatial Destination."""
 
     direction: EdgeDir
-    edge: Callable[["Archetype"], bool] | None = None
-    node: Callable[["Archetype"], bool] | None = None
-
-    def edge_filter(self, arch: Archetype) -> bool:
-        """Filter edge."""
-        return not self.edge or self.edge(arch)
-
-    def node_filter(self, arch: Archetype) -> bool:
-        """Filter node."""
-        return not self.node or self.node(arch)
+    edge: PredicateQuery | None = None
+    node: PredicateQuery | None = None
 
 
 @dataclass(eq=False, repr=False)
@@ -113,48 +101,26 @@ class DataSpatialPath:
         self.edge_only = False
         self.from_visit = False
 
-    def convert(
-        self,
-        filter: DataSpatialFilter,
-    ) -> Callable[["Archetype"], bool] | None:
-        """Convert filter."""
-        if not filter:
-            return None
-        if callable(filter):
-            return filter
-        elif isinstance(filter, list):
-            return lambda i: i in filter
-        return lambda i: i == filter
-
-    def append(
-        self,
-        direction: EdgeDir,
-        edge: DataSpatialFilter,
-        node: DataSpatialFilter,
+    def _out(
+        self, edge: PredicateQuery | None = None, node: PredicateQuery | None = None
     ) -> DataSpatialPath:
-        """Append destination."""
-        self.destinations.append(
-            DataSpatialDestination(direction, self.convert(edge), self.convert(node))
-        )
+        """Override greater than function."""
+        self.destinations.append(DataSpatialDestination(EdgeDir.OUT, edge, node))
         return self
 
-    def _out(
-        self, edge: DataSpatialFilter = None, node: DataSpatialFilter = None
-    ) -> DataSpatialPath:
-        """Override greater than function."""
-        return self.append(EdgeDir.OUT, edge, node)
-
     def _in(
-        self, edge: DataSpatialFilter = None, node: DataSpatialFilter = None
+        self, edge: PredicateQuery | None = None, node: PredicateQuery | None = None
     ) -> DataSpatialPath:
         """Override greater than function."""
-        return self.append(EdgeDir.IN, edge, node)
+        self.destinations.append(DataSpatialDestination(EdgeDir.IN, edge, node))
+        return self
 
     def _any(
-        self, edge: DataSpatialFilter = None, node: DataSpatialFilter = None
+        self, edge: PredicateQuery | None = None, node: PredicateQuery | None = None
     ) -> DataSpatialPath:
         """Override greater than function."""
-        return self.append(EdgeDir.ANY, edge, node)
+        self.destinations.append(DataSpatialDestination(EdgeDir.ANY, edge, node))
+        return self
 
     def edge(self) -> DataSpatialPath:
         """Set edge only."""
@@ -193,6 +159,7 @@ class Anchor:
     """Object Anchor."""
 
     archetype: Archetype
+    name: str = ""
     id: UUID = field(default_factory=uuid4)
     root: Optional[UUID] = None
     access: Permission = field(default_factory=Permission)
@@ -393,7 +360,7 @@ class NodeArchetype(Archetype):
     @cached_property
     def __jac__(self) -> NodeAnchor:
         """Create default anchor."""
-        return NodeAnchor(archetype=self, edges=[])
+        return NodeAnchor(archetype=self, name=self.__class__.__name__, edges=[])
 
 
 class EdgeArchetype(Archetype):
@@ -412,7 +379,7 @@ class WalkerArchetype(Archetype):
     @cached_property
     def __jac__(self) -> WalkerAnchor:
         """Create default anchor."""
-        return WalkerAnchor(archetype=self)
+        return WalkerAnchor(archetype=self, name=self.__class__.__name__)
 
 
 class ObjectArchetype(Archetype):
@@ -423,7 +390,7 @@ class ObjectArchetype(Archetype):
     @cached_property
     def __jac__(self) -> ObjectAnchor:
         """Create default anchor."""
-        return ObjectAnchor(archetype=self)
+        return ObjectAnchor(archetype=self, name=self.__class__.__name__)
 
 
 @dataclass(eq=False)

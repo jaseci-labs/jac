@@ -9,6 +9,7 @@ from typing import ClassVar, Optional, override
 
 from jaclang.runtimelib.constructs import Archetype, NodeArchetype, Root
 from jaclang.runtimelib.machine import JacMachineInterface as Jac
+from jaclang.runtimelib.predicate import Predicate as P  # noqa: N817
 
 
 class AccessLevelEnum(Enum):
@@ -132,4 +133,5 @@ __all__ = [
     "ReadPerm",
     "ConnectPerm",
     "WritePerm",
+    "P",
 ]

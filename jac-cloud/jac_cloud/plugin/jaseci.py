@@ -296,7 +296,11 @@ class JacPlugin(JacAccessValidationPlugin, JacNodePlugin, JacEdgePlugin):
         def builder(
             source: NodeAnchor, target: NodeAnchor
         ) -> EdgeArchetype | GenericEdge:
-            edge = ct() if isinstance(ct, type) else ct
+            edge = (
+                ct(**(dict(zip(conn_assign[0], conn_assign[1])) if conn_assign else {}))
+                if isinstance(ct, type)
+                else ct
+            )
 
             eanch = edge.__jac__ = EdgeAnchor(
                 archetype=edge,  # type: ignore[arg-type] # bug on mypy!!
@@ -312,12 +316,6 @@ class JacPlugin(JacAccessValidationPlugin, JacNodePlugin, JacEdgePlugin):
             source.connect_edge(eanch)
             target.connect_edge(eanch)
 
-            if conn_assign:
-                for fld, val in zip(conn_assign[0], conn_assign[1]):
-                    if hasattr(edge, fld):
-                        setattr(edge, fld, val)
-                    else:
-                        raise ValueError(f"Invalid attribute: {fld}")
             if source.persistent or target.persistent:
                 Jac.save(eanch)
             return edge  # type: ignore[return-value] # bug on mypy!!
