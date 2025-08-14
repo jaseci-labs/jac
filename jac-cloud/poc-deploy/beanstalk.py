@@ -11,8 +11,8 @@ import boto3
 from botocore.exceptions import ClientError
 
 # ---- CONFIG ----
-APP_NAME = "fastapi-app3"
-ENV_NAME = "production14"
+APP_NAME = "jusail"
+ENV_NAME = "dev1"
 S3_BUCKET = "jaseci-deploy"  # must exist in the same region
 REGION = "us-east-1"
 ZIP_FILE = "fastapi_app.zip"
@@ -353,7 +353,7 @@ if __name__ == "__main__":
 
     # 1️⃣ Zip the project
     print("\n📦 Preparing application package...")
-    zip_project(".", ZIP_FILE)
+    zip_project("./fastapi-app", ZIP_FILE)
 
     # 2️⃣ Upload to S3
     print("\n☁️  Uploading to S3...")
