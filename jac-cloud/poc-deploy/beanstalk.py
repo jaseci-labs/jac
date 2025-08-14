@@ -11,8 +11,8 @@ import boto3
 from botocore.exceptions import ClientError
 
 # ---- CONFIG ----
-APP_NAME = "fastapi-app"
-ENV_NAME = "production9"
+APP_NAME = "fastapi-app3"
+ENV_NAME = "production14"
 S3_BUCKET = "jaseci-deploy"  # must exist in the same region
 REGION = "us-east-1"
 ZIP_FILE = "fastapi_app.zip"
@@ -184,25 +184,26 @@ def get_latest_python_platform() -> str:
 def create_fastapi_config_files() -> None:
     """Create necessary configuration files for FastAPI deployment."""
     # Create Procfile for Elastic Beanstalk
-    procfile_content = "web: uvicorn main:app --host 0.0.0.0 --port 8000"
-    with open("Procfile", "w") as f:
-        f.write(procfile_content)
-    print("✅ Created Procfile")
+    # procfile_content = "web: uvicorn main:app --host 0.0.0.0 --port 8000"
+    # with open("Procfile", "w") as f:
+    #     f.write(procfile_content)
+    # print("✅ Created Procfile")
 
-    # Create .ebextensions directory and config if needed
-    if not os.path.exists(".ebextensions"):
-        os.makedirs(".ebextensions")
+    # # Create .ebextensions directory and config if needed
+    # if not os.path.exists(".ebextensions"):
+    #     os.makedirs(".ebextensions")
 
-    # Create Python configuration
-    python_config = """option_settings:
-  aws:elasticbeanstalk:container:python:
-    WSGIPath: main:app
-  aws:elasticbeanstalk:environment:proxy:staticfiles:
-    /static: static
-"""
-    with open(".ebextensions/python.config", "w") as f:
-        f.write(python_config)
-    print("✅ Created .ebextensions/python.config")
+
+#     # Create Python configuration
+#     python_config = """option_settings:
+#   aws:elasticbeanstalk:container:python:
+#     WSGIPath: main:app
+#   aws:elasticbeanstalk:environment:proxy:staticfiles:
+#     /static: static
+# """
+#     with open(".ebextensions/python.config", "w") as f:
+#         f.write(python_config)
+#     print("✅ Created .ebextensions/python.config")
 
 
 def zip_project(source_dir: str, output_filename: str) -> None:
