@@ -10,9 +10,13 @@ keywords = ["llm", "jaclang", "jaseci", "mtllm"]
 
 [tool.poetry.dependencies]
 jaclang = "0.8.5"
-litellm = ">=1.75.5.post1"
 loguru = "~0.7.2"
 pillow = "~10.4.0"
+
+# For stability we are pinning the version and manually updating and testing as new
+# features and patches are added.
+# see: https://github.com/BerriAI/litellm/issues/13711 the bug that caused versioning issues
+litellm = "1.75.5.post1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.2"
