@@ -91,6 +91,29 @@ class JacCmd:
             run_cloud(base, mod, filename, host, port)
 
         @cmd_registry.register
+        def containarize(
+            filename: str,
+            host: str = "0.0.0.0",
+            port: int = 8000,
+            reload: bool = False,
+            watch: str = "",
+        ) -> None:
+            """Serve the jac application."""
+            base, mod = split(filename)
+
+            if reload:
+                run_process(
+                    *(watch.split(",") if watch else [base]),
+                    target=run_cloud,
+                    args=(base, mod, filename, host, port),
+                    callback=log_changes,
+                )
+                return
+            elif watch:
+                print(f"Ignoring --watch {watch} as --reload is not set.")
+            run_cloud(base, mod, filename, host, port)
+
+        @cmd_registry.register
         def create_system_admin(
             filename: str, email: str = "", password: str = ""
         ) -> str:
