@@ -93,6 +93,7 @@ class JacCmd:
         @cmd_registry.register
         def containarize(
             filename: str,
+            requirements: str,
             host: str = "0.0.0.0",
             port: int = 8000,
             reload: bool = False,
@@ -100,6 +101,7 @@ class JacCmd:
         ) -> None:
             """Serve the jac application."""
             base, mod = split(filename)
+            # if os.path.exists(file_path):
 
             if reload:
                 run_process(
