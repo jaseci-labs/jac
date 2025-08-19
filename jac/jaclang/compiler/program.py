@@ -11,7 +11,6 @@ import jaclang.compiler.unitree as uni
 from jaclang.compiler.parser import JacParser
 from jaclang.compiler.passes.main import (
     Alert,
-    BinderPass,
     CFGBuildPass,
     DeclImplMatchPass,
     DefUsePass,
@@ -112,16 +111,11 @@ class JacProgram:
             self.run_schedule(mod=mod_targ, passes=py_code_gen)
         return mod_targ
 
-    def bind(self, file_path: str, use_str: str | None = None) -> uni.Module:
-        """Bind the Jac module."""
-        keep_str = use_str or read_file_with_encoding(file_path)
-        mod_targ = self.parse_str(keep_str, file_path)
-        BinderPass(ir_in=mod_targ, prog=self)
-        return mod_targ
-
-    def build(self, file_path: str, use_str: str | None = None) -> uni.Module:
+    def build(
+        self, file_path: str, use_str: str | None = None, no_cgen: bool = False
+    ) -> uni.Module:
         """Convert a Jac file to an AST."""
-        mod_targ = self.compile(file_path, use_str)
+        mod_targ = self.compile(file_path, use_str, no_cgen)
         JacImportDepsPass(ir_in=mod_targ, prog=self)
         for mod in self.mod.hub.values():
             SymTabLinkPass(ir_in=mod, prog=self)

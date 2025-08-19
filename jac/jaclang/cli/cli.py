@@ -14,6 +14,7 @@ import jaclang.compiler.unitree as uni
 from jaclang.cli.cmdreg import CommandShell, cmd_registry
 from jaclang.compiler.passes.main import PyastBuildPass
 from jaclang.compiler.program import JacProgram
+from jaclang.compiler.typecheck.analysis import JacTypeAnalyzer
 from jaclang.runtimelib.builtin import printgraph
 from jaclang.runtimelib.constructs import WalkerArchetype
 from jaclang.runtimelib.machine import (
@@ -244,39 +245,36 @@ def build(filename: str) -> None:
         print("Not a .jac file.", file=sys.stderr)
 
 
+# FIXME: grep(typecheck): Once this is fully implemented and done, remove this command and
+# migrate it to the `check` command.
 @cmd_registry.register
-def bind(filename: str, typecheck: bool = False) -> None:
-    """Bind the specified .jac file.
+def analyze(file_path: str) -> None:
+    """Run typecheck for the specified .jac file.
 
-    Parses and binds a Jac source file, resolving symbols and preparing it for execution.
-    This step is necessary before running the program, as it ensures all references
-    are correctly linked and the program structure is validated.
-    TODO: performs type checking.
+    Perform static type analysis on the Jac program to identify potential type errors
+    without executing the code. Useful for catching errors early in development.
 
     Args:
-        filename: Path to the .jac file to bind
-        typecheck: Print the symbol table after binding (default: False)
+        filename: Path to the .jac file to typecheck
 
     Examples:
-        jac bind myprogram.jac
-        jac bind myprogram.jac -t
+        jac analyze main.jac
     """
-    if filename.endswith((".jac", ".py")):
-        (out := JacProgram()).bind(file_path=filename)
-        errs = len(out.errors_had)
-        warnings = len(out.warnings_had)
-        if typecheck:
-            for mods in out.mod.hub.values():
-                if mods.name == "builtins":
-                    continue
-                header = (
-                    f"{'=' * 6} SymTable({mods.name}) {'=' * (22 - len(mods.name))}"
-                )
-                divider = "=" * 40
-                print(f"{divider}\n{header}\n{divider}\n{mods.sym_tab.sym_pp()}")
-        print(f"Errors: {errs}, Warnings: {warnings}")
-    else:
+    # Early return if it's not a supported file.
+    if not file_path.endswith((".jac", ".py")):
         print("Not a .jac/.py file.", file=sys.stderr)
+        exit(1)
+
+    # Build the project.
+    program = JacProgram()
+    program.build(file_path=file_path, no_cgen=True)
+
+    # Run analysis.
+    analyzer = JacTypeAnalyzer()
+    analyzer.analyze_program(program)
+
+    # Dump diagnostics.
+    analyzer.dump_diagnostics(file=sys.stdout)
 
 
 @cmd_registry.register

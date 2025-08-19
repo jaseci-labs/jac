@@ -1,13 +1,13 @@
 """Representation of types used during type analysis."""
 
 # Pyright Reference: packages\pyright-internal\src\analyzer\types.ts
+from abc import ABC
 from dataclasses import dataclass, field
 from enum import Enum, auto
+from pathlib import Path
 from typing import ClassVar
 
-from jaclang.compiler.unitree import Expr
-
-from .types import SymbolTable, Uri
+from jaclang.compiler.unitree import UniScopeNode as SymbolTable
 
 
 class TypeCategory(Enum):
@@ -32,7 +32,7 @@ class ParameterCategory(Enum):
 
 
 @dataclass
-class Jtype:
+class Jtype(ABC):
     """Maps to pyright's TypeBase<T> in the types.ts file.
 
     This is the base class for all type instance of the jaclang that holds
@@ -47,6 +47,11 @@ class Jtype:
     def category(self) -> TypeCategory:
         """Returns the category of the type."""
         return self.CATEGORY
+
+    @staticmethod
+    def unknown() -> "UnknownType":
+        """Return an instance of an unknown type."""
+        return UnknownType()
 
 
 @dataclass
@@ -84,8 +89,8 @@ class ModuleType(Jtype):
     CATEGORY: ClassVar[TypeCategory] = TypeCategory.Module
 
     mod_name: str
-    file_uri: Uri
-    symbol_table: SymbolTable = field(default_factory=SymbolTable)
+    file_uri: Path
+    symbol_table: SymbolTable
 
 
 @dataclass
@@ -95,8 +100,8 @@ class ClassType(Jtype):
     CATEGORY: ClassVar[TypeCategory] = TypeCategory.Class
 
     class_name: str
+    symbol_table: SymbolTable
     base_classes: list[Jtype] = field(default_factory=list)
-    symbol_table: SymbolTable = field(default_factory=SymbolTable)
 
 
 @dataclass
@@ -106,7 +111,6 @@ class Parameter:
     name: str
     category: ParameterCategory
     param_type: Jtype | None
-    default_expr: Expr | None
 
 
 @dataclass
@@ -127,3 +131,27 @@ class UnionType(Jtype):
     CATEGORY: ClassVar[TypeCategory] = TypeCategory.Union
 
     types: list[Jtype] = field(default_factory=list)
+
+
+@dataclass
+class PrefetchedTypes:
+    """Types whose definitions are prefetched and cached by the type evaluator."""
+
+    none_type_class: Jtype | None = None
+    object_class: Jtype | None = None
+    type_class: Jtype | None = None
+    union_type_class: Jtype | None = None
+    awaitable_class: Jtype | None = None
+    function_class: Jtype | None = None
+    method_class: Jtype | None = None
+    tuple_class: Jtype | None = None
+    bool_class: Jtype | None = None
+    int_class: Jtype | None = None
+    str_class: Jtype | None = None
+    dict_class: Jtype | None = None
+    module_type_class: Jtype | None = None
+    typed_dict_class: Jtype | None = None
+    typed_dict_private_class: Jtype | None = None
+    supports_keys_and_get_item_class: Jtype | None = None
+    mapping_class: Jtype | None = None
+    template_class: Jtype | None = None

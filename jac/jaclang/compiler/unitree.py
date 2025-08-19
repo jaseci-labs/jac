@@ -30,6 +30,7 @@ from jaclang.compiler.constant import (
     SymbolType,
 )
 from jaclang.compiler.constant import DELIM_MAP, SymbolAccess, Tokens as Tok
+from jaclang.compiler.typecheck.jtypes import Jtype
 from jaclang.utils import resolve_relative_path
 from jaclang.utils.treeprinter import (
     print_ast_tree,
@@ -532,17 +533,15 @@ class InheritedSymbolTable:
         """Initialize."""
         self.base_symbol_table: UniScopeNode = base_symbol_table
         self.load_all_symbols: bool = load_all_symbols
-        self.symbols: list[str] = symbols if symbols else []
+        self.symbols: list[str] = symbols or []
 
     def lookup(self, name: str, deep: bool = False) -> Optional[Symbol]:
         """Lookup a variable in the symbol table."""
         if self.load_all_symbols:
             return self.base_symbol_table.lookup(name, deep)
-        else:
-            if name in self.symbols:
-                return self.base_symbol_table.lookup(name, deep)
-            else:
-                return None
+        if name in self.symbols:
+            return self.base_symbol_table.lookup(name, deep)
+        return None
 
 
 class AstSymbolNode(UniNode):
@@ -718,6 +717,7 @@ class Expr(UniNode):
     """
 
     def __init__(self) -> None:
+        self.jtype: Jtype = Jtype.unknown()
         self._sym_type: str = "NoType"
         self._type_sym_tab: Optional[UniScopeNode] = None
 

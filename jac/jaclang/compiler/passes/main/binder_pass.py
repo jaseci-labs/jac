@@ -1,16 +1,120 @@
 """Binding Pass for the Jac compiler."""
 
+# PyrightReference: packages/pyright-internal/src/analyzer/binder.ts
+
 import ast as py_ast
 import os
+from pathlib import Path
 from typing import Optional
 
 import jaclang.compiler.unitree as uni
 from jaclang.compiler.passes import UniPass
+from jaclang.compiler.passes.main.pyast_load_pass import PyastBuildPass
+from jaclang.compiler.typecheck.diagnostic import Diagnostic
+from jaclang.compiler.typecheck.diagnostic_rules import DiagnosticRule
 from jaclang.compiler.unitree import UniScopeNode
 from jaclang.runtimelib.utils import read_file_with_encoding
 
 
 class BinderPass(UniPass):
+    """Jac Binder pass.
+
+    This pass will:
+        - Load and bind builtin symbols to all modules
+        - Bind the type annotation with the expression
+        - Bind the AST nodes with CFG nodes (Future work)
+
+    Note that the symbol table should already built by a different pass, building the
+    symbol table is not the responsibility of this pass. In this pass if a symbol has
+    a type annotation (assignment with explicit type annotation for example) we'll do
+    a lookup in the symbol table and bind with the expression, that requires the symbol
+    table to be populated beforehand.
+    """
+
+    _BUILTINS_STUB_FILE_PATH = os.path.join(
+        os.path.dirname(__file__),
+        "../../../vendor/typeshed/stdlib/builtins.pyi",
+    )
+
+    # Cache the builtins module once it parsed.
+    _BUILTINS_MODULE: uni.Module | None = None
+
+    def before_pass(self) -> None:
+        """Before pass."""
+        self.diagnostics: list[Diagnostic] = []
+        self._load_builtins_stub_module()
+        self._insert_builtin_symbols()
+
+    def _binding_builtins(self) -> bool:
+        """Return true if we're binding the builtins stub file."""
+        return self.ir_in == BinderPass._BUILTINS_MODULE
+
+    def _load_builtins_stub_module(self) -> None:
+        """Return the builtins stub module.
+
+        This will parse and cache the stub file and return the cached module on
+        subsequent calls.
+        """
+        if self._binding_builtins():
+            return
+
+        if not os.path.exists(BinderPass._BUILTINS_STUB_FILE_PATH):
+            raise FileNotFoundError(
+                f"Builtins stub file not found at {BinderPass._BUILTINS_STUB_FILE_PATH}"
+            )
+
+        file_content = read_file_with_encoding(BinderPass._BUILTINS_STUB_FILE_PATH)
+        uni_source = uni.Source(file_content, BinderPass._BUILTINS_STUB_FILE_PATH)
+        mod = PyastBuildPass(
+            ir_in=uni.PythonModuleAst(
+                py_ast.parse(file_content),
+                orig_src=uni_source,
+            ),
+            prog=self.prog,
+        ).ir_out
+        BinderPass._BUILTINS_MODULE = mod
+        BinderPass(ir_in=mod, prog=self.prog)
+
+    def _insert_builtin_symbols(self) -> None:
+        if self._binding_builtins():
+            return
+
+        # TODO: Insert these symbols.
+        # Reference: pyright Binder.bindModule()
+        #
+        # List taken from https://docs.python.org/3/reference/import.html#__name__
+        # '__name__', '__loader__', '__package__', '__spec__', '__path__',
+        # '__file__', '__cached__', '__dict__', '__annotations__',
+        # '__builtins__', '__doc__',
+        assert BinderPass._BUILTINS_MODULE is not None, "Builtins module is not loaded"
+        self.ir_in.inherit_sym_tab(BinderPass._BUILTINS_MODULE)
+
+    # -------------------------------------------------------------------------
+    # AST walker methods
+    # -------------------------------------------------------------------------
+
+    def exit_module_path(self, node: uni.ModulePath) -> None:
+        if self._binding_builtins():
+            return
+        import_file_path = Path(node.resolve_relative_path()).resolve()
+        if not import_file_path.exists():
+            self.diagnostics.append(
+                Diagnostic(rule=DiagnosticRule.REPORT_MISSING_IMPORTS, codeloc=node.loc)
+            )
+
+    def exit_param_var(self, node: uni.ParamVar) -> None:
+        if not node.type_tag:
+            return
+        # annotation = node.type_tag.tag
+
+
+# ------------------------------------------------------------------------------
+# Bellow this line is no longer needed only exists for reference for the new
+# binder pass implementation and will be removed.
+# ------------------------------------------------------------------------------
+
+
+class RemoveThisClassOldBinderPass(UniPass):
     """Jac Binder pass."""
 
     def before_pass(self) -> None:
