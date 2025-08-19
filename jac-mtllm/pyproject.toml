@@ -12,7 +12,7 @@ keywords = ["llm", "jaclang", "jaseci", "mtllm"]
 jaclang = "0.8.5"
 loguru = "~0.7.2"
 pillow = "~10.4.0"
-openai= "1.99.9"
+openai = "1.99.9"
 
 # For stability we are pinning the version and manually updating and testing as new
 # features and patches are added.
