@@ -1776,11 +1776,6 @@ class JacMachine(JacMachineInterface):
         )
 
     @staticmethod
-    def set_context(context: ExecutionContext) -> None:
-        """Set the context for the machine."""
-        JacMachine.exec_ctx = context
-
-    @staticmethod
     def reset_machine() -> None:
         """Reset the machine."""
         # for i in JacMachine.loaded_modules.values():
