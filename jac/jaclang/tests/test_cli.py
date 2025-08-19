@@ -270,6 +270,27 @@ class JacCliTests(TestCase):
             '[label="MultiString" shape="oval" style="filled" fillcolor="#fccca4"]',
             stdout_value,
         )
+    
+    def test_cfg_printgraph(self) -> None:
+        """Testing for print CFG."""
+        captured_output = io.StringIO()
+        sys.stdout = captured_output
+
+        cli.tool("ir", ["cfg.", f"{self.fixture_abs_path('hello.jac')}"])
+
+        sys.stdout = sys.__stdout__
+        stdout_value = captured_output.getvalue()
+        correct_graph = (
+            "digraph G {\n"
+            '  0 [label="BB0\\n\\nprint ( \'\\"im still here\\"\' ) ;\", shape=box];\n'
+            '  1 [label="BB1\\n\'\\"Hello World!\\"\' |> print ;\", shape=box];\n'
+            "}\n\n"
+        )
+
+        self.assertEqual(
+            correct_graph,
+            stdout_value,
+        )
 
     def test_del_clean(self) -> None:
         """Testing for print AstTool."""

@@ -267,6 +267,32 @@ Jac Cloud automatically serializes walker, edge, and node archetypes:
 }
 ```
 
+## Data Persistence: Manual Saving and Commits
+
+### **Save**
+
+To save a walker or object to memory (queued for later database commit):
+
+```jac
+# Save a walker instance
+save(my_walker_instance)
+
+# Save an object instance
+save(my_object_instance)
+```
+
+### **Commit**
+
+**Commit all in-memory data:**
+```jac
+commit()  # Saves everything currently in memory to database
+```
+
+**Commit specific archetype:**
+```jac
+commit(archetype)  # Only commits this specific archetype
+```
+
 ## Helpful Environment Variables
 
 Control Jac Cloud behavior with these environment variables:

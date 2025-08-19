@@ -152,7 +152,7 @@ class CFGBuildPass(UniPass):
         """Exit BasicBlockStmt nodes."""
         if isinstance(node, uni.UniCFGNode) and not isinstance(node, uni.Semi):
             self.first_exit = True
-            if not node.bb_out:
+            if not node.bb_out and not isinstance(node, (uni.ReturnStmt, uni.ArchHas)):
                 self.to_connect.append(node)
             if (
                 isinstance(node, (uni.InForStmt, uni.IterForStmt))
@@ -176,6 +176,8 @@ class CFGBuildPass(UniPass):
                     if from_node in self.to_connect:
                         self.to_connect.remove(from_node)
                 self.ability_stack.pop()
+            elif isinstance(node, (uni.IfStmt, uni.ElseIf)) and not node.else_body:
+                self.to_connect.append(node)
 
     def after_pass(self) -> None:
         """After pass."""
@@ -299,3 +301,21 @@ class CoalesceBBPass(UniPass):
 
         dot += "}\n"
         return dot
+
+
+def cfg_dot_from_file(file_name: str) -> str:
+    """Print the control flow graph."""
+    from jaclang.compiler.program import JacProgram
+
+    with open(file_name, "r") as f:
+        file_source = f.read()
+
+    ir = (prog := JacProgram()).compile(use_str=file_source, file_path=file_name)
+
+    cfg_pass = CoalesceBBPass(
+        ir_in=ir,
+        prog=prog,
+    )
+
+    dot = cfg_pass.printgraph_cfg()
+    return dot

@@ -5,23 +5,25 @@ edit_uri: edit/main/docs/docs
 use_directory_urls: true
 nav:
   - Learn:
-    - Getting Started: "learn/getting_started.md"
+    # - Getting Started: "learn/getting_started.md"
     - Tour of Jac/Jaseci: "learn/introduction.md"
+    - Installation: "learn/installation.md"
     - Learn Jac in 5 Minutes: "learn/jac_in_a_flash.md"
     - Jac Playground: "learn/jac_playground.md"
+    - Jac Lens: "learn/jac-lens.md"
     - Learn By Example:
       - LittleX (your own twitter):
         - "learn/examples/littleX/tutorial.md"
-        - "learn/examples/littleX/full_guide.md"
+        # - "learn/examples/littleX/full_guide.md"
       - Jac MCP Conversational Chatbot:
         - "learn/examples/rag_chatbot/Overview.md"
-        - "learn/examples/rag_chatbot/Tutorial.md"
+        # - "learn/examples/rag_chatbot/Tutorial.md"
       - RPG game with AI Genarated Maps: "learn/examples/mtp_examples/rpg_game.md"
       - Agentic Fantasy Trading Game: "learn/examples/mtp_examples/fantasy_trading_game.md"
     - Learn Jac Language (WIP):
       - Introduction: "jac_book/index.md"
       - 1. Welcome to Jac: "jac_book/chapter_1.md"
-      - 2. Starting Jac, Variables and Types: "jac_book/chapter_2.md"
+      - 2. Variables, Types, and Basic Syntax: "jac_book/chapter_2.md"
       - 3. Functions, Control Flow, and Collections in Jac: "jac_book/chapter_3.md"
       - 4. AI functions and Decorators: "jac_book/chapter_4.md"
       - 5. Advanced AI Operations: "jac_book/chapter_5.md"
@@ -41,12 +43,13 @@ nav:
       - 19. Performance Optimization: "jac_book/chapter_19.md"
       - 20. Python to Jac Migration: "jac_book/chapter_20.md"
     - Programming 'by' AI:
-        - "learn/jac-mtllm/with_llm.md"
+        - What is MTP: "learn/jac-mtllm/with_llm.md"
         - Quick-start: "learn/jac-mtllm/quickstart.md"
         - How to use MTP: "learn/jac-mtllm/usage.md"
+        - Python MTLLM Interface: "learn/jac-mtllm/python_integration.md"
         - Using Multimodal models: "learn/jac-mtllm/multimodality.md"
         - Build your own MTLLM plugin: "learn/jac-mtllm/creating_mtllm_plugins.md"
-        - Python MTLLM Interface: "learn/jac-mtllm/python_integration.md"
+        - LiteLLM Proxy Server: "learn/jac-mtllm/litellm_proxy.md"
     - Scale-Native Programming:
       - "learn/jac-cloud/introduction.md"
       - "learn/jac-cloud/quickstart.md"

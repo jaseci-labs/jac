@@ -13,7 +13,16 @@ debugger  = globals()["debugger"]
 
 
 def fix_duplicate_graph_json(graph_json_str):
-    graph = json.loads(graph_json_str)
+    graph_json_str = graph_json_str.strip()
+    if not graph_json_str:
+        graph_json_str = '{"nodes": [], "edges": []}'
+    
+    try:
+        graph = json.loads(graph_json_str)
+    except json.JSONDecodeError as e:
+        print(f"JSON decode error: {e}")
+        print(f"Problematic JSON string: {repr(graph_json_str)}")
+        graph = {"nodes": [], "edges": []}
 
     # Deduplicate nodes by 'id'
     seen_node_ids = set()
@@ -80,8 +89,13 @@ with contextlib.redirect_stdout(stdout_buf:=JsIO(CB_STDOUT)), \
             full_output,
             re.DOTALL,
         )
-        graph_json = matches[-1] if matches else "{}"
-        debugger.cb_graph(fix_duplicate_graph_json(graph_json))
+        if matches:
+            graph_json = matches[-1].strip()
+            if not graph_json:
+                graph_json = '{"nodes": [], "edges": []}'
+        else:
+            graph_json = '{"nodes": [], "edges": []}'
+        debugger.cb_graph(graph_json)
 
     except DebuggerTerminated:
         print("Debug session ended by user.")

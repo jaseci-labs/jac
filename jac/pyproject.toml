@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "jaclang"
-version = "0.8.4"
+version = "0.8.5"
 description = "Jac is a unique and powerful programming language that runs on top of Python, offering an unprecedented level of intelligence and intuitive understanding."
 authors = ["Jason Mars <jason@jaseci.org>"]
 maintainers = ["Jason Mars <jason@jaseci.org>"]
@@ -35,8 +35,9 @@ jac = "jaclang.cli.cli:start_cli"
 
 [tool.poetry.extras]
 llm = ["mtllm"]
-streamlit = ["jaclang-streamlit"]
-all = ["mtllm", "jaclang-streamlit"]
+streamlit = ["jac-streamlit"]
+cloud = ["jac-cloud"]
+all = ["mtllm", "jac-streamlit", "jac-cloud"]
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.2.1"

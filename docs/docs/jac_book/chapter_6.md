@@ -1,9 +1,11 @@
 # Chapter 6: Imports System and File Operations
 
-Jac provides a powerful module system for organizing code across multiple files and seamless integration with external systems. This chapter demonstrates building a simple configuration management system that showcases import patterns and file operations.
+As your projects grow beyond a single file, keeping your code organized becomes essential for maintainability and collaboration. A well-structured project is easier to understand, test, and scale. This chapter introduces Jac's module system for organizing code across multiple files and its familiar approach to file operations.
+
+You will learn how to import your own code, leverage the vast Python ecosystem, and use Jac's powerful interface-implementation pattern to build clean, robust applications.
 
 !!! topic "Module Organization Philosophy"
-    Well-organized modules make your code maintainable, reusable, and easier to test. Jac's import system supports both local modules and Python libraries while promoting clean architecture through implementation separation.
+    Jac's import system is your primary tool for structuring code. It allows you to define objects, nodes, walkers, and functions in separate files and use them wherever they are needed. Jac seamlessly integrates with the Python ecosystem, allowing you to import and use Python libraries directly.
 
 ## Import Statements and Module Organization
 
@@ -60,8 +62,12 @@ Jac provides a powerful module system for organizing code across multiple files 
 
 ### Implementation Separation
 
-!!! topic "Implementation Files"
-    Jac supports separating interface definitions from implementations using `.impl.jac` files, promoting clean architecture and modularity. This separation makes it easier to test, maintain, and update implementations without changing interfaces.
+Jac encourages a clean architectural pattern that separates what a component does from how it does it. This is achieved by splitting an object's or node's definition (its interface) from its method logic (its implementation).
+
+The interface is defined in a `.jac` file, while the implementation is placed in a corresponding .`impl.jac` file. When you import the object, Jac automatically links them together.
+
+!!! topic "Benefits of Separation"
+    This pattern makes your code significantly more maintainable. You can change the internal logic of a method in the `.impl.jac` file without ever touching the files that use the object. It also makes testing easier, as you can mock implementations while testing against a stable interface.
 
 !!! example "Interface and Implementation Separation"
     === "math_ops.jac"

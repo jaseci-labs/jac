@@ -6,7 +6,7 @@ glob llm = Model(
 );
 
 
-def generate_password()  -> str byllm();
+def generate_password()  -> str by llm();
 
 
 sem generate_password= """\

@@ -31,8 +31,6 @@ class HotReloadTest(TestCase):
             ]
         )
 
-        sleep(3)
-
         try:
             self.host = "http://localhost:8001"
 
@@ -79,8 +77,6 @@ class HotReloadTest(TestCase):
             ]
         )
 
-        sleep(3)
-
         try:
             self.host = "http://localhost:8001"
 
@@ -120,7 +116,7 @@ class HotReloadTest(TestCase):
         """Check server test."""
         count = 0
         while True:
-            if count > 5:
+            if count > 10:
                 self.check_server()
                 break
             else:

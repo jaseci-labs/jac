@@ -1,15 +1,15 @@
 # GenAI in Jaclang - MTP
-### Revolutionizing AI-Integrated & Agentic Application Development
+### AI-Integrated & Agentic Application Development
 
 <div class="hero-section" markdown>
-**Transform how you integrate Large Language Models into your applications, and build truly agentic software, with a single keyword.**
+**Meaning-Typed Programming (MTP) provides language-level abstractions for integrating Large Language Models into applications with simplified syntax.**
 </div>
 
 ## What is MTP?
 
-Meaning-Typed Programming (MTP) is a groundbreaking paradigm that automates LLM integration through intuitive language-level constructs. Instead of manually crafting prompts and handling outputs, MTP extracts semantic meaning from your existing code to automatically generate prompts and convert responses. This enables you to focus on building agentic software applications that can reason, plan, and act autonomously, by leveraging LLMs as intelligent agents within your workflows. There is an extensive research journey which you can dive into, available on arxiv.org.
+Meaning-Typed Programming (MTP) is a programming paradigm that automates LLM integration through language-level abstractions. MTP extracts semantic meaning from code to automatically generate prompts and handle response conversion, reducing the need for manual prompt engineering. These abstractions enable seamless LLM integration by automatically generating prompts from code semantics, making it easier to build agentic AI applications. Additional research details are available on arxiv.org.
 
-The MTP concept is realized in Jac-lang as the **MTLLM** plugin which can be installed as a PyPi package.
+The MTP concept is implemented in Jac-lang through the **MTLLM** plugin, which is available as a PyPI package.
 
 
 <div class="grid cards" markdown>
@@ -18,7 +18,7 @@ The MTP concept is realized in Jac-lang as the **MTLLM** plugin which can be ins
 
     ---
 
-    *You can check out the research journey of MTP*
+    *Research documentation for MTP*
 
     [arXiv PAPER](https://arxiv.org/abs/2405.08965){ .md-button}
 
@@ -26,7 +26,7 @@ The MTP concept is realized in Jac-lang as the **MTLLM** plugin which can be ins
 
     ---
 
-    *You can refer to our Quickstart guide for MTP*
+    *Quickstart guide for MTP*
 
     [DOCS](./quickstart.md){ .md-button}
 

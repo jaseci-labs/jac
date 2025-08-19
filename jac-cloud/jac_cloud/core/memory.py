@@ -132,9 +132,12 @@ class MongoDB(Memory[ObjectId, BaseAnchor]):
             return cast(BA, data)
         return None
 
-    def close(self) -> None:
-        """Close memory handler."""
-        bulk_write = self.get_bulk_write()
+    def commit(self, anchor: BaseAnchor | None = None) -> None:
+        """Commit all data from memory to datasource."""
+        if anchor:
+            anchor.build_query(bulk_write := BulkWrite())
+        else:
+            bulk_write = self.get_bulk_write()
 
         if bulk_write.has_operations:
             if session := self.__session__:
@@ -143,6 +146,9 @@ class MongoDB(Memory[ObjectId, BaseAnchor]):
                 with Collection.get_session() as session, session.start_transaction():
                     bulk_write.execute(session)
 
+    def close(self) -> None:
+        """Close memory handler."""
+        self.commit()
         super().close()
 
     def sync_mem_to_db(self, bulk_write: BulkWrite, keys: Iterable[ObjectId]) -> None:

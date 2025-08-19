@@ -1,8 +1,8 @@
 # Using Multi-modal Models
 
-For MTLLM to have actual neurosymbolic powers, it needs to be able to handle multimodal inputs and outputs. This means that it should be able to understand text, images, and videos. In this section, we will discuss how MTLLM can handle multimodal inputs.
+MTLLM supports multimodal inputs including text, images, and videos. This section covers how MTLLM handles multimodal inputs.
 
-Images are directly supported in the default distribution of MTLLM. However, videos are not supported by default. To use videos, you need to install mtllm with the `video` extra. You can do this by running the following command:
+Images are supported in the default MTLLM distribution. Video support requires installing mtllm with the `video` extra:
 
 ```bash
 pip install mtllm[video]
@@ -10,7 +10,7 @@ pip install mtllm[video]
 
 ## Image
 
-MTLLM can handle images as inputs. You can provide an image as input to the MTLLM Function or Method using the `Image` format of mtllm. Here is an example of how you can provide an image as input to the MTLLM Function or Method:
+MTLLM supports image inputs through the `Image` format. Images can be provided as input to MTLLM functions or methods:
 
 ```jac
 import from mtllm.llm { Model, Image }
@@ -43,18 +43,18 @@ with entry {
 }
 ```
 
-Input Image (person.png):
-![person.png](https://rarehistoricalphotos.com/wp-content/uploads/2022/06/albert-einstein-tongue-3.webp)
+Input Image :
+[person.png](https://rarehistoricalphotos.com/wp-content/uploads/2022/06/albert-einstein-tongue-3.webp)
 
 
 ??? example "Output"
     Person(full_name='Albert Einstein', yod=1955, personality=Personality.INTROVERT)
 
-In the above example, we have provided an image of a person ("Albert Einstein") as input to the `get_person_info` method. The method returns the information of the person in the image. The output of the method is a `Person` object with the name, year of death, and personality of the person in the image.
+In this example, an image of a person is provided as input to the `get_person_info` method. The method returns a `Person` object containing the extracted information from the image.
 
 ## Video
 
-Similarly, MTLLM can handle videos as inputs. You can provide a video as input to the MTLLM Function or Method using the `Video` format of mtllm. Here is an example of how you can provide a video as input to the MTLLM Function or Method:
+MTLLM supports video inputs through the `Video` format. Videos can be provided as input to MTLLM functions or methods:
 
 ```jac
 import from mtllm { Model, Video }

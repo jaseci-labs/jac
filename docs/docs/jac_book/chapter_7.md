@@ -1,20 +1,28 @@
 # Chapter 7: Enhanced OOP - Objects and Classes
 ---
-Jac takes the familiar concepts of object-oriented programming and enhances them with modern features like **automatic constructors**, **implementation separation**, and **improved access control**. This chapter shows how Jac builds on traditional OOP while making it more powerful and convenient.
 
-Jac's enhanced OOP features eliminate boilerplate code while providing better type safety and code organization than traditional approaches, making object-oriented design more intuitive and maintainable.
+Jac fully supports the principles of Object-Oriented Programming (OOP) but enhances them to be more intuitive and efficient. This chapter will guide you through using Jac's obj archetype to create well-structured, maintainable, and powerful objects.
+
+Jac simplifies the object creation process by providing features like **automatic constructors**, **implementation separation**, and **improved access control**, which reduce boilerplate code and allow you to focus more on the logic of your application.
+
 
 ## Jac `obj` Archetype
 ---
-The `obj` archetype is jac's high-level type for defining objects, similar to Python's `class`. It provides a clean syntax for defining properties and methods while automatically generating constructors.
+
+In Jac, you define a blueprint for an object using the `obj` archetype, which serves a similar purpose to the class keyword in Python. An `obj` bundles data (attributes) and behavior (methods) into a single, self-contained unit.
+
+Let's define a `Pet` object to see how this works.
 
 ```jac
 obj Pet {
+    # 1. Define attributes with the 'has' keyword.
     has name: str;
     has species: str;
     has age: int;
     has is_adopted: bool = False;  # Automatic default
 
+    # 2. Define methods with the 'def' keyword.
+    # Methods use 'self' to access the object's own attributes.
     def adopt() -> None {
         self.is_adopted = True;
         print(f"{self.name} has been adopted!");
@@ -27,7 +35,7 @@ obj Pet {
 }
 
 with entry {
-    # Automatic constructor from 'has' declarations
+    # 3. Create an instance using the automatic constructor.
     pet = Pet(name="Buddy", species="dog", age=3);
     print(pet.get_info());
     pet.adopt();
@@ -35,24 +43,31 @@ with entry {
 ```
 <br />
 
-In our pet example, the `Pet` object has properties like `name`, `species`, and `age`, along with methods to adopt the pet and get its information. The constructor is automatically generated based on the `has` declarations, eliminating the need for boilerplate code.
+Let's break down the key features demonstrated in this example.
 
+1. Defining Attributes with `has`: The `has` keyword is used to declare the data fields (attributes) that each Pet object will hold. You must provide a type for each attribute, and you can optionally set a default value, like `is_adopted: bool = False`.
+2. The Automatic Constructor: Notice that we did not have to write an __init__ method. Jac automatically generates a constructor for you based on the attributes you declare with has. This saves you from writing repetitive boilerplate code and allows you to create a new Pet instance with a clean and direct syntax: `Pet(name="Buddy", species="dog", age=3)`.
 
 
 ### Advanced Constructor Features
-Jac allows you to define constructors with more advanced features like `postinit` methods, which run after the automatic constructor is generated.
 
-Lets enhance our pet shop example to include a `postinit` method that sets the shop's open status based on the number of pets that are present:
+Sometimes, you need to run logic after an object's initial attributes have been set. For this, Jac provides the `postinit` method. This is useful for calculated properties or for validation that depends on multiple attributes.
+To use it, you declare an attribute with the by `postinit` modifier. This signals that the attribute exists, but its value will be assigned within the `postinit` method.
+Let's enhance our pet shop example. We'll create a PetShop object and use `postinit` to automatically set its is_open status based on whether it has reached its capacity.
+
 
 ```jac
 obj PetShop {
+    # Attributes set by the automatic constructor
     has name: str;
     has pets: list[Pet] = [];
     has capacity: int = 10;
-    has is_open: bool by postinit;  # Set in postinit
+    # This attribute's value will be calculated after initialization.
+    has is_open: bool by postinit;
 
+     # This method runs automatically after the object is created
     def postinit() -> None {
-        # Run after automatic initialization
+        # This logic determines the value of 'is_open'.
         self.is_open = len(self.pets) < self.capacity;
         print(f"{self.name} shop initialized with {len(self.pets)} pets");
     }
@@ -62,7 +77,7 @@ obj PetShop {
 
 ## Object Inheritance
 ---
-Jac supports inheritance, allowing you to create subclasses that extend or override parent class behavior.
+Inheritance is a fundamental concept in OOP that allows you to create a new, specialized object based on an existing one. The new object, or subclass, inherits all the attributes and methods of the parent object, and can add its own unique features or override existing ones. This promotes code reuse and helps create a logical hierarchy.
 
 ### Simple Inheritance Example
 
@@ -76,7 +91,7 @@ obj Animal {
         print(f"{self.name} makes a sound.");
     }
 }
-
+# A subclass that inherits from Animal
 obj Dog(Animal) {
     has breed: str;
 
@@ -94,25 +109,28 @@ obj Cat(Animal) {
 }
 ```
 <br />
-In this example, `Dog` and `Cat` inherit from the `Animal` class. They can override the `make_sound` method to provide specific behavior for each animal type.
+In this example, both `Dog` and `Cat` automatically have the `name`, `species`, and `age` attributes from Animal. However, they each provide a specialized version of the `make_sound` method, demonstrating polymorphism.
 
 ## Access Control with `:pub`, `:priv`, `:protect`
 ---
-Unlike Python's naming conventions, Jac provides explicit access control that's enforced at runtime.
+To create robust and secure objects, it is important to control which of their attributes and methods can be accessed from outside the object's own code. This principle is called encapsulation. Unlike Python, Jac provides explicit keywords that are enforced by the runtime.
 
 ### Public Access
-Public members are accessible from anywhere.
+Public members are accessible from anywhere. This is the default behavior in Jac, so the `:pub` keyword is optional but can be used for clarity.
 
 ```jac
 obj PublicExample {
+    # This attribute is public by default.
     has :pub public_property: str;
 
+    # Explicitly marking a method as public.
     def :pub public_method() -> str {
         return "This is a public method";
     }
 }
 with entry {
     example = PublicExample(public_property="Hello");
+    # Both are accessible from outside the object.
     print(example.public_method());
     print(example.public_property);
 }
@@ -120,7 +138,8 @@ with entry {
 <br />
 
 ### Private Access
-Private members are only accessible within the class itself.
+Private members, marked with `:priv`, can only be accessed from within the object itself. Any attempt to access a private member from outside code will result in an error. This is essential for protecting an object's internal state.
+
 ```jac
 obj PrivateExample {
     has :priv private_property: str;
@@ -143,12 +162,15 @@ with entry {
 <br />
 
 ### Protected Access
-Protected members are accessible within the class and its subclasses.
+Protected members, marked with `:protect`, create a middle ground between public and private. They are accessible within the object that defines them and within any of its subclasses. This is useful for creating internal logic that you want to share across a family of related objects but still keep hidden from the outside world.
+
 ```jac
 obj ProtectedExample {
+
     has :protect protected_property: str = "Protected";
     has :protect protected_list: list[int] = [];
     has :protect protected_dict: dict[str, int] = {"key": 1};
+
     def :protect protected_method() -> str {
         return "This is a protected method";
     }
@@ -170,7 +192,12 @@ with entry {
 
 
 ### Example: Pet Record System
-In this example, we create a `PetRecord` class with public, private, and protected members to demonstrate access control in a practical scenario.
+
+Let's combine these access control concepts into a practical example. We will build a `PetRecord` object that securely manages a pet's information.
+
+- Public information, like the pet's name, will be freely accessible.
+- Protected information, like medical history, will be accessible only to specialized subclasses like a VetRecord.
+- Private information, like the owner's contact details, will be strictly controlled by the object itself.
 
 
 <div class="code-block">
@@ -274,7 +301,9 @@ with entry {
 ## Wrapping Up
 ---
 
-In this chapter, we explored the enhanced object-oriented features of Jac, including automatic constructors, enforced access control, and clean inheritance. We also examined practical examples to illustrate these concepts in action. In the next chapter, make the leap from Object Oriented to Object Spatial Programming (OSP), where we will see how Jac's OOP features are extended to handle spatial data and operations, making it a powerful tool for many scenarios that OOP generally struggles with.
+In this chapter, you've learned how Jac builds upon classic Object-Oriented Programming with features that promote cleaner, safer, and more maintainable code. You now have the tools to create robust, well-structured objects with automatic constructors, enforced access control, and clear inheritance.
+
+These concepts form the foundation upon which Jac's most powerful paradigm is built. In the next chapter, we will make the leap from Object-Oriented to Object-Spatial Programming (OSP). We will see how these objects are extended into nodes that can exist in a graph, giving them a spatial context and unlocking a new way to handle complex, interconnected data.
 
 ---
 

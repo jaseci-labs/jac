@@ -30,13 +30,11 @@ class SSLServiceTest(TestCase):
             env=env,
         )
 
-        run(["sleep", "5"])
-
         self.host = "https://localhost:8443"
 
         count = 0
         while True:
-            if count > 5:
+            if count > 10:
                 self.check_server()
                 break
             else:

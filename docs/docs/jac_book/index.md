@@ -1,6 +1,7 @@
 # The Jac Programming Language Book
 
-Welcome to the comprehensive guide for Jac, the revolutionary programming language that introduces **Object-Spatial Programming (OSP)** and seamless AI integration. This book will take you from basic syntax to building sophisticated, AI-powered applications that automatically scale from local development to cloud deployment.
+This guide will help you get started with Jac, a programming language that introduces **Object-Spatial Programming (OSP)**  which is designed for building AI-powered applications. We will walk through practical examples to help you understand Jac's core features.
+
 
 !!! info "About This Book"
     This book teaches Jac through practical examples and real-world applications. Each chapter builds on the previous one, culminating in complete applications that demonstrate Jac's unique capabilities.
@@ -9,12 +10,12 @@ Welcome to the comprehensive guide for Jac, the revolutionary programming langua
 
 ## What Makes Jac Special?
 
-Jac represents a fundamental shift in programming paradigms, combining familiar concepts with revolutionary new approaches:
+Jac offers a unique approach to programming by combining established concepts with new features tailored for AI development. Here are some of the key elements that set it apart:
 
-- **Object-Spatial Programming**: Move computation to data rather than data to computation
-- **Scale-Agnostic Architecture**: Same code runs locally and scales infinitely in the cloud
-- **AI-First Design**: Built-in AI capabilities without complex integration
-- **Zero-Configuration Deployment**: Automatic API generation and persistence
+- **Object-Spatial Programming**: Jac introduces a new way to think about programming by allowing computation to happen where the data is located.[2] This approach is particularly useful for applications with connected data, like social networks or file systems, and helps make them easier to scale.
+- **Scale-Agnostic Architecture**: You can write your code once and run it on your local machine or scale it for the cloud without making changes to the code itself.
+- **AI-First Design**: Jac is designed with artificial intelligence at its core, providing built-in capabilities for AI without the need for complex integrations.
+- **Zero-Configuration Deployment**: Jac automates the process of generating APIs and managing data persistence, which simplifies the deployment of your applications.
 
 ---
 
@@ -312,4 +313,4 @@ Throughout this book, you'll create increasingly sophisticated applications:
 
 ---
 
-*Ready to revolutionize how you think about programming? Let's begin with [Chapter 1: Introduction to Jac](chapter_1.md)!*
+*Ready to revolutionize how you think about programming? Let's begin with [Chapter 1: Welcome to Jac](chapter_1.md)!*

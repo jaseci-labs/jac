@@ -4,7 +4,7 @@
 }
 
 /* Admonition styles */
-.md-typeset .admonition{
+.md-typeset .admonition {
     border-radius: 10px;
 }
 
@@ -217,7 +217,7 @@ body,
 .md-typeset h4,
 .md-typeset h5,
 .md-typeset h6 {
-font-family: 'Segoe UI', 'Montserrat', 'Roboto', 'Arial', sans-serif;
+    font-family: 'Segoe UI', 'Montserrat', 'Roboto', 'Arial', sans-serif;
     font-weight: 700;
     letter-spacing: 0.02em;
     margin-bottom: 0.2em !important;
@@ -254,7 +254,7 @@ font-family: 'Segoe UI', 'Montserrat', 'Roboto', 'Arial', sans-serif;
 
 /* ---------- Code blocks ---------- */
 .md-typeset pre,
-.md-typeset pre > code,
+.md-typeset pre>code,
 .md-typeset code,
 .md-typeset .code-block,
 .md-typeset .code-output {
@@ -273,7 +273,7 @@ font-family: 'Segoe UI', 'Montserrat', 'Roboto', 'Arial', sans-serif;
     border: 1px solid #555555;
 }
 
-.md-typeset code{
+.md-typeset code {
     color: #f8f8f2;
 }
 
@@ -410,7 +410,7 @@ blockquote::after {
 }
 
 /* Remove custom task list checkmark styling */
-.md-typeset ul li.task-list-item input[type="checkbox"]:checked + label::before {
+.md-typeset ul li.task-list-item input[type="checkbox"]:checked+label::before {
     content: "";
     color: inherit;
     font-size: 1em;
@@ -426,127 +426,203 @@ hr {
     border-color: #404040;
 }
 
-
-/* Container */
+/* Feedback Form Styles */
 .feedback-container {
-  position: fixed;
-  z-index: 9999;
-  bottom: 32px;
-  right: 32px;
-  max-width: 340px;
-  width: 95vw;
-  background: #23272e;
-  border-radius: 12px;
-  box-shadow: 0 4px 24px rgba(255, 171, 64, 0.15);
-  padding: 1.2em 1.2em 1em 1.2em;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  font-family: inherit;
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 1000;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
-/* Close button */
-.feedback-close {
-  position: absolute;
-  top: 8px;
-  right: 12px;
-  background: none;
-  border: none;
-  color: #ffab40;
-  font-size: 1.3em;
-  cursor: pointer;
+/* Hide on main domain */
+body[data-domain="https://www.jac-lang.org/"] .feedback-container {
+    display: none !important;
 }
 
-/* Title */
-.feedback-title {
-  font-size: 1.4em;
-  font-weight: 600;
-  color: #ffab40;
-  margin-bottom: 0.7em;
+.feedback-toggle {
+    background: linear-gradient(135deg, #ff6b35, #e55a2b);
+    color: white;
+    border: none;
+    border-radius: 25px;
+    padding: 12px 20px;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(255, 107, 53, 0.3);
+    font-size: 14px;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 
-/* Buttons wrapper */
-.feedback-buttons {
-  display: flex;
-  gap: 3em;
-  align-items: center;
-  margin-bottom: 0.7em;
-  justify-content: center;
+.feedback-toggle:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(255, 107, 53, 0.4);
 }
 
-/* Thumbs */
-.thumb {
-  background: #2d2d2d;
-  border: none;
-  border-radius: 50%;
-  width: 38px;
-  height: 38px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 2px 8px rgba(255, 171, 64, 0.08);
-  cursor: pointer;
-  font-size: 1.5em;
-  line-height: 1;
-  transition: transform 0.1s, background 0.2s;
-  color: #ffab40;
+.feedback-form {
+    position: absolute;
+    bottom: 60px;
+    right: 0;
+    width: 320px;
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    transform: translateY(20px);
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.3s ease;
 }
 
-/* Selected state (apply via JS) */
-.thumb.selected {
-  background: transparent;
-  border: 2.5px solid #ffab40;
-  color: #fff;
-  transform: scale(1.2);
-  box-shadow: 0 4px 16px rgba(255,171,64,0.15);
+.feedback-form.active {
+    transform: translateY(0);
+    opacity: 1;
+    visibility: visible;
 }
 
-/* Hover effect */
-.thumb:hover {
-  background: linear-gradient(135deg, #23272e 0%, #ff9800 60%, #ffab40 60%);
-  color: #fff;
+.feedback-form h3 {
+    color: #ff6b35;
+    margin: 0 0 16px 0;
+    font-size: 18px;
+    font-weight: 600;
 }
 
-/* Textarea */
-.feedback-textarea {
-  width: 100%;
-  border-radius: 6px;
-  border: 1px solid #404040;
-  background: #1a1a1a;
-  color: #fff;
-  padding: 0.5em;
-  margin-bottom: 0.7em;
-  font-size: 1em;
-  resize: vertical;
+.feedback-rating {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 16px;
+    align-items: center;
 }
 
-/* Send button */
-.feedback-send {
-  background: linear-gradient(90deg, #ff9800 0%, #ffab40 100%);
-  color: #1e1e1e;
-  border: none;
-  border-radius: 6px;
-  font-weight: 600;
-  font-size: 1.2em;
-  cursor: pointer;
-  padding: 0.5em 1.2em;
-  box-shadow: 0 2px 8px rgba(255,171,64,0.08);
-  outline: none;
-  letter-spacing: 0.03em;
-  transition: background 0.2s, opacity 0.2s;
-  opacity: 0.6;
+.rating-label {
+    color: #ccc;
+    font-size: 14px;
+    margin-right: 8px;
 }
 
-/* Active state */
-.feedback-send.active {
-  opacity: 1;
+.rating-btn {
+    background: #2a2a2a;
+    border: 2px solid #444;
+    border-radius: 8px;
+    padding: 8px 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #ccc;
+    font-size: 14px;
 }
 
-/* Status text */
-.feedback-status {
-  margin-top: 0.5em;
-  color: #cccccc;
-  font-size: 0.95em;
-  min-height: 1.2em;
-  display: block;
+.rating-btn:hover {
+    border-color: #ff6b35;
+    background: #333;
+}
+
+.rating-btn.selected {
+    border-color: #ff6b35;
+    background: #ff6b35;
+    color: white;
+}
+
+.feedback-input {
+    width: 100%;
+    background: #2a2a2a;
+    border: 2px solid #444;
+    border-radius: 8px;
+    padding: 12px;
+    color: #fff;
+    font-size: 14px;
+    resize: vertical;
+    min-height: 80px;
+    margin-bottom: 16px;
+    box-sizing: border-box;
+}
+
+.feedback-input:focus {
+    outline: none;
+    border-color: #ff6b35;
+}
+
+.feedback-input::placeholder {
+    color: #888;
+}
+
+.feedback-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+}
+
+.btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.btn-cancel {
+    background: #444;
+    color: #ccc;
+}
+
+.btn-cancel:hover {
+    background: #555;
+}
+
+.btn-submit {
+    background: linear-gradient(135deg, #ff6b35, #e55a2b);
+    color: white;
+}
+
+.btn-submit:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(255, 107, 53, 0.3);
+}
+
+.btn-submit:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.success-message {
+    background: #1a4d3a;
+    color: #4ade80;
+    padding: 12px;
+    border-radius: 8px;
+    text-align: center;
+    font-size: 14px;
+    margin-bottom: 12px;
+    display: none;
+}
+
+.success-message.show {
+    display: block;
+}
+
+/* Icons */
+.icon {
+    width: 16px;
+    height: 16px;
+    fill: currentColor;
+}
+
+/* Mobile responsiveness */
+@media (max-width: 768px) {
+    .feedback-container {
+        bottom: 15px;
+        right: 15px;
+    }
+
+    .feedback-form {
+        width: 280px;
+        right: 0;
+    }
 }

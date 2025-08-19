@@ -82,6 +82,9 @@ class Memory(Generic[ID, TANCH]):
             if anchor := self.__mem__.pop(id, None):
                 self.__gc__.add(anchor)
 
+    def commit(self, anchor: TANCH | None = None) -> None:
+        """Commit all data from memory to datasource."""
+
 
 @dataclass
 class ShelfStorage(Memory[UUID, Anchor]):
@@ -94,12 +97,21 @@ class ShelfStorage(Memory[UUID, Anchor]):
         super().__init__()
         self.__shelf__ = open(session) if session else None  # noqa: SIM115
 
-    def close(self) -> None:
-        """Close memory handler."""
+    def commit(self, anchor: Anchor | None = None) -> None:
+        """Commit all data from memory to datasource."""
         if isinstance(self.__shelf__, Shelf):
-            for anchor in self.__gc__:
-                self.__shelf__.pop(str(anchor.id), None)
-                self.__mem__.pop(anchor.id, None)
+            if anchor:
+                if anchor in self.__gc__:
+                    self.__shelf__.pop(str(anchor.id), None)
+                    self.__mem__.pop(anchor.id, None)
+                    self.__gc__.remove(anchor)
+                else:
+                    self.sync_mem_to_db([anchor.id])
+                return
+
+            for anc in self.__gc__:
+                self.__shelf__.pop(str(anc.id), None)
+                self.__mem__.pop(anc.id, None)
 
             keys = set(self.__mem__.keys())
 
@@ -109,7 +121,13 @@ class ShelfStorage(Memory[UUID, Anchor]):
             # additional after memory sync
             self.sync_mem_to_db(set(self.__mem__.keys() - keys))
 
+    def close(self) -> None:
+        """Close memory handler."""
+        self.commit()
+
+        if isinstance(self.__shelf__, Shelf):
             self.__shelf__.close()
+
         super().close()
 
     def sync_mem_to_db(self, keys: Iterable[UUID]) -> None:

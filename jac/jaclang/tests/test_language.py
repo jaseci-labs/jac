@@ -122,13 +122,19 @@ class JacLanguageTests(TestCase):
         data = json.loads(stdout_value)
 
         nodes = data["nodes"]
-        self.assertEqual(len(nodes), 7)
+        edges = data["edges"]
+
+        self.assertEqual(len(nodes), 5)
+        self.assertEqual(len(edges), 6)
+
         for node in nodes:
             label = node["label"]
             self.assertIn(label, ["root", "N(val=0)", "N(val=1)"])
 
-        edges = data["edges"]
-        self.assertEqual(len(edges), 6)
+        for edge in edges:
+            label = edge["label"]
+            self.assertIn(label, ["E(val=1)", "E(val=1)", "E(val=1)", "E(val=0)", "E(val=0)", "E(val=0)"])
+
 
     def test_printgraph_mermaid(self) -> None:
         """Test the mermaid gen of builtin function."""
@@ -229,7 +235,7 @@ class JacLanguageTests(TestCase):
         sys.stdout = sys.__stdout__
         stdout_value = captured_output.getvalue()
         self.assertIn(
-            '[label="inner_node(main=5, sub=2)"];',
+            '[label="inner_node(main=5, sub=2)"fillcolor="#FFDEAD"];',
             stdout_value,
         )
 

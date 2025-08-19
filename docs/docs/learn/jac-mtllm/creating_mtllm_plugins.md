@@ -1,6 +1,6 @@
-# Creating MTLLM Plugins: A Beginner's Guide
+# Creating MTLLM Plugins
 
-This guide will walk you through creating your own plugins for MTLLM (Multi-Modal Large Language Model), which is a plugin system for Jaclang's `with_llm` feature.
+This document describes how to create plugins for MTLLM (Multi-Modal Large Language Model), which is a plugin system for Jaclang's `by llm()` feature.
 
 ## Understanding the Plugin System
 
@@ -8,7 +8,7 @@ MTLLM uses a plugin architecture based on [Pluggy](https://pluggy.readthedocs.io
 
 ### How Plugins Work
 
-When you use Jaclang's `by llm()` syntax, the runtime system looks for registered plugins that implement the `call_llm` hook. This allows you to:
+When Jaclang's `by llm()` syntax is used, the runtime system looks for registered plugins that implement the `call_llm` hook. This enables:
 
 - Implement custom LLM providers
 - Add preprocessing/postprocessing logic
@@ -28,7 +28,7 @@ The plugin system consists of three main components:
 
 ### Step 1: Set Up Your Plugin Package
 
-Create a new Python package for your plugin:
+Create a Python package for the plugin:
 
 ```
 my-mtllm-plugin/
@@ -41,7 +41,7 @@ my-mtllm-plugin/
 
 ### Step 2: Define Your Plugin Class
 
-Create your plugin implementation in `my_mtllm_plugin/plugin.py`:
+Create the plugin implementation in `my_mtllm_plugin/plugin.py`:
 
 ```python
 """Custom MTLLM Plugin."""
@@ -61,15 +61,14 @@ class MyMtllmMachine:
         model: Model, caller: Callable, args: dict[str | int, object]
     ) -> object:
         """Custom LLM call implementation."""
-        # Your custom logic here
+        # Custom logic implementation
         print(f"Custom plugin intercepted call to: {caller.__name__}")
         print(f"Arguments: {args}")
 
-        # You can either:
-        # 1. Modify the call and delegate to the original model
+        # Option 1: Modify the call and delegate to the original model
         result = model.invoke(caller, args)
 
-        # 2. Or implement completely custom logic
+        # Option 2: Implement completely custom logic
         # result = your_custom_llm_logic(caller, args)
 
         print(f"Result: {result}")
@@ -78,7 +77,7 @@ class MyMtllmMachine:
 
 ### Step 3: Configure Package Registration
 
-In your `pyproject.toml`, register your plugin using entry points:
+Register the plugin using entry points in `pyproject.toml`:
 
 ```toml
 [tool.poetry]
@@ -102,12 +101,12 @@ build-backend = "poetry.core.masonry.api"
 
 ### Step 4: Install and Test Your Plugin
 
-1. Install your plugin in development mode:
+1. Install the plugin in development mode:
    ```bash
    pip install -e .
    ```
 
-2. Create a test Jaclang file to verify your plugin works:
+2. Create a test Jaclang file to verify plugin functionality:
    ```jaclang
    import:py from mtllm, Model;
 
@@ -125,7 +124,7 @@ build-backend = "poetry.core.masonry.api"
    }
    ```
 
-3. Run your test:
+3. Run the test:
    ```bash
    jac run test.jac
    ```
@@ -326,9 +325,9 @@ def call_llm(model: Model, caller: Callable, args: dict[str | int, object]) -> o
     return result
 ```
 
-### 3. Use Configuration
+### Use Configuration
 
-Allow your plugin to be configured:
+Configure plugin behavior:
 
 ```python
 class ConfigurableMachine:
@@ -344,7 +343,7 @@ class ConfigurableMachine:
         if not self.config["enabled"]:
             return model.invoke(caller, args)
 
-        # Your plugin logic
+        # Plugin logic implementation
 ```
 
 ### 4. Testing Your Plugin
@@ -395,7 +394,7 @@ jac run your_script.jac
 
 ### Verify Plugin Registration
 
-You can check if your plugin is loaded:
+Check if the plugin is loaded:
 
 ```python
 from jaclang.runtimelib.machine import plugin_manager
@@ -407,20 +406,20 @@ for plugin in plugin_manager.get_plugins():
 
 ## Common Pitfalls
 
-1. **Not using `@hookimpl` decorator**: Your methods won't be recognized as hook implementations
-2. **Incorrect entry point name**: Must be `"jac"` to be discovered
+1. **Not using `@hookimpl` decorator**: Methods won't be recognized as hook implementations
+2. **Incorrect entry point name**: Must be `"jac"` for discovery
 3. **Wrong hook signature**: Must match exactly: `call_llm(model, caller, args)`
-4. **Forgetting to delegate**: If you don't call `model.invoke()`, the original functionality is lost
+4. **Forgetting to delegate**: If `model.invoke()` is not called, original functionality is lost
 
 ## Conclusion
 
-Creating MTLLM plugins allows you to extend Jaclang's LLM capabilities in powerful ways. Whether you're adding caching, logging, custom providers, or other functionality, the plugin system provides a clean and extensible way to enhance the LLM experience.
+MTLLM plugins extend Jaclang's LLM capabilities through a clean, extensible plugin system. Plugins can add caching, logging, custom providers, and other functionality to enhance the LLM experience.
 
-Remember to:
+Key considerations:
 - Follow the hook specification exactly
 - Test thoroughly with different scenarios
-- Document your plugin's functionality
+- Document plugin functionality
 - Consider backward compatibility
 - Handle errors gracefully
 
-For more examples and advanced use cases, check out the [official MTLLM plugin](https://github.com/Jaseci-Labs/jaclang/tree/main/jac-mtllm) implementation.
+For more examples and advanced use cases, see the [official MTLLM plugin](https://github.com/Jaseci-Labs/jaclang/tree/main/jac-mtllm) implementation.

@@ -73,5 +73,5 @@ with entry {
     root spawn walker1();
     root spawn walker2();
     root spawn walker3();
-    print(_.node_dot(root));
+    print(printgraph(root));
 }

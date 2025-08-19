@@ -1,19 +1,12 @@
 # Chapter 5: Advanced AI Operations
 ---
-In this chapter, we'll explore Jac's advanced AI capabilities through MTLLM (Meaning Typed LLM). We'll build a simple image captioning tool that demonstrates model configuration, semantic strings, and multimodal AI integration in Jac applications.
-
-
-- MTLLM variations and model selection
-- Model declaration and configuration patterns
-- Semantic strings for enhanced AI context
-- Multimodality support for vision and audio
-- Building AI-powered applications with type safety
-
+In this chapter, you will learn to integrate advanced AI capabilities directly into your Jac applications using the MTLLM (Meaning-Typed LLM) framework. We will build a multi-modal image analysis tool to demonstrate how Jac simplifies complex AI operations, including model configuration, context enhancement, and multi-modal data handling.
 
 
 ## MTLLM Overview
 ---
-MTLLM (Meaning Typed LLM) is Jac's AI integration framework that makes working with Large Language Models as simple as calling a function. Unlike traditional AI programming that requires complex prompt engineering and API management, MTLLM enables natural AI integration through Jac's type system.
+MTLLM (Meaning Typed LLM) is Jac's native AI integration framework. It transforms the way developers interact with Large Language Models by shifting from manual prompt engineering and complex API calls to a streamlined, function-based approach that is fully integrated with Jac's type system.
+
 
 !!! success "MTLLM Benefits"
     - **Zero Prompt Engineering**: Define function signatures, let AI handle implementation
@@ -24,7 +17,9 @@ MTLLM (Meaning Typed LLM) is Jac's AI integration framework that makes working w
 
 ## Functions as Prompts
 ---
-Up until this point, we've used Jac's functions to define behavior. However, what if we wanted to incorperate AI capabilities directly into our Jac applications? For example, lets say we're writing a poetry application that can generate poems based on a user supplied topic. Since Jac is a super set of Python, we can create a function `write_poetry` that takes a topic as input and then make a call to an OpenAI model using its python or langchain library to generate the poem.
+Up until this point, we've used Jac's functions to define behavior. However, what if we wanted to incorperate AI capabilities directly into our Jac applications? For example, lets say we're writing a poetry application that can generate poems based on a user supplied topic.
+
+Since Jac is a super set of Python, we can create a function `write_poetry` that takes a topic as input and then make a call to an OpenAI model using its python or langchain library to generate the poem.
 
 First, install the OpenAI Python package:
 ```bash
@@ -482,5 +477,7 @@ with entry {
     Remember: AI functions in Jac are as easy to use as regular functions, but with the power of Large Language Models!
 
 ---
+
+If you are interested in learning more about MTLLM, check out [ Quickstart to MTLLM ](../learn/jac-mtllm/with_llm.md)
 
 *Ready to learn about imports and modular programming? Continue to [Chapter 6: Imports System and File Operations](chapter_6.md)!*

@@ -30,7 +30,7 @@ impl creator.create{
 
 with entry{
     print(root spawn creator());
-    print(_.node_dot(root));
+    print(printgraph(root));
     print([root ->:Edge_a:->]);
     print([root ->:Edge_c:->]);
     print([root ->:Edge_a:-> ->:Edge_b:->]);

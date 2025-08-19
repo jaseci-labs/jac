@@ -16,19 +16,9 @@ class TestCFGBuildPass(TestCase):
         """Test basic blocks."""
         file_name = self.fixture_abs_path("cfg_gen.jac")
 
-        from jaclang.compiler.passes.main.cfg_build_pass import CoalesceBBPass
+        from jaclang.compiler.passes.main.cfg_build_pass import cfg_dot_from_file
 
-        with open(file_name, "r") as f:
-            file_source = f.read()
-
-        ir = (prog := JacProgram()).compile(use_str=file_source, file_path=file_name)
-
-        cfg_pass = CoalesceBBPass(
-            ir_in=ir,
-            prog=prog,
-        )
-
-        dot = cfg_pass.printgraph_cfg()
+        dot = cfg_dot_from_file(file_name=file_name)
 
         expected_dot = (
             "digraph G {\n"
@@ -62,19 +52,9 @@ class TestCFGBuildPass(TestCase):
         """Test basic blocks."""
         file_name = self.fixture_abs_path("cfg_ability_test.jac")
 
-        from jaclang.compiler.passes.main.cfg_build_pass import CoalesceBBPass
+        from jaclang.compiler.passes.main.cfg_build_pass import cfg_dot_from_file
 
-        with open(file_name, "r") as f:
-            file_source = f.read()
-
-        ir = (prog := JacProgram()).compile(use_str=file_source, file_path=file_name)
-
-        cfg_pass = CoalesceBBPass(
-            ir_in=ir,
-            prog=prog,
-        )
-
-        dot = cfg_pass.printgraph_cfg()
+        dot = cfg_dot_from_file(file_name=file_name)
 
         expected_dot = (
             "digraph G {\n"
@@ -92,4 +72,62 @@ class TestCFGBuildPass(TestCase):
             "}\n"
         )
 
+        self.assertEqual(dot, expected_dot)
+
+    def test_cfg_ability_with_has(self) -> None:
+        """Test basic blocks with ability and has."""
+        file_name = self.fixture_abs_path("cfg_has_var.jac")
+
+        from jaclang.compiler.passes.main.cfg_build_pass import cfg_dot_from_file
+
+        dot = cfg_dot_from_file(file_name=file_name)
+
+        expected_dot = (
+            "digraph G {\n"
+            '  0 [label="BB0\\nobj Rock", shape=box];\n'
+            '  1 [label="BB1\\nhas pellets : list ;", shape=box];\n'
+            '  2 [label="BB2\\ncan count_pellets( ) -> int\\nreturn self . pellets . length ( ) ;", shape=box];\n'
+            '  3 [label="BB3\\nrock = Rock ( pellets = [ 1 , 2 , 3 ] ) ;\\nprint ( \'\\"Number of pellets: \\"\' + rock . count_pellets ( ) . to_string ( ) ) ;", shape=box];\n'
+            "  0 -> 1;\n"
+            "  0 -> 2;\n"
+            "}\n"
+        )
+
+        self.assertEqual(dot, expected_dot)
+
+    def test_cfg_if_no_else(self) -> None:
+        """Test basic blocks with if without else."""
+        file_name = self.fixture_abs_path("cfg_if_no_else.jac")
+
+        from jaclang.compiler.passes.main.cfg_build_pass import cfg_dot_from_file
+
+        dot = cfg_dot_from_file(file_name=file_name)
+
+        expected_dot = (
+            "digraph G {\n"
+            '  0 [label="BB0\\ncan test_if_without_else( x : int )\\nif ( x > 0 )", shape=box];\n'
+            '  1 [label="BB1\\nprint ( \'\\"Positive\\"\' ) ;", shape=box];\n'
+            '  2 [label="BB2\\nprint ( \'\\"Done\\"\' ) ;", shape=box];\n'
+            '  3 [label="BB3\\ntest_if_without_else ( 5 ) ;\\ntest_if_without_else ( - 3 ) ;", shape=box];\n'
+            "  0 -> 1;\n"
+            "  0 -> 2;\n"
+            "  1 -> 2;\n"
+            "}\n"
+        )
+        self.assertEqual(dot, expected_dot)
+
+    def test_cfg_return_stmt(self) -> None:
+        """Test basic blocks with return statement."""
+        file_name = self.fixture_abs_path("cfg_return.jac")
+
+        from jaclang.compiler.passes.main.cfg_build_pass import cfg_dot_from_file
+
+        dot = cfg_dot_from_file(file_name=file_name)
+
+        expected_dot = (
+            "digraph G {\n"
+            '  0 [label="BB0\\ncan test_return_direct( )\\nprint ( \'\\"Before return\\"\' ) ;\\nreturn ;\\nprint ( \'\\"After return\\"\' ) ;", shape=box];\n'
+            '  1 [label="BB1\\ntest_return_direct ( ) ;", shape=box];\n'
+            "}\n"
+        )
         self.assertEqual(dot, expected_dot)

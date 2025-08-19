@@ -5,6 +5,7 @@ from typing import Callable
 from jaclang.runtimelib.machine import hookimpl
 
 from mtllm.llm import Model
+from mtllm.mtir import MTIR
 
 
 class JacMachine:
@@ -12,11 +13,9 @@ class JacMachine:
 
     @staticmethod
     @hookimpl
-    def call_llm(
-        model: Model, caller: Callable, args: dict[str | int, object]
-    ) -> object:
+    def call_llm(model: Model, mtir: MTIR) -> object:
         """Call JacLLM and return the result."""
-        return model.invoke(caller, args)
+        return model.invoke(mtir=mtir)
 
 
 def by(model: Model) -> Callable:
@@ -29,7 +28,12 @@ def by(model: Model) -> Callable:
                 invoke_args[i] = arg
             for key, value in kwargs.items():
                 invoke_args[key] = value
-            return JacMachine.call_llm(model, caller, invoke_args)
+            mtir = MTIR.factory(
+                caller=caller,
+                args=invoke_args,
+                call_params=model.llm_connector.call_params,
+            )
+            return JacMachine.call_llm(model, mtir)
 
         return _wrapped_caller
 

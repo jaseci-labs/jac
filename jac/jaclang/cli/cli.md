@@ -36,6 +36,7 @@ Parameters to execute the tool command:
     - `sym.`: Generates a dot graph representation of the symbol table for the specified .jac file.
     - `ast`: Displays the Abstract Syntax Tree (AST) of the specified .jac file.
     - `ast.`: Generates a dot graph representation of the AST for the specified .jac file.
+    - `cfg.`: Generates a dot graph representatuin of the CFG(Control Flow Graph) for a specific .jac file
     - `pyast`: Generates the Python AST for a .py file or the relevant Python AST for the generated Python code from a .jac file.
     - `py`: Displays the relevant generated Python code for the respective Jac code in a .jac file.
   - `file_path`: Path to the .jac or .py file.

@@ -1,10 +1,10 @@
 # AI-Integrated Programming with MTLLM
 
-This guide covers different ways you can use MTLLM to build AI-integrated software in Jaclang. From simple AI-powered functions to complex multi-agent systems, MTLLM provides the tools to seamlessly integrate Large Language Models into your applications. For truly agentic behavior that can reason, plan, and act autonomously, MTLLM offers the ReAct method with tool integration.
+This guide covers different ways to use MTLLM for AI-integrated software development in Jaclang. MTLLM provides language-level abstractions for integrating Large Language Models into applications, from basic AI-powered functions to complex multi-agent systems. For agentic behavior capabilities, MTLLM includes the ReAct method with tool integration.
 
 ## Supported Models
 
-MTLLM use [LiteLLM](https://docs.litellm.ai/docs) under the hood allowing seamless integration with a wide range of models.
+MTLLM uses [LiteLLM](https://docs.litellm.ai/docs) to provide integration with a wide range of models.
 
 === "OpenAI"
     ```jac linenums="1"
@@ -38,25 +38,13 @@ MTLLM use [LiteLLM](https://docs.litellm.ai/docs) under the hood allowing seamle
     ```
 
 ??? Note
-    There are Many other supported models and model serving platforms available with LiteLLM, please check their [documentation](https://docs.litellm.ai/docs/providers) for model names.
+    Additional supported models and model serving platforms are available with LiteLLM. Refer to their [documentation](https://docs.litellm.ai/docs/providers) for model names.
 
-### Key MTLLM Features
-
-LLM integration is a first class feature in Jaclang, enabling you to build AI-powered applications with minimal effort. Here are some of the key features:
-
-- **Zero Prompt Engineering**: Define function signatures and let MTLLM handle implementation
-- **Type Safety**: Maintain strong typing while adding AI capabilities
-- **Tool Integration**: Connect AI functions to external APIs and services
-- **Context Aware Methods**: AI-powered methods that understand object context
-- **Structured Outputs**: Generate complex, typed data structures automatically
-- **Media Support**: Handle images and videos as inputs and outputs
-- **ReAct Method**: Build agentic applications that can reason and use tools
-
-## Intelligent Functions
+## MTP for Functions
 
 ### Basic Functions
 
-Transform any function into an intelligent agent by adding the `by llm` declaration. Instead of writing manual API calls and prompt engineering, simply define the function signature and let MTLLM handle the implementation:
+Functions can be integrated with LLM capabilities by adding the `by llm` declaration. This eliminates the need for manual API calls and prompt engineering:
 
 ```jac linenums="1"
 import from mtllm.llm { Model }
@@ -70,11 +58,11 @@ def analyze_sentiment(text: str) -> str by llm();
 def summarize(content: str, max_words: int) -> str by llm();
 ```
 
-These functions become intelligent agents that can understand natural language inputs and produce contextually appropriate outputs.
+These functions process natural language inputs and generate contextually appropriate outputs.
 
-### Enhanced Functions with Reasoning
+### Functions with Reasoning
 
-Add the `method='Reason'` parameter to enable step-by-step reasoning for complex tasks:
+The `method='Reason'` parameter enables step-by-step reasoning for complex tasks:
 
 ```jac linenums="1"
 import from mtllm.llm { Model }
@@ -88,10 +76,10 @@ def generate_response(original_text: str, sentiment: str) -> str by llm();
 with entry {
     customer_feedback = "I'm really disappointed with the product quality. The delivery was late and the item doesn't match the description at all.";
 
-    # Agent reasons through the sentiment analysis step by step
+    # Function performs step-by-step sentiment analysis
     sentiment = analyze_sentiment(customer_feedback);
 
-    # Agent crafts appropriate response based on sentiment
+    # Function generates response based on sentiment
     response = generate_response(customer_feedback, sentiment);
 
     print(f"Customer sentiment: {sentiment}");
@@ -101,7 +89,7 @@ with entry {
 
 ### Structured Output Functions
 
-MTLLM excels at generating structured outputs. Define functions that return complex types:
+MTLLM supports generation of structured outputs. Functions can return complex types:
 
 ```jac linenums="1"
 obj Person {
@@ -119,14 +107,16 @@ with entry {
 }
 ```
 
-A more complex example of using object schema for adding context to LLM and constrint genaration to structured output genaration is explained in the [game level genaration](../examples/mtp_examples/rpg_game.md) example.
+A more complex example using object schema for context and structured output generation is demonstrated in the [game level generation](../examples/mtp_examples/rpg_game.md) example.
 
 
-## Instance context aware MTP methods
+## Context-Aware MTP Methods
 
-Transform methods into intelligent components that can reason about their state and context:
+Methods can be integrated with LLM capabilities to process object state and context:
 
-### Basic Methods
+<!-- ### Basic Methods -->
+
+When integrating LLMs for methods of a class, MTP automatically adds attributes of the initialized object into the prompt of the LLM, adding extra context to the LLM.
 
 ```jac linenums="1"
 import from mtllm.llm { Model }
@@ -148,11 +138,11 @@ with entry {
 }
 ```
 
-### Complex AI-Integrated Workflows with Objects
+<!-- ### Complex AI-Integrated Workflows with Objects -->
 
-Create sophisticated multi-agent systems using object methods:
+<!-- Multi-step workflows can be implemented using object methods: -->
 
-```jac linenums="1"
+<!-- ```jac linenums="1"
 import from mtllm.llm { Model }
 
 glob llm = Model(model_name="gpt-4o");
@@ -189,15 +179,15 @@ with entry {
     print("Reviewer Notes: ", summary);
     print("Grade: ", grade);
 }
-```
+``` -->
 
 ## Adding Explicit Context for Functions, Methods and Objects
 
-When building AI-integrated applications, providing the right amount of context is crucial for optimal performance. MTLLM offers multiple ways to add context to your functions and objects without over-engineering prompts.
+Providing appropriate context is essential for optimal LLM performance. MTLLM provides multiple methods to add context to functions and objects.
 
 ### Adding Context with Docstrings
 
-Docstrings serve as crucial context for your intelligent functions. MTLLM uses docstrings to understand the function's purpose and expected behavior. Keep them concise and focused - they should guide the LLM, not replace its reasoning.
+Docstrings provide context for LLM-integrated functions. MTLLM uses docstrings to understand function purpose and expected behavior.
 
 ```jac linenums="1"
 import from mtllm.llm { Model }
@@ -211,20 +201,13 @@ def translate(text: str, target_language: str) -> str by llm();
 def generate_email_response(message: str, recipient_type: str) -> str by llm();
 ```
 
-**Key principles for effective docstrings:**
-
-- Be specific about the function's purpose
-- Mention return format for complex outputs
-- Avoid detailed instructions - let the LLM reason
-- Keep them under one sentence when possible
-
 ### Adding Context with Semantic Strings (Semstrings)
 
-For more complex scenarios where you need to describe object attributes or function parameters without cluttering your code, Jaclang provides semantic strings using the `sem` keyword. This is particularly useful for:
+Jaclang provides semantic strings using the `sem` keyword for describing object attributes and function parameters. This is useful for:
 
 - Describing object attributes with domain-specific meaning
-- Adding context to parameters without verbose docstrings
-- Maintaining clean code while providing rich semantic information
+- Adding context to parameters
+- Providing semantic information while maintaining clean code
 
 ```jac linenums="1"
 obj Person {
@@ -242,9 +225,9 @@ sem Person.ssn = "Last four digits of the Social Security Number of a person";
 def check_eligibility(person: Person, service_type: str) -> bool by llm();
 ```
 
-### Additional context with `incl_info`
+### Additional Context with `incl_info`
 
-Use `incl_info` to provide additional context to LLM methods for context-aware processing:
+The `incl_info` parameter provides additional context to LLM methods for context-aware processing:
 
 ```jac linenums="1"
 import from mtllm.llm { Model }
@@ -256,8 +239,8 @@ obj Person {
     has name: str;
     has date_of_birth: str;
 
-    # This will use the above date_of_birth attribute and the "today" information
-    # in the `incl_info` to calculate the age of the person.
+    # Uses the date_of_birth attribute and "today" information
+    # from incl_info to calculate the person's age
     def calculate_age() -> str by llm(
         incl_info={
             "today": datetime.now().strftime("%d-%m-%Y"),
@@ -273,25 +256,18 @@ obj Person {
 - **Semstrings**: Use for attribute-level descriptions and domain-specific terminology
 - **incl_info**: Use to selectively include relevant object state in method calls
 
-The `sem` keyword can be used in [separate implementation files](../../jac_book/chapter_5.md#declaring-interfaces-vs-implementations), allowing for cleaner code organization and better maintainability.
+The `sem` keyword can be used in [separate implementation files](../../jac_book/chapter_5.md#declaring-interfaces-vs-implementations) for improved code organization and maintainability.
 
 In this example:
 
-- `greet("Alice")` executes the normal function and returns `"Hello Alice"`
-- `greet("Alice") by llm()` overrides the function with LLM behavior, potentially returning a more natural or contextual greeting
-- `format_data(user_data) by llm()` transforms simple data formatting into intelligent, human-readable presentation
+<!-- - `greet("Alice")` executes the normal function and returns `"Hello Alice"`
+- `greet("Alice") by llm()` overrides the function with LLM behavior
+- `format_data(user_data) by llm()` transforms data formatting into human-readable presentation -->
 
 
-## Tool-Using Agents with ReAct
+## Tool-Calling Agents with ReAct
 
-The ReAct (Reasoning and Acting) method enables true agentic behavior by
-allowing agents to reason about problems and use external tools to solve
-them. This is where functions become genuinely agentic - they
-can autonomously decide what tools they need and how to use them.
-
-Any function can be made agentic by adding the `by llm(tools=[...])`
-declaration. This allows the function to use external tools to solve
-problems, making it capable of reasoning and acting like an agent.
+The ReAct (Reasoning and Acting) method enables agentic behavior by allowing functions to reason about problems and use external tools. Functions can be made agentic by adding the `by llm(tools=[...])` declaration.
 
 ```jac linenums="1"
 import from mtllm.llm { Model }
@@ -318,23 +294,14 @@ with entry {
 }
 ```
 
-### What Makes ReAct Truly Agentic?
-
-The ReAct method demonstrates genuine agentic behavior because:
-
-1. **Autonomous Reasoning**: The agent analyzes the problem independently
-2. **Tool Selection**: It decides which tools are needed and when to use them
-3. **Adaptive Planning**: Based on tool results, it adjusts its approach
-4. **Goal-Oriented**: It works towards solving the complete problem, not just individual steps
-
-A full tutorial on [building an agentic application is available here.](../examples/mtp_examples/fantasy_trading_game.md)
+A comprehensive tutorial on [building an agentic application is available here.](../examples/mtp_examples/fantasy_trading_game.md)
 
 
 ## Streaming Outputs
 
-The streaming feature allows you to receive tokens from LLM functions in real-time, enabling dynamic interactions and responsive applications. This is particularly useful for generating content like essays, code, or any long-form text where you want to display results as they are produced.
+The streaming feature enables real-time token reception from LLM functions, useful for generating content where results should be displayed as they are produced.
 
-In the invoke parameters, you can set `stream=True` to enable streaming:
+Set `stream=True` in the invoke parameters to enable streaming:
 
 ```jac linenums="1"
 import from mtllm { Model }
@@ -354,5 +321,5 @@ with entry {
 }
 ```
 
-??? example "NOTE:
-    "The `stream=True` will only support the output of type `str` and at the moment tool calling is not supported in streaming mode. That will be supported in the future."
+??? example "NOTE:"
+    "The `stream=True` parameter only supports `str` output type. Tool calling is not currently supported in streaming mode but will be available in future releases."

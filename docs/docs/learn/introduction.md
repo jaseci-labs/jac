@@ -35,7 +35,7 @@ This snippet natively imports Python packages `math` and `random` and runs ident
 Jac provides novel constructs for integrating LLMs into code. A function body can simply be replaced with a call to an LLM, removing the need for prompt engineering or extensive use of new libraries.
 
 ```jac
-import from mtllm.llm { Model }
+import from mtllm { Model }
 glob llm = Model(model_name="gemini/gemini-2.0-flash");
 
 enum Personality {
@@ -54,7 +54,7 @@ with entry {
 ```
 
 ??? info "How To Run"
-    1. Install the MTLLM plugin by `pip install mtllm[google]`
+    1. Install the MTLLM plugin by `pip install mtllm`
     2. Get a free Gemini API key: Visit [Google AI Studio](https://aistudio.google.com/app/apikey)
     3. Save your Gemini API as an environment variable (`export GEMINI_API_KEY="xxxxxxxx"`).
     > **Note:** > > You can use OpenAI, Anthropic or other API services as well as host your own LLM using Ollama or Huggingface.
