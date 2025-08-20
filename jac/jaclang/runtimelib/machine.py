@@ -1,6 +1,5 @@
 """Translation layer from jac syntax to granular operations while leveraging pluggy to have a overridable behavior."""
 
-# TODO: Need a good description for machine.py
 from __future__ import annotations
 
 import fnmatch
@@ -78,13 +77,13 @@ class ExecutionContext:
     """
     Represents the runtime environment and state for a Jac program execution.
 
-    The ExecutionContext manages memory storage, key anchor nodes, and system roots,
+    The ExecutionContext manages memory storage, key anchor nodes, and system root,
     providing a consistent context for tracking and manipulating graph state
     during program execution.
 
     Key responsibilities:
     - Initializes and maintains the system root anchor node (a unique global entry point).
-    - Loads and manages the current root state and entry node anchors.
+    - Loads and manages the current root state and anchors.
     - Provides access to persistent memory through ShelfStorage.
     - Handles cleanup and resource release via the close() method.
     - Facilitates retrieval of important anchors like the system root and program root.
@@ -236,11 +235,7 @@ class JacAccessValidation:
 
     @staticmethod
     def check_access_level(to: Anchor, no_custom: bool = False) -> AccessLevel:
-        """
-        Determine the access level for given Anchor based on persistence, root ownership, and custom access rules.
-
-        Returns the access level considering persistence, root status, and any custom permissions.
-        """
+        """Return the access level for given Anchor based on persistence, root ownership, and custom access rules."""
         if not to.persistent or to.hash == 0:
             return AccessLevel.WRITE
 
@@ -402,11 +397,7 @@ class JacEdge:
 
     @staticmethod
     def detach(edge: EdgeAnchor) -> None:
-        """
-        Detach the edge from its source and target nodes.
-
-        Removes the edge reference from both connected nodes.
-        """
+        """Detach the edge from its source and target nodes."""
         JacMachineInterface.remove_edge(node=edge.source, edge=edge)
         JacMachineInterface.remove_edge(node=edge.target, edge=edge)
 
@@ -419,26 +410,9 @@ class JacWalker:
     program's graph. This class provides static methods to control walker behaviors such as:
 
     - Visiting nodes or edges and updating the walker's path (`visit`).
-    - Marking nodes or edges to be ignored during traversal (`ignore`).
     - Spawning walker execution on specified graph locations (`spawn_call` and `async_spawn_call`).
     - Starting or scheduling walker execution on given targets (`spawn`).
     - Stopping or disengaging a walker (`disengage`).
-
-    Example:
-        # Create a walker and visit nodes
-        JacWalker.visit(walker, [node1, node2])
-
-        # Spawn walker execution asynchronously at a node
-        await JacWalker.async_spawn_call(walker, node)
-
-        # Mark certain edges to be ignored by the walker
-        JacWalker.ignore(walker, [edge1, edge2])
-
-        # Spawn a walker on targets
-        JacWalker.spawn(walker, target_node_or_edge)
-
-        # Disengage a walker
-        JacWalker.disengage(walker)
     """
 
     @staticmethod

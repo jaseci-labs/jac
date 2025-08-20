@@ -1,7 +1,7 @@
 #  Jac Plugins
 
 ## What is a JAC Plugin?
-JAC is a powerful language that can be extended with plugins. JAC plugins are Python packages that extend the functionality of JAC. You can create custom commands, functions, and modules that can be used in JAC scripts.
+jaclang is a powerful language that can be extended with plugins. jaclang plugins are Python packages that extend the functionality of jaclang. You can create custom cmd commands, functions, and modules that can be used in jaclang scripts.
 
 ## How is it enabled by Jaseci?
 
@@ -33,7 +33,7 @@ This document provides a detailed breakdown of how plugins are structured and im
 
 ---
 
-## good example to understand the 3 classes and use of proxy class
+## Good example to understand the Spec,Impl classes and use of proxy class
 You're building a plugin-driven data pipeline framework.
 Each plugin can implement one or more of:
 
@@ -169,7 +169,7 @@ This class is the core **interface layer** of the plugin system. It:
 - `JacNode`: Static functions related to nodes
 - `JacEdge`: Static functions related to edges
 - `JacWalker` : Static functions related to managing the traversal and control flow of Jac walkers
-- `JacClassReferences`: Centralized reference holder for core Jaseci class and type aliases
+- `JacClassReferences`: Jac Default Classes References
 - `JacBuiltin`: Jac Builtins
 - `JacCmd`: Static functions related to cmd implementation
 - `JacBasics` :  Core utility class providing basic operations for managing Jac execution context and graph lifecycle.
@@ -257,7 +257,6 @@ The following static methods are exposed through the plugin interface and can be
 | `jac_test`                    | Create a test|
 | `run_test`                    | Run the test suite in the specified .jac file|
 | `visit`                       | Jac's visit stmt feature|
-| `ignore`                      | Jac's visit stmt feature|
 | `report`                      | Jac's report stmt feature|
 | `disengage`                   | Jac's disengage stmt feature|
 | `spawn_call`                  | Execute the walker’s traversal starting from the given node or edge|
@@ -347,8 +346,7 @@ That's it! You have created your first JAC plugin. You can now extend JAC with y
 - Don't forget to create a nice README and add some examples to help users understand how to use your plugin.
 
 > **Note:**
-> For more examples, check out the [JAC Plugin Examples](https://github.com/Jaseci-Labs/jaclang/tree/main/examples/plugins)
 
->Check out the [MTLLM Plugin](https://github.com/Jaseci-Labs/mtllm) for a more complex example. Where we have created a plugin that adds LLM functionality to JAC.
+>Check out the [MTLLM Plugin](https://github.com/jaseci-labs/jaseci/tree/main/jac-mtllm/mtllm) for a more complex example. Where we have created a plugin that adds LLM functionality to JAC.
 
-If you have any questions, feel free to ask in the [Community Channel]().
+If you have any questions, feel free to ask in the [Community Channel](https://discord.gg/6j3QNdtcN6).
