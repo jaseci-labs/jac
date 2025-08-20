@@ -312,7 +312,7 @@ Open the `pyproject.toml` file and add the following lines before `[build-system
 Open `my_plugin/plugin.py` and add the following code.
 ```python
 from jaclang.cli.cmdreg import cmd_registry
-from jaclang.runtimelib.default import hookimpl
+from jaclang.runtimelib.machine import hookimpl
 
 class JacCmd:
     """Jac CLI."""
