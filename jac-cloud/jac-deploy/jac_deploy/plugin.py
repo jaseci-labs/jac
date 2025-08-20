@@ -2,6 +2,7 @@
 
 import subprocess
 from datetime import datetime
+from typing import Dict, Optional
 
 from jaclang.cli.cmdreg import cmd_registry
 from jaclang.runtimelib.machine import hookimpl
@@ -65,6 +66,59 @@ def build_docker_image(
         else:
             print("Docker build failed. Check logs for details.")
             log.write(f"\nBuild failed at {datetime.now()}\n")
+
+
+def run_docker_image(
+    image_name: str,
+    tag: str = "latest",
+    container_name: Optional[str] = None,
+    ports: Optional[Dict[int, int]] = None,
+    env_vars: Optional[Dict[str, str]] = None,
+    log_file: str = "docker_run.log",
+) -> None:
+    """
+    Run a Docker image locally with optional ports, environment variables, and log capture.
+
+    Args:
+        image_name (str): Name of the Docker image.
+        tag (str): Image tag (default: "latest").
+        container_name (Optional[str]): Name of the container (default: None).
+        ports (Optional[Dict[int, int]]): Port mappings {host_port: container_port}.
+        env_vars (Optional[Dict[str, str]]): Environment variables {KEY: VALUE}.
+        log_file (str): File to save logs (default: "docker_run.log").
+    """
+    cmd = ["docker", "run", "--rm"]
+
+    if container_name:
+        cmd += ["--name", container_name]
+
+    if ports:
+        for host_port, container_port in ports.items():
+            cmd += ["-p", f"{host_port}:{container_port}"]
+
+    if env_vars:
+        for key, value in env_vars.items():
+            cmd += ["-e", f"{key}={value}"]
+
+    cmd.append(f"{image_name}:{tag}")
+
+    print(f"Running: {' '.join(cmd)}")
+
+    with open(log_file, "a") as log, subprocess.Popen(
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+    ) as process:
+        log.write(f"\n\n---- Run started at {datetime.now()} ----\n")
+        if process.stdout:
+            for line in process.stdout:
+                print(line, end="")
+                log.write(line)
+        process.wait()
+        if process.returncode == 0:
+            log.write(f"\nRun completed successfully at {datetime.now()}\n")
+            print(f"Docker container '{image_name}:{tag}' finished successfully.")
+        else:
+            log.write(f"\nRun failed at {datetime.now()}\n")
+            print("Docker run failed. Check logs for details.")
 
 
 class JacCmd:
