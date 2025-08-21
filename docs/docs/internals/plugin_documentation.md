@@ -35,24 +35,19 @@ This document provides a detailed breakdown of how plugins are structured and im
 
 ## Good example to understand the Spec, Impl classes and use of proxy class
 
-We are implementing two plugins—CSVPlugin and JSONPlugin—as part of a plugin-driven data pipeline framework.
+We are implementing two plugins CSVPlugin and JSONPlugin as part of a plugin-driven data pipeline framework.
 
-Each plugin may define one or more of the following methods:
+Each plugin may implement one or more of the following methods:
 
-load_data(source: str) -> dict
+- load_data(source: str) -> dict
+- transform_data(data: dict) -> dict
+- save_data(data: dict, target: str) -> None
 
-transform_data(data: dict) -> dict
-
-save_data(data: dict, target: str) -> None
-
-The steps involved will be:
+Lets implement the following steps
 
 - Declare the hook specifications.
-
 - Implement the two plugins (CSVPlugin and JSONPlugin).
-
 - Dynamically generate a proxy interface to interact with both plugins.
-
 - Execute a data pipeline using the proxy.
 
 
@@ -134,14 +129,14 @@ Lets use the proxy to call the plugins methods adoptively
 ```python
 proxy = Proxy(plugin_manager)
 
-# Step 1: Load data
+# Step 1: Load data(both  CSVPlugin and JSONPlugin have implemented this)
 source = "file.csv"
 data = proxy.load_data(source)
 
-# Step 2: Transform (all plugins get to contribute)
+# Step 2: Transform (only CSVPlugin has implemented this)
 data = proxy.transform_data(data)
 
-# Step 3: Save (only plugins with save_data do it)
+# Step 3: Save (only JSONPlugin has implemented this)
 proxy.save_data(data, "output.json")
 
 
@@ -154,7 +149,7 @@ Transforming CSV data by squaring...
 Saving data to output.json: {'data': [1, 4, 9]}
 
 ```
-You can see it calls the transforming and saving method dynamically but for loading data it calls the CSVPlugin instead of JSONPlugin. The reason is CSVPlugin is registered first. Give it a try by changing the order of registration. In jaclang we have implemented internally for the proxy to use the last registered method instead of first implementation.
+You can see it calls the transforming and saving method dynamically based on which plugin has implemented but for loading data it calls the CSVPlugin instead of JSONPlugin. The reason is CSVPlugin is registered first. Give it a try by changing the order of registration. In jaclang we have implemented internally for the proxy to use the last registered method instead of first implementation.
 
 ## What does JacMachineInterface class do
 
