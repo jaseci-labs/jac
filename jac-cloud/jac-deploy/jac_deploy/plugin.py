@@ -58,7 +58,7 @@ def build_docker_image(
     print(f"Running: {' '.join(cmd)} in {code_folder}")
 
     # Open log file in append mode
-    with open(log_file, "a") as log:
+    with open(log_file, "w") as log:
         log.write(f"\n\n---- Build started at {datetime.now()} ----\n")
         try:
             # Run Docker build in the specified folder
@@ -74,6 +74,8 @@ def build_docker_image(
                 for line in process.stdout:
                     # print(line, end="")
                     log.write(line)
+
+            process.wait()
 
             if process.returncode == 0:
                 print(f"Docker image '{image_name}:{tag}' built successfully!")
@@ -106,7 +108,7 @@ def run_docker_image(
         env_vars (Optional[Dict[str, str]]): Environment variables {KEY: VALUE}.
         log_file (str): File to save logs (default: "docker_run.log").
     """
-    cmd = ["docker", "run", "--rm"]
+    cmd = ["docker", "run", "--rm", "-d"]
 
     if container_name:
         cmd += ["--name", container_name]
@@ -123,7 +125,7 @@ def run_docker_image(
 
     print(f"Running: {' '.join(cmd)}")
 
-    with open(log_file, "a") as log, subprocess.Popen(
+    with open(log_file, "w") as log, subprocess.Popen(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
     ) as process:
         log.write(f"\n\n---- Run started at {datetime.now()} ----\n")
@@ -131,10 +133,12 @@ def run_docker_image(
             for line in process.stdout:
                 # print(line, end="")
                 log.write(line)
+
         process.wait()
+
         if process.returncode == 0:
             log.write(f"\nRun completed successfully at {datetime.now()}\n")
-            print(f"Docker container '{image_name}:{tag}' finished successfully.")
+            print(f"Docker container '{container_name}' started successfully.")
         else:
             log.write(f"\nRun failed at {datetime.now()}\n")
             print("Docker run failed. Check logs for details.")
