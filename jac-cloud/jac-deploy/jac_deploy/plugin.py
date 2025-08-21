@@ -1,8 +1,12 @@
 """Plugin for jac deploy."""
 
+import json
+import os
 import subprocess
 from datetime import datetime
+from pathlib import Path
 from typing import Dict, Optional
+
 
 from jaclang.cli.cmdreg import cmd_registry
 from jaclang.runtimelib.machine import hookimpl
@@ -25,47 +29,62 @@ ADD . .
 EXPOSE 8000
 
 # Run the application
-CMD ["jac", "serve", "tobu_main.jac"]
+CMD ["jac", "serve", "{main_file}"]
 """
 
 
-def create_dockerfile(filename: str = "Dockerfile") -> None:
+def create_dockerfile(requirements_file: str, main_file: str, folder: str) -> None:
     """Create dockerfile."""
-    with open(filename, "w") as f:
-        f.write(DOCKER_TEMPLATE)
-    print(f"{filename} has been created successfully!")
+    path = os.path.join(folder, "dockerfile")
+    dockerfile_content = DOCKER_TEMPLATE.format(main_file=main_file)
+    with open(path, "w") as f:
+        f.write(dockerfile_content)
+    print(f"{path} has been created successfully!")
 
 
 def build_docker_image(
-    image_name: str, tag: str = "latest", log_file: str = "docker_build.log"
+    code_folder: str,
+    image_name: str,
+    tag: str = "latest",
+    log_file: str = "docker_build.log",
 ) -> None:
-    """Build Docker image and save logs."""
-    cmd = ["docker", "build", "-t", f"{image_name}:{tag}", "."]
-    print(f"Running: {' '.join(cmd)}")
+    """Build Docker image from specified folder and save logs."""
+    code_folder_path = Path(code_folder)
+    if not code_folder_path.exists():
+        raise FileNotFoundError(f"Code folder '{code_folder}' not found.")
 
-    # Open log file with timestamped logging
+    cmd = ["docker", "build", "-t", f"{image_name}:{tag}", "."]
+
+    print(f"Running: {' '.join(cmd)} in {code_folder}")
+
+    # Open log file in append mode
     with open(log_file, "a") as log:
         log.write(f"\n\n---- Build started at {datetime.now()} ----\n")
-        process = subprocess.Popen(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
-        )
+        try:
+            # Run Docker build in the specified folder
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                cwd=str(code_folder_path),  # Change working directory
+            )
 
-        with subprocess.Popen(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
-        ) as process:
-            if process.stdout:
+            if process.stdout is not None:
                 for line in process.stdout:
                     print(line, end="")
                     log.write(line)
-            process.wait()
 
-        process.wait()
-        if process.returncode == 0:
-            print(f"Docker image '{image_name}:{tag}' built successfully!")
-            log.write(f"\nBuild completed successfully at {datetime.now()}\n")
-        else:
-            print("Docker build failed. Check logs for details.")
-            log.write(f"\nBuild failed at {datetime.now()}\n")
+            if process.returncode == 0:
+                print(f"Docker image '{image_name}:{tag}' built successfully!")
+                log.write(f"\nBuild completed successfully at {datetime.now()}\n")
+            else:
+                print("Docker build failed. Check logs for details.")
+                log.write(f"\nBuild failed at {datetime.now()}\n")
+
+        except Exception as e:
+            print(f"Error running Docker build: {e}")
+            log.write(f"\nException during build: {e}\n")
 
 
 def run_docker_image(
@@ -130,9 +149,30 @@ class JacCmd:
         """Create Jac CLI cmds."""
 
         @cmd_registry.register
-        def deploy(
-            folder_name: str, requirements_file: str = "test1", main_file: str = "test2"
-        ) -> None:
-            """Containarize the jac application."""
-            create_dockerfile()
-            # build_docker_image("jac-deploy", tag="v1")
+        def deploy(config_file: str) -> None:
+            """Containerize the jac application."""
+            with open(config_file, "r") as f:
+                config = json.load(f)
+
+            code_folder = config["build"].get("code_folder")
+            requirements_file = config["build"].get("requirements_file")
+            entrypoint_file = config["build"].get("entrypoint_file")
+
+            if not Path(os.path.join(code_folder, requirements_file)).exists():
+                raise FileNotFoundError(
+                    f"Requirements file '{requirements_file}' not found."
+                )
+
+            if not Path(os.path.join(code_folder, entrypoint_file)).exists():
+                raise FileNotFoundError(
+                    f"entrypoint_file '{entrypoint_file}' not found."
+                )
+            if "dockerfile" not in os.listdir(code_folder):
+                create_dockerfile(requirements_file, entrypoint_file, code_folder)
+
+            image_name = config["build"].get("image_name")
+            tag = config["build"].get("tag")
+            container_name = config["deploy"].get("container_name")
+            ports = config["deploy"].get("ports")
+            build_docker_image(code_folder, image_name, tag)
+            run_docker_image(image_name, tag, container_name, ports)
