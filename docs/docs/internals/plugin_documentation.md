@@ -35,26 +35,26 @@ This document provides a detailed breakdown of how plugins are structured and im
 
 ## Good example to understand the Spec, Impl classes and use of proxy class
 
-You're building a plugin-driven data pipeline framework.
-Each plugin can implement one or more of:
+We are implementing two plugins—CSVPlugin and JSONPlugin—as part of a plugin-driven data pipeline framework.
 
-- load_data(source: str) -> dict
+Each plugin may define one or more of the following methods:
 
-- transform_data(data: dict) -> dict
+load_data(source: str) -> dict
 
-- save_data(data: dict, target: str) -> None
+transform_data(data: dict) -> dict
 
-We will:
+save_data(data: dict, target: str) -> None
 
-- Declare a hook spec
+The steps involved will be:
 
-- Implement two plugins (one for CSV, one for JSON)
+- Declare the hook specifications.
 
-- Dynamically generate a proxy interface
+- Implement the two plugins (CSVPlugin and JSONPlugin).
 
-- Run a pipeline using the proxy
+- Dynamically generate a proxy interface to interact with both plugins.
 
-Lets implement the 2 plugins CSVPlugin and JSONPlugin
+- Execute a data pipeline using the proxy.
+
 
 ```python
 import pluggy
@@ -176,24 +176,6 @@ This class is the core **interface layer** of the plugin system. It:
 - `JacBasics` :  Core utility class providing basic operations for managing Jac execution context and graph lifecycle.
 - `JacUtils`: utility functions
 
----
-
-## How to Implement a Plugin
-
-### Step 1: Define an Implementation Method with `@hookimpl`
-
-```python
-from jaclang.runtimelib.machine import hookimpl
-
-@hookimpl
-def get_edges_with_node(...):
-```
-
-
-### Step 2: Register Your Plugin with the Plugin Manager
-```python
-plugin_manager.register(YourPluginClass())
-```
 
 ## Static Methods that can be plugged in
 
