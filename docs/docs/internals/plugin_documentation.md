@@ -1,13 +1,13 @@
 #  Jac Plugins
 
-## What is a JAC Plugin?
-jaclang is a powerful language that can be extended with plugins. jaclang plugins are Python packages that extend the functionality of jaclang. You can create custom cmd commands, functions, and modules that can be used in jaclang scripts.
+## What is a Jac Plugin?
+Jaclang is a powerful language that can be extended with plugins. Jaclang plugins are Python packages that extend the functionality of jaclang. You can create custom cmd commands, functions, and modules that can be used in jaclang scripts.
 
-## How is it enabled by Jaseci?
+## How is it enabled by Jaclang?
 
-The `machine.py` file forms the **foundation of plugin functionality** in the Jaseci Cloud architecture. It leverages the **Pluggy** library to define a flexible and modular **plugin system** using a **hook mechanism**.
+The `machine.py` file forms the **foundation of plugin functionality** in the jaclang plugin architecture. It leverages the **Pluggy** library to define a flexible and modular **plugin system** using a **hook mechanism**.
 
-This document provides a detailed breakdown of how plugins are structured and implemented in `machine.py`, including all relevant classes and static methods. It is designed to help contributors and maintainers understand this file independently, without needing a full view of the entire Jaseci codebase.
+This document provides a detailed breakdown of how plugins are structured and implemented in `machine.py`, including all relevant classes and static methods. It is designed to help contributors and maintainers understand this file independently, without needing a full view of the entire jaclang codebase.
 
 ---
 
@@ -27,13 +27,14 @@ This document provides a detailed breakdown of how plugins are structured and im
 
 | Class   | Role                                                                 |
 |---------|----------------------------------------------------------------------|
-| `Spec`  | Defines placeholder methods that plugin implementations must implement.For declaring the method interfaces. It doesn't do anything itself but tells pluggy what hooks are available. |
+| `Spec`  | Defines placeholder methods that plugin implementations must implement. For declaring the method interfaces. It doesn't do anything itself but tells pluggy what hooks are available. |
 | `Impl`  | For registering actual implementations using `@hookimpl`|
-| `Proxy` | For calling plugin methods from the outside, through plugin_manager.hook.<method>() |
+| `Proxy` | For calling plugin methods from the outside, through plugin_manager.`hook.<method>()` |
 
 ---
 
-## Good example to understand the Spec,Impl classes and use of proxy class
+## Good example to understand the Spec, Impl classes and use of proxy class
+
 You're building a plugin-driven data pipeline framework.
 Each plugin can implement one or more of:
 
@@ -126,7 +127,6 @@ def generate_proxy_class(hook_names: list[str]):
 hook_names = ["load_data", "transform_data", "save_data"]
 Proxy = generate_proxy_class(hook_names)
 
-
 ```
 
 Lets use the proxy to call the plugins methods adoptively
@@ -154,8 +154,9 @@ Transforming CSV data by squaring...
 Saving data to output.json: {'data': [1, 4, 9]}
 
 ```
-You can see it calls the transforming and saving method dynamically but for loading data it calls the CSVPlugin instead of JSONPlugin. The reason is CSVPlugin is registered first. Give it a try by changing the order of registration. In jaclang we have implemented internally for the proxy to use the last registered method instead of first implementation.c
-## What does JacmachineInterface class do
+You can see it calls the transforming and saving method dynamically but for loading data it calls the CSVPlugin instead of JSONPlugin. The reason is CSVPlugin is registered first. Give it a try by changing the order of registration. In jaclang we have implemented internally for the proxy to use the last registered method instead of first implementation.
+
+## What does JacMachineInterface class do
 
 This class is the core **interface layer** of the plugin system. It:
 
@@ -206,7 +207,7 @@ The following static methods are exposed through the plugin interface and can be
 | `reset_graph`                 | Purge current or target graph|
 | `get_object`                  | Get object given id|
 | `object_ref`                  | Get object reference id|
-| `make_archetype`              | Create a obj archetype|
+| `make_archetype`              | Create a archetype object|
 | `impl_patch_filename`         | Override a function’s filename in tracebacks with a custom path using a decorator|
 | `jac_import`                  | Dynamically import a Jac or Python module|
 | `jac_test`                    | Create a test|
@@ -224,7 +225,7 @@ The following static methods are exposed through the plugin interface and can be
 | `entry`                       | Mark a method as jac entry using decorator|
 | `exit`                        | Mark a method as jac exit using decorator|
 | `sem`                         | Attach the semstring to the given object with this decorator|
-| `call_llm`                    |Call the LLM model|
+| `call_llm`                    | Call the LLM model |
 | `attach_program`              | Attach a JacProgram to the machine|
 | `load_module`                 | Load a module into the machine|
 | `list_modules`                | List all loaded modules|
@@ -233,7 +234,7 @@ The following static methods are exposed through the plugin interface and can be
 | `load_edges`                  | List all edges in a specific module|
 | `create_archetype_from_source`| Dynamically creates archetypes (nodes, walkers, etc.) from Jac source code|
 | `update_walker`               | Reload and update a previously loaded Jac module|
-| `spawn_node`                  |Spawn a node instance of the given node_name with attributes|
+| `spawn_node`                  | Spawn a node instance of the given node_name with attributes|
 | `spawn_walker`                | pawn a walker instance of the given walker_name|
 | `get_archetype`               |Retrieve an archetype class from a module|
 | `thread_run`                  |Run a function in a thread|
@@ -254,8 +255,6 @@ The following static methods are exposed through the plugin interface and can be
 | `get_edges_with_node`         | Get edges connected to the origin node and the desitnation node|
 | `edges_to_nodes`              | Get set of nodes connected to this node|
 | `remove_edge`                 | Remove an edge reference from a node's edge list without sync checks|
-| `jac_test`                    | Create a test|
-| `run_test`                    | Run the test suite in the specified .jac file|
 | `visit`                       | Jac's visit stmt feature|
 | `report`                      | Jac's report stmt feature|
 | `disengage`                   | Jac's disengage stmt feature|
@@ -339,7 +338,7 @@ jac hello
 
 You should see `Hello, World!` printed to the console.
 
-That's it! You have created your first JAC plugin. You can now extend JAC with your own custom commands.
+That's it! You have created your first Jac plugin. You can now extend Jaclang with your own custom commands.
 
 ### Next Steps
 - Now you can publish your plugin to PyPI and share it with the world. Follow the [Publishing Python Packages](https://packaging.python.org/tutorials/packaging-projects/) guide to learn how to publish your plugin.
