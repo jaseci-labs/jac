@@ -1,0 +1,20 @@
+create a similar file to deploy.json that has the configueration
+{
+    "build": {
+        "image_name": "jac-custom",
+        "tag": "latest",
+        "code_folder": "./littlex",
+        "requirements_file": "requirements.txt",
+        "entrypoint_file": "littleX.jac",
+        "build_log_file": "build.log"
+    },
+    "deploy": {
+        "container_name": "jac_app",
+        "ports": {
+            "8080": "8000"
+        },
+        "env_file": ".env"
+    }
+}
+
+then run jac deploy deploy.json
