@@ -72,7 +72,7 @@ def build_docker_image(
 
             if process.stdout is not None:
                 for line in process.stdout:
-                    print(line, end="")
+                    # print(line, end="")
                     log.write(line)
 
             if process.returncode == 0:
@@ -129,7 +129,7 @@ def run_docker_image(
         log.write(f"\n\n---- Run started at {datetime.now()} ----\n")
         if process.stdout:
             for line in process.stdout:
-                print(line, end="")
+                # print(line, end="")
                 log.write(line)
         process.wait()
         if process.returncode == 0:
