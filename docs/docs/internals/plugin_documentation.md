@@ -54,6 +54,8 @@ Lets implement the following steps
 ```python
 import pluggy
 
+
+# Declare the hook specifications.
 hookspec = pluggy.HookspecMarker("pipeline")
 hookimpl = pluggy.HookimplMarker("pipeline")
 
@@ -70,6 +72,7 @@ class PipelineSpec:
     def save_data(self, data: dict, target: str) -> None:
         """Saves data to the target."""
 
+# Implement the two plugins (CSVPlugin and JSONPlugin).
 class CSVPlugin:
     @hookimpl
     def load_data(self, source: str) -> dict:
@@ -103,7 +106,7 @@ Lets register the plugins and create a dynamic proxy that can help to decide wha
 ```python
 import pluggy
 from specs import PipelineSpec, CSVPlugin, JSONPlugin
-
+# Dynamically generate a proxy interface to interact with both plugins.
 plugin_manager = pluggy.PluginManager("pipeline")
 plugin_manager.add_hookspecs(PipelineSpec)
 plugin_manager.register(CSVPlugin())
@@ -127,6 +130,7 @@ Proxy = generate_proxy_class(hook_names)
 Lets use the proxy to call the plugins methods adoptively
 
 ```python
+#Execute a data pipeline using the proxy
 proxy = Proxy(plugin_manager)
 
 # Step 1: Load data(both  CSVPlugin and JSONPlugin have implemented this)
