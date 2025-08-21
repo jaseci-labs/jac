@@ -63,3 +63,4 @@ mydatabase/
 *.dat
 *.dir
 *.log
+.env

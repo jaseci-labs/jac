@@ -1,773 +1,735 @@
-### Chapter 10: The Root Node and Persistence
+# Chapter 10: Walkers and Abilities
 
-One of Jac's most revolutionary features is automatic persistence through the root node. Unlike traditional applications that require explicit database operations, Jac programs naturally persist state between executions. This chapter explores how the root node enables scale-agnostic programming, where the same code works for single-user scripts and multi-user applications.
+Walkers are the heart of Object-Spatial Programming - they are mobile computational entities that traverse your graph and execute code at each location. Combined with abilities, they enable reactive, event-driven programming where computation happens exactly where and when it's needed.
 
-#### 10.1 Understanding the Root Node
+!!! topic "Mobile Computation Philosophy"
+    Unlike traditional functions that operate on data passed to them, walkers travel to where data lives, making computation truly spatial and enabling powerful distributed processing patterns.
 
-### Global Accessibility via `root` Keyword
+## Walker Creation
 
-The `root` keyword provides global access to a special persistent node that serves as the anchor for your application's data:
+!!! topic "What are Walkers?"
+    Walkers are special objects that can move through your graph, carrying state and executing abilities when they encounter different types of nodes and edges.
 
-```jac
-// root is available everywhere - no imports needed
-with entry {
-    print(f"Root node: {root}");
-    print(f"Type: {type(root).__name__}");
+### Basic Walker Declaration
 
-    // root is always the same node within a user context
-    let id1 = id(root);
-    do_something();
-    let id2 = id(root);
-    assert id1 == id2;  // Always true
-}
+!!! example "Simple Walker"
+    === "Jac"
+        <div class="code-block">
+        ```jac
+        # Simple walker for visiting nodes
+        walker MessageDelivery {
+            has message: str;
+            has delivery_count: int = 0;
+            has visited_locations: list[str] = [];
 
-can do_something() {
-    // root accessible in any function
-    root ++> node { has data: str = "test"; };
-}
-
-walker Explorer {
-    can explore with entry {
-        // root accessible in walkers
-        print(f"Starting from: {root}");
-        visit root;
-    }
-}
-
-node CustomNode {
-    can check_root with entry {
-        // root accessible in node abilities
-        print(f"Root from node: {root}");
-    }
-}
-```
-
-The `root` node is special:
-- **Always Available**: No declaration or initialization needed
-- **Globally Accessible**: Available in any context without passing
-- **Type-Safe**: It's a real node with all node capabilities
-- **User-Specific**: Each user gets their own isolated root
-
-### Automatic Persistence Model
-
-Everything connected to root persists automatically:
-
-```jac
-// First run - create data
-with entry {
-    print("=== First Run - Creating Data ===");
-
-    // Data connected to root persists
-    let user_profile = root ++> node UserProfile {
-        has username: str = "alice";
-        has created_at: str = "2024-01-15";
-        has login_count: int = 1;
-    };
-
-    print(f"Created profile: {user_profile.username}");
-}
-
-// Second run - data still exists!
-with entry {
-    print("=== Second Run - Data Persists ===");
-
-    // Find existing data
-    let profiles = root[-->:UserProfile:];
-    if profiles {
-        let profile = profiles[0];
-        print(f"Found profile: {profile.username}");
-        print(f"Previous logins: {profile.login_count}");
-
-        // Update persistent data
-        profile.login_count += 1;
-        print(f"Updated logins: {profile.login_count}");
-    }
-}
-
-// Third run - updates persist too
-with entry {
-    print("=== Third Run - Updates Persist ===");
-
-    let profile = root[-->:UserProfile:][0];
-    print(f"Login count is now: {profile.login_count}");  // Shows 3
-}
-```
-
-### Reachability-Based Persistence
-
-Nodes persist based on reachability from root:
-
-```jac
-node Document {
-    has title: str;
-    has content: str;
-    has created: str;
-}
-
-node Tag {
-    has name: str;
-    has color: str = "#0000FF";
-}
-
-with entry {
-    // Connected to root = persistent
-    let doc1 = root ++> Document(
-        title="My First Document",
-        content="This will persist",
-        created=now()
-    );
-
-    // Connected to persistent node = also persistent
-    let tag1 = doc1 ++> Tag(name="important");
-
-    // NOT connected to root = temporary
-    let doc2 = Document(
-        title="Temporary Document",
-        content="This will NOT persist",
-        created=now()
-    );
-
-    // Connecting later makes it persistent
-    root ++> doc2;  // Now doc2 will persist
-
-    // Disconnecting makes it non-persistent
-    del root --> doc1;  // doc1 and tag1 no longer persist
-}
-```
-
-```mermaid
-graph TD
-    R[root<br/>≪always persistent≫]
-    D1[Document 1<br/>≪persistent≫]
-    D2[Document 2<br/>≪persistent≫]
-    D3[Document 3<br/>≪temporary≫]
-    T1[Tag 1<br/>≪persistent≫]
-    T2[Tag 2<br/>≪temporary≫]
-
-    R --> D1
-    R --> D2
-    D1 --> T1
-    D3 --> T2
-
-    style R fill:#4caf50,color:white
-    style D1 fill:#c8e6c9
-    style D2 fill:#c8e6c9
-    style D3 fill:#ffcdd2
-    style T1 fill:#c8e6c9
-    style T2 fill:#ffcdd2
-```
-
-#### 10.2 Building Persistent Applications
-
-### Connecting to Root for Persistence
-
-Here's how to design applications with automatic persistence:
-
-```jac
-// Application data model
-node AppData {
-    has version: str = "1.0.0";
-    has settings: dict = {};
-    has initialized: bool = false;
-}
-
-node User {
-    has id: str;
-    has email: str;
-    has preferences: dict = {};
-    has created_at: str;
-}
-
-node Session {
-    has token: str;
-    has user_id: str;
-    has expires_at: str;
-    has active: bool = true;
-}
-
-// Initialize or get existing app data
-can get_or_create_app_data() -> AppData {
-    let app_data_nodes = root[-->:AppData:];
-
-    if not app_data_nodes {
-        print("First run - initializing app data");
-        return root ++> AppData(
-            initialized=true,
-            settings={
-                "theme": "light",
-                "language": "en",
-                "debug": false
-            }
-        );
-    }
-
-    return app_data_nodes[0];
-}
-
-// User management with persistence
-can create_user(email: str) -> User? {
-    let app = get_or_create_app_data();
-
-    // Check if user exists
-    let existing = app[-->:User:].filter(
-        lambda u: User -> bool : u.email == email
-    );
-
-    if existing {
-        print(f"User {email} already exists");
-        return None;
-    }
-
-    // Create persistent user
-    let user = app ++> User(
-        id=generate_id(),
-        email=email,
-        created_at=now()
-    );
-
-    print(f"Created user: {email}");
-    return user;
-}
-
-// Session management
-can create_session(user: User) -> Session {
-    import:py from datetime import datetime, timedelta;
-
-    // Sessions connected to user (persistent)
-    let session = user ++> Session(
-        token=generate_token(),
-        user_id=user.id,
-        expires_at=(datetime.now() + timedelta(hours=24)).isoformat()
-    );
-
-    return session;
-}
-
-// Example usage
-with entry {
-    let app = get_or_create_app_data();
-    print(f"App version: {app.version}");
-
-    // Create or get user
-    let email = "alice@example.com";
-    let user = create_user(email);
-
-    if user {
-        let session = create_session(user);
-        print(f"Session created: {session.token[:8]}...");
-    } else {
-        // User already exists, find them
-        let user = app[-->:User:].filter(
-            lambda u: User -> bool : u.email == email
-        )[0];
-        print(f"Welcome back, {user.email}!");
-        print(f"Account created: {user.created_at}");
-    }
-}
-```
-
-### Managing Ephemeral vs Persistent State
-
-Not everything should persist. Here's how to manage both:
-
-```jac
-node PersistentCache {
-    has data: dict = {};
-    has updated_at: str;
-}
-
-node EphemeralCache {
-    has data: dict = {};
-    has created_at: str;
-}
-
-walker CacheManager {
-    has operation: str;
-    has key: str;
-    has value: any? = None;
-
-    can manage with entry {
-        // Get or create persistent cache
-        let p_cache = root[-->:PersistentCache:][0] if root[-->:PersistentCache:]
-                     else root ++> PersistentCache(updated_at=now());
-
-        // Ephemeral cache is not connected to root
-        let e_cache = EphemeralCache(created_at=now());
-
-        if self.operation == "store" {
-            // Store in both caches
-            p_cache.data[self.key] = self.value;
-            p_cache.updated_at = now();
-            e_cache.data[self.key] = self.value;
-
-            print(f"Stored {self.key} in both caches");
-
-        } elif self.operation == "get" {
-            // Try ephemeral first (faster)
-            if self.key in e_cache.data {
-                print(f"Found {self.key} in ephemeral cache");
-                report e_cache.data[self.key];
-            } elif self.key in p_cache.data {
-                print(f"Found {self.key} in persistent cache");
-                report p_cache.data[self.key];
-            } else {
-                print(f"Key {self.key} not found");
-                report None;
+            # Regular methods work like normal
+            def get_status() -> str {
+                return f"Delivered {self.delivery_count} messages to {len(self.visited_locations)} locations";
             }
         }
-    }
-}
 
-// Hybrid approach for performance
-node FastStore {
-    has persistent_data: dict = {};    // Important data
-    has memory_cache: dict = {};      // Temporary cache
-    has stats: dict = {               // Temporary stats
-        "hits": 0,
-        "misses": 0
-    };
+        with entry {
+            # Create walker instance (but don't activate it yet)
+            messenger = MessageDelivery(message="Hello from the principal!");
 
-    can get(key: str) -> any? {
-        // Check memory first
-        if key in self.memory_cache {
-            self.stats["hits"] += 1;
-            return self.memory_cache[key];
+            # Check initial state
+            print(f"Initial status: {messenger.get_status()}");
+        }
+        ```
+        </div>
+    === "Python"
+        ```python
+        class MessageDelivery:
+            def __init__(self, message: str):
+                self.message = message
+                self.delivery_count = 0
+                self.visited_locations = []
+
+            def get_status(self) -> str:
+                return f"Delivered {self.delivery_count} messages to {len(self.visited_locations)} locations"
+
+        class Student:
+            def __init__(self, name: str):
+                self.name = name
+                self.messages = []
+
+        class Teacher:
+            def __init__(self, name: str, subject: str):
+                self.name = name
+                self.subject = subject
+
+        if __name__ == "__main__":
+            # Create messenger instance
+            messenger = MessageDelivery(message="Hello from the principal!")
+
+            # Check initial state
+            print(f"Initial status: {messenger.get_status()}")
+        ```
+
+## Ability Definitions and Triggers
+
+!!! topic "Event-Driven Execution"
+    Abilities are methods that execute automatically when certain events occur during graph traversal. They create reactive, context-aware behavior.
+
+### Entry and Exit Abilities
+
+!!! example "Basic Abilities"
+    === "Jac"
+        <div class="code-block">
+        ```jac
+        # Basic classroom nodes
+        node Student {
+            has name: str;
+            has messages: list[str] = [];
         }
 
-        // Check persistent
-        if key in self.persistent_data {
-            self.stats["misses"] += 1;
-            // Populate memory cache
-            self.memory_cache[key] = self.persistent_data[key];
-            return self.persistent_data[key];
+        node Teacher {
+            has name: str;
+            has subject: str;
         }
 
-        return None;
-    }
+        walker MessageDelivery {
+            has message: str;
+            has delivery_count: int = 0;
+            has visited_locations: list[str] = [];
 
-    can store(key: str, value: any, persist: bool = true) {
-        self.memory_cache[key] = value;
-
-        if persist {
-            self.persistent_data[key] = value;
-        }
-    }
-}
-```
-
-### Database-Free Data Persistence
-
-Jac eliminates the need for separate databases in many applications:
-
-```jac
-// Traditional approach requires database setup
-// Python with SQLAlchemy:
-# from sqlalchemy import create_engine, Column, String, Integer
-# from sqlalchemy.ext.declarative import declarative_base
-#
-# Base = declarative_base()
-# engine = create_engine('sqlite:///app.db')
-#
-# class Task(Base):
-#     __tablename__ = 'tasks'
-#     id = Column(Integer, primary_key=True)
-#     title = Column(String)
-#     completed = Column(Boolean)
-#
-# Base.metadata.create_all(engine)
-# session = Session(engine)
-# # ... lots more boilerplate ...
-
-// Jac approach - just connect to root!
-node Task {
-    has id: str;
-    has title: str;
-    has completed: bool = false;
-    has created_at: str;
-    has completed_at: str? = None;
-}
-
-node TaskList {
-    has name: str;
-    has created_at: str;
-}
-
-// Complete task management with zero database code
-walker TaskManager {
-    has command: str;
-    has title: str = "";
-    has list_name: str = "default";
-    has task_id: str = "";
-
-    can execute with entry {
-        // Get or create task list
-        let lists = root[-->:TaskList:(?.name == self.list_name):];
-        let task_list = lists[0] if lists else root ++> TaskList(
-            name=self.list_name,
-            created_at=now()
-        );
-
-        match self.command {
-            case "add": self.add_task(task_list);
-            case "complete": self.complete_task(task_list);
-            case "list": self.list_tasks(task_list);
-            case "stats": self.show_stats(task_list);
-        }
-    }
-
-    can add_task(task_list: TaskList) {
-        let task = task_list ++> Task(
-            id=generate_id(),
-            title=self.title,
-            created_at=now()
-        );
-
-        print(f"Added task: {task.title} (ID: {task.id[:8]})");
-    }
-
-    can complete_task(task_list: TaskList) {
-        let tasks = task_list[-->:Task:(?.id.startswith(self.task_id)):];
-
-        if tasks {
-            let task = tasks[0];
-            task.completed = true;
-            task.completed_at = now();
-            print(f"Completed: {task.title}");
-        } else {
-            print(f"Task {self.task_id} not found");
-        }
-    }
-
-    can list_tasks(task_list: TaskList) {
-        let tasks = task_list[-->:Task:];
-        print(f"\n=== {task_list.name} Tasks ===");
-
-        for task in tasks {
-            let status = "✓" if task.completed else "○";
-            print(f"{status} [{task.id[:8]}] {task.title}");
-        }
-
-        let completed = tasks.filter(lambda t: Task -> bool : t.completed);
-        print(f"\nTotal: {len(tasks)} | Completed: {len(completed)}");
-    }
-
-    can show_stats(task_list: TaskList) {
-        let tasks = task_list[-->:Task:];
-        let completed = tasks.filter(lambda t: Task -> bool : t.completed);
-
-        print(f"\n=== Task Statistics ===");
-        print(f"List: {task_list.name}");
-        print(f"Total tasks: {len(tasks)}");
-        print(f"Completed: {len(completed)}");
-        print(f"Pending: {len(tasks) - len(completed)}");
-
-        if completed {
-            // Calculate average completion time
-            import:py from datetime import datetime;
-            total_time = 0;
-
-            for task in completed {
-                created = datetime.fromisoformat(task.created_at);
-                completed = datetime.fromisoformat(task.completed_at);
-                total_time += (completed - created).total_seconds();
+            # Entry ability - triggered when entering any Student
+            can deliver_to_student with Student entry {
+                print(f"Delivering message to student {here.name}");
+                here.messages.append(self.message);
+                self.delivery_count += 1;
+                self.visited_locations.append(here.name);
             }
 
-            avg_hours = (total_time / len(completed)) / 3600;
-            print(f"Avg completion time: {avg_hours:.1f} hours");
-        }
-    }
-}
-
-// Usage - all data persists automatically!
-with entry {
-    import:py sys;
-
-    if len(sys.argv) < 2 {
-        print("Usage: jac run tasks.jac <command> [args]");
-        print("Commands:");
-        print("  add <title> - Add a new task");
-        print("  complete <id> - Mark task as complete");
-        print("  list - Show all tasks");
-        print("  stats - Show statistics");
-        return;
-    }
-
-    let command = sys.argv[1];
-    let manager = TaskManager(command=command);
-
-    if command == "add" and len(sys.argv) > 2 {
-        manager.title = " ".join(sys.argv[2:]);
-    } elif command == "complete" and len(sys.argv) > 2 {
-        manager.task_id = sys.argv[2];
-    }
-
-    spawn manager on root;
-}
-```
-
-### Advanced Persistence Patterns
-
-#### Versioned Data
-
-```jac
-node VersionedDocument {
-    has id: str;
-    has content: str;
-    has version: int = 1;
-    has created_at: str;
-    has modified_at: str;
-}
-
-node DocumentVersion {
-    has version: int;
-    has content: str;
-    has modified_at: str;
-    has modified_by: str;
-}
-
-walker DocumentEditor {
-    has doc_id: str;
-    has new_content: str;
-    has user: str;
-
-    can edit with entry {
-        // Find document
-        let docs = root[-->:VersionedDocument:(?.id == self.doc_id):];
-        if not docs {
-            print(f"Document {self.doc_id} not found");
-            return;
-        }
-
-        let doc = docs[0];
-
-        // Save current version
-        doc ++> DocumentVersion(
-            version=doc.version,
-            content=doc.content,
-            modified_at=doc.modified_at,
-            modified_by=self.user
-        );
-
-        // Update document
-        doc.content = self.new_content;
-        doc.version += 1;
-        doc.modified_at = now();
-
-        print(f"Document updated to version {doc.version}");
-    }
-
-    can get_history with entry {
-        let docs = root[-->:VersionedDocument:(?.id == self.doc_id):];
-        if not docs {
-            return;
-        }
-
-        let doc = docs[0];
-        let versions = doc[-->:DocumentVersion:];
-
-        print(f"\n=== History for {doc.id} ===");
-        print(f"Current version: {doc.version}");
-
-        for v in versions.sorted(key=lambda x: x.version, reverse=true) {
-            print(f"\nVersion {v.version}:");
-            print(f"  Modified: {v.modified_at}");
-            print(f"  By: {v.modified_by}");
-            print(f"  Content: {v.content[:50]}...");
-        }
-    }
-}
-```
-
-#### Lazy Loading Pattern
-
-```jac
-node DataContainer {
-    has id: str;
-    has metadata: dict;
-    has data_loaded: bool = false;
-}
-
-node HeavyData {
-    has payload: list;
-    has size_mb: float;
-}
-
-walker DataLoader {
-    has container_id: str;
-    has operation: str;
-
-    can operate with DataContainer entry {
-        if self.operation == "get_metadata" {
-            // Just return metadata without loading heavy data
-            report here.metadata;
-
-        } elif self.operation == "load_full" {
-            if not here.data_loaded {
-                // Load heavy data only when needed
-                self.load_heavy_data(here);
+            # Entry ability - triggered when entering any Teacher
+            can deliver_to_teacher with Teacher entry {
+                print(f"Delivering message to teacher {here.name} ({here.subject})");
+                # Teachers just acknowledge the message
+                print(f"  {here.name} says: 'Message received!'");
+                self.delivery_count += 1;
+                self.visited_locations.append(here.name);
             }
 
-            let heavy = here[-->:HeavyData:][0];
-            report {
-                "metadata": here.metadata,
-                "data": heavy.payload,
-                "size": heavy.size_mb
-            };
+            # Exit ability - triggered when leaving any node
+            can log_visit with entry {
+                node_type = type(here).__name__;
+                print(f"  Visited {node_type}");
+            }
         }
-    }
 
-    can load_heavy_data(container: DataContainer) {
-        print(f"Loading heavy data for {container.id}...");
+        with entry {
+            # Create simple classroom
+            alice = root ++> Student(name="Alice");
+            bob = root ++> Student(name="Bob");
+            ms_smith = root ++> Teacher(name="Ms. Smith", subject="Math");
 
-        // Simulate loading large data
-        import:py time;
-        time.sleep(1);
+            # Create and activate messenger
+            messenger = MessageDelivery(message="School assembly at 2 PM");
 
-        container ++> HeavyData(
-            payload=list(range(1000000)),
-            size_mb=7.6
-        );
+            # Spawn walker on Alice - this activates it
+            alice[0] spawn messenger;
 
-        container.data_loaded = true;
-    }
-}
-```
+            # Check Alice's messages
+            print(f"Alice's messages: {alice[0].messages}");
+        }
+        ```
+        </div>
+    === "Python"
+        ```python
+        class MessageDelivery:
+            def __init__(self, message: str):
+                self.message = message
+                self.delivery_count = 0
+                self.visited_locations = []
 
-#### Garbage Collection Pattern
+            def deliver_to_student(self, student):
+                print(f"Delivering message to student {student.name}")
+                student.messages.append(self.message)
+                self.delivery_count += 1
+                self.visited_locations.append(student.name)
 
-```jac
-node CachedItem {
-    has key: str;
-    has value: any;
-    has created_at: str;
-    has last_accessed: str;
-    has ttl_hours: int = 24;
-}
+            def deliver_to_teacher(self, teacher):
+                print(f"Delivering message to teacher {teacher.name} ({teacher.subject})")
+                print(f"  {teacher.name} says: 'Message received!'")
+                self.delivery_count += 1
+                self.visited_locations.append(teacher.name)
 
-walker CacheCleanup {
-    has cleaned_count: int = 0;
-    has checked_count: int = 0;
+            def visit_node(self, node):
+                node_type = type(node).__name__
+                print(f"  Visited {node_type}")
 
-    can cleanup with CachedItem entry {
-        import:py from datetime import datetime, timedelta;
+                # Manually check type and call appropriate method
+                if isinstance(node, Student):
+                    self.deliver_to_student(node)
+                elif isinstance(node, Teacher):
+                    self.deliver_to_teacher(node)
 
-        self.checked_count += 1;
+        if __name__ == "__main__":
+            # Create simple classroom
+            alice = Student("Alice")
+            bob = Student("Bob")
+            ms_smith = Teacher("Ms. Smith", "Math")
 
-        last_access = datetime.fromisoformat(here.last_accessed);
-        age = datetime.now() - last_access;
+            # Create and use messenger manually
+            messenger = MessageDelivery("School assembly at 2 PM")
 
-        if age > timedelta(hours=here.ttl_hours) {
-            print(f"Removing expired cache item: {here.key}");
+            # Manually visit nodes (simulating walker spawn)
+            messenger.visit_node(alice)
 
-            // Disconnect from root to remove persistence
-            for edge in here[<--] {
-                del edge;
+            # Check Alice's messages
+            print(f"Alice's messages: {alice.messages}")
+        ```
+
+## Walker Spawn and Visit
+
+!!! topic "Graph Traversal"
+    Walkers move through graphs using `spawn` (to start) and `visit` (to continue to connected nodes). This enables complex traversal patterns with simple syntax.
+
+### Basic Traversal Patterns
+
+!!! example "Classroom Message Delivery"
+    === "Jac"
+        <div class="code-block">
+        ```jac
+        # Basic classroom nodes
+        node Student {
+            has name: str;
+            has messages: list[str] = [];
+        }
+
+        node Teacher {
+            has name: str;
+            has subject: str;
+        }
+
+        walker MessageDelivery {
+            has message: str;
+            has delivery_count: int = 0;
+            has visited_locations: list[str] = [];
+
+            # Entry ability - triggered when entering any Student
+            can deliver_to_student with Student entry {
+                print(f"Delivering message to student {here.name}");
+                here.messages.append(self.message);
+                self.delivery_count += 1;
+                self.visited_locations.append(here.name);
             }
 
-            self.cleaned_count += 1;
-        }
-
-        visit [-->];
-    }
-
-    can report with exit {
-        print(f"\nCache cleanup complete:");
-        print(f"  Checked: {self.checked_count} items");
-        print(f"  Cleaned: {self.cleaned_count} items");
-    }
-}
-
-// Run periodic cleanup
-with entry:cleanup {
-    print("Running cache cleanup...");
-    spawn CacheCleanup() on root;
-}
-```
-
-### Performance Considerations
-
-While persistence is automatic, consider these patterns for optimization:
-
-```jac
-// Indexing pattern for fast lookups
-node IndexedCollection {
-    has name: str;
-    has indices: dict = {};
-
-    can add_item(item: dict) {
-        // Store item
-        let item_node = self ++> node DataItem {
-            has data: dict;
-        }(data=item);
-
-        // Update indices
-        for key, value in item.items() {
-            if key not in self.indices {
-                self.indices[key] = {};
+            # Entry ability - triggered when entering any Teacher
+            can deliver_to_teacher with Teacher entry {
+                print(f"Delivering message to teacher {here.name} ({here.subject})");
+                # Teachers just acknowledge the message
+                print(f"  {here.name} says: 'Message received!'");
+                self.delivery_count += 1;
+                self.visited_locations.append(here.name);
             }
 
-            if value not in self.indices[key] {
-                self.indices[key][value] = [];
+            # Exit ability - triggered when leaving any node
+            can log_visit with entry {
+                node_type = type(here).__name__;
+                print(f"  Visited {node_type}");
+            }
+        }
+
+        edge InClass {
+            has room: str;
+        }
+
+        walker ClassroomMessenger {
+            has announcement: str;
+            has rooms_visited: set[str] = {};
+            has people_reached: int = 0;
+
+            can deliver_student with Student entry {
+                print(f" Student {here.name}: {self.announcement}");
+                self.people_reached += 1;
+
+                # Continue to connected nodes
+                visit [-->];
             }
 
-            self.indices[key][value].append(item_node);
-        }
-    }
+            can deliver_teacher with Teacher entry {
+                print(f" Teacher {here.name}: {self.announcement}");
+                self.people_reached += 1;
 
-    can find_by(key: str, value: any) -> list {
-        if key in self.indices and value in self.indices[key] {
-            return self.indices[key][value];
-        }
-        return [];
-    }
-}
+                # Continue to connected nodes
+                visit [-->];
+            }
 
-// Pagination pattern for large collections
-walker PaginatedQuery {
-    has page: int = 1;
-    has page_size: int = 20;
-    has filters: dict = {};
-    has total_count: int = 0;
-    has results: list = [];
+            can track_room with InClass entry {
+                room = here.room;
+                if room not in self.rooms_visited {
+                    self.rooms_visited.add(room);
+                    print(f" Now in {room}");
+                }
+            }
 
-    can query with entry {
-        // Get all matching items
-        let all_items = root[-->:DataItem:];
-
-        // Apply filters
-        let filtered = all_items;
-        for key, value in self.filters.items() {
-            filtered = filtered.filter(
-                lambda item: DataItem -> bool : item.data.get(key) == value
-            );
+            can summarize with Student exit {
+                # Only report once at the end
+                if len([-->]) == 0 {  # At a node with no outgoing connections
+                    print(f" Delivery complete!");
+                    print(f"   People reached: {self.people_reached}");
+                    print(f"   Rooms visited: {list(self.rooms_visited)}");
+                }
+            }
         }
 
-        self.total_count = len(filtered);
+        with entry {
+            # Create classroom structure
+            alice = root ++> Student(name="Alice");
+            bob = root ++> Student(name="Bob");
+            charlie = root ++> Student(name="Charlie");
+            ms_jones = root ++> Teacher(name="Ms. Jones", subject="Science");
 
-        // Paginate
-        let start = (self.page - 1) * self.page_size;
-        let end = start + self.page_size;
-        self.results = filtered[start:end];
+            # Connect them in the same classroom
+            alice +>:InClass(room="Room 101"):+> bob;
+            bob +>:InClass(room="Room 101"):+> charlie;
+            charlie +>:InClass(room="Room 101"):+> ms_jones;
 
-        report {
-            "page": self.page,
-            "page_size": self.page_size,
-            "total": self.total_count,
-            "pages": (self.total_count + self.page_size - 1) // self.page_size,
-            "data": self.results
-        };
-    }
-}
-```
+            # Send a message through the classroom
+            messenger = ClassroomMessenger(announcement="Fire drill in 5 minutes");
+            alice[0] spawn messenger;
+        }
+        ```
+        </div>
+    === "Python"
+        ```python
+        class InClass:
+            def __init__(self, from_node, to_node, room: str):
+                self.from_node = from_node
+                self.to_node = to_node
+                self.room = room
 
-### Summary
+        class ClassroomMessenger:
+            def __init__(self, announcement: str):
+                self.announcement = announcement
+                self.rooms_visited = set()
+                self.people_reached = 0
+                self.visited_nodes = set()
 
-In this chapter, we've explored Jac's revolutionary persistence model:
+            def deliver_to_student(self, student):
+                print(f" Student {student.name}: {self.announcement}")
+                self.people_reached += 1
 
-- **The Root Node**: A globally accessible anchor for persistent data
-- **Automatic Persistence**: No database required—just connect to root
-- **Reachability Model**: Data persists based on graph connectivity
-- **Zero Configuration**: No schema definitions, migrations, or connection strings
-- **Performance Patterns**: Indexing, lazy loading, and cleanup strategies
+            def deliver_to_teacher(self, teacher):
+                print(f" Teacher {teacher.name}: {self.announcement}")
+                self.people_reached += 1
 
-This persistence model eliminates entire categories of boilerplate code. You focus on your domain logic while Jac handles data persistence automatically. The same patterns that work for a simple script scale to multi-user applications—which we'll explore in the next chapter.
+            def track_room(self, edge):
+                if edge.room not in self.rooms_visited:
+                    self.rooms_visited.add(edge.room)
+                    print(f"   Now in {edge.room}")
+
+            def visit_network(self, node, connections):
+                # Avoid infinite loops
+                if node in self.visited_nodes:
+                    return
+
+                self.visited_nodes.add(node)
+
+                # Process current node
+                if isinstance(node, Student):
+                    self.deliver_to_student(node)
+                elif isinstance(node, Teacher):
+                    self.deliver_to_teacher(node)
+
+                # Visit connected nodes
+                for edge in connections.get(node, []):
+                    self.track_room(edge)
+                    self.visit_network(edge.to_node, connections)
+
+                # Check if we're at the end
+                if not connections.get(node, []):
+                    print(f" Delivery complete!")
+                    print(f"   People reached: {self.people_reached}")
+                    print(f"   Rooms visited: {list(self.rooms_visited)}")
+
+        if __name__ == "__main__":
+            # Create classroom structure
+            alice = Student("Alice")
+            bob = Student("Bob")
+            charlie = Student("Charlie")
+            ms_jones = Teacher("Ms. Jones", "Science")
+
+            # Create connections manually
+            connections = {
+                alice: [InClass(alice, bob, "Room 101")],
+                bob: [InClass(bob, charlie, "Room 101")],
+                charlie: [InClass(charlie, ms_jones, "Room 101")],
+                ms_jones: []
+            }
+
+            # Send message through classroom
+            messenger = ClassroomMessenger("Fire drill in 5 minutes")
+            messenger.visit_network(alice, connections)
+        ```
+
+### Advanced Traversal Control
+
+!!! example "Selective Message Delivery"
+    === "Jac"
+        <div class="code-block">
+        ```jac
+        import random;
+
+        node Student {
+            has name: str;
+            has grade_level: int;
+            has messages: list[str] = [];
+        }
+
+        edge StudyGroup {
+            has subject: str;
+        }
+
+        walker AttendanceChecker {
+            has present_students: list[str] = [];
+            has absent_students: list[str] = [];
+            has max_checks: int = 5;
+            has checks_done: int = 0;
+
+            can check_attendance with Student entry {
+                self.checks_done += 1;
+
+                # Simulate checking if student is present (random for demo)
+                is_present = random.choice([True, False]);
+
+                if is_present {
+                    print(f"{here.name} is present");
+                    self.present_students.append(here.name);
+                } else {
+                    print(f"{here.name} is absent");
+                    self.absent_students.append(here.name);
+                }
+
+                # Control flow based on conditions
+                if self.checks_done >= self.max_checks {
+                    print(f"Reached maximum checks ({self.max_checks})");
+                    self.report_final();
+                    disengage;  # Stop the walker
+                }
+
+                # Skip if no more connections
+                connections = [-->];
+                if not connections {
+                    print("No more students to check");
+                    self.report_final();
+                    disengage;
+                }
+
+                # Continue to next student
+                visit [-->];
+            }
+
+            def report_final() -> None {
+                print(f" Attendance Report:");
+                print(f"   Present: {self.present_students}");
+                print(f"   Absent: {self.absent_students}");
+                print(f"   Total checked: {self.checks_done}");
+            }
+        }
+
+        with entry {
+            # Create a chain of students
+            alice = root ++> Student(name="Alice", grade_level=9);
+            bob = alice ++> Student(name="Bob", grade_level=9);
+            charlie = bob ++> Student(name="Charlie", grade_level=9);
+            diana = charlie ++> Student(name="Diana", grade_level=9);
+            eve = diana ++> Student(name="Eve", grade_level=9);
+
+            # Start attendance check
+            checker = AttendanceChecker(max_checks=3);
+            alice[0] spawn checker;
+        }
+        ```
+        </div>
+    === "Python"
+        ```python
+        class StudyGroup:
+            def __init__(self, from_node, to_node, subject: str):
+                self.from_node = from_node
+                self.to_node = to_node
+                self.subject = subject
+
+        class Student:
+            def __init__(self, name: str, grade_level: int):
+                self.name = name
+                self.grade_level = grade_level
+                self.messages = []
+
+        class GradeSpecificMessenger:
+            def __init__(self, message: str, target_grade: int):
+                self.message = message
+                self.target_grade = target_grade
+                self.delivered_to = []
+                self.visited = set()
+
+            def visit_student(self, student, connections):
+                if student in self.visited:
+                    return
+
+                self.visited.add(student)
+
+                if student.grade_level == self.target_grade:
+                    print(f"Delivering to {student.name} (Grade {student.grade_level}): {self.message}")
+                    student.messages.append(self.message)
+                    self.delivered_to.append(student.name)
+                else:
+                    print(f"Skipping {student.name} (Grade {student.grade_level}) - not target grade")
+
+                # Visit connected students
+                for edge in connections.get(student, []):
+                    print(f"  Moving through {edge.subject} study group")
+                    self.visit_student(edge.to_node, connections)
+
+                # Report if at end
+                if not connections.get(student, []):
+                    print(f" Delivery Summary:")
+                    print(f"   Target: Grade {self.target_grade} students")
+                    print(f"   Message: '{self.message}'")
+                    print(f"   Delivered to: {self.delivered_to}")
+
+        if __name__ == "__main__":
+            # Create multi-grade study network
+            alice = Student("Alice", 9)
+            bob = Student("Bob", 10)
+            charlie = Student("Charlie", 9)
+            diana = Student("Diana", 11)
+
+            # Create connections
+            connections = {
+                alice: [StudyGroup(alice, bob, "Math")],
+                bob: [StudyGroup(bob, charlie, "Science")],
+                charlie: [StudyGroup(charlie, diana, "History")],
+                diana: []
+            }
+
+            # Send grade-specific message
+            messenger = GradeSpecificMessenger(
+                "Grade 9 field trip permission slips due Friday!",
+                9
+            )
+
+            messenger.visit_student(alice, connections)
+
+            # Check who got the message
+            print(f"Alice's messages: {alice.messages}")
+            print(f"Bob's messages: {bob.messages}")
+            print(f"Charlie's messages: {charlie.messages}")
+        ```
+
+## Walker Control Flow
+
+!!! topic "Traversal Control"
+    Walkers can control their movement through the graph using special statements like `visit` and `disengage`.
+
+### Controlling Walker Behavior
+
+!!! example "Smart Walker Control"
+    === "Jac"
+        <div class="code-block">
+        ```jac
+        node Student {
+            has name: str;
+            has grade_level: int;
+        }
+
+        walker AttendanceChecker {
+            has present_students: list[str] = [];
+            has absent_students: list[str] = [];
+            has max_checks: int = 5;
+            has checks_done: int = 0;
+
+            can check_attendance with Student entry {
+                self.checks_done += 1;
+
+                # Simulate checking if student is present (random for demo)
+                import random;
+                is_present = random.choice([True, False]);
+
+                if is_present {
+                    print(f"{here.name} is present");
+                    self.present_students.append(here.name);
+                } else {
+                    print(f"{here.name} is absent");
+                    self.absent_students.append(here.name);
+                }
+
+                # Control flow based on conditions
+                if self.checks_done >= self.max_checks {
+                    print(f"Reached maximum checks ({self.max_checks})");
+                    self.report_final();
+                    disengage;  # Stop the walker
+                }
+
+                # Skip if no more connections
+                connections = [-->];
+                if not connections {
+                    print("No more students to check");
+                    self.report_final();
+                    disengage;
+                }
+
+                # Continue to next student
+                visit [-->];
+            }
+
+            def report_final() -> None {
+                print(f" Attendance Report:");
+                print(f"   Present: {self.present_students}");
+                print(f"   Absent: {self.absent_students}");
+                print(f"   Total checked: {self.checks_done}");
+            }
+        }
+
+        with entry {
+            # Create a chain of students
+            alice = root ++> Student(name="Alice", grade_level=9);
+            bob = alice ++> Student(name="Bob", grade_level=9);
+            charlie = bob ++> Student(name="Charlie", grade_level=9);
+            diana = charlie ++> Student(name="Diana", grade_level=9);
+            eve = diana ++> Student(name="Eve", grade_level=9);
+
+            # Start attendance check
+            checker = AttendanceChecker(max_checks=3);
+            alice[0] spawn checker;
+        }
+        ```
+        </div>
+    === "Python"
+        ```python
+        import random
+
+        class AttendanceChecker:
+            def __init__(self, max_checks: int = 5):
+                self.present_students = []
+                self.absent_students = []
+                self.max_checks = max_checks
+                self.checks_done = 0
+                self.should_stop = False
+
+            def check_student(self, student, connections):
+                if self.should_stop:
+                    return
+
+                self.checks_done += 1
+
+                # Simulate checking if student is present
+                is_present = random.choice([True, False])
+
+                if is_present:
+                    print(f" {student.name} is present")
+                    self.present_students.append(student.name)
+                else:
+                    print(f" {student.name} is absent")
+                    self.absent_students.append(student.name)
+
+                # Control flow based on conditions
+                if self.checks_done >= self.max_checks:
+                    print(f" Reached maximum checks ({self.max_checks})")
+                    self.report_final()
+                    return  # Stop checking
+
+                # Continue to next student if available
+                next_students = connections.get(student, [])
+                if not next_students:
+                    print(" No more students to check")
+                    self.report_final()
+                    return
+
+                # Visit next student
+                for next_student in next_students:
+                    self.check_student(next_student, connections)
+
+            def report_final(self):
+                print(f" Attendance Report:")
+                print(f"   Present: {self.present_students}")
+                print(f"   Absent: {self.absent_students}")
+                print(f"   Total checked: {self.checks_done}")
+
+        if __name__ == "__main__":
+            # Create a chain of students
+            alice = Student("Alice", 9)
+            bob = Student("Bob", 9)
+            charlie = Student("Charlie", 9)
+            diana = Student("Diana", 9)
+            eve = Student("Eve", 9)
+
+            # Create connections (linear chain)
+            connections = {
+                alice: [bob],
+                bob: [charlie],
+                charlie: [diana],
+                diana: [eve],
+                eve: []
+            }
+
+            # Start attendance check
+            checker = AttendanceChecker(max_checks=3)
+            checker.check_student(alice, connections)
+        ```
+
+## Key Concepts Summary
+
+!!! summary "Walker and Ability Fundamentals"
+    - **Walkers** are mobile computational entities that traverse graphs
+    - **Abilities** are event-driven methods that execute automatically during traversal
+    - **Entry abilities** trigger when a walker arrives at a node
+    - **Exit abilities** trigger when a walker leaves a node
+    - **Spawn** activates a walker at a specific starting location
+    - **Visit** moves a walker to connected nodes
+    - **Disengage** stops a walker's execution
+
+## Best Practices
+
+!!! summary "Walker Design Guidelines"
+    - **Keep abilities focused**: Each ability should have a single, clear purpose
+    - **Use descriptive names**: Make it clear what each walker and ability does
+    - **Handle edge cases**: Check for empty connections before visiting
+    - **Control traversal flow**: Use conditions to avoid infinite loops
+    - **Report results**: Use exit abilities to summarize walker activities
+    - **Manage state**: Use walker properties to track progress and results
+
+## Key Takeaways
+
+!!! summary "What We've Learned"
+    **Walker System:**
+
+    - **Mobile computation**: Walkers bring processing directly to data locations
+    - **State management**: Walkers carry their own state as they traverse
+    - **Traversal control**: Fine-grained control over movement patterns
+    - **Spawning mechanism**: Activate walkers at specific graph locations
+
+    **Ability System:**
+
+    - **Event-driven execution**: Abilities trigger automatically based on walker location
+    - **Entry/exit patterns**: React to walker arrival and departure events
+    - **Context awareness**: Abilities have access to current node (`here`) and walker state
+    - **Conditional execution**: Abilities can include logic to control when they execute
+
+    **Traversal Patterns:**
+
+    - **Visit statements**: Direct walker movement to connected nodes
+    - **Filtering support**: Visit only nodes that match specific criteria
+    - **Flow control**: Use `disengage` to stop walker execution
+    - **Recursive traversal**: Walkers can spawn other walkers for complex patterns
+
+    **Practical Applications:**
+
+    - **Data processing**: Process distributed data where it lives
+    - **Graph analysis**: Analyze relationships and connections
+    - **Message delivery**: Distribute information through networks
+    - **State propagation**: Update related nodes based on changes
+
+!!! tip "Try It Yourself"
+    Master walkers and abilities by building:
+    - A message delivery system that traverses social networks
+    - An attendance checker that visits classrooms
+    - A family tree explorer that analyzes relationships
+    - A network analyzer that processes organizational structures
+
+    Remember: Walkers bring computation to data - think about how your processing can move through your graph!
+
+---
+
+*Walkers and abilities are now part of your toolkit. Let's master advanced graph operations and sophisticated traversal patterns!*

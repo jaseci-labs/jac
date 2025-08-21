@@ -2,123 +2,97 @@
 
 ## Installation
 
-To install MTLLM run,
+To get started with MTLLM, install the base package:
 
 ```bash
 pip install mtllm
 ```
 
-By default, MTLLM will not install any llm integrations, to install the available integrations, include the extra(s) below:
+## AI-Integrated Function Example
 
-=== "Anthropic"
-    ```bash
-    pip install mtllm[anthropic]
-    ```
-=== "Google"
-    ```bash
-    pip install mtllm[google]
-    ```
-=== "Groq"
-    ```bash
-    pip install mtllm[groq]
-    ```
-=== "Huggingface"
-    ```bash
-    pip install mtllm[huggingface]
-    ```
-=== "Ollama"
-    ```bash
-    pip install mtllm[ollama]
-    ```
-=== "OpenAI"
-    ```bash
-    pip install mtllm[openai]
-    ```
-=== "Together"
-    ```bash
-    pip install mtllm[together]
-    ```
+Let's consider an example program where we attempt to categorize a person by their personality using an LLM. For simplicity we will be using names of historical figures.
 
+### Standard Implementation
 
+Traditional implementation of this program with a manual algorithm:
 
-MTLLM Supports MultiModal LLMs. To Support Images and Videos, you need to install the following extra(s):
+```jac linenums="1"
 
-=== "Image Support"
-    ```bash
-    pip install mtllm[image]
-    ```
-=== "Video Support"
-    ```bash
-    pip install mtllm[video]
-    ```
+enum Personality {
+    INTROVERT = "Introvert",
+    EXTROVERT = "Extrovert",
+    AMBIVERT = "Ambivert"
+}
 
-Currently, only multimodal LLMs from OpenAI and Anthropic are supported. In the future, we plan to support multimodal LLMs from other providers as well.
-
-## Minimal Working Example
-
-Here we will walk you through a minimal working example of using MTLLM to generate translate a sentence from English to a target language.
-
-### Setup
-
-Before we start, make sure you have installed MTLLM & Jaclang.
-Following code snippet will be our starting point:
-
-```jac
-def translate(eng_sentence: str, target_lang: str) -> str {
-    """Normally this would include the translation logic such as calling an API.
-    For the sake of this example, we will return a dummy translated sentence."""
-
-    return "Hola Mundo";
+def get_personality(name: str) -> Personality {
+    # Traditional approach: manual algorithm, prompt-engineered LLM call, etc.
 }
 
 with entry {
-    print(translate("Hello World", "es"));
+    name = "Albert Einstein";
+    result = get_personality(name);
+    print(f"{result.value} personality detected for {name}");
 }
 ```
 
-Assuming we went with API based translation, `target_lang` would be the language code of the target language. For example, `es` for Spanish, `fr` for French, etc. But Assume that you don't know the language code for the target language, or you would like to provide a context to `target_lang` instead of a language code. for example `Spanish` instead of `es` or `Language spoken in Somalia`. This is where you need the help of LLMs.
+**Limitations**: Defining an algorithm in code for this problem is difficult, while integrating an LLM to perform the task would require manual prompt engineering, response parsing, and type conversion to be implemented by the developer.
 
-### Using MTLLM
+### MTLLM Implementation
 
-#### Import the LLM You Want to Use
+The `by` keyword abstraction enables functions to process inputs of any type and generate contextually appropriate outputs of the specified type:
 
-For this example, we will use OpenAI's GPT-3.5-turbo (default).
+#### Step 1: Configure LLM Model
 
-```jac
-import from mtllm.llms {OpenAI}
+```jac linenums="1"
+import from mtllm {Model}
 
-llm = OpenAI();
-
-# Rest of the code
+glob llm = Model(model_name="gemini/gemini-2.0-flash");
 ```
 
-#### Remove the Ability Body and Add `by LLM` keyword
+#### Step 2: Implement LLM-Integrated Function
 
-```jac
-import from mtllm.llms {OpenAI}
-llm = OpenAI();
+Add `by llm` to enable LLM integration:
 
-def translate(eng_sentence: str, target_lang: str) -> str by llm;
+```jac linenums="1"
+def get_personality(name: str) -> Personality by llm();
+```
 
-with entry {
-    print(translate("Hello World", "Language spoken in Somalia"));
-}
-    ```
+This will auto-generate a prompt for performing the task and provide an output that strictly adheres to the type `Personality`.
 
-Thats it! 🎊
+#### Step 3: Execute the Application
 
-Now you can run the code and see the translated sentence by running the following command:
-Makesure to export your OpenAI API key as an environment variable `OPENAI_API_KEY` before running the code.
+Set your API key and run:
 
 ```bash
-jac run translator.jac
+export GEMINI_API_KEY="your-api-key-here"
+jac run personality.jac
 ```
 
-### Adding Additional Support to the LLMs
-
-In this example, we dont need to add any additional context to the LLMs. But if you want to, you can do so by adding docstrings to function and method definitions, explaining the required behaviour of the function/method:
+For complete usage methodologies of the `by` abstraction, refer to the [Usage Guide](./usage.md) for documentation on object methods, object instantiation, and multi-agent workflows.
 
 
-You've successfully created a working example using the Jaclang and MTLLM.
+### MTLLM Usage in Python
 
-Feel free to adapt and expand upon this example to suit your specific use case while exploring the extensive capabilities of MTLLM.
+As MTLLM is a python package, it can be natively used in jac. The following code show the above example application built in native python with MTLLM.
+
+```python linenums="1"
+import jaclang
+from mtllm import Model, by
+from enum import Enum
+
+llm = Model(model_name="gemini/gemini-2.0-flash")
+
+class Personality(Enum):
+    INTROVERT = "Introvert"
+    EXTROVERT = "Extrovert"
+    AMBIVERT = "Ambivert"
+
+@by(model=llm)
+def get_personality(name: str) -> Personality: ...
+
+name = "Albert Einstein"
+result = get_personality(name)
+print(f"{result.value} personality detected for {name}")
+```
+
+To learn more about usage of `by` in python, please refer to [MTLLM python Interface](./python_integration.md).

@@ -24,7 +24,7 @@ TOKEN_ALGORITHM = getenv("TOKEN_ALGORITHM", "HS256")
 VERIFICATION_CODE_TIMEOUT = int(getenv("VERIFICATION_CODE_TIMEOUT") or "24")
 RESET_CODE_TIMEOUT = int(getenv("RESET_CODE_TIMEOUT") or "24")
 TOKEN_TIMEOUT = int(getenv("TOKEN_TIMEOUT") or "12")
-User = BaseUser.model()
+User: type[BaseUser] = BaseUser.model()
 
 
 def encrypt(data: dict) -> str:
@@ -94,7 +94,7 @@ def validate_request(request: Request, walker: str, node: str) -> None:
         raise HTTPException(status_code=403)
 
 
-def authenticate(request: Request) -> None:
+def authenticate(request: Request) -> tuple[User, NodeAnchor]:  # type: ignore
     """Authenticate current request and attach authenticated user and their root."""
     authorization = request.headers.get("Authorization")
     if authorization and authorization.lower().startswith("bearer"):
@@ -108,7 +108,7 @@ def authenticate(request: Request) -> None:
         ):
             request._user = user  # type: ignore[attr-defined]
             request._root = root  # type: ignore[attr-defined]
-            return
+            return user, root
 
     raise HTTPException(status_code=401)
 
@@ -183,9 +183,11 @@ def authenticate_websocket(
 ) -> bool:
     """Authenticate websocket connection."""
     if (
-        authorization or (authorization := websocket.headers.get("Authorization"))
-    ) and authorization.lower().startswith("bearer"):
-        token = authorization[7:]
+        authorization
+        or ((authorization := websocket.headers.get("Authorization")))
+        and authorization.lower().startswith("bearer")
+    ):
+        token = authorization.split(" ", 1)[-1]
         decrypted = decrypt(token)
         if (
             decrypted
@@ -200,4 +202,5 @@ def authenticate_websocket(
     return False
 
 
-authenticator = [Depends(HTTPBearer()), Depends(authenticate)]
+BEARER = [Depends(HTTPBearer())]
+authenticator = [*BEARER, Depends(authenticate)]

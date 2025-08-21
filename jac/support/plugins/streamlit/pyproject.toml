@@ -1,0 +1,26 @@
+[tool.poetry]
+name = "jac-streamlit"
+version = "0.0.4"
+description = "Streamlit integration plugin for Jac programming language - enables running and visualizing Jac applications in Streamlit"
+authors = ["Jason Mars <jason@jaseci.org>"]
+license = "MIT"
+readme = "README.md"
+keywords = ["jac", "jaclang", "jaseci", "streamlit", "visualization", "graph", "data-spatial"]
+repository = "https://github.com/jaseci-labs/jaseci"
+homepage = "https://jac-lang.org"
+documentation = "https://jac-lang.org"
+packages = [{include = "jaclang_streamlit"}]
+
+[tool.poetry.dependencies]
+python = "^3.12.0"
+jaclang = "^0.8.3"
+streamlit = "^1.38.0"
+pydot = "^3.0.1"
+streamlit-agraph = "^0.0.45"
+
+[tool.poetry.plugins.jac]
+streamlit = "jaclang_streamlit.commands:JacCmd"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

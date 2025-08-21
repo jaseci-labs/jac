@@ -115,6 +115,14 @@ class SymTabBuildPass(UniPass):
     def exit_impl_def(self, node: uni.ImplDef) -> None:
         self.pop_scope()
 
+    def enter_sem_def(self, node: uni.SemDef) -> None:
+        self.push_scope_and_link(node)
+        assert node.parent_scope is not None
+        node.parent_scope.def_insert(node, single_decl="sem")
+
+    def exit_sem_def(self, node: uni.SemDef) -> None:
+        self.pop_scope()
+
     def enter_enum(self, node: uni.Enum) -> None:
         self.push_scope_and_link(node)
         assert node.parent_scope is not None

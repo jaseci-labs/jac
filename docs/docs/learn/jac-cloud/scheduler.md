@@ -52,7 +52,7 @@ The cron trigger uses a cron-like expression to schedule tasks with high precisi
 
 ### Cron Example
 
-```python
+```jac
 walker walker_cron {
     has arg1: int;
     has arg2: str;

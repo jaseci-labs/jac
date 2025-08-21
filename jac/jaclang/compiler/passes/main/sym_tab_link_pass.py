@@ -32,11 +32,8 @@ class SymTabLinkPass(Transform[uni.Module, uni.Module]):
     def transform(self, ir_in: uni.Module) -> uni.Module:
         """Link the symbol tables for all modules in the program."""
         # Process all modules in the program hub
-        for mod in self.prog.mod.hub.values():
-            module_paths = mod.get_all_sub_nodes(uni.ModulePath)
-            for node in module_paths:
-                self.process_module_path(mod, node)
-
+        for node in ir_in.get_all_sub_nodes(uni.ModulePath):
+            self.process_module_path(ir_in, node)
         return ir_in
 
     def process_module_path(self, mod: uni.Module, node: uni.ModulePath) -> None:

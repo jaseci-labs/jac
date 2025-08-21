@@ -282,6 +282,8 @@ def serializer(data: object) -> object:
                 "content_type": data.content_type,
                 "size": data.size,
             }
+        case bytes():
+            return data.decode()
         case _:
             raise JSONEncodeError(
                 f"Type is not JSON serializable: {cls_fullname(data)}"

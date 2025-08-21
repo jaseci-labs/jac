@@ -1,16 +1,24 @@
-### Chapter 1: Welcome to Jac
+# **1. Introduction to Jac**
+---
+This chapter gets you started with the Jac programming language. We will begin by explaining what Jac is and how it works, then walk you through how to model relationships in your code. Along the way, you'll learn about Jac's core concepts through practical examples.
 
-#### 1.1 What is Jac?
 
-Jac is a programming language that extends familiar Python-like syntax with revolutionary concepts from Object-Spatial Programming (OSP). While maintaining the readability and expressiveness that Python developers love, Jac introduces a fundamental paradigm shift in how we think about and structure computation.
+> Jac introduces Object-Spatial Programming (OSP), a new way of thinking about software where computation can move to your data. This allows you to build applications that can be easily scaled and distributed.
 
-#### Evolution from Python-like Syntax to Object-Spatial Programming
+## **What is Jac and Why It Exists**
+---
+Jac was created to better handle the interconnected, graph-like data structures found in many modern applications, such as social networks, knowledge graphs, and AI workflows. While traditional programming languages treat relationships as secondary concerns, Jac makes them first-class citizens.
 
-Jac began as an effort to address the limitations of traditional programming paradigms when dealing with inherently graph-like, interconnected systems. While you'll recognize much of the syntax from Python, Jac adds powerful new constructs that make it natural to express complex relationships and computational flows.
+<br/>
+### **Traditional Approach to Modelling Relationships**
+
+In many programming languages, you can model relationships using structures like functions, classes, or pointers.
+
+Let's look at how you might build a simple social network in Python. First, you would define a `Person` class. This class might include a list of other `Person` objects to represent friendships.
+
 
 ```python
-# Traditional Python approach
-class User:
+class Person:
     def __init__(self, name):
         self.name = name
         self.friends = []
@@ -18,578 +26,539 @@ class User:
     def add_friend(self, friend):
         self.friends.append(friend)
         friend.friends.append(self)
-
-# Processing requires external traversal logic
-def find_friends_of_friends(user):
-    fof = set()
-    for friend in user.friends:
-        for friend_of_friend in friend.friends:
-            if friend_of_friend != user:
-                fof.add(friend_of_friend)
-
-
-    print(f"Friends of {user.name}'s friends:", [user.name for user in fof])
-    return fof
-
-
-# Create users
-alice = User("Alice")
-bob = User("Bob")
-carol = User("Carol")
-dave = User("Dave")
-
-# Build friendship connections
-alice.add_friend(bob)    # Alice ↔ Bob
-bob.add_friend(carol)    # Bob ↔ Carol
-carol.add_friend(dave)   # Carol ↔ Dave
-
-# Test the function
-fof_alice = find_friends_of_friends(alice)
-print(fof_alice)
 ```
+<br/>
 
-<div class="code-block">
+Since a friendship is a two-way connection, you need to make sure that when one person adds a friend, the new friend is also updated. This requires extra logic in your code.
+
+```python
+# Create people and relationships
+alice = Person("Alice")
+bob = Person("Bob")
+charlie = Person("Charlie")
+
+# Establish relationships
+alice.add_friend(bob)
+bob.add_friend(alice)  # This is redundant but necessary in Python
+bob.add_friend(charlie)
+charlie.add_friend(bob)  # Again, redundant but necessary
+```
+<br/>
+
+### **Modelling Relationships Naturally**
+
+Now, let's see how you can define the same relationships in Jac.
+
+First, we will define a `Person` node and a `FriendsWith` edge. In Jac, nodes are like objects that hold data. The edge defines the type of relationship between two nodes.
+
+
 ```jac
-# Jac's Object-Spatial approach
- node User {
+node Person {
     has name: str;
 }
 
-edge Friendship {
-    has since: str;
-}
-
-walker FindFriendsOfFriends {
-    has person: User , friends_of_friends: set = set();
-
-    can traverse with User entry {
-        if here != self.person {
-            self.friends_of_friends.add(here);
-        }
-        visit [->:Friendship :->];
-    }
-}
-
-with entry {
-    alice = User(name="Alice");
-    bob = User(name="Bob");
-    carol = User(name="Carol");
-    dave = User(name="Dave");
-
-    alice +>: Friendship(since="today") :+> bob;
-    bob +>: Friendship(since="yesterday") :+> carol;
-    carol +>: Friendship(since="last month") :+> dave;
-
-    fof = FindFriendsOfFriends(alice) spawn alice;
-    print(fof.friends_of_friends);
-}
+edge FriendsWith;
 ```
-</div>
+<br/>
 
-#### The Paradigm Shift: From "Data to Computation" to "Computation to Data"
+In the code above, we define a `Person` node with a `name` attribute and a `FriendsWith` edge. Now, you can create people and establish friendships between them in a much more natural way.
 
-Traditional programming paradigms operate on a fundamental assumption: data moves to computation. We pass data as arguments to functions, return data from methods, and shuttle information between computational units.
-
-```mermaid
-graph LR
-    subgraph "Traditional: Data → Computation"
-        D1[Data A] --> F1[Function 1]
-        D2[Data B] --> F1
-        F1 --> D3[Result]
-        D3 --> F2[Function 2]
-        F2 --> D4[Final Result]
-    end
-```
-
-Jac inverts this relationship. In Object-Spatial Programming, computation moves to data through mobile computational entities called "walkers" that traverse a graph of interconnected data locations called "nodes."
-
-```mermaid
-graph TB
-    subgraph "Object-Spatial: Computation → Data"
-        U1["Node: Alice<br/>(User)"]
-        U2["Node: Bob<br/>(User)"]
-        U3["Node: Carol<br/>(User)"]
-        U4["Node: Dave<br/>(User)"]
-
-        U1 <--> |"Friendship"| U2
-        U2 <--> |"Friendship"| U3
-        U3 <--> |"Friendship"| U4
-
-        W1["Walker (t=0)"]
-        W2["Walker (t=1)"]
-        W3["Walker (t=2)"]
-        W4["Walker (t=3)"]
-
-        W1 -. "spawns on" .-> U1
-        W2 -. "visits" .-> U2
-        W3 -. "visits" .-> U3
-        W4 -. "visits" .-> U4
-
-        W1 -- "travels" --> W2 -- "travels" --> W3 -- "travels" --> W4
-
-        style W1 fill:#ff9999,stroke:#333,stroke-width:2px
-        style W2 fill:#ff9999,stroke:#333,stroke-width:2px
-        style W3 fill:#ff9999,stroke:#333,stroke-width:2px
-        style W4 fill:#ff9999,stroke:#333,stroke-width:2px
-    end
-```
-
-This paradigm shift has profound implications:
-
-1. **Natural Graph Representation**: Relationships become first-class citizens through edges
-2. **Localized Computation**: Logic executes where data lives, improving locality
-3. **Dynamic Behavior**: Computation paths determined at runtime based on data
-4. **Distributed-Ready**: Computation naturally spans machine boundaries
-
-#### Scale-Agnostic Programming: Write Once, Scale Anywhere
-
-Perhaps Jac's most revolutionary feature is scale-agnostic programming. Applications written for a single user automatically scale to handle multiple users and distribute across machines without code changes.
 
 ```jac
-# This same code works for:
-# - Single user on one machine
-# - Thousands of users on one machine
-# - Millions of users across distributed systems
+# Create people
+alice = root ++> Person(name="Alice");
+bob = root ++> Person(name="Bob");
+charlie = root ++> Person(name="Charlie");
 
-node Profile {
-    has user_name: str,
-        user_bio: str;
-}
-
-node Post {
-    has text: str;
-}
-
-node Notification {
-    has type: str;
-}
-
-# Walkers automatically turn into API endpoints in cloud context
-walker CreatePost {
-    has content: str;
-    has timestamp: str;
-    has new_post: Post;
-
-    can create with `root entry {
-        # 'root' automatically refers to the current user's root node
-        # first class variable like 'this' or 'self' references
-        self.new_post = here ++> Post(
-            content=self.content,
-            timestamp=self.timestamp,
-            author=here
-        );
-
-        # Notify followers - works regardless of scale
-        visit [<-:Follows:<->];
-    }
-
-    can notify with Profile entry {
-        # 'root' automatically refers to the current user's root node
-        follower ++> Notification(type="new_post") <++ self.new_post;
-    }
-}
+# Create relationships naturally
+alice <+:FriendsWith:+> bob;
+bob <+:FriendsWith:+> charlie;
 ```
+<br/>
 
-#### 1.2 Why Jac?
+The line alice `<+:FriendsWith:+> bob;` creates a `FriendsWith` relationship, which is a typed connection between the two nodes. This is one of Jac's core features.
 
-#### Limitations of Traditional OOP for Graph-like Structures
 
-Object-Oriented Programming excels at modeling entities and their behaviors, but struggles with several common patterns:
+## **Object-Spatial Programming Paradigm Overview**
+---
+Object-Spatial Programming (OSP) is built on three fundamental concepts:
 
-##### 1. **Complex Relationships**
-Traditional OOP treats relationships as secondary concerns, typically implemented as references or collections within objects.
+- **Nodes**: Stateful entities that hold data
+- **Edges**: Typed relationships between nodes
+- **Walkers**: Mobile computation that traverses the graph
 
-```python
-# Python: Relationships are afterthoughts
-class Person:
-    def __init__(self):
-        self.friends = []  # Just a list
-        self.followers = []  # Another list
-        self.blocking = []  # And another
+### **Nodes: Data with Location**
 
-# Relationship logic scattered across methods
-def can_see_post(viewer, author, post):
-    if viewer in author.blocking:
-        return False
-    if post.privacy == "friends" and viewer not in author.friends:
-        return False
-    # More complex logic...
-```
+Nodes are like objects that have a specific location within a graph structure.
 
 ```jac
-# Jac: Relationships are first-class edges with behavior
-edge Follows {
-    has since: str;
-    has notifications_enabled: bool = true;
-}
-
-edge Blocks {
-    has reason: str;
-    has timestamp: str;
-}
-
-# Relationship logic lives in the graph structure
-walker CanSeePost {
-    has post: Post;
-
-    can check with entry {
-        # Blocks prevent traversal naturally
-        if [-->:Blocks:-->](?.target == self.post.author) {
-            report false;
-        }
-        # Privacy emerges from graph topology
-        report can_reach(here, self.post);
-    }
-}
-```
-
-##### 2. **Traversal Logic**
-In traditional OOP, graph traversal requires explicit, often repetitive code.
-
-```python
-# Python: Manual traversal with risk of cycles, memory issues
-def find_all_dependencies(package, visited=None):
-    if visited is None:
-        visited = set()
-
-    if package in visited:
-        return []
-
-    visited.add(package)
-    deps = []
-
-    for dep in package.dependencies:
-        deps.append(dep)
-        deps.extend(find_all_dependencies(dep, visited))
-
-    return deps
-```
-
-```jac
-# Jac: Declarative traversal with built-in cycle handling
-walker FindDependencies {
-    has found: set = {};
-
-    can search with entry {
-        self.found.add(here);
-        visit [-->:DependsOn:];  # Automatic cycle prevention
-    }
-}
-```
-
-##### 3. **Context-Dependent Behavior**
-Objects in traditional OOP have fixed methods that execute the same regardless of context.
-
-```python
-# Python: Context requires explicit parameter passing
-class Document:
-    def render(self, viewer=None, device=None, locale=None):
-        if viewer and not self.can_access(viewer):
-            return "Access Denied"
-
-        if device == "mobile":
-            return self.render_mobile(locale)
-        else:
-            return self.render_desktop(locale)
-```
-
-```jac
-# Jac: Context naturally flows with computation
-node Document {
-    has content: dict;
-
-    # Different behavior for different visitors
-    can render with MobileUser entry {
-        report self.content.mobile_version;
-    }
-
-    can render with DesktopUser entry {
-        report self.content.desktop_version;
-    }
-
-    can render with Translator entry {
-        report translate(self.content, visitor.target_locale);
-    }
-}
-```
-
-#### Benefits of Topological Programming
-
-Jac's topological approach offers several key advantages:
-
-##### 1. **Intuitive Relationship Modeling**
-
-```mermaid
-graph TB
-    subgraph "Social Network Topology"
-        U1[User: Alice]
-        U2[User: Bob]
-        U3[User: Carol]
-        P1[Post: 'Hello!']
-        P2[Post: 'Great day!']
-        C1[Comment: 'Nice!']
-
-        U1 -->|Follows| U2
-        U2 -->|Follows| U1
-        U2 -->|Follows| U3
-        U1 -->|Authored| P1
-        U2 -->|Authored| P2
-        U3 -->|Commented| C1
-        P2 -->|Has| C1
-        U1 -.->|Blocked| U3
-
-        style U1 fill:#01151e
-        style U2 fill:#01151e
-        style U3 fill:#01151e
-        style P1 fill:#1f1320
-        style P2 fill:#1f1320
-        style C1 fill:#132515
-    end
-```
-
-##### 2. **Natural Concurrency**
-Since walkers are independent computational entities, they naturally support concurrent execution:
-
-```jac
-# Multiple walkers can traverse simultaneously
-walker AnalyzeUser {
-    can analyze with entry {
-        # Each walker instance operates independently
-        report {
-            "post_count": len([-->:Authored:]),
-            "follower_count": len([<--:Follows:]),
-            "engagement_rate": calculate_engagement(here)
-        };
-    }
-}
-
-# Spawn multiple walkers concurrently
-with entry {
-    # These execute in parallel automatically
-    for user in get_active_users() {
-        spawn AnalyzeUser() on user;
-    }
-}
-```
-
-##### 3. **Locality of Reference**
-Computation happens where data lives, improving cache efficiency and reducing data movement:
-
-```jac
-# Traditional: Data gathered then processed
-# Requires loading all posts and comments into memory
-def calculate_thread_stats(post_id):
-    post = load_post(post_id)
-    comments = load_all_comments(post_id)  # Potentially huge
-
-    stats = {
-        'total_comments': len(comments),
-        'unique_commenters': len(set(c.author for c in comments)),
-        'max_depth': calculate_max_depth(comments)
-    }
-    return stats
-
-# Jac: Process data in place
-walker ThreadStats {
-    has total_comments: int = 0;
-    has commenters: set = {};
-    has max_depth: int = 0;
-    has current_depth: int = 0;
-
-    can analyze with Comment entry {
-        self.total_comments += 1;
-        self.commenters.add(here.author);
-        self.max_depth = max(self.max_depth, self.current_depth);
-
-        # Traverse deeper
-        self.current_depth += 1;
-        visit [-->:HasReply:];
-        self.current_depth -= 1;
-    }
-}
-```
-
-#### Built-in Persistence and Multi-User Support
-
-Unlike traditional languages that treat persistence as an external concern, Jac makes it intrinsic:
-
-```jac
-# Automatic persistence - no database required!
-node UserProfile {
+node User {
     has username: str;
     has email: str;
     has created_at: str;
 }
 
+node Post {
+    has title: str;
+    has content: str;
+    has likes: int = 0;
+}
+
 with entry {
-    # Connected to root = automatically persisted
-    root ++> UserProfile(
+    # This is where your program starts.
+    # We will create the nodes in the graph here.
+    user = root ++> User(
         username="alice",
         email="alice@example.com",
-        created_at=timestamp_now()
+        created_at="2024-01-01"
     );
-}  # Data persists after program exits
 
-# Next execution can access the same data
-walker GetProfile {
-    can get with entry {
-        profile = [-->:UserProfile:][0];
-        report profile;
-    }
+    post = user ++> Post(
+        title="Hello Jac!",
+        content="My first post in Jac"
+    );
+
+    print(f"User {user[0].username} created post: {post[0].title}");
 }
 ```
+<br/>
 
-Multi-user support is equally seamless:
+### **Edges: First-Class Relationships**
+
+In Jac, edges are used to create typed connections between your nodes. Think of them as the lines that connect the dots in your data's structure.
 
 ```jac
-# Each user automatically gets their own isolated root node
-walker UpdateBio {
-    has new_bio: str;
-
-    can update with entry {
-        # 'root' refers to the current user's root
-        # No explicit user context needed!
-        profile = root[-->:UserProfile:][0];
-        profile.bio = self.new_bio;
-    }
+node Person {
+    has name: str;
+    has age: int;
 }
-```
 
-#### Natural Expression of Distributed Systems
-
-Jac's topological model naturally extends across machine boundaries:
-
-```mermaid
-graph TB
-    subgraph "Machine A"
-        UA[User A Root]
-        PA[Profile A]
-        PostA[Posts...]
-        UA --> PA
-        PA --> PostA
-    end
-
-    subgraph "Machine B"
-        UB[User B Root]
-        PB[Profile B]
-        PostB[Posts...]
-        UB --> PB
-        PB --> PostB
-    end
-
-    subgraph "Machine C"
-        UC[User C Root]
-        PC[Profile C]
-        PostC[Posts...]
-        UC --> PC
-        PC --> PostC
-    end
-
-    PA -.->|Follows<br/>≪cross-machine≫| PB
-    PB -.->|Follows<br/>≪cross-machine≫| PC
-    PC -.->|Follows<br/>≪cross-machine≫| PA
-
-    style UA fill:#e8f5e9
-    style UB fill:#e3f2fd
-    style UC fill:#fce4ec
-```
-
-The same walker code works regardless of distribution:
-
-```jac
-walker FindMutualFollowers {
-    has target_user: User;
-    has mutuals: set = {};
-
-    can find with entry {
-        my_followers = set([<--:Follows:]);
-
-        # This works even if target_user is on another machine!
-        visit self.target_user {
-            their_followers = set([<--:Follows:]);
-            self.mutuals = my_followers.intersection(their_followers);
-        };
-
-        report self.mutuals;
-    }
+edge FamilyRelation {
+    # Edges can also have properties
+    has relationship_type: str;
 }
-```
 
-#### 1.3 This Guide's Approach
-
-#### Leveraging Your Python Knowledge
-
-As a Python developer, you already possess most of the knowledge needed to be productive in Jac. This guide builds on your existing expertise while introducing new concepts gradually.
-
-##### What Transfers Directly:
-- Basic syntax for expressions and statements
-- Data types (with mandatory type annotations)
-- Control flow concepts (with curly braces)
-- Object-oriented principles (enhanced with archetypes)
-- Standard library patterns (with Jac equivalents)
-
-##### What's Enhanced:
-- Functions become "abilities" with context-aware execution
-- Classes become "archetypes" with richer semantics
-- Decorators work with new constructs
-- Type system is mandatory but more expressive
-
-##### What's New:
-- Graph-based program structure
-- Mobile computation via walkers
-- Automatic persistence and multi-user support
-- Scale-agnostic deployment
-
-#### Progressive Learning Path
-
-This guide follows a carefully designed progression:
-
-```mermaid
-graph TD
-    A[Python Foundations<br/>Ch 3-5] --> B[Enhanced OOP<br/>Ch 5-6]
-    B --> C[Object-Spatial Basics<br/>Ch 6-9]
-    C --> D[Scale-Agnostic Features<br/>Ch 10-13]
-    D --> E[Advanced Patterns<br/>Ch 14-16]
-    E --> F[Real Applications<br/>Ch 17-19]
-
-    style A fill:#e8f5e9
-    style B fill:#c8e6c9
-    style C fill:#a5d6a7
-    style D fill:#81c784
-    style E fill:#66bb6a
-    style F fill:#4caf50
-```
-
-1. **Start Familiar**: Begin with Python-like features to build confidence
-2. **Introduce Concepts**: Learn object-spatial concepts with simple examples
-3. **Build Understanding**: Create increasingly complex graph structures
-4. **Master Scale**: Understand persistence and distribution
-5. **Apply Knowledge**: Build real-world applications
-
-#### Hands-on Examples Throughout
-
-Every concept in this guide is illustrated with practical, runnable examples. You'll build:
-
-- **Chapter 3-5**: A todo list app (familiar territory)
-- **Chapter 6-9**: A social network (graph basics)
-- **Chapter 10-13**: A multi-user blog (scale-agnostic features)
-- **Chapter 14-16**: A distributed task queue (advanced patterns)
-- **Chapter 17-19**: Complete applications combining all concepts
-
-Each example builds on the previous, creating a coherent learning journey from Python developer to Jac expert.
-
-```jac
-# Your journey starts here!
 with entry {
-    print("Welcome to Jac!");
+    # First, let's create our family members as nodes
+    parent = root ++> Person(name="John", age=45);
+    child1 = root ++> Person(name="Alice", age=20);
+    child2 = root ++> Person(name="Bob", age=18);
 
-    # Create your first persistent node
-    root ++> LearningProgress(
-        developer="You",
-        started_at=timestamp_now(),
-        excitement_level=100
-    );
+    # Now, let's create the relationships between them
+    parent +>:FamilyRelation(relationship_type="parent"):+> child1;
+    parent +>:FamilyRelation(relationship_type="parent"):+> child2;
+    child1 +>:FamilyRelation(relationship_type="sibling"):+> child2;
+
+     # You can now ask questions about these relationships
+    children = [parent[0]->:FamilyRelation:relationship_type=="parent":->(`?Person)];
+
+    print(f"{parent[0].name} has {len(children)} children:");
+    for child in children {
+        print(f"  - {child.name} (age {child.age})");
+    }
 }
 ```
+<br/>
 
-Ready to begin? In the next chapter, we'll set up your Jac development environment and write your first Object-Spatial program. The future of programming awaits!
+
+### **Walkers: Mobile Computation**
+
+Walkers are one of Jac's most interesting features. They are like little workers that you can program to travel through your graph of nodes and edges to perform tasks.
+Next, we'll create a `walker` that can travel through our friend network and greet each person. Add the following `walker` definition to your code.
+
+```jac
+node Person {
+    has name: str;
+    has visited: bool = False;  # To keep track of who we've greeted
+}
+
+edge FriendsWith;
+
+# This walker will greet every person it meets
+walker GreetFriends {
+    can greet with Person entry {
+        if not here.visited {
+            here.visited = True;
+            print(f"Hello, {here.name}!");
+
+            # Now, tell the walker to go to all connected friends
+            visit [->:FriendsWith:->];
+        }
+    }
+}
+
+with entry {
+    # Create friend network
+    alice = root ++> Person(name="Alice");
+    bob = root ++> Person(name="Bob");
+    charlie = root ++> Person(name="Charlie");
+
+    # Connect friends
+    alice +>:FriendsWith:+> bob +>:FriendsWith:+> charlie;
+    alice +>:FriendsWith:+> charlie;  # Alice also friends with Charlie
+
+    # Start the walker on the 'alice' node to greet everyone
+    alice[0] spawn GreetFriends();
+}
+```
+<br/>
+
+To make the walker visit a person's friends, we use the `visit` statement. It tells the walker to travel across any outgoing FriendsWith edges.
+
+## Scale-Agnostic Programming Concept
+---
+One of the key benefits of Jac is that you can write your code once and have it work for a single user or for millions of users. Your code can run on a single computer or on a large, distributed system without any changes.
+
+
+> The same Jac code works whether you have 1 user or 1 million users, running on a single machine or distributed across the globe.
+
+### **Automatic Persistence**
+Jac automatically saves any data that is connected to the graph's root node. This means you don't have to worry about setting up or managing a database. You can focus on what your application does, not on how it stores data.
+
+Here is an example of a simple counter. When you run this on a Jac server, the count will be saved automatically.
+
+```jac
+node Counter {
+    has count: int = 0;
+
+    def increment() -> None;
+}
+
+impl Counter.increment {
+    self.count += 1;
+    print(f"Counter is now: {self.count}");
+}
+
+with entry {
+    # Get or create counter
+    counters = [root-->(`?Counter)];
+    if not counters {
+        counter = root ++> Counter();
+        print("Created new counter");
+    }
+
+    # Increment and save automatically
+    counter[0].increment();
+}
+```
+<br/>
+
+To see the automatic persistence for yourself, you can run the counter code on a Jac server. The server turns your Jac program into an API, and it handles saving the data in your graph between runs.
+First, save the counter code into a file named "counter.jac". Then, run the following command in your terminal:
+
+```jac
+jac serve counter.jac
+```
+
+### **Multi-User Isolation**
+
+When your Jac application is running on a server, Jac automatically gives each user their own isolated graph. This means you don't have to write any special code to keep one user's data separate from another's; it's handled for you. The root node in your code always refers to the graph of the current user.
+
+```jac
+node UserProfile {
+    has username: str;
+    has bio: str = "";
+}
+
+walker GetProfile {
+    can get_user_info with entry {
+         # 'root' automatically points to the current user's graph
+        profiles = [root-->(`?UserProfile)];
+        if profiles {
+            profile = profiles[0];
+            print(f"Profile: {profile.username}");
+            print(f"Bio: {profile.bio}");
+        } else {
+            print("No profile found");
+        }
+    }
+}
+
+walker CreateProfile {
+    has username: str;
+    has bio: str;
+
+    can create with entry {
+        # It looks for the profile connected to the current user's root
+        profile = root ++> UserProfile(
+            username=self.username,
+            bio=self.bio
+        );
+        print(f"Created profile for {profile[0].username}");
+    }
+}
+
+with entry {
+    # This code works for any user automatically
+    CreateProfile(username="alice", bio="Jac developer") spawn root;
+    GetProfile() spawn root;
+}
+```
+<br/>
+
+In a live application, one user might call `CreateProfile` to set up their information. When another user calls `GetProfile`, they will only see their own profile, not anyone else's.
+
+## Comparison with Python and Traditional Languages
+---
+
+If you have experience with Python, you'll find Jac's syntax easy to learn. Core programming concepts like variables, functions, and control flow work in a very similar way.
+
+### **Syntax Familiarity**
+
+For example, take a look at how you define and use functions and if/else statements in Jac.
+
+```jac
+# Variables and functions work similarly
+def calculate_average(numbers: list[float]) -> float {
+    if len(numbers) == 0 {
+        return 0.0;
+    }
+    return sum(numbers) / len(numbers);
+}
+
+with entry {
+    scores = [85.5, 92.0, 78.5, 96.0, 88.5];
+    avg = calculate_average(scores);
+    print(f"Average score: {avg}");
+
+    # Control flow is familiar
+    if avg >= 90.0 {
+        print("Excellent performance!");
+    } elif avg >= 80.0 {
+        print("Good performance!");
+    } else {
+        print("Needs improvement.");
+    }
+}
+```
+This familiar foundation makes it easier for you to get started and begin building with Jac's unique features like nodes, edges, and walkers.
+<br/>
+
+
+### Key Differences
+
+| Aspect | Python | Jac |
+|--------|--------|-----|
+| **Relationships** | Manual references | First-class edges |
+| **Persistence** | External database | Automatic |
+| **Multi-user** | Manual session management | Built-in isolation |
+| **Distribution** | Complex setup | Transparent |
+| **Graph Operations** | Manual traversal | Spatial queries |
+| **Type System** | Optional hints | Mandatory annotations |
+
+## Simple Friend Network Example
+---
+
+Let's walk through building a complete friend network from scratch. This will show you how Jac's core concepts—nodes, edges, and walkers—work together in a practical example.
+
+### Step 1: Define Your Nodes and Edges
+First, we need to define the structure of our data. We'll create a `Person` node to hold information about each individual and a `FriendsWith` edge to represent their relationships.
+
+```jac
+node Person {
+    has name: str;
+    has age: int;
+    has interests: list[str] = [];
+}
+
+edge FriendsWith {
+    has since: str;
+    has closeness: int;  # 1-10 scale
+}
+```
+<br/>
+
+### Step 2: Create the People and Their Connections
+
+Now that we have our blueprints, let's create a few people and connect them as friends. Notice how we can add data directly to the `FriendsWith` edge when we create it.
+
+```jac
+# Create friend network
+alice = root ++> Person(
+    name="Alice",
+    age=25,
+    interests=["coding", "music", "hiking"]
+);
+
+bob = root ++> Person(
+    name="Bob",
+    age=27,
+    interests=["music", "sports", "cooking"]
+);
+
+charlie = root ++> Person(
+    name="Charlie",
+    age=24,
+    interests=["coding", "gaming", "music"]
+);
+
+# Create friendships with metadata
+alice +>:FriendsWith(since="2020-01-15", closeness=8):+> bob;
+alice +>:FriendsWith(since="2021-06-10", closeness=9):+> charlie;
+bob +>:FriendsWith(since="2020-12-03", closeness=7):+> charlie;
+```
+<br/>
+
+### Step 3: Create a Walker to Find Common Interests
+
+Next, we need a way to analyze our network. Let's create a `walker` that can travel between friends and find out what interests they have in common.
+
+```jac
+walker FindCommonInterests {
+    # The walker needs to know who we're comparing against.
+    has target_person: Person;
+    # It will store the results of its search here.
+    has common_interests: list[str] = [];
+
+    # This ability runs automatically whenever the walker lands on a Person node.
+    can find_common with Person entry {
+        # We don't want to compare the person with themselves.
+        if here == self.target_person {
+            return;  # Skip self
+        }
+
+        # Find any interests this person shares with our target_person
+        shared = [];
+        for interest in here.interests {
+            if interest in self.target_person.interests {
+                shared.append(interest);
+            }
+        }
+
+        # If we found any, print them and add them to our list.
+        if shared {
+            self.common_interests.extend(shared);
+            print(f"{here.name} and {self.target_person.name} both like: {', '.join(shared)}");
+        }
+    }
+}
+```
+<br/>
+
+To use this walker, we'll give it a `target_person` (like Alice) and then "spawn" it on her friends' nodes. As the walker visits each friend, its `find_common ability` will trigger, comparing interests and printing the results.
+
+
+### Step 4: Bring It All Together
+Finally, let's update our `with entry` block to use the walker and analyze the network we created. We'll start by finding all of Alice's friends and then send our walker to visit them.
+
+<div class="code-block">
+```jac
+node Person {
+    has name: str;
+    has age: int;
+    has interests: list[str] = [];
+}
+
+edge FriendsWith {
+    has since: str;
+    has closeness: int;  # 1-10 scale
+}
+
+walker FindCommonInterests {
+    has target_person: Person;
+    has common_interests: list[str] = [];
+
+    can find_common with Person entry {
+        if here == self.target_person {
+            return;  # Skip self
+        }
+
+        # Find shared interests
+        shared = [];
+        for interest in here.interests {
+            if interest in self.target_person.interests {
+                shared.append(interest);
+            }
+        }
+
+        if shared {
+            self.common_interests.extend(shared);
+            print(f"{here.name} and {self.target_person.name} both like: {', '.join(shared)}");
+        }
+    }
+}
+
+with entry {
+    # Create friend network
+    alice = root ++> Person(
+        name="Alice",
+        age=25,
+        interests=["coding", "music", "hiking"]
+    );
+
+    bob = root ++> Person(
+        name="Bob",
+        age=27,
+        interests=["music", "sports", "cooking"]
+    );
+
+    charlie = root ++> Person(
+        name="Charlie",
+        age=24,
+        interests=["coding", "gaming", "music"]
+    );
+
+    # Create friendships with metadata
+    alice +>:FriendsWith(since="2020-01-15", closeness=8):+> bob;
+    alice +>:FriendsWith(since="2021-06-10", closeness=9):+> charlie;
+    bob +>:FriendsWith(since="2020-12-03", closeness=7):+> charlie;
+
+    print("=== Friend Network Analysis ===");
+
+    # 1. Find all nodes connected to Alice by a FriendsWith edge
+    alice_friends = [alice[0]->:FriendsWith:->(`?Person)];
+    print(f"Alice's friends: {[f.name for f in alice_friends]}");
+
+    # 2. Create an instance of our walker, telling it to compare against Alice
+    finder = FindCommonInterests(target_person=alice[0]);
+
+    # 3. Send the walker to visit each of Alice's friends
+    for friend in alice_friends {
+        friend spawn finder;
+    }
+
+    # Find close friendships (closeness >= 8)
+    close_friendships = [root-->->:FriendsWith:closeness >= 8:->];
+    print(f"Close friendships ({len(close_friendships)} found):");
+}
+```
+</div>
+
+<br/>
+
+This example shows how you can model complex relationships and then create walkers to navigate and analyze them using Jac's Object-Spatial Programming model. The walker moves through the graph, performing actions based on the data it finds, all in a way that is clear and easy to understand.
+
+
+## Key Takeaways
+
+Here’s a quick summary of what you’ve learned in this chapter.
+
+---
+**Core Concepts:**
+
+- **Object-Spatial Programming (OSP)**: This is the core idea behind Jac. It means you can move your code (computation) to your data using a combination of nodes, edges, and walkers.
+- **Nodes**: These are the primary objects in your program that hold your data.
+- **Edges**: These are the connections that define the relationships between your nodes.
+- **Walkers**: These are small, mobile programs you create to travel through your network of nodes and edges to perform tasks.
+
+**Key Advantages:**
+
+- **Write Code That Scales**: Your Jac code works automatically for a single user or for millions, running on one machine or a distributed system, without needing changes.
+- **No Database Headaches**: Jac automatically saves the data in your graph, so you don't have to set up or manage a database yourself.
+- **Model Relationships Naturally: Working with connected data feels intuitive and straightforward because of the graph-based approach.
+- **Built-in User Separation**: Jac automatically keeps each user's data separate, so you don't have to build complex logic to manage user sessions.
+- **Familiar Python-like Syntax**: Jac is easy to learn for Python developers, letting you focus on its powerful new features right away.
+
+
+Start thinking about problems that involve connected data, as these are the areas where Jac truly excels:
+- Social networks and user connections
+- Knowledge graphs and information relationships
+- Workflow systems and process connections
+- Data pipelines and transformation chains
+
+!!! Note
+    Remember: Jac shines when your problem naturally involves connected data!
+
+---
+
+*Ready to start your Object-Spatial Programming journey? Let's get to know Variables, Types, and Basic Syntax next!*

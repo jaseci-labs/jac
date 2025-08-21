@@ -3,7 +3,7 @@ import from jaclang.runtimelib.machine { JacMachine }
 
 glob dynamic_module_source =
     """
-    import from .arch_create_util {UtilityNode}
+    import from arch_create_util {UtilityNode}
 
     walker DynamicWalker {
     can start with entry {

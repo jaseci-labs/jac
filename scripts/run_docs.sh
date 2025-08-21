@@ -1,3 +1,3 @@
-cd jac/docs
+cd docs
 pip install -e .
-mkdocs serve
+python scripts/mkdocs_serve.py

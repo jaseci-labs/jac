@@ -18,7 +18,7 @@ export function setupVisualDebuggerWebview(context: vscode.ExtensionContext, env
 
     vscode.debug.onDidStartDebugSession(async () => {
         if (webviewPanel) {
-            graphData = await getDebugGraphData();
+            graphData = await getDebugGraphData(envManager);
             if (graphData != null) {
                 webviewPanel.webview.postMessage({
                     "command": "init",
@@ -30,7 +30,7 @@ export function setupVisualDebuggerWebview(context: vscode.ExtensionContext, env
 
     vscode.debug.onDidChangeActiveStackItem(async () => {
         if (webviewPanel) {
-            graphData = await getDebugGraphData();
+            graphData = await getDebugGraphData(envManager);
             if (graphData != null) {
                 webviewPanel.webview.postMessage({
                     "command": "update",

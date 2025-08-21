@@ -12,20 +12,16 @@ from typing import Optional
 
 import jaclang.compiler.unitree as uni
 from jaclang.cli.cmdreg import CommandShell, cmd_registry
-from jaclang.compiler.passes.main import CompilerMode as CMode, PyastBuildPass
+from jaclang.compiler.passes.main import PyastBuildPass
 from jaclang.compiler.program import JacProgram
 from jaclang.runtimelib.builtin import printgraph
 from jaclang.runtimelib.constructs import WalkerArchetype
-from jaclang.runtimelib.machine import (
-    ExecutionContext,
-    JacMachine as Jac,
-    JacMachineInterface as JacInterface,
-)
+from jaclang.runtimelib.machine import ExecutionContext, JacMachine as Jac
+from jaclang.runtimelib.utils import read_file_with_encoding
 from jaclang.utils.helpers import debugger as db
 from jaclang.utils.lang_tools import AstTool
 
-
-JacInterface.create_cmd()
+Jac.create_cmd()
 Jac.setup()
 
 
@@ -98,7 +94,15 @@ def proc_file_sess(
         )
     base, mod = os.path.split(filename)
     base = base if base else "./"
-    mod = mod[:-4]
+    if filename.endswith(".jac") or filename.endswith(".jir"):
+        mod = mod[:-4]
+    elif filename.endswith(".py"):
+        mod = mod[:-3]
+    else:
+        print(
+            "Not a valid file!\nOnly supports `.jac`, `.jir`, and `.py`",
+            file=sys.stderr,
+        )
     mach = ExecutionContext(session=session, root=root)
     Jac.set_context(mach)
     return base, mod, mach
@@ -111,19 +115,20 @@ def run(
     main: bool = True,
     cache: bool = True,
 ) -> None:
-    """Run the specified .jac file.
+    """Run the specified .jac, .jir, or .py file.
 
-    Executes a Jac program file, loading it into the Jac runtime environment
-    and running its code. This is the primary way to execute Jac programs.
+    Executes a Jac program file or Python file, loading it into the Jac runtime environment
+    and running its code. Python files are converted to Jac AST for execution.
 
     Args:
-        filename: Path to the .jac or .jir file to run
+        filename: Path to the .jac, .jir, or .py file to run
         session: Optional session identifier for persistent state
         main: Treat the module as __main__ (default: True)
         cache: Use cached compilation if available (default: True)
 
     Examples:
         jac run myprogram.jac
+        jac run myscript.py
         jac run myprogram.jac --session mysession
         jac run myprogram.jac --no-main
     """
@@ -132,7 +137,7 @@ def run(
     base, mod, mach = proc_file_sess(filename, session)
     Jac.set_base_path(base)
 
-    if filename.endswith(".jac"):
+    if filename.endswith((".jac", ".py")):
         try:
             Jac.jac_import(
                 target=mod,
@@ -140,7 +145,7 @@ def run(
                 override_name="__main__" if main else None,
             )
         except Exception as e:
-            print(e, file=sys.stderr)
+            print(f"Error running {filename}: {e}", file=sys.stderr)
     elif filename.endswith(".jir"):
         try:
             with open(filename, "rb") as f:
@@ -151,10 +156,13 @@ def run(
                     override_name="__main__" if main else None,
                 )
         except Exception as e:
-            print(e, file=sys.stderr)
-
+            print(f"Error running {filename}: {e}", file=sys.stderr)
     else:
-        print("Not a valid file!\nOnly supports `.jac` and `.jir`")
+        print(
+            "Not a valid file!\nOnly supports `.jac`, `.jir`, and `.py`",
+            file=sys.stderr,
+        )
+
     mach.close()
 
 
@@ -221,10 +229,7 @@ def build(filename: str) -> None:
         jac build myprogram.jac --no-typecheck
     """
     if filename.endswith(".jac"):
-        (out := JacProgram()).compile(
-            file_path=filename,
-            mode=CMode.COMPILE,
-        )
+        (out := JacProgram()).compile(file_path=filename)
         errs = len(out.errors_had)
         warnings = len(out.warnings_had)
         print(f"Errors: {errs}, Warnings: {warnings}")
@@ -232,6 +237,41 @@ def build(filename: str) -> None:
             pickle.dump(out, f)
     else:
         print("Not a .jac file.", file=sys.stderr)
+
+
+@cmd_registry.register
+def bind(filename: str, typecheck: bool = False) -> None:
+    """Bind the specified .jac file.
+
+    Parses and binds a Jac source file, resolving symbols and preparing it for execution.
+    This step is necessary before running the program, as it ensures all references
+    are correctly linked and the program structure is validated.
+    TODO: performs type checking.
+
+    Args:
+        filename: Path to the .jac file to bind
+        typecheck: Print the symbol table after binding (default: False)
+
+    Examples:
+        jac bind myprogram.jac
+        jac bind myprogram.jac -t
+    """
+    if filename.endswith((".jac", ".py")):
+        (out := JacProgram()).bind(file_path=filename)
+        errs = len(out.errors_had)
+        warnings = len(out.warnings_had)
+        if typecheck:
+            for mods in out.mod.hub.values():
+                if mods.name == "builtins":
+                    continue
+                header = (
+                    f"{'=' * 6} SymTable({mods.name}) {'=' * (22 - len(mods.name))}"
+                )
+                divider = "=" * 40
+                print(f"{divider}\n{header}\n{divider}\n{mods.sym_tab.sym_pp()}")
+        print(f"Errors: {errs}, Warnings: {warnings}")
+    else:
+        print("Not a .jac/.py file.", file=sys.stderr)
 
 
 @cmd_registry.register
@@ -250,10 +290,7 @@ def check(filename: str, print_errs: bool = True) -> None:
         jac check myprogram.jac --no-print_errs
     """
     if filename.endswith(".jac"):
-        (prog := JacProgram()).compile(
-            file_path=filename,
-            mode=CMode.TYPECHECK,
-        )
+        (prog := JacProgram()).compile(file_path=filename)
 
         errs = len(prog.errors_had)
         warnings = len(prog.warnings_had)
@@ -278,13 +315,9 @@ def lsp() -> None:
     Examples:
         jac lsp
     """
-    from jaclang import JacMachineInterface as _
+    from jaclang.langserve.server import run_lang_server
 
-    run_lang_server_tuple = _.jac_import(
-        "...jaclang.langserve.server", __file__, items={"run_lang_server": None}
-    )
-    run_lang_server = run_lang_server_tuple[0]
-    run_lang_server()  # type: ignore
+    run_lang_server()
 
 
 @cmd_registry.register
@@ -556,16 +589,21 @@ def py2jac(filename: str) -> None:
         jac py2jac myscript.py > converted.jac
     """
     if filename.endswith(".py"):
-        with open(filename, "r") as f:
-            file_source = f.read()
-            code = PyastBuildPass(
-                ir_in=uni.PythonModuleAst(
-                    ast3.parse(file_source),
-                    orig_src=uni.Source(file_source, filename),
-                ),
-                prog=JacProgram(),
-            ).ir_out.unparse()
-        print(code)
+        file_source = read_file_with_encoding(filename)
+        code = PyastBuildPass(
+            ir_in=uni.PythonModuleAst(
+                ast3.parse(file_source),
+                orig_src=uni.Source(file_source, filename),
+            ),
+            prog=JacProgram(),
+        ).ir_out.unparse(requires_format=False)
+        formatted_code = JacProgram().jac_str_formatter(
+            source_str=code, file_path=filename
+        )
+        if formatted_code:
+            print(formatted_code)
+        else:
+            print("Error converting Python code to Jac.", file=sys.stderr)
     else:
         print("Not a .py file.")
 
@@ -585,8 +623,7 @@ def jac2py(filename: str) -> None:
         jac jac2py myprogram.jac > converted.py
     """
     if filename.endswith(".jac"):
-        with open(filename, "r"):
-            code = JacProgram().compile(file_path=filename).gen.py
+        code = JacProgram().compile(file_path=filename).gen.py
         print(code)
     else:
         print("Not a .jac file.", file=sys.stderr)

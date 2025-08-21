@@ -7,3 +7,12 @@ class SemTokManager {
             self.gen_sem_tok_node(ir);
     }
 }
+
+
+def init(
+    self: ModuleManager,
+    program: JacProgram,
+    sem_managers: <>dict,
+    program2: JacProgram,
+    sem_managers2: <>dict
+) -> None { }

@@ -31,6 +31,7 @@ walker webhook {
 ```
 
 The `type` field specifies where the API key will be placed in the HTTP request:
+
 - `header`: In the HTTP headers (default)
 - `query`: As a query parameter
 - `path`: As part of the URL path
@@ -49,27 +50,30 @@ Jac Cloud provides several endpoints for managing webhook API keys:
 **Endpoint:** `POST /webhook/generate-key`
 
 **Request Body:**
+
 ```python
 {
-  # unique name for the webhook key
   "name": "webhook1",
-
-  # list of walker names allowed to use this key (empty means all webhooks)
   "walkers": ["webhook"],
-
-  # list of node names allowed with this key (empty means all nodes)
   "nodes": ["root"],
-
-  # expiration settings
   "expiration": {
     "count": 60,
-    # seconds | minutes | hours | days
     "interval": "days"
   }
 }
 ```
 
+| Parameter  | Description                                                                                                                  |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| name       | A unique identifier for the webhook key.                                                                                     |
+| walkers    | A list of specific walker names that are permitted to use this key. If this list is empty, all walkers are allowed.          |
+| nodes      | A list of specific node names that are permitted to be accessed with this key. If this list is empty, all nodes are allowed. |
+| expiration | Defines the expiration settings for the webhook key.                                                                         |
+| count      | The numerical value for the expiration duration.                                                                             |
+| interval   | The unit of time for the expiration duration. Valid values include "seconds", "minutes", "hours", and "days".                |
+
 **Response:**
+
 ```python
 {
   "id": "672203ee093fd3d208a4b6d4",
@@ -83,6 +87,7 @@ Jac Cloud provides several endpoints for managing webhook API keys:
 **Endpoint:** `GET /webhook`
 
 **Response:**
+
 ```python
 {
   "keys": [
@@ -104,6 +109,7 @@ Jac Cloud provides several endpoints for managing webhook API keys:
 **Endpoint:** `PATCH /webhook/extend/{id}`
 
 **Request Body:**
+
 ```python
 {
   "count": 60,
@@ -113,6 +119,7 @@ Jac Cloud provides several endpoints for managing webhook API keys:
 ```
 
 **Response:**
+
 ```python
 {
   "message": "Successfully Extended!"
@@ -124,6 +131,7 @@ Jac Cloud provides several endpoints for managing webhook API keys:
 **Endpoint:** `DELETE /webhook/delete`
 
 **Request Body:**
+
 ```python
 {
   # list of ids to be deleted
@@ -132,6 +140,7 @@ Jac Cloud provides several endpoints for managing webhook API keys:
 ```
 
 **Response:**
+
 ```python
 {
   "message": "Successfully Deleted!"
@@ -160,6 +169,7 @@ walker webhook_by_header {
 ```
 
 **Example Request:**
+
 ```bash
 curl -X 'POST' 'http://localhost:8001/webhook/walker/webhook_by_header' \
   -H 'test-key: YOUR-GENERATED-KEY'
@@ -183,6 +193,7 @@ walker webhook_by_query {
 ```
 
 **Example Request:**
+
 ```bash
 curl -X 'POST' 'http://localhost:8001/webhook/walker/webhook_by_query?test_key=YOUR-GENERATED-KEY'
 ```
@@ -205,6 +216,7 @@ walker webhook_by_path {
 ```
 
 **Example Request:**
+
 ```bash
 curl -X 'POST' 'http://localhost:8001/webhook/walker/webhook_by_path/YOUR-GENERATED-KEY'
 ```
@@ -227,6 +239,7 @@ walker webhook_by_body {
 ```
 
 **Example Request:**
+
 ```bash
 curl -X 'POST' 'http://localhost:8001/webhook/walker/webhook_by_body' -d '{"test_key": "YOUR-GENERATED-KEY"}'
 ```

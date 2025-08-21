@@ -1,8 +1,15 @@
-# <span style="color: orange"> Generative AI in Jaclang - MTP
+# GenAI in Jaclang - MTP
+### AI-Integrated & Agentic Application Development
 
-Integration of AI models as core software components is becoming mainstraeam. Jac-lang facilitates the integration of such models, specifically Large Language Models (LLMs) into programming in an ultra seamless manner. We name this functionality as <span style="color:orange;">MTP</span>, meaning "Meaning-typed Programming". There is an extensive research journey which you can dive into, available on arxiv.org. (Link available at the bottom of this page)
+<div class="hero-section" markdown>
+**Meaning-Typed Programming (MTP) provides language-level abstractions for integrating Large Language Models into applications with simplified syntax.**
+</div>
 
-The MTP concept is realized in Jac-lang as the **MTLLM** plugin which can be installed as a PyPi package.
+## What is MTP?
+
+Meaning-Typed Programming (MTP) is a programming paradigm that automates LLM integration through language-level abstractions. MTP extracts semantic meaning from code to automatically generate prompts and handle response conversion, reducing the need for manual prompt engineering. These abstractions enable seamless LLM integration by automatically generating prompts from code semantics, making it easier to build agentic AI applications. Additional research details are available on arxiv.org.
+
+The MTP concept is implemented in Jac-lang through the **MTLLM** plugin, which is available as a PyPI package.
 
 
 <div class="grid cards" markdown>
@@ -11,17 +18,15 @@ The MTP concept is realized in Jac-lang as the **MTLLM** plugin which can be ins
 
     ---
 
-    *You can check out the reserach Journey of MTP*
+    *Research documentation for MTP*
 
-
-    <!-- [REPO](https://github.com/Jaseci-Labs/jaseci/tree/main/jac-mtllm){ .md-button} -->
     [arXiv PAPER](https://arxiv.org/abs/2405.08965){ .md-button}
 
 -   __Get Started with MTP__
 
     ---
 
-    *You can refer to our Quickstart guide for MTP*
+    *Quickstart guide for MTP*
 
     [DOCS](./quickstart.md){ .md-button}
 

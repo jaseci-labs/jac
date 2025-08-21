@@ -3,11 +3,11 @@ Fantasy Trading Game - An interactive RPG trading simulation using MTLLM
 Demonstrates MTLLM character generation, conversation, and transaction systems
 """
 
-import from mtllm.llms {OpenAI}
-import from os {get_terminal_size}
+import from mtllm { Model }
+import from os { get_terminal_size }
 
 
-glob llm = OpenAI(model_name="gpt-4o");
+glob llm = Model(model_name="gpt-4o");
 
 
 glob person_record: dict = {};
@@ -101,7 +101,7 @@ they said yes, the transaction is made. Make sure the NPC doesn't give
 an item way way less than its price, but they can negotiate a bit.
 """
 def chat_with_player(player: Person, npc: Person, chat_history: list[Chat]) -> Chat
-    by llm(method="ReAct", tools=[make_transaction]);
+    by llm(tools=[make_transaction]);
 
 
     def clear_screen() {

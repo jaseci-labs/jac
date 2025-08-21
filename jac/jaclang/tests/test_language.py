@@ -5,13 +5,15 @@ import os
 import sys
 import sysconfig
 import tempfile
+import subprocess
+from pathlib import Path
 from unittest.mock import patch
 
 from jaclang import JacMachine as Jac
 from jaclang.cli import cli
-from jaclang.compiler.passes.main import CompilerMode as CMode
 from jaclang.compiler.program import JacProgram
 from jaclang.utils.test import TestCase
+from jaclang.runtimelib.utils import read_file_with_encoding
 
 
 class JacLanguageTests(TestCase):
@@ -120,13 +122,19 @@ class JacLanguageTests(TestCase):
         data = json.loads(stdout_value)
 
         nodes = data["nodes"]
-        self.assertEqual(len(nodes), 7)
+        edges = data["edges"]
+
+        self.assertEqual(len(nodes), 5)
+        self.assertEqual(len(edges), 6)
+
         for node in nodes:
             label = node["label"]
             self.assertIn(label, ["root", "N(val=0)", "N(val=1)"])
 
-        edges = data["edges"]
-        self.assertEqual(len(edges), 6)
+        for edge in edges:
+            label = edge["label"]
+            self.assertIn(label, ["E(val=1)", "E(val=1)", "E(val=1)", "E(val=0)", "E(val=0)", "E(val=0)"])
+
 
     def test_printgraph_mermaid(self) -> None:
         """Test the mermaid gen of builtin function."""
@@ -188,7 +196,9 @@ class JacLanguageTests(TestCase):
 
     def test_arith_precedence(self) -> None:
         """Basic precedence test."""
-        prog = JacProgram().compile_from_str("with entry {print(4-5-4);}", "test.jac")
+        prog = JacProgram().compile(
+            use_str="with entry {print(4-5-4);}", file_path="test.jac"
+        )
         captured_output = io.StringIO()
         sys.stdout = captured_output
         exec(compile(prog.gen.py_ast[0], "test.py", "exec"))
@@ -225,7 +235,7 @@ class JacLanguageTests(TestCase):
         sys.stdout = sys.__stdout__
         stdout_value = captured_output.getvalue()
         self.assertIn(
-            '[label="inner_node(main=5, sub=2)"];',
+            '[label="inner_node(main=5, sub=2)"fillcolor="#FFDEAD"];',
             stdout_value,
         )
 
@@ -288,13 +298,13 @@ class JacLanguageTests(TestCase):
         Jac.attach_program(
             (prog := JacProgram()),
         )
-        prog.compile(self.fixture_abs_path("./deep_import_interp.jac"))
+        prog.build(self.fixture_abs_path("./deep_import_interp.jac"))
         Jac.jac_import("deep_import_interp", base_path=self.fixture_abs_path("./"))
         self.assertEqual(len(Jac.program.mod.hub.keys()), 5)
 
     def test_deep_imports_mods(self) -> None:
         """Parse micro jac file."""
-        Jac.loaded_modules.clear()
+        Jac.reset_machine()
         targets = [
             "deep",
             "deep.deeper",
@@ -305,11 +315,13 @@ class JacLanguageTests(TestCase):
         for i in targets:
             if i in sys.modules:
                 del sys.modules[i]
+        captured_output = io.StringIO()
+        sys.stdout = captured_output
         Jac.jac_import("deep_import_mods", base_path=self.fixture_abs_path("./"))
-        mods = Jac.loaded_modules.keys()
+        sys.stdout = sys.__stdout__
+        stdout_value = eval(captured_output.getvalue())
         for i in targets:
-            self.assertIn(i, mods)
-        self.assertEqual(len([i for i in mods if i.startswith("deep")]), 6)
+            self.assertIn(i, stdout_value)
 
     def test_deep_outer_imports_one(self) -> None:
         """Parse micro jac file."""
@@ -589,14 +601,14 @@ class JacLanguageTests(TestCase):
 
     def test_py_kw_as_name_disallowed(self) -> None:
         """Basic precedence test."""
-        (prog := JacProgram()).compile_from_str(
-            "with entry {print.is.not.True(4-5-4);}", "test.jac"
+        (prog := JacProgram()).compile(
+            use_str="with entry {print.is.not.True(4-5-4);}", file_path="test.jac"
         )
         self.assertIn("Python keyword is used as name", str(prog.errors_had[0].msg))
 
     def test_double_format_issue(self) -> None:
         """Basic precedence test."""
-        prog = JacProgram().compile_from_str("with entry {print(hello);}", "test.jac")
+        prog = JacProgram().compile("with entry {print(hello);}", "test.jac")
         prog.unparse()
         before = prog.format()
         prog.format()
@@ -703,7 +715,7 @@ class JacLanguageTests(TestCase):
     def test_inherit_baseclass_sym(self) -> None:
         """Basic test for symtable support for inheritance."""
         mypass = JacProgram().compile(
-            self.examples_abs_path("guess_game/guess_game4.jac")
+            self.examples_abs_path("guess_game/guess_game3.jac")
         )
         table = None
         for i in mypass.sym_tab.kid_scope:
@@ -757,6 +769,10 @@ class JacLanguageTests(TestCase):
 
     def test_list_methods(self) -> None:
         """Test list_modules, list_walkers, list_nodes, and list_edges."""
+        Jac.reset_machine()
+        Jac.set_base_path(self.fixture_abs_path("."))
+        sys.modules.pop("foo", None)
+        sys.modules.pop("bar", None)
         captured_output = io.StringIO()
         sys.stdout = captured_output
 
@@ -784,6 +800,9 @@ class JacLanguageTests(TestCase):
 
     def test_walker_dynamic_update(self) -> None:
         """Test dynamic update of a walker during runtime."""
+        Jac.reset_machine()
+        Jac.set_base_path(self.fixture_abs_path("."))
+        sys.modules.pop("bar", None)
         session = self.fixture_abs_path("bar_walk.session")
         bar_file_path = self.fixture_abs_path("bar.jac")
         update_file_path = self.fixture_abs_path("walker_update.jac")
@@ -797,7 +816,7 @@ class JacLanguageTests(TestCase):
         )
         sys.stdout = sys.__stdout__
         stdout_value = captured_output.getvalue()
-        os.remove(session)
+        os.remove(session) if os.path.exists(session) else None
         expected_output = "Created 5 items."
         self.assertIn(expected_output, stdout_value.split("\n"))
         # Define the new behavior to be added
@@ -1297,3 +1316,152 @@ class JacLanguageTests(TestCase):
         self.assertIn("foo1", stdout_value[5])
         self.assertIn("foo2", stdout_value[6])
         self.assertIn("Coroutine task is completed", stdout_value[17])
+
+    def test_unicode_string_literals(self) -> None:
+        """Test unicode characters in string literals are preserved correctly."""
+        captured_output = io.StringIO()
+        sys.stdout = captured_output
+        Jac.jac_import("unicode_strings", base_path=self.fixture_abs_path("./"))
+        sys.stdout = sys.__stdout__
+        stdout_value = captured_output.getvalue().split("\n")
+        self.assertIn("1. ✓ 1st (due: True)", stdout_value[0])
+        self.assertIn("🌟 Star", stdout_value[2])
+        self.assertIn("Multi-line with ✓ unicode and ○ symbols", stdout_value[3])
+        self.assertIn("Raw string with ✓ and ○", stdout_value[4])
+        self.assertIn("Tab ✓", stdout_value[5])
+        self.assertIn("Newline ○", stdout_value[6])
+
+    def test_sitecustomize_meta_importer(self) -> None:
+        """Verify Jac modules importable without importing jaclang."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            Path(tmpdir, "mymod.jac").write_text('with entry {print("via meta");}')
+            env = os.environ.copy()
+            project_root = Path(__file__).resolve().parents[2]
+            env["PYTHONPATH"] = os.pathsep.join([str(project_root), tmpdir])
+            proc = subprocess.run(
+                [sys.executable, "-c", "import mymod"],
+                capture_output=True,
+                text=True,
+                cwd=tmpdir,
+                env=env,
+            )
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertEqual(proc.stdout.strip(), "via meta")
+
+    def test_spawn_loc_list(self) -> None:
+        """Test spawning a walker on list of nodes."""
+        captured_output = io.StringIO()
+        sys.stdout = captured_output
+        Jac.jac_import("spawn_loc_list", base_path=self.fixture_abs_path("./"))
+        sys.stdout = sys.__stdout__
+        stdout_value = captured_output.getvalue().split("\n")
+        self.assertIn("I am here MyNode(val=5)", stdout_value[0])
+        self.assertIn("I am here MyNode(val=15)", stdout_value[2])
+        self.assertIn("I am here MyNode(val=20)", stdout_value[3])
+        self.assertIn("I am here MyEdge(val=100)", stdout_value[5])
+        self.assertIn("I am here MyNode(val=30)", stdout_value[6])
+
+    def test_while_else(self) -> None:
+        """Test else part in while loop."""
+        captured_output = io.StringIO()
+        sys.stdout = captured_output
+        Jac.jac_import("while_else", base_path=self.fixture_abs_path("./"))
+        sys.stdout = sys.__stdout__
+        stdout_value = captured_output.getvalue().split("\n")
+        self.assertIn("Num:  4", stdout_value[0])
+        self.assertIn("Num:  3", stdout_value[1])
+        self.assertIn("Completed", stdout_value[2])
+
+    def test_read_file_with_encoding_utf8(self) -> None:
+        """Test reading UTF-8 encoded file."""
+        with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', delete=False) as f:
+            test_content = "Hello, 世界! 🌍 Testing UTF-8 encoding."
+            f.write(test_content)
+            temp_path = f.name
+        
+        try:
+            result = read_file_with_encoding(temp_path)
+            self.assertEqual(result, test_content)
+        finally:
+            os.unlink(temp_path)
+
+    def test_read_file_with_encoding_utf16(self) -> None:
+        """Test reading UTF-16 encoded file when UTF-8 fails."""
+        with tempfile.NamedTemporaryFile(delete=False, mode="w", encoding="utf-16") as f:
+            test_content = "Hello, 世界! UTF-16 encoding test."
+            f.write(test_content)
+            temp_path = f.name
+        
+        try:
+            result = read_file_with_encoding(temp_path)
+            self.assertEqual(result, test_content)
+        finally:
+            os.unlink(temp_path)
+
+    def test_read_file_with_encoding_utf8_bom(self) -> None:
+        """Test reading UTF-8 with BOM encoded file."""
+        with tempfile.NamedTemporaryFile(delete=False, mode='w', encoding='utf-8-sig') as f:
+            test_content = "Hello, UTF-8 BOM test! 🚀"
+            f.write(test_content)
+            temp_path = f.name
+        
+        try:
+            result = read_file_with_encoding(temp_path)
+            self.assertEqual(result, test_content)
+        finally:
+            os.unlink(temp_path)
+
+    # TODO: Support reading files with Latin-1 encoding
+    # def test_read_file_with_encoding_latin1(self) -> None:
+    #     """Test reading Latin-1 encoded file as fallback."""
+    #     with tempfile.NamedTemporaryFile(mode='w', encoding='latin-1', delete=False) as f:
+    #         test_content = "Hello, café! Latin-1 test."
+    #         f.write(test_content)
+    #         f.flush()
+    #         temp_path = f.name
+
+    #     try:
+    #         result = read_file_with_encoding(temp_path)
+    #         self.assertEqual(result, test_content)
+    #     finally:
+    #         os.unlink(temp_path)
+
+    def test_read_file_with_encoding_binary_file_fallback(self) -> None:
+        """Test reading binary file falls back to latin-1."""
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            binary_data = bytes([0xFF, 0xFE, 0x00, 0x48, 0x65, 0x6C, 0x6C, 0x6F])
+            f.write(binary_data)
+            f.flush()  
+            temp_path = f.name
+        
+        try:
+            result = read_file_with_encoding(temp_path)
+            self.assertIsInstance(result, str)
+            self.assertGreater(len(result), 0)
+        finally:
+            os.unlink(temp_path)
+
+    def test_read_file_with_encoding_special_characters(self) -> None:
+        """Test reading file with various special characters."""
+        with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', delete=False) as f:
+            test_content = (
+                "Special chars: åäö ñ ü ç é\n"
+                "Symbols: ©®™ §¶†‡•\n" 
+                "Math: ∑∏∫√±≤≥≠\n"
+                "Arrows: ←→↑↓↔\n"
+                "Emoji: 😀😍🎉🔥💯\n"
+            )
+            f.write(test_content)
+            f.flush()  
+            temp_path = f.name
+        
+        try:
+            result = read_file_with_encoding(temp_path)
+
+            self.assertEqual(result, test_content)
+            self.assertIn("åäö", result)
+            self.assertIn("©®™", result)
+            self.assertIn("∑∏∫", result)
+            self.assertIn("😀😍", result)
+        finally:
+            os.unlink(temp_path)

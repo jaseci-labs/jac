@@ -18,7 +18,7 @@ obj SavableObject {
 
 walker create_custom_object {
     can enter1 with `root entry {
-        o = SavableObject(
+        self.obj = SavableObject(
             val=0,
             arr=[],
             json={},
@@ -36,7 +36,15 @@ walker create_custom_object {
             ),
             enum_field = Enum.A
         );
-        _.save(o);
+        save(self.obj);
+
+        # commit the object to db
+        commit(self.obj);
+    }
+
+    can exit1 with `root exit {
+        # get directly from shelf
+        o = _.get_context().mem.__shelf__.get(str(self.obj.__jac__.id)).archetype;
         print(jid(o));
         print(o);
     }

@@ -37,7 +37,7 @@ class AccessLevel(IntEnum):
             case int():
                 return AccessLevel(val)
             case str():
-                return AccessLevel[val]
+                return AccessLevel[val.upper()]
             case _:
                 return val
 
@@ -379,6 +379,10 @@ class Archetype:
     def __repr__(self) -> str:
         """Override repr for archetype."""
         return f"{self.__class__.__name__}"
+
+    def __jac_access__(self) -> AccessLevel | str | int | None:
+        """Override access validation."""
+        return None
 
 
 class NodeArchetype(Archetype):

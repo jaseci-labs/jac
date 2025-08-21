@@ -1,24 +1,19 @@
 """A Number Guessing Game"""
+
 import random;
 
-
-obj Game {
-    has attempts: int, won: bool = False;
-
-    def play;
+walker GuessGame {
+    has correct_number: int = random.randint(1, 10);
+    
+    can start_game with `root entry;
+    def process_guess(guess: int);
 }
 
-
-obj GuessTheNumberGame (Game) {
-    has correct_number: int = (1, 10) |> random.randint;
-
-    def init;
-    override def play;
-    def process_guess(guess: int);
+node turn {
+    can check with GuessGame entry;
 }
 
 # Run the game
  with entry {
-    game = |> GuessTheNumberGame;
-    |> game.play;
+    GuessGame() spawn root;
 }

@@ -1,5 +1,7 @@
 # Walker and Node ability trigger sequence
-```
+
+<div class="code-block">
+```jac
 node Node {
     has val: str;
 
@@ -51,65 +53,4 @@ with entry{
     Walker() spawn root;
 }
 ```
-## Current triggering sequence (jaclang version >= 0.7.29)
-> **walker generic entry** => \
-> **walker typed entry** => \
-> **node generic entry** => \
-> **node typed entry** => \
-> **node typed exit** => \
-> **node generic exit** => \
-> **back to walker typed exit** => \
-> **walker generic exit**
-```
-walker entry
-walker enter to root
-a-1
-a-2
-a-3
-a-4
-a-5
-a-6
-b-1
-b-2
-b-3
-b-4
-b-5
-b-6
-c-1
-c-2
-c-3
-c-4
-c-5
-c-6
-walker exit
-```
-## For jaclang version <= 0.7.28
-> **walker generic entry** => \
-> **node entries (generic/typed)** => \
-> **back to walker typed entry** => \
-> **walker typed exit** => \
-> **back to node exits (generic/typed)** => \
-> **back to walker generic exit**
-```
-walker entry
-walker enter to root
-a-2
-a-3
-a-1
-a-6
-a-4
-a-5
-b-2
-b-3
-b-1
-b-6
-b-4
-b-5
-c-2
-c-3
-c-1
-c-6
-c-4
-c-5
-walker exit
-```
+</div>

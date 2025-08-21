@@ -1,5 +1,4 @@
 import datetime;
-import from jac_cloud.core.archetype { NodeAnchor }
 import numpy;
 import from sklearn.feature_extraction.text { TfidfVectorizer }
 import from sklearn.metrics.pairwise { cosine_similarity }

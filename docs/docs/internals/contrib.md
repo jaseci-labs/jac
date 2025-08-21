@@ -30,7 +30,7 @@ This is how we run our tests.
 
 ## Run docs site locally
 
-This is how we run the docs
+This is how we run the docs.
 
 ```bash
 --8<-- "scripts/run_docs.sh"

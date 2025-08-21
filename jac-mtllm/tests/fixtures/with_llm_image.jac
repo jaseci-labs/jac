@@ -1,10 +1,8 @@
-import from mtllm.llms { FakeLLM }
-import from mtllm { Image }
+import from mtllm { Model, Image }
 import os;
 
-glob llm = FakeLLM(
-    print_prompt=True,
-    default="[Output] Something",
+glob llm = Model(
+    model_name="gpt-4o",
 );
 
 

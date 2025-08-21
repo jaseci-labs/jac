@@ -11,37 +11,40 @@ import jaclang.compiler.unitree as uni
 from jaclang.compiler.parser import JacParser
 from jaclang.compiler.passes.main import (
     Alert,
+    BinderPass,
     CFGBuildPass,
-    CompilerMode,
     DeclImplMatchPass,
     DefUsePass,
     InheritancePass,
     JacAnnexPass,
     JacImportDepsPass,
     PyBytecodeGenPass,
-    PyImportDepsPass,
     PyJacAstLinkPass,
     PyastBuildPass,
     PyastGenPass,
+    SemDefMatchPass,
     SymTabBuildPass,
     SymTabLinkPass,
     Transform,
-    TypeBinderPass,
-    TypeCheckerPass,
+    # TypeBinderPass,
+    # TypeCheckerPass,
 )
 from jaclang.compiler.passes.tool import (
     DocIRGenPass,
     FuseCommentsPass,
     JacFormatPass,
 )
+from jaclang.runtimelib.utils import read_file_with_encoding
 from jaclang.utils.log import logging
 
 
 logger = logging.getLogger(__name__)
 
 ir_gen_sched = [
+    SymTabBuildPass,
     DeclImplMatchPass,
     DefUsePass,
+    SemDefMatchPass,
     CFGBuildPass,
     InheritancePass,
 ]
@@ -65,32 +68,16 @@ class JacProgram:
 
     def get_bytecode(self, full_target: str) -> Optional[types.CodeType]:
         """Get the bytecode for a specific module."""
-        if full_target in self.mod.hub:
+        if full_target in self.mod.hub and self.mod.hub[full_target].gen.py_bytecode:
             codeobj = self.mod.hub[full_target].gen.py_bytecode
             return marshal.loads(codeobj) if isinstance(codeobj, bytes) else None
-        result = self.compile(file_path=full_target, mode=CompilerMode.COMPILE_SINGLE)
+        result = self.compile(file_path=full_target)
         return marshal.loads(result.gen.py_bytecode) if result.gen.py_bytecode else None
 
-    def compile(
-        self,
-        file_path: str,
-        mode: CompilerMode = CompilerMode.COMPILE,
-    ) -> uni.Module:
-        """Convert a Jac file to an AST."""
-        with open(file_path, "r", encoding="utf-8") as file:
-            return self.compile_from_str(
-                source_str=file.read(), file_path=file_path, mode=mode
-            )
-
-    def compile_from_str(
-        self,
-        source_str: str,
-        file_path: str,
-        mode: CompilerMode = CompilerMode.COMPILE,
-    ) -> uni.Module:
+    def parse_str(self, source_str: str, file_path: str) -> uni.Module:
         """Convert a Jac file to an AST."""
         had_error = False
-        if file_path.endswith(".py"):
+        if file_path.endswith(".py") or file_path.endswith(".pyi"):
             parsed_ast = py_ast.parse(source_str)
             py_ast_ret = PyastBuildPass(
                 ir_in=uni.PythonModuleAst(
@@ -113,61 +100,36 @@ class JacProgram:
         if self.mod.main.stub_only:
             self.mod = uni.ProgramModule(mod)
         self.mod.hub[mod.loc.mod_path] = mod
-        return self.run_pass_schedule(mod_targ=mod, mode=mode)
+        JacAnnexPass(ir_in=mod, prog=self)
+        return mod
 
-    def run_pass_schedule(
-        self,
-        mod_targ: uni.Module,
-        mode: CompilerMode = CompilerMode.COMPILE,
+    def compile(
+        self, file_path: str, use_str: str | None = None, no_cgen: bool = False
     ) -> uni.Module:
         """Convert a Jac file to an AST."""
-        JacAnnexPass(ir_in=mod_targ, prog=self)
-        SymTabBuildPass(ir_in=mod_targ, prog=self)
-        TypeBinderPass(ir_in=mod_targ, prog=self)
-        TypeCheckerPass(ir_in=mod_targ, prog=self)
-        if mode == CompilerMode.PARSE:
-            return mod_targ
-        elif mode in (CompilerMode.COMPILE_SINGLE, CompilerMode.NO_CGEN_SINGLE):
-            self.schedule_runner(mod_targ, mode=mode)
-            return mod_targ
-        JacImportDepsPass(ir_in=mod_targ, prog=self)
-        if len(self.errors_had):
-            return mod_targ
-        SymTabLinkPass(ir_in=mod_targ, prog=self)
-        for mod in self.mod.hub.values():
-            self.schedule_runner(mod, mode=CompilerMode.COMPILE)
-        if mode == CompilerMode.COMPILE:
-            return mod_targ
-        PyImportDepsPass(ir_in=mod_targ, prog=self)
-        SymTabLinkPass(ir_in=mod_targ, prog=self)
-        for mod in self.mod.hub.values():
-            DefUsePass(ir_in=mod, prog=self)
-        # Run type checking passes after symbol analysis
-        for mod in self.mod.hub.values():
-            TypeBinderPass(ir_in=mod, prog=self)
-        for mod in self.mod.hub.values():
-            TypeCheckerPass(ir_in=mod, prog=self)
-        for mod in self.mod.hub.values():
-            self.schedule_runner(mod, mode=CompilerMode.TYPECHECK)
+        keep_str = use_str or read_file_with_encoding(file_path)
+        mod_targ = self.parse_str(keep_str, file_path)
+        self.run_schedule(mod=mod_targ, passes=ir_gen_sched)
+        if not no_cgen:
+            self.run_schedule(mod=mod_targ, passes=py_code_gen)
         return mod_targ
 
-    def schedule_runner(
-        self,
-        mod: uni.Module,
-        mode: CompilerMode = CompilerMode.COMPILE,
-    ) -> None:
-        """Run premade passes on the module."""
-        match mode:
-            case CompilerMode.NO_CGEN | CompilerMode.NO_CGEN_SINGLE:
-                passes = ir_gen_sched
-            case CompilerMode.COMPILE | CompilerMode.COMPILE_SINGLE:
-                passes = [*ir_gen_sched, *py_code_gen]
-            case CompilerMode.TYPECHECK:
-                # Run only type checking passes for type checking mode
-                passes = []  # Type checking will be handled separately in the pipeline
-            case _:
-                raise ValueError(f"Invalid mode: {mode}")
-        self.run_schedule(mod, passes)
+    def bind(self, file_path: str, use_str: str | None = None) -> uni.Module:
+        """Bind the Jac module."""
+        keep_str = use_str or read_file_with_encoding(file_path)
+        mod_targ = self.parse_str(keep_str, file_path)
+        BinderPass(ir_in=mod_targ, prog=self)
+        return mod_targ
+
+    def build(self, file_path: str, use_str: str | None = None) -> uni.Module:
+        """Convert a Jac file to an AST."""
+        mod_targ = self.compile(file_path, use_str)
+        JacImportDepsPass(ir_in=mod_targ, prog=self)
+        for mod in self.mod.hub.values():
+            SymTabLinkPass(ir_in=mod, prog=self)
+        for mod in self.mod.hub.values():
+            DefUsePass(mod, prog=self)
+        return mod_targ
 
     def run_schedule(
         self,
@@ -188,9 +150,9 @@ class JacProgram:
     def jac_file_formatter(file_path: str) -> str:
         """Convert a Jac file to an AST."""
         prog = JacProgram()
-        with open(file_path) as file:
-            source = uni.Source(file.read(), mod_path=file_path)
-            prse: Transform = JacParser(root_ir=source, prog=prog)
+        source_str = read_file_with_encoding(file_path)
+        source = uni.Source(source_str, mod_path=file_path)
+        prse: Transform = JacParser(root_ir=source, prog=prog)
         for i in format_sched:
             prse = i(ir_in=prse.ir_out, prog=prog)
         prse.errors_had = prog.errors_had

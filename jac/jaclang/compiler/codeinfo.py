@@ -5,7 +5,6 @@ from __future__ import annotations
 import ast as ast3
 from typing import Optional, TYPE_CHECKING
 
-
 if TYPE_CHECKING:
     from jaclang.compiler.unitree import Source, Token
 

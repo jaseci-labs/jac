@@ -4,12 +4,12 @@
 Nodes are archetypes forming part of a graph, holding properties. They can be compared to custom classes in object-oriented programming (OOP).
 
 ```jac linenums="1"
-      node node_name{
-          has node_property: int;
-      }
-      node node_name{
-          has node_property: int = 10;
-      }
+node node_name{
+    has node_property: int;
+}
+node node_name{
+    has node_property: int = 10;
+}
 ```
 
 ### Custom Node Types
@@ -23,26 +23,26 @@ Nodes are archetypes forming part of a graph, holding properties. They can be co
 
 - This is an example of defining a node.
 ```jac linenums="1"
-    node test_node {
-        has value: int;
+node test_node {
+    has value: int;
 
-        can log_entry with entry {
-            print(f">>> Some Walker entered the node: ", self);
-        }
-        can log_test_walker_entry with test_walker entry {
-            print(f">>> {here} entered the node {self}");
-            here.callable();
-        }
-        can log_test_walker_exit with test_walker exit {
-            print(f"<<< {here} exited the node {self}");
-        }
-        can log_exit with exit {
-            print(f"<<< Some Walker exited the node {self}");
-        }
-        can callable {
-            print(f"===== Callable on {self}");
-        }
+    can log_entry with entry {
+        print(f">>> Some Walker entered the node: ", self);
     }
+    can log_test_walker_entry with test_walker entry {
+        print(f">>> {here} entered the node {self}");
+        here.callable();
+    }
+    can log_test_walker_exit with test_walker exit {
+        print(f"<<< {here} exited the node {self}");
+    }
+    can log_exit with exit {
+        print(f"<<< Some Walker exited the node {self}");
+    }
+    def callable {
+        print(f"===== Callable on {self}");
+    }
+}
 ```
 
 ### Connecting Nodes
@@ -67,8 +67,15 @@ This versatility allows for creating intricate and highly interconnected graph s
 
     }
     ```
-    <!-- ??? example "Graph"
-        ![Image](assets/onetoone.png) -->
+    ??? example "Graph"
+        ```mermaid
+        flowchart LR
+        0 --> 1
+        1 --> 2
+        0["Root()"]
+        1["MyNode()"]
+        2["MyNode()"]
+        ```
 === "one2many.jac"
     ```jac linenums="1"
     node MyNode{}
@@ -82,8 +89,17 @@ This versatility allows for creating intricate and highly interconnected graph s
 
     }
     ```
-    <!-- ??? example "Graph"
-        ![Image](assets/onetomany.png) -->
+    ??? example "Graph"
+        ```mermaid
+        flowchart LR
+        0 --> 1
+        1 --> 2
+        1 --> 3
+        0["Root()"]
+        1["MyNode()"]
+        2["MyNode()"]
+        3["MyNode()"]
+        ```
 === "many2one.jac"
     ```jac linenums="1"
     node MyNode{}
@@ -96,14 +112,51 @@ This versatility allows for creating intricate and highly interconnected graph s
 
     }
     ```
-    <!-- ??? example "Graph"
-        ![Image](assets/manytoone.png) -->
+    ??? example "Graph"
+        ```mermaid
+        flowchart LR
+        0 --> 1
+        1 --> 2
+        3 --> 2
+        0 --> 3
+        0["Root()"]
+        1["MyNode()"]
+        2["MyNode()"]
+        3["MyNode()"]
+        ```
 === "many2many.jac"
     ```jac linenums="1"
-    --8<-- "examples/data_spatial/create_node.jac"
+    node MyNode{}
+
+    with entry{
+        first_tier =[MyNode() for i in range(2)];
+        second_tier =[MyNode() for i in range(2)];
+
+        root ++> first_tier;
+        first_tier ++> second_tier;
+
+        end_tier = MyNode();
+        second_tier ++> end_tier;
+    }
     ```
-    <!-- ??? example "Graph"
-        ![Image](assets/create_node.png) -->
+    ??? example "Graph"
+        ```mermaid
+        flowchart LR
+        0 --> 1
+        1 --> 2
+        3 --> 2
+        0 --> 3
+        3 --> 4
+        1 --> 4
+        4 --> 5
+        2 --> 5
+        0["Root()"]
+        1["MyNode()"]
+        2["MyNode()"]
+        3["MyNode()"]
+        4["MyNode()"]
+        5["MyNode()"]
+        ```
 
 ## Edges
 Nodes can be linked using either *default edges* (generic connections) or *custom edges*, which have specific properties as shown in the following examples.

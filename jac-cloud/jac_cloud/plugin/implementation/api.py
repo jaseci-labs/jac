@@ -12,13 +12,14 @@ from fastapi import (
     APIRouter,
     BackgroundTasks,
     Depends,
+    FastAPI,
     File,
     HTTPException,
     Request,
     Response,
     UploadFile,
 )
-from fastapi.responses import ORJSONResponse
+from fastapi.responses import JSONResponse, ORJSONResponse
 
 from jaclang.runtimelib.machine import JacMachineInterface as Jac
 
@@ -36,6 +37,7 @@ from ...jaseci.security import authenticator, generate_webhook_auth, validate_re
 from ...jaseci.utils import log_entry, log_exit
 
 DISABLE_AUTO_ENDPOINT = getenv("DISABLE_AUTO_ENDPOINT") == "true"
+REQUIRE_AUTH_BY_DEFAULT = getenv("REQUIRE_AUTH_BY_DEFAULT") != "false"
 PATH_VARIABLE_REGEX = compile(r"{([^\}]+)}")
 FILE_TYPES = {
     UploadFile,
@@ -44,8 +46,12 @@ FILE_TYPES = {
     list[UploadFile] | None,
 }
 
-walker_router = APIRouter(prefix="/walker")
-webhook_walker_router = APIRouter(prefix="/webhook/walker")
+
+class Routers:
+    """Router Handler."""
+
+    main_router: FastAPI | None = None
+    walker_router = APIRouter()
 
 
 class EntryType(StrEnum):
@@ -67,7 +73,7 @@ class DefaultSpecs:
     methods: list[str] = ["post"]
     as_query: str | list[str] = []
     excluded: str | list[str] = []
-    auth: bool = True
+    auth: bool = REQUIRE_AUTH_BY_DEFAULT
     private: bool = False
     webhook: dict | None = None
     entry_type: EntryType = EntryType.BOTH
@@ -79,6 +85,8 @@ class DefaultSpecs:
     response_description: str = "Successful Response"
     responses: dict[int | str, dict[str, Any]] | None = None
     deprecated: bool | None = None
+    include_in_schema: bool = True
+    response_class: type[Response] = JSONResponse
     name: str | None = None
     openapi_extra: dict[str, Any] | None = None
     schedule: dict[str, Any] | None = None
@@ -130,7 +138,7 @@ def populate_apis(cls: Type[WalkerArchetype]) -> None:
         methods: list = specs.methods or []
         as_query: str | list[str] = specs.as_query or []
         excluded: str | list[str] = specs.excluded or []
-        auth: bool = specs.auth or False
+        auth: bool = specs.auth
         webhook: dict | None = specs.webhook
         entry_type: EntryType = specs.entry_type
         response_model: Any = specs.response_model
@@ -141,6 +149,8 @@ def populate_apis(cls: Type[WalkerArchetype]) -> None:
         response_description: str = specs.response_description
         responses: dict[int | str, dict[str, Any]] | None = specs.responses
         deprecated: bool | None = specs.deprecated
+        include_in_schema: bool = specs.include_in_schema
+        response_class: type[Response] = specs.response_class
         name: str | None = specs.name
         openapi_extra: dict[str, Any] | None = specs.openapi_extra
 
@@ -149,11 +159,23 @@ def populate_apis(cls: Type[WalkerArchetype]) -> None:
         files: dict[str, Any] = {}
         message: dict[str, Any] = {}
 
+        if webhook is None:
+            target_authenticator = authenticator
+            default_tags = ["Walker APIs"]
+            base_path = "/walker"
+        else:
+            target_authenticator = generate_webhook_auth(webhook)
+            default_tags = ["Webhook Walker APIs"]
+            base_path = "/webhook/walker"
+
         if path:
             if not path.startswith("/"):
-                path = f"/{path}"
+                path = f"{base_path}/{cls.__name__}/{path}"
+
             if isinstance(as_query, list):
                 as_query += PATH_VARIABLE_REGEX.findall(path)
+        else:
+            path = f"{base_path}/{cls.__name__}"
 
         hintings = get_type_hints(cls)
 
@@ -219,7 +241,7 @@ def populate_apis(cls: Type[WalkerArchetype]) -> None:
             background_task: BackgroundTasks,
             node: str | None,
             payload: payload_model = Depends(),  # type: ignore # noqa: B008
-        ) -> ORJSONResponse:
+        ) -> Response:
             log = log_entry(
                 cls.__name__,
                 user.email if (user := getattr(request, "_user", None)) else None,
@@ -260,7 +282,13 @@ def populate_apis(cls: Type[WalkerArchetype]) -> None:
                     if jctx.custom is not MISSING:
                         log_exit(
                             (
-                                {"custom": jctx.custom.body}
+                                {
+                                    "response": getattr(
+                                        jctx.custom,
+                                        "body",
+                                        jctx.custom.__class__.__name__,
+                                    )
+                                }
                                 if isinstance(jctx.custom, Response)
                                 else jctx.custom
                             ),
@@ -289,19 +317,12 @@ def populate_apis(cls: Type[WalkerArchetype]) -> None:
         ) -> Response:
             return api_entry(request, background_task, None, payload)
 
-        if webhook is None:
-            target_authenticator = authenticator
-            target_router = walker_router
-            default_tags = ["Walker APIs"]
-        else:
-            target_authenticator = generate_webhook_auth(webhook)
-            target_router = webhook_walker_router
-            default_tags = ["Webhook Walker APIs"]
-
         for method in methods:
             method = method.lower()
 
-            walker_method = getattr(target_router, method)
+            walker_method = getattr(
+                Routers.main_router or Routers.walker_router, method
+            )
 
             match method:
                 case "websocket":
@@ -322,6 +343,8 @@ def populate_apis(cls: Type[WalkerArchetype]) -> None:
                         "response_description": response_description,
                         "responses": responses,
                         "deprecated": deprecated,
+                        "include_in_schema": include_in_schema,
+                        "response_class": response_class,
                         "name": name,
                         "openapi_extra": openapi_extra,
                     }
@@ -329,11 +352,9 @@ def populate_apis(cls: Type[WalkerArchetype]) -> None:
                         settings["dependencies"] = cast(list, target_authenticator)
 
                     if entry_type.upper() in ROOT_ENTRIES:
-                        walker_method(f"/{cls.__name__}{path}", **settings)(api_root)
+                        walker_method(f"{path}", **settings)(api_root)
                     if entry_type.upper() in NODE_ENTRIES:
-                        walker_method(f"/{cls.__name__}/{{node}}{path}", **settings)(
-                            api_entry
-                        )
+                        walker_method(f"{path}/{{node}}", **settings)(api_entry)
 
 
 def specs(
@@ -343,7 +364,7 @@ def specs(
     methods: list[str] = ["post"],  # noqa: B006
     as_query: str | list[str] = [],  # noqa: B006
     excluded: str | list[str] = [],  # noqa: B006
-    auth: bool = True,
+    auth: bool = REQUIRE_AUTH_BY_DEFAULT,
     private: bool = False,
     webhook: dict | None = None,
     entry_type: EntryType = EntryType.BOTH,
@@ -355,6 +376,8 @@ def specs(
     response_description: str = "Successful Response",
     responses: dict[int | str, dict[str, Any]] | None = None,
     deprecated: bool | None = None,
+    include_in_schema: bool = True,
+    response_class: type[Response] = Response,
     name: str | None = None,
     openapi_extra: dict[str, Any] | None = None,
     schedule: dict[str, Any] | None = None,
@@ -379,6 +402,8 @@ def specs(
             _response_description = response_description
             _responses = responses
             _deprecated = deprecated
+            _include_in_schema = include_in_schema
+            _response_class = response_class
             _name = name
             _openapi_extra = openapi_extra
             _schedule = schedule
@@ -400,6 +425,8 @@ def specs(
                 response_description: str = _response_description
                 responses: dict[int | str, dict[str, Any]] | None = _responses
                 deprecated: bool | None = _deprecated
+                include_in_schema = _include_in_schema
+                response_class = _response_class
                 name: str | None = _name
                 openapi_extra: dict[str, Any] | None = _openapi_extra
                 schedule: dict[str, Any] | None = _schedule

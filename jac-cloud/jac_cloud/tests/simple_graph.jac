@@ -6,6 +6,7 @@ import from jac_cloud.plugin {WEBSOCKET_MANAGER as socket}
 import from jac_cloud.plugin.implementation {create_task}
 import from dataclasses {dataclass}
 import from fastapi {UploadFile}
+import from fastapi.responses {HTMLResponse, StreamingResponse}
 import from typing {Any}
 
 class User(BaseUser) {
@@ -73,7 +74,11 @@ obj Parent(Child) {
 }
 
 node Nested {
-    has val: int, arr: list[int], data: dict[str, int], parent: Parent, enum_field: Enum;
+    has val: int, arr: list[int], data: dict[str, int], parent: Parent, enum_field: Enum, access: str | None = None;
+
+    def __jac_access__ {
+        return self.access;
+    }
 }
 
 obj Kid {
@@ -214,9 +219,37 @@ walker update_nested_node {
     }
 }
 
+walker update_nested_node_access {
+    has access: str | None = None;
+
+    can enter_nested with Nested entry {
+        here.access = self.access;
+        report here;
+    }
+}
+
 walker detach_nested_node {
     can enter_root with `root entry {
         report here del--> [-->(`?Nested)];
+    }
+}
+
+walker update_nested_node_trigger_save {
+    can enter_nested with Nested entry {
+        here.parent.child.data["c"] = 3;
+        here.parent.child.arr.append(3);
+        here.parent.child.val = 3;
+        here.parent.child.enum_field = Enum.A;
+        here.parent.data["b"] = 2;
+        here.parent.arr.append(2);
+        here.parent.val = 2;
+        here.parent.enum_field = Enum.C;
+        here.data["a"] = 1;
+        here.arr.append(1);
+        here.val = 1;
+        here.enum_field = Enum.B;
+        
+        save(here);
     }
 }
 
@@ -239,7 +272,6 @@ walker delete_nested_node {
     can enter_root with `root entry {
         nested = [-->(`?Nested)][0];
         _.destroy(nested);
-        # nested.__jac__.apply();
 
         report [-->(`?Nested)];
     }
@@ -335,7 +367,13 @@ walker post_path_var {
     has a: str;
 
     class __specs__ {
-        has path: str = "/{a}", methods: list = ["post", "get"];
+        has path: str = "{a}", methods: list = ["post", "get"];
+    }
+}
+
+walker post_custom_path {
+    class __specs__ {
+        has path: str = "/custom/walker/path", methods: list = ["post"];
     }
 }
 
@@ -377,7 +415,7 @@ walker combination2 {
     has e: str = "";
 
     class __specs__ {
-        has path: str = "/{a}",
+        has path: str = "{a}",
         methods: list = ["post", "get", "put", "patch", "delete", "head", "trace", "options"],
         as_query: list = ["b"],
         excluded: list = ["d", "e"];
@@ -486,7 +524,7 @@ walker manual_create_nested_node {
             enum_field = Enum.A
         );
         here ++> n;
-        here.__jac__.apply();
+        commit(here);
 
         # simulate no auto save
         jsrc = _.get_context().mem;
@@ -512,7 +550,7 @@ walker manual_update_nested_node {
         nested.arr.append(1);
         nested.val = 1;
         nested.enum_field = Enum.B;
-        nested.__jac__.apply();
+        commit(nested);
 
         # simulate no auto save
         jsrc = _.get_context().mem;
@@ -528,7 +566,7 @@ walker manual_detach_nested_node {
         nested = [-->(`?Nested)][0];
         detached = here del--> [-->(`?Nested)];
         _.destroy(nested);
-        nested.__jac__.apply();
+        commit(nested);
 
         # simulate no auto save
         jsrc = _.get_context().mem;
@@ -543,7 +581,7 @@ walker manual_delete_nested_node {
     can enter_root with `root entry {
         nested = [-->(`?Nested)][0];
         _.destroy(nested);
-        nested.__jac__.apply();
+        commit(nested);
 
         # simulate no auto save
         jsrc = _.get_context().mem;
@@ -558,7 +596,7 @@ walker manual_delete_nested_edge {
     can enter_root with `root entry {
         nested_edge = [edge-->][0];
         _.destroy(nested_edge);
-        nested_edge.__jac__.apply();
+        commit(nested_edge);
 
         # simulate no auto save
         jsrc = _.get_context().mem;
@@ -606,6 +644,50 @@ walker documentation {
         has deprecated: bool | None = True;
         has name: str | None = "Enter name here!!!";
         has openapi_extra: dict[str, Any] | None = {"addons": True};
+    }
+}
+
+walker exclude_in_specs {
+    class __specs__ {
+        has include_in_schema: bool = False;
+    }
+}
+
+walker html_response {
+
+    class __specs__ {
+        has auth: bool = False;
+        has methods: list = ["get"];
+        has entry_type: str = "ROOT";
+    }
+
+    can enter with `root entry {
+        html = """<!DOCTYPE html><html lang="en"><body>HELLO WORLD</body></html>""";
+        _.report(HTMLResponse(html), custom=True);
+    }
+}
+
+walker stream_response {
+
+    class __specs__ {
+        has auth: bool = False;
+        has methods: list = ["get"];
+        has entry_type: str = "ROOT";
+    }
+
+    can enter with `root entry {
+        def generator() -> Generator[str, None, None] {
+            for i in range(100) {
+                yield str(i);
+            }
+        }
+        _.report(
+            StreamingResponse(
+                generator(),
+                media_type="text/event-stream"
+            ),
+            custom=True
+        );
     }
 }
 
@@ -766,7 +848,7 @@ walker create_custom_object {
             ),
             enum_field = Enum.A
         );
-        _.save(o);
+        save(o);
         report o;
     }
 }
@@ -946,7 +1028,7 @@ walker webhook_by_path {
         has webhook: dict = {
             "type": "path",
             "name": "test_key"
-        }, path: str = "/{test_key}";
+        }, path: str = "{test_key}";
     }
 }
 
@@ -960,6 +1042,18 @@ walker webhook_by_body {
             "type": "body",
             "name": "test_key"
         };
+    }
+}
+walker webhook_custom_path {
+    can enter1 with `root entry {
+        report True;
+    }
+
+    class __specs__ {
+        has webhook: dict = {
+            "type": "body",
+            "name": "test_key"
+        }, path: str = "/custom/webhook/path";
     }
 }
 
@@ -1018,11 +1112,15 @@ walker increment_counter {
 }
 
 walker trigger_counter_task {
+    has id: int;
+
     can enter with `root entry {
         tcs = [-->(`?TaskCounter)];
         if tcs {
             report create_task(increment_counter(val=1), tcs[0]);
         }
+
+        save(self);
     }
 }
 
@@ -1084,6 +1182,35 @@ async walker async_walker {
 
     can enter with `root entry {
         self.done = True;
+    }
+}
+
+# ------------------------------------------------------------- #
+#################################################################
+
+#################################################################
+#                    DYNAMIC WALKER ENDPOINT                    #
+# ------------------------------------------------------------- #
+
+walker generate_walker {
+
+    can enter2 with `root entry {
+        report self.__class__.__name__;
+    }
+
+    can enter with `root entry {
+        type(
+            "generated_walker",
+            (_.Walker,),
+            {
+                "enter": generate_walker.enter2,
+                "__specs__": generate_walker.__specs__
+            }
+        );
+    }
+
+    class __specs__ {
+        static has auth: bool = False, methods: list = ["get"];
     }
 }
 

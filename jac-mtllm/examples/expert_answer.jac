@@ -1,6 +1,6 @@
-import from mtllm.llms { OpenAI }
+import from mtllm { Model }
 
-glob llm = OpenAI();
+glob llm = Model();
 
 def get_expert(question: str) -> str by llm(method='Reason');
 def get_answer(question: str, expert: str) -> str by llm();

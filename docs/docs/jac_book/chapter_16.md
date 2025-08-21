@@ -1,1228 +1,733 @@
-### Chapter 16: Testing and Debugging
+# Chapter 17: Type System Deep Dive
 
-Testing and debugging in Jac requires unique approaches due to its object-spatial nature, graph-based architecture, and scale-agnostic features. This chapter explores comprehensive strategies for ensuring your Jac applications work correctly from development through production.
+In this chapter, we'll explore Jac's advanced type system that provides powerful generic programming capabilities, type constraints, and graph-aware type checking. We'll build a generic data processing system that demonstrates type safety, constraints, and runtime validation through practical examples.
 
-#### 16.1 Testing Framework
+!!! info "What You'll Learn"
+    - Advanced generic programming with the `any` type
+    - Type constraints and validation patterns
+    - Graph-aware type checking for nodes and edges
+    - Building type-safe, reusable components
+    - Runtime type validation and guards
 
-### Built-in `test` Blocks
+---
 
-Jac provides first-class support for testing through the `test` keyword, making tests an integral part of the language:
+## Advanced Type System Features
 
-```jac
-// Basic test structure
-test "basic arithmetic operations" {
-    assert 2 + 2 == 4;
-    assert 10 - 5 == 5;
-    assert 3 * 4 == 12;
-    assert 15 / 3 == 5.0;
-}
+Jac's type system goes beyond basic types to provide powerful features that work seamlessly with Object-Spatial Programming. The `any` type enables flexible programming while maintaining type safety through runtime validation.
 
-// Testing with setup and teardown
-test "user creation and validation" {
-    // Setup
-    let user = User(name="Alice", email="alice@example.com");
+!!! success "Type System Benefits"
+    - **Flexible Typing**: Use `any` for maximum flexibility when needed
+    - **Runtime Safety**: Validate types at runtime with built-in guards
+    - **Graph Integration**: Type safety extends to nodes, edges, and walkers
+    - **Constraint Validation**: Enforce business rules through type checking
 
-    // Test assertions
-    assert user.name == "Alice";
-    assert user.email == "alice@example.com";
-    assert user.is_valid();
+### Traditional vs Jac Type System
 
-    // Cleanup happens automatically when test block ends
-}
+!!! example "Type System Comparison"
+    === "Traditional Approach"
+        ```python
+        # python_generics.py - Complex generic setup
+        from typing import TypeVar, Generic, List, Any, Union, Optional
+        from abc import ABC, abstractmethod
 
-// Parameterized testing
-test "edge cases for division" {
-    let test_cases = [
-        (10, 2, 5.0),
-        (7, 2, 3.5),
-        (0, 5, 0.0),
-        (-10, 2, -5.0)
-    ];
+        T = TypeVar('T')
+        U = TypeVar('U')
 
-    for (a, b, expected) in test_cases {
-        assert divide(a, b) == expected;
-    }
+        class Processable(ABC):
+            @abstractmethod
+            def process(self) -> str:
+                pass
 
-    // Test error cases
-    assert_raises(ZeroDivisionError) {
-        divide(10, 0);
-    };
-}
+        class DataProcessor(Generic[T]):
+            def __init__(self):
+                self.items: List[T] = []
 
-// Test utilities
-can assert_raises(exception_type: type) -> callable {
-    can wrapper(code_block: callable) {
-        try {
-            code_block();
-            assert False, f"Expected {exception_type.__name__} but no exception raised";
-        } except exception_type {
-            // Expected exception was raised
-            pass;
-        } except Exception as e {
-            assert False, f"Expected {exception_type.__name__} but got {type(e).__name__}";
+            def add(self, item: T) -> None:
+                self.items.append(item)
+
+            def process_all(self, func) -> List[Any]:
+                return [func(item) for item in self.items]
+
+            def find(self, predicate) -> Optional[T]:
+                for item in self.items:
+                    if predicate(item):
+                        return item
+                return None
+
+        # Usage requires explicit type parameters
+        processor: DataProcessor[int] = DataProcessor()
+        processor.add(42)
+        processor.add(24)
+        ```
+
+    === "Jac Type System"
+        <div class="code-block">
+        ```jac
+        # data_processor.jac - Simple and flexible
+        obj DataProcessor {
+            has items: list[any] = [];
+
+            def add(item: any) -> None {
+                self.items.append(item);
+            }
+
+            def process_all(func: any) -> list[any] {
+                return [func(item) for item in self.items];
+            }
+
+            def find(predicate: any) -> any | None {
+                for item in self.items {
+                    if predicate(item) {
+                        return item;
+                    }
+                }
+                return None;
+            }
+
+            def filter_by_type(target_type: any) -> list[any] {
+                return [item for item in self.items if isinstance(item, target_type)];
+            }
         }
-    }
-    return wrapper;
-}
 
-can assert_almost_equal(a: float, b: float, tolerance: float = 0.0001) {
-    assert abs(a - b) < tolerance, f"{a} != {b} within tolerance {tolerance}";
-}
-```
+        with entry {
+            # Simple usage with type inference
+            processor = DataProcessor();
+            processor.add(42);
+            processor.add("hello");
+            processor.add(3.14);
 
-### Testing Graph Structures
-
-Testing nodes, edges, and their relationships requires specialized approaches:
-
-```jac
-// Graph structure test utilities
-obj GraphTestCase {
-    has root_node: node;
-
-    can setup {
-        self.root_node = create_test_root();
-    }
-
-    can teardown {
-        // Clean up test graph
-        clean_graph(self.root_node);
-    }
-
-    can assert_connected(source: node, target: node, edge_type: type? = None) {
-        let edges = [source --> target];
-        assert len(edges) > 0, f"No connection from {source} to {target}";
-
-        if edge_type {
-            let typed_edges = [e for e in edges if isinstance(e, edge_type)];
-            assert len(typed_edges) > 0,
-                f"No {edge_type.__name__} edge from {source} to {target}";
+            # Type-safe operations with runtime validation
+            numbers = processor.filter_by_type(int);
+            print(f"Numbers: {numbers}");
         }
-    }
+        ```
+        </div>
 
-    can assert_not_connected(source: node, target: node) {
-        let edges = [source --> target];
-        assert len(edges) == 0, f"Unexpected connection from {source} to {target}";
-    }
+---
 
-    can assert_node_count(expected: int, node_type: type? = None) {
-        if node_type {
-            let nodes = find_all_nodes(self.root_node, node_type);
-            assert len(nodes) == expected,
-                f"Expected {expected} {node_type.__name__} nodes, found {len(nodes)}";
-        } else {
-            let nodes = find_all_nodes(self.root_node);
-            assert len(nodes) == expected,
-                f"Expected {expected} total nodes, found {len(nodes)}";
+## Runtime Type Validation
+
+Jac provides powerful runtime type checking capabilities that complement the flexible `any` type, enabling robust error handling and dynamic type validation.
+
+### Type Guards and Validation
+
+!!! example "Runtime Type Validation System"
+    <div class="code-block">
+    ```jac
+    # type_validator.jac
+    obj TypeValidator {
+        has strict_mode: bool = False;
+
+        """Check if value matches expected type."""
+        def validate_type(value: any, expected_type: any) -> bool {
+            if expected_type == int {
+                return isinstance(value, int);
+            } elif expected_type == str {
+                return isinstance(value, str);
+            } elif expected_type == float {
+                return isinstance(value, float);
+            } elif expected_type == list {
+                return isinstance(value, list);
+            } elif expected_type == dict {
+                return isinstance(value, dict);
+            }
+            return True;  # Allow any for unknown types
         }
-    }
-}
 
-// Example graph structure test
-test "social network graph structure" {
-    let tc = GraphTestCase();
-    tc.setup();
-
-    // Create test graph
-    let alice = tc.root_node ++> User(name="Alice");
-    let bob = tc.root_node ++> User(name="Bob");
-    let charlie = tc.root_node ++> User(name="Charlie");
-
-    alice ++>:Follows:++> bob;
-    bob ++>:Follows:++> charlie;
-    charlie ++>:Follows:++> alice;  // Circular
-
-    // Test structure
-    tc.assert_connected(alice, bob, Follows);
-    tc.assert_connected(bob, charlie, Follows);
-    tc.assert_connected(charlie, alice, Follows);
-    tc.assert_not_connected(alice, charlie);  // No direct connection
-
-    tc.assert_node_count(4);  // root + 3 users
-    tc.assert_node_count(3, User);
-
-    tc.teardown();
-}
-
-// Testing graph algorithms
-test "shortest path algorithm" {
-    // Create test graph
-    let start = create_node("Start");
-    let a = create_node("A");
-    let b = create_node("B");
-    let c = create_node("C");
-    let end = create_node("End");
-
-    // Create paths with weights
-    start ++>:WeightedEdge(weight=1):++> a;
-    start ++>:WeightedEdge(weight=4):++> b;
-    a ++>:WeightedEdge(weight=2):++> c;
-    b ++>:WeightedEdge(weight=1):++> c;
-    c ++>:WeightedEdge(weight=1):++> end;
-
-    // Test shortest path
-    let path = find_shortest_path(start, end);
-
-    assert path == [start, a, c, end];
-    assert calculate_path_weight(path) == 4;
-
-    // Test alternate path
-    let all_paths = find_all_paths(start, end);
-    assert len(all_paths) == 2;
-}
-```
-
-### Testing Walker Behavior
-
-Walker testing requires simulating graph traversal and verifying behavior:
-
-```jac
-// Walker test framework
-obj WalkerTestCase {
-    has test_graph: node;
-    has walker_results: list = [];
-
-    can setup_graph -> node abs;  // Abstract, must implement
-
-    can spawn_and_collect[W: walker](
-        walker_type: type[W],
-        spawn_node: node,
-        **kwargs: dict
-    ) -> list {
-        // Create walker with test parameters
-        let w = walker_type(**kwargs);
-
-        // Capture results
-        self.walker_results = spawn w on spawn_node;
-
-        return self.walker_results;
-    }
-
-    can assert_visited_sequence(walker: walker, expected_nodes: list[node]) {
-        assert walker.visited_nodes == expected_nodes,
-            f"Expected visit sequence {expected_nodes}, got {walker.visited_nodes}";
-    }
-
-    can assert_walker_state(walker: walker, **expected_state: dict) {
-        for key, expected_value in expected_state.items() {
-            actual_value = getattr(walker, key);
-            assert actual_value == expected_value,
-                f"Expected {key}={expected_value}, got {actual_value}";
+        """Safely cast value to target type."""
+        def safe_cast(value: any, target_type: any) -> any | None {
+            try {
+                if target_type == int {
+                    return int(value);
+                } elif target_type == str {
+                    return str(value);
+                } elif target_type == float {
+                    return float(value);
+                } elif target_type == bool {
+                    return bool(value);
+                }
+                return value;
+            } except ValueError {
+                if self.strict_mode {
+                    raise ValueError(f"Cannot cast {value} to {target_type}");
+                }
+                return None;
+            }
         }
-    }
-}
 
-// Walker behavior test
-test "data aggregator walker" {
-    obj AggregatorTest(WalkerTestCase) {
-        can setup_graph -> node {
-            self.test_graph = create_test_root();
-
-            // Create data nodes
-            let n1 = self.test_graph ++> DataNode(value=10);
-            let n2 = self.test_graph ++> DataNode(value=20);
-            let n3 = self.test_graph ++> DataNode(value=30);
-
-            n1 ++> n2 ++> n3;  // Linear chain
-
-            return self.test_graph;
+        """Validate value is within specified range."""
+        def validate_range(value: any, min_val: any = None, max_val: any = None) -> bool {
+            if min_val is not None and value < min_val {
+                return False;
+            }
+            if max_val is not None and value > max_val {
+                return False;
+            }
+            return True;
         }
     }
 
-    let tc = AggregatorTest();
-    let start_node = tc.setup_graph();
+    with entry {
+        validator = TypeValidator(strict_mode=True);
 
-    // Test walker
-    walker DataAggregator {
-        has sum: float = 0;
-        has count: int = 0;
-        has visited_nodes: list = [];
+        # Test type validation
+        test_values = [42, "hello", 3.14, True, [1, 2, 3]];
+        expected_types = [int, str, float, bool, list];
 
-        can aggregate with DataNode entry {
-            self.sum += here.value;
-            self.count += 1;
-            self.visited_nodes.append(here);
-
-            visit [-->];
+        for i in range(len(test_values)) {
+            value = test_values[i];
+            expected = expected_types[i];
+            is_valid = validator.validate_type(value, expected);
+            print(f"{value} is {expected}: {is_valid}");
         }
 
-        can finalize with `root exit {
-            report {
-                "sum": self.sum,
-                "count": self.count,
-                "average": self.sum / self.count if self.count > 0 else 0
+        # Test safe casting
+        cast_result = validator.safe_cast("123", int);
+        print(f"Cast '123' to int: {cast_result}");
+
+        # Test range validation
+        in_range = validator.validate_range(50, 0, 100);
+        print(f"50 in range [0, 100]: {in_range}");
+    }
+    ```
+    </div>
+
+### Advanced Type Guards
+
+!!! example "Complex Type Validation Patterns"
+    <div class="code-block">
+    ```jac
+    # advanced_validator.jac
+    obj SchemaValidator {
+        has schema: dict[str, any] = {};
+
+        """Define expected type for a field."""
+        def set_field_type(field_name: str, field_type: any) -> None {
+            self.schema[field_name] = field_type;
+        }
+
+        """Validate object against schema."""
+        def validate_object(obj: any) -> dict[str, any] {
+            results = {
+                "valid": True,
+                "errors": [],
+                "field_results": {}
             };
+
+            if not isinstance(obj, dict) {
+                results["valid"] = False;
+                results["errors"].append("Object must be a dictionary");
+                return results;
+            }
+
+            for (field_name, expected_type) in self.schema.items() {
+                if field_name not in obj {
+                    results["valid"] = False;
+                    results["errors"].append(f"Missing required field: {field_name}");
+                    results["field_results"][field_name] = False;
+                } else {
+                    field_value = obj[field_name];
+                    is_valid = self.validate_field(field_value, expected_type);
+                    results["field_results"][field_name] = is_valid;
+                    if not is_valid {
+                        results["valid"] = False;
+                        results["errors"].append(f"Invalid type for {field_name}: expected {expected_type}, got {type(field_value)}");
+                    }
+                }
+            }
+
+            return results;
+        }
+
+        """Validate individual field value."""
+        def validate_field(value: any, expected_type: any) -> bool {
+            if expected_type == "string" {
+                return isinstance(value, str);
+            } elif expected_type == "number" {
+                return isinstance(value, (int, float));
+            } elif expected_type == "boolean" {
+                return isinstance(value, bool);
+            } elif expected_type == "list" {
+                return isinstance(value, list);
+            } elif expected_type == "dict" {
+                return isinstance(value, dict);
+            }
+            return True;
         }
     }
 
-    let results = tc.spawn_and_collect(DataAggregator, start_node);
+    with entry {
+        # Create schema for user data
+        user_validator = SchemaValidator();
+        user_validator.set_field_type("name", "string");
+        user_validator.set_field_type("age", "number");
+        user_validator.set_field_type("email", "string");
+        user_validator.set_field_type("active", "boolean");
 
-    assert len(results) == 1;
-    assert results[0]["sum"] == 60;
-    assert results[0]["count"] == 3;
-    assert results[0]["average"] == 20;
-}
+        # Test valid user
+        valid_user = {
+            "name": "Alice",
+            "age": 30,
+            "email": "alice@example.com",
+            "active": True
+        };
 
-// Testing walker interactions
-test "walker communication" {
-    // Create communicating walkers
-    walker Sender {
-        has message: str;
-        has recipient: node;
+        result = user_validator.validate_object(valid_user);
+        print(f"Valid user validation: {result}");
 
-        can send with entry {
-            visit self.recipient {
-                here.received_messages.append(self.message);
-            };
+        # Test invalid user
+        invalid_user = {
+            "name": "Bob",
+            "age": "thirty",  # Wrong type
+            "email": "bob@example.com"
+            # Missing 'active' field
+        };
+
+        result = user_validator.validate_object(invalid_user);
+        print(f"Invalid user validation: {result}");
+    }
+    ```
+    </div>
+
+---
+
+## Graph-Aware Type Checking
+
+Jac's type system extends to Object-Spatial Programming constructs, providing compile-time and runtime guarantees about graph structure and walker behavior.
+
+### Node and Edge Type Safety
+
+!!! example "Type-Safe Graph Operations"
+    <div class="code-block">
+    ```jac
+    # typed_graph.jac
+    node Person {
+        has name: str;
+        has age: int;
+
+        def validate_person() -> bool {
+            return len(self.name) > 0 and self.age >= 0;
         }
     }
 
-    walker Receiver {
-        has received_messages: list = [];
-        has response: str = "ACK";
+    node Company {
+        has company_name: str;
+        has industry: str;
 
-        can respond with entry {
-            if self.received_messages {
-                report {
-                    "messages": self.received_messages,
-                    "response": self.response
-                };
-            }
+        def validate_company() -> bool {
+            return len(self.company_name) > 0 and len(self.industry) > 0;
         }
     }
 
-    // Test communication
-    let sender_node = create_node();
-    let receiver_node = create_node() with {
-        has received_messages: list = [];
-    };
+    edge WorksAt {
+        has position: str;
+        has salary: float;
+        has start_date: str;
 
-    sender_node ++> receiver_node;
+        def validate_employment() -> bool {
+            return len(self.position) > 0 and self.salary > 0;
+        }
+    }
 
-    // Send message
-    spawn Sender(
-        message="Hello",
-        recipient=receiver_node
-    ) on sender_node;
+    edge FriendsWith {
+        has since: str;
+        has closeness: int;  # 1-10 scale
 
-    // Check reception
-    assert len(receiver_node.received_messages) == 1;
-    assert receiver_node.received_messages[0] == "Hello";
+        def validate_friendship() -> bool {
+            return self.closeness >= 1 and self.closeness <= 10;
+        }
+    }
 
-    // Get response
-    let response = spawn Receiver() on receiver_node;
-    assert response[0]["response"] == "ACK";
-}
-```
+    obj GraphValidator {
+        has validation_errors: list[str] = [];
 
-### Testing with Mocks and Stubs
+        """Validate any node type."""
+        def validate_node(node: any) -> bool {
+            self.validation_errors = [];
 
-```jac
-// Mock framework for Jac
-obj Mock {
-    has name: str;
-    has return_values: dict = {};
-    has call_history: list = [];
-    has side_effects: dict = {};
-
-    can __getattr__(attr: str) -> callable {
-        can mock_method(*args: list, **kwargs: dict) -> any {
-            // Record call
-            self.call_history.append({
-                "method": attr,
-                "args": args,
-                "kwargs": kwargs,
-                "timestamp": now()
-            });
-
-            // Execute side effects
-            if attr in self.side_effects {
-                self.side_effects[attr](*args, **kwargs);
+            if isinstance(node, Person) {
+                if not node.validate_person() {
+                    self.validation_errors.append(f"Invalid person: {node.name}");
+                    return False;
+                }
+            } elif isinstance(node, Company) {
+                if not node.validate_company() {
+                    self.validation_errors.append(f"Invalid company: {node.company_name}");
+                    return False;
+                }
+            } else {
+                self.validation_errors.append(f"Unknown node type: {type(node)}");
+                return False;
             }
 
-            // Return configured value
-            if attr in self.return_values {
-                return self.return_values[attr];
+            return True;
+        }
+
+        """Validate edge connection between nodes."""
+        def validate_edge_connection(from_node: any, edge: any, to_node: any) -> bool {
+            # Check if edge type is appropriate for node types
+            if isinstance(edge, WorksAt) {
+                # Person should work at Company
+                if not (isinstance(from_node, Person) and isinstance(to_node, Company)) {
+                    self.validation_errors.append("WorksAt edge must connect Person to Company");
+                    return False;
+                }
+                return edge.validate_employment();
+            } elif isinstance(edge, FriendsWith) {
+                # Both nodes should be Person
+                if not (isinstance(from_node, Person) and isinstance(to_node, Person)) {
+                    self.validation_errors.append("FriendsWith edge must connect Person to Person");
+                    return False;
+                }
+                return edge.validate_friendship();
             }
 
+            self.validation_errors.append(f"Unknown edge type: {type(edge)}");
+            return False;
+        }
+    }
+
+    with entry {
+        # Create graph elements
+        alice = Person(name="Alice", age=30);
+        bob = Person(name="Bob", age=25);
+        tech_corp = Company(company_name="TechCorp", industry="Technology");
+
+        # Create relationships
+        works_edge = WorksAt(position="Developer", salary=75000.0, start_date="2023-01-15");
+        friend_edge = FriendsWith(since="2020-01-01", closeness=8);
+
+        # Validate graph elements
+        validator = GraphValidator();
+
+        # Validate nodes
+        alice_valid = validator.validate_node(alice);
+        print(f"Alice valid: {alice_valid}");
+
+        # Validate edge connections
+        work_connection_valid = validator.validate_edge_connection(alice, works_edge, tech_corp);
+        print(f"Work connection valid: {work_connection_valid}");
+
+        friend_connection_valid = validator.validate_edge_connection(alice, friend_edge, bob);
+        print(f"Friend connection valid: {friend_connection_valid}");
+
+        # Test invalid connection
+        invalid_connection = validator.validate_edge_connection(alice, works_edge, bob);  # Wrong types
+        print(f"Invalid connection valid: {invalid_connection}");
+        print(f"Validation errors: {validator.validation_errors}");
+    }
+    ```
+    </div>
+
+### Walker Type Validation
+
+!!! example "Type-Safe Walker Patterns"
+    <div class="code-block">
+    ```jac
+    # typed_walkers.jac
+
+    node Person {
+        has name: str;
+        has age: int;
+
+        def validate_person() -> bool {
+            return len(self.name) > 0 and self.age >= 0;
+        }
+    }
+
+    node Company {
+        has company_name: str;
+        has industry: str;
+
+        def validate_company() -> bool {
+            return len(self.company_name) > 0 and len(self.industry) > 0;
+        }
+    }
+
+    edge WorksAt {
+        has position: str;
+        has salary: float;
+        has start_date: str;
+
+        def validate_employment() -> bool {
+            return len(self.position) > 0 and self.salary > 0;
+        }
+    }
+
+    edge FriendsWith {
+        has since: str;
+        has closeness: int;  # 1-10 scale
+
+        def validate_friendship() -> bool {
+            return self.closeness >= 1 and self.closeness <= 10;
+        }
+    }
+
+    walker PersonVisitor {
+        has visited_count: int = 0;
+        has person_names: list[str] = [];
+        has validation_errors: list[str] = [];
+
+        can visit_person with Person entry {
+            # Type-safe person processing
+            if self.validate_person_node(here) {
+                self.visited_count += 1;
+                self.person_names.append(here.name);
+                print(f"Visited person: {here.name} (age {here.age})");
+
+                # Continue to connected persons
+                friends = [->:FriendsWith:->(`?Person)];
+                if friends {
+                    visit friends;
+                }
+            } else {
+                print(f"Invalid person node encountered: {here.name}");
+            }
+        }
+
+        can visit_company with Company entry {
+            # Companies are not processed by PersonVisitor
+            print(f"Skipping company: {here.company_name}");
+        }
+
+        """Validate person node before processing."""
+        def validate_person_node(person: any) -> bool {
+            if not isinstance(person, Person) {
+                self.validation_errors.append(f"Expected Person, got {type(person)}");
+                return False;
+            }
+
+            if not person.validate_person() {
+                self.validation_errors.append(f"Invalid person data: {person.name}");
+                return False;
+            }
+
+            return True;
+        }
+    }
+
+    walker CompanyAnalyzer {
+        has companies_visited: list[str] = [];
+        has total_employees: int = 0;
+
+        can analyze_company with Company entry {
+            if self.validate_company_node(here) {
+                self.companies_visited.append(here.company_name);
+                print(f"Analyzing company: {here.company_name} in {here.industry}");
+
+                # Count employees (people working at this company)
+                employees = [<-:WorksAt:<-(`?Person)];
+                employee_count = len(employees);
+                self.total_employees += employee_count;
+
+                print(f"  Employees: {employee_count}");
+                for employee in employees {
+                    print(f"    - {employee.name}");
+                }
+            }
+        }
+
+        """Validate company node before processing."""
+        def validate_company_node(company: any) -> bool {
+            if not isinstance(company, Company) {
+                return False;
+            }
+            return company.validate_company();
+        }
+    }
+
+    with entry {
+        # Create network
+        alice = root ++> Person(name="Alice", age=30);
+        bob = root ++> Person(name="Bob", age=25);
+        tech_corp = root ++> Company(company_name="TechCorp", industry="Technology");
+
+        # Create connections
+        alice[0] +>:WorksAt(position="Developer", salary=75000.0, start_date="2023-01-15"):+> tech_corp[0];
+        bob[0] +>:WorksAt(position="Designer", salary=65000.0, start_date="2023-02-01"):+> tech_corp[0];
+        alice[0] +>:FriendsWith(since="2020-01-01", closeness=8):+> bob[0];
+
+        # Test type-safe walkers
+        person_visitor = PersonVisitor();
+        alice[0] spawn person_visitor;
+
+        print(f"Person visitor results:");
+        print(f"  Visited: {person_visitor.visited_count} people");
+        print(f"  Names: {person_visitor.person_names}");
+
+        company_analyzer = CompanyAnalyzer();
+        tech_corp[0] spawn company_analyzer;
+
+        print(f"Company analyzer results:");
+        print(f"  Companies: {company_analyzer.companies_visited}");
+        print(f"  Total employees: {company_analyzer.total_employees}");
+    }
+    ```
+    </div>
+
+---
+
+## Building Type-Safe Components
+
+Using Jac's flexible type system, we can build reusable components that are both type-safe and adaptable.
+
+### Generic Data Structures
+
+!!! example "Type-Safe Generic Collections"
+    <div class="code-block">
+    ```jac
+    # generic_collections.jac
+    obj SafeList {
+        has items: list[any] = [];
+        has item_type: any = None;
+        has allow_mixed_types: bool = False;
+
+        """Set type constraint for list items."""
+        def set_type_constraint(expected_type: any) -> None {
+            self.item_type = expected_type;
+        }
+
+        """Add item with type checking."""
+        def add(item: any) -> bool {
+            if self.item_type is not None and not self.allow_mixed_types {
+                if not self.check_type(item, self.item_type) {
+                    print(f"Type error: expected {self.item_type}, got {type(item)}");
+                    return False;
+                }
+            }
+
+            self.items.append(item);
+            return True;
+        }
+
+        """Safely get item by index."""
+        def get(index: int) -> any | None {
+            if 0 <= index < len(self.items) {
+                return self.items[index];
+            }
             return None;
         }
 
-        return mock_method;
-    }
-
-    can assert_called(method: str, times: int? = None) {
-        let calls = [c for c in self.call_history if c["method"] == method];
-
-        if times is not None {
-            assert len(calls) == times,
-                f"{method} called {len(calls)} times, expected {times}";
-        } else {
-            assert len(calls) > 0,
-                f"{method} was not called";
+        """Get all items of specific type."""
+        def filter_by_type(target_type: any) -> list[any] {
+            return [item for item in self.items if self.check_type(item, target_type)];
         }
-    }
 
-    can assert_called_with(method: str, *args: list, **kwargs: dict) {
-        let calls = [c for c in self.call_history if c["method"] == method];
-
-        for call in calls {
-            if call["args"] == args and call["kwargs"] == kwargs {
-                return;  // Found matching call
+        """Check if value matches expected type."""
+        def check_type(value: any, expected_type: any) -> bool {
+            if expected_type == int {
+                return isinstance(value, int);
+            } elif expected_type == str {
+                return isinstance(value, str);
+            } elif expected_type == float {
+                return isinstance(value, float);
+            } elif expected_type == bool {
+                return isinstance(value, bool);
+            } elif expected_type == list {
+                return isinstance(value, list);
+            } elif expected_type == dict {
+                return isinstance(value, dict);
             }
+            return True;
         }
 
-        assert False, f"{method} not called with args={args}, kwargs={kwargs}";
-    }
-}
-
-// Using mocks in tests
-test "payment processor with mocks" {
-    // Create mock payment gateway
-    let mock_gateway = Mock(name="PaymentGateway");
-    mock_gateway.return_values["charge"] = {"status": "success", "id": "12345"};
-    mock_gateway.side_effects["log"] = lambda msg: print(f"Mock log: {msg}");
-
-    // Test payment processing
-    walker PaymentProcessor {
-        has gateway: any;
-        has amount: float;
-
-        can process with Order entry {
-            let result = self.gateway.charge(
-                amount=self.amount,
-                currency="USD",
-                order_id=here.id
-            );
-
-            if result["status"] == "success" {
-                here.payment_id = result["id"];
-                here.status = "paid";
-                self.gateway.log(f"Payment successful for order {here.id}");
+        """Get summary of types in the list."""
+        def get_type_summary() -> dict[str, int] {
+            type_counts = {};
+            for item in self.items {
+                type_name = type(item).__name__;
+                type_counts[type_name] = type_counts.get(type_name, 0) + 1;
             }
-
-            report result;
+            return type_counts;
         }
     }
 
-    // Create test order
-    let order = create_node() with {
-        has id: str = "ORDER-001";
-        has status: str = "pending";
-        has payment_id: str? = None;
-    };
+    with entry {
+        # Create type-constrained list
+        number_list = SafeList();
+        number_list.set_type_constraint(int);
 
-    // Process payment
-    let result = spawn PaymentProcessor(
-        gateway=mock_gateway,
-        amount=99.99
-    ) on order;
+        # Add valid items
+        success1 = number_list.add(42);
+        success2 = number_list.add(24);
+        success3 = number_list.add("hello");  # Should fail
 
-    // Verify mock interactions
-    mock_gateway.assert_called("charge", times=1);
-    mock_gateway.assert_called_with(
-        "charge",
-        amount=99.99,
-        currency="USD",
-        order_id="ORDER-001"
-    );
-    mock_gateway.assert_called("log");
+        print(f"Added 42: {success1}");
+        print(f"Added 24: {success2}");
+        print(f"Added 'hello': {success3}");
 
-    // Verify order state
-    assert order.status == "paid";
-    assert order.payment_id == "12345";
-}
-```
+        # Create mixed-type list
+        mixed_list = SafeList(allow_mixed_types=True);
+        mixed_list.add(42);
+        mixed_list.add("hello");
+        mixed_list.add(3.14);
+        mixed_list.add(True);
 
-#### 16.2 Debugging Techniques
+        print(f"Mixed list type summary: {mixed_list.get_type_summary()}");
 
-### Traversal Visualization
+        # Filter by type
+        numbers = mixed_list.filter_by_type(int);
+        strings = mixed_list.filter_by_type(str);
 
-Understanding walker paths through complex graphs is crucial for debugging:
-
-```jac
-// Traversal tracer
-walker TraversalTracer {
-    has trace: list = [];
-    has show_properties: list[str] = [];
-    has max_depth: int = 10;
-    has current_depth: int = 0;
-
-    can trace_traversal with entry {
-        // Record current position
-        let trace_entry = {
-            "depth": self.current_depth,
-            "node_type": type(here).__name__,
-            "node_id": here.__id__ if hasattr(here, "__id__") else id(here),
-            "timestamp": now()
-        };
-
-        // Add requested properties
-        for prop in self.show_properties {
-            if hasattr(here, prop) {
-                trace_entry[prop] = getattr(here, prop);
-            }
-        }
-
-        self.trace.append(trace_entry);
-
-        // Continue traversal with depth limit
-        if self.current_depth < self.max_depth {
-            self.current_depth += 1;
-            visit [-->];
-            self.current_depth -= 1;
-        }
+        print(f"Numbers: {numbers}");
+        print(f"Strings: {strings}");
     }
+    ```
+    </div>
 
-    can visualize with `root exit {
-        print("\n=== Traversal Trace ===");
-        for entry in self.trace {
-            indent = "  " * entry["depth"];
-            print(f"{indent}→ {entry['node_type']} (id: {entry['node_id']})");
+---
 
-            for key, value in entry.items() {
-                if key not in ["depth", "node_type", "node_id", "timestamp"] {
-                    print(f"{indent}  {key}: {value}");
-            }
-        }
+## Best Practices
 
-        print(f"\nTotal nodes visited: {len(self.trace)}");
-        print("===================\n");
-    }
-}
+!!! summary "Type System Guidelines"
+    - **Use `any` strategically**: Apply `any` type for maximum flexibility while implementing runtime validation
+    - **Validate at boundaries**: Check types when data enters your system from external sources
+    - **Leverage runtime checks**: Use isinstance() and custom validation functions for type safety
+    - **Design for flexibility**: Build components that can handle multiple types when appropriate
+    - **Document type expectations**: Make type requirements clear in function and method documentation
+    - **Test with multiple types**: Verify your code works correctly with different type combinations
 
-// Visual graph representation
-walker GraphVisualizer {
-    has format: str = "mermaid";  // or "dot", "ascii"
-    has visited: set = set();
-    has edges: list = [];
-    has nodes: dict = {};
+## Key Takeaways
 
-    can visualize with entry {
-        if here in self.visited {
-            return;
-        }
-        self.visited.add(here);
+!!! summary "What We've Learned"
+    **Advanced Type Features:**
 
-        // Record node
-        self.nodes[id(here)] = {
-            "type": type(here).__name__,
-            "label": self.get_node_label(here)
-        };
+    - **Flexible typing**: Use `any` type for maximum flexibility when needed
+    - **Runtime validation**: Dynamic type checking complements static analysis
+    - **Graph-aware types**: Compile-time safety for spatial programming constructs
+    - **Type guards**: Runtime validation patterns for dynamic typing
 
-        // Record edges
-        for edge in [<-->] {
-            self.edges.append({
-                "from": id(here),
-                "to": id(edge.target),
-                "type": type(edge).__name__,
-                "label": self.get_edge_label(edge)
-            });
-        }
+    **Practical Applications:**
 
-        // Continue traversal
-        visit [-->];
-    }
+    - **Reusable components**: Build libraries that work with multiple data types
+    - **Safe graph operations**: Prevent type errors in node and edge relationships
+    - **Data validation**: Robust input validation with clear error messages
+    - **Performance optimization**: Type information enables better optimization
 
-    can get_node_label(n: node) -> str {
-        if hasattr(n, "name") {
-            return f"{n.name}";
-        } elif hasattr(n, "id") {
-            return f"#{n.id}";
-        }
-        return "";
-    }
+    **Development Benefits:**
 
-    can get_edge_label(e: edge) -> str {
-        if hasattr(e, "label") {
-            return e.label;
-        }
-        return "";
-    }
+    - **Early error detection**: Catch type mismatches through validation
+    - **Better documentation**: Types and validation serve as executable documentation
+    - **IDE support**: Enhanced development experience with type information
+    - **Refactoring safety**: Type system helps prevent breaking changes
 
-    can render with `root exit -> str {
-        if self.format == "mermaid" {
-            return self.render_mermaid();
-        } elif self.format == "dot" {
-            return self.render_dot();
-        } else {
-            return self.render_ascii();
-        }
-    }
+    **Advanced Features:**
 
-    can render_mermaid -> str {
-        let output = ["graph TD"];
+    - **Schema validation**: Complex object validation with custom rules
+    - **Type constraints**: Enforce business rules through type checking
+    - **Generic patterns**: Type-safe graph traversal and processing
+    - **Protocol support**: Interface-based programming with validation
 
-        // Add nodes
-        for node_id, info in self.nodes.items() {
-            let label = f"{info['type']}";
-            if info['label'] {
-                label += f": {info['label']}";
-            }
-            output.append(f"    N{node_id}[{label}]");
-        }
+!!! tip "Try It Yourself"
+    Master the type system by building:
 
-        // Add edges
-        for edge in self.edges {
-            let arrow = "-->";
-            if edge['type'] != "Edge" {
-                arrow = f"-->|{edge['type']}|";
-            }
-            output.append(f"    N{edge['from']} {arrow} N{edge['to']}");
-        }
+    - A generic data processing pipeline with runtime validation
+    - Type-safe graph algorithms with proper node/edge validation
+    - Runtime validation systems for API endpoints
+    - Generic walker patterns for different graph structures
 
-        return "\n".join(output);
-    }
-}
+    Remember: Jac's type system provides flexibility through `any` while enabling powerful runtime validation!
 
-// Usage in debugging
-with entry:debug {
-    // Trace a specific walker's path
-    let tracer = TraversalTracer(
-        show_properties=["name", "value", "status"],
-        max_depth=5
-    );
-    spawn tracer on problematic_node;
+---
 
-    // Visualize graph structure
-    let viz = GraphVisualizer(format="mermaid");
-    let graph_diagram = spawn viz on root;
-    print(graph_diagram);
-}
-```
-
-### State Inspection
-
-Tools for inspecting walker and node state during execution:
-
-```jac
-// State inspector
-obj StateInspector {
-    has breakpoints: dict[str, callable] = {};
-    has watch_list: list[str] = [];
-    has history: list[dict] = [];
-
-    can add_breakpoint(location: str, condition: callable) {
-        self.breakpoints[location] = condition;
-    }
-
-    can add_watch(expression: str) {
-        self.watch_list.append(expression);
-    }
-
-    can checkpoint(location: str, context: dict) {
-        // Check if we should break
-        if location in self.breakpoints {
-            if self.breakpoints[location](context) {
-                self.interactive_debug(location, context);
-            }
-        }
-
-        // Record state
-        let state_snapshot = {
-            "location": location,
-            "timestamp": now(),
-            "context": context.copy(),
-            "watches": {}
-        };
-
-        // Evaluate watch expressions
-        for expr in self.watch_list {
-            try {
-                state_snapshot["watches"][expr] = eval(expr, context);
-            } except Exception as e {
-                state_snapshot["watches"][expr] = f"Error: {e}";
-            }
-        }
-
-        self.history.append(state_snapshot);
-    }
-
-    can interactive_debug(location: str, context: dict) {
-        print(f"\n🔴 Breakpoint hit at {location}");
-        print("Context variables:");
-        for key, value in context.items() {
-            print(f"  {key}: {value}");
-        }
-
-        // Simple REPL for inspection
-        while True {
-            let cmd = input("debug> ");
-            if cmd == "continue" or cmd == "c" {
-                break;
-            } elif cmd == "quit" or cmd == "q" {
-                raise DebuggerExit();
-            } elif cmd.startswith("print ") {
-                let expr = cmd[6:];
-                try {
-                    let result = eval(expr, context);
-                    print(result);
-                } except Exception as e {
-                    print(f"Error: {e}");
-                }
-            } elif cmd == "help" {
-                print("Commands: continue (c), quit (q), print <expr>");
-            }
-        }
-    }
-}
-
-// Instrumented walker for debugging
-walker DebuggedWalker {
-    has inspector: StateInspector;
-    has _original_process: callable;
-
-    can __init__ {
-        self.inspector = StateInspector();
-        self._original_process = self.process;
-        self.process = self._debug_process;
-    }
-
-    can _debug_process with entry {
-        // Pre-process checkpoint
-        self.inspector.checkpoint("pre_process", {
-            "walker": self,
-            "here": here,
-            "here_type": type(here).__name__
-        });
-
-        // Call original process
-        self._original_process();
-
-        // Post-process checkpoint
-        self.inspector.checkpoint("post_process", {
-            "walker": self,
-            "here": here,
-            "here_type": type(here).__name__
-        });
-    }
-}
-
-// Property change tracking
-node DebugNode {
-    has _properties: dict = {};
-    has _change_log: list = [];
-
-    can __setattr__(name: str, value: any) {
-        let old_value = self._properties.get(name, "<unset>");
-        self._properties[name] = value;
-
-        self._change_log.append({
-            "property": name,
-            "old_value": old_value,
-            "new_value": value,
-            "timestamp": now(),
-            "stack_trace": get_stack_trace()
-        });
-
-        super.__setattr__(name, value);
-    }
-
-    can get_change_history(property_name: str? = None) -> list {
-        if property_name {
-            return [c for c in self._change_log if c["property"] == property_name];
-        }
-        return self._change_log;
-    }
-}
-```
-
-### Distributed Debugging
-
-Debugging across multiple machines requires special tools:
-
-```jac
-// Distributed debugger
-walker DistributedDebugger {
-    has trace_id: str = generate_trace_id();
-    has machine_traces: dict[str, list] = {};
-    has correlation_id: str;
-
-    can trace_cross_machine with entry {
-        let machine_id = here.__machine_id__;
-
-        # Initialize trace for this machine
-        if machine_id not in self.machine_traces {
-            self.machine_traces[machine_id] = [];
-        }
-
-        # Record entry
-        self.machine_traces[machine_id].append({
-            "event": "walker_arrival",
-            "node": type(here).__name__,
-            "timestamp": now(),
-            "machine": machine_id,
-            "correlation_id": self.correlation_id
-        });
-
-        # Check for cross-machine edges
-        for edge in [<-->] {
-            if edge.__is_cross_machine__ {
-                self.machine_traces[machine_id].append({
-                    "event": "cross_machine_edge",
-                    "from_machine": machine_id,
-                    "to_machine": edge.target.__machine_id__,
-                    "edge_type": type(edge).__name__,
-                    "timestamp": now()
-                });
-            }
-        }
-
-        # Continue traversal
-        visit [-->];
-    }
-
-    can generate_distributed_timeline with `root exit {
-        // Merge all machine traces
-        let all_events = [];
-        for machine_id, events in self.machine_traces.items() {
-            for event in events {
-                event["machine_id"] = machine_id;
-                all_events.append(event);
-            }
-        }
-
-        // Sort by timestamp
-        all_events.sort(key=lambda e: e["timestamp"]);
-
-        // Generate timeline
-        print(f"\n=== Distributed Execution Timeline (Trace: {self.trace_id}) ===");
-        for event in all_events {
-            let time_str = event["timestamp"];
-            let machine = event["machine_id"];
-
-            match event["event"] {
-                case "walker_arrival":
-                    print(f"{time_str} [{machine}] Walker arrived at {event['node']}");
-
-                case "cross_machine_edge":
-                    print(f"{time_str} [{machine}] Cross-machine edge to "
-                          f"[{event['to_machine']}] via {event['edge_type']}");
-            }
-        }
-        print("=====================================\n");
-    }
-}
-
-// Remote debugging session
-obj RemoteDebugSession {
-    has session_id: str;
-    has target_machines: list[str];
-    has debug_port: int = 5678;
-
-    can attach_to_walker(walker_id: str, machine_id: str) {
-        // Establish remote debug connection
-        let connection = establish_debug_connection(machine_id, self.debug_port);
-
-        // Set remote breakpoints
-        connection.set_breakpoint(
-            walker_type="*",
-            condition=f"self.id == '{walker_id}'"
-        );
-
-        // Start monitoring
-        self.monitor_walker(connection, walker_id);
-    }
-
-    can monitor_walker(connection: any, walker_id: str) {
-        while True {
-            let event = connection.get_next_event();
-
-            match event.type {
-                case "breakpoint_hit":
-                    print(f"Walker {walker_id} hit breakpoint on "
-                          f"{event.machine_id} at {event.location}");
-                    self.remote_inspect(connection, event);
-
-                case "state_change":
-                    print(f"Walker {walker_id} state changed: "
-                          f"{event.property} = {event.new_value}");
-
-                case "exception":
-                    print(f"Walker {walker_id} raised {event.exception_type}: "
-                          f"{event.message}");
-                    self.analyze_remote_exception(connection, event);
-            }
-        }
-    }
-}
-
-// Distributed assertion framework
-walker DistributedAssertion {
-    has assertions: list[callable] = [];
-    has machine_results: dict = {};
-
-    can add_assertion(name: str, check: callable) {
-        self.assertions.append({"name": name, "check": check});
-    }
-
-    can verify_distributed_state with entry {
-        let machine_id = here.__machine_id__;
-        let results = [];
-
-        for assertion in self.assertions {
-            try {
-                assertion["check"](here);
-                results.append({
-                    "name": assertion["name"],
-                    "status": "passed",
-                    "machine": machine_id
-                });
-            } except AssertionError as e {
-                results.append({
-                    "name": assertion["name"],
-                    "status": "failed",
-                    "machine": machine_id,
-                    "error": str(e)
-                });
-            }
-        }
-
-        self.machine_results[machine_id] = results;
-
-        // Continue to other machines
-        visit [-->];
-    }
-
-    can report_results with `root exit {
-        let total_passed = 0;
-        let total_failed = 0;
-
-        print("\n=== Distributed Assertion Results ===");
-        for machine_id, results in self.machine_results.items() {
-            print(f"\nMachine: {machine_id}");
-            for result in results {
-                if result["status"] == "passed" {
-                    print(f"  ✓ {result['name']}");
-                    total_passed += 1;
-                } else {
-                    print(f"  ✗ {result['name']}: {result['error']}");
-                    total_failed += 1;
-                }
-            }
-        }
-
-        print(f"\nTotal: {total_passed} passed, {total_failed} failed");
-        print("===================================\n");
-    }
-}
-```
-
-### Performance Profiling
-
-```jac
-// Performance profiler for walkers
-walker PerformanceProfiler {
-    has profile_data: dict = {};
-    has _start_times: dict = {};
-
-    can start_timer(operation: str) {
-        self._start_times[operation] = time.perf_counter();
-    }
-
-    can stop_timer(operation: str) {
-        if operation in self._start_times {
-            elapsed = time.perf_counter() - self._start_times[operation];
-
-            if operation not in self.profile_data {
-                self.profile_data[operation] = {
-                    "count": 0,
-                    "total_time": 0.0,
-                    "min_time": float('inf'),
-                    "max_time": 0.0
-                };
-            }
-
-            let stats = self.profile_data[operation];
-            stats["count"] += 1;
-            stats["total_time"] += elapsed;
-            stats["min_time"] = min(stats["min_time"], elapsed);
-            stats["max_time"] = max(stats["max_time"], elapsed);
-
-            del self._start_times[operation];
-        }
-    }
-
-    can profile_ability(ability_name: str) -> callable {
-        can profiled_ability(original_ability: callable) -> callable {
-            can wrapper(*args, **kwargs) {
-                self.start_timer(ability_name);
-                try {
-                    result = original_ability(*args, **kwargs);
-                    return result;
-                } finally {
-                    self.stop_timer(ability_name);
-                }
-            }
-            return wrapper;
-        }
-        return profiled_ability;
-    }
-
-    can generate_report with `root exit {
-        print("\n=== Performance Profile ===");
-        print(f"{'Operation':<30} {'Count':<10} {'Total(s)':<10} "
-              f"{'Avg(ms)':<10} {'Min(ms)':<10} {'Max(ms)':<10}");
-        print("-" * 80);
-
-        for op, stats in self.profile_data.items() {
-            avg_ms = (stats["total_time"] / stats["count"]) * 1000;
-            print(f"{op:<30} {stats['count']:<10} "
-                  f"{stats['total_time']:<10.3f} {avg_ms:<10.2f} "
-                  f"{stats['min_time']*1000:<10.2f} "
-                  f"{stats['max_time']*1000:<10.2f}");
-        }
-        print("========================\n");
-    }
-}
-
-// Memory profiler
-walker MemoryProfiler {
-    has snapshots: list = [];
-    has track_types: list[type] = [node, edge, walker];
-
-    can take_snapshot(label: str) {
-        import:py gc;
-        import:py sys;
-
-        gc.collect();  // Force garbage collection
-
-        let snapshot = {
-            "label": label,
-            "timestamp": now(),
-            "total_objects": 0,
-            "by_type": {},
-            "memory_usage": self.get_memory_usage()
-        };
-
-        for obj in gc.get_objects() {
-            obj_type = type(obj);
-            if any(isinstance(obj, t) for t in self.track_types) {
-                type_name = obj_type.__name__;
-                if type_name not in snapshot["by_type"] {
-                    snapshot["by_type"][type_name] = {
-                        "count": 0,
-                        "size": 0
-                    };
-                }
-                snapshot["by_type"][type_name]["count"] += 1;
-                snapshot["by_type"][type_name]["size"] += sys.getsizeof(obj);
-                snapshot["total_objects"] += 1;
-            }
-        }
-
-        self.snapshots.append(snapshot);
-    }
-
-    can get_memory_usage -> dict {
-        import:py psutil;
-        import:py os;
-
-        process = psutil.Process(os.getpid());
-        mem_info = process.memory_info();
-
-        return {
-            "rss": mem_info.rss,  // Resident Set Size
-            "vms": mem_info.vms,  // Virtual Memory Size
-            "percent": process.memory_percent()
-        };
-    }
-
-    can compare_snapshots(label1: str, label2: str) {
-        let snap1 = [s for s in self.snapshots if s["label"] == label1][0];
-        let snap2 = [s for s in self.snapshots if s["label"] == label2][0];
-
-        print(f"\n=== Memory Comparison: {label1} → {label2} ===");
-
-        // Overall memory change
-        let mem_diff = snap2["memory_usage"]["rss"] - snap1["memory_usage"]["rss"];
-        print(f"Memory change: {mem_diff / 1024 / 1024:.2f} MB");
-
-        // Object count changes
-        print("\nObject count changes:");
-        let all_types = set(snap1["by_type"].keys()) | set(snap2["by_type"].keys());
-
-        for type_name in sorted(all_types) {
-            let count1 = snap1["by_type"].get(type_name, {}).get("count", 0);
-            let count2 = snap2["by_type"].get(type_name, {}).get("count", 0);
-            let diff = count2 - count1;
-
-            if diff != 0 {
-                print(f"  {type_name}: {count1} → {count2} ({diff:+})");
-            }
-        }
-        print("================================\n");
-    }
-}
-```
-
-### Error Diagnostics
-
-```jac
-// Enhanced error reporting
-obj ErrorDiagnostics {
-    has error_handlers: dict[type, callable] = {};
-    has context_collectors: list[callable] = [];
-
-    can register_handler(error_type: type, handler: callable) {
-        self.error_handlers[error_type] = handler;
-    }
-
-    can add_context_collector(collector: callable) {
-        self.context_collectors.append(collector);
-    }
-
-    can diagnose(error: Exception, context: dict = {}) -> dict {
-        let diagnosis = {
-            "error_type": type(error).__name__,
-            "message": str(error),
-            "timestamp": now(),
-            "context": context,
-            "stack_trace": get_detailed_stack_trace(),
-            "suggestions": []
-        };
-
-        // Collect additional context
-        for collector in self.context_collectors {
-            try {
-                additional_context = collector(error, context);
-                diagnosis["context"].update(additional_context);
-            } except Exception as e {
-                diagnosis["context"][f"collector_error_{collector.__name__}"] = str(e);
-            }
-        }
-
-        // Run specific handler if available
-        error_type = type(error);
-        if error_type in self.error_handlers {
-            let handler_result = self.error_handlers[error_type](error, diagnosis);
-            diagnosis["suggestions"].extend(handler_result.get("suggestions", []));
-            diagnosis["probable_cause"] = handler_result.get("probable_cause");
-        }
-
-        return diagnosis;
-    }
-}
-
-// Graph-specific error diagnostics
-can diagnose_graph_errors(error: Exception, context: dict) -> dict {
-    let result = {"suggestions": []};
-
-    match type(error) {
-        case NodeNotFoundError:
-            result["probable_cause"] = "Attempting to access non-existent node";
-            result["suggestions"] = [
-                "Check if node was deleted",
-                "Verify node creation completed",
-                "Check for race conditions in concurrent access"
-            ];
-
-        case CircularDependencyError:
-            result["probable_cause"] = "Circular reference detected in graph";
-            result["suggestions"] = [
-                "Use cycle detection before traversal",
-                "Implement maximum depth limit",
-                "Consider using visited set"
-            ];
-
-        case CrossMachineError:
-            result["probable_cause"] = "Failed cross-machine operation";
-            result["suggestions"] = [
-                "Check network connectivity",
-                "Verify remote machine availability",
-                "Check for version mismatches",
-                "Enable distributed tracing"
-            ];
-    }
-
-    return result;
-}
-
-// Automatic error reporting
-walker ErrorReporter {
-    has diagnostics: ErrorDiagnostics;
-    has report_endpoint: str?;
-
-    can __init__ {
-        self.diagnostics = ErrorDiagnostics();
-        self.diagnostics.register_handler(GraphError, diagnose_graph_errors);
-    }
-
-    can safe_traverse with entry {
-        try {
-            // Normal traversal
-            self.process_node();
-            visit [-->];
-
-        } except Exception as e {
-            // Diagnose error
-            let diagnosis = self.diagnostics.diagnose(e, {
-                "walker_type": type(self).__name__,
-                "node_type": type(here).__name__,
-                "node_id": here.__id__ if hasattr(here, "__id__") else None,
-                "machine_id": here.__machine_id__ if hasattr(here, "__machine_id__") else None
-            });
-
-            // Report error
-            self.report_error(diagnosis);
-
-            // Decide whether to continue
-            if self.should_continue_after_error(e) {
-                visit [-->] else {
-                    report {"error": diagnosis};
-                    disengage;
-                };
-            } else {
-                disengage;
-            }
-        }
-    }
-
-    can report_error(diagnosis: dict) {
-        // Log locally
-        print(f"\n🔴 Error Diagnostic Report");
-        print(f"Type: {diagnosis['error_type']}");
-        print(f"Message: {diagnosis['message']}");
-
-        if diagnosis.get("probable_cause") {
-            print(f"Probable Cause: {diagnosis['probable_cause']}");
-        }
-
-        if diagnosis["suggestions"] {
-            print("Suggestions:");
-            for suggestion in diagnosis["suggestions"] {
-                print(f"  • {suggestion}");
-            }
-        }
-
-        // Send to monitoring service if configured
-        if self.report_endpoint {
-            send_error_report(self.report_endpoint, diagnosis);
-        }
-    }
-}
-```
-
-### Summary
-
-This chapter covered comprehensive testing and debugging strategies for Jac applications:
-
-### Testing Framework
-- **Built-in Tests**: First-class `test` blocks with assertions
-- **Graph Testing**: Specialized utilities for structure verification
-- **Walker Testing**: Simulating traversals and verifying behavior
-- **Mock Framework**: Isolating components for unit testing
-
-### Debugging Techniques
-- **Traversal Visualization**: Understanding walker paths
-- **State Inspection**: Interactive debugging and property tracking
-- **Distributed Debugging**: Cross-machine tracing and correlation
-- **Performance Profiling**: Identifying bottlenecks and optimization opportunities
-
-### Best Practices
-1. **Test at Multiple Levels**: Unit, integration, and system tests
-2. **Use Visualization**: Graph structure and traversal paths
-3. **Profile Early**: Identify performance issues before scaling
-4. **Embrace Distributed Debugging**: Essential for production systems
-5. **Automate Error Reporting**: Comprehensive diagnostics for rapid fixes
-
-These tools and techniques ensure that Jac applications are robust, performant, and maintainable at any scale, from development to global deployment.
+*Ready to learn about testing and debugging? Continue to [Chapter 18: Testing and Debugging](chapter_17.md)!*

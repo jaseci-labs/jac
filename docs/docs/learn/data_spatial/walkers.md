@@ -7,25 +7,40 @@ They play a crucial role in executing visit-dependent abilities as discussed in 
 A walker can be spawned at any point on the graph with the ```spawn``` keyword.
 
 === "Jac"
-    ```jac linenums="1"
+    <div class="code-block">
+    ```jac
     --8<-- "jac/examples/data_spatial/define_walker.jac"
     ```
+    </div>
 ??? example "Graph"
-    ![Image](assets/define_walker.png)
+    ```mermaid
+    flowchart LR
+    0 -->|"a()"| 1
+    1 -->|"a()"| 2
+    2 -->|"a()"| 3
+    1 -->|"a()"| 4
+    4 -->|"a()"| 5
+    0["Root()"]
+    1["A(val=5)"]
+    2["A(val=10)"]
+    3["A(val=15)"]
+    4["A(val=20)"]
+    5["A(val=25)"]
+    ```
 
 ## Graph Traversal Using Visit
 Walkers navigate the graph using the ```visit``` keyword.
 === "visiting_node.jac"
     ```jac linenums="1"
-        visit [node_name]; # Visits a particular node
+    visit [node_name]; # Visits a particular node
     ```
 === "visiting_sucessor.jac"
     ```jac linenums="1"
-        visit [node_name-->]; # Visits successive nodes of a node
+    visit [node_name-->]; # Visits successive nodes of a node
     ```
 === "visiting_predecessor.jac"
     ```jac linenums="1"
-        visit [<--node_name]; # Visits predecessor nodes of a node
+    visit [<--node_name]; # Visits predecessor nodes of a node
     ```
 ## Attributes & Abilities
 - Similar to nodes, walkers can have their own attributes and abilities including both callable and visit-dependent abilities.
@@ -57,25 +72,11 @@ By using these principles, walkers can efficiently traverse and interact with gr
 
 ### Example:
 === "Jac"
-    ```jac linenums="1"
+    <div class="code-block">
+    ```jac
     --8<-- "jac/examples/data_spatial/ds_entry_exit.jac"
     ```
-??? tip "Output"
-    ```txt
-    Entering at the beginning of walker:  Root()
-    Visiting node :  test_node(value=0)
-    Visiting node :  test_node(value=1)
-    Visiting node :  test_node(value=2)
-    Visiting node :  test_node(value=3)
-    Visiting node :  test_node(value=4)
-    Visiting node :  test_node(value=5)
-    Visiting node :  test_node(value=6)
-    Visiting node :  test_node(value=7)
-    Visiting node :  test_node(value=8)
-    Visiting node :  test_node(value=9)
-    Exiting at the end of walker:  test_node(value=9)
-    test_walker(visited_nodes=[test_node(value=0), test_node(value=1), test_node(value=2), test_node(value=3), test_node(value=4), test_node(value=5), test_node(value=6), test_node(value=7), test_node(value=8), test_node(value=9)], entry_count=1, exit_count=1)
-    ```
+    </div>
 
 !!! Abstract  "can log_entry with entry"
     -  This ability is triggered once when the walker is spawned. It is essentially the "entry point" of the walker’s operation.

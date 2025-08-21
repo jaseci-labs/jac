@@ -1,6 +1,0 @@
-{
-  "dependencies": {
-    "@codedoc/core": "^0.3.1",
-    "codedoc-mermaid-plugin": "^1.0.0"
-  }
-}

@@ -1,1003 +1,831 @@
-### Chapter 14: Advanced Language Features
+# Chapter 14: Multi-User Architecture and Permissions
 
-This chapter explores Jac's advanced features that enable sophisticated concurrent programming, leverage its powerful type system, and provide robust error handling for production systems. These features build upon the fundamentals to create applications that are both powerful and maintainable.
+In this chapter, we'll explore how to build secure, multi-user applications in Jac Cloud. We'll develop a shared notebook system that demonstrates user isolation, permission systems, and access control strategies through practical examples that evolve throughout the chapter.
 
-#### 14.1 Concurrent Programming
+!!! info "What You'll Learn"
+    - Building secure multi-user applications
+    - User isolation and data privacy patterns
+    - Permission-based access control
+    - Shared data management strategies
+    - Security considerations for cloud applications
 
-### `spawn` for Parallel Walkers
+---
 
-The `spawn` operator not only activates walkers but also enables natural concurrency. Multiple walkers can traverse the graph simultaneously, with Jac handling synchronization automatically:
+## User Isolation and Permission Systems
 
-```jac
-// Basic parallel walker spawning
-walker DataProcessor {
-    has node_id: str;
-    has processing_time: float;
+Multi-user applications require careful consideration of data access and user permissions. Jac provides built-in patterns for user management that integrate seamlessly with your application logic, allowing you to focus on business rules rather than authentication infrastructure.
 
-    can process with entry {
-        let start = time.now();
+!!! success "Multi-User Benefits"
+    - **User Context**: Access to user information in walkers
+    - **Data Isolation**: Users can only access their authorized data
+    - **Flexible Permissions**: Fine-grained access control patterns
+    - **Secure by Default**: Application-level security patterns
+    - **Shared Data Support**: Controlled sharing between users
 
-        // Simulate processing
-        sleep(self.processing_time);
-        process_node_data(here);
+### Traditional vs Jac Multi-User Development
 
-        let duration = time.now() - start;
-        report {
-            "node": self.node_id,
-            "duration": duration,
-            "thread": threading.current_thread().name
-        };
-    }
-}
+!!! example "Multi-User Comparison"
+    === "Traditional Approach"
+        ```python
+        # app.py - Manual user management required
+        from flask import Flask, request, jsonify
+        from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
+        from werkzeug.security import generate_password_hash, check_password_hash
 
-// Spawn multiple walkers concurrently
-with entry {
-    let nodes = root[-->:DataNode:];
+        app = Flask(__name__)
+        app.config['JWT_SECRET_KEY'] = 'your-secret-key'
+        jwt = JWTManager(app)
 
-    // These walkers execute in parallel!
-    for i, node in enumerate(nodes) {
-        spawn DataProcessor(
-            node_id=f"node_{i}",
-            processing_time=random.uniform(0.1, 0.5)
-        ) on node;
-    }
-}
+        # Global storage (in production, use a database)
+        users = {}
+        notebooks = {}
+
+        @app.route('/register', methods=['POST'])
+        def register():
+            data = request.get_json()
+            username = data.get('username')
+            password = data.get('password')
+
+            if username in users:
+                return jsonify({'error': 'User already exists'}), 400
+
+            users[username] = {
+                'password': generate_password_hash(password),
+                'notebooks': []
+            }
+
+            return jsonify({'message': 'User created successfully'})
+
+        @app.route('/login', methods=['POST'])
+        def login():
+            data = request.get_json()
+            username = data.get('username')
+            password = data.get('password')
+
+            if username not in users or not check_password_hash(users[username]['password'], password):
+                return jsonify({'error': 'Invalid credentials'}), 401
+
+            access_token = create_access_token(identity=username)
+            return jsonify({'access_token': access_token})
+
+        @app.route('/create_note', methods=['POST'])
+        @jwt_required()
+        def create_note():
+            current_user = get_jwt_identity()
+            data = request.get_json()
+
+            # Manual permission checking
+            note_id = len(notebooks)
+            notebooks[note_id] = {
+                'id': note_id,
+                'title': data.get('title'),
+                'content': data.get('content'),
+                'owner': current_user,
+                'shared_with': []
+            }
+
+            users[current_user]['notebooks'].append(note_id)
+            return jsonify({'message': 'Note created', 'id': note_id})
+
+        if __name__ == '__main__':
+            app.run()
+        ```
+
+    === "Jac Multi-User"
+        ```jac
+        # shared_notebook.jac - User patterns built-in
+        node Note {
+            has title: str;
+            has content: str;
+            has owner: str;
+            has shared_with: list[str] = [];
+            has created_at: str = "2024-01-15";
+        }
+
+        walker create_note {
+            has title: str;
+            has content: str;
+            has owner: str;
+
+            can create_user_note with `root entry {
+                # Create note with specified owner
+                new_note = Note(
+                    title=self.title,
+                    content=self.content,
+                    owner=self.owner
+                );
+                here ++> new_note;
+
+                report {
+                    "message": "Note created successfully",
+                    "id": new_note.id,
+                    "owner": new_note.owner
+                };
+            }
+        }
+
+        walker get_my_notes {
+            has user_id: str;
+
+            can fetch_user_notes with `root entry {
+                # Filter by specified user
+                my_notes = [-->(`?Note)](?owner == self.user_id);
+
+                notes_data = [
+                    {"id": n.id, "title": n.title, "created_at": n.created_at}
+                    for n in my_notes
+                ];
+
+                report {"notes": notes_data, "total": len(notes_data)};
+            }
+        }
+        ```
+
+---
+
+## Basic User Authentication
+
+For multi-user applications, you need to implement user identification patterns. Let's start with a simple notebook system that supports multiple users.
+
+### Setting Up User-Aware Notebook
+
+!!! example "User-Isolated Notebook System"
+    === "Jac"
+        ```jac
+        # user_notebook.jac
+        import uuid;
+
+        node Note {
+            has title: str;
+            has content: str;
+            has owner: str;
+            has is_private: bool = True;
+            has id: str = "note_" + str(uuid.uuid4());
+        }
+
+        walker create_note {
+            has title: str;
+            has content: str;
+            has owner: str;
+            has is_private: bool = True;
+
+            obj __specs__ {
+                static has auth: bool = False;
+            }
+
+            can add_note with `root entry {
+                new_note = Note(
+                    title=self.title,
+                    content=self.content,
+                    owner=self.owner,
+                    is_private=self.is_private
+                );
+                here ++> new_note;
+
+                report {
+                    "status": "created",
+                    "note_id": new_note.id,
+                    "private": new_note.is_private
+                };
+            }
+        }
+
+        walker list_my_notes {
+            has user_id: str;
+
+            obj __specs__ {
+                static has auth: bool = False;
+            }
+
+            can get_user_notes with `root entry {
+                # Only get notes owned by specified user
+                user_notes = [-->(`?Note)](?owner == self.user_id);
+
+                report {
+                    "user": self.user_id,
+                    "notes": [
+                        {
+                            "id": n.id,
+                            "title": n.title,
+                            "private": n.is_private
+                        }
+                        for n in user_notes
+                    ],
+                    "count": len(user_notes)
+                };
+            }
+        }
+        ```
+
+    === "Python Equivalent"
+        ```python
+        # user_notebook.py - Requires manual auth setup
+        from flask import Flask, request, jsonify
+        from flask_jwt_extended import JWTManager, jwt_required, get_jwt_identity
+
+        app = Flask(__name__)
+        app.config['JWT_SECRET_KEY'] = 'secret-key'
+        jwt = JWTManager(app)
+
+        notes = []
+
+        @app.route('/create_note', methods=['POST'])
+        @jwt_required()
+        def create_note():
+            current_user = get_jwt_identity()
+            data = request.get_json()
+
+            note = {
+                'id': len(notes),
+                'title': data.get('title'),
+                'content': data.get('content'),
+                'owner': current_user,
+                'is_private': data.get('is_private', True)
+            }
+            notes.append(note)
+
+            return jsonify({
+                'status': 'created',
+                'note_id': note['id'],
+                'private': note['is_private']
+            })
+
+        @app.route('/list_my_notes', methods=['GET'])
+        @jwt_required()
+        def list_my_notes():
+            current_user = get_jwt_identity()
+            user_notes = [n for n in notes if n['owner'] == current_user]
+
+            return jsonify({
+                'user': current_user,
+                'notes': [
+                    {'id': n['id'], 'title': n['title'], 'private': n['is_private']}
+                    for n in user_notes
+                ],
+                'count': len(user_notes)
+            })
+        ```
+
+### Deploying and Testing
+
+Deploy your user-aware application:
+
+```bash
+jac serve user_notebook.jac
 ```
 
-### Advanced Spawning Patterns
+### Testing User Authentication
 
-```jac
-// Parallel map-reduce pattern
-walker MapWorker {
-    has mapper: callable;
-    has data_chunk: list;
-    has result_collector: node;
+```bash
+# Create a note for Alice
+curl -X POST http://localhost:8000/walker/create_note \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Alice Private Note",
+    "content": "Secret content",
+    "owner": "alice@example.com"
+  }'
 
-    can map with entry {
-        // Process data chunk in parallel
-        let results = [self.mapper(item) for item in self.data_chunk];
+# Create a note for Bob
+curl -X POST http://localhost:8000/walker/create_note \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Bob Note",
+    "content": "Bob content",
+    "owner": "bob@example.com"
+  }'
 
-        // Send results to collector (thread-safe)
-        visit self.result_collector {
-            :atomic: {  // Atomic operation
-                here.results.extend(results);
-                here.completed_chunks += 1;
-            }
-        };
-    }
-}
-
-walker ReduceWorker {
-    has reducer: callable;
-    has expected_chunks: int;
-
-    can reduce with ResultCollector entry {
-        // Wait for all map workers to complete
-        while here.completed_chunks < self.expected_chunks {
-            sleep(0.01);  // Busy wait (in practice, use conditions)
-        }
-
-        // Reduce results
-        final_result = self.reducer(here.results);
-        report final_result;
-    }
-}
-
-// Usage
-can parallel_map_reduce(
-    data: list,
-    mapper: callable,
-    reducer: callable,
-    chunk_size: int = 100
-) -> any {
-    // Create result collector
-    collector = root ++> ResultCollector(
-        results=[],
-        completed_chunks=0
-    );
-
-    // Split data and spawn mappers
-    chunks = [data[i:i+chunk_size] for i in range(0, len(data), chunk_size)];
-
-    for chunk in chunks {
-        spawn MapWorker(
-            mapper=mapper,
-            data_chunk=chunk,
-            result_collector=collector
-        ) on root;
-    }
-
-    // Spawn reducer
-    result = spawn ReduceWorker(
-        reducer=reducer,
-        expected_chunks=len(chunks)
-    ) on collector;
-
-    return result;
-}
+# Get Alice's notes only
+curl -X POST http://localhost:8000/walker/list_my_notes \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "alice@example.com"}'
 ```
 
-### Walker Synchronization
+---
 
-Jac provides several mechanisms for coordinating concurrent walkers:
+## Shared Data Patterns
 
-```jac
-// Barrier synchronization
-node BarrierNode {
-    has required_count: int;
-    has arrived_count: int = 0;
-    has waiting_walkers: list = [];
+Multi-user applications often need controlled sharing of data between users. Let's enhance our notebook to support sharing notes with specific users.
 
-    can wait_at_barrier with visitor entry {
-        :synchronized: {  // Synchronized block
-            self.arrived_count += 1;
+### Note Sharing Implementation
 
-            if self.arrived_count < self.required_count {
-                // Add walker to waiting list
-                self.waiting_walkers.append(visitor);
-                visitor.suspend();  // Suspend walker execution
-            } else {
-                // All walkers arrived, release them
-                for walker in self.waiting_walkers {
-                    walker.resume();  // Resume suspended walkers
-                }
-                self.waiting_walkers.clear();
-                self.arrived_count = 0;
-            }
+!!! example "Shared Notebook with Permissions"
+    ```jac
+    # shared_permissions.jac
+    import uuid;
+
+    node Note {
+        has title: str;
+        has content: str;
+        has owner: str;
+        has shared_with: list[str] = [];
+        has is_public: bool = False;
+        has permissions: dict = {"read": True, "write": False};
+        has id: str = "note_" + str(uuid.uuid4());
+    }
+
+    walker create_note {
+        has title: str;
+        has content: str;
+        has owner: str;
+        has is_public: bool = False;
+
+        obj __specs__ {
+            static has auth: bool = False;
+        }
+
+        can add_note with `root entry {
+            new_note = Note(
+                title=self.title,
+                content=self.content,
+                owner=self.owner,
+                is_public=self.is_public
+            );
+            here ++> new_note;
+
+            report {
+                "status": "created",
+                "note_id": new_note.id,
+                "public": new_note.is_public
+            };
         }
     }
-}
 
-// Pipeline pattern with synchronized stages
-walker PipelineStage {
-    has stage_num: int;
-    has process_func: callable;
-    has next_stage: node?;
+    walker share_note {
+        has note_id: str;
+        has current_user: str;
+        has target_user: str;
+        has permission_level: str = "read";  # "read" or "write"
 
-    can process with WorkItem entry {
-        // Process work item
-        result = self.process_func(here.data);
-        here.data = result;
-
-        // Mark stage completion
-        here.completed_stages.add(self.stage_num);
-
-        // Move to next stage if available
-        if self.next_stage {
-            :synchronized: {
-                # Ensure ordering for pipeline
-                visit self.next_stage;
-            }
-        } else {
-            report here.data;  // Final result
+        obj __specs__ {
+            static has auth: bool = False;
         }
-    }
-}
-```
 
-### `async`/`await` Patterns
+        can add_sharing_permission with `root entry {
+            target_note = [-->(`?Note)](?id == self.note_id);
 
-Jac fully supports asynchronous programming for I/O-bound operations:
-
-```jac
-import:py asyncio;
-import:py aiohttp;
-import:py from asyncio { gather, create_task }
-
-// Async walker abilities
-walker AsyncWebCrawler {
-    has urls: list[str];
-    has max_concurrent: int = 10;
-    has results: dict = {};
-
-    async can crawl with entry {
-        // Create semaphore for rate limiting
-        semaphore = asyncio.Semaphore(self.max_concurrent);
-
-        // Create tasks for all URLs
-        tasks = [
-            create_task(self.fetch_url(url, semaphore))
-            for url in self.urls
-        ];
-
-        // Wait for all to complete
-        await gather(*tasks);
-
-        report self.results;
-    }
-
-    async can fetch_url(url: str, semaphore: asyncio.Semaphore) -> None {
-        async with semaphore {  // Limit concurrent requests
-            try {
-                async with aiohttp.ClientSession() as session {
-                    async with session.get(url) as response {
-                        content = await response.text();
-                        self.results[url] = {
-                            "status": response.status,
-                            "length": len(content),
-                            "title": extract_title(content)
-                        };
-                    }
-                }
-            } except Exception as e {
-                self.results[url] = {"error": str(e)};
-            }
-        }
-    }
-}
-
-// Async node abilities
-node AsyncDataSource {
-    has api_endpoint: str;
-    has cache: dict = {};
-    has cache_ttl: int = 300;  // seconds
-
-    async can fetch_data with AsyncClient entry {
-        cache_key = visitor.query_params;
-
-        // Check cache
-        if cache_key in self.cache {
-            cached_data, timestamp = self.cache[cache_key];
-            if time.now() - timestamp < self.cache_ttl {
-                visitor.receive_data(cached_data);
+            if not target_note {
+                report {"error": "Note not found"};
                 return;
             }
-        }
 
-        // Fetch fresh data
-        try {
-            data = await fetch_from_api(
-                self.api_endpoint,
-                visitor.query_params
-            );
+            note = target_note[0];
 
-            // Update cache
-            self.cache[cache_key] = (data, time.now());
-            visitor.receive_data(data);
-
-        } except APIError as e {
-            visitor.receive_error(e);
-        }
-    }
-}
-
-// Async entry point
-async with entry:main {
-    // Spawn async walker
-    crawler = AsyncWebCrawler(urls=[
-        "https://example.com",
-        "https://example.org",
-        "https://example.net"
-    ]);
-
-    results = await spawn crawler on root;
-    print(f"Crawled {len(results)} URLs");
-}
-```
-
-### Thread-Safe Graph Operations
-
-When multiple walkers operate on the same graph regions, Jac provides thread-safety guarantees:
-
-```jac
-// Thread-safe node with fine-grained locking
-node ConcurrentCounter {
-    has count: int = 0;
-    has :lock: lock = threading.Lock();  // Node-level lock
-
-    can increment with visitor entry {
-        with self.lock {
-            old_value = self.count;
-            self.count += 1;
-
-            // Log the change atomically
-            self ++> CounterLog(
-                timestamp=now(),
-                old_value=old_value,
-                new_value=self.count,
-                walker_id=visitor.id
-            );
-        }
-    }
-
-    can get_value -> int {
-        with self.lock {
-            return self.count;
-        }
-    }
-}
-
-// Read-write lock pattern
-node SharedResource {
-    has data: dict = {};
-    has :rwlock: rwlock = threading.RWLock();
-
-    can read_data(key: str) -> any? {
-        with self.rwlock.read() {  // Multiple readers allowed
-            return self.data.get(key);
-        }
-    }
-
-    can write_data(key: str, value: any) {
-        with self.rwlock.write() {  // Exclusive write access
-            self.data[key] = value;
-        }
-    }
-}
-
-// Atomic operations on edges
-edge ConcurrentEdge {
-    has weight: float;
-    has access_count: int = 0;
-
-    :atomic: ["weight", "access_count"];  // Declare atomic fields
-
-    can traverse with visitor entry {
-        # These operations are atomic
-        self.access_count += 1;
-        self.weight *= 0.99;  # Decay weight
-
-        if self.weight < 0.1 {
-            # Mark for deletion (thread-safe)
-            self.mark_for_deletion();
-        }
-    }
-}
-```
-
-#### 14.2 Type System Deep Dive
-
-### Type Inference vs Explicit Typing
-
-While Jac requires type annotations, it provides sophisticated type inference in many contexts:
-
-```jac
-// Explicit typing (required for declarations)
-let numbers: list[int] = [1, 2, 3, 4, 5];
-let processor: DataProcessor = DataProcessor();
-
-// Type inference in expressions
-let doubled = numbers.map(lambda x: int -> int : x * 2);  // Inferred: list[int]
-let filtered = doubled.filter(lambda x: int -> bool : x > 5);  // Inferred: list[int]
-
-// Generic type inference
-can identity[T](value: T) -> T {
-    return value;
-}
-
-let x = identity(42);  // T inferred as int
-let y = identity("hello");  // T inferred as str
-
-// Complex type inference
-can process_data[T, R](
-    data: list[T],
-    transformer: callable[[T], R]
-) -> list[R] {
-    return [transformer(item) for item in data];
-}
-
-// Usage with inference
-let strings = ["1", "2", "3"];
-let integers = process_data(strings, int);  // Inferred: list[int]
-```
-
-### Generic Types and Constraints
-
-Jac supports sophisticated generic programming with type constraints:
-
-```jac
-// Basic generics
-obj Container[T] {
-    has items: list[T] = [];
-
-    can add(item: T) {
-        self.items.append(item);
-    }
-
-    can get(index: int) -> T? {
-        if 0 <= index < len(self.items) {
-            return self.items[index];
-        }
-        return None;
-    }
-}
-
-// Generic constraints
-can sort_comparable[T: Comparable](items: list[T]) -> list[T] {
-    return sorted(items);
-}
-
-// Multiple type parameters with constraints
-obj Cache[K: Hashable, V] {
-    has store: dict[K, tuple[V, float]] = {};
-    has ttl: float;
-
-    can set(key: K, value: V) {
-        self.store[key] = (value, time.now());
-    }
-
-    can get(key: K) -> V? {
-        if key in self.store {
-            value, timestamp = self.store[key];
-            if time.now() - timestamp < self.ttl {
-                return value;
-            }
-            del self.store[key];
-        }
-        return None;
-    }
-}
-
-// Bounded generics
-walker TypedTraverser[N: node, E: edge] {
-    has node_filter: callable[[N], bool];
-    has edge_filter: callable[[E], bool];
-
-    can traverse with N entry {
-        if self.node_filter(here) {
-            // Process node
-            process_typed_node(here);
-
-            // Traverse filtered edges
-            let valid_edges = [e for e in [<-->]
-                              if isinstance(e, E) and self.edge_filter(e)];
-
-            for edge in valid_edges {
-                visit edge.target;
-            }
-        }
-    }
-}
-```
-
-### Type-Safe Graph Operations
-
-Jac's type system extends to graph operations, ensuring type safety in topological programming:
-
-```jac
-// Typed node references
-node TypedNode {
-    has data: str;
-}
-
-node SpecialNode(TypedNode) {
-    has special_data: int;
-}
-
-// Type-safe traversal
-walker StrictTraverser {
-    can process with entry {
-        // Type-checked at compile time
-        let typed_nodes: list[TypedNode] = [-->(`TypedNode)];
-        let special_nodes: list[SpecialNode] = [-->(`SpecialNode)];
-
-        // This would be a compile error:
-        // let wrong: list[SpecialNode] = [-->(`TypedNode)];
-    }
-}
-
-// Generic graph algorithms
-can find_path[N: node](
-    start: N,
-    end: N,
-    filter_func: callable[[N], bool] = lambda n: N -> bool : True
-) -> list[N]? {
-
-    walker PathFinder[N] {
-        has target: N;
-        has filter_func: callable[[N], bool];
-        has path: list[N] = [];
-        has found: bool = False;
-
-        can search with N entry {
-            self.path.append(here);
-
-            if here == self.target {
-                self.found = True;
-                report self.path;
-                disengage;
+            # Only owner can share notes
+            if note.owner != self.current_user {
+                report {"error": "Only note owner can share"};
+                return;
             }
 
-            let next_nodes: list[N] = [-->(`N)]
-                .filter(self.filter_func)
-                .filter(lambda n: N -> bool : n not in self.path);
-
-            for next in next_nodes {
-                visit next;
-                if self.found {
-                    disengage;
-                }
+            # Add user to shared list if not already there
+            if self.target_user not in note.shared_with {
+                note.shared_with.append(self.target_user);
             }
 
-            self.path.pop();
-        }
-    }
-
-    let finder = PathFinder[N](
-        target=end,
-        filter_func=filter_func
-    );
-
-    return spawn finder on start;
-}
-```
-
-### Advanced Type Features
-
-```jac
-// Union types
-type StringOrInt = str | int;
-type MaybeNode = node | None;
-
-can process_mixed(value: StringOrInt) -> str {
-    match value {
-        case str as s: return s;
-        case int as i: return str(i);
-    }
-}
-
-// Type aliases for complex types
-type UserGraph = dict[str, list[tuple[User, Relationship]]];
-type AsyncCallback = callable[[any], Awaitable[None]];
-
-// Literal types
-type Direction = "north" | "south" | "east" | "west";
-type Priority = 1 | 2 | 3 | 4 | 5;
-
-can move(direction: Direction, steps: int) -> Position {
-    match direction {
-        case "north": return Position(0, steps);
-        case "south": return Position(0, -steps);
-        case "east": return Position(steps, 0);
-        case "west": return Position(-steps, 0);
-    }
-}
-
-// Protocol types (structural typing)
-protocol Serializable {
-    can to_json() -> str;
-    can from_json(data: str) -> Self;
-}
-
-can save_object[T: Serializable](obj: T, filename: str) {
-    with open(filename, "w") as f {
-        f.write(obj.to_json());
-    }
-}
-
-// Variadic generics
-can combine[*Ts](values: tuple[*Ts]) -> tuple[*Ts] {
-    return values;
-}
-
-let combined = combine((1, "hello", 3.14, True));  // tuple[int, str, float, bool]
-```
-
-#### 14.3 Error Handling
-
-### Exception Handling in Traversals
-
-Error handling in graph traversal requires special consideration:
-
-```jac
-// Traversal-aware exception handling
-walker ResilientTraverser {
-    has errors: list[dict] = [];
-    has continue_on_error: bool = True;
-
-    can traverse with entry {
-        try {
-            // Process current node
-            result = process_node(here);
-
-            // Continue traversal
-            visit [-->];
-
-        } except NodeProcessingError as e {
-            self.errors.append({
-                "node": here,
-                "error": str(e),
-                "traceback": get_traceback()
-            });
-
-            if not self.continue_on_error {
-                disengage;  // Stop traversal
-            }
-
-        } except NetworkError as e {
-            // Handle cross-machine traversal errors
-            print(f"Network error visiting remote node: {e}");
-
-            // Try alternate path
-            visit [-->:LocalEdge:];  // Only local edges
-        }
-    }
-
-    can summarize with `root exit {
-        if self.errors {
             report {
-                "status": "completed_with_errors",
-                "error_count": len(self.errors),
-                "errors": self.errors
+                "message": f"Note shared with {self.target_user}",
+                "permission": self.permission_level,
+                "shared_count": len(note.shared_with)
             };
-        } else {
-            report {"status": "success"};
         }
     }
-}
+
+    walker get_accessible_notes {
+        has user_id: str;
+
+        obj __specs__ {
+            static has auth: bool = False;
+        }
+
+        can fetch_all_accessible with `root entry {
+            all_notes = [-->(`?Note)];
+            accessible_notes = [];
+
+            for note in all_notes {
+                # User can access if:
+                # 1. They own it
+                # 2. It's shared with them
+                # 3. It's public
+                if (note.owner == self.user_id or
+                    self.user_id in note.shared_with or
+                    note.is_public) {
+
+                    accessible_notes.append({
+                        "id": note.id,
+                        "title": note.title,
+                        "owner": note.owner,
+                        "is_mine": note.owner == self.user_id,
+                        "access_type": "owner" if note.owner == self.user_id
+                                    else ("shared" if self.user_id in note.shared_with
+                                        else "public")
+                    });
+                }
+            }
+
+            report {
+                "user": self.user_id,
+                "accessible_notes": accessible_notes,
+                "total": len(accessible_notes)
+            };
+        }
+    }
+    ```
+
+### Testing Note Sharing
+
+```bash
+# Alice creates a note
+curl -X POST http://localhost:8000/walker/create_note \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Team Project",
+    "content": "Project details",
+    "owner": "alice@example.com"
+  }'
+
+# Alice shares note with Bob
+curl -X POST http://localhost:8000/walker/share_note \
+  -H "Content-Type: application/json" \
+  -d '{
+    "note_id": "note_123",
+    "current_user": "alice@example.com",
+    "target_user": "bob@example.com"
+  }'
+
+# Bob views accessible notes
+curl -X POST http://localhost:8000/walker/get_accessible_notes \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "bob@example.com"}'
 ```
 
-### Ability-Specific Error Patterns
+---
 
-Different ability types require different error handling strategies:
+## Security Considerations
 
-```jac
-// Node ability error handling
-node DataNode {
-    has data: dict;
-    has error_count: int = 0;
-    has max_errors: int = 3;
+When building multi-user systems, security must be a primary concern. Application-level security patterns are essential for protecting user data.
 
-    can process_visitor with DataWalker entry {
-        try {
-            # Validate visitor
-            if not visitor.is_authorized() {
-                raise UnauthorizedError("Visitor not authorized");
+### Secure Data Access Patterns
+
+!!! example "Security-First Note Access"
+    ```jac
+    # rbac_notebook.jac
+    enum Role {
+        VIEWER = "viewer",
+        EDITOR = "editor",
+        ADMIN = "admin"
+    }
+
+    node UserProfile {
+        has email: str;
+        has role: Role = Role.VIEWER;
+        has created_at: str = "2024-01-15";
+    }
+
+    node Note {
+        has title: str;
+        has content: str;
+        has owner: str;
+        has required_role: Role = Role.VIEWER;
+        has is_sensitive: bool = False;
+    }
+
+    walker check_user_role {
+        has user_id: str;
+
+        obj __specs__ {
+            static has auth: bool = False;
+        }
+
+        can get_current_user_role with `root entry {
+            user_profile = [-->(`?UserProfile)](?email == self.user_id);
+
+            if user_profile {
+                current_role = user_profile[0].role;
+            } else {
+                # Create default profile for new user
+                new_profile = UserProfile(email=self.user_id);
+                here ++> new_profile;
+                current_role = Role.VIEWER;
             }
 
-            # Process data
-            result = transform_data(self.data, visitor.transform_spec);
-            visitor.receive_result(result);
-
-        } except UnauthorizedError as e {
-            # Specific handling for auth errors
-            log_security_event(visitor, e);
-            visitor.reject(reason=str(e));
-
-        } except DataTransformError as e {
-            # Handle processing errors
-            self.error_count += 1;
-
-            if self.error_count >= self.max_errors {
-                self.mark_as_failed();
-                raise NodeFailureError(f"Node failed after {self.error_count} errors");
-            }
-
-            visitor.receive_error(e);
-
-        } finally {
-            # Always log visit
-            self ++> VisitLog(
-                visitor_type=type(visitor).__name__,
-                timestamp=now(),
-                success=not visitor.has_error()
-            );
+            report {"user": self.user_id, "role": current_role.value};
         }
     }
-}
 
-// Walker ability error handling
-walker DataMigrator {
-    has source_version: int;
-    has target_version: int;
-    has rollback_on_error: bool = True;
-    has migrated_nodes: list[node] = [];
+    walker create_role_based_note {
+        has title: str;
+        has content: str;
+        has owner: str;
+        has required_role: str = "viewer";
+        has is_sensitive: bool = False;
 
-    can migrate with entry {
-        # Create savepoint for rollback
-        savepoint = create_graph_savepoint();
+        obj __specs__ {
+            static has auth: bool = False;
+        }
 
-        try {
-            # Check version compatibility
-            if here.version != self.source_version {
-                raise VersionMismatchError(
-                    f"Expected v{self.source_version}, found v{here.version}"
+        can create_with_role_check with `root entry {
+            # Get user's role
+            user_profile = [-->(`?UserProfile)](?email == self.owner);
+
+            if not user_profile {
+                report {"error": "User profile not found"};
+                return;
+            }
+
+            user_role = user_profile[0].role;
+
+            # Check if user can create sensitive notes
+            if self.is_sensitive and user_role == Role.VIEWER {
+                report {"error": "Insufficient permissions for sensitive content"};
+                return;
+            }
+
+            new_note = Note(
+                title=self.title,
+                content=self.content,
+                owner=self.owner,
+                required_role=Role(self.required_role),
+                is_sensitive=self.is_sensitive
+            );
+            here ++> new_note;
+
+            report {
+                "message": "Note created with role requirements",
+                "id": new_note.id,
+                "required_role": self.required_role
+            };
+        }
+    }
+
+    walker get_role_filtered_notes {
+        has user_id: str;
+
+        obj __specs__ {
+            static has auth: bool = False;
+        }
+
+        can fetch_accessible_by_role with `root entry {
+            # Get user's role
+            user_profile = [-->(`?UserProfile)](?email == self.user_id);
+
+            if not user_profile {
+                report {"notes": [], "message": "No user profile found"};
+                return;
+            }
+
+            user_role = user_profile[0].role;
+            all_notes = [-->(`?Note)];
+            accessible_notes = [];
+
+            for note in all_notes {
+                # Check if user meets role requirement
+                can_access = (
+                    note.owner == self.user_id or  # Always access own notes
+                    (user_role == Role.ADMIN) or  # Admins see everything
+                    (user_role == Role.EDITOR and note.required_role != Role.ADMIN) or
+                    (user_role == Role.VIEWER and note.required_role == Role.VIEWER)
                 );
-            }
 
-            # Perform migration
-            migrate_node_data(here, self.target_version);
-            here.version = self.target_version;
-            self.migrated_nodes.append(here);
-
-            # Continue to connected nodes
-            visit [-->];
-
-        } except MigrationError as e {
-            print(f"Migration failed at {here}: {e}");
-
-            if self.rollback_on_error {
-                # Rollback all migrated nodes
-                restore_graph_savepoint(savepoint);
-
-                # Report failure
-                report {
-                    "status": "failed",
-                    "error": str(e),
-                    "rolled_back": True,
-                    "attempted_nodes": len(self.migrated_nodes)
-                };
-
-                disengage;
-            } else {
-                # Continue despite error
-                self.errors.append({
-                    "node": here,
-                    "error": e
-                });
-            }
-        }
-    }
-}
-```
-
-### Distributed Error Propagation
-
-Handling errors across machine boundaries requires special consideration:
-
-```jac
-// Cross-machine error handling
-walker DistributedProcessor {
-    has timeout: float = 30.0;
-    has retry_attempts: int = 3;
-
-    can process with entry {
-        for attempt in range(self.retry_attempts) {
-            try {
-                # Set timeout for cross-machine operations
-                with timeout_context(self.timeout) {
-                    # This might cross machine boundaries
-                    remote_result = visit_and_get_result(
-                        [-->:RemoteEdge:][0]
-                    );
-
-                    process_remote_result(remote_result);
-                    break;  # Success, exit retry loop
-                }
-
-            } except TimeoutError as e {
-                if attempt < self.retry_attempts - 1 {
-                    # Exponential backoff
-                    wait_time = 2 ** attempt;
-                    print(f"Timeout, retrying in {wait_time}s...");
-                    sleep(wait_time);
-                } else {
-                    # Final attempt failed
-                    raise DistributedOperationError(
-                        f"Operation timed out after {self.retry_attempts} attempts"
-                    );
-
-            } except RemoteMachineError as e {
-                # Remote machine failure
-                handle_machine_failure(e.machine_id);
-
-                # Try alternate route
-                alternate = find_alternate_route(here, e.failed_node);
-                if alternate {
-                    visit alternate;
-                } else {
-                    raise NoAlternateRouteError();
-            }
-        }
-    }
-}
-
-// Circuit breaker pattern for distributed calls
-obj CircuitBreaker {
-    has failure_threshold: int = 5;
-    has recovery_timeout: float = 60.0;
-    has failure_count: int = 0;
-    has last_failure_time: float = 0.0;
-    has state: str = "closed";  # closed, open, half-open
-
-    can call[T](func: callable[[], T]) -> T {
-        if self.state == "open" {
-            if time.now() - self.last_failure_time > self.recovery_timeout {
-                self.state = "half-open";
-            } else {
-                raise CircuitOpenError("Circuit breaker is open");
-            }
-        }
-
-        try {
-            result = func();
-
-            if self.state == "half-open" {
-                # Success in half-open state, close circuit
-                self.state = "closed";
-                self.failure_count = 0;
-            }
-
-            return result;
-
-        } except Exception as e {
-            self.failure_count += 1;
-            self.last_failure_time = time.now();
-
-            if self.failure_count >= self.failure_threshold {
-                self.state = "open";
-                print(f"Circuit breaker opened after {self.failure_count} failures");
-            }
-
-            raise e;
-        }
-    }
-}
-
-// Using circuit breaker in distributed operations
-walker ResilientDistributedWalker {
-    has circuit_breakers: dict[str, CircuitBreaker] = {};
-
-    can get_breaker(machine_id: str) -> CircuitBreaker {
-        if machine_id not in self.circuit_breakers {
-            self.circuit_breakers[machine_id] = CircuitBreaker();
-        }
-        return self.circuit_breakers[machine_id];
-    }
-
-    can visit_remote with entry {
-        for remote_node in [-->:RemoteEdge:-->] {
-            machine_id = remote_node.__machine_id__;
-            breaker = self.get_breaker(machine_id);
-
-            try {
-                result = breaker.call(lambda: visit_and_process(remote_node));
-                handle_result(result);
-
-            } except CircuitOpenError {
-                print(f"Skipping {machine_id} - circuit open");
-                continue;
-
-            } except Exception as e {
-                print(f"Error processing remote node: {e}");
-                continue;
-            }
-        }
-    }
-}
-```
-
-### Error Recovery Patterns
-
-```jac
-// Compensation pattern for distributed transactions
-walker CompensatingTransaction {
-    has operations: list[dict] = [];
-    has compensations: list[callable] = [];
-
-    can execute_with_compensation(
-        operation: callable,
-        compensation: callable
-    ) -> any {
-        try {
-            result = operation();
-
-            # Record successful operation and its compensation
-            self.operations.append({
-                "operation": operation.__name__,
-                "result": result,
-                "timestamp": now()
-            });
-            self.compensations.append(compensation);
-
-            return result;
-
-        } except Exception as e {
-            # Operation failed, run compensations in reverse order
-            print(f"Operation failed: {e}, running compensations...");
-
-            for comp in reversed(self.compensations) {
-                try {
-                    comp();
-                } except Exception as comp_error {
-                    print(f"Compensation failed: {comp_error}");
+                if can_access {
+                    accessible_notes.append({
+                        "id": note.id,
+                        "title": note.title,
+                        "owner": note.owner,
+                        "required_role": note.required_role.value,
+                        "is_sensitive": note.is_sensitive
+                    });
                 }
             }
 
-            raise TransactionFailedError(
-                f"Transaction rolled back due to: {e}"
+            report {
+                "user_role": user_role.value,
+                "notes": accessible_notes,
+                "total": len(accessible_notes)
+            };
+        }
+    }
+    ```
+
+!!! warning "Security Best Practices"
+    - **Always Verify Access**: Check user permissions before any data operation
+    - **Validate Input**: Sanitize all user input to prevent injection attacks
+    - **Principle of Least Privilege**: Grant minimum necessary permissions
+    - **Audit Access**: Log sensitive operations for security monitoring
+    - **Secure Defaults**: Make restrictive permissions the default
+
+---
+
+## Access Control Strategies
+
+Different applications require different access control models. Let's implement a role-based access control system for our notebook.
+
+### Role-Based Access Control
+
+!!! example "RBAC Notebook System"
+    ```jac
+    # rbac_notebook.jac
+    enum Role {
+        VIEWER = "viewer",
+        EDITOR = "editor",
+        ADMIN = "admin"
+    }
+
+    node UserProfile {
+        has email: str;
+        has role: Role = Role.VIEWER;
+        has created_at: str = "2024-01-15";
+    }
+
+    node Note {
+        has title: str;
+        has content: str;
+        has owner: str;
+        has required_role: Role = Role.VIEWER;
+        has is_sensitive: bool = False;
+    }
+
+    walker check_user_role {
+        has user_id: str;
+
+        can get_current_user_role with `root entry {
+            user_profile = [-->(`?UserProfile)](?email == self.user_id);
+
+            if user_profile {
+                current_role = user_profile[0].role;
+            } else {
+                # Create default profile for new user
+                new_profile = UserProfile(email=self.user_id);
+                here ++> new_profile;
+                current_role = Role.VIEWER;
+            }
+
+            report {"user": self.user_id, "role": current_role.value};
+        }
+    }
+
+    walker create_role_based_note {
+        has title: str;
+        has content: str;
+        has owner: str;
+        has required_role: str = "viewer";
+        has is_sensitive: bool = False;
+
+        can create_with_role_check with `root entry {
+            # Get user's role
+            user_profile = [-->(`?UserProfile)](?email == self.owner);
+
+            if not user_profile {
+                report {"error": "User profile not found"};
+                return;
+            }
+
+            user_role = user_profile[0].role;
+
+            # Check if user can create sensitive notes
+            if self.is_sensitive and user_role == Role.VIEWER {
+                report {"error": "Insufficient permissions for sensitive content"};
+                return;
+            }
+
+            new_note = Note(
+                title=self.title,
+                content=self.content,
+                owner=self.owner,
+                required_role=Role(self.required_role),
+                is_sensitive=self.is_sensitive
             );
+            here ++> new_note;
+
+            report {
+                "message": "Note created with role requirements",
+                "id": new_note.id,
+                "required_role": self.required_role
+            };
         }
     }
-}
 
-// Saga pattern for long-running transactions
-walker SagaOrchestrator {
-    has saga_id: str;
-    has steps: list[SagaStep];
-    has completed_steps: list[str] = [];
+    walker get_role_filtered_notes {
+        has user_id: str;
 
-    can execute_saga with entry {
-        for step in self.steps {
-            try {
-                # Execute step
-                result = spawn step.walker on step.target_node;
+        can fetch_accessible_by_role with `root entry {
+            # Get user's role
+            user_profile = [-->(`?UserProfile)](?email == self.user_id);
 
-                self.completed_steps.append(step.id);
-
-                # Persist saga state
-                persist_saga_state(self.saga_id, self.completed_steps);
-
-            } except SagaStepError as e {
-                # Step failed, initiate compensation
-                print(f"Saga step {step.id} failed: {e}");
-
-                spawn CompensatingSaga(
-                    saga_id=self.saga_id,
-                    failed_step=step.id,
-                    completed_steps=self.completed_steps
-                ) on root;
-
-                disengage;
+            if not user_profile {
+                report {"notes": [], "message": "No user profile found"};
+                return;
             }
-        }
 
-        report {
-            "saga_id": self.saga_id,
-            "status": "completed",
-            "steps": self.completed_steps
-        };
-    }
-}
+            user_role = user_profile[0].role;
+            all_notes = [-->(`?Note)];
+            accessible_notes = [];
 
-// Bulkhead pattern for isolation
-node ResourcePool {
-    has name: str;
-    has max_concurrent: int;
-    has active_count: int = 0;
-    has queue: list[walker] = [];
+            for note in all_notes {
+                # Check if user meets role requirement
+                can_access = (
+                    note.owner == self.user_id or  # Always access own notes
+                    (user_role == Role.ADMIN) or  # Admins see everything
+                    (user_role == Role.EDITOR and note.required_role != Role.ADMIN) or
+                    (user_role == Role.VIEWER and note.required_role == Role.VIEWER)
+                );
 
-    can acquire_resource with visitor entry {
-        :synchronized: {
-            if self.active_count < self.max_concurrent {
-                self.active_count += 1;
-                visitor.resource_acquired = True;
-            } else {
-                # Add to queue
-                self.queue.append(visitor);
-                visitor.suspend();
+                if can_access {
+                    accessible_notes.append({
+                        "id": note.id,
+                        "title": note.title,
+                        "owner": note.owner,
+                        "required_role": note.required_role.value,
+                        "is_sensitive": note.is_sensitive
+                    });
+                }
             }
+
+            report {
+                "user_role": user_role.value,
+                "notes": accessible_notes,
+                "total": len(accessible_notes)
+            };
         }
     }
+    ```
 
-    can release_resource with visitor exit {
-        :synchronized: {
-            self.active_count -= 1;
+### Testing Role-Based Access
 
-            # Process queued walkers
-            if self.queue {
-                next_walker = self.queue.pop(0);
-                self.active_count += 1;
-                next_walker.resource_acquired = True;
-                next_walker.resume();
-            }
-        }
-    }
-}
+```bash
+# Check user role
+curl -X POST http://localhost:8000/walker/check_user_role \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "alice@example.com"}'
+
+# Create a note requiring editor role
+curl -X POST http://localhost:8000/walker/create_role_based_note \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Editor Note",
+    "content": "Only editors can see this",
+    "owner": "alice@example.com",
+    "required_role": "editor",
+    "is_sensitive": true
+  }'
+
+# Get notes filtered by role
+curl -X POST http://localhost:8000/walker/get_role_filtered_notes \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "alice@example.com"}'
 ```
 
-### Summary
+---
 
-This chapter covered Jac's advanced features that enable production-ready applications:
+## Best Practices
 
-### Concurrent Programming
-- **Parallel Walkers**: Natural concurrency through `spawn`
-- **Async/Await**: Full support for asynchronous operations
-- **Synchronization**: Thread-safe graph operations and coordination
-- **Patterns**: Pipeline, map-reduce, and barrier synchronization
+!!! summary "Multi-User Development Guidelines"
+    - **Always validate access**: Check user permissions before any data operation
+    - **Use consistent user identification**: Establish clear patterns for user IDs
+    - **Implement graceful sharing**: Make sharing intuitive and secure
+    - **Audit sensitive operations**: Log important user actions for security
+    - **Design for privacy**: Default to private data with explicit sharing
+    - **Test permission scenarios**: Verify access control works as expected
 
-### Type System
-- **Inference**: Smart type inference reduces boilerplate
-- **Generics**: Powerful generic programming with constraints
-- **Graph Types**: Type-safe topological operations
-- **Advanced Features**: Union types, protocols, and variadic generics
+## Key Takeaways
 
-### Error Handling
-- **Traversal Errors**: Graceful handling of graph navigation failures
-- **Distributed Errors**: Cross-machine error propagation
-- **Recovery Patterns**: Compensation, sagas, and circuit breakers
-- **Resilience**: Building fault-tolerant distributed systems
+!!! summary "What We've Learned"
+    **Multi-User Patterns:**
 
-These advanced features, combined with Jac's scale-agnostic programming model, provide all the tools needed to build sophisticated, production-ready applications that can scale from single-user prototypes to global distributed systems.
+    - **User identification**: Implement user context in walker parameters
+    - **Data isolation**: Filter data based on ownership and permissions
+    - **Permission systems**: Multiple access control strategies for different needs
+    - **Shared data management**: Controlled sharing between users with fine-grained permissions
 
-In the next chapter, we'll explore design patterns specific to Jac that leverage these advanced features to solve common architectural challenges.
+    **Security Considerations:**
+
+    - **Access validation**: Always verify user permissions before data operations
+    - **Default privacy**: Make restrictive permissions the default setting
+    - **Input validation**: Sanitize all user input to prevent security issues
+    - **Audit trails**: Log sensitive operations for security monitoring
+
+    **Application Architecture:**
+
+    - **Role-based access**: Implement hierarchical permission systems
+    - **Flexible sharing**: Support various sharing patterns for different use cases
+    - **User profiles**: Manage user information and preferences
+    - **Data ownership**: Clear patterns for who can access and modify data
+
+    **Development Benefits:**
+
+    - **Built-in isolation**: Graph filtering provides natural data separation
+    - **Flexible permissions**: Implement custom access control with business logic
+    - **Scalable patterns**: Multi-user code scales automatically with Jac Cloud
+    - **Type safety**: User permissions validated through the type system
+
+!!! tip "Try It Yourself"
+    Build multi-user systems by adding:
+    - Team-based collaboration features
+    - Real-time notifications for shared data changes
+    - Advanced permission hierarchies with groups and roles
+    - Activity feeds showing user actions
+
+    Remember: Always validate user permissions before any data operation!
+
+---
+
+*Ready to learn about advanced cloud features? Continue to [Chapter 16: Advanced Jac Cloud Features](chapter_15.md)!*

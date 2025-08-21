@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pickle import dumps
 from shelve import Shelf, open
-from typing import Callable, Generator, Generic, Iterable, TypeVar
+from typing import Any, Callable, Generator, Generic, Iterable, TypeVar, cast
 from uuid import UUID
 
 from .archetype import Anchor, NodeAnchor, Root, TANCH
@@ -28,6 +28,19 @@ class Memory(Generic[ID, TANCH]):
     def is_cached(self, id: ID) -> bool:
         """Check if id if already cached."""
         return id in self.__mem__
+
+    def query(
+        self, filter: Callable[[TANCH], bool] | None = None
+    ) -> Generator[TANCH, None, None]:
+        """Find anchors from memory with filter."""
+        return (
+            anchor for anchor in self.__mem__.values() if not filter or filter(anchor)
+        )
+
+    def all_root(self) -> Generator[Root, None, None]:
+        """Get all the roots."""
+        for anchor in self.query(lambda anchor: isinstance(anchor.archetype, Root)):
+            yield cast(Root, anchor.archetype)
 
     def find(
         self,
@@ -69,6 +82,9 @@ class Memory(Generic[ID, TANCH]):
             if anchor := self.__mem__.pop(id, None):
                 self.__gc__.add(anchor)
 
+    def commit(self, anchor: TANCH | None = None) -> None:
+        """Commit all data from memory to datasource."""
+
 
 @dataclass
 class ShelfStorage(Memory[UUID, Anchor]):
@@ -81,12 +97,21 @@ class ShelfStorage(Memory[UUID, Anchor]):
         super().__init__()
         self.__shelf__ = open(session) if session else None  # noqa: SIM115
 
-    def close(self) -> None:
-        """Close memory handler."""
+    def commit(self, anchor: Anchor | None = None) -> None:
+        """Commit all data from memory to datasource."""
         if isinstance(self.__shelf__, Shelf):
-            for anchor in self.__gc__:
-                self.__shelf__.pop(str(anchor.id), None)
-                self.__mem__.pop(anchor.id, None)
+            if anchor:
+                if anchor in self.__gc__:
+                    self.__shelf__.pop(str(anchor.id), None)
+                    self.__mem__.pop(anchor.id, None)
+                    self.__gc__.remove(anchor)
+                else:
+                    self.sync_mem_to_db([anchor.id])
+                return
+
+            for anc in self.__gc__:
+                self.__shelf__.pop(str(anc.id), None)
+                self.__mem__.pop(anc.id, None)
 
             keys = set(self.__mem__.keys())
 
@@ -96,7 +121,13 @@ class ShelfStorage(Memory[UUID, Anchor]):
             # additional after memory sync
             self.sync_mem_to_db(set(self.__mem__.keys() - keys))
 
+    def close(self) -> None:
+        """Close memory handler."""
+        self.commit()
+
+        if isinstance(self.__shelf__, Shelf):
             self.__shelf__.close()
+
         super().close()
 
     def sync_mem_to_db(self, keys: Iterable[UUID]) -> None:
@@ -136,6 +167,19 @@ class ShelfStorage(Memory[UUID, Anchor]):
                         and not d.edges
                     ):
                         self.__shelf__[_id] = d
+
+    def query(
+        self, filter: Callable[[Anchor], bool] | None = None
+    ) -> Generator[Any, None, None]:
+        """Find anchors from memory with filter."""
+        if isinstance(self.__shelf__, Shelf):
+            for anchor in self.__shelf__.values():
+                if not filter or filter(anchor):
+                    if anchor.id not in self.__mem__:
+                        self.__mem__[anchor.id] = anchor
+                    yield anchor
+        else:
+            yield from super().query(filter)
 
     def find(
         self,

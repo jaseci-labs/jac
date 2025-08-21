@@ -5,11 +5,8 @@ from jaclang.vendor.pygls.workspace import Workspace
 import lsprotocol.types as lspt
 import pytest
 from jaclang import JacMachineInterface as _
-
-JacLangServer = _.jac_import(
-    "...langserve.engine", __file__, items={"JacLangServer": None}
-)[0]
-LspSession = _.jac_import("session", __file__, items={"LspSession": None})[0]
+from jaclang.langserve.engine import JacLangServer
+from .session import LspSession
 
 
 class TestJacLangServer(TestCase):
@@ -137,12 +134,12 @@ class TestJacLangServer(TestCase):
         workspace = Workspace(workspace_path, lsp)
         lsp.lsp._workspace = workspace
         guess_game_file = uris.from_fs_path(
-            self.examples_abs_path("guess_game/guess_game4.impl.jac")
+            self.examples_abs_path("guess_game/guess_game3.impl.jac")
         )
         lsp.deep_check(guess_game_file)
         self.assertIn(
-            "guess_game4.jac:16:8-16:21",
-            str(lsp.get_definition(guess_game_file, lspt.Position(15, 45))),
+            "guess_game3.jac:16:8-16:21",
+            str(lsp.get_definition(guess_game_file, lspt.Position(15, 17))),
         )
 
     def test_go_to_definition_method_manual_impl(self) -> None:
@@ -591,3 +588,16 @@ class TestJacLangServer(TestCase):
             )
             for expected in expected_refs:
                 self.assertIn(expected, references)
+
+    def test_binder_go_to_module(self) -> None:
+        """Test that the go to definition is correct."""
+        lsp = JacLangServer()
+        workspace_path = self.fixture_abs_path("")
+        workspace = Workspace(workspace_path, lsp)
+        lsp.lsp._workspace = workspace
+        guess_game_file = uris.from_fs_path(self.fixture_abs_path('../../../compiler/passes/main/tests/fixtures/sym_binder.jac'))
+        lsp.deep_check(guess_game_file)
+        self.assertIn(
+            "/tests/fixtures/M1.jac:0:0-0:0",
+            str(lsp.get_definition(guess_game_file, lspt.Position(29, 9))),
+        )

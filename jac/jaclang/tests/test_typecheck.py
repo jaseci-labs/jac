@@ -10,7 +10,6 @@ from unittest.mock import patch
 
 from jaclang import JacMachineInterface as Jac, JacMachine
 from jaclang.cli import cli
-from jaclang.compiler.passes.main import CompilerMode as CMode
 from jaclang.compiler.program import JacProgram
 from jaclang.utils.lang_tools import AstTool
 from jaclang.utils.test import TestCase
@@ -87,10 +86,9 @@ class JacTypeCheckTests(TestCase):
             except Exception as e:
                 return f"Error While Jac to Py AST conversion: {e}"
 
-        (prog := JacProgram()).compile_from_str(
-            source_str=py_ast_build_pass.unparse(),
+        (prog := JacProgram()).build(
+            use_str=py_ast_build_pass.unparse(),
             file_path=file_name[:-3] + ".jac",
-            mode=CMode.TYPECHECK,
         )
 
         archetype_count = 0
@@ -131,10 +129,9 @@ class JacTypeCheckTests(TestCase):
             except Exception as e:
                 return f"Error While Jac to Py AST conversion: {e}"
 
-            (prog := JacProgram()).compile_from_str(
-                source_str=py_ast_build_pass.unparse(),
+            (prog := JacProgram()).build(
+                use_str=py_ast_build_pass.unparse(),
                 file_path=file_name[:-3] + ".jac",
-                mode=CMode.TYPECHECK,
             )
 
         archetype_count = 0
@@ -163,9 +160,7 @@ class JacTypeCheckTests(TestCase):
 
         with open(file_name, "r") as f:
             file_source = f.read()
-        (prog := JacProgram()).compile_from_str(
-            source_str=file_source, file_path=file_name, mode=CMode.TYPECHECK
-        )
+        (prog := JacProgram()).build(use_str=file_source, file_path=file_name)
 
         archetype_count = sum(
             len(mod.get_all_sub_nodes(uni.Archetype))
@@ -226,10 +221,9 @@ class JacTypeCheckTests(TestCase):
             settings.print_py_raised_ast = True
             with open(file_path) as f:
                 file_source = f.read()
-            ir = JacProgram().compile_from_str(
-                source_str=file_source,
+            ir = JacProgram().build(
+                use_str=file_source,
                 file_path=file_path,
-                mode=CMode.TYPECHECK,
             )
             gen_ast = ir.pp()
             if module_path == "random":
@@ -247,9 +241,7 @@ class JacTypeCheckTests(TestCase):
         settings.print_py_raised_ast = True
         with open(file_name, "r") as f:
             file_source = f.read()
-        ir = (prog := JacProgram()).compile_from_str(
-            source_str=file_source, file_path=file_name, mode=CMode.TYPECHECK
-        )
+        ir = (prog := JacProgram()).build(use_str=file_source, file_path=file_name)
         jac_ast = ir.pp()
         self.assertIn(" |   +-- String - 'Loop completed normally{}'", jac_ast)
         sub_node_list_count = 0
@@ -267,27 +259,24 @@ class JacTypeCheckTests(TestCase):
 
     def test_ds_type_check_pass(self) -> None:
         """Test conn assign on edges."""
-        (mypass := JacProgram()).compile(
+        (mypass := JacProgram()).build(
             self.examples_abs_path("micro/simple_walk.jac"),
-            mode=CMode.TYPECHECK,
         )
         self.assertEqual(len(mypass.errors_had), 0)
         self.assertEqual(len(mypass.warnings_had), 0)
 
     def test_ds_type_check_pass2(self) -> None:
         """Test conn assign on edges."""
-        (mypass := JacProgram()).compile(
+        (mypass := JacProgram()).build(
             self.examples_abs_path("guess_game/guess_game5.jac"),
-            mode=CMode.TYPECHECK,
         )
         self.assertEqual(len(mypass.errors_had), 0)
         self.assertEqual(len(mypass.warnings_had), 0)
 
     def test_circle_override1_type_check_pass(self) -> None:
         """Test conn assign on edges."""
-        (mypass := JacProgram()).compile(
+        (mypass := JacProgram()).build(
             self.examples_abs_path("manual_code/circle.jac"),
-            mode=CMode.TYPECHECK,
         )
         self.assertEqual(len(mypass.errors_had), 0)
         # FIXME: Figure out what to do with warning.
@@ -340,9 +329,8 @@ class JacTypeCheckTests(TestCase):
 
     def test_type_errors(self) -> None:
         """Basic test for pass."""
-        (type_checked := JacProgram()).compile(
+        (type_checked := JacProgram()).build(
             file_path=self.fixture_abs_path("func.jac"),
-            mode=CMode.TYPECHECK,
         )
 
         errs = "\n".join([i.msg for i in type_checked.warnings_had])
@@ -358,9 +346,8 @@ class JacTypeCheckTests(TestCase):
 
     def test_imported_module_typecheck(self) -> None:
         """Basic test for pass."""
-        (type_checked := JacProgram()).compile(
+        (type_checked := JacProgram()).build(
             file_path=self.fixture_abs_path("game1.jac"),
-            mode=CMode.TYPECHECK,
         )
 
         errs = "\n".join([i.msg for i in type_checked.warnings_had])

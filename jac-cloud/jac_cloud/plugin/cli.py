@@ -1,7 +1,7 @@
 """Module for registering CLI plugins for jaseci."""
 
 from getpass import getpass
-from os import getenv
+from logging import WARNING, getLogger
 from os.path import split
 from pickle import load
 from typing import Any
@@ -12,12 +12,51 @@ from jaclang.runtimelib.machine import hookimpl
 
 from pymongo.errors import ConnectionFailure, OperationFailure
 
+from watchfiles import Change, run_process
+
 from ..core.archetype import BulkWrite, NodeAnchor
-from ..core.context import PUBLIC_ROOT_ID, SUPER_ROOT_ID
+from ..core.context import JaseciContext, PUBLIC_ROOT_ID, SUPER_ROOT_ID
 from ..jaseci.datasources import Collection
 from ..jaseci.main import FastAPI
 from ..jaseci.models import User as BaseUser
 from ..jaseci.utils import logger
+
+# hide watchfiles INFO logs
+getLogger("watchfiles.main").setLevel(WARNING)
+
+
+def log_changes(changes: set[tuple[Change, str]]) -> None:
+    """Log changes."""
+    num_of_changes = len(changes)
+    logger.warning(
+        f'Detected {num_of_changes} change{"s" if num_of_changes > 1 else ""}'
+    )
+    for change in changes:
+        logger.warning(f"{change[1]} ({change[0].name})")
+    logger.warning("Reloading ...")
+
+
+def run_cloud(
+    base: str, mod: str, filename: str, host: str = "0.0.0.0", port: int = 8000
+) -> None:
+    """Run Jac Cloud service."""
+    base = base if base else "./"
+    mod = mod[:-4]
+
+    FastAPI.enable()
+
+    ctx = JaseciContext.create(None)
+
+    if filename.endswith(".jac"):
+        Jac.jac_import(target=mod, base_path=base, override_name="__main__")
+    elif filename.endswith(".jir"):
+        with open(filename, "rb") as f:
+            Jac.attach_program(load(f))
+            Jac.jac_import(target=mod, base_path=base, override_name="__main__")
+    else:
+        raise ValueError("Not a valid file!\nOnly supports `.jac` and `.jir`")
+    ctx.close()
+    FastAPI.start(host=host, port=port)
 
 
 class JacCmd:
@@ -29,34 +68,33 @@ class JacCmd:
         """Create Jac CLI cmds."""
 
         @cmd_registry.register
-        def serve(filename: str, host: str = "0.0.0.0", port: int = 8000) -> None:
+        def serve(
+            filename: str,
+            host: str = "0.0.0.0",
+            port: int = 8000,
+            reload: bool = False,
+            watch: str = "",
+        ) -> None:
             """Serve the jac application."""
             base, mod = split(filename)
-            base = base if base else "./"
-            mod = mod[:-4]
 
-            FastAPI.enable()
-
-            if filename.endswith(".jac"):
-                Jac.jac_import(target=mod, base_path=base, override_name="__main__")
-            elif filename.endswith(".jir"):
-                with open(filename, "rb") as f:
-                    Jac.attach_program(load(f))
-                    Jac.jac_import(target=mod, base_path=base, override_name="__main__")
-            else:
-                raise ValueError("Not a valid file!\nOnly supports `.jac` and `.jir`")
-            FastAPI.start(host=host, port=port)
+            if reload:
+                run_process(
+                    *(watch.split(",") if watch else [base]),
+                    target=run_cloud,
+                    args=(base, mod, filename, host, port),
+                    callback=log_changes,
+                )
+                return
+            elif watch:
+                print(f"Ignoring --watch {watch} as --reload is not set.")
+            run_cloud(base, mod, filename, host, port)
 
         @cmd_registry.register
         def create_system_admin(
             filename: str, email: str = "", password: str = ""
         ) -> str:
             from jaclang import JacMachineInterface as Jac
-
-            if not getenv("DATABASE_HOST"):
-                raise NotImplementedError(
-                    "DATABASE_HOST env-var is required for this API!"
-                )
 
             base, mod = split(filename)
             base = base if base else "./"

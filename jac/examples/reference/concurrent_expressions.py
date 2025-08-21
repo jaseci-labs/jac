@@ -1,11 +1,10 @@
 from __future__ import annotations
 from jaclang.runtimelib.builtin import *
 from jaclang import JacMachineInterface as _
+from time import sleep
 
 if _.TYPE_CHECKING:
     from time import sleep
-else:
-    (sleep,) = _.jac_import("time", __file__, items={"sleep": None})
 
 
 class A(_.Node):

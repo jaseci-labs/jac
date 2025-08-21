@@ -10,11 +10,12 @@ dependencies = [
     "pygments",
     "mkdocs",
     "mkdocs-material",
+    "pymdown-extensions",
     "mkdocs-video",
     "mkdocs-open-in-new-tab",
-    "mkdocs-simple-hooks",
     "starlette",
-    "uvicorn"
+    "uvicorn",
+    "watchdog"
 ]
 authors = [
     { name = "Jason Mars", email = "jason@jaseci.org" }
@@ -24,8 +25,10 @@ license = { text = "MIT" }
 classifiers = [
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
 ]
 
 [project.entry-points."pygments.lexers"]
 jaclexer = "jac_syntax_highlighter:JacLexer"
+
+[tool.setuptools]
+py-modules = ["jac_syntax_highlighter"]

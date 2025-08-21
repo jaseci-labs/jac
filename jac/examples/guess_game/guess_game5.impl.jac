@@ -1,29 +1,26 @@
-impl turn.check {
-    guess = "Guess a number between 1 and 10: " |> input;
-    if |> guess.isdigit {
-        guess |> int |> visitor.process_guess;
+impl GuessGame.start {
+    if not [root --> (`?turn)] {
+        next = root ++> turn(random.randint(1, 10));
     } else {
-        "That's not a valid number! Try again." |> print;
+        next = [root --> (`?turn)];
     }
-    visit [-->];
+    visit next;
 }
 
-impl GuessGame.start_game {
-    end : `root | turn = here;
-    for i = 0 to i < 10 by i += 1 {
-        end ++> (end := turn());
-    }
-    visit [-->];
-}
-
-
-impl GuessGame.process_guess (guess: int) {
-    if guess > self.correct_number {
-        "Too high!" |> print;
-    } elif guess < self.correct_number {
-        "Too low!" |> print;
+impl GuessGame.process_guess {
+    if [-->] {
+        visit [-->];
     } else {
-        "Congratulations! You guessed correctly." |> print;
-        disengage;
+        if self.guess < here.correct_number {
+            print("Too high!");
+            here ++> turn(here.correct_number);
+        } elif self.guess > here.correct_number {
+            print("Too low!");
+            here ++> turn(here.correct_number);
+        } else {
+            print("Congratulations! You guessed correctly.");
+            disengage;
+        }
     }
+
 }

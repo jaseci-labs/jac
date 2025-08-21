@@ -1,869 +1,483 @@
-### Chapter 5: Object-Oriented Programming Enhanced
+# Chapter 5: Advanced AI Operations
+---
+In this chapter, you will learn to integrate advanced AI capabilities directly into your Jac applications using the MTLLM (Meaning-Typed LLM) framework. We will build a multi-modal image analysis tool to demonstrate how Jac simplifies complex AI operations, including model configuration, context enhancement, and multi-modal data handling.
 
-Jac takes the familiar concepts of object-oriented programming and enhances them with modern features like automatic constructors, implementation separation, and object-spatial archetypes. This chapter explores how Jac improves upon traditional OOP while maintaining compatibility with Python when needed.
 
-#### 5.1 From Classes to Archetypes
+## MTLLM Overview
+---
+MTLLM (Meaning Typed LLM) is Jac's native AI integration framework. It transforms the way developers interact with Large Language Models by shifting from manual prompt engineering and complex API calls to a streamlined, function-based approach that is fully integrated with Jac's type system.
 
-### `obj` - Enhanced Dataclass-like Behavior
 
-Jac's `obj` archetype combines the best of Python classes and dataclasses with automatic constructor generation:
+!!! success "MTLLM Benefits"
+    - **Zero Prompt Engineering**: Define function signatures, let AI handle implementation
+    - **Type Safety**: AI functions integrate with Jac's type system
+    - **Model Flexibility**: Switch between different AI models easily
+    - **Multimodal Support**: Handle text, images, and audio seamlessly
+    - **Built-in Optimization**: Automatic prompt optimization and caching
 
-```python
-# Python - Traditional class
-class Person:
-    def __init__(self, name: str, age: int, email: str = ""):
-        self.name = name
-        self.age = age
-        self.email = email
+## Functions as Prompts
+---
+Up until this point, we've used Jac's functions to define behavior. However, what if we wanted to incorperate AI capabilities directly into our Jac applications? For example, lets say we're writing a poetry application that can generate poems based on a user supplied topic.
 
-    def __repr__(self):
-        return f"Person(name={self.name}, age={self.age})"
+Since Jac is a super set of Python, we can create a function `write_poetry` that takes a topic as input and then make a call to an OpenAI model using its python or langchain library to generate the poem.
 
-# Python - Dataclass (closer to Jac's obj)
-from dataclasses import dataclass
-
-@dataclass
-class PersonDC:
-    name: str
-    age: int
-    email: str = ""
+First, install the OpenAI Python package:
+```bash
+pip install openai
 ```
+<br />
+then set your OpenAI API key as an environment variable:
+
+```bash
+export OPENAI_API_KEY="your-api-key"
+```
+<br />
+Now we can write our Jac code to integrate with OpenAI's API:
 
 ```jac
-// Jac - obj archetype (automatic everything!)
-obj Person {
-    has name: str;
-    has age: int;
-    has email: str = "";
-}
+import from openai { OpenAI }
 
-// That's it! Constructor, initialization, all automatic
-with entry {
-    let p = Person(name="Alice", age=30);
-    print(p);  // Automatic string representation
-}
-```
+glob client = OpenAI();
 
-### Automatic Constructors with `has` Declarations
-
-The `has` keyword declares instance variables and automatically generates constructors:
-
-```jac
-obj Employee {
-    has id: int;
-    has name: str;
-    has department: str;
-    has salary: float = 50000.0;  // Default value
-    has start_date: str;
-    has is_active: bool = true;
-    has skills: list[str] = [];  // Mutable default handled correctly!
-}
-
-// Automatic constructor handles all of this:
-with entry {
-    // All required fields must be provided
-    let emp1 = Employee(
-        id=101,
-        name="Alice Smith",
-        department="Engineering",
-        start_date="2024-01-15"
+""" Write a poem about topic """
+def write_poetry(topic: str) -> str {
+    response = client.responses.create(
+        model="gpt-4.1-mini",
+        input=f"Write a poem about {topic}."
     );
-    // salary=50000.0, is_active=true, skills=[] are defaults
+    return response.output_text;
+}
 
-    // Can override defaults
-    let emp2 = Employee(
-        id=102,
-        name="Bob Jones",
-        department="Marketing",
-        salary=65000.0,
-        start_date="2023-06-01",
-        is_active=true,
-        skills=["communication", "analysis"]
-    );
+with entry {
+    poem = write_poetry("A serene landscape with mountains.");
+    print(poem);
 }
 ```
+<br />
 
-### Advanced `has` Patterns
+Finally, lets generate our poetic masterpiece by running the Jac code:
+```console
+$ jac run poetry.jac
+Amidst the quiet, mountains rise,
+Their peaks adorned with endless skies.
+A tranquil breeze, a gentle stream,
+Within this landscape, like a dream.
+
+Soft whispers of the morning light,
+Embrace the earth in pure delight.
+A serene world, where hearts find peace,
+In nature's hold, all worries cease.
+```
+<br />
+
+Very nice! However, this approach requires manual API management (what if we want to switch to a different AI provider?), and we still have to write the prompt ourselves. Wouldn't it be great if we could just define the function signature and let the AI handle the rest? *Imagine a world where the function was the prompt?* Where we could simply declare a function and the AI would understand what to do? That's the power of MTLLM.
+
+Let's see how this works.
+
+First we'll need to install the MTLLM package:
+```bash
+pip install mtllm
+```
+<br />
+Next we replace the OpenAI import with that of the MTLLM package
 
 ```jac
-obj Configuration {
-    // Simple fields
-    has version: str;
-    has debug: bool = false;
+import from mtllm { Model }
+glob llm = Model(model_name="gpt-4.1-mini");
+```
+<br />
+Instead of writing the function ourselves, we simply declare the function signature and use the `by` keyword to indicate that this function should be handled by the AI model referenced by `llm()`. The MTLLM framework will automatically generate the appropriate prompt based on the function signature.
+```jac
+def write_poetry(topic: str) -> str by llm();
+```
 
-    // Complex types
-    has settings: dict[str, any] = {};
-    has modules: list[str] = [];
+Finally, lets put it all together and run the Jac code:
+```jac
+# mt_poem.jac - Simple AI integration
+import from mtllm { Model }
 
-    // Computed fields (set in postinit)
-    has config_path: str by postinit;
-    has validated: bool by postinit;
+glob llm = Model(model_name="gpt-4.1-mini");
 
-    // Private fields (access control)
-    has :priv secret_key: str = "";
-    has :protect internal_state: dict = {};
+""" Write a poem about topic """
+def write_poetry(topic: str) -> str by llm();
+
+with entry {
+    poem = write_poetry("A serene landscape with mountains.");
+    print(poem);
 }
+```
+<br />
 
-// The 'by postinit' fields aren't in constructor
-let config = Configuration(
-    version="1.0.0",
-    debug=true,
-    settings={"theme": "dark"}
+
+```console
+$ jac run mt_poem.jac
+Beneath the sky so vast and grand,
+Mountains rise like ancient bands,
+Whispers soft in tranquil air,
+A serene landscape, calm and fair.
+
+Colors blend in gentle hues,
+Nature's brush with peaceful views,
+Rivers sing and breezes dance,
+In this quiet, soul’s expanse.
+```
+<br />
+
+### Simple Image Captioning Tool
+To further illustrate MTLLM's capabilities, let's build a simple image captioning tool. This tool will analyze an image and generate a descriptive caption using an AI model.
+
+First lets grab an image from upsplash to work with. You can use any image you like, but for this example, we'll use a photo of a french bulldog. Download the image and save it as `photo.jpg` in the same directory as your Jac code.
+
+![Image Captioning Example](../assets/photo.jpg){ width=300px }
+/// caption
+Photo by <a href="https://unsplash.com/@karsten116?utm_content=creditCopyText&utm_medium=referral&utm_source=unsplash">Karsten Winegeart</a> on <a href="https://unsplash.com/photos/a-french-bulldog-in-a-hoodie-and-gold-chain-GkpLfCRooCA?utm_content=creditCopyText&utm_medium=referral&utm_source=unsplash">Unsplash</a>
+///
+
+Next we'll make use of MLTLLM's `Image` function to handle image inputs. This function allows us to pass images directly to the AI model for analysis. We'll use OpenAI's `gpt-4o-mini` model for this task.
+
+```jac
+# image_captioning.jac - Simple Image Captioning Tool
+import from mtllm { Model, Image }
+
+glob llm = Model(model_name="gpt-4o-mini");
+
+"""Generate a detailed caption for the given image."""
+def caption_image(image: Image) -> str by llm();
+
+with entry {
+    caption = caption_image(Image("photo.jpg"));
+    print(caption);
+}
+```
+<br />
+Now we can run our Jac code to generate a caption for the image:
+```console
+$ jac run image_captioning.jac
+
+A stylish French Bulldog poses confidently against a vibrant yellow backdrop,
+showcasing its trendy black and yellow hoodie emblazoned with "WOOF." The pup's
+playful demeanor is accentuated by a shiny gold chain draped around its neck,
+adding a touch of flair to its outfit. With its adorable large ears perked up
+and tongue playfully sticking out, this fashion-forward canine is ready to steal
+the spotlight and capture hearts with its charm and personality.
+```
+<br />
+
+## Model Declaration and Configuration
+---
+MTLLM supports various AI models through the unified `Model` interface. For example, you can load multiple models like OpenAI's GPT-4, Google's Gemini, or any other compatible model in the same way. This allows you to switch between models easily without changing your code structure.
+
+```jac
+# basic_setup.jac
+import from mtllm { Model, Image }
+
+# Configure different models
+glob text_model = Model(model_name="gpt-4o");
+glob vision_model = Model(model_name="gpt-4-vision-preview");
+glob gemini_model = Model(model_name="gemini-2.0-flash");
+```
+<br />
+
+### Model Configuration Options
+The `Model` class allows you to configure various parameters for your AI model, such as temperature, max tokens, and more. Here's an example of how to set up a model with custom parameters:
+
+```jac
+import from mtllm { Model, Image }
+
+# Configure model with custom parameters
+glob creative_model = Model(
+    model_name="gpt-4.1-mini",
+    temperature=0.9,  # More creative
+    max_tokens=500,
+    verbose=True      # Show prompts for debugging
 );
-// config_path and validated are set in postinit
 ```
+<br />
+Below is a breakdown of the parameters you can configure when creating a `Model` instance:
 
-### `class` - Traditional Python-Compatible Classes
+| Parameter         | Purpose / Description                                                                                      | Default Value / Example                     |
+|-------------------|-----------------------------------------------------------------------------------------------------------|---------------------------------------------|
+| `model`           | Specifies the name of the language model to use (e.g., "gpt-3.5-turbo", "claude-3-sonnet-20240229").      | Required (set during initialization)        |
+| `api_base`        | Sets the base URL for the API endpoint. Used to override the default endpoint for the model provider.      | Optional                                   |
+| `messages`        | List of formatted message objects (system/user/assistant) for the LLM prompt.                             | Required (built from function call context) |
+| `tools`           | List of tool definitions for function/tool calls the LLM can invoke.                                       | Optional                                   |
+| `response_format` | Specifies the output schema or format expected from the model (e.g., JSON schema, plain text).             | Optional                                   |
+| `temperature`     | Controls randomness/creativity of the model output (higher = more random).                                 | 0.7 (if not explicitly set)                 |
+| `max_tokens`      | Maximum number of tokens in the generated response. (Commented out; can be enabled)                        | 100 (if enabled and not set)                |
+| `top_k`           | Limits sampling to the top K probable tokens. (Commented out; can be enabled)                              | 50 (if enabled and not set)                 |
+| `top_p`           | Controls token selection by probability sum (nucleus sampling). (Commented out; can be enabled)            | 0.9 (if enabled and not set)                |
 
-When you need full Python compatibility, use the `class` archetype:
+Here we have a simple example of how to use the `Model` class to create a model instance with custom parameters:
+```jac
+# model_config.jac
+import from mtllm { Model, Image }
+
+# Configure model with custom parameters
+glob creative_model = Model(
+    model_name="gpt-4.1-mini",
+    temperature=0.9,  # More creative
+    max_tokens=500,
+    verbose=True      # Show prompts for debugging
+);
+
+glob precise_model = Model(
+    model_name="gpt-4.1-mini",
+    temperature=0.1,  # More deterministic
+    max_tokens=200
+);
+
+"""Generate creative story from image."""
+def create_story(image: Image) -> str by creative_model();
+
+"""Extract factual information from image."""
+def extract_facts(image: Image) -> str by precise_model();
+
+
+with entry {
+    # Example usage
+    story = create_story(Image("photo.jpg"));
+    print("Creative Story:", story);
+
+    facts = extract_facts(Image("photo.jpg"));
+    print("Extracted Facts:", facts);
+}
+```
+<br />
+
+
+
+## Updating the Image Captioning Tool
+---
+Let's progressively build an image captioning tool that demonstrates MTLLM's capabilities.
 
 ```jac
-// Python-style class with explicit self
-class PythonStyleClass {
-    def __init__(self, value: int) {
-        self.value = value;
-        self.history = [];
-    }
+# image_captioner.jac
+import from mtllm { Model, Image }
 
-    def increment(self, amount: int = 1) {
-        self.value += amount;
-        self.history.append(("increment", amount));
-    }
+glob vision_llm = Model(model_name="gpt-4o-mini");
 
-    def get_value(self) -> int {
-        return self.value;
-    }
+obj ImageCaptioner {
+    has name: str;
 
-    def __str__(self) -> str {
-        return f"PythonStyleClass(value={self.value})";
-    }
+    """Generate a brief, descriptive caption for the image."""
+    def generate_caption(image: Image) -> str by vision_llm();
+
+    """Extract specific objects visible in the image."""
+    def identify_objects(image: Image) -> list[str] by vision_llm();
+
+    """Determine the mood or atmosphere of the image."""
+    def analyze_mood(image: Image) -> str by vision_llm();
 }
 
-// Compare with obj style
-obj JacStyleClass {
-    has value: int;
-    has history: list[tuple] = [];
+with entry {
+    captioner = ImageCaptioner(name="AI Photo Assistant");
+    image = Image("photo.jpg");
 
-    can increment(amount: int = 1) {
-        self.value += amount;
-        self.history.append(("increment", amount));
-    }
+    # Generate basic caption
+    caption = captioner.generate_caption(image);
+    print(f"Caption: {caption}");
 
-    can get_value() -> int {
-        return self.value;
-    }
+    # Identify objects
+    objects = captioner.identify_objects(image);
+    print(f"Objects found: {objects}");
+
+    # Analyze mood
+    mood = captioner.analyze_mood(image);
+    print(f"Mood: {mood}");
 }
 ```
+<br />
 
-### When to Use Each Archetype
+```console
+$ jac run image_captioner.jac
 
-```mermaid
-graph TD
-    A[Need a Class?] --> B{Python<br/>Compatibility?}
-    B -->|Yes| C[Use 'class']
-    B -->|No| D{Graph<br/>Structure?}
-    D -->|Yes| E{Type?}
-    D -->|No| F[Use 'obj']
-    E -->|Data Location| G[Use 'node']
-    E -->|Connection| H[Use 'edge']
-    E -->|Mobile Code| I[Use 'walker']
+Caption: A stylish French Bulldog poses confidently in a black and yellow "WOOF" sweatshirt,
+accessorized with a chunky gold chain against a vibrant yellow backdrop.
 
-    style C fill:#e3f2fd
-    style F fill:#e8f5e9
-    style G fill:#fff3e0
-    style H fill:#fce4ec
-    style I fill:#f3e5f5
+Objects found: ['dog', 'sweater', 'chain', 'yellow background']
+
+Mood: The mood of the image is playful and cheerful. The bright yellow background and
+the stylish outfit of the dog contribute to a fun and lighthearted atmosphere.
 ```
+<br />
 
-### `postinit` vs Python's `__post_init__`
-
-The `postinit` method runs after automatic initialization:
-
-```python
-# Python dataclass post-init
-@dataclass
-class PythonExample:
-    radius: float
-    area: float = field(init=False)
-
-    def __post_init__(self):
-        self.area = 3.14159 * self.radius ** 2
-```
+## Semantic Strings and Context Enhancement
+---
+**Semantic strings** provide additional context to AI functions via the `sem` keyword, allowing for more nuanced understanding without cluttering your code. They're particularly useful for domain-specific applications.
 
 ```jac
-// Jac postinit - cleaner syntax
-obj Circle {
-    has radius: float;
-    has area: float by postinit;
-    has circumference: float by postinit;
-    has valid: bool by postinit;
+# enhanced_captioner.jac
+import from mtllm { Model, Image }
 
-    can postinit {
-        self.area = 3.14159 * self.radius ** 2;
-        self.circumference = 2 * 3.14159 * self.radius;
-        self.valid = self.radius > 0;
-    }
+glob vision_llm = Model(model_name="gpt-4.1-mini");
+
+obj PhotoAnalyzer {
+    has photographer_name: str;
+    has style_preference: str;
+    has image: Image;
 }
 
-// Usage
-let c = Circle(radius=5.0);
-print(f"Area: {c.area:.2f}");  // Area: 78.54
-```
+# Add semantic context for better AI understanding
+sem PhotoAnalyzer = "Professional photo analysis tool for photographers";
+sem PhotoAnalyzer.photographer_name = "Name of the photographer for personalized analysis";
+sem PhotoAnalyzer.style_preference = "Preferred photography style (artistic, documentary, commercial)";
 
-### Complex Initialization Patterns
+
+"""Generate caption considering photographer's style preference."""
+def generate_styled_caption(pa: PhotoAnalyzer) -> str by vision_llm(incl_info=(pa.style_preference));
+
+"""Provide technical photography feedback."""
+def analyze_composition(pa: PhotoAnalyzer) -> list[str] by vision_llm();
+
+"""Suggest improvements for the photo."""
+def suggest_improvements(pa: PhotoAnalyzer) -> list[str] by vision_llm(incl_info=(pa.photographer_name, pa.style_preference));
+
+
+with entry {
+    analyzer = PhotoAnalyzer(
+        photographer_name="Alice",
+        style_preference="artistic",
+        image=Image("photo.jpg")
+    );
+
+    # Generate styled caption
+    caption = generate_styled_caption(analyzer);
+    print(f"Styled caption: {caption}");
+
+    # Analyze composition
+    composition = analyze_composition(analyzer);
+    print(f"Composition analysis: {composition}");
+
+    # Get improvement suggestions
+    suggestions = suggest_improvements(analyzer);
+    print(f"Suggestions: {suggestions}");
+}
+```
+<br />
+
+## Testing and Error Handling
+---
+AI applications require robust error handling and testing strategies.
+
+### Robust AI Integration
 
 ```jac
-obj DatabaseConnection {
-    has host: str;
-    has port: int = 5432;
-    has username: str;
-    has password: str;
-    has database: str;
+# robust_ai.jac
+import from mtllm { Model, Image }
 
-    // Runtime computed fields
-    has connection_string: str by postinit;
-    has connection: any by postinit;
-    has connected: bool by postinit;
+glob reliable_llm = Model(model_name="gpt-4o", max_tries=3);
 
-    can postinit {
-        // Build connection string
-        self.connection_string =
-            f"postgresql://{self.username}:{self.password}@" +
-            f"{self.host}:{self.port}/{self.database}";
+obj RobustCaptioner {
+    has fallback_enabled: bool = True;
 
-        // Try to connect
+    """Generate caption with error handling."""
+    def safe_caption(image_path: str) -> dict {
         try {
-            import:py psycopg2;
-            self.connection = psycopg2.connect(self.connection_string);
-            self.connected = true;
+            caption = self.generate_caption_ai(image_path);
+            return {
+                "success": True,
+                "caption": caption,
+                "source": "ai"
+            };
         } except Exception as e {
-            print(f"Connection failed: {e}");
-            self.connection = None;
-            self.connected = false;
-        }
-    }
-
-    can close {
-        if self.connection {
-            self.connection.close();
-            self.connected = false;
-        }
-    }
-}
-```
-
-#### 5.2 Implementation Separation
-
-### Declaring Interfaces vs Implementations
-
-Jac allows you to separate interface declarations from their implementations:
-
-```jac
-// user_interface.jac - Just the interface
-obj User {
-    has id: int;
-    has username: str;
-    has email: str;
-    has created_at: str;
-
-    can authenticate(password: str) -> bool;
-    can update_profile(data: dict) -> bool;
-    can get_permissions() -> list[str];
-}
-
-// user.impl.jac - The implementation
-impl User {
-    can authenticate(password: str) -> bool {
-        import:py bcrypt;
-        stored_hash = self.load_password_hash();
-        return bcrypt.checkpw(
-            password.encode('utf-8'),
-            stored_hash.encode('utf-8')
-        );
-    }
-
-    can update_profile(data: dict) -> bool {
-        // Validation
-        if "email" in data and not self.validate_email(data["email"]) {
-            return false;
-        }
-
-        // Update fields
-        for key, value in data.items() {
-            if hasattr(self, key) {
-                setattr(self, key, value);
+            if self.fallback_enabled {
+                fallback_caption = f"Image analysis unavailable for {image_path}";
+                return {
+                    "success": False,
+                    "caption": fallback_caption,
+                    "source": "fallback",
+                    "error": str(e)
+                };
+            } else {
+                raise e;
             }
         }
-        return true;
     }
 
-    can get_permissions() -> list[str] {
-        // Load from database or cache
-        return ["read", "write", "comment"];
-    }
-}
-```
+    """AI-powered caption generation."""
+    def generate_caption_ai(image_path: str) -> str by reliable_llm();
 
-### File Organization with `.impl.jac`
-
-```
-project/
-├── models/
-│   ├── user.jac              # Interface declaration
-│   ├── user.impl.jac         # Implementation
-│   ├── user.test.jac         # Tests
-│   │
-│   ├── product.jac           # Another model
-│   ├── product.impl/         # Implementation directory
-│   │   ├── crud.impl.jac     # CRUD operations
-│   │   ├── search.impl.jac   # Search functionality
-│   │   └── analytics.impl.jac # Analytics methods
-│   │
-│   └── order.jac
-│       └── order.impl.jac
-```
-
-### Implementation Separation Example
-
-```jac
-// shape.jac - Abstract interface
-obj Shape {
-    has name: str;
-
-    can area() -> float abs;  // Abstract method
-    can perimeter() -> float abs;
-    can describe() -> str;
-}
-
-// circle.jac - Concrete shape
-obj Circle(Shape) {
-    has radius: float;
-}
-
-// circle.impl.jac - Implementation
-impl Circle {
-    can area() -> float {
-        return 3.14159 * self.radius ** 2;
-    }
-
-    can perimeter() -> float {
-        return 2 * 3.14159 * self.radius;
-    }
-
-    can describe() -> str {
-        return f"{self.name}: Circle with radius {self.radius}";
-    }
-}
-
-// rectangle.jac
-obj Rectangle(Shape) {
-    has width: float;
-    has height: float;
-}
-
-// rectangle.impl.jac
-impl Rectangle {
-    can area() -> float {
-        return self.width * self.height;
-    }
-
-    can perimeter() -> float {
-        return 2 * (self.width + self.height);
-    }
-
-    can describe() -> str {
-        return f"{self.name}: Rectangle {self.width}x{self.height}";
-    }
-}
-```
-
-### Benefits for Large Codebases
-
-1. **Parallel Development**: Teams can work on interfaces and implementations separately
-2. **Cleaner Organization**: Separate concerns into different files
-3. **Easier Testing**: Mock implementations for testing
-4. **Better Documentation**: Interfaces serve as documentation
-
-```jac
-// api_service.jac - Interface for external team
-obj ApiService {
-    has base_url: str;
-    has auth_token: str;
-
-    can fetch_data(endpoint: str) -> dict;
-    can post_data(endpoint: str, data: dict) -> dict;
-    can delete_resource(endpoint: str, id: str) -> bool;
-}
-
-// api_service_mock.impl.jac - Mock for testing
-impl ApiService {
-    can fetch_data(endpoint: str) -> dict {
-        // Return mock data for testing
-        return {
-            "status": "success",
-            "data": {"mock": true, "endpoint": endpoint}
-        };
-    }
-
-    can post_data(endpoint: str, data: dict) -> dict {
-        return {
-            "status": "created",
-            "id": "mock_123",
-            "data": data
-        };
-    }
-
-    can delete_resource(endpoint: str, id: str) -> bool {
-        return true;  // Always successful in tests
-    }
-}
-
-// api_service_real.impl.jac - Real implementation
-impl ApiService {
-    can fetch_data(endpoint: str) -> dict {
-        import:py requests;
-
-        response = requests.get(
-            f"{self.base_url}/{endpoint}",
-            headers={"Authorization": f"Bearer {self.auth_token}"}
-        );
-
-        if response.status_code == 200 {
-            return response.json();
-        } else {
-            raise Exception(f"API error: {response.status_code}");
+    """Validate generated content."""
+    def validate_caption(caption: str) -> bool {
+        # Basic validation rules
+        if len(caption) < 10 {
+            return False;
         }
-    }
-
-    // ... real implementations
-}
-```
-
-#### 5.3 Access Control
-
-### `:pub`, `:priv`, `:protect` Modifiers
-
-Jac provides explicit access control modifiers:
-
-```jac
-obj BankAccount {
-    // Public - accessible from anywhere
-    has :pub account_number: str;
-    has :pub holder_name: str;
-
-    // Protected - accessible within module and subclasses
-    has :protect balance: float;
-    has :protect transaction_history: list[dict] = [];
-
-    // Private - only accessible within this class
-    has :priv pin: str;
-    has :priv security_questions: dict[str, str] = {};
-
-    // Public methods
-    can :pub get_balance() -> float {
-        return self.balance;
-    }
-
-    can :pub deposit(amount: float) -> bool {
-        if amount > 0 {
-            self.balance += amount;
-            self.log_transaction("deposit", amount);
-            return true;
+        if "error" in caption.lower() {
+            return False;
         }
-        return false;
-    }
-
-    // Protected method - for subclasses
-    can :protect log_transaction(type: str, amount: float) {
-        self.transaction_history.append({
-            "type": type,
-            "amount": amount,
-            "timestamp": timestamp_now(),
-            "balance": self.balance
-        });
-    }
-
-    // Private method - internal only
-    can :priv validate_pin(pin: str) -> bool {
-        return self.pin == pin;
-    }
-
-    can :pub withdraw(amount: float, pin: str) -> bool {
-        if not self.validate_pin(pin) {
-            return false;
-        }
-
-        if amount > 0 and amount <= self.balance {
-            self.balance -= amount;
-            self.log_transaction("withdrawal", amount);
-            return true;
-        }
-        return false;
-    }
-}
-```
-
-### Comparison with Python's Convention-Based Privacy
-
-```python
-# Python - Convention-based privacy
-class PythonBankAccount:
-    def __init__(self, account_number, pin):
-        self.account_number = account_number  # Public by convention
-        self._balance = 0.0  # "Protected" by convention (single underscore)
-        self.__pin = pin     # "Private" by convention (double underscore)
-
-    def _internal_method(self):  # "Protected" method
-        pass
-
-    def __private_method(self):  # "Private" method (name mangled)
-        pass
-```
-
-```jac
-// Jac - Enforced privacy
-obj JacBankAccount {
-    has :pub account_number: str;     // Truly public
-    has :protect balance: float = 0.0;  // Truly protected
-    has :priv pin: str;               // Truly private
-
-    can :protect internal_method() {  // Enforced protected
-        // ...
-    }
-
-    can :priv private_method() {      // Enforced private
-        // ...
-    }
-}
-```
-
-### Access Control in Inheritance
-
-```jac
-obj Vehicle {
-    has :pub brand: str;
-    has :pub model: str;
-    has :protect engine_code: str;
-    has :priv vin: str;
-
-    can :pub get_info() -> str {
-        return f"{self.brand} {self.model}";
-    }
-
-    can :protect start_engine() {
-        print(f"Starting engine {self.engine_code}");
-    }
-
-    can :priv validate_vin() -> bool {
-        return len(self.vin) == 17;
-    }
-}
-
-obj ElectricVehicle(Vehicle) {
-    has :pub battery_capacity: float;
-    has :protect battery_health: float = 100.0;
-
-    can :pub get_range() -> float {
-        // Can access protected members from parent
-        if self.engine_code.startswith("EV") {
-            return self.battery_capacity * self.battery_health / 100;
-        }
-        return 0.0;
-    }
-
-    can :protect start_engine() {
-        // Override protected method
-        print("Initializing electric motor...");
-        super.start_engine();  // Call parent's protected method
-    }
-
-    // Cannot access parent's private members!
-    // can test() {
-    //     print(self.vin);  // Error: Cannot access private member
-    // }
-}
-```
-
-### Module-Level Access Control
-
-```jac
-// utilities.jac
-
-// Public function - exported
-can :pub calculate_tax(amount: float, rate: float) -> float {
-    return amount * rate;
-}
-
-// Protected function - module and submodules only
-can :protect validate_rate(rate: float) -> bool {
-    return 0.0 <= rate <= 1.0;
-}
-
-// Private function - this file only
-can :priv round_to_cents(amount: float) -> float {
-    return round(amount, 2);
-}
-
-// Public class
-obj :pub TaxCalculator {
-    has :priv rates: dict[str, float];
-
-    can :pub calculate(amount: float, category: str) -> float {
-        if category in self.rates {
-            return calculate_tax(amount, self.rates[category]);
-        }
-        return 0.0;
-    }
-}
-
-// Private class - not exported
-obj :priv InternalCache {
-    has data: dict = {};
-}
-```
-
-### Advanced OOP Patterns
-
-```jac
-// Abstract base with template method pattern
-obj DataProcessor {
-    can :pub process(data: list) -> list {
-        // Template method - defines algorithm structure
-        validated = self.validate(data);
-        transformed = self.transform(validated);
-        return self.finalize(transformed);
-    }
-
-    // Abstract methods for subclasses
-    can :protect validate(data: list) -> list abs;
-    can :protect transform(data: list) -> list abs;
-
-    // Hook method with default implementation
-    can :protect finalize(data: list) -> list {
-        return data;  // Default: no finalization
-    }
-}
-
-// Concrete implementation
-obj CsvProcessor(DataProcessor) {
-    has :priv delimiter: str = ",";
-
-    can :protect validate(data: list) -> list {
-        // Remove empty rows
-        return [row for row in data if row.strip()];
-    }
-
-    can :protect transform(data: list) -> list {
-        // Parse CSV rows
-        import:py csv;
-        reader = csv.reader(data, delimiter=self.delimiter);
-        return list(reader);
-    }
-
-    can :protect finalize(data: list) -> list {
-        // Convert to dictionaries using first row as headers
-        if not data { return []; }
-
-        headers = data[0];
-        return [
-            {headers[i]: row[i] for i in range(len(headers))}
-            for row in data[1:]
-        ];
-    }
-}
-```
-
-### Composition over Inheritance
-
-```jac
-// Component interfaces
-obj Flyable {
-    can fly() -> str abs;
-}
-
-obj Swimmable {
-    can swim() -> str abs;
-}
-
-obj Walkable {
-    can walk() -> str abs;
-}
-
-// Concrete components
-obj FlyingComponent(Flyable) {
-    has :priv wing_span: float;
-
-    can fly() -> str {
-        return f"Flying with {self.wing_span}m wingspan";
-    }
-}
-
-obj SwimmingComponent(Swimmable) {
-    has :priv swim_speed: float;
-
-    can swim() -> str {
-        return f"Swimming at {self.swim_speed} km/h";
-    }
-}
-
-// Composition-based design
-obj Duck {
-    has :priv flying: Flyable;
-    has :priv swimming: Swimmable;
-    has name: str;
-
-    can :pub fly() -> str {
-        return f"{self.name}: {self.flying.fly()}";
-    }
-
-    can :pub swim() -> str {
-        return f"{self.name}: {self.swimming.swim()}";
+        return True;
     }
 }
 
 with entry {
-    let donald = Duck(
-        name="Donald",
-        flying=FlyingComponent(wing_span=0.5),
-        swimming=SwimmingComponent(swim_speed=5.0)
-    );
+    captioner = RobustCaptioner(fallback_enabled=True);
 
-    print(donald.fly());   // Donald: Flying with 0.5m wingspan
-    print(donald.swim());  // Donald: Swimming at 5.0 km/h
-}
-```
+    # Test with different scenarios
+    test_images = [
+        Image("valid_photo.jpg"),
+        Image("corrupted.jpg"),
+        Image("missing.jpg")
+    ];
 
-### Design Patterns in Jac
+    for image in test_images {
+        result = captioner.safe_caption(image);
 
-```jac
-// Singleton pattern with access control
-obj :pub Database {
-    has :priv static instance: Database? = None;
-    has :priv connection: any;
-
-    // Private constructor
-    can :priv init(connection_string: str) {
-        import:py psycopg2;
-        self.connection = psycopg2.connect(connection_string);
-    }
-
-    // Public factory method
-    can :pub static get_instance() -> Database {
-        if Database.instance is None {
-            Database.instance = Database._create_instance();
-        }
-        return Database.instance;
-    }
-
-    can :priv static _create_instance() -> Database {
-        return Database(connection_string=get_db_config());
-    }
-}
-
-// Observer pattern
-obj :pub Subject {
-    has :priv observers: list[Observer] = [];
-
-    can :pub attach(observer: Observer) {
-        self.observers.append(observer);
-    }
-
-    can :pub detach(observer: Observer) {
-        self.observers.remove(observer);
-    }
-
-    can :protect notify(data: any) {
-        for observer in self.observers {
-            observer.update(self, data);
+        if result["success"] {
+            is_valid = captioner.validate_caption(result["caption"]);
+            print(f"{image}: {result['caption']} (Valid: {is_valid})");
+        } else {
+            print(f"{image}: Failed - {result['error']}");
         }
     }
 }
-
-obj :pub Observer {
-    can update(subject: Subject, data: any) abs;
-}
 ```
+<br />
 
-### Best Practices for OOP in Jac
+## Best Practices
+---
+!!! tip "AI Development Guidelines"
+    - **Start Simple**: Begin with basic AI functions, add complexity gradually
+    - **Use Semantic Strings**: Provide context without cluttering function signatures
+    - **Handle Failures**: Always implement fallback strategies for AI functions
+    - **Test Thoroughly**: AI outputs can be unpredictable, test with various inputs
+    - **Optimize Models**: Choose appropriate models and parameters for your use case
 
-1. **Use `obj` by Default**: Unless you need Python compatibility
-   ```jac
-   obj User {  // Preferred
-       has name: str;
-   }
+## Key Takeaways
 
-   class User {  // Only for Python interop
-       def __init__(self, name: str) {
-           self.name = name;
-       }
-   }
-   ```
+!!! summary "What We've Learned"
+    **MTLLM Integration:**
 
-2. **Leverage Automatic Constructors**: Don't write boilerplate
-   ```jac
-   // Good
-   obj Point {
-       has x: float;
-       has y: float;
-   }
+    - **Simple AI Functions**: Define AI capabilities with `by llm()` syntax
+    - **Model Configuration**: Flexible model selection and parameter tuning
+    - **Type Safety**: AI functions integrate seamlessly with Jac's type system
+    - **Zero Prompt Engineering**: Function signatures become prompts automatically
 
-   // Unnecessary
-   obj Point {
-       has x: float;
-       has y: float;
+    **Advanced Features:**
 
-       can init(x: float, y: float) {
-           self.x = x;
-           self.y = y;
-       }
-   }
-   ```
+    - **Semantic Context**: Enhanced AI understanding through semantic strings
+    - **Multimodal Support**: Seamless handling of images, text, and audio
+    - **Error Handling**: Robust patterns for production AI applications
+    - **Model Selection**: Easy switching between different AI providers and models
 
-3. **Use Access Control Meaningfully**: Don't make everything public
-   ```jac
-   obj Service {
-       has :pub api_key: str;      // Public: part of interface
-       has :protect cache: dict;    // Protected: for extensions
-       has :priv secrets: dict;     // Private: implementation detail
-   }
-   ```
+    **Practical Applications:**
 
-4. **Separate Interface from Implementation**: For large classes
-   ```jac
-   // Good for large projects
-   // user.jac - just interface
-   // user.impl.jac - implementation
-   // user.test.jac - tests
-   ```
+    - **Content Generation**: Automated text and media analysis
+    - **Data Processing**: Intelligent data transformation and extraction
+    - **API Integration**: Direct AI integration without complex setup
+    - **Scalable Architecture**: AI functions work in both local and cloud deployments
 
-5. **Prefer Composition for Flexibility**: Especially for cross-cutting concerns
-   ```jac
-   // Instead of deep inheritance
-   obj LoggingMixin {
-       can log(message: str) {
-           print(f"[{timestamp_now()}] {message}");
-       }
-   }
+!!! tip "Try It Yourself"
+    Enhance the image captioning tool by adding:
+    - Batch processing for multiple images
+    - Integration with cloud storage services
+    - Custom model fine-tuning capabilities
+    - Real-time image analysis from camera feeds
 
-   obj Service {
-       has :priv logger: LoggingMixin;
+    Remember: AI functions in Jac are as easy to use as regular functions, but with the power of Large Language Models!
 
-       can process() {
-           self.logger.log("Processing started");
-       }
-   }
-   ```
+---
 
-### Summary
+If you are interested in learning more about MTLLM, check out [ Quickstart to MTLLM ](../learn/jac-mtllm/with_llm.md)
 
-In this chapter, we've seen how Jac enhances object-oriented programming with:
-
-- **Automatic constructors** that eliminate boilerplate
-- **Implementation separation** for better code organization
-- **Enforced access control** instead of naming conventions
-- **Dataclass-like `obj`** with more power and less syntax
-- **Python compatibility** when you need it
-
-These features make Jac's OOP both more powerful and more convenient than traditional approaches. The automatic constructor generation alone can save hundreds of lines of boilerplate in larger projects, while implementation separation enables better team collaboration and code organization.
-
-Next, we'll dive into the revolutionary Object-Spatial Programming features that make Jac truly unique—nodes, edges, and walkers that transform how we think about program structure and execution.
+*Ready to learn about imports and modular programming? Continue to [Chapter 6: Imports System and File Operations](chapter_6.md)!*

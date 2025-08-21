@@ -1,6 +1,6 @@
-import from mtllm.llms { OpenAI }
+import from mtllm { Model }
 
-glob llm = OpenAI();
+glob llm = Model();
 
 def correct_grammar(text: str) -> str by llm(temperature=0.9);
 

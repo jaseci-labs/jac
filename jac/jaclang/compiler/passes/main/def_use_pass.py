@@ -35,7 +35,6 @@ class DefUsePass(UniPass):
         def inform_from_walker(node: uni.UniNode) -> None:
             for i in (
                 node.get_all_sub_nodes(uni.VisitStmt)
-                + node.get_all_sub_nodes(uni.IgnoreStmt)
                 + node.get_all_sub_nodes(uni.DisengageStmt)
                 + node.get_all_sub_nodes(uni.EdgeOpRef)
                 + node.get_all_sub_nodes(uni.EventSignature)

@@ -49,6 +49,9 @@ With Jac Cloud, you can:
 The simplest way to start with Jac Cloud is to take an existing Jac application and serve it:
 
 ```bash
+# Install Jac Cloud
+pip install jac-cloud
+
 # Instead of running locally
 jac run main.jac
 

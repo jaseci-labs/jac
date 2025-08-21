@@ -1,309 +1,346 @@
-"""Type classes for the mtllm package."""
+"""Type definitions for LLM interactions.
+
+This module defines the types used in the LLM interactions, including messages,
+tools, and tool calls. It provides a structured way to represent messages,
+tool calls, and tools that can be used in LLM requests and responses.
+"""
 
 import base64
-import importlib
-import importlib.util
+import mimetypes
+import os
+from dataclasses import dataclass
+from enum import StrEnum
 from io import BytesIO
-from typing import Any, Callable
+from typing import Callable, TypeAlias, get_type_hints
 
-from mtllm.semtable import SemInfo, SemRegistry, SemScope
-from mtllm.utils import extract_non_primary_type, get_object_string, get_type_annotation
+from PIL.Image import open as open_image
 
-cv2 = importlib.import_module("cv2") if importlib.util.find_spec("cv2") else None
-PILImage = (
-    importlib.import_module("PIL.Image") if importlib.util.find_spec("PIL") else None
-)
+from litellm.types.utils import Message as LiteLLMMessage
+
+from pydantic import TypeAdapter
+
+from .schema import tool_to_schema
+
+# The message can be a jaclang defined message or what ever the llm
+# returned object that was feed back to the llm as it was given (dict).
+MessageType: TypeAlias = "Message | LiteLLMMessage"
 
 
-class Video:
-    """Represent a video."""
+class MessageRole(StrEnum):
+    """Enum for message roles in LLM interactions."""
 
-    def __init__(self, file_path: str, seconds_per_frame: int = 2) -> None:
-        """Initialize the Video class."""
+    SYSTEM = "system"
+    USER = "user"
+    ASSISTANT = "assistant"
+    TOOL = "tool"
+
+
+@dataclass
+class Message:
+    """Message class for LLM interactions."""
+
+    role: MessageRole
+    content: "str | list[Media]"
+
+    def to_dict(self) -> dict[str, object]:
+        """Convert the message to a dictionary."""
+        if isinstance(self.content, str):
+            return {
+                "role": self.role.value,
+                "content": self.content,
+            }
+
+        media_contents = []
+        for media in self.content:
+            media_contents.extend(media.to_dict())
+        return {
+            "role": self.role.value,
+            "content": media_contents,
+        }
+
+
+@dataclass
+class ToolCallResultMsg(Message):
+    """Result of a tool call in LLM interactions."""
+
+    tool_call_id: str
+    name: str  # Function name.
+
+    def __post_init__(self) -> None:
+        """Post-initialization to set the role of the message."""
+        self.role = MessageRole.TOOL  # Maybe this should be an assertion?
+
+    def to_dict(self) -> dict[str, object]:
+        """Convert the tool call result message to a dictionary."""
+        return {
+            "role": self.role.value,
+            "content": self.content,
+            "tool_call_id": self.tool_call_id,
+            "name": self.name,
+        }
+
+
+@dataclass
+class Tool:
+    """Tool class for LLM interactions."""
+
+    func: Callable
+    description: str = ""
+    params_desc: dict[str, str] = None  # type: ignore
+
+    def __post_init__(self) -> None:
+        """Post-initialization to validate the function."""
+        self.func.__annotations__ = get_type_hints(self.func)
+        self.description = Tool.get_func_description(self.func)
+        if hasattr(self.func, "_jac_semstr_inner"):
+            self.params_desc = self.func._jac_semstr_inner  # type: ignore
+        else:
+            self.params_desc = {
+                name: str(type) for name, type in self.func.__annotations__.items()
+            }
+
+    def __call__(self, *args: list, **kwargs: dict) -> object:
+        """Call the tool function with the provided arguments."""
+        # If there is an error with the finish tool, we throw the exception.
+        # Since it's the user's responsibility to handle it.
+        if self.is_finish_tool():
+            return self.func(*args, **kwargs)
+        try:
+            # TODO: Shoud I json serialize or this is fine?
+            return self.func(*args, **kwargs)
+        except Exception as e:
+            # For the LLM if the tool failed, it'll see the error message
+            # and make decision based on that.
+            return str(e)
+
+    def get_name(self) -> str:
+        """Return the name of the tool function."""
+        return self.func.__name__
+
+    @staticmethod
+    def get_func_description(func: Callable) -> str:
+        """Get the description of the function."""
+        if hasattr(func, "_jac_semstr"):
+            return func._jac_semstr  # type: ignore
+        return func.__doc__ or func.__name__
+
+    @staticmethod
+    def make_finish_tool(resp_type: type) -> "Tool":
+        """Create a finish tool that returns the final output."""
+
+        def finish_tool(final_output: object) -> object:
+            return TypeAdapter(resp_type).validate_python(final_output)
+
+        finish_tool.__annotations__["return"] = resp_type
+        finish_tool.__annotations__["final_output"] = resp_type
+        return Tool(
+            func=finish_tool,
+            description="This tool is used to finish the tool calls and return the final output.",
+            params_desc={
+                "final_output": "The final output of the tool calls.",
+            },
+        )
+
+    def is_finish_tool(self) -> bool:
+        """Check if the tool is a finish tool."""
+        return self.get_name() == "finish_tool"
+
+    def get_json_schema(self) -> dict[str, object]:
+        """Return the JSON schema for the tool function."""
+        return tool_to_schema(self.func, self.description, self.params_desc)
+
+    def parse_arguments(self, args_json: dict) -> dict:
+        """Parse the arguments from JSON to the function's expected format."""
+        args = {}
+        annotations = self.func.__annotations__
+        for arg_name, arg_json in args_json.items():
+            if arg_type := annotations.get(arg_name):
+                args[arg_name] = TypeAdapter(arg_type).validate_python(arg_json)
+        return args
+
+
+@dataclass
+class ToolCall:
+    """Tool call class for LLM interactions."""
+
+    call_id: str
+    tool: Tool
+    args: dict
+
+    def __call__(self) -> ToolCallResultMsg:
+        """Call the tool with the provided arguments."""
+        result = self.tool(**self.args)
+        return ToolCallResultMsg(
+            role=MessageRole.TOOL,
+            content=str(result),
+            tool_call_id=self.call_id,
+            name=self.tool.get_name(),
+        )
+
+    def __str__(self) -> str:
+        """Return the string representation of the tool call."""
+        params = ", ".join(f"{k}={v}" for k, v in self.args.items())
+        return f"{self.tool.get_name()}({params})"
+
+    def is_finish_call(self) -> bool:
+        """Check if the tool is a finish tool."""
+        return self.tool.is_finish_tool()
+
+    def get_output(self) -> object:
+        """Get the output from the finish tool call."""
         assert (
-            cv2 is not None
-        ), "Please install the required dependencies by running `pip install mtllm[video]`."
-        self.file_path = file_path
-        self.seconds_per_frame = seconds_per_frame
+            self.is_finish_call()
+        ), "This method should only be called for finish tools."
+        return self.tool(**self.args)
 
-    def process(
-        self,
-    ) -> list:
-        """Process the video and return a list of base64 encoded frames."""
-        assert (
-            cv2 is not None
-        ), "Please install the required dependencies by running `pip install mtllm[video]`."
 
-        assert self.seconds_per_frame > 0, "Seconds per frame must be greater than 0"
+@dataclass
+class MockToolCall:
+    """Mock tool call for testing purposes."""
 
-        base64_frames = []
+    tool: Callable
+    args: dict
 
-        video = cv2.VideoCapture(self.file_path)
+    def to_tool_call(self) -> ToolCall:
+        """Convert the mock tool call to a ToolCall."""
+        return ToolCall(
+            call_id="",  # Call ID is not used in mock calls.
+            tool=Tool(self.tool),
+            args=self.args,
+        )
+
+
+@dataclass
+class CompletionResult:
+    """Result of the completion from the LLM."""
+
+    output: object
+    tool_calls: list[ToolCall]
+
+
+# -----------------------------------------------------------------------------
+# Media content types
+# -----------------------------------------------------------------------------
+
+
+@dataclass
+class Media:
+    """Base class for message content."""
+
+    def to_dict(self) -> list[dict]:
+        """Convert the content to a dictionary."""
+        raise NotImplementedError("Subclasses must implement this method.")
+
+
+@dataclass
+class Text(Media):
+    """Class representing text content in a message."""
+
+    text: str
+
+    def to_dict(self) -> list[dict]:
+        """Convert the text content to a dictionary."""
+        return [{"type": "text", "text": self.text}]
+
+
+@dataclass
+class Image(Media):
+    """Class representing an image."""
+
+    url: str
+    mime_type: str | None = None
+
+    def __post_init__(self) -> None:
+        """Post-initialization to ensure the URL is a string."""
+        if self.url.startswith(("http://", "https://", "gs://")):
+            self.url = self.url.strip()
+        else:
+            if not os.path.exists(self.url):
+                raise ValueError(f"Image file does not exist: {self.url}")
+            image = open_image(self.url)
+
+            # python<3.13 mimetypes doesn't support `webp` format as it wasn't an IANA standard
+            # until November 2024 (RFC-9649:  https://www.rfc-editor.org/rfc/rfc9649.html).
+            if (image.format and image.format.lower()) == "webp":
+                self.mime_type = "image/webp"
+            else:
+                self.mime_type = mimetypes.types_map.get(
+                    "." + (image.format or "png").lower()
+                )
+            with BytesIO() as buffer:
+                image.save(buffer, format=image.format, quality=100)
+                base64_image = base64.b64encode(buffer.getvalue()).decode("utf-8")
+                self.url = f"data:{self.mime_type};base64,{base64_image}"
+
+    def to_dict(self) -> list[dict]:
+        """Convert the image to a dictionary."""
+        image_url = {"url": self.url}
+        if self.mime_type:
+            image_url["format"] = self.mime_type
+        return [
+            {
+                "type": "image_url",
+                "image_url": image_url,
+            }
+        ]
+
+
+# Ref: https://cookbook.openai.com/examples/gpt_with_vision_for_video_understanding
+@dataclass
+class Video(Media):
+    """Class representing a video."""
+
+    path: str
+    fps: int = 1
+    _base64frames: list[str] | None = None
+
+    def __post_init__(self) -> None:
+        """Post-initialization to ensure the path is a string."""
+        if not os.path.exists(self.path):
+            raise ValueError(f"Video file does not exist: {self.path}")
+
+    def load_frames(self) -> None:
+        """Load video frames as base64-encoded images."""
+        try:
+            import cv2
+        except ImportError:
+            raise ImportError(
+                "OpenCV is required to process video files."
+                "Install `pip install mtllm[video]` for video capabilities."
+            )
+
+        self._base64frames = []
+        video = cv2.VideoCapture(self.path)
         total_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
-        fps = video.get(cv2.CAP_PROP_FPS)
-        video_total_seconds = total_frames / fps
-        assert (
-            video_total_seconds > self.seconds_per_frame
-        ), "Video is too short for the specified seconds per frame"
-        assert (
-            video_total_seconds < 4
-        ), "Video is too long. Please use a video less than 4 seconds long."
 
-        frames_to_skip = int(fps * self.seconds_per_frame)
+        target_fps = self.fps
+        source_fps = video.get(cv2.CAP_PROP_FPS)
+        frames_to_skip = (
+            int(source_fps / target_fps) - 1 if target_fps < source_fps else 1
+        )
+
         curr_frame = 0
         while curr_frame < total_frames - 1:
             video.set(cv2.CAP_PROP_POS_FRAMES, curr_frame)
             success, frame = video.read()
             if not success:
-                break
+                raise ValueError("Failed to read video frame.")
             _, buffer = cv2.imencode(".jpg", frame)
-            base64_frames.append(base64.b64encode(buffer).decode("utf-8"))
+            self._base64frames.append(base64.b64encode(buffer).decode("utf-8"))
             curr_frame += frames_to_skip
-        video.release()
-        return base64_frames
 
-
-class Image:
-    """Represent an image."""
-
-    def __init__(self, file_path: str) -> None:
-        """Initialize the Image class."""
+    def to_dict(self) -> list[dict]:
+        """Convert the video to a dictionary."""
+        if self._base64frames is None:
+            self.load_frames()
         assert (
-            PILImage is not None
-        ), "Please install the required dependencies by running `pip install mtllm[image]`."
-        self.file_path = file_path
+            self._base64frames is not None
+        ), "Frames must be loaded before conversion."
 
-    def process(self) -> tuple[str, str]:
-        """Process the image and return a base64 encoded image and its format."""
-        assert (
-            PILImage is not None
-        ), "Please install the required dependencies by running `pip install mtllm[image]`."
-        image = PILImage.open(self.file_path)
-        img_format = image.format
-        with BytesIO() as buffer:
-            image.save(buffer, format=img_format, quality=100)
-            return (
-                base64.b64encode(buffer.getvalue()).decode("utf-8"),
-                img_format.lower(),
-            )
-
-
-class TypeExplanation:
-    """Represent a type explanation."""
-
-    def __init__(self, type_item: str, mod_registry: SemRegistry) -> None:
-        """Initialize the TypeExplanation class."""
-        self.type_item = type_item
-        self.explanation, self._nested_types = self.get_type_explanation(mod_registry)
-
-    def get_type_explanation(self, mod_registry: SemRegistry) -> tuple[str, set[str]]:
-        """Get the type explanation of the input type string."""
-        # print(f"Type Item: {self.type_item}")
-        # print(f"Mod Registry: {mod_registry}")
-        scope, sem_info = mod_registry.lookup(name=self.type_item)
-        # print(f"Scope: {scope}, SemInfo: {sem_info}")
-        if isinstance(sem_info, SemInfo) and sem_info.type:
-            sem_info_scope = SemScope(sem_info.name, sem_info.type, scope)
-            _, type_info = mod_registry.lookup(scope=sem_info_scope)
-            type_info_types = []
-            type_example_list = []
-            type_example: str = ""
-            if sem_info.type == "Enum" and isinstance(type_info, list):
-                for enum_item in type_info:
-                    (
-                        type_example_list.append(
-                            f'{sem_info.name}.{enum_item.name} : "{enum_item.semstr}"'
-                            if enum_item.semstr
-                            else f"{sem_info.name}.{enum_item.name}"
-                        )
-                    )
-                type_example = ", ".join(type_example_list)
-            elif sem_info.type in [
-                "object",
-                "class",
-                "node",
-                "edge",
-                "walker",
-            ] and isinstance(type_info, list):
-                for arch_item in type_info:
-                    if arch_item.type in ["object", "class", "node", "edge", "walker"]:
-                        continue
-                    type_example_list.append(
-                        f'{arch_item.name}="{arch_item.semstr}":{arch_item.type}'
-                        if arch_item.semstr
-                        else f"{arch_item.name}={arch_item.type}"
-                    )
-                    if arch_item.type and extract_non_primary_type(arch_item.type):
-                        type_info_types.extend(extract_non_primary_type(arch_item.type))
-                type_example = f"{sem_info.name}({', '.join(type_example_list)})"
-            return (
-                f"{sem_info.semstr} ({sem_info.name}) ({sem_info.type}) eg:- {type_example}".strip(),  # noqa: E501
-                set(type_info_types),
-            )
-        return "", set()
-
-    def __str__(self) -> str:
-        """Return the string representation of the TypeExplanation class."""
-        return self.explanation
-
-    @property
-    def nested_types(self) -> set[str]:
-        """Get the nested types of the type."""
-        return self._nested_types
-
-
-class InputInformation:
-    """Represent the input information."""
-
-    def __init__(self, semstr: str, name: str, value: Any) -> None:  # noqa: ANN401
-        """Initialize the InputInformation class."""
-        self.semstr = semstr
-        self.name = name
-        self.value = value
-
-    def __str__(self) -> str:
-        """Return the string representation of the InputInformation class."""
-        type_anno = get_type_annotation(self.value)
-        return f"{self.semstr if self.semstr else ''} ({self.name}) ({type_anno}) = {get_object_string(self.value)}".strip()  # noqa: E501
-
-    def to_list_dict(self) -> list[dict]:
-        """Return the list of dictionaries representation of the InputInformation class."""
-        input_type = get_type_annotation(self.value)
-        if input_type == "Image":
-            img_base64, img_type = self.value.process()
-            return [
-                {
-                    "type": "text",
-                    "text": f"{self.semstr if self.semstr else ''} ({self.name}) (Image) = ".strip(),
-                },
-                {
-                    "type": "image_url",
-                    "image_url": {"url": f"data:image/{img_type};base64,{img_base64}"},
-                },
-            ]
-        elif input_type == "Video":
-            video_frames = self.value.process()
-            return [
-                {
-                    "type": "text",
-                    "text": f"{self.semstr if self.semstr else ''} ({self.name}) (Video) = ".strip(),
-                },
-                *(
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/jpeg;base64,{frame}",
-                            "detail": "low",
-                        },
-                    }
-                    for frame in video_frames
-                ),
-            ]
         return [
             {
-                "type": "text",
-                "text": str(self),
+                "type": "image_url",
+                "image_url": f"data:image/jpeg;base64,{frame}",
             }
+            for frame in self._base64frames
         ]
-
-    def get_types(self) -> list:
-        """Get the types of the input."""
-        return extract_non_primary_type(get_type_annotation(self.value))
-
-
-class OutputHint:
-    """Represent the output hint."""
-
-    def __init__(self, semstr: str, type: str) -> None:  # noqa: ANN401
-        """Initialize the OutputHint class."""
-        self.semstr = semstr
-        self.type = type
-
-    def __str__(self) -> str:
-        """Return the string representation of the OutputHint class."""
-        return f"{self.semstr if self.semstr else ''} ({self.type})".strip()
-
-    def get_types(self) -> list:
-        """Get the types of the output."""
-        return extract_non_primary_type(self.type)
-
-
-class Information:
-    """Represent the information."""
-
-    def __init__(
-        self, filtered_registry: SemRegistry, name: str, value: Any  # noqa: ANN401
-    ) -> None:
-        """Initialize the Information class."""
-        self.name = name
-        self.value = value
-        self.registry = filtered_registry
-
-    @property
-    def semstr(self) -> str:
-        """Get the semantic string of the information."""
-        _, sem_info = self.registry.lookup(name=self.name)
-        return sem_info.semstr if sem_info and isinstance(sem_info, SemInfo) else ""
-
-    @property
-    def type(self) -> str:
-        """Get the type of the information."""
-        _, sem_info = self.registry.lookup(name=self.name)
-        return (
-            sem_info.type
-            if sem_info and isinstance(sem_info, SemInfo)
-            else get_type_annotation(self.value)
-        ) or ""
-
-    def __str__(self) -> str:
-        """Return the string representation of the Information class."""
-        type_anno = get_type_annotation(self.value)
-        return f"{self.semstr} ({self.name}) ({type_anno}) = {get_object_string(self.value)}".strip()
-
-    def get_types(self) -> list:
-        """Get the types of the information."""
-        return extract_non_primary_type(self.type)
-
-
-class Tool:
-    """Base class for tools."""
-
-    def __init__(
-        self, func: Callable, sem_info: SemInfo, params: list[SemInfo]
-    ) -> None:
-        """Initialize the tool."""
-        self.sem_info = sem_info
-        self.func = func
-        self.params = params
-
-    def __call__(self, *args, **kwargs) -> str:  # noqa
-        """Forward function of the tool."""
-        return self.func(*args, **kwargs)
-
-    def get_usage_example(self) -> str:
-        """Get the usage example of the tool."""
-        get_param_str = lambda x: (  # noqa E731
-            f'{x.name}="{x.semstr}":{x.type}' if x.semstr else f"{x.name}={x.type}"
-        )
-        return f"{self.sem_info.name}({', '.join([get_param_str(x) for x in self.params])})"
-
-    def __str__(self) -> str:
-        """Return a string representation of the tool."""
-        tool_str = f"tool_name={self.sem_info.name}\n"
-        tool_str += f"tool_description={self.sem_info.semstr.strip()}\n"
-        tool_str += f"usage_example={self.get_usage_example()}\n"
-        return tool_str
-
-
-class ReActOutput:
-    """Represent the ReAct output."""
-
-    def __init__(self, thought: str, action: str, observation: str) -> None:
-        """Initialize the ReActOutput class."""
-        self.thought = thought
-        self.action = action
-        self.observation = observation
-
-    def __repr__(self) -> str:
-        """Return the string representation of the ReActOutput class."""
-        return f"ReActOutput(thought={self.thought}, action={self.action}, observation={self.observation})"

@@ -1,3 +1,5 @@
+import sys;
+
 impl level.run_game {
     # print("Walker Entry ->", self.level_id);
 

@@ -9,6 +9,7 @@ from _pytest.logging import LogCaptureFixture
 
 import jaclang
 from jaclang.compiler.passes import UniPass
+from jaclang.runtimelib.utils import read_file_with_encoding
 from jaclang.utils.helpers import get_uni_nodes_as_snake_case as ast_snakes
 
 import pytest
@@ -41,13 +42,11 @@ class TestCase(_TestCase):
             raise ValueError("Unable to determine the file of the module.")
         fixture_src = module.__file__
         fixture_path = os.path.join(os.path.dirname(fixture_src), "fixtures", fixture)
-        with open(fixture_path, "r", encoding="utf-8") as f:
-            return f.read()
+        return read_file_with_encoding(fixture_path)
 
     def file_to_str(self, file_path: str) -> str:
         """Load fixture from fixtures directory."""
-        with open(file_path, "r", encoding="utf-8") as f:
-            return f.read()
+        return read_file_with_encoding(file_path)
 
     def fixture_abs_path(self, fixture: str) -> str:
         """Get absolute path of a fixture from fixtures directory."""

@@ -1,0 +1,759 @@
+components:
+  schemas:
+    AttachSSO:
+      description: Attach SSO Request Model.
+      properties:
+        email:
+          title: Email
+          type: string
+        id:
+          title: Id
+          type: string
+        platform:
+          title: Platform
+          type: string
+      required:
+        - platform
+        - id
+        - email
+      title: AttachSSO
+      type: object
+    DetachSSO:
+      description: Attach SSO Request Model.
+      properties:
+        platform:
+          title: Platform
+          type: string
+      required:
+        - platform
+      title: DetachSSO
+      type: object
+    Expiration:
+      description: Key Expiration.
+      properties:
+        count:
+          default: 60
+          exclusiveMinimum: 0.0
+          title: Count
+          type: integer
+        interval:
+          default: days
+          enum:
+            - seconds
+            - minutes
+            - hours
+            - days
+          title: Interval
+          type: string
+      title: Expiration
+      type: object
+    GenerateKey:
+      description: User Creation Request Model.
+      properties:
+        expiration:
+          $ref: "#/components/schemas/Expiration"
+        name:
+          minLength: 1
+          title: Name
+          type: string
+        nodes:
+          items:
+            type: string
+          title: Nodes
+          type: array
+        walkers:
+          items:
+            type: string
+          title: Walkers
+          type: array
+      required:
+        - name
+      title: GenerateKey
+      type: object
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: "#/components/schemas/ValidationError"
+          title: Detail
+          type: array
+      title: HTTPValidationError
+      type: object
+    KeyIDs:
+      description: User Creation Request Model.
+      properties:
+        ids:
+          items:
+            type: string
+          minItems: 1
+          title: Ids
+          type: array
+      required:
+        - ids
+      title: KeyIDs
+      type: object
+    UserChangePassword:
+      description: User Creation Request Model.
+      properties:
+        new_password:
+          title: New Password
+          type: string
+        old_password:
+          title: Old Password
+          type: string
+      required:
+        - old_password
+        - new_password
+      title: UserChangePassword
+      type: object
+    UserForgotPassword:
+      description: User Creation Request Model.
+      properties:
+        email:
+          format: email
+          title: Email
+          type: string
+      required:
+        - email
+      title: UserForgotPassword
+      type: object
+    UserRegister:
+      properties:
+        email:
+          format: email
+          title: Email
+          type: string
+        password:
+          title: Password
+          type: string
+      required:
+        - email
+        - password
+      title: UserRegister
+      type: object
+    UserRequest:
+      description: User Creation Request Model.
+      properties:
+        email:
+          format: email
+          title: Email
+          type: string
+        password:
+          title: Password
+          type: string
+      required:
+        - email
+        - password
+      title: UserRequest
+      type: object
+    UserResetPassword:
+      description: User Creation Request Model.
+      properties:
+        code:
+          title: Code
+          type: string
+        password:
+          title: Password
+          type: string
+      required:
+        - code
+        - password
+      title: UserResetPassword
+      type: object
+    UserVerification:
+      description: User Verification Request Model.
+      properties:
+        code:
+          title: Code
+          type: string
+      required:
+        - code
+      title: UserVerification
+      type: object
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+              - type: string
+              - type: integer
+          title: Location
+          type: array
+        msg:
+          title: Message
+          type: string
+        type:
+          title: Error Type
+          type: string
+      required:
+        - loc
+        - msg
+        - type
+      title: ValidationError
+      type: object
+  securitySchemes:
+    HTTPBearer:
+      scheme: bearer
+      type: http
+info:
+  title: FastAPI
+  version: 0.1.0
+openapi: 3.1.0
+paths:
+  /healthz:
+    get:
+      description: Healthz API.
+      operationId: healthz_healthz_get
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: {}
+          description: Successful Response
+      summary: Healthz
+      tags:
+        - Monitoring APIs
+  /sso/attach:
+    post:
+      description: Generate token from user.
+      operationId: sso_attach_sso_attach_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AttachSSO"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: {}
+          description: Successful Response
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+          description: Validation Error
+      security:
+        - HTTPBearer: []
+      summary: Sso Attach
+      tags:
+        - SSO APIs
+  /sso/detach:
+    delete:
+      description: Generate token from user.
+      operationId: sso_detach_sso_detach_delete
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DetachSSO"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: {}
+          description: Successful Response
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+          description: Validation Error
+      security:
+        - HTTPBearer: []
+      summary: Sso Detach
+      tags:
+        - SSO APIs
+  /sso/{platform}/{operation}:
+    get:
+      description: SSO Login API.
+      operationId: sso_operation_sso__platform___operation__get
+      parameters:
+        - in: path
+          name: platform
+          required: true
+          schema:
+            title: Platform
+            type: string
+        - in: path
+          name: operation
+          required: true
+          schema:
+            title: Operation
+            type: string
+        - in: query
+          name: redirect_uri
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: "null"
+            title: Redirect Uri
+        - in: query
+          name: state
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: "null"
+            title: State
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: {}
+          description: Successful Response
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+          description: Validation Error
+      summary: Sso Operation
+      tags:
+        - SSO APIs
+  /sso/{platform}/{operation}/callback:
+    get:
+      description: SSO Login API.
+      operationId: sso_callback_sso__platform___operation__callback_get
+      parameters:
+        - in: path
+          name: platform
+          required: true
+          schema:
+            title: Platform
+            type: string
+        - in: path
+          name: operation
+          required: true
+          schema:
+            title: Operation
+            type: string
+        - in: query
+          name: redirect_uri
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: "null"
+            title: Redirect Uri
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: {}
+          description: Successful Response
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+          description: Validation Error
+      summary: Sso Callback
+      tags:
+        - SSO APIs
+  /user/change_password:
+    post:
+      description: Register user API.
+      operationId: change_password_user_change_password_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserChangePassword"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: {}
+          description: Successful Response
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+          description: Validation Error
+      security:
+        - HTTPBearer: []
+      summary: Change Password
+      tags:
+        - User APIs
+  /user/forgot_password:
+    post:
+      description: Forgot password API.
+      operationId: forgot_password_user_forgot_password_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserForgotPassword"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: {}
+          description: Successful Response
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+          description: Validation Error
+      summary: Forgot Password
+      tags:
+        - User APIs
+  /user/login:
+    post:
+      description: Login user API.
+      operationId: login_user_login_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: {}
+          description: Successful Response
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+          description: Validation Error
+      summary: Login
+      tags:
+        - User APIs
+  /user/register:
+    post:
+      description: Register user API.
+      operationId: register_user_register_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserRegister"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: {}
+          description: Successful Response
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+          description: Validation Error
+      summary: Register
+      tags:
+        - User APIs
+  /user/reset_password:
+    post:
+      description: Reset password API.
+      operationId: reset_password_user_reset_password_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserResetPassword"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: {}
+          description: Successful Response
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+          description: Validation Error
+      summary: Reset Password
+      tags:
+        - User APIs
+  /user/send-verification-code:
+    post:
+      description: Verify user API.
+      operationId: send_verification_code_user_send_verification_code_post
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: {}
+          description: Successful Response
+      security:
+        - HTTPBearer: []
+      summary: Send Verification Code
+      tags:
+        - User APIs
+  /user/verify:
+    post:
+      description: Verify user API.
+      operationId: verify_user_verify_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserVerification"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: {}
+          description: Successful Response
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+          description: Validation Error
+      summary: Verify
+      tags:
+        - User APIs
+  /util/traverse:
+    get:
+      description: Healthz API.
+      operationId: traverse_util_traverse_get
+      parameters:
+        - in: query
+          name: source
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: "null"
+            title: Source
+        - in: query
+          name: detailed
+          required: false
+          schema:
+            default: false
+            title: Detailed
+            type: boolean
+        - in: query
+          name: depth
+          required: false
+          schema:
+            default: 1
+            title: Depth
+            type: integer
+        - in: query
+          name: node_types
+          required: false
+          schema:
+            anyOf:
+              - items:
+                  type: string
+                type: array
+                uniqueItems: true
+              - type: "null"
+            title: Node Types
+        - in: query
+          name: edge_types
+          required: false
+          schema:
+            anyOf:
+              - items:
+                  type: string
+                type: array
+                uniqueItems: true
+              - type: "null"
+            title: Edge Types
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: {}
+          description: Successful Response
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+          description: Validation Error
+      security:
+        - HTTPBearer: []
+      summary: Traverse
+      tags:
+        - Utility APIs
+  /util/traverse-stream:
+    get:
+      description: Traverse Graph stream.
+      operationId: traverse_stream_util_traverse_stream_get
+      parameters:
+        - in: query
+          name: source
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: "null"
+            title: Source
+        - in: query
+          name: detailed
+          required: false
+          schema:
+            default: false
+            title: Detailed
+            type: boolean
+        - in: query
+          name: depth
+          required: false
+          schema:
+            default: 1
+            title: Depth
+            type: integer
+        - in: query
+          name: node_types
+          required: false
+          schema:
+            anyOf:
+              - items:
+                  type: string
+                type: array
+                uniqueItems: true
+              - type: "null"
+            title: Node Types
+        - in: query
+          name: edge_types
+          required: false
+          schema:
+            anyOf:
+              - items:
+                  type: string
+                type: array
+                uniqueItems: true
+              - type: "null"
+            title: Edge Types
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: {}
+          description: Successful Response
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+          description: Validation Error
+      security:
+        - HTTPBearer: []
+      summary: Traverse Stream
+      tags:
+        - Utility APIs
+  /webhook:
+    get:
+      description: Get keys API.
+      operationId: get_webhook_get
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: {}
+          description: Successful Response
+      security:
+        - HTTPBearer: []
+      summary: Get
+      tags:
+        - Webhook APIs
+  /webhook/delete:
+    delete:
+      description: Delete keys API.
+      operationId: delete_webhook_delete_delete
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/KeyIDs"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: {}
+          description: Successful Response
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+          description: Validation Error
+      security:
+        - HTTPBearer: []
+      summary: Delete
+      tags:
+        - Webhook APIs
+  /webhook/extend/{id}:
+    patch:
+      description: Generate key API.
+      operationId: extend_webhook_extend__id__patch
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            title: Id
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Expiration"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema: {}
+          description: Successful Response
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+          description: Validation Error
+      security:
+        - HTTPBearer: []
+      summary: Extend
+      tags:
+        - Webhook APIs
+  /webhook/generate-key:
+    post:
+      description: Generate key API.
+      operationId: generate_key_webhook_generate_key_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerateKey"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema: {}
+          description: Successful Response
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+          description: Validation Error
+      security:
+        - HTTPBearer: []
+      summary: Generate Key
+      tags:
+        - Webhook APIs

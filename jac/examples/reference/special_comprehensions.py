@@ -1,11 +1,10 @@
 from __future__ import annotations
 from jaclang.runtimelib.builtin import *
 from jaclang import JacMachineInterface as _
+import random
 
 if _.TYPE_CHECKING:
     import random
-else:
-    (random,) = _.jac_import("random", __file__)
 
 
 class TestObj(_.Obj):

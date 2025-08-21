@@ -20,6 +20,7 @@ async walker sample {
 ```
 
 Key characteristics:
+
 - Executes in a separate thread without blocking the main application
 - Returns immediately with a reference ID while continuing execution in the background
 - Similar to task scheduling but with a simpler syntax
@@ -38,8 +39,8 @@ When you call an async walker, you receive a response containing the walker's un
 
 ```json
 {
-    "status": 200,
-    "walker_id": "w:sample:550e8400-e29b-41d4-a716-446655440000"
+  "status": 200,
+  "walker_id": "w:sample:550e8400-e29b-41d4-a716-446655440000"
 }
 ```
 
@@ -52,22 +53,23 @@ walker view_sample_result {
     has walker_id: str;
 
     can enter with `root entry {
-        // Get a reference to the walker instance
+        # Get a reference to the walker instance
         wlk = &walker_id;
 
-        // Access the walker's attributes
-        print(wlk.value);  // Will be 1 after execution completes
+        # Access the walker's attributes
+        print(wlk.value);  # Will be 1 after execution completes
 
-        // Check execution status and metadata
+        # Check execution status and metadata
         schedule_info = wlk.__jac__.schedule;
 
-        // Print execution details
+        # Print execution details
         print(f"Status: {schedule_info.status}");
         print(f"Executed at: {schedule_info.executed_date}");
 
-        // Check for errors
-        if schedule_info.error:
+        # Check for errors
+        if schedule_info.error{
             print(f"Error: {schedule_info.error}");
+        }
     }
 }
 ```
@@ -76,17 +78,19 @@ walker view_sample_result {
 
 The `__jac__.schedule` object contains all execution metadata:
 
-| **Field** | **Description** |
-|-----------|-----------------|
-| `status` | Current execution status (pending, running, completed, failed) |
-| `node_id` | ID of the node where the walker was executed |
-| `root_id` | ID of the root node of the user who triggered the walker |
-| `execute_date` | When the walker was scheduled to execute |
-| `executed_date` | When the walker actually executed |
-| `http_status` | HTTP status code for the execution result |
-| `reports` | Any values reported during walker execution |
-| `custom` | Custom metadata associated with the walker |
-| `error` | Error message if execution failed |
+| **Field**       | **Description**                                                |
+| --------------- | -------------------------------------------------------------- |
+| `status`        | Current execution status (pending, running, completed, failed) |
+| `node_id`       | ID of the node where the walker was executed                   |
+| `root_id`       | ID of the root node of the user who triggered the walker       |
+| `execute_date`  | When the walker was scheduled to execute                       |
+| `executed_date` | When the walker actually executed                              |
+| `http_status`   | HTTP status code for the execution result                      |
+| `reports`       | Any values reported during walker execution                    |
+| `custom`        | Custom metadata associated with the walker                     |
+| `error`         | Error message if execution failed                              |
+
+### Even though those fields are available, we still recommend using a walker's attribute as your status checker for more customizable and direct status updates.
 
 ## Example: Long-Running Process
 
@@ -96,30 +100,33 @@ async walker process_large_dataset {
     has results: list = [];
 
     can enter with `root entry {
-        // Simulate long-running process
+        # Simulate long-running process
         dataset = get_dataset(self.dataset_id);
 
-        for item in dataset:
-            // Do intensive processing
+        for item in dataset{
+            # Do intensive processing
             processed = complex_computation(item);
             self.results.append(processed);
+        }
 
-        // Final result is stored in the walker
+        # Final result is stored in the walker
         print("Processing complete!");
     }
 }
 
-// Retrieve results when needed
+# Retrieve results when needed
 walker check_processing {
     has process_id: str;
 
     can enter with `root entry {
         process = &process_id;
 
-        if process.__jac__.schedule.status == "completed":
+        if process.__jac__.schedule.status == "COMPLETED"{
             print("Results:", process.results);
-        else:
+        }
+        else{
             print("Still processing...");
+        }
     }
 }
 ```
@@ -134,14 +141,15 @@ async walker analyze_data {
     has summary: dict = {};
 
     can enter with `root entry {
-        // Fetch data (could take minutes)
+        # Fetch data (could take minutes)
         data = fetch_dataset(self.dataset_id);
 
-        // Process each item (CPU intensive)
-        for item in data:
+        # Process each item (CPU intensive)
+        for item in data{
             process_item(item);
+        }
 
-        // Generate final summary
+        # Generate final summary
         self.summary = create_summary(data);
     }
 }
@@ -156,16 +164,16 @@ async walker generate_report {
     has report_url: str;
 
     can enter with `root entry {
-        // Collect user data
+        # Collect user data
         user_data = fetch_user_data(self.user_id);
 
-        // Generate PDF (slow operation)
+        # Generate PDF (slow operation)
         report_file = create_pdf_report(user_data, self.report_type);
 
-        // Upload to storage
+        # Upload to storage
         self.report_url = upload_file(report_file);
 
-        // Optional: Notify user
+        # Optional: Notify user
         send_email(self.user_id, "Your report is ready!", self.report_url);
     }
 }
@@ -180,19 +188,20 @@ async walker sync_with_external_system {
     has sync_results: list = [];
 
     can enter with `root entry {
-        // Connect to external API
+        # Connect to external API
         self.sync_status = "connecting";
         api_client = connect_to_api();
 
-        // Fetch data (network-bound, can be slow)
+        # Fetch data (network-bound, can be slow)
         self.sync_status = "fetching";
         external_data = api_client.fetch_account_data(self.account_id);
 
-        // Process and save data
+        # Process and save data
         self.sync_status = "processing";
-        for item in external_data:
+        for item in external_data{
             result = process_and_save(item);
             self.sync_results.append(result);
+        }
 
         self.sync_status = "complete";
     }
@@ -211,24 +220,25 @@ async walker process_with_updates {
     has progress: int = 0;
 
     can enter with `root entry {
-        // Send initial notification
+        # Send initial notification
         socket.notify_clients([self.client_id], {
             "type": "progress",
             "data": {"progress": 0}
         });
 
-        // Process in chunks and send updates
-        for i in range(10):
+        # Process in chunks and send updates
+        for i in range(10){
             process_chunk(i);
             self.progress = (i+1) * 10;
 
-            // Send progress update via WebSocket
+            # Send progress update via WebSocket
             socket.notify_clients([self.client_id], {
                 "type": "progress",
                 "data": {"progress": self.progress}
             });
+        }
 
-        // Send completion notification
+        # Send completion notification
         socket.notify_clients([self.client_id], {
             "type": "complete",
             "data": {"message": "Processing complete!"}
@@ -242,22 +252,23 @@ async walker process_with_updates {
 ```jac
 async walker safe_process {
     has input_id: str;
-    has success: bool = false;
+    has success: bool = False;
     has error_message: str = "";
     has results: dict = {};
 
     can enter with `root entry {
         try {
-            // Attempt processing
+            # Attempt processing
             data = fetch_data(self.input_id);
-            if not data:
+            if not data{
                 self.error_message = "No data found";
                 return;
+            }
 
             self.results = process_data(data);
-            self.success = true;
+            self.success = True;
         } except e {
-            // Capture error details
+            # Capture error details
             self.error_message = str(e);
             log_error(self.input_id, str(e));
         }

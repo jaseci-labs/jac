@@ -1,67 +1,5 @@
 <h1 style="color: orange; font-weight: bold; text-align: center;">Tour of Jac</h1>
 
-## Beyond OOP with Object-Spatial Programming
-
-Object-Spatial Programming (OSP) inverts the traditional relationship between data and computation. Rather than moving data to computation, OSP moves computation to data through topologically aware constructs. This paradigm introduces specialized archetypes—objects, nodes, edges and walkers—that model spatial relationships directly in the language and enable optimizations around data locality and distributed execution.    |
-
-### 🎮 Spatial Game Example
-
-**"Imagine your code is a train, and each station is a game stage. Instead of the station pulling the train in (like in OOP), the train visits each station, performs a task, and moves to the next—this is OSP."**
-
-This example shows how computation flows spatially rather than centrally:
-
-<div class="code-block">
-```jac
-# Define game stage nodes with properties
-node GameStage {
-    has name: str,
-    frame_time: float = 0.0;
-}
-
-# Walker that travels between game stages
-walker RenderWalk {
-    has fps: int = 60;  # Target frames per second
-
-    # Process each GameStage when walker arrives
-    can process with GameStage entry {
-        print(f"Processing {here.name} stage");
-
-        # Calculate frame time based on FPS
-        here.frame_time = 1000.0 / self.fps;  # ms per frame
-
-        # Move to next connected stage
-        visit [-->];  # Follow outgoing edges
-    }
-}
-
-# Entry point - construct the game stage flow
-with entry {
-    # Create the first stage
-    input_stage = GameStage(name="Input");
-
-    # Connect Stages using spatial connections
-    input_stage ++> GameStage(name="Update") ++>
-                    GameStage(name="Render") ++>
-                    GameStage(name="Present");
-
-    # Spawn walker to begin traversal
-    RenderWalk() spawn input_stage;
-}
-```
-</div>
-
-A walker travels through game stages using edges, demonstrating Object-Spatial Programming.
-
-### 🔄 Traditional OOP vs 🚀 Object-Spatial Programming
-
-| **Traditional OOP**                                       | **Object-Spatial Programming**                                  |
-| --------------------------------------------------------- | ------------------------------------------------------------- |
-| • **Centralized Control**: Logic pulls data to itself     | • **Distributed Execution**: Logic travels to data            |
-| • **Global Loops**: `for stage in stages: compute(stage)` | • **Spatial Awareness**: Walker visits GameStage nodes        |
-| • **Data Movement**: Objects moved to processing units    | • **Data Locality**: Computation happens where data lives     |
-| • **Rigid Structure**: Hard-coded execution patterns      | • **Composable Flows**: Stages as nodes, transitions as edges |
-| • **Single Machine**: Difficult to distribute             | • **Scale-Ready**: Walkers can traverse across devices
-
 ## Python Superset Philosophy: All of Python Plus More
 
 Jac is a drop-in replacement for Python and supersets Python, much like Typescript supersets Javascript or C++ supersets C. It extends Python's semantics while maintaining full interoperability with the Python ecosystem, introducing cutting-edge abstractions designed to minimize complexity and embrace AI-forward development.
@@ -72,31 +10,33 @@ import math;
 import from random { uniform }
 
 def calc_distance(x1: float, y1: float, x2: float, y2: float) -> float {
-    return math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+return math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
 }
 
-with entry {
-    # Generate random points
-    (x1, y1) = (uniform(0, 10), uniform(0, 10));
-    (x2, y2) = (uniform(0, 10), uniform(0, 10));
+with entry { # Generate random points
+(x1, y1) = (uniform(0, 10), uniform(0, 10));
+(x2, y2) = (uniform(0, 10), uniform(0, 10));
 
     distance = calc_distance(x1, y1, x2, y2);
     area = math.pi * (distance / 2) ** 2;
 
     print("Distance:", round(distance, 2), ", Circle area:", round(area, 2));
+
 }
+
 ```
 </div>
 
 This snippet natively imports Python packages `math` and `random` and runs identically to its Python counterpart. Jac targets Python bytecode, so all Python libraries work with Jac.
+
 
 ## Programming Abstractions for AI
 
 Jac provides novel constructs for integrating LLMs into code. A function body can simply be replaced with a call to an LLM, removing the need for prompt engineering or extensive use of new libraries.
 
 ```jac
-import from mtllm.llms { Gemini }
-glob llm = Gemini(model_name="gemini-2.0-flash");
+import from mtllm { Model }
+glob llm = Model(model_name="gemini/gemini-2.0-flash");
 
 enum Personality {
     INTROVERT = "Introvert",
@@ -113,23 +53,177 @@ with entry {
 }
 ```
 
-!!! info "How To Run"
-    1. Install the MTLLM plugin by `pip install mtllm[google]`
+??? info "How To Run"
+    1. Install the MTLLM plugin by `pip install mtllm`
     2. Get a free Gemini API key: Visit [Google AI Studio](https://aistudio.google.com/app/apikey)
     3. Save your Gemini API as an environment variable (`export GEMINI_API_KEY="xxxxxxxx"`).
-    > **Note:** >
-    > You can use OpenAI, Anthropic or other API services as well as host your own LLM using Ollama or Huggingface.
+    > **Note:** > > You can use OpenAI, Anthropic or other API services as well as host your own LLM using Ollama or Huggingface.
     4. Copy this code into `example.jac` file and run with `jac run example.jac`
 
 ??? example "Output"
-    ```    Introvert personality detected for Albert Einstein
-    ```
+    `   Introvert personality detected for Albert Einstein
+    `
 
 `by llm()` delegates execution to an LLM without any extra library code.
 
+
+## Beyond OOP: An Agentic Programming Model
+
+In addtion to traditional python classes (`class` or Jac's dataclass-like `obj`), Jac programmers can also use node classes (`node`), edge classes (`edge`), and walker classes (`walker`) for a new type of problem solving and agentic programming.
+
+Instances of node and edge classes allow for assembling objects in a graph structure to express semantic relationships between objects. This goes beyond only modeling objects in memory as a disconnected soup of instances.
+
+Walker classes inverts the traditional relationship between data and computation. Rather than moving data to computation with parameter passing, walkers enable moving computation to data as they represent computational units that moves through the topology of node and edge objects.
+
+These new constructs gives rise to a new paradigm for problem solving and implementation we call Object-Spatial Programming (OSP).
+
+In this example, nodes represent meaningful entities (like Weights, Cardio Machines), while walkers (agents) traverse these nodes, collect contextual information, and collaborate with an LLM to generate a personalized workout plan.
+
+```jac
+import from mtllm.llm {Model}
+
+glob llm = Model(model_name="gemini/gemini-2.5-flash");
+
+node Equipment {}
+
+node Weights(Equipment) {
+    has available: bool = False;
+
+    can check with FitnessAgent entry {
+        visitor.gear["weights"] = self.available;
+    }
+}
+
+node Cardio(Equipment) {
+    has machine: str = "treadmill";
+
+    can check with FitnessAgent entry {
+        visitor.gear["cardio"] = self.machine;
+    }
+}
+
+node Trainer {
+    can plan with FitnessAgent entry {
+        visitor.gear["workout"] = visitor.create_workout(visitor.gear);
+    }
+}
+
+walker FitnessAgent {
+    has gear: dict = {};
+
+    can start with `root entry {
+        visit [-->(`?Equipment)];
+    }
+
+    """Create a personalized workout plan based on available equipment and space."""
+    def create_workout(gear: dict) -> str by llm();
+}
+
+walker CoachWalker(FitnessAgent) {
+    can get_plan with `root entry {
+        visit [-->(`?Trainer)];
+    }
+}
+
+with entry {
+    root ++> Weights();
+    root ++> Cardio();
+    root ++> Trainer();
+
+    agent = CoachWalker() spawn root;
+    print("Your Workout Plan:");
+    print(agent.gear['workout']);
+}
+```
+
+??? info "How To Run"
+    1. Install the MTLLM plugin by `pip install mtllm`
+    2. Save your OpenAI API as an environment variable (`export OPENAI_API_KEY="xxxxxxxx"`).
+    > **Note:** > > You can use Gemini, Anthropic or other API services as well as host your own LLM using Ollama or Huggingface.
+    4. Copy this code into `example.jac` file and run with `jac run example.jac`
+
+??? example "Output"
+    `   Your Workout Plan:
+        **Personalized Workout Plan**
+
+        **Duration:** 4 weeks
+        **Frequency:** 5 days a week
+
+        **Week 1-2: Building Strength and Endurance**
+
+        **Day 1: Upper Body Strength**
+        - Warm-up: 5 minutes treadmill walk
+        - Dumbbell Bench Press: 3 sets of 10-12 reps
+        - Dumbbell Rows: 3 sets of 10-12 reps
+        - Shoulder Press: 3 sets of 10-12 reps
+        - Bicep Curls: 3 sets of 12-15 reps
+        - Tricep Extensions: 3 sets of 12-15 reps
+        - Cool down: Stretching
+
+        **Day 2: Cardio and Core**
+        - Warm-up: 5 minutes treadmill walk
+        - Treadmill Intervals: 20 minutes (1 min sprint, 2 min walk)
+        - Plank: 3 sets of 30-45 seconds
+        - Russian Twists: 3 sets of 15-20 reps
+        - Bicycle Crunches: 3 sets of 15-20 reps
+        - Cool down: Stretching
+
+        **Day 3: Lower Body Strength**
+        - Warm-up: 5 minutes treadmill walk
+        - Squats: 3 sets of 10-12 reps
+        - Lunges: 3 sets of 10-12 reps per leg
+        - Deadlifts (dumbbells): 3 sets of 10-12 reps
+        - Calf Raises: 3 sets of 15-20 reps
+        - Glute Bridges: 3 sets of 12-15 reps
+        - Cool down: Stretching
+
+        **Day 4: Active Recovery**
+        - 30-45 minutes light treadmill walk or yoga/stretching
+
+        **Day 5: Full Body Strength**
+        - Warm-up: 5 minutes treadmill walk
+        - Circuit (repeat 3 times):
+        - Push-ups: 10-15 reps
+        - Dumbbell Squats: 10-12 reps
+        - Bent-over Dumbbell Rows: 10-12 reps
+        - Mountain Climbers: 30 seconds
+        - Treadmill: 15 minutes steady pace
+        - Cool down: Stretching
+
+        **Week 3-4: Increasing Intensity**
+
+        **Day 1: Upper Body Strength with Increased Weight**
+        - Follow the same structure as weeks 1-2 but increase weights by 5-10%.
+
+        **Day 2: Longer Cardio Session**
+        - Warm-up: 5 minutes treadmill walk
+        - Treadmill: 30 minutes at a steady pace
+        - Core Exercises: Same as weeks 1-2, but add an additional set.
+
+        **Day 3: Lower Body Strength with Increased Weight**
+        - Increase weights for all exercises by 5-10%.
+        - Add an extra set for each exercise.
+
+        **Day 4: Active Recovery**
+        - 30-60 minutes light treadmill walk or yoga/stretching
+
+        **Day 5: Full Body Strength Circuit with Cardio Intervals**
+        - Circuit (repeat 4 times):
+        - Push-ups: 15 reps
+        - Dumbbell Squats: 12-15 reps
+        - Jumping Jacks: 30 seconds
+        - Dumbbell Shoulder Press: 10-12 reps
+        - Treadmill: 1 minute sprint after each circuit
+        - Cool down: Stretching
+
+        Ensure to hydrate and listen to your body throughout the program. Adjust weights and reps as needed based on your fitness level.
+    `
+
+This MTP example demonstrates how Jac seamlessly integrates LLMs with structured node-walker logic, enabling intelligent, context-aware agents with just a few lines of code.
+
 ## Zero to Infinite Scale without any Code Changes
 
-Jac's cloud-native abstractions make persistence and user concepts part of the language so that simple programs can run unchanged locally or in the cloud. Deployments can be scaled by increasing replicas of the `jac-cloud` service when needed.
+Jac's cloud-native abstractions make persistence and user concepts part of the language so that simple programs can run unchanged locally or in the cloud. Much like every object instance has a self referencial `this` or `self` reference. Every instance of a Jac program invocation has a `root` node reference that is unique to every user and for which any ohter node or edge objeccts connected to `root` will persist across code invocations. Thats it. Using `root` to access presistant user state and data, Jac deployments can be scaled from local enviornments infinitely into to the cloud with no code changes..
 
 ```jac
 node Post {
@@ -147,22 +241,22 @@ walker create_post {
     }
 }
 ```
-!!! info "How To Run"
+
+??? info "How To Run"
     1. Install the Jac Cloud by `pip install jac-cloud`
     2. Copy this code into `example.jac` file and run with `jac serve example.jac`
 
 ??? example "Output"
-    ```
-    INFO:     Started server process [26286]
-    INFO:     Waiting for application startup.
-    INFO - DATABASE_HOST is not available! Using LocalDB...
-    INFO - Scheduler started
-    INFO:     Application startup complete.
-    INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
-    ```
+    `   INFO:     Started server process [26286]
+        INFO:     Waiting for application startup.
+        INFO - DATABASE_HOST is not available! Using LocalDB...
+        INFO - Scheduler started
+        INFO:     Application startup complete.
+        INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+    `
 
+![Fast API Server](../assets/jac_cloud_example.jpg)
 
-This simple social media post system runs locally or scales infinitely in the cloud with no code changes.
 
 ## Better Organized and Well Typed Codebases
 
@@ -203,7 +297,9 @@ Jac focuses on type safety and readability. Type hints are required and the buil
     }
     ```
 
-This shows how declarations and implementations can live in separate files for maintainable, typed codebases.
+    This shows how declarations and implementations can live in separate files for maintainable, typed codebases.
+
+## Next Steps
 
 <div class="grid cards" markdown>
 

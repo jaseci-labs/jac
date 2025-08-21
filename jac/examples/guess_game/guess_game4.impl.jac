@@ -1,41 +1,30 @@
-impl Game.play {
-    raise "Subclasses must implement this method." |> NotImplementedError ;
-}
-
-
-impl GuessTheNumberGame.init {
-    self.attempts = 10;
-    self.correct_number = (1, 10) |> random.randint;
-}
-
-
-impl GuessTheNumberGame.play {
-    while self.attempts > 0 {
-        guess = "Guess a number between 1 and 10: " |> input;
-        if |> guess.isdigit {
-            guess |> int |> self.process_guess;
-        } else {
-            "That's not a valid number! Try again." |> print;
-        }
-    }
-    if not self.won {
-        "Sorry, you didn't guess the number. Better luck next time!" |> print;
-    }
-}
-
-
-impl GuessTheNumberGame.process_guess (guess: int) {
-    if guess > self.correct_number {
-        "Too high!" |> print;
-        self.attempts -= 1;
-    } elif guess < self.correct_number {
-        "Too low!" |> print;
-        self.attempts -= 1;
+impl turn.check{
+    guess = input("Guess a number between 1 and 10: ");
+    if guess.isdigit() {
+        visitor.process_guess(int(guess));
     } else {
-        "Congratulations! You guessed correctly." |> print;
-        self.won = True;
-        self.attempts = 0;
-        return;
+        print("That's not a valid number! Try again.");
     }
-    f"You have {self.attempts} attempts left." |> print;
+    visit [-->];
+}
+
+
+impl GuessGame.start_game{
+    end: `root | turn = here;
+    for i = 0 to i < 10 by i += 1 {
+        end ++> (end := turn());
+    }
+    visit [-->];
+}
+
+
+impl GuessGame.process_guess(guess: int) {
+    if guess > self.correct_number {
+        print("Too high!");
+    } elif guess < self.correct_number {
+        print("Too low!");
+    } else {
+        print("Congratulations! You guessed correctly.");
+        disengage;
+    }
 }

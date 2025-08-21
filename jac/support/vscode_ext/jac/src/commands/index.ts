@@ -11,37 +11,35 @@ export function registerAllCommands(context: vscode.ExtensionContext, envManager
         })
     );
     context.subscriptions.push(
+        vscode.commands.registerCommand(COMMANDS.REFRESH_ENV, () => {
+            envManager.refreshEnvironments();
+        })
+    );
+    context.subscriptions.push(
         vscode.commands.registerCommand(COMMANDS.RUN_FILE, () => {
-            runJacCommandForCurrentFile('run');
+            runJacCommandForCurrentFile('run', envManager);
         })
     );
     context.subscriptions.push(
         vscode.commands.registerCommand(COMMANDS.CHECK_FILE, () => {
-            runJacCommandForCurrentFile('check');
+            runJacCommandForCurrentFile('check', envManager);
         })
     );
     context.subscriptions.push(
         vscode.commands.registerCommand(COMMANDS.SERVE_FILE, () => {
-            runJacCommandForCurrentFile('serve');
+            runJacCommandForCurrentFile('serve', envManager);
         })
     );
     context.subscriptions.push(
         vscode.commands.registerCommand('extension.jaclang-extension.getJacPath', config => {
-            const programName = (process.platform === 'win32') ? "jac.exe" : "jac";
-            const paths = process.env.PATH.split(path.delimiter);
-            for (const dir of paths) {
-                const fullPath = path.join(dir, programName);
-                try {
-                    fs.accessSync(fullPath, fs.constants.X_OK);
-                    return fullPath;
-                } catch (err) {
-                    // Not found or not executable
-                    // Ignore and continue searching
-                }
-            }
-            const err_msg = `Couldn't find ${programName} in the PATH.`;
-            vscode.window.showErrorMessage(err_msg);
-            return null;
+            // Use envManager to get the selected jac path
+            return envManager.getJacPath();
+        })
+    );
+    context.subscriptions.push(
+        vscode.commands.registerCommand('extension.jaclang-extension.getPythonPath', () => {
+            // Use the new method from your EnvManager
+            return envManager.getPythonPath();
         })
     );
 }

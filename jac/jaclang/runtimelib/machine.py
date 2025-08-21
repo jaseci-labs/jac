@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import ast as ast3
 import fnmatch
 import html
 import inspect
@@ -20,10 +19,8 @@ from typing import (
     Any,
     Callable,
     Coroutine,
-    Mapping,
     Optional,
     ParamSpec,
-    Sequence,
     TYPE_CHECKING,
     Type,
     TypeAlias,
@@ -34,9 +31,7 @@ from typing import (
 from uuid import UUID
 
 
-from jaclang.compiler import unitree as ast
 from jaclang.compiler.constant import Constants as Con, EdgeDir, colors
-from jaclang.compiler.passes.main.pyast_gen_pass import PyastGenPass
 from jaclang.compiler.program import JacProgram
 from jaclang.runtimelib.archetype import (
     DataSpatialDestination,
@@ -62,7 +57,6 @@ from jaclang.runtimelib.constructs import (
 from jaclang.runtimelib.memory import Memory, Shelf, ShelfStorage
 from jaclang.runtimelib.utils import (
     all_issubclass,
-    collect_node_connections,
     traverse_graph,
 )
 from jaclang.utils import infer_language
@@ -90,11 +84,6 @@ class ExecutionContext:
         """Initialize JacMachine."""
         self.mem: Memory = ShelfStorage(session)
         self.reports: list[Any] = []
-        sr_arch = Root()
-        sr_anch = sr_arch.__jac__
-        sr_anch.id = UUID(Con.SUPER_ROOT_UUID)
-        sr_anch.persistent = False
-        self.system_root = sr_anch
         self.custom: Any = MISSING
         if not isinstance(
             system_root := self.mem.find_by_id(UUID(Con.SUPER_ROOT_UUID)), NodeAnchor
@@ -197,7 +186,8 @@ class JacAccessValidation:
             > AccessLevel.NO_ACCESS
         ):
             logger.info(
-                f"Current root doesn't have read access to {to.__class__.__name__}[{to.id}]"
+                "Current root doesn't have read access to "
+                f"{to.__class__.__name__} {to.archetype.__class__.__name__}[{to.id}]"
             )
         return access_level
 
@@ -209,7 +199,8 @@ class JacAccessValidation:
             > AccessLevel.READ
         ):
             logger.info(
-                f"Current root doesn't have connect access to {to.__class__.__name__}[{to.id}]"
+                "Current root doesn't have connect access to "
+                f"{to.__class__.__name__} {to.archetype.__class__.__name__}[{to.id}]"
             )
         return access_level
 
@@ -221,14 +212,15 @@ class JacAccessValidation:
             > AccessLevel.CONNECT
         ):
             logger.info(
-                f"Current root doesn't have write access to {to.__class__.__name__}[{to.id}]"
+                "Current root doesn't have write access to "
+                f"{to.__class__.__name__} {to.archetype.__class__.__name__}[{to.id}]"
             )
         return access_level
 
     @staticmethod
-    def check_access_level(to: Anchor) -> AccessLevel:
+    def check_access_level(to: Anchor, no_custom: bool = False) -> AccessLevel:
         """Access validation."""
-        if not to.persistent:
+        if not to.persistent or to.hash == 0:
             return AccessLevel.WRITE
 
         jctx = JacMachineInterface.get_context()
@@ -240,6 +232,12 @@ class JacAccessValidation:
         # if current root is the target anchor
         if jroot == jctx.system_root or jroot.id == to.root or jroot == to:
             return AccessLevel.WRITE
+
+        if (
+            not no_custom
+            and (custom_level := to.archetype.__jac_access__()) is not None
+        ):
+            return AccessLevel.cast(custom_level)
 
         access_level = AccessLevel.NO_ACCESS
 
@@ -266,30 +264,6 @@ class JacAccessValidation:
 
 class JacNode:
     """Jac Node Operations."""
-
-    @staticmethod
-    def node_dot(node: NodeArchetype, dot_file: Optional[str] = None) -> str:
-        """Generate Dot file for visualizing nodes and edges."""
-        visited_nodes: set[NodeAnchor] = set()
-        connections: set[tuple[NodeArchetype, NodeArchetype, str]] = set()
-        unique_node_id_dict = {}
-
-        collect_node_connections(node.__jac__, visited_nodes, connections)
-        dot_content = 'digraph {\nnode [style="filled", shape="ellipse", fillcolor="invis", fontcolor="black"];\n'
-        for idx, i in enumerate([nodes_.archetype for nodes_ in visited_nodes]):
-            unique_node_id_dict[i] = (i.__class__.__name__, str(idx))
-            dot_content += f'{idx} [label="{i}"];\n'
-        dot_content += 'edge [color="gray", style="solid"];\n'
-
-        for pair in list(set(connections)):
-            dot_content += (
-                f"{unique_node_id_dict[pair[0]][1]} -> {unique_node_id_dict[pair[1]][1]}"
-                f' [label="{pair[2]}"];\n'
-            )
-        if dot_file:
-            with open(dot_file, "w") as f:
-                f.write(dot_content + "}")
-        return dot_content + "}"
 
     @staticmethod
     def get_edges(
@@ -681,43 +655,56 @@ class JacWalker:
         return warch
 
     @staticmethod
-    def spawn(op1: Archetype, op2: Archetype) -> WalkerArchetype | Coroutine:
+    def spawn(
+        op1: Archetype | list[Archetype], op2: Archetype | list[Archetype]
+    ) -> Union[WalkerArchetype, Coroutine]:
         """Jac's spawn operator feature."""
-        edge: EdgeAnchor | None = None
+
+        def collect_targets(
+            walker: WalkerAnchor, items: list[Archetype]
+        ) -> NodeAnchor | EdgeAnchor:
+            for i in items:
+                a = i.__jac__
+                (
+                    walker.next.append(a)
+                    if isinstance(a, (NodeAnchor, EdgeAnchor))
+                    else None
+                )
+                if isinstance(a, EdgeAnchor) and a.target:
+                    walker.next.append(a.target)
+            return walker.next[0]
+
+        def assign(
+            walker: WalkerAnchor, t: Archetype | list[Archetype]
+        ) -> NodeAnchor | EdgeAnchor:
+            if isinstance(t, NodeArchetype):
+                node = t.__jac__
+                walker.next = [node]
+                return node
+            elif isinstance(t, EdgeArchetype):
+                edge = t.__jac__
+                walker.next = [edge, edge.target]
+                return edge
+            elif isinstance(t, list) and all(
+                isinstance(i, (NodeArchetype, EdgeArchetype)) for i in t
+            ):
+                return collect_targets(walker, t)
+            else:
+                raise TypeError("Invalid target object")
+
         if isinstance(op1, WalkerArchetype):
-            warch = op1
-            walker = op1.__jac__
-            if isinstance(op2, NodeArchetype):
-                node = op2.__jac__
-            elif isinstance(op2, EdgeArchetype):
-                edge = op2.__jac__
-                node = op2.__jac__.target
-            else:
-                raise TypeError("Invalid target object")
+            warch, targ = op1, op2
         elif isinstance(op2, WalkerArchetype):
-            warch = op2
-            walker = op2.__jac__
-            if isinstance(op1, NodeArchetype):
-                node = op1.__jac__
-            elif isinstance(op1, EdgeArchetype):
-                edge = op1.__jac__
-                node = op1.__jac__.target
-            else:
-                raise TypeError("Invalid target object")
+            warch, targ = op2, op1
         else:
             raise TypeError("Invalid walker object")
 
-        if edge is not None:
-            loc: EdgeAnchor | NodeAnchor = edge
-            walker.next = [edge, node]
-        else:
-            loc = node
-            walker.next = [node]
+        walker: WalkerAnchor = warch.__jac__
+        loc: NodeAnchor | EdgeAnchor = assign(walker, targ)
 
         if warch.__jac_async__:
             return JacMachineInterface.async_spawn_call(walker=walker, node=loc)
-        else:
-            return JacMachineInterface.spawn_call(walker=walker, node=loc)
+        return JacMachineInterface.spawn_call(walker=walker, node=loc)
 
     @staticmethod
     def disengage(walker: WalkerArchetype) -> bool:
@@ -820,10 +807,16 @@ class JacBuiltin:
                 f"{visited_nodes.index(source)} -> {visited_nodes.index(target)} "
                 f' [label="{edge_label if "GenericEdge" not in edge_label else ""}"];\n'
             )
-            mermaid_content += (
-                f"{visited_nodes.index(source)} -->"
-                f"|{edge_label if 'GenericEdge' not in edge_label else ''}| {visited_nodes.index(target)}\n"
-            )
+            if "GenericEdge" in edge_label or not edge_label.strip():
+                mermaid_content += (
+                    f"{visited_nodes.index(source)} -->"
+                    f"{visited_nodes.index(target)}\n"
+                )
+            else:
+                mermaid_content += (
+                    f"{visited_nodes.index(source)} -->"
+                    f'|"{edge_label}"| {visited_nodes.index(target)}\n'
+                )
         for node_ in visited_nodes:
             color = (
                 colors[node_depths[node_]] if node_depths[node_] < 25 else colors[24]
@@ -860,6 +853,15 @@ class JacBasics:
     def get_context() -> ExecutionContext:
         """Get current execution context."""
         return JacMachine.exec_ctx
+
+    @staticmethod
+    def commit(anchor: Anchor | Archetype | None = None) -> None:
+        """Commit all data from memory to datasource."""
+        if isinstance(anchor, Archetype):
+            anchor = anchor.__jac__
+
+        mem = JacMachineInterface.get_context().mem
+        mem.commit(anchor)
 
     @staticmethod
     def reset_graph(root: Optional[Root] = None) -> int:
@@ -1229,6 +1231,12 @@ class JacBasics:
         return JacMachine.get_context().get_root()
 
     @staticmethod
+    def get_all_root() -> list[Root]:
+        """Get all the roots."""
+        jmem = JacMachineInterface.get_context().mem
+        return list(jmem.all_root())
+
+    @staticmethod
     def build_edge(
         is_undirected: bool,
         conn_type: Optional[Type[EdgeArchetype] | EdgeArchetype],
@@ -1270,8 +1278,9 @@ class JacBasics:
 
         jctx = JacMachineInterface.get_context()
 
-        anchor.persistent = True
-        anchor.root = jctx.root_state.id
+        if not anchor.persistent and not anchor.root:
+            anchor.persistent = True
+            anchor.root = jctx.root_state.id
 
         jctx.mem.set(anchor.id, anchor)
 
@@ -1322,160 +1331,22 @@ class JacBasics:
         return func
 
     @staticmethod
-    def with_llm(
-        file_loc: str,
-        model: Any,  # noqa: ANN401
-        model_params: dict[str, Any],
-        scope: str,
-        incl_info: list[tuple[str, str]],
-        excl_info: list[tuple[str, str]],
-        inputs: list[tuple[str, str, str, Any]],
-        outputs: tuple,
-        action: str,
-        _globals: dict,
-        _locals: Mapping,
-    ) -> Any:  # noqa: ANN401
-        """Jac's with_llm feature."""
+    def sem(semstr: str, inner_semstr: dict[str, str]) -> Callable:
+        """Attach the semstring to the given object."""
+
+        def decorator(obj: object) -> object:
+            setattr(obj, "_jac_semstr", semstr)  # noqa:B010
+            setattr(obj, "_jac_semstr_inner", inner_semstr)  # noqa:B010
+            return obj
+
+        return decorator
+
+    @staticmethod
+    def call_llm(model: object, mtir: object) -> Any:  # noqa: ANN401
+        """Call the LLM model."""
         raise ImportError(
             "mtllm is not installed. Please install it with `pip install mtllm` and run `jac clean`."
         )
-
-    @staticmethod
-    def gen_llm_body(_pass: PyastGenPass, node: ast.Ability) -> list[ast3.AST]:
-        """Generate the by LLM body."""
-        _pass.log_warning(
-            "MT-LLM is not installed. Please install it with `pip install mtllm`."
-        )
-        return [
-            _pass.sync(
-                ast3.Raise(
-                    _pass.sync(
-                        ast3.Call(
-                            func=_pass.sync(
-                                ast3.Name(id="ImportError", ctx=ast3.Load())
-                            ),
-                            args=[
-                                _pass.sync(
-                                    ast3.Constant(
-                                        value="mtllm is not installed. Please install it with `pip install mtllm` and run `jac clean`."  # noqa: E501
-                                    )
-                                )
-                            ],
-                            keywords=[],
-                        )
-                    )
-                )
-            )
-        ]
-
-    @staticmethod
-    def by_llm_call(
-        _pass: PyastGenPass,
-        model: ast3.AST,
-        model_params: dict[str, ast.Expr],
-        scope: ast3.AST,
-        inputs: Sequence[Optional[ast3.AST]],
-        outputs: Sequence[Optional[ast3.AST]] | ast3.Call,
-        action: Optional[ast3.AST],
-        include_info: list[tuple[str, ast3.AST]],
-        exclude_info: list[tuple[str, ast3.AST]],
-    ) -> ast3.Call:
-        """Return the LLM Call, e.g. _JacFeature.with_llm()."""
-        _pass.log_warning(
-            "MT-LLM is not installed. Please install it with `pip install mtllm`."
-        )
-        return ast3.Call(
-            func=_pass.sync(
-                ast3.Attribute(
-                    value=_pass.sync(ast3.Name(id="_Jac", ctx=ast3.Load())),
-                    attr="with_llm",
-                    ctx=ast3.Load(),
-                )
-            ),
-            args=[],
-            keywords=[
-                _pass.sync(
-                    ast3.keyword(
-                        arg="file_loc",
-                        value=_pass.sync(ast3.Constant(value="None")),
-                    )
-                ),
-                _pass.sync(
-                    ast3.keyword(
-                        arg="model",
-                        value=_pass.sync(ast3.Constant(value="None")),
-                    )
-                ),
-                _pass.sync(
-                    ast3.keyword(
-                        arg="model_params",
-                        value=_pass.sync(ast3.Dict(keys=[], values=[])),
-                    )
-                ),
-                _pass.sync(
-                    ast3.keyword(
-                        arg="scope",
-                        value=_pass.sync(ast3.Constant(value="None")),
-                    )
-                ),
-                _pass.sync(
-                    ast3.keyword(
-                        arg="incl_info",
-                        value=_pass.sync(ast3.List(elts=[], ctx=ast3.Load())),
-                    )
-                ),
-                _pass.sync(
-                    ast3.keyword(
-                        arg="excl_info",
-                        value=_pass.sync(ast3.List(elts=[], ctx=ast3.Load())),
-                    )
-                ),
-                _pass.sync(
-                    ast3.keyword(
-                        arg="inputs",
-                        value=_pass.sync(ast3.List(elts=[], ctx=ast3.Load())),
-                    )
-                ),
-                _pass.sync(
-                    ast3.keyword(
-                        arg="outputs",
-                        value=_pass.sync(ast3.List(elts=[], ctx=ast3.Load())),
-                    )
-                ),
-                _pass.sync(
-                    ast3.keyword(
-                        arg="action",
-                        value=_pass.sync(ast3.Constant(value="None")),
-                    )
-                ),
-                _pass.sync(
-                    ast3.keyword(
-                        arg="_globals",
-                        value=_pass.sync(ast3.Constant(value="None")),
-                    )
-                ),
-                _pass.sync(
-                    ast3.keyword(
-                        arg="_locals",
-                        value=_pass.sync(ast3.Constant(value="None")),
-                    )
-                ),
-            ],
-        )
-
-    @staticmethod
-    def get_by_llm_call_args(_pass: PyastGenPass, node: ast.FuncCall) -> dict:
-        """Get the by LLM call args."""
-        return {
-            "model": None,
-            "model_params": {},
-            "scope": None,
-            "inputs": [],
-            "outputs": [],
-            "action": None,
-            "include_info": [],
-            "exclude_info": [],
-        }
 
 
 class JacUtils:
@@ -1698,40 +1569,6 @@ class JacMachineInterface(
     """Jac Feature."""
 
 
-class JacMachine(JacMachineInterface):
-    """Jac Machine State."""
-
-    loaded_modules: dict[str, types.ModuleType] = {}
-    base_path_dir: str = os.getcwd()
-    program: JacProgram = JacProgram()
-    pool: ThreadPoolExecutor = ThreadPoolExecutor()
-    exec_ctx: ExecutionContext = ExecutionContext()
-
-    @staticmethod
-    def set_base_path(base_path: str) -> None:
-        """Set the base path for the machine."""
-        JacMachine.reset_machine()
-        JacMachine.base_path_dir = (
-            base_path if os.path.isdir(base_path) else os.path.dirname(base_path)
-        )
-
-    @staticmethod
-    def set_context(context: ExecutionContext) -> None:
-        """Set the context for the machine."""
-        JacMachine.exec_ctx = context
-
-    @staticmethod
-    def reset_machine() -> None:
-        """Reset the machine."""
-        # for i in JacMachine.loaded_modules.values():
-        #     sys.modules.pop(i.__name__, None)
-        JacMachine.loaded_modules.clear()
-        JacMachine.base_path_dir = os.getcwd()
-        JacMachine.program = JacProgram()
-        JacMachine.pool = ThreadPoolExecutor()
-        JacMachine.exec_ctx = ExecutionContext()
-
-
 def generate_plugin_helpers(
     plugin_class: Type[Any],
 ) -> tuple[Type[Any], Type[Any], Type[Any]]:
@@ -1837,3 +1674,37 @@ def generate_plugin_helpers(
 
 JacMachineSpec, JacMachineImpl, JacMachineInterface = generate_plugin_helpers(JacMachineInterface)  # type: ignore[misc]
 plugin_manager.add_hookspecs(JacMachineSpec)
+
+
+class JacMachine(JacMachineInterface):
+    """Jac Machine State."""
+
+    loaded_modules: dict[str, types.ModuleType] = {}
+    base_path_dir: str = os.getcwd()
+    program: JacProgram = JacProgram()
+    pool: ThreadPoolExecutor = ThreadPoolExecutor()
+    exec_ctx: ExecutionContext = ExecutionContext()
+
+    @staticmethod
+    def set_base_path(base_path: str) -> None:
+        """Set the base path for the machine."""
+        JacMachine.reset_machine()
+        JacMachine.base_path_dir = (
+            base_path if os.path.isdir(base_path) else os.path.dirname(base_path)
+        )
+
+    @staticmethod
+    def set_context(context: ExecutionContext) -> None:
+        """Set the context for the machine."""
+        JacMachine.exec_ctx = context
+
+    @staticmethod
+    def reset_machine() -> None:
+        """Reset the machine."""
+        # for i in JacMachine.loaded_modules.values():
+        #     sys.modules.pop(i.__name__, None)
+        JacMachine.loaded_modules.clear()
+        JacMachine.base_path_dir = os.getcwd()
+        JacMachine.program = JacProgram()
+        JacMachine.pool = ThreadPoolExecutor()
+        JacMachine.exec_ctx = ExecutionContext()

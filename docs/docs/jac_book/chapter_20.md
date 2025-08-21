@@ -1,481 +1,667 @@
-### Chapter 20: Quick Reference
+# Chapter 21: Python to Jac Migration
 
-#### 20.1 Syntax Comparison Table
+In this chapter, we'll explore practical strategies for migrating Python applications to Jac. We'll progressively convert a simple library management system from Python to Jac, demonstrating migration patterns, integration strategies, and common pitfalls to avoid.
 
-This comprehensive comparison shows Python syntax alongside its Jac equivalent, helping you quickly translate between the two languages.
+!!! info "What You'll Learn"
+    - Strategic approaches to Python-to-Jac migration
+    - Converting Python classes to Jac objects and nodes
+    - Incremental adoption patterns for existing codebases
+    - Python integration patterns within Jac applications
+    - Common migration pitfalls and how to avoid them
 
-### Basic Syntax Elements
+---
 
-| Python | Jac | Notes |
-|--------|-----|-------|
-| `# Comment` | `# Comment` | Single-line comments identical |
-| `"""Docstring"""` | `"""Docstring"""` | Multi-line strings identical |
-| `pass` | `{}` or `;` | Empty statement/block |
-| `:` (colon) | `{` ... `}` | Block delimiters |
-| Indentation | Curly braces | Structural delimiter |
-| No semicolons | `;` required | Statement terminator |
+## Migration Strategies
 
-### Variable Declaration
+Migrating from Python to Jac doesn't require rewriting everything from scratch. Jac's Python compatibility enables gradual migration, allowing you to adopt Object-Spatial Programming incrementally while maintaining existing functionality.
 
-| Python | Jac | Notes |
-|--------|-----|-------|
-| `x = 42` | `x = 42;` | Implicit declaration |
-| `x: int = 42` | `let x: int = 42;` | Explicit typed declaration |
-| `global x` | `:g: x;` or `glob x = 42;` | Global variable |
-| `nonlocal x` | `:nl: x;` | Nonlocal variable |
+!!! success "Migration Benefits"
+    - **Gradual Transition**: Migrate components incrementally
+    - **Python Compatibility**: Existing Python libraries work seamlessly
+    - **Improved Performance**: Benefit from Jac's optimizations
+    - **Modern Patterns**: Adopt Object-Spatial Programming gradually
+    - **Risk Mitigation**: Test new features alongside existing code
 
-### Functions
+### Migration Approaches
 
-| Python | Jac | Notes |
-|--------|-----|-------|
-| `def func():` | `can func {` | Function declaration |
-| `def func(x: int) -> str:` | `can func(x: int) -> str {` | Typed function |
-| `return value` | `return value;` | Return statement |
-| `lambda x: x * 2` | `lambda x: int : x * 2` | Lambda (types required) |
-| `@decorator` | `@decorator` | Decorators work similarly |
-| `def __init__(self):` | `can init {` | Constructor |
-| N/A | `can postinit {` | Post-initialization hook |
+!!! tip "Recommended Migration Strategies"
+    1. **Top-Down**: Start with high-level architecture, then migrate details
+    2. **Bottom-Up**: Begin with utility functions and data structures
+    3. **Feature-by-Feature**: Migrate complete features one at a time
+    4. **Hybrid Integration**: Run Python and Jac code side-by-side
 
-### Classes and Objects
+---
 
-| Python | Jac | Notes |
-|--------|-----|-------|
-| `class MyClass:` | `obj MyClass {` | Standard class |
-| `class MyClass:` | `class MyClass {` | Python-compatible class |
-| `self.attr = value` | `has attr: type = value;` | Instance variables |
-| `@staticmethod` | `static can method {` | Static methods |
-| `super()` | `super` | Parent class access |
-| N/A | `node MyNode {` | Graph node class |
-| N/A | `edge MyEdge {` | Graph edge class |
-| N/A | `walker MyWalker {` | Walker class |
+## Starting Point: Python Library System
 
-### Control Flow
+Let's begin with a traditional Python library management system that we'll progressively migrate to Jac.
 
-| Python | Jac | Notes |
-|--------|-----|-------|
-| `if x:` | `if x {` | Conditional |
-| `elif y:` | `elif y {` | Else-if |
-| `else:` | `else {` | Else clause |
-| `while condition:` | `while condition {` | While loop |
-| `for x in items:` | `for x in items {` | For-in loop |
-| `for i in range(n):` | `for i=0 to i<n by i+=1 {` | Explicit counter loop |
-| `break` | `break;` | Exit loop |
-| `continue` | `continue;` | Skip iteration |
-| `match value:` | `match value {` | Pattern matching |
+### Original Python Implementation
 
-#### Exception Handling
+!!! example "Python Library System"
+    === "Python Original"
+        ```python
+        # library.py - Traditional Python implementation
+        from datetime import datetime
+        from typing import List, Optional
 
-| Python | Jac | Notes |
-|--------|-----|-------|
-| `try:` | `try {` | Try block |
-| `except Exception as e:` | `except Exception as e {` | Catch exception |
-| `finally:` | `finally {` | Finally block |
-| `raise Exception()` | `raise Exception();` | Raise exception |
-| `assert condition` | `assert condition;` | Assertion |
+        class Book:
+            def __init__(self, title: str, author: str, isbn: str):
+                self.title = title
+                self.author = author
+                self.isbn = isbn
+                self.is_borrowed = False
+                self.borrowed_by = None
+                self.borrowed_date = None
 
-### Data Types
+            def borrow(self, member_id: str) -> bool:
+                if not self.is_borrowed:
+                    self.is_borrowed = True
+                    self.borrowed_by = member_id
+                    self.borrowed_date = datetime.now()
+                    return True
+                return False
 
-| Python | Jac | Notes |
-|--------|-----|-------|
-| `list` | `list` | Lists identical |
-| `dict` | `dict` | Dictionaries identical |
-| `set` | `set` | Sets identical |
-| `tuple` | `tuple` | Positional tuples |
-| N/A | `(x=1, y=2)` | Keyword tuples |
-| `None` | `None` | Null value |
-| `True/False` | `True/False` | Booleans identical |
+            def return_book(self) -> bool:
+                if self.is_borrowed:
+                    self.is_borrowed = False
+                    self.borrowed_by = None
+                    self.borrowed_date = None
+                    return True
+                return False
 
-### Operators
+        class Member:
+            def __init__(self, name: str, member_id: str):
+                self.name = name
+                self.member_id = member_id
+                self.borrowed_books: List[str] = []
 
-| Python | Jac | Notes |
-|--------|-----|-------|
-| `and` | `and` or `&&` | Logical AND |
-| `or` | `or` or `||` | Logical OR |
-| `not` | `not` | Logical NOT |
-| `is` | `is` | Identity comparison |
-| `in` | `in` | Membership test |
-| `:=` | `:=` | Walrus operator |
-| N/A | `|>` | Pipe forward |
-| N/A | `<|` | Pipe backward |
-| N/A | `:>` | Atomic pipe forward |
-| N/A | `<:` | Atomic pipe backward |
+            def add_borrowed_book(self, isbn: str):
+                if isbn not in self.borrowed_books:
+                    self.borrowed_books.append(isbn)
 
-### Imports
+            def remove_borrowed_book(self, isbn: str):
+                if isbn in self.borrowed_books:
+                    self.borrowed_books.remove(isbn)
 
-| Python | Jac | Notes |
-|--------|-----|-------|
-| `import module` | `import:py module;` | Python module import |
-| `from module import item` | `import:py from module { item };` | Selective import |
-| `import module as alias` | `import:py module as alias;` | Import with alias |
-| N/A | `import:jac module;` | Jac module import |
-| N/A | `include module;` | Include all exports |
+        class Library:
+            def __init__(self, name: str):
+                self.name = name
+                self.books: List[Book] = []
+                self.members: List[Member] = []
 
-#### 20.2 Built-in Functions and Types
+            def add_book(self, book: Book):
+                self.books.append(book)
 
-### Core Built-in Functions
+            def add_member(self, member: Member):
+                self.members.append(member)
 
-| Function | Description | Example |
-|----------|-------------|---------|
-| `print(...)` | Output to console | `print("Hello", name);` |
-| `len(obj)` | Get length/size | `len([1, 2, 3])` → `3` |
-| `type(obj)` | Get object type | `type(42)` → `int` |
-| `isinstance(obj, type)` | Type checking | `isinstance(x, str)` |
-| `hasattr(obj, attr)` | Check attribute exists | `hasattr(node, "value")` |
-| `getattr(obj, attr)` | Get attribute value | `getattr(node, "value")` |
-| `setattr(obj, attr, val)` | Set attribute value | `setattr(node, "value", 42)` |
-| `range(start, stop, step)` | Generate number sequence | `range(0, 10, 2)` |
-| `enumerate(iterable)` | Get index with items | `enumerate(["a", "b"])` |
-| `zip(iter1, iter2, ...)` | Combine iterables | `zip([1, 2], ["a", "b"])` |
-| `map(func, iterable)` | Apply function to items | `map(str.upper, ["a", "b"])` |
-| `filter(func, iterable)` | Filter items by predicate | `filter(is_even, [1, 2, 3])` |
-| `sum(iterable)` | Sum numeric values | `sum([1, 2, 3])` → `6` |
-| `min(iterable)` | Find minimum value | `min([3, 1, 4])` → `1` |
-| `max(iterable)` | Find maximum value | `max([3, 1, 4])` → `4` |
-| `abs(number)` | Absolute value | `abs(-42)` → `42` |
-| `round(number, digits)` | Round to digits | `round(3.14159, 2)` → `3.14` |
-| `sorted(iterable)` | Sort items | `sorted([3, 1, 4])` → `[1, 3, 4]` |
-| `reversed(iterable)` | Reverse items | `reversed([1, 2, 3])` |
-| `all(iterable)` | All items truthy | `all([True, True])` → `True` |
-| `any(iterable)` | Any item truthy | `any([False, True])` → `True` |
+            def find_book(self, isbn: str) -> Optional[Book]:
+                for book in self.books:
+                    if book.isbn == isbn:
+                        return book
+                return None
 
-### Type Constructors
+            def borrow_book(self, isbn: str, member_id: str) -> bool:
+                book = self.find_book(isbn)
+                member = self.find_member(member_id)
 
-| Type | Constructor | Example |
-|------|-------------|---------|
-| `int` | `int(value)` | `int("42")` → `42` |
-| `float` | `float(value)` | `float("3.14")` → `3.14` |
-| `str` | `str(value)` | `str(42)` → `"42"` |
-| `bool` | `bool(value)` | `bool(1)` → `True` |
-| `list` | `list(iterable)` | `list((1, 2, 3))` → `[1, 2, 3]` |
-| `tuple` | `tuple(iterable)` | `tuple([1, 2, 3])` → `(1, 2, 3)` |
-| `dict` | `dict(pairs)` | `dict([("a", 1)])` → `{"a": 1}` |
-| `set` | `set(iterable)` | `set([1, 2, 2])` → `{1, 2}` |
+                if book and member and book.borrow(member_id):
+                    member.add_borrowed_book(isbn)
+                    return True
+                return False
 
-### Object-Spatial Built-ins
+            def find_member(self, member_id: str) -> Optional[Member]:
+                for member in self.members:
+                    if member.member_id == member_id:
+                        return member
+                return None
+        ```
 
-| Keyword/Function | Description | Example |
-|------------------|-------------|---------|
-| `root` | Current user's root node | `root ++> MyNode();` |
-| `here` | Walker's current location | `here.process_data();` |
-| `visitor` | Current visiting walker | `visitor.report_result();` |
-| `spawn` | Activate walker | `spawn MyWalker() on node;` |
-| `visit` | Queue traversal destination | `visit [-->];` |
-| `disengage` | Terminate walker | `disengage;` |
-| `skip` | Skip to next location | `skip;` |
-| `report` | Report walker result | `report {"result": 42};` |
+    === "Jac Modern Equivalent"
+        ```jac
+        # library.jac - Modern Jac implementation preview
+        import from datetime { datetime }
 
-### Edge Reference Operators
+        node Book {
+            has title: str;
+            has author: str;
+            has isbn: str;
+            has is_borrowed: bool = False;
+            has borrowed_date: str = "";
 
-| Operator | Description | Example |
-|----------|-------------|---------|
-| `[-->]` | Outgoing edges/nodes | `for n in [-->] { ... }` |
-| `[<--]` | Incoming edges/nodes | `for n in [<--] { ... }` |
-| `[<-->]` | Bidirectional edges/nodes | `neighbors = [<-->];` |
-| `[-->:EdgeType:]` | Typed outgoing edges | `[-->:Follows:]` |
-| `[-->(condition)]` | Filtered edges | `[-->(?.weight > 0.5)]` |
-| `++>` | Create directed edge | `node1 ++> node2;` |
-| `<++` | Create reverse edge | `node1 <++ node2;` |
-| `<++>` | Create bidirectional edge | `node1 <++> node2;` |
-
-#### 20.3 Standard Library Overview
-
-### Core Modules
-
-#### `math` - Mathematical Functions
-```jac
-import:py math;
-
-# Constants
-math.pi      # 3.14159...
-math.e       # 2.71828...
-
-# Functions
-math.sqrt(16)     # 4.0
-math.pow(2, 3)    # 8.0
-math.sin(math.pi/2)  # 1.0
-math.log(10)      # Natural log
-```
-
-#### `datetime` - Date and Time
-```jac
-import:py from datetime { datetime, timedelta };
-
-# Current time
-now = datetime.now();
-timestamp = now.isoformat();
-
-# Date arithmetic
-tomorrow = now + timedelta(days=1);
-diff = tomorrow - now;  # timedelta object
-```
-
-#### `json` - JSON Handling
-```jac
-import:py json;
-
-# Serialize
-data = {"name": "Jac", "version": 1.0};
-json_str = json.dumps(data);
-
-# Deserialize
-parsed = json.loads(json_str);
-```
-
-#### `random` - Random Numbers
-```jac
-import:py random;
-
-# Random values
-random.random()          # 0.0 to 1.0
-random.randint(1, 10)    # 1 to 10 inclusive
-random.choice([1, 2, 3]) # Pick from list
-random.shuffle(my_list)  # Shuffle in place
-```
-
-#### `re` - Regular Expressions
-```jac
-import:py re;
-
-# Pattern matching
-pattern = r"\d+";
-matches = re.findall(pattern, "abc123def456");  # ["123", "456"]
-
-# Substitution
-result = re.sub(r"\d+", "X", "abc123def");  # "abcXdef"
-```
-
-### File Operations
-
-```jac
-# Reading files
-with open("file.txt", "r") as f {
-    content = f.read();
-    # or line by line
-    for line in f {
-        process_line(line.strip());
-    }
-}
-
-# Writing files
-with open("output.txt", "w") as f {
-    f.write("Hello, Jac!\n");
-    f.write(f"Timestamp: {timestamp_now()}\n");
-}
-
-# JSON files
-import:py json;
-with open("data.json", "r") as f {
-    data = json.load(f);
-}
-```
-
-### Common Patterns Reference
-
-#### Graph Creation Patterns
-```jac
-# Linear chain
-prev = root;
-for i in range(5) {
-    node = Node(id=i);
-    prev ++> node;
-    prev = node;
-}
-
-# Star topology
-hub = root ++> Hub();
-for i in range(10) {
-    hub ++> Node(id=i);
-}
-
-# Fully connected
-nodes = [Node(id=i) for i in range(5)];
-for i, n1 in enumerate(nodes) {
-    for n2 in nodes[i+1:] {
-        n1 <++> n2;
-    }
-}
-```
-
-#### Walker Patterns
-```jac
-# Visitor pattern
-walker Visitor {
-    can process with Node entry {
-        here.visit_count += 1;
-        visit [-->];
-    }
-}
-
-# Collector pattern
-walker Collector {
-    has items: list = [];
-
-    can collect with entry {
-        if matches_criteria(here) {
-            self.items.append(here);
-        }
-        visit [-->];
-    }
-}
-
-# Transformer pattern
-walker Transformer {
-    can transform with entry {
-        here.value = transform_function(here.value);
-        visit [-->];
-    }
-}
-```
-
-#### Error Handling Patterns
-```jac
-# Safe traversal
-walker SafeTraverser {
-    can traverse with entry {
-        try {
-            process_node(here);
-            visit [-->];
-        } except ProcessingError as e {
-            report {"error": str(e), "node": here.id};
-            skip;  # Continue to next node
-        } except CriticalError as e {
-            report {"critical": str(e)};
-            disengage;  # Stop traversal
-        }
-    }
-}
-
-# Retry pattern
-can retry_operation(func: callable, max_attempts: int = 3) -> any {
-    for attempt in range(max_attempts) {
-        try {
-            return func();
-        } except TemporaryError as e {
-            if attempt == max_attempts - 1 {
-                raise e;
+            def borrow(member_id: str) -> bool {
+                if not self.is_borrowed {
+                    self.is_borrowed = True;
+                    self.borrowed_date = datetime.now().isoformat();
+                    return True;
+                }
+                return False;
             }
-            sleep(2 ** attempt);  # Exponential backoff
+
+            def return_book() -> bool {
+                if self.is_borrowed {
+                    self.is_borrowed = False;
+                    self.borrowed_date = "";
+                    return True;
+                }
+                return False;
+            }
         }
-    }
-}
-```
 
-#### Type Checking Patterns
-```jac
-# Runtime type checking
-can process_value(value: any) -> str {
-    match type(value) {
-        case int: return f"Integer: {value}";
-        case str: return f"String: {value}";
-        case list: return f"List with {len(value)} items";
-        case dict: return f"Dict with keys: {list(value.keys())}";
-        case _: return f"Unknown type: {type(value).__name__}";
-    }
-}
-
-# Node type discrimination
-walker TypedProcessor {
-    can process with entry {
-        match here {
-            case UserNode: process_user(here);
-            case DataNode: process_data(here);
-            case _: visit [-->];  # Skip unknown types
+        node Member {
+            has name: str;
+            has member_id: str;
         }
-    }
-}
-```
 
-#### Performance Patterns
-```jac
-# Lazy evaluation
-can lazy_range(start: int, stop: int) {
-    current = start;
-    while current < stop {
-        yield current;
-        current += 1;
-    }
-}
-
-# Memoization
-glob memo_cache: dict = {};
-
-can memoized_fibonacci(n: int) -> int {
-    if n in memo_cache {
-        return memo_cache[n];
-    }
-
-    if n <= 1 {
-        result = n;
-    } else {
-        result = memoized_fibonacci(n-1) + memoized_fibonacci(n-2);
-    }
-
-    memo_cache[n] = result;
-    return result;
-}
-```
-
-### Quick Conversion Guide
-
-#### Python Class to Jac Node
-```python
-# Python
-class User:
-    def __init__(self, name, email):
-        self.name = name
-        self.email = email
-        self.friends = []
-
-    def add_friend(self, other):
-        self.friends.append(other)
-```
-
-```jac
-# Jac
-node User {
-    has name: str;
-    has email: str;
-}
-
-edge Friend;
-
-walker AddFriend {
-    has other_user: User;
-
-    can add with User entry {
-        here ++>:Friend:++> self.other_user;
-    }
-}
-```
-
-#### Python Function to Jac Walker
-```python
-# Python
-def find_users_by_name(graph, name_pattern):
-    results = []
-    for user in graph.get_all_users():
-        if name_pattern in user.name:
-            results.append(user)
-    return results
-```
-
-```jac
-# Jac
-walker FindUsersByName {
-    has name_pattern: str;
-    has results: list = [];
-
-    can search with User entry {
-        if self.name_pattern in here.name {
-            self.results.append(here);
+        edge BorrowedBy {
+            has borrowed_date: str;
         }
-        visit [-->];
-    }
 
-    can return_results with `root exit {
-        report self.results;
-    }
-}
-```
+        node Library {
+            has name: str;
 
-This quick reference provides the essential syntax mappings and patterns you'll need for day-to-day Jac development. Keep it handy as you transition from Python to Jac's object-spatial paradigm!
+            def add_book(book: Book) -> None {
+                self ++> book;
+            }
+
+            def add_member(member: Member) -> None {
+                self ++> member;
+            }
+
+            def borrow_book(isbn: str, member_id: str) -> bool {
+                book = [self --> Book](?isbn == isbn);
+                member = [self --> Member](?member_id == member_id);
+
+                if book and member and book[0].borrow(member_id) {
+                    member[0] +:BorrowedBy:borrowed_date=datetime.now().isoformat():+> book[0];
+                    return True;
+                }
+                return False;
+            }
+        }
+        ```
+
+---
+
+## Step 1: Converting Classes to Objects
+
+The first migration step involves converting Python classes to Jac objects while maintaining similar functionality.
+
+### Basic Class to Object Migration
+
+!!! example "Class to Object Conversion"
+    === "Python Class"
+        ```python
+        # book.py - Python class
+        class Book:
+            def __init__(self, title: str, author: str, isbn: str):
+                self.title = title
+                self.author = author
+                self.isbn = isbn
+                self.is_borrowed = False
+
+            def get_info(self) -> str:
+                status = "Available" if not self.is_borrowed else "Borrowed"
+                return f"{self.title} by {self.author} - {status}"
+
+            def borrow(self) -> bool:
+                if not self.is_borrowed:
+                    self.is_borrowed = True
+                    return True
+                return False
+        ```
+
+    === "Jac Object"
+        ```jac
+        # book.jac - Jac object
+        obj Book {
+            has title: str;
+            has author: str;
+            has isbn: str;
+            has is_borrowed: bool = False;
+
+            def get_info() -> str {
+                status = "Available" if not self.is_borrowed else "Borrowed";
+                return f"{self.title} by {self.author} - {status}";
+            }
+
+            def borrow() -> bool {
+                if not self.is_borrowed {
+                    self.is_borrowed = True;
+                    return True;
+                }
+                return False;
+            }
+        }
+        ```
+
+!!! tip "Key Migration Changes"
+    - `class` → `obj`
+    - `__init__` → automatic constructor with `has`
+    - `:` → `;` for statement termination
+    - `{}` for code blocks instead of indentation
+
+### Testing the Migration
+
+!!! example "Migration Testing"
+    === "Python Usage"
+        ```python
+        # test_book.py
+        book = Book("The Great Gatsby", "F. Scott Fitzgerald", "123456789")
+        print(book.get_info())  # The Great Gatsby by F. Scott Fitzgerald - Available
+
+        success = book.borrow()
+        print(f"Borrowed: {success}")  # Borrowed: True
+        print(book.get_info())  # The Great Gatsby by F. Scott Fitzgerald - Borrowed
+        ```
+
+    === "Jac Usage"
+        ```jac
+        # test_book.jac
+        with entry {
+            book = Book(title="The Great Gatsby", author="F. Scott Fitzgerald", isbn="123456789");
+            print(book.get_info());  # The Great Gatsby by F. Scott Fitzgerald - Available
+
+            success = book.borrow();
+            print(f"Borrowed: {success}");  # Borrowed: True
+            print(book.get_info());  # The Great Gatsby by F. Scott Fitzgerald - Borrowed
+        }
+        ```
+
+---
+
+## Step 2: Introducing Spatial Relationships
+
+The next step leverages Jac's Object-Spatial Programming by converting relationships into nodes and edges.
+
+### From Collections to Graph Structures
+
+!!! example "Spatial Relationship Migration"
+    === "Python Relationships"
+        ```python
+        # library_python.py - List-based relationships
+        class Library:
+            def __init__(self, name: str):
+                self.name = name
+                self.books = []  # List of books
+                self.members = []  # List of members
+                self.borrowed_books = {}  # Dict mapping book_isbn -> member_id
+
+            def add_book(self, book):
+                self.books.append(book)
+
+            def add_member(self, member):
+                self.members.append(member)
+
+            def find_available_books(self):
+                return [book for book in self.books if not book.is_borrowed]
+
+            def find_member_books(self, member_id: str):
+                member_isbns = [isbn for isbn, mid in self.borrowed_books.items() if mid == member_id]
+                return [book for book in self.books if book.isbn in member_isbns]
+        ```
+
+    === "Jac Spatial Relationships"
+        ```jac
+        # library_spatial.jac - Graph-based relationships
+        node Book {
+            has title: str;
+            has author: str;
+            has isbn: str;
+        }
+
+        node Member {
+            has name: str;
+            has member_id: str;
+        }
+
+        edge Contains;  # Library contains books/members
+        edge BorrowedBy {
+            has borrowed_date: str;
+        }
+
+        node Library {
+            has name: str;
+
+            def add_book(book: Book) -> None {
+                self +:Contains:+> book;
+            }
+
+            def add_member(member: Member) -> None {
+                self +:Contains:+> member;
+            }
+
+            def find_available_books() -> list[Book] {
+                all_books = [self --Contains--> Book];
+                borrowed_books = [self --Contains--> Book --BorrowedBy--> Member];
+                # Return books not in borrowed list
+                return [book for book in all_books if book not in borrowed_books];
+            }
+
+            def find_member_books(member_id: str) -> list[Book] {
+                target_member = [self --Contains--> Member](?member_id == member_id);
+                if target_member {
+                    return [target_member[0] <--BorrowedBy-- Book];
+                }
+                return [];
+            }
+        }
+        ```
+---
+
+## Incremental Adoption Patterns
+
+Real-world migration often requires running Python and Jac code together. Let's explore hybrid approaches.
+
+### Python-Jac Integration
+
+!!! example "Hybrid Integration Approach"
+    === "Python Wrapper"
+        ```python
+        # hybrid_library.py - Python wrapper for Jac code
+        import subprocess
+        import json
+
+        class JacLibraryWrapper:
+            def __init__(self, library_name: str):
+                self.library_name = library_name
+                # Initialize Jac library through subprocess or API
+
+            def call_jac_walker(self, walker_name: str, params: dict):
+                """Call Jac walker from Python"""
+                # In practice, this would use jac-cloud API or subprocess
+                cmd = f"jac run library.jac --walker {walker_name} --ctx '{json.dumps(params)}'"
+                result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+                return json.loads(result.stdout) if result.stdout else None
+
+            def add_book_via_jac(self, title: str, author: str, isbn: str):
+                """Add book using Jac walker"""
+                params = {"title": title, "author": author, "isbn": isbn}
+                return self.call_jac_walker("add_book", params)
+
+            def get_available_books(self):
+                """Get available books using Jac walker"""
+                return self.call_jac_walker("get_available_books", {})
+
+        # Traditional Python usage
+        class PythonBook:
+            def __init__(self, title: str, author: str):
+                self.title = title
+                self.author = author
+
+        # Hybrid usage
+        if __name__ == "__main__":
+            # Use existing Python classes
+            python_book = PythonBook("Old Book", "Old Author")
+
+            # Use new Jac functionality
+            jac_library = JacLibraryWrapper("My Library")
+            jac_library.add_book_via_jac("New Book", "New Author", "123456")
+        ```
+
+    === "Jac Side"
+        ```jac
+        # library.jac - Jac implementation
+        node Book {
+            has title: str;
+            has author: str;
+            has isbn: str;
+        }
+
+        node Library {
+            has name: str;
+        }
+
+        walker add_book {
+            has title: str;
+            has author: str;
+            has isbn: str;
+
+            can add_book_to_library with `root entry {
+                # Find or create library
+                libraries = [-->](`?Library);
+                if not libraries {
+                    library = Library(name="Default Library");
+                    here ++> library;
+                } else {
+                    library = libraries[0];
+                }
+
+                # Create and add book
+                new_book = Book(title=self.title, author=self.author, isbn=self.isbn);
+                library ++> new_book;
+
+                report {"message": f"Added book: {self.title}", "isbn": self.isbn};
+            }
+        }
+
+        walker get_available_books {
+            can fetch_available_books with `root entry {
+                all_books = [-->](`?Book);
+                books_data = [
+                    {"title": book.title, "author": book.author, "isbn": book.isbn}
+                    for book in all_books
+                ];
+                report {"books": books_data, "count": len(books_data)};
+            }
+        }
+        ```
+
+---
+
+## Common Migration Pitfalls
+
+Understanding common pitfalls helps ensure smooth migration from Python to Jac.
+
+### Pitfall 1: Direct Syntax Translation
+
+!!! warning "Avoid Direct Translation"
+    Don't directly translate Python syntax without considering Jac's spatial capabilities.
+
+!!! example "Poor vs Good Migration"
+    === "Poor Migration (Direct Translation)"
+        ```jac
+        # poor_migration.jac - Direct syntax translation
+        obj LibraryManager {
+            has books: list[dict] = [];  # Still thinking in lists
+            has members: list[dict] = [];
+
+            def add_book(book_data: dict) -> None {
+                self.books.append(book_data);  # Missing spatial benefits
+            }
+
+            def find_book(isbn: str) -> dict | None {
+                for book in self.books {  # Manual iteration
+                    if book["isbn"] == isbn {
+                        return book;
+                    }
+                }
+                return None;
+            }
+        }
+        ```
+
+    === "Good Migration (Spatial Thinking)"
+        ```jac
+        # good_migration.jac - Embracing spatial programming
+        node Book {
+            has title: str;
+            has author: str;
+            has isbn: str;
+        }
+
+        node Library {
+            has name: str;
+
+            def add_book(title: str, author: str, isbn: str) -> Book {
+                new_book = Book(title=title, author=author, isbn=isbn);
+                self ++> new_book;  # Spatial relationship
+                return new_book;
+            }
+
+            def find_book(isbn: str) -> Book | None {
+                # Spatial filtering - much cleaner
+                found_books = [self --> Book](?isbn == isbn);
+                return found_books[0] if found_books else None;
+            }
+        }
+        ```
+        </div>
+
+### Pitfall 2: Ignoring Type Safety
+
+!!! example "Type Safety Migration"
+    === "Weak Typing (Python Style)"
+        ```jac
+        # weak_typing.jac - Avoiding Jac's type benefits
+        walker process_data {
+            has data: dict;  # Too generic
+
+            can process with `root entry {
+                # Uncertain about data structure
+                if "title" in self.data {
+                    title = self.data["title"];
+                } else {
+                    title = "Unknown";
+                }
+                report {"processed": title};
+            }
+        }
+        ```
+
+    === "Strong Typing (Jac Style)"
+        ```jac
+        # strong_typing.jac - Leveraging Jac's type system
+        obj BookData {
+            has title: str;
+            has author: str;
+            has isbn: str;
+        }
+
+        walker process_book_data {
+            has book_data: BookData;  # Clear, type-safe structure
+
+            can process with `root entry {
+                # Type safety guarantees
+                new_book = Book(
+                    title=self.book_data.title,
+                    author=self.book_data.author,
+                    isbn=self.book_data.isbn
+                );
+                here ++> new_book;
+                report {"processed": self.book_data.title};
+            }
+        }
+        ```
+        </div>
+
+---
+
+## Migration Checklist
+
+!!! tip "Successful Migration Steps"
+    1. **Start Small**: Begin with utility functions and simple classes
+    2. **Embrace Types**: Use Jac's type system for better code quality
+    3. **Think Spatially**: Convert relationships to nodes and edges
+    4. **Test Incrementally**: Validate each migration step
+    5. **Leverage Python**: Keep using Python libraries where beneficial
+    6. **Document Changes**: Track migration decisions and patterns
+
+### Final Migration Example
+
+!!! example "Complete Library Migration"
+    === "Before (Python)"
+        ```python
+        # Original complex Python code
+        library = Library("City Library")
+
+        book1 = Book("1984", "George Orwell", "111")
+        book2 = Book("Brave New World", "Aldous Huxley", "222")
+        member = Member("Alice", "M001")
+
+        library.add_book(book1)
+        library.add_book(book2)
+        library.add_member(member)
+
+        # Manual relationship management
+        success = library.borrow_book("111", "M001")
+        available = library.find_available_books()
+        ```
+
+    === "After (Jac)"
+        ```jac
+        # Modern Jac implementation
+        with entry {
+            library = Library(name="City Library");
+
+            book1 = Book(title="1984", author="George Orwell", isbn="111");
+            book2 = Book(title="Brave New World", author="Aldous Huxley", isbn="222");
+            member = Member(name="Alice", member_id="M001");
+
+            library.add_book(book1);
+            library.add_book(book2);
+            library.add_member(member);
+
+            # Spatial relationship management
+            success = library.borrow_book("111", "M001");
+            available = library.find_available_books();
+
+            print(f"Borrowed: {success}, Available: {len(available)}");
+        }
+        ```
+        </div>
+
+---
+
+## Best Practices
+
+!!! summary "Migration Best Practices"
+    - **Start small**: Begin with isolated components rather than entire applications
+    - **Maintain compatibility**: Keep existing Python code running during migration
+    - **Test thoroughly**: Validate each migration step with comprehensive tests
+    - **Document changes**: Track migration decisions and patterns for team consistency
+    - **Train the team**: Ensure all developers understand Object-Spatial Programming concepts
+    - **Plan rollback**: Have strategies for reverting changes if issues arise
+
+## Key Takeaways
+
+!!! summary "What We've Learned"
+    **Migration Strategies:**
+
+    - **Incremental approach**: Gradual migration reduces risk and allows learning
+    - **Syntax translation**: Converting Python classes to Jac objects with automatic constructors
+    - **Spatial transformation**: Moving from collections to graph-based relationships
+    - **Hybrid integration**: Running Python and Jac code together during transition
+
+    **Technical Benefits:**
+
+    - **Automatic constructors**: Eliminate boilerplate code with `has` declarations
+    - **Type safety**: Mandatory typing catches errors earlier in development
+    - **Graph relationships**: Natural representation of connected data
+    - **Performance gains**: Optimized execution for both local and distributed environments
+
+    **Common Challenges:**
+
+    - **Paradigm shift**: Moving from object-oriented to spatial thinking
+    - **Team adoption**: Training developers on new concepts and patterns
+    - **Integration complexity**: Managing hybrid Python-Jac applications
+    - **Testing changes**: Ensuring equivalent behavior after migration
+
+    **Success Factors:**
+
+    - **Clear planning**: Structured approach to migration with defined milestones
+    - **Comprehensive testing**: Validation at every step of the migration process
+    - **Team alignment**: Consistent understanding of goals and benefits
+    - **Iterative improvement**: Continuous refinement of migration patterns
+
+!!! tip "Try It Yourself"
+    Practice migration by:
+    - Converting a simple Python class to a Jac object
+    - Transforming list-based relationships into graph structures
+    - Creating hybrid applications that use both Python libraries and Jac features
+    - Building comprehensive test suites to validate migration correctness
+
+    Remember: Successful migration is about embracing spatial thinking, not just syntax conversion!
+
+---

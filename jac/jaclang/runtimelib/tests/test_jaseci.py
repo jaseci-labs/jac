@@ -818,6 +818,8 @@ class TestJaseciPlugin(TestCase):
         )
         self.assertEqual("None", self.capturedOutput.getvalue().strip())
 
+        self._del_session(session)
+
     def test_traversing_save(self) -> None:
         """Test traversing save."""
         global session
@@ -850,3 +852,211 @@ class TestJaseciPlugin(TestCase):
         )
 
         self._del_session(session)
+
+    def test_custom_access_validation(self) -> None:
+        """Test custom access validation."""
+        global session
+        session = self.fixture_abs_path("custom_access_validation.session")
+
+        ##############################################
+        #              CREATE OTHER ROOT             #
+        ##############################################
+
+        self._output2buffer()
+        cli.enter(
+            filename=self.fixture_abs_path("custom_access_validation.jac"),
+            entrypoint="create_other_root",
+            args=[],
+            session=session,
+        )
+
+        other_root = self.capturedOutput.getvalue().strip()
+
+        ##############################################
+        #                 CREATE NODE                #
+        ##############################################
+
+        self._output2buffer()
+        cli.enter(
+            filename=self.fixture_abs_path("custom_access_validation.jac"),
+            entrypoint="create",
+            args=[],
+            session=session,
+        )
+        node = self.capturedOutput.getvalue().strip()
+
+        ##############################################
+        #                 CHECK NODE                 #
+        ##############################################
+
+        # BY OWNER
+        self._output2buffer()
+        cli.enter(
+            filename=self.fixture_abs_path("custom_access_validation.jac"),
+            entrypoint="check",
+            args=[],
+            session=session,
+            node=node,
+        )
+
+        self.assertEqual(
+            "A(val1='NO_ACCESS', val2=0)", self.capturedOutput.getvalue().strip()
+        )
+
+        # BY OTHER
+        self._output2buffer()
+        cli.enter(
+            filename=self.fixture_abs_path("custom_access_validation.jac"),
+            entrypoint="check",
+            args=[],
+            session=session,
+            root=other_root,
+            node=node,
+        )
+
+        self.assertEqual("", self.capturedOutput.getvalue().strip())
+
+        ##############################################
+        #       UPDATE NODE (GIVE READ ACCESS)       #
+        ##############################################
+
+        # UPDATE BY OWNER
+        cli.enter(
+            filename=self.fixture_abs_path("custom_access_validation.jac"),
+            entrypoint="update",
+            args=["READ", None],
+            session=session,
+            node=node,
+        )
+
+        # CHECK BY OTHER
+        self._output2buffer()
+        cli.enter(
+            filename=self.fixture_abs_path("custom_access_validation.jac"),
+            entrypoint="check",
+            args=[],
+            session=session,
+            root=other_root,
+            node=node,
+        )
+
+        self.assertEqual(
+            "A(val1='READ', val2=0)", self.capturedOutput.getvalue().strip()
+        )
+
+        ##############################################
+        #     UPDATE NODE (BUT STILL READ ACCESS)    #
+        ##############################################
+
+        # UPDATE BY OTHER
+        cli.enter(
+            filename=self.fixture_abs_path("custom_access_validation.jac"),
+            entrypoint="update",
+            args=[None, 1],
+            session=session,
+            root=other_root,
+            node=node,
+        )
+
+        # CHECK BY OTHER
+        self._output2buffer()
+        cli.enter(
+            filename=self.fixture_abs_path("custom_access_validation.jac"),
+            entrypoint="check",
+            args=[],
+            session=session,
+            root=other_root,
+            node=node,
+        )
+
+        self.assertEqual(
+            "A(val1='READ', val2=0)", self.capturedOutput.getvalue().strip()
+        )
+
+        ##############################################
+        #       UPDATE NODE (GIVE WRITE ACCESS)      #
+        ##############################################
+
+        # UPDATE BY OWNER
+        cli.enter(
+            filename=self.fixture_abs_path("custom_access_validation.jac"),
+            entrypoint="update",
+            args=["WRITE", None],
+            session=session,
+            node=node,
+        )
+
+        # UPDATE BY OTHER
+        cli.enter(
+            filename=self.fixture_abs_path("custom_access_validation.jac"),
+            entrypoint="update",
+            args=[None, 2],
+            session=session,
+            root=other_root,
+            node=node,
+        )
+
+        # CHECK BY OTHER
+        self._output2buffer()
+        cli.enter(
+            filename=self.fixture_abs_path("custom_access_validation.jac"),
+            entrypoint="check",
+            args=[],
+            session=session,
+            root=other_root,
+            node=node,
+        )
+
+        self.assertEqual(
+            "A(val1='WRITE', val2=2)", self.capturedOutput.getvalue().strip()
+        )
+
+        ##############################################
+        #         UPDATE NODE (REMOVE ACCESS)        #
+        ##############################################
+
+        # UPDATE BY OWNER
+        cli.enter(
+            filename=self.fixture_abs_path("custom_access_validation.jac"),
+            entrypoint="update",
+            args=["NO_ACCESS", None],
+            session=session,
+            node=node,
+        )
+
+        # UPDATE BY OTHER
+        cli.enter(
+            filename=self.fixture_abs_path("custom_access_validation.jac"),
+            entrypoint="update",
+            args=[None, 5],
+            session=session,
+            root=other_root,
+            node=node,
+        )
+
+        # CHECK BY OTHER
+        self._output2buffer()
+        cli.enter(
+            filename=self.fixture_abs_path("custom_access_validation.jac"),
+            entrypoint="check",
+            args=[],
+            session=session,
+            root=other_root,
+            node=node,
+        )
+
+        self.assertEqual("", self.capturedOutput.getvalue().strip())
+
+        # CHECK BY OWNER
+        self._output2buffer()
+        cli.enter(
+            filename=self.fixture_abs_path("custom_access_validation.jac"),
+            entrypoint="check",
+            args=[],
+            session=session,
+            node=node,
+        )
+
+        self.assertEqual(
+            "A(val1='NO_ACCESS', val2=2)", self.capturedOutput.getvalue().strip()
+        )

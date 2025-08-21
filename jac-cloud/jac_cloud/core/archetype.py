@@ -54,7 +54,10 @@ from pymongo import ASCENDING, DeleteMany, DeleteOne, InsertOne, UpdateMany, Upd
 from pymongo.client_session import ClientSession
 from pymongo.errors import ConnectionFailure, OperationFailure
 
-from ..jaseci.datasources import Collection as BaseCollection, ScheduleRedis
+from ..jaseci.datasources import (
+    Collection as BaseCollection,
+    ScheduleRedis,
+)
 from ..jaseci.utils import logger
 
 MANUAL_SAVE = getenv("MANUAL_SAVE")
@@ -550,24 +553,6 @@ class BaseAnchor:
         elif Jac.check_connect_access(self):  # type: ignore[arg-type]
             self.update(bulk_write, True)
 
-    def apply(self, session: ClientSession | None = None) -> BulkWrite:
-        """Save Anchor."""
-        bulk_write = BulkWrite()
-
-        self.build_query(bulk_write)
-
-        if bulk_write.has_operations:
-            if session:
-                bulk_write.execute(session)
-            else:
-                with (
-                    BaseCollection.get_session() as session,
-                    session.start_transaction(),
-                ):
-                    bulk_write.execute(session)
-
-        return bulk_write
-
     def insert(
         self,
         bulk_write: BulkWrite,
@@ -995,7 +980,10 @@ class WalkerAnchor(BaseAnchor, _WalkerAnchor):  # type: ignore[misc]
 
     def serialize(self) -> dict[str, object]:
         """Serialize Node Anchor."""
-        return {**super().serialize(), "schedule": asdict(self.schedule)}
+        return {
+            **super().serialize(),
+            "schedule": asdict(self.schedule) if self.schedule else None,
+        }
 
 
 @dataclass(eq=False, repr=False, kw_only=True)
@@ -1060,6 +1048,12 @@ class BaseArchetype:
 
     __jac_classes__: dict[str, type["BaseArchetype"]]
     __jac_hintings__: dict[str, type]
+    # __constraints__: type
+
+    class __Constraints__:
+        unique: list[tuple[str]]
+
+    # __jac_indexes__: Iterable[Index] = []
 
     __jac__: Anchor
 
@@ -1189,6 +1183,7 @@ class WalkerArchetype(BaseArchetype, _WalkerArchetype):
             from jac_cloud.plugin.implementation.api import populate_apis
 
             Jac.make_archetype(cls)
+            WalkerAnchor.Collection.apply_partial_indexes(cls)
             populate_apis(cls)
 
 

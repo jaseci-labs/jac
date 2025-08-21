@@ -2,29 +2,29 @@
 // ----------------------------------------------------------------------------
 // Globals
 // ----------------------------------------------------------------------------
-
 var pyodide = null;
 var breakpoints_buff = [];
 var dbg = null;  // The debugger instance.
 
 var sharedInts = null;
+var continueExecution = false;
 
-
+const PLAYGROUND_PATH = "/playground";
+// const PLAYGROUND_PATH = "";
 const JAC_PATH = "/tmp/main.jac";
 const LOG_PATH = "/tmp/logs.log";
+
 
 // ----------------------------------------------------------------------------
 // Message passing protocol
 // ----------------------------------------------------------------------------
-
 onmessage = async (event) => {
   const data = event.data;
   switch (data.type) {
 
     case 'initialize':
       sharedInts = new Int32Array(data.sharedBuffer);
-
-      importScripts("https://cdn.jsdelivr.net/pyodide/v0.27.0/full/pyodide.js");
+      importScripts("https://cdn.jsdelivr.net/pyodide/v0.28.0/full/pyodide.js");
       logMessage("Loading Pyodide...");
       pyodide = await loadPyodide();
       logMessage("Pyodide loaded.");
@@ -58,23 +58,23 @@ onmessage = async (event) => {
 
 };
 
+
 // ----------------------------------------------------------------------------
 // Utility functions
 // ----------------------------------------------------------------------------
-
 function logMessage(message) {
   console.log("[PythonThread] " + message);
 }
 
-
 async function readFileAsString(fileName) {
-  const response = await fetch("/playground" + fileName);
+  const response = await fetch(PLAYGROUND_PATH + fileName);
+  // const response = await fetch(fileName);
   return await response.text();
 };
 
-
 async function readFileAsBytes(fileName) {
-  const response = await fetch("/playground" + fileName);
+  const response = await fetch(PLAYGROUND_PATH + fileName);
+  // const response = await fetch(fileName);
   const buffer = await response.arrayBuffer();
   return new Uint8Array(buffer);
 }
@@ -83,11 +83,10 @@ async function readFileAsBytes(fileName) {
 // ----------------------------------------------------------------------------
 // Jaclang Initialization
 // ----------------------------------------------------------------------------
-
 async function loadPyodideAndJacLang() {
   try {
     await loadPythonResources(pyodide);
-    success = await checkJaclangLoaded(pyodide);
+    const success = await checkJaclangLoaded(pyodide);
 
     // Run the debugger module.
     await pyodide.runPythonAsync(
@@ -101,7 +100,6 @@ async function loadPyodideAndJacLang() {
   }
 }
 
-
 async function loadPythonResources(pyodide) {
   const data = await readFileAsBytes("/jaclang.zip");
   await pyodide.FS.writeFile("/jaclang.zip", data);
@@ -109,7 +107,6 @@ async function loadPythonResources(pyodide) {
     await readFileAsString("/python/extract_jaclang.py")
   );
 }
-
 
 async function checkJaclangLoaded(pyodide) {
   try {
@@ -126,12 +123,9 @@ async function checkJaclangLoaded(pyodide) {
 // ----------------------------------------------------------------------------
 // Execution
 // ----------------------------------------------------------------------------
-
-
 function callbackBreak(dbg, line) {
 
   logMessage(`before ui: line=$${line}`);
-  waitingForUi = true;
   self.postMessage({ type: 'breakHit', line: line });
 
   continueExecution = false;
@@ -148,10 +142,10 @@ function callbackBreak(dbg, line) {
         break;
 
       case 2: // Set breakpoint
-        const line = sharedInts[2];
+        const lineNumber = sharedInts[2];
         if (dbg) {
-          dbg.set_breakpoint(line);
-          logMessage(`Breakpoint set at line ${line}`);
+          dbg.set_breakpoint(lineNumber);
+          logMessage(`Breakpoint set at line ${lineNumber}`);
         }
         break;
 
@@ -184,39 +178,54 @@ function callbackBreak(dbg, line) {
         continueExecution = true;
         break;
 
-      case 7: // Terminat execution
+      case 7: // Terminate execution
         if (dbg) {
-          dbg.do_terminate();
-          logMessage("Execution stopped.");
+          try {
+            // Set a timeout for termination to avoid hanging
+            setTimeout(() => {
+              if (dbg) {
+                dbg = null;
+                logMessage("Forced cleanup after timeout.");
+              }
+            }, 1000);
+            
+            dbg.do_terminate();
+            logMessage("Execution stopped.");
+          } catch (error) {
+            logMessage("Execution terminated (cleanup warning ignored).");
+          } finally {
+            // Ensure cleanup
+            dbg = null;
+          }
         }
         continueExecution = true;
         break;
     }
-
   }
-
-
   logMessage("after ui");
 }
-
 
 function callbackStdout(output) {
   self.postMessage({ type: 'stdout', output: output });
 }
 
-
 function callbackStderr(output) {
   self.postMessage({ type: 'stderr', output: output });
 }
-
 
 function callbackGraph(graph) {
   self.postMessage({ type: 'jacGraph', graph: graph });
 }
 
-
 async function startExecution(safeCode) {
-
+  safeCode += `
+with entry {
+    print("<==START PRINT GRAPH==>");
+    graph_json = printgraph(format='json');
+    print(graph_json);
+    print("<==END PRINT GRAPH==>");
+}
+  `;
   pyodide.globals.set('SAFE_CODE', safeCode);
   pyodide.globals.set('JAC_PATH', JAC_PATH);
   pyodide.globals.set('CB_STDOUT', callbackStdout);
@@ -235,10 +244,24 @@ async function startExecution(safeCode) {
 
   // Run the main script
   logMessage("Execution started.");
-  await pyodide.runPythonAsync(
-    await readFileAsString("/python/main_playground.py")
-  );
+  try {
+    await pyodide.runPythonAsync(
+      await readFileAsString("/python/main_playground.py")
+    );
+  } catch (error) {
+    // Handle any remaining execution errors
+    if (error.message && (
+        error.message.includes("DebuggerTerminated") ||
+        error.message.includes("terminated") ||
+        error.message.includes("Not a directory") ||
+        error.message.includes("No such file")
+    )) {
+      logMessage("Execution terminated by user.");
+    } else {
+      logMessage(`Execution error: ${error.message}`);
+      throw error; // Re-throw if it's not a termination error
+    }
+  }
   logMessage("Execution finished.");
   dbg = null;
-
 }

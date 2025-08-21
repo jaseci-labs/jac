@@ -60,7 +60,7 @@ class InheritancePass(Transform[uni.Module, uni.Module]):
         if base_class_symbol is None:
             return
 
-        base_class_symbol_table = base_class_symbol.fetch_sym_tab
+        base_class_symbol_table = base_class_symbol.symbol_table
 
         if self.is_missing_py_symbol_table(base_class_symbol, base_class_symbol_table):
             return
@@ -77,7 +77,7 @@ class InheritancePass(Transform[uni.Module, uni.Module]):
                 sym = self.lookup_symbol(name.sym_name, current_sym_table)
                 if sym is None:
                     return
-                current_sym_table = sym.fetch_sym_tab
+                current_sym_table = sym.symbol_table
                 # Handle Python base classes or index slice expressions
                 if self.is_missing_py_symbol_table(sym, current_sym_table):
                     return

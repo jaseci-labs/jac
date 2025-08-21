@@ -11,8 +11,16 @@ Transform any Jac application into a cloud API server with a single command:
 jac serve main.jac
 
 # With custom host and port (optional)
-jac serve main.jac --host 0.0.0.0 --port 8080
+jac serve main.jac --host 0.0.0.0 --port 8080 --reload
 ```
+
+## Development Mode
+- `--reload`
+    - Enable auto-reload. Uvicorn supports two versions of auto-reloading behavior enabled by this option. Default: `False`.
+- `--watch path/to/dir1,path/to/dir2`
+    - Select which path/s (comma separated) to watch for changes for auto-reload. Requires `--reload` to work. Defaults to main jac directory
+
+---
 
 Once started, your API will be available at:
 
@@ -47,11 +55,12 @@ Control endpoint behavior using the `__specs__` object within your walker:
 walker my_walker {
     has data: str;
 
-    // This is where you configure your endpoint behavior
+    # This is where you configure your endpoint behavior
     obj __specs__ {
-        static has methods: list = ["get", "post"];   // Supports both GET and POST
-        static has auth: bool = false;                // No authentication required
-        static has as_query: list = ["data"];         // "data" will be a query parameter
+        static has methods: list = ["get", "post"];   # Supports both GET and POST
+        static has auth: bool = False;                # No authentication required
+        static has as_query: list = ["data"];         # "data" will be a query parameter
+        static has private: bool = True;              # Skip auto endpoint generation from walker
     }
 }
 ```
@@ -65,7 +74,7 @@ walker my_walker {
 | `methods` | `list[str]` | Allowed HTTP methods: `"get"`, `"post"`, `"put"`, `"delete"`, etc. | `["post"]` |
 | `as_query` | `str \| list[str]` | Fields to treat as query parameters. Use `"*"` for all fields | `[]` |
 | `auth` | `bool` | Whether endpoint requires authentication | `true` |
-| `path` | `str` | Additional path after auto-generated path | N/A |
+| `path` | `str` | If it starts with `/`, it will be the complete path. Otherwise, it will be prefixed with `/walker` (for walkers) or /`webhook/walker` (for webhooks). If not specified, it defaults to the walker's name with its respective prefix. | N/A |
 | `private` | `bool` | Skip walker in auto-generation | `false` |
 
 ### Advanced Settings
@@ -80,67 +89,149 @@ walker my_walker {
 
 | **Setting** | **Type** | **Description** | **Default** |
 |-------------|----------|-----------------|-------------|
-| `tags` | `list[str]` | API tags for grouping in Swagger UI | `None` |
+| `response_model` | `Any` | Type for response serialization and validation | `None` |
+| `tags` | `list[str \| Enum]` | API tags for grouping in Swagger UI | `None` |
+| `status_code` | `int` | Default response status code | `None` |
 | `summary` | `str` | Brief endpoint description | `None` |
 | `description` | `str` | Detailed endpoint description (supports Markdown) | `None` |
-| `status_code` | `int` | Default response status code | `None` |
+| `response_description` | `str` | Description for the default response | `"Successful Response"` |
+| `responses` | `dict[int \| str, dict]` | Additional responses that could be returned | `None` |
 | `deprecated` | `bool` | Mark endpoint as deprecated | `None` |
+| `include_in_schema` | `bool` | Include endpoint in generated OpenAPI schema | `True` |
+| `response_class` | `Type[Response]` | Response class to use for this endpoint | `JSONResponse` |
+| `name` | `str` | Internal name for the path operation | `None` |
+| `openapi_extra` | `dict[str, Any]` | Extra metadata for OpenAPI schema | `None` |
 
 ## Examples for Beginners
 
-### Basic Endpoint Examples
+### Basic Endpoint Example - Time Service
+Let's create a simple endpoint that returns the current time. For this example, we create a walker named `public_info` which provides one rest method `get` at the url `http://localhost:8000/walker/public_info`. The ability `get_current_time` will return the current timestamp in ISO format via the use of the `report` statement.
 
 ```jac
-// Simple POST endpoint
-walker create_user {
-    has username: str;
-    has email: str;
-}
+import from datetime {datetime}
 
-// GET endpoint with query parameters
-walker search_users {
-    has query: str;
-    has limit: int = 10;
-
-    obj __specs__ {
-        static has methods: list = ["get"];
-        static has as_query: list = ["query", "limit"];
-    }
-}
-
-// Public endpoint (no authentication)
+# Public endpoint (no authentication)
 walker public_info {
     obj __specs__ {
         static has methods: list = ["get"];
-        static has auth: bool = false;
+        static has auth: bool = False;
+    }
+
+    can get_current_time with `root entry{
+        report {
+            "timestamp": datetime.now().isoformat()
+        };
     }
 }
 ```
 
-### File Upload Examples
+
+### Parameterized Endpoint Example - User Search
+This example demonstrates how to create an endpoint from a walker that accepts query parameters for searching users. The walker `search_users` will allow users to search for a user by their username.
 
 ```jac
-// Single file upload
+# GET endpoint with query parameters
+walker search_users {
+    has query: str;
+    static has users: list = [
+        {"username": "alice", "email": "alice@example.com"},
+        {"username": "bob", "email": "bob@example.com"}
+    ];
+
+    obj __specs__ {
+        static has methods: list = ["get"];
+        static has as_query: list = ["query"];
+        static has auth: bool = False;
+    }
+
+    can search_by_name with `root entry{
+        for user in self.users {
+            if user['username'] == self.query {
+                report user;
+                return;
+            }
+        }
+
+        report {
+            "error": f"User with username {self.query} not found"
+        };
+    }
+}
+```
+
+To test this endpoint, you can use a web browser or a tool like `curl`:
+
+```bash
+curl -X 'GET' \
+  'http://0.0.0.0:8000/walker/search_users?query=alice' \
+  -H 'accept: application/json' \
+  -H 'Content-Type: application/json'
+```
+
+If the user is found, the response will look like this:
+
+```json
+{
+    "status": 200,
+    "reports": [
+        {
+            "username": "alice",
+            "email": "alice@example.com"
+        }
+    ]
+}
+```
+
+### File Upload Example
+In this example, we will create a walker that allows users to upload a file. The walker `single_file_upload` will accept a single file and return the filename in the response. This shows how the walker can handle post requests with file uploads.
+
+Since jac is a superset of Python, we can use the `UploadFile` type from FastAPI to handle file uploads.
+
+First, we create the upload_file.jac file with the following content:
+```jac
+# upload_file.jac
+import from fastapi { UploadFile }
+
+# Single file upload
 walker single_file_upload {
     has file: UploadFile;
-    has description: str = "";
+
+    obj __specs__ {
+        static has methods: list = ["post"];
+        static has auth: bool = False;
+    }
 
     can enter with `root entry {
-        print(f"Received file: {self.file.filename}");
-        print(f"Description: {self.description}");
+        report {
+            "output": f"Received file: {self.file.filename}"
+        };
     }
 }
 
-// Multiple file upload
-walker multi_file_upload {
-    has files: list[UploadFile];
-    has category: str;
+```
 
-    can enter with `root entry {
-        for file in self.files {
-            print(f"Processing: {file.filename}");
+Next we can create a test text file named `test.txt` with the content "Hello, Jac Cloud!".
+```bash
+echo "Hello, Jac Cloud!" > test.txt
+```
+
+Now we can test the file upload endpoint using `curl`:
+
+```bash
+curl -L -F "file=@test.txt" \
+"http://0.0.0.0:8080/walker/single_file_upload" \
+```
+
+Successful file upload will return a response like this:
+
+```json
+{
+    "status": 200,
+    "reports": [
+        {
+            "output": "Received file: test.txt"
         }
-    }
+    ]
 }
 ```
 
@@ -176,6 +267,32 @@ Jac Cloud automatically serializes walker, edge, and node archetypes:
 }
 ```
 
+## Data Persistence: Manual Saving and Commits
+
+### **Save**
+
+To save a walker or object to memory (queued for later database commit):
+
+```jac
+# Save a walker instance
+save(my_walker_instance)
+
+# Save an object instance
+save(my_object_instance)
+```
+
+### **Commit**
+
+**Commit all in-memory data:**
+```jac
+commit()  # Saves everything currently in memory to database
+```
+
+**Commit specific archetype:**
+```jac
+commit(archetype)  # Only commits this specific archetype
+```
+
 ## Helpful Environment Variables
 
 Control Jac Cloud behavior with these environment variables:
@@ -193,3 +310,17 @@ Now that you understand the basics, explore these features:
 - [Webhook Integration](webhook.md) - Create API integrations
 - [Environment Variables](env_vars.md) - Configure your application
 - [Logging & Monitoring](logging.md) - Track application performance
+
+## Edge Case: Manually Creating Walker Endpoints
+
+While not recommended, as you typically shouldn't change your API specifications in this manner, Jac Cloud does support manually creating walker endpoints.
+This allows for advanced customization if absolutely necessary, but generally, you should rely on the automatic generation and configuration via **specs**.
+
+Example Code snippet:
+
+```
+type("NameOfYourWalker", (_.Walker,), {
+    "__specs__": your_specs_class,
+    ... annotations / additional fields ...
+})
+```

@@ -14,18 +14,19 @@ Once you've got Jaclang installed, just give the Jac CLI a try to make sure ever
     ```bash
     jac --version
     ```
-- Run a .jac fil
+- Run a .jac file
     ```bash
     jac run <file_name>.jac
-- To test run a 'Hello World'Program
+    ```
+- To test run a 'Hello World' Program
     ```bash
-    echo "with entry { print('hello world'); }" > test.jac;
+    echo "with entry { print('Hello world'); }" > test.jac;
     jac run test.jac;
     rm test.jac;
     ```
 > **Note**
 >
-> If these commands prints ```hello world``` you are good to go.
+> If these commands prints ```Hello world``` you are good to go.
 
 ## <span style="color: orange">Installing the VS Code Extention
 </span>
@@ -33,7 +34,7 @@ Once you've got Jaclang installed, just give the Jac CLI a try to make sure ever
 In addition to setting up JacLang itself, you may also want to take advantage of the JacLang language extension for Visual Studio Code (VSCode). This will give you enhanced code highlighting, autocomplete, and other useful language features within your VSCode environment.
 
 - To install just visit the VS Code marketplace and install,
-    - [Jac](https://marketplace.visualstudio.com/items?itemName=jaseci-labs.jaclang-extension)
+    - [Jac Extension](https://marketplace.visualstudio.com/items?itemName=jaseci-labs.jaclang-extension)
 
 ## Next Steps
 
@@ -55,7 +56,7 @@ In addition to setting up JacLang itself, you may also want to take advantage of
 
     <!-- [:octicons-arrow-right-24: Getting started](#) -->
 
-    [A Robust Example](examples/littleX/overview.md){ .md-button }
+    [A Robust Example](examples/littleX/tutorial.md){ .md-button }
 
 -   __Experience Jac in Browser__
 

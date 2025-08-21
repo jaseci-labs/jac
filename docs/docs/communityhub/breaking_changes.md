@@ -4,7 +4,85 @@ This page documents significant breaking changes in Jac and Jaseci that may affe
 
 ## Latest Breaking Changes
 
-### Version 0.8.1 (Main branch since 5/26/2025) (Unreleased)
+### Version 0.8.4
+
+#### 1. Global, Nonlocal Operators Updated to `global`, `nonlocal`
+
+This renaming aims to make the operator's purpose align with python, as `global`, `nonlocal` more aligned with python.
+
+**Before**
+
+```jac
+glob x = "Jaclang ";
+
+def outer_func -> None {
+    :global: x; # :g: also correct
+
+    x = 'Jaclang is ';
+    y = 'Awesome';
+    def inner_func -> tuple[str, str] {
+        :nonlocal: y; #:nl: also correct
+
+        y = "Fantastic";
+        return (x, y);
+    }
+    print(x, y);
+    print(inner_func());
+}
+
+with entry {
+    outer_func();
+}
+```
+
+**After**
+
+```jac
+glob x = "Jaclang ";
+
+def outer_func -> None {
+    global x;
+
+    x = 'Jaclang is ';
+    y = 'Awesome';
+    def inner_func -> tuple[str, str] {
+        nonlocal y;
+
+        y = "Fantastic";
+        return (x, y);
+    }
+    print(x, y);
+    print(inner_func());
+}
+
+with entry {
+    outer_func();
+}
+```
+
+#### 2. `mtllm.llms` Module Replaced with Unified `mtllm.llm {Model}`
+
+The mtllm library now uses a single unified Model class under the `mtllm.llm` module, instead of separate classes like `Gemini` and `OpenAI`. This simplifies usage and aligns model loading with HuggingFace-style naming conventions.
+
+**Before**
+
+```jac
+import from mtllm.llms { Gemini, OpenAI }
+
+glob llm1 = Gemini(model_name="gemini-2.0-flash");
+glob llm2 = OpenAI();
+```
+
+**After**
+
+```jac
+import from mtllm.llm { Model }
+
+glob llm1 = Model(model_name="gemini/gemini-2.0-flash");
+glob llm2 = Model(model_name="gpt-4o");
+```
+
+### Version 0.8.1
 
 #### 1. `dotgen` builtin function is now name `printgraph`
 
@@ -39,6 +117,56 @@ with entry {
     }
     data = printgraph(node=root);
     print(data);
+}
+```
+
+#### 2. `ignore` feature is removed
+
+This removal aims to avoid being over specifc with data spatial features.
+
+**Before**
+
+```jac
+node MyNode {
+    has val:int;
+}
+
+walker MyWalker {
+    can func1 with MyNode entry {
+        ignore [here];
+        visit [-->]; # before
+        print(here);
+    }
+}
+
+with entry {
+    n1 = MyNode(5);
+    n1 ++> MyNode(10) ++> MyNode(15) ++> n1; # will result circular
+    n1 spawn MyWalker();
+}
+```
+
+**After**
+
+```jac
+node MyNode {
+    has val:int;
+}
+
+walker MyWalker {
+    has Ignore: list = [];
+
+    can func1 with MyNode entry {
+        self.Ignore.append(here); # comment here to check the circular graph
+        visit [i for i in [-->] if i not in self.Ignore]; # now
+        print(here);
+    }
+}
+
+with entry {
+    n1 = MyNode(5);
+    n1 ++> MyNode(10) ++> MyNode(15) ++> n1; # will result circular
+    n1 spawn MyWalker();
 }
 ```
 

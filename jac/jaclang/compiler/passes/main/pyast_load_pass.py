@@ -559,10 +559,20 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
         valid_body = [stmt for stmt in body if isinstance(stmt, uni.CodeBlockStmt)]
         if len(valid_body) != len(body):
             raise self.ice("Length mismatch in while body")
+        orelse = [self.convert(i) for i in node.orelse]
+        val_orelse = [i for i in orelse if isinstance(i, uni.CodeBlockStmt)]
+        if len(val_orelse) != len(orelse):
+            raise self.ice("Length mismatch in for orelse")
+        if orelse:
+            fin_orelse = uni.ElseStmt(body=val_orelse, kid=val_orelse)
+        else:
+            fin_orelse = None
+
         if isinstance(test, uni.Expr):
             return uni.WhileStmt(
                 condition=test,
                 body=valid_body,
+                else_body=fin_orelse,
                 kid=[test, *valid_body],
             )
         else:
@@ -1364,10 +1374,11 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
         valid = [
             value for value in values if isinstance(value, (uni.String, uni.ExprStmt))
         ]
-        return uni.FString(
+        fstr = uni.FString(
             parts=valid,
             kid=[*valid] if valid else [uni.EmptyToken()],
         )
+        return uni.MultiString(strings=[fstr], kid=[fstr])
 
     def proc_lambda(self, node: py_ast.Lambda) -> uni.LambdaExpr:
         """Process python node.
@@ -2327,20 +2338,30 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
         arg: _Identifier | None
         value: expr
         """
-        arg = uni.Name(
-            orig_src=self.orig_src,
-            name=Tok.NAME,
-            value=node.arg if node.arg else "_",
-            line=node.lineno,
-            end_line=node.end_lineno if node.end_lineno else node.lineno,
-            col_start=node.col_offset,
-            col_end=node.col_offset + len(node.arg if node.arg else "_"),
-            pos_start=0,
-            pos_end=0,
-        )
+        arg = None
+        if node.arg:
+            from jaclang.compiler import TOKEN_MAP
+
+            reserved_keywords = [v for _, v in TOKEN_MAP.items()]
+            arg_value = (
+                node.arg if node.arg not in reserved_keywords else f"<>{node.arg}"
+            )
+            arg = uni.Name(
+                orig_src=self.orig_src,
+                name=Tok.NAME,
+                value=arg_value,
+                line=node.lineno,
+                end_line=node.end_lineno if node.end_lineno else node.lineno,
+                col_start=node.col_offset,
+                col_end=node.col_offset + len(node.arg if node.arg else "_"),
+                pos_start=0,
+                pos_end=0,
+            )
         value = self.convert(node.value)
         if isinstance(value, uni.Expr):
-            return uni.KWPair(key=arg, value=value, kid=[arg, value])
+            return uni.KWPair(
+                key=arg, value=value, kid=[arg, value] if arg else [value]
+            )
         else:
             raise self.ice()
 

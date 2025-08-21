@@ -1,6 +1,7 @@
 """Monty Implementations."""
 
 from contextvars import ContextVar
+from threading import current_thread
 from typing import Any, Mapping, Sequence
 
 from montydb import MontyClient as _MontyClient, set_storage  # type: ignore[import-untyped]
@@ -208,7 +209,9 @@ class MontyClient(_MontyClient):
     def get_database(self, name: str) -> MontyDatabase:
         """Get local database."""
         if not (client := MONTY_CLIENT.get()):
-            MONTY_CLIENT.set(client := _MontyClient(self.repository))
+            client = _MontyClient(self.repository)
+            if current_thread().name != "MainThread":
+                MONTY_CLIENT.set(client)
 
         return MontyDatabase(client.get_database(name))
 

@@ -7,11 +7,6 @@ from jaclang.vendor.pygls.uris import from_fs_path
 from jaclang.vendor.pygls.workspace import Workspace
 
 from textwrap import dedent
-from jaclang import JacMachineInterface as _
-
-JacLangServer = _.jac_import(
-    "....langserve.engine", __file__, items={"JacLangServer": None}
-)[0]
 
 
 def get_jac_file_path():
@@ -125,7 +120,7 @@ def get_code(code: str) -> str:
 def get_simple_code(code: str) -> str:
     """Generate a sample Jac code snippet with optional test code injected."""
     jac_code = dedent(
-        f'''
+        f"""
     
     # Unit Tests!
     glob expected_area0 = 78.53981633974483;
@@ -134,12 +129,15 @@ def get_simple_code(code: str) -> str:
     glob expected_area2 = 78.53981633974483;
 
 
-'''
+"""
     )
     return jac_code
 
+
 def create_ls_with_workspace(file_path: str):
     """Create JacLangServer and workspace for a given file path, return (uri, ls)."""
+    from jaclang.langserve.engine import JacLangServer
+
     ls = JacLangServer()
     uri = from_fs_path(file_path)
     ls.lsp._workspace = Workspace(os.path.dirname(file_path), ls)

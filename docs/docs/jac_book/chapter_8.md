@@ -1,870 +1,297 @@
-### Chapter 8: Walkers - Computation in Motion
+# Chapter 8: OSP Introduction and Paradigm Shift
+---
+So far, we have explored Jac's enhancements to familiar programming concepts. Now, we will introduce the paradigm that makes Jac truly unique, Object-Spatial Programming (OSP). This represents a fundamental shift in how we structure and execute our programs.
 
-Walkers are the beating heart of Object-Spatial Programming. They embody the paradigm shift from static functions to mobile computational entities that traverse your data graph, processing information where it lives. In this chapter, we'll master the art of creating and controlling walkers to build powerful, scalable algorithms.
+In traditional programming, the application logic is stationary, and data is constantly fetched from databases and other services to be processed. OSP inverts this model, it allows your computation to travel to where your data lives. This approach is more natural, efficient, and scalable for the interconnected data that defines modern AI applications.
 
-#### 8.1 Walker Basics
+## Journey from OOP to OSP
+---
+The transition from Object-Oriented Programming to Object-Spatial Programming begins with understanding how Jac perceives your program's structure.
 
-### Declaring Walker Classes
+### `with entry` vs `if __name__ == "__main__":`
 
-Walkers are declared using the `walker` keyword and can contain state, abilities, and methods:
+In Python, the entry point of a program is typically defined by the `if __name__ == "__main__":` block. This tells the interpreter, "Start running the script from here."
 
-```jac
-walker SimpleVisitor {
-    // Walker state - travels with the walker
-    has visits: int = 0;
-    has path: list[str] = [];
+Jac's `with entry` block serves a similar purpose but has a deeper, more powerful meaning. It isn't just starting a script, it is your moment of entry into a persistent, spatial environment. Think of it as opening the door to a workshop. When your program starts, this workshop is not empty; it contains a single, special starting point: the `root` node. We're entering the root of a global graph structure that we can build upon and traverse.
 
-    // Regular method
-    can get_stats() -> dict {
-        return {
-            "total_visits": self.visits,
-            "path_length": len(self.path),
-            "current_path": self.path
-        };
-    }
+![With Entry](../assets/examples/jac_book/with_entry.png){ width=350px }
+#/ caption
+`with entry` marks your entry point into the program's graph. This graph initially contains only the root node, which serves as the anchor for everything you will build.
+#/
 
-    // Walker ability - triggered on node entry
-    can visit_node with entry {
-        self.visits += 1;
-        self.path.append(here.name if hasattr(here, 'name') else str(here));
-        print(f"Visit #{self.visits}: {self.path[-1]}");
-    }
-}
-```
+Everything you create and connect within this graph space can be persisted, traversed, and reasoned about spatially.
 
-Key walker components:
-- **State Variables** (`has`): Data that travels with the walker
-- **Methods** (`can`): Regular functions for computation
-- **Abilities** (`can ... with`): Event-triggered behaviors
-
-### Spawning Walkers on Nodes
-
-Walkers start as inactive objects and must be "spawned" to begin traversal:
+### Creating a Node and adding it to the Graph
+When the `with entry` block is executed, it creates a root node in the Jac graph. From there, we can add nodes` and `edges` to build our data structure. Lets look at an example of creating a simple node using Jac's syntax:
 
 ```jac
-node Location {
+node Node{
     has name: str;
-    has description: str;
 }
 
 with entry {
-    // Create a simple graph
-    let home = root ++> Location(name="Home", description="Starting point");
-    let park = home ++> Location(name="Park", description="Green space");
-    let store = home ++> Location(name="Store", description="Shopping center");
+    node_a = Node(name="A");
+}
+```
+<br />
 
-    // Create walker instance (inactive)
-    let visitor = SimpleVisitor();
-    print(f"Walker created. Stats: {visitor.get_stats()}");
+![With Entry](../assets/examples/jac_book/node1.png){ width=350px }
+#/ caption
+Adding a node to the graph.
+#/
 
-    // Spawn walker on a node (activates it)
-    home spawn visitor;
+Here, we define a node using the `node` keyword, which is similar to defining a class in traditional OOP. The `has` keyword declares properties for the node, and we create an instance of this node within the `with entry` block.
 
-    // Or use alternative syntax
-    let another_visitor = SimpleVisitor();
-    spawn another_visitor on home;
+### Connecting Nodes with Edges
+When the entry point is executed, it creates a root node on the Jac graph, which can be accessed using the `root` variable. This root node serves as the starting point for the program's graph structure, enabling traversal and manipulation of connected nodes.
+
+In the example above, we create a new node `node_a` with the name "A". However, this node is not automatically part of the graph—it exists in isolation. To incorporate it into the graph, we need to connect it to an existing node using an `edge`.
+
+This is where the `++>` operator comes in. It creates a directional edge from the root node to `node_a`, effectively linking the two and adding `node_a` into the graph.
+
+```jac
+node Node{
+    has name: str;
+}
+
+with entry {
+    node_a = Node(name="A");
+    root ++> node_a;  # Add node_a to the root graph
+}
+```
+<br />
+
+![With Entry](../assets/examples/jac_book/node2.png){ width=350px }
+#/ caption
+Adding a node to the graph.
+#/
+
+
+### Building out the rest of the Graph
+Now that we have a basic understanding of nodes and edges, let's add a few more nodes and edges to create a more complex graph structure. We'll introduce a second node and connect it to the first one:
+
+```jac
+node Node{
+    has name: str;
+}
+
+with entry {
+    node_a = Node(name="A");
+    node_b = Node(name="B");
+
+    root ++> node_a;  # Add node_a to the root graph
+    node_a ++> node_b;  # Connect node_a to node_b
+}
+```
+<br />
+
+Next let's define a terminal node that will represent the end of our graph traversal. This node will not have any outgoing edges, indicating that it is a leaf node in our graph structure:
+
+```jac
+node EndNode {}
+glob END = EndNode();  # Create a global end node
+```
+<br />
+
+Now we can connect our nodes to this end node, creating a complete graph structure:
+```jac
+node Node{
+    has name: str;
+}
+node EndNode {}
+glob END = EndNode();
+
+with entry {
+    node_a = Node(name="A");
+    node_b = Node(name="B");
+
+    root ++> node_a;  # Add node_a to the root graph
+    node_a ++> node_b;  # Connect node_a to node_b
+    node_b ++> END;  # Connect node_b to the end node
+}
+```
+<br />
+
+![With Entry](../assets/examples/jac_book/node3.png){ width=350px }
+#/ caption
+Filling out the graph with nodes and edges.
+#/
+
+## From "Data to Computation" to "Computation to Data"
+---
+
+### Walking the Graph
+In Object-Oriented Programming, your objects are stationary. You call a method on an object, and the logic executes within that object's context.
+
+One of the core innovations of Object-Spatial Programming (OSP) is the concept of **walkers**. A walker is a mobile unit of computation that you design to travel through your graph, moving from node to node along the edges that connect them. Instead of pulling data to your logic, a walker brings your logic directly to the data.
+
+Walkers operate **locally**, performing actions at each node or edge they encounter. This enables a more natural and efficient way to process distributed data, especially in systems modeled as networks, hierarchies, or flows.
+
+
+Walkers are more than simple graph crawlers. Because they are a subtype of the `object` archetype, they can,
+
+- Maintain State: A walker can have its own attributes (has fields) to store information it collects during its journey.
+- Execute Logic: A walker has methods (can abilities) that are automatically triggered when it "lands on" a specific type of node or edge.
+- Make Decisions: Based on the data it finds at its current location, a walker can decide where to go next.
+
+This paradigm shift—from centralized logic to distributed, mobile computation—is what makes OSP so powerful for modeling complex, real-world systems.
+
+
+Getting back to our graph structure, lets define a simple walker that will traverse our graph and gather the names of the nodes it visits. When it reaches the terminal node, it will stop and return the collected names as a string:
+
+First, we need to enhance our graph with a starting and ending point.
+
+```jac
+node Node {
+    has name: str;
+}
+
+# A special node to mark the end of a path.
+node EndNode {}
+
+# Our full graph structure
+with entry {
+    # Spawn nodes and attach them to the graph.
+    node_a = root ++> Node(name="A");
+    node_b = node_a ++> Node(name="B");
+    node_c = node_b ++> Node(name="C");
+    end_node = node_c ++> EndNode(); # The path ends here.
 }
 ```
 
-```mermaid
-graph LR
-    subgraph "Walker Lifecycle"
-        I[Inactive<br/>Walker Object]
-        A[Active<br/>Walker on Node]
-        T[Traversing<br/>Graph]
-        D[Done<br/>Disengaged]
-
-        I -->|spawn| A
-        A -->|visit| T
-        T -->|visit| T
-        T -->|disengage| D
-        T -->|queue empty| D
-    end
-
-    style I fill:#ffcdd2
-    style A fill:#c8e6c9
-    style T fill:#fff9c4
-    style D fill:#e1bee7
-```
-
-### The Walker Lifecycle
-
-Understanding the walker lifecycle is crucial:
-
+Next we define our walker archetype, that has a `input` field to store the names of the nodes it visits:
 ```jac
-walker LifecycleDemo {
-    has state: str = "created";
-    has nodes_visited: list = [];
-
-    // Called when walker is created (optional)
-    can init(mission: str = "explore") {
-        print(f"Walker initialized with mission: {mission}");
-        self.state = "initialized";
-    }
-
-    // Entry ability - when arriving at a node
-    can on_entry with entry {
-        self.state = "active";
-        self.nodes_visited.append(here);
-        print(f"Entered node. Total visits: {len(self.nodes_visited)}");
-
-        // Decide whether to continue
-        if len(self.nodes_visited) < 5 {
-            visit [-->];  // Continue to connected nodes
-        } else {
-            print("Mission complete!");
-            self.state = "completed";
-            disengage;  // End traversal
-        }
-    }
-
-    // Exit ability - when leaving a node
-    can on_exit with exit {
-        print(f"Leaving node after processing");
-    }
-
-    // Final cleanup (if needed)
-    can cleanup {
-        print(f"Walker finished. State: {self.state}");
-        print(f"Visited {len(self.nodes_visited)} nodes");
-    }
+walker PathWalker {
+    has input: str;
 }
-```
 
-#### 8.2 Traversal Patterns
+walker PathWalker {
+    has input: str;
 
-### `visit` Statements for Navigation
-
-The `visit` statement is how walkers move through the graph:
-
-```jac
-walker Explorer {
-    has max_depth: int = 3;
-    has current_depth: int = 0;
-
-    can explore with entry {
-        print(f"At depth {self.current_depth}: {here.name}");
-
-        if self.current_depth < self.max_depth {
-            // Visit all connected nodes
-            visit [-->];
-
-            // Or visit specific nodes
-            let important_nodes = [-->].filter(
-                lambda n: n.priority > 5 if hasattr(n, 'priority') else False
-            );
-            visit important_nodes;
-
-            // Or visit with type filtering
-            visit [-->:ImportantEdge:];
-        }
-    }
-}
-```
-
-### `disengage` for Early Termination
-
-Use `disengage` to stop traversal immediately:
-
-```jac
-walker SearchWalker {
-    has target_name: str;
-    has found: bool = false;
-    has result: node? = None;
-
-    can search with entry {
-        print(f"Checking: {here.name if hasattr(here, 'name') else 'unknown'}");
-
-        if hasattr(here, 'name') and here.name == self.target_name {
-            print(f"Found target: {here.name}!");
-            self.found = true;
-            self.result = here;
-            report here;  // Report finding
-            disengage;    // Stop searching
-        }
-
-        // Continue search if not found
+    # 1. The starting point for the walker's journey.
+    can start with `root entry {
+        # Start visiting nodes connected to the root.
         visit [-->];
+    }
+
+    # 2. This ability triggers every time the walker lands on a 'Node'.
+    can visit_node with Node entry {
+        # 'here' refers to the node the walker is currently on.
+        self.input += ", visiting " + here.name;  # Append node name to input
+        # Continue to the next node in the path.
+        visit [-->];
+    }
+
+    # 3. This ability triggers when the walker reaches the 'EndNode'.
+    can visit_end with EndNode entry {
+        self.input += ", reached the end";  # Append end message
+        return;  # Stop visiting
+    }
+}
+```
+<br />
+
+### The `visit` Statement and `-->` Syntax
+To understand how walkers move through the graph, it's important to break down the `visit` statement and the `-->` operator used in the example above.
+
+In Jac, visit tells the walker to continue its traversal along the graph. What makes this powerful is the use of edge selectors inside the square brackets, like `[-->]`, which control how and where the walker moves.
+
+The `-->` symbol represents a forward edge in the graph—specifically, an edge from the current node (`here`) to any of its connected child nodes. So when you write visit `[-->];`, you're instructing the walker to follow all outgoing edges from the current node to the next set of reachable nodes.
+
+Let's walk through what each part means:
+
+- `visit [-->];`: Move the walker along all forward edges from the current node.
+- `visit [<--];`: Move backward (along incoming edges), useful for reverse traversals or backtracking.
+- `visit [-->-->];`: Move along two forward edges in succession, allowing for deeper traversal into the graph.
+
+Jac supports more complex edge selectors as well which we'll explore in subsequent chapters. For now, the key takeaway is that `visit` combined with edge selectors allows walkers to navigate the graph structure dynamically, processing nodes and edges as they go.
+
+
+### Putting it All Together
+Lets put everything together in a complete example that demonstrates how to create a graph, define a walker, and run it to collect node names:
+
+```jac
+node Node{
+    has name: str;
+}
+
+node EndNode {}
+glob END = EndNode();
+
+walker PathWalker {
+    has input: str;
+
+    can start with `root entry {
+        visit [-->];
+    }
+
+    can visit_node  with Node entry{
+        self.input += ", visiting " + here.name;
+        visit [here-->];
+    }
+
+    can visit_end with EndNode entry {
+        self.input += ", reached the end";
+        return;
     }
 }
 
 with entry {
-    let searcher = SearchWalker(target_name="Store");
-    let result = spawn searcher on root;
+    root ++> Node(name="A")
+         ++> Node(name="B")
+         ++> END;
 
-    if searcher.found {
-        print(f"Search successful! Found: {searcher.result.name}");
-    } else {
-        print("Target not found in graph");
-    }
+    my_walker = PathWalker(input="Start walking") spawn root;
+
+    print(my_walker.input);
 }
 ```
+<br />
 
-### `skip` for Conditional Processing
-
-The `skip` statement ends processing at the current node but continues traversal:
-
-```jac
-walker ConditionalProcessor {
-    has process_count: int = 0;
-    has skip_count: int = 0;
-
-    can process with entry {
-        // Skip nodes that don't meet criteria
-        if hasattr(here, 'active') and not here.active {
-            self.skip_count += 1;
-            print(f"Skipping inactive node");
-            skip;  // Move to next node without further processing
-        }
-
-        // Process active nodes
-        print(f"Processing node {self.process_count + 1}");
-        self.process_count += 1;
-
-        // Expensive operation only for active nodes
-        self.perform_expensive_operation();
-
-        // Continue traversal
-        visit [-->];
-    }
-
-    can perform_expensive_operation {
-        import:py time;
-        time.sleep(0.1);  // Simulate work
-        print("  - Expensive operation completed");
-    }
-}
+```bash
+$ jac run path_walker.jac
+Start walking, visiting A, visiting B, reached the end
 ```
+<br />
 
-### Queue-Based Traversal Model
 
-Walkers use an internal queue for traversal:
+## Wrapping Up
+---
+In this chapter, we've introduced the core concepts of Object-Spatial Programming (OSP) and how it differs from traditional object-oriented programming. We've seen how Jac allows us to define nodes and edges, create walkers, and traverse graphs in a way that naturally reflects the relationships between data.
 
-```jac
-walker QueueDemo {
-    has visited_order: list = [];
 
-    can demonstrate with entry {
-        self.visited_order.append(here.name);
-        print(f"Current queue after visiting {here.name}:");
+## Key Takeaways
+---
 
-        // The visit statement adds to queue
-        let neighbors = [-->];
-        for i, neighbor in enumerate(neighbors) {
-            print(f"  Adding to queue: {neighbor.name}");
-            visit neighbor;
-        }
+- **Computation to data**: Move processing to where data naturally lives
+- **Spatial relationships**: Model connections as first-class graph structures
+- **Natural representation**: Express real-world relationships directly in code
+- **Distributed processing**: Each data location can be processed independently
 
-        print(f"Queue will be processed in order\n");
-    }
+**Core Concepts:**
 
-    can summarize with exit {
-        if len([-->) == 0 {  // At a leaf node
-            print(f"Traversal order: {' -> '.join(self.visited_order)}");
-        }
-    }
-}
-```
+- **Nodes**: Stateful entities that hold data and can react to visitors
+- **Edges**: First-class relationships with their own properties and behaviors
+- **Walkers**: Mobile computation that traverses and processes graph structures
+- **Graph thinking**: Shift from object-oriented to relationship-oriented design
 
-### Advanced Traversal Patterns
+**Key Advantages:**
 
-#### Breadth-First Search (BFS)
+- **Intuitive modeling**: Problems are expressed in their natural graph form
+- **Efficient processing**: Computation happens exactly where it's needed
+- **Scalable architecture**: Naturally distributes across multiple nodes
+- **Maintainable code**: Clear separation of data, relationships, and processing logic
 
-```jac
-walker BFSWalker {
-    has visited: set = {};
-    has level: dict = {};
-    has current_level: int = 0;
 
-    can bfs with entry {
-        // Mark as visited
-        if here in self.visited {
-            skip;
-        }
+!!! tip "Try It Yourself"
+    Start thinking spatially by modeling:
+    - Family trees with person nodes and relationship edges
+    - Social networks with user connections
+    - Organization charts with employee and department relationships
+    - Knowledge graphs with concept connections
 
-        self.visited.add(here);
-        self.level[here] = self.current_level;
+    Remember: OSP shines when your problem naturally involves connected data!
 
-        print(f"Level {self.current_level}: {here.name}");
+---
 
-        // Queue all unvisited neighbors (BFS behavior)
-        let unvisited = [-->].filter(lambda n: n not in self.visited);
-        visit unvisited;
-
-        // Increment level for next wave
-        if all(n in self.visited for n in [-->]) {
-            self.current_level += 1;
-        }
-    }
-}
-```
-
-#### Depth-First Search (DFS)
-
-```jac
-walker DFSWalker {
-    has visited: set = {};
-    has stack: list = [];
-    has dfs_order: list = [];
-
-    can dfs with entry {
-        if here in self.visited {
-            skip;
-        }
-
-        self.visited.add(here);
-        self.dfs_order.append(here.name);
-        self.stack.append(here.name);
-
-        print(f"DFS visiting: {here.name}");
-        print(f"  Stack: {self.stack}");
-
-        // Visit one unvisited neighbor at a time (DFS)
-        let unvisited = [-->].filter(lambda n: n not in self.visited);
-        if unvisited {
-            visit unvisited[0];  // Visit first unvisited
-        } else {
-            // Backtrack
-            self.stack.pop();
-        }
-
-        // After exploring all children, visit siblings
-        for neighbor in unvisited[1:] {
-            visit neighbor;
-        }
-    }
-}
-```
-
-#### Bidirectional Search
-
-```jac
-walker BidirectionalSearch {
-    has target: node;
-    has forward_visited: set = {};
-    has backward_visited: set = {};
-    has meeting_point: node? = None;
-    has search_forward: bool = true;
-
-    can search with entry {
-        if self.search_forward {
-            // Forward search from source
-            if here in self.backward_visited {
-                self.meeting_point = here;
-                print(f"Paths met at: {here.name}!");
-                disengage;
-            }
-
-            self.forward_visited.add(here);
-            visit [-->];
-
-        } else {
-            // Backward search from target
-            if here in self.forward_visited {
-                self.meeting_point = here;
-                print(f"Paths met at: {here.name}!");
-                disengage;
-            }
-
-            self.backward_visited.add(here);
-            visit [<--];  // Reverse direction
-        }
-    }
-}
-
-// Usage: Spawn two walkers
-with entry {
-    let source = get_node("A");
-    let target = get_node("Z");
-
-    // Forward search
-    let forward = BidirectionalSearch(target=target, search_forward=true);
-    spawn forward on source;
-
-    // Backward search
-    let backward = BidirectionalSearch(target=source, search_forward=false);
-    spawn backward on target;
-}
-```
-
-#### 8.3 Walker Abilities
-
-### Entry and Exit Abilities
-
-Abilities are event-driven methods that execute automatically:
-
-```jac
-node Store {
-    has name: str;
-    has inventory: dict = {};
-    has revenue: float = 0.0;
-}
-
-walker InventoryChecker {
-    has low_stock_items: list = [];
-    has total_value: float = 0.0;
-    has stores_checked: int = 0;
-
-    // Entry ability - main processing
-    can check_inventory with Store entry {
-        print(f"\nChecking store: {here.name}");
-        self.stores_checked += 1;
-
-        let store_value = 0.0;
-        for item, details in here.inventory.items() {
-            let quantity = details["quantity"];
-            let price = details["price"];
-
-            store_value += quantity * price;
-
-            if quantity < 10 {
-                self.low_stock_items.append({
-                    "store": here.name,
-                    "item": item,
-                    "quantity": quantity
-                });
-            }
-        }
-
-        self.total_value += store_value;
-        print(f"  Store value: ${store_value:.2f}");
-    }
-
-    // Exit ability - cleanup or summary
-    can summarize with Store exit {
-        if len([-->]) == 0 {  // Last store
-            print(f"\n=== Inventory Check Complete ===");
-            print(f"Stores checked: {self.stores_checked}");
-            print(f"Total inventory value: ${self.total_value:.2f}");
-            print(f"Low stock items: {len(self.low_stock_items)}");
-
-            for item in self.low_stock_items {
-                print(f"  - {item['store']}: {item['item']} ({item['quantity']} left)");
-            }
-        }
-    }
-}
-```
-
-### Context References: `here`, `self`, `visitor`
-
-Understanding context references is crucial for walker abilities:
-
-```jac
-node Server {
-    has name: str;
-    has status: str = "running";
-    has load: float = 0.0;
-    has last_check: str = "";
-
-    // Node ability - 'visitor' refers to the walker
-    can log_visit with HealthChecker entry {
-        print(f"Server {self.name} being checked by {visitor.checker_id}");
-        self.last_check = visitor.check_time;
-    }
-
-    can provide_metrics with HealthChecker entry {
-        return {
-            "name": self.name,
-            "status": self.status,
-            "load": self.load
-        };
-    }
-}
-
-walker HealthChecker {
-    has checker_id: str;
-    has check_time: str;
-    has unhealthy_servers: list = [];
-
-    // Walker ability - 'here' refers to current node, 'self' to walker
-    can check_health with Server entry {
-        print(f"Checker {self.checker_id} at server {here.name}");
-
-        // Get metrics from the server (node calling its method)
-        let metrics = here.provide_metrics();
-
-        // Check health criteria
-        if here.status != "running" or here.load > 0.8 {
-            self.unhealthy_servers.append({
-                "server": here.name,
-                "status": here.status,
-                "load": here.load,
-                "checked_at": self.check_time
-            });
-
-            // Try to fix issues
-            if here.load > 0.8 {
-                self.rebalance_load(here);
-            }
-        }
-
-        // Continue to connected servers
-        visit [-->:NetworkLink:];
-    }
-
-    can rebalance_load(server: Server) {
-        print(f"  Attempting to rebalance load on {server.name}");
-        // Rebalancing logic here
-        server.load *= 0.7;  // Simplified rebalancing
-    }
-}
-```
-
-### Bidirectional Computation Model
-
-The power of OSP comes from bidirectional interaction between walkers and nodes:
-
-```jac
-node SmartDevice {
-    has device_id: str;
-    has device_type: str;
-    has settings: dict = {};
-    has metrics: dict = {};
-
-    // Node responds to configuration walker
-    can apply_config with ConfigUpdater entry {
-        print(f"Device {self.device_id} receiving config");
-
-        // Node can access walker data
-        let new_settings = visitor.get_settings_for(self.device_type);
-
-        // Node updates itself
-        self.settings.update(new_settings);
-
-        // Node can modify walker state
-        visitor.devices_updated += 1;
-        visitor.log_update(self.device_id, new_settings);
-    }
-
-    // Node provides data to analytics walker
-    can share_metrics with AnalyticsCollector entry {
-        // Complex computation at the node
-        let processed_metrics = self.process_raw_metrics();
-
-        // Give data to walker
-        visitor.collect_metrics(self.device_id, processed_metrics);
-    }
-
-    can process_raw_metrics() -> dict {
-        // Node's own complex logic
-        return {
-            "uptime": self.metrics.get("uptime", 0),
-            "efficiency": self.calculate_efficiency(),
-            "health_score": self.calculate_health()
-        };
-    }
-
-    can calculate_efficiency() -> float {
-        // Complex calculation
-        return 0.85;  // Simplified
-    }
-
-    can calculate_health() -> float {
-        return 0.92;  // Simplified
-    }
-}
-
-walker ConfigUpdater {
-    has config_version: str;
-    has devices_updated: int = 0;
-    has update_log: list = [];
-
-    can get_settings_for(device_type: str) -> dict {
-        // Walker provides configuration based on device type
-        let configs = {
-            "thermostat": {"temp_unit": "celsius", "schedule": "auto"},
-            "camera": {"resolution": "1080p", "night_mode": true},
-            "sensor": {"sensitivity": "high", "interval": 60}
-        };
-
-        return configs.get(device_type, {});
-    }
-
-    can log_update(device_id: str, settings: dict) {
-        self.update_log.append({
-            "device": device_id,
-            "settings": settings,
-            "timestamp": now()
-        });
-    }
-
-    can update_devices with SmartDevice entry {
-        // Walker's main logic is in the node ability
-        // This is just navigation
-        visit [-->:ConnectedTo:];
-    }
-
-    can report with exit {
-        print(f"\nConfiguration Update Complete:");
-        print(f"  Version: {self.config_version}");
-        print(f"  Devices updated: {self.devices_updated}");
-    }
-}
-
-walker AnalyticsCollector {
-    has metrics_db: dict = {};
-    has device_count: int = 0;
-
-    can collect_metrics(device_id: str, metrics: dict) {
-        self.metrics_db[device_id] = metrics;
-        self.device_count += 1;
-    }
-
-    can analyze with SmartDevice entry {
-        # Trigger node's ability
-        // Node will call walker's collect_metrics
-        visit [-->];
-    }
-
-    can generate_report with exit {
-        if self.device_count > 0 {
-            print(f"\n=== Analytics Report ===");
-            print(f"Devices analyzed: {self.device_count}");
-
-            // Calculate aggregates
-            avg_uptime = sum(m["uptime"] for m in self.metrics_db.values()) / self.device_count;
-            avg_health = sum(m["health_score"] for m in self.metrics_db.values()) / self.device_count;
-
-            print(f"Average uptime: {avg_uptime:.1f} hours");
-            print(f"Average health score: {avg_health:.2%}");
-        }
-    }
-}
-```
-
-### Practical Walker Patterns
-
-#### The Aggregator Pattern
-
-```jac
-walker DataAggregator {
-    has aggregation: dict = {};
-    has visit_count: int = 0;
-
-    can aggregate with DataNode entry {
-        let category = here.category;
-        if category not in self.aggregation {
-            self.aggregation[category] = {
-                "count": 0,
-                "total": 0.0,
-                "items": []
-            };
-        }
-
-        self.aggregation[category]["count"] += 1;
-        self.aggregation[category]["total"] += here.value;
-        self.aggregation[category]["items"].append(here.name);
-
-        self.visit_count += 1;
-        visit [-->];
-    }
-
-    can report_summary with exit {
-        print(f"\nAggregation complete. Visited {self.visit_count} nodes.");
-
-        for category, data in self.aggregation.items() {
-            avg = data["total"] / data["count"];
-            print(f"\n{category}:");
-            print(f"  Count: {data['count']}");
-            print(f"  Average: {avg:.2f}");
-            print(f"  Total: {data['total']:.2f}");
-        }
-    }
-}
-```
-
-#### The Validator Pattern
-
-```jac
-walker GraphValidator {
-    has errors: list = [];
-    has warnings: list = [];
-    has nodes_validated: int = 0;
-
-    can validate with entry {
-        self.nodes_validated += 1;
-
-        // Check node properties
-        if not hasattr(here, 'name') or not here.name {
-            self.errors.append({
-                "node": here,
-                "error": "Missing or empty name"
-            });
-        }
-
-        // Check connections
-        let outgoing = [-->];
-        let incoming = [<--];
-
-        if len(outgoing) == 0 and len(incoming) == 0 {
-            self.warnings.append({
-                "node": here.name if hasattr(here, 'name') else "unknown",
-                "warning": "Isolated node (no connections)"
-            });
-        }
-
-        // Type-specific validation
-        if hasattr(here, 'validate') {
-            let validation_result = here.validate();
-            if not validation_result["valid"] {
-                self.errors.extend(validation_result["errors"]);
-            }
-        }
-
-        visit [-->];
-    }
-
-    can report with exit {
-        print(f"\n=== Validation Report ===");
-        print(f"Nodes validated: {self.nodes_validated}");
-        print(f"Errors found: {len(self.errors)}");
-        print(f"Warnings: {len(self.warnings)}");
-
-        if self.errors {
-            print("\nErrors:");
-            for error in self.errors {
-                print(f"  - {error}");
-            }
-        }
-
-        if self.warnings {
-            print("\nWarnings:");
-            for warning in self.warnings {
-                print(f"  - {warning}");
-            }
-        }
-    }
-}
-```
-
-#### The Transformer Pattern
-
-```jac
-walker DataTransformer {
-    has transformation_rules: dict;
-    has transformed_count: int = 0;
-    has backup: dict = {};
-
-    can init(rules: dict) {
-        self.transformation_rules = rules;
-    }
-
-    can transform with entry {
-        // Backup original data
-        if hasattr(here, 'data') {
-            self.backup[here] = here.data.copy();
-
-            // Apply transformations
-            for field, rule in self.transformation_rules.items() {
-                if field in here.data {
-                    here.data[field] = self.apply_rule(here.data[field], rule);
-                }
-            }
-
-            self.transformed_count += 1;
-        }
-
-        visit [-->];
-    }
-
-    can apply_rule(value: any, rule: dict) -> any {
-        if rule["type"] == "multiply" {
-            return value * rule["factor"];
-        } elif rule["type"] == "uppercase" {
-            return str(value).upper();
-        } elif rule["type"] == "round" {
-            return round(float(value), rule["decimals"]);
-        }
-        return value;
-    }
-
-    can rollback {
-        // Restore original data if needed
-        for node, original_data in self.backup.items() {
-            node.data = original_data;
-        }
-    }
-}
-```
-
-### Walker Composition
-
-Multiple walkers can work together:
-
-```jac
-// First walker identifies targets
-walker TargetIdentifier {
-    has criteria: dict;
-    has targets: list = [];
-
-    can identify with entry {
-        if self.matches_criteria(here) {
-            self.targets.append(here);
-            here.mark_as_target();  // Mark for second walker
-        }
-        visit [-->];
-    }
-
-    can matches_criteria(node: any) -> bool {
-        // Check criteria
-        return true;  // Simplified
-    }
-}
-
-// Second walker processes marked targets
-walker TargetProcessor {
-    has processed: int = 0;
-
-    can process with entry {
-        if hasattr(here, 'is_target') and here.is_target {
-            self.perform_processing(here);
-            self.processed += 1;
-        }
-        visit [-->];
-    }
-
-    can perform_processing(node: any) {
-        print(f"Processing target: {node.name if hasattr(node, 'name') else node}");
-        // Processing logic
-    }
-}
-
-// Orchestrator walker coordinates others
-walker Orchestrator {
-    has phase: str = "identify";
-
-    can orchestrate with entry {
-        if self.phase == "identify" {
-            // Spawn identifier
-            let identifier = TargetIdentifier(criteria={"type": "important"});
-            spawn identifier on here;
-
-            // Move to next phase
-            self.phase = "process";
-            visit here;  // Revisit this node
-
-        } elif self.phase == "process" {
-            // Spawn processor
-            let processor = TargetProcessor();
-            spawn processor on here;
-
-            self.phase = "complete";
-        }
-    }
-}
-```
-
-### Summary
-
-In this chapter, we've mastered walkers—the mobile computational entities that make Object-Spatial Programming unique:
-
-- **Walker Basics**: Creating, spawning, and managing walker lifecycle
-- **Traversal Control**: Using `visit`, `disengage`, and `skip` effectively
-- **Walker Abilities**: Writing entry/exit abilities with proper context usage
-- **Bidirectional Computation**: Leveraging the interplay between walkers and nodes
-- **Advanced Patterns**: Implementing search algorithms and walker composition
-
-Walkers transform static data structures into dynamic, reactive systems. They enable algorithms that naturally adapt to the shape and content of your data, scaling from simple traversals to complex distributed computations.
-
-Next, we'll explore abilities in depth—the event-driven computation model that makes the interaction between walkers and nodes so powerful.
+*You've now grasped the fundamental paradigm shift of OSP. Let's build the foundation with nodes and edges!*

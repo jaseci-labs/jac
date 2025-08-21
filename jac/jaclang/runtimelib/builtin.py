@@ -4,10 +4,28 @@ from __future__ import annotations
 
 import json
 from abc import abstractmethod
+from enum import Enum
 from typing import ClassVar, Optional, override
 
-from jaclang.runtimelib.constructs import Archetype, NodeArchetype, Root
+from jaclang.runtimelib.constructs import NodeArchetype
 from jaclang.runtimelib.machine import JacMachineInterface as Jac
+from jaclang.runtimelib.utils import collect_node_connections
+
+
+class AccessLevelEnum(Enum):
+    """Access level constants for JAC objects."""
+
+    NO_ACCESS = "NO_ACCESS"
+    READ = "READ"
+    CONNECT = "CONNECT"
+    WRITE = "WRITE"
+
+
+# Create module level constants for easier access
+NoPerm = AccessLevelEnum.NO_ACCESS
+ReadPerm = AccessLevelEnum.READ
+ConnectPerm = AccessLevelEnum.CONNECT
+WritePerm = AccessLevelEnum.WRITE
 
 
 def printgraph(
@@ -41,37 +59,39 @@ def printgraph(
     )
 
 
-def jid(obj: Archetype) -> str:
-    """Get the id of the object."""
-    return Jac.object_ref(obj)
-
-
-def jobj(id: str) -> Archetype | None:
-    """Get the object from the id."""
-    return Jac.get_object(id)
+jid = Jac.object_ref
+jobj = Jac.get_object
+grant = Jac.perm_grant
+revoke = Jac.perm_revoke
+allroots = Jac.get_all_root
+save = Jac.save
+commit = Jac.commit
 
 
 def _jac_graph_json(file: Optional[str] = None) -> str:
     """Get the graph in json string."""
-    processed: list[Root | NodeArchetype] = []
+    visited_nodes: set = set()
+    connections: set = set()
+    edge_ids: set = set()
     nodes: list[dict] = []
     edges: list[dict] = []
-    working_set: list[tuple] = []
-
     root = Jac.root()
+
+    collect_node_connections(root, visited_nodes, connections, edge_ids)
+
+    # Create nodes list from visited nodes
     nodes.append({"id": id(root), "label": "root"})
+    for node_arch in visited_nodes:
+        if node_arch != root:
+            nodes.append({"id": id(node_arch), "label": repr(node_arch)})
 
-    processed.append(root)
-    working_set = [(root, ref) for ref in Jac.refs(root)]
+    # Create edges list with labels from connections
+    for _, source_node, target_node, edge_arch in connections:
+        edge_data = {"from": str(id(source_node)), "to": str(id(target_node))}
+        if repr(edge_arch) != "GenericEdge()":
+            edge_data["label"] = repr(edge_arch)
+        edges.append(edge_data)
 
-    while working_set:
-        start, end = working_set.pop(0)
-        edges.append({"from": id(start), "to": id(end)})
-        nodes.append({"id": id(end), "label": repr(end)})
-        processed.append(end)
-        for ref in Jac.refs(end):
-            if ref not in processed:
-                working_set.append((end, ref))
     output = json.dumps(
         {
             "version": "1.0",
@@ -92,4 +112,13 @@ __all__ = [
     "printgraph",
     "jid",
     "jobj",
+    "grant",
+    "revoke",
+    "allroots",
+    "save",
+    "commit",
+    "NoPerm",
+    "ReadPerm",
+    "ConnectPerm",
+    "WritePerm",
 ]

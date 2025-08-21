@@ -1,8 +1,0 @@
-accelerate
-peft
-bitsandbytes
-transformers
-trl
-loguru
-datasets
-wandb

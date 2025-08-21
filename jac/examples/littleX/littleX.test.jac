@@ -98,3 +98,8 @@ test load_feed {
         [ (feeds.results[i]['similarity'][0] >= feeds.results[i + 1]['similarity'][0]) for i in range(len(feeds.results) - 1) ]
     );
 }
+
+test test_load_user_profiles {
+    load_user_walker = root spawn load_user_profiles();
+    check load_user_walker.profiles;
+}

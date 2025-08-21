@@ -1,31 +1,19 @@
-import from mtllm.llms { BaseLLM }
-import from mtllm { Video }
+import from mtllm { Model, Video }
 import os;
 
-obj model(BaseLLM) {
-    def init {
-        super.__init__();
-    }
 
-    def __infer__(meaning_in: str, **kwargs: dict) {
-        print(kwargs);
-        print(meaning_in);
-        return "[Output] Something";
-    }
-}
-
-glob llm = model();
-
-def is_aligned(video: Video, text: str) -> bool by llm(
-    method="Chain-of-Thoughts",
-    context="Mugen is the moving character"
+glob llm = Model(
+    model_name="mockllm",
+    outputs = [
+        'The video features a large rabbit emerging from a burrow in a lush, green environment. The rabbit stretches and yawns, seemingly enjoying the morning. The scene is set in a vibrant, natural setting with bright skies and trees, creating a peaceful and cheerful atmosphere.'
+    ]
 );
 
+def explain_the_video(video: Video) -> str by llm();
+
 with entry {
-    video = Video(
-        os.path.join(os.path.dirname(__file__), "mugen.mp4"),
-        1
-    );
-    text = "Mugen jumps off and collects few coins.";
-    print(is_aligned(video, text));
+    video_file_path = os.path.join(os.path.dirname(__file__), "SampleVideo_1280x720_2mb.mp4");
+    target_fps = 1;
+    video = Video(path=video_file_path, fps=target_fps);
+    print(explain_the_video(video));
 }

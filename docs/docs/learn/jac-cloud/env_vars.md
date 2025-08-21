@@ -70,6 +70,9 @@ export SHOW_ENDPOINT_RETURNS=true
 # Disable automatic API endpoint generation
 export DISABLE_AUTO_ENDPOINT=true
 
+# Disable authentication requirement for all walker endpoints
+export REQUIRE_AUTH_BY_DEFAULT=false
+
 # Performance optimizations
 export DISABLE_AUTO_CLEANUP=true
 export SINGLE_QUERY=true
@@ -139,6 +142,7 @@ export LOGGER_USE_UTC="true"                      # Use UTC timestamps
 | **Variable** | **Description** | **Default** | **Example** |
 |--------------|-----------------|-------------|-------------|
 | `DISABLE_AUTO_ENDPOINT` | Disable automatic API endpoints | `false` | `true` |
+| `REQUIRE_AUTH_BY_DEFAULT` | Require authentication for all walker endpoints | `true` | `false` |
 <!-- | `SHOW_ENDPOINT_RETURNS` | Include walker return values | `false` | `true` | -->
 | `DISABLE_AUTO_CLEANUP` | Disable automatic deletion of disconnected nodes | `false` | `true` |
 | `SINGLE_QUERY` | Use individual queries instead of batch | `false` | `true` |
@@ -354,6 +358,7 @@ export SHOW_ENDPOINT_RETURNS="true"
 export DATABASE_NAME="test_db"
 export LOGGER_LEVEL="debug"
 export TOKEN_TIMEOUT="1"  # Short-lived tokens for testing
+export REQUIRE_AUTH_BY_DEFAULT="false"  # Disable auth for easier testing
 ```
 
 ### Production

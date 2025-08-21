@@ -1,17 +1,4 @@
-import from mtllm.llms { BaseLLM }
-
-obj model(BaseLLM) {
-    def init {
-        super.__init__();
-    }
-
-    def __infer__(meaning_in: str, **kwargs: dict) {
-        print(meaning_in);
-        return "[Output] Personality.INTROVERT";
-    }
-}
-
-glob llm = model();
+import from mtllm { Model }
 
 class PersonalityIndex {
     has index: int;
@@ -21,6 +8,12 @@ enum Personality {
     INTROVERT,
     EXTROVERT
 }
+
+glob llm = Model(
+    model_name="mockllm",
+    outputs=[Personality.INTROVERT],
+);
+
 
 glob personality_examples: dict[str, Personality | None] = {
     Personality.INTROVERT,
@@ -36,17 +29,22 @@ obj outer {
     obj inner {
         has diary_entries: list[str];
 
-        def get_personality(person: list[Person]) -> dict[Personality, PersonalityIndex] by llm(
+        def get_personality(person: list[Person]) -> Personality by llm(
             method="Reason",
-            incl_info=(personality_examples, self.diary_entries)
+            incl_info={
+                "personality_examples": personality_examples,
+                "diary_entries": self.diary_entries,
+            }
         );
     }
 }
 
 with entry {
-    obj1 = outer.inner(
+    einstein = Person('Albert Einstein', 76);
+    inner_inst = outer.inner(
         ["I won noble prize in Physics", "I am popular for my theory of relativity"]
     );
-    pp = Person('Albert Einstein', 76);
-    print(type(obj1.get_personality(pp)));
+    print(
+        inner_inst.get_personality(einstein)
+    );
 }

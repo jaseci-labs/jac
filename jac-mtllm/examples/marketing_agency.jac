@@ -1,8 +1,11 @@
-import from mtllm.llms { OpenAI }
+import from mtllm { Model }
+
+# Note that these tools are not available in mtllm package and
+# Should be defined by the user him/herself.
 import from mtllm.tools.wikipedia_utils { wikipedia_summary }
 import from mtllm.tools.serper { search, scrape }
 
-glob llm = OpenAI(verbose=True, model_name="gpt-4o-mini");
+glob llm = Model(model_name="gpt-4o-mini");
 
 def save_output_as_md(output: str, filename: str) -> None {
     with open(filename, 'w') as f {

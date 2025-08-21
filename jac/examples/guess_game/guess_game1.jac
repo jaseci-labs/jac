@@ -3,7 +3,7 @@
 import random;
 
 
-obj Game {
+class Game {
     def init(attempts: int) {
         self.attempts = attempts;
         self.won = False;
@@ -14,7 +14,8 @@ obj Game {
     }
 }
 
-obj GuessTheNumberGame (Game) {
+
+class GuessTheNumberGame(Game) {
     def init(attempts: int = 10) {
         super.init(attempts);
         self.correct_number = random.randint(1, 10);

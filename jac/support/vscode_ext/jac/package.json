@@ -1,6 +1,6 @@
 {
   "name": "jaclang-extension",
-  "version": "2025.5.10",
+  "version": "2025.7.17",
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
   "publisher": "jaseci-labs",
@@ -28,7 +28,17 @@
     "vscode": "^1.96.0"
   },
   "contributes": {
-
+    "configuration": {
+      "type": "object",
+      "title": "Jaclang Extension",
+      "properties": {
+        "jaclang-extension.showServeCommand": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show the 'Jac: Serve' Button in the editor title bar"
+        }
+      }
+    },
     "debuggers": [
       {
         "type": "jacdebug",
@@ -88,7 +98,7 @@
         {
           "command": "jaclang-extension.serveCurrentFile",
           "group": "navigation@99",
-          "when": "resourceLangId == jac"
+          "when": "resourceLangId == jac && config.jaclang-extension.showServeCommand"
         }
       ]
     },

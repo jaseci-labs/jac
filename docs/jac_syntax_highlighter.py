@@ -255,7 +255,7 @@ class JacLexer(RegexLexer):
                 Operator.Word,
             ),
             (
-                r"(:g:|:global:|visitor|here|self|def|self|<i>|init|<sup>|super|root|root|impl)",
+                r"(global|nonlocal|visitor|here|self|def|self|<i>|init|<sup>|super|root|root|impl)",
                 Operator.Word,
             ),
             (r"\?:|\?|:\+:|!=|==|<<|>>|:=|[-~+/*%=<>&^|.]", Operator),

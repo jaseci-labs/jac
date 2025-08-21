@@ -38,17 +38,32 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 class DebouncedRebuildHandler(FileSystemEventHandler):
     """File system event handler for debounced MkDocs site rebuilding."""
 
-    def __init__(self, root_dir: str, debounce_seconds: int = 10) -> None:
-        """Initialize the handler with root directory and debounce time."""
+    def __init__(
+        self,
+        root_dir: str,
+        debounce_seconds: int = 10,
+        ignore_paths: Optional[list] = None,
+    ) -> None:
+        """Initialize the handler with root directory, debounce time, and ignore paths."""
         self.root_dir = root_dir
         self.debounce_seconds = debounce_seconds
+        self.ignore_paths = ignore_paths or []
         self._timer: Optional[threading.Timer] = None
-        self._lock = threading.Lock()
+        self._debounce_lock = threading.Lock()
+        self._rebuild_lock = threading.Lock()
+
+    def _should_ignore(self, path: str) -> bool:
+        """Check if the path should be ignored."""
+        return any(
+            os.path.commonpath([os.path.abspath(path), os.path.abspath(ignore)])
+            == os.path.abspath(ignore)
+            for ignore in self.ignore_paths
+        )
 
     def debounced_rebuild(self, event_type: str, path: str) -> None:
         """Schedule a debounced rebuild on file system events."""
         print(f"Change detected: {event_type} — {path}")
-        with self._lock:
+        with self._debounce_lock:
             if self._timer:
                 self._timer.cancel()
             self._timer = threading.Timer(self.debounce_seconds, self.rebuild)
@@ -56,23 +71,39 @@ class DebouncedRebuildHandler(FileSystemEventHandler):
 
     def on_modified(self, event: FileSystemEvent) -> None:
         """Handle file modification events."""
-        if not event.is_directory and "site" not in event.src_path:
+        if (
+            not event.is_directory
+            and "site" not in event.src_path
+            and not self._should_ignore(event.src_path)
+        ):
             self.debounced_rebuild("modified", str(event.src_path))
 
     def on_created(self, event: FileSystemEvent) -> None:
         """Handle file creation events."""
-        if not event.is_directory and "site" not in event.src_path:
+        if (
+            not event.is_directory
+            and "site" not in event.src_path
+            and not self._should_ignore(event.src_path)
+        ):
             self.debounced_rebuild("created", str(event.src_path))
 
     def on_deleted(self, event: FileSystemEvent) -> None:
         """Handle file deletion events."""
-        if not event.is_directory and "site" not in event.src_path:
+        if (
+            not event.is_directory
+            and "site" not in event.src_path
+            and not self._should_ignore(event.src_path)
+        ):
             self.debounced_rebuild("deleted", str(event.src_path))
 
     def rebuild(self) -> None:
         """Rebuild the MkDocs site."""
-        print("\nRebuilding MkDocs site...")
+        if not self._rebuild_lock.acquire(blocking=False):
+            print("Rebuild already in progress. Skipping.")
+            return
+
         try:
+            print("\nRebuilding MkDocs site...")
             subprocess.run(["mkdocs", "build"], check=True, cwd=self.root_dir)
             print("Rebuild complete.")
         except subprocess.CalledProcessError as e:
@@ -81,6 +112,20 @@ class DebouncedRebuildHandler(FileSystemEventHandler):
             print(
                 "Error: mkdocs not found. Please install it via `pip install mkdocs`."
             )
+        finally:
+            self._rebuild_lock.release()
+
+
+def run_periodic_rebuilds(
+    rebuild_handler: DebouncedRebuildHandler, interval_seconds: int
+) -> None:
+    """Run periodic rebuilds in a loop."""
+    import time
+
+    while True:
+        time.sleep(interval_seconds)
+        print("\nPerforming scheduled 24-hour rebuild...")
+        rebuild_handler.rebuild()
 
 
 def serve_with_watch() -> None:
@@ -88,15 +133,31 @@ def serve_with_watch() -> None:
     port = 8000
     root_dir = os.path.dirname(os.path.dirname(__file__))
     site_dir = os.path.join(root_dir, "site")
+    ignore_paths = [
+        os.path.join(root_dir, "docs", "assets"),
+        os.path.join(root_dir, "docs", "playground", "jaclang.zip"),
+    ]
 
     print("Initial build of MkDocs site...")
     subprocess.run(["mkdocs", "build"], check=True, cwd=root_dir)
 
     # Set up file watcher
-    event_handler = DebouncedRebuildHandler(root_dir=root_dir, debounce_seconds=20)
+    event_handler = DebouncedRebuildHandler(
+        root_dir=root_dir, debounce_seconds=20, ignore_paths=ignore_paths
+    )
     observer = Observer()
     observer.schedule(event_handler, root_dir, recursive=True)
     observer.start()
+
+    # Set up periodic 12-hour rebuild
+    rebuild_interval_seconds = 12 * 60 * 60
+    periodic_thread = threading.Thread(
+        target=run_periodic_rebuilds,
+        args=(event_handler, rebuild_interval_seconds),
+        daemon=True,
+    )
+    periodic_thread.start()
+    print("Scheduled rebuilds will run every 24 hours.")
 
     # Create Starlette app and add middleware + static files
     app = Starlette()

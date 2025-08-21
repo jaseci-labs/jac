@@ -9,6 +9,4 @@ with entry{
 
     end_tier = MyNode();
     second_tier ++> end_tier;
-
-
 }

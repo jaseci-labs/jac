@@ -5,31 +5,52 @@ edit_uri: edit/main/docs/docs
 use_directory_urls: true
 nav:
   - Learn:
-    - Getting Started: "learn/getting_started.md"
+    # - Getting Started: "learn/getting_started.md"
     - Tour of Jac/Jaseci: "learn/introduction.md"
+    - Installation: "learn/installation.md"
+    - Learn Jac in 5 Minutes: "learn/jac_in_a_flash.md"
+    - Jac Playground: "learn/jac_playground.md"
+    - Jac Lens: "learn/jac-lens.md"
     - Learn By Example:
       - LittleX (your own twitter):
-        - "learn/examples/littleX/overview.md"
         - "learn/examples/littleX/tutorial.md"
-        - "learn/examples/littleX/quickstart.md"
-      - RAG-based Conversational Chatbot:
-        - "learn/examples/rag_chatbot/readme.md"
-        - "learn/examples/rag_chatbot/1_setting-up-jac-cloud.md"
-        - "learn/examples/rag_chatbot/2_building-a-rag-chatbot.md"
-        - "learn/examples/rag_chatbot/3_rag-dialogue-routing-chatbot.md"
-      - AI driven Applications:
-        - "learn/examples/mtp_examples/rpg_game.md"
-        - "learn/examples/mtp_examples/fantasy_trading_game.md"
-    - Learn Jac Language:
-      - Jac in 2 Minutes: "learn/jac_in_a_flash.md"
-      - The Jac Book: "jac_book/index.md"
-      - Understanding Object-Spatial:
-        - "learn/data_spatial/nodes_and_edges.md" # Introduction to DS primitives
-        - "learn/data_spatial/walkers.md" # Walker
-        - "learn/data_spatial/filtering.md" # Filtering
-        - "learn/data_spatial/sequence.md"
-      - FAQ: "learn/data_spatial/FAQ.md" # faq
-    - Jac Cloud Guide:
+        # - "learn/examples/littleX/full_guide.md"
+      - Jac MCP Conversational Chatbot:
+        - "learn/examples/rag_chatbot/Overview.md"
+        # - "learn/examples/rag_chatbot/Tutorial.md"
+      - RPG game with AI Genarated Maps: "learn/examples/mtp_examples/rpg_game.md"
+      - Agentic Fantasy Trading Game: "learn/examples/mtp_examples/fantasy_trading_game.md"
+    - Learn Jac Language (WIP):
+      - Introduction: "jac_book/index.md"
+      - 1. Welcome to Jac: "jac_book/chapter_1.md"
+      - 2. Variables, Types, and Basic Syntax: "jac_book/chapter_2.md"
+      - 3. Functions, Control Flow, and Collections in Jac: "jac_book/chapter_3.md"
+      - 4. AI functions and Decorators: "jac_book/chapter_4.md"
+      - 5. Advanced AI Operations: "jac_book/chapter_5.md"
+      - 6. Imports System and File Operations: "jac_book/chapter_6.md"
+      - 7. Enhanced OOP - Objects and Classes: "jac_book/chapter_7.md"
+      - 8. OSP Introduction and Paradigm Shift: "jac_book/chapter_8.md"
+      - 9. Nodes and Edges: "jac_book/chapter_9.md"
+      - 10. Walkers and Abilities: "jac_book/chapter_10.md"
+      - 11. Advanced Object Spatial Operations: "jac_book/chapter_11.md"
+      - 12. Walkers as API Endpoints: "jac_book/chapter_12.md"
+      - 13. Persistence and the Root Node: "jac_book/chapter_13.md"
+      - 14. Multi-User Architecture and Permissions: "jac_book/chapter_14.md"
+      - 15. Advanced Jac Cloud Features: "jac_book/chapter_15.md"
+      - 16. Type System Deep Dive: "jac_book/chapter_16.md"
+      - 17. Testing and Debugging: "jac_book/chapter_17.md"
+      - 18. Deployment Strategies: "jac_book/chapter_18.md"
+      - 19. Performance Optimization: "jac_book/chapter_19.md"
+      - 20. Python to Jac Migration: "jac_book/chapter_20.md"
+    - Programming 'by' AI:
+        - What is MTP: "learn/jac-mtllm/with_llm.md"
+        - Quick-start: "learn/jac-mtllm/quickstart.md"
+        - How to use MTP: "learn/jac-mtllm/usage.md"
+        - Python MTLLM Interface: "learn/jac-mtllm/python_integration.md"
+        - Using Multimodal models: "learn/jac-mtllm/multimodality.md"
+        - Build your own MTLLM plugin: "learn/jac-mtllm/creating_mtllm_plugins.md"
+        - LiteLLM Proxy Server: "learn/jac-mtllm/litellm_proxy.md"
+    - Scale-Native Programming:
       - "learn/jac-cloud/introduction.md"
       - "learn/jac-cloud/quickstart.md"
       - Core Features:
@@ -43,81 +64,71 @@ nav:
         - "learn/jac-cloud/webhook.md"
       - Operations:
         - "learn/jac-cloud/deployment.md"
-    - Jac AI Programming Guides:
-        - "learn/jac-mtllm/with_llm.md"
-        - Quick Start Guide: "learn/jac-mtllm/quickstart.md"
-        - Models: "learn/jac-mtllm/model_declaration.md"
-        - Usage of MTP: "learn/jac-mtllm/usage.md"
-        - Using Multimodal models: "learn/jac-mtllm/multimodality.md"
-        - Bring your own LM: "learn/jac-mtllm/create_own_lm.md"
-        - Python MTLLM Interface: "learn/jac-mtllm/python_integration.md"
+        - "learn/jac-cloud/utilities.md"
     - Tooling:
       - "learn/tools/cli.md"
     - Specifications:
       - Object-Spatial Programming Specification: "learn/dspfoundation.md"
       - Full Language Specification: "learn/jac_ref.md"
+    - Misc Docs:
+      - Understanding Object-Spatial:
+        - "learn/data_spatial/nodes_and_edges.md" # Introduction to DS primitives
+        - "learn/data_spatial/walkers.md" # Walker
+        - "learn/data_spatial/filtering.md" # Filtering
+        - "learn/data_spatial/sequence.md"
+      - FAQ: "learn/data_spatial/FAQ.md" # faq
 
-  - Jac Book (WIP):
-    - Introduction: "jac_book/index.md"
-    - Chapter 1 - Welcome to Jac: "jac_book/chapter_1.md"
-    - Chapter 2 - Setting Up Your Jac Environment: "jac_book/chapter_2.md"
-    - Chapter 3 - Familiar Syntax with New Semantics: "jac_book/chapter_3.md"
-    - Chapter 4 - Data Structures and Collections: "jac_book/chapter_4.md"
-    - Chapter 5 - Object-Oriented Programming Enhanced: "jac_book/chapter_5.md"
-    - Chapter 6 - Introduction to Object-Spatial Concepts: "jac_book/chapter_6.md"
-    - Chapter 7 - Nodes and Edges: "jac_book/chapter_7.md"
-    - Chapter 8 - Walkers - Mobile Computation: "jac_book/chapter_8.md"
-    - Chapter 9 - Graph Traversal and Filtering: "jac_book/chapter_9.md"
-    - Chapter 10 - Automatic Persistence: "jac_book/chapter_10.md"
-    - Chapter 11 - Multi-User Support: "jac_book/chapter_11.md"
-    - Chapter 12 - Distributed Systems with Jac: "jac_book/chapter_12.md"
-    - Chapter 13 - Asynchronous Operations: "jac_book/chapter_13.md"
-    - Chapter 14 - Advanced Walker Patterns: "jac_book/chapter_14.md"
-    - Chapter 15 - Python Interoperability: "jac_book/chapter_15.md"
-    - Chapter 16 - Type System Deep Dive: "jac_book/chapter_16.md"
-    - Chapter 17 - Project - Building a Social Network: "jac_book/chapter_17.md"
-    - Chapter 18 - Project - Distributed Task Queue: "jac_book/chapter_18.md"
-    - Chapter 19 - Best Practices and Performance Tuning: "jac_book/chapter_19.md"
-    - Chapter 20 - Quick Reference: "jac_book/chapter_20.md"
-    - Chapter 21 - Best Practices: "jac_book/chapter_21.md"
-
-  - Internals:
-    - Contributing: "internals/contrib.md"
-    - Design Docs and Guides:
-      - Compiler/Runtime Design: "internals/internals.md"
-      - Static Compilation:
-        - Sym Table Design Docs:
-          - "internals/symbol_tables/index.md"
-          - "internals/symbol_tables/structure.md"
-          - "internals/symbol_tables/building.md"
-          - "internals/symbol_tables/def_use.md"
-          - "internals/symbol_tables/linking.md"
-          - "internals/symbol_tables/resolution.md"
-        - UniIR Nodes: "internals/uniir_node.md"
-      - Runtime Plugin Interface: "internals/jac_plugins.md"
-    - Planning Specs and Docs:
-      - Language Ref Roadmap: "internals/planning_specs/ref_roadmap.md"
-      - Error System: "internals/planning_specs/error_system.md"
-      - Formatter System: "internals/planning_specs/formatter_system.md"
-      - The Pyright Inspiration Project: "internals/pyright_inspiration.md"
 
   - Community Hub:
     - Roadmap: "communityhub/roadmap.md"
     - Release Notes: "communityhub/release_notes.md"
     - Breaking Changes: "communityhub/breaking_changes.md"
+    - Leaderboard: "communityhub/top_contributors.md"
     - Fun Stuff:
       - Project Ideas:
         - "communityhub/fun/projects.md"
         - "communityhub/fun/p1.md"
         - "communityhub/fun/p2.md"
         - "communityhub/fun/p3.md"
+      - Content Pieces: "communityhub/content_pieces.md"
+    - Internals:
+      - Contributing: "internals/contrib.md"
+      - Design Docs and Guides:
+        - Compiler/Runtime Design: "internals/internals.md"
+        - Static Compilation:
+          - Sym Table Design Docs:
+            - "internals/symbol_tables/index.md"
+            - "internals/symbol_tables/structure.md"
+            - "internals/symbol_tables/building.md"
+            - "internals/symbol_tables/def_use.md"
+            - "internals/symbol_tables/linking.md"
+            - "internals/symbol_tables/resolution.md"
+          - UniIR Nodes: "internals/uniir_node.md"
+        - Runtime Plugin Interface: "internals/jac_plugins.md"
+        - main py plugin Interface: "internals/plugin_documentation.md"
+      - Planning Specs and Docs:
+        - Language Ref Roadmap: "internals/planning_specs/ref_roadmap.md"
+        - Archetype Lifecycle Enhancement Roadmap: "internals/planning_specs/spawn_life_cycle.md"
+        - Error System: "internals/planning_specs/error_system.md"
+        - Formatter System: "internals/planning_specs/formatter_system.md"
+        - Native Type System:
+          - Introduction: "internals/planning_specs/native_type_system/index.md"
+          - Architecture: "internals/planning_specs/native_type_system/architecture.md"
+          - Type Representation: "internals/planning_specs/native_type_system/type_representation.md"
+          - Type Resolution: "internals/planning_specs/native_type_system/type_resolution.md"
+          - Type Rules: "internals/planning_specs/native_type_system/type_rules.md"
+          - Type Inference: "internals/planning_specs/native_type_system/type_inference.md"
+          - Compiler Integration: "internals/planning_specs/native_type_system/compiler_integration.md"
+          - Let's Build: "internals/planning_specs/native_type_system/lets_build.md"
+
 
   - Jac Playground:
-    - Playground: "playground/index.html"
+    - Playground: "/playground/"
 
 theme:
   logo: "assets/logo.png"
   name: "material"
+  custom_dir: overrides
   palette:
     scheme: "slate"
     primary: "black"
@@ -171,6 +182,7 @@ markdown_extensions:
       custom_checkbox: true
   - pymdownx.arithmatex:
       generic: true
+  - pymdownx.blocks.caption
   - attr_list
   - md_in_html
   - attr_list
@@ -190,7 +202,7 @@ extra:
   social:
     - icon: fontawesome/brands/mastodon
       link: https://fosstodon.org/@squidfunk
-copyright: Copyright &copy; 2023 - 2024 Jac Hackers Everwhere
+copyright: Copyright &copy; 2025 Jac Hackers Everwhere
 
 extra_javascript:
   - assets/mathjax-config.js
@@ -203,6 +215,7 @@ extra_javascript:
   - https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.2/min/vs/loader.min.js
   - js/jac.monarch.js
   - js/run-code.js
+  - js/feedback.js
 
 plugins:
   - search
@@ -212,6 +225,6 @@ plugins:
       video_autoplay: True
       # video_loop: True
       video_controls: False
-  - mkdocs-simple-hooks:
-      hooks:
-        on_pre_build: scripts.handle_jac_compile_data:pre_build_hook
+
+hooks:
+  - scripts/handle_jac_compile_data.py

@@ -8,6 +8,7 @@ tl_stmt_with_doc: STRING toplevel_stmt
 toplevel_stmt: import_stmt
        | archetype
        | impl_def
+       | sem_def
        | ability
        | global_var
        | free_code
@@ -61,7 +62,7 @@ ability: decorators? KW_ASYNC? (ability_decl | function_decl)
 
 function_decl: KW_OVERRIDE? KW_STATIC? KW_DEF access_tag? named_ref func_decl? (block_tail | KW_ABSTRACT? SEMI)
 ability_decl: KW_OVERRIDE? KW_STATIC? KW_CAN access_tag? named_ref event_clause (block_tail | KW_ABSTRACT? SEMI)
-block_tail: code_block | KW_BY atomic_call SEMI
+block_tail: code_block | KW_BY expression SEMI
 event_clause: KW_WITH expression? (KW_EXIT | KW_ENTRY)
 
 func_decl: (LPAREN func_decl_params? RPAREN) (RETURN_HINT expression)?
@@ -74,6 +75,9 @@ param_var: (STAR_POW | STAR_MUL)? named_ref type_tag (EQ expression)?
 impl_def: decorators? KW_IMPL dotted_name impl_spec? impl_tail
 impl_spec: inherited_archs | func_decl | event_clause
 impl_tail: enum_block | block_tail
+
+// [Heading]: Semstrings.
+sem_def: KW_SEM dotted_name EQ STRING SEMI
 
 // [Heading]: Global variables.
 global_var: (KW_LET | KW_GLOBAL) access_tag? assignment_list SEMI
@@ -126,7 +130,7 @@ elif_stmt: KW_ELIF expression code_block (elif_stmt | else_stmt)?
 else_stmt: KW_ELSE code_block
 
 // [Heading]: While statements.
-while_stmt: KW_WHILE expression code_block
+while_stmt: KW_WHILE expression code_block else_stmt?
 
 // [Heading]: For statements.
 for_stmt: KW_ASYNC? KW_FOR assignment KW_TO expression KW_BY assignment code_block else_stmt?
@@ -218,13 +222,10 @@ report_stmt: KW_REPORT expression
 ctrl_stmt: KW_SKIP | KW_BREAK | KW_CONTINUE
 
 // [Heading]: Object spatial Walker statements.
-spatial_stmt: visit_stmt | ignore_stmt | disenage_stmt
+spatial_stmt: visit_stmt | disenage_stmt
 
 // [Heading]: Visit statements.
 visit_stmt: KW_VISIT (COLON expression COLON)? expression (else_stmt | SEMI)
-
-// [Heading]: Ignore statements.
-ignore_stmt: KW_IGNORE expression SEMI
 
 // [Heading]: Disengage statements.
 disenage_stmt: KW_DISENGAGE SEMI
@@ -330,7 +331,9 @@ index_slice: LSQUARE                                                            
            | list_val
 
 // [Heading]: Function calls.
-atomic_call: atomic_chain LPAREN param_list? (KW_BY atomic_call)? RPAREN
+atomic_call: atomic_chain LPAREN param_list? by_llm? RPAREN
+
+by_llm: KW_BY expression
 
 param_list: expr_list COMMA kw_expr_list COMMA?
           | kw_expr_list COMMA?
@@ -449,9 +452,9 @@ builtin_type: TYP_TYPE
 // ************************************************************************* //
 
 PYNLINE: /::py::(.|\n|\r)*?::py::/
-GLOBAL_OP: /:g:|:global:/
-NONLOCAL_OP: /:nl:|:nonlocal:/
 TYPE_OP: /`/
+GLOBAL_OP: "global"
+NONLOCAL_OP: "nonlocal"
 
 // [Heading]: f-string tokens.
 FSTR_START.1: "f\""
@@ -500,7 +503,6 @@ KW_CLASS: "class"
 KW_OBJECT: "obj"
 KW_ENUM: "enum"
 KW_NODE: "node"
-KW_IGNORE: "ignore"
 KW_VISIT: "visit"
 KW_SPAWN: "spawn"
 KW_WITH: "with"
@@ -519,6 +521,7 @@ KW_FLOW: "flow"
 KW_WAIT: "wait"
 KW_TEST: "test"
 KW_IMPL: "impl"
+KW_SEM: "sem"
 KW_ASSERT: "assert"
 KW_CHECK: "check"
 KW_IF: "if"

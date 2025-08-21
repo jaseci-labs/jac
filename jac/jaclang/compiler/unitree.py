@@ -15,9 +15,9 @@ from typing import (
     Generic,
     Optional,
     Sequence,
+    TYPE_CHECKING,
     Type,
     TypeVar,
-    TYPE_CHECKING,
 )
 
 
@@ -213,7 +213,7 @@ class UniNode:
 
     def flatten(self) -> list[UniNode]:
         """Flatten ast."""
-        ret = [self]
+        ret: list[UniNode] = [self]
         for k in self.kid:
             ret += k.flatten()
         return ret
@@ -240,16 +240,19 @@ class Symbol:
         access: SymbolAccess,
         parent_tab: UniScopeNode,
         typ: Optional[TypeBase] = None,
+        imported: bool = False,
     ) -> None:
         """Initialize."""
         self.defn: list[NameAtom] = [defn]
         self.uses: list[NameAtom] = []
+        self.imported: bool = imported
         defn.sym = self
         self.access: SymbolAccess = access
         self.parent_tab = parent_tab
         self.typ: Optional[TypeBase] = typ
         self.is_type_inferred: bool = False
         self.type_constraints: list[TypeBase] = []
+        self.semstr: str = ""
 
     @property
     def decl(self) -> NameAtom:
@@ -278,7 +281,7 @@ class Symbol:
         return ".".join(out)
 
     @property
-    def fetch_sym_tab(self) -> Optional[UniScopeNode]:
+    def symbol_table(self) -> Optional[UniScopeNode]:
         """Get symbol table."""
         return self.parent_tab.find_scope(self.sym_name)
 
@@ -341,6 +344,7 @@ class UniScopeNode(UniNode):
         typ: Optional[TypeBase] = None,
         single: bool = False,
         force_overwrite: bool = False,
+        imported: bool = False,
     ) -> Optional[UniNode]:
         """Set a variable in the symbol table.
 
@@ -362,6 +366,7 @@ class UniScopeNode(UniNode):
                 ),
                 parent_tab=self,
                 typ=typ,
+                imported=imported,
             )
         else:
             self.names_in_scope[node.sym_name].add_defn(node.name_spec)
@@ -396,6 +401,7 @@ class UniScopeNode(UniNode):
         typ: Optional[TypeBase] = None,
         single_decl: Optional[str] = None,
         force_overwrite: bool = False,
+        imported: bool = False,
     ) -> Optional[Symbol]:
         """Insert into symbol table."""
         if node.sym and self == node.sym.parent_tab:
@@ -406,6 +412,7 @@ class UniScopeNode(UniNode):
             access_spec=access_spec,
             typ=typ,
             force_overwrite=force_overwrite,
+            imported=imported,
         )
         self.update_py_ctx_for_def(node)
         return node.sym
@@ -560,6 +567,7 @@ class AstSymbolNode(UniNode):
         self.name_spec.name_of = self
         self.name_spec._sym_name = sym_name
         self.name_spec._sym_category = sym_category
+        self.semstr = ""
 
     @property
     def sym(self) -> Optional[Symbol]:
@@ -977,8 +985,10 @@ class Module(AstDocNode, UniScopeNode):
             prog=JacProgram(),
         ).ir_out.gen.jac
 
-    def unparse(self) -> str:
-        super().unparse()
+    def unparse(self, requires_format: bool = True) -> str:
+        unparsed = super().unparse()
+        if not requires_format:
+            return unparsed
         return self.format()
 
     @staticmethod
@@ -1539,7 +1549,7 @@ class ImplDef(CodeBlockStmt, ElementStmt, ArchBlockStmt, AstSymbolNode, UniScope
         decorators: Optional[Sequence[Expr]],
         target: Sequence[NameAtom],
         spec: Sequence[Expr] | FuncSignature | EventSignature | None,
-        body: Sequence[CodeBlockStmt] | Sequence[EnumBlockStmt] | FuncCall,
+        body: Sequence[CodeBlockStmt] | Sequence[EnumBlockStmt] | Expr,
         kid: Sequence[UniNode],
         doc: Optional[String] = None,
         decl_link: Optional[UniNode] = None,
@@ -1585,7 +1595,7 @@ class ImplDef(CodeBlockStmt, ElementStmt, ArchBlockStmt, AstSymbolNode, UniScope
                     res = res and sp.normalize(deep)
             else:
                 res = res and self.spec.normalize(deep) if self.spec else res
-            if isinstance(self.body, FuncCall):
+            if isinstance(self.body, Expr):
                 res = res and self.body.normalize(deep)
             else:
                 for stmt in self.body:
@@ -1618,7 +1628,7 @@ class ImplDef(CodeBlockStmt, ElementStmt, ArchBlockStmt, AstSymbolNode, UniScope
                 new_kid.append(self.gen_token(Tok.RPAREN))
             else:
                 new_kid.append(self.spec)
-        if isinstance(self.body, FuncCall):
+        if isinstance(self.body, Expr):
             new_kid.append(self.body)
         else:
             new_kid.append(self.gen_token(Tok.LBRACE))
@@ -1629,6 +1639,61 @@ class ImplDef(CodeBlockStmt, ElementStmt, ArchBlockStmt, AstSymbolNode, UniScope
                 new_kid.append(stmt)
                 prev_stmt = stmt
             new_kid.append(self.gen_token(Tok.RBRACE))
+        self.set_kids(nodes=new_kid)
+        return res
+
+
+class SemDef(ElementStmt, AstSymbolNode, UniScopeNode):
+    """SemDef node type for Jac Ast."""
+
+    def __init__(
+        self,
+        target: Sequence[NameAtom],
+        value: String,
+        kid: Sequence[UniNode],
+    ) -> None:
+        self.target = target
+        self.value = value
+        UniNode.__init__(self, kid=kid)
+        AstSymbolNode.__init__(
+            self,
+            sym_name="sem." + ".".join([x.sym_name for x in self.target]),
+            name_spec=self.create_sem_name_node(),
+            sym_category=SymbolType.SEM,
+        )
+        UniScopeNode.__init__(self, name=self.sym_name)
+
+    def create_sem_name_node(self) -> Name:
+        ret = Name(
+            orig_src=self.target[-1].loc.orig_src,
+            name=Tok.NAME.value,
+            value="sem." + ".".join([x.sym_name for x in self.target]),
+            col_start=self.target[0].loc.col_start,
+            col_end=self.target[-1].loc.col_end,
+            line=self.target[0].loc.first_line,
+            end_line=self.target[-1].loc.last_line,
+            pos_start=self.target[0].loc.pos_start,
+            pos_end=self.target[-1].loc.pos_end,
+        )
+        ret.parent = self
+        return ret
+
+    def normalize(self, deep: bool = False) -> bool:
+        res = True
+        if deep:
+            for item in self.target:
+                res = res and item.normalize(deep)
+            res = res and self.value.normalize(deep)
+        new_kid: list[UniNode] = [
+            self.gen_token(Tok.KW_SEM),
+        ]
+        for idx, item in enumerate(self.target):
+            new_kid.append(item)
+            if idx < len(self.target) - 1:
+                new_kid.append(self.gen_token(Tok.DOT))
+        new_kid.append(self.gen_token(Tok.EQ))
+        new_kid.append(self.value)
+        new_kid.append(self.gen_token(Tok.SEMI))
         self.set_kids(nodes=new_kid)
         return res
 
@@ -1736,7 +1801,7 @@ class Ability(
         is_abstract: bool,
         access: Optional[SubTag[Token]],
         signature: FuncSignature | EventSignature | None,
-        body: Sequence[CodeBlockStmt] | ImplDef | FuncCall | None,
+        body: Sequence[CodeBlockStmt] | ImplDef | Expr | None,
         kid: Sequence[UniNode],
         doc: Optional[String] = None,
         decorators: Sequence[Expr] | None = None,
@@ -1787,7 +1852,23 @@ class Ability(
 
     @property
     def is_genai_ability(self) -> bool:
-        return isinstance(self.body, FuncCall)
+        return isinstance(self.body, Expr)
+
+    def get_pos_argc_range(self) -> tuple[int, int]:
+        """Get the range of positional arguments for this ability.
+
+        Returns -1 for maximum number of arguments if there is an unpacked parameter (e.g., *args).
+        """
+        mn, mx = 0, 0
+        if isinstance(self.signature, FuncSignature):
+            for param in self.signature.params:
+                if param.unpack:
+                    if param.unpack == Tok.STAR_MUL:
+                        mx = -1
+                    break
+                mn += 1
+                mx += 1
+        return mn, mx
 
     def py_resolve_name(self) -> str:
         if isinstance(self.name_ref, Name):
@@ -2224,8 +2305,7 @@ class ExprStmt(CodeBlockStmt):
         CodeBlockStmt.__init__(self)
 
     def normalize(self, deep: bool = True) -> bool:
-        if deep:
-            res = self.expr.normalize(deep)
+        res = self.expr.normalize(deep) if deep else False
         new_kid: list[UniNode] = []
         if self.in_fstring:
             new_kid.append(self.expr)
@@ -2449,19 +2529,21 @@ class InForStmt(AstAsyncNode, AstElseBodyNode, CodeBlockStmt, UniScopeNode):
         return res
 
 
-class WhileStmt(CodeBlockStmt, UniScopeNode):
+class WhileStmt(AstElseBodyNode, CodeBlockStmt, UniScopeNode):
     """WhileStmt node type for Jac Ast."""
 
     def __init__(
         self,
         condition: Expr,
         body: Sequence[CodeBlockStmt],
+        else_body: Optional[ElseStmt],
         kid: Sequence[UniNode],
     ) -> None:
         self.condition = condition
         self.body: list[CodeBlockStmt] = list(body)
         UniNode.__init__(self, kid=kid)
         UniScopeNode.__init__(self, name=f"{self.__class__.__name__}")
+        AstElseBodyNode.__init__(self, else_body=else_body)
         CodeBlockStmt.__init__(self)
 
     def normalize(self, deep: bool = False) -> bool:
@@ -2478,6 +2560,8 @@ class WhileStmt(CodeBlockStmt, UniScopeNode):
         for stmt in self.body:
             new_kid.append(stmt)
         new_kid.append(self.gen_token(Tok.RBRACE))
+        if self.else_body:
+            new_kid.append(self.else_body)
         self.set_kids(nodes=new_kid)
         return res
 
@@ -2736,32 +2820,6 @@ class ReturnStmt(CodeBlockStmt):
         if self.expr:
             new_kid.append(self.expr)
         new_kid.append(self.gen_token(Tok.SEMI))
-        self.set_kids(nodes=new_kid)
-        return res
-
-
-class IgnoreStmt(WalkerStmtOnlyNode, CodeBlockStmt):
-    """IgnoreStmt node type for Jac Ast."""
-
-    def __init__(
-        self,
-        target: Expr,
-        kid: Sequence[UniNode],
-    ) -> None:
-        self.target = target
-        UniNode.__init__(self, kid=kid)
-        WalkerStmtOnlyNode.__init__(self)
-        CodeBlockStmt.__init__(self)
-
-    def normalize(self, deep: bool = False) -> bool:
-        res = True
-        if deep:
-            res = self.target.normalize(deep)
-        new_kid: list[UniNode] = [
-            self.gen_token(Tok.KW_IGNORE),
-            self.target,
-            self.gen_token(Tok.SEMI),
-        ]
         self.set_kids(nodes=new_kid)
         return res
 
@@ -3449,7 +3507,7 @@ class InnerCompr(AstAsyncNode, UniScopeNode):
         return res
 
 
-class ListCompr(AtomExpr):
+class ListCompr(AtomExpr, UniScopeNode):
     """ListCompr node type for Jac Ast."""
 
     def __init__(
@@ -3463,6 +3521,7 @@ class ListCompr(AtomExpr):
         UniNode.__init__(self, kid=kid)
         Expr.__init__(self)
         AstSymbolStubNode.__init__(self, sym_type=SymbolType.SEQUENCE)
+        UniScopeNode.__init__(self, name=f"{self.__class__.__name__}")
 
     def normalize(self, deep: bool = False) -> bool:
         res = True
@@ -3663,7 +3722,7 @@ class FuncCall(Expr):
         self,
         target: Expr,
         params: Sequence[Expr | KWPair] | None,
-        genai_call: Optional[FuncCall],
+        genai_call: Optional[Expr],
         kid: Sequence[UniNode],
     ) -> None:
         self.target = target
@@ -4584,17 +4643,21 @@ class String(Literal):
             return eval(self.value)
 
         elif self.value.startswith(("'", '"')):
-            repr_str = self.value.encode().decode("unicode_escape")
-            if (
-                (self.value.startswith('"""') and self.value.endswith('"""'))
-                or (self.value.startswith("'''") and self.value.endswith("'''"))
-            ) and not self.find_parent_of_type(FString):
-                return repr_str[3:-3]
             if (not self.find_parent_of_type(FString)) or (
                 not (self.parent and isinstance(self.parent, FString))
             ):
-                return repr_str[1:-1]
-            return repr_str
+                try:
+                    return ast3.literal_eval(self.value)
+                except (ValueError, SyntaxError):
+                    if (
+                        self.value.startswith('"""') and self.value.endswith('"""')
+                    ) or (self.value.startswith("'''") and self.value.endswith("'''")):
+                        return self.value[3:-3]
+                    return self.value[1:-1]
+            try:
+                return ast3.literal_eval(self.value)
+            except (ValueError, SyntaxError):
+                return self.value
         else:
             return self.value
 

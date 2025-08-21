@@ -31,6 +31,63 @@ from jaclang.settings import settings
 
 T = TypeVar("T", bound=ast3.AST)
 
+# Mapping of Jac tokens to corresponding Python AST operator classes. This
+# helps keep the implementation of ``exit_token`` concise and easier to
+# maintain.
+TOKEN_AST_MAP: dict[Tok, type[ast3.AST]] = {
+    Tok.KW_AND: ast3.And,
+    Tok.KW_OR: ast3.Or,
+    Tok.PLUS: ast3.Add,
+    Tok.ADD_EQ: ast3.Add,
+    Tok.BW_AND: ast3.BitAnd,
+    Tok.BW_AND_EQ: ast3.BitAnd,
+    Tok.BW_OR: ast3.BitOr,
+    Tok.BW_OR_EQ: ast3.BitOr,
+    Tok.BW_XOR: ast3.BitXor,
+    Tok.BW_XOR_EQ: ast3.BitXor,
+    Tok.DIV: ast3.Div,
+    Tok.DIV_EQ: ast3.Div,
+    Tok.FLOOR_DIV: ast3.FloorDiv,
+    Tok.FLOOR_DIV_EQ: ast3.FloorDiv,
+    Tok.LSHIFT: ast3.LShift,
+    Tok.LSHIFT_EQ: ast3.LShift,
+    Tok.MOD: ast3.Mod,
+    Tok.MOD_EQ: ast3.Mod,
+    Tok.STAR_MUL: ast3.Mult,
+    Tok.MUL_EQ: ast3.Mult,
+    Tok.DECOR_OP: ast3.MatMult,
+    Tok.MATMUL_EQ: ast3.MatMult,
+    Tok.STAR_POW: ast3.Pow,
+    Tok.STAR_POW_EQ: ast3.Pow,
+    Tok.RSHIFT: ast3.RShift,
+    Tok.RSHIFT_EQ: ast3.RShift,
+    Tok.MINUS: ast3.Sub,
+    Tok.SUB_EQ: ast3.Sub,
+    Tok.BW_NOT: ast3.Invert,
+    Tok.BW_NOT_EQ: ast3.Invert,
+    Tok.NOT: ast3.Not,
+    Tok.EQ: ast3.NotEq,
+    Tok.EE: ast3.Eq,
+    Tok.GT: ast3.Gt,
+    Tok.GTE: ast3.GtE,
+    Tok.KW_IN: ast3.In,
+    Tok.KW_IS: ast3.Is,
+    Tok.KW_ISN: ast3.IsNot,
+    Tok.LT: ast3.Lt,
+    Tok.LTE: ast3.LtE,
+    Tok.NE: ast3.NotEq,
+    Tok.KW_NIN: ast3.NotIn,
+}
+
+# Mapping of unary operator tokens to their Python AST counterparts used in
+# ``exit_unary_expr``.
+UNARY_OP_MAP: dict[Tok, type[ast3.unaryop]] = {
+    Tok.NOT: ast3.Not,
+    Tok.BW_NOT: ast3.Invert,
+    Tok.PLUS: ast3.UAdd,
+    Tok.MINUS: ast3.USub,
+}
+
 
 class PyastGenPass(UniPass):
     """Jac blue transpilation to python pass."""
@@ -114,69 +171,151 @@ class PyastGenPass(UniPass):
             )
         )
 
-    def needs_typing(self) -> None:
-        """Check if enum is needed."""
-        if self.needs_typing.__name__ in self.already_added:
+    def _add_preamble_once(self, key: str, node: ast3.AST) -> None:
+        """Append an import statement to the preamble once."""
+        if key in self.already_added:
             return
-        self.preamble.append(
-            self.sync(
-                ast3.Import(
-                    names=[
-                        self.sync(
-                            ast3.alias(name="typing"),
-                            jac_node=self.ir_out,
-                        ),
-                    ]
-                ),
-                jac_node=self.ir_out,
-            )
+        self.preamble.append(self.sync(node, jac_node=self.ir_out))
+        self.already_added.append(key)
+
+    def needs_typing(self) -> None:
+        """Ensure typing is imported only once."""
+        self._add_preamble_once(
+            self.needs_typing.__name__,
+            ast3.Import(
+                names=[self.sync(ast3.alias(name="typing"), jac_node=self.ir_out)]
+            ),
         )
-        self.already_added.append(self.needs_typing.__name__)
+
+    def needs_mtllm(self) -> None:
+        """Ensure MTLLM is imported only once."""
+        self._add_preamble_once(
+            self.needs_mtllm.__name__,
+            ast3.Import(
+                names=[self.sync(ast3.alias(name="mtllm"), jac_node=self.ir_out)]
+            ),
+        )
 
     def needs_enum(self) -> None:
-        """Check if enum is needed."""
-        if self.needs_enum.__name__ in self.already_added:
-            return
-        self.preamble.append(
-            self.sync(
-                ast3.ImportFrom(
-                    module="enum",
-                    names=[
-                        self.sync(ast3.alias(name="Enum", asname=None)),
-                        self.sync(ast3.alias(name="auto", asname=None)),
-                    ],
-                    level=0,
-                ),
-                jac_node=self.ir_out,
-            )
+        """Ensure Enum utilities are imported only once."""
+        self._add_preamble_once(
+            self.needs_enum.__name__,
+            ast3.ImportFrom(
+                module="enum",
+                names=[
+                    self.sync(ast3.alias(name="Enum", asname=None)),
+                    self.sync(ast3.alias(name="auto", asname=None)),
+                ],
+                level=0,
+            ),
         )
-        self.already_added.append(self.needs_enum.__name__)
 
     def needs_future(self) -> None:
-        """Check if enum is needed."""
-        if self.needs_future.__name__ in self.already_added:
-            return
-        self.preamble.append(
-            self.sync(
-                ast3.ImportFrom(
-                    module="concurrent.futures",
-                    names=[
-                        self.sync(ast3.alias(name="Future", asname=None)),
-                    ],
-                    level=0,
-                ),
-                jac_node=self.ir_out,
+        """Ensure concurrent Future is imported only once."""
+        self._add_preamble_once(
+            self.needs_future.__name__,
+            ast3.ImportFrom(
+                module="concurrent.futures",
+                names=[self.sync(ast3.alias(name="Future", asname=None))],
+                level=0,
+            ),
+        )
+
+    def _get_sem_decorator(self, node: uni.UniNode) -> ast3.Call | None:
+        """Create a semstring decorator for the given semantic strings.
+
+        Example:
+            @_.sem(
+                "Returns the weather for a given city.", {
+                    "city" : "Name of the city to get the weather for.",
+                }
+            )
+            def get_weather(city: str) {}
+
+        This the second parameter (dict) will also used in the class `has` variables
+        enum values etc.
+        """
+        semstr: str = ""
+        inner_semstr: dict[str, str] = {}
+
+        if isinstance(node, uni.Archetype):
+            semstr = node.semstr
+            arch_ast_body: list[uni.UniNode] = []
+            if isinstance(node.body, list):
+                arch_ast_body = node.body
+            elif isinstance(node.body, uni.ImplDef) and isinstance(
+                node.body.body, list
+            ):
+                # Type check will fail because of the invariant between codeblock and enum block
+                # but since we're only reading the list (and python doesn't have const) the type
+                # error is irrelevent here.
+                arch_ast_body = node.body.body  # type: ignore
+            for stmt in arch_ast_body:
+                if isinstance(stmt, uni.ArchHas):
+                    for has_var in stmt.vars:
+                        if has_var.semstr:
+                            inner_semstr[has_var.sym_name] = has_var.semstr
+        elif isinstance(node, uni.Enum):
+            semstr = node.semstr
+            enum_ast_body: list[uni.UniNode] = []
+            if isinstance(node.body, list):
+                enum_ast_body = node.body
+            elif isinstance(node.body, uni.ImplDef) and isinstance(
+                node.body.body, list
+            ):
+                enum_ast_body = node.body.body  # type: ignore
+            for stmt in enum_ast_body:
+                if isinstance(stmt, uni.Assignment) and isinstance(
+                    stmt.target[0], uni.AstSymbolNode
+                ):
+                    name = stmt.target[0].sym_name
+                    val_semstr = stmt.target[0].semstr
+                    inner_semstr[name] = val_semstr
+        elif isinstance(node, uni.Ability):
+            semstr = node.semstr
+            inner_semstr = (
+                {
+                    param.sym_name: param.semstr
+                    for param in node.signature.params
+                    if param.semstr
+                }
+                if isinstance(node.signature, uni.FuncSignature)
+                else {}
+            )
+
+        if not semstr and not inner_semstr:
+            return None
+
+        return self.sync(
+            ast3.Call(
+                func=self.jaclib_obj("sem"),
+                args=[
+                    self.sync(ast3.Constant(value=semstr)),
+                    self.sync(
+                        ast3.Dict(
+                            keys=[
+                                self.sync(ast3.Constant(value=k))
+                                for k in inner_semstr.keys()
+                            ],
+                            values=[
+                                self.sync(ast3.Constant(value=v))
+                                for v in inner_semstr.values()
+                            ],
+                        )
+                    ),
+                ],
+                keywords=[],
             )
         )
-        self.already_added.append(self.needs_future.__name__)
 
     def flatten(self, body: list[T | list[T] | None]) -> list[T]:
-        new_body = []
-        for i in body:
-            if isinstance(i, list):
-                new_body += i
-            elif i is not None:
-                new_body.append(i) if i else None
+        """Flatten a list of items or lists into a single list."""
+        new_body: list[T] = []
+        for item in body:
+            if isinstance(item, list):
+                new_body.extend(item)
+            elif item is not None:
+                new_body.append(item)
         return new_body
 
     def sync(
@@ -267,14 +406,10 @@ class PyastGenPass(UniPass):
         attr_node: ast3.Name | ast3.Attribute = self.sync(
             ast3.Name(id=attribute_list[0], ctx=ast3.Load()), sync_node_list[0]
         )
-        for i in range(len(attribute_list)):
-            if i == 0:
-                continue
+        for attr, sync_node in zip(attribute_list[1:], sync_node_list[1:]):
             attr_node = self.sync(
-                ast3.Attribute(
-                    value=attr_node, attr=attribute_list[i], ctx=ast3.Load()
-                ),
-                sync_node_list[i],
+                ast3.Attribute(value=attr_node, attr=attr, ctx=ast3.Load()),
+                sync_node,
             )
         return attr_node
 
@@ -426,40 +561,8 @@ class PyastGenPass(UniPass):
             )
 
     def exit_import(self, node: uni.Import) -> None:
-        path_alias: dict[str, Optional[str]] = (
-            {node.from_loc.dot_path_str: None} if node.from_loc else {}
-        )
-        imp_from = {}
-        if node.items:
-            for item in node.items:
-                if isinstance(item, uni.ModuleItem):
-                    imp_from[item.name.sym_name] = (
-                        item.alias.sym_name if item.alias else None
-                    )
-                elif isinstance(item, uni.ModulePath):
-                    path_alias[item.dot_path_str] = (
-                        item.alias.sym_name if item.alias else None
-                    )
-
-        item_names: list[ast3.expr] = []
-        item_keys: list[ast3.Constant] = []
-        item_values: list[ast3.Constant] = []
-        for k, v in imp_from.items():
-            item_keys.append(self.sync(ast3.Constant(value=k)))
-            item_values.append(self.sync(ast3.Constant(value=v)))
-            item_names.append(
-                self.sync(
-                    ast3.Name(
-                        id=v or k,
-                        ctx=ast3.Store(),
-                    )
-                )
-            )
-        path_named_value: str
+        """Exit import node."""
         py_nodes: list[ast3.AST] = []
-        typecheck_nodes: list[ast3.AST] = []
-        runtime_nodes: list[ast3.AST] = []
-
         if node.doc:
             py_nodes.append(
                 self.sync(
@@ -468,255 +571,28 @@ class PyastGenPass(UniPass):
                 )
             )
 
-        for path, alias in path_alias.items():
-            path_named_value = ("_jac_inc_" if node.is_absorb else "") + (
-                alias if alias else path
-            ).lstrip(".").split(".")[0]
-            # target_named_value = ""
-            # for i in path.split("."):
-            #     target_named_value += i if i else "."
-            #     if i:
-            #         break
-
-            args = [
-                self.sync(
-                    ast3.Constant(value=path),
-                ),
-                self.sync(
-                    ast3.Name(
-                        id="__file__",
-                        ctx=ast3.Load(),
-                    )
-                ),
-            ]
-            keywords = []
-
-            if node.is_absorb:
-                args.append(self.sync(ast3.Constant(value=node.is_absorb)))
-
-            if alias is not None:
-                keywords.append(
-                    self.sync(
-                        ast3.keyword(
-                            arg="mdl_alias",
-                            value=self.sync(
-                                ast3.Constant(value=alias),
-                            ),
-                        )
-                    )
-                )
-
-            if item_keys and item_values:
-                keywords.append(
-                    self.sync(
-                        ast3.keyword(
-                            arg="items",
-                            value=self.sync(
-                                ast3.Dict(
-                                    keys=cast(list[ast3.expr | None], item_keys),
-                                    values=cast(list[ast3.expr], item_values),
-                                ),
-                            ),
-                        )
-                    )
-                )
-
-            runtime_nodes.append(
-                self.sync(
-                    ast3.Assign(
-                        targets=(
-                            [
-                                self.sync(
-                                    ast3.Tuple(
-                                        elts=(
-                                            item_names
-                                            or [
-                                                self.sync(
-                                                    ast3.Name(
-                                                        id=path_named_value,
-                                                        ctx=ast3.Store(),
-                                                    )
-                                                )
-                                            ]
-                                        ),
-                                        ctx=ast3.Store(),
-                                    )
-                                )
-                            ]
-                        ),
-                        value=self.sync(
-                            ast3.Call(
-                                func=self.jaclib_obj("jac_import"),
-                                args=args,
-                                keywords=keywords,
-                            )
-                        ),
-                    ),
-                ),
-            )
         if node.is_absorb:
-            absorb_exec = f"={path_named_value}.__dict__['"
-            runtime_nodes.append(
-                self.sync(
-                    ast3.For(
-                        target=self.sync(ast3.Name(id="i", ctx=ast3.Store())),
-                        iter=self.sync(
-                            ast3.IfExp(
-                                test=self.sync(
-                                    ast3.Compare(
-                                        left=self.sync(ast3.Constant(value="__all__")),
-                                        ops=[self.sync(ast3.In())],
-                                        comparators=[
-                                            self.sync(
-                                                ast3.Attribute(
-                                                    value=self.sync(
-                                                        ast3.Name(
-                                                            id=path_named_value,
-                                                            ctx=ast3.Load(),
-                                                        )
-                                                    ),
-                                                    attr="__dict__",
-                                                    ctx=ast3.Load(),
-                                                )
-                                            )
-                                        ],
-                                    )
-                                ),
-                                body=self.sync(
-                                    ast3.Attribute(
-                                        value=self.sync(
-                                            ast3.Name(
-                                                id=path_named_value, ctx=ast3.Load()
-                                            )
-                                        ),
-                                        attr="__all__",
-                                        ctx=ast3.Load(),
-                                    )
-                                ),
-                                orelse=self.sync(
-                                    ast3.Attribute(
-                                        value=self.sync(
-                                            ast3.Name(
-                                                id=path_named_value, ctx=ast3.Load()
-                                            )
-                                        ),
-                                        attr="__dict__",
-                                        ctx=ast3.Load(),
-                                    )
-                                ),
-                            )
-                        ),
-                        body=[
-                            self.sync(
-                                ast3.If(
-                                    test=self.sync(
-                                        ast3.UnaryOp(
-                                            op=self.sync(ast3.Not()),
-                                            operand=self.sync(
-                                                ast3.Call(
-                                                    func=self.sync(
-                                                        ast3.Attribute(
-                                                            value=self.sync(
-                                                                ast3.Name(
-                                                                    id="i",
-                                                                    ctx=ast3.Load(),
-                                                                )
-                                                            ),
-                                                            attr="startswith",
-                                                            ctx=ast3.Load(),
-                                                        )
-                                                    ),
-                                                    args=[
-                                                        self.sync(
-                                                            ast3.Constant(value="_")
-                                                        )
-                                                    ],
-                                                    keywords=[],
-                                                )
-                                            ),
-                                        )
-                                    ),
-                                    body=[
-                                        self.sync(
-                                            ast3.Expr(
-                                                value=self.sync(
-                                                    ast3.Call(
-                                                        func=self.sync(
-                                                            ast3.Name(
-                                                                id="exec",
-                                                                ctx=ast3.Load(),
-                                                            )
-                                                        ),
-                                                        args=[
-                                                            self.sync(
-                                                                ast3.JoinedStr(
-                                                                    values=[
-                                                                        self.sync(
-                                                                            ast3.FormattedValue(
-                                                                                value=self.sync(
-                                                                                    ast3.Name(
-                                                                                        id="i",
-                                                                                        ctx=ast3.Load(),
-                                                                                    )
-                                                                                ),
-                                                                                conversion=-1,
-                                                                            )
-                                                                        ),
-                                                                        self.sync(
-                                                                            ast3.Constant(
-                                                                                value=absorb_exec
-                                                                            )
-                                                                        ),
-                                                                        self.sync(
-                                                                            ast3.FormattedValue(
-                                                                                value=self.sync(
-                                                                                    ast3.Name(
-                                                                                        id="i",
-                                                                                        ctx=ast3.Load(),
-                                                                                    )
-                                                                                ),
-                                                                                conversion=-1,
-                                                                            )
-                                                                        ),
-                                                                        self.sync(
-                                                                            ast3.Constant(
-                                                                                value="']"
-                                                                            )
-                                                                        ),
-                                                                    ]
-                                                                )
-                                                            )
-                                                        ],
-                                                        keywords=[],
-                                                    )
-                                                )
-                                            )
-                                        )
-                                    ],
-                                    orelse=[],
-                                )
-                            )
-                        ],
-                        orelse=[],
-                    )
-                )
-            )
-        if node.is_absorb:
+            # This is `include "module_name";` which becomes `from module_name import *`
             source = node.items[0]
             if not isinstance(source, uni.ModulePath):
                 raise self.ice()
-            typecheck_nodes.append(
+
+            module_name_parts = [p.value for p in source.path] if source.path else []
+            module_name = ".".join(module_name_parts) if module_name_parts else None
+
+            py_nodes.append(
                 self.sync(
                     py_node=ast3.ImportFrom(
-                        module=(source.dot_path_str.lstrip(".") if source else None),
+                        module=module_name,
                         names=[self.sync(ast3.alias(name="*"), node)],
-                        level=0,
+                        level=source.level,
                     ),
                     jac_node=node,
                 )
             )
         elif not node.from_loc:
-            typecheck_nodes.append(
+            # This is `import module1, module2 as alias;`
+            py_nodes.append(
                 self.sync(
                     ast3.Import(
                         names=[
@@ -728,32 +604,25 @@ class PyastGenPass(UniPass):
                 )
             )
         else:
-            typecheck_nodes.append(
+            # This is `from module import item1, item2 as alias;`
+            module_name_parts = (
+                [p.value for p in node.from_loc.path] if node.from_loc.path else []
+            )
+            module_name = ".".join(module_name_parts) if module_name_parts else None
+
+            py_nodes.append(
                 self.sync(
                     ast3.ImportFrom(
-                        module=(
-                            node.from_loc.dot_path_str.lstrip(".")
-                            if node.from_loc
-                            else None
-                        ),
+                        module=module_name,
                         names=[
                             cast(ast3.alias, i)
                             for item in node.items
                             for i in item.gen.py_ast
                         ],
-                        level=0,
+                        level=node.from_loc.level,
                     )
                 )
             )
-        py_nodes.append(
-            self.sync(
-                ast3.If(
-                    test=self.jaclib_obj("TYPE_CHECKING"),
-                    body=[cast(ast3.stmt, node) for node in typecheck_nodes],
-                    orelse=[cast(ast3.stmt, node) for node in runtime_nodes],
-                )
-            )
-        )
         node.gen.py_ast = py_nodes
 
     def exit_module_path(self, node: uni.ModulePath) -> None:
@@ -781,15 +650,13 @@ class PyastGenPass(UniPass):
             self.traverse(node.body)
 
     def exit_archetype(self, node: uni.Archetype) -> None:
-        inner = None
+        inner: Sequence[uni.CodeBlockStmt] | Sequence[uni.EnumBlockStmt] | None = None
         if isinstance(node.body, uni.ImplDef):
-            inner = (
-                node.body.body if not isinstance(node.body.body, uni.FuncCall) else None
-            )
-        elif not isinstance(node.body, uni.FuncCall):
+            inner = node.body.body if not isinstance(node.body.body, uni.Expr) else None
+        elif not isinstance(node.body, uni.Expr):
             inner = node.body
-        body = self.resolve_stmt_block(inner, doc=node.doc)
-        if not body and not isinstance(node.body, uni.FuncCall):
+        body: list[ast3.AST] = self.resolve_stmt_block(inner, doc=node.doc)
+        if not body and not isinstance(node.body, uni.Expr):
             self.log_error(
                 "Archetype has no body. Perhaps an impl must be imported.", node
             )
@@ -812,6 +679,10 @@ class PyastGenPass(UniPass):
             if node.decorators
             else []
         )
+
+        if sem_decorator := self._get_sem_decorator(node):
+            decorators.append(sem_decorator)
+
         base_classes = [cast(ast3.expr, i.gen.py_ast[0]) for i in node.base_classes]
         if node.arch_type.name != Tok.KW_CLASS:
             base_classes.append(self.jaclib_obj(node.arch_type.value.capitalize()))
@@ -835,12 +706,10 @@ class PyastGenPass(UniPass):
 
     def exit_enum(self, node: uni.Enum) -> None:
         self.needs_enum()
-        inner = None
+        inner: Sequence[uni.CodeBlockStmt] | Sequence[uni.EnumBlockStmt] | None = None
         if isinstance(node.body, uni.ImplDef):
-            inner = (
-                node.body.body if not isinstance(node.body.body, uni.FuncCall) else None
-            )
-        elif not isinstance(node.body, uni.FuncCall):
+            inner = node.body.body if not isinstance(node.body.body, uni.Expr) else None
+        elif not isinstance(node.body, uni.Expr):
             inner = node.body
         body = self.resolve_stmt_block(inner, doc=node.doc)
         decorators = (
@@ -848,6 +717,10 @@ class PyastGenPass(UniPass):
             if node.decorators
             else []
         )
+
+        if sem_decorator := self._get_sem_decorator(node):
+            decorators.append(sem_decorator)
+
         base_classes = [cast(ast3.expr, i.gen.py_ast[0]) for i in node.base_classes]
         base_classes.append(self.sync(ast3.Name(id="Enum", ctx=ast3.Load())))
         node.gen.py_ast = [
@@ -867,30 +740,148 @@ class PyastGenPass(UniPass):
         if isinstance(node.body, uni.ImplDef):
             self.traverse(node.body)
 
-    def gen_llm_body(self, node: uni.Ability) -> list[ast3.AST]:
-        """Generate the by LLM body."""
-        # to Avoid circular import
-        from jaclang.runtimelib.machine import JacMachineInterface
-
-        body: list[ast3.AST] = JacMachineInterface.gen_llm_body(self, node)
-        if node.doc:
-            body.insert(
-                0,
-                self.sync(
-                    ast3.Expr(value=cast(ast3.expr, node.doc.gen.py_ast[0])),
-                    jac_node=node.doc,
-                ),
+    def _invoke_llm_call(
+        self, model: ast3.expr, caller: ast3.expr, args: ast3.Dict
+    ) -> ast3.Call:
+        """Reusable method to codegen call_llm(model, caller, args)."""
+        self.needs_mtllm()
+        mtir_cls_ast = self.sync(
+            ast3.Attribute(
+                value=self.sync(ast3.Name(id="mtllm", ctx=ast3.Load())),
+                attr="MTIR",
+                ctx=ast3.Load(),
             )
-        return body
+        )
+        mtir_ast = self.sync(
+            ast3.Call(
+                func=self.sync(
+                    ast3.Attribute(
+                        value=mtir_cls_ast,
+                        attr="factory",
+                        ctx=ast3.Load(),
+                    )
+                ),
+                args=[],
+                keywords=[
+                    self.sync(
+                        ast3.keyword(
+                            arg="caller",
+                            value=caller,
+                        )
+                    ),
+                    self.sync(
+                        ast3.keyword(
+                            arg="args",
+                            value=args,
+                        )
+                    ),
+                    self.sync(
+                        ast3.keyword(
+                            arg="call_params",
+                            value=self.sync(
+                                ast3.Attribute(
+                                    value=model,
+                                    attr="call_params",
+                                    ctx=ast3.Load(),
+                                ),
+                            ),
+                        )
+                    ),
+                ],
+            )
+        )
+        return self.sync(
+            ast3.Call(
+                func=self.jaclib_obj("call_llm"),
+                args=[],
+                keywords=[
+                    self.sync(
+                        ast3.keyword(
+                            arg="model",
+                            value=model,
+                        )
+                    ),
+                    self.sync(
+                        ast3.keyword(
+                            arg="mtir",
+                            value=mtir_ast,
+                        )
+                    ),
+                ],
+            )
+        )
+
+    def gen_llm_body(self, node: uni.Ability) -> list[ast3.stmt]:
+        """Generate the by LLM body."""
+        assert isinstance(node.body, uni.Expr)
+        assert isinstance(node.signature, uni.FuncSignature)
+
+        # Codegen for the caller of the LLM call.
+        caller: ast3.expr
+        if node.method_owner:
+            owner = self.sync(
+                ast3.Name(
+                    id="self" if not node.is_static else node.method_owner.sym_name,
+                    ctx=ast3.Load(),
+                ),
+                jac_node=node.method_owner,
+            )
+            caller = self.sync(
+                ast3.Attribute(
+                    value=owner,
+                    attr=node.name_ref.sym_name,
+                    ctx=ast3.Load(),
+                ),
+                jac_node=node.method_owner,
+            )
+        else:
+            caller = self.sync(ast3.Name(node.name_ref.sym_name, ctx=ast3.Load()))
+
+        # Codegen for arguments of the function.
+        #
+        # TODO: Currently this doesn't consider *args or **kwargs (but this also
+        # same in the current version so we're not breaking anything).
+        args = self.sync(
+            ast3.Dict(
+                keys=[
+                    self.sync(ast3.Constant(value=param.name.sym_name))
+                    for param in node.signature.params
+                ],
+                values=[
+                    self.sync(ast3.Name(param.name.sym_name, ctx=ast3.Load()))
+                    for param in node.signature.params
+                ],
+            )
+        )
+
+        llm_call = self._invoke_llm_call(
+            model=cast(ast3.expr, node.body.gen.py_ast[0]), caller=caller, args=args
+        )
+
+        # Attach docstring if exists and the llm call.
+        statements: list[ast3.stmt] = []
+        if node.doc:
+            statements.append(
+                self.sync(
+                    ast3.Expr(
+                        value=self.sync(
+                            ast3.Constant(value=node.doc.lit_value),
+                            jac_node=node.doc,
+                        )
+                    )
+                )
+            )
+        statements.append(self.sync(ast3.Return(value=llm_call)))
+        return statements
 
     def exit_ability(self, node: uni.Ability) -> None:
         func_type = ast3.AsyncFunctionDef if node.is_async else ast3.FunctionDef
         body = (
             self.gen_llm_body(node)
-            if isinstance(node.body, uni.FuncCall)
+            if isinstance(node.body, uni.Expr)
             or (
                 isinstance(node.body, uni.ImplDef)
-                and isinstance(node.body.body, uni.FuncCall)
+                and isinstance(node.body.body, uni.Expr)
             )
             else (
                 [
@@ -908,10 +899,10 @@ class PyastGenPass(UniPass):
                         (
                             node.body.body
                             if isinstance(node.body, uni.ImplDef)
-                            and not isinstance(node.body.body, uni.FuncCall)
+                            and not isinstance(node.body.body, uni.Expr)
                             else (
                                 node.body
-                                if not isinstance(node.body, uni.FuncCall)
+                                if not isinstance(node.body, uni.Expr)
                                 else None
                             )
                         ),
@@ -930,6 +921,10 @@ class PyastGenPass(UniPass):
             if node.decorators
             else []
         )
+
+        if sem_decorator := self._get_sem_decorator(node):
+            decorator_list.append(sem_decorator)
+
         if isinstance(node.signature, uni.EventSignature):
             decorator_list.append(
                 self.jaclib_obj(
@@ -957,11 +952,15 @@ class PyastGenPass(UniPass):
             decorator_list.insert(
                 0, self.sync(ast3.Name(id="staticmethod", ctx=ast3.Load()))
             )
-        if not body and not isinstance(node.body, uni.FuncCall):
+        if not body and not isinstance(node.body, uni.Expr):
             self.log_error(
                 "Ability has no body. Perhaps an impl must be imported.", node
             )
-            body = [self.sync(ast3.Pass(), node)]
+            body = [self.sync(ast3.Pass(), node)]  # type: ignore
+
+        ast_returns: ast3.expr = self.sync(ast3.Constant(value=None))
+        if isinstance(node.signature, uni.FuncSignature) and node.signature.return_type:
+            ast_returns = cast(ast3.expr, node.signature.return_type.gen.py_ast[0])
 
         node.gen.py_ast = [
             self.sync(
@@ -988,13 +987,16 @@ class PyastGenPass(UniPass):
                     ),
                     body=[cast(ast3.stmt, i) for i in body],
                     decorator_list=[cast(ast3.expr, i) for i in decorator_list],
-                    returns=self.sync(ast3.Constant(value=None)),
+                    returns=ast_returns,
                     type_params=[],
                 )
             )
         ]
 
     def exit_impl_def(self, node: uni.ImplDef) -> None:
+        pass
+
+    def exit_sem_def(self, node: uni.SemDef) -> None:
         pass
 
     def exit_func_signature(self, node: uni.FuncSignature) -> None:
@@ -1085,18 +1087,20 @@ class PyastGenPass(UniPass):
             ]
 
     def exit_param_var(self, node: uni.ParamVar) -> None:
-        node.gen.py_ast = [
-            self.sync(
-                ast3.arg(
-                    arg=node.name.sym_name,
-                    annotation=(
-                        cast(ast3.expr, node.type_tag.gen.py_ast[0])
-                        if node.type_tag
-                        else None
-                    ),
+        if isinstance(node.name.gen.py_ast[0], ast3.Name):
+            name = node.name.gen.py_ast[0].id
+            node.gen.py_ast = [
+                self.sync(
+                    ast3.arg(
+                        arg=name,
+                        annotation=(
+                            cast(ast3.expr, node.type_tag.gen.py_ast[0])
+                            if node.type_tag
+                            else None
+                        ),
+                    )
                 )
-            )
-        ]
+            ]
 
     def exit_arch_has(self, node: uni.ArchHas) -> None:
         vars_py: list[ast3.AST] = self.flatten([v.gen.py_ast for v in node.vars])
@@ -1404,7 +1408,11 @@ class PyastGenPass(UniPass):
                         cast(ast3.stmt, stmt)
                         for stmt in self.resolve_stmt_block(node.body)
                     ],
-                    orelse=[],
+                    orelse=(
+                        [cast(ast3.stmt, stmt) for stmt in node.else_body.gen.py_ast]
+                        if node.else_body
+                        else []
+                    ),
                 )
             )
         ]
@@ -1735,29 +1743,6 @@ class PyastGenPass(UniPass):
                     )
                 )
             ]
-
-    def exit_ignore_stmt(self, node: uni.IgnoreStmt) -> None:
-        walker = self.sync(
-            ast3.Name(id="self", ctx=ast3.Load())
-            if node.from_walker
-            else ast3.Name(id=Con.VISITOR.value, ctx=ast3.Load())
-        )
-
-        node.gen.py_ast = [
-            self.sync(
-                ast3.Expr(
-                    value=self.sync(
-                        ast3.Call(
-                            func=self.jaclib_obj("ignore"),
-                            args=cast(
-                                list[ast3.expr], [walker, node.target.gen.py_ast[0]]
-                            ),
-                            keywords=[],
-                        )
-                    )
-                )
-            )
-        ]
 
     def exit_visit_stmt(self, node: uni.VisitStmt) -> None:
         loc = self.sync(
@@ -2160,42 +2145,17 @@ class PyastGenPass(UniPass):
         ]
 
     def exit_unary_expr(self, node: uni.UnaryExpr) -> None:
-        if node.op.name == Tok.NOT:
+        op_cls = UNARY_OP_MAP.get(node.op.name)
+        if op_cls:
             node.gen.py_ast = [
                 self.sync(
                     ast3.UnaryOp(
-                        op=self.sync(ast3.Not()),
+                        op=self.sync(op_cls()),
                         operand=cast(ast3.expr, node.operand.gen.py_ast[0]),
                     )
                 )
             ]
-        elif node.op.name == Tok.BW_NOT:
-            node.gen.py_ast = [
-                self.sync(
-                    ast3.UnaryOp(
-                        op=self.sync(ast3.Invert()),
-                        operand=cast(ast3.expr, node.operand.gen.py_ast[0]),
-                    )
-                )
-            ]
-        elif node.op.name == Tok.PLUS:
-            node.gen.py_ast = [
-                self.sync(
-                    ast3.UnaryOp(
-                        op=self.sync(ast3.UAdd()),
-                        operand=cast(ast3.expr, node.operand.gen.py_ast[0]),
-                    )
-                )
-            ]
-        elif node.op.name == Tok.MINUS:
-            node.gen.py_ast = [
-                self.sync(
-                    ast3.UnaryOp(
-                        op=self.sync(ast3.USub()),
-                        operand=cast(ast3.expr, node.operand.gen.py_ast[0]),
-                    )
-                )
-            ]
+            return
         elif node.op.name in [Tok.PIPE_FWD, Tok.KW_SPAWN, Tok.A_PIPE_FWD]:
             node.gen.py_ast = [
                 self.sync(
@@ -2352,7 +2312,11 @@ class PyastGenPass(UniPass):
         node.gen.py_ast = [
             self.sync(
                 ast3.keyword(
-                    arg=node.key.sym_name if node.key else None,
+                    arg=(
+                        node.key.gen.py_ast[0].id
+                        if node.key and isinstance(node.key.gen.py_ast[0], ast3.Name)
+                        else None
+                    ),
                     value=cast(ast3.expr, node.value.gen.py_ast[0]),
                 )
             )
@@ -2519,42 +2483,10 @@ class PyastGenPass(UniPass):
     def exit_atom_unit(self, node: uni.AtomUnit) -> None:
         node.gen.py_ast = node.value.gen.py_ast
 
-    def by_llm_call(
-        self,
-        model: ast3.AST,
-        model_params: dict[str, uni.Expr],
-        scope: ast3.AST,
-        inputs: Sequence[Optional[ast3.AST]],
-        outputs: Sequence[Optional[ast3.AST]] | ast3.Call,
-        action: Optional[ast3.AST],
-        include_info: list[tuple[str, ast3.AST]],
-        exclude_info: list[tuple[str, ast3.AST]],
-    ) -> ast3.Call:
-        """Return the LLM Call, e.g. _Jac.with_llm()."""
-        # to avoid circular import
-        from jaclang.runtimelib.machine import JacMachineInterface
-
-        return JacMachineInterface.by_llm_call(
-            self,
-            model,
-            model_params,
-            scope,
-            inputs,
-            outputs,
-            action,
-            include_info,
-            exclude_info,
-        )
-
-    def get_by_llm_call_args(self, node: uni.FuncCall) -> dict:
-        """Get the arguments for the by_llm_call."""
-        # to avoid circular import
-        from jaclang.runtimelib.machine import JacMachineInterface
-
-        return JacMachineInterface.get_by_llm_call_args(self, node)
-
-    def exit_func_call(self, node: uni.FuncCall) -> None:
-        func = node.target.gen.py_ast[0]
+    def gen_call_args(
+        self, node: uni.FuncCall
+    ) -> tuple[list[ast3.expr], list[ast3.keyword]]:
+        """Generate the arguments for a function call."""
         args = []
         keywords = []
         if node.params:
@@ -2576,10 +2508,17 @@ class PyastGenPass(UniPass):
                     keywords.append(x.gen.py_ast[0])
                 else:
                     self.ice("Invalid Parameter")
+        return args, keywords
+
+    def exit_func_call(self, node: uni.FuncCall) -> None:
+        # TODO: This needs to be changed to only generate parameters no the body.
         if node.genai_call:
-            by_llm_call_args = self.get_by_llm_call_args(node)
-            node.gen.py_ast = [self.sync(self.by_llm_call(**by_llm_call_args))]
+            self.ice("Type(by llm()) call feature is temporarily disabled.")
+
         else:
+            func = node.target.gen.py_ast[0]
+            args, keywords = self.gen_call_args(node)
+
             node.gen.py_ast = [
                 self.sync(
                     ast3.Call(
@@ -3053,87 +2992,19 @@ class PyastGenPass(UniPass):
         ]
 
     def exit_token(self, node: uni.Token) -> None:
-        if node.name == Tok.KW_AND:
-            node.gen.py_ast = [self.sync(ast3.And())]
-        elif node.name == Tok.KW_OR:
-            node.gen.py_ast = [self.sync(ast3.Or())]
-        elif node.name in [Tok.PLUS, Tok.ADD_EQ]:
-            node.gen.py_ast = [self.sync(ast3.Add())]
-        elif node.name in [Tok.BW_AND, Tok.BW_AND_EQ]:
-            node.gen.py_ast = [self.sync(ast3.BitAnd())]
-        elif node.name in [Tok.BW_OR, Tok.BW_OR_EQ]:
-            node.gen.py_ast = [self.sync(ast3.BitOr())]
-        elif node.name in [Tok.BW_XOR, Tok.BW_XOR_EQ]:
-            node.gen.py_ast = [self.sync(ast3.BitXor())]
-        elif node.name in [Tok.DIV, Tok.DIV_EQ]:
-            node.gen.py_ast = [self.sync(ast3.Div())]
-        elif node.name in [Tok.FLOOR_DIV, Tok.FLOOR_DIV_EQ]:
-            node.gen.py_ast = [self.sync(ast3.FloorDiv())]
-        elif node.name in [Tok.LSHIFT, Tok.LSHIFT_EQ]:
-            node.gen.py_ast = [self.sync(ast3.LShift())]
-        elif node.name in [Tok.MOD, Tok.MOD_EQ]:
-            node.gen.py_ast = [self.sync(ast3.Mod())]
-        elif node.name in [Tok.STAR_MUL, Tok.MUL_EQ]:
-            node.gen.py_ast = [self.sync(ast3.Mult())]
-        elif node.name in [Tok.DECOR_OP, Tok.MATMUL_EQ]:
-            node.gen.py_ast = [self.sync(ast3.MatMult())]
-        elif node.name in [Tok.STAR_POW, Tok.STAR_POW_EQ]:
-            node.gen.py_ast = [self.sync(ast3.Pow())]
-        elif node.name in [Tok.RSHIFT, Tok.RSHIFT_EQ]:
-            node.gen.py_ast = [self.sync(ast3.RShift())]
-        elif node.name in [Tok.MINUS, Tok.SUB_EQ]:
-            node.gen.py_ast = [self.sync(ast3.Sub())]
-        elif node.name in [Tok.BW_NOT, Tok.BW_NOT_EQ]:
-            node.gen.py_ast = [self.sync(ast3.Invert())]
-        elif node.name in [Tok.NOT]:
-            node.gen.py_ast = [self.sync(ast3.Not())]
-        elif node.name in [Tok.EQ]:
-            node.gen.py_ast = [self.sync(ast3.NotEq())]
-        elif node.name == Tok.EE:
-            node.gen.py_ast = [self.sync(ast3.Eq())]
-        elif node.name == Tok.GT:
-            node.gen.py_ast = [self.sync(ast3.Gt())]
-        elif node.name == Tok.GTE:
-            node.gen.py_ast = [self.sync(ast3.GtE())]
-        elif node.name == Tok.KW_IN:
-            node.gen.py_ast = [self.sync(ast3.In())]
-        elif node.name == Tok.KW_IS:
-            node.gen.py_ast = [self.sync(ast3.Is())]
-        elif node.name == Tok.KW_ISN:
-            node.gen.py_ast = [self.sync(ast3.IsNot())]
-        elif node.name == Tok.LT:
-            node.gen.py_ast = [self.sync(ast3.Lt())]
-        elif node.name == Tok.LTE:
-            node.gen.py_ast = [self.sync(ast3.LtE())]
-        elif node.name == Tok.NE:
-            node.gen.py_ast = [self.sync(ast3.NotEq())]
-        elif node.name == Tok.KW_NIN:
-            node.gen.py_ast = [self.sync(ast3.NotIn())]
+        op_cls = TOKEN_AST_MAP.get(node.name)
+        if op_cls:
+            node.gen.py_ast = [self.sync(op_cls())]
 
     def exit_name(self, node: uni.Name) -> None:
-        node.gen.py_ast = [
-            self.sync(ast3.Name(id=node.sym_name, ctx=node.py_ctx_func()))
-        ]
+        name = node.sym_name[2:] if node.sym_name.startswith("<>") else node.sym_name
+        node.gen.py_ast = [self.sync(ast3.Name(id=name, ctx=node.py_ctx_func()))]
 
     def exit_float(self, node: uni.Float) -> None:
         node.gen.py_ast = [self.sync(ast3.Constant(value=float(node.value)))]
 
     def exit_int(self, node: uni.Int) -> None:
-        def handle_node_value(value: str) -> int:
-            if value.startswith(("0x", "0X")):
-                return int(value, 16)
-            elif value.startswith(("0b", "0B")):
-                return int(value, 2)
-            elif value.startswith(("0o", "0O")):
-                return int(value, 8)
-            else:
-                return int(value)
-
-        node.gen.py_ast = [
-            self.sync(
-                ast3.Constant(value=handle_node_value(str(node.value)), kind=None)
-            )
-        ]
+        node.gen.py_ast = [self.sync(ast3.Constant(value=int(node.value, 0)))]
 
     def exit_string(self, node: uni.String) -> None:
         node.gen.py_ast = [self.sync(ast3.Constant(value=node.lit_value))]

@@ -523,7 +523,7 @@ class JacParser(Transform[uni.Source, uni.Module]):
                 or self.match(uni.FuncSignature)
                 or self.match(uni.EventSignature)
             )
-            tail = self.match(list) or self.match(uni.FuncCall)
+            tail = self.match(list) or self.match(uni.Expr)
             valid_tail = spec if tail is None else tail
             valid_spec = None if tail is None else spec
             impl = uni.ImplDef(
@@ -546,6 +546,22 @@ class JacParser(Transform[uni.Source, uni.Module]):
             )
             return impl
 
+        def sem_def(self, _: None) -> uni.SemDef:
+            """Grammar rule.
+
+            sem_def: KW_SEM dotted_name EQ multistring SEMI
+            """
+            self.consume_token(Tok.KW_SEM)
+            target = self.extract_from_list(self.consume(list), uni.NameAtom)
+            self.consume_token(Tok.EQ)
+            value = self.consume(uni.String)
+            self.consume_token(Tok.SEMI)
+            return uni.SemDef(
+                target=target,
+                value=value,
+                kid=self.flat_cur_nodes,
+            )
+
         def impl_spec(
             self, _: None
         ) -> Sequence[uni.Expr] | uni.FuncSignature | uni.EventSignature:
@@ -562,14 +578,12 @@ class JacParser(Transform[uni.Source, uni.Module]):
 
         def impl_tail(
             self, _: None
-        ) -> Sequence[uni.EnumBlockStmt] | list[uni.CodeBlockStmt] | uni.FuncCall:
+        ) -> Sequence[uni.EnumBlockStmt] | list[uni.CodeBlockStmt] | uni.Expr:
             """Grammar rule.
 
             impl_tail: enum_block | block_tail
             """
-            tail = self.match(list) or self.consume(  # enum_block or code_block
-                uni.FuncCall
-            )  # block_tail (KW_BY atomic_call)
+            tail = self.match(list) or self.consume(uni.Expr)
             return tail
 
         def archetype_decl(self, _: None) -> uni.ArchSpec:
@@ -756,7 +770,7 @@ class JacParser(Transform[uni.Source, uni.Module]):
             signature = self.consume(uni.EventSignature)
 
             # Handle block_tail
-            body_sn_or_call = self.match(list) or self.match(uni.FuncCall)
+            body_sn_or_call = self.match(list) or self.match(uni.Expr)
             if body_sn_or_call is None:
                 is_abstract = self.match_token(Tok.KW_ABSTRACT) is not None
                 self.consume_token(Tok.SEMI)
@@ -796,7 +810,7 @@ class JacParser(Transform[uni.Source, uni.Module]):
             signature = self.match(uni.FuncSignature)
 
             # Handle block_tail
-            body_sn_or_call = self.match(list) or self.match(uni.FuncCall)
+            body_sn_or_call = self.match(list) or self.match(uni.Expr)
             if body_sn_or_call is None:
                 is_abstract = self.match_token(Tok.KW_ABSTRACT) is not None
                 self.consume_token(Tok.SEMI)
@@ -1210,14 +1224,16 @@ class JacParser(Transform[uni.Source, uni.Module]):
         def while_stmt(self, _: None) -> uni.WhileStmt:
             """Grammar rule.
 
-            while_stmt: KW_WHILE expression code_block
+            while_stmt: KW_WHILE expression code_block else_stmt?
             """
             self.consume_token(Tok.KW_WHILE)
             condition = self.consume(uni.Expr)
             body = self.consume(list)
+            else_body = self.match(uni.ElseStmt)
             return uni.WhileStmt(
                 condition=condition,
                 body=self.extract_from_list(body, uni.CodeBlockStmt),
+                else_body=else_body,
                 kid=self.flat_cur_nodes,
             )
 
@@ -1360,19 +1376,6 @@ class JacParser(Transform[uni.Source, uni.Module]):
             spatial_stmt: visit_stmt | ignore_stmt
             """
             return self.consume(uni.CodeBlockStmt)
-
-        def ignore_stmt(self, _: None) -> uni.IgnoreStmt:
-            """Grammar rule.
-
-            ignore_stmt: KW_IGNORE expression SEMI
-            """
-            self.consume_token(Tok.KW_IGNORE)
-            target = self.consume(uni.Expr)
-            self.consume_token(Tok.SEMI)
-            return uni.IgnoreStmt(
-                target=target,
-                kid=self.cur_nodes,
-            )
 
         def disenage_stmt(self, _: None) -> uni.DisengageStmt:
             """Grammar rule.
@@ -1749,10 +1752,10 @@ class JacParser(Transform[uni.Source, uni.Module]):
             """
             return self._binary_expr_unwind(self.cur_nodes)
 
-        def ds_spawn(self, _: None) -> uni.Expr:
+        def os_spawn(self, _: None) -> uni.Expr:
             """Grammar rule.
 
-            ds_spawn: (ds_spawn KW_SPAWN)? unpack
+            os_spawn: (os_spawn KW_SPAWN)? unpack
             """
             return self._binary_expr_unwind(self.cur_nodes)
 
@@ -1862,15 +1865,14 @@ class JacParser(Transform[uni.Source, uni.Module]):
         def atomic_call(self, _: None) -> uni.FuncCall:
             """Grammar rule.
 
-            atomic_call: atomic_chain LPAREN param_list? (KW_BY atomic_call)? RPAREN
+            atomic_call: atomic_chain LPAREN param_list? by_llm? RPAREN
             """
-            genai_call: uni.FuncCall | None = None
             target = self.consume(uni.Expr)
             self.consume_token(Tok.LPAREN)
             params_sn = self.match(list)
-            if self.match_token(Tok.KW_BY):
-                genai_call = self.consume(uni.FuncCall)
+            genai_call = self.match(uni.Expr)
             self.consume_token(Tok.RPAREN)
+
             return uni.FuncCall(
                 target=target,
                 params=(
@@ -1881,6 +1883,14 @@ class JacParser(Transform[uni.Source, uni.Module]):
                 genai_call=genai_call,
                 kid=self.flat_cur_nodes,
             )
+
+        def by_llm(self, _: None) -> uni.Expr:
+            """Grammar rule.
+
+            by_llm: KW_BY expression
+            """
+            self.consume_token(Tok.KW_BY)
+            return self.consume(uni.Expr)
 
         def index_slice(self, _: None) -> uni.IndexSlice:
             """Grammar rule.
@@ -2907,18 +2917,18 @@ class JacParser(Transform[uni.Source, uni.Module]):
                 kid=self.cur_nodes,
             )
 
-        def block_tail(self, _: None) -> list[uni.CodeBlockStmt] | uni.FuncCall:
+        def block_tail(self, _: None) -> list[uni.CodeBlockStmt] | uni.Expr:
             """Grammar rule.
 
-            block_tail: code_block | KW_BY atomic_call SEMI | KW_ABSTRACT? SEMI
+            block_tail: code_block | KW_BY expression SEMI
             """
             # Try to match code_block first
             if code_block := self.match(list):
                 return code_block
 
-            # Otherwise, it must be KW_BY atomic_call SEMI
+            # Otherwise, it must be KW_BY expression SEMI
             by_token = self.consume_token(Tok.KW_BY)
-            func_call = self.consume(uni.FuncCall)
+            func_call = self.consume(uni.Expr)
             semi_token = self.consume_token(Tok.SEMI)
 
             # Add the tokens to the function call's kid array

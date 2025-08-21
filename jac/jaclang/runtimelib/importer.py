@@ -2,11 +2,7 @@
 
 from __future__ import annotations
 
-import importlib
-import importlib.util
 import os
-import site
-import sys
 import types
 from os import getcwd, path
 from typing import Optional, Union
@@ -15,6 +11,7 @@ from jaclang.runtimelib.machine import JacMachineInterface
 from jaclang.runtimelib.utils import sys_path_context
 from jaclang.utils.helpers import dump_traceback
 from jaclang.utils.log import logging
+from jaclang.utils.module_resolver import get_jac_search_paths
 
 logger = logging.getLogger(__name__)
 
@@ -144,75 +141,45 @@ class Importer:
         """Run the import process."""
         raise NotImplementedError
 
-    def update_sys(self, module: types.ModuleType, spec: ImportPathSpec) -> None:
-        """Update sys.modules with the newly imported module."""
-        JacMachineInterface.load_module(spec.module_name, module)
-
 
 class PythonImporter(Importer):
-    """Importer for Python modules."""
+    """Importer for Python modules using Jac AST conversion."""
+
+    def __init__(self) -> None:
+        """Initialize the Python importer."""
+        super().__init__()
+        from jaclang.utils.module_resolver import PythonModuleResolver
+
+        self.resolver = PythonModuleResolver()
+
+    def load_and_execute(self, file_path: str) -> types.ModuleType:
+        """Convert Python file to Jac AST and create module."""
+        module_name = os.path.splitext(os.path.basename(file_path))[0]
+        module = types.ModuleType(module_name)
+        module.__file__ = file_path
+        module.__name__ = "__main__"
+
+        from jaclang.runtimelib.machine import JacMachine
+
+        codeobj = JacMachine.program.get_bytecode(full_target=file_path)
+        if codeobj:
+            exec(codeobj, module.__dict__)
+        else:
+            raise ImportError(f"Failed to generate bytecode for {file_path}")
+
+        return module
 
     def run_import(self, spec: ImportPathSpec) -> ImportReturn:
-        """Run the import process for Python modules."""
+        """Run the import process for Python modules using Jac AST."""
         try:
+            python_file_path = self.resolver.resolve_module_path(
+                target=spec.target,
+                base_path=spec.base_path,
+            )
+            imported_module = self.load_and_execute(python_file_path)
+            # JacMachineInterface.load_module(imported_module.__name__, imported_module)
+
             loaded_items: list = []
-            if spec.target.startswith("."):
-                spec.target = spec.target.lstrip(".")
-                if len(spec.target.split(".")) > 1:
-                    spec.target = spec.target.split(".")[-1]
-                full_target = path.normpath(path.join(spec.caller_dir, spec.target))
-                imp_spec = importlib.util.spec_from_file_location(
-                    spec.target, full_target + ".py"
-                )
-                if imp_spec and imp_spec.loader:
-                    imported_module = importlib.util.module_from_spec(imp_spec)
-                    sys.modules[imp_spec.name] = imported_module
-                    imp_spec.loader.exec_module(imported_module)
-                else:
-                    raise ImportError(
-                        f"Cannot find module {spec.target} at {full_target}"
-                    )
-            else:
-                imported_module = importlib.import_module(name=spec.target)
-
-            main_module = __import__("__main__")
-            if spec.absorb:
-                for name in dir(imported_module):
-                    if not name.startswith("_"):
-                        setattr(main_module, name, getattr(imported_module, name))
-
-            elif spec.items:
-                for name, alias in spec.items.items():
-                    if isinstance(alias, bool):
-                        alias = name
-                    try:
-                        item = getattr(imported_module, name)
-                        if item not in loaded_items:
-                            setattr(
-                                main_module,
-                                alias if isinstance(alias, str) else name,
-                                item,
-                            )
-                            loaded_items.append(item)
-                    except AttributeError as e:
-                        if hasattr(imported_module, "__path__"):
-                            item = importlib.import_module(f"{spec.target}.{name}")
-                            if item not in loaded_items:
-                                setattr(
-                                    main_module,
-                                    alias if isinstance(alias, str) else name,
-                                    item,
-                                )
-                                loaded_items.append(item)
-                        else:
-                            raise e
-
-            else:
-                setattr(
-                    __import__("__main__"),
-                    spec.mdl_alias if isinstance(spec.mdl_alias, str) else spec.target,
-                    imported_module,
-                )
             self.result = ImportReturn(imported_module, loaded_items, self)
             return self.result
 
@@ -321,26 +288,12 @@ class JacImporter(Importer):
         unique_loaded_items: list[types.ModuleType] = []
         module = None
         # Gather all possible search paths
-        jacpaths = os.environ.get("JACPATH", "")
-        search_paths = [spec.caller_dir]
-        for site_dir in site.getsitepackages():
-            if site_dir and site_dir not in search_paths:
-                search_paths.append(site_dir)
-        user_site = getattr(site, "getusersitepackages", None)
-        if user_site:
-            user_dir = site.getusersitepackages()
-            if user_dir and user_dir not in search_paths:
-                search_paths.append(user_dir)
-        if jacpaths:
-            for p in jacpaths.split(":"):
-                p = p.strip()
-                if p and p not in search_paths:
-                    search_paths.append(p)
+        search_paths = get_jac_search_paths(spec.caller_dir)
 
         found_path = None
         target_path_components = spec.target.split(".")
         for search_path in search_paths:
-            candidate = os.path.join(search_path, "/".join(target_path_components))
+            candidate = os.path.join(search_path, *target_path_components)
             # Check if the candidate is a directory or a .jac file
             if (os.path.isdir(candidate)) or (os.path.isfile(candidate + ".jac")):
                 found_path = candidate

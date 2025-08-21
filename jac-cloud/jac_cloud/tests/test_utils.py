@@ -33,7 +33,7 @@ class JacCloudTest(TestCase):
         port: int = 8000,
         database: str = "jaseci",
         envs: dict | None = None,
-        wait: int = 5,
+        wait: int = 10,
     ) -> None:
         """Run server."""
         run(["fuser", "-k", f"{port}/tcp"])
@@ -48,15 +48,13 @@ class JacCloudTest(TestCase):
             ["jac", "serve", f"{file}", "--port", f"{port}"], env=base_envs
         )
 
-        run(["sleep", f"{wait}"])
-
         cls.host = f"http://localhost:{port}"
         cls.database = database
         cls.users = []
 
         count = 0
         while True:
-            if count > 5:
+            if count > wait:
                 cls.check_server()
                 break
             else:

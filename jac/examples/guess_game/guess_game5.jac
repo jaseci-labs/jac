@@ -3,17 +3,20 @@
 import random;
 
 walker GuessGame {
-    has correct_number: int = (1, 100) |> random.randint;
-    
-    can start_game with `root entry;
-    def process_guess(guess: int);
+    has guess: int;
+
+    can start with `root entry;
+    can process_guess with turn entry;
 }
 
 node turn {
-    can check with GuessGame entry;
+    has correct_number: int = random.randint(1, 10);
 }
 
-# Run the game
- with entry {
-    :> GuessGame spawn root;
+# Will run when in CLI mode (not in cloud)
+ with entry:__main__ {
+    root spawn GuessGame(3);
+    root spawn GuessGame(4);
+    root spawn GuessGame(5);
+    root spawn GuessGame(6);
 }

@@ -23,15 +23,8 @@ from jaclang.langserve.tests.server_test.utils import (
 from jaclang.vendor.pygls.uris import from_fs_path
 from jaclang.vendor.pygls.workspace import Workspace
 from jaclang import JacMachineInterface as _
-
-JacLangServer = _.jac_import(
-    "....langserve.engine", __file__, items={"JacLangServer": None}
-)[0]
-(did_open, did_save, did_change, formatting) = _.jac_import(
-    "....langserve.server",
-    __file__,
-    items={"did_open": None, "did_save": None, "did_change": None, "formatting": None},
-)
+from jaclang.langserve.engine import JacLangServer
+from jaclang.langserve.server import did_open, did_save, did_change, formatting
 
 JAC_FILE = get_jac_file_path()
 
@@ -331,7 +324,7 @@ class TestLangServe:
 
         before_sem_tokens_1 = ls.get_semantic_tokens(uri1)
         before_sem_tokens_2 = ls.get_semantic_tokens(uri2)
-        assert len(before_sem_tokens_1.data) ==15
+        assert len(before_sem_tokens_1.data) == 15
         assert len(before_sem_tokens_2.data) == 0
 
         changed_code = get_simple_code("glob x = 90;")

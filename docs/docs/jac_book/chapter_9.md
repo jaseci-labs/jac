@@ -1,1087 +1,490 @@
-### Chapter 9: Abilities - Event-Driven Computation
+# Chapter 9: Nodes and Edges
+---
+**Nodes** and **Edges** are the fundamental building blocks of Object-Spatial Programming. Nodes represent data locations in your graph, while edges represent the relationships between them.
 
-Abilities represent a fundamental shift from traditional method invocation to event-driven computation. Instead of explicitly calling functions, abilities automatically execute when specific conditions are met during graph traversal. This chapter explores how abilities enable the bidirectional computation model that makes Object-Spatial Programming so powerful.
 
-#### 9.1 Understanding Abilities
+## Node Abilities
+---
+In Object-Spatial Programming, walkers often carry the intelligence—they traverse the graph, maintain state, and make decisions. But in Jac, nodes are not just passive data containers. They can have their own abilities—functions that trigger when a specific kind of walker arrives. This two-way dynamic enables powerful, flexible interactions between walkers and the graph they explore.
 
-### Implicit Execution vs Explicit Invocation
+### Usecase: Uninformed State Agent
+Imagine a generic agent called StateAgent. It’s been sent into a graph, tasked with collecting environmental information. However, this agent knows nothing in advance about the nodes it will visit. It doesn’t know what data to look for, or how to interpret it. In traditional programming, this would be a problem—how can an agent act on things it doesn’t understand?
 
-Traditional programming relies on explicit function calls:
+But in Jac, the nodes themselves are intelligent. They can recognize the type of walker arriving and decide how to interact with it. In this case, when the StateAgent visits, the nodes will update the agent’s internal state with their own properties—effectively teaching the agent as it moves.
 
-```python
-# Python - Explicit invocation
-class DataProcessor:
-    def process(self, data):
-        return self.transform(data)
-
-    def transform(self, data):
-        # Must be explicitly called
-        return data.upper()
-
-processor = DataProcessor()
-result = processor.process("hello")  # Explicit call
-```
-
-Abilities execute implicitly based on events:
-
+First, let's define our StateAgent walker:
 ```jac
-// Jac - Implicit execution
-walker DataProcessor {
-    has results: list = [];
+walker StateAgent {
+    has state: dict = {};
 
-    // This ability executes automatically when entering a DataNode
-    can process with DataNode entry {
-        // No explicit call needed - triggered by traversal
-        let transformed = here.data.upper();
-        self.results.append(transformed);
-    }
-}
-
-node DataNode {
-    has data: str;
-
-    // This executes automatically when DataProcessor visits
-    can provide_context with DataProcessor entry {
-        print(f"Processing {self.data} for {visitor.id}");
+    can start with `root entry {
+        visit [-->];
     }
 }
 ```
-
-The key insight: **computation happens as a natural consequence of traversal**, not through explicit invocation chains.
-
-### Walker, Node, and Edge Abilities
-
-Each archetype can define abilities that respond to traversal events:
+The `StateAgent` walker carries a dictionary called `state` to store data it collects as it walks the graph. It starts at the root node and visits all directly connected nodes.
 
 ```jac
-// Walker abilities - defined in walkers
-walker Analyzer {
-    // Triggered when entering any node
-    can analyze_any with entry {
-        print(f"Entering some node");
-    }
+node Weather {
+    has temp: int = 80;
 
-    // Triggered when entering specific node type
-    can analyze_data with DataNode entry {
-        print(f"Entering DataNode: {here.value}");
-    }
-
-    // Triggered when entering specific edge type
-    can traverse_connection with Connection entry {
-        print(f"Traversing Connection edge: {here.strength}");
-    }
-
-    // Exit abilities
-    can complete_analysis with DataNode exit {
-        print(f"Leaving DataNode: {here.value}");
-    }
-}
-
-// Node abilities - defined in nodes
-node DataNode {
-    has value: any;
-    has metadata: dict = {};
-
-    // Triggered when any walker enters
-    can log_visitor with entry {
-        self.metadata["last_visitor"] = str(type(visitor).__name__);
-        self.metadata["visit_count"] = self.metadata.get("visit_count", 0) + 1;
-    }
-
-    // Triggered when specific walker type enters
-    can provide_data with Analyzer entry {
-        // Node can modify the visiting walker
-        visitor.collected_data.append(self.value);
-    }
-
-    // Exit abilities
-    can cleanup with Analyzer exit {
-        print(f"Analyzer leaving with {len(visitor.collected_data)} items");
-    }
-}
-
-// Edge abilities - defined in edges
-edge Connection {
-    has strength: float;
-    has established: str;
-
-    // Triggered when any walker traverses
-    can log_traversal with entry {
-        print(f"Edge traversed: strength={self.strength}");
-    }
-
-    // Triggered when specific walker traverses
-    can apply_weight with Analyzer entry {
-        // Edges can influence traversal
-        visitor.path_weight += self.strength;
+    can get with StateAgent entry {
+        visitor.state["temperature"] = self.temp;
     }
 }
 ```
-
-### Execution Order and Precedence
-
-When a walker interacts with a location, abilities execute in a specific order:
+The `Weather` node knows what to do when a `StateAgent` visits. It sets the "temperature" key in the agent's state to its local `temp` value. In a production system, this could be a call to an API to get real-time weather data.
 
 ```jac
-node ExperimentNode {
+node Time {
+    has hour: int = 12;
+
+    can get with StateAgent entry {
+        visitor.state["time"] = f"{self.hour}:00 PM";
+    }
+}
+```
+Similarly, the `Time` node updates the agent's state with the current hour.
+
+```jac
+with entry {
+    root ++> Weather();
+    root ++> Time();
+
+    agent = StateAgent() spawn root;
+    print(agent.state);
+}
+```
+Finally, we build the graph: the `root` node connects to both `Weather` and `Time`. We spawn the `StateAgent`, and when the traversal completes, the agent’s internal state reflects the data it collected from each node.
+
+```jac
+# node_abilities.jac
+walker StateAgent{
+    has state: dict = {};
+
+    can start with `root entry {
+        visit [-->];
+    }
+}
+
+node Weather {
+    has temp: int = 80;
+
+    can get with StateAgent entry {
+        visitor.state["temperature"] = self.temp;
+    }
+}
+
+node Time {
+    has hour: int = 12;
+
+    can get with StateAgent entry {
+        visitor.state["time"] = f"{self.hour}:00 PM";
+    }
+}
+
+with entry {
+    root ++> Weather();
+    root ++> Time();
+
+    agent = StateAgent() spawn root;
+    print(agent.state);
+}
+```
+
+
+```terminal
+$ jac run node_abilities.jac
+
+{"temperature": 80, "time": "12:00 PM"}
+```
+
+## Node Inheritance
+---
+In Jac, nodes are more than just data—they can encapsulate behavior and interact with walkers. When building modular systems, it’s often useful to group nodes by type or functionality. This is where node inheritance comes in.
+
+Let’s revisit the `Weather` and `Time` nodes from the previous example. While they each provide different types of information, they serve a common purpose: delivering contextual data to an agent. In Jac, we can express this shared role using inheritance, just like in traditional object-oriented programming.
+
+We define a base node archetype called `Service`. This acts as a common interface for all context-providing nodes. Any node that inherits from `Service` is guaranteed to support certain interactions—either by shared methods or simply by tagging it with a common type.
+
+```jac
+node Service {}
+```
+
+Then we define both `Weather` and `Time` as subtypes of `Service`:
+```jac
+node Weather(Service) {
+    has temp: int = 80;
+
+    can get with StateAgent entry {
+        visitor.state["temperature"] = self.temp;
+    }
+}
+
+node Time(Service) {
+    has hour: int = 12;
+
+    can get with StateAgent entry {
+        visitor.state["time"] = f"{self.hour}:00 PM";
+    }
+}
+```
+<br />
+Now, a walker doesn’t need to know what specific service it’s interacting with. It can simply filter by the base type:
+
+```jac
+walker StateAgent {
+    has state: dict = {};
+
+    can start with `root entry {
+        visit [-->(`?Service)];  # Visit any node that is a subtype of Service
+    }
+}
+```
+<br />
+This allows `StateAgent` to be generic and extensible. If we later add new service nodes like `Location`, `Date`, or `WeatherForecast`, we don’t need to modify the walker—so long as those nodes inherit from `Service`, the walker will visit them automatically.
+
+The ```-->(`?NodeType)``` syntax is a powerful feature of Jac that allows you to filter nodes by type. It tells the walker to visit any node that matches the `NodeType` type, regardless of its specific implementation.
+
+### Usecase: A Smarter NPC
+Imagine we want to create an NPC (non-player character) that adjusts its behavior based on the environment. It could change its mood depending on the **weather** or **time of day**—perhaps it's cheerful in the morning, grumpy when it's hot, or sleepy at night.
+
+To enable this, we've already built the necessary groundwork:
+- A `Weather` node and a `Time` node, both of which inherit from a common base `Service`.
+- A `StateAgent` walker that visits all `Service` nodes and collects their data into its internal state dictionary.
+
+#### The Mood Function
+Now we want to generate a mood string based on that state. Instead of hardcoding dozens of conditionals, we’ll use a language model to synthesize a response.
+
+For this, we rely on the MTLLM plugin, introduced earlier in the book. It lets us define functions that delegate logic to an external language model—like OpenAI’s GPT—while keeping the interface clean and declarative.
+
+Here’s the code for our mood function:
+```jac
+import from mtllm { Model }
+
+# Configure the LLM model to use
+glob npc_model = Model(model_name="gpt-4.1-mini");
+
+"""Adjusts the tone or personality of the shop keeper npc depending on weather/time."""
+def get_ambient_mood(state: dict) -> str by npc_model(incl_info=(state));
+```
+This function, `get_ambient_mood`, takes a dictionary (the walker’s state) and sends it to the model. The model interprets the contents—like `temperature` and `time`—and returns a textual mood that fits the situation.
+
+#### The NPC Node
+The `NPC` node uses the LLM to personalize its mood based on the current state. It expects the agent to have already visited relevant `Service` nodes and stored that information in its `state` field:
+
+```jac
+node NPC {
+    can get with StateAgent entry {
+        visitor.state["npc_mood"] = get_ambient_mood(visitor.state);
+    }
+}
+```
+This is where the NPC’s personality is generated—based entirely on the graph-derived context.
+
+#### Walker Composition
+We extend our `StateAgent` to create a specialized walker that visits the `NPC` node after gathering environmental data:
+```jac
+walker NPCWalker(StateAgent) {
+    can visit_npc with `root entry {
+        visit [-->(`?NPC)];
+    }
+}
+```
+The `NPCWalker` first inherits the behavior of `StateAgent` (which collects context), and then adds a second phase to interact with the NPC after that context is built.
+
+
+#### Putting It All Together
+Finally, we can compose everything in a single entry point:
+```jac
+import from mtllm { Model }
+
+# Configure different models
+glob npc_model = Model(model_name="gpt-4.1-mini");
+
+node Service{}
+
+walker StateAgent{
+    has state: dict = {};
+
+    can start with `root entry {
+        visit [-->(`?Service)];
+    }
+}
+
+node Weather(Service) {
+    has temp: int = 80;
+
+    can get with StateAgent entry {
+        visitor.state["temperature"] = self.temp;
+    }
+}
+
+node Time(Service) {
+    has hour: int = 12;
+
+    can get with StateAgent entry {
+        visitor.state["time"] = f"{self.hour}:00 PM";
+    }
+}
+
+"""Adjusts the tone or personality of the shop keeper npc depending on weather/time."""
+def get_ambient_mood(state: dict) -> str by npc_model(incl_info=(state));
+
+node NPC {
+    can get with StateAgent entry {
+        visitor.state["npc_mood"] = get_ambient_mood(visitor.state);
+    }
+}
+
+walker NPCWalker(StateAgent) {
+    can visit_npc with `root entry{
+        visit [-->(`?NPC)];
+    }
+}
+
+
+with entry {
+    root ++> Weather();
+    root ++> Time();
+    root ++> NPC();
+
+    agent = NPCWalker() spawn root;
+    print(agent.state['npc_mood']);
+}
+```
+<br />
+
+```terminal
+$ jac run npc_mood.jac
+
+"The shopkeeper greets you warmly with a bright smile, saying, "What a hot day we’re having!
+Perfect time to stock up on some refreshing potions or cool drinks. Let me know if you need
+anything to beat the heat!"
+```
+<br />
+
+
+## Edge Types and Relationships
+---
+Edges in Jac represent relationships between nodes. They are first-class objects with their own properties and behaviors, allowing you to model complex interactions like enrollment, teaching, and friendships. Edges can be created using the `edge` keyword, and they connect nodes in meaningful ways.
+
+
+Edges in Jac are not just connections - they're full objects with their own properties and behaviors. This makes relationships as important as the data they connect.
+
+### Basic Edge Declaration
+
+```jac
+# Basic node for representing teachers
+node Teacher {
     has name: str;
-    has data: dict = {};
-
-    can phase1 with OrderTest entry {
-        print(f"1. Node entry ability (general)");
-    }
-
-    can phase2 with OrderTest entry {
-        print(f"2. Node entry ability (specific to OrderTest)");
-        visitor.log.append("node-entry");
-    }
-
-    can phase5 with OrderTest exit {
-        print(f"5. Node exit ability");
-        visitor.log.append("node-exit");
-    }
+    has subject: str;
+    has years_experience: int;
+    has email: str;
 }
 
-walker OrderTest {
-    has log: list = [];
-
-    can phase3 with ExperimentNode entry {
-        print(f"3. Walker entry ability");
-        self.log.append("walker-entry");
-    }
-
-    can phase4 with ExperimentNode exit {
-        print(f"4. Walker exit ability");
-        self.log.append("walker-exit");
-    }
-
-    can demonstrate with entry {
-        // This shows the complete order
-        visit [-->];
-    }
-}
-
-// Execution order is always:
-// 1. Location (node/edge) entry abilities
-// 2. Walker entry abilities
-// 3. Walker exit abilities
-// 4. Location (node/edge) exit abilities
-```
-
-```mermaid
-sequenceDiagram
-    participant W as Walker
-    participant N as Node
-
-    W->>N: Arrives at node
-    N->>N: Node entry abilities execute
-    N->>W: Control passes to walker
-    W->>W: Walker entry abilities execute
-    W->>W: Walker processes/decides
-    W->>W: Walker exit abilities execute
-    W->>N: Control returns to node
-    N->>N: Node exit abilities execute
-    W->>N: Walker departs
-```
-
-#### 9.2 Practical Ability Patterns
-
-### Data Validation on Arrival
-
-Abilities excel at validating data as walkers traverse:
-
-```jac
-node DataRecord {
-    has id: str;
-    has data: dict;
-    has validated: bool = false;
-    has validation_errors: list = [];
-
-    // Validate when validator arrives
-    can validate_record with DataValidator entry {
-        print(f"Validating record {self.id}");
-
-        // Clear previous validation
-        self.validation_errors = [];
-        self.validated = false;
-
-        // Perform validation
-        let errors = visitor.validate_schema(self.data);
-
-        if errors {
-            self.validation_errors = errors;
-            visitor.invalid_count += 1;
-        } else {
-            self.validated = true;
-            visitor.valid_count += 1;
-        }
-    }
-
-    // Provide data to collectors only if valid
-    can provide_data with DataCollector entry {
-        if self.validated {
-            visitor.collect(self.id, self.data);
-        } else {
-            visitor.skip_invalid(self.id, self.validation_errors);
-        }
-    }
-}
-
-walker DataValidator {
-    has schema: dict;
-    has valid_count: int = 0;
-    has invalid_count: int = 0;
-
-    can validate_schema(data: dict) -> list {
-        let errors = [];
-
-        // Check required fields
-        for field in self.schema.get("required", []) {
-            if field not in data {
-                errors.append(f"Missing required field: {field}");
-            }
-        }
-
-        // Check field types
-        for field, expected_type in self.schema.get("types", {}).items() {
-            if field in data and not isinstance(data[field], expected_type) {
-                errors.append(f"Invalid type for {field}: expected {expected_type.__name__}");
-            }
-        }
-
-        // Check constraints
-        for field, constraints in self.schema.get("constraints", {}).items() {
-            if field in data {
-                value = data[field];
-
-                if "min" in constraints and value < constraints["min"] {
-                    errors.append(f"{field} below minimum: {value} < {constraints['min']}");
-                }
-
-                if "max" in constraints and value > constraints["max"] {
-                    errors.append(f"{field} above maximum: {value} > {constraints['max']}");
-                }
-        }
-
-        return errors;
-    }
-
-    can validate_all with entry {
-        visit [-->];
-    }
-
-    can report with exit {
-        print(f"\nValidation Complete:");
-        print(f"  Valid records: {self.valid_count}");
-        print(f"  Invalid records: {self.invalid_count}");
-    }
-}
-```
-
-### State Transformation During Traversal
-
-Abilities can transform node state based on traversal context:
-
-```jac
-node Account {
-    has id: str;
-    has balance: float;
-    has status: str = "active";
-    has transactions: list = [];
-    has interest_rate: float = 0.02;
-
-    // Apply interest when processor visits
-    can apply_interest with InterestProcessor entry {
-        if self.status == "active" and self.balance > 0 {
-            let interest = self.balance * visitor.get_rate(self);
-            self.balance += interest;
-
-            self.transactions.append({
-                "type": "interest",
-                "amount": interest,
-                "date": visitor.processing_date,
-                "balance_after": self.balance
-            });
-
-            visitor.total_interest_paid += interest;
-            visitor.accounts_processed += 1;
-        }
-    }
-
-    // Update status based on balance
-    can update_status with StatusUpdater entry {
-        let old_status = self.status;
-
-        if self.balance < 0 {
-            self.status = "overdrawn";
-        } elif self.balance == 0 {
-            self.status = "zero_balance";
-        } elif self.balance < 100 {
-            self.status = "low_balance";
-        } else {
-            self.status = "active";
-        }
-
-        if old_status != self.status {
-            visitor.status_changes.append({
-                "account": self.id,
-                "from": old_status,
-                "to": self.status
-            });
-        }
-    }
-}
-
-walker InterestProcessor {
-    has processing_date: str;
-    has base_rate: float = 0.02;
-    has total_interest_paid: float = 0.0;
-    has accounts_processed: int = 0;
-
-    can get_rate(account: Account) -> float {
-        // Premium accounts get better rates
-        if account.balance > 10000 {
-            return self.base_rate * 1.5;
-        } elif account.balance > 5000 {
-            return self.base_rate * 1.25;
-        }
-        return self.base_rate;
-    }
-
-    can process_batch with entry {
-        print(f"Starting interest processing for {self.processing_date}");
-        visit [-->:Account:];
-    }
-
-    can summarize with exit {
-        print(f"\nInterest Processing Complete:");
-        print(f"  Date: {self.processing_date}");
-        print(f"  Accounts processed: {self.accounts_processed}");
-        print(f"  Total interest paid: ${self.total_interest_paid:.2f}");
-    }
-}
-```
-
-### Aggregation and Reporting
-
-Abilities enable elegant aggregation patterns:
-
-```jac
-node SalesRegion {
+# Basic node for representing students
+node Student {
     has name: str;
-    has sales_data: list = [];
-
-    can contribute_data with SalesAggregator entry {
-        // Calculate region metrics
-        let total_sales = sum(sale["amount"] for sale in self.sales_data);
-        let avg_sale = total_sales / len(self.sales_data) if self.sales_data else 0;
-
-        // Add to aggregator
-        visitor.add_region_data(
-            region=self.name,
-            total=total_sales,
-            average=avg_sale,
-            count=len(self.sales_data)
-        );
-
-        // Visit sub-regions
-        visit [-->:Contains:];
-    }
+    has age: int;
+    has grade_level: int;
+    has student_id: str;
 }
 
-node SalesPerson {
-    has name: str;
-    has sales: list = [];
-    has quota: float;
-
-    can report_performance with SalesAggregator entry {
-        let total = sum(sale["amount"] for sale in self.sales);
-        let performance = (total / self.quota * 100) if self.quota > 0 else 0;
-
-        visitor.add_person_data(
-            name=self.name,
-            total=total,
-            quota=self.quota,
-            performance=performance
-        );
-
-        // Contribute to region totals
-        if here[<--:WorksIn:] {
-            let region = here[<--:WorksIn:][0].source;
-            region.sales_data.extend(self.sales);
-        }
-    }
+node Classroom {
+    has room_number: str;
+    has capacity: int;
+    has has_projector: bool = True;
 }
 
-walker SalesAggregator {
-    has period: str;
-    has region_data: dict = {};
-    has person_data: list = [];
-    has summary: dict = {};
+# Edge for student enrollment
+edge EnrolledIn {
+    has enrollment_date: str;
+    has grade: str = "Not Assigned";
+    has attendance_rate: float = 100.0;
+}
 
-    can add_region_data(region: str, total: float, average: float, count: int) {
-        self.region_data[region] = {
-            "total": total,
-            "average": average,
-            "count": count
-        };
-    }
+# Edge for teaching assignments
+edge Teaches {
+    has start_date: str;
+    has schedule: str;  # "MWF 9:00-10:00"
+    has is_primary: bool = True;
+}
 
-    can add_person_data(name: str, total: float, quota: float, performance: float) {
-        self.person_data.append({
-            "name": name,
-            "total": total,
-            "quota": quota,
-            "performance": performance
-        });
-    }
+# Edge for friendship between students
+edge FriendsWith {
+    has since: str;
+    has closeness: int = 5;  # 1-10 scale
+}
 
-    can aggregate with entry {
-        print(f"Aggregating sales data for {self.period}");
-        visit [-->];
-    }
+with entry {
+    # Create the main classroom
+    science_lab = root ++> Classroom(
+        room_number="Lab-A",
+        capacity=24,
+        has_projector=True
+    );
 
-    can generate_summary with exit {
-        // Calculate company-wide metrics
-        self.summary = {
-            "period": self.period,
-            "total_sales": sum(r["total"] for r in self.region_data.values()),
-            "regions_analyzed": len(self.region_data),
-            "salespeople_count": len(self.person_data),
-            "top_region": max(self.region_data.items(), key=lambda x: x[1]["total"])[0],
-            "top_performer": max(self.person_data, key=lambda x: x["performance"])["name"]
-        };
-
-        print(f"\n=== Sales Summary for {self.period} ===");
-        print(f"Total Sales: ${self.summary['total_sales']:,.2f}");
-        print(f"Top Region: {self.summary['top_region']}");
-        print(f"Top Performer: {self.summary['top_performer']}");
-    }
+    # Create teacher and connect to classroom
+    dr_smith = science_lab +>:Teaches(
+        start_date="2024-08-01",
+        schedule="TR 10:00-11:30"
+    ):+> Teacher(
+        name="Dr. Smith",
+        subject="Chemistry",
+        years_experience=12,
+        email="smith@school.edu"
+    );
 }
 ```
 
-### Error Handling in Abilities
 
-Abilities should handle errors gracefully:
+## Graph Navigation and Filtering
+---
+Jac provides powerful and expressive syntax for navigating and querying graph structures. Walkers can traverse connections directionally—forward or backward—and apply filters to control exactly which nodes or edges should be visited.
+
+### Directional Traversal
+- `-->` : Follows outgoing edges from the current node.
+- `<--` : Follows incoming edges to the current node.
+
+These can be wrapped in a visit statement to direct walker movement:
+```jac
+visit [-->];   // Move to all connected child nodes
+visit [<--];   // Move to all parent nodes
+```
+
+
+### Filter by Node Type
+To narrow traversal to specific node types, use the filter syntax:
+```jac
+-->(`?NodeType)
+```
+
+This ensures the walker only visits nodes of the specified archetype.
+```jac
+# Example: Visit all Student nodes connected to the root
+walker FindStudents {
+    can start with `root entry {
+        visit [-->(`?Student)];
+    }
+}
+```
+This allows your walker to selectively traverse part of the graph, even in the presence of mixed node types.
+
+### Filtering by Node Attributes
+Jac also supports **attribute-based filtering** during traversal. You can match node properties using a rich syntax:
 
 ```jac
-node DataSource {
-    has url: str;
-    has cache: dict? = None;
-    has last_fetch: str? = None;
-    has error_count: int = 0;
-
-    can provide_data with DataFetcher entry {
-        try {
-            // Try cache first
-            if self.cache and self.is_cache_valid() {
-                visitor.receive_data(self.cache);
-                visitor.cache_hits += 1;
-                return;
-            }
-
-            // Fetch fresh data
-            import:py requests;
-            response = requests.get(self.url, timeout=5);
-
-            if response.status_code == 200 {
-                self.cache = response.json();
-                self.last_fetch = now();
-                self.error_count = 0;
-
-                visitor.receive_data(self.cache);
-                visitor.fetch_count += 1;
-            } else {
-                self.handle_error(f"HTTP {response.status_code}");
-                visitor.error_sources.append(self);
-            }
-
-        } except TimeoutError {
-            self.handle_error("Timeout");
-            visitor.timeout_sources.append(self);
-
-        } except Exception as e {
-            self.handle_error(str(e));
-            visitor.error_sources.append(self);
-        }
-    }
-
-    can handle_error(error: str) {
-        self.error_count += 1;
-        print(f"Error fetching from {self.url}: {error}");
-
-        // Exponential backoff
-        if self.error_count > 3 {
-            print(f"  Source marked as unreliable after {self.error_count} errors");
-        }
-    }
-
-    can is_cache_valid() -> bool {
-        if not self.last_fetch {
-            return false;
-        }
-
-        // Cache valid for 1 hour
-        import:py from datetime import datetime, timedelta;
-        last = datetime.fromisoformat(self.last_fetch);
-        return datetime.now() - last < timedelta(hours=1);
-    }
-}
-
-walker DataFetcher {
-    has data_buffer: list = [];
-    has fetch_count: int = 0;
-    has cache_hits: int = 0;
-    has error_sources: list = [];
-    has timeout_sources: list = [];
-
-    can receive_data(data: dict) {
-        self.data_buffer.append(data);
-    }
-
-    can fetch_all with entry {
-        visit [-->:DataSource:];
-    }
-
-    can report_status with exit {
-        print(f"\nData Fetch Complete:");
-        print(f"  Sources fetched: {self.fetch_count}");
-        print(f"  Cache hits: {self.cache_hits}");
-        print(f"  Errors: {len(self.error_sources)}");
-        print(f"  Timeouts: {len(self.timeout_sources)}");
-        print(f"  Total data collected: {len(self.data_buffer)} items");
-
-        if self.error_sources {
-            print("\nFailed sources:");
-            for source in self.error_sources {
-                print(f"  - {source.url} (errors: {source.error_count})");
-            }
-        }
-    }
-}
+-->(`?NodeType: attr1 op value1, attr2 op value2, ...)
 ```
+Where:
 
-### Advanced Ability Patterns
+- `NodeType` is the node archetype to match (e.g., `Student`)
+- `attr1`, `attr2` are properties of that node
+- `op` is a comparison operator
 
-### Cooperative Processing
 
-Multiple walkers can cooperate through abilities:
+#### Supported Operators
 
+| Operator   | Description                    | Example                             |
+|------------|--------------------------------|-------------------------------------|
+| `==`       | Equality                       | `grade == 90`                        |
+| `!=`       | Inequality                     | `status != "inactive"`              |
+| `<`        | Less than                      | `age < 18`                           |
+| `>`        | Greater than                   | `score > 70`                         |
+| `<=`       | Less than or equal to          | `temp <= 100`                       |
+| `>=`       | Greater than or equal to       | `hour >= 12`                        |
+| `is`       | Identity comparison            | `mood is "happy"`                   |
+| `is not`   | Negative identity comparison   | `type is not "admin"`              |
+| `in`       | Membership (value in list)     | `role in ["student", "teacher"]`    |
+| `not in`   | Negative membership            | `status not in ["inactive", "banned"]` |
+
+#### Example
 ```jac
-node WorkItem {
-    has id: str;
-    has status: str = "pending";
-    has data: dict;
-    has assigned_to: str? = None;
-    has result: any? = None;
-    has dependencies: list = [];
-
-    // First walker marks items
-    can mark_ready with DependencyChecker entry {
-        let deps_complete = all(
-            dep.status == "completed"
-            for dep in self.dependencies
-        );
-
-        if deps_complete and self.status == "pending" {
-            self.status = "ready";
-            visitor.ready_count += 1;
-        }
-    }
-
-    // Second walker assigns work
-    can assign_work with WorkAssigner entry {
-        if self.status == "ready" and not self.assigned_to {
-            let worker = visitor.get_next_worker();
-            self.assigned_to = worker;
-            self.status = "assigned";
-
-            visitor.assignments[worker].append(self);
-        }
-    }
-
-    // Third walker processes
-    can process_work with WorkProcessor entry {
-        if self.status == "assigned" and self.assigned_to == visitor.worker_id {
-            try {
-                // Simulate processing
-                self.result = self.perform_work();
-                self.status = "completed";
-                visitor.completed_items.append(self.id);
-
-                // Notify dependents
-                self.notify_dependents();
-
-            } except Exception as e {
-                self.status = "failed";
-                visitor.failed_items.append({
-                    "id": self.id,
-                    "error": str(e)
-                });
-            }
-        }
-    }
-
-    can perform_work() -> any {
-        // Actual work logic
-        return f"Processed: {self.data}";
-    }
-
-    can notify_dependents {
-        // Find items depending on this
-        for item in [<--:DependsOn:] {
-            print(f"  Notifying dependent: {item.source.id}");
-        }
-    }
-}
-
-// Orchestrator spawns walkers in sequence
-walker WorkflowOrchestrator {
-    has phases: list = ["check_deps", "assign", "process"];
-    has current_phase: int = 0;
-
-    can orchestrate with entry {
-        let phase = self.phases[self.current_phase];
-        print(f"\nExecuting phase: {phase}");
-
-        if phase == "check_deps" {
-            spawn DependencyChecker() on here;
-        } elif phase == "assign" {
-            spawn WorkAssigner(workers=["w1", "w2", "w3"]) on here;
-        } elif phase == "process" {
-            // Spawn processor for each worker
-            for worker in ["w1", "w2", "w3"] {
-                spawn WorkProcessor(worker_id=worker) on here;
-            }
-        }
-
-        // Move to next phase
-        self.current_phase += 1;
-        if self.current_phase < len(self.phases) {
-            visit here;  // Revisit to continue
-        }
+# Find all students with a grade above 85
+walker FindTopStudents {
+    can start with `root entry {
+        visit [-->(`?Student: grade > 85)];
     }
 }
 ```
+This walker will only visit `Student` nodes where the `grade` property is greater than 85.
 
-### Ability Composition
+### Filtering by Edge Type and Attributes
+In addition to filtering by node types and attributes, Jac also allows you to filter based on edge types and edge attributes, enabling precise control over traversal paths in complex graphs.
 
-Abilities can be composed for complex behaviors:
-
+To traverse only edges of a specific type, use the following syntax:
 ```jac
-// Mixin-like node abilities
-node ObservableNode {
-    has observers: list = [];
-    has change_log: list = [];
-
-    can notify_observers(change: dict) {
-        for observer in self.observers {
-            observer.on_change(self, change);
-        }
-
-        self.change_log.append({
-            "timestamp": now(),
-            "change": change
-        });
-    }
-}
-
-node CacheableNode {
-    has cache_key: str;
-    has cached_at: str? = None;
-    has ttl_seconds: int = 3600;
-
-    can is_cache_valid() -> bool {
-        if not self.cached_at {
-            return false;
-        }
-
-        import:py from datetime import datetime, timedelta;
-        cached = datetime.fromisoformat(self.cached_at);
-        return datetime.now() - cached < timedelta(seconds=self.ttl_seconds);
-    }
-
-    can invalidate_cache {
-        self.cached_at = None;
-    }
-}
-
-// Composed node using both patterns
-node SmartDataNode(ObservableNode, CacheableNode) {
-    has data: dict;
-    has version: int = 0;
-
-    // Override data setter to trigger notifications
-    can update_data with DataUpdater entry {
-        let old_data = self.data.copy();
-        let changes = visitor.get_changes();
-
-        // Update data
-        self.data.update(changes);
-        self.version += 1;
-        self.cached_at = now();
-
-        // Notify observers
-        self.notify_observers({
-            "type": "data_update",
-            "old": old_data,
-            "new": self.data,
-            "version": self.version
-        });
-
-        visitor.nodes_updated += 1;
-    }
-
-    // Provide cached data efficiently
-    can get_data with DataReader entry {
-        visitor.requests += 1;
-
-        if self.is_cache_valid() {
-            visitor.cache_hits += 1;
-            visitor.receive_data(self.data, cached=true);
-        } else {
-            // Simulate expensive operation
-            self.refresh_data();
-            visitor.receive_data(self.data, cached=false);
-        }
-    }
-
-    can refresh_data {
-        import:py time;
-        time.sleep(0.1);  // Simulate work
-        self.cached_at = now();
-    }
-}
+visit [->:EdgeType->];
 ```
 
-### Dynamic Ability Selection
+This tells the walker to follow only edges labeled as `EdgeType`, regardless of the type of the nodes they connect.
 
-Abilities can conditionally execute based on runtime state:
-
+#### Example
 ```jac
-node AdaptiveProcessor {
-    has mode: str = "normal";
-    has load: float = 0.0;
-    has error_rate: float = 0.0;
-
-    // Different processing strategies based on mode
-    can process_normal with DataWalker entry {
-        if self.mode != "normal" {
-            return;  // Skip if not in normal mode
-        }
-
-        // Normal processing
-        let result = self.standard_process(visitor.data);
-        visitor.results.append(result);
-
-        // Update metrics
-        self.load = self.calculate_load();
-        self.check_mode_change();
-    }
-
-    can process_degraded with DataWalker entry {
-        if self.mode != "degraded" {
-            return;
-        }
-
-        // Simplified processing for high load
-        let result = self.simple_process(visitor.data);
-        visitor.results.append(result);
-        visitor.degraded_count += 1;
-    }
-
-    can process_recovery with DataWalker entry {
-        if self.mode != "recovery" {
-            return;
-        }
-
-        // Careful processing during recovery
-        try {
-            let result = self.careful_process(visitor.data);
-            visitor.results.append(result);
-            self.error_rate *= 0.9;  // Reduce error rate
-        } except {
-            self.error_rate = min(1.0, self.error_rate * 1.1);
-        }
-
-        self.check_mode_change();
-    }
-
-    can check_mode_change {
-        let old_mode = self.mode;
-
-        if self.error_rate > 0.2 {
-            self.mode = "recovery";
-        } elif self.load > 0.8 {
-            self.mode = "degraded";
-        } else {
-            self.mode = "normal";
-        }
-
-        if old_mode != self.mode {
-            print(f"Mode changed: {old_mode} -> {self.mode}");
-        }
-    }
-
-    can standard_process(data: any) -> any {
-        // Full processing
-        return data;
-    }
-
-    can simple_process(data: any) -> any {
-        // Reduced processing
-        return data;
-    }
-
-    can careful_process(data: any) -> any {
-        // Careful processing with validation
-        return data;
-    }
-}
+# Only follow "enrolled_in" edges
+visit [->:enrolled_in->];
 ```
 
-### Performance Considerations
-
-Abilities should be designed for efficiency:
-
+### Edge Atribute Filtering
+You can further refine edge traversal by applying attribute-based filters directly to the edge:
 ```jac
-node OptimizedNode {
-    has large_data: list;
-    has index: dict? = None;
-    has stats_cache: dict? = None;
-    has stats_valid: bool = false;
-
-    // Lazy initialization
-    can build_index {
-        if self.index is None {
-            print("Building index...");
-            self.index = {};
-            for i, item in enumerate(self.large_data) {
-                if "id" in item {
-                    self.index[item["id"]] = i;
-            }
-        }
-    }
-
-    // Efficient lookup using index
-    can find_item with ItemFinder entry {
-        self.build_index();
-
-        let target_id = visitor.target_id;
-        if target_id in self.index {
-            let idx = self.index[target_id];
-            visitor.found_item = self.large_data[idx];
-            visitor.comparisons = 1;  // O(1) lookup
-        } else {
-            visitor.found_item = None;
-            visitor.comparisons = 0;
-        }
-    }
-
-    // Cached statistics
-    can get_stats with StatsCollector entry {
-        if not self.stats_valid {
-            self.stats_cache = {
-                "count": len(self.large_data),
-                "total": sum(item.get("value", 0) for item in self.large_data),
-                "average": sum(item.get("value", 0) for item in self.large_data) / len(self.large_data)
-            };
-            self.stats_valid = true;
-        }
-
-        visitor.collect_stats(self.stats_cache);
-    }
-
-    // Invalidate cache on updates
-    can update_data with DataUpdater entry {
-        self.large_data.extend(visitor.new_data);
-        self.stats_valid = false;  // Invalidate cache
-        self.index = None;  // Rebuild index on next search
-    }
-}
-
-// Batch processing for efficiency
-walker BatchProcessor {
-    has batch_size: int = 100;
-    has current_batch: list = [];
-    has processed_count: int = 0;
-
-    can collect with DataNode entry {
-        self.current_batch.append(here.data);
-
-        if len(self.current_batch) >= self.batch_size {
-            self.process_batch();
-            self.current_batch = [];
-        }
-
-        visit [-->];
-    }
-
-    can process_batch {
-        // Process entire batch at once
-        print(f"Processing batch of {len(self.current_batch)} items");
-
-        // Batch operations are often more efficient
-        import:py numpy as np;
-        if all(isinstance(item, (int, float)) for item in self.current_batch) {
-            batch_array = np.array(self.current_batch);
-            result = np.mean(batch_array);  // Vectorized operation
-            print(f"  Batch mean: {result}");
-        }
-
-        self.processed_count += len(self.current_batch);
-    }
-
-    can finalize with exit {
-        // Process remaining items
-        if self.current_batch {
-            self.process_batch();
-        }
-
-        print(f"Total processed: {self.processed_count}");
-    }
-}
+visit [->:EdgeType: attr1 op val1, attr2 op val2:->];
 ```
+This format allows you to filter based on metadata stored on the edge itself, not the nodes.
 
-### Best Practices for Abilities
-
-##### 1. **Keep Abilities Focused**
-Each ability should have a single, clear purpose:
-
+#### Example
 ```jac
-// Good - focused abilities
-node Order {
-    can validate_items with OrderValidator entry {
-        // Only validation logic
-    }
-
-    can calculate_total with PriceCalculator entry {
-        // Only price calculation
-    }
-
-    can check_inventory with InventoryChecker entry {
-        // Only inventory checking
-    }
-}
-
-// Bad - doing too much
-node Order {
-    can process_everything with OrderProcessor entry {
-        // Validation, calculation, inventory, shipping, etc.
-        // Too much in one ability!
-    }
-}
+# Follow "graded" edges where score is above 80
+visit [->:graded: score > 80:->];
 ```
+This pattern is especially useful when edges carry contextual data, such as timestamps, weights, relationships, or scores.
 
-##### 2. **Use Guards for Conditional Execution**
-Prevent unnecessary processing with early returns:
+## Wrapping Up
+---
+In this chapter, we explored the foundational concepts of nodes and edges in Jac. We learned how to define nodes with properties, create edges to represent relationships, and navigate the graph using walkers. We also saw how to filter nodes and edges based on types and attributes, enabling powerful queries and interactions.
+These concepts form the backbone of Object-Spatial Programming, allowing you to model complex systems and relationships naturally. As you continue to build your Jac applications, keep these principles in mind to create rich, interconnected data structures that reflect the real-world entities and relationships you want to represent.
 
-```jac
-can process_premium with PremiumProcessor entry {
-    // Guard clause
-    if not here.is_premium_eligible() {
-        return;  // Skip processing
-    }
+## Key Takeaways
+---
 
-    // Main logic only for eligible nodes
-    self.apply_premium_benefits(here);
-}
-```
+**Node Fundamentals:**
 
-##### 3. **Handle State Mutations Carefully**
-Be explicit about state changes:
+- **Spatial objects**: Nodes can be connected and automatically persist when linked to root
+- **Property storage**: Nodes hold data using `has` declarations with automatic constructors
+- **Automatic persistence**: Nodes connected to root persist between program runs
+- **Type safety**: All node properties must have explicit types
 
-```jac
-node Counter {
-    has value: int = 0;
-    has history: list = [];
+**Edge Fundamentals:**
 
-    can increment with CounterWalker entry {
-        // Store previous state
-        let old_value = self.value;
+- **First-class relationships**: Edges are full objects with their own properties and behaviors
+- **Typed connections**: Edges define the nature of relationships between nodes
+- **Bidirectional support**: Edges can be traversed in both directions
+- **Rich metadata**: Store relationship-specific data directly in edge properties
 
-        // Mutate state
-        self.value += visitor.increment_by;
+**Graph Operations:**
 
-        // Track changes
-        self.history.append({
-            "from": old_value,
-            "to": self.value,
-            "by": visitor.walker_id,
-            "at": now()
-        });
+- **Creation syntax**: Use `++>` to create new connections, `-->` to reference existing ones
+- **Navigation patterns**: `[-->]` for outgoing, `[<--]` for incoming connections
+- **Filtering support**: Apply conditions to find specific nodes or edges
+- **Traversal efficiency**: Graph operations are optimized for spatial queries
 
-        // Notify visitor of change
-        visitor.changes_made.append({
-            "node": self,
-            "old": old_value,
-            "new": self.value
-        });
-    }
-}
-```
+**Practical Applications:**
 
-##### 4. **Design for Testability**
-Make abilities testable by keeping them pure when possible:
+- **Natural modeling**: Represent real-world entities and relationships directly
+- **Query capabilities**: Find related data through graph traversal
+- **Persistence automation**: No manual database management required
+- **Scalable architecture**: Graph structure supports distributed processing
 
-```jac
-node Calculator {
-    has formula: str;
+!!! tip "Try It Yourself"
+    Practice with nodes and edges by building:
+    - A classroom management system with students, teachers, and courses
+    - A family tree with person nodes and relationship edges
+    - A social network with users and friendship connections
+    - An inventory system with items and location relationships
 
-    // Pure calculation - easy to test
-    can calculate(values: dict) -> float {
-        // Parse and evaluate formula
-        return eval_formula(self.formula, values);
-    }
+    Remember: Nodes represent entities, edges represent relationships - think spatially!
 
-    // Ability delegates to pure function
-    can provide_result with CalculationWalker entry {
-        let result = self.calculate(visitor.values);
-        visitor.collect_result(self, result);
-    }
-}
-```
+---
 
-##### 5. **Document Ability Contracts**
-Be clear about what abilities expect and provide:
-
-```jac
-node DataProvider {
-    """
-    Provides data to visiting walkers.
-
-    Expected visitor interface:
-    - receive_data(data: dict, metadata: dict)
-    - can_handle_format(format: str) -> bool
-
-    Modifies visitor state:
-    - Adds data to visitor's collection
-    - Updates visitor's metadata
-    """
-    can provide with DataCollector entry {
-        if not visitor.can_handle_format(self.format) {
-            visitor.skip_unsupported(self);
-            return;
-        }
-
-        visitor.receive_data(
-            data=self.data,
-            metadata=self.get_metadata()
-        );
-    }
-}
-```
-
-### Summary
-
-In this chapter, we've explored abilities—the event-driven computation model at the heart of Object-Spatial Programming:
-
-- **Implicit Execution**: Abilities trigger automatically during traversal
-- **Multi-Actor System**: Walkers, nodes, and edges all participate
-- **Execution Order**: Predictable sequencing enables complex interactions
-- **Practical Patterns**: Validation, transformation, aggregation, and error handling
-- **Advanced Techniques**: Composition, cooperation, and performance optimization
-
-Abilities transform static data structures into reactive, intelligent systems. They enable computation to happen exactly where and when it's needed, without explicit orchestration. This event-driven model, combined with mobile walkers, creates systems that are both powerful and maintainable.
-
-Next, we'll explore the scale-agnostic features that make Jac applications automatically persist data and handle multiple users without additional code—taking the concepts we've learned and making them production-ready.
+*Your graph foundation is solid! Now let's add mobile computation with walkers and abilities.*

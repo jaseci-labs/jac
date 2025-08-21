@@ -48,8 +48,6 @@ class JacAnnexPass(Transform[uni.Module, uni.Module]):
 
     def load_annexes(self, jac_program: JacProgram, node: uni.Module) -> None:
         """Parse and attach annex modules to the node."""
-        from jaclang.compiler.program import CompilerMode
-
         if node.stub_only or not self.mod_path.endswith(".jac"):
             return
         if not self.mod_path:
@@ -64,9 +62,7 @@ class JacAnnexPass(Transform[uni.Module, uni.Module]):
                 path.startswith(f"{self.base_path}.")
                 or os.path.dirname(path) == self.impl_folder
             ):
-                mod = jac_program.compile(
-                    file_path=path, mode=CompilerMode.NO_CGEN_SINGLE
-                )
+                mod = jac_program.compile(file_path=path, no_cgen=True)
                 if mod:
                     node.impl_mod.append(mod)
 
@@ -78,8 +74,6 @@ class JacAnnexPass(Transform[uni.Module, uni.Module]):
                     or os.path.dirname(path) == self.test_folder
                 )
             ):
-                mod = jac_program.compile(
-                    file_path=path, mode=CompilerMode.NO_CGEN_SINGLE
-                )
+                mod = jac_program.compile(file_path=path, no_cgen=True)
                 if mod:
                     node.test_mod.append(mod)

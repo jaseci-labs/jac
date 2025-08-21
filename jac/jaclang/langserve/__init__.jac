@@ -1,1 +1,1 @@
-"""Jac Language Server Protocol implementation."""
+"""Jaclang langserve package."""

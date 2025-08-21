@@ -1,6 +1,6 @@
 import from ..mycode { code }
 
-def slprint ->str {
+
+def slprint-> str {
     return "sl" + code();
 }
-

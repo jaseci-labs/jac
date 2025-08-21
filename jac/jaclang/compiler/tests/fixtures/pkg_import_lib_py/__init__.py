@@ -1,9 +1,5 @@
 from jaclang import JacMachineInterface as _
 
-(tool_func,) = _.jac_import(
-    target="tools",
-    base_path=__file__,
-    items={"tool_func": None},
-)
+from .tools import tool_func
 
 glob_var_lib = "pkg_import_lib_py.glob_var_lib"

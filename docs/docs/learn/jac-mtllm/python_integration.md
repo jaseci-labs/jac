@@ -1,103 +1,81 @@
-# MTLLM Interface into Python Programs
+# MTLLM as a Library for Python
 
-As Jaclang is a language that supersets Python, you can easily integrate it into your existing Python application. This guide will show you how to do that by integrating a AI feature into a simple Task Manager application build using Python.
+The MTLLM module is a Jaclang plugin that provides AI functionality. Since Jaclang supersets Python, MTLLM can be integrated into Python applications. This guide demonstrates how to use MTLLM in Python.
 
-## Python Task Manager Application
-
-Let's start by creating a simple Task Manager application using Python. The application will have the following features:
-1. Add a task
-2. View all tasks
-3. Delete a task
-
-```python
-tasks: list[str] = []
-
-def add_task(task: str) - > None:
-    tasks.append(task)
-
-def view_tasks() -> None:
-    for i, task in enumerate(tasks):
-        print(f"{i+1}. {task}")
-
-def delete_task(index: int) -> None:
-    del tasks[index]
-
-def main() -> None:
-    while True:
-        print("1. Add Task")
-        print("2. View Tasks")
-        print("3. Delete Task")
-        print("4. Exit")
-        choice = int(input("Enter your choice: "))
-        if choice == 1:
-            task = input("Enter task: ")
-            add_task(task)
-        elif choice == 2:
-            view_tasks()
-        elif choice == 3:
-            index = int(input("Enter task number to delete: ")) - 1
-            delete_task(index)
-        elif choice == 4:
-            break
-        else:
-            print("Invalid choice")
-
-if __name__ == "__main__":
-    main()
-```
-
-You can run the application using the following command:
+MTLLM is a Python package that needs to be installed using:
 
 ```bash
-python task_manager.py
+pip install mtllm
 ```
 
-## Integrating Jaclang
+## Importing MTLLM in Python
 
-Currently the Tasks in the Task Manager are just strings. Let's add a feature where when the user adds a task, the application will decide the priority of the task and the estimated time to complete the task based on the previous tasks.
+MTLLM functionality is accessed by importing the `mtllm` module and using the `by` decorator on functions.
 
-### Creating the Jac Module
+```python linenums="1"
+import jaclang
+from jaclang import JacMachineInterface as Jac
+from dataclasses import dataclass
+from mtllm import Model, Image, by
 
-```jac
-import from mtllm.llms {OpenAI}
+llm = Model(model_name="gpt-4o")
 
-glob llm = OpenAI();
+@dataclass
+class Person:
+    full_name: str
+    description: str
+    year_of_birth: int
 
-obj Task {
-    has description: str,
-        priority: 'Priority of the Task (0-10)': int,
-        time: 'Estimated Time Required to Finish (min)': int;
-}
 
-def create_task(description: str, prev_tasks: list[Task]) -> Task
-by llm(method="Reason");
+@by(llm)
+def get_person_info(img: Image) -> Person: ...
+
+img = Image("https://bricknellschool.co.uk/wp-content/uploads/2024/10/einstein3.webp")
+
+person = get_person_info(img)
+print(f"Name: {person.full_name}, Description: {person.description}, Year of Birth: {person.year_of_birth}")
+```
+??? example "NOTE:"
+    Here MTLLM can only use primitive types and dataclasses as input and output types. We are working to resolve this limitation.
+
+
+## Model Hyper-parameters
+
+In Jaclang, hyper-parameters are set by passing them to the LLM model:
+
+```jac linenums="1"
+import from mtllm { Model }
+
+glob llm = Model(model_name="gpt-4o")
+
+def generate_joke() -> str by llm(temperature=0.3);
 ```
 
-Just like that with a few lines of code, you have a AI powered Task Manager. The `create_task` function will take the description of the task and the previous tasks and return a Task object with the priority and estimated time to complete the task.
+The `temperature` hyper-parameter controls the randomness of the output. Lower values produce more deterministic output, while higher values produce more random output.
 
-### Integrating the Jac Module
+In Python, hyper-parameters are passed similarly:
 
-```python
-from jaclang import jac_import
+```python linenums="1"
+from mtllm import Model, by
 
-# Importing the create_task function
-create_task = jac_import("taskman.jac").create_task
+llm = Model(model_name="gpt-4o")
 
-tasks: list = []
-
-def add_task(task):
-    task = create_task(task, tasks)
-    tasks.append(task)
-
-# Rest of the code remains the same
+@by(llm(temperature=0.3))
+def generate_joke() -> str: ...
 ```
 
-Now when the user adds a task, the application will use the MTLLM to decide the priority and estimated time to complete the task based on the previous tasks.
+## Using Python Functions as Tools
 
-You can run the application using the same command:
+Python functions can be used as tools in MTLLM. Functions defined in Python are callable by the LLM to perform specific tasks:
 
-```bash
-python task_manager.py
+```python linenums="1"
+from mtllm.llm import Model
+llm = Model(model_name="gpt-4o")
+
+
+def get_weather(city: str) -> str:
+    return f"The weather in {city} is sunny."
+
+@by(llm(tools=[get_weather]))
+def answer_question(question: str) -> str: ...
 ```
-
-This is just a simple example of how you can integrate Jaclang into your existing Python application. You can use Jaclang to add AI features to your application without having to write complex AI code.

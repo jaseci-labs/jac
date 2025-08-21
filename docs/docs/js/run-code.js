@@ -186,3 +186,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     observeUninitializedCodeBlocks();
     initPyodideWorker();
 });
+
+// Add nav link mutation observer for playground links
+document.addEventListener("DOMContentLoaded", function () {
+    const observer = new MutationObserver(() => {
+        const links = document.querySelectorAll("nav a[href='/playground/']");
+        links.forEach(link => {
+            link.setAttribute("target", "_blank");
+            link.setAttribute("rel", "noopener");
+        });
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
+});

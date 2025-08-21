@@ -1,85 +1,161 @@
-# Usage in code constructs
+# AI-Integrated Programming with MTLLM
 
-<!-- - Functions/ Aboilities
-- Object Methods
-- Object Initialization -->
+This guide covers different ways to use MTLLM for AI-integrated software development in Jaclang. MTLLM provides language-level abstractions for integrating Large Language Models into applications, from basic AI-powered functions to complex multi-agent systems. For agentic behavior capabilities, MTLLM includes the ReAct method with tool integration.
 
-## Functions and Methods
+## Supported Models
 
-Functions and methods play a crucial role in implementing various functionalities in a traditional GenAI application. In jaclang, we have designed these functions and methods to be highly flexible and powerful. Surprisingly, they don't even require a function or method body thanks to the MTP `by <your_llm>` syntax. This section will guide you on how to effectively utilize functions and methods in jaclang using MTLLM plugin.
+MTLLM uses [LiteLLM](https://docs.litellm.ai/docs) to provide integration with a wide range of models.
 
-### Functions
+=== "OpenAI"
+    ```jac linenums="1"
+    import from mtllm {Model}
 
-In a traditional GenAI application, you would make API calls inside the function body to perform the desired action. However, in jaclang, you can define the function using the `by <your_llm>` syntax. This way, you can define the function without a body and let the MTLLM model handle the implementation. Here is an example:
+    glob llm = Model(model_name = "gpt-4o")
+    ```
+=== "Gemini"
+    ```jac linenums="1"
+    import from mtllm {Model}
 
-```jac
-def greet(name: str) -> str by <your_llm>();
+    glob llm = Model(model_name = "gemini/gemini-2.0-flash")
+    ```
+=== "Anthropic"
+    ```jac linenums="1"
+    import from mtllm {Model}
+
+    glob llm = Model(model_name = "claude-3-5-sonnet-20240620")
+    ```
+=== "Ollama"
+    ```jac linenums="1"
+    import from mtllm {Model}
+
+    glob llm = Model(model_name = "ollama/llama3:70b")
+    ```
+=== "HuggingFace Models"
+    ```jac linenums="1"
+    import from mtllm {Model}
+
+    glob llm = Model(model_name = "huggingface/meta-llama/Llama-3.3-70B-Instruct")
+    ```
+
+??? Note
+    Additional supported models and model serving platforms are available with LiteLLM. Refer to their [documentation](https://docs.litellm.ai/docs/providers) for model names.
+
+## MTP for Functions
+
+### Basic Functions
+
+Functions can be integrated with LLM capabilities by adding the `by llm` declaration. This eliminates the need for manual API calls and prompt engineering:
+
+```jac linenums="1"
+import from mtllm.llm { Model }
+
+glob llm = Model(model_name="gpt-4o");
+
+def translate(text: str, target_language: str) -> str by llm();
+
+def analyze_sentiment(text: str) -> str by llm();
+
+def summarize(content: str, max_words: int) -> str by llm();
 ```
 
-In the above example, the `greet` function takes a `name` parameter of type `str` and returns a `str`. The function is defined using the `by <your_llm>` syntax, which means the implementation of the function is handled by the MTLLM.
+These functions process natural language inputs and generate contextually appropriate outputs.
 
-Below is an example where we define a function `get_expert` that takes a question as input and returns the best expert to answer the question in string format using mtllm with openai model with the method `Reason`. `get_answer` function takes a question and an expert as input and returns the answer to the question using mtllm with openai model without any method. and we can call these function as normal functions.
+### Functions with Reasoning
 
-```jac
-import from mtllm.llms {OpenAI}
+The `method='Reason'` parameter enables step-by-step reasoning for complex tasks:
 
-glob llm = OpenAI(model_name="gpt-4o");
+```jac linenums="1"
+import from mtllm.llm { Model }
 
-def get_expert(question: str) -> str by llm(method='Reason');
-def get_answer(question: str, expert: str) -> str by llm();
+glob llm = Model(model_name="gpt-4o");
+
+def analyze_sentiment(text: str) -> str by llm(method='Reason');
+
+def generate_response(original_text: str, sentiment: str) -> str by llm();
 
 with entry {
-    question = "What are Large Language Models?";
-    expert = get_expert(question);
-    answer = get_answer(question, expert);
-    print(f"{expert} says: '{answer}' ");
+    customer_feedback = "I'm really disappointed with the product quality. The delivery was late and the item doesn't match the description at all.";
+
+    # Function performs step-by-step sentiment analysis
+    sentiment = analyze_sentiment(customer_feedback);
+
+    # Function generates response based on sentiment
+    response = generate_response(customer_feedback, sentiment);
+
+    print(f"Customer sentiment: {sentiment}");
+    print(f"Suggested response: {response}");
 }
 ```
 
-Here's another example,
+### Structured Output Functions
 
-```jac
-import from mtllm.llms {OpenAI}
+MTLLM supports generation of structured outputs. Functions can return complex types:
 
-glob llm = OpenAI(model_name="gpt-4o");
-
-def get_joke_with_punchline() -> tuple[str, str] by llm();
-
-with entry {
-    (joke, punchline) = get_joke_with_punchline();
-    print(f"{joke}: {punchline}");
-}
-```
-
-In the above example, the `joke_punchline` function returns a tuple of two strings, which are the joke and its punchline. The function is defined using the `by <your_llm>` syntax, which means the implementation is handled by the MTLLM. You can add semstr to the function to make it more specific.
-
-
-### Methods
-
-In a traditional GenAI application, you would make API calls inside the method body to perform the desired action. However, in jaclang, you can define the method using the `by <your_llm>` syntax. This way, you can define the method without a body and let the MTLLM model handle the implementation. Here is an example:
-
-```jac
+```jac linenums="1"
 obj Person {
     has name: str;
-    def greet() -> str by <your_llm>(incl_info=(self));
+    has age: int;
+    has description: str | None;
+}
+
+def generate_random_person() -> Person by llm();
+
+with entry {
+    person = generate_random_person();
+    assert isinstance(person, Person);
+    print(f"Generated Person: {person.name}, Age: {person.age}, Description: {person.description}");
 }
 ```
 
-In the above example, the `greet` method returns a `str`. The method is defined using the `by <your_llm>` syntax, which means the implementation of the method is handled by the MTLLM. The `incl_info=(self.name)` parameter is used to include the `name` attribute of the `Person` object as an information source for the MTLLM.
+A more complex example using object schema for context and structured output generation is demonstrated in the [game level generation](../examples/mtp_examples/rpg_game.md) example.
 
-In the below example, we define a class `Essay` with a method `get_essay_judgement` that takes a criteria as input and returns the judgement for the essay based on the criteria using mtllm with openai model after a step of `Reasoning`. `get_reviewer_summary` method takes a dictionary of judgements as input and returns the summary of the reviewer based on the judgements using mtllm with openai model. `give_grade` method takes the summary as input and returns the grade for the essay using mtllm with openai model. and we can call these methods as normal methods.
 
-```jac
-import from mtllm.llms {OpenAI}
+## Context-Aware MTP Methods
 
-glob llm = OpenAI(model_name="gpt-4o");
+Methods can be integrated with LLM capabilities to process object state and context:
+
+<!-- ### Basic Methods -->
+
+When integrating LLMs for methods of a class, MTP automatically adds attributes of the initialized object into the prompt of the LLM, adding extra context to the LLM.
+
+```jac linenums="1"
+import from mtllm.llm { Model }
+
+glob llm = Model(model_name="gpt-4o");
+
+obj Person {
+    has name: str;
+    has age: int;
+
+    def introduce() -> str by llm();
+    def suggest_hobby() -> str by llm();
+}
+
+with entry {
+    alice = Person("Alice", 25);
+    print(alice.introduce());
+    print(alice.suggest_hobby());
+}
+```
+
+<!-- ### Complex AI-Integrated Workflows with Objects -->
+
+<!-- Multi-step workflows can be implemented using object methods: -->
+
+<!-- ```jac linenums="1"
+import from mtllm.llm { Model }
+
+glob llm = Model(model_name="gpt-4o");
 
 obj Essay {
     has essay: str;
 
-    def get_essay_judgement(criteria: str) -> str by llm(incl_info=(self.essay));
-    def get_reviewer_summary(judgements: dict) -> str by llm(incl_info=(self.essay));
-    def give_grade(summary: str) -> 'A to D': str by llm();
+    def get_essay_judgement(criteria: str) -> str by llm();
+
+    def get_reviewer_summary(judgements: dict) -> str by llm();
+
+    "Grade should be 'A' to 'D'"
+    def give_grade(summary: str) -> str by llm();
 }
 
 with entry {
@@ -103,83 +179,147 @@ with entry {
     print("Reviewer Notes: ", summary);
     print("Grade: ", grade);
 }
+``` -->
+
+## Adding Explicit Context for Functions, Methods and Objects
+
+Providing appropriate context is essential for optimal LLM performance. MTLLM provides multiple methods to add context to functions and objects.
+
+### Adding Context with Docstrings
+
+Docstrings provide context for LLM-integrated functions. MTLLM uses docstrings to understand function purpose and expected behavior.
+
+```jac linenums="1"
+import from mtllm.llm { Model }
+
+glob llm = Model(model_name="gpt-4o");
+
+"""Translate text to the target language."""
+def translate(text: str, target_language: str) -> str by llm();
+
+"""Generate a professional email response based on the input message tone."""
+def generate_email_response(message: str, recipient_type: str) -> str by llm();
 ```
 
-<!-- ## Object Initialization
+### Adding Context with Semantic Strings (Semstrings)
 
-As MTLLM is really great at handling typed outputs, we have added the ability to initialize a new object with only providing few of the required fields. MTLLM will automatically fill the rest of the fields based on the given context.
+Jaclang provides semantic strings using the `sem` keyword for describing object attributes and function parameters. This is useful for:
 
-This behavior is very hard to achieve in other languages, but with MTLLM, it is as simple as providing the required fields and letting the MTLLM do the rest.
+- Describing object attributes with domain-specific meaning
+- Adding context to parameters
+- Providing semantic information while maintaining clean code
 
-In the following example, we are initializing a new object of type `Task` with only providing the `description` field. The `time_in_min` and `priority_out_of_10` fields are automatically filled by the MTLLM based on the given context after a step of reasoning.
+```jac linenums="1"
+obj Person {
+    has name;
+    has dob;
+    has ssn;
+}
 
-```jac
-import from mtllm.llms, OpenAI, Ollama;
+sem Person = "Represents the personal record of a person";
+sem Person.name = "Full name of the person";
+sem Person.dob = "Date of Birth";
+sem Person.ssn = "Last four digits of the Social Security Number of a person";
 
-glob llm = OpenAI(model_name="gpt-4o");
+"""Calculate eligibility for various services based on person's data."""
+def check_eligibility(person: Person, service_type: str) -> bool by llm();
+```
 
-obj Task {
-    has description: str;
-    has time_in_min: int,
-        priority_out_of_10: int;
+### Additional Context with `incl_info`
+
+The `incl_info` parameter provides additional context to LLM methods for context-aware processing:
+
+```jac linenums="1"
+import from mtllm.llm { Model }
+import from datetime { datetime }
+
+glob llm = Model(model_name="gpt-4o");
+
+obj Person {
+    has name: str;
+    has date_of_birth: str;
+
+    # Uses the date_of_birth attribute and "today" information
+    # from incl_info to calculate the person's age
+    def calculate_age() -> str by llm(
+        incl_info={
+            "today": datetime.now().strftime("%d-%m-%Y"),
+        }
+    );
+}
+```
+
+
+### When to Use Each Approach
+
+- **Docstrings**: Use for function-level context and behavior description
+- **Semstrings**: Use for attribute-level descriptions and domain-specific terminology
+- **incl_info**: Use to selectively include relevant object state in method calls
+
+The `sem` keyword can be used in [separate implementation files](../../jac_book/chapter_5.md#declaring-interfaces-vs-implementations) for improved code organization and maintainability.
+
+In this example:
+
+<!-- - `greet("Alice")` executes the normal function and returns `"Hello Alice"`
+- `greet("Alice") by llm()` overrides the function with LLM behavior
+- `format_data(user_data) by llm()` transforms data formatting into human-readable presentation -->
+
+
+## Tool-Calling Agents with ReAct
+
+The ReAct (Reasoning and Acting) method enables agentic behavior by allowing functions to reason about problems and use external tools. Functions can be made agentic by adding the `by llm(tools=[...])` declaration.
+
+```jac linenums="1"
+import from mtllm.llm { Model }
+import from datetime { datetime }
+
+glob llm = Model(model_name="gpt-4o");
+
+obj Person {
+    has name: str;
+    has dob: str;
+}
+
+"""Calculate the age of the person where current date can be retrieved by the get_date tool."""
+def calculate_age(person: Person) -> int by llm(tools=[get_date]);
+
+"""Get the current date in DD-MM-YYYY format."""
+def get_date() -> str {
+    return datetime.now().strftime("%d-%m-%Y");
 }
 
 with entry {
-    task_contents = [
-        "Have some sleep",
-        "Enjoy a better weekend with my girlfriend",
-        "Work on Jaseci Project",
-        "Teach EECS 281 Students",
-        "Enjoy family time with my parents"
-    ];
-    tasks = [];
-    for task_content in task_contents {
-        task_info = Task(description = task_content by llm(method="Reason"));
-        tasks.append(task_info);
+    mars = Person("Mars", "27-05-1983");
+    print("Age of Mars =", calculate_age(mars));
+}
+```
+
+A comprehensive tutorial on [building an agentic application is available here.](../examples/mtp_examples/fantasy_trading_game.md)
+
+
+## Streaming Outputs
+
+The streaming feature enables real-time token reception from LLM functions, useful for generating content where results should be displayed as they are produced.
+
+Set `stream=True` in the invoke parameters to enable streaming:
+
+```jac linenums="1"
+import from mtllm { Model }
+
+glob llm = Model(model_name="gpt-4o-mini");
+
+""" Generate short essay (less than 300 words) about the given topic """
+def generate_essay(topic: str) -> str by llm(stream=True);
+
+
+with entry {
+    topic = "The orca whale and it's hunting techniques";
+    for tok in generate_essay(topic) {
+        print(tok, end='', flush=True);
     }
-    print(tasks);
+    print(end='\n');
 }
 ```
-```jac
-# Output
-[
-    Task(description='Have some sleep', time_in_min=30, priority_out_of_10=5),
-    Task(description='Enjoy a better weekend with my girlfriend', time_in_min=60, priority_out_of_10=7),
-    Task(description='Work on Jaseci Project', time_in_min=120, priority_out_of_10=8),
-    Task(description='Teach EECS 281 Students', time_in_min=90, priority_out_of_10=9),
-    Task(description='Enjoy family time with my parents', time_in_min=60, priority_out_of_10=7)
-]
-```
 
-Here is another example with nested custom types,
-
-```jac
-import from jaclang.core.llms, OpenAI;
-
-glob llm = OpenAI(model_name="gpt-4o");
-
-obj Employer {
-    has name: 'Employer Name': str,
-        location: str;
-}
-
-obj 'Person'
-Person {
-    has name: str,
-        age: int,
-        employer: Employer,
-        job: str;
-}
-
-with entry {
-    info: "Person's Information": str = "Alice is a 21 years old and works as an engineer at LMQL Inc in Zurich, Switzerland.";
-    person = Person(by llm(incl_info=(info)));
-    print(person);
-}
-```
-```jac
-# Output
-Person(name='Alice', age=21, employer=Employer(name='LMQL Inc', location='Zurich, Switzerland'), job='engineer')
-```
-
-In the above example, we have initialized a new object of type `Person` with only providing `info` as additional context. The `name`, `age`, `employer`, and `job` fields are automatically filled by the MTLLM based on the given context. -->
+??? example "NOTE:"
+    "The `stream=True` parameter only supports `str` output type. Tool calling is not currently supported in streaming mode but will be available in future releases."

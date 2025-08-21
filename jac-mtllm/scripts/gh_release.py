@@ -1,10 +1,10 @@
 """GH Release script for MTLLM."""
 
-from github_release import gh_release_create
+import tomllib
+
+from github_release import gh_release_create  # noqa: I100
 
 import markdown_to_json
-
-import tomllib
 
 
 def get_release_info(version: str) -> str:

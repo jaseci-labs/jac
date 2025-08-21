@@ -14,7 +14,7 @@ WebSockets enable real-time, bidirectional communication between clients and you
 
 You can declare a walker to handle WebSocket connections by setting the `methods` property to include `"websocket"` in the `__specs__` configuration:
 
-```python
+```jac
 walker your_event_name {
     has val: int;
 

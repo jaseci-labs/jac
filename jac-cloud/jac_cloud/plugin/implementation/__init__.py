@@ -1,6 +1,6 @@
 """Jaseci Plugin Implementations."""
 
-from .api import EntryType, specs, walker_router, webhook_walker_router
+from .api import EntryType, Routers, specs
 from .scheduler import (
     Executor,
     Trigger,
@@ -15,9 +15,8 @@ from .websocket import WEBSOCKET_MANAGER, websocket_router
 
 __all__ = [
     "EntryType",
+    "Routers",
     "specs",
-    "walker_router",
-    "webhook_walker_router",
     "Executor",
     "Trigger",
     "create_task",

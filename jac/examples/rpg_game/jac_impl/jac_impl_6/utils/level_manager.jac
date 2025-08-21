@@ -1,6 +1,6 @@
-import from mtllm.llms { OpenAI }
+import from mtllm { Model }
 
-glob llm = OpenAI(model_name="gpt-4o", verbose=True);
+glob llm = Model(model_name="gpt-4o", verbose=True);
 
 obj Position {
     has x: int,

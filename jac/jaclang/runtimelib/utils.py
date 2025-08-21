@@ -11,7 +11,36 @@ from typing import Callable, Iterator, TYPE_CHECKING
 import jaclang.compiler.unitree as uni
 
 if TYPE_CHECKING:
-    from jaclang.runtimelib.constructs import NodeAnchor, NodeArchetype
+    from jaclang.runtimelib.constructs import NodeArchetype
+
+
+def read_file_with_encoding(file_path: str) -> str:
+    """Read file with proper encoding detection."""
+    encodings_to_try = [
+        "utf-8-sig",
+        "utf-8",
+        "utf-16",
+        "utf-16le",
+        "utf-16be",
+        # "latin-1", # TODO: Support reading files with Latin-1 encoding
+    ]
+
+    for encoding in encodings_to_try:
+        try:
+            with open(file_path, "r", encoding=encoding) as f:
+                return f.read()
+        except UnicodeError:
+            continue
+        except Exception as e:
+            raise IOError(
+                f"Could not read file {file_path}: {e}. "
+                f"Report this issue: https://github.com/jaseci-labs/jaseci/issues"
+            ) from e
+
+    raise IOError(
+        f"Could not read file {file_path} with any encoding. "
+        f"Report this issue: https://github.com/jaseci-labs/jaseci/issues"
+    )
 
 
 @contextmanager
@@ -28,25 +57,32 @@ def sys_path_context(path: str) -> Iterator[None]:
 
 
 def collect_node_connections(
-    current_node: NodeAnchor,
+    current_node: NodeArchetype,
     visited_nodes: set,
     connections: set,
+    edge_ids: set,
 ) -> None:
     """Nodes and edges representing the graph are collected in visited_nodes and connections."""
     if current_node not in visited_nodes:
         visited_nodes.add(current_node)
-        edges = current_node.edges
+        edges = current_node.__jac__.edges
         for edge_ in edges:
+            if edge_.id in edge_ids:
+                continue
+            edge_ids.add(edge_.id)
             target = edge_.target
             if target:
                 connections.add(
                     (
-                        current_node.archetype,
+                        edge_.id,
+                        edge_.source.archetype,
                         target.archetype,
-                        edge_.__class__.__name__,
+                        edge_.archetype,
                     )
                 )
-                collect_node_connections(target, visited_nodes, connections)
+                collect_node_connections(
+                    target.archetype, visited_nodes, connections, edge_ids
+                )
 
 
 def traverse_graph(

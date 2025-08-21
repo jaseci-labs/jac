@@ -1,6 +1,7 @@
 """Collection Abstract."""
 
 from os import getenv
+from tempfile import gettempdir
 from typing import (
     Any,
     AsyncGenerator,
@@ -8,9 +9,11 @@ from typing import (
     Generic,
     Iterable,
     Mapping,
+    Type,
     TypeVar,
     cast,
 )
+
 
 from bson import ObjectId
 
@@ -50,6 +53,27 @@ from .localdb import MontyClient, set_storage
 from ..utils import logger
 
 T = TypeVar("T")
+
+# TODO:need this function in future for partial indexing
+# from pymongo.operations import _IndexKeyHint
+# def apply_prefix(prefix: str, keys: _IndexKeyHint) -> _IndexKeyHint:
+#     """Apply prefix for every key."""
+#     match keys:
+#         case str():
+#             return f"{prefix}{keys}"
+#         case list() | set() | tuple():
+#             return [
+#                 (
+#                     f"{prefix}{key}"
+#                     if isinstance(key, str)
+#                     else (f"{prefix}{key[0]}", key[1])
+#                 )
+#                 for key in keys
+#             ]
+#         case dict():
+#             return {f"{prefix}{key}": value for key, value in keys.items()}
+#         case _:
+#             return keys
 
 
 class Collection(Generic[T]):
@@ -118,6 +142,40 @@ class Collection(Generic[T]):
                 cls.collection().create_indexes(idxs)
 
     @classmethod
+    def apply_partial_indexes(cls, type: Type) -> None:
+        """Apply Partial Indexes."""
+        constraints = getattr(type, "__constraints__", None)
+        if constraints:
+            unique_fields_list = constraints.unique
+            if len(unique_fields_list) != 0:
+                partial_indexes = []
+                for unique_field in unique_fields_list:
+                    indexed_fields = []
+                    for field_name in unique_field:
+                        indexed_fields.append((field_name, 1))
+                    partial_index = IndexModel(indexed_fields, unique=True)
+                    partial_indexes.append(partial_index)
+                cls.collection().create_indexes(partial_indexes)
+        # original implementation
+        # indexes: list[Index] = getattr(type, "__jac_indexes__", [])
+        # if indexes:
+        #     idxs = [
+        #         IndexModel(
+        #             apply_prefix("architype.", index["key"]),
+        #             **{
+        #                 **(constraints := index.get("constraints", {})),
+        #                 "unique": True,  # TODO: need more fixes for this
+        #                 "partialFilterExpression": {
+        #                     **constraints.get("partialFilterExpression", {}),
+        #                     "name": type.__name__,
+        #                 },
+        #             },
+        #         )
+        #         for index in indexes
+        #     ]
+        #     cls.collection().create_indexes(idxs)
+
+    @classmethod
     def __document__(cls, doc: Mapping[str, Any]) -> T:
         """
         Return parsed version of document.
@@ -148,7 +206,7 @@ class Collection(Generic[T]):
                 )
             else:
                 logger.info("DATABASE_HOST is not available! Using LocalDB...")
-                path = getenv("DATABASE_PATH") or "mydatabase"
+                path = getenv("DATABASE_PATH") or f"{gettempdir()}/mydatabase"
                 set_storage(
                     repository=path,
                     storage="sqlite",

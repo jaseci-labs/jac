@@ -7,10 +7,12 @@ import sys
 from typing import List, Optional, Type
 
 import jaclang.compiler.unitree as uni
-from jaclang.compiler.passes.main import CompilerMode as CMode, PyastBuildPass
+from jaclang.compiler.passes.main import PyastBuildPass
+from jaclang.compiler.passes.main.cfg_build_pass import cfg_dot_from_file
 from jaclang.compiler.passes.tool.doc_ir_gen_pass import DocIRGenPass
 from jaclang.compiler.program import JacProgram
 from jaclang.compiler.unitree import UniScopeNode
+from jaclang.runtimelib.utils import read_file_with_encoding
 from jaclang.utils.helpers import auto_generate_refs, pascal_to_snake
 
 
@@ -194,9 +196,8 @@ class AstTool:
             base = base if base else "./"
 
             if file_name.endswith(".py"):
-                with open(file_name, "r") as f:
-                    file_source = f.read()
-                    parsed_ast = py_ast.parse(file_source)
+                file_source = read_file_with_encoding(file_name)
+                parsed_ast = py_ast.parse(file_source)
                 if output == "pyast":
                     return f"\n{py_ast.dump(parsed_ast, indent=2)}"
                 try:
@@ -209,15 +210,15 @@ class AstTool:
                     ).ir_out
                     print(rep.unparse())
 
-                    ir = prog.compile_from_str(
-                        source_str=rep.unparse(),
+                    ir = prog.compile(
+                        use_str=rep.unparse(),
                         file_path=file_name[:-3] + ".jac",
-                        mode=CMode.NO_CGEN,
+                        no_cgen=True,
                     )
                 except Exception as e:
                     return f"Error While Jac to Py AST conversion: {e}"
             else:
-                ir = prog.compile(file_name, mode=CMode.NO_CGEN)
+                ir = prog.compile(file_name, no_cgen=True)
 
             match output:
                 case "sym":
@@ -242,9 +243,12 @@ class AstTool:
                     return out
                 case "ast.":
                     return ir.printgraph()
+                case "cfg.":
+                    return cfg_dot_from_file(file_name)
                 case "unparse":
                     return ir.unparse()
                 case "pyast":
+                    ir = prog.compile(file_name)
                     return (
                         f"\n{py_ast.dump(ir.gen.py_ast[0], indent=2)}"
                         if isinstance(ir.gen.py_ast[0], py_ast.AST)
@@ -253,6 +257,7 @@ class AstTool:
                 case "docir":
                     return str(DocIRGenPass(ir, prog).ir_out.gen.doc_ir)
                 case "py":
+                    ir = prog.compile(file_name)
                     return (
                         f"\n{ir.gen.py}"
                         if isinstance(ir.gen.py[0], str)
