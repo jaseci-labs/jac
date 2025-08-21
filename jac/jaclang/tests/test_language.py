@@ -1461,3 +1461,23 @@ class JacLanguageTests(TestCase):
             self.assertIn("😀😍", result)
         finally:
             os.unlink(temp_path)
+
+    def test_ability_execution_order(self) -> None:
+        """Test the execution order of abilities."""
+        captured_output = io.StringIO()
+        sys.stdout = captured_output
+        Jac.jac_import("ability_execution_order", base_path=self.fixture_abs_path("./"))
+        sys.stdout = sys.__stdout__
+        stdout_value = captured_output.getvalue().split("\n")
+        self.assertIn("Entering root", stdout_value[0])
+        self.assertIn("Entering MyNode with value: 5", stdout_value[1])
+        self.assertIn("Entering MyNode with value: 15", stdout_value[2])
+        self.assertIn("I am here MyNode(val=25)", stdout_value[3])
+        self.assertIn("I am here MyNode(val=20)", stdout_value[4])
+        self.assertIn("I am here MyNode(val=5)", stdout_value[5])
+        self.assertIn("I am here MyNode(val=15)", stdout_value[6])
+        self.assertIn("I am here MyNode(val=30)", stdout_value[7])
+        self.assertIn("I am here MyNode(val=25)", stdout_value[8])
+        self.assertIn("I am here MyNode(val=20)", stdout_value[9])
+        self.assertIn("I am here MyNode(val=25)", stdout_value[10])
+        self.assertIn("Exiting from root", stdout_value[11])

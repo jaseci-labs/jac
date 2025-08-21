@@ -11,7 +11,7 @@ walker MyWalker {
 
     can func2 with MyNode entry {
         print(f"Entering MyNode with value: {here.val}");
-        visit [-->];
+        visit :-1:[-->];
     }
 
     can func3 with MyNode exit {
@@ -24,7 +24,7 @@ walker MyWalker {
 }
 
 with entry {
-    root ++> MyNode(5) ++> MyNode(15);
-    root ++> MyNode(10);
+    root ++> MyNode(5) ++> [MyNode(15), MyNode(20)];
+    root ++> MyNode(10) ++> MyNode(25);
     root spawn MyWalker();
 }
