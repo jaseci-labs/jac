@@ -25,7 +25,7 @@ function initPyodideWorker() {
 }
 
 // Run Jac Code in Worker
-function runJacCodeInWorker(code) {
+function runJacCodeInWorker({ code, inputs }) {
     return new Promise(async (resolve, reject) => {
         await initPyodideWorker();
         const handleMessage = (event) => {
@@ -38,7 +38,7 @@ function runJacCodeInWorker(code) {
             }
         };
         pyodideWorker.addEventListener("message", handleMessage);
-        pyodideWorker.postMessage({ type: "run", code });
+        pyodideWorker.postMessage({ type: "run", code, inputs }); // Include inputs in the message
     });
 }
 
@@ -88,11 +88,13 @@ async function setupCodeBlock(div) {
 
     div.innerHTML = `
     <div class="jac-code" style="border: 1px solid #ccc;"></div>
+    <textarea class="code-input" placeholder="Enter inputs here..." style="width: 100%; height: 50px; margin-top: 10px; padding: 10px; border: 1px solid #ccc; resize: vertical;"></textarea>
     <button class="md-button md-button--primary run-code-btn">Run</button>
     <pre class="code-output" style="display:none; white-space: pre-wrap; background: #1e1e1e; color: #d4d4d4; padding: 10px;"></pre>
     `;
 
     const container = div.querySelector(".jac-code");
+    const inputArea = div.querySelector(".code-input");
     const runButton = div.querySelector(".run-code-btn");
     const outputBlock = div.querySelector(".code-output");
 
@@ -137,7 +139,8 @@ async function setupCodeBlock(div) {
         outputBlock.textContent = "Running...";
         try {
             const codeToRun = editor.getValue();
-            const result = await runJacCodeInWorker(codeToRun);
+            const inputs = inputArea.value;
+            const result = await runJacCodeInWorker({ code: codeToRun, inputs });
             outputBlock.textContent = `Output:\n${result}`;
         } catch (error) {
             outputBlock.textContent = `Error:\n${error}`;

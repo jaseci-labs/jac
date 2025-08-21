@@ -32,7 +32,7 @@ except Exception as e:
 
 // Worker code
 self.onmessage = async (event) => {
-    const { type, code } = event.data;
+    const { type, code, inputs } = event.data;
 
     if (type === "init") {
         importScripts("https://cdn.jsdelivr.net/pyodide/v0.27.0/full/pyodide.js");
@@ -51,19 +51,31 @@ from jaclang.cli.cli import run
 
     try {
         const jacCode = JSON.stringify(code);
+        const escapedInputs = JSON.stringify(inputs); // Properly escape inputs
         const output = await pyodide.runPythonAsync(`
 from jaclang.cli.cli import run
 import sys
 from io import StringIO
+import re
 
 captured_output = StringIO()
 sys.stdout = captured_output
 sys.stderr = captured_output
 
+inputs = ${escapedInputs}  # Use escaped inputs
+input_list = [item for item in re.split(r'[,\s]+', inputs) if item]
+
+with open("/tmp/inputs.txt", "w") as f:
+    for item in input_list:
+        f.write(f"{item}\\n")
+
 jac_code = ${jacCode}
 with open("/tmp/temp.jac", "w") as f:
     f.write(jac_code)
-run("/tmp/temp.jac")
+
+with open("/tmp/inputs.txt", "r") as input_file:
+    sys.stdin = input_file
+    run("/tmp/temp.jac")
 
 sys.stdout = sys.__stdout__
 sys.stderr = sys.__stderr__
