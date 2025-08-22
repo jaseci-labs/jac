@@ -4,7 +4,7 @@ This guide explains how to configure and run a deployment for your JAC applicati
 
 ---
 ## Steps
-### 1. setup 📂 Configuration File
+### 1. setup Configuration File
 
 All deployment settings are stored in a JSON file (e.g., `deploy.json`).
 Here’s an example configuration:
