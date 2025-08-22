@@ -345,8 +345,9 @@ class WalkerAnchor(Anchor):
 
     archetype: WalkerArchetype
     path: list[NodeAnchor] = field(default_factory=list)
-    next_entry: list[NodeAnchor | EdgeAnchor] = field(default_factory=list)
-    next_exit: list[NodeAnchor | EdgeAnchor] = field(default_factory=list)
+    next: list[NodeAnchor | EdgeAnchor | tuple[NodeAnchor | EdgeAnchor]] = field(
+        default_factory=list
+    )
     ignores: list[NodeAnchor] = field(default_factory=list)
     disengaged: bool = False
 

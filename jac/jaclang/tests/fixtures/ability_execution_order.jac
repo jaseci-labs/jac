@@ -6,12 +6,12 @@ walker MyWalker {
 
     can func1 with `root entry {
         print(f"Entering root");
-        visit [-->];
+        visit :0:[-->];
     }
 
     can func2 with MyNode entry {
         print(f"Entering MyNode with value: {here.val}");
-        visit :-1:[-->];
+        visit :0:[-->];
     }
 
     can func3 with MyNode exit {

@@ -430,32 +430,25 @@ class JacWalker:
         if isinstance(walker, WalkerArchetype):
             """Walker visits node."""
             wanch = walker.__jac__
-            before_len = len(wanch.next_entry)
-            next_entry = []
-            next_exit = []
+            before_len = len(wanch.next)
+            next = []
             for anchor in (
                 (i.__jac__ for i in expr) if isinstance(expr, list) else [expr.__jac__]
             ):
                 if anchor not in wanch.ignores:
                     if isinstance(anchor, (NodeAnchor, EdgeAnchor)):
-                        next_entry.append(anchor)
-                        next_exit.append(anchor)
+                        next.append(anchor)
+                        next.append((anchor,))
                     else:
                         raise ValueError("Anchor should be NodeAnchor or EdgeAnchor.")
-            if insert_loc < -len(wanch.next_entry):  # for out of index selection
+            if insert_loc < -len(wanch.next):  # for out of index selection
                 insert_loc = 0
             elif insert_loc < 0:
-                insert_loc += len(wanch.next_entry) + 1
-            wanch.next_entry = (
-                wanch.next_entry[:insert_loc]
-                + next_entry
-                + wanch.next_entry[insert_loc:]
+                insert_loc += len(wanch.next) + 1
+            wanch.next = (
+                wanch.next[: 2 * insert_loc] + next + wanch.next[2 * insert_loc :]
             )
-            insert_loc = len(wanch.next_exit) + insert_loc + 1
-            wanch.next_exit = (
-                wanch.next_exit[:insert_loc] + next_exit + wanch.next_exit[insert_loc:]
-            )
-            return len(wanch.next_entry) > before_len
+            return len(wanch.next) > before_len
         else:
             raise TypeError("Invalid walker object")
 
@@ -506,9 +499,11 @@ class JacWalker:
             if walker.disengaged:
                 return warch
 
-        while len(walker.next_entry):
-            if current_loc := walker.next_entry.pop(0).archetype:
+        while len(walker.next):
+            current = walker.next.pop(0)
+            if isinstance(current, Anchor):
                 # walker ability with loc entry
+                current_loc = current.archetype
                 for i in warch._jac_entry_funcs_:
                     if (
                         i.trigger
@@ -540,10 +535,8 @@ class JacWalker:
                     if walker.disengaged:
                         return warch
 
-        while len(walker.next_exit):
-            if current_loc := walker.next_exit.pop().archetype:
-
-                # loc ability with walker exit
+            else:
+                current_loc = current[0].archetype
                 for i in current_loc._jac_exit_funcs_:
                     if (
                         i.trigger
@@ -604,8 +597,9 @@ class JacWalker:
             if walker.disengaged:
                 return warch
 
-        while len(walker.next_entry):
-            if current_loc := walker.next_entry.pop(0).archetype:
+        while len(walker.next):
+            if not isinstance(current := walker.next.pop(0), tuple):
+                current_loc = current.archetype
                 # walker ability with loc entry
                 for i in warch._jac_entry_funcs_:
                     if (
@@ -644,8 +638,8 @@ class JacWalker:
                     if walker.disengaged:
                         return warch
 
-        while len(walker.next_exit):
-            if current_loc := walker.next_exit.pop(0).archetype:
+            else:
+                current_loc = current[0].archetype
                 # loc ability with walker exit
                 for i in current_loc._jac_exit_funcs_:
                     if (
@@ -707,25 +701,23 @@ class JacWalker:
             for i in items:
                 a = i.__jac__
                 if isinstance(a, (NodeAnchor, EdgeAnchor)):
-                    walker.next_entry.append(a)
-                    walker.next_exit.append(a)
+                    walker.next.append(a)
+                    walker.next.append((a,))
                 if isinstance(a, EdgeAnchor) and a.target:
-                    walker.next_entry.append(a.target)
-                    walker.next_exit.append(a.target)
-            return walker.next_entry[0]
+                    walker.next.append(a.target)
+                    walker.next.append((a.target,))
+            return walker.next[0]
 
         def assign(
             walker: WalkerAnchor, t: Archetype | list[Archetype]
         ) -> NodeAnchor | EdgeAnchor:
             if isinstance(t, NodeArchetype):
                 node = t.__jac__
-                walker.next_entry = [node]
-                walker.next_exit = [node]
+                walker.next = [node, (node,)]
                 return node
             elif isinstance(t, EdgeArchetype):
                 edge = t.__jac__
-                walker.next_entry = [edge, edge.target]
-                walker.next_exit = [edge, edge.target]
+                walker.next = [edge, (edge,), edge.target, (edge.target,)]
                 return edge
             elif isinstance(t, list) and all(
                 isinstance(i, (NodeArchetype, EdgeArchetype)) for i in t

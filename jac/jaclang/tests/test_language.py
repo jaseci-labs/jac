@@ -956,7 +956,7 @@ class JacLanguageTests(TestCase):
         self.assertIn("Entering at the beginning of walker:  Root()", stdout_value[0])
         self.assertIn("entry_count=1, exit_count=1", str(stdout_value[12]))
         self.assertIn(
-            "Exiting at the end of walker:  Root()", stdout_value[11]
+            "Exiting at the end of walker:  test_node(value=9)", stdout_value[11]
         )
 
     def test_visit_order(self) -> None:
@@ -997,10 +997,10 @@ class JacLanguageTests(TestCase):
         self.assertEqual(
             "walker entry\nwalker enter to root\n"
             "a-1\na-2\na-3\n"
+            "a-4\na-5\na-6\n"   
             "b-1\nb-2\nb-3\n"
-            "c-1\nc-2\nc-3\nc-4\nc-5\nc-6\n"
-            "b-4\nb-5\nb-6\n"
-            "a-4\na-5\na-6\n"           
+            "b-4\nb-5\nb-6\n"  
+            "c-1\nc-2\nc-3\nc-4\nc-5\nc-6\n"      
             "walker exit\n",
             captured_output.getvalue(),
         )
@@ -1268,8 +1268,8 @@ class JacLanguageTests(TestCase):
         stdout_value = captured_output.getvalue().split("\n")
         self.assertIn("MyEdge from walker MyEdge(path=1)", stdout_value[0])
         self.assertIn("MyWalker from edge MyWalker()", stdout_value[1])
-        self.assertIn("MyNode from walker MyNode(val=20)", stdout_value[6])
-        self.assertIn("MyWalker from edge MyWalker()", stdout_value[16])
+        self.assertIn("MyWalker from node MyWalker()", stdout_value[6])
+        self.assertIn("MyEdge from walker MyEdge(path=2)", stdout_value[16])
 
     def test_backward_edge_visit(self) -> None:
         """Test backward edge visit in jaclang."""
@@ -1353,9 +1353,9 @@ class JacLanguageTests(TestCase):
         stdout_value = captured_output.getvalue().split("\n")
         self.assertIn("I am here MyNode(val=5)", stdout_value[0])
         self.assertIn("I am here MyNode(val=15)", stdout_value[2])
-        self.assertIn("I am here MyNode(val=30)", stdout_value[3])
-        self.assertIn("I am here MyNode(val=25)", stdout_value[5])
-        self.assertIn("I am here MyNode(val=20)", stdout_value[6])
+        self.assertIn("I am here MyNode(val=20)", stdout_value[3])
+        self.assertIn("I am here MyEdge(val=100)", stdout_value[5])
+        self.assertIn("I am here MyNode(val=30)", stdout_value[6])
 
     def test_while_else(self) -> None:
         """Test else part in while loop."""
@@ -1472,12 +1472,12 @@ class JacLanguageTests(TestCase):
         self.assertIn("Entering root", stdout_value[0])
         self.assertIn("Entering MyNode with value: 5", stdout_value[1])
         self.assertIn("Entering MyNode with value: 15", stdout_value[2])
-        self.assertIn("I am here MyNode(val=25)", stdout_value[3])
-        self.assertIn("I am here MyNode(val=20)", stdout_value[4])
-        self.assertIn("I am here MyNode(val=5)", stdout_value[5])
-        self.assertIn("I am here MyNode(val=15)", stdout_value[6])
-        self.assertIn("I am here MyNode(val=30)", stdout_value[7])
-        self.assertIn("I am here MyNode(val=25)", stdout_value[8])
-        self.assertIn("I am here MyNode(val=20)", stdout_value[9])
-        self.assertIn("I am here MyNode(val=25)", stdout_value[10])
+        self.assertIn("Exiting MyNode with value: 15", stdout_value[3])
+        self.assertIn("Entering MyNode with value: 20", stdout_value[4])
+        self.assertIn("Exiting MyNode with value: 20", stdout_value[5])
+        self.assertIn("Exiting MyNode with value: 5", stdout_value[6])
+        self.assertIn("Entering MyNode with value: 10", stdout_value[7])
+        self.assertIn("Entering MyNode with value: 25", stdout_value[8])
+        self.assertIn("Exiting MyNode with value: 25", stdout_value[9])
+        self.assertIn("Exiting MyNode with value: 10", stdout_value[10])
         self.assertIn("Exiting from root", stdout_value[11])
