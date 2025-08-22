@@ -46,7 +46,7 @@ def create_ec2_instance_role() -> None:
     try:
         # Check if role already exists
         iam_client.get_role(RoleName=IAM_ROLE_NAME)
-        print(f"ℹ IAM role '{IAM_ROLE_NAME}' already exists.")
+        print(f" IAM role '{IAM_ROLE_NAME}' already exists.")
     except ClientError as e:
         if e.response["Error"]["Code"] == "NoSuchEntity":
             # Create the role
@@ -55,7 +55,7 @@ def create_ec2_instance_role() -> None:
                 AssumeRolePolicyDocument=json.dumps(trust_policy),
                 Description=f"IAM role for {APP_NAME} EC2 instances",
             )
-            print(f"✅ Created IAM role: {IAM_ROLE_NAME}")
+            print(f" Created IAM role: {IAM_ROLE_NAME}")
         else:
             raise
 
@@ -69,10 +69,10 @@ def create_ec2_instance_role() -> None:
     for policy_arn in required_policies:
         try:
             iam_client.attach_role_policy(RoleName=IAM_ROLE_NAME, PolicyArn=policy_arn)
-            print(f"✅ Attached policy: {policy_arn}")
+            print(f" Attached policy: {policy_arn}")
         except ClientError as e:
             if e.response["Error"]["Code"] == "EntityAlreadyExists":
-                print(f"ℹ Policy already attached: {policy_arn}")
+                print(f" Policy already attached: {policy_arn}")
             else:
                 raise
 
@@ -82,23 +82,23 @@ def create_instance_profile() -> None:
     try:
         # Check if instance profile already exists
         iam_client.get_instance_profile(InstanceProfileName=INSTANCE_PROFILE_NAME)
-        print(f"ℹ Instance profile '{INSTANCE_PROFILE_NAME}' already exists.")
+        print(f" Instance profile '{INSTANCE_PROFILE_NAME}' already exists.")
     except ClientError as e:
         if e.response["Error"]["Code"] == "NoSuchEntity":
             # Create instance profile
             iam_client.create_instance_profile(
                 InstanceProfileName=INSTANCE_PROFILE_NAME
             )
-            print(f"✅ Created instance profile: {INSTANCE_PROFILE_NAME}")
+            print(f" Created instance profile: {INSTANCE_PROFILE_NAME}")
 
             # Add role to instance profile
             iam_client.add_role_to_instance_profile(
                 InstanceProfileName=INSTANCE_PROFILE_NAME, RoleName=IAM_ROLE_NAME
             )
-            print("✅ Added role to instance profile")
+            print(" Added role to instance profile")
 
             # Wait a bit for IAM propagation
-            print("⏳ Waiting for IAM resources to propagate...")
+            print(" Waiting for IAM resources to propagate...")
             time.sleep(10)
         else:
             raise
@@ -130,7 +130,7 @@ def create_service_role() -> None:
                 AssumeRolePolicyDocument=json.dumps(trust_policy),
                 Description=f"Service role for {APP_NAME} Elastic Beanstalk",
             )
-            print(f"✅ Created service role: {SERVICE_ROLE_NAME}")
+            print(f" Created service role: {SERVICE_ROLE_NAME}")
         else:
             raise
 
@@ -145,7 +145,7 @@ def create_service_role() -> None:
             iam_client.attach_role_policy(
                 RoleName=SERVICE_ROLE_NAME, PolicyArn=policy_arn
             )
-            print(f"✅ Attached service policy: {policy_arn}")
+            print(f" Attached service policy: {policy_arn}")
         except ClientError as e:
             if e.response["Error"]["Code"] == "EntityAlreadyExists":
                 print(f"ℹ Service policy already attached: {policy_arn}")
@@ -181,35 +181,8 @@ def get_latest_python_platform() -> str:
     return latest
 
 
-def create_fastapi_config_files() -> None:
-    """Create necessary configuration files for FastAPI deployment."""
-    # Create Procfile for Elastic Beanstalk
-    # procfile_content = "web: uvicorn main:app --host 0.0.0.0 --port 8000"
-    # with open("Procfile", "w") as f:
-    #     f.write(procfile_content)
-    # print("✅ Created Procfile")
-
-    # # Create .ebextensions directory and config if needed
-    # if not os.path.exists(".ebextensions"):
-    #     os.makedirs(".ebextensions")
-
-
-#     # Create Python configuration
-#     python_config = """option_settings:
-#   aws:elasticbeanstalk:container:python:
-#     WSGIPath: main:app
-#   aws:elasticbeanstalk:environment:proxy:staticfiles:
-#     /static: static
-# """
-#     with open(".ebextensions/python.config", "w") as f:
-#         f.write(python_config)
-#     print("✅ Created .ebextensions/python.config")
-
-
 def zip_project(source_dir: str, output_filename: str) -> None:
     """Temperary doc string."""
-    # Create config files first
-    create_fastapi_config_files()
     with zipfile.ZipFile(output_filename, "w", zipfile.ZIP_DEFLATED) as zf:
         for root, _, files in os.walk(source_dir):
             for file in files:
@@ -228,14 +201,14 @@ def zip_project(source_dir: str, output_filename: str) -> None:
                 filepath = os.path.join(root, file)
                 arcname = os.path.relpath(filepath, source_dir)
                 zf.write(filepath, arcname)
-                print(f"  📁 Added: {arcname}")
-    print(f"✅ Project zipped as {output_filename}")
+                print(f" Added: {arcname}")
+    print(f"Project zipped as {output_filename}")
 
 
 def upload_to_s3(file_path: str, bucket: str, key: str) -> None:
     """Temperary doc string."""
     s3_client.upload_file(file_path, bucket, key)
-    print(f"✅ Uploaded {file_path} to s3://{bucket}/{key}")
+    print(f"Uploaded {file_path} to s3://{bucket}/{key}")
 
 
 def ensure_application_exists() -> None:
@@ -246,7 +219,7 @@ def ensure_application_exists() -> None:
             ApplicationName=APP_NAME,
             Description="FastAPI app deployed via Python script",
         )
-        print(f"✅ Created application '{APP_NAME}'")
+        print(f"Created application '{APP_NAME}'")
     else:
         print(f"ℹ Application '{APP_NAME}' already exists.")
 
@@ -260,7 +233,7 @@ def create_application_version(version_label: str, s3_key: str) -> None:
         SourceBundle={"S3Bucket": S3_BUCKET, "S3Key": s3_key},
         Process=True,
     )
-    print(f"✅ Created application version: {version_label}")
+    print(f"Created application version: {version_label}")
 
 
 def ensure_environment_exists(version_label: str) -> None:
@@ -299,19 +272,19 @@ def ensure_environment_exists(version_label: str) -> None:
             ],
         )
         print(
-            f"✅ Created single-instance environment '{ENV_NAME}' with platform {latest_platform}"
+            f"Created single-instance environment '{ENV_NAME}' with platform {latest_platform}"
         )
-        print(f"🆔 Environment ID: {env_response.get('EnvironmentId')}")
+        print(f"Environment ID: {env_response.get('EnvironmentId')}")
     else:
         eb_client.update_environment(
             ApplicationName=APP_NAME,
             EnvironmentName=ENV_NAME,
             VersionLabel=version_label,
         )
-        print(f"✅ Updated environment '{ENV_NAME}' to version {version_label}")
+        print(f"Updated environment '{ENV_NAME}' to version {version_label}")
 
     # Wait for environment to be ready and fetch URL
-    print("⏳ Waiting for environment to be ready...")
+    print("Waiting for environment to be ready...")
     waiter = eb_client.get_waiter("environment_updated")
     try:
         waiter.wait(
@@ -328,15 +301,13 @@ def ensure_environment_exists(version_label: str) -> None:
         if env_info["Environments"]:
             env = env_info["Environments"][0]
             if env.get("CNAME"):
-                print(f"🌐 Your app is live at: http://{env['CNAME']}")
+                print(f"Your app is live at: http://{env['CNAME']}")
             else:
-                print(
-                    f"🌐 Environment created successfully. Status: {env.get('Status')}"
-                )
+                print(f"Environment created successfully. Status: {env.get('Status')}")
 
     except Exception as e:
         print(
-            "⚠️  Environment creation may still be in progress. Check AWS console for status."
+            "Environment creation may still be in progress. Check AWS console for status."
         )
         print(f"Error details: {str(e)}")
 
@@ -352,25 +323,25 @@ if __name__ == "__main__":
     s3_key = f"{APP_NAME}-{version}.zip"
 
     # 1️⃣ Zip the project
-    print("\n📦 Preparing application package...")
+    print("\nPreparing application package...")
     zip_project("./fastapi-app", ZIP_FILE)
 
     # 2️⃣ Upload to S3
-    print("\n☁️  Uploading to S3...")
+    print("\n Uploading to S3...")
     upload_to_s3(ZIP_FILE, S3_BUCKET, s3_key)
 
     # 3️⃣ Create application version (creates app if missing)
-    print("\n📋 Creating application version...")
+    print("\n Creating application version...")
     create_application_version(version, s3_key)
 
     # 4️⃣ Create or update environment with single instance
-    print("\n🏗️  Setting up environment...")
+    print("\n Setting up environment...")
     ensure_environment_exists(version)
 
-    print("\n🎉 Deployment complete!")
+    print("\n Deployment complete!")
     print(
-        "💡 Tip: You can check the deployment status in the AWS Elastic Beanstalk console."
+        " Tip: You can check the deployment status in the AWS Elastic Beanstalk console."
     )
     print(
-        f"🔍 If deployment fails, check logs with: aws logs tail eb-engine.log --region {REGION}"
+        f" If deployment fails, check logs with: aws logs tail eb-engine.log --region {REGION}"
     )
