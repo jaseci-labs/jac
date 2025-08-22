@@ -10,12 +10,15 @@ import boto3
 
 from botocore.exceptions import ClientError
 
-# ---- CONFIG ----
-APP_NAME = "jusail"
-ENV_NAME = "dev1"
-S3_BUCKET = "jaseci-deploy"  # must exist in the same region
-REGION = "us-east-1"
-ZIP_FILE = "fastapi_app.zip"
+from dotenv import load_dotenv
+
+load_dotenv()
+
+APP_NAME = os.getenv("APP_NAME", "jaseci-app")
+ENV_NAME = os.getenv("ENV_NAME", "dev")
+S3_BUCKET = os.getenv("S3_BUCKET", "jaseci-s3")
+REGION = os.getenv("REGION", "us-east-1")
+ZIP_FILE = os.getenv("ZIP_FILE", "fastapi_app.zip")
 
 # IAM Resources
 INSTANCE_PROFILE_NAME = f"{APP_NAME}-ec2-instance-profile"
