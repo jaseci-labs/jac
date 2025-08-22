@@ -377,12 +377,10 @@ class JacPlugin(JacAccessValidationPlugin, JacNodePlugin, JacEdgePlugin):
 
         if edge is not None:
             loc: EdgeAnchor | NodeAnchor = edge
-            walker.next_entry = [edge, node]
-            walker.next_exit = [edge, node]
+            walker.next = [edge, (edge,), node, (node,)]
         else:
             loc = node
-            walker.next_entry = [node]
-            walker.next_exit = [node]
+            walker.next = [node, (node,)]
 
         return Jac.spawn_call(walker=walker, node=loc)  # type: ignore[return-value]
 

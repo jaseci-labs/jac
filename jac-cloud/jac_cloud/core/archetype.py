@@ -894,6 +894,10 @@ class EdgeAnchor(BaseAnchor, _EdgeAnchor):  # type: ignore[misc]
         }
 
 
+AnchorType = NodeAnchor | EdgeAnchor
+NextType = list[AnchorType | tuple[AnchorType]]
+
+
 @dataclass(eq=False, repr=False, kw_only=True)
 class WalkerAnchor(BaseAnchor, _WalkerAnchor):  # type: ignore[misc]
     """Walker Anchor."""
@@ -901,7 +905,7 @@ class WalkerAnchor(BaseAnchor, _WalkerAnchor):  # type: ignore[misc]
     archetype: "WalkerArchetype"
     state: WalkerAnchorState
     path: list[NodeAnchor | EdgeAnchor] = field(default_factory=list)  # type: ignore[assignment]
-    next: list[NodeAnchor | EdgeAnchor] = field(default_factory=list)  # type: ignore[assignment]
+    next: NextType = field(default_factory=list)  # type: ignore[assignment]
     ignores: list[NodeAnchor] = field(default_factory=list)  # type: ignore[assignment]
     disengaged: bool = False
     schedule: Schedule | None = None
