@@ -15,7 +15,8 @@ dependencies = [
     "mkdocs-open-in-new-tab",
     "starlette",
     "uvicorn",
-    "watchdog"
+    "watchdog",
+    "mkdocs-rss-plugin"
 ]
 authors = [
     { name = "Jason Mars", email = "jason@jaseci.org" }

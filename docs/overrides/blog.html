@@ -1,0 +1,28 @@
+
+{% extends "main.html" %}
+
+<!-- Page content -->
+{% block container %}
+<div class="md-content" data-md-component="content">
+  <div class="md-content__inner">
+    <!-- Header -->
+    <header class="md-typeset">{{ page.content }}</header>
+
+    <!-- Posts -->
+    <div class="md-posts-grid">
+      {% for post in posts %} 
+        <div class="md-posts-grid-item">
+          {% include "partials/post.html" %} 
+        </div>
+      {% endfor %}
+    </div>
+
+    <!-- Pagination -->
+    {% if pagination %}
+     {% block pagination %} 
+        {% include "partials/pagination.html" %} 
+     {% endblock %} 
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

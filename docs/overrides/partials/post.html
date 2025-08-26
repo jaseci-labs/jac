@@ -1,0 +1,61 @@
+
+
+<!-- Main Card Container -->
+    <div class="card">
+
+        <!-- Top section with background image -->
+        <a href="{{ post.url | url }}" tabindex="-1">
+            <div class="thumbnail-link">
+                {% if post.meta.cover_image %}
+
+                    <img src="{{ post.meta.cover_image }}" alt="Featured image" />
+                {% endif %} 
+            </div>
+        </a>
+
+        <!-- Badge -->
+        {% if post.categories %}
+        <div class="badges-container">
+          {% for category in post.categories%}
+            <a href="{{ category.url | url }}" class="badge">
+                {{- category.title -}}
+            </a>
+            {%- if loop.revindex > 1 %}, {% endif -%} 
+          {% endfor -%}
+        </div>
+        {% endif %}
+        
+        <!-- Forbes Logo / Avatar -->
+        {% if post.authors %}
+            <div class="avatar-container">
+        
+            {% for author in post.authors %}
+                <span class="md-author">
+                    <img src="{{ author.avatar | url }}" alt="{{ author.name }}" />
+                </span>
+            {% endfor %}
+            </div>
+        {% endif %}
+
+        <!-- Bottom section with post details -->
+        <div class="card-bottom">
+            
+            <!-- Blog Post Title -->
+   
+            {% if post.meta.title %}
+            <h3 class="post-title">
+                <a href="{{ post.url | url }}">
+                    {{ post.meta.title }}
+                </a>
+            </h3>
+            
+            {% endif %}
+
+            <!-- Read More Link -->
+            <div class="read-more-wrapper">
+                <a class="read-more" href="{{ post.url | url }}"  tabindex="-1">
+                    Read More »
+                </a>
+            </div>
+        </div>
+    </div>

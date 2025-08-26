@@ -401,6 +401,7 @@ blockquote::after {
     content: "▪ ";
 }
 
+
 /* Ordered lists: revert to default decimal */
 .md-typeset ol li::marker {
     color: inherit;
@@ -625,4 +626,153 @@ body[data-domain="https://www.jac-lang.org/"] .feedback-container {
         width: 280px;
         right: 0;
     }
+}
+
+
+/* Posts grid for blog listing */
+.md-posts-grid {
+    display: grid;
+    grid-template-columns: repeat(1, 1fr);
+    gap: 1.25rem;
+    margin-top: 1rem;
+    margin-bottom: 2rem;
+}
+
+
+/* Responsive breakpoints */
+@media (min-width: 640px) {
+    .md-posts-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (min-width: 1000px) {
+    .md-posts-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (min-width: 1400px) {
+    .md-posts-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+/* Post card */
+.card {
+    width: 100%;
+    max-width: 24rem;
+    background-color: #fff;
+    border-radius: 1.5rem;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    position: relative;
+    overflow: hidden;
+}
+
+.thumbnail-link {
+    height: 13rem;
+    /* 256px */
+    overflow: hidden;
+    position: relative;
+}
+
+.thumbnail-link img {
+    width: 100%;
+    height: 100%;
+    object-fit: fill;
+}
+
+/* New container for multiple badges */
+.badges-container {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.5rem;
+    /* Space between badges */
+}
+
+.badge {
+    background-color: #000;
+    color: #fff;
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.avatar-container {
+    position: absolute;
+    top: 10.5rem;
+    /* 160px */
+    left: 50%;
+    transform: translateX(-50%);
+    width: 5rem;
+    /* 96px */
+    height: 5rem;
+    /* 96px */
+    border-radius: 9999px;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    background-color: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+}
+
+.avatar-container img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    padding: 0.5rem;
+    border-radius: 100%;
+    /* 8px */
+}
+
+.card-bottom {
+    padding: 30px;
+    /* 32px */
+    padding-top: 2.2rem;
+    /* 64px */
+
+}
+
+.post-title {
+    font-size: 20px;
+    font-weight: 400;
+    color: #111827;
+    margin-bottom: 1rem;
+    text-align: justify;
+    /* Ensure consistent height and clamp to max 3 lines */
+    line-height: 1.25;
+    /* Use webkit line-clamp for multi-line truncation */
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    /* Standard property for newer browsers / linters */
+    line-clamp: 3;
+    overflow: hidden;
+    /* Fix the block height so all titles take the same vertical space */
+    height: calc(1.25em * 3);
+    max-height: calc(1.25em * 3);
+}
+
+.post-title a {
+    color: inherit;
+    text-decoration: none;
+}
+
+.read-more {
+    color: #1f2937;
+    font-weight: 400;
+    text-transform: capitalize;
+    font-size: 14px;
+    letter-spacing: 0.05em;
+    text-decoration: none;
+}
+
+.read-more:hover {
+    text-decoration: underline;
 }
