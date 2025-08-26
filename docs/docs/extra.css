@@ -776,3 +776,76 @@ body[data-domain="https://www.jac-lang.org/"] .feedback-container {
 .read-more:hover {
     text-decoration: underline;
 }
+
+/* -----------------------------
+   Blog hero / md-header styling
+   - background image (customizable via --blog-hero-image)
+   - lightly visible image (opacity 0.2)
+   - black overlay with darker corners
+   - centered text
+   ----------------------------- */
+.md-hero {
+    position: relative;
+    overflow: hidden;
+    min-height: 320px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #000;
+    border-bottom: 1px solid #111;
+    border-radius: 40px;
+}
+
+/* background image layer (low opacity so image is subtle) */
+.md-hero::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    background-image: var(--blog-hero-image, url('https://www.jaseci.org/wp-content/uploads/2022/04/04-e164916284.png'));
+    background-repeat: no-repeat;
+    background-size: cover;
+    background-position: center center;
+
+    /* lightly visible */
+    transform: scale(1.02);
+    pointer-events: none;
+}
+
+.md-hero .md-hero-container {
+    position: relative;
+    z-index: 2;
+    text-align: center;
+    color: #fff;
+    padding: 60px 20px;
+    max-width: 900px;
+}
+
+.md-hero .md-hero-container h1 {
+    margin: 0 0 0.1em;
+    font-size: clamp(1.6rem, 4.8vw, 4rem);
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-shadow: 0 2px 16px rgba(0, 0, 0, 0.25);
+}
+
+.md-hero .md-hero-container p {
+    margin: 0;
+    color: #e0e0e0;
+    font-size: clamp(0.7rem, 2vw, 1rem);
+    max-width: 70ch;
+    margin-left: auto;
+    margin-right: auto;
+    text-shadow: 0 2px 12px rgba(0, 0, 0, 0.18);
+}
+
+@media (max-width: 640px) {
+    .md-hero {
+        min-height: 220px;
+        border-radius: 0 0 24px 24px;
+    }
+
+    .md-hero .md-hero-container {
+        padding: 40px 16px;
+    }
+}
