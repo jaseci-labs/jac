@@ -35,7 +35,7 @@ Once configueration file is created run the below line in cmd to create the dock
 3. Run the docker image locally
 
 ```bash
-jac deploy --config deploy.json
+jac deploy deploy.json
 ```
 
 ## Furthur improvements for plugin
