@@ -20,6 +20,7 @@ import from jaclang.compiler.constant { SymbolType }
 import from jaclang.compiler.passes.transform { Alert }
 import from jaclang.compiler.unitree { Symbol, UniScopeNode }
 import from jaclang.vendor.pygls { uris }
+import from path_utils { extract_fs_path, paths_equal }
 
 import lsprotocol.types as lspt;
 
@@ -34,15 +35,16 @@ def gen_diagnostics(
     errors: <>list[Alert],
     warnings: <>list[Alert]
 ) -> <>list[lspt.Diagnostic] {
+    from_path_normalized = extract_fs_path(from_path);
     return [ lspt.Diagnostic(
         range=create_range(error.loc),
         message=error.msg,
         severity=lspt.DiagnosticSeverity.Error
-    ) for error in errors if error.loc.mod_path == uris.to_fs_path(from_path) ] + [ lspt.Diagnostic(
+    ) for error in errors if paths_equal(error.loc.mod_path, from_path_normalized) ] + [ lspt.Diagnostic(
         range=create_range(warning.loc),
         message=warning.msg,
         severity=lspt.DiagnosticSeverity.Warning
-    ) for warning in warnings if warning.loc.mod_path == uris.to_fs_path(from_path) ];
+    ) for warning in warnings if paths_equal(warning.loc.mod_path, from_path_normalized) ];
 }
 
 

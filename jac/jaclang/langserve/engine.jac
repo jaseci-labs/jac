@@ -14,6 +14,7 @@ import from jaclang.compiler.unitree { UniScopeNode }
 import from sem_manager { SemTokManager }
 import from jaclang.vendor.pygls { uris }
 import from jaclang.vendor.pygls.server { LanguageServer }
+import from path_utils { extract_fs_path, paths_equal }
 
 import lsprotocol.types as lspt;
 import utils;
@@ -36,30 +37,31 @@ class ModuleManager {
     ) -> None {
         import logging;
         logging.info(f'before: \n{file_path}');
-        file_path = file_path.removeprefix('file://');
-        self.program.mod.hub[file_path] = build;
+        file_path_normalized = extract_fs_path(file_path);
+        self.program.mod.hub[file_path_normalized] = build;
         if update_annexed {
-            self.sem_managers[file_path] = SemTokManager(ir=build);
+            self.sem_managers[file_path_normalized] = SemTokManager(ir=build);
             for (p, mod) in self.program.mod.hub.items() {
-                if p != file_path {
+                if p != file_path_normalized {
                     self.sem_managers[p] = SemTokManager(ir=mod);
                 }
             }
         }
-        logging.info(f'after: \n{file_path}');
+        logging.info(f'after: \n{file_path_normalized}');
     }
 
     """Remove errors and warnings for a specific file from the lists."""
     def clear_alerts_for_file(self: ModuleManager, file_path_fs: str) -> None {
         import logging;
+        file_path_normalized = extract_fs_path(file_path_fs);
         for e in self.program.errors_had{
             logging.info(f'error path >> {e.loc.mod_path}');
-            logging.info(f'file_path_fs>> {file_path_fs}');
+            logging.info(f'file_path_fs>> {file_path_normalized}');
         }
         self.program.errors_had =
-            [ e for e in self.program.errors_had if e.loc.mod_path != file_path_fs ];
+            [ e for e in self.program.errors_had if not paths_equal(e.loc.mod_path, file_path_normalized) ];
         self.program.warnings_had =
-            [ w for w in self.program.warnings_had if w.loc.mod_path != file_path_fs ];
+            [ w for w in self.program.warnings_had if not paths_equal(w.loc.mod_path, file_path_normalized) ];
     }
 }
 
@@ -95,8 +97,8 @@ class JacLangServer(JacProgram , LanguageServer) {
 
     """Get IR for a file path."""
     def get_ir(self: JacLangServer, file_path: str) -> Optional[uni.Module] {
-        file_path = file_path.removeprefix('file://');
-        return self.mod.hub.get(file_path);
+        file_path_normalized = extract_fs_path(file_path);
+        return self.mod.hub.get(file_path_normalized);
     }
 
     """Update modules in JacProgram's hub and semantic managers."""
@@ -107,13 +109,14 @@ class JacLangServer(JacProgram , LanguageServer) {
         need: bool = True
     ) -> None {
         self.log_py(f"'Updating modules for '{file_path}");
-        self.module_manager.update(file_path, build, update_annexed=need);
+        file_path_normalized = extract_fs_path(file_path);
+        self.module_manager.update(file_path_normalized, build, update_annexed=need);
     }
 
     """Rebuild a file (syntax only)."""
     def quick_check(self: JacLangServer, file_path: str) -> bool {
         try {
-            file_path_fs = file_path.removeprefix('file://');
+            file_path_fs = extract_fs_path(file_path);
             document = self.workspace.get_text_document(file_path);
             self._clear_alerts_for_file(file_path_fs);
             build = self.compile(use_str=document.source, file_path=document.path);
@@ -123,7 +126,7 @@ class JacLangServer(JacProgram , LanguageServer) {
                 utils.gen_diagnostics(file_path, self.errors_had, self.warnings_had)
             );
             build_errors =
-                [ e for e in self.errors_had if e.loc.mod_path == file_path_fs ];
+                [ e for e in self.errors_had if paths_equal(e.loc.mod_path, file_path_fs) ];
             return len(build_errors) == 0;
         } except Exception as e {
             self.log_error(f"'Error during syntax check: '{e}");
@@ -139,7 +142,7 @@ class JacLangServer(JacProgram , LanguageServer) {
     ) -> bool {
         try {
             start_time = time.time();
-            file_path_fs = file_path.removeprefix('file://');
+            file_path_fs = extract_fs_path(file_path);
             document = self.workspace.get_text_document(file_path);
             self._clear_alerts_for_file(file_path_fs);
             build = self.build(use_str=document.source, file_path=document.path);
@@ -373,7 +376,7 @@ class JacLangServer(JacProgram , LanguageServer) {
         file_path: str,
         position: lspt.Position
     ) -> Optional[lspt.Hover] {
-        file_path_fs = file_path.removeprefix('file://');
+        file_path_fs = extract_fs_path(file_path);
         if file_path_fs not in self.mod.hub {
             return None;
         }
@@ -425,7 +428,7 @@ class JacLangServer(JacProgram , LanguageServer) {
 
     """Return document symbols for a file."""
     def get_outline(self: JacLangServer, file_path: str) -> <>list[lspt.DocumentSymbol] {
-        file_path_fs = file_path.removeprefix('file://');
+        file_path_fs = extract_fs_path(file_path);
         if file_path_fs in self.mod.hub
         and (root_node := self.mod.hub[file_path_fs].sym_tab)
          {
@@ -440,7 +443,7 @@ class JacLangServer(JacProgram , LanguageServer) {
         file_path: str,
         position: lspt.Position
     ) -> Optional[lspt.Location] {
-        file_path_fs = file_path.removeprefix('file://');
+        file_path_fs = extract_fs_path(file_path);
         if file_path_fs not in self.mod.hub {
             return None;
         }
@@ -552,7 +555,7 @@ class JacLangServer(JacProgram , LanguageServer) {
         file_path: str,
         position: lspt.Position
     ) -> <>list[lspt.Location] {
-        file_path_fs = file_path.removeprefix('file://');
+        file_path_fs = extract_fs_path(file_path);
         if file_path_fs not in self.mod.hub {
             return [];
         }
@@ -584,7 +587,7 @@ class JacLangServer(JacProgram , LanguageServer) {
         position: lspt.Position,
         new_name: str
     ) -> Optional[lspt.WorkspaceEdit] {
-        file_path_fs = file_path.removeprefix('file://');
+        file_path_fs = extract_fs_path(file_path);
         if file_path_fs not in self.mod.hub {
             return None;
         }
@@ -616,7 +619,7 @@ class JacLangServer(JacProgram , LanguageServer) {
 
     """Return semantic tokens for a file."""
     def get_semantic_tokens(self: JacLangServer, file_path: str) -> lspt.SemanticTokens {
-        file_path_fs = file_path.removeprefix('file://');
+        file_path_fs = extract_fs_path(file_path);
         sem_mgr = self.sem_managers.get(file_path_fs);
         if not sem_mgr {
             return lspt.SemanticTokens(data=[]);
