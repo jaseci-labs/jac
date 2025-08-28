@@ -12,10 +12,10 @@ def normalize_fs_path(path: str) -> str {
     if path == "" or path is None {
         return path;
     }
-    
+
     # Convert backslashes to forward slashes for consistency
     normalized = path.replace('\\', '/');
-    
+
     # Try to resolve using pathlib for better cross-platform handling
     try {
         path_obj = Path(normalized);
@@ -39,21 +39,21 @@ def uri_to_fs_path(uri: str) -> str {
     if uri == "" or uri is None {
         return uri;
     }
-    
+
     # Remove file:// prefix if present
     cleaned_uri = uri;
     if uri.startswith('file://') {
         cleaned_uri = uri[7:];  # Remove 'file://'
     }
-    
+
     # URL decode to handle encoded characters like %3A for :
     decoded_path = unquote(cleaned_uri);
-    
+
     # Handle Windows paths that start with /C: pattern
     if len(decoded_path) > 2 and decoded_path[0] == '/' and decoded_path[2] == ':' {
         decoded_path = decoded_path[1:];  # Remove leading /
     }
-    
+
     return normalize_fs_path(decoded_path);
 }
 
@@ -63,10 +63,10 @@ def fs_path_to_uri(path: str) -> str {
     if path == "" or path is None {
         return path;
     }
-    
+
     # Handle Windows paths - detect if it's a Windows path even on Unix
     is_windows_path = len(path) > 1 and path[1] == ':';
-    
+
     if is_windows_path {
         # For Windows paths, ensure proper format for URI conversion
         # Convert c:\path or c:/path to proper format
@@ -89,17 +89,17 @@ def paths_equal(path1: str, path2: str) -> bool {
     if (path1 == "" or path1 is None) or (path2 == "" or path2 is None) {
         return path1 == path2;
     }
-    
+
     # Convert both to normalized filesystem paths
     norm_path1 = uri_to_fs_path(path1) if path1.startswith('file://') else extract_fs_path(path1);
     norm_path2 = uri_to_fs_path(path2) if path2.startswith('file://') else extract_fs_path(path2);
-    
+
     # Normalize both paths to handle Windows vs Unix differences
     # Convert both to a canonical format for comparison
     def canonicalize(p: str) -> str {
         # Normalize path separators
         canonical = p.replace('\\', '/');
-        
+
         # Handle Windows drive letters consistently
         if len(canonical) > 1 and canonical[1] == ':' {
             # Windows path like c:/path -> /c:/path for comparison
@@ -112,10 +112,10 @@ def paths_equal(path1: str, path2: str) -> bool {
             return canonical;
         }
     }
-    
+
     canon1 = canonicalize(norm_path1);
     canon2 = canonicalize(norm_path2);
-    
+
     # Compare normalized paths
     return canon1 == canon2;
 }
@@ -126,7 +126,7 @@ def extract_fs_path(path: str) -> str {
     if path == "" or path is None {
         return path;
     }
-    
+
     if path.startswith('file://') {
         return uri_to_fs_path(path);
     } elif '%' in path {
