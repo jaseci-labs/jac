@@ -35,8 +35,6 @@ class ModuleManager {
         build: uni.Module,
         update_annexed: bool = True
     ) -> None {
-        import logging;
-        logging.info(f'before: \n{file_path}');
         file_path_normalized = extract_fs_path(file_path);
         self.program.mod.hub[file_path_normalized] = build;
         if update_annexed {
@@ -47,17 +45,11 @@ class ModuleManager {
                 }
             }
         }
-        logging.info(f'after: \n{file_path_normalized}');
     }
 
     """Remove errors and warnings for a specific file from the lists."""
     def clear_alerts_for_file(self: ModuleManager, file_path_fs: str) -> None {
-        import logging;
         file_path_normalized = extract_fs_path(file_path_fs);
-        for e in self.program.errors_had{
-            logging.info(f'error path >> {e.loc.mod_path}');
-            logging.info(f'file_path_fs>> {file_path_normalized}');
-        }
         self.program.errors_had =
             [ e for e in self.program.errors_had if not paths_equal(e.loc.mod_path, file_path_normalized) ];
         self.program.warnings_had =
