@@ -1287,6 +1287,16 @@ class JacLanguageTests(TestCase):
         self.assertIn("MyWalker() from edge MyEdge(path=3)", stdout_value[6])
         self.assertIn("MyWalker() from node MyNode(val=40)", stdout_value[9])
 
+    def test_path_utils(self) -> None:
+        """Test path utilities in jaclang."""
+        captured_output = io.StringIO()
+        sys.stdout = captured_output
+        path_util_file = os.path.join(self.fixture_abs_path("./../../langserve/tests/fixtures"), "path_utility.jac")
+        cli.run(path_util_file)
+        sys.stdout = sys.__stdout__
+        stdout_value = captured_output.getvalue().split("\n")
+        self.assertEqual(4, str(stdout_value).count('True ✓'))
+
     def test_visit_traversal(self) -> None:
         """Test visit traversal semantic in jaclang."""
         captured_output = io.StringIO()
