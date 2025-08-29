@@ -982,7 +982,6 @@ class JacBasics:
 
         if lng is None:
             lng = infer_language(target, base_path)
-        print(lng)
 
         spec = ImportPathSpec(
             target,
@@ -993,6 +992,7 @@ class JacBasics:
             lng,
             items,
         )
+        print("which lng", lng)
 
         if not JacMachine.program:
             JacMachineInterface.attach_program(JacProgram())
