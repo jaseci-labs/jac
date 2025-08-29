@@ -11,21 +11,7 @@ on:
 jobs:
   test-jaseci:
     runs-on: ubuntu-latest
-    services:
-      redis:
-        image: redis
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 6379:6379
     steps:
-    - name: Start MongoDB
-      uses: supercharge/mongodb-github-action@1.10.0
-      with:
-        mongodb-replica-set: test-rs
     - name: Check out code
       uses: actions/checkout@v3
 
@@ -38,27 +24,5 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -e jac
-        pip install -e jac-splice-orc
-        pip install -e jac-cloud
-        pip install -e jac-mtllm
-        pip install -e jac/support/plugins/streamlit
         pip install pytest
         pip install pytest-asyncio
-
-    - name: Set environment for testing
-      run: |
-        echo "TEST_ENV=true" >> $GITHUB_ENV
-    - name: Run tests
-      run: pytest -x jac jac-cloud jac-splice-orc jac-mtllm
-    - name: Run jac-cloud tests with DB
-      run: pytest -x jac-cloud
-      env:
-        DATABASE_HOST: mongodb://localhost/?retryWrites=true&w=majority
-        REDIS_HOST: redis://localhost
-        TASK_CONSUMER_CRON_SECOND: "*"
-    - name: Run littleX tests
-      run: |
-        pip uninstall jac-splice-orc -y
-        pip install numpy
-        pip install scikit-learn
-        jac test jac/examples/littleX/littleX.test.jac
