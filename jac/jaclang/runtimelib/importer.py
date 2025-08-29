@@ -323,6 +323,7 @@ class JacImporter(Importer):
                 module = self.handle_directory(spec.module_name, spec.full_target)
             else:
                 spec.full_target += ".jac" if spec.language in ["jac", "jir"] else ".py"
+                print("Full path:", spec.full_target)
                 module = self.create_jac_py_module(
                     module_name,
                     spec.package_path,
