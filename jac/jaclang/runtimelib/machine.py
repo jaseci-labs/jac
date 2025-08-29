@@ -980,6 +980,8 @@ class JacBasics:
             PythonImporter,
         )
 
+        print("in jac basics jac_import", target, lng, "done")
+
         if lng is None:
             lng = infer_language(target, base_path)
 
