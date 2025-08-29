@@ -136,6 +136,7 @@ def run(
     # otherwise default to jaclang.session
     base, mod, mach = proc_file_sess(filename, session)
     lng = filename.split(".")[-1]
+    print("which lng", lng)
     Jac.set_base_path(base)
 
     if filename.endswith((".jac", ".py")):
