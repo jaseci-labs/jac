@@ -15,7 +15,7 @@ from jaclang.runtimelib.builtin import printgraph
 from jaclang.utils.test import TestCase
 
 
-class JacCliTests(TestCase):
+class aaaaa(TestCase):
     """Test pass module."""
 
     def setUp(self) -> None:
@@ -542,7 +542,7 @@ class JacCliTests(TestCase):
                     f"Parameter description for '{param_name}' not found in help text for '{cmd_name}'",
                 )
 
-    def test_run_jac_name_py(self) -> None:
+    def test_aaaaaaaa_run_jac_name_py(self) -> None:
         """Test a specific test case."""
         process = subprocess.Popen(
             [
