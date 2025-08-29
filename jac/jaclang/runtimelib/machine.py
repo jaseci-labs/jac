@@ -992,7 +992,7 @@ class JacBasics:
             lng,
             items,
         )
-        print("which lng", lng)
+        print("which jac import lng", lng)
 
         if not JacMachine.program:
             JacMachineInterface.attach_program(JacProgram())
