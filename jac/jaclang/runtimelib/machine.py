@@ -982,6 +982,8 @@ class JacBasics:
 
         print("in jac basics jac_import", target, lng, "done")
 
+        print("\n", locals(), "\n")
+
         if lng is None:
             lng = infer_language(target, base_path)
 
