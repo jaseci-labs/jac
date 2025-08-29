@@ -147,9 +147,11 @@ def run(
                 override_name="__main__" if main else None,
                 lng=lng,
             )
+            print("coming to cli jac importer")
         except Exception as e:
             print(f"Error running {filename}: {e}", file=sys.stderr)
     elif filename.endswith(".jir"):
+        print("Wtf you arte coming here")
         try:
             with open(filename, "rb") as f:
                 Jac.attach_program(pickle.load(f))
