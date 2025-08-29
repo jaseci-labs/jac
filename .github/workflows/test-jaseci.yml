@@ -26,3 +26,5 @@ jobs:
         pip install -e jac
         pip install pytest
         pip install pytest-asyncio
+    - name: Run tests
+      run: pytest -s -k test_aaaaaaaa_run_jac_name_py
