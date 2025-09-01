@@ -652,7 +652,7 @@ with entry { # Generate random points
     {
         tagline: "Programming Abstractions for AI",
         summary: `Using "by" keyword to seamlessly integrate models into your development. No need for prompt engineering or interpret model outputs`,
-        filename: "ai_sentiment_analysis.jac",
+        filename: "translator.jac",
         code: `
 # AI Integration with MTLLM - No Prompt Engineering Required! 🤖
 
@@ -668,10 +668,7 @@ with entry {
 }
 `,
         codeLang: "python",
-        output: `
-Customer sentiment: Negative. The customer expresses disappointment with product quality, which clearly indicates dissatisfaction.
-Translated result: Negativo. El cliente expresa decepción con la calidad del producto, lo que indica claramente insatisfacción.
-    `,
+        output: `Hola`,
         link: "https://www.jac-lang.org/learn/jac-mtllm/with_llm/"
     },
     {
