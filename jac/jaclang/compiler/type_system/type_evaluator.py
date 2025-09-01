@@ -67,11 +67,10 @@ class TypeEvaluator:
         """Return the effective type of the symbol."""
         return self._get_type_of_symbol(symbol)
 
-    def get_type_of_module(self, node: uni.ModulePath) -> types.ModuleType:
-        """Return the effective type of the module."""
-        if node.name_spec.type is not None:
-            return cast(types.ModuleType, node.name_spec.type)
-
+    # NOTE: This function doesn't exists in pyright, however it exists as a helper function
+    # for the following functions.
+    def _import_module_from_path(self, path: str) -> uni.Module:
+        """Import a module from the given path."""
         # Get the module, if it's not loaded yet, compile and get it.
         #
         # TODO:
@@ -79,11 +78,10 @@ class TypeEvaluator:
         # need to check if the module path is site-package or not and
         # do typecheck inside as well.
         mod: uni.Module
-        path_str = node.resolve_relative_path()
-        if path_str in self.program.mod.hub:
-            mod = self.program.mod.hub[path_str]
+        if path in self.program.mod.hub:
+            mod = self.program.mod.hub[path]
         else:
-            mod = self.program.compile(path_str, no_cgen=True, type_check=False)
+            mod = self.program.compile(path, no_cgen=True, type_check=False)
             # FIXME: Inherit from builtin symbol table logic is currently implemented
             # here and checker pass, however it should be in one location, since we're
             # doing type_check=False, it doesn't set parent_scope to builtins, this
@@ -92,7 +90,14 @@ class TypeEvaluator:
             # module has a parent scope as builtin scope, we're aligned with pyright.
             if mod.parent_scope is None and mod is not self.builtins_module:
                 mod.parent_scope = self.builtins_module
+        return mod
 
+    def get_type_of_module(self, node: uni.ModulePath) -> types.ModuleType:
+        """Return the effective type of the module."""
+        if node.name_spec.type is not None:
+            return cast(types.ModuleType, node.name_spec.type)
+
+        mod: uni.Module = self._import_module_from_path(node.resolve_relative_path())
         mod_type = types.ModuleType(
             mod_name=node.name_spec.sym_name,
             file_uri=Path(node.resolve_relative_path()).resolve(),
@@ -101,6 +106,57 @@ class TypeEvaluator:
 
         node.name_spec.type = mod_type
         return mod_type
+
+    def get_type_of_module_item(self, node: uni.ModuleItem) -> types.TypeBase:
+        """Return the effective type of the module item."""
+        # Module item can be both a module or a member of a module.
+        # import from .. { mod }   # <-- Here mod is not a member but a module itself.
+        # import from mod { item } # <-- Here item is not a module but a member of mod.
+        if node.name_spec.type is not None:
+            return node.name_spec.type
+
+        import_node = node.parent_of_type(uni.Import)
+        if import_node.from_loc:
+
+            from_path = Path(import_node.from_loc.resolve_relative_path())
+            is_dir = from_path.is_dir() or (from_path.stem == "__init__")
+
+            # import from .. { mod }
+            if is_dir:
+                mod_dir = from_path.parent if not from_path.is_dir() else from_path
+                # FIXME: Implement module resolution properly.
+                for ext in (".jac", ".py", ".pyi"):
+                    if (path := (mod_dir / (node.name.value + ext)).resolve()).exists():
+                        mod = self._import_module_from_path(str(path))
+                        mod_type = types.ModuleType(
+                            mod_name=node.name_spec.sym_name,
+                            file_uri=path,
+                            symbol_table=mod,
+                        )
+                        # Cache the type.
+                        node.name_spec.type = mod_type
+
+                        # FIXME: goto definition works on imported symbol by checking if it's a MODULE
+                        # type and in that case it'll call resolve_relative_path on the parent node of
+                        # the symbol's definition node (a module path), So the goto definition to work
+                        # properly the category should be module on a module path, If we set like this
+                        # below should work but because of the above assumption (should be a mod path)
+                        # it won't, This needs to be discussed.
+                        #
+                        # node.name_spec._sym_category = uni.SymbolType.MODULE
+                        return node.name_spec.type
+
+            # import from mod { item }
+            else:
+                mod_type = self.get_type_of_module(import_node.from_loc)
+                if sym := mod_type.symbol_table.lookup(node.name.value, deep=True):
+                    node.name.sym = sym
+                    if node.alias:
+                        node.alias.sym = sym
+                    node.name_spec.type = self.get_type_of_symbol(sym)
+                    return node.name_spec.type
+
+        return types.UnknownType()
 
     def get_type_of_class(self, node: uni.Archetype) -> types.ClassType:
         """Return the effective type of the class."""
@@ -235,6 +291,9 @@ class TypeEvaluator:
         match node:
             case uni.ModulePath():
                 return self.get_type_of_module(node)
+
+            case uni.ModuleItem():
+                return self.get_type_of_module_item(node)
 
             case uni.Archetype():
                 return self.get_type_of_class(node)

@@ -115,7 +115,7 @@ These keywords facilitate the integration of AI and Large Language Models (LLMs)
 | Keyword | Description |
 | --- | --- |
 | [`sem`](https://www.jac-lang.org/learn/jac_ref/#semstrings)  |Associates a natural language "semantic string" with a code element for AI interpretation. |
-| [`by`](https://www.jac-lang.org/learn/jac-mtllm/usage/) | Defers a task to an LLM instead of providing a manual implementation. |
+| [`by`](https://www.jac-lang.org/learn/jac-byllm/usage/) | Defers a task to an LLM instead of providing a manual implementation. |
 
 ---
 

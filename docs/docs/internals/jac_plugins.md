@@ -89,6 +89,6 @@ That's it! You have created your first JAC plugin. You can now extend JAC with y
 > **Note:**
 > For more examples, check out the [JAC Plugin Examples](https://github.com/Jaseci-Labs/jaclang/tree/main/examples/plugins)
 
->Check out the [MTLLM Plugin](https://github.com/Jaseci-Labs/mtllm) for a more complex example. Where we have created a plugin that adds LLM functionality to JAC.
+>Check out the [byLLM Plugin](https://github.com/jaseci/jac-byllm) for a more complex example. Where we have created a plugin that adds LLM functionality to JAC.
 
 If you have any questions, feel free to ask in the [Community Channel]().

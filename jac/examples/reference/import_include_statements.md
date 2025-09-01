@@ -48,7 +48,7 @@ Jac's `impl` keyword enables separation of interface declarations from implement
 Import statements work seamlessly with Jac's object-spatial constructs, enabling modular organization of walkers, nodes, and edges across multiple files while maintaining the topological relationships essential for graph-based computation.
 
 ```jac
-import from graph_utils { PathFinder, DataNode };
+import from graph_utils { PathFinder, DataNode }
 import spatial_algorithms as algorithms;
 
 walker MyWalker {

@@ -62,9 +62,16 @@ class InheritancePass(Transform[uni.Module, uni.Module]):
 
         base_class_symbol_table = base_class_symbol.symbol_table
 
+        # FIXME: If the base class symbol is imported from another module, the symbol table
+        # will be None. The imported symbols were ignored and introduced in the typecheck
+        # for imported module items. This needs to be investigated to ensure that even imported
+        # classes should have a symbol table (unless the module is not parsed and decided not to).
+        if base_class_symbol_table is None:
+            return
+
         if self.is_missing_py_symbol_table(base_class_symbol, base_class_symbol_table):
             return
-        assert base_class_symbol_table is not None
+
         node.sym_tab.inherit_sym_tab(base_class_symbol_table)
 
     def inherit_from_atom_trailer(

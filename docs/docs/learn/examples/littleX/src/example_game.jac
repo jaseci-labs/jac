@@ -1,6 +1,6 @@
-import from mtllm.llms {Ollama, OpenAI}
+import from byllm {Model}
 
-glob llm = OpenAI(model_name="gpt-4o");
+glob llm = Model(model_name="gpt-4o");
 
 glob person_record: dict = {};
 

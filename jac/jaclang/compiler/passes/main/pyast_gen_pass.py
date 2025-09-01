@@ -188,11 +188,11 @@ class PyastGenPass(UniPass):
         )
 
     def needs_mtllm(self) -> None:
-        """Ensure MTLLM is imported only once."""
+        """Ensure byLLM is imported only once."""
         self._add_preamble_once(
             self.needs_mtllm.__name__,
             ast3.Import(
-                names=[self.sync(ast3.alias(name="mtllm"), jac_node=self.ir_out)]
+                names=[self.sync(ast3.alias(name="byllm"), jac_node=self.ir_out)]
             ),
         )
 
@@ -747,7 +747,7 @@ class PyastGenPass(UniPass):
         self.needs_mtllm()
         mtir_cls_ast = self.sync(
             ast3.Attribute(
-                value=self.sync(ast3.Name(id="mtllm", ctx=ast3.Load())),
+                value=self.sync(ast3.Name(id="byllm", ctx=ast3.Load())),
                 attr="MTIR",
                 ctx=ast3.Load(),
             )

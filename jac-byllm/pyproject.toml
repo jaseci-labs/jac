@@ -1,0 +1,29 @@
+[tool.poetry]
+name = "byllm"
+version = "0.4.1"
+description = "byLLM Provides Easy to use APIs for different LLM Providers to be used with Jaseci's Jaclang Programming Language."
+authors = ["Jason Mars <jason@jaseci.org>"]
+maintainers = ["Jason Mars <jason@jaseci.org>"]
+license = "MIT"
+readme = "README.md"
+keywords = ["llm", "jaclang", "jaseci", "byLLM"]
+
+[tool.poetry.dependencies]
+jaclang = "0.8.5"
+litellm = ">=1.75.5.post1"
+loguru = "~0.7.2"
+pillow = "~10.4.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.2"
+
+[tool.poetry.extras]
+tools = ["wikipedia"]
+video = ["opencv-python-headless"]
+
+[tool.poetry.plugins."jac"]
+byllm = "byllm.plugin:JacMachine"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

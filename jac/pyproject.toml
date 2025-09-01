@@ -34,10 +34,10 @@ mypy = "^1.15.0"
 jac = "jaclang.cli.cli:start_cli"
 
 [tool.poetry.extras]
-llm = ["mtllm"]
+llm = ["byllm"]
 streamlit = ["jac-streamlit"]
 cloud = ["jac-cloud"]
-all = ["mtllm", "jac-streamlit", "jac-cloud"]
+all = ["byllm", "jac-streamlit", "jac-cloud"]
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.2.1"

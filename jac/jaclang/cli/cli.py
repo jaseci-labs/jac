@@ -135,6 +135,7 @@ def run(
     # if no session specified, check if it was defined when starting the command shell
     # otherwise default to jaclang.session
     base, mod, mach = proc_file_sess(filename, session)
+    lng = filename.split(".")[-1]
     Jac.set_base_path(base)
 
     if filename.endswith((".jac", ".py")):
@@ -143,6 +144,7 @@ def run(
                 target=mod,
                 base_path=base,
                 override_name="__main__" if main else None,
+                lng=lng,
             )
         except Exception as e:
             print(f"Error running {filename}: {e}", file=sys.stderr)
@@ -154,6 +156,7 @@ def run(
                     target=mod,
                     base_path=base,
                     override_name="__main__" if main else None,
+                    lng=lng,
                 )
         except Exception as e:
             print(f"Error running {filename}: {e}", file=sys.stderr)

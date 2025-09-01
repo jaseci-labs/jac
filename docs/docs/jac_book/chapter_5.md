@@ -1,14 +1,14 @@
 # Chapter 5: Advanced AI Operations
 ---
-In this chapter, you will learn to integrate advanced AI capabilities directly into your Jac applications using the MTLLM (Meaning-Typed LLM) framework. We will build a multi-modal image analysis tool to demonstrate how Jac simplifies complex AI operations, including model configuration, context enhancement, and multi-modal data handling.
+In this chapter, you will learn to integrate advanced AI capabilities directly into your Jac applications using the byLLM (Meaning-Typed LLM) framework. We will build a multi-modal image analysis tool to demonstrate how Jac simplifies complex AI operations, including model configuration, context enhancement, and multi-modal data handling.
 
 
-## MTLLM Overview
+## byLLM Overview
 ---
-MTLLM (Meaning Typed LLM) is Jac's native AI integration framework. It transforms the way developers interact with Large Language Models by shifting from manual prompt engineering and complex API calls to a streamlined, function-based approach that is fully integrated with Jac's type system.
+byLLM (Meaning Typed LLM) is Jac's native AI integration framework. It transforms the way developers interact with Large Language Models by shifting from manual prompt engineering and complex API calls to a streamlined, function-based approach that is fully integrated with Jac's type system.
 
 
-!!! success "MTLLM Benefits"
+!!! success "byLLM Benefits"
     - **Zero Prompt Engineering**: Define function signatures, let AI handle implementation
     - **Type Safety**: AI functions integrate with Jac's type system
     - **Model Flexibility**: Switch between different AI models easily
@@ -70,23 +70,23 @@ In nature's hold, all worries cease.
 ```
 <br />
 
-Very nice! However, this approach requires manual API management (what if we want to switch to a different AI provider?), and we still have to write the prompt ourselves. Wouldn't it be great if we could just define the function signature and let the AI handle the rest? *Imagine a world where the function was the prompt?* Where we could simply declare a function and the AI would understand what to do? That's the power of MTLLM.
+Very nice! However, this approach requires manual API management (what if we want to switch to a different AI provider?), and we still have to write the prompt ourselves. Wouldn't it be great if we could just define the function signature and let the AI handle the rest? *Imagine a world where the function was the prompt?* Where we could simply declare a function and the AI would understand what to do? That's the power of byLLM.
 
 Let's see how this works.
 
-First we'll need to install the MTLLM package:
+First we'll need to install the byLLM package:
 ```bash
-pip install mtllm
+pip install byllm
 ```
 <br />
-Next we replace the OpenAI import with that of the MTLLM package
+Next we replace the OpenAI import with that of the byLLM package
 
 ```jac
-import from mtllm { Model }
+import from byllm { Model }
 glob llm = Model(model_name="gpt-4.1-mini");
 ```
 <br />
-Instead of writing the function ourselves, we simply declare the function signature and use the `by` keyword to indicate that this function should be handled by the AI model referenced by `llm()`. The MTLLM framework will automatically generate the appropriate prompt based on the function signature.
+Instead of writing the function ourselves, we simply declare the function signature and use the `by` keyword to indicate that this function should be handled by the AI model referenced by `llm()`. The byLLM framework will automatically generate the appropriate prompt based on the function signature.
 ```jac
 def write_poetry(topic: str) -> str by llm();
 ```
@@ -94,7 +94,7 @@ def write_poetry(topic: str) -> str by llm();
 Finally, lets put it all together and run the Jac code:
 ```jac
 # mt_poem.jac - Simple AI integration
-import from mtllm { Model }
+import from byllm { Model }
 
 glob llm = Model(model_name="gpt-4.1-mini");
 
@@ -124,7 +124,7 @@ In this quiet, soul’s expanse.
 <br />
 
 ### Simple Image Captioning Tool
-To further illustrate MTLLM's capabilities, let's build a simple image captioning tool. This tool will analyze an image and generate a descriptive caption using an AI model.
+To further illustrate byLLM's capabilities, let's build a simple image captioning tool. This tool will analyze an image and generate a descriptive caption using an AI model.
 
 First lets grab an image from upsplash to work with. You can use any image you like, but for this example, we'll use a photo of a french bulldog. Download the image and save it as `photo.jpg` in the same directory as your Jac code.
 
@@ -137,7 +137,7 @@ Next we'll make use of MLTLLM's `Image` function to handle image inputs. This fu
 
 ```jac
 # image_captioning.jac - Simple Image Captioning Tool
-import from mtllm { Model, Image }
+import from byllm { Model, Image }
 
 glob llm = Model(model_name="gpt-4o-mini");
 
@@ -165,11 +165,11 @@ the spotlight and capture hearts with its charm and personality.
 
 ## Model Declaration and Configuration
 ---
-MTLLM supports various AI models through the unified `Model` interface. For example, you can load multiple models like OpenAI's GPT-4, Google's Gemini, or any other compatible model in the same way. This allows you to switch between models easily without changing your code structure.
+byLLM supports various AI models through the unified `Model` interface. For example, you can load multiple models like OpenAI's GPT-4, Google's Gemini, or any other compatible model in the same way. This allows you to switch between models easily without changing your code structure.
 
 ```jac
 # basic_setup.jac
-import from mtllm { Model, Image }
+import from byllm { Model, Image }
 
 # Configure different models
 glob text_model = Model(model_name="gpt-4o");
@@ -182,7 +182,7 @@ glob gemini_model = Model(model_name="gemini-2.0-flash");
 The `Model` class allows you to configure various parameters for your AI model, such as temperature, max tokens, and more. Here's an example of how to set up a model with custom parameters:
 
 ```jac
-import from mtllm { Model, Image }
+import from byllm { Model, Image }
 
 # Configure model with custom parameters
 glob creative_model = Model(
@@ -210,7 +210,7 @@ Below is a breakdown of the parameters you can configure when creating a `Model`
 Here we have a simple example of how to use the `Model` class to create a model instance with custom parameters:
 ```jac
 # model_config.jac
-import from mtllm { Model, Image }
+import from byllm { Model, Image }
 
 # Configure model with custom parameters
 glob creative_model = Model(
@@ -248,11 +248,11 @@ with entry {
 
 ## Updating the Image Captioning Tool
 ---
-Let's progressively build an image captioning tool that demonstrates MTLLM's capabilities.
+Let's progressively build an image captioning tool that demonstrates byLLM's capabilities.
 
 ```jac
 # image_captioner.jac
-import from mtllm { Model, Image }
+import from byllm { Model, Image }
 
 glob vision_llm = Model(model_name="gpt-4o-mini");
 
@@ -307,7 +307,7 @@ the stylish outfit of the dog contribute to a fun and lighthearted atmosphere.
 
 ```jac
 # enhanced_captioner.jac
-import from mtllm { Model, Image }
+import from byllm { Model, Image }
 
 glob vision_llm = Model(model_name="gpt-4.1-mini");
 
@@ -363,7 +363,7 @@ AI applications require robust error handling and testing strategies.
 
 ```jac
 # robust_ai.jac
-import from mtllm { Model, Image }
+import from byllm { Model, Image }
 
 glob reliable_llm = Model(model_name="gpt-4o", max_tries=3);
 
@@ -446,7 +446,7 @@ with entry {
 ## Key Takeaways
 
 !!! summary "What We've Learned"
-    **MTLLM Integration:**
+    **byLLM Integration:**
 
     - **Simple AI Functions**: Define AI capabilities with `by llm()` syntax
     - **Model Configuration**: Flexible model selection and parameter tuning
@@ -478,6 +478,6 @@ with entry {
 
 ---
 
-If you are interested in learning more about MTLLM, check out [ Quickstart to MTLLM ](../learn/jac-mtllm/with_llm.md)
+If you are interested in learning more about byLLM, check out [ Quickstart to byLLM ](../learn/jac-byllm/with_llm.md)
 
 *Ready to learn about imports and modular programming? Continue to [Chapter 6: Imports System and File Operations](chapter_6.md)!*

@@ -193,11 +193,11 @@ Now, let's build the NPC itself.
 
 Our NPC needs to determine its mood based on the environmental data collected by the StateAgent. Instead of writing complex if/else statements, we can delegate this creative task to a Large Language Model (LLM).
 
-Using the MTLLM plugin, we can define a function that sends the agent's state to an LLM and asks it to return a mood.
+Using the byLLM plugin, we can define a function that sends the agent's state to an LLM and asks it to return a mood.
 
 Here’s the code for our mood function:
 ```jac
-import from mtllm { Model }
+import from byllm { Model }
 
 # Configure the LLM
 glob npc_model = Model(model_name="gpt-4.1-mini");
@@ -242,7 +242,7 @@ The `NPCWalker` first inherits the behavior of `StateAgent` (which collects cont
 
 Finally, we can compose everything in a single entry point:
 ```jac
-import from mtllm { Model }
+import from byllm { Model }
 
 # Configure different models
 glob npc_model = Model(model_name="gpt-4.1-mini");

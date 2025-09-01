@@ -84,6 +84,10 @@ class SymTabBuildPass(UniPass):
         else:
             pass  # Need to support pythonic import symbols with dots in it
 
+    def exit_module_item(self, node: uni.ModuleItem) -> None:
+        sym_node = node.alias or node.name
+        sym_node.sym_tab.def_insert(sym_node, single_decl="import")
+
     def enter_archetype(self, node: uni.Archetype) -> None:
         self.push_scope_and_link(node)
         assert node.parent_scope is not None

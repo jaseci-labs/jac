@@ -102,11 +102,11 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Enhanced Interactive Code Demo
     const demoData = {
-        mtllm: {
-            title: "AI-Integrated Programming with MTLLM",
-            code: `<span class="jac-comment"># AI Integration with MTLLM - No Prompt Engineering Required! 🤖</span>
+        byllm: {
+            title: "AI-Integrated Programming with byLLM",
+            code: `<span class="jac-comment"># AI Integration with byLLM - No Prompt Engineering Required! 🤖</span>
 
-<span class="jac-keyword">import</span> <span class="jac-keyword">from</span> <span class="jac-variable">mtllm</span>.<span class="jac-variable">llms</span> { <span class="jac-node">OpenAI</span> }
+<span class="jac-keyword">import</span> <span class="jac-keyword">from</span> <span class="jac-variable">byllm</span>.<span class="jac-variable">llms</span> { <span class="jac-node">OpenAI</span> }
 
 <span class="jac-comment"># Initialize AI model</span>
 <span class="jac-keyword">glob</span> <span class="jac-variable">llm</span> = <span class="jac-node">OpenAI</span>(<span class="jac-variable">model_name</span>=<span class="jac-string">"gpt-4o"</span>);
@@ -139,7 +139,7 @@ document.addEventListener('DOMContentLoaded', function () {
             title: "AI-Generated Game Levels",
             code: `<span class="jac-comment"># RPG Game with AI-Generated Maps 🎮</span>
 
-<span class="jac-keyword">import</span> <span class="jac-keyword">from</span> <span class="jac-variable">mtllm</span>.<span class="jac-variable">llms</span> { <span class="jac-node">OpenAI</span> }
+<span class="jac-keyword">import</span> <span class="jac-keyword">from</span> <span class="jac-variable">byllm</span>.<span class="jac-variable">llms</span> { <span class="jac-node">OpenAI</span> }
 
 <span class="jac-keyword">glob</span> <span class="jac-variable">llm</span> = <span class="jac-node">OpenAI</span>(<span class="jac-variable">model_name</span>=<span class="jac-string">"gpt-4o"</span>);
 
@@ -329,7 +329,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const demoTabs = document.querySelectorAll('.demo-tab');
     const demoCode = document.getElementById('demo-code');
     const demoOutput = document.getElementById('demo-output');
-    let currentDemo = 'mtllm';
+    let currentDemo = 'byllm';
 
     function showDemo(demoKey) {
         currentDemo = demoKey;
@@ -414,7 +414,7 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     // Initialize first demo
-    showDemo('mtllm');
+    showDemo('byllm');
 
     // FIXED: Carousel functionality
     function initCarousel(carouselId, prevBtnId, nextBtnId, indicatorsId) {
@@ -654,12 +654,12 @@ with entry { # Generate random points
         summary: `Using "by" keyword to seamlessly integrate models into your development. No need for prompt engineering or interpret model outputs`,
         filename: "ai_sentiment_analysis.jac",
         code: `
-# AI Integration with MTLLM - No Prompt Engineering Required! 🤖
+# AI Integration with byLLM - No Prompt Engineering Required! 🤖
 
-import from mtllm.llms { OpenAI }
+import from byllm { Model }
 
 # Initialize AI model
-glob llm = OpenAI(model_name="gpt-4o");
+glob llm = Model(model_name="gpt-4o");
 
 # Define AI-powered functions with just signatures!
 def translate(text: str, target_language: str) -> str by llm();
@@ -683,14 +683,14 @@ with entry {
 Customer sentiment: Negative. The customer expresses disappointment with product quality, which clearly indicates dissatisfaction.
 Translated result: Negativo. El cliente expresa decepción con la calidad del producto, lo que indica claramente insatisfacción.
     `,
-        link: "https://www.jac-lang.org/learn/jac-mtllm/with_llm/"
+        link: "https://www.jac-lang.org/learn/jac-byllm/with_llm/"
     },
     {
         tagline: "An Agentic Programming Model",
         summary: `New programming model (object-oriented programming) to enable fast agentic-AI development`,
         filename: "agent_system.jac",
         code: `
-import from mtllm.llm {Model}
+import from byllm.llm {Model}
 
 glob llm = Model(model_name="gemini/gemini-2.5-flash");
 

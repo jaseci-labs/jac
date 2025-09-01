@@ -1,126 +1,72 @@
-Special comprehensions in Jac extend traditional list comprehensions with powerful filtering and assignment capabilities. These constructs enable concise manipulation of data structures, particularly in graph traversal contexts.
+#### Filter comprehension
 
-#### Filter Comprehensions
+Special comprehensions provide concise, chainable operations on collections. Two common forms are filtering and bulk-setting fields across all elements.
 
-Filter comprehensions apply conditional filtering with optional null-safety:
+- **Filter comprehension**: Selects elements that satisfy all predicates.
+  - Syntax: `collection(?predicate1, predicate2, ...)`
+  - Predicates are boolean expressions evaluated against each element (you can reference fields directly, e.g., `x`, or with `?x`).
+  - Returns a new collection containing only matching elements, preserving order.
 
-```jac
-# Basic filter comprehension
-(property > value)
-
-# Null-safe filter
-(? property > value)
-
-# Typed filter comprehension
-(`TypeName: property == value)
-```
-
-**Usage in Context:**
-```jac
-# Filter nodes by property
-filtered_nodes = [-->(?score > 0.5)];
-
-# Filter with type checking
-typed_edges = [<--(`Connection: weight > 10)];
-```
-
-#### Assignment Comprehensions
-
-Assignment comprehensions enable in-place property updates:
+Example:
 
 ```jac
-# Single assignment
-(=property: new_value)
+import random;
 
-# Multiple assignments
-(=x: 10, y: 20, status: "active")
-```
+obj TestObj {
+    has x: int = random.randint(0, 15),
+        y: int = random.randint(0, 15),
+        z: int = random.randint(0, 15);
+}
 
-**Practical Applications:**
-```jac
-walker Updater {
-    can update with entry {
-        # Update all connected nodes
-        [-->](=visited: True, timestamp: now());
-        
-        # Conditional update with filter
-        [-->(score > 0.8)](=category: "high");
+with entry {
+    random.seed(42);
+    apple = [];
+    for i=0 to i<100 by i+=1  {
+        apple.append(TestObj());
     }
+
+    # check if all apple's x are random between 0 and 15
+    print(apple(?x >= 0, x <= 15) == apple);
 }
 ```
 
-#### Filter Compare Lists
+Output:
 
-Complex filtering with multiple conditions:
-
-```jac
-# Multiple property comparisons
-(age > 18, status == "active", score >= 0.7)
-
-# Mixed comparisons
-(name != "admin", role in ["user", "guest"])
+```text
+True
 ```
 
-#### Typed Filter Compare Lists
+#### Assign (bulk-assign) comprehension
 
-Type-specific filtering with property constraints:
+Setter comprehension applies field assignments to each element and returns the (same) collection reference. This is useful for bulk updates.
 
-```jac
-# Type with property filters
-`UserNode: (active == True, last_login > cutoff_date)
+- **Setter comprehension**: Mutates all elements in-place.
+  - Syntax: `collection(=field1=value1, field2=value2, ...)`
+  - Each assignment is applied to every element in the collection.
 
-# Edge type filtering
-`FriendEdge: (mutual == True, years > 2)
-```
-
-#### Integration with Object-Spatial Operations
-
-Special comprehensions shine in graph operations:
+Example:
 
 ```jac
-node DataNode {
-    has value: float;
-    has category: str;
-    has processed: bool = False;
+obj MyObj {
+    has apple: int = 0,
+        banana: int = 0;
 }
 
-walker Processor {
-    can process with entry {
-        # Filter and traverse
-        high_value = [-->(value > 100)];
-        visit high_value;
-        
-        # Update visited nodes
-        [-->](=processed: True);
-        
-        # Complex filtering
-        candidates = [<--(`DataNode: (
-            category in ["A", "B"],
-            processed == False,
-            value > threshold
-        ))];
-    }
+with entry {
+    x = MyObj();
+    y = MyObj();
+    mvar = [x, y](=apple=5, banana=7);
+    print(mvar);
 }
 ```
 
-#### Comparison Operators
+Output:
 
-Available operators for filter comprehensions:
-- `==`, `!=`: Equality comparisons
-- `>`, `<`, `>=`, `<=`: Numeric comparisons
-- `in`, `not in`: Membership tests
-- `is`, `is not`: Identity comparisons
-
-#### Null-Safe Operations
-
-The `?` operator enables safe property access:
-
-```jac
-# Safe navigation
-[-->(?nested?.property > 0)]
-
-# Combines with assignment
-[-->(?exists)](=checked: True)
+```text
+[MyObj(apple=5, banana=7), MyObj(apple=5, banana=7)]
 ```
 
-Special comprehensions provide a declarative, concise syntax for complex filtering and updating operations, particularly powerful when combined with Jac's graph traversal capabilities. They reduce boilerplate code while maintaining readability and type safety.
+Notes:
+- **Multiple predicates** in filters are combined with logical AND.
+- **Setter comprehension** returns the collection after mutation, enabling chaining with subsequent operations if desired.
+

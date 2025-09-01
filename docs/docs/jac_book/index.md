@@ -64,7 +64,7 @@ This book is organized into four progressive parts that build your expertise sys
     Math functions library with AI integration and decorators
 
 #### Chapter 5: Advanced AI Operations
-- MTLLM (Meaning Type LLM) overview
+- byLLM (Meaning Typed Programming) overview
 - Model configuration and selection
 - Semantic strings for enhanced AI context
 - Multimodal support for images, audio, and text

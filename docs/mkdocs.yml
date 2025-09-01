@@ -5,79 +5,80 @@ edit_uri: edit/main/docs/docs
 use_directory_urls: true
 nav:
   - Learn:
-      # - Getting Started: "learn/getting_started.md"
-      - Tour of Jac/Jaseci: "learn/introduction.md"
-      - Installation: "learn/installation.md"
-      - Learn Jac in 5 Minutes: "learn/jac_in_a_flash.md"
-      - Jac Playground: "learn/jac_playground.md"
-      - Learn By Example:
-          - LittleX (your own twitter):
-              - "learn/examples/littleX/tutorial.md"
-            # - "learn/examples/littleX/full_guide.md"
-          - Jac MCP Conversational Chatbot:
-              - "learn/examples/rag_chatbot/Overview.md"
-            # - "learn/examples/rag_chatbot/Tutorial.md"
-          - RPG game with AI Genarated Maps: "learn/examples/mtp_examples/rpg_game.md"
-          - Agentic Fantasy Trading Game: "learn/examples/mtp_examples/fantasy_trading_game.md"
-      - Learn Jac Language (WIP):
-          - Introduction: "jac_book/index.md"
-          - 1. Welcome to Jac: "jac_book/chapter_1.md"
-          - 2. Variables, Types, and Basic Syntax: "jac_book/chapter_2.md"
-          - 3. Functions, Control Flow, and Collections in Jac: "jac_book/chapter_3.md"
-          - 4. AI functions and Decorators: "jac_book/chapter_4.md"
-          - 5. Advanced AI Operations: "jac_book/chapter_5.md"
-          - 6. Imports System and File Operations: "jac_book/chapter_6.md"
-          - 7. Enhanced OOP - Objects and Classes: "jac_book/chapter_7.md"
-          - 8. OSP Introduction and Paradigm Shift: "jac_book/chapter_8.md"
-          - 9. Nodes and Edges: "jac_book/chapter_9.md"
-          - 10. Walkers and Abilities: "jac_book/chapter_10.md"
-          - 11. Advanced Object Spatial Operations: "jac_book/chapter_11.md"
-          - 12. Walkers as API Endpoints: "jac_book/chapter_12.md"
-          - 13. Persistence and the Root Node: "jac_book/chapter_13.md"
-          - 14. Multi-User Architecture and Permissions: "jac_book/chapter_14.md"
-          - 15. Advanced Jac Cloud Features: "jac_book/chapter_15.md"
-          - 16. Type System Deep Dive: "jac_book/chapter_16.md"
-          - 17. Testing and Debugging: "jac_book/chapter_17.md"
-          - 18. Deployment Strategies: "jac_book/chapter_18.md"
-          - 19. Performance Optimization: "jac_book/chapter_19.md"
-          - 20. Python to Jac Migration: "jac_book/chapter_20.md"
-      - Programming 'by' AI:
-          - What is MTP: "learn/jac-mtllm/with_llm.md"
-          - Quick-start: "learn/jac-mtllm/quickstart.md"
-          - How to use MTP: "learn/jac-mtllm/usage.md"
-          - Python MTLLM Interface: "learn/jac-mtllm/python_integration.md"
-          - Using Multimodal models: "learn/jac-mtllm/multimodality.md"
-          - Build your own MTLLM plugin: "learn/jac-mtllm/creating_mtllm_plugins.md"
-          - LiteLLM Proxy Server: "learn/jac-mtllm/litellm_proxy.md"
-      - Scale-Native Programming:
-          - "learn/jac-cloud/introduction.md"
-          - "learn/jac-cloud/quickstart.md"
-          - Core Features:
-              - "learn/jac-cloud/permission.md"
-              - "learn/jac-cloud/logging.md"
-              - "learn/jac-cloud/env_vars.md"
-          - Real-time & Async:
-              - "learn/jac-cloud/websocket.md"
-              - "learn/jac-cloud/scheduler.md"
-              - "learn/jac-cloud/async_walker.md"
-              - "learn/jac-cloud/webhook.md"
-          - Operations:
-              - "learn/jac-cloud/deployment.md"
-              - "learn/jac-cloud/utilities.md"
-          - Jac Lens: "learn/jac-lens.md"
-      - Tooling:
-          - "learn/tools/cli.md"
-      - Specifications:
-          - Jac Keywords: "learn/keywords.md"
-          - Object-Spatial Programming Specification: "learn/dspfoundation.md"
-          - Full Language Specification: "learn/jac_ref.md"
-      - Misc Docs:
-          - Understanding Object-Spatial:
-              - "learn/data_spatial/nodes_and_edges.md" # Introduction to DS primitives
-              - "learn/data_spatial/walkers.md" # Walker
-              - "learn/data_spatial/filtering.md" # Filtering
-              - "learn/data_spatial/sequence.md"
-          - FAQ: "learn/data_spatial/FAQ.md" # faq
+    # - Getting Started: "learn/getting_started.md"
+    - Tour of Jac/Jaseci: "learn/introduction.md"
+    - Installation: "learn/installation.md"
+    - Learn Jac in 5 Minutes: "learn/jac_in_a_flash.md"
+    - Jac Playground: "learn/jac_playground.md"
+    - Learn By Example:
+      - LittleX (your own twitter):
+        - "learn/examples/littleX/tutorial.md"
+        # - "learn/examples/littleX/full_guide.md"
+      - Jac MCP Conversational Chatbot:
+        - "learn/examples/rag_chatbot/Overview.md"
+        # - "learn/examples/rag_chatbot/Tutorial.md"
+      - RPG game with AI Genarated Maps: "learn/examples/mtp_examples/rpg_game.md"
+      - Agentic Fantasy Trading Game: "learn/examples/mtp_examples/fantasy_trading_game.md"
+    - Learn Jac Language (WIP):
+      - Introduction: "jac_book/index.md"
+      - 1. Welcome to Jac: "jac_book/chapter_1.md"
+      - 2. Variables, Types, and Basic Syntax: "jac_book/chapter_2.md"
+      - 3. Functions, Control Flow, and Collections in Jac: "jac_book/chapter_3.md"
+      - 4. AI functions and Decorators: "jac_book/chapter_4.md"
+      - 5. Advanced AI Operations: "jac_book/chapter_5.md"
+      - 6. Imports System and File Operations: "jac_book/chapter_6.md"
+      - 7. Enhanced OOP - Objects and Classes: "jac_book/chapter_7.md"
+      - 8. OSP Introduction and Paradigm Shift: "jac_book/chapter_8.md"
+      - 9. Nodes and Edges: "jac_book/chapter_9.md"
+      - 10. Walkers and Abilities: "jac_book/chapter_10.md"
+      - 11. Advanced Object Spatial Operations: "jac_book/chapter_11.md"
+      - 12. Walkers as API Endpoints: "jac_book/chapter_12.md"
+      - 13. Persistence and the Root Node: "jac_book/chapter_13.md"
+      - 14. Multi-User Architecture and Permissions: "jac_book/chapter_14.md"
+      - 15. Advanced Jac Cloud Features: "jac_book/chapter_15.md"
+      - 16. Type System Deep Dive: "jac_book/chapter_16.md"
+      - 17. Testing and Debugging: "jac_book/chapter_17.md"
+      - 18. Deployment Strategies: "jac_book/chapter_18.md"
+      - 19. Performance Optimization: "jac_book/chapter_19.md"
+      - 20. Python to Jac Migration: "jac_book/chapter_20.md"
+    - Programming 'by' AI:
+        - What is MTP: "learn/jac-byllm/with_llm.md"
+        - Quick-start: "learn/jac-byllm/quickstart.md"
+        - How to use MTP: "learn/jac-byllm/usage.md"
+        - Python byllm Interface: "learn/jac-byllm/python_integration.md"
+        - Using Multimodal models: "learn/jac-byllm/multimodality.md"
+        - Build your own byllm plugin: "learn/jac-byllm/creating_byllm_plugins.md"
+        - LiteLLM Proxy Server: "learn/jac-byllm/litellm_proxy.md"
+    - Scale-Native Programming:
+      - "learn/jac-cloud/introduction.md"
+      - "learn/jac-cloud/quickstart.md"
+      - Core Features:
+        - "learn/jac-cloud/permission.md"
+        - "learn/jac-cloud/logging.md"
+        - "learn/jac-cloud/env_vars.md"
+      - Real-time & Async:
+        - "learn/jac-cloud/websocket.md"
+        - "learn/jac-cloud/scheduler.md"
+        - "learn/jac-cloud/async_walker.md"
+        - "learn/jac-cloud/webhook.md"
+      - Operations:
+        - "learn/jac-cloud/deployment.md"
+        - "learn/jac-cloud/utilities.md"
+      - Jac Lens: "learn/jac-lens.md"
+    - Tooling:
+      - "learn/tools/cli.md"
+      - "learn/tools/streamlit.md"
+    - Specifications:
+      - Jac Keywords: "learn/keywords.md"
+      - Object-Spatial Programming Specification: "learn/dspfoundation.md"
+      - Full Language Specification: "learn/jac_ref.md"
+    - Misc Docs:
+      - Understanding Object-Spatial:
+        - "learn/data_spatial/nodes_and_edges.md" # Introduction to DS primitives
+        - "learn/data_spatial/walkers.md" # Walker
+        - "learn/data_spatial/filtering.md" # Filtering
+        - "learn/data_spatial/sequence.md"
+      - FAQ: "learn/data_spatial/FAQ.md" # faq
 
   - Community Hub:
       - Roadmap: "communityhub/roadmap.md"

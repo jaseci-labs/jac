@@ -1,4 +1,4 @@
-from mtllm import Model, by
+from byllm import Model, by
 from dataclasses import dataclass
 
 @dataclass

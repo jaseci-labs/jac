@@ -15,13 +15,14 @@ In Python, the entry point of a program is typically defined by the `if __name__
 Jac's `with entry` block serves a similar purpose but has a deeper, more powerful meaning. It isn't just starting a script, it is your moment of entry into a persistent, spatial environment. Think of it as opening the door to a workshop. When your program starts, this workshop is not empty; it contains a single, special starting point: the `root` node. We're entering the root of a global graph structure that we can build upon and traverse.
 
 ![With Entry](../assets/examples/jac_book/with_entry.png){ width=350px }
-#/ caption
+
 `with entry` marks your entry point into the program's graph. This graph initially contains only the root node, which serves as the anchor for everything you will build.
-#/
+
 
 Everything you create and connect within this graph space can be persisted, traversed, and reasoned about spatially.
 
 ### Creating a Node and adding it to the Graph
+
 When the `with entry` block is executed, it creates a root node in the Jac graph. From there, we can add nodes` and `edges` to build our data structure. Lets look at an example of creating a simple node using Jac's syntax:
 
 ```jac
@@ -36,13 +37,12 @@ with entry {
 <br />
 
 ![With Entry](../assets/examples/jac_book/node1.png){ width=350px }
-#/ caption
-Adding a node to the graph.
-#/
+
 
 Here, we define a node using the `node` keyword, which is similar to defining a class in traditional OOP. The `has` keyword declares properties for the node, and we create an instance of this node within the `with entry` block.
 
 ### Connecting Nodes with Edges
+
 When the entry point is executed, it creates a root node on the Jac graph, which can be accessed using the `root` variable. This root node serves as the starting point for the program's graph structure, enabling traversal and manipulation of connected nodes.
 
 In the example above, we create a new node `node_a` with the name "A". However, this node is not automatically part of the graph—it exists in isolation. To incorporate it into the graph, we need to connect it to an existing node using an `edge`.
@@ -62,12 +62,10 @@ with entry {
 <br />
 
 ![With Entry](../assets/examples/jac_book/node2.png){ width=350px }
-#/ caption
-Adding a node to the graph.
-#/
 
 
 ### Building out the rest of the Graph
+
 Now that we have a basic understanding of nodes and edges, let's add a few more nodes and edges to create a more complex graph structure. We'll introduce a second node and connect it to the first one:
 
 ```jac
@@ -113,14 +111,12 @@ with entry {
 <br />
 
 ![With Entry](../assets/examples/jac_book/node3.png){ width=350px }
-#/ caption
-Filling out the graph with nodes and edges.
-#/
 
 ## From "Data to Computation" to "Computation to Data"
----
+
 
 ### Walking the Graph
+
 In Object-Oriented Programming, your objects are stationary. You call a method on an object, and the logic executes within that object's context.
 
 One of the core innovations of Object-Spatial Programming (OSP) is the concept of **walkers**. A walker is a mobile unit of computation that you design to travel through your graph, moving from node to node along the edges that connect them. Instead of pulling data to your logic, a walker brings your logic directly to the data.
@@ -192,6 +188,7 @@ walker PathWalker {
 <br />
 
 ### The `visit` Statement and `-->` Syntax
+
 To understand how walkers move through the graph, it's important to break down the `visit` statement and the `-->` operator used in the example above.
 
 In Jac, visit tells the walker to continue its traversal along the graph. What makes this powerful is the use of edge selectors inside the square brackets, like `[-->]`, which control how and where the walker moves.
@@ -208,6 +205,7 @@ Jac supports more complex edge selectors as well which we'll explore in subseque
 
 
 ### Putting it All Together
+
 Lets put everything together in a complete example that demonstrates how to create a graph, define a walker, and run it to collect node names:
 
 ```jac
@@ -256,12 +254,12 @@ Start walking, visiting A, visiting B, reached the end
 
 
 ## Wrapping Up
----
+
 In this chapter, we've introduced the core concepts of Object-Spatial Programming (OSP) and how it differs from traditional object-oriented programming. We've seen how Jac allows us to define nodes and edges, create walkers, and traverse graphs in a way that naturally reflects the relationships between data.
 
 
 ## Key Takeaways
----
+
 
 - **Computation to data**: Move processing to where data naturally lives
 - **Spatial relationships**: Model connections as first-class graph structures

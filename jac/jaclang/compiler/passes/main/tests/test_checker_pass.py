@@ -69,6 +69,18 @@ class TypeCheckerPassTests(TestCase):
             ^^^^^^^^^^^^^^^^^^^^^
         """, program.errors_had[0].pretty_print())
 
+    def test_from_import(self) -> None:
+        path = self.fixture_abs_path("checker_importer.jac")
+
+        program = JacProgram()
+        mod = program.compile(path)
+        TypeCheckPass(ir_in=mod, prog=program)
+        self.assertEqual(len(program.errors_had), 1)
+        self._assert_error_pretty_found("""
+          glob s: str = alias;
+               ^^^^^^^^^^^^^^
+        """, program.errors_had[0].pretty_print())
+
 
     def _assert_error_pretty_found(self, needle: str, haystack: str) -> None:
         for line in [line.strip() for line in needle.splitlines() if line.strip()]:

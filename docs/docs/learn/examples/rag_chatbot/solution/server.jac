@@ -1,6 +1,6 @@
 import sys;
-import from mtllm.llm {Model}
-import from mtllm.types {Image, Video, Text}
+import from byllm.llm {Model}
+import from byllm.types {Image, Video, Text}
 import from tools {RagEngine}
 import os;
 import base64;

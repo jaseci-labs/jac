@@ -16,7 +16,7 @@ This tutorial covers building a trading game system with:
 Required dependencies:
 
 ```bash
-pip install mtllm
+pip install byllm
 ```
 
 OpenAI API key configuration:
@@ -59,9 +59,9 @@ obj Chat {
 Configure the LLM for AI operations:
 
 ```jac
-import from mtllm.llms {OpenAI}
+import from byllm {Model}
 
-glob llm = OpenAI(model_name="gpt-4o");
+glob llm = Model(model_name="gpt-4o");
 ```
 
 ## <span style="color: orange">Step 3: Implement AI-Powered Character Generation
@@ -215,12 +215,12 @@ The AI agent maintains state through:
 
 ## <span style="color: orange">Running the Implementation
 
-1. Install dependencies: `pip install mtllm`
+1. Install dependencies: `pip install byllm`
 2. Configure OpenAI API key
 3. Execute: `jac run fantasy_trading_game.jac`
 4. Interact with the AI agent through natural language
 
-Complete source code: [fantasy_trading_game.jac](https://github.com/jaseci-labs/jaseci/blob/main/jac-mtllm/examples/fantasy_trading_game.jac)
+Complete source code: [fantasy_trading_game.jac](https://github.com/jaseci-labs/jaseci/blob/main/jac-byllm/examples/fantasy_trading_game.jac)
 
 ## <span style="color: orange">Example Interaction
 

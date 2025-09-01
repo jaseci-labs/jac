@@ -282,8 +282,8 @@ class JacCliTests(TestCase):
         stdout_value = captured_output.getvalue()
         correct_graph = (
             "digraph G {\n"
-            '  0 [label="BB0\\n\\nprint ( \'\\"im still here\\"\' ) ;\", shape=box];\n'
-            '  1 [label="BB1\\n\'\\"Hello World!\\"\' |> print ;\", shape=box];\n'
+            '  0 [label="BB0\\n\\nprint ( \\"im still here\\" ) ;\", shape=box];\n'
+            '  1 [label="BB1\\n\\"Hello World!\\" |> print ;\", shape=box];\n'
             "}\n\n"
         )
 
@@ -412,6 +412,8 @@ class JacCliTests(TestCase):
         sys.stdout = sys.__stdout__
         stdout_value = captured_output.getvalue()
         self.assertIn("def my_print(x: object) -> None", stdout_value)
+        self.assertIn("class MyClass {", stdout_value)
+        self.assertIn('"""Print function."""', stdout_value)
 
     def test_caching_issue(self) -> None:
         """Test for Caching Issue."""
@@ -541,3 +543,20 @@ class JacCliTests(TestCase):
                     description_pattern,
                     f"Parameter description for '{param_name}' not found in help text for '{cmd_name}'",
                 )
+
+    def test_run_jac_name_py(self) -> None:
+        """Test a specific test case."""
+        process = subprocess.Popen(
+            [
+                "jac",
+                "run",
+                self.fixture_abs_path("py_run.py"),
+            ],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        stdout, stderr = process.communicate()
+        self.assertIn("Hello, World!", stdout)
+        self.assertIn("Sum: 8", stdout)

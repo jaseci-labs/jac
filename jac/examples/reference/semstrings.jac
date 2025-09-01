@@ -1,4 +1,4 @@
-import from mtllm { Model }
+import from byllm { Model }
 
 glob llm = Model(
     model_name="mockllm",
