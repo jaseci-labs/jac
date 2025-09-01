@@ -601,3 +601,16 @@ class TestJacLangServer(TestCase):
             "/tests/fixtures/M1.jac:0:0-0:0",
             str(lsp.get_definition(guess_game_file, lspt.Position(29, 9))),
         )
+
+    def test_engine_break(self) -> None:
+        """Test that the go to definition is correct."""
+        lsp = JacLangServer()
+        workspace_path = self.fixture_abs_path("")
+        workspace = Workspace(workspace_path, lsp)
+        lsp.lsp._workspace = workspace
+        guess_game_file = uris.from_fs_path(self.fixture_abs_path('../../../langserve/engine.jac'))
+        lsp.deep_check(guess_game_file)
+        self.assertIn(
+            "/stdlib/time.pyi:0:0-0:0",
+            str(lsp.get_definition(guess_game_file, lspt.Position(132, 33))),
+        )
