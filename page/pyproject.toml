@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jac-highlighter"
+version = "0.0.1"
+description = "A Pygments lexer for the Jac programming language."
+dependencies = [
+    "pygments",
+    "mkdocs",
+    "mkdocs-material",
+    "pymdown-extensions",
+    "mkdocs-video",
+    "mkdocs-open-in-new-tab",
+    "starlette",
+    "uvicorn",
+    "watchdog"
+]
+authors = [
+    { name = "Jason Mars", email = "jason@jaseci.org" }
+]
+readme = "README.md"
+license = { text = "MIT" }
+classifiers = [
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+]
+
+[project.entry-points."pygments.lexers"]
+jaclexer = "jac_syntax_highlighter:JacLexer"
+
+[tool.setuptools]
+py-modules = ["jac_syntax_highlighter"]

@@ -1,0 +1,67 @@
+<footer class="footer">
+    <div class="container">
+        <div class="footer-content">
+            <div class="footer-links">
+                <a href="https://github.com/Jaseci-Labs/jaseci" target="_blank">GitHub</a>
+                <a href="https://discord.gg/HVfee4xt" target="_blank">Community</a>
+                <a href="/learn/getting_started/">Documentation</a>
+            </div>
+            <p>© 2025 Jac Hackers Everywhere. All rights reserved.</p>
+            <p style="margin-top: 10px; color: #666;">Built with passion for innovative programming languages</p>
+        </div>
+        <div class="feedback-container" id="feedbackContainer">
+        <button class="feedback-toggle" id="feedbackToggle">
+            <svg class="icon" viewBox="0 0 24 24">
+                <path d="M20 2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h4l4 4 4-4h4c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-7 13.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM14 9H10V7h4v2z"/>
+            </svg>
+            Feedback
+        </button>
+
+        <div class="feedback-form" id="feedbackForm">
+            <div class="success-message" id="successMessage">
+                Thank you for your feedback! 🎉
+            </div>
+
+            <h3>Share Your Feedback</h3>
+
+            <form id="feedbackFormElement" action="https://script.google.com/macros/s/AKfycbwnF5MK6hrie4f4V0beTtRYueGrjBIBfBvlsiGnMEeeoMhJpJS8H5hDU8BzU5c9AhJ3/exec" method="POST">
+                <div class="feedback-rating">
+                    <span class="rating-label">Rate:</span>
+                    <div class="rating-btn" data-rating="positive">
+                        <svg class="icon" viewBox="0 0 24 24">
+                            <path d="M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z"/>
+                        </svg>
+                        Good
+                    </div>
+                    <div class="rating-btn" data-rating="negative">
+                        <svg class="icon" viewBox="0 0 24 24">
+                            <path d="M15 3H6c-.83 0-1.54.5-1.84 1.22l-3.02 7.05c-.09.23-.14.47-.14.73v2c0 1.1.9 2 2 2h6.31l-.95 4.57-.03.32c0 .41.17.79.44 1.06L9.83 23l6.59-6.59c.36-.36.58-.86.58-1.41V5c0-1.1-.9-2-2-2zm4 0v12h4V3h-4z"/>
+                        </svg>
+                        Bad
+                    </div>
+                </div>
+
+                <textarea
+                    class="feedback-input"
+                    name="comment"
+                    id="commentInput"
+                    placeholder="Tell us more about your experience..."
+                    required
+                ></textarea>
+
+                <!-- Hidden fields -->
+                <input type="hidden" name="rating" id="ratingInput">
+                <input type="hidden" name="url" id="urlInput">
+                <input type="hidden" name="timestamp" id="timestampInput">
+                <input type="hidden" name="userAgent" id="userAgentInput">
+                <input type="hidden" name="pageTitle" id="pageTitleInput">
+
+                <div class="feedback-actions">
+                    <button type="button" class="btn btn-cancel" id="cancelBtn">Cancel</button>
+                    <button type="submit" class="btn btn-submit" id="submitBtn" disabled>Submit</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    </div>
+</footer>

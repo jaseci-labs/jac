@@ -1,0 +1,628 @@
+:root>* {
+    /* --md-code-bg-color: #ececec; */
+    --md-code-hl-operator-color: #b68500;
+}
+
+/* Admonition styles */
+.md-typeset .admonition {
+    border-radius: 10px;
+}
+
+.md-typeset .admonition.warning,
+.md-typeset details.warning {
+    border-color: #ff9800;
+    color: #ff9800;
+    background-color: #ff91001a;
+    font-size: larger;
+}
+
+.md-typeset .admonition.question,
+.md-typeset details.question {
+    border-color: #ffab40;
+}
+
+.md-typeset .question>.admonition-title,
+.md-typeset .question>summary {
+    background-color: rgba(255, 171, 64, 0.1);
+}
+
+.md-typeset .question>.admonition-title::before,
+.md-typeset .question>summary::before {
+    background-color: #ffab40;
+}
+
+.md-typeset details>summary:after {
+    color: #ffab40 !important;
+}
+
+.code-block {
+    margin: 1em 0;
+    padding: 1em;
+    background: #282c34;
+    color: #abb2bf;
+    border-radius: 4px;
+}
+
+/* Run button */
+.code-block .run-code-btn {
+    margin-top: 0.5em;
+    padding: 0.4em 1.2em;
+    background: linear-gradient(90deg, #ff9800 0%, #ffab40 100%);
+    color: #1e1e1e;
+    border: none;
+    border-radius: 3px;
+    font-weight: 600;
+    font-size: 1em;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+    outline: none;
+    letter-spacing: 0.03em;
+}
+
+.code-block .run-code-btn:hover,
+.code-block .run-code-btn:focus {
+    background: linear-gradient(90deg, #ffa726 0%, #ffd180 100%);
+    color: #111;
+    box-shadow: 0 4px 16px rgba(255, 171, 64, 0.15);
+}
+
+.code-block .run-code-btn:active {
+    background: #ff9800;
+    color: #fff;
+}
+
+/* Output block */
+.code-block .code-output {
+    margin-top: 0.5em;
+    background: #1e1e1e;
+    color: #98c379;
+    padding: 0.5em;
+    border-radius: 4px;
+    font-family: monospace;
+    max-height: 1000px;
+    overflow: auto;
+    transition: max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1), padding 0.3s;
+    font-size: 15px;
+}
+
+.code-block .code-output[style*="display: none"] {
+    max-height: 0;
+    padding: 0;
+    overflow: hidden;
+    margin-top: 0;
+}
+
+/* =============================
+   Jac Global Theme Overrides
+   These styles ensure that all documentation pages
+   adopt the same aesthetic as the custom landing page
+   (docs/docs/index.html)
+   ============================= */
+
+/* ---------- Core page colours ---------- */
+body,
+[data-md-color-scheme="slate"] {
+    background-color: #1a1a1a !important;
+    color: #ffffff !important;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+}
+
+/* Material uses a lot of CSS variables.  We override the key ones for our palette. */
+[data-md-color-scheme="slate"] {
+    /* Primary & accent colours */
+    --md-primary-fg-color: #000000;
+    /* black */
+    --md-primary-bg-color: #1a1a1a;
+    /* background behind header/nav */
+    --md-accent-fg-color: #ff6b35;
+    /* orange gradient start */
+    --md-accent-fg-color--light: #f7931e;
+    /* gradient end */
+
+    /* Muted foreground colours */
+    --md-default-fg-color: #cccccc;
+    --md-default-bg-color: #1a1a1a;
+}
+
+/* ---------- Header (site name / search bar) ---------- */
+.md-header {
+    background-color: #1a1a1a !important;
+    border-bottom: 1px solid #404040;
+    box-shadow: none;
+    color: white;
+}
+
+/* Keep header sticky just like landing page */
+.md-header[data-md-state~="primary"] {
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+}
+
+/* Site title & logo */
+.md-header__title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.md-header__title img {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+}
+
+.md-ellipsis {
+    padding: 5px 10px;
+}
+
+/* ---------- Navigation Tabs / Top level nav ---------- */
+.md-tabs {
+    background-color: #2d2d2d;
+    border-bottom: 1px solid #404040;
+    padding-bottom: 18px;
+}
+
+.md-tabs__item {
+    margin: 0 4px;
+}
+
+.md-tabs__link {
+    color: #cccccc;
+    border-radius: 25px;
+    padding: 8px 16px;
+}
+
+.md-tabs__link:hover {
+    background-color: #404040;
+    color: #ffffff;
+}
+
+/* Active tab gradient */
+.md-tabs__item--active .md-tabs__link,
+.md-tabs__link--active {
+    background-image: linear-gradient(135deg, #ff6b35, #f7931e);
+    color: #ffffff !important;
+}
+
+/* ---------- Sidebar nav ---------- */
+.md-nav {
+    background-color: #1a1a1a;
+}
+
+.md-nav__link {
+    color: #cccccc;
+}
+
+.md-nav__link:hover {
+    color: #ffffff;
+}
+
+.md-nav__link--active {
+    background-image: linear-gradient(135deg, #ff6b35, #f7931e);
+    color: #ffffff !important;
+    border-radius: 6px;
+}
+
+/* ---------- Content area ---------- */
+.md-content,
+.md-main__inner {
+    background-color: #1a1a1a;
+}
+
+.md-typeset h1,
+.md-typeset h2,
+.md-typeset h3,
+.md-typeset h4,
+.md-typeset h5,
+.md-typeset h6 {
+    font-family: 'Segoe UI', 'Montserrat', 'Roboto', 'Arial', sans-serif;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    margin-bottom: 0.2em !important;
+    color: #e5e7eb;
+    text-shadow: 0 2px 16px rgba(255, 171, 64, 0.08);
+}
+
+.md-typeset a {
+    color: #ff6b35;
+}
+
+.md-typeset a:hover {
+    color: #f7931e;
+}
+
+/* ---------- Buttons (e.g., admonition copy button) ---------- */
+.md-clipboard.md-icon {
+    color: #cccccc;
+}
+
+.md-clipboard.md-icon:hover {
+    color: #ff6b35;
+}
+
+/* ---------- Tables ---------- */
+.md-typeset table {
+    border-color: #404040;
+}
+
+.md-typeset table th {
+    background-color: #2d2d2d;
+    color: #ffffff;
+}
+
+/* ---------- Code blocks ---------- */
+.md-typeset pre,
+.md-typeset pre>code,
+.md-typeset code,
+.md-typeset .code-block,
+.md-typeset .code-output {
+    font-family: 'Fira Mono', 'JetBrains Mono', 'Menlo', 'Consolas', 'Liberation Mono', 'monospace' !important;
+    font-size: 15px;
+    border-radius: 6px !important;
+    --md-code-hl-name-color: #fafafa;
+    --md-code-hl-keyword-color: #8BE9FD;
+    --md-code-hl-function-color: #FF79C6;
+    --md-code-hl-constant-color: #BD93F9;
+    --md-code-hl-string-color: #50FA7B;
+    --md-code-hl-number-color: #FFB86C;
+    --md-code-hl-operator-color: #FFB86C;
+    --md-code-hl-punctuation-color: #F8F8F2;
+    --md-code-hl-comment-color: #6272A4;
+    border: 1px solid #555555;
+}
+
+.md-typeset code {
+    color: #f8f8f2;
+}
+
+@import url('https://fonts.googleapis.com/css2?family=Fira+Mono:wght@400;500;700&display=swap');
+
+.md-typeset pre>code {
+    background-color: #282a36;
+    --md-code-fg-color: #f8f8f2;
+}
+
+/* ---------- Footer ---------- */
+.md-footer {
+    background-color: #2d2d2d;
+    border-top: 1px solid #404040;
+    color: #888;
+}
+
+.md-footer a {
+    color: #cccccc;
+}
+
+.md-footer a:hover {
+    color: #ff6b35;
+}
+
+/* ---------- custom Footer ---------- */
+.footer {
+    background-color: #2d2d2d;
+    border-top: 1px solid #404040;
+    padding: 30px 0;
+    text-align: center;
+}
+
+.footer-content {
+    color: #888;
+    font-size: 14px;
+}
+
+.footer-links {
+    display: flex;
+    justify-content: center;
+    gap: 30px;
+    margin-bottom: 20px;
+}
+
+.footer-links a {
+    color: #cccccc;
+    text-decoration: none;
+    transition: color 0.3s;
+}
+
+.footer-links a:hover {
+    color: #ff6b35;
+}
+
+.md-main__inner.md-grid {
+    max-width: 100vw;
+}
+
+/* ---------- Custom Quote Styling ---------- */
+.md-typeset blockquote,
+blockquote {
+    background: linear-gradient(90deg, #23272e 0%, #1a1a1a 100%);
+    border-left: 4px solid #ffab40;
+    color: #ffe0b2;
+    padding: 1em 1.5em;
+    margin: 1.5em 0;
+    border-radius: 6px;
+    font-style: italic;
+    box-shadow: 0 2px 8px rgba(255, 171, 64, 0.05);
+    transition: background 0.2s, color 0.2s;
+}
+
+.md-typeset blockquote p,
+blockquote p {
+    color: #ffe0b2;
+    margin: 0;
+}
+
+.md-typeset blockquote::before,
+blockquote::before {
+    content: "“";
+    color: #ffab40;
+    font-size: 2.5em;
+    line-height: 0.1em;
+    vertical-align: -0.4em;
+    margin-right: 0.2em;
+    font-family: serif;
+    opacity: 0.7;
+}
+
+.md-typeset blockquote::after,
+blockquote::after {
+    content: "”";
+    color: #ffab40;
+    font-size: 2.5em;
+    line-height: 0.1em;
+    vertical-align: -0.4em;
+    margin-left: 0.2em;
+    font-family: serif;
+    opacity: 0.7;
+}
+
+/* ---------- Themed List Items ---------- */
+.md-typeset ul,
+.md-typeset ol {
+    /* padding-left: 1.5em; */
+    margin-bottom: 1.2em;
+}
+
+.md-typeset ul li,
+.md-typeset ol li {
+    margin-bottom: 0.5em;
+    color: inherit;
+    font-size: 1em;
+    line-height: 1.7;
+    position: relative;
+    padding-left: 0.5em;
+}
+
+/* Use small squares for unordered list markers */
+.md-typeset ul li::marker {
+    color: #ffab40;
+    font-size: 1em;
+    content: "▪ ";
+}
+
+/* Ordered lists: revert to default decimal */
+.md-typeset ol li::marker {
+    color: inherit;
+    font-weight: normal;
+    font-size: 1em;
+    content: counter(list-item) ". ";
+}
+
+/* Remove custom task list checkmark styling */
+.md-typeset ul li.task-list-item input[type="checkbox"]:checked+label::before {
+    content: "";
+    color: inherit;
+    font-size: 1em;
+    margin-right: 0;
+}
+
+/* Reduce the padding/margin for horizontal rules */
+.md-typeset hr,
+hr {
+    margin-top: 0.0em !important;
+    margin-bottom: 0.7em !important;
+    border-top-width: 2px;
+    border-color: #404040;
+}
+
+/* Feedback Form Styles */
+.feedback-container {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 1000;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Hide on main domain */
+body[data-domain="https://www.jac-lang.org/"] .feedback-container {
+    display: none !important;
+}
+
+.feedback-toggle {
+    background: linear-gradient(135deg, #ff6b35, #e55a2b);
+    color: white;
+    border: none;
+    border-radius: 25px;
+    padding: 12px 20px;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(255, 107, 53, 0.3);
+    font-size: 14px;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.feedback-toggle:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(255, 107, 53, 0.4);
+}
+
+.feedback-form {
+    position: absolute;
+    bottom: 60px;
+    right: 0;
+    width: 320px;
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    transform: translateY(20px);
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.3s ease;
+}
+
+.feedback-form.active {
+    transform: translateY(0);
+    opacity: 1;
+    visibility: visible;
+}
+
+.feedback-form h3 {
+    color: #ff6b35;
+    margin: 0 0 16px 0;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.feedback-rating {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 16px;
+    align-items: center;
+}
+
+.rating-label {
+    color: #ccc;
+    font-size: 14px;
+    margin-right: 8px;
+}
+
+.rating-btn {
+    background: #2a2a2a;
+    border: 2px solid #444;
+    border-radius: 8px;
+    padding: 8px 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #ccc;
+    font-size: 14px;
+}
+
+.rating-btn:hover {
+    border-color: #ff6b35;
+    background: #333;
+}
+
+.rating-btn.selected {
+    border-color: #ff6b35;
+    background: #ff6b35;
+    color: white;
+}
+
+.feedback-input {
+    width: 100%;
+    background: #2a2a2a;
+    border: 2px solid #444;
+    border-radius: 8px;
+    padding: 12px;
+    color: #fff;
+    font-size: 14px;
+    resize: vertical;
+    min-height: 80px;
+    margin-bottom: 16px;
+    box-sizing: border-box;
+}
+
+.feedback-input:focus {
+    outline: none;
+    border-color: #ff6b35;
+}
+
+.feedback-input::placeholder {
+    color: #888;
+}
+
+.feedback-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+}
+
+.btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.btn-cancel {
+    background: #444;
+    color: #ccc;
+}
+
+.btn-cancel:hover {
+    background: #555;
+}
+
+.btn-submit {
+    background: linear-gradient(135deg, #ff6b35, #e55a2b);
+    color: white;
+}
+
+.btn-submit:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(255, 107, 53, 0.3);
+}
+
+.btn-submit:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.success-message {
+    background: #1a4d3a;
+    color: #4ade80;
+    padding: 12px;
+    border-radius: 8px;
+    text-align: center;
+    font-size: 14px;
+    margin-bottom: 12px;
+    display: none;
+}
+
+.success-message.show {
+    display: block;
+}
+
+/* Icons */
+.icon {
+    width: 16px;
+    height: 16px;
+    fill: currentColor;
+}
+
+/* Mobile responsiveness */
+@media (max-width: 768px) {
+    .feedback-container {
+        bottom: 15px;
+        right: 15px;
+    }
+
+    .feedback-form {
+        width: 280px;
+        right: 0;
+    }
+}
