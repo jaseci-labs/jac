@@ -656,26 +656,15 @@ with entry { # Generate random points
         code: `
 # AI Integration with MTLLM - No Prompt Engineering Required! 🤖
 
-import from mtllm.llms { OpenAI }
+import from mtllm.llm { Model }
 
-# Initialize AI model
-glob llm = OpenAI(model_name="gpt-4o");
+glob llm = Model(model_name="gpt-4o");
 
-# Define AI-powered functions with just signatures!
-def translate(text: str, target_language: str) -> str by llm();
-
-def analyze_sentiment(text: str) -> str by llm(method='Reason');
+def translate_to_spanish(text: str) -> str by llm();   # Translate English to Spanish
 
 with entry {
-    customer_feedback = "I'm really disappointed with the product quality.";
-
-    # AI reasons through sentiment analysis step-by-step
-    sentiment = analyze_sentiment(customer_feedback);
-    print(f"Customer sentiment: {sentiment}");
-
-    # Translate the sentiment analysis to Spanish
-    translated = translate(sentiment, "Spanish");
-    print(f"Translated result: {translated}");
+    result = translate_to_spanish("Hello");
+    print(result);   # Expected: "Hola"
 }
 `,
         codeLang: "python",
