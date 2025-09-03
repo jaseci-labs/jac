@@ -27,6 +27,7 @@ from jaclang.compiler.passes.main import (
     SymTabLinkPass,
     Transform,
     TypeCheckPass,
+    AdHocPass
 )
 from jaclang.compiler.passes.tool import (
     DocIRGenPass,
@@ -49,6 +50,7 @@ ir_gen_sched = [
 ]
 type_check_sched: list = [
     TypeCheckPass,
+    AdHocPass,
 ]
 py_code_gen = [
     PyastGenPass,

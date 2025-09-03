@@ -52,7 +52,7 @@ def resolve_module(target: str, base_path: str) -> Tuple[str, str]:
         level += 1
     actual_parts = parts[level:]
 
-    for sp in site.getsitepackages():
+    for sp in get_jac_search_paths():
         res = _candidate_from(sp, actual_parts)
         if res:
             return res
