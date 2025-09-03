@@ -8,10 +8,10 @@ interface CodeBlockProps {
   className?: string;
 }
 
-export const CodeBlock: React.FC<CodeBlockProps> = ({ 
-  code, 
+export const CodeBlock: React.FC<CodeBlockProps> = ({
+  code,
   language = 'bash',
-  className = '' 
+  className = ''
 }) => {
   const [copied, setCopied] = useState(false);
 

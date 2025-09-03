@@ -86,21 +86,21 @@ const Index = () => {
           <div className="container py-16 md:py-20">
             <div className="mx-auto max-w-4xl text-center animate-fade-in">
               <h1 className="text-hero mb-6 bg-gradient-to-r from-foreground to-muted-foreground bg-clip-text text-transparent">
-                By LLM
+                byLLM
               </h1>
-              
+
               <p className="text-body-large text-muted-foreground mb-8 max-w-2xl mx-auto">
                 A declarative framework for building modular AI software. Create sophisticated language model applications with clean, composable code.
               </p>
-              
+
               <div className="bg-card border rounded-xl p-8 mb-12 text-left max-w-3xl mx-auto">
                 <p className="text-body leading-relaxed text-card-foreground">
-                  By LLM enables developers to build AI applications using natural language modules that can be generically composed with different models, inference strategies, and learning algorithms. This makes AI software more reliable, maintainable, and portable across models and strategies. Think of it as a higher-level language for AI programming, similar to the evolution from assembly to modern programming languages.
+                  byLLM enables developers to build AI applications using natural language modules that can be generically composed with different models, inference strategies, and learning algorithms. This makes AI software more reliable, maintainable, and portable across models and strategies. Think of it as a higher-level language for AI programming, similar to the evolution from assembly to modern programming languages.
                 </p>
               </div>
 
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <Button 
+                <Button
                   className="btn-hero group"
                   onClick={() => window.open('https://www.paper.com', '_blank')}
                 >
@@ -123,7 +123,7 @@ const Index = () => {
             <div className="text-center mb-16">
               <h2 className="text-section mb-4">Getting Started</h2>
               <p className="text-body-large text-muted-foreground max-w-2xl mx-auto">
-                Install By LLM and start building AI applications in minutes
+                Install byLLM and start building AI applications in minutes
               </p>
             </div>
 
@@ -135,7 +135,7 @@ const Index = () => {
                   <TabsTrigger value="claude">Claude</TabsTrigger>
                   <TabsTrigger value="deepseek">DeepSeek</TabsTrigger>
                 </TabsList>
-                
+
                 {Object.entries(modelSnippets).map(([key, snippet]) => (
                   <TabsContent key={key} value={key} className="space-y-6">
                     <Card className="card-interactive">
@@ -200,7 +200,7 @@ const Index = () => {
             <div className="text-center mb-16">
               <h2 className="text-section mb-4">How it Works</h2>
               <p className="text-body-large text-muted-foreground max-w-2xl mx-auto">
-                Get up and running with By LLM in three simple steps
+                Get up and running with byLLM in three simple steps
               </p>
             </div>
 
@@ -212,10 +212,10 @@ const Index = () => {
                 <div className="flex-1">
                   <h3 className="text-2xl font-bold mb-4">Install & Setup</h3>
                   <p className="text-body text-muted-foreground mb-6">
-                    Install By LLM and configure your preferred models to get started quickly
+                    Install byLLM and configure your preferred models to get started quickly
                   </p>
-                  <CodeBlock 
-                    code="pip install by-llm\nby-llm init my-project\ncd my-project" 
+                  <CodeBlock
+                    code="pip install by-llm\nby-llm init my-project\ncd my-project"
                     language="bash"
                   />
                 </div>
@@ -230,8 +230,8 @@ const Index = () => {
                   <p className="text-body text-muted-foreground mb-6">
                     Create reusable AI modules with natural language descriptions that define their behavior
                   </p>
-                  <CodeBlock 
-                    code='from by_llm import Module\n\nclass Summarizer(Module):\n    """Summarize text concisely"""\n    pass' 
+                  <CodeBlock
+                    code='from by_llm import Module\n\nclass Summarizer(Module):\n    """Summarize text concisely"""\n    pass'
                     language="python"
                   />
                 </div>
@@ -246,8 +246,8 @@ const Index = () => {
                   <p className="text-body text-muted-foreground mb-6">
                     Chain modules together to build complex applications with simple composition
                   </p>
-                  <CodeBlock 
-                    code='pipeline = Summarizer() >> Translator()\nresult = pipeline("Long text...")\nprint(result)' 
+                  <CodeBlock
+                    code='pipeline = Summarizer() >> Translator()\nresult = pipeline("Long text...")\nprint(result)'
                     language="python"
                   />
                 </div>
@@ -261,7 +261,7 @@ const Index = () => {
           <div className="container text-center">
             <h2 className="text-section mb-4">Ready to dive deeper?</h2>
             <p className="text-body-large text-muted-foreground mb-8 max-w-2xl mx-auto">
-              Explore our comprehensive documentation to unlock the full potential of By LLM
+              Explore our comprehensive documentation to unlock the full potential of byLLM
             </p>
             <Button className="btn-hero text-lg px-8 py-4">
               <BookOpen className="mr-2 h-5 w-5" />
@@ -283,14 +283,14 @@ const Index = () => {
 
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 max-w-6xl mx-auto">
               {examples.map((example, index) => (
-                <Card 
-                  key={index} 
+                <Card
+                  key={index}
                   className="card-interactive group cursor-pointer overflow-hidden"
                   onClick={() => window.open(example.link, '_blank')}
                 >
                   <div className="aspect-video overflow-hidden">
-                    <img 
-                      src={example.image} 
+                    <img
+                      src={example.image}
                       alt={example.title}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                     />
@@ -324,7 +324,7 @@ const Index = () => {
                   <div className="space-y-6">
                     <div className="border-l-4 border-primary pl-6">
                       <p className="text-body italic text-muted-foreground">
-                        "By LLM: A Declarative Framework for Compositional Language Model Programming"
+                        "byLLM: A Declarative Framework for Compositional Language Model Programming"
                       </p>
                       <p className="text-sm text-muted-foreground mt-2">
                         Authors et al. (2024) - Conference on Language Models and Applications
@@ -337,7 +337,7 @@ const Index = () => {
                       <p className="text-sm text-muted-foreground mt-2">
                         Research Team (2024) - Journal of AI Engineering
                       </p>
-                    </div>  
+                    </div>
                     <div className="border-l-4 border-primary pl-6">
                       <p className="text-body italic text-muted-foreground">
                         "Towards Composable AI: Building Reliable Language Model Systems"
@@ -362,7 +362,7 @@ const Index = () => {
                   <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
                     <span className="text-primary-foreground font-bold text-sm">BL</span>
                   </div>
-                  <span className="text-xl font-semibold">By LLM</span>
+                  <span className="text-xl font-semibold">by LLM</span>
                 </div>
                 <p className="text-muted-foreground text-sm">
                   Building the future of AI development with declarative, composable frameworks.
@@ -447,7 +447,7 @@ const Index = () => {
             </div>
 
             <div className="border-t mt-12 pt-8 text-center text-sm text-muted-foreground">
-              <p>&copy; 2024 By LLM Project. Built with passion for the AI development community.</p>
+              <p>&copy; 2024 byLLM Project. Built with passion for the AI development community.</p>
             </div>
           </div>
         </footer>

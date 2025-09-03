@@ -11,12 +11,14 @@ export const Header: React.FC = () => {
       <div className="container flex h-16 items-center justify-between">
         <div className="flex items-center space-x-8">
           <div className="flex items-center space-x-2">
-            <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-              <span className="text-primary-foreground font-bold text-sm">BL</span>
-            </div>
-            <span className="text-xl font-semibold">By LLM</span>
+            <img
+              src="/logo.png"
+              alt="ByLLM Logo"
+              className="h-8 w-auto"
+            />
+            <span className="text-xl font-semibold text-primary">byLLM</span>
           </div>
-          
+
           <nav className="hidden md:flex items-center space-x-6">
             <a href="#install" className="text-muted-foreground hover:text-foreground transition-colors">
               Install

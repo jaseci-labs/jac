@@ -1,6 +1,7 @@
 ```sh
 
 # Install the necessary dependencies.
+npm install clsx tailwind-merge
 npm i
 
 # Start the development server with auto-reloading and an instant preview.
