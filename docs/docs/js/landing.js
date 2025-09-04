@@ -707,7 +707,7 @@ sem Plan = "A specific, actionable development task with clear implementation re
 sem Plan.name = "Clear, descriptive name for the task (e.g., 'Create user authentication')";
 sem Plan.type = "Task category: feature, bugfix, refactor, or documentation";
 sem Plan.priority = "Task priority: 1=highest, 2=medium, 3=low";
-sem Plan.details = "Specific implementation instructions: what files to create, functions 
+sem Plan.details = "Specific implementation instructions: what files to create, functions
 to implement";
 sem Plan.estimated_effort = "Development effort estimate: small, medium, or large";
 
@@ -740,16 +740,16 @@ walker PlanningAgent {
 
 with entry {
     root ++> ProjectRequirement(
-        description="Build a task management system with user authentication", 
+        description="Build a task management system with user authentication",
         domain="web development"
     );
     root ++> ProjectRequirement(
-        description="Add real-time notifications and email alerts", 
+        description="Add real-time notifications and email alerts",
         domain="backend services"
     );
-    
+
     agent = PlanningAgent() spawn root;
-    
+
     print(f"\\nTotal plans generated: {len(agent.project_plans)}");
     for plan in agent.project_plans {
         print(f"- {plan.name} ({plan.type}, Priority: {plan.priority})");
