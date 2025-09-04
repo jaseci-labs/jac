@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowRight, ExternalLink, Github, Download, BookOpen, Users, MessageCircle, ChevronDown, FileText } from 'lucide-react';
+import { ArrowRight, ExternalLink, Github, Download, BookOpen, Users, MessageCircle, ChevronDown, FileText, Info } from 'lucide-react';
 import { ThemeProvider } from '../components/ThemeProvider';
 import { Header } from '../components/Header';
 import { CodeBlock } from '../components/CodeBlock';
@@ -90,27 +90,36 @@ const Index = () => {
               </h1>
 
               <p className="text-body-large text-muted-foreground mb-8 max-w-2xl mx-auto">
-                A declarative framework for building modular AI software. Create sophisticated language model applications with clean, composable code.
+                Prompt No More!
               </p>
 
               <div className="bg-card border rounded-xl p-8 mb-12 text-left max-w-3xl mx-auto">
                 <p className="text-body leading-relaxed text-card-foreground">
-                  byLLM enables developers to build AI applications using natural language modules that can be generically composed with different models, inference strategies, and learning algorithms. This makes AI software more reliable, maintainable, and portable across models and strategies. Think of it as a higher-level language for AI programming, similar to the evolution from assembly to modern programming languages.
+                  byLLM is a simple yet powerful framework that allows developers to create AI-powered applications, without getting tangled in prompt spaghetti. Through its innovative Meaning-Typed Programming paradigm, developers can write clean, intuitive code that automatically generates optimal prompts. This breakthrough approach, featured in our upcoming OOPSLA 2025 publication, transforms how we build and scale AI-powered applications.
                 </p>
               </div>
 
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
                 <Button
                   className="btn-hero group"
-                  onClick={() => window.open('https://www.paper.com', '_blank')}
+                  onClick={() => window.open('https://arxiv.org/abs/2405.08965', '_blank')}
                 >
                   <FileText className="mr-2 h-5 w-5" />
                   Read Research Paper
                   <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
                 </Button>
-                <Button variant="outline" className="btn-secondary">
+                <Button variant="outline" className="btn-secondary"
+                  onClick={() => window.open('https://github.com/jaseci-labs/jaseci/tree/main/jac-byllm', '_blank')}
+                >
                   <Github className="mr-2 h-4 w-4" />
                   View on GitHub
+                </Button>
+                <Button className="btn-hero group"
+                  onClick={() => window.open('https://www.jac-lang.org/learn/jac-byllm/with_llm/', '_blank')}
+                >
+                  <BookOpen className="mr-2 h-4 w-4" />
+                  View Docs
+                  <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
                 </Button>
               </div>
             </div>
@@ -128,12 +137,19 @@ const Index = () => {
             </div>
 
             <div className="max-w-4xl mx-auto">
+              <CodeBlock code="pip install byllm" language="bash" />
+              <div className="bg-gradient-to-r from-primary/5 to-primary/10 border border-primary/20 rounded-lg p-4 mt-2 mb-8">
+                <div className="flex items-center gap-2 mb-1">
+                  <Info className="h-4 w-4 text-primary" />
+                  <span className="font-medium text-sm text-primary">Note</span>
+                </div>
+                <p className="text-sm text-muted-foreground ml-6">Next, you'll need access to a Language Model - either through an API provider or your own locally hosted model.</p>
+              </div>
               <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                 <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 mb-8">
-                  <TabsTrigger value="openai">OpenAI</TabsTrigger>
-                  <TabsTrigger value="gemini">Gemini</TabsTrigger>
-                  <TabsTrigger value="claude">Claude</TabsTrigger>
-                  <TabsTrigger value="deepseek">DeepSeek</TabsTrigger>
+                  <TabsTrigger value="openai">AreYouAI</TabsTrigger>
+                  <TabsTrigger value="gemini">PersonalityFinder</TabsTrigger>
+                  <TabsTrigger value="claude">SearchBetter</TabsTrigger>
                 </TabsList>
 
                 {Object.entries(modelSnippets).map(([key, snippet]) => (
