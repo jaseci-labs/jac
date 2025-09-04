@@ -1,6 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Copy, Check } from 'lucide-react';
 import { Button } from './ui/button';
+import Prism from 'prismjs';
+import 'prismjs/themes/prism-tomorrow.css';
+import 'prismjs/plugins/line-numbers/prism-line-numbers.css';
+import 'prismjs/plugins/line-numbers/prism-line-numbers';
+import '../utils/prism-jac';
+import './CodeBlock.css';
 
 interface CodeBlockProps {
   code: string;
@@ -14,6 +20,10 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
   className = ''
 }) => {
   const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    Prism.highlightAll();
+  }, [code]);
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(code);
@@ -38,9 +48,9 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
           )}
         </Button>
       </div>
-      <pre className="p-4 overflow-x-auto">
-        <code className="text-[hsl(var(--code-text))] font-mono text-sm leading-relaxed">
-          {code}
+      <pre className="line-numbers p-4 overflow-x-auto">
+        <code className={`language-${language} text-[hsl(var(--code-text))] font-mono text-sm leading-relaxed`}>
+          {code.trim()}
         </code>
       </pre>
     </div>

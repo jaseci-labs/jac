@@ -14,8 +14,11 @@ import example3 from '../assets/example-3.jpg';
 import example4 from '../assets/example-4.jpg';
 import example5 from '../assets/example-5.jpg';
 
+// Import JAC examples
+import areyouaiCode from '../assets/areyouai.jac';
+
 const Index = () => {
-  const [activeTab, setActiveTab] = useState('openai');
+  const [activeTab, setActiveTab] = useState('areyouai');
 
   const examples = [
     {
@@ -58,15 +61,31 @@ const Index = () => {
   ];
 
   const modelSnippets = {
-    openai: {
-      description: 'Use this LLM model with OpenAI\'s powerful GPT models',
-      code: 'pip install by-llm[openai]\n# Set your API key\nexport OPENAI_API_KEY="your-api-key"\n\n# Usage\nfrom by_llm import OpenAI\nmodel = OpenAI()\nresult = model.generate("Hello world")'
+    areyouai: {
+      description: 'A simple example showing how to build a Yes/No answering bot using <strong>byLLM</strong>',
+      code: `import from byllm {Model}
+
+glob llm = Model(model_name="gpt-4o-mini");
+
+enum Tell {
+    YES = "yes", NO = "no"
+}
+
+"""Yes/No answering Bot"""
+def yes_or_no(question:str) -> Tell by llm();
+
+with entry {
+    question: str = "Are you an AI?";
+    answer: Tell = yes_or_no(question);
+    print(f"Question: {question}");
+    print("The bot answered " + answer.value);
+}`
     },
-    gemini: {
+    personality: {
       description: 'Use this LLM model with Google\'s advanced Gemini models',
       code: 'pip install by-llm[gemini]\n# Set your API key\nexport GEMINI_API_KEY="your-api-key"\n\n# Usage\nfrom by_llm import Gemini\nmodel = Gemini()\nresult = model.generate("Hello world")'
     },
-    claude: {
+    search: {
       description: 'Use this LLM model with Anthropic\'s sophisticated Claude models',
       code: 'pip install by-llm[anthropic]\n# Set your API key\nexport ANTHROPIC_API_KEY="your-api-key"\n\n# Usage\nfrom by_llm import Claude\nmodel = Claude()\nresult = model.generate("Hello world")'
     },
@@ -85,17 +104,33 @@ const Index = () => {
         <section className="relative overflow-hidden">
           <div className="container py-16 md:py-20">
             <div className="mx-auto max-w-4xl text-center animate-fade-in">
-              <h1 className="text-hero mb-6 bg-gradient-to-r from-foreground to-muted-foreground bg-clip-text text-transparent">
-                byLLM
-              </h1>
+              <div className="flex items-center justify-center h-full mb-12">
+                <div className="flex items-center space-x-4">
+                  {/* Logo on the left */}
+                  <img
+                    src="../public/logo.png"
+                    alt="byLLM Logo"
+                    className="h-28 w-auto"
+                  />
 
-              <p className="text-body-large text-muted-foreground mb-8 max-w-2xl mx-auto">
-                Prompt No More!
-              </p>
+                  {/* Text on the right */}
+                  <div className="flex flex-col">
+                    <h1 className="text-5xl font-bold leading-tight bg-gradient-to-r from-foreground to-muted-foreground bg-clip-text text-transparent">
+                      <strong>byLLM</strong>
+                    </h1>
+                    <p className="text-body-large text-muted-foreground mt-1">
+                      Prompt No More!
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+
+
 
               <div className="bg-card border rounded-xl p-8 mb-12 text-left max-w-3xl mx-auto">
                 <p className="text-body leading-relaxed text-card-foreground">
-                  byLLM is a simple yet powerful framework that allows developers to create AI-powered applications, without getting tangled in prompt spaghetti. Through its innovative Meaning-Typed Programming paradigm, developers can write clean, intuitive code that automatically generates optimal prompts. This breakthrough approach, featured in our upcoming OOPSLA 2025 publication, transforms how we build and scale AI-powered applications.
+                  <strong>byLLM</strong> is a simple yet powerful framework that allows developers to create AI-powered applications, without getting tangled in prompt spaghetti. Through its innovative Meaning-Typed Programming paradigm, developers can write clean, intuitive code that automatically generates optimal prompts. This breakthrough approach, featured in our upcoming OOPSLA 2025 publication, transforms how we build and scale AI-powered applications. <strong>byLLM</strong> is built as a plugin to the Jaseci ecosystem, while it can be used in python as a library.
                 </p>
               </div>
 
@@ -132,7 +167,7 @@ const Index = () => {
             <div className="text-center mb-16">
               <h2 className="text-section mb-4">Getting Started</h2>
               <p className="text-body-large text-muted-foreground max-w-2xl mx-auto">
-                Install byLLM and start building AI applications in minutes
+                Install <strong>byLLM</strong> and start building AI applications in minutes
               </p>
             </div>
 
@@ -143,13 +178,19 @@ const Index = () => {
                   <Info className="h-4 w-4 text-primary" />
                   <span className="font-medium text-sm text-primary">Note</span>
                 </div>
-                <p className="text-sm text-muted-foreground ml-6">Next, you'll need access to a Language Model - either through an API provider or your own locally hosted model.</p>
+                <p className="text-sm text-muted-foreground ml-6">Next, you'll need access to a Language Model - either through an API provider or your own locally hosted model and you are good to go.</p>
               </div>
+              <div className="text-center mb-8">
+                <p className="text-body-large text-muted-foreground max-w-2xl mx-auto">
+                  Let's look at some simple examples to understand how byLLM is used.
+                </p>
+              </div>
+
               <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 mb-8">
-                  <TabsTrigger value="openai">AreYouAI</TabsTrigger>
-                  <TabsTrigger value="gemini">PersonalityFinder</TabsTrigger>
-                  <TabsTrigger value="claude">SearchBetter</TabsTrigger>
+                <TabsList className="grid w-full grid-cols-2 md:grid-cols-3 mb-8">
+                  <TabsTrigger value="areyouai">AreYouAI</TabsTrigger>
+                  <TabsTrigger value="personality">PersonalityFinder</TabsTrigger>
+                  <TabsTrigger value="search">SearchBetter</TabsTrigger>
                 </TabsList>
 
                 {Object.entries(modelSnippets).map(([key, snippet]) => (
@@ -159,7 +200,7 @@ const Index = () => {
                         <p className="text-body text-muted-foreground mb-6">
                           {snippet.description}
                         </p>
-                        <CodeBlock code={snippet.code} language="python" />
+                        <CodeBlock code={snippet.code} language="jac" />
                       </CardContent>
                     </Card>
                   </TabsContent>
@@ -216,7 +257,7 @@ const Index = () => {
             <div className="text-center mb-16">
               <h2 className="text-section mb-4">How it Works</h2>
               <p className="text-body-large text-muted-foreground max-w-2xl mx-auto">
-                Get up and running with byLLM in three simple steps
+                Get up and running with <strong>byLLM</strong> in three simple steps
               </p>
             </div>
 
@@ -228,7 +269,7 @@ const Index = () => {
                 <div className="flex-1">
                   <h3 className="text-2xl font-bold mb-4">Install & Setup</h3>
                   <p className="text-body text-muted-foreground mb-6">
-                    Install byLLM and configure your preferred models to get started quickly
+                    Install <strong>byLLM</strong> and configure your preferred models to get started quickly
                   </p>
                   <CodeBlock
                     code="pip install by-llm\nby-llm init my-project\ncd my-project"
