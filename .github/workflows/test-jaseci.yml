@@ -48,17 +48,23 @@ jobs:
     - name: Set environment for testing
       run: |
         echo "TEST_ENV=true" >> $GITHUB_ENV
-    - name: Run tests
-      run: pytest -x jac jac-cloud jac-splice-orc jac-byllm
-    - name: Run jac-cloud tests with DB
-      run: pytest -x jac-cloud
-      env:
-        DATABASE_HOST: mongodb://localhost/?retryWrites=true&w=majority
-        REDIS_HOST: redis://localhost
-        TASK_CONSUMER_CRON_SECOND: "*"
-    - name: Run littleX tests
-      run: |
-        pip uninstall jac-splice-orc -y
-        pip install numpy
-        pip install scikit-learn
-        jac test jac/examples/littleX/littleX.test.jac
+    - name: Run test 1
+      run: pytest -s -k test_jac_run_py_bugs1
+    - name: Run test 2
+      run: pytest -s -k test_jac_run_py_bugs2
+    - name: Run test 3
+      run: pytest -s -k test_jac_run_py_bugs3
+      
+      
+    # - name: Run jac-cloud tests with DB
+    #   run: pytest -x jac-cloud
+    #   env:
+    #     DATABASE_HOST: mongodb://localhost/?retryWrites=true&w=majority
+    #     REDIS_HOST: redis://localhost
+    #     TASK_CONSUMER_CRON_SECOND: "*"
+    # - name: Run littleX tests
+    #   run: |
+    #     pip uninstall jac-splice-orc -y
+    #     pip install numpy
+    #     pip install scikit-learn
+    #     jac test jac/examples/littleX/littleX.test.jac

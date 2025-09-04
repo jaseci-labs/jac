@@ -561,7 +561,7 @@ class JacCliTests(TestCase):
         self.assertIn("Hello, World!", stdout)
         self.assertIn("Sum: 8", stdout)
 
-    def test_jac_run_py_bugs(self) -> None:
+    def test_jac_run_py_bugs1(self) -> None:
         """Test jac run python files."""
         process = subprocess.Popen(
             [
@@ -576,4 +576,44 @@ class JacCliTests(TestCase):
         )
         stdout, stderr = process.communicate()
         self.assertIn("Hello, my name is Alice and I am 30 years old.", stdout)
-        # self.assertIn("Hello from the pygame community. https://www.pygame.org/contribute.html", stdout)
+        self.assertIn("Hello from the pygame community.", stdout)
+        print("STDERR:", stderr)  # Print stderr for debugging
+        print("STDOUT:", stdout)
+
+    def test_jac_run_py_bugs2(self) -> None:
+        """Test jac run python files."""
+        env = dict(os.environ)
+        env["PYGAME_HIDE_SUPPORT_PROMPT"] = "0"  # ensure banner appears
+
+        process = subprocess.Popen(
+            ["jac", "run", self.fixture_abs_path("jac_run_py_bugs.py")],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=env,
+        )
+        stdout, stderr = process.communicate()
+        self.assertIn(
+            "Hello from the pygame community. https://www.pygame.org/contribute.html",
+            stdout + stderr,  # be safe
+        )
+        print("STDERR:", stderr)  # Print stderr for debugging
+        print("STDOUT:", stdout)
+
+    def test_jac_run_py_bugs3(self) -> None:
+        """Test jac run python files."""
+        env = dict(os.environ)
+        env.pop("PYGAME_HIDE_SUPPORT_PROMPT", None)  # remove suppression if present
+
+        process = subprocess.Popen(
+            ["jac", "run", self.fixture_abs_path("jac_run_py_bugs.py")],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,  # merge for safety
+            text=True,
+            env=env,
+        )
+        out, _ = process.communicate()
+        self.assertIn("Hello from the pygame community. https://www.pygame.org/contribute.html", out)
+        print("OUTPUT:", out)
