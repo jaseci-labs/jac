@@ -103,3 +103,13 @@ test test_load_user_profiles {
     load_user_walker = root spawn load_user_profiles();
     check load_user_walker.profiles;
 }
+
+test entry_path{
+    with entry:main {
+        root spawn create_tweet(
+        content = "test_tweet",
+        );
+        test1 = [root --> (?Profile) --> (?Tweet)][0];
+    }
+    check test1.content == "test_tweet";
+}
