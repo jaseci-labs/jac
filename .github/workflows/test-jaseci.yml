@@ -48,6 +48,8 @@ jobs:
     - name: Set environment for testing
       run: |
         echo "TEST_ENV=true" >> $GITHUB_ENV
+    - name: Run test 0
+      run: pytest -s -k test_jac_run_py_bugs0
     - name: Run test 1
       run: pytest -s -k test_jac_run_py_bugs1
     - name: Run test 2
