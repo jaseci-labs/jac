@@ -660,7 +660,8 @@ import from mtllm.llm { Model }
 
 glob llm = Model(model_name="gpt-4o");
 
-def translate_to_spanish(text: str) -> str by llm();   # Translate English to Spanish
+# 🎯 Zero Prompt Engineering: Just define what you want, AI figures out HOW!
+def translate_to_spanish(text: str) -> str by llm();   # AI infers: "translate {text} to Spanish"
 
 with entry {
     result = translate_to_spanish("Hello");
