@@ -687,137 +687,93 @@ Translated result: Negativo. El cliente expresa decepción con la calidad del pr
     },
     {
         tagline: "An Agentic Programming Model",
-        summary: `New programming model (object-oriented programming) to enable fast agentic-AI development`,
-        filename: "agent_system.jac",
+        summary: `New programming model to enable fast agentic-AI development with semantic reasoning and structured planning`,
+        filename: "planning_agent.jac",
         code: `
 import from byllm.llm {Model}
+import from typing {List}
 
-glob llm = Model(model_name="gemini/gemini-2.5-flash");
+glob llm = Model(model_name="gpt-4o-mini");
 
-node Equipment {}
+obj Plan {
+    has name: str;
+    has type: str;
+    has details: str;
+    has priority: int = 1;
+    has estimated_effort: str = "medium";
+}
 
-node Weights(Equipment) {
-    has available: bool = False;
+sem Plan = "A specific, actionable development task with clear implementation requirements";
+sem Plan.name = "Clear, descriptive name for the task (e.g., 'Create user authentication')";
+sem Plan.type = "Task category: feature, bugfix, refactor, or documentation";
+sem Plan.priority = "Task priority: 1=highest, 2=medium, 3=low";
+sem Plan.details = "Specific implementation instructions: what files to create, functions 
+to implement";
+sem Plan.estimated_effort = "Development effort estimate: small, medium, or large";
 
-    can check with FitnessAgent entry {
-        visitor.gear["weights"] = self.available;
+node ProjectRequirement {
+    has description: str;
+    has domain: str;
+
+    can analyze with PlanningAgent entry {
+        visitor.context += f"Requirement: {self.description} (Domain: {self.domain})\\n";
     }
 }
 
-node Cardio(Equipment) {
-    has machine: str = "treadmill";
-
-    can check with FitnessAgent entry {
-        visitor.gear["cardio"] = self.machine;
-    }
-}
-
-node Trainer {
-    can plan with FitnessAgent entry {
-        visitor.gear["workout"] = visitor.create_workout(visitor.gear);
-    }
-}
-
-walker FitnessAgent {
-    has gear: dict = {};
+walker PlanningAgent {
+    has context: str = "";
+    has project_plans: List[Plan] = [];
 
     can start with \`root entry {
-        visit [-->(\`?Equipment)];
+        visit [-->(\`?ProjectRequirement)];
     }
 
-    """Create a personalized workout plan based on available equipment and space."""
-    def create_workout(gear: dict) -> str by llm();
-}
+    """Generate specific implementation plans for the given project requirements."""
+    def generate_plan(requirements_context: str) -> List[Plan] by llm(method="Reason");
 
-walker CoachWalker(FitnessAgent) {
-    can get_plan with \`root entry {
-        visit [-->(\`?Trainer)];
+    can create_plan with ProjectRequirement entry {
+        plans = self.generate_plan(self.context);
+        self.project_plans.extend(plans);
+        print(f"Generated {len(plans)} plans for: {here.description}");
     }
 }
 
 with entry {
-    root ++> Weights();
-    root ++> Cardio();
-    root ++> Trainer();
-
-    agent = CoachWalker() spawn root;
-    print("Your Workout Plan:");
-    print(agent.gear['workout']);
+    root ++> ProjectRequirement(
+        description="Build a task management system with user authentication", 
+        domain="web development"
+    );
+    root ++> ProjectRequirement(
+        description="Add real-time notifications and email alerts", 
+        domain="backend services"
+    );
+    
+    agent = PlanningAgent() spawn root;
+    
+    print(f"\\nTotal plans generated: {len(agent.project_plans)}");
+    for plan in agent.project_plans {
+        print(f"- {plan.name} ({plan.type}, Priority: {plan.priority})");
+    }
 }
 `,
         codeLang: "python",
         output: `
-**Duration:** 4 weeks
-**Frequency:** 5 days a week
+Generated 6 plans for: Build a task management system with user authentication
+Generated 6 plans for: Add real-time notifications and email alerts
 
-**Week 1-2: Building Strength and Endurance**
-
-**Day 1: Upper Body Strength**
-- Warm-up: 5 minutes treadmill walk
-- Dumbbell Bench Press: 3 sets of 10-12 reps
-- Dumbbell Rows: 3 sets of 10-12 reps
-- Shoulder Press: 3 sets of 10-12 reps
-- Bicep Curls: 3 sets of 12-15 reps
-- Tricep Extensions: 3 sets of 12-15 reps
-- Cool down: Stretching
-
-**Day 2: Cardio and Core**
-- Warm-up: 5 minutes treadmill walk
-- Treadmill Intervals: 20 minutes (1 min sprint, 2 min walk)
-- Plank: 3 sets of 30-45 seconds
-- Russian Twists: 3 sets of 15-20 reps
-- Bicycle Crunches: 3 sets of 15-20 reps
-- Cool down: Stretching
-
-**Day 3: Lower Body Strength**
-- Warm-up: 5 minutes treadmill walk
-- Squats: 3 sets of 10-12 reps
-- Lunges: 3 sets of 10-12 reps per leg
-- Deadlifts (dumbbells): 3 sets of 10-12 reps
-- Calf Raises: 3 sets of 15-20 reps
-- Glute Bridges: 3 sets of 12-15 reps
-- Cool down: Stretching
-
-**Day 4: Active Recovery**
-- 30-45 minutes light treadmill walk or yoga/stretching
-
-**Day 5: Full Body Strength**
-- Warm-up: 5 minutes treadmill walk
-- Circuit (repeat 3 times):
-- Push-ups: 10-15 reps
-- Dumbbell Squats: 10-12 reps
-- Bent-over Dumbbell Rows: 10-12 reps
-- Mountain Climbers: 30 seconds
-- Treadmill: 15 minutes steady pace
-- Cool down: Stretching
-
-**Week 3-4: Increasing Intensity**
-
-**Day 1: Upper Body Strength with Increased Weight**
-- Follow the same structure as weeks 1-2 but increase weights by 5-10%.
-
-**Day 2: Longer Cardio Session**
-- Warm-up: 5 minutes treadmill walk
-- Treadmill: 30 minutes at a steady pace
-- Core Exercises: Same as weeks 1-2, but add an additional set.
-
-**Day 3: Lower Body Strength with Increased Weight**
-- Increase weights for all exercises by 5-10%.
-- Add an extra set for each exercise.
-
-**Day 4: Active Recovery**
-- 30-60 minutes light treadmill walk or yoga/stretching
-
-**Day 5: Full Body Strength Circuit with Cardio Intervals**
-- Circuit (repeat 4 times):
-- Push-ups: 15 reps
-- Dumbbell Squats: 12-15 reps
-- Jumping Jacks: 30 seconds
-- Dumbbell Shoulder Press: 10-12 reps
-- Treadmill: 1 minute sprint after each circuit
-- Cool down: Stretching
-
-Ensure to hydrate and listen to your body throughout the program. Adjust weights and reps as needed based on your fitness level.
+Total plans generated: 12
+- Create user authentication (feature, Priority: 1)
+- Add database schema (feature, Priority: 1)
+- Implement password reset functionality (feature, Priority: 2)
+- Fix login bug (bugfix, Priority: 1)
+- Update API documentation (documentation, Priority: 2)
+- Refactor user model (refactor, Priority: 3)
+- Create notification service (feature, Priority: 1)
+- Implement email alerts (feature, Priority: 1)
+- Add real-time WebSocket support (feature, Priority: 2)
+- Configure SMTP settings (feature, Priority: 2)
+- Update notification templates (documentation, Priority: 3)
+- Optimize notification performance (refactor, Priority: 2)
     `,
         link: "https://www.jac-lang.org/learn/introduction/#beyond-oop-an-agentic-programming-model"
     },
