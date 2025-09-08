@@ -528,21 +528,9 @@ def this_is_you_agent(input_1: str, input_2: dict[str, list]) -> tuple[int, str]
                 <h4 className="font-semibold mb-4">Community</h4>
                 <ul className="space-y-2 text-sm">
                   <li>
-                    <a href="#" className="text-muted-foreground hover:text-primary transition-colors flex items-center">
-                      <Github className="h-4 w-4 mr-2" />
-                      GitHub Discussions
-                    </a>
-                  </li>
-                  <li>
-                    <a href="#" className="text-muted-foreground hover:text-primary transition-colors flex items-center">
+                    <a href="https://discord.gg/6j3QNdtcN6" target="_blank" className="text-muted-foreground hover:text-primary transition-colors flex items-center">
                       <MessageCircle className="h-4 w-4 mr-2" />
                       Discord Server
-                    </a>
-                  </li>
-                  <li>
-                    <a href="#" className="text-muted-foreground hover:text-primary transition-colors flex items-center">
-                      <Users className="h-4 w-4 mr-2" />
-                      Community Forum
                     </a>
                   </li>
                 </ul>
@@ -552,25 +540,20 @@ def this_is_you_agent(input_1: str, input_2: dict[str, list]) -> tuple[int, str]
                 <h4 className="font-semibold mb-4">Resources</h4>
                 <ul className="space-y-2 text-sm">
                   <li>
-                    <a href="#" className="text-muted-foreground hover:text-primary transition-colors">
+                    <a href="https://www.jac-lang.org/learn/jac-byllm/with_llm/" target="_blank" className="text-muted-foreground hover:text-primary transition-colors">
                       Documentation
                     </a>
                   </li>
                   <li>
-                    <a href="#" className="text-muted-foreground hover:text-primary transition-colors">
-                      API Reference
-                    </a>
-                  </li>
-                  <li>
-                    <a href="#" className="text-muted-foreground hover:text-primary transition-colors">
+                    <a href="https://github.com/jaseci-labs/jaseci/tree/main/jac-byllm/examples" target="_blank" className="text-muted-foreground hover:text-primary transition-colors">
                       Examples
                     </a>
                   </li>
-                  <li>
-                    <a href="#" className="text-muted-foreground hover:text-primary transition-colors">
+                  {/* <li>
+                    <a href="#" target="_blank" className="text-muted-foreground hover:text-primary transition-colors">
                       Tutorials
                     </a>
-                  </li>
+                  </li> */}
                 </ul>
               </div>
 
@@ -593,7 +576,7 @@ def this_is_you_agent(input_1: str, input_2: dict[str, list]) -> tuple[int, str]
                     </a>
                   </li> */}
                   <li>
-                    <a href="#" className="text-muted-foreground hover:text-primary transition-colors">
+                    <a href="https://www.jac-lang.org/internals/contrib/" target="_blank" className="text-muted-foreground hover:text-primary transition-colors">
                       Contributing
                     </a>
                   </li>
