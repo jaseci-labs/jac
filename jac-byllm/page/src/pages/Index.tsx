@@ -14,7 +14,10 @@ import example3 from '../assets/example-3.jpg';
 import example4 from '../assets/example-4.png';
 
 // Import JAC examples
-import areyouaiCode from '../assets/areyouai.jac';
+import firstexampleCode from '../assets/firstexample.jac?raw';
+import areyouaiCode from '../assets/areyouai.jac?raw';
+import personalityfinderCode from '../assets/personalityfinder.jac?raw';
+import searchbetterCode from '../assets/searchbetter.jac?raw';
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState('areyouai');
@@ -56,35 +59,15 @@ const Index = () => {
   const modelSnippets = {
     areyouai: {
       description: 'A simple example showing how to build a Yes/No answering bot using <strong>byLLM</strong>',
-      code: `import from byllm {Model}
-
-glob llm = Model(model_name="gpt-4o-mini");
-
-enum Tell {
-    YES = "yes", NO = "no"
-}
-
-"""Yes/No answering Bot"""
-def yes_or_no(question:str) -> Tell by llm();
-
-with entry {
-    question: str = "Are you an AI?";
-    answer: Tell = yes_or_no(question);
-    print(f"Question: {question}");
-    print("The bot answered " + answer.value);
-}`
+      code: areyouaiCode,
     },
-    personality: {
+    personalityfinder: {
       description: 'Use this LLM model with Google\'s advanced Gemini models',
-      code: 'pip install by-llm[gemini]\n# Set your API key\nexport GEMINI_API_KEY="your-api-key"\n\n# Usage\nfrom by_llm import Gemini\nmodel = Gemini()\nresult = model.generate("Hello world")'
+      code: personalityfinderCode,
     },
-    search: {
+    searchbetter: {
       description: 'Use this LLM model with Anthropic\'s sophisticated Claude models',
-      code: 'pip install by-llm[anthropic]\n# Set your API key\nexport ANTHROPIC_API_KEY="your-api-key"\n\n# Usage\nfrom by_llm import Claude\nmodel = Claude()\nresult = model.generate("Hello world")'
-    },
-    deepseek: {
-      description: 'Use this LLM model with DeepSeek\'s efficient and capable models',
-      code: 'pip install by-llm[deepseek]\n# Set your API key\nexport DEEPSEEK_API_KEY="your-api-key"\n\n# Usage\nfrom by_llm import DeepSeek\nmodel = DeepSeek()\nresult = model.generate("Hello world")'
+      code: searchbetterCode,
     }
   };
 
@@ -257,11 +240,8 @@ with entry {
 
             <div className="max-w-4xl mx-auto mb-8">
   <CodeBlock
-    code={`import from byllm { Model }
-glob llm = Model(model_name="gemini/gemini-2.5-flash");
-def this_is_you_agent(input_1: str, input_2: dict[str, list]) -> tuple[int, str] by llm();
-`}
-    language="bash"
+    code={firstexampleCode}
+    language="jac"
   />
 </div>
 
@@ -278,8 +258,8 @@ def this_is_you_agent(input_1: str, input_2: dict[str, list]) -> tuple[int, str]
               <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                 <TabsList className="grid w-full grid-cols-2 md:grid-cols-3 mb-8">
                   <TabsTrigger value="areyouai">AreYouAI</TabsTrigger>
-                  <TabsTrigger value="personality">PersonalityFinder</TabsTrigger>
-                  <TabsTrigger value="search">SearchBetter</TabsTrigger>
+                  <TabsTrigger value="personalityfinder">PersonalityFinder</TabsTrigger>
+                  <TabsTrigger value="searchbetter">SearchBetter</TabsTrigger>
                 </TabsList>
 
                 {Object.entries(modelSnippets).map(([key, snippet]) => (
