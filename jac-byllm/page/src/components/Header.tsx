@@ -48,9 +48,15 @@ export const Header: React.FC = () => {
               <Sun className="h-4 w-4" />
             )}
           </Button>
-          <Button variant="ghost" size="sm" className="h-9 w-9 p-0">
-            <Github className="h-4 w-4" />
-          </Button>
+          <a
+            href="https://github.com/jaseci-labs/jaseci/tree/main/jac-byllm"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <Button variant="ghost" size="sm" className="h-9 w-9 p-0">
+              <Github className="h-4 w-4" />
+            </Button>
+          </a>
         </div>
       </div>
     </header>
