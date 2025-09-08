@@ -101,7 +101,7 @@ with entry {
                 <div className="flex items-center space-x-4">
                   {/* Logo on the left */}
                   <img
-                    src="../public/logo.png"
+                    src="/logo.png"
                     alt="byLLM Logo"
                     className="h-28 w-auto"
                   />
