@@ -141,7 +141,7 @@
   }
 
   .text-section {
-    @apply text-3xl md:text-4xl font-semibold tracking-tight;
+    @apply text-2xl md:text-3xl font-semibold tracking-tight;
   }
 
   .text-subsection {

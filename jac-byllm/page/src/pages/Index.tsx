@@ -433,7 +433,7 @@ def this_is_you_agent(input_1: str, input_2: dict[str, list]) -> tuple[int, str]
               </p>
             </div>
 
-            <div className="grid gap-6 md:grid-cols-3 lg:grid-cols-4 max-w-6xl mx-auto">
+            <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-2 max-w-3xl mx-auto">
               {examples.map((example, index) => (
                 <Card
                   key={index}
