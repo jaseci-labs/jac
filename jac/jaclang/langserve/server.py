@@ -27,16 +27,26 @@ async def did_save(ls: JacLangServer, params: lspt.DidOpenTextDocumentParams) ->
 
 @server.feature(lspt.TEXT_DOCUMENT_DID_CHANGE)
 async def did_change(ls: JacLangServer, params: lspt.DidChangeTextDocumentParams) -> None:
-    """Check syntax on change."""
+    """Check syntax on change with debouncing for rapid typing."""
     file_path = params.text_document.uri
+    
+    # Always do quick syntax check for immediate feedback
     quick_check_passed = await ls.launch_quick_check(file_path)
+    
     if quick_check_passed:
         document = ls.workspace.get_text_document(file_path)
         lines = document.source.splitlines()
-        sem_manager = ls.sem_managers[file_path.removeprefix('file://')]
-        sem_manager.update_sem_tokens(params, sem_manager.sem_tokens, lines)
-        ls.lsp.send_request(lspt.WORKSPACE_SEMANTIC_TOKENS_REFRESH)
-        await ls.launch_deep_check(file_path)
+        fs_path = file_path.removeprefix('file://')
+        
+        if fs_path in ls.sem_managers:
+            sem_manager = ls.sem_managers[fs_path]
+            sem_manager.update_sem_tokens(params, sem_manager.sem_tokens, lines)
+            ls.lsp.send_request(lspt.WORKSPACE_SEMANTIC_TOKENS_REFRESH)
+        
+        # Use debounced deep check to avoid overwhelming during rapid typing
+        await ls.debounced_deep_check(file_path, delay=0.3)
+    else:
+        # If quick check failed, still update semantic tokens but don't deep check
         ls.lsp.send_request(lspt.WORKSPACE_SEMANTIC_TOKENS_REFRESH)
 
 @server.feature(lspt.TEXT_DOCUMENT_FORMATTING)

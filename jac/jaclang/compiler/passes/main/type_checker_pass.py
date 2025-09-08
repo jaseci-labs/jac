@@ -11,6 +11,7 @@ Reference:
 
 import ast as py_ast
 import os
+import threading
 
 import jaclang.compiler.unitree as uni
 from jaclang.compiler.passes import UniPass
@@ -35,15 +36,55 @@ class TypeCheckPass(UniPass):
 
     # Cache the builtins module once it parsed.
     _BUILTINS_MODULE: uni.Module | None = None
+    _BUILTINS_LOCK = threading.Lock()
+    
+    @classmethod
+    def _get_builtins_module(cls) -> uni.Module:
+        """Get the builtins module using thread-safe lazy initialization."""
+        # Fast path - already loaded
+        if cls._BUILTINS_MODULE is not None:
+            return cls._BUILTINS_MODULE
+        
+        # Slow path - need to load
+        with cls._BUILTINS_LOCK:
+            # Double-check pattern
+            if cls._BUILTINS_MODULE is not None:
+                return cls._BUILTINS_MODULE
+            
+            # Load the builtins module
+            if not os.path.exists(cls._BUILTINS_STUB_FILE_PATH):
+                raise FileNotFoundError(
+                    f"Builtins stub file not found at {cls._BUILTINS_STUB_FILE_PATH}"
+                )
+
+            # Use lazy import to avoid circular dependency
+            from jaclang.compiler.program import JacProgram
+            temp_program = JacProgram()
+            
+            file_content = read_file_with_encoding(cls._BUILTINS_STUB_FILE_PATH)
+            uni_source = uni.Source(file_content, cls._BUILTINS_STUB_FILE_PATH)
+            mod = PyastBuildPass(
+                ir_in=uni.PythonModuleAst(
+                    py_ast.parse(file_content),
+                    orig_src=uni_source,
+                ),
+                prog=temp_program,
+            ).ir_out
+            SymTabBuildPass(ir_in=mod, prog=temp_program)
+            
+            # Cache and return
+            cls._BUILTINS_MODULE = mod
+            return mod
 
     def before_pass(self) -> None:
         """Initialize the checker pass."""
         self._load_builtins_stub_module()
         self._insert_builtin_symbols()
 
-        assert TypeCheckPass._BUILTINS_MODULE is not None
+        # Use the thread-safe getter
+        builtins_module = TypeCheckPass._get_builtins_module()
         self.evaluator = TypeEvaluator(
-            builtins_module=TypeCheckPass._BUILTINS_MODULE,
+            builtins_module=builtins_module,
             program=self.prog,
         )
 
@@ -53,33 +94,14 @@ class TypeCheckPass(UniPass):
 
     def _binding_builtins(self) -> bool:
         """Return true if we're binding the builtins stub file."""
-        return self.ir_in == TypeCheckPass._BUILTINS_MODULE
+        return self.ir_in == TypeCheckPass._get_builtins_module()
 
     def _load_builtins_stub_module(self) -> None:
-        """Return the builtins stub module.
-
-        This will parse and cache the stub file and return the cached module on
-        subsequent calls.
-        """
-        if self._binding_builtins() or TypeCheckPass._BUILTINS_MODULE is not None:
+        """Load the builtins stub module - now just delegates to the thread-safe getter."""
+        if self._binding_builtins():
             return
-
-        if not os.path.exists(TypeCheckPass._BUILTINS_STUB_FILE_PATH):
-            raise FileNotFoundError(
-                f"Builtins stub file not found at {TypeCheckPass._BUILTINS_STUB_FILE_PATH}"
-            )
-
-        file_content = read_file_with_encoding(TypeCheckPass._BUILTINS_STUB_FILE_PATH)
-        uni_source = uni.Source(file_content, TypeCheckPass._BUILTINS_STUB_FILE_PATH)
-        mod = PyastBuildPass(
-            ir_in=uni.PythonModuleAst(
-                py_ast.parse(file_content),
-                orig_src=uni_source,
-            ),
-            prog=self.prog,
-        ).ir_out
-        SymTabBuildPass(ir_in=mod, prog=self.prog)
-        TypeCheckPass._BUILTINS_MODULE = mod
+        # Just ensure it's loaded - the getter handles thread safety
+        TypeCheckPass._get_builtins_module()
 
     def _insert_builtin_symbols(self) -> None:
         if self._binding_builtins():
@@ -92,15 +114,13 @@ class TypeCheckPass(UniPass):
         # '__name__', '__loader__', '__package__', '__spec__', '__path__',
         # '__file__', '__cached__', '__dict__', '__annotations__',
         # '__builtins__', '__doc__',
-        assert (
-            TypeCheckPass._BUILTINS_MODULE is not None
-        ), "Builtins module is not loaded"
+        builtins_module = TypeCheckPass._get_builtins_module()
         if self.ir_in.parent_scope is not None:
             self.log_info("Builtins module is already bound, skipping.")
             return
         # Review: If we ever assume a module cannot have a parent scope, this will
         # break that contract.
-        self.ir_in.parent_scope = TypeCheckPass._BUILTINS_MODULE
+        self.ir_in.parent_scope = builtins_module
 
     # --------------------------------------------------------------------------
     # Ast walker hooks

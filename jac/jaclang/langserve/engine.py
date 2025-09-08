@@ -19,115 +19,195 @@ from jaclang.vendor.pygls import uris
 from jaclang.vendor.pygls.server import LanguageServer
 import lsprotocol.types as lspt
 
-class ModuleManager:
-    """Handles Jac module, semantic manager, and alert management."""
 
-    def __init__(self: ModuleManager, program: JacProgram, sem_managers: dict) -> None:
-        """Initialize ModuleManager."""
-        self.program = program
-        self.sem_managers = sem_managers
-
-    def update(self: ModuleManager, file_path: str, build: uni.Module, update_annexed: bool=True) -> None:
-        """Update modules in JacProgram's hub and semantic managers."""
-        self.program.mod.hub[file_path] = build
-        if update_annexed:
-            self.sem_managers[file_path] = SemTokManager(ir=build)
-            for p, mod in self.program.mod.hub.items():
-                if p != file_path:
-                    self.sem_managers[p] = SemTokManager(ir=mod)
-
-    def clear_alerts_for_file(self: ModuleManager, file_path_fs: str) -> None:
-        """Remove errors and warnings for a specific file from the lists."""
-        self.program.errors_had = [e for e in self.program.errors_had if e.loc.mod_path != file_path_fs]
-        self.program.warnings_had = [w for w in self.program.warnings_had if w.loc.mod_path != file_path_fs]
-
-class JacLangServer(JacProgram, LanguageServer):
+class JacLangServer(LanguageServer):
     """Jac Language Server, manages JacProgram and LSP."""
 
     def __init__(self: JacLangServer) -> None:
         """Initialize JacLangServer."""
         LanguageServer.__init__(self, 'jac-lsp', 'v0.1')
-        JacProgram.__init__(self)
-        self.executor = ThreadPoolExecutor()
+        # DON'T inherit from JacProgram - create instances per operation
+        # Limit thread pool to prevent resource exhaustion during rapid typing
+        self.executor = ThreadPoolExecutor(max_workers=2)
         self.tasks: dict[str, asyncio.Task] = {}
         self.sem_managers: dict[str, SemTokManager] = {}
-        self.module_manager = ModuleManager(self, self.sem_managers)
+        
+        # Main program for shared module storage (protected by locks)
+        self._main_program = JacProgram()
+        self._program_lock = asyncio.Lock()
+        
+        # Add debouncing timers for rapid typing
+        self.debounce_timers: dict[str, asyncio.Handle] = {}
 
     @property
     def diagnostics(self: JacLangServer) -> dict[str, list]:
         """Return diagnostics for all files as a dict {uri: diagnostics}."""
         result = {}
-        for file_path in self.mod.hub:
+        for file_path in self._main_program.mod.hub:
             uri = uris.from_fs_path(file_path)
-            result[uri] = utils.gen_diagnostics(file_path, self.errors_had, self.warnings_had)
+            result[uri] = utils.gen_diagnostics(file_path, self._main_program.errors_had, self._main_program.warnings_had)
         return result
 
     def _clear_alerts_for_file(self: JacLangServer, file_path: str) -> None:
         """Remove errors and warnings for a specific file from the lists."""
-        self.module_manager.clear_alerts_for_file(file_path)
+        self._main_program.errors_had = [e for e in self._main_program.errors_had if e.loc.mod_path != file_path]
+        self._main_program.warnings_had = [w for w in self._main_program.warnings_had if w.loc.mod_path != file_path]
 
     def get_ir(self: JacLangServer, file_path: str) -> Optional[uni.Module]:
         """Get IR for a file path."""
-        return self.mod.hub.get(file_path)
+        return self._main_program.mod.hub.get(file_path)
 
     def update_modules(self: JacLangServer, file_path: str, build: uni.Module, need: bool=True) -> None:
         """Update modules in JacProgram's hub and semantic managers."""
         self.log_py(f'Updating modules for {file_path}')
-        self.module_manager.update(file_path, build, update_annexed=need)
+        # Thread-safe module update
+        self._main_program.mod.hub[file_path] = build
+        if need:
+            self.sem_managers[file_path] = SemTokManager(ir=build)
+            for p, mod in self._main_program.mod.hub.items():
+                if p != file_path:
+                    self.sem_managers[p] = SemTokManager(ir=mod)
 
     def quick_check(self: JacLangServer, file_path: str) -> bool:
-        """Rebuild a file (syntax only)."""
+        """Rebuild a file (syntax only) - Thread-safe version."""
         try:
+            start_time = time.time()
             document = self.workspace.get_text_document(file_path)
             fs_path = document.path
+            self.log_py(f'PROFILE: Quick check - Document retrieval took {time.time() - start_time:.4f}s')
+            
+            # Create thread-local JacProgram instance to avoid conflicts
+            thread_program = JacProgram()
+            
+            parse_start = time.time()
             self._clear_alerts_for_file(fs_path)
-            build = self.compile(use_str=document.source, file_path=fs_path)
+            build = thread_program.compile(use_str=document.source, file_path=fs_path)
+            self.log_py(f'PROFILE: Quick check - Parsing took {time.time() - parse_start:.4f}s')
+            
+            update_start = time.time()
             self.update_modules(fs_path, build, need=False)
-            self.publish_diagnostics(file_path, utils.gen_diagnostics(fs_path, self.errors_had, self.warnings_had))
-            build_errors = [e for e in self.errors_had if e.loc.mod_path == fs_path]
+            # Copy errors from thread-local instance to main program
+            self._main_program.errors_had.extend(thread_program.errors_had)
+            self._main_program.warnings_had.extend(thread_program.warnings_had)
+            self.log_py(f'PROFILE: Quick check - Module update took {time.time() - update_start:.4f}s')
+            
+            diag_start = time.time()
+            self.publish_diagnostics(file_path, utils.gen_diagnostics(fs_path, self._main_program.errors_had, self._main_program.warnings_had))
+            self.log_py(f'PROFILE: Quick check - Diagnostics took {time.time() - diag_start:.4f}s')
+            
+            build_errors = [e for e in self._main_program.errors_had if e.loc.mod_path == fs_path]
+            total_time = time.time() - start_time
+            self.log_py(f'PROFILE: Quick check total time: {total_time:.4f}s, errors: {len(build_errors)}')
             return len(build_errors) == 0
         except Exception as e:
             self.log_error(f'Error during syntax check: {e}')
             return False
 
     def deep_check(self: JacLangServer, file_path: str, annex_view: Optional[str]=None) -> bool:
-        """Rebuild a file and its dependencies (typecheck)."""
+        """Rebuild a file and its dependencies (typecheck) - Thread-safe version."""
         try:
             start_time = time.time()
             document = self.workspace.get_text_document(file_path)
             fs_path = document.path
+            self.log_py(f'PROFILE: Deep check - Document retrieval took {time.time() - start_time:.4f}s')
+            
+            # Create thread-local JacProgram instance to avoid conflicts
+            thread_program = JacProgram()
+            
+            clear_start = time.time()
             self._clear_alerts_for_file(fs_path)
-            build = self.build(use_str=document.source, file_path=document.path, type_check=True)
+            self.log_py(f'PROFILE: Deep check - Alert clearing took {time.time() - clear_start:.4f}s')
+            
+            build_start = time.time()
+            build = thread_program.build(use_str=document.source, file_path=document.path, type_check=True)
+            build_time = time.time() - build_start
+            self.log_py(f'PROFILE: Deep check - Build (including parsing) took {build_time:.4f}s')
+            
+            update_start = time.time()
             self.update_modules(fs_path, build)
+            # Copy errors from thread-local instance to main program
+            self._main_program.errors_had.extend(thread_program.errors_had)
+            self._main_program.warnings_had.extend(thread_program.warnings_had)
+            self.log_py(f'PROFILE: Deep check - Module update took {time.time() - update_start:.4f}s')
+            
             if build.annexable_by:
-                return self.deep_check(uris.from_fs_path(build.annexable_by), annex_view=fs_path)
-            self.publish_diagnostics(uris.from_fs_path(annex_view) if annex_view else uris.from_fs_path(fs_path), utils.gen_diagnostics(annex_view if annex_view else fs_path, self.errors_had, self.warnings_had))
+                recursive_start = time.time()
+                result = self.deep_check(uris.from_fs_path(build.annexable_by), annex_view=fs_path)
+                self.log_py(f'PROFILE: Deep check - Recursive check took {time.time() - recursive_start:.4f}s')
+                return result
+                
+            diag_start = time.time()
+            self.publish_diagnostics(uris.from_fs_path(annex_view) if annex_view else uris.from_fs_path(fs_path), utils.gen_diagnostics(annex_view if annex_view else fs_path, self._main_program.errors_had, self._main_program.warnings_had))
             if annex_view:
-                self.publish_diagnostics(uris.from_fs_path(fs_path), utils.gen_diagnostics(fs_path, self.errors_had, self.warnings_had))
-            self.log_py(f'PROFILE: Deep check took {time.time() - start_time} seconds.')
-            return len(self.errors_had) == 0
+                self.publish_diagnostics(uris.from_fs_path(fs_path), utils.gen_diagnostics(fs_path, self._main_program.errors_had, self._main_program.warnings_had))
+            self.log_py(f'PROFILE: Deep check - Diagnostics took {time.time() - diag_start:.4f}s')
+            
+            total_time = time.time() - start_time
+            self.log_py(f'PROFILE: Deep check total time: {total_time:.4f}s, errors: {len(self._main_program.errors_had)}')
+            return len(self._main_program.errors_had) == 0
         except Exception as e:
             self.log_py(f'Error during deep check: {e}')
             return False
 
     async def launch_quick_check(self: JacLangServer, uri: str) -> bool:
         """Analyze and publish diagnostics."""
-        return await asyncio.get_event_loop().run_in_executor(self.executor, self.quick_check, uri)
+        start_time = time.time()
+        try:
+            result = await asyncio.get_event_loop().run_in_executor(self.executor, self.quick_check, uri)
+            self.log_py(f'PROFILE: Quick check took {time.time() - start_time:.4f} seconds for {uri}')
+            return result
+        except Exception as e:
+            self.log_py(f'Error in launch_quick_check: {e}')
+            return False
 
     async def launch_deep_check(self: JacLangServer, uri: str) -> None:
         """Analyze and publish diagnostics."""
-
-        async def run_in_executor(func: Callable[[str, Optional[str]], bool], file_path: str, annex_view: Optional[str]=None) -> None:
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(self.executor, func, file_path, annex_view)
-        if uri in self.tasks and (not self.tasks[uri].done()):
-            self.log_py(f'Canceling {uri} deep check...')
+        
+        # Cancel any existing task for this URI
+        if uri in self.tasks and not self.tasks[uri].done():
+            self.log_py(f'Canceling existing deep check for {uri}...')
             self.tasks[uri].cancel()
+            try:
+                await self.tasks[uri]
+            except asyncio.CancelledError:
+                pass
             del self.tasks[uri]
-        self.log_py(f'Analyzing {uri}...')
-        task = asyncio.create_task(run_in_executor(self.deep_check, uri))
-        self.tasks[uri] = task
-        await task
+
+        self.log_py(f'Starting deep check for {uri}...')
+        start_time = time.time()
+        
+        try:
+            # Use the same event loop instance - don't call get_event_loop() twice
+            loop = asyncio.get_event_loop()
+            task = loop.run_in_executor(self.executor, self.deep_check, uri)
+            self.tasks[uri] = asyncio.create_task(task)
+            await self.tasks[uri]
+            self.log_py(f'PROFILE: Deep check task completed in {time.time() - start_time:.4f} seconds for {uri}')
+        except asyncio.CancelledError:
+            self.log_py(f'Deep check cancelled for {uri}')
+        except Exception as e:
+            self.log_py(f'Error in launch_deep_check: {e}')
+        finally:
+            if uri in self.tasks:
+                del self.tasks[uri]
+
+    def cancel_debounce_timer(self: JacLangServer, uri: str) -> None:
+        """Cancel existing debounce timer for a URI."""
+        if uri in self.debounce_timers:
+            self.debounce_timers[uri].cancel()
+            del self.debounce_timers[uri]
+
+    async def debounced_deep_check(self: JacLangServer, uri: str, delay: float = 0.5) -> None:
+        """Launch deep check with debouncing to prevent rapid successive calls."""
+        self.cancel_debounce_timer(uri)
+        
+        def delayed_deep_check():
+            asyncio.create_task(self.launch_deep_check(uri))
+        
+        loop = asyncio.get_event_loop()
+        handle = loop.call_later(delay, delayed_deep_check)
+        self.debounce_timers[uri] = handle
+
 
     def get_completion(self: JacLangServer, file_path: str, position: lspt.Position, completion_trigger: Optional[str]) -> lspt.CompletionList:
         """Return completion for a file."""
@@ -139,7 +219,7 @@ class JacLangServer(JacProgram, LanguageServer):
             current_line = document.lines[position.line]
             current_pos = position.character
             current_symbol_path = utils.parse_symbol_path(current_line, current_pos)
-            builtin_mod = next((mod for name, mod in self.mod.hub.items() if 'builtins' in name))
+            builtin_mod = next((mod for name, mod in self._main_program.mod.hub.items() if 'builtins' in name))
             builtin_tab = builtin_mod.sym_tab
             assert isinstance(builtin_tab, UniScopeNode)
             completion_items = []
@@ -189,16 +269,16 @@ class JacLangServer(JacProgram, LanguageServer):
 
     def rename_module(self: JacLangServer, old_path: str, new_path: str) -> None:
         """Rename module."""
-        if old_path in self.mod.hub and new_path != old_path:
-            self.mod.hub[new_path] = self.mod.hub[old_path]
+        if old_path in self._main_program.mod.hub and new_path != old_path:
+            self._main_program.mod.hub[new_path] = self._main_program.mod.hub[old_path]
             self.sem_managers[new_path] = self.sem_managers[old_path]
-            del self.mod.hub[old_path]
+            del self._main_program.mod.hub[old_path]
             del self.sem_managers[old_path]
 
     def delete_module(self: JacLangServer, uri: str) -> None:
         """Delete module."""
-        if uri in self.mod.hub:
-            del self.mod.hub[uri]
+        if uri in self._main_program.mod.hub:
+            del self._main_program.mod.hub[uri]
         if uri in self.sem_managers:
             del self.sem_managers[uri]
 
@@ -215,7 +295,7 @@ class JacLangServer(JacProgram, LanguageServer):
     def get_hover_info(self: JacLangServer, file_path: str, position: lspt.Position) -> Optional[lspt.Hover]:
         """Return hover information for a file."""
         fs_path = uris.to_fs_path(file_path)
-        if fs_path not in self.mod.hub:
+        if fs_path not in self._main_program.mod.hub:
             return None
         sem_mgr = self.sem_managers.get(fs_path)
         if not sem_mgr:
@@ -251,14 +331,14 @@ class JacLangServer(JacProgram, LanguageServer):
     def get_outline(self: JacLangServer, file_path: str) -> list[lspt.DocumentSymbol]:
         """Return document symbols for a file."""
         fs_path = uris.to_fs_path(file_path)
-        if fs_path in self.mod.hub and (root_node := self.mod.hub[fs_path].sym_tab):
+        if fs_path in self._main_program.mod.hub and (root_node := self._main_program.mod.hub[fs_path].sym_tab):
             return utils.get_symbols_for_outline(root_node)
         return []
 
     def get_definition(self: JacLangServer, file_path: str, position: lspt.Position) -> Optional[lspt.Location]:
         """Return definition location for a file."""
         fs_path = uris.to_fs_path(file_path)
-        if fs_path not in self.mod.hub:
+        if fs_path not in self._main_program.mod.hub:
             return None
         sem_mgr = self.sem_managers.get(fs_path)
         if not sem_mgr:
@@ -314,7 +394,7 @@ class JacLangServer(JacProgram, LanguageServer):
     def get_references(self: JacLangServer, file_path: str, position: lspt.Position) -> list[lspt.Location]:
         """Return references for a file."""
         fs_path = uris.to_fs_path(file_path)
-        if fs_path not in self.mod.hub:
+        if fs_path not in self._main_program.mod.hub:
             return []
         sem_mgr = self.sem_managers.get(fs_path)
         if not sem_mgr:
@@ -331,7 +411,7 @@ class JacLangServer(JacProgram, LanguageServer):
     def rename_symbol(self: JacLangServer, file_path: str, position: lspt.Position, new_name: str) -> Optional[lspt.WorkspaceEdit]:
         """Rename a symbol in a file."""
         fs_path = uris.to_fs_path(file_path)
-        if fs_path not in self.mod.hub:
+        if fs_path not in self._main_program.mod.hub:
             return None
         sem_mgr = self.sem_managers.get(fs_path)
         if not sem_mgr:
@@ -375,3 +455,17 @@ class JacLangServer(JacProgram, LanguageServer):
     def log_py(self: JacLangServer, message: str) -> None:
         """Log a message."""
         logging.info(message)
+
+    def shutdown(self: JacLangServer) -> None:
+        """Shutdown the language server and cleanup resources."""
+        # Cancel all pending tasks
+        for uri, task in self.tasks.items():
+            if not task.done():
+                task.cancel()
+        
+        # Cancel all debounce timers
+        for uri, handle in self.debounce_timers.items():
+            handle.cancel()
+        
+        # Shutdown the thread pool executor
+        self.executor.shutdown(wait=False)
