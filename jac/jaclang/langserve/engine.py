@@ -123,7 +123,6 @@ class JacLangServer(JacProgram, LanguageServer):
         if uri in self.tasks and (not self.tasks[uri].done()):
             self.log_py(f'Canceling {uri} deep check...')
             self.tasks[uri].cancel()
-            _.destroy([self.tasks[uri]])
             del self.tasks[uri]
         self.log_py(f'Analyzing {uri}...')
         task = asyncio.create_task(run_in_executor(self.deep_check, uri))
@@ -193,18 +192,14 @@ class JacLangServer(JacProgram, LanguageServer):
         if old_path in self.mod.hub and new_path != old_path:
             self.mod.hub[new_path] = self.mod.hub[old_path]
             self.sem_managers[new_path] = self.sem_managers[old_path]
-            _.destroy([self.mod.hub[old_path]])
             del self.mod.hub[old_path]
-            _.destroy([self.sem_managers[old_path]])
             del self.sem_managers[old_path]
 
     def delete_module(self: JacLangServer, uri: str) -> None:
         """Delete module."""
         if uri in self.mod.hub:
-            _.destroy([self.mod.hub[uri]])
             del self.mod.hub[uri]
         if uri in self.sem_managers:
-            _.destroy([self.sem_managers[uri]])
             del self.sem_managers[uri]
 
     def formatted_jac(self: JacLangServer, file_path: str) -> list[lspt.TextEdit]:
