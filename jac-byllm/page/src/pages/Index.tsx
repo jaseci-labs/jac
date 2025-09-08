@@ -8,11 +8,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 
 // Import example images
-import example1 from '../assets/example-1.jpg';
+import example1 from '../assets/example-1.png';
 import example2 from '../assets/example-2.jpg';
 import example3 from '../assets/example-3.jpg';
-import example4 from '../assets/example-4.jpg';
-import example5 from '../assets/example-5.jpg';
+import example4 from '../assets/example-4.png';
 
 // Import JAC examples
 import areyouaiCode from '../assets/areyouai.jac';
@@ -22,34 +21,28 @@ const Index = () => {
 
   const examples = [
     {
-      title: 'Code Generation',
-      description: 'Generate clean, efficient code with natural language prompts',
+      title: 'RPG Game level generation',
+      description: 'An LLM powered game world generation into a simple RPG.',
       image: example1,
-      link: 'https://github.com/by-llm/code-generation'
+      link: 'https://www.jac-lang.org/learn/examples/mtp_examples/rpg_game/'
     },
     {
-      title: 'Model Training',
-      description: 'Train and fine-tune language models with ease',
+      title: 'Agentic AI Chatbot',
+      description: 'An agentic chatbot built using byLLM and MCP',
       image: example2,
-      link: 'https://github.com/by-llm/model-training'
+      link: 'https://www.jac-lang.org/learn/examples/rag_chatbot/Overview/'
     },
     {
-      title: 'NLP Workflows',
-      description: 'Build sophisticated natural language processing pipelines',
+      title: 'Agentic Coding Agent (Jac-Aider)',
+      description: 'A coding agent built on <a href="https://aider.chat/" target="_blank" rel="noopener noreferrer" className="text-primary underline hover:text-primary/80">aider</a> but all prompts replaced with byllm calls reducing more than 200 lines of code.',
       image: example3,
-      link: 'https://github.com/by-llm/nlp-workflows'
+      link: 'https://github.com/jaseci-labs/Agentic-AI/tree/main/aider-genius'
     },
     {
-      title: 'API Integration',
-      description: 'Seamlessly integrate with various language model APIs',
+      title: 'Jac-GPT',
+      description: 'An agentic chatbot running of Jaseci (including byllm)',
       image: example4,
-      link: 'https://github.com/by-llm/api-integration'
-    },
-    {
-      title: 'Research Tools',
-      description: 'Advanced tools for academic research and analysis',
-      image: example5,
-      link: 'https://github.com/by-llm/research-tools'
+      link: 'https://jac-gpt.jaseci.org/'
     }
   ];
 
@@ -130,7 +123,8 @@ with entry {
 
               <div className="bg-card border rounded-xl p-8 mb-12 text-left max-w-3xl mx-auto">
                 <p className="text-body leading-relaxed text-card-foreground">
-                  <strong>byLLM</strong> is a simple yet powerful framework that allows developers to create AI-powered applications, without getting tangled in prompt spaghetti. Through its innovative Meaning-Typed Programming paradigm, developers can write clean, intuitive code that automatically generates optimal prompts. This breakthrough approach, featured in our upcoming OOPSLA 2025 publication, transforms how we build and scale AI-powered applications. <strong>byLLM</strong> is built as a plugin to the Jaseci ecosystem, while it can be used in python as a library.
+                  <strong>byLLM</strong> is a simple yet powerful framework that allows developers to create AI-powered applications, without getting tangled in prompt spaghetti. Through its innovative Meaning-Typed Programming paradigm, developers can write clean, intuitive code that automatically generates optimal prompts. This breakthrough approach, featured in our upcoming OOPSLA 2025 publication, transforms how we build and scale AI-powered applications. byLLM is fully integrated with the <a href="https://jac-lang.org" target="_blank" rel="noopener noreferrer" className="text-primary underline hover:text-primary/80">Jaseci ecosystem</a>, but can also be used as a standalone Python library.
+
                 </p>
               </div>
 
@@ -161,6 +155,81 @@ with entry {
           </div>
         </section>
 
+
+        {/* Why by? Section */}
+        <section className="py-12 bg-gradient-to-b from-background to-muted/20">
+          <div className="container">
+            <div className="text-center mb-16">
+              <h2 className="text-section mb-4">Why by?</h2>
+              <p className="text-body-large text-muted-foreground max-w-2xl mx-auto">
+                Built for developers who want to focus on building, not configuring
+              </p>
+            </div>
+
+            <div className="grid gap-8 md:grid-cols-2 max-w-4xl mx-auto">
+              <div className="group relative overflow-hidden rounded-2xl bg-card border border-border/50 p-8 hover:border-primary/20 transition-all duration-300 hover:shadow-lg hover:shadow-primary/10">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-primary/10 to-transparent rounded-full -translate-y-16 translate-x-16"></div>
+                <div className="relative flex items-start gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform duration-300">
+                    <div className="text-2xl">🚀</div>
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-xl font-bold mb-3">No Prompt Engineering</h3>
+                    <p className="text-muted-foreground leading-relaxed">
+                      Write natural function signatures and let byLLM handle prompt generation automatically. Focus on logic, not prompts.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="group relative overflow-hidden rounded-2xl bg-card border border-border/50 p-8 hover:border-primary/20 transition-all duration-300 hover:shadow-lg hover:shadow-primary/10">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-primary/10 to-transparent rounded-full -translate-y-16 translate-x-16"></div>
+                <div className="relative flex items-start gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform duration-300">
+                    <div className="text-2xl">⚡</div>
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-xl font-bold mb-3">Zero Configuration</h3>
+                    <p className="text-muted-foreground leading-relaxed">
+                      Start building immediately with minimal setup. byLLM works out of the box with popular LLM providers.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="group relative overflow-hidden rounded-2xl bg-card border border-border/50 p-8 hover:border-primary/20 transition-all duration-300 hover:shadow-lg hover:shadow-primary/10">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-primary/10 to-transparent rounded-full -translate-y-16 translate-x-16"></div>
+                <div className="relative flex items-start gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform duration-300">
+                    <div className="text-2xl">🔧</div>
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-xl font-bold mb-3">Jaseci Integration</h3>
+                    <p className="text-muted-foreground leading-relaxed">
+                      Built on the powerful Jaseci ecosystem, enabling scalable AI application development in minutes.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="group relative overflow-hidden rounded-2xl bg-card border border-border/50 p-8 hover:border-primary/20 transition-all duration-300 hover:shadow-lg hover:shadow-primary/10">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-primary/10 to-transparent rounded-full -translate-y-16 translate-x-16"></div>
+                <div className="relative flex items-start gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform duration-300">
+                    <div className="text-2xl">🌐</div>
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-xl font-bold mb-3">Model Agnostic</h3>
+                    <p className="text-muted-foreground leading-relaxed">
+                      Works with any LLM provider - OpenAI, Anthropic, Google, or your own hosted models. Switch easily between providers.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
         {/* Getting Started Section */}
         <section id="install" className="py-12 bg-muted/30">
           <div className="container">
@@ -180,6 +249,26 @@ with entry {
                 </div>
                 <p className="text-sm text-muted-foreground ml-6">Next, you'll need access to a Language Model - either through an API provider or your own locally hosted model and you are good to go.</p>
               </div>
+
+              <div className="text-center mb-16">
+              <h4 className="text-section mb-4">How to use byLLM?</h4>
+            </div>
+
+
+            <div className="max-w-4xl mx-auto mb-8">
+  <CodeBlock
+    code={`import from byllm { Model }
+glob llm = Model(model_name="gemini/gemini-2.5-flash");
+def this_is_you_agent(input_1: str, input_2: dict[str, list]) -> tuple[int, str] by llm();
+`}
+    language="bash"
+  />
+</div>
+
+              <div className="text-center mb-16">
+              <h4 className="text-section mb-4">IT IS THAT SIMPLE!</h4>
+            </div>
+
               <div className="text-center mb-8">
                 <p className="text-body-large text-muted-foreground max-w-2xl mx-auto">
                   Let's look at some simple examples to understand how byLLM is used.
@@ -252,7 +341,7 @@ with entry {
         </section>
 
         {/* How it Works */}
-        <section className="py-12 bg-muted/30">
+        {/* <section className="py-12 bg-muted/30">
           <div className="container">
             <div className="text-center mb-16">
               <h2 className="text-section mb-4">How it Works</h2>
@@ -311,7 +400,7 @@ with entry {
               </div>
             </div>
           </div>
-        </section>
+        </section> */}
 
         {/* Documentation CTA */}
         <section id="documentation" className="py-12">
@@ -320,11 +409,17 @@ with entry {
             <p className="text-body-large text-muted-foreground mb-8 max-w-2xl mx-auto">
               Explore our comprehensive documentation to unlock the full potential of byLLM
             </p>
-            <Button className="btn-hero text-lg px-8 py-4">
-              <BookOpen className="mr-2 h-5 w-5" />
-              See Documentation
-              <ArrowRight className="ml-2 h-5 w-5" />
-            </Button>
+            <a
+              href="https://www.jac-lang.org/learn/jac-byllm/with_llm/"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Button className="btn-hero text-lg px-8 py-4">
+                <BookOpen className="mr-2 h-5 w-5" />
+                See Documentation
+                <ArrowRight className="ml-2 h-5 w-5" />
+              </Button>
+            </a>
           </div>
         </section>
 
@@ -338,7 +433,7 @@ with entry {
               </p>
             </div>
 
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 max-w-6xl mx-auto">
+            <div className="grid gap-6 md:grid-cols-3 lg:grid-cols-4 max-w-6xl mx-auto">
               {examples.map((example, index) => (
                 <Card
                   key={index}
@@ -357,7 +452,8 @@ with entry {
                       <CardTitle className="text-lg">{example.title}</CardTitle>
                       <ExternalLink className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
                     </div>
-                    <CardDescription>{example.description}</CardDescription>
+                    <CardDescription dangerouslySetInnerHTML={{ __html: example.description }} />
+                    {/* <CardDescription>{example.description}</CardDescription> */}
                   </CardHeader>
                 </Card>
               ))}
@@ -381,28 +477,21 @@ with entry {
                   <div className="space-y-6">
                     <div className="border-l-4 border-primary pl-6">
                       <p className="text-body italic text-muted-foreground">
-                        "byLLM: A Declarative Framework for Compositional Language Model Programming"
+                        "Meaning-Typed Language Abstraction for AI-Integrated Programming." : Proc. ACM Program. Lang. 9, OOPSLA2, Article 314 (October 2025), 29 pages.{" "}
+                        <a
+                          href="https://doi.org/10.1145/3763092"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-primary underline hover:text-primary/80"
+                        >
+                          https://doi.org/10.1145/3763092
+                        </a>
                       </p>
                       <p className="text-sm text-muted-foreground mt-2">
-                        Authors et al. (2024) - Conference on Language Models and Applications
+                        Jayanaka L. Dantanarayana, Yiping Kang, Kugesan Sivasothynathan, Christopher Clarke, Baichuan Li, Savini Kashmira, Krisztian Flautner, Lingjia Tang, and Jason Mars. 2025
                       </p>
                     </div>
-                    <div className="border-l-4 border-primary pl-6">
-                      <p className="text-body italic text-muted-foreground">
-                        "Modular AI Architecture: Principles and Best Practices"
-                      </p>
-                      <p className="text-sm text-muted-foreground mt-2">
-                        Research Team (2024) - Journal of AI Engineering
-                      </p>
-                    </div>
-                    <div className="border-l-4 border-primary pl-6">
-                      <p className="text-body italic text-muted-foreground">
-                        "Towards Composable AI: Building Reliable Language Model Systems"
-                      </p>
-                      <p className="text-sm text-muted-foreground mt-2">
-                        Contributors (2023) - International Conference on AI Systems
-                      </p>
-                    </div>
+
                   </div>
                 </CardContent>
               </Card>
@@ -415,11 +504,20 @@ with entry {
           <div className="container py-16">
             <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-4">
               <div>
-                <div className="flex items-center space-x-2 mb-4">
+                {/* <div className="flex items-center space-x-2 mb-4">
                   <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
                     <span className="text-primary-foreground font-bold text-sm">BL</span>
                   </div>
-                  <span className="text-xl font-semibold">by LLM</span>
+                  <span className="text-xl font-semibold">byLLM</span>
+                </div> */}
+                <div className="flex items-center space-x-2 mb-4">
+                  <img
+                    src="/logo.png"
+                    alt="byLLM Logo"
+                    className="h-8 w-auto rounded-lg bg-primary"
+                    style={{ background: 'none' }}
+                  />
+                  <span className="text-xl font-semibold">byLLM</span>
                 </div>
                 <p className="text-muted-foreground text-sm">
                   Building the future of AI development with declarative, composable frameworks.
@@ -479,7 +577,7 @@ with entry {
               <div>
                 <h4 className="font-semibold mb-4">FAQ</h4>
                 <ul className="space-y-2 text-sm">
-                  <li>
+                  {/* <li>
                     <a href="#" className="text-muted-foreground hover:text-primary transition-colors">
                       Getting Started
                     </a>
@@ -493,7 +591,7 @@ with entry {
                     <a href="#" className="text-muted-foreground hover:text-primary transition-colors">
                       Troubleshooting
                     </a>
-                  </li>
+                  </li> */}
                   <li>
                     <a href="#" className="text-muted-foreground hover:text-primary transition-colors">
                       Contributing
@@ -504,7 +602,7 @@ with entry {
             </div>
 
             <div className="border-t mt-12 pt-8 text-center text-sm text-muted-foreground">
-              <p>&copy; 2024 byLLM Project. Built with passion for the AI development community.</p>
+              <p>&copy; 2025 byLLM Project. Built with passion for the AI development community.</p>
             </div>
           </div>
         </footer>
