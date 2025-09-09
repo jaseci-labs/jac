@@ -9,6 +9,7 @@ nav:
     - Tour of Jac/Jaseci: "learn/introduction.md"
     - Installation: "learn/installation.md"
     - Learn Jac in 5 Minutes: "learn/jac_in_a_flash.md"
+    - Native Superset of Python: "learn/superset_python.md"
     - Jac Playground: "learn/jac_playground.md"
     - Learn By Example:
       - LittleX (your own twitter):
@@ -127,6 +128,10 @@ nav:
   - Blog:
       - blog/index.md
       - Tags: blog/tags.md
+    - Playground: "/playground/"
+
+  - Jac GPT: "https://jac-gpt.jaseci.org"
+
 theme:
   logo: "assets/logo.png"
   name: "material"
