@@ -36,7 +36,7 @@ Jac's semantic strings enable AI-powered function execution without manual imple
 ```jac
 import from byllm {Model}
 
-glob llm = Model(model_name = "gpt-4o")
+glob llm = Model(model_name = "gpt-4o");
 
 def generate_password() -> str by llm();
 
@@ -144,7 +144,7 @@ Semantic strings work in conjunction with LLM configurations to enable AI-powere
 ```jac
 import from byllm {Model}
 
-glob llm = Model(model_name = "gpt-4o")
+glob llm = Model(model_name = "gpt-4o");
 ```
 
 **Function with LLM Execution:**
@@ -175,7 +175,7 @@ Here's a comprehensive example demonstrating various semantic string application
 ```jac
 import from byllm {Model}
 
-glob llm = Model(model_name = "gpt-4o")
+glob llm = Model(model_name = "gpt-4o");
 
 # AI-powered functions
 def generate_password() -> str by llm();
@@ -259,7 +259,7 @@ base
 ```jac
 import from byllm {Model}
 
-glob llm = Model(model_name = "gpt-4o")
+glob llm = Model(model_name = "gpt-4o");
 
 def generate_password() -> str by llm();
 

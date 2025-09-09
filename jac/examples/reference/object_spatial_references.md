@@ -11,8 +11,8 @@ Edge references use square bracket notation with directional operators to expres
 [edge -->]               # All outgoing edges themselves
 [edge <--]               # All incoming edges themselves
 [edge <-->]              # All bidirectional edges themselves
-[-->:EdgeType:]          # Typed nodes via outgoing edges
-[edge -->:EdgeType:]     # Typed outgoing edges themselves
+[->:EdgeType:->]          # Typed nodes via outgoing edges
+[edge ->:EdgeType:->]     # Typed outgoing edges themselves
 [node --> target]        # Specific edge path to nodes
 [edge --> target]        # Specific edges in path
 ```

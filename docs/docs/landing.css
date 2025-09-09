@@ -32,7 +32,8 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 0 20px;
+    padding-left: 20px;
+    padding-right: 8px;
 }
 
 .logo {
@@ -51,7 +52,7 @@ body {
 
 .header-right {
     display: flex;
-    gap: 20px;
+    gap: 16px;
     align-items: center;
 }
 
@@ -81,6 +82,25 @@ body {
 
 .github-link:hover {
     color: #ff6b35;
+}
+
+.jac-gpt-button {
+    color: #ffffff;
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 500;
+    padding: 8px 16px;
+    border-radius: 20px;
+    background: linear-gradient(135deg, #ff6b35, #f7931e);
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 8px rgba(255, 107, 53, 0.2);
+    margin-right: 4px;
+}
+
+.jac-gpt-button:hover {
+    color: #ffffff;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(255, 107, 53, 0.3);
 }
 
 /* Floating Navigation */

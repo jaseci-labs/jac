@@ -3,7 +3,7 @@ from jaclang.vendor.pygls import uris
 from jaclang.vendor.pygls.workspace import Workspace
 
 import lsprotocol.types as lspt
-from jaclang.langserve.dev_engine import JacLangServer
+from jaclang.langserve.engine import JacLangServer
 
 
 class TestJacLangServer(TestCase):

@@ -5,8 +5,8 @@ glob llm = Model(model_name="gpt-4o");
 obj Essay {
     has essay: str;
 
-    def essay_judge(criteria: str) -> str by llm(incl_info={"essay": self.essay});
-    def generate_summary(judgements: dict) -> str by llm(incl_info={"essay": self.essay});
+    def essay_judge(criteria: str) -> str by llm();
+    def generate_summary(judgements: dict) -> str by llm();
     def give_grade(summary: str) -> str by llm();
 }
 

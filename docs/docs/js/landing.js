@@ -343,17 +343,22 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         });
 
-        // Animate code change
-        demoCode.style.opacity = '0';
-        demoCode.style.transform = 'translateY(10px)';
+        // Animate code change with null checks
+        if (demoCode) {
+            demoCode.style.opacity = '0';
+            demoCode.style.transform = 'translateY(10px)';
+        }
 
         setTimeout(() => {
-            demoCode.innerHTML = `<pre><code>${demo.code}</code></pre>`;
-            demoCode.style.opacity = '1';
-            demoCode.style.transform = 'translateY(0)';
-
+            if (demoCode) {
+                demoCode.innerHTML = `<pre><code>${demo.code}</code></pre>`;
+                demoCode.style.opacity = '1';
+                demoCode.style.transform = 'translateY(0)';
+            }
             // Clear output
-            demoOutput.innerHTML = '<div class="output-line info-line">Click "Run" to execute this program ▶️</div>';
+            if (demoOutput) {
+                demoOutput.innerHTML = '<div class="output-line info-line">Click "Run" to execute this program ▶️</div>';
+            }
         }, 300);
     }
 
@@ -598,7 +603,7 @@ document.addEventListener('DOMContentLoaded', function () {
     document.head.appendChild(style);
 
     // Fetch GitHub stars and forks from local JSON file
-    fetch('/assets/github_stats.json')
+    fetch('../assets/github_stats.json')
         .then(response => response.json())
         .then(data => {
             // Check for the "jaseci-labs/jaseci" key and get stars/forks
@@ -822,8 +827,8 @@ Ensure to hydrate and listen to your body throughout the program. Adjust weights
         link: "https://www.jac-lang.org/learn/introduction/#beyond-oop-an-agentic-programming-model"
     },
     {
-        tagline: "Object-oriented programming",
-        summary: `This is the summary`,
+        tagline: "Object-spatial programming",
+        summary: `New language constructs (node, edge and walker classes) that allow for assembling objects in a graph structure to express semantic relationships between objects, giving rise to a new paradigm for problem solving and implementation we call Object-Spatial Programming (OSP).`,
         filename: "oop_example.jac",
         code: `
 # oop_calculator.jac

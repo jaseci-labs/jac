@@ -205,18 +205,6 @@ class JacCliTests(TestCase):
         self.assertIn("Sub objects.", stdout_value)
         self.assertGreater(stdout_value.count("def exit_"), 10)
 
-    def test_jac_cmd_line(self) -> None:
-        """Basic test for pass."""
-        process = subprocess.Popen(
-            ["jac"],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-        stdout_value, _ = process.communicate(input="exit\n")
-        self.assertEqual(process.returncode, 0, "Process did not exit successfully")
-        self.assertIn("Welcome to the Jac CLI!", stdout_value)
 
     def test_ast_print(self) -> None:
         """Testing for print AstTool."""

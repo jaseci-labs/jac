@@ -143,7 +143,7 @@ def serve_with_watch() -> None:
 
     # Set up file watcher
     event_handler = DebouncedRebuildHandler(
-        root_dir=root_dir, debounce_seconds=20, ignore_paths=ignore_paths
+        root_dir=root_dir, debounce_seconds=3600, ignore_paths=ignore_paths
     )
     observer = Observer()
     observer.schedule(event_handler, root_dir, recursive=True)

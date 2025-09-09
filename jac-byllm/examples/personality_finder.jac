@@ -3,8 +3,8 @@ import from byllm { Model }
 glob llm = Model(verbose=True, model_name="gpt-4o-mini");
 
 enum Personality {
-    INTROVERT = "Introvert",
-    EXTROVERT = "Extrovert"
+    INTROVERT,
+    EXTROVERT
 }
 
 obj Person {
@@ -28,6 +28,6 @@ def get_person_info(name: str) -> Person by llm(
 with entry {
     person_obj = get_person_info('Martin Luther King Jr.');
     print(
-        f"{person_obj.full_name} was a {person_obj.personality.value} person who died in {person_obj.yod}"
+        f"{person_obj.full_name} was a {person_obj.personality} person who died in {person_obj.yod}"
     );
 }

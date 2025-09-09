@@ -53,7 +53,4 @@ with entry {
 }
 
 
-def generate_joke -> dict[str, str] by llm(
-    incl_info={"jokes_example" : self.jokes },
-    temperature=0.0
-);
+def generate_joke -> dict[str, str] by llm();

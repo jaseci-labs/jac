@@ -324,13 +324,13 @@ sem PhotoAnalyzer.style_preference = "Preferred photography style (artistic, doc
 
 
 """Generate caption considering photographer's style preference."""
-def generate_styled_caption(pa: PhotoAnalyzer) -> str by vision_llm(incl_info=(pa.style_preference));
+def generate_styled_caption(pa: PhotoAnalyzer) -> str by vision_llm();
 
 """Provide technical photography feedback."""
 def analyze_composition(pa: PhotoAnalyzer) -> list[str] by vision_llm();
 
 """Suggest improvements for the photo."""
-def suggest_improvements(pa: PhotoAnalyzer) -> list[str] by vision_llm(incl_info=(pa.photographer_name, pa.style_preference));
+def suggest_improvements(pa: PhotoAnalyzer) -> list[str] by vision_llm();
 
 
 with entry {

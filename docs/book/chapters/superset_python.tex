@@ -1,4 +1,6 @@
+\mtcaddchapter
 \chapter{Jac Supersets Python Natively}
+\minitoc
 
 At its core, Jac represents a natural evolution of Python—not a replacement, but an enhancement. For Python developers accustomed to the language's expressiveness and ecosystem, Jac offers a familiar foundation with powerful extensions for modern software architecture. This chapter explores how Jac achieves this delicate balance: preserving everything that makes Python productive while introducing higher-level abstractions that address common architectural patterns and complexity management challenges that Python developers face in large-scale systems.
 
@@ -81,7 +83,7 @@ Jac's compilation pipeline, shown in Figure~\ref{fig:jac-pipeline}, elegantly ex
     \item The resulting artifact is executed directly or packaged like ordinary Python code.
 \end{itemize}
 
-Each stage in this pipeline serves a deliberate purpose. The Jac-specific AST stage allows the language to implement its own syntax and semantic rules without being constrained by Python's parser. The optional optimization passes can perform Jac-aware transformations that would be impossible at the Python level—for instance, optimizing walker traversal patterns or pre-computing node connectivity metadata. The transpilation to Python AST is where the magic happens: Jac's high-level constructs are systematically transformed into equivalent Python code, with calls to a lightweight runtime library handling Jac-specific semantics like spatial operations and architectural patterns.
+Each stage in this pipeline serves a deliberate purpose. The Jac-specific AST stage allows the language to implement its own syntax and semantic rules without being constrained by Python's parser. The optional optimization passes can perform Jac-aware transformations that would be impossible at the Python level—for instance, optimizing walker traversal patterns or pre-computing node connectivity metadata. The transpilation to Python AST is where the magic happens: Jac's high-level constructs are systematically transformed into equivalent Python code, with calls to a lightweight runtime library handling Jac-specific semantics like object-spatial operations and architectural patterns.
 
 The optional Python source generation capability deserves special attention. While Jac code can execute directly through the compilation pipeline, the ability to emit readable Python source provides tremendous value for debugging, integration with existing tools, and building trust with teams adopting Jac incrementally. You can inspect exactly what your Jac code becomes, understand the performance characteristics, and even check the generated Python into version control if needed for deployment scenarios where Jac isn't available.
 
@@ -150,7 +152,7 @@ The transpiler's design philosophy emphasizes predictability and debuggability. 
 
 The relationship between Jac and Python transcends typical language interoperability. Rather than viewing them as separate languages that need to communicate, think of Jac as Python with enhanced expressive power. This fundamental unity manifests in practical ways that eliminate the friction typically associated with polyglot development.
 
-Jac and Python interoperate seamlessly because they share the same runtime, object model, and execution semantics. Unlike languages that bolt on a foreign function interface or require complex marshaling between different memory representations, Jac is natively Python: the output is pure Python modules with a thin, principled runtime library written in pure Python. This runtime library doesn't introduce a new virtual machine or execution model—it simply provides a small set of primitives needed to realize Jac-specific semantics like spatial operations and walker protocols.
+Jac and Python interoperate seamlessly because they share the same runtime, object model, and execution semantics. Unlike languages that bolt on a foreign function interface or require complex marshaling between different memory representations, Jac is natively Python: the output is pure Python modules with a thin, principled runtime library written in pure Python. This runtime library doesn't introduce a new virtual machine or execution model—it simply provides a small set of primitives needed to realize Jac-specific semantics like object-spatial operations and walker protocols.
 
 This deep integration means:
 
@@ -266,7 +268,7 @@ if __name__ == "__main__":
     _.spawn(walker, alice)
 \end{lstlisting}
 
-This example demonstrates several key concepts. The \texttt{NodeArchetype} and \texttt{WalkerArchetype} base classes provide the foundation for Jac's spatial programming model. The \texttt{@\_.entry} decorator marks methods that execute when a walker enters a node. The \texttt{\_.spawn} function initiates a walker's traversal from a specific node. These primitives compose naturally, allowing you to build complex graph-based architectures using familiar Python syntax.
+This example demonstrates several key concepts. The \texttt{NodeArchetype} and \texttt{WalkerArchetype} base classes provide the foundation for Jac's object-spatial programming model. The \texttt{@\_.entry} decorator marks methods that execute when a walker enters a node. The \texttt{\_.spawn} function initiates a walker's traversal from a specific node. These primitives compose naturally, allowing you to build complex graph-based architectures using familiar Python syntax.
 
 Highlights:
 \begin{itemize}
@@ -340,9 +342,9 @@ Simple modules can keep declarations and bodies together for local readability. 
 
 \begin{lstlisting}[language=shell]
 base/
-├── main.jac
-├── main.impl.jac
-└── main.test.jac
+|- main.jac
+|- main.impl.jac
+|- main.test.jac
 \end{lstlisting}
 
 The compiler automatically discovers these sibling files. No extra imports are required. This layout provides a good balance between organization and simplicity. The main file contains the public interface, the implementation file contains the bodies, and the test file contains test cases. The naming convention makes the relationships clear, and tools can easily identify which files belong together.
@@ -351,13 +353,13 @@ The compiler automatically discovers these sibling files. No extra imports are r
 
 \begin{lstlisting}[language=shell]
 base/
-├── main.jac
-├── main.impl/
-│   ├── foo.impl.jac
-│   ├── vehicle.impl.jac
-│   └── size.impl.jac
-└── main.test/
-    └── check_vehicle.test.jac
+|- main.jac
+|- main.impl/
+|  |- foo.impl.jac
+|  |- vehicle.impl.jac
+|  |- size.impl.jac
+|- main.test/
+   |- check_vehicle.test.jac
 \end{lstlisting}
 
 This layout scales well for large codebases where modules have many implementations or where different team members own different components. You can even place all implementations across the project under a single top-level directory (for example, \texttt{src/impl/}) while keeping your public interfaces minimal and readable. This extreme separation works well for projects where the interface stability is paramount and implementation details change frequently.

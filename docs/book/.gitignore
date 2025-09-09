@@ -10,6 +10,7 @@
 *.maf
 *.mtc
 *.mtc0
+*.synctex*
 *.mtc1
 *.mtc2
 *.mtc3
@@ -36,6 +37,20 @@
 *.swo
 *~
 
+*.4ct
+*.4tc
+*.css
+*.dvi
+*.html
+*.idv
+*.lg
+*.xref
+*.svg
+*.svg
+*.svg
+*.svg
+*.svg
+*.svg
 # OS generated files
 .DS_Store
 .DS_Store?

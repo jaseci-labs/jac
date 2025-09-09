@@ -178,6 +178,31 @@ class TypeEvaluator:
         node.name_spec.type = cls_type
         return cls_type
 
+    def get_type_of_ability(self, node: uni.Ability) -> TypeBase:
+        """Return the effective type of an ability."""
+        if node.name_spec.type is not None:
+            return node.name_spec.type
+
+        if not isinstance(node.signature, uni.FuncSignature):
+            node.name_spec.type = types.UnknownType()
+            return node.name_spec.type
+
+        if not isinstance(node.signature.return_type, uni.Expr):
+            node.name_spec.type = types.UnknownType()
+            return node.name_spec.type
+
+        return_type = self._convert_to_instance(
+            self.get_type_of_expression(node.signature.return_type)
+        )
+        func_type = types.FunctionType(
+            func_name=node.name_spec.sym_name,
+            return_type=return_type,
+            parameters=[],  # TODO:
+        )
+
+        node.name_spec.type = func_type
+        return func_type
+
     def get_type_of_string(self, node: uni.String | uni.MultiString) -> TypeBase:
         """Return the effective type of the string."""
         # FIXME: Strings are a type of LiteralString type:
@@ -298,6 +323,9 @@ class TypeEvaluator:
             case uni.Archetype():
                 return self.get_type_of_class(node)
 
+            case uni.Ability():
+                return self.get_type_of_ability(node)
+
             # This actually defined in the function getTypeForDeclaration();
             # Pyright has DeclarationType.Variable.
             case uni.Name():
@@ -375,6 +403,12 @@ class TypeEvaluator:
 
                 else:  # <expr>[<expr>]
                     pass  # TODO:
+
+            case uni.FuncCall():
+                caller_type = self.get_type_of_expression(expr.target)
+                if isinstance(caller_type, types.FunctionType):
+                    return caller_type.return_type or types.UnknownType()
+                # TODO: Check if it has a `__call__` method if it's not a function type.
 
             case uni.Name():
                 if symbol := expr.sym_tab.lookup(expr.value, deep=True):

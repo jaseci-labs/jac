@@ -226,3 +226,63 @@ echo "Note: You may need to run pdflatex multiple times to resolve references."
 echo "If you encounter any missing package errors, you can install them manually:"
 echo "  sudo apt-get install texlive-latex-extra  # For Ubuntu/Debian"
 echo "  sudo dnf install texlive-latex-extra      # For Fedora/RHEL"
+
+# ----------------------------------------------------------------------------
+# HTML toolchain setup (make4ht + dvisvgm + ImageMagick + Ghostscript + Pygments)
+# ----------------------------------------------------------------------------
+echo "🌐 Installing HTML toolchain for LaTeX → HTML (TikZ + listings)..."
+case "$PKG_MGR" in
+    "apt")
+        # make4ht lives in texlive-extra-utils; tex4ht in texlive-tex4ht; dvisvgm sometimes in dvisvgm or texlive-binaries
+        install_packages "$PKG_MGR" "texlive-tex4ht texlive-extra-utils dvisvgm imagemagick ghostscript tidy python3-pygments"
+        ;;
+    "dnf"|"yum")
+        # Package names on Fedora/RHEL-based systems
+        install_packages "$PKG_MGR" "texlive-tex4ht texlive-make4ht dvisvgm ImageMagick ghostscript tidy python3-pygments"
+        ;;
+    "pacman")
+        # Arch typically has these in core/community; texlive-most already pulled earlier
+        install_packages "$PKG_MGR" "dvisvgm imagemagick ghostscript tidy python-pygments"
+        ;;
+    "zypper")
+        install_packages "$PKG_MGR" "texlive-tex4ht texlive-make4ht dvisvgm ImageMagick ghostscript tidy python3-Pygments"
+        ;;
+esac
+
+# Verify HTML toolchain commands
+echo "🔎 Verifying HTML toolchain..."
+if command_exists make4ht; then
+    echo "✅ make4ht is available"
+else
+    echo "⚠️  make4ht not found. Falling back to htlatex if present."
+fi
+
+if command_exists htlatex; then
+    echo "✅ htlatex is available"
+else
+    echo "⚠️  htlatex not found. HTML conversion may be limited."
+fi
+
+if command_exists dvisvgm; then
+    echo "✅ dvisvgm is available (for TikZ → SVG)"
+else
+    echo "⚠️  dvisvgm not found. TikZ diagrams may not convert to SVG."
+fi
+
+if command_exists convert; then
+    echo "✅ ImageMagick (convert) is available"
+else
+    echo "⚠️  ImageMagick not found. Some image conversions may fail."
+fi
+
+if command_exists gs; then
+    echo "✅ Ghostscript (gs) is available"
+else
+    echo "⚠️  Ghostscript not found. Some PDF/image conversions may fail."
+fi
+
+if command_exists pygmentize; then
+    echo "✅ Pygments (pygmentize) is available for syntax highlighting"
+else
+    echo "⚠️  Pygments not found. Listings syntax highlighting may be basic in HTML."
+fi

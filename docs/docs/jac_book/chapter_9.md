@@ -203,7 +203,7 @@ import from byllm { Model }
 glob npc_model = Model(model_name="gpt-4.1-mini");
 
 """Adjusts the tone or personality of the shop keeper npc depending on weather/time."""
-def get_ambient_mood(state: dict) -> str by npc_model(incl_info=(state));
+def get_ambient_mood(state: dict) -> str by npc_model();
 ```
 This function, `get_ambient_mood`, takes a dictionary (the walker’s state) and sends it to the model. The model interprets the contents like `temperature` and `time`—and returns a textual mood that fits the situation.
 
@@ -274,7 +274,7 @@ node Time(Service) {
 }
 
 """Adjusts the tone or personality of the shop keeper npc depending on weather/time."""
-def get_ambient_mood(state: dict) -> str by npc_model(incl_info=(state));
+def get_ambient_mood(state: dict) -> str by npc_model();
 
 node NPC {
     can get with StateAgent entry {

@@ -3,8 +3,8 @@ import from byllm { Model, Image }
 glob llm = Model(model_name="gpt-4o");
 
 enum Personality {
-    INTROVERT = "Introvert",
-    EXTROVERT = "Extrovert"
+    INTROVERT,
+    EXTROVERT
 }
 
 obj Person {
@@ -13,11 +13,11 @@ obj Person {
         personality: Personality;
 }
 
-can get_person_info(img_of_person: Image) -> Person by llm();
+def get_person_info(img_of_person: Image) -> Person by llm();
 
 with entry {
     person_obj = get_person_info(Image("person.png"));
     print(
-        f"{person_obj.full_name} was a {person_obj.personality.value} person who died in {person_obj.yod}"
+        f"{person_obj.full_name} was a {person_obj.personality} person who died in {person_obj.yod}"
     );
 }

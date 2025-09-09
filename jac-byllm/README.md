@@ -1,8 +1,22 @@
-# byLLM - AI Integration Framework for Jac-lang
+<div align="center">
+    <img src="../docs/docs/assets/byLLM_name_logo.png" height="150">
 
-[![PyPI version](https://img.shields.io/pypi/v/mtllm.svg)](https://pypi.org/project/mtllm/) [![tests](https://github.com/jaseci-labs/jaseci/actions/workflows/test-jaseci.yml/badge.svg?branch=main)](https://github.com/jaseci-labs/jaseci/actions/workflows/test-jaseci.yml)
+  [About byLLM] | [Get started] | [Usage docs] | [Research Paper]
+</div>
 
-Meaning Typed Programming (MTP) is a programming paradigm for AI integration where prompt engineering is hidden through code semantics. byLLM is the plugin built, exploring this hypothesis. byLLM is built as a plugin to the Jaseci ecosystem. This plugin can be installed as a PyPI package.
+[About byLLM]: https://www.jac-lang.org/learn/jac-byllm/with_llm/
+[Get started]: https://www.jac-lang.org/learn/jac-byllm/quickstart/
+[Usage docs]: https://www.jac-lang.org/learn/jac-byllm/usage/
+[Research Paper]: https://arxiv.org/abs/2405.08965
+
+# byLLM : Language Abstrations for AI-Integrated Programming.
+> Prompt No More!
+
+[![PyPI version](https://img.shields.io/pypi/v/byllm.svg)](https://pypi.org/project/byllm/) [![tests](https://github.com/jaseci-labs/jaseci/actions/workflows/test-jaseci.yml/badge.svg?branch=main)](https://github.com/jaseci-labs/jaseci/actions/workflows/test-jaseci.yml)
+
+byLLM is an innovative AI integration framework built for the Jaseci ecosystem, implementing the cutting-edge Meaning Typed Programming (MTP) paradigm. MTP revolutionizes AI integration by embedding prompt engineering directly into code semantics, making AI interactions more natural and maintainable. While primarily designed to complement the Jac programming language, byLLM also provides a powerful Python library interface.
+
+Installation is simple via PyPI:
 
 ```bash
 pip install byllm
@@ -10,12 +24,12 @@ pip install byllm
 
 ## Basic Example
 
-A basic usecase of MTP can be demonstrated as follows:
+Consider building an application that translates english to other languages using an LLM. This can be simply built as follows:
 
 ```python
-import from byllm {Model}
+import from byllm { Model }
 
-glob llm = Model(model_name="openai\gpt-4o");
+glob llm = Model(model_name="gpt-4o");
 
 def translate_to(language: str, phrase: str) -> str by llm();
 
@@ -25,33 +39,63 @@ with entry {
 }
 ```
 
-## AI-Powered Object Generation
+This simple piece of code replaces traditional prompt engineering without introducing additional complexity.
+
+## Power Types with LLMs
+
+Consider a program that detects the personality type of a historical figure from their name. This can eb built in a way that LLM picks from an enum and the output strictly adhere this type.
 
 ```python
-import from byllm {Model}
+import from byllm { Model }
+glob llm = Model(model_name="gemini/gemini-2.0-flash");
 
-glob llm = Model(model_name="gpt-4o");
-
-obj Task {
-    has description: str,
-        priority: int,
-        estimated_time: int;
+enum Personality {
+    INTROVERT, EXTROVERT, AMBIVERT
 }
 
-sem Task.priority = "priority between 0 (highest priority) and 10(lowest priority)";
-
-def create_task(description: str, previous_tasks: list[Task]) -> Task by llm();
+def get_personality(name: str) -> Personality by llm();
 
 with entry {
-    tasks = [];
-    new_task = create_task("Write documentation for the API", tasks);
-    print(f"Task: {new_task.description}, Priority: {new_task.priority}, Time: {new_task.estimated_time}min");
+    name = "Albert Einstein";
+    result = get_personality(name);
+    print(f"{result} personality detected for {name}");
 }
 ```
 
-The `by` abstraction allows to automate semantic extraction from existing code semantics, eliminating manual prompt engineering while leveraging type annotations for structured AI responses.
+> Similarly, custom types can be used as output types which force the LLM to adhere to the specified type and produce a valid result.
 
-## Documentation and Examples
+## Control! Control! Control!
+
+Even if we are elimination prompt engineering entierly, we allow specific ways to enrich code semantics through **docstrings** and **semstrings**.
+
+```python
+"""Represents the personal record of a person"""
+obj Person {
+    has name;
+    has dob;
+    has ssn;
+}
+
+sem Person.name = "Full name of the person";
+sem Person.dob = "Date of Birth";
+sem Person.ssn = "Last four digits of the Social Security Number of a person";
+
+"""Calculate eligibility for various services based on person's data."""
+def check_eligibility(person: Person, service_type: str) -> bool by llm();
+
+```
+
+Docstrings naturally enhance the semantics of their associated code constructs, while the `sem` keyword provides an elegant way to enrich the meaning of class attributes and function arguments. Our research shows these concise semantic strings are more effective than traditional multi-line prompts.
+
+## How well does byLLM work?
+
+byLLM is built using the underline priciple of Meaning Typed Programming and we shown our evaluation data compared with two such AI integration frameworks for python, such as DSPy and LMQL. We show significant performance gain against LMQL while allowing on par or better performance to DSPy, while having a lower cost and faster runtime.
+
+<div align="center">
+    <img src="../docs/docs/assets/correctness_comparison.png" alt="Correctness Comparison" width="600" style="max-width: 100%;">
+    <br>
+    <em>Figure: Correctness comparison of byLLM with DSPy and LMQL on benchmark tasks.</em>
+</div>
 
 **📚 Full Documentation**: [Jac byLLM Documentation](https://www.jac-lang.org/learn/jac-byllm/with_llm/)
 
@@ -60,11 +104,52 @@ The `by` abstraction allows to automate semantic extraction from existing code s
 - [RPG Level Generator](https://www.jac-lang.org/learn/examples/mtp_examples/rpg_game/) - AI-powered game level creation
 - [RAG Chatbot Tutorial](https://www.jac-lang.org/learn/examples/rag_chatbot/Overview/) - Building chatbots with document retrieval
 
-**🔬 Research**: The research journey of MTP is available on [Arxiv](https://arxiv.org/abs/2405.08965).
+**🔬 Research**: The research journey of MTP is available on [Arxiv](https://arxiv.org/abs/2405.08965) and accepted for OOPSLA 2025.
 
 ## Quick Links
 
-- [Getting Started Guide](https://www.jac-lang.org/learn/jac-byllm/with_llm/)
-- [Model Configuration](https://www.jac-lang.org/learn/jac-byllm/model_declaration/)
+- [Getting Started Guide](https://www.jac-lang.org/learn/jac-byllm/quickstart/)
 - [Jac Language Documentation](https://www.jac-lang.org/)
 - [GitHub Repository](https://github.com/jaseci-labs/jaseci)
+
+## Contributing
+
+We welcome contributions to byLLM! Whether you're fixing bugs, improving documentation, or adding new features, your help is appreciated.
+
+Areas we actively seek contributions:
+- 🐛 Bug fixes and improvements
+- 📚 Documentation enhancements
+- ✨ New examples and tutorials
+- 🧪 Test cases and benchmarks
+
+Please see our [Contributing Guide](https://www.jac-lang.org/internals/contrib/) for detailed instructions.
+
+If you find a bug or have a feature request, please [open an issue](https://github.com/jaseci-labs/jaseci/issues/new/choose).
+
+## Community
+
+Join our vibrant community:
+- [Discord Server](https://discord.gg/6j3QNdtcN6) - Chat with the team and community
+
+## License
+
+This project is licensed under the MIT License.
+
+### Third-Party Dependencies
+
+byLLM integrates with various LLM providers (OpenAI, Anthropic, Google, etc.) through LiteLLM.
+
+## Cite our research
+
+
+> Jayanaka L. Dantanarayana, Yiping Kang, Kugesan Sivasothynathan, Christopher Clarke, Baichuan Li, Savini
+Kashmira, Krisztian Flautner, Lingjia Tang, and Jason Mars. 2025. MTP: A Meaning-Typed Language Ab-
+straction for AI-Integrated Programming. Proc. ACM Program. Lang. 9, OOPSLA2, Article 314 (October 2025),
+29 pages. https://doi.org/10.1145/3763092
+
+
+## Jaseci Contributors
+
+<a href="https://github.com/jaseci-labs/jaseci/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=jaseci-labs/jaseci" />
+</a>
