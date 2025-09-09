@@ -1,4 +1,4 @@
-"""GH Release script for MTLLM."""
+"""GH Release script for byLLM."""
 
 import tomllib
 

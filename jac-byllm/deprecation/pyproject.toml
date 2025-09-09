@@ -1,0 +1,16 @@
+[project]
+name = "mtllm"
+version = "0.4.1"
+description = "DEPRECATED: install `byllm` instead."
+authors = [
+    { name = "Jason Mars", email = "jason@jaseci.org" }
+]
+maintainers = [
+    { name = "Jason Mars", email = "jason@jaseci.org" }
+]
+license = "MIT"
+readme = "README.md"
+keywords = ["llm", "jaclang", "jaseci", "byLLM"]
+dependencies = [
+    "byllm>=0.4.1"
+]

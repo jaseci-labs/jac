@@ -9,6 +9,7 @@ nav:
     - Tour of Jac/Jaseci: "learn/introduction.md"
     - Installation: "learn/installation.md"
     - Learn Jac in 5 Minutes: "learn/jac_in_a_flash.md"
+    - Native Superset of Python: "learn/superset_python.md"
     - Jac Playground: "learn/jac_playground.md"
     - Learn By Example:
       - LittleX (your own twitter):
@@ -42,13 +43,13 @@ nav:
       - 19. Performance Optimization: "jac_book/chapter_19.md"
       - 20. Python to Jac Migration: "jac_book/chapter_20.md"
     - Programming 'by' AI:
-        - What is MTP: "learn/jac-mtllm/with_llm.md"
-        - Quick-start: "learn/jac-mtllm/quickstart.md"
-        - How to use MTP: "learn/jac-mtllm/usage.md"
-        - Python MTLLM Interface: "learn/jac-mtllm/python_integration.md"
-        - Using Multimodal models: "learn/jac-mtllm/multimodality.md"
-        - Build your own MTLLM plugin: "learn/jac-mtllm/creating_mtllm_plugins.md"
-        - LiteLLM Proxy Server: "learn/jac-mtllm/litellm_proxy.md"
+        - What is MTP: "learn/jac-byllm/with_llm.md"
+        - Quick-start: "learn/jac-byllm/quickstart.md"
+        - How to use MTP: "learn/jac-byllm/usage.md"
+        - Python byllm Interface: "learn/jac-byllm/python_integration.md"
+        - Using Multimodal models: "learn/jac-byllm/multimodality.md"
+        - Build your own byllm plugin: "learn/jac-byllm/creating_byllm_plugins.md"
+        - LiteLLM Proxy Server: "learn/jac-byllm/litellm_proxy.md"
     - Scale-Native Programming:
       - "learn/jac-cloud/introduction.md"
       - "learn/jac-cloud/quickstart.md"
@@ -67,6 +68,7 @@ nav:
       - Jac Lens: "learn/jac-lens.md"
     - Tooling:
       - "learn/tools/cli.md"
+      - "learn/tools/streamlit.md"
     - Specifications:
       - Jac Keywords: "learn/keywords.md"
       - Object-Spatial Programming Specification: "learn/dspfoundation.md"
@@ -125,6 +127,8 @@ nav:
 
   - Jac Playground:
     - Playground: "/playground/"
+
+  - Jac GPT: "https://jac-gpt.jaseci.org"
 
 theme:
   logo: "assets/logo.png"

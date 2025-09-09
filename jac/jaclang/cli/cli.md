@@ -1,12 +1,12 @@
 # **Jac Language Command Line Interface (CLI)**
 
-Jac Language CLI is with a variety of commands to facilitate users. Additionally, Jac language offers users the ability to define custom CLI commands through plugins. This document aims to provide an overview of each command along with clear usage instructions.
+git Jac Language CLI provides a variety of commands to facilitate users. Additionally, Jac language offers users the ability to define custom CLI commands through plugins. This document aims to provide an overview of each command along with clear usage instructions.
 
 > [!TIP]
-> Type "help" on Jac CLI and see!
+> Use `jac --help` to see available commands and usage.
 
 ### Click one of the default commands below and see the usage.
-- [tool](#tool) , [run](#run) , [clean](#clean) , [format](#format) , [check](#check) , [build](#build)  , [enter](#enter) , [test](#test)
+- [tool](#tool) , [run](#run) , [clean](#clean) , [format](#format) , [check](#check) , [build](#build) , [enter](#enter) , [test](#test)
 
 
 

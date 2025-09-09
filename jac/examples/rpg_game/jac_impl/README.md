@@ -1,6 +1,6 @@
 # Jac RPG Game (jac_impl)
 
-A sample RPG game built in the [Jac language](https://github.com/jaseci-labs/jaseci) with Pygame for rendering and optional LLM integration via **mtllm**.
+A sample RPG game built in the [Jac language](https://github.com/jaseci-labs/jaseci) with Pygame for rendering and optional LLM integration via **byllm**.
 
 ---
 
@@ -36,12 +36,12 @@ python -m venv env
 # source env/bin/activate  # macOS/Linux
 
 # Install required packages
-pip install pygame jac-lang mtllm
+pip install pygame jac-lang byllm
 ```
 
 > These dependencies cover:
 > - `pygame` → graphics & game loop
-> - `mtllm` → LLM integration in Jac
+> - `byllm` → LLM integration in Jac
 > - `jac-lang` → Jac language runtime
 
 ---

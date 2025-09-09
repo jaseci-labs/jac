@@ -35,7 +35,7 @@ This snippet natively imports Python packages `math` and `random` and runs ident
 Jac provides novel constructs for integrating LLMs into code. A function body can simply be replaced with a call to an LLM, removing the need for prompt engineering or extensive use of new libraries.
 
 ```jac
-import from mtllm { Model }
+import from byllm { Model }
 glob llm = Model(model_name="gemini/gemini-2.0-flash");
 
 enum Personality {
@@ -54,7 +54,7 @@ with entry {
 ```
 
 ??? info "How To Run"
-    1. Install the MTLLM plugin by `pip install mtllm`
+    1. Install the byLLM plugin by `pip install byllm`
     2. Get a free Gemini API key: Visit [Google AI Studio](https://aistudio.google.com/app/apikey)
     3. Save your Gemini API as an environment variable (`export GEMINI_API_KEY="xxxxxxxx"`).
     > **Note:** > > You can use OpenAI, Anthropic or other API services as well as host your own LLM using Ollama or Huggingface.
@@ -80,7 +80,7 @@ These new constructs gives rise to a new paradigm for problem solving and implem
 In this example, nodes represent meaningful entities (like Weights, Cardio Machines), while walkers (agents) traverse these nodes, collect contextual information, and collaborate with an LLM to generate a personalized workout plan.
 
 ```jac
-import from mtllm.llm {Model}
+import from byllm.llm {Model}
 
 glob llm = Model(model_name="gemini/gemini-2.5-flash");
 
@@ -137,7 +137,7 @@ with entry {
 ```
 
 ??? info "How To Run"
-    1. Install the MTLLM plugin by `pip install mtllm`
+    1. Install the byLLM plugin by `pip install byllm`
     2. Save your OpenAI API as an environment variable (`export OPENAI_API_KEY="xxxxxxxx"`).
     > **Note:** > > You can use Gemini, Anthropic or other API services as well as host your own LLM using Ollama or Huggingface.
     4. Copy this code into `example.jac` file and run with `jac run example.jac`

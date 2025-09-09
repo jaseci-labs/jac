@@ -18,7 +18,7 @@ This tutorial covers building an AI-driven RPG level generator using Jaclang's `
 Required dependencies:
 
 ```bash
-pip install mtllm
+pip install byllm
 ```
 
 OpenAI API key configuration:
@@ -89,7 +89,7 @@ obj Map {
 This step creates the core AI methods that generate game content. First, import and configure the AI model, then add the `LevelManager` object:
 
 ```jac linenums="1"
-import from mtllm { Model }
+import from byllm { Model }
 
 glob llm = Model(model_name="gpt-4o", verbose=True);
 
@@ -105,7 +105,7 @@ obj LevelManager {
 ```
 
 **AI configuration:**
-- Import the `Model` class from the `mtllm` module
+- Import the `Model` class from the `byllm` module
 - The global `llm` variable configures the AI model (GPT-4o in this case)
 - `verbose=True` enables detailed output during generation
 
@@ -304,4 +304,4 @@ This tutorial demonstrates building an AI-powered RPG level generator that imple
 
 The approach combines structured programming with AI creativity. The developer provides the framework and constraints, while the AI handles the creative details.
 
-For more details access the [full documentation of MTP](/learn/jac-mtllm/).
+For more details access the [full documentation of MTP](/learn/jac-byllm/).

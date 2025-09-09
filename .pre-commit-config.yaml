@@ -37,5 +37,5 @@ repos:
           - --non-interactive
           - --config-file=mypy.ini
           - --explicit-package-bases
-          - --exclude=jac-mtllm/scripts
+          - --exclude=jac-byllm/scripts
         additional_dependencies: [types-PyYAML]

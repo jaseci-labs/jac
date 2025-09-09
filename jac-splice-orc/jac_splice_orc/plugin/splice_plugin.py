@@ -568,6 +568,7 @@ class SpliceOrcPlugin:
         override_name: Optional[str],
         items: Optional[dict[str, Union[str, Optional[str]]]],
         reload_module: Optional[bool],
+        lng: Optional[str],
     ) -> tuple[Union[types.ModuleType, "RemoteObjectProxy"], ...]:
         """Core Import Process with Kubernetes Pod Integration.
 
@@ -590,7 +591,8 @@ class SpliceOrcPlugin:
             PythonImporter,
         )
 
-        lng = infer_language(target, base_path)
+        if lng is None:
+            lng = infer_language(target, base_path)
         module_config_path = os.getenv("MODULE_CONFIG_PATH", "/cfg/module_config.json")
         try:
             logging.debug(f"Loading from {module_config_path} for module_config...")

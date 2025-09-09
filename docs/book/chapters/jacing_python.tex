@@ -1,4 +1,6 @@
+\mtcaddchapter
 \chapter{From Python-ic to Jac-tastic: The Basics of Jac}
+\minitoc
 
 Coming from the previous chapter where we saw how Jac cleanly supersets Python and compiles to native Python, this chapter focuses on what it feels like to write everyday Jac. We walk through modules, definitions, control flow, and core expressions with side-by-side intuitions for Python developers. This chapter focuses on the key differences between Jac and Python, anything not covered can be assumed to work exactly the same as in Python.
 
@@ -100,62 +102,84 @@ The brace syntax for selective imports solves several problems with Python's com
 
 Jac automatically resolves whether a target is a Jac or Python module and uses the right importer. The brace form avoids ambiguities of comma-heavy import lists, and `include` behaves like Python's `from target import *`, while still cooperating with tooling. The `include` statement makes the intent explicit—you're deliberately bringing all public names into scope, not accidentally using a wildcard import. This clarity helps both human readers and static analysis tools understand the code's dependencies.
 
-\subsection{Entry blocks as the module's runnable code}
+\subsection{Explicit Module Initialization with Entry Blocks}
 
-One of Python's subtle complexities is determining what code runs when a module loads versus when it's imported versus when it's run as a script. The \verb|if __name__ == "__main__"| idiom, while powerful, often confuses newcomers and can lead to unexpected behavior in complex import scenarios. Jac's entry blocks provide a clearer, more explicit model.
+Python's module loading behavior can be confusing: code at the module level runs immediately when imported, while the \verb|if __name__ == "__main__"| idiom creates script-specific behavior. This mixing of declarations and executable code makes it unclear what runs when, especially in complex import scenarios. Jac separates these concerns explicitly.
 
-Instead of free-floating top-level statements, Jac uses `with entry { ... }` blocks to declare executable code that should run when the module is executed or imported-as-main. You may define multiple entry blocks; they execute from top to bottom:
+Instead of scattered top-level statements, Jac uses \verb|with entry { ... }| blocks to clearly mark executable code. This makes module initialization explicit and intentional—you can immediately see what code will run during import versus what runs only when the module is executed as a script.
 
 \begin{jacblock}
 with entry {
-    print("Booting module...");
+    print("Module initializing...");
+    setup_logging();
 }
 
 with entry:__main__ {
-    // Named entry point; helpful for clarity and tooling
-    print("Running as a script");
+    print("Running as main script");
+    main();
 }
 \end{jacblock}
 
-Named entry blocks like \texttt{entry:\_\_main\_\_} provide semantic labels that tools can recognize. While functionally equivalent to unnamed entry blocks, they communicate intent and enable IDE features like "run configuration" detection. Multiple entry blocks execute in source order, allowing you to organize initialization logic into logical phases.
+Unnamed entry blocks compile to top-level Python statements (running on import), while named blocks like \verb|entry:__main__| become the familiar \verb|if __name__ == "__main__":| guard. The above compiles to:
 
-\paragraph{Module level globals, and with entry in class bodies}
+\begin{lstlisting}[language=Python]
+# from: with entry { ... }
+print("Module initializing...")
+setup_logging()
 
-The distinction between declaration and execution extends throughout Jac's design. Module-level variables must be declared with `let` or `glob`, making their scope and mutability explicit. Executable initialization code goes in entry blocks, whether at module level or within class definitions.
+# from: with entry:__main__ { ... }
+if __name__ == "__main__":
+    print("Running as main script")
+    main()
+\end{lstlisting}
 
-Use `let` to declare module-level constants and `glob` to declare program-wide mutable variables; both support access modifiers like `:priv`, `:protect`, and `:pub`. Names are defined at import time, while executable statements—whether at the module level or inside class/archetype bodies—belong in `with entry { ... }` blocks. In short, declare with `let`/`glob`, then run with `with entry`:
+This explicit separation eliminates guesswork about execution timing. Multiple entry blocks execute in source order, letting you organize initialization into logical phases without relying on statement positioning.
+
+\paragraph{Explicit Module-Level Variables}
+
+The same principle of explicitness extends to module-level variables. Rather than implicit globals created by assignment, Jac requires explicit declaration with \verb|let| (immutable) or \verb|glob| (mutable), making scope and mutability clear at first glance.
 
 \begin{jacblock}
-let:priv config = "development";
-glob:pub shared_counter = 0;
+let:priv config = "development";     # module-private constant
+glob:pub shared_counter = 0;         # public mutable global
 
 with entry {
-    # Executable code that can read/write declared variables
-    print(config);
+    print(f"Config: {config}");
     shared_counter += 1;
 }
+\end{jacblock}
 
+The \verb|let| keyword creates immutable bindings (the name cannot be reassigned), while \verb|glob| creates mutable module-level variables. Access modifiers (\verb|:priv|, \verb|:protect|, \verb|:pub|) control visibility across module boundaries, making the intended scope explicit rather than relying on naming conventions.
+
+\paragraph{Entry Blocks in Class Bodies}
+
+Entry blocks also work within class and object definitions, providing explicit initialization that runs when the class is defined—not when instances are created:
+
+\begin{jacblock}
 obj Registry {
-    static def register() -> None {
-        # registration logic ...
+    static let:priv instances = [];
+
+    static def register(instance) -> None {
+        Registry.instances.append(instance);
     }
 
     with entry {
-        # executed when the module defines this object/class
-        Registry.register();
+        # Runs when the class is defined, not instantiated
+        print("Registry class loaded");
+        setup_registry_hooks();
     }
 }
 
-class Legacy {
+class DataModel {
     with entry {
-        print("Legacy class loaded");
+        print("DataModel class initialized");
     }
 }
 \end{jacblock}
 
-The `let` keyword declares immutable bindings—the name cannot be reassigned, though mutable objects can still be modified. The `glob` keyword declares mutable module-level variables. Both support visibility modifiers that affect what other modules can access. The `:priv` modifier makes a name module-private, `:protect` allows access within the package hierarchy, and `:pub` makes it fully public.
+This explicit model eliminates the subtle differences between Python's class body execution and instance initialization. Code in entry blocks clearly runs at class definition time, while regular methods run on instance creation or method calls.
 
-In short: `let`/`glob` define names; `with entry` runs code—both at the module top level and within class/archetype bodies. This separation ensures that declaration order doesn't affect execution order, eliminating a common source of subtle bugs in Python programs.
+The key insight is separation of concerns: \verb|let|/\verb|glob| declare names and their properties, while \verb|with entry| contains executable initialization code. This prevents the common Python pitfall where declaration order affects execution behavior, making module loading predictable and explicit.
 
 \section{Functions, Classes, and Enums}
 
@@ -429,7 +453,7 @@ F-strings in Jac support all of Python's formatting mini-language, including wid
 
 \section{Concurrency with \texttt{flow} and \texttt{wait}}
 
-One of Jac's most practical innovations is its expression-level concurrency model. Rather than requiring separate async functions or complex threading code, Jac provides simple operators that make concurrent execution as easy as arithmetic.
+One of Jac's most practical features is its expression-level concurrency model. Rather than requiring separate async functions or complex threading code, Jac provides simple operators that make concurrent execution as easy as arithmetic.
 
 Jac offers a simple, expression-level concurrency model using the `flow` and `wait` keywords. These integrate naturally into expressions (see precedence in this chapter's expression section) and map directly to Python's standard `concurrent.futures` thread pool APIs. This design makes concurrent programming accessible without requiring deep understanding of threading or async programming.
 
@@ -617,19 +641,4 @@ Common use cases for inline Python include:
 \end{itemize}
 
 The ability to freely mix Jac and Python in the same file reduces the adoption barrier significantly. You don't have to convert everything at once—you can start with Jac for new code while keeping complex existing Python logic unchanged, then gradually refactor as you become comfortable with Jac's idioms.
-
-\section{Putting It All Together}
-
-Now that we've covered Jac's basic features, let's see how they combine in practice. The transition from Python to Jac isn't about learning entirely new concepts—it's about expressing familiar patterns more clearly and safely. The mandatory type annotations might feel constraining at first, but they quickly become second nature and pay dividends in code clarity and error prevention.
-
-The structural differences—braces, semicolons, and entry blocks—serve a purpose beyond mere syntax. They make program structure unambiguous, enable better tooling, and clarify the distinction between declaration and execution. These changes address real pain points in Python development: the ambiguity of significant whitespace in generated code, the confusion around module initialization order, and the difficulty of determining what code runs when.
-
-Jac's extensions to Python's expression syntax—pipe operators, flow/wait concurrency, and enhanced comprehensions—aren't just conveniences. They represent common patterns that deserve first-class support in the language. Pipes make data transformation pipelines readable. Flow/wait makes basic concurrency accessible. Filter and assign comprehensions eliminate boilerplate in collection manipulation.
-
-The seamless interoperability with Python means you can adopt Jac incrementally. Start with a single module, perhaps one that would benefit from stronger typing or clearer structure. Use inline Python for complex sections you're not ready to convert. Import your existing Python libraries without modification. As you grow comfortable with Jac's patterns, expand its use throughout your codebase.
-
-Most importantly, remember that Jac isn't asking you to abandon your Python knowledge—it's asking you to enhance it. Every Python skill you've developed remains valuable. Every library you know still works. Every pattern you've learned still applies. Jac simply provides better ways to express these patterns, with stronger guarantees and clearer intent.
-
-In the next chapter, we'll explore one of Jac's most innovative features: Object-Spatial Programming. This paradigm shift from thinking about isolated objects to thinking about connected entities in space opens up new ways to model complex systems. But even as we venture into new territory, the foundation remains the familiar Python you know, enhanced with the Jac features you've just learned.
-
 

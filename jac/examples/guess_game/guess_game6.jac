@@ -1,7 +1,7 @@
 """A Number Guessing Game"""
 
 import random;
-import from mtllm.llm { Model }
+import from byllm.llm { Model }
 
 # glob llm = Model(model_name="gpt-4o",verbose=False);
  glob llm = Model(model_name="gemini/gemini-2.0-flash", verbose=False);

@@ -10,7 +10,7 @@
 \usepackage[font={footnotesize, it}]{caption}
 \usepackage{graphicx}
 \usepackage{tikz}
-\usetikzlibrary{arrows.meta,positioning,shapes.geometric,calc}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric,calc,shadows,shadows.blur}
 \usepackage{longtable}
 \usepackage[export]{adjustbox}
 \usepackage{grffile}
@@ -81,6 +81,7 @@
     % list of keywords
     keywords={
         },
+    morecomment=[l]{\#}, % l is for line comment
 }
 
 \lstdefinestyle{gram}{

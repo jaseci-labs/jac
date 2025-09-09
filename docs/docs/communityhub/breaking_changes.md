@@ -4,6 +4,8 @@ This page documents significant breaking changes in Jac and Jaseci that may affe
 
 ## Latest Breaking Changes
 
+MTLLM library is now deprecated and replaced by the byLLM package. In all place where `mtllm` was used before can be replaced with `byllm`.
+
 ### Version 0.8.4
 
 #### 1. Global, Nonlocal Operators Updated to `global`, `nonlocal`

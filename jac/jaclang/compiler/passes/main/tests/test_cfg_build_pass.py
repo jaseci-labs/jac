@@ -87,7 +87,7 @@ class TestCFGBuildPass(TestCase):
             '  0 [label="BB0\\nobj Rock", shape=box];\n'
             '  1 [label="BB1\\nhas pellets : list ;", shape=box];\n'
             '  2 [label="BB2\\ncan count_pellets( ) -> int\\nreturn self . pellets . length ( ) ;", shape=box];\n'
-            '  3 [label="BB3\\nrock = Rock ( pellets = [ 1 , 2 , 3 ] ) ;\\nprint ( \'\\"Number of pellets: \\"\' + rock . count_pellets ( ) . to_string ( ) ) ;", shape=box];\n'
+            '  3 [label="BB3\\nrock = Rock ( pellets = [ 1 , 2 , 3 ] ) ;\\nprint ( \\"Number of pellets: \\" + rock . count_pellets ( ) . to_string ( ) ) ;", shape=box];\n'
             "  0 -> 1;\n"
             "  0 -> 2;\n"
             "}\n"
@@ -106,8 +106,8 @@ class TestCFGBuildPass(TestCase):
         expected_dot = (
             "digraph G {\n"
             '  0 [label="BB0\\ncan test_if_without_else( x : int )\\nif ( x > 0 )", shape=box];\n'
-            '  1 [label="BB1\\nprint ( \'\\"Positive\\"\' ) ;", shape=box];\n'
-            '  2 [label="BB2\\nprint ( \'\\"Done\\"\' ) ;", shape=box];\n'
+            '  1 [label="BB1\\nprint ( \\"Positive\\" ) ;", shape=box];\n'
+            '  2 [label="BB2\\nprint ( \\"Done\\" ) ;", shape=box];\n'
             '  3 [label="BB3\\ntest_if_without_else ( 5 ) ;\\ntest_if_without_else ( - 3 ) ;", shape=box];\n'
             "  0 -> 1;\n"
             "  0 -> 2;\n"
@@ -126,7 +126,7 @@ class TestCFGBuildPass(TestCase):
 
         expected_dot = (
             "digraph G {\n"
-            '  0 [label="BB0\\ncan test_return_direct( )\\nprint ( \'\\"Before return\\"\' ) ;\\nreturn ;\\nprint ( \'\\"After return\\"\' ) ;", shape=box];\n'
+            '  0 [label="BB0\\ncan test_return_direct( )\\nprint ( \\"Before return\\" ) ;\\nreturn ;\\nprint ( \\"After return\\" ) ;", shape=box];\n'
             '  1 [label="BB1\\ntest_return_direct ( ) ;", shape=box];\n'
             "}\n"
         )

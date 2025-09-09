@@ -1529,7 +1529,8 @@ class Archetype(
                     new_kid.append(stmt)
                 new_kid.append(self.gen_token(Tok.RBRACE))
         else:
-            new_kid.append(self.gen_token(Tok.SEMI))
+            new_kid.append(self.gen_token(Tok.LBRACE))
+            new_kid.append(self.gen_token(Tok.RBRACE))
         self.set_kids(nodes=new_kid)
         return res
 
@@ -4660,7 +4661,7 @@ class String(Literal):
 
     def unparse(self) -> str:
         super().unparse()
-        return repr(self.value)
+        return self.value
 
 
 class Bool(Literal):
