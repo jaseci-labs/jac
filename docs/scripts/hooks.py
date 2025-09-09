@@ -9,13 +9,8 @@
 
 from material.plugins.blog.structure import Archive
 
-def on_page_markdown(
-    markdown: str, 
-    *, 
-    page, 
-    config, 
-    files
-) -> str:
+
+def on_page_markdown(markdown: str, *, page, config, files) -> str:
     """
     Modify the page markdown for Archive pages to use a custom template.
 
