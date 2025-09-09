@@ -128,7 +128,7 @@ nav:
   - Blog:
       - blog/index.md
       - Tags: blog/tags.md
-    - Playground: "/playground/"
+  - Playground: "/playground/"
 
   - Jac GPT: "https://jac-gpt.jaseci.org"
 
