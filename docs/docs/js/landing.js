@@ -102,11 +102,11 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Enhanced Interactive Code Demo
     const demoData = {
-        mtllm: {
-            title: "AI-Integrated Programming with MTLLM",
-            code: `<span class="jac-comment"># AI Integration with MTLLM - No Prompt Engineering Required! 🤖</span>
+        byllm: {
+            title: "AI-Integrated Programming with byLLM",
+            code: `<span class="jac-comment"># AI Integration with byLLM - No Prompt Engineering Required! 🤖</span>
 
-<span class="jac-keyword">import</span> <span class="jac-keyword">from</span> <span class="jac-variable">mtllm</span>.<span class="jac-variable">llms</span> { <span class="jac-node">OpenAI</span> }
+<span class="jac-keyword">import</span> <span class="jac-keyword">from</span> <span class="jac-variable">byllm</span>.<span class="jac-variable">llms</span> { <span class="jac-node">OpenAI</span> }
 
 <span class="jac-comment"># Initialize AI model</span>
 <span class="jac-keyword">glob</span> <span class="jac-variable">llm</span> = <span class="jac-node">OpenAI</span>(<span class="jac-variable">model_name</span>=<span class="jac-string">"gpt-4o"</span>);
@@ -139,7 +139,7 @@ document.addEventListener('DOMContentLoaded', function () {
             title: "AI-Generated Game Levels",
             code: `<span class="jac-comment"># RPG Game with AI-Generated Maps 🎮</span>
 
-<span class="jac-keyword">import</span> <span class="jac-keyword">from</span> <span class="jac-variable">mtllm</span>.<span class="jac-variable">llms</span> { <span class="jac-node">OpenAI</span> }
+<span class="jac-keyword">import</span> <span class="jac-keyword">from</span> <span class="jac-variable">byllm</span>.<span class="jac-variable">llms</span> { <span class="jac-node">OpenAI</span> }
 
 <span class="jac-keyword">glob</span> <span class="jac-variable">llm</span> = <span class="jac-node">OpenAI</span>(<span class="jac-variable">model_name</span>=<span class="jac-string">"gpt-4o"</span>);
 
@@ -329,7 +329,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const demoTabs = document.querySelectorAll('.demo-tab');
     const demoCode = document.getElementById('demo-code');
     const demoOutput = document.getElementById('demo-output');
-    let currentDemo = 'mtllm';
+    let currentDemo = 'byllm';
 
     function showDemo(demoKey) {
         currentDemo = demoKey;
@@ -343,17 +343,22 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         });
 
-        // Animate code change
-        demoCode.style.opacity = '0';
-        demoCode.style.transform = 'translateY(10px)';
+        // Animate code change with null checks
+        if (demoCode) {
+            demoCode.style.opacity = '0';
+            demoCode.style.transform = 'translateY(10px)';
+        }
 
         setTimeout(() => {
-            demoCode.innerHTML = `<pre><code>${demo.code}</code></pre>`;
-            demoCode.style.opacity = '1';
-            demoCode.style.transform = 'translateY(0)';
-
+            if (demoCode) {
+                demoCode.innerHTML = `<pre><code>${demo.code}</code></pre>`;
+                demoCode.style.opacity = '1';
+                demoCode.style.transform = 'translateY(0)';
+            }
             // Clear output
-            demoOutput.innerHTML = '<div class="output-line info-line">Click "Run" to execute this program ▶️</div>';
+            if (demoOutput) {
+                demoOutput.innerHTML = '<div class="output-line info-line">Click "Run" to execute this program ▶️</div>';
+            }
         }, 300);
     }
 
@@ -414,7 +419,7 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     // Initialize first demo
-    showDemo('mtllm');
+    showDemo('byllm');
 
     // FIXED: Carousel functionality
     function initCarousel(carouselId, prevBtnId, nextBtnId, indicatorsId) {
@@ -598,7 +603,7 @@ document.addEventListener('DOMContentLoaded', function () {
     document.head.appendChild(style);
 
     // Fetch GitHub stars and forks from local JSON file
-    fetch('/assets/github_stats.json')
+    fetch('../assets/github_stats.json')
         .then(response => response.json())
         .then(data => {
             // Check for the "jaseci-labs/jaseci" key and get stars/forks
@@ -654,10 +659,11 @@ with entry { # Generate random points
         summary: `Using "by" keyword to seamlessly integrate models into your development. No need for prompt engineering or interpret model outputs`,
         filename: "translator.jac",
         code: `
-# AI Integration with MTLLM - No Prompt Engineering Required! 🤖
+# AI Integration with byLLM - No Prompt Engineering Required! 🤖
 
-import from mtllm.llm { Model }
+import from byllm { Model }
 
+# Initialize AI model
 glob llm = Model(model_name="gpt-4o");
 
 # 🎯 Zero Prompt Engineering: Just define what you want, AI figures out HOW!
@@ -677,7 +683,7 @@ with entry {
         summary: `New programming model (object-oriented programming) to enable fast agentic-AI development`,
         filename: "agent_system.jac",
         code: `
-import from mtllm.llm {Model}
+import from byllm.llm {Model}
 
 glob llm = Model(model_name="gemini/gemini-2.5-flash");
 
@@ -809,8 +815,8 @@ Ensure to hydrate and listen to your body throughout the program. Adjust weights
         link: "https://www.jac-lang.org/learn/introduction/#beyond-oop-an-agentic-programming-model"
     },
     {
-        tagline: "Object-oriented programming",
-        summary: `This is the summary`,
+        tagline: "Object-spatial programming",
+        summary: `New language constructs (node, edge and walker classes) that allow for assembling objects in a graph structure to express semantic relationships between objects, giving rise to a new paradigm for problem solving and implementation we call Object-Spatial Programming (OSP).`,
         filename: "oop_example.jac",
         code: `
 # oop_calculator.jac
