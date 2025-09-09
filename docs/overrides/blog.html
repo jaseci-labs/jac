@@ -7,7 +7,7 @@
   <div class="md-content__inner">
     <!-- Header -->
     <div class="md-hero">
-     
+
       <div class="md-hero-container">
         <h1>The Jaseci Blog</h1>
         <p>Along the way, we’ve done some amazing and noteworthy things. Have a look at some of our stories, experiences and discoveries. </p>
@@ -16,18 +16,18 @@
 
     <!-- Posts -->
     <div class="md-posts-grid">
-      {% for post in posts %} 
+      {% for post in posts %}
         <div class="md-posts-grid-item">
-          {% include "partials/post.html" %} 
+          {% include "partials/post.html" %}
         </div>
       {% endfor %}
     </div>
 
     <!-- Pagination -->
     {% if pagination %}
-     {% block pagination %} 
-        {% include "partials/pagination.html" %} 
-     {% endblock %} 
+     {% block pagination %}
+        {% include "partials/pagination.html" %}
+     {% endblock %}
     {% endif %}
   </div>
 </div>

@@ -9,7 +9,7 @@
                 {% if post.meta.cover_image %}
 
                     <img src="{{ post.meta.cover_image }}" alt="Featured image" />
-                {% endif %} 
+                {% endif %}
             </div>
         </a>
 
@@ -20,15 +20,15 @@
             <a href="{{ category.url | url }}" class="badge">
                 {{- category.title -}}
             </a>
-            {%- if loop.revindex > 1 %}, {% endif -%} 
+            {%- if loop.revindex > 1 %}, {% endif -%}
           {% endfor -%}
         </div>
         {% endif %}
-        
+
         <!-- Forbes Logo / Avatar -->
         {% if post.authors %}
             <div class="avatar-container">
-        
+
             {% for author in post.authors %}
                 <span class="md-author">
                     <img src="{{ author.avatar | url }}" alt="{{ author.name }}" />
@@ -39,16 +39,16 @@
 
         <!-- Bottom section with post details -->
         <div class="card-bottom">
-            
+
             <!-- Blog Post Title -->
-   
+
             {% if post.meta.title %}
             <h3 class="post-title">
                 <a href="{{ post.url | url }}">
                     {{ post.meta.title }}
                 </a>
             </h3>
-            
+
             {% endif %}
 
             <!-- Read More Link -->
