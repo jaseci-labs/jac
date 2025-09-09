@@ -669,16 +669,20 @@ body[data-domain="https://www.jac-lang.org/"] .feedback-container {
 }
 
 .thumbnail-link {
-    height: 13rem;
-    /* 256px */
+    /* Maintain a consistent 16:9 aspect ratio instead of fixed height */
+    aspect-ratio: 16 / 9;
+    width: 100%;
     overflow: hidden;
     position: relative;
+    display: block;
 }
 
 .thumbnail-link img {
     width: 100%;
     height: 100%;
-    object-fit: fill;
+    /* Cover preserves aspect ratio and crops overflow instead of stretching */
+    object-fit: cover;
+    display: block;
 }
 
 /* New container for multiple badges */
@@ -703,15 +707,12 @@ body[data-domain="https://www.jac-lang.org/"] .feedback-container {
 }
 
 .avatar-container {
-    position: absolute;
-    top: 10.5rem;
-    /* 160px */
+    position: relative;
+    margin-bottom: -85px;
     left: 50%;
-    transform: translateX(-50%);
-    width: 5rem;
-    /* 96px */
-    height: 5rem;
-    /* 96px */
+    transform: translate(-50%, -50%);
+    width: 4.5rem;
+    height: 4.5rem;
     border-radius: 9999px;
     box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
     background-color: #000;

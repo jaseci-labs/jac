@@ -1,20 +1,23 @@
 <!DOCTYPE html>
 <html lang="en">
-
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" href="/assets/logo.png" type="image/png" />
-    <title>Jac and Jaseci: Python Supercharged for AI Development at Scale</title>
-    <link rel="stylesheet"
-        href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/atom-one-dark.min.css">
-    <link rel="stylesheet" href="landing.css">
-</head>
+    <title>
+      Jac and Jaseci: Python Supercharged for AI Development at Scale
+    </title>
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/atom-one-dark.min.css"
+    />
+    <link rel="stylesheet" href="landing.css" />
+  </head>
 
-<body>
+  <body>
     <!-- Loading Overlay -->
     <div class="loading-overlay" id="loading-overlay">
-        <div class="loading-spinner"></div>
+      <div class="loading-spinner"></div>
     </div>
 
     <!-- Progress Bar -->
@@ -28,522 +31,723 @@
 
     <!-- Header -->
     <header class="header">
-        <!-- Top Bar -->
-        <div class="top-bar">
-            <div class="top-bar-content">
-                <div class="logo">
-                    <img src="/assets/logo.png" alt="Jaseci Logo" class="logo-img"
-                        style="width:32px; height:32px;border-radius:6px;">
-                    <span>The Jac Programming Language and Jaseci Stack</span>
-                </div>
-                <div class="header-right">
-                    <!-- <input type="text" class="search-input" placeholder="Search documentation..."> -->
-                    <a href="https://github.com/jaseci-labs/jaseci" class="github-link" target="_blank">
-                        <span>GitHub</span>
-                        <span>
-                            ⭐ <span id="github-stars">--</span> 🍴 <span id="github-forks">--</span>
-                        </span>
-                    </a>
-                    <a href="https://jac-gpt.jaseci.org" class="jac-gpt-button" target="_blank" rel="noopener noreferrer">
-                        <span>Jac GPT</span>
-                    </a>
-                </div>
-            </div>
+      <!-- Top Bar -->
+      <div class="top-bar">
+        <div class="top-bar-content">
+          <div class="logo">
+            <img
+              src="/assets/logo.png"
+              alt="Jaseci Logo"
+              class="logo-img"
+              style="width: 32px; height: 32px; border-radius: 6px"
+            />
+            <span>The Jac Programming Language and Jaseci Stack</span>
+          </div>
+          <div class="header-right">
+            <!-- <input type="text" class="search-input" placeholder="Search documentation..."> -->
+            <a
+              href="https://github.com/jaseci-labs/jaseci"
+              class="github-link"
+              target="_blank"
+            >
+              <span>GitHub</span>
+              <span>
+                ⭐ <span id="github-stars">--</span> 🍴
+                <span id="github-forks">--</span>
+              </span>
+            </a>
+            <a
+              href="https://jac-gpt.jaseci.org"
+              class="jac-gpt-button"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <span>Jac GPT</span>
+            </a>
+          </div>
         </div>
+      </div>
 
-        <!-- Floating Navigation -->
-        <div class="floating-nav">
-            <div class="nav-container">
-                <nav class="nav-links">
-                    <a href="/learn/introduction" class="nav-link">Learn</a>
-                    <!-- <a href="/internals/contrib" class="nav-link">Internals</a> -->
-                    <a href="/communityhub/roadmap" class="nav-link">Community Hub</a>
-                    <a href="/playground" class="nav-link" target="_blank">Jac Playground</a>
-                    <a href="https://jac-gpt.jaseci.org/" class="nav-link" target="_blank" rel="noopener noreferrer">Jac GPT</a>
-                </nav>
-            </div>
+      <!-- Floating Navigation -->
+      <div class="floating-nav">
+        <div class="nav-container">
+          <nav class="nav-links">
+            <a href="/learn/introduction" class="nav-link">Learn</a>
+            <!-- <a href="/internals/contrib" class="nav-link">Internals</a> -->
+            <a href="/communityhub/roadmap" class="nav-link">Community Hub</a>
+            <a href="/playground" class="nav-link" target="_blank"
+              >Jac Playground</a
+            >
+            <a
+              href="https://jac-gpt.jaseci.org/"
+              class="nav-link"
+              target="_blank"
+              rel="noopener noreferrer"
+              >Jac GPT</a
+            >
+            <a href="/blog" class="nav-link">Blog</a>
+          </nav>
         </div>
+      </div>
     </header>
 
     <!-- Main Content -->
     <main class="container">
-        <!-- Hero Section -->
-        <section class="hero">
-            <h1 class="hero-title animate-on-scroll">
-                <img src="/assets/logo.png" alt="Jaseci Logo" class="">
-                Jac and Jaseci
-            </h1>
-            <p class="hero-subtitle animate-on-scroll">
-                The Jac programming language and Jaseci runtime stack supersets Python with
-                <a href="https://arxiv.org/abs/2405.08965" target="_blank" class="fancy-link">AI-first constructs</a>,
-                <a href="https://arxiv.org/abs/2503.15812" target="_blank" class="fancy-link">object spatial
-                    programming</a>, and
-                <a href="https://arxiv.org/abs/2504.03109" target="_blank" class="fancy-link">scale-native
-                    constructs</a>.
-            </p>
-            <div class="typing-container animate-on-scroll">
-                <span class="typing-text" id="typing-text"></span>
-            </div>
-            <div class="hero-buttons animate-on-scroll">
-                <a href="#learn" class="btn-primary">Get Started</a>
-                <a href="/playground" class="btn-secondary" target="_blank">Try Playground</a>
-            </div>
-
-            <!-- Enhanced Interactive Code Demo -->
-
-            <div class="affiliations-section">
-                <h3 class="affiliations-description">Our journey is strengthened by our sponsors and partners</h3>
-                <div class="affiliations-logos">
-                    <div class="affiliation-item">
-                        <img src="/assets/org1_logo.png" alt="Affiliation 1" class="affiliation-logo">
-                        <span class="affiliation-text">Part of Nvidia Inception Program, supporting cutting edge AI innovation and scalability</span>
-                    </div>
-
-                    <div class="affiliation-item">
-                        <img src="/assets/org2_logo.png" alt="Affiliation 2" class="affiliation-logo">
-                        <span class="affiliation-text">Research led by faculty and researchers at University of Michigan, United States</span>
-                    </div>
-
-                    <div class="affiliation-item">
-                        <img src="/assets/org3_logo.png" alt="Affiliation 3" class="affiliation-logo">
-                        <span class="affiliation-text">Sponsored by NSF, advancing community driven open source ecosystem</span>
-                    </div>
-                </div>
-            </div>
-        </section>
-    </main>
-
-
-    <section class="vertical-tabs" id="what-is-jac">
-
-        <h2 class="section-title">What is Jac?</h2>
-        <div class="vt-container">
-
-            <!-- Left: Vertical Tabs Navigation -->
-            <div class="vt-vertical-tabs">
-                <button class="vt-tab-btn active" data-index="0" tabindex="0">
-                    Jac Supersets Python
-                    <a href="#" class="vt-learn-more-link" target="_blank">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                            <path
-                                d="M14,3V5H17.59L7.76,14.83L9.17,16.24L19,6.41V10H21V3M19,19H5V5H12V3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V12H19V19Z" />
-                        </svg>
-                    </a>
-                </button>
-                <button class="vt-tab-btn" data-index="1" tabindex="0">
-                    Programming Abstractions for AI
-                    <a href="#" class="vt-learn-more-link" target="_blank">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                            <path
-                                d="M14,3V5H17.59L7.76,14.83L9.17,16.24L19,6.41V10H21V3M19,19H5V5H12V3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V12H19V19Z" />
-                        </svg>
-                    </a>
-                </button>
-                <button class="vt-tab-btn" data-index="2" tabindex="0">
-                    An Agentic Programming Model
-                    <a href="#" class="vt-learn-more-link" target="_blank">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                            <path
-                                d="M14,3V5H17.59L7.76,14.83L9.17,16.24L19,6.41V10H21V3M19,19H5V5H12V3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V12H19V19Z" />
-                        </svg>
-                    </a>
-                </button>
-                <button class="vt-tab-btn" data-index="3" tabindex="0">
-                    Object-spatial programming
-                    <a href="#" class="vt-learn-more-link" target="_blank">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                            <path
-                                d="M14,3V5H17.59L7.76,14.83L9.17,16.24L19,6.41V10H21V3M19,19H5V5H12V3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V12H19V19Z" />
-                        </svg>
-                    </a>
-                </button>
-                <button class="vt-tab-btn" data-index="4" tabindex="0">
-                    Zero to Infinite Scale without Code Changes
-                    <a href="#" class="vt-learn-more-link" target="_blank">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                            <path
-                                d="M14,3V5H17.59L7.76,14.83L9.17,16.24L19,6.41V10H21V3M19,19H5V5H12V3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V12H19V19Z" />
-                        </svg>
-                    </a>
-                </button>
-            </div>
-
-            <!-- Right: Content Area -->
-            <div class="vt-main-content" id="main-content">
-                <div class="vt-content-heading" id="content-heading">
-                    Jac is a drop-in replacement for Python and supersets Python, much like Typescript supersets
-                    Javascript or C++ supersets C. It maintains full interoperability with the Python ecosystem,
-                    introducing new features to minimize complexity and accelerate AI application development. We also
-                    provide library mode.
-                </div>
-                <div class="vt-editor">
-                    <div class="vt-editor-titlebar">
-                        <div class="vt-window-controls">
-                            <span class="vt-window-control close"></span>
-                            <span class="vt-window-control minimize"></span>
-                            <span class="vt-window-control maximize"></span>
-                        </div>
-                        <div class="vt-editor-title">awesome.jac</div>
-                        <button class="vt-play-toggle-btn" id="play-toggle-btn">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                                <path d="M8 5v14l11-7z" />
-                            </svg>
-                        </button>
-                    </div>
-                    <pre id="code-block"><code class="language-python"></code></pre>
-                    <div class="vt-output-section" id="output-section">
-                        <div class="vt-output-header">Output:</div>
-                        <pre class="vt-output-content" id="output-content"></pre>
-                    </div>
-                </div>
-            </div>
+      <!-- Hero Section -->
+      <section class="hero">
+        <h1 class="hero-title animate-on-scroll">
+          <img src="/assets/logo.png" alt="Jaseci Logo" class="" />
+          Jac and Jaseci
+        </h1>
+        <p class="hero-subtitle animate-on-scroll">
+          The Jac programming language and Jaseci runtime stack supersets Python
+          with
+          <a
+            href="https://arxiv.org/abs/2405.08965"
+            target="_blank"
+            class="fancy-link"
+            >AI-first constructs</a
+          >,
+          <a
+            href="https://arxiv.org/abs/2503.15812"
+            target="_blank"
+            class="fancy-link"
+            >object spatial programming</a
+          >, and
+          <a
+            href="https://arxiv.org/abs/2504.03109"
+            target="_blank"
+            class="fancy-link"
+            >scale-native constructs</a
+          >.
+        </p>
+        <div class="typing-container animate-on-scroll">
+          <span class="typing-text" id="typing-text"></span>
+        </div>
+        <div class="hero-buttons animate-on-scroll">
+          <a href="#learn" class="btn-primary">Get Started</a>
+          <a href="/playground" class="btn-secondary" target="_blank"
+            >Try Playground</a
+          >
         </div>
 
+        <!-- Enhanced Interactive Code Demo -->
+
+        <div class="affiliations-section">
+          <h3 class="affiliations-description">
+            Our journey is strengthened by our sponsors and partners
+          </h3>
+          <div class="affiliations-logos">
+            <div class="affiliation-item">
+              <img
+                src="/assets/org1_logo.png"
+                alt="Affiliation 1"
+                class="affiliation-logo"
+              />
+              <span class="affiliation-text"
+                >Part of Nvidia Inception Program, supporting cutting edge AI
+                innovation and scalability</span
+              >
+            </div>
+
+            <div class="affiliation-item">
+              <img
+                src="/assets/org2_logo.png"
+                alt="Affiliation 2"
+                class="affiliation-logo"
+              />
+              <span class="affiliation-text"
+                >Research led by faculty and researchers at University of
+                Michigan, United States</span
+              >
+            </div>
+
+            <div class="affiliation-item">
+              <img
+                src="/assets/org3_logo.png"
+                alt="Affiliation 3"
+                class="affiliation-logo"
+              />
+              <span class="affiliation-text"
+                >Sponsored by NSF, advancing community driven open source
+                ecosystem</span
+              >
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <section class="vertical-tabs" id="what-is-jac">
+      <h2 class="section-title">What is Jac?</h2>
+      <div class="vt-container">
+        <!-- Left: Vertical Tabs Navigation -->
+        <div class="vt-vertical-tabs">
+          <button class="vt-tab-btn active" data-index="0" tabindex="0">
+            Jac Supersets Python
+            <a href="#" class="vt-learn-more-link" target="_blank">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
+                <path
+                  d="M14,3V5H17.59L7.76,14.83L9.17,16.24L19,6.41V10H21V3M19,19H5V5H12V3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V12H19V19Z"
+                />
+              </svg>
+            </a>
+          </button>
+          <button class="vt-tab-btn" data-index="1" tabindex="0">
+            Programming Abstractions for AI
+            <a href="#" class="vt-learn-more-link" target="_blank">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
+                <path
+                  d="M14,3V5H17.59L7.76,14.83L9.17,16.24L19,6.41V10H21V3M19,19H5V5H12V3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V12H19V19Z"
+                />
+              </svg>
+            </a>
+          </button>
+          <button class="vt-tab-btn" data-index="2" tabindex="0">
+            An Agentic Programming Model
+            <a href="#" class="vt-learn-more-link" target="_blank">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
+                <path
+                  d="M14,3V5H17.59L7.76,14.83L9.17,16.24L19,6.41V10H21V3M19,19H5V5H12V3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V12H19V19Z"
+                />
+              </svg>
+            </a>
+          </button>
+          <button class="vt-tab-btn" data-index="3" tabindex="0">
+            Object-spatial programming
+            <a href="#" class="vt-learn-more-link" target="_blank">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
+                <path
+                  d="M14,3V5H17.59L7.76,14.83L9.17,16.24L19,6.41V10H21V3M19,19H5V5H12V3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V12H19V19Z"
+                />
+              </svg>
+            </a>
+          </button>
+          <button class="vt-tab-btn" data-index="4" tabindex="0">
+            Zero to Infinite Scale without Code Changes
+            <a href="#" class="vt-learn-more-link" target="_blank">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
+                <path
+                  d="M14,3V5H17.59L7.76,14.83L9.17,16.24L19,6.41V10H21V3M19,19H5V5H12V3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V12H19V19Z"
+                />
+              </svg>
+            </a>
+          </button>
+        </div>
+
+        <!-- Right: Content Area -->
+        <div class="vt-main-content" id="main-content">
+          <div class="vt-content-heading" id="content-heading">
+            Jac is a drop-in replacement for Python and supersets Python, much
+            like Typescript supersets Javascript or C++ supersets C. It
+            maintains full interoperability with the Python ecosystem,
+            introducing new features to minimize complexity and accelerate AI
+            application development. We also provide library mode.
+          </div>
+          <div class="vt-editor">
+            <div class="vt-editor-titlebar">
+              <div class="vt-window-controls">
+                <span class="vt-window-control close"></span>
+                <span class="vt-window-control minimize"></span>
+                <span class="vt-window-control maximize"></span>
+              </div>
+              <div class="vt-editor-title">awesome.jac</div>
+              <button class="vt-play-toggle-btn" id="play-toggle-btn">
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                >
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+              </button>
+            </div>
+            <pre id="code-block"><code class="language-python"></code></pre>
+            <div class="vt-output-section" id="output-section">
+              <div class="vt-output-header">Output:</div>
+              <pre class="vt-output-content" id="output-content"></pre>
+            </div>
+          </div>
+        </div>
+      </div>
     </section>
     <!-- Quick Access Cards with Carousel -->
     <section class="quick-access" id="learn">
-        <div class="container">
-            <h2 class="section-title">Get Started with Jac</h2>
-            <div class="carousel-container" id="getting-started-carousel">
-                <div class="carousel-wrapper">
-                    <!-- Slide 1: Getting Started -->
-                    <div class="carousel-slide">
-                        <div class="access-card">
-                            <div class="card-icon">🚀</div>
-                            <h3 class="card-title">Getting Started</h3>
-                            <p class="card-description">
-                                Install Jac and setup your development environment. Write your first Jac program.
-                            </p>
-                            <a href="/learn/getting_started/" class="card-link">Start Guide</a>
-                        </div>
+      <div class="container">
+        <h2 class="section-title">Get Started with Jac</h2>
+        <div class="carousel-container" id="getting-started-carousel">
+          <div class="carousel-wrapper">
+            <!-- Slide 1: Getting Started -->
+            <div class="carousel-slide">
+              <div class="access-card">
+                <div class="card-icon">🚀</div>
+                <h3 class="card-title">Getting Started</h3>
+                <p class="card-description">
+                  Install Jac and setup your development environment. Write your
+                  first Jac program.
+                </p>
+                <a href="/learn/getting_started/" class="card-link"
+                  >Start Guide</a
+                >
+              </div>
 
-                        <div class="access-card">
-                            <div class="card-icon">🎯</div>
-                            <h3 class="card-title">Tour of Jac</h3>
-                            <p class="card-description">
-                                Learn core concepts including Object-Spatial Programming and AI constructs.
-                            </p>
-                            <a href="/learn/introduction/" class="card-link">Take Tour</a>
-                        </div>
+              <div class="access-card">
+                <div class="card-icon">🎯</div>
+                <h3 class="card-title">Tour of Jac</h3>
+                <p class="card-description">
+                  Learn core concepts including Object-Spatial Programming and
+                  AI constructs.
+                </p>
+                <a href="/learn/introduction/" class="card-link">Take Tour</a>
+              </div>
 
-                        <div class="access-card">
-                            <div class="card-icon">📚</div>
-                            <h3 class="card-title">The Jac Book</h3>
-                            <p class="card-description">
-                                Complete guide for Python developers transitioning to Jac programming.
-                            </p>
-                            <a href="/jac_book/" class="card-link">Read Book</a>
-                        </div>
-                    </div>
-
-                    <!-- Slide 2: Learn by Example -->
-                    <div class="carousel-slide">
-                        <div class="access-card">
-                            <div class="card-icon">🐦</div>
-                            <h3 class="card-title">LittleX Tutorial</h3>
-                            <p class="card-description">
-                                Build your own Twitter-like app with Jac. Learn object-spatial programming hands-on.
-                            </p>
-                            <a href="/learn/examples/littleX/tutorial/" class="card-link">Build Twitter</a>
-                        </div>
-
-                        <div class="access-card">
-                            <div class="card-icon">🤖</div>
-                            <h3 class="card-title">RAG Chatbot</h3>
-                            <p class="card-description">
-                                Create an AI-powered conversational chatbot with retrieval-augmented generation.
-                            </p>
-                            <a href="/learn/examples/rag_chatbot/readme/" class="card-link">Build Chatbot</a>
-                        </div>
-
-                        <div class="access-card">
-                            <div class="card-icon">🎮</div>
-                            <h3 class="card-title">AI Games</h3>
-                            <p class="card-description">
-                                Explore AI-driven applications with RPG games and fantasy trading systems.
-                            </p>
-                            <a href="/learn/examples/mtp_examples/rpg_game/" class="card-link">Play Games</a>
-                        </div>
-                    </div>
-
-                    <!-- Slide 3: Advanced Topics -->
-                    <div class="carousel-slide">
-                        <div class="access-card">
-                            <div class="card-icon">☁️</div>
-                            <h3 class="card-title">Jac Cloud</h3>
-                            <p class="card-description">
-                                Deploy your Jac applications to the cloud with built-in scaling and persistence.
-                            </p>
-                            <a href="/learn/jac-cloud/introduction/" class="card-link">Go Cloud</a>
-                        </div>
-
-                        <div class="access-card">
-                            <div class="card-icon">🧠</div>
-                            <h3 class="card-title">AI Programming</h3>
-                            <p class="card-description">
-                                Master AI integration with byLLM and multimodal models in Jac.
-                            </p>
-                            <a href="/learn/jac-byllm/quickstart/" class="card-link">AI Guide</a>
-                        </div>
-
-                        <div class="access-card">
-                            <div class="card-icon">⚡</div>
-                            <h3 class="card-title">Quick Reference</h3>
-                            <p class="card-description">
-                                Jac in 2 minutes! Quick syntax reference and cheat sheets for fast learning.
-                            </p>
-                            <a href="/learn/jac_in_a_flash/" class="card-link">Quick Start</a>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="carousel-controls">
-                    <button class="carousel-btn" id="prev-getting-started">‹</button>
-                    <div class="carousel-indicators" id="indicators-getting-started">
-                        <div class="indicator active"></div>
-                        <div class="indicator"></div>
-                        <div class="indicator"></div>
-                    </div>
-                    <button class="carousel-btn" id="next-getting-started">›</button>
-                </div>
+              <div class="access-card">
+                <div class="card-icon">📚</div>
+                <h3 class="card-title">The Jac Book</h3>
+                <p class="card-description">
+                  Complete guide for Python developers transitioning to Jac
+                  programming.
+                </p>
+                <a href="/jac_book/" class="card-link">Read Book</a>
+              </div>
             </div>
+
+            <!-- Slide 2: Learn by Example -->
+            <div class="carousel-slide">
+              <div class="access-card">
+                <div class="card-icon">🐦</div>
+                <h3 class="card-title">LittleX Tutorial</h3>
+                <p class="card-description">
+                  Build your own Twitter-like app with Jac. Learn object-spatial
+                  programming hands-on.
+                </p>
+                <a href="/learn/examples/littleX/tutorial/" class="card-link"
+                  >Build Twitter</a
+                >
+              </div>
+
+              <div class="access-card">
+                <div class="card-icon">🤖</div>
+                <h3 class="card-title">RAG Chatbot</h3>
+                <p class="card-description">
+                  Create an AI-powered conversational chatbot with
+                  retrieval-augmented generation.
+                </p>
+                <a href="/learn/examples/rag_chatbot/readme/" class="card-link"
+                  >Build Chatbot</a
+                >
+              </div>
+
+              <div class="access-card">
+                <div class="card-icon">🎮</div>
+                <h3 class="card-title">AI Games</h3>
+                <p class="card-description">
+                  Explore AI-driven applications with RPG games and fantasy
+                  trading systems.
+                </p>
+                <a
+                  href="/learn/examples/mtp_examples/rpg_game/"
+                  class="card-link"
+                  >Play Games</a
+                >
+              </div>
+            </div>
+
+            <!-- Slide 3: Advanced Topics -->
+            <div class="carousel-slide">
+              <div class="access-card">
+                <div class="card-icon">☁️</div>
+                <h3 class="card-title">Jac Cloud</h3>
+                <p class="card-description">
+                  Deploy your Jac applications to the cloud with built-in
+                  scaling and persistence.
+                </p>
+                <a href="/learn/jac-cloud/introduction/" class="card-link"
+                  >Go Cloud</a
+                >
+              </div>
+
+              <div class="access-card">
+                <div class="card-icon">🧠</div>
+                <h3 class="card-title">AI Programming</h3>
+                <p class="card-description">
+                  Master AI integration with byLLM and multimodal models in Jac.
+                </p>
+                <a href="/learn/jac-byllm/quickstart/" class="card-link"
+                  >AI Guide</a
+                >
+              </div>
+
+              <div class="access-card">
+                <div class="card-icon">⚡</div>
+                <h3 class="card-title">Quick Reference</h3>
+                <p class="card-description">
+                  Jac in 2 minutes! Quick syntax reference and cheat sheets for
+                  fast learning.
+                </p>
+                <a href="/learn/jac_in_a_flash/" class="card-link"
+                  >Quick Start</a
+                >
+              </div>
+            </div>
+          </div>
+
+          <div class="carousel-controls">
+            <button class="carousel-btn" id="prev-getting-started">‹</button>
+            <div class="carousel-indicators" id="indicators-getting-started">
+              <div class="indicator active"></div>
+              <div class="indicator"></div>
+              <div class="indicator"></div>
+            </div>
+            <button class="carousel-btn" id="next-getting-started">›</button>
+          </div>
         </div>
+      </div>
     </section>
 
     <!-- Features Section with Carousel -->
     <section class="features">
-        <div class="container">
-            <h2 class="section-title">Why Choose Jac?</h2>
-            <div class="carousel-container" id="features-carousel">
-                <div class="carousel-wrapper">
-                    <!-- Slide 1: Core Features -->
-                    <div class="carousel-slide">
-                        <div class="feature-card">
-                            <div class="feature-icon">🐍</div>
-                            <h3 class="feature-title">Jac supersets Python</h3>
-                            <p class="feature-description">
-                                Jac is a drop-in replacement for Python and supersets Python, much like Typescript
-                                supersets Javascript or C++ supersets C.
-                            </p>
-                        </div>
+      <div class="container">
+        <h2 class="section-title">Why Choose Jac?</h2>
+        <div class="carousel-container" id="features-carousel">
+          <div class="carousel-wrapper">
+            <!-- Slide 1: Core Features -->
+            <div class="carousel-slide">
+              <div class="feature-card">
+                <div class="feature-icon">🐍</div>
+                <h3 class="feature-title">Jac supersets Python</h3>
+                <p class="feature-description">
+                  Jac is a drop-in replacement for Python and supersets Python,
+                  much like Typescript supersets Javascript or C++ supersets C.
+                </p>
+              </div>
 
-                        <div class="feature-card">
-                            <div class="feature-icon">🧠</div>
-                            <h3 class="feature-title">Novel Code Construct for AI</h3>
-                            <p class="feature-description">
-                                Jac introduces a new way programmers can integrate LLMs into their code. Simply
-                                replace a function body with an llm call, need for prompt engineering.
-                            </p>
-                        </div>
-                    </div>
-
-                    <!-- Slide 2: Advanced Features -->
-                    <div class="carousel-slide">
-                        <div class="feature-card">
-                            <div class="feature-icon">🌐</div>
-                            <h3 class="feature-title">Object-Spatial Programming</h3>
-                            <p class="feature-description">
-                                Jac introduces super OOP constructs for a new paradigm called object-spatial OOP,
-                                enhancing the handling and visualization of data.
-                            </p>
-                        </div>
-
-                        <div class="feature-card">
-                            <div class="feature-icon">☁️</div>
-                            <h3 class="feature-title">Cloud Native Abstractions</h3>
-                            <p class="feature-description">
-                                Jac makes persistence and user concepts part of the language, enabling simple
-                                programs to run unchanged in terminals or across clouds.
-                            </p>
-                        </div>
-                    </div>
-
-                    <!-- Slide 3: Developer Experience -->
-                    <div class="carousel-slide">
-                        <div class="feature-card">
-                            <div class="feature-icon">⚡</div>
-                            <h3 class="feature-title">Zero DevOps Setup</h3>
-                            <p class="feature-description">
-                                Deploy applications without complex infrastructure setup. Jac handles scaling,
-                                persistence, and user management automatically.
-                            </p>
-                        </div>
-
-                        <div class="feature-card">
-                            <div class="feature-icon">🔄</div>
-                            <h3 class="feature-title">Seamless Interoperability</h3>
-                            <p class="feature-description">
-                                Use any Python library or framework. Jac maintains full compatibility with the
-                                entire Python ecosystem while adding powerful new capabilities.
-                            </p>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="carousel-controls">
-                    <button class="carousel-btn" id="prev-features">‹</button>
-                    <div class="carousel-indicators" id="indicators-features">
-                        <div class="indicator active"></div>
-                        <div class="indicator"></div>
-                        <div class="indicator"></div>
-                    </div>
-                    <button class="carousel-btn" id="next-features">›</button>
-                </div>
+              <div class="feature-card">
+                <div class="feature-icon">🧠</div>
+                <h3 class="feature-title">Novel Code Construct for AI</h3>
+                <p class="feature-description">
+                  Jac introduces a new way programmers can integrate LLMs into
+                  their code. Simply replace a function body with an llm call,
+                  need for prompt engineering.
+                </p>
+              </div>
             </div>
+
+            <!-- Slide 2: Advanced Features -->
+            <div class="carousel-slide">
+              <div class="feature-card">
+                <div class="feature-icon">🌐</div>
+                <h3 class="feature-title">Object-Spatial Programming</h3>
+                <p class="feature-description">
+                  Jac introduces super OOP constructs for a new paradigm called
+                  object-spatial OOP, enhancing the handling and visualization
+                  of data.
+                </p>
+              </div>
+
+              <div class="feature-card">
+                <div class="feature-icon">☁️</div>
+                <h3 class="feature-title">Cloud Native Abstractions</h3>
+                <p class="feature-description">
+                  Jac makes persistence and user concepts part of the language,
+                  enabling simple programs to run unchanged in terminals or
+                  across clouds.
+                </p>
+              </div>
+            </div>
+
+            <!-- Slide 3: Developer Experience -->
+            <div class="carousel-slide">
+              <div class="feature-card">
+                <div class="feature-icon">⚡</div>
+                <h3 class="feature-title">Zero DevOps Setup</h3>
+                <p class="feature-description">
+                  Deploy applications without complex infrastructure setup. Jac
+                  handles scaling, persistence, and user management
+                  automatically.
+                </p>
+              </div>
+
+              <div class="feature-card">
+                <div class="feature-icon">🔄</div>
+                <h3 class="feature-title">Seamless Interoperability</h3>
+                <p class="feature-description">
+                  Use any Python library or framework. Jac maintains full
+                  compatibility with the entire Python ecosystem while adding
+                  powerful new capabilities.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="carousel-controls">
+            <button class="carousel-btn" id="prev-features">‹</button>
+            <div class="carousel-indicators" id="indicators-features">
+              <div class="indicator active"></div>
+              <div class="indicator"></div>
+              <div class="indicator"></div>
+            </div>
+            <button class="carousel-btn" id="next-features">›</button>
+          </div>
         </div>
+      </div>
     </section>
 
     <!-- About Section -->
     <section class="about-section" id="about">
-        <div class="container">
-            <div class="about-container">
-                <div class="about-header animate-on-scroll">
-                    <h2 class="about-title">Built by Nerds and Innovators</h2>
-                    <p class="about-tagline">~ Imagine, Create, Launch ~</p>
-                </div>
+      <div class="container">
+        <div class="about-container">
+          <div class="about-header animate-on-scroll">
+            <h2 class="about-title">Built by Nerds and Innovators</h2>
+            <p class="about-tagline">~ Imagine, Create, Launch ~</p>
+          </div>
 
-                <div class="about-content animate-on-scroll">
-                    <div class="about-logo">
-                        <img src="/assets/logo.png" alt="Jaseci Logo" class="about-logo-img"
-                            style="width:80px;height:80px;border-radius:20px;box-shadow:0 10px 30px rgba(255,107,53,0.3);">
-                    </div>
-                    <div class="about-text">
-                        <p class="about-description">
-                            Jac is an innovative programming language that extends Python's semantics while maintaining
-                            full interoperability with the Python ecosystem. Created by <strong><a
-                                    href="https://github.com/marsninja" target="_blank"
-                                    class="fancy-link">@marsninja</a></strong>
-                            with contributors of <strong><a href="/communityhub/top_contributors/" target="_blank"
-                                    class="fancy-link">Jac Hackers Everywhere</a></strong>,
-                            it introduces cutting-edge programming models and abstractions specifically designed to
-                            minimize
-                            complexity and embrace AI-forward development.
-                        </p>
-                        <p class="about-mission">
-                            Our mission is to automate categories of common software systems that typically require
-                            manual implementation, making advanced programming paradigms accessible to developers
-                            worldwide.
-                        </p>
-                    </div>
-                </div>
-
-                <div class="about-stats animate-on-scroll">
-                    <div class="stat-item animated-stat">
-                        <span class="stat-number" id="github-stars">--</span>
-                        <span class="stat-label">GitHub Stars</span>
-                    </div>
-                    <div class="stat-item animated-stat">
-                        <span class="stat-number" id="github-forks">--</span>
-                        <span class="stat-label">Forks</span>
-                    </div>
-                    <div class="stat-item animated-stat">
-                        <span class="stat-number" id="github-contributors">--</span>
-                        <span class="stat-label">Contributors</span>
-                    </div>
-                </div>
-
-                <div class="about-cta">
-                    <a href="https://www.jaseci.org/the-jaseci-project/" class="btn-outline" target="_blank">Learn Our
-                        Story</a>
-                    <a href="https://discord.gg/6j3QNdtcN6" class="btn-outline" target="_blank">Join Community</a>
-                </div>
+          <div class="about-content animate-on-scroll">
+            <div class="about-logo">
+              <img
+                src="/assets/logo.png"
+                alt="Jaseci Logo"
+                class="about-logo-img"
+                style="
+                  width: 80px;
+                  height: 80px;
+                  border-radius: 20px;
+                  box-shadow: 0 10px 30px rgba(255, 107, 53, 0.3);
+                "
+              />
             </div>
+            <div class="about-text">
+              <p class="about-description">
+                Jac is an innovative programming language that extends Python's
+                semantics while maintaining full interoperability with the
+                Python ecosystem. Created by
+                <strong
+                  ><a
+                    href="https://github.com/marsninja"
+                    target="_blank"
+                    class="fancy-link"
+                    >@marsninja</a
+                  ></strong
+                >
+                with contributors of
+                <strong
+                  ><a
+                    href="/communityhub/top_contributors/"
+                    target="_blank"
+                    class="fancy-link"
+                    >Jac Hackers Everywhere</a
+                  ></strong
+                >, it introduces cutting-edge programming models and
+                abstractions specifically designed to minimize complexity and
+                embrace AI-forward development.
+              </p>
+              <p class="about-mission">
+                Our mission is to automate categories of common software systems
+                that typically require manual implementation, making advanced
+                programming paradigms accessible to developers worldwide.
+              </p>
+            </div>
+          </div>
+
+          <div class="about-stats animate-on-scroll">
+            <div class="stat-item animated-stat">
+              <span class="stat-number" id="github-stars">--</span>
+              <span class="stat-label">GitHub Stars</span>
+            </div>
+            <div class="stat-item animated-stat">
+              <span class="stat-number" id="github-forks">--</span>
+              <span class="stat-label">Forks</span>
+            </div>
+            <div class="stat-item animated-stat">
+              <span class="stat-number" id="github-contributors">--</span>
+              <span class="stat-label">Contributors</span>
+            </div>
+          </div>
+
+          <div class="about-cta">
+            <a
+              href="https://www.jaseci.org/the-jaseci-project/"
+              class="btn-outline"
+              target="_blank"
+              >Learn Our Story</a
+            >
+            <a
+              href="https://discord.gg/6j3QNdtcN6"
+              class="btn-outline"
+              target="_blank"
+              >Join Community</a
+            >
+          </div>
         </div>
+      </div>
     </section>
 
     <!-- About Section -->
     <section class="about-section" id="about">
-        <div class="container">
-            <div class="about-container">
-                <div class="about-header animate-on-scroll">
-                    <h2 class="about-title">An Intellectual Journey</h2>
-                    <p class="about-tagline">~ The story of an idea realized ~</p>
-                </div>
+      <div class="container">
+        <div class="about-container">
+          <div class="about-header animate-on-scroll">
+            <h2 class="about-title">An Intellectual Journey</h2>
+            <p class="about-tagline">~ The story of an idea realized ~</p>
+          </div>
 
-                <div class="about-content animate-on-scroll">
-                    <div class="about-text">
-                        <p class="about-description">
-                            Prologue: In 2020, the concept of a new way of developing software in the AI era is
-                            concieved and later described in a Forbes blog article.
-                            <br>
-                            <strong><a
-                                    href="https://www.forbes.com/sites/forbesbooksauthors/2021/05/18/whats-in-store-for-the-next-generation-of-ai-the-jaseci-perspective/"
-                                    target="_blank" class="card-link">What’s In Store For The Next Generation Of AI? The
-                                    Jaseci Perspective</a></strong>
-                        </p>
-                        <p class="about-description">
-                            In 2022, the idea has evolved and the first intellectual step in the journey of Jaseci and
-                            Jac is described.
-                            <br>
-                            <strong><a href="https://arxiv.org/abs/2206.08434" target="_blank" class="card-link">The
-                                    Case for a Wholistic Serverless Programming Paradigm and Full Stack Automation for
-                                    AI and Beyond -- The Philosophy of Jaseci and Jac</a></strong>
-                        </p>
-                        <p class="about-description">
-                            Then in 2023, the idea survives peer-review at Computer Architecture Letters.
-                            <br>
-                            <strong><a href="https://arxiv.org/abs/2305.09864" target="_blank" class="card-link">The
-                                    Jaseci Programming Paradigm and Runtime Stack: Building Scale-out Production
-                                    Applications Easy and Fast</a></strong>
-                        </p>
-                        <p class="about-description">
-                            In 2024, the idea that AI should be a conventional code construct in the language is
-                            conjoured and ellucidated.
-                            <br>
-                            <strong><a href="https://arxiv.org/abs/2405.08965v1" target="_blank" class="card-link">LLMs
-                                    are Meaning-Typed Code Constructs</a></strong>
-                        </p>
-                        <p class="about-description">
-                            Then in 2025, the idea survives peer-review. (pending)
-                            <br>
-                            <strong><a href="https://arxiv.org/abs/2405.08965v4" target="_blank"
-                                    class="card-link">Meaning-Typed Programming: Language Abstraction and Runtime for
-                                    Model-Integrated Applications</a></strong>
-                        </p>
-                        <p class="about-description">
-                            That same year, "data-spatial programming" described in earlier works becomes
-                            "object-spatial programming" and is rigorously defined.
-                            <br>
-                            <strong><a href="https://arxiv.org/abs/2503.15812" target="_blank"
-                                    class="card-link">Object-Spatial Programming</a></strong>
-                        </p>
-                        <p class="about-description">
-                            And, in 2025, the notion of "scale-native programming" through langauge abstraction is
-                            rigorously defined though it was first described in the original 2022 paper.
-                            <br>
-                            <strong><a href="https://arxiv.org/abs/2504.03109" target="_blank"
-                                    class="card-link">Extending Object-Spatial Semantics for Scale Native
-                                    Programming</a></strong>
-                        </p>
-                        <p class="about-description">
-                            And the journey continues...
-                        </p>
-                    </div>
-                </div>
-
+          <div class="about-content animate-on-scroll">
+            <div class="about-text">
+              <p class="about-description">
+                Prologue: In 2020, the concept of a new way of developing
+                software in the AI era is concieved and later described in a
+                Forbes blog article.
+                <br />
+                <strong
+                  ><a
+                    href="https://www.forbes.com/sites/forbesbooksauthors/2021/05/18/whats-in-store-for-the-next-generation-of-ai-the-jaseci-perspective/"
+                    target="_blank"
+                    class="card-link"
+                    >What’s In Store For The Next Generation Of AI? The Jaseci
+                    Perspective</a
+                  ></strong
+                >
+              </p>
+              <p class="about-description">
+                In 2022, the idea has evolved and the first intellectual step in
+                the journey of Jaseci and Jac is described.
+                <br />
+                <strong
+                  ><a
+                    href="https://arxiv.org/abs/2206.08434"
+                    target="_blank"
+                    class="card-link"
+                    >The Case for a Wholistic Serverless Programming Paradigm
+                    and Full Stack Automation for AI and Beyond -- The
+                    Philosophy of Jaseci and Jac</a
+                  ></strong
+                >
+              </p>
+              <p class="about-description">
+                Then in 2023, the idea survives peer-review at Computer
+                Architecture Letters.
+                <br />
+                <strong
+                  ><a
+                    href="https://arxiv.org/abs/2305.09864"
+                    target="_blank"
+                    class="card-link"
+                    >The Jaseci Programming Paradigm and Runtime Stack: Building
+                    Scale-out Production Applications Easy and Fast</a
+                  ></strong
+                >
+              </p>
+              <p class="about-description">
+                In 2024, the idea that AI should be a conventional code
+                construct in the language is conjoured and ellucidated.
+                <br />
+                <strong
+                  ><a
+                    href="https://arxiv.org/abs/2405.08965v1"
+                    target="_blank"
+                    class="card-link"
+                    >LLMs are Meaning-Typed Code Constructs</a
+                  ></strong
+                >
+              </p>
+              <p class="about-description">
+                Then in 2025, the idea survives peer-review. (pending)
+                <br />
+                <strong
+                  ><a
+                    href="https://arxiv.org/abs/2405.08965v4"
+                    target="_blank"
+                    class="card-link"
+                    >Meaning-Typed Programming: Language Abstraction and Runtime
+                    for Model-Integrated Applications</a
+                  ></strong
+                >
+              </p>
+              <p class="about-description">
+                That same year, "data-spatial programming" described in earlier
+                works becomes "object-spatial programming" and is rigorously
+                defined.
+                <br />
+                <strong
+                  ><a
+                    href="https://arxiv.org/abs/2503.15812"
+                    target="_blank"
+                    class="card-link"
+                    >Object-Spatial Programming</a
+                  ></strong
+                >
+              </p>
+              <p class="about-description">
+                And, in 2025, the notion of "scale-native programming" through
+                langauge abstraction is rigorously defined though it was first
+                described in the original 2022 paper.
+                <br />
+                <strong
+                  ><a
+                    href="https://arxiv.org/abs/2504.03109"
+                    target="_blank"
+                    class="card-link"
+                    >Extending Object-Spatial Semantics for Scale Native
+                    Programming</a
+                  ></strong
+                >
+              </p>
+              <p class="about-description">And the journey continues...</p>
             </div>
+          </div>
         </div>
+      </div>
     </section>
 
     <!-- Footer -->
     <footer class="footer">
-        <div class="container">
-            <div class="footer-content">
-                <div class="footer-links">
-                    <a href="https://github.com/Jaseci-Labs/jaseci" target="_blank">GitHub</a>
-                    <a href="https://discord.gg/6j3QNdtcN6" target="_blank">Community</a>
-                    <a href="/learn/getting_started/">Documentation</a>
-                </div>
-                <p>© 2025 Jac Hackers Everywhere. All rights reserved.</p>
-                <p style="margin-top: 10px; color: #666;">Built with passion for innovative programming languages</p>
-            </div>
+      <div class="container">
+        <div class="footer-content">
+          <div class="footer-links">
+            <a href="https://github.com/Jaseci-Labs/jaseci" target="_blank"
+              >GitHub</a
+            >
+            <a href="https://discord.gg/6j3QNdtcN6" target="_blank"
+              >Community</a
+            >
+            <a href="/learn/getting_started/">Documentation</a>
+          </div>
+          <p>© 2025 Jac Hackers Everywhere. All rights reserved.</p>
+          <p style="margin-top: 10px; color: #666">
+            Built with passion for innovative programming languages
+          </p>
         </div>
+      </div>
     </footer>
 
     <script src="/js/landing.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/python.min.js"></script>
-
-</body>
-
+  </body>
 </html>
