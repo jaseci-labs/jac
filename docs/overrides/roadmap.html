@@ -1,0 +1,288 @@
+{% extends "main.html" %} {% block content %}
+<main class="ch-community">
+  <!-- Hero -->
+  <section class="ch-hero">
+    <div class="ch-container">
+      <div class="ch-hero__icon">
+        <svg
+          width="56"
+          height="56"
+          viewBox="0 0 24 24"
+          fill="none"
+          aria-hidden="true"
+        >
+          <circle
+            cx="12"
+            cy="12"
+            r="10"
+            stroke="currentColor"
+            stroke-width="2"
+          />
+          <circle cx="12" cy="12" r="3" fill="currentColor" />
+          <path
+            d="M12 2V5M12 19v3M22 12h-3M5 12H2"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+          />
+        </svg>
+      </div>
+      <h1 class="ch-hero__title">Community</h1>
+      <div class="ch-hero__subhead">
+        <div class="ch-hero__badge">
+          <svg
+            width="28"
+            height="28"
+            viewBox="0 0 24 24"
+            fill="none"
+            aria-hidden="true"
+          >
+            <circle
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              stroke-width="2"
+            />
+            <circle cx="12" cy="12" r="3" fill="currentColor" />
+          </svg>
+          <h2 class="ch-hero__subtitle">
+            Build the Future of AI with the Jaseci Community
+          </h2>
+        </div>
+      </div>
+      <p class="ch-hero__lead">
+        Whether you're a developer building your first program, a researcher
+        pushing the boundaries of what's possible, or an enthusiast exploring
+        the future of technology, this is your hub to connect, learn, and
+        contribute.
+      </p>
+      <p class="ch-hero__cta-line">
+        Join us in building the next generation of AI applications.
+      </p>
+    </div>
+  </section>
+
+  <!-- Connect & Discuss -->
+  <section class="ch-channels">
+    <div class="ch-container">
+      <h2 class="ch-section-title">Connect & Discuss</h2>
+
+      <div class="ch-channels__grid">
+        <!-- Discord -->
+        <article class="ch-card">
+          <div class="ch-card__header">
+            <span class="ch-card__icon" aria-hidden="true">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                <path
+                  d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                />
+              </svg>
+            </span>
+            <h3 class="ch-card__title">Discord</h3>
+          </div>
+          <p class="ch-card__text">
+            Jump into the conversation and get help from the community.
+          </p>
+          <a
+            class="ch-button ch-button--outline"
+            href="https://discord.com"
+            target="_blank"
+            rel="noopener"
+            >Visit Discord</a
+          >
+        </article>
+
+        <!-- GitHub -->
+        <article class="ch-card">
+          <div class="ch-card__header">
+            <span class="ch-card__icon" aria-hidden="true">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                <path
+                  d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                />
+              </svg>
+            </span>
+            <h3 class="ch-card__title">GitHub</h3>
+          </div>
+          <p class="ch-card__text">
+            Have an idea or found a bug? Help us improve Jaseci.
+          </p>
+          <a
+            class="ch-button ch-button--outline"
+            href="https://github.com/jaseci-labs"
+            target="_blank"
+            rel="noopener"
+            >Visit GitHub</a
+          >
+        </article>
+
+        <!-- X -->
+        <article class="ch-card">
+          <div class="ch-card__header">
+            <span class="ch-card__icon" aria-hidden="true">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                <path
+                  d="M18 6 6 18M6 6l12 12"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                />
+              </svg>
+            </span>
+            <h3 class="ch-card__title">X</h3>
+          </div>
+          <p class="ch-card__text">
+            Stay in the loop with our latest news and announcements.
+          </p>
+          <a
+            class="ch-button ch-button--outline"
+            href="https://x.com"
+            target="_blank"
+            rel="noopener"
+            >Visit X</a
+          >
+        </article>
+
+        <!-- LinkedIn -->
+        <article class="ch-card">
+          <div class="ch-card__header">
+            <span class="ch-card__icon" aria-hidden="true">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                <path
+                  d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6Z"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                />
+                <rect
+                  x="2"
+                  y="9"
+                  width="4"
+                  height="12"
+                  stroke="currentColor"
+                  stroke-width="2"
+                />
+                <circle
+                  cx="4"
+                  cy="4"
+                  r="2"
+                  stroke="currentColor"
+                  stroke-width="2"
+                />
+              </svg>
+            </span>
+            <h3 class="ch-card__title">LinkedIn</h3>
+          </div>
+          <p class="ch-card__text">
+            Follow our journey and connect with the team professionally.
+          </p>
+          <a
+            class="ch-button ch-button--outline"
+            href="https://linkedin.com"
+            target="_blank"
+            rel="noopener"
+            >Visit LinkedIn</a
+          >
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- Newsletter -->
+  <section class="ch-newsletter">
+    <div class="ch-container">
+      <div class="ch-newsletter__panel">
+        <h2 class="ch-newsletter__title">Subscribe to Our Newsletter</h2>
+        <p class="ch-newsletter__intro">
+          Get the latest project updates, deep dives into new features, and
+          community highlights delivered directly to your inbox. No spam, just
+          valuable insights for building with Jaseci.
+        </p>
+
+        <form class="ch-form" autocomplete="off">
+          <div class="ch-form__group">
+            <label class="ch-form__label" for="email">Email *</label>
+            <input
+              class="ch-form__input"
+              id="email"
+              name="email"
+              type="email"
+              placeholder="Enter your email"
+              required
+            />
+          </div>
+
+          <div class="ch-form__row">
+            <div class="ch-form__group">
+              <label class="ch-form__label" for="first-name">First name</label>
+              <input
+                class="ch-form__input"
+                id="first-name"
+                name="first-name"
+                type="text"
+                placeholder="Enter first name"
+              />
+            </div>
+            <div class="ch-form__group">
+              <label class="ch-form__label" for="last-name">Last name</label>
+              <input
+                class="ch-form__input"
+                id="last-name"
+                name="last-name"
+                type="text"
+                placeholder="Enter last name"
+              />
+            </div>
+          </div>
+
+          <button
+            class="ch-button ch-button--solid ch-button--block"
+            type="submit"
+          >
+            Subscribe
+          </button>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <!-- Contact -->
+  <section class="ch-contact">
+    <div class="ch-container ch-contact__container">
+      <h2 class="ch-contact__title">Have a Question or Feedback?</h2>
+      <p class="ch-contact__text">
+        For general inquiries, partnership opportunities, or feedback about the
+        community itself, please don't hesitate to reach out to us directly.
+      </p>
+      <a class="ch-button ch-button--solid" href="mailto:contact@jaseci.org">
+        <span class="ch-button__icon" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+            <rect
+              x="2"
+              y="4"
+              width="20"
+              height="16"
+              rx="2"
+              stroke="currentColor"
+              stroke-width="2"
+            />
+            <path
+              d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"
+              stroke="currentColor"
+              stroke-width="2"
+            />
+          </svg>
+        </span>
+        Send Email
+      </a>
+    </div>
+  </section>
+</main>
+{% endblock %}
