@@ -141,17 +141,17 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
 
         reserved_keywords = [v for _, v in TOKEN_MAP.items()]
 
-        value = node.name if node.name not in reserved_keywords else f"<>{node.name}"
         name = uni.Name(
             orig_src=self.orig_src,
             name=Tok.NAME,
-            value=value,
+            value=node.name,
             line=node.lineno,
             end_line=node.end_lineno if node.end_lineno else node.lineno,
             col_start=node.col_offset,
             col_end=node.col_offset + len(node.name),
             pos_start=0,
             pos_end=0,
+            is_kwesc=(node.name in reserved_keywords),
         )
         body = [self.convert(i) for i in node.body]
         valid = [i for i in body if isinstance(i, (uni.CodeBlockStmt))]
@@ -285,8 +285,8 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
                 and body_stmt.signature.params
             ):
                 for param in body_stmt.signature.params:
-                    if param.name.value == "self":
-                        param.type_tag = uni.SubTag[uni.Expr](name, kid=[name])
+                    if param.name.value == "self" and param.type_tag:
+                        param.type_tag.tag.value = name.value
         doc = (
             body[0].expr
             if isinstance(body[0], uni.ExprStmt)
@@ -748,17 +748,14 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
         attribute = uni.Name(
             orig_src=self.orig_src,
             name=Tok.NAME,
-            value=(
-                ("<>" + node.attr)
-                if node.attr == "init"
-                else "init" if node.attr == "__init__" else node.attr
-            ),
+            value="init" if node.attr == "__init__" else node.attr,
             line=node.lineno,
             end_line=node.end_lineno if node.end_lineno else node.lineno,
             col_start=node.col_offset,
             col_end=node.col_offset + len(node.attr),
             pos_start=0,
             pos_end=0,
+            is_kwesc=node.attr == "init",
         )
         if isinstance(value, uni.Expr):
             return uni.AtomTrailer(
@@ -1680,18 +1677,17 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
             for _, v in TOKEN_MAP.items()
             if v not in ["float", "int", "str", "bool", "self"]
         ]
-
-        value = node.id if node.id not in reserved_keywords else f"<>{node.id}"
         ret = uni.Name(
             orig_src=self.orig_src,
             name=Tok.NAME,
-            value=value,
+            value=node.id,
             line=node.lineno,
             end_line=node.end_lineno if node.end_lineno else node.lineno,
             col_start=node.col_offset,
             col_end=node.col_offset + len(node.id),
             pos_start=0,
             pos_end=0,
+            is_kwesc=(node.id in reserved_keywords),
         )
         return ret
 
@@ -1735,18 +1731,18 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
 
         names: list[uni.NameAtom] = []
         for name in node.names:
-            value = name if name not in reserved_keywords else f"<>{name}"
             names.append(
                 uni.Name(
                     orig_src=self.orig_src,
                     name=Tok.NAME,
-                    value=value,
+                    value=name,
                     line=node.lineno,
                     end_line=node.end_lineno if node.end_lineno else node.lineno,
                     col_start=node.col_offset,
                     col_end=node.col_offset + len(name),
                     pos_start=0,
                     pos_end=0,
+                    is_kwesc=(name in reserved_keywords),
                 )
             )
         return uni.NonLocalStmt(target=names, kid=names)
@@ -2056,17 +2052,17 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
             if v not in ["float", "int", "str", "bool", "self"]
         ]
 
-        value = node.arg if node.arg not in reserved_keywords else f"<>{node.arg}"
         name = uni.Name(
             orig_src=self.orig_src,
             name=Tok.NAME,
-            value=value,
+            value=node.arg,
             line=node.lineno,
             end_line=node.end_lineno if node.end_lineno else node.lineno,
             col_start=node.col_offset,
             col_end=node.col_offset + len(node.arg),
             pos_start=0,
             pos_end=0,
+            is_kwesc=(node.arg in reserved_keywords),
         )
         ann_expr = (
             self.convert(node.annotation)
@@ -2343,19 +2339,17 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
             from jaclang.compiler import TOKEN_MAP
 
             reserved_keywords = [v for _, v in TOKEN_MAP.items()]
-            arg_value = (
-                node.arg if node.arg not in reserved_keywords else f"<>{node.arg}"
-            )
             arg = uni.Name(
                 orig_src=self.orig_src,
                 name=Tok.NAME,
-                value=arg_value,
+                value=node.arg,
                 line=node.lineno,
                 end_line=node.end_lineno if node.end_lineno else node.lineno,
                 col_start=node.col_offset,
                 col_end=node.col_offset + len(node.arg if node.arg else "_"),
                 pos_start=0,
                 pos_end=0,
+                is_kwesc=(node.arg in reserved_keywords),
             )
         value = self.convert(node.value)
         if isinstance(value, uni.Expr):

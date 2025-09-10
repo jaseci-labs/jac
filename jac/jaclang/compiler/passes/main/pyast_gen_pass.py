@@ -2400,7 +2400,7 @@ class PyastGenPass(UniPass):
                     self.sync(
                         ast3.Attribute(
                             value=cast(ast3.expr, node.target.gen.py_ast[0]),
-                            attr=(node.right.sym_name),
+                            attr=node.right.sym_name,
                             ctx=cast(ast3.expr_context, node.right.py_ctx_func()),
                         )
                     )
@@ -2997,7 +2997,7 @@ class PyastGenPass(UniPass):
             node.gen.py_ast = [self.sync(op_cls())]
 
     def exit_name(self, node: uni.Name) -> None:
-        name = node.sym_name[2:] if node.sym_name.startswith("<>") else node.sym_name
+        name = node.sym_name
         node.gen.py_ast = [self.sync(ast3.Name(id=name, ctx=node.py_ctx_func()))]
 
     def exit_float(self, node: uni.Float) -> None:

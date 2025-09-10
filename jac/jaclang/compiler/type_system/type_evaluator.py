@@ -44,6 +44,21 @@ class PrefetchedTypes:
     template_class: TypeBase | None = None
 
 
+@dataclass
+class SymbolResolutionStackEntry:
+    """Represents a single entry in the symbol resolution stack."""
+
+    symbol: uni.Symbol
+
+    # Initially true, it's set to false if a recursion
+    # is detected.
+    is_result_valid: bool = True
+
+    # Some limited forms of recursion are allowed. In these
+    # cases, a partially-constructed type can be registered.
+    partial_type: TypeBase | None = None
+
+
 class TypeEvaluator:
     """Type evaluator for JacLang."""
 
@@ -58,14 +73,55 @@ class TypeEvaluator:
         in some place then it will not be available in the evaluator, So we
         are prefetching the builtins at the constructor level once.
         """
+        self.symbol_resolution_stack: list[SymbolResolutionStackEntry] = []
         self.builtins_module = builtins_module
         self.program = program
         self.prefetch = self._prefetch_types()
 
+    # -------------------------------------------------------------------------
+    # Symbol resolution stack
+    # -------------------------------------------------------------------------
+
+    def get_index_of_symbol_resolution(self, symbol: uni.Symbol) -> int | None:
+        """Get the index of a symbol in the resolution stack."""
+        for i, entry in enumerate(self.symbol_resolution_stack):
+            if entry.symbol == symbol:
+                return i
+        return None
+
+    def push_symbol_resolution(self, symbol: uni.Symbol) -> bool:
+        """
+        Push a symbol onto the resolution stack.
+
+        Return False if recursion detected and in that case it won't push the symbol.
+        """
+        idx = self.get_index_of_symbol_resolution(symbol)
+        if idx is not None:
+            # Mark all of the entries between these two as invalid.
+            for i in range(idx, len(self.symbol_resolution_stack)):
+                entry = self.symbol_resolution_stack[i]
+                entry.is_result_valid = False
+            return False
+        self.symbol_resolution_stack.append(SymbolResolutionStackEntry(symbol=symbol))
+        return True
+
+    def pop_symbol_resolution(self, symbol: uni.Symbol) -> bool:
+        """Pop a symbol from the resolution stack."""
+        popped_entry = self.symbol_resolution_stack.pop()
+        assert popped_entry.symbol == symbol
+        return popped_entry.is_result_valid
+
     # Pyright equivalent function name = getEffectiveTypeOfSymbol.
     def get_type_of_symbol(self, symbol: uni.Symbol) -> TypeBase:
         """Return the effective type of the symbol."""
-        return self._get_type_of_symbol(symbol)
+        if self.push_symbol_resolution(symbol):
+            try:
+                return self._get_type_of_symbol(symbol)
+            finally:
+                self.pop_symbol_resolution(symbol)
+
+        # If we reached here that means we have a cyclic symbolic reference.
+        return types.UnknownType()
 
     # NOTE: This function doesn't exists in pyright, however it exists as a helper function
     # for the following functions.

@@ -548,3 +548,20 @@ class JacCliTests(TestCase):
         stdout, stderr = process.communicate()
         self.assertIn("Hello, World!", stdout)
         self.assertIn("Sum: 8", stdout)
+
+    def test_jac_run_py_bugs(self) -> None:
+        """Test jac run python files."""
+        process = subprocess.Popen(
+            [
+                "jac",
+                "run",
+                self.fixture_abs_path("jac_run_py_bugs.py"),
+            ],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        stdout, stderr = process.communicate()
+        self.assertIn("Hello, my name is Alice and I am 30 years old.", stdout)
+        self.assertIn("MyModule initialized!", stdout)

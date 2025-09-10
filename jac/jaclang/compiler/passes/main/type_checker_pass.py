@@ -36,16 +36,28 @@ class TypeCheckPass(UniPass):
     # Cache the builtins module once it parsed.
     _BUILTINS_MODULE: uni.Module | None = None
 
+    # REVIEW: Making the evaluator a static (singleton) variable to make sure only one
+    # instance is used across mulitple compilation units. This can also be attached to an
+    # attribute of JacProgram, however the evaluator is a temproary object that we dont
+    # want bound to the program for long term, Also the program is the one that will be
+    # dumped in the compiled bundle.
+    _EVALUATOR: TypeEvaluator | None = None
+
     def before_pass(self) -> None:
         """Initialize the checker pass."""
         self._load_builtins_stub_module()
         self._insert_builtin_symbols()
 
-        assert TypeCheckPass._BUILTINS_MODULE is not None
-        self.evaluator = TypeEvaluator(
-            builtins_module=TypeCheckPass._BUILTINS_MODULE,
-            program=self.prog,
-        )
+    @property
+    def evaluator(self) -> TypeEvaluator:
+        """Return the type evaluator."""
+        if TypeCheckPass._EVALUATOR is None:
+            assert TypeCheckPass._BUILTINS_MODULE is not None
+            TypeCheckPass._EVALUATOR = TypeEvaluator(
+                builtins_module=TypeCheckPass._BUILTINS_MODULE,
+                program=self.prog,
+            )
+        return TypeCheckPass._EVALUATOR
 
     # --------------------------------------------------------------------------
     # Internal helper functions

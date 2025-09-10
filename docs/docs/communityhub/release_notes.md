@@ -7,6 +7,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## jaclang 0.8.6 / jac-cloud 0.2.6 / byllm 0.4.1
 
 - **byLLM transition**: MTLLM has been transitioned to byLLM and PyPi package is renamed to `byllm`. Github actions are changed to push byllm PyPi. Alongside an mtllm PyPi will be pushed which installs latest `byllm` and produces a deprecation warning when imported as `mtllm`.
+- **Fix `jac run same_name_of_jac.py`**- there was a bug which only runs jac file if both jac and python files were having same name. It was fixed so that developers run python files which has same name as jac with `jac run` command. (Ex: `jac run example.jac`, `jac run example.py`)
+- **Fix `jac run pythonfile.py` bugs**: Few bugs such as `init` is not found, `SubTag` ast node issue, are fixed. So that developers can run `jac run` of python files without these issues.
 
 ## jaclang 0.8.5 / jac-cloud 0.2.5 / mtllm 0.4.0
 

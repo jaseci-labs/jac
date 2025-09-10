@@ -1,0 +1,4 @@
+
+with entry {
+    x = x;
+}
