@@ -22,7 +22,7 @@ In this new age of generative AI, everyone has made a major assumption for which
 
 This screenshot of Reddit and Twitter posts shows the rising curiosity about the effectiveness of small, open-source models versus their large, proprietary counterparts. Indeed, in this noisy market, there is widespread confusion and curiosity surrounding this topic. The narrative that “bigger is inherently better” is about to be challenged.
 
-![_Is bigger necessarily better when it comes to AI models? Maybe not.](../images/post-2.1.png)
+![_Is bigger necessarily better when it comes to AI models? Maybe not.](../images/post-2.1.png){ width="60%" }
 
 _Is bigger necessarily better when it comes to AI models? Maybe not._
 
@@ -48,7 +48,7 @@ We asked three simple questions. Can end users tell a quality loss in response w
 
 ## On Quality
 
-![Response quality of GPT-4 and SLMs as rated by human reviewers.](../images/post-2.2.png)
+![Response quality of GPT-4 and SLMs as rated by human reviewers.](../images/post-2.2.png){ width="40%" }
 
 _Response quality of GPT-4 and SLMs as rated by human reviewers._
 

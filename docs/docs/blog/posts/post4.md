@@ -17,7 +17,7 @@ title: "What’s In Store For The Next Generation Of AI? The Jaseci Perspective"
 
 <!-- more -->
 
-![Jason Mars talks](../images/post-4.jpg)
+![Jason Mars talks](../images/post-4.jpg){ width="50%" }
 
 _This article is based on a talk by Jason Mars at the Michigan Technology Leaders Summit, presented by SIM Detroit, on the topic of Artificial Intelligence: Actual Use Cases._
 

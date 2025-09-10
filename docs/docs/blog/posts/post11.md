@@ -9,7 +9,7 @@ tags:
   - Developers
 authors:
   - jaseci
-cover_image: images/post-11.jpg
+cover_image: images/post-11-1.jpg
 title: "Setting Up Jaseci On Apple M1 Macs (ARM Processors)"
 ---
 
@@ -17,7 +17,7 @@ title: "Setting Up Jaseci On Apple M1 Macs (ARM Processors)"
 
 <!-- more -->
 
-![Processor](../images/post-11-1.jpg)
+![Processor](../images/post-11-1.jpg){ width="60%" }
 
 Core Jaseci and its built-in libraries run great on an M1 mac, with Rosetta enabled. However, using packages such as use_qa can result in errors such as Illegal instruction: 4, followed by python crashing and a VERY LONG list of errors, most of which you cannot make sense of…
 

@@ -17,7 +17,7 @@ title: "V75’s Jaseci Apprenticeship Program"
 
 <!-- more -->
 
-![Jason Mars talks](../images/post-7.png)
+![Jason Mars talks](../images/post-7.png){ width="50%" }
 
 _This article is based on a talk by Jason Mars at the Michigan Technology Leaders Summit, presented by SIM Detroit, on the topic of Artificial Intelligence: Actual Use Cases._
 

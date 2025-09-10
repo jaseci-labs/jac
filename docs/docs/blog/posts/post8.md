@@ -17,7 +17,7 @@ title: "A Jaseci Outreach Story"
 
 <!-- more -->
 
-![Jason Mars talks](../images/post-8.png)
+![Jason Mars talks](../images/post-8.png){ width="60%" }
 
 _This article is based on a talk by Jason Mars at the Michigan Technology Leaders Summit, presented by SIM Detroit, on the topic of Artificial Intelligence: Actual Use Cases._
 

@@ -17,7 +17,7 @@ title: "Harnessing the Power of Generative AI: Insights and Use Cases from Jason
 
 <!-- more -->
 
-![Jason Mars talks](../images/post-1.png)
+![Jason Mars talks](../images/post-1.png){ width="80%" }
 
 _This article is based on a talk by Jason Mars at the Michigan Technology Leaders Summit, presented by SIM Detroit, on the topic of Artificial Intelligence: Actual Use Cases._
 

@@ -17,7 +17,7 @@ title: "Inter-American Development Bank funded Jaseci AI apprenticeship program 
 
 <!-- more -->
 
-![development](../images/post-12.png)
+![development](../images/post-12.png){ width="60%" }
 
 Select participants from the Jaseci AI / Spark program, which saw nearly two hundred Guyanese youth upskilled in leadership and AI tracks, gained the opportunity to further their foundational AI training through the Jaseci AI apprenticeship program. This program was funded by the Inter-American Development Bank (IDB) Lab under project GY-T1162 – Developing Guyana’s ICT Sector. The IDB is a development-focused bank that provides multilateral financing and expertise for sustainable economic and institutional development in Latin America and the Caribbean. The project’s executing agency, Nexus Hub Inc., in collaboration with Jaseci Labs LLC worked with local technology firm, V75 Inc. to facilitate the industrial attachment of ten (10) graduates from the Jaseci AI / Spark program comprising individuals from high school, the University of Guyana, Computer Science Department and local industry.
 
