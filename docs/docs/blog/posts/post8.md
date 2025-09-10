@@ -4,9 +4,9 @@ date:
   updated: 2024-01-02
 
 categories:
-  - Developer
+  - Developers
 tags:
-  - Developer
+  - Developers
 authors:
   - jaseci
 cover_image: images/post-8.png

@@ -723,11 +723,13 @@ body[data-domain="https://www.jac-lang.org/"] .feedback-container {
 }
 
 .avatar-container img {
-    width: 100%;
-    height: 100%;
+    max-width: 50%;
+    height: auto;
     object-fit: contain;
     padding: 0.5rem;
     border-radius: 100%;
+    display: block;
+    margin: auto;
     /* 8px */
 }
 
@@ -740,7 +742,7 @@ body[data-domain="https://www.jac-lang.org/"] .feedback-container {
 }
 
 .post-title {
-    font-size: 20px;
+    font-size: 18px;
     font-weight: 400;
     color: #111827;
     margin-bottom: 1rem;

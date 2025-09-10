@@ -4,9 +4,9 @@ date:
   updated: 2024-01-02
 
 categories:
-  - Developer
+  - Developers
 tags:
-  - Developer
+  - Developers
 authors:
   - v75
 cover_image: images/post-6.png

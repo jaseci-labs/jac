@@ -75,4 +75,5 @@ Indeed, Jaseci Labs is now helping businesses tailor their own small models for 
 We encourage you to delve into the peer-reviewed analysis presented in our paper. Let the truth behind this rigorous analysis guide your decisions as you navigate the future of AI, and consider how embracing smaller models could not only enhance your technological endeavors but also democratize access to this groundbreaking field.
 
 This article was originally posted on Forbes.com, click the link below to read the complete article.
-https://www.forbes.com/sites/forbesbooksauthors/2024/03/21/a-whale-of-a-tale-the-size-matters-misconception-for-generative-ai/?sh=40121c8c581a
+
+[Read the full article on Forbes](https://www.forbes.com/sites/forbesbooksauthors/2024/03/21/a-whale-of-a-tale-the-size-matters-misconception-for-generative-ai/?sh=40121c8c581a)
