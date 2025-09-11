@@ -884,14 +884,69 @@ Calculation History:
     {
         tagline: "Zero to Infinite Scale without Code Changes",
         summary: `Jac's cloud-native abstractions make persistence and user concepts part of the language so that simple programs can run unchanged locally or in the cloud.`,
-        filename: "cloud_scaling.jac",
+        filename: "littleX.jac",
         code: `
-# Example: Run unchanged locally or in the cloud!
-def scale_demo():
-    print("Scaling with Jac is seamless!")
+# LittleX - Social Media Platform
+# Runs locally or scales to millions of users without code changes!
+
+node Profile {
+    has username: str = "";
+
+    can follow with follow_request entry {
+        [root-->(\`?Profile)][0] +>:Follow():+> self;
+        report "Following " + self.username;
+    }
+}
+
+node Tweet {
+    has content: str;
+    has created_at: str = datetime.now().strftime("%Y-%m-%d %H:%M:%S");
+
+    can like with like_tweet entry {
+        self +>:Like():+> [root-->(\`?Profile)][0];
+        report "Tweet liked!";
+    }
+}
+
+edge Follow {}
+edge Post {}
+edge Like {}
+
+walker visit_profile {
+    can visit_profile with \`root entry {
+        visit [-->(\`?Profile)] else {
+            new_profile = here ++> Profile();
+            grant(new_profile[0], level=ConnectPerm);
+            visit new_profile;
+        }
+    }
+}
+
+walker create_tweet ( visit_profile ) {
+    has content: str;
+
+    can tweet with Profile entry {
+        embedding = vectorizer.fit_transform([self.content]).toarray().tolist();
+        tweet_node =
+            here +>: Post() :+> Tweet(content=self.content, embedding=embedding);
+        grant(tweet_node[0], level=ConnectPerm);
+        report tweet_node ;
+    }
+}
+
+# Auto-generated REST API endpoints:
+# POST /walker/visit_profile - Create new user
+# POST /walker/create_tweet - Create new tweet
+
 `,
         codeLang: "python",
-        output: "Scaling with Jac is seamless!",
+        output: `$ jac serve 'littleX.jac'
+INFO - DATABASE_HOST is not available! Using LocalDB...
+INFO:     Started server process [341135]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:    Navigate to http://0.0.0.0:8000/docs to view Swagger docs`,
         link: "https://www.jac-lang.org/learn/jac-cloud/introduction/"
     }
 ];
