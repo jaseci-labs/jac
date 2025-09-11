@@ -15,6 +15,7 @@ import example4 from '../assets/example-4.png';
 
 // Import JAC examples
 import firstexampleCode from '../assets/firstexample.jac?raw';
+import firstexamplecodepython from '../assets/firstexample.py?raw';
 import areyouaiCode from '../assets/areyouai.jac?raw';
 import personalityfinderCode from '../assets/personalityfinder.jac?raw';
 import searchbetterCode from '../assets/searchbetter.jac?raw';
@@ -237,13 +238,20 @@ const Index = () => {
               <h4 className="text-section mb-4">How to use byLLM?</h4>
             </div>
 
-
-            <div className="max-w-4xl mx-auto mb-8">
-  <CodeBlock
-    code={firstexampleCode}
-    language="jac"
-  />
-</div>
+          <div className="max-w-4xl mx-auto mb-8">
+              <Tabs defaultValue="jac" className="w-full">
+                <TabsList className="grid w-full grid-cols-2 mb-4">
+                  <TabsTrigger value="jac">Jac</TabsTrigger>
+                  <TabsTrigger value="python">Python</TabsTrigger>
+                </TabsList>
+                <TabsContent value="jac">
+                  <CodeBlock code={firstexampleCode} language="jac" />
+                </TabsContent>
+                <TabsContent value="python">
+                  <CodeBlock code={firstexamplecodepython} language="python" />
+                </TabsContent>
+              </Tabs>
+            </div>
 
               <div className="text-center mb-16">
               <h4 className="text-section mb-4">IT IS THAT SIMPLE!</h4>
