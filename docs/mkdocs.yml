@@ -124,7 +124,7 @@ nav:
           - Compiler Integration: "internals/planning_specs/native_type_system/compiler_integration.md"
           - Let's Build: "internals/planning_specs/native_type_system/lets_build.md"
 
-
+  - About Us: aboutus.html
   - Jac Playground:
     - Playground: "/playground/"
 
