@@ -652,7 +652,7 @@ body[data-domain="https://www.jac-lang.org/"] .feedback-container {
 
 .ch-community .ch-newsletter {
     padding: 3.5rem 0;
-    background: linear-gradient(to bottom, #0b0b0c, #18181b);
+    /* background: linear-gradient(to bottom, #0b0b0c, #18181b); */
 }
 
 .ch-community .ch-contact {
@@ -722,12 +722,12 @@ body[data-domain="https://www.jac-lang.org/"] .feedback-container {
 .ch-channels__grid {
     display: grid;
     grid-template-columns: 1fr;
-    gap: 1rem;
+    gap: 2rem;
 }
 
 @media (min-width: 768px) {
     .ch-channels__grid {
-        grid-template-columns: repeat(2, 1fr);
+        grid-template-columns: repeat(3, 1fr);
         gap: 1.25rem;
     }
 }
@@ -827,7 +827,6 @@ body[data-domain="https://www.jac-lang.org/"] .feedback-container {
 
 /* Newsletter */
 .ch-newsletter__panel {
-    background: #18181b;
     border: 2px solid rgba(249, 115, 22, 0.24);
     border-radius: .9rem;
     box-shadow: 0 0 24px rgba(249, 115, 22, .24), 0 0 10px rgba(249, 115, 22, .12);
