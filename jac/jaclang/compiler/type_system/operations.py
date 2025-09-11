@@ -95,8 +95,8 @@ def get_type_of_binary_operation(
 
         # FIXME: We need to have validateCallArgs() method and do a check here before returning.
         return (
-            evaluator.get_type_of_magic_method_call(left_type, magic)
-            or evaluator.get_type_of_magic_method_call(right_type, rmagic)
+            evaluator.get_type_of_magic_method_call(left_type, magic, expr.op)
+            or evaluator.get_type_of_magic_method_call(right_type, rmagic, expr.op)
             or jtypes.UnknownType()
         )
 

@@ -510,15 +510,19 @@ class JacLangServer(JacProgram , LanguageServer) {
             } elif isinstance(node_selected, uni.ElementStmt) {
                 return None;
             }
-            decl_node =
-                node_selected.parent.body.target
-                if node_selected.parent
+
+            decl_node = node_selected;
+            if (node_selected.parent
                 and isinstance(node_selected.parent, uni.AstImplNeedingNode)
                 and isinstance(node_selected.parent.body, uni.ImplDef)
+            ) {
+                decl_node = node_selected.parent.body.target;
+            } elif (node_selected.sym and node_selected.sym.decl) {
+                decl_node = node_selected.sym.decl;
+            } elif (isinstance(node_selected, uni.Token) and node_selected.tok_sym) {
+                decl_node = node_selected.tok_sym.decl;
+            }
 
-                else node_selected.sym.decl
-                if node_selected.sym and node_selected.sym.decl
-                else node_selected;
             if isinstance(decl_node, list) {
                 valid_path = decl_node[0].loc.mod_path;
             } else {

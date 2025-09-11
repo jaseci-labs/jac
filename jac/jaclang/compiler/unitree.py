@@ -4409,6 +4409,7 @@ class Token(UniNode):
         self.c_end = col_end
         self.pos_start = pos_start
         self.pos_end = pos_end
+        self.tok_sym: Symbol | None = None
         UniNode.__init__(self, kid=[])
 
     def __repr__(self) -> str:

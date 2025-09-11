@@ -320,19 +320,26 @@ class TypeEvaluator:
 
     # TODO: This should take an argument list as parameter.
     def get_type_of_magic_method_call(
-        self, obj_type: TypeBase, method_name: str
+        self, obj_type: TypeBase, method_name: str, op: uni.Token | None = None
     ) -> TypeBase | None:
-        """Return the effective return type of a magic method call."""
+        """
+        Return the effective return type of a magic method call.
+
+        If the operator for the magic method is provided, that operator's symbol
+        will be set for the goto definition work on the operator token.
+        """
         if obj_type.category == types.TypeCategory.Class:
             # TODO: getTypeOfBoundMember() <-- Implement this if needed, for the simple case
             # we'll directly call member lookup.
             #
-            # WE'RE DAVIATING FROM PYRIGHT FOR THIS METHOD HEAVILY HOWEVER THIS CAN BE RE-WRITTEN IF NEEDED.
+            # WE'RE DEVIATING FROM PYRIGHT FOR THIS METHOD HEAVILY HOWEVER THIS CAN BE RE-WRITTEN IF NEEDED.
             #
             assert isinstance(obj_type, types.ClassType)  # <-- To make typecheck happy.
             if member := self._lookup_class_member(obj_type, method_name):
                 member_ty = self.get_type_of_symbol(member.symbol)
                 if isinstance(member_ty, types.FunctionType):
+                    if op is not None:
+                        op.tok_sym = member.symbol
                     return member_ty.return_type
                 # If we reached here, magic method is not a function.
                 # 1. recursively check __call__() on the type, TODO
@@ -503,6 +510,7 @@ class TypeEvaluator:
 
             case uni.Name():
                 if symbol := expr.sym_tab.lookup(expr.value, deep=True):
+                    expr.sym = symbol
                     return self.get_type_of_symbol(symbol)
 
             # TODO: More expressions.
