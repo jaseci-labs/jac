@@ -293,3 +293,8 @@ In this chapter, we've introduced the core concepts of Object-Spatial Programmin
 ---
 
 *You've now grasped the fundamental paradigm shift of OSP. Let's build the foundation with nodes and edges!*
+
+
+
+!!! info "Looking for More?"
+    For more advanced topics and the latest updates, check out **[Jac Book 2](https://github.com/jaseci-labs/jaseci/tree/main/docs/book_html)**. Explore more in-depth information to take your Jac skills even further!

@@ -314,3 +314,6 @@ Throughout this book, you'll create increasingly sophisticated applications:
 ---
 
 *Ready to revolutionize how you think about programming? Let's begin with [Chapter 1: Welcome to Jac](chapter_1.md)!*
+
+!!! info "Looking for More?"
+    For more advanced topics and the latest updates, check out **[Jac Book 2](https://github.com/jaseci-labs/jaseci/tree/main/docs/book_html)**. Explore more in-depth information to take your Jac skills even further!

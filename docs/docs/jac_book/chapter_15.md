@@ -892,3 +892,7 @@ curl -X POST http://localhost:8000/walker/generate_daily_stats \
 ---
 
 *Ready to master Jac's type system? Continue to [Chapter 17: Type System Deep Dive](chapter_16.md)!*
+
+
+!!! info "Looking for More?"
+    For more advanced topics and the latest updates, check out **[Jac Book 2](https://github.com/jaseci-labs/jaseci/tree/main/docs/book_html)**. Explore more in-depth information to take your Jac skills even further!

@@ -665,3 +665,7 @@ Understanding common pitfalls helps ensure smooth migration from Python to Jac.
     Remember: Successful migration is about embracing spatial thinking, not just syntax conversion!
 
 ---
+
+
+!!! info "Looking for More?"
+    For more advanced topics and the latest updates, check out **[Jac Book 2](https://github.com/jaseci-labs/jaseci/tree/main/docs/book_html)**. Explore more in-depth information to take your Jac skills even further!

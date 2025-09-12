@@ -731,3 +731,7 @@ Using Jac's flexible type system, we can build reusable components that are both
 ---
 
 *Ready to learn about testing and debugging? Continue to [Chapter 18: Testing and Debugging](chapter_17.md)!*
+
+
+!!! info "Looking for More?"
+    For more advanced topics and the latest updates, check out **[Jac Book 2](https://github.com/jaseci-labs/jaseci/tree/main/docs/book_html)**. Explore more in-depth information to take your Jac skills even further!

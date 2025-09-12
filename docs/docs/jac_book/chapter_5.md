@@ -481,3 +481,7 @@ with entry {
 If you are interested in learning more about byLLM, check out [ Quickstart to byLLM ](../learn/jac-byllm/with_llm.md)
 
 *Ready to learn about imports and modular programming? Continue to [Chapter 6: Imports System and File Operations](chapter_6.md)!*
+
+
+!!! info "Looking for More?"
+    For more advanced topics and the latest updates, check out **[Jac Book 2](https://github.com/jaseci-labs/jaseci/tree/main/docs/book_html)**. Explore more in-depth information to take your Jac skills even further!

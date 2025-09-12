@@ -744,3 +744,7 @@ You can create specialized entry abilities that only trigger for specific node o
 ---
 
 *Walkers and abilities are now part of your toolkit. Let's master advanced graph operations and sophisticated traversal patterns!*
+
+
+!!! info "Looking for More?"
+    For more advanced topics and the latest updates, check out **[Jac Book 2](https://github.com/jaseci-labs/jaseci/tree/main/docs/book_html)**. Explore more in-depth information to take your Jac skills even further!

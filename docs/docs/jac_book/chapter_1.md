@@ -562,3 +562,7 @@ Start thinking about problems that involve connected data, as these are the area
 ---
 
 *Ready to start your Object-Spatial Programming journey? Let's get to know Variables, Types, and Basic Syntax next!*
+
+
+!!! info "Looking for More?"
+    For more advanced topics and the latest updates, check out **[Jac Book 2](https://github.com/jaseci-labs/jaseci/tree/main/docs/book_html)**. Explore more in-depth information to take your Jac skills even further!

@@ -738,3 +738,7 @@ These fundamental concepts will be your foundation as you begin to explore the m
 ---
 
 *Now that you have a solid grasp of Jac's core syntax, you're ready to move on to the next chapter. We'll explore how to integrate AI directly into your programs and work with Jac's unique graph-based data structures.*
+
+
+!!! info "Looking for More?"
+    For more advanced topics and the latest updates, check out **[Jac Book 2](https://github.com/jaseci-labs/jaseci/tree/main/docs/book_html)**. Explore more in-depth information to take your Jac skills even further!

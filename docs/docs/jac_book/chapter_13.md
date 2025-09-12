@@ -659,3 +659,7 @@ curl -X POST http://localhost:8000/walker/get_all_counters \
 ---
 
 *Ready to explore cloud deployment? Continue to [Chapter 14: Jac Cloud Introduction](chapter_14.md)!*
+
+
+!!! info "Looking for More?"
+    For more advanced topics and the latest updates, check out **[Jac Book 2](https://github.com/jaseci-labs/jaseci/tree/main/docs/book_html)**. Explore more in-depth information to take your Jac skills even further!

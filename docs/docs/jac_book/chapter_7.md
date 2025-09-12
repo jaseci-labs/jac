@@ -308,3 +308,7 @@ These concepts form the foundation upon which Jac's most powerful paradigm is bu
 ---
 
 *You now have powerful object-oriented tools at your disposal. Let's discover how OSP takes these concepts to the next level!*
+
+
+!!! info "Looking for More?"
+    For more advanced topics and the latest updates, check out **[Jac Book 2](https://github.com/jaseci-labs/jaseci/tree/main/docs/book_html)**. Explore more in-depth information to take your Jac skills even further!

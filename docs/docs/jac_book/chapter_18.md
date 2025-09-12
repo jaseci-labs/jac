@@ -1002,3 +1002,7 @@ kubectl top pods -n littlex
 ---
 
 *Ready to optimize performance? Continue to [Chapter 20: Performance Optimization](chapter_19.md)!*
+
+
+!!! info "Looking for More?"
+    For more advanced topics and the latest updates, check out **[Jac Book 2](https://github.com/jaseci-labs/jaseci/tree/main/docs/book_html)**. Explore more in-depth information to take your Jac skills even further!

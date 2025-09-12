@@ -1181,3 +1181,7 @@ TDD works naturally with Jac's spatial programming model.
 ---
 
 *Ready to learn about deployment strategies? Continue to [Chapter 19: Deployment Strategies](chapter_18.md)!*
+
+
+!!! info "Looking for More?"
+    For more advanced topics and the latest updates, check out **[Jac Book 2](https://github.com/jaseci-labs/jaseci/tree/main/docs/book_html)**. Explore more in-depth information to take your Jac skills even further!
