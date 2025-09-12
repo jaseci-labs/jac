@@ -4421,6 +4421,43 @@ class Token(UniNode):
     def unparse(self) -> str:
         return self.value
 
+    @property
+    def sem_token(self) -> Optional[tuple[SemTokType, SemTokMod]]:
+        """Resolve semantic token."""
+        if not self.tok_sym:
+            return None
+        if isinstance(self.tok_sym.decl.name_of, BuiltinType):
+            return SemTokType.CLASS, SemTokMod.DECLARATION
+        name_of = (
+            self.tok_sym.decl.name_of
+            if self.tok_sym and not isinstance(self.tok_sym.decl.name_of, Name)
+            else self.tok_sym.decl
+        )
+        if isinstance(name_of, ModulePath):
+            return SemTokType.NAMESPACE, SemTokMod.DEFINITION
+        if isinstance(name_of, Archetype):
+            return SemTokType.CLASS, SemTokMod.DECLARATION
+        if isinstance(name_of, Enum):
+            return SemTokType.ENUM, SemTokMod.DECLARATION
+        if isinstance(name_of, Ability) and name_of.is_method:
+            return SemTokType.METHOD, SemTokMod.DECLARATION
+        if isinstance(name_of, (Ability, Test)):
+            return SemTokType.FUNCTION, SemTokMod.DECLARATION
+        if isinstance(name_of, ParamVar):
+            return SemTokType.PARAMETER, SemTokMod.DECLARATION
+        if self.tok_sym and self.tok_sym.sym_name.isupper():
+            return SemTokType.VARIABLE, SemTokMod.READONLY
+        if (
+            self.tok_sym
+            and self.tok_sym.decl.name_of == self.tok_sym.decl
+            and self.tok_sym.sym_name in dir(builtins)
+            and callable(getattr(builtins, self.tok_sym.sym_name))
+        ):
+            return SemTokType.FUNCTION, SemTokMod.DEFINITION
+        if self.tok_sym:
+            return SemTokType.PROPERTY, SemTokMod.DEFINITION
+        return None
+
 
 class Name(Token, NameAtom):
     """Name node type for Jac Ast."""

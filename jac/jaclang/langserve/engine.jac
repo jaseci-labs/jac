@@ -455,6 +455,9 @@ class JacLangServer(JacProgram , LanguageServer) {
         }
         node_selected = sem_mgr.static_sem_tokens[token_index][3];
         if node_selected {
+            if node_selected.tok_sym  {
+                node_selected = node_selected.tok_sym.decl;
+            }
             if (node_selected.sym.sym_type == SymbolType.MODULE) {
                 spec = node_selected.sym.decl.parent.resolve_relative_path();
                 if spec {
