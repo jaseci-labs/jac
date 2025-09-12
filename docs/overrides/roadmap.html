@@ -4,17 +4,48 @@
   <section class="ch-hero">
     <div class="ch-container">
       <div class="ch-hero__icon">
-        <img
-          src="/assets/logo.png"
+        <svg
           width="56"
           height="56"
-          alt=""
+          viewBox="0 0 24 24"
+          fill="none"
           aria-hidden="true"
-        />
+        >
+          <circle
+            cx="12"
+            cy="12"
+            r="10"
+            stroke="currentColor"
+            stroke-width="2"
+          />
+          <circle cx="12" cy="12" r="3" fill="currentColor" />
+          <path
+            d="M12 2V5M12 19v3M22 12h-3M5 12H2"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+          />
+        </svg>
       </div>
       <h1 class="ch-hero__title">Community</h1>
       <div class="ch-hero__subhead">
         <div class="ch-hero__badge">
+          <svg
+            width="28"
+            height="28"
+            viewBox="0 0 24 24"
+            fill="none"
+            aria-hidden="true"
+          >
+            <circle
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              stroke-width="2"
+            />
+            <circle cx="12" cy="12" r="3" fill="currentColor" />
+          </svg>
           <h2 class="ch-hero__subtitle">
             Build the Future of AI with the Jaseci Community
           </h2>
@@ -175,105 +206,48 @@
           valuable insights for building with Jaseci.
         </p>
 
-        <!-- Success message -->
-        <div
-          class="success-message"
-          id="subscribeSuccessMessage"
-          role="status"
-          aria-live="polite"
-          style="display: none"
-        >
-          You're subscribed! 🎉 Check your inbox for a confirmation email.
-        </div>
-
-        <form
-          class="ch-form"
-          id="subscribeFormElement"
-          action="https://script.google.com/macros/s/AKfycbymWiprdqUnicdK3Eq4XYT8RFk9Fz84NnRFBs0VieMlMSzTEBBElWhXMINK1LuYIcQH/exec"
-          method="POST"
-          autocomplete="off"
-          novalidate
-        >
+        <form class="ch-form" autocomplete="off">
           <div class="ch-form__group">
-            <label class="ch-form__label" for="subscribe-email">Email *</label>
+            <label class="ch-form__label" for="email">Email *</label>
             <input
               class="ch-form__input"
-              id="subscribe-email"
+              id="email"
               name="email"
               type="email"
               placeholder="Enter your email"
               required
-              inputmode="email"
-              autocomplete="email"
             />
           </div>
 
           <div class="ch-form__row">
             <div class="ch-form__group">
-              <label class="ch-form__label" for="subscribe-first-name"
-                >First name</label
-              >
+              <label class="ch-form__label" for="first-name">First name</label>
               <input
                 class="ch-form__input"
-                id="subscribe-first-name"
-                name="firstName"
+                id="first-name"
+                name="first-name"
                 type="text"
                 placeholder="Enter first name"
-                autocomplete="given-name"
               />
             </div>
             <div class="ch-form__group">
-              <label class="ch-form__label" for="subscribe-last-name"
-                >Last name</label
-              >
+              <label class="ch-form__label" for="last-name">Last name</label>
               <input
                 class="ch-form__input"
-                id="subscribe-last-name"
-                name="lastName"
+                id="last-name"
+                name="last-name"
                 type="text"
                 placeholder="Enter last name"
-                autocomplete="family-name"
               />
             </div>
           </div>
-
-          <!-- Honeypot (spam trap) -->
-          <div
-            style="
-              position: absolute;
-              left: -10000px;
-              top: auto;
-              width: 1px;
-              height: 1px;
-              overflow: hidden;
-            "
-            aria-hidden="true"
-          >
-            <label for="subscribe-hp">Leave this field empty</label>
-            <input
-              type="text"
-              id="subscribe-hp"
-              name="hp"
-              tabindex="-1"
-              autocomplete="off"
-            />
-          </div>
-
-          <!-- Hidden metadata fields -->
-          <input type="hidden" name="timestamp" id="subscribeTimestampInput" />
-          <input type="hidden" name="userAgent" id="subscribeUserAgentInput" />
 
           <button
             class="ch-button ch-button--solid ch-button--block"
             type="submit"
-            id="subscribeSubmitBtn"
-            disabled
           >
             Subscribe
           </button>
-          <p style="margin-top: 8px; color: #aaa; font-size: 0.9rem">
-            We respect your privacy. Unsubscribe anytime.
-          </p>
         </form>
       </div>
     </div>
