@@ -510,7 +510,6 @@ class TypeEvaluator:
 
             case uni.Name():
                 if symbol := expr.sym_tab.lookup(expr.value, deep=True):
-                    expr.sym = symbol
                     return self.get_type_of_symbol(symbol)
 
             # TODO: More expressions.

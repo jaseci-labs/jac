@@ -24,6 +24,7 @@ from jaclang.compiler.passes.main import (
     PyastGenPass,
     SemDefMatchPass,
     SymTabBuildPass,
+    SymTabLinkPass,
     Transform,
     TypeCheckPass,
 )
@@ -135,8 +136,11 @@ class JacProgram:
     ) -> uni.Module:
         """Convert a Jac file to an AST."""
         mod_targ = self.compile(file_path, use_str, type_check=type_check)
-        if not type_check:
-            JacImportDepsPass(ir_in=mod_targ, prog=self)
+        JacImportDepsPass(ir_in=mod_targ, prog=self)
+        for mod in self.mod.hub.values():
+            SymTabLinkPass(ir_in=mod, prog=self)
+        for mod in self.mod.hub.values():
+            DefUsePass(mod, prog=self)
         return mod_targ
 
     def run_schedule(
