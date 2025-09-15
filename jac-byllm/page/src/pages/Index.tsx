@@ -416,21 +416,27 @@ const Index = () => {
     {/* Figures */}
     <div className="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto mb-16">
       <Card>
-        <CardContent className="p-4 flex items-center justify-center">
+        <CardContent className="p-4 flex flex-col items-center justify-center">
           <img
             src={fig22}
             alt="Figure 22: Runtime Speed Comparison"
             className="max-h-72 w-auto object-contain"
           />
+          <div className="text-xs text-muted-foreground mt-2 text-center">
+            Token usage comparison between MTP and DSPy.
+          </div>
         </CardContent>
       </Card>
       <Card>
-        <CardContent className="p-4 flex items-center justify-center">
+        <CardContent className="p-4 flex flex-col items-center justify-center">
           <img
             src={fig23}
             alt="Figure 23: Cost Efficiency Comparison"
             className="max-h-72 w-auto object-contain"
           />
+          <div className="text-xs text-muted-foreground mt-2 text-center">
+            Cost and runtime speed comparison between MTP and DSPy.
+          </div>
         </CardContent>
       </Card>
     </div>
