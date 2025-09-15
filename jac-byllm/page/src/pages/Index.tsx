@@ -18,7 +18,7 @@ import firstexampleCode from '../assets/firstexample.jac?raw';
 import firstexamplecodepython from '../assets/firstexample.py?raw';
 import areyouaiCode from '../assets/areyouai.jac?raw';
 import personalityfinderCode from '../assets/personalityfinder.jac?raw';
-import searchbetterCode from '../assets/wikisearch.jac?raw';
+import wikisearchCode from '../assets/wikisearch.jac?raw';
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState('areyouai');
@@ -59,16 +59,16 @@ const Index = () => {
 
   const modelSnippets = {
     areyouai: {
-      description: 'A simple example showing how to build a Yes/No answering bot using <strong>byLLM</strong>',
+      description: 'A simple example showing how to build a Yes/No answering bot using byLLM',
       code: areyouaiCode,
     },
     personalityfinder: {
-      description: 'Use this LLM model with Google\'s advanced Gemini models',
+      description: 'Using custom types and enums as outputs without any parsing logic',
       code: personalityfinderCode,
     },
     wikisearch: {
-      description: 'Use this LLM model with Anthropic\'s sophisticated Claude models',
-      code: searchbetterCode,
+      description: 'React Loop with tool usage for wikipedia search agent',
+      code: wikisearchCode,
     }
   };
 
@@ -185,6 +185,21 @@ const Index = () => {
                 <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-primary/10 to-transparent rounded-full -translate-y-16 translate-x-16"></div>
                 <div className="relative flex items-start gap-4">
                   <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform duration-300">
+                    <div className="text-2xl">➕</div>
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-xl font-bold mb-3"> Minimal Code Changes</h3>
+                    <p className="text-muted-foreground leading-relaxed">
+                      A simple by keyword, all the complexity of prompt engineering and output parsing is hidden
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="group relative overflow-hidden rounded-2xl bg-card border border-border/50 p-8 hover:border-primary/20 transition-all duration-300 hover:shadow-lg hover:shadow-primary/10">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-primary/10 to-transparent rounded-full -translate-y-16 translate-x-16"></div>
+                <div className="relative flex items-start gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform duration-300">
                     <div className="text-2xl">🔧</div>
                   </div>
                   <div className="flex-1">
@@ -210,6 +225,22 @@ const Index = () => {
                   </div>
                 </div>
               </div>
+
+              <div className="group relative overflow-hidden rounded-2xl bg-card border border-border/50 p-8 hover:border-primary/20 transition-all duration-300 hover:shadow-lg hover:shadow-primary/10">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-primary/10 to-transparent rounded-full -translate-y-16 translate-x-16"></div>
+                <div className="relative flex items-start gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform duration-300">
+                    <div className="text-2xl">🧠</div>
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-xl font-bold mb-3">High Accuracy</h3>
+                    <p className="text-muted-foreground leading-relaxed">
+                      High accuracy right out of the box.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
             </div>
           </div>
         </section>
@@ -267,7 +298,7 @@ const Index = () => {
                 <TabsList className="grid w-full grid-cols-2 md:grid-cols-3 mb-8">
                   <TabsTrigger value="areyouai">AreYouAI</TabsTrigger>
                   <TabsTrigger value="personalityfinder">PersonalityFinder</TabsTrigger>
-                  <TabsTrigger value="wikisearch">wikisearch</TabsTrigger>
+                  <TabsTrigger value="wikisearch">WikiSearch</TabsTrigger>
                 </TabsList>
 
                 {Object.entries(modelSnippets).map(([key, snippet]) => (
@@ -287,8 +318,47 @@ const Index = () => {
           </div>
         </section>
 
+
+        {/* Examples Section */}
+        <section id="examples" className="py-12 bg-muted/30">
+          <div className="container">
+            <div className="text-center mb-16">
+              <h2 className="text-section mb-4">Examples</h2>
+              <p className="text-body-large text-muted-foreground max-w-2xl mx-auto">
+                Explore real-world applications and get inspired by what's possible
+              </p>
+            </div>
+
+            <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-2 max-w-3xl mx-auto">
+              {examples.map((example, index) => (
+                <Card
+                  key={index}
+                  className="card-interactive group cursor-pointer overflow-hidden"
+                  onClick={() => window.open(example.link, '_blank')}
+                >
+                  <div className="aspect-video overflow-hidden">
+                    <img
+                      src={example.image}
+                      alt={example.title}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    />
+                  </div>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-lg">{example.title}</CardTitle>
+                      <ExternalLink className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
+                    </div>
+                    <CardDescription dangerouslySetInnerHTML={{ __html: example.description }} />
+                    {/* <CardDescription>{example.description}</CardDescription> */}
+                  </CardHeader>
+                </Card>
+              ))}
+            </div>
+          </div>
+        </section>
+
         {/* Evaluation Metrics */}
-        <section className="py-12">
+        {/* <section className="py-12">
           <div className="container">
             <div className="text-center mb-16">
               <h2 className="text-section mb-4">Evaluation Metrics</h2>
@@ -326,7 +396,63 @@ const Index = () => {
               </Card>
             </div>
           </div>
-        </section>
+        </section> */}
+
+        {/* Runtime Speed and Cost Improvements */}
+<section className="py-12">
+  <div className="container">
+    <div className="text-center mb-16">
+      <h2 className="text-section mb-4">Runtime Speed and Cost Improvements</h2>
+      <p className="text-body-large text-muted-foreground max-w-2xl mx-auto">
+        Comparison of runtime performance and cost efficiency across frameworks
+      </p>
+    </div>
+
+    {/* Figures */}
+    <div className="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto mb-16">
+      <Card>
+        <CardContent className="p-4 flex items-center justify-center">
+          {/* Placeholder for Fig. 22 */}
+          <div className="text-muted-foreground text-sm">[Fig. 22 from paper]</div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardContent className="p-4 flex items-center justify-center">
+          {/* Placeholder for Fig. 23 */}
+          <div className="text-muted-foreground text-sm">[Fig. 23 from paper]</div>
+        </CardContent>
+      </Card>
+    </div>
+
+    {/* Code Comparison */}
+    <div className="grid md:grid-cols-2 gap-8 max-w-6xl mx-auto">
+      {/* Left side: Tabs (PE & DSPy) */}
+      <Card>
+        <CardContent className="p-0">
+          <div className="border-b flex">
+            <button className="flex-1 py-2 px-4 text-sm font-medium hover:bg-muted transition">Prompt Engineering</button>
+            <button className="flex-1 py-2 px-4 text-sm font-medium hover:bg-muted transition">DSPy</button>
+          </div>
+          <div className="p-4">
+            {/* Import your code examples dynamically here */}
+            <pre className="text-sm text-muted-foreground">[PE or DSPy code goes here]</pre>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Right side: Static byLLM code */}
+      <Card>
+        <CardContent className="p-4">
+          <h3 className="text-base font-semibold mb-2">byLLM</h3>
+          <pre className="text-sm text-muted-foreground">
+            [byLLM code example here]
+          </pre>
+        </CardContent>
+      </Card>
+    </div>
+  </div>
+</section>
+
 
         {/* How it Works */}
         {/* <section className="py-12 bg-muted/30">
@@ -411,43 +537,7 @@ const Index = () => {
           </div>
         </section>
 
-        {/* Examples Section */}
-        <section id="examples" className="py-12 bg-muted/30">
-          <div className="container">
-            <div className="text-center mb-16">
-              <h2 className="text-section mb-4">Examples</h2>
-              <p className="text-body-large text-muted-foreground max-w-2xl mx-auto">
-                Explore real-world applications and get inspired by what's possible
-              </p>
-            </div>
-
-            <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-2 max-w-3xl mx-auto">
-              {examples.map((example, index) => (
-                <Card
-                  key={index}
-                  className="card-interactive group cursor-pointer overflow-hidden"
-                  onClick={() => window.open(example.link, '_blank')}
-                >
-                  <div className="aspect-video overflow-hidden">
-                    <img
-                      src={example.image}
-                      alt={example.title}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                    />
-                  </div>
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-lg">{example.title}</CardTitle>
-                      <ExternalLink className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
-                    </div>
-                    <CardDescription dangerouslySetInnerHTML={{ __html: example.description }} />
-                    {/* <CardDescription>{example.description}</CardDescription> */}
-                  </CardHeader>
-                </Card>
-              ))}
-            </div>
-          </div>
-        </section>
+        
 
         {/* References */}
         <section className="py-12">

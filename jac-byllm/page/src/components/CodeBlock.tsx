@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Copy, Check } from 'lucide-react';
 import { Button } from './ui/button';
 import Prism from 'prismjs';
+import 'prismjs/components/prism-python';
 import 'prismjs/themes/prism-tomorrow.css';
 import 'prismjs/plugins/line-numbers/prism-line-numbers.css';
 import 'prismjs/plugins/line-numbers/prism-line-numbers';
