@@ -18,7 +18,7 @@ import firstexampleCode from '../assets/firstexample.jac?raw';
 import firstexamplecodepython from '../assets/firstexample.py?raw';
 import areyouaiCode from '../assets/areyouai.jac?raw';
 import personalityfinderCode from '../assets/personalityfinder.jac?raw';
-import searchbetterCode from '../assets/searchbetter.jac?raw';
+import searchbetterCode from '../assets/wikisearch.jac?raw';
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState('areyouai');
@@ -66,7 +66,7 @@ const Index = () => {
       description: 'Use this LLM model with Google\'s advanced Gemini models',
       code: personalityfinderCode,
     },
-    searchbetter: {
+    wikisearch: {
       description: 'Use this LLM model with Anthropic\'s sophisticated Claude models',
       code: searchbetterCode,
     }
@@ -267,7 +267,7 @@ const Index = () => {
                 <TabsList className="grid w-full grid-cols-2 md:grid-cols-3 mb-8">
                   <TabsTrigger value="areyouai">AreYouAI</TabsTrigger>
                   <TabsTrigger value="personalityfinder">PersonalityFinder</TabsTrigger>
-                  <TabsTrigger value="searchbetter">SearchBetter</TabsTrigger>
+                  <TabsTrigger value="wikisearch">wikisearch</TabsTrigger>
                 </TabsList>
 
                 {Object.entries(modelSnippets).map(([key, snippet]) => (

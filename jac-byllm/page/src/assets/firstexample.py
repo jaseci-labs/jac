@@ -1,3 +1,7 @@
-"""Example script"""
+from byllm import Model, by
 
-print("Hello World")
+llm = Model(model_name="gemini/gemini-2.5-flash")
+
+
+@by(llm)
+def detect_language(text: str) -> str: ...
