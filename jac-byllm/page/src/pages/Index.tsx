@@ -14,6 +14,7 @@ import example3 from '../assets/example-3.jpg';
 import example4 from '../assets/example-4.png';
 
 //Import evaluation metrices images
+import fig17 from '../assets/fig17.png';
 import fig22 from '../assets/fig22.png';
 import fig23 from '../assets/fig23.png';
 
@@ -401,6 +402,25 @@ const Index = () => {
             </div>
           </div>
         </section> */}
+        
+        {/* How Users React to byLLM */}
+        <section className="py-12">
+          <div className="container">
+            <div className="text-center mb-12">
+              <h2 className="text-section mb-4">How Users React to byLLM</h2>
+            </div>
+            <div className="flex flex-col items-center">
+              <img
+                src={fig17}
+                alt="User reactions to byLLM"
+                className="max-h-96 w-auto object-contain rounded-lg shadow-md"
+              />
+              <div className="text-sm text-muted-foreground mt-4 text-center max-w-xl">
+                User evaluation of LMQL, DSPy and MTP on five usability criteria
+              </div>
+            </div>
+          </div>
+        </section>
 
         {/* Runtime Speed and Cost Improvements */}
         
