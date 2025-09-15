@@ -105,7 +105,10 @@ class DefUsePass(UniPass):
         node.sym_tab.use_lookup(node)
 
     def enter_name(self, node: uni.Name) -> None:
-        if not isinstance(node.parent, uni.AtomTrailer):
+        if (
+            not isinstance(node.parent, uni.AtomTrailer) and 
+           not isinstance(node.parent, uni.ModulePath)
+        ):
             node.sym_tab.use_lookup(node)
 
     def enter_in_for_stmt(self, node: uni.InForStmt) -> None:

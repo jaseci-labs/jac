@@ -1332,6 +1332,11 @@ class ModulePath(AstSymbolNode):
         )
 
     @property
+    def is_from_import(self) -> bool:
+        """Check if from import."""
+        return isinstance(self.parent, Import) and self.parent.from_loc == self
+
+    @property
     def dot_path_str(self) -> str:
         """Get path string."""
         return ("." * self.level) + ".".join(
