@@ -13,6 +13,10 @@ import example2 from '../assets/example-2.jpg';
 import example3 from '../assets/example-3.jpg';
 import example4 from '../assets/example-4.png';
 
+//Import evaluation metrices images
+import fig22 from '../assets/fig22.png';
+import fig23 from '../assets/fig23.png';
+
 // Import JAC examples
 import firstexampleCode from '../assets/firstexample.jac?raw';
 import firstexamplecodepython from '../assets/firstexample.py?raw';
@@ -399,10 +403,11 @@ const Index = () => {
         </section> */}
 
         {/* Runtime Speed and Cost Improvements */}
+        
 <section className="py-12">
   <div className="container">
     <div className="text-center mb-16">
-      <h2 className="text-section mb-4">Runtime Speed and Cost Improvements</h2>
+      <h2 className="text-section mb-8">Evaluation Metrices</h2>
       <p className="text-body-large text-muted-foreground max-w-2xl mx-auto">
         Comparison of runtime performance and cost efficiency across frameworks
       </p>
@@ -412,14 +417,20 @@ const Index = () => {
     <div className="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto mb-16">
       <Card>
         <CardContent className="p-4 flex items-center justify-center">
-          {/* Placeholder for Fig. 22 */}
-          <div className="text-muted-foreground text-sm">[Fig. 22 from paper]</div>
+          <img
+            src={fig22}
+            alt="Figure 22: Runtime Speed Comparison"
+            className="max-h-72 w-auto object-contain"
+          />
         </CardContent>
       </Card>
       <Card>
         <CardContent className="p-4 flex items-center justify-center">
-          {/* Placeholder for Fig. 23 */}
-          <div className="text-muted-foreground text-sm">[Fig. 23 from paper]</div>
+          <img
+            src={fig23}
+            alt="Figure 23: Cost Efficiency Comparison"
+            className="max-h-72 w-auto object-contain"
+          />
         </CardContent>
       </Card>
     </div>
