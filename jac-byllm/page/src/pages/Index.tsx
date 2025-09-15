@@ -18,6 +18,10 @@ import fig17 from '../assets/fig17.png';
 import fig22 from '../assets/fig22.png';
 import fig23 from '../assets/fig23.png';
 
+import evaluationPECode from '../assets/evalPE.py?raw';
+import evaluationDSPyCode from '../assets/evaldspy.py?raw';
+import evaluationJacCode from '../assets/byllmeval.jac?raw';
+
 // Import JAC examples
 import firstexampleCode from '../assets/firstexample.jac?raw';
 import firstexamplecodepython from '../assets/firstexample.py?raw';
@@ -165,22 +169,7 @@ const Index = () => {
                   <div className="flex-1">
                     <h3 className="text-xl font-bold mb-3">No Prompt Engineering</h3>
                     <p className="text-muted-foreground leading-relaxed">
-                      Write natural function signatures and let byLLM handle prompt generation automatically. Focus on logic, not prompts.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="group relative overflow-hidden rounded-2xl bg-card border border-border/50 p-8 hover:border-primary/20 transition-all duration-300 hover:shadow-lg hover:shadow-primary/10">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-primary/10 to-transparent rounded-full -translate-y-16 translate-x-16"></div>
-                <div className="relative flex items-start gap-4">
-                  <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform duration-300">
-                    <div className="text-2xl">⚡</div>
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="text-xl font-bold mb-3">Zero Configuration</h3>
-                    <p className="text-muted-foreground leading-relaxed">
-                      Build instantly with no setup. Switch or integrate LLMs using a single keyword, minimizing code changes.
+                      Write natural function signatures and let byLLM handle prompt generation automatically. High accuracy right out of the box relative to DSPy and LMQL frameworks. 
                     </p>
                   </div>
                 </div>
@@ -195,7 +184,7 @@ const Index = () => {
                   <div className="flex-1">
                     <h3 className="text-xl font-bold mb-3"> Minimal Code Changes</h3>
                     <p className="text-muted-foreground leading-relaxed">
-                      A simple by keyword, all the complexity of prompt engineering and output parsing is hidden
+                      A simple by keyword, all the complexity of prompt engineering and output parsing is hidden. Switch or integrate LLMs using just one line of code.
                     </p>
                   </div>
                 </div>
@@ -226,21 +215,6 @@ const Index = () => {
                     <h3 className="text-xl font-bold mb-3">Model Agnostic</h3>
                     <p className="text-muted-foreground leading-relaxed">
                       Works with any LLM provider - OpenAI, Anthropic, Google, or your own hosted models. Switch easily between providers.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="group relative overflow-hidden rounded-2xl bg-card border border-border/50 p-8 hover:border-primary/20 transition-all duration-300 hover:shadow-lg hover:shadow-primary/10">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-primary/10 to-transparent rounded-full -translate-y-16 translate-x-16"></div>
-                <div className="relative flex items-start gap-4">
-                  <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform duration-300">
-                    <div className="text-2xl">🧠</div>
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="text-xl font-bold mb-3">High Accuracy</h3>
-                    <p className="text-muted-foreground leading-relaxed">
-                      High accuracy right out of the box.
                     </p>
                   </div>
                 </div>
@@ -416,7 +390,7 @@ const Index = () => {
                 className="max-h-96 w-auto object-contain rounded-lg shadow-md"
               />
               <div className="text-sm text-muted-foreground mt-4 text-center max-w-xl">
-                User evaluation of LMQL, DSPy and MTP on five usability criteria
+                User evaluation of LMQL, DSPy and MTPon five usability criteria
               </div>
             </div>
           </div>
@@ -461,32 +435,50 @@ const Index = () => {
       </Card>
     </div>
 
-    {/* Code Comparison */}
-    <div className="grid md:grid-cols-2 gap-8 max-w-6xl mx-auto">
-      {/* Left side: Tabs (PE & DSPy) */}
-      <Card>
-        <CardContent className="p-0">
-          <div className="border-b flex">
-            <button className="flex-1 py-2 px-4 text-sm font-medium hover:bg-muted transition">Prompt Engineering</button>
-            <button className="flex-1 py-2 px-4 text-sm font-medium hover:bg-muted transition">DSPy</button>
-          </div>
-          <div className="p-4">
-            {/* Import your code examples dynamically here */}
-            <pre className="text-sm text-muted-foreground">[PE or DSPy code goes here]</pre>
-          </div>
-        </CardContent>
-      </Card>
+{/* Code Examples Section */}
+<div className="grid md:grid-cols-2 gap-8 max-w-6xl mx-auto items-start">
+  {/* Left Tabs */}
+  <div>
+    <Tabs defaultValue="jac" className="w-full">
+      <TabsList className="grid w-full grid-cols-2 mb-4">
+        <TabsTrigger value="jac">Prompt Engineering</TabsTrigger>
+        <TabsTrigger value="python">DSPy</TabsTrigger>
+      </TabsList>
+      <TabsContent value="jac">
+        <Card>
+          <CardContent className="p-4">
+            <CodeBlock code={evaluationPECode} language="python" />
+          </CardContent>
+        </Card>
+      </TabsContent>
+      <TabsContent value="python">
+        <Card>
+          <CardContent className="p-4">
+            <CodeBlock code={evaluationDSPyCode} language="python" />
+          </CardContent>
+        </Card>
+      </TabsContent>
+    </Tabs>
+  </div>
 
-      {/* Right side: Static byLLM code */}
-      <Card>
-        <CardContent className="p-4">
-          <h3 className="text-base font-semibold mb-2">byLLM</h3>
-          <pre className="text-sm text-muted-foreground">
-            [byLLM code example here]
-          </pre>
-        </CardContent>
-      </Card>
-    </div>
+  {/* Right Jac Tab */}
+  <div>
+    <Tabs defaultValue="jac-impl" className="w-full">
+      <TabsList className="grid w-full grid-cols-1 mb-4">
+        <TabsTrigger value="jac-impl">Jac Implementation</TabsTrigger>
+      </TabsList>
+      <TabsContent value="jac-impl">
+        <Card>
+          <CardContent className="p-4">
+            <CodeBlock code={evaluationJacCode} language="jac" />
+          </CardContent>
+        </Card>
+      </TabsContent>
+    </Tabs>
+  </div>
+</div>
+
+
   </div>
 </section>
 

@@ -1,31 +1,80 @@
 import Prism from 'prismjs';
 
 Prism.languages.jac = {
-    'comment': [
-        {
-            pattern: /(^|[^\\])\/\*[\s\S]*?(?:\*\/|$)/,
-            lookbehind: true,
-            greedy: true
-        },
-        {
-            pattern: /(^|[^\\:])\/\/.*/,
-            lookbehind: true,
-            greedy: true
-        }
-    ],
-    'string': {
-        pattern: /("|')(?:\\(?:\r\n|[\s\S])|(?!\1)[^\\\r\n])*\1/,
-        greedy: true
+  // ----------------------------
+  // 1. Comments (Highest Priority)
+  // ----------------------------
+  comment: [
+    {
+      // Jac block comments: #* ... *#
+      pattern: /#\*[\s\S]*?\*#/,
+      greedy: true
     },
-    'class-name': {
-        pattern: /(\b(?:walker|node|edge|type|ability|can)\s+)\w+/i,
-        lookbehind: true
-    },
-    'keyword': /\b(?:walker|node|edge|graph|spawn|with|entry|exit|disengage|take|ignore|visit|revisit|type|has|can|report|by|anchor|private|public|import|include|for|while|if|else|elif|skip|strict|hybrid|async|sync|test|assert|global|yield)\b/,
-    'builtin': /\b(?:int|str|list|dict|bool|float|object|edge|node|walker|true|false|null|uuid|context|info|details|bool|dict|list|int|str|edge|node|walker)\b/,
-    'boolean': /\b(?:true|false)\b/,
-    'function': /\b\w+(?=\()/,
-    'number': /(?:\b\d+\.?\d*|\B\.\d+)(?:e[+-]?\d+)?/i,
-    'operator': /[<>]=?|[!=]=?=?|--?|\+\+?|&&?|\|\|?|[?*/~^%]/,
-    'punctuation': /[{}[\];(),.:]/
+    {
+      // Jac single-line comments: # ...
+      pattern: /#.*/,
+      greedy: true
+    }
+  ],
+
+  // ----------------------------
+  // 2. Strings
+  // ----------------------------
+  string: {
+    // Triple quotes or normal quotes
+    pattern: /("""|'''|("|'))(?:\\[\s\S]|(?!\1)[^\\])*\1/,
+    greedy: true
+  },
+
+  // ----------------------------
+  // 3. Numbers
+  // ----------------------------
+  number: {
+    pattern: /\b(?:0[xX][0-9a-fA-F]+|0[bB][01]+|0[oO][0-7]+|\d+(?:\.\d+)?(?:[eE][+-]?\d+)?[jJ]?)\b/,
+    greedy: true
+  },
+
+  // ----------------------------
+  // 4. Keywords
+  // ----------------------------
+  keyword: {
+    pattern: /\b(?:async|await|continue|entry|exit|del|assert|check|break|finally|for|from|elif|else|if|except|pass|raise|return|try|while|with|to|by|spawn|ignore|visit|sem|disengage|lambda|priv|protect|pub|sem|static|override|let|abs|has|case|match|impl|can|def|walker|node|edge|class|test)\b/,
+    lookbehind: false
+  },
+
+  // ----------------------------
+  // 5. Built-in Types
+  // ----------------------------
+  builtin: {
+    pattern: /\b(?:str|int|float|list|tuple|set|dict|bool|bytes|any|type)\b/,
+    alias: 'class-name'
+  },
+
+  // ----------------------------
+  // 6. Boolean Literals
+  // ----------------------------
+  boolean: {
+    pattern: /\b(?:True|False|None)\b/,
+    alias: 'keyword'
+  },
+
+  // ----------------------------
+  // 7. Functions
+  // ----------------------------
+  function: {
+    pattern: /\b\w+(?=\s*\()/,
+    greedy: true
+  },
+
+  // ----------------------------
+  // 8. Operators
+  // ----------------------------
+  operator: /[<>]=?|[!=]=?=?|--?|\+\+?|&&?|\|\|?|[*\/%^~]|<<|>>|:=|\?|@|\b(?:and|or|not|in|is)\b/,
+
+  // ----------------------------
+  // 9. Punctuation
+  // ----------------------------
+  punctuation: /[{}[\];(),.:]/
 };
+
+export default Prism.languages.jac;
