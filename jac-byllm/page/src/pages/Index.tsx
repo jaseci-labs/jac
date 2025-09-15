@@ -107,7 +107,7 @@ const Index = () => {
 
               <div className="bg-card border rounded-xl p-8 mb-12 text-left max-w-3xl mx-auto">
                 <p className="text-body leading-relaxed text-card-foreground">
-                  <strong>byLLM</strong> is a simple yet powerful framework that allows developers to create AI-powered applications, without getting tangled in prompt spaghetti. Through its innovative Meaning-Typed Programming paradigm, developers can write clean, intuitive code that automatically generates optimal prompts. This breakthrough approach, featured in our upcoming OOPSLA 2025 publication, transforms how we build and scale AI-powered applications. byLLM is fully integrated with the <a href="https://jac-lang.org" target="_blank" rel="noopener noreferrer" className="text-primary underline hover:text-primary/80">Jaseci ecosystem</a>, but can also be used as a standalone Python library.
+                  <strong>byLLM</strong> is a lightweight framework that simplifies building AI-powered applications by eliminating much of the manual prompt engineering process. Using its Meaning-Typed Programming paradigm, developers can express intent directly in code, while byLLM automatically generates optimized prompts. This approach reduces development time, cuts down lines of code, and improves the accuracy of AI-driven tasks. byLLM integrates seamlessly with the <a href="https://jac-lang.org" target="_blank" rel="noopener noreferrer" className="text-primary underline hover:text-primary/80">Jaseci ecosystem</a>, but can also be used as a standalone Python library.
 
                 </p>
               </div>
@@ -144,7 +144,7 @@ const Index = () => {
         <section className="py-12 bg-gradient-to-b from-background to-muted/20">
           <div className="container">
             <div className="text-center mb-16">
-              <h2 className="text-section mb-4">Why by?</h2>
+              <h2 className="text-section mb-4">Why byLLM?</h2>
               <p className="text-body-large text-muted-foreground max-w-2xl mx-auto">
                 Built for developers who want to focus on building, not configuring
               </p>
@@ -175,7 +175,7 @@ const Index = () => {
                   <div className="flex-1">
                     <h3 className="text-xl font-bold mb-3">Zero Configuration</h3>
                     <p className="text-muted-foreground leading-relaxed">
-                      Start building immediately with minimal setup. byLLM works out of the box with popular LLM providers.
+                      Build instantly with no setup. Switch or integrate LLMs using a single keyword, minimizing code changes.
                     </p>
                   </div>
                 </div>
@@ -188,9 +188,9 @@ const Index = () => {
                     <div className="text-2xl">🔧</div>
                   </div>
                   <div className="flex-1">
-                    <h3 className="text-xl font-bold mb-3">Jaseci Integration</h3>
+                    <h3 className="text-xl font-bold mb-3">Rapid Agentic AI Development</h3>
                     <p className="text-muted-foreground leading-relaxed">
-                      Built on the powerful Jaseci ecosystem, enabling scalable AI application development in minutes.
+                      Leverage the broader Jaseci ecosystem to quickly build and scale agentic AI applications.
                     </p>
                   </div>
                 </div>
