@@ -2,12 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { Copy, Check } from 'lucide-react';
 import { Button } from './ui/button';
 import Prism from 'prismjs';
-import 'prismjs/components/prism-python';
 import 'prismjs/themes/prism-tomorrow.css';
 import 'prismjs/plugins/line-numbers/prism-line-numbers.css';
 import 'prismjs/plugins/line-numbers/prism-line-numbers';
-import '../utils/prism-jac';
-import './CodeBlock.css';
+import 'prismjs/components/prism-python';
+import '../lib/syntax/jacSyntax.css';
+import { highlightJacCode } from '../lib/syntax/syntaxHighlighting';
 
 interface CodeBlockProps {
   code: string;
@@ -21,10 +21,20 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
   className = ''
 }) => {
   const [copied, setCopied] = useState(false);
+  const [highlightedJac, setHighlightedJac] = useState('');
 
   useEffect(() => {
-    Prism.highlightAll();
-  }, [code]);
+    if (language === 'jac') {
+      let isMounted = true;
+      (async () => {
+        const result = code ? await highlightJacCode(code.trim()) : '';
+        if (isMounted) setHighlightedJac(result);
+      })();
+      return () => { isMounted = false; };
+    } else {
+      Prism.highlightAll();
+    }
+  }, [code, language]);
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(code);
@@ -49,11 +59,20 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
           )}
         </Button>
       </div>
-      <pre className="line-numbers p-4 overflow-x-auto">
-        <code className={`language-${language} text-[hsl(var(--code-text))] font-mono text-sm leading-relaxed`}>
-          {code.trim()}
-        </code>
-      </pre>
+      {language === 'jac' ? (
+        <pre className="jac-code line-numbers p-4 overflow-x-auto">
+          <code
+            className="jac-code-block font-mono text-sm leading-relaxed"
+            dangerouslySetInnerHTML={{ __html: highlightedJac }}
+          />
+        </pre>
+      ) : (
+        <pre className="line-numbers p-4 overflow-x-auto">
+          <code className={`language-${language} text-[hsl(var(--code-text))] font-mono text-sm leading-relaxed`}>
+            {code.trim()}
+          </code>
+        </pre>
+      )}
     </div>
   );
 };
