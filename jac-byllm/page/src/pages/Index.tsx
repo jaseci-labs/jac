@@ -241,7 +241,8 @@ const Index = () => {
                   <Info className="h-4 w-4 text-primary" />
                   <span className="font-medium text-sm text-primary">Note</span>
                 </div>
-                <p className="text-sm text-muted-foreground ml-6">Next, you'll need access to a Language Model - either through an API provider or your own locally hosted model and you are good to go.</p>
+                <p className="text-sm text-muted-foreground ml-6">You'll need access to a language model, either via an API provider or a locally hosted model. Make sure to save your API key as a secret in your environment variables. For example:</p>
+                <CodeBlock code="export OPENAI_API_KEY='your-api-key'" language="bash" />
               </div>
 
               <div className="text-center mb-16">
@@ -264,13 +265,19 @@ const Index = () => {
             </div>
 
               <div className="text-center mb-16">
-              <h4 className="text-section mb-4">IT IS THAT SIMPLE!</h4>
+              <p className="text-base font-semibold italic text-primary mb-4">IT IS THAT SIMPLE!</p>
             </div>
 
               <div className="text-center mb-8">
-                <p className="text-body-large text-muted-foreground max-w-2xl mx-auto">
-                  Let's look at some simple examples to understand how byLLM is used.
-                </p>
+                <h3 className="text-section mb-4">Let's look at some simple examples to understand how byLLM is used.</h3>
+              </div>
+
+              <div className="bg-gradient-to-r from-primary/5 to-primary/10 border border-primary/20 rounded-lg p-4 mt-2 mb-8">
+                <div className="flex items-center gap-2 mb-1">
+                  <Info className="h-4 w-4 text-primary" />
+                  <span className="font-medium text-sm text-primary">Note</span>
+                </div>
+                <p className="text-sm text-muted-foreground ml-6">The Model class in byLLM serves as an interface to <a href="https://docs.litellm.ai/docs/providers" target="_blank" rel="noopener noreferrer" className="text-primary underline hover:text-primary/80">LiteLLM</a>. This means any model supported by LiteLLM can be used with byLLM. When configuring a model, refer to the LiteLLM documentation to see which variables are required, and pass those same variables to Model in byLLM.</p>
               </div>
 
               <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
@@ -583,8 +590,11 @@ const Index = () => {
                 <CardContent className="p-8">
                   <div className="space-y-6">
                     <div className="border-l-4 border-primary pl-6">
+                      <p className="text-sm text-muted-foreground mt-2">
+                        Jayanaka L. Dantanarayana, Yiping Kang, Kugesan Sivasothynathan, Christopher Clarke, Baichuan Li, Savini Kashmira, Krisztian Flautner, Lingjia Tang, and Jason Mars. 2025
+                      </p>
                       <p className="text-body italic text-muted-foreground">
-                        "Meaning-Typed Language Abstraction for AI-Integrated Programming." : Proc. ACM Program. Lang. 9, OOPSLA2, Article 314 (October 2025), 29 pages.{" "}
+                        "MTP: A Meaning-Typed Language Abstraction for AI-Integrated Programming." : Proc. ACM Program. Lang. 9, OOPSLA2, Article 314 (October 2025), 29 pages.{" "}
                         <a
                           href="https://doi.org/10.1145/3763092"
                           target="_blank"
@@ -593,9 +603,6 @@ const Index = () => {
                         >
                           https://doi.org/10.1145/3763092
                         </a>
-                      </p>
-                      <p className="text-sm text-muted-foreground mt-2">
-                        Jayanaka L. Dantanarayana, Yiping Kang, Kugesan Sivasothynathan, Christopher Clarke, Baichuan Li, Savini Kashmira, Krisztian Flautner, Lingjia Tang, and Jason Mars. 2025
                       </p>
                     </div>
 
