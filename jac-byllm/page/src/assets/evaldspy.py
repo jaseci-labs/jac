@@ -1,17 +1,32 @@
-import from byllm {Model}
+import dspy
+from enum import Enum
 
-glob llm = Model(model_name="gpt-4o-mini");
+# Load the model
+llm = dspy.OpenAI(model="gpt-4o-mini")
+dspy.configure(lm=llm)
 
-enum Tell {
-    YES = "yes", NO = "no"
-}
 
-"""Yes/No answering Bot"""
-def yes_or_no(question:str) -> Tell by llm();
+# Enum for yes/no answers
+class Tell(str, Enum):
+    YES = "yes"
+    NO = "no"
 
-with entry {
-    question: str = "Are you an AI?";
-    answer: Tell = yes_or_no(question);
-    print(f"Question: {question}");
-    print("The bot answered " + answer.value);
-}
+
+# Define the signature with typed output
+class YesOrNo(dspy.Signature):
+    """Yes/No answering Bot"""
+
+    question: str = dspy.InputField()
+    answer: Tell = dspy.OutputField(desc="Must be either 'yes' or 'no'")
+
+
+# Create a TypedPredictor that ensures correct enum output
+yes_or_no = dspy.TypedPredict(YesOrNo)
+
+
+question = "Are you an AI?"
+result = yes_or_no(question=question)
+
+# result.answer is already a Tell enum
+print(f"Question: {question}")
+print("The bot answered " + result.answer.value)
