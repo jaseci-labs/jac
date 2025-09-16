@@ -26,8 +26,8 @@ export const Header: React.FC = () => {
             <a href="#documentation" className="text-muted-foreground hover:text-foreground transition-colors">
               Learn
             </a>
-            <a href="#examples" className="text-muted-foreground hover:text-foreground transition-colors">
-              Examples
+            <a href="#projects" className="text-muted-foreground hover:text-foreground transition-colors">
+              Projects
             </a>
             <a href="#community" className="text-muted-foreground hover:text-foreground transition-colors">
               Community

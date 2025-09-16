@@ -305,11 +305,11 @@ const Index = () => {
         </section>
 
 
-        {/* Examples Section */}
-        <section id="examples" className="py-12 bg-muted/30">
+        {/* Projects Section */}
+        <section id="projects" className="py-12 bg-muted/30">
           <div className="container">
             <div className="text-center mb-16">
-              <h2 className="text-section mb-4">Examples</h2>
+              <h2 className="text-section mb-4">Projects</h2>
               <p className="text-body-large text-muted-foreground max-w-2xl mx-auto">
                 Explore real-world applications and get inspired by what's possible
               </p>
@@ -414,36 +414,50 @@ const Index = () => {
       </p>
     </div>
 
+    
     {/* Figures */}
-    <div className="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto mb-16">
-      <Card>
-        <CardContent className="p-4 flex flex-col items-center justify-center">
-          <img
-            src={fig22}
-            alt="Figure 22: Runtime Speed Comparison"
-            className="max-h-72 w-auto object-contain"
-          />
-          <div className="text-xs text-muted-foreground mt-2 text-center">
-            Token usage comparison between MTP and DSPy.
-          </div>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardContent className="p-4 flex flex-col items-center justify-center">
-          <img
-            src={fig23}
-            alt="Figure 23: Cost Efficiency Comparison"
-            className="max-h-72 w-auto object-contain"
-          />
-          <div className="text-xs text-muted-foreground mt-2 text-center">
-            Cost and runtime speed comparison between MTP and DSPy.
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+<div className="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto mb-4">
+  <Card>
+    <CardContent className="p-4 flex flex-col items-center justify-center">
+      <img
+        src={fig22}
+        alt="Figure 22: Runtime Speed Comparison"
+        className="max-h-72 w-auto object-contain"
+      />
+      <div className="text-xs text-muted-foreground mt-2 text-center">
+        Token usage comparison between MTP and DSPy.
+      </div>
+    </CardContent>
+  </Card>
+  <Card>
+    <CardContent className="p-4 flex flex-col items-center justify-center">
+      <img
+        src={fig23}
+        alt="Figure 23: Cost Efficiency Comparison"
+        className="max-h-72 w-auto object-contain"
+      />
+      <div className="text-xs text-muted-foreground mt-2 text-center">
+        Cost and runtime speed comparison between MTP and DSPy.
+      </div>
+    </CardContent>
+  </Card>
+</div>
+<div className="text-center mb-16">
+  <span className="text-base font-semibold text-primary">
+    Lower latency and cost on average
+  </span>
+</div>
 
 {/* Code Examples Section */}
 <div className="grid md:grid-cols-2 gap-8 max-w-6xl mx-auto items-start">
+
+  {/* Title below the grid */}
+  <div className="col-span-2 mb-4">
+    <h3 className="text-section text-center font-bold text-2xl">
+      Side-by-side code comparison
+    </h3>
+  </div>
+  
   {/* Left Tabs */}
   <div>
     <Tabs defaultValue="jac" className="w-full">
@@ -660,7 +674,7 @@ const Index = () => {
                   </li>
                   <li>
                     <a href="https://github.com/jaseci-labs/jaseci/tree/main/jac-byllm/examples" target="_blank" className="text-muted-foreground hover:text-primary transition-colors">
-                      Examples
+                      Projects
                     </a>
                   </li>
                   {/* <li>
