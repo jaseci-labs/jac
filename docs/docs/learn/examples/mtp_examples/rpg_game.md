@@ -26,7 +26,7 @@ OpenAI API key configuration:
 export OPENAI_API_KEY="your-api-key-here"
 ```
 
-- Basic knowledge of [Jaclang syntax](/jac_book/)
+- Basic knowledge of [Jaclang syntax](https://www.jac-lang.org/jac_book/)
 - Familiarity with game development concepts (optional)
 
 ## <span style="color: orange">Implementation Steps
@@ -304,4 +304,4 @@ This tutorial demonstrates building an AI-powered RPG level generator that imple
 
 The approach combines structured programming with AI creativity. The developer provides the framework and constraints, while the AI handles the creative details.
 
-For more details access the [full documentation of MTP](/learn/jac-byllm/).
+For more details access the [full documentation of MTP](https://www.jac-lang.org/learn/jac-byllm/quickstart/).

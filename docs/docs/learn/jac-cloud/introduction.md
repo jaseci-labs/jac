@@ -87,7 +87,7 @@ Jac Cloud is ideal for:
 Ready to get started? Check out these guides:
 
 - [Quick Start Guide](quickstart.md) - Build your first Jac Cloud application
-- [Walker Endpoints](quickstart.md#walker-endpoints) - Learn how to configure API endpoints
+- [Walker Endpoints](quickstart.md##understanding-walker-endpoints) - Learn how to configure API endpoints
 - [WebSocket Communication](websocket.md) - Add real-time features
 - [Task Scheduling](scheduler.md) - Automate recurring tasks
 - [Kubernetes Deployment](deployment.md) - Deploy to the cloud

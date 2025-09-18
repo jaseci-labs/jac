@@ -256,7 +256,7 @@ obj Person {
 - **Semstrings**: Use for attribute-level descriptions and domain-specific terminology
 - **incl_info**: Use to selectively include relevant object state in method calls
 
-The `sem` keyword can be used in [separate implementation files](../../jac_book/chapter_5.md#declaring-interfaces-vs-implementations) for improved code organization and maintainability.
+The `sem` keyword can be used in [separate implementation files](https://www.jac-lang.org/jac_book/chapter_5/#model-declaration-and-configuration) for improved code organization and maintainability.
 
 In this example:
 

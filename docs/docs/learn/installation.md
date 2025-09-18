@@ -77,7 +77,7 @@ The extension provides:
 - Visualizations of your graph data structures.
 
 ### Basic CLI Commands
-Jac provides a simple command-line interface (CLI) for running scripts and managing projects. This cli provides developers the ability to either run scripts locally for testing or [even serve them as web applications](../chapter_12). Here are the most common commands:
+Jac provides a simple command-line interface (CLI) for running scripts and managing projects. This cli provides developers the ability to either run scripts locally for testing or [even serve them as web applications](https://www.jac-lang.org/jac_book/chapter_12/). Here are the most common commands:
 ```bash
 # Run a Jac file
 $ jac run filename.jac
