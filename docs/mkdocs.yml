@@ -74,6 +74,7 @@ nav:
       - Jac Keywords: "learn/keywords.md"
       - Object-Spatial Programming Specification: "learn/dspfoundation.md"
       - Full Language Specification: "learn/jac_ref.md"
+      - Visual Studio Code Extension: "learn/vscode_extension.md"
     - Misc Docs:
       - Understanding Object-Spatial:
         - "learn/data_spatial/nodes_and_edges.md" # Introduction to DS primitives
