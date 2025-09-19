@@ -204,6 +204,7 @@ extra_css:
   - extra.css
 
 extra:
+  homepage: https://jaseci.org
   generator: false
   social:
     - icon: fontawesome/brands/mastodon
