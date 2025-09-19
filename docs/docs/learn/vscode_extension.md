@@ -16,12 +16,12 @@ Get started with Jac in VS Code with these simple steps:
     *   Go to the Extensions view (`Ctrl+Shift+X`).
     *   Search for "Jac" and install the extension from JaseciLabs.
 
-<img src="../assets/VSCE/home.png" alt="Jac Extension Installation" width="50%"/>
+![Description of Image](../assets/VSCE/home.png){ width=50% }
 
 
 3.  **Select Your Environment**: The extension will automatically scan for environments where `jaclang` is installed. When you open a `.jac` file, you may be prompted to select the appropriate environment. You can also manually select it using the command palette.
 
-<img src="../assets/VSCE/env.png" alt="Jac Enviroment" width="50%" />
+![Description of Image](../assets/VSCE/env.png){ width=50% }
 
 
 4.  **Start Coding**: Open or create a Jac file and start coding!
@@ -52,7 +52,7 @@ Here is the default snippet:
 }
 ```
 
-<img src="../assets/VSCE/debug.gif" alt="Jac Debug" width="50%" />
+![Description of GIF](../assets/VSCE/debug.gif){ width=50% }
 
 ## Useful Commands
 
@@ -63,7 +63,7 @@ Access the command palette with `Ctrl+Shift+P` and type "Jac" to see the availab
 *   **`Jac: Run`**: Execute the current `.jac` file.
 *   **`Jac: Serve`**: Serve a Jac application in Jac Cloud.
 *   **`jacvis: Visualize Jaclang Graph`**: Generate and view a visual representation of the Jaclang graph from your code.
-<img src="../assets/VSCE/jacvis.gif" alt="Jacvis" width="50%" />
+![Description of GIF](../assets/VSCE/jacvis.gif){ width=50% }
 
 
 ## Features
@@ -77,8 +77,8 @@ The Jac extension provides a comprehensive set of features to boost your product
 *   **Formatting**: Keep your code clean and consistent with the built-in document formatting capabilities.
 *   **Outline Symbols**: The Outline view provides a structured overview of your code, allowing you to quickly navigate between different elements in your file.
 
-<img src="../assets/VSCE/outline.png" alt="Jac Outline" width="50%" />
+![Description of Image](../assets/VSCE/outline.png){ width=50% }
 
 *   **Rename (Experimental)**: Use the rename feature (`F2`) to refactor your code. Please note that this feature is experimental and should be used with caution.
 *   **References**: Find all references to a symbol by right-clicking and selecting "Find All References".
-<img src="../assets/VSCE/reference.png" alt="Jac Reference" width="50%" />
+![Description of Image](../assets/VSCE/reference.png){ width=50% }
