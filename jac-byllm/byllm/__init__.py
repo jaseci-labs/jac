@@ -3,6 +3,6 @@
 from byllm.llm import Model
 from byllm.mtir import MTIR
 from byllm.plugin import by
-from byllm.types import Image, MockToolCall, Video
+from byllm.types import Image, MockToolCall, PDFDoc, PDFPage, Video
 
-__all__ = ["by", "Image", "MockToolCall", "Model", "MTIR", "Video"]
+__all__ = ["by", "Image", "MockToolCall", "Model", "MTIR", "PDFDoc", "PDFPage", "Video"]

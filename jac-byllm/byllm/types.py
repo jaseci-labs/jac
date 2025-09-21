@@ -9,16 +9,20 @@ import base64
 import mimetypes
 import os
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from io import BytesIO
 from typing import Callable, TypeAlias, get_type_hints
 
+import PIL.Image
 from PIL.Image import open as open_image
 
 from litellm.types.utils import Message as LiteLLMMessage
 
 from pydantic import TypeAdapter
+
+import pymupdf  # type: ignore
+from pymupdf.utils import get_pixmap  # type: ignore
 
 from .schema import tool_to_schema
 
@@ -291,6 +295,73 @@ class Image(Media):
                 "image_url": image_url,
             }
         ]
+
+
+@dataclass
+class PDFPage(Media):
+    """Class Representing a PDF Page."""
+
+    url: PIL.Image.Image | BytesIO
+    base64_image: str = field(default="")
+
+    def __post_init__(self) -> None:
+        """Post-initialization to convert the image to base64."""
+        if isinstance(self.url, PIL.Image.Image):
+            buffer = BytesIO()
+            PIL.Image.Image.save(self.url, buffer, format="PNG")
+            self.base64_image = base64.b64encode(buffer.getvalue()).decode("utf-8")
+
+        elif isinstance(self.url, BytesIO):
+            self.base64_image = base64.b64encode(self.url.getvalue()).decode("utf-8")
+        else:
+            raise ValueError(
+                "PDFPage url must be a BytesIO object containing image data."
+            )
+
+    def to_dict(self) -> list[dict]:
+        """Convert the PDF page to a content dictionary for serialization."""
+        return [
+            {
+                "type": "image_url",
+                "image_url": f"data:image/png;base64,{self.base64_image}",
+            }
+        ]
+
+
+@dataclass
+class PDFDoc(Media):
+    """Class Representing a PDF Document."""
+
+    path: str
+    pages: list[PDFPage] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        """Post-initialization to ensure the path is a string."""
+        if not os.path.exists(self.path):
+            raise ValueError(f"PDF file does not exist: {self.path}")
+
+        doc = pymupdf.open(self.path)
+
+        for page in doc:
+            pix: pymupdf.Pixmap = get_pixmap(page, alpha=False)
+            img = pix.pil_image()
+
+            self.pages.append(PDFPage(url=img))
+
+    def __len__(self) -> int:
+        """Return the number of pages in the PDF document."""
+        return len(self.pages)
+
+    def __getitem__(self, index: int) -> PDFPage:
+        """Get a specific page by index."""
+        if 0 <= index < len(self.pages):
+            return self.pages[index]
+        else:
+            raise IndexError("PDFPage index out of range.")
+
+    def to_dict(self) -> list[dict]:
+        """Convert the PDF document to a list of dictionaries, one per page."""
+        return [page.to_dict()[0] for page in self.pages]
 
 
 # Ref: https://cookbook.openai.com/examples/gpt_with_vision_for_video_understanding
