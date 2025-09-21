@@ -24,7 +24,7 @@ with entry {
             'byllm_paper.pdf'
         )
     );
-    # print(summarize_paper(research_paper));
+    print(summarize_paper(research_paper));
 
     authors = get_authors(research_paper[0]);
 

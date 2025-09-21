@@ -13,6 +13,7 @@ jaclang = ">=0.8.7"
 litellm = ">=1.75.5.post1"
 loguru = "~0.7.2"
 pillow = "~10.4.0"
+PyMuPDF = "~1.26.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.2"
