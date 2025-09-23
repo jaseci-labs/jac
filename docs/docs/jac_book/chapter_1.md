@@ -182,7 +182,7 @@ walker GreetFriends {
             print(f"Hello, {here.name}!");
 
             # Now, tell the walker to go to all connected friends
-            visit [->:FriendsWith:->];
+            visit [<-:FriendsWith:->];
         }
     }
 }
