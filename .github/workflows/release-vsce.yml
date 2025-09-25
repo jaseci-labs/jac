@@ -36,3 +36,26 @@ jobs:
         run: vsce publish -p $VSCE_TOKEN
         env:
           VSCE_TOKEN: ${{ secrets.VSCE_TOKEN }}
+
+      - name: Get Extension Version
+        id: get_version
+        working-directory: jac/support/vscode_ext/jac/
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=v$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release with VSIX Asset
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        working-directory: jac/support/vscode_ext/jac/
+        run: |
+          gh release create "${{ steps.get_version.outputs.version }}" \
+            --title "VS Code Extension Release ${{ steps.get_version.outputs.version }}" \
+            --notes "VS Code Extension Release ${{ steps.get_version.outputs.version }}
+
+          This release was created automatically after publishing to VS Code Marketplace.
+
+          ## Changes
+          - Extension published to marketplace
+          - VSIX file attached for manual installation" \
+            *.vsix
