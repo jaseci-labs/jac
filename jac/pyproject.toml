@@ -39,10 +39,9 @@ cloud = ["jac-cloud"]
 all = ["byllm", "jac-streamlit", "jac-cloud"]
 
 [tool.poetry.group.dev.dependencies]
-pytest = "^8.2.1"
-pytest-asyncio = "^0.22.0"
-pytest-xdist = "^3.6.1"
-pytest-cov = "^5.0.0"
+pytest
+pytest-asyncio
+pytest-xdist
 pre-commit = "^3.7.1"
 
 [tool.mypy]
