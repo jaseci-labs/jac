@@ -1,0 +1,1 @@
+// Test setup and global mocks - this will be applied after Jest is loaded

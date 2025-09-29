@@ -48,17 +48,15 @@
       {
         "type": "jacdebug",
         "label": "Jac Debug",
-
         "initialConfigurations": [
           {
             "type": "debugpy",
             "request": "launch",
             "name": "Run a jac file",
             "program": "${command:extension.jaclang-extension.getJacPath}",
-            "args" : "run ${file}"
+            "args": "run ${file}"
           }
         ]
-
       }
     ],
     "commands": [
@@ -143,7 +141,10 @@
     "build": "vsce",
     "watch": "tsc -b -w",
     "deploy": "vsce publish --yarn",
-    "vsce-package": "mkdir build && vsce package -o build/jac.vsix"
+    "vsce-package": "mkdir build && vsce package -o build/jac.vsix",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
   },
   "extensionDependencies": [
     "ms-python.python"
@@ -152,9 +153,12 @@
     "vscode-languageclient": "^9.0.1"
   },
   "devDependencies": {
+    "@types/jest": "^29.5.14",
     "@types/node": "^20.14.1",
     "@types/vscode": "^1.96.0",
     "@vscode/vsce": "^2.27.0",
-    "typescript": "^5.4.5"
+    "jest": "^29.7.0",
+    "ts-jest": "^29.4.4",
+    "typescript": "^5.9.2"
   }
 }

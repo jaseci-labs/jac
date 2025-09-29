@@ -1,0 +1,534 @@
+(jac) kuggix@DESKTOP-N3DPS65:~/jaseci/jac/support/vscode_ext/jac$ npm test
+
+> jaclang-extension@2025.9.25 test
+> jest
+
+● Validation Warning:
+
+  Unknown option "moduleNameMapping" with value {"^vscode$": "<rootDir>/src/__tests__/mocks/vscode.ts"} was found.
+  This is probably a typing mistake. Fixing it will remove this message.
+
+  Configuration Documentation:
+  https://jestjs.io/docs/configuration
+
+● Validation Warning:
+
+  Unknown option "moduleNameMapping" with value {"^vscode$": "<rootDir>/src/__tests__/mocks/vscode.ts"} was found.
+  This is probably a typing mistake. Fixing it will remove this message.
+
+  Configuration Documentation:
+  https://jestjs.io/docs/configuration
+
+ FAIL  src/__tests__/crossPlatform.test.ts
+  ● Test suite failed to run
+
+    Cannot find module 'vscode' from 'src/__tests__/crossPlatform.test.ts'
+
+       8 |
+       9 | // Mock all external dependencies
+    > 10 | jest.mock('vscode');
+         |      ^
+      11 | jest.mock('fs/promises');
+      12 | jest.mock('child_process');
+      13 | jest.mock('path');
+
+      at Resolver._throwModNotFoundError (node_modules/jest-resolve/build/resolver.js:427:11)
+      at Object.<anonymous> (src/__tests__/crossPlatform.test.ts:10:6)
+
+ PASS  src/__tests__/setup.test.ts
+  Basic Test Setup
+    ✓ should run basic Jest functionality (7 ms)
+    ✓ should handle mock functions (2 ms)
+    ✓ should test platform detection mocking (1 ms)
+    ✓ should test environment variable mocking (1 ms)
+
+ FAIL  src/__tests__/manager.test.ts
+  ● Test suite failed to run
+
+    Cannot find module 'vscode' from 'src/environment/manager.ts'
+
+    Require stack:
+      src/environment/manager.ts
+      src/__tests__/manager.test.ts
+
+    > 1 | import * as vscode from 'vscode';
+        | ^
+      2 | import * as path from 'path';
+      3 | import * as fs from 'fs';
+      4 | import { findPythonEnvsWithJac, clearEnvironmentCache, isCacheValid, validateJacExecutable } from '../utils/envDetection';
+
+      at Resolver._throwModNotFoundError (node_modules/jest-resolve/build/resolver.js:427:11)
+      at Object.<anonymous> (src/environment/manager.ts:1:1)
+      at Object.<anonymous> (src/__tests__/manager.test.ts:5:1)
+
+  console.warn
+    A discovery strategy failed: TypeError: Cannot read properties of undefined (reading 'map')
+        at walkForVenvs (/home/kuggix/jaseci/jac/support/vscode_ext/jac/src/utils/envDetection.ts:74:67)
+        at processTicksAndRejections (node:internal/process/task_queues:105:5)
+
+      216 |         } else if (result.status === 'rejected') {
+      217 |             // In a real production app, you might use a proper logger
+    > 218 |             console.warn(`A discovery strategy failed:`, result.reason);
+          |                     ^
+      219 |         }
+      220 |     }
+      221 |
+
+      at findPythonEnvsWithJac (src/utils/envDetection.ts:218:21)
+      at Object.<anonymous> (src/__tests__/envDetection.simple.test.ts:155:7)
+
+  console.warn
+    A discovery strategy failed: TypeError: Cannot read properties of undefined (reading 'map')
+        at walkForVenvs (/home/kuggix/jaseci/jac/support/vscode_ext/jac/src/utils/envDetection.ts:74:67)
+        at processTicksAndRejections (node:internal/process/task_queues:105:5)
+
+      216 |         } else if (result.status === 'rejected') {
+      217 |             // In a real production app, you might use a proper logger
+    > 218 |             console.warn(`A discovery strategy failed:`, result.reason);
+          |                     ^
+      219 |         }
+      220 |     }
+      221 |
+
+      at findPythonEnvsWithJac (src/utils/envDetection.ts:218:21)
+      at Object.<anonymous> (src/__tests__/envDetection.simple.test.ts:186:22)
+
+  console.warn
+    A discovery strategy failed: TypeError: Cannot read properties of undefined (reading 'map')
+        at walkForVenvs (/home/kuggix/jaseci/jac/support/vscode_ext/jac/src/utils/envDetection.ts:74:67)
+        at processTicksAndRejections (node:internal/process/task_queues:105:5)
+
+      216 |         } else if (result.status === 'rejected') {
+      217 |             // In a real production app, you might use a proper logger
+    > 218 |             console.warn(`A discovery strategy failed:`, result.reason);
+          |                     ^
+      219 |         }
+      220 |     }
+      221 |
+
+      at findPythonEnvsWithJac (src/utils/envDetection.ts:218:21)
+      at Object.<anonymous> (src/__tests__/envDetection.simple.test.ts:208:22)
+
+  console.warn
+    A discovery strategy failed: TypeError: Cannot read properties of undefined (reading 'map')
+        at walkForVenvs (/home/kuggix/jaseci/jac/support/vscode_ext/jac/src/utils/envDetection.ts:74:67)
+        at processTicksAndRejections (node:internal/process/task_queues:105:5)
+
+      216 |         } else if (result.status === 'rejected') {
+      217 |             // In a real production app, you might use a proper logger
+    > 218 |             console.warn(`A discovery strategy failed:`, result.reason);
+          |                     ^
+      219 |         }
+      220 |     }
+      221 |
+
+      at findPythonEnvsWithJac (src/utils/envDetection.ts:218:21)
+      at Object.<anonymous> (src/__tests__/envDetection.simple.test.ts:266:22)
+
+  console.warn
+    A discovery strategy failed: TypeError: Cannot read properties of undefined (reading 'map')
+        at walkForVenvs (/home/kuggix/jaseci/jac/support/vscode_ext/jac/src/utils/envDetection.ts:74:67)
+        at processTicksAndRejections (node:internal/process/task_queues:105:5)
+
+      216 |         } else if (result.status === 'rejected') {
+      217 |             // In a real production app, you might use a proper logger
+    > 218 |             console.warn(`A discovery strategy failed:`, result.reason);
+          |                     ^
+      219 |         }
+      220 |     }
+      221 |
+
+      at findPythonEnvsWithJac (src/utils/envDetection.ts:218:21)
+      at Object.<anonymous> (src/__tests__/envDetection.simple.test.ts:336:22)
+
+ FAIL  src/__tests__/envDetection.test.ts
+  envDetection.ts
+    validateJacExecutable
+      ✕ should validate working jac executable (12 ms)
+      ✕ should reject non-working jac executable (1 ms)
+      ✕ should validate jac output containing "Jac"
+    Cache Management
+      ✕ should indicate cache is invalid initially
+      ✕ should cache results for 10 seconds (1 ms)
+      ✕ should clear cache when requested (1 ms)
+    Linux Environment Discovery
+      ✕ should find global jac using which command (1 ms)
+      ✕ should find jac in PATH directories
+      ✕ should find jac in virtual environments
+      ✕ should find jac in conda environments
+    Windows Environment Discovery
+      ✕ should find global jac using where command on Windows (1 ms)
+      ✕ should find jac in Windows virtual environments
+      ✕ should handle Windows conda environments
+    Error Handling
+      ✕ should handle failed discovery strategies gracefully
+      ✕ should continue discovery even if one strategy fails
+
+  ● envDetection.ts › validateJacExecutable › should validate working jac executable
+
+    TypeError: Cannot redefine property: sep
+        at Function.defineProperty (<anonymous>)
+
+      65 |     // Mock path functions for Linux
+      66 |     mockPath.join.mockImplementation((...args: string[]) => args.join('/'));
+    > 67 |     Object.defineProperty(mockPath, 'sep', { value: '/', writable: true });
+         |            ^
+      68 |     Object.defineProperty(mockPath, 'delimiter', { value: ':', writable: true });
+      69 |     mockPath.dirname.mockImplementation((p: string) => {
+      70 |       const parts = p.split('/');
+
+      at setupLinuxEnvironment (src/__tests__/envDetection.test.ts:67:12)
+      at Object.<anonymous> (src/__tests__/envDetection.test.ts:43:5)
+
+  ● envDetection.ts › validateJacExecutable › should reject non-working jac executable
+
+    TypeError: Cannot redefine property: sep
+        at Function.defineProperty (<anonymous>)
+
+      65 |     // Mock path functions for Linux
+      66 |     mockPath.join.mockImplementation((...args: string[]) => args.join('/'));
+    > 67 |     Object.defineProperty(mockPath, 'sep', { value: '/', writable: true });
+         |            ^
+      68 |     Object.defineProperty(mockPath, 'delimiter', { value: ':', writable: true });
+      69 |     mockPath.dirname.mockImplementation((p: string) => {
+      70 |       const parts = p.split('/');
+
+      at setupLinuxEnvironment (src/__tests__/envDetection.test.ts:67:12)
+      at Object.<anonymous> (src/__tests__/envDetection.test.ts:43:5)
+
+  ● envDetection.ts › validateJacExecutable › should validate jac output containing "Jac"
+
+    TypeError: Cannot redefine property: sep
+        at Function.defineProperty (<anonymous>)
+
+      65 |     // Mock path functions for Linux
+      66 |     mockPath.join.mockImplementation((...args: string[]) => args.join('/'));
+    > 67 |     Object.defineProperty(mockPath, 'sep', { value: '/', writable: true });
+         |            ^
+      68 |     Object.defineProperty(mockPath, 'delimiter', { value: ':', writable: true });
+      69 |     mockPath.dirname.mockImplementation((p: string) => {
+      70 |       const parts = p.split('/');
+
+      at setupLinuxEnvironment (src/__tests__/envDetection.test.ts:67:12)
+      at Object.<anonymous> (src/__tests__/envDetection.test.ts:43:5)
+
+  ● envDetection.ts › Cache Management › should indicate cache is invalid initially
+
+    TypeError: Cannot redefine property: sep
+        at Function.defineProperty (<anonymous>)
+
+      65 |     // Mock path functions for Linux
+      66 |     mockPath.join.mockImplementation((...args: string[]) => args.join('/'));
+    > 67 |     Object.defineProperty(mockPath, 'sep', { value: '/', writable: true });
+         |            ^
+      68 |     Object.defineProperty(mockPath, 'delimiter', { value: ':', writable: true });
+      69 |     mockPath.dirname.mockImplementation((p: string) => {
+      70 |       const parts = p.split('/');
+
+      at setupLinuxEnvironment (src/__tests__/envDetection.test.ts:67:12)
+      at Object.<anonymous> (src/__tests__/envDetection.test.ts:43:5)
+
+  ● envDetection.ts › Cache Management › should cache results for 10 seconds
+
+    TypeError: Cannot redefine property: sep
+        at Function.defineProperty (<anonymous>)
+
+      65 |     // Mock path functions for Linux
+      66 |     mockPath.join.mockImplementation((...args: string[]) => args.join('/'));
+    > 67 |     Object.defineProperty(mockPath, 'sep', { value: '/', writable: true });
+         |            ^
+      68 |     Object.defineProperty(mockPath, 'delimiter', { value: ':', writable: true });
+      69 |     mockPath.dirname.mockImplementation((p: string) => {
+      70 |       const parts = p.split('/');
+
+      at setupLinuxEnvironment (src/__tests__/envDetection.test.ts:67:12)
+      at Object.<anonymous> (src/__tests__/envDetection.test.ts:43:5)
+
+  ● envDetection.ts › Cache Management › should clear cache when requested
+
+    TypeError: Cannot redefine property: sep
+        at Function.defineProperty (<anonymous>)
+
+      65 |     // Mock path functions for Linux
+      66 |     mockPath.join.mockImplementation((...args: string[]) => args.join('/'));
+    > 67 |     Object.defineProperty(mockPath, 'sep', { value: '/', writable: true });
+         |            ^
+      68 |     Object.defineProperty(mockPath, 'delimiter', { value: ':', writable: true });
+      69 |     mockPath.dirname.mockImplementation((p: string) => {
+      70 |       const parts = p.split('/');
+
+      at setupLinuxEnvironment (src/__tests__/envDetection.test.ts:67:12)
+      at Object.<anonymous> (src/__tests__/envDetection.test.ts:43:5)
+
+  ● envDetection.ts › Linux Environment Discovery › should find global jac using which command
+
+    TypeError: Cannot redefine property: sep
+        at Function.defineProperty (<anonymous>)
+
+      65 |     // Mock path functions for Linux
+      66 |     mockPath.join.mockImplementation((...args: string[]) => args.join('/'));
+    > 67 |     Object.defineProperty(mockPath, 'sep', { value: '/', writable: true });
+         |            ^
+      68 |     Object.defineProperty(mockPath, 'delimiter', { value: ':', writable: true });
+      69 |     mockPath.dirname.mockImplementation((p: string) => {
+      70 |       const parts = p.split('/');
+
+      at setupLinuxEnvironment (src/__tests__/envDetection.test.ts:67:12)
+      at Object.<anonymous> (src/__tests__/envDetection.test.ts:43:5)
+
+  ● envDetection.ts › Linux Environment Discovery › should find jac in PATH directories
+
+    TypeError: Cannot redefine property: sep
+        at Function.defineProperty (<anonymous>)
+
+      65 |     // Mock path functions for Linux
+      66 |     mockPath.join.mockImplementation((...args: string[]) => args.join('/'));
+    > 67 |     Object.defineProperty(mockPath, 'sep', { value: '/', writable: true });
+         |            ^
+      68 |     Object.defineProperty(mockPath, 'delimiter', { value: ':', writable: true });
+      69 |     mockPath.dirname.mockImplementation((p: string) => {
+      70 |       const parts = p.split('/');
+
+      at setupLinuxEnvironment (src/__tests__/envDetection.test.ts:67:12)
+      at Object.<anonymous> (src/__tests__/envDetection.test.ts:43:5)
+
+  ● envDetection.ts › Linux Environment Discovery › should find jac in virtual environments
+
+    TypeError: Cannot redefine property: sep
+        at Function.defineProperty (<anonymous>)
+
+      65 |     // Mock path functions for Linux
+      66 |     mockPath.join.mockImplementation((...args: string[]) => args.join('/'));
+    > 67 |     Object.defineProperty(mockPath, 'sep', { value: '/', writable: true });
+         |            ^
+      68 |     Object.defineProperty(mockPath, 'delimiter', { value: ':', writable: true });
+      69 |     mockPath.dirname.mockImplementation((p: string) => {
+      70 |       const parts = p.split('/');
+
+      at setupLinuxEnvironment (src/__tests__/envDetection.test.ts:67:12)
+      at Object.<anonymous> (src/__tests__/envDetection.test.ts:43:5)
+
+  ● envDetection.ts › Linux Environment Discovery › should find jac in conda environments
+
+    TypeError: Cannot redefine property: sep
+        at Function.defineProperty (<anonymous>)
+
+      65 |     // Mock path functions for Linux
+      66 |     mockPath.join.mockImplementation((...args: string[]) => args.join('/'));
+    > 67 |     Object.defineProperty(mockPath, 'sep', { value: '/', writable: true });
+         |            ^
+      68 |     Object.defineProperty(mockPath, 'delimiter', { value: ':', writable: true });
+      69 |     mockPath.dirname.mockImplementation((p: string) => {
+      70 |       const parts = p.split('/');
+
+      at setupLinuxEnvironment (src/__tests__/envDetection.test.ts:67:12)
+      at Object.<anonymous> (src/__tests__/envDetection.test.ts:43:5)
+
+  ● envDetection.ts › Windows Environment Discovery › should find global jac using where command on Windows
+
+    TypeError: Cannot redefine property: sep
+        at Function.defineProperty (<anonymous>)
+
+      65 |     // Mock path functions for Linux
+      66 |     mockPath.join.mockImplementation((...args: string[]) => args.join('/'));
+    > 67 |     Object.defineProperty(mockPath, 'sep', { value: '/', writable: true });
+         |            ^
+      68 |     Object.defineProperty(mockPath, 'delimiter', { value: ':', writable: true });
+      69 |     mockPath.dirname.mockImplementation((p: string) => {
+      70 |       const parts = p.split('/');
+
+      at setupLinuxEnvironment (src/__tests__/envDetection.test.ts:67:12)
+      at Object.<anonymous> (src/__tests__/envDetection.test.ts:43:5)
+
+  ● envDetection.ts › Windows Environment Discovery › should find jac in Windows virtual environments
+
+    TypeError: Cannot redefine property: sep
+        at Function.defineProperty (<anonymous>)
+
+      65 |     // Mock path functions for Linux
+      66 |     mockPath.join.mockImplementation((...args: string[]) => args.join('/'));
+    > 67 |     Object.defineProperty(mockPath, 'sep', { value: '/', writable: true });
+         |            ^
+      68 |     Object.defineProperty(mockPath, 'delimiter', { value: ':', writable: true });
+      69 |     mockPath.dirname.mockImplementation((p: string) => {
+      70 |       const parts = p.split('/');
+
+      at setupLinuxEnvironment (src/__tests__/envDetection.test.ts:67:12)
+      at Object.<anonymous> (src/__tests__/envDetection.test.ts:43:5)
+
+  ● envDetection.ts › Windows Environment Discovery › should handle Windows conda environments
+
+    TypeError: Cannot redefine property: sep
+        at Function.defineProperty (<anonymous>)
+
+      65 |     // Mock path functions for Linux
+      66 |     mockPath.join.mockImplementation((...args: string[]) => args.join('/'));
+    > 67 |     Object.defineProperty(mockPath, 'sep', { value: '/', writable: true });
+         |            ^
+      68 |     Object.defineProperty(mockPath, 'delimiter', { value: ':', writable: true });
+      69 |     mockPath.dirname.mockImplementation((p: string) => {
+      70 |       const parts = p.split('/');
+
+      at setupLinuxEnvironment (src/__tests__/envDetection.test.ts:67:12)
+      at Object.<anonymous> (src/__tests__/envDetection.test.ts:43:5)
+
+  ● envDetection.ts › Error Handling › should handle failed discovery strategies gracefully
+
+    TypeError: Cannot redefine property: sep
+        at Function.defineProperty (<anonymous>)
+
+      65 |     // Mock path functions for Linux
+      66 |     mockPath.join.mockImplementation((...args: string[]) => args.join('/'));
+    > 67 |     Object.defineProperty(mockPath, 'sep', { value: '/', writable: true });
+         |            ^
+      68 |     Object.defineProperty(mockPath, 'delimiter', { value: ':', writable: true });
+      69 |     mockPath.dirname.mockImplementation((p: string) => {
+      70 |       const parts = p.split('/');
+
+      at setupLinuxEnvironment (src/__tests__/envDetection.test.ts:67:12)
+      at Object.<anonymous> (src/__tests__/envDetection.test.ts:43:5)
+
+  ● envDetection.ts › Error Handling › should continue discovery even if one strategy fails
+
+    TypeError: Cannot redefine property: sep
+        at Function.defineProperty (<anonymous>)
+
+      65 |     // Mock path functions for Linux
+      66 |     mockPath.join.mockImplementation((...args: string[]) => args.join('/'));
+    > 67 |     Object.defineProperty(mockPath, 'sep', { value: '/', writable: true });
+         |            ^
+      68 |     Object.defineProperty(mockPath, 'delimiter', { value: ':', writable: true });
+      69 |     mockPath.dirname.mockImplementation((p: string) => {
+      70 |       const parts = p.split('/');
+
+      at setupLinuxEnvironment (src/__tests__/envDetection.test.ts:67:12)
+      at Object.<anonymous> (src/__tests__/envDetection.test.ts:43:5)
+
+ FAIL  src/__tests__/envDetection.simple.test.ts
+  Environment Detection - Core Logic Tests
+    Jac Executable Validation
+      ✕ should validate working jac executable (13 ms)
+      ✓ should reject non-working jac executable (3 ms)
+      ✕ should validate jac output containing "Jac" (1 ms)
+    Cache Management
+      ✓ should indicate cache is invalid initially (1 ms)
+      ✓ should cache results properly (61 ms)
+      ✓ should clear cache when requested (1 ms)
+    Linux Environment Discovery
+      ✕ should find global jac using which command (9 ms)
+      ✓ should find jac in PATH directories (10 ms)
+      ✓ should find jac in virtual environments (2 ms)
+    Windows Environment Discovery
+      ✕ should find global jac using where command on Windows (14 ms)
+      ✓ should find jac in Windows virtual environments (2 ms)
+    Error Handling
+      ✓ should handle failed discovery strategies gracefully (2 ms)
+      ✓ should continue discovery even if one strategy fails (10 ms)
+    Cross-Platform Path Handling
+      ✓ should handle Linux path patterns correctly (3 ms)
+      ✓ should handle Windows path patterns correctly (3 ms)
+
+  ● Environment Detection - Core Logic Tests › Jac Executable Validation › should validate working jac executable
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      113 |       const result = await validateJacExecutable('/usr/local/bin/jac');
+      114 |       
+    > 115 |       expect(result).toBe(true);
+          |                      ^
+      116 |       expect(mockExecAsync).toHaveBeenCalledWith('"/usr/local/bin/jac" --version', { timeout: 5000 });
+      117 |     });
+      118 |
+
+      at Object.<anonymous> (src/__tests__/envDetection.simple.test.ts:115:22)
+
+  ● Environment Detection - Core Logic Tests › Jac Executable Validation › should validate jac output containing "Jac"
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      136 |
+      137 |       const result = await validateJacExecutable('/usr/local/bin/jac');
+    > 138 |       expect(result).toBe(true);
+          |                      ^
+      139 |     });
+      140 |   });
+      141 |
+
+      at Object.<anonymous> (src/__tests__/envDetection.simple.test.ts:138:22)
+
+  ● Environment Detection - Core Logic Tests › Linux Environment Discovery › should find global jac using which command
+
+    expect(jest.fn()).toHaveBeenCalledWith(...expected)
+
+    Expected: "which jac", {"timeout": 5000}
+
+    Number of calls: 0
+
+      187 |       
+      188 |       // The mock should have been called with which command
+    > 189 |       expect(mockExecAsync).toHaveBeenCalledWith('which jac', { timeout: 5000 });
+          |                             ^
+      190 |     });
+      191 |
+      192 |     it('should find jac in PATH directories', async () => {
+
+      at Object.<anonymous> (src/__tests__/envDetection.simple.test.ts:189:29)
+
+  ● Environment Detection - Core Logic Tests › Windows Environment Discovery › should find global jac using where command on Windows
+
+    expect(jest.fn()).toHaveBeenCalledWith(...expected)
+
+    Expected: "where jac", {"timeout": 5000}
+
+    Number of calls: 0
+
+      267 |       
+      268 |       // Should have used Windows 'where' command
+    > 269 |       expect(mockExecAsync).toHaveBeenCalledWith('where jac', { timeout: 5000 });
+          |                             ^
+      270 |     });
+      271 |
+      272 |     it('should find jac in Windows virtual environments', async () => {
+
+      at Object.<anonymous> (src/__tests__/envDetection.simple.test.ts:269:29)
+
+ PASS  src/__tests__/envManager.simple.test.ts
+  Environment Manager - Core Functionality Tests
+    Platform-Specific Environment Discovery
+      Linux Ubuntu Scenarios
+        ✓ should detect global jac installation (8 ms)
+        ✓ should detect virtual environment installations (2 ms)
+        ✓ should detect conda environments (1 ms)
+        ✓ should validate jac executable correctly (1 ms)
+        ✓ should handle invalid jac executable (1 ms)
+      Windows Scenarios
+        ✓ should detect global jac installation on Windows (1 ms)
+        ✓ should detect Windows virtual environments (1 ms)
+        ✓ should detect Windows conda environments
+        ✓ should handle Windows path validation (1 ms)
+    Environment Path Analysis
+      ✓ should identify different environment types correctly (1 ms)
+      ✓ should generate appropriate display names for different environments (1 ms)
+    Cache Management
+      ✓ should handle cache validity correctly
+      ✓ should use cache when available (1 ms)
+    Error Handling
+      ✓ should handle environment discovery errors gracefully (1 ms)
+      ✓ should handle validation errors gracefully (1 ms)
+      ✓ should return empty array on discovery failure with proper error handling (1 ms)
+    Performance Considerations
+      ✓ should handle large numbers of environments efficiently
+      ✓ should handle timeout scenarios appropriately (109 ms)
+
+Test Suites: 4 failed, 2 passed, 6 total
+Tests:       19 failed, 33 passed, 52 total
+Snapshots:   0 total
+Time:        2.553 s
+Ran all test suites.
+(jac) kuggix@DESKTOP-N3DPS65:~/jaseci/jac/support/vscode_ext/jac$ 

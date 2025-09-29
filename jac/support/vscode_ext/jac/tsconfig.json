@@ -7,12 +7,19 @@
         ],
         "rootDir": "src",
         "outDir": "out",
-        "sourceMap": true
+        "sourceMap": true,
+        "types": ["node", "vscode"],
+        "esModuleInterop": true,
+        "allowSyntheticDefaultImports": true,
+        "moduleResolution": "node",
+        "resolveJsonModule": true,
+        "strict": false
     },
     "include": [
         "src"
     ],
     "exclude": [
-        "node_modules"
+        "node_modules",
+        "src/__tests__"
     ]
 }
