@@ -24,7 +24,7 @@ from .types import TypeBase
 # The callback type definition for the diagnostic messages.
 DiagnosticCallback = Callable[[uni.UniNode, str, bool], None]
 
-
+# foo
 @dataclass
 class PrefetchedTypes:
     """Types whose definitions are prefetched and cached by the type evaluator."""
