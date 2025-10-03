@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { findPythonEnvsWithJac, validateJacExecutable } from '../utils/envDetection';
+import { getLspManager } from '../extension';
 
 export class EnvManager {
     private context: vscode.ExtensionContext;
@@ -14,6 +15,7 @@ export class EnvManager {
         this.statusBar.command = 'jaclang-extension.selectEnv';
         context.subscriptions.push(this.statusBar);
     }
+
 
     async init() {
         // TODO: workspaceState
@@ -164,8 +166,8 @@ export class EnvManager {
                     { detail: `Path: ${displayPath}` }
                 );
                 
-                // Reload window to ensure language server uses new environment
-                vscode.commands.executeCommand("workbench.action.reloadWindow");
+                // Restart language server to use new environment
+                await this.restartLanguageServer();
             } else {
                 // User cancelled the quick pick - still update status bar
                 this.updateStatusBar();
@@ -177,9 +179,6 @@ export class EnvManager {
         }
     }
 
-    async refreshEnvironments() {
-        await this.promptEnvironmentSelection();
-    }
 
     /**
      * Handles manual path entry for Jac executable
@@ -215,7 +214,7 @@ export class EnvManager {
                     `Jac environment set to: ${this.formatPathForDisplay(normalizedPath)}`
                 );
                 
-                vscode.commands.executeCommand("workbench.action.reloadWindow");
+                await this.restartLanguageServer();
             } else {
                 const retry = await vscode.window.showErrorMessage(
                     `Invalid Jac executable: ${normalizedPath}`,
@@ -264,7 +263,7 @@ export class EnvManager {
                     `Jac environment set to: ${this.formatPathForDisplay(selectedPath)}`
                 );
                 
-                vscode.commands.executeCommand("workbench.action.reloadWindow");
+                await this.restartLanguageServer();
             } else {
                 const retry = await vscode.window.showErrorMessage(
                     `The selected file is not a valid Jac executable: ${selectedPath}`,
@@ -318,5 +317,24 @@ export class EnvManager {
             this.statusBar.tooltip = 'No Jac environment selected - Click to select';
         }
         this.statusBar.show();
+    }
+
+    private async restartLanguageServer(): Promise<void> {
+        const lspManager = getLspManager();
+        if (lspManager) {
+            try {
+                vscode.window.showInformationMessage('Restarting Jac Language Server to apply environment changes...');
+                await lspManager.restart();
+            } catch (error: any) {
+                vscode.window.showErrorMessage(`Failed to restart language server: ${error.message || error}`);
+                // Fallback to window reload if restart fails
+                vscode.window.showWarningMessage('Falling back to window reload...');
+                vscode.commands.executeCommand("workbench.action.reloadWindow");
+            }
+        } else {
+            // Fallback to window reload if no LSP manager is available
+            vscode.window.showInformationMessage('Reloading window to apply environment changes...');
+            vscode.commands.executeCommand("workbench.action.reloadWindow");
+        }
     }
 }

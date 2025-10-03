@@ -520,7 +520,7 @@ class JacLanguageTests(TestCase):
         self.assertIn("if not (x == y) {", output)
         self.assertIn("squares_dict = {x : (x ** 2) for x in numbers};", output)
         self.assertIn(
-            '\n\n"""Say hello"""\n@ my_decorator\n\n def say_hello() {', output
+            '\n\n"""Say hello"""\n@my_decorator\n\n def say_hello() {', output
         )
 
     def test_pyfunc_2(self) -> None:

@@ -61,7 +61,7 @@
     ],
     "commands": [
       {
-        "command": "jac.visualize",
+        "command": "jaclang-extension.visualizeGraph",
         "title": "jacvis: Visualize Jaclang Graph"
       },
       {
@@ -71,6 +71,11 @@
       {
         "command": "jaclang-extension.toggleDeveloperMode",
         "title": "Jac: Toggle Developer Mode"
+      },
+      {
+        "command": "jaclang-extension.restartLanguageServer",
+        "title": "Jac: Restart Language Server",
+        "icon": "$(refresh)"
       },
       {
         "command": "jaclang-extension.runCurrentFile",
@@ -102,6 +107,11 @@
         }
       ],
       "editor/title": [
+        {
+          "command": "jaclang-extension.restartLanguageServer",
+          "group": "navigation@98",
+          "when": "resourceLangId == jac && config.jaclang-extension.developerMode"
+        },
         {
           "command": "jaclang-extension.serveCurrentFile",
           "group": "navigation@99",

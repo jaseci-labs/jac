@@ -1,16 +1,15 @@
-// __mocks__/vscode.ts
-const vscode = {
+// mocks/vscode.ts
+export const statusBarItem = {
+  show: jest.fn(),
+  hide: jest.fn(),
+  text: '',
+  tooltip: '',
+  command: undefined,
+};
+
+export const vscodeMock = {
   window: {
-    createStatusBarItem: jest.fn().mockImplementation(() => {
-      const item: any = {
-        show: jest.fn(),
-        hide: jest.fn(),
-        text: '',
-        tooltip: '',
-        command: undefined, // must be writable
-      };
-      return item;
-    }),
+    createStatusBarItem: () => statusBarItem,
     showWarningMessage: jest.fn(),
     showInformationMessage: jest.fn(),
     showErrorMessage: jest.fn(),
@@ -20,6 +19,7 @@ const vscode = {
   },
   commands: {
     executeCommand: jest.fn(),
+    registerCommand: jest.fn(),
   },
   env: {
     openExternal: jest.fn(),
@@ -28,19 +28,8 @@ const vscode = {
     parse: jest.fn((str: string) => ({ fsPath: str, toString: () => str })),
     file: jest.fn((str: string) => ({ fsPath: str, toString: () => str })),
   },
-  StatusBarAlignment: {
-    Left: 1,
-    Right: 2,
-  },
+  StatusBarAlignment: { Left: 1, Right: 2 },
   workspace: {
-    workspaceFolders: [
-      {
-        uri: {
-          fsPath: '/mock/workspace',
-        },
-      },
-    ],
+    workspaceFolders: [{ uri: { fsPath: '/mock/workspace' } }],
   },
 };
-
-module.exports = vscode;

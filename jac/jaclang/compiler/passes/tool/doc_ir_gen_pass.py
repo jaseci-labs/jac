@@ -220,6 +220,8 @@ class DocIRGenPass(UniPass):
                 parts.pop()
                 parts.append(i.gen.doc_ir)
                 parts.append(self.space())
+            elif not in_body and isinstance(i, uni.Token) and i.name == Tok.DECOR_OP:
+                parts.append(i.gen.doc_ir)
             else:
                 parts.append(i.gen.doc_ir)
                 parts.append(self.space())
@@ -257,6 +259,8 @@ class DocIRGenPass(UniPass):
                 parts.pop()
                 parts.append(i.gen.doc_ir)
                 parts.append(self.space())
+            elif not in_body and isinstance(i, uni.Token) and i.name == Tok.DECOR_OP:
+                parts.append(i.gen.doc_ir)
             else:
                 parts.append(i.gen.doc_ir)
                 parts.append(self.space())
@@ -420,6 +424,21 @@ class DocIRGenPass(UniPass):
                 parts.pop()
                 parts.append(i.gen.doc_ir)
                 parts.append(self.space())
+            elif i == node.condition and isinstance(i, uni.BoolExpr):
+                cond_str = i.gen.doc_ir
+                flat = self.concat([cond_str, self.space()])
+                broken = self.group(
+                    self.concat(
+                        [
+                            self.text("("),
+                            self.indent(self.concat([self.line(), cond_str])),
+                            self.line(),
+                            self.text(")"),
+                            self.space(),
+                        ]
+                    )
+                )
+                parts.append(self.if_break(broken, flat))
             else:
                 parts.append(i.gen.doc_ir)
                 parts.append(self.space())
@@ -810,8 +829,13 @@ class DocIRGenPass(UniPass):
         """Generate DocIR for inner comprehension clauses."""
         parts: list[doc.DocType] = []
         for i in node.kid:
-            parts.append(i.gen.doc_ir)
-            parts.append(self.space())
+            if isinstance(i, uni.Token) and i.name == Tok.KW_IF:
+                parts.append(self.hard_line())
+                parts.append(i.gen.doc_ir)
+                parts.append(self.space())
+            else:
+                parts.append(i.gen.doc_ir)
+                parts.append(self.space())
         parts.pop()
         node.gen.doc_ir = self.group(self.concat(parts))
 
@@ -877,10 +901,16 @@ class DocIRGenPass(UniPass):
                 return [expr]
 
         exprs = __flatten_bool_expr(node)
-        parts = [exprs[0].gen.doc_ir, self.line()]
-        for i in range(1, len(exprs[1:]), 2):
-            op, expr = exprs[i], exprs[i + 1]
-            parts += [op.gen.doc_ir, self.space(), expr.gen.doc_ir, self.line()]
+        for i in range(0, len(exprs) - 1, 2):
+            (
+                expr,
+                op,
+            ) = (
+                exprs[i],
+                exprs[i + 1],
+            )
+            parts += [expr.gen.doc_ir, self.space(), op.gen.doc_ir, self.line()]
+        parts += [exprs[-1].gen.doc_ir, self.line()]
         parts.pop()
         flat = self.concat(parts)
         node.gen.doc_ir = self.group(flat)

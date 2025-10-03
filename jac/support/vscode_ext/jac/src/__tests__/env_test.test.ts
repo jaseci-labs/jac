@@ -6,6 +6,22 @@ import { EnvManager } from '../environment/manager';
 
 import * as vscode from 'vscode';
 import * as envDetection from '../utils/envDetection';
+import { getLspManager } from '../extension';
+
+
+// Inline mock for vscode-languageclient
+jest.mock('vscode-languageclient/node', () => {
+  return {
+    LanguageClient: class {
+      start = jest.fn();
+      stop = jest.fn();
+      dispose = jest.fn();
+    },
+    LanguageClientOptions: jest.fn(),
+    ServerOptions: jest.fn(),
+  };
+});
+
 
 // Mock the vscode module to simulate VSCode API behavior
 jest.mock('vscode', () => {
@@ -51,6 +67,19 @@ jest.mock('../utils/envDetection', () => ({
   validateJacExecutable: jest.fn(),  
 }));
 
+// Mock the LspManager class
+const mockLspManager = {
+  start: jest.fn().mockResolvedValue(undefined),
+  stop: jest.fn().mockResolvedValue(undefined),
+  restart: jest.fn().mockResolvedValue(undefined),
+  getClient: jest.fn().mockReturnValue(undefined),
+};
+
+// Mock the extension module
+jest.mock('../extension', () => ({
+  getLspManager: jest.fn(() => mockLspManager),
+}));
+
 
 describe('EnvManager (Jest)', () => {
   let context: any;
@@ -58,6 +87,13 @@ describe('EnvManager (Jest)', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    
+    // Reset LSP manager mock
+    mockLspManager.start.mockClear();
+    mockLspManager.stop.mockClear();
+    mockLspManager.restart.mockClear();
+    mockLspManager.getClient.mockClear();
+    
     context = {
       globalState: {
         get: jest.fn().mockReturnValue(undefined),
@@ -246,5 +282,146 @@ describe('EnvManager (Jest)', () => {
 
     expect(context.globalState.update).not.toHaveBeenCalled();
     expect(vscode.commands.executeCommand).not.toHaveBeenCalled();
+  });
+
+  /**
+   * TEST 10: Language server restart without VSCode reload on environment change
+   * 
+   * - When LSP manager is available, it should restart the language server
+   * - VSCode window reload should NOT be called when LSP manager exists
+   * - Success message should be shown for environment change
+   * 
+   */
+  test('should restart language server without VSCode reload when environment changes', async () => {
+    (getLspManager as jest.Mock).mockReturnValue(mockLspManager);
+    (envDetection.findPythonEnvsWithJac as jest.Mock).mockResolvedValue(['/new/jac/path']);
+    (vscode.window.showQuickPick as jest.Mock).mockResolvedValue({
+      env: '/new/jac/path',
+      label: 'Jac (NewEnv)',
+      description: '/new/jac/path',
+    });
+
+    await envManager.promptEnvironmentSelection();
+
+    expect(mockLspManager.restart).toHaveBeenCalledTimes(1);
+    
+    expect(vscode.commands.executeCommand).not.toHaveBeenCalledWith('workbench.action.reloadWindow');
+    expect(context.globalState.update).toHaveBeenCalledWith('jacEnvPath', '/new/jac/path');
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      'Selected Jac environment: Jac (NewEnv)',
+      { detail: 'Path: /new/jac/path' }
+    );
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      'Restarting Jac Language Server to apply environment changes...'
+    );
+  });
+
+  /**
+   * TEST 11: Fallback to VSCode reload when LSP manager is unavailable
+   * 
+   * - When LSP manager is not available, fall back to VSCode reload
+   * - Appropriate fallback message should be shown
+   * - Environment change should still be saved
+   * 
+   */
+  test('should fallback to VSCode reload when LSP manager unavailable', async () => {
+    (getLspManager as jest.Mock).mockReturnValue(undefined);
+    (envDetection.findPythonEnvsWithJac as jest.Mock).mockResolvedValue(['/another/jac/path']);
+    (vscode.window.showQuickPick as jest.Mock).mockResolvedValue({
+      env: '/another/jac/path',
+      label: 'Jac (AnotherEnv)',
+      description: '/another/jac/path',
+    });
+
+    await envManager.promptEnvironmentSelection();
+
+    expect(mockLspManager.restart).not.toHaveBeenCalled();
+    expect(vscode.commands.executeCommand).toHaveBeenCalledWith('workbench.action.reloadWindow');
+    expect(context.globalState.update).toHaveBeenCalledWith('jacEnvPath', '/another/jac/path');
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      'Reloading window to apply environment changes...'
+    );
+  });
+
+  /**
+   * TEST 12: Handle LSP manager restart failure with graceful fallback
+   * 
+   * - When LSP restart fails, should show error and fall back to reload
+   * - Should handle restart errors gracefully without crashing
+   * - Environment should still be saved even if restart fails
+   * 
+   */
+  test('should handle LSP restart failure and fallback to reload', async () => {
+    const mockError = new Error('LSP restart failed');
+    mockLspManager.restart.mockRejectedValue(mockError);
+    (getLspManager as jest.Mock).mockReturnValue(mockLspManager);
+    (envDetection.findPythonEnvsWithJac as jest.Mock).mockResolvedValue(['/failing/jac/path']);
+    (vscode.window.showQuickPick as jest.Mock).mockResolvedValue({
+      env: '/failing/jac/path',
+      label: 'Jac (FailingEnv)',
+      description: '/failing/jac/path',
+    });
+
+    await envManager.promptEnvironmentSelection();
+
+    expect(mockLspManager.restart).toHaveBeenCalledTimes(1);
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+      'Failed to restart language server: LSP restart failed'
+    );
+    expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+      'Falling back to window reload...'
+    );
+    expect(vscode.commands.executeCommand).toHaveBeenCalledWith('workbench.action.reloadWindow');
+    expect(context.globalState.update).toHaveBeenCalledWith('jacEnvPath', '/failing/jac/path');
+  });
+
+  /**
+   * TEST 13: Manual path entry with successful LSP restart
+   * 
+   * - Manual path entry should trigger LSP restart when LSP manager is available
+   * - Should not reload VSCode when LSP restart succeeds
+   * - Should validate path before attempting restart
+   * 
+   */
+  test('should restart LSP after successful manual path entry', async () => {
+    (getLspManager as jest.Mock).mockReturnValue(mockLspManager);
+    (envDetection.validateJacExecutable as jest.Mock).mockResolvedValue(true);
+    (vscode.window.showInputBox as jest.Mock).mockResolvedValue('/manual/jac/path');
+
+    await (envManager as any).handleManualPathEntry();
+
+    expect(envDetection.validateJacExecutable).toHaveBeenCalledWith('/manual/jac/path');
+    expect(context.globalState.update).toHaveBeenCalledWith('jacEnvPath', '/manual/jac/path');
+    expect(mockLspManager.restart).toHaveBeenCalledTimes(1);
+    expect(vscode.commands.executeCommand).not.toHaveBeenCalledWith('workbench.action.reloadWindow');
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      'Jac environment set to: /manual/jac/path'
+    );
+  });
+
+  /**
+   * TEST 14: File browser selection with successful LSP restart
+   * 
+   * - File browser selection should trigger LSP restart when available
+   * - Should not reload VSCode when LSP restart succeeds
+   * - Should validate selected file before attempting restart
+   * 
+   */
+  test('should restart LSP after successful file browser selection', async () => {
+    (getLspManager as jest.Mock).mockReturnValue(mockLspManager);
+    (envDetection.validateJacExecutable as jest.Mock).mockResolvedValue(true);
+    (vscode.window.showOpenDialog as jest.Mock).mockResolvedValue([
+      { fsPath: '/browser/selected/jac' }
+    ]);
+
+    await (envManager as any).handleFileBrowser();
+
+    expect(envDetection.validateJacExecutable).toHaveBeenCalledWith('/browser/selected/jac');
+    expect(context.globalState.update).toHaveBeenCalledWith('jacEnvPath', '/browser/selected/jac');
+    expect(mockLspManager.restart).toHaveBeenCalledTimes(1);
+    expect(vscode.commands.executeCommand).not.toHaveBeenCalledWith('workbench.action.reloadWindow');
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      'Jac environment set to: /browser/selected/jac'
+    );
   });
 });

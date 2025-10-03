@@ -1,24 +1,29 @@
 import * as vscode from 'vscode';
-import { setupLspClient, client } from './lsp/client';
 import { EnvManager } from './environment/manager';
 import { registerAllCommands } from './commands';
 import { setupVisualDebuggerWebview } from './webview/visualDebugger';
+import { LspManager } from './lsp/lsp_manager';
+
+let lspManager: LspManager | undefined;
+
+export function getLspManager(): LspManager | undefined {
+    return lspManager;
+}
 
 export async function activate(context: vscode.ExtensionContext) {
     try {
-        // Environment manager: handles env detection, selection, status bar
         const envManager = new EnvManager(context);
-        
         registerAllCommands(context, envManager);
-        
         await envManager.init();
 
-        // Visual debugger webview integration
         setupVisualDebuggerWebview(context, envManager);
 
-        const lspClient = await setupLspClient(envManager);
-        context.subscriptions.push(lspClient);
-        
+        lspManager = new LspManager(envManager);
+        await lspManager.start();
+
+        context.subscriptions.push({
+            dispose: () => lspManager?.stop()
+        });
     } catch (error) {
         vscode.window.showErrorMessage(`Failed to activate Jac extension: ${error}`);
         console.error('Extension activation error:', error);
@@ -26,9 +31,5 @@ export async function activate(context: vscode.ExtensionContext) {
 }
 
 export function deactivate(): Thenable<void> | undefined {
-    if (!client) {
-        return undefined;
-    }
-    return client.stop();
+    return lspManager?.stop();
 }
-
