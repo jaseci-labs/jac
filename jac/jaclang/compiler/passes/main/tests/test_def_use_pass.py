@@ -21,3 +21,14 @@ class DefUsePassTests(TestCase):
         self.assertEqual(len(uses[1]), 1)
         self.assertIn("output", [uses[0][0].sym_name, uses[1][0].sym_name])
         self.assertIn("message", [uses[0][0].sym_name, uses[1][0].sym_name])
+
+    def test_def_use_modpath(self) -> None:
+        """Basic test for pass."""
+        state = JacProgram().compile(
+            file_path=self.fixture_abs_path("defuse_modpath.jac")
+        )
+        all_symbols = list(
+            state.sym_tab.names_in_scope.values()
+        )
+        self.assertEqual(len(all_symbols), 1)
+

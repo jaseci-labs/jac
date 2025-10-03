@@ -75,7 +75,7 @@ class SymTabBuildPass(UniPass):
     def exit_module_path(self, node: uni.ModulePath) -> None:
         if node.alias:
             node.alias.sym_tab.def_insert(node.alias, single_decl="import")
-        elif node.path:
+        elif (not node.is_import_from) and node.path:
             if node.parent_of_type(uni.Import) and not (
                 node.parent_of_type(uni.Import).from_loc
                 and node.parent_of_type(uni.Import).is_jac
