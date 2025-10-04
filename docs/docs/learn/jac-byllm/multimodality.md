@@ -52,6 +52,44 @@ Input Image :
 
 In this example, an image of a person is provided as input to the `get_person_info` method. The method returns a `Person` object containing the extracted information from the image.
 
+### More ways to pass images
+
+`Image` accepts multiple input forms beyond file paths:
+
+- URLs: `http://`, `https://`, `gs://` (left as-is)
+- Data URLs: `data:image/...;base64,...` (left as-is)
+- Path-like: `pathlib.Path` (resolved to a local file)
+- In-memory: `bytes`, `bytearray`, `memoryview`, `io.BytesIO` or any file-like object returning bytes
+- PIL: `PIL.Image.Image`
+
+Python example for in-memory usage:
+
+```jac
+import from byllm {Image}
+import io;
+Import from PIL {Image as PILImage}
+
+with entry {
+    pil_img = PILImage.open("photo.jpg");
+
+    # BytesIO buffer
+    buf = io.BytesIO();
+    pil_img.save(buf, format="PNG");
+    img_a = Image(buf);
+
+    # Raw bytes
+    raw = buf.getvalue();
+    img_b = Image(raw);
+
+    # PIL image instance
+    img_c = Image(pil_img);
+
+    # You can also pass data URLs and gs:// links directly
+    img_d = Image("data:image/png;base64,<...>");
+    img_e = Image("gs://bucket/path/image.png");
+}
+```
+
 ## Video
 
 byLLM supports video inputs through the `Video` format. Videos can be provided as input to byLLM functions or methods:
