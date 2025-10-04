@@ -253,3 +253,26 @@ class JacLanguageTests(TestCase):
         stdout_value = captured_output.getvalue()
         self.assertIn("YES", stdout_value)
         self.assertIn("NO", stdout_value)
+
+    def test_fixtures_image_types(self) -> None:
+        """Test various image input types in Jaclang."""
+        captured_output = io.StringIO()
+        sys.stdout = captured_output
+        jac_import("image_types", base_path=self.fixture_abs_path("./"))
+        sys.stdout = sys.__stdout__
+        stdout_value = captured_output.getvalue()
+        expected_labels = [
+            "PIL Image",
+            "Image from file path",
+            "Image from URL",
+            "Image from BytesIO",
+            "Image from raw bytes",
+            "Image from memoryview",
+            "Image from data URL",
+            "Image from PathLike",
+            "Image from file-like without getvalue",
+            "Image from bytearray",
+            "Image from gs:// URL",
+        ]
+        for label in expected_labels:
+            self.assertIn(label, stdout_value)
