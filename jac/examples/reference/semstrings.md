@@ -1,309 +1,101 @@
-Semantic Strings in Jac provide a powerful mechanism for enriching code with natural language descriptions that can be leveraged by Large Language Models (LLMs) for intelligent code generation and execution. This feature enables developers to create AI-powered functions and provide semantic context for code elements, facilitating more intuitive and intelligent programming patterns.
+**Semstrings - Semantic String Definitions**
 
-#### Semantic String Concept
+Semstrings (semantic strings) provide explicit semantic context for AI models in Jac's meaning-typed programming system. The `sem` keyword allows developers to enrich what AI models understand beyond just code structure.
 
-Jac-lang offers a unique feature called semantic strings (semstrings) that allows developers to associate natural language descriptions with code elements. These descriptions serve as instructions or context for LLMs, enabling AI-powered code execution and intelligent behavior generation.
+**LLM Model Setup**
 
-The `sem` keyword allows you to define semantic descriptions for:
+Line 3 imports the `Model` class from the `byllm` module. Line 5 creates a global LLM instance using `glob llm = Model(...)`, configuring it with:
+- Model name: `"mockllm"` (for testing; production uses real LLM services)
+- Mock outputs: `["SecureP@ss1"]` (predefined response for testing)
 
-- **Function behavior**: Detailed instructions for what a function should do
-- **Object properties**: Descriptions of class attributes and their purposes
-- **Method parameters**: Context for function arguments and their expected values
-- **Enumeration values**: Semantic meaning of enum constants
-- **Nested structures**: Hierarchical descriptions for complex objects
+**Delegating Function Implementation to AI**
 
-#### Comparison with Traditional Approaches
+Line 8 demonstrates delegating a function's implementation to an LLM:
 
-Traditional programming relies on explicit implementations and comments for documentation:
+`def generate_password() -> str by llm();`
 
-```python
-def generate_password():
-    """
-    Generates a secure password with specific requirements.
-    This is just documentation - the implementation must be written manually.
-    """
-    import random
-    import string
+Breaking down this declaration:
+- `def generate_password()` - Function name provides semantic intent
+- `-> str` - Return type tells AI to produce a string
+- `by llm()` - Delegates implementation to the AI model
 
-    # Manual implementation required
-    characters = string.ascii_letters + string.digits + "!@#$%^&*"
-    password = ''.join(random.choice(characters) for _ in range(12))
-    return password
+The `by` keyword handles delegation to the AI. Jac automatically extracts meaning from the function's name, parameters, and return type to generate appropriate prompts.
+
+**Semantic String Definition**
+
+Lines 11-14 use the `sem` keyword to provide additional semantic context. The syntax pattern is `sem function_name = """description""";` where:
+- `sem` - Keyword indicating a semantic annotation
+- `generate_password` - Matches the function name from line 8
+- Triple-quoted string - Contains explicit requirements and constraints
+
+**Semantic Requirements**
+
+The semantic string specifies detailed password requirements:
+- Minimum 8 characters
+- Contains uppercase letters
+- Contains lowercase letters
+- Contains digits
+- Contains special characters
+
+These requirements supplement what the AI can infer from just the function name and type.
+
+**How Semantic Annotations Work**
+
+```mermaid
+graph LR
+    A[Function Call] --> B[by llm clause]
+    B --> C[Extract Implicit Semantics]
+    C --> D[Function name<br/>Parameters<br/>Return type]
+    B --> E[Extract Explicit Semantics]
+    E --> F[sem annotation]
+    D --> G[Generate AI Prompt]
+    F --> G
+    G --> H[AI Model]
+    H --> I[Generated Response]
+    I --> J[Return Value]
 ```
 
-Jac's semantic strings enable AI-powered function execution without manual implementation:
+When `generate_password()` is called on line 17:
+1. The `by llm()` clause delegates to the AI model
+2. Jac generates a prompt using implicit semantics (function structure)
+3. The `sem` annotation provides explicit semantic context
+4. The AI uses both to generate appropriate output
+5. The response is returned as the function's result
 
-```jac
-import from byllm {Model}
+**Execution**
 
-glob llm = Model(model_name = "gpt-4o");
+Line 17 calls the AI-implemented function like any normal function: `pwd = generate_password();`. The caller doesn't need to know the function is implemented by an AI rather than traditional code. Line 18 prints the generated password.
 
-def generate_password() -> str by llm();
+**Use Cases for Semantic Annotations**
 
-sem generate_password = """\
-Generates and returns password that:
-    - contain at least 8 characters
-    - contain at least one uppercase letter
-    - contain at least one lowercase letter
-    - contain at least one digit
-    - contain at least one special character
-""";
-```
+| Use Case | Example | Benefit |
+|----------|---------|---------|
+| Requirements specification | Password rules (lines 11-14) | AI understands constraints |
+| Domain terminology | `sem Person.yod = "Year of Death"` | Clarifies abbreviations |
+| Behavioral context | Expected output format | Guides AI generation |
+| Tool usage documentation | External function integration | Helps AI use tools correctly |
+| Few-shot examples | Sample inputs/outputs | Provides learning data |
 
-#### Function Semantic Strings
+**Advantages of Semantic Annotations**
 
-Functions can be enhanced with semantic strings that provide detailed instructions for LLM execution:
+The `sem` keyword approach provides several benefits:
+- **Context-rich**: Enriches AI understanding beyond code structure alone
+- **Explicit semantics**: Unlike comments, becomes part of execution context
+- **Maintainable**: Natural language works alongside type annotations
+- **Flexible**: Works with `by` keyword and as standalone documentation
+- **Type-safe**: Complements rather than replaces the type system
 
-**Basic Function with Semantic String:**
-```jac
-def generate_specific_number() -> int by llm();
+**Implicit vs Explicit Semantics**
 
-sem generate_specific_number = "Generates a specific number that is 120597 and returns it.";
-```
+| Source | Type | Information |
+|--------|------|-------------|
+| Function name | Implicit | Intent from naming (generate_password) |
+| Parameters | Implicit | Expected inputs and their types |
+| Return type | Implicit | Output format (-> str) |
+| sem annotation | Explicit | Detailed requirements and constraints |
 
-**Complex Function with Detailed Instructions:**
-```jac
-def generate_password() -> str by llm();
+Both implicit and explicit semantics work together to give the AI complete context for generating appropriate outputs.
 
-sem generate_password = """\
-Generates and returns password that:
-    - contain at least 8 characters
-    - contain at least one uppercase letter
-    - contain at least one lowercase letter
-    - contain at least one digit
-    - contain at least one special character
-""";
-```
+**Implementation Note**
 
-The `by llm()` syntax indicates that the function should be executed by the configured LLM using the semantic string as instructions.
-
-#### Object and Property Semantic Strings
-
-Objects and their properties can be described semantically for better AI understanding:
-
-**Object Description:**
-```jac
-obj Person {
-    has name: str;
-    has yob: int;
-
-    def calc_age(year: int) -> int {
-        return year - self.yob;
-    }
-}
-
-sem Person = "A class representing a person.";
-sem Person.name = "The name of the person.";
-sem Person.yob = "The year of birth of the person.";
-```
-
-**Method and Parameter Descriptions:**
-```jac
-sem Person.calc_age = "Calculate the age of the person.";
-sem Person.calc_age.year = "The year to calculate the age against.";
-```
-
-#### Nested Object Semantic Strings
-
-Semantic strings support hierarchical descriptions for complex nested structures:
-
-```jac
-obj OuterClass {
-    obj InnerClass {
-        has inner_value: str;
-    }
-}
-
-sem OuterClass = "A class containing an inner class.";
-sem OuterClass.InnerClass = "An inner class within OuterClass.";
-sem OuterClass.InnerClass.inner_value = "A value specific to the inner class.";
-```
-
-#### Enumeration Semantic Strings
-
-Enumerations can have semantic descriptions for both the enum itself and individual values:
-
-```jac
-enum Size {
-    Small = 1,
-    Medium = 2,
-    Large = 3
-}
-
-sem Size = "An enumeration representing different sizes.";
-sem Size.Small = "The smallest size option.";
-sem Size.Medium = "The medium size option.";
-sem Size.Large = "The largest size option.";
-```
-
-#### LLM Integration
-
-Semantic strings work in conjunction with LLM configurations to enable AI-powered execution:
-
-**LLM Configuration:**
-```jac
-import from byllm {Model}
-
-glob llm = Model(model_name = "gpt-4o");
-```
-
-**Function with LLM Execution:**
-```jac
-def generate_password() -> str by llm();
-
-sem generate_password = """\
-Generates and returns password that:
-    - contain at least 8 characters
-    - contain at least one uppercase letter
-    - contain at least one lowercase letter
-    - contain at least one digit
-    - contain at least one special character
-""";
-```
-
-**LLM Method Parameters:**
-```jac
-def analyze_sentiment(text: str) -> str by llm(method="Chain-of-Thoughts");
-
-sem analyze_sentiment = "Analyze the sentiment of the given text and return positive, negative, or neutral.";
-```
-
-#### Complete Example
-
-Here's a comprehensive example demonstrating various semantic string applications:
-
-```jac
-import from byllm {Model}
-
-glob llm = Model(model_name = "gpt-4o");
-
-# AI-powered functions
-def generate_password() -> str by llm();
-def generate_email() -> str by llm();
-def analyze_text(content: str) -> dict by llm();
-
-# Object with semantic descriptions
-obj User {
-    has username: str;
-    has email: str;
-    has created_at: str;
-
-    def validate_credentials(password: str) -> bool by llm();
-}
-
-# Semantic string definitions
-sem generate_password = """\
-Generates and returns a secure password that:
-    - contains at least 8 characters
-    - contains at least one uppercase letter
-    - contains at least one lowercase letter
-    - contains at least one digit
-    - contains at least one special character
-""";
-
-sem generate_email = "Generates a realistic email address for testing purposes.";
-
-sem analyze_text = "Analyzes the given text content and returns a dictionary with sentiment, key topics, and summary.";
-sem analyze_text.content = "The text content to be analyzed for sentiment and topics.";
-
-sem User = "A class representing a user account in the system.";
-sem User.username = "The unique username for the user account.";
-sem User.email = "The email address associated with the user account.";
-sem User.created_at = "The timestamp when the user account was created.";
-
-sem User.validate_credentials = "Validates if the provided password meets security requirements.";
-sem User.validate_credentials.password = "The password to be validated against security criteria.";
-
-with entry {
-    # Use AI-powered functions
-    password = generate_password();
-    email = generate_email();
-
-    print("Generated password:", password);
-    print("Generated email:", email);
-
-    # Create user with AI validation
-    user = User(username="testuser", email=email, created_at="2025-06-17");
-    is_valid = user.validate_credentials(password);
-
-    print("Password is valid:", is_valid);
-}
-```
-
-#### File Organization for Semantic Strings
-
-Like implementations, semantic strings can be organized in multiple ways:
-
-##### Same File Organization
-
-Semantic strings can be defined in the same file as the code:
-
-```jac
-def generate_password() -> str by llm();
-
-sem generate_password = "Generates a secure password with specific requirements.";
-```
-
-##### Separate Semantic Files
-
-For better organization, semantic strings can be separated into dedicated files:
-
-**File structure:**
-```
-base
-├── main.jac
-└── main.impl.jac
-```
-
-**main.jac:**
-```jac
-import from byllm {Model}
-
-glob llm = Model(model_name = "gpt-4o");
-
-def generate_password() -> str by llm();
-
-obj User {
-    has name: str;
-    has email: str;
-}
-
-with entry {
-    password = generate_password();
-    print("Password:", password);
-}
-```
-
-**main.sem.jac:**
-```jac
-sem generate_password = """\
-Generates and returns password that:
-    - contain at least 8 characters
-    - contain at least one uppercase letter
-    - contain at least one lowercase letter
-    - contain at least one digit
-    - contain at least one special character
-""";
-
-sem User = "A class representing a user account.";
-sem User.name = "The full name of the user.";
-sem User.email = "The email address of the user.";
-```
-
-#### Benefits of Semantic Strings
-
-1. **AI-Powered Development**: Enable LLMs to generate function implementations based on natural language descriptions
-
-2. **Self-Documenting Code**: Semantic strings serve as both documentation and functional specifications
-
-3. **Intelligent Behavior**: LLMs can understand context and generate appropriate responses based on semantic descriptions
-
-4. **Rapid Prototyping**: Quickly create functional prototypes without writing detailed implementations
-
-5. **Maintainable AI Integration**: Clear separation between AI instructions and traditional code logic
-
-6. **Flexible Descriptions**: Support for simple one-liners to complex multi-line instructions
-
-7. **Hierarchical Context**: Nested semantic descriptions for complex object structures
-
-8. **Method-Agnostic**: Works with various LLM providers and reasoning methods
+In this example, `mockllm` (line 5) is configured with predefined outputs for testing. In production applications, you would configure an actual LLM model (GPT, Claude, etc.) to interpret the semantic strings and generate appropriate outputs dynamically.

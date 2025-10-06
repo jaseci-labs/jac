@@ -1,158 +1,221 @@
-Connect expressions in Jac provide the fundamental mechanism for creating topological relationships between nodes, implementing the edge creation and management aspects of Object-Spatial Programming. These expressions enable the construction of graph structures where computation can flow through connected data locations.
+**Connect Expressions - Graph Edge Creation**
 
-**Theoretical Foundation**
+Connect expressions are specialized operators for creating edges between nodes in graph structures. These operators are fundamental to Jac's Object-Spatial Programming, providing first-class syntax for spatial relationships.
 
-In OSP theory, edges are first-class entities that represent directed relationships between nodes, encoding both the topology of connections and the semantics of those relationships. Connect expressions create these edge instances, establishing the pathways through which walkers can traverse and enabling the "computation moving to data" paradigm.
+**Connect Operator Types**
 
-**Basic Connection Syntax**
+| Direction | Untyped | Typed | With Attributes |
+|-----------|---------|-------|-----------------|
+| Forward (A → B) | `++>` | `+>:Type:+>` | `+>: Type(...) :+>` |
+| Backward (A ← B) | `<++` | `<+:Type:<+` | `<+: Type(...) :<+` |
+| Bidirectional (A ↔ B) | `<++>` | `<+:Type:+>` | `<+: Type(...) :+>` |
 
-**Simple Connections**
-The simplest form creates basic edges between nodes:
-```jac
-source ++> destination
+**Node and Edge Definitions (Lines 4-23)**
+
+The example defines nodes and edges for the graph:
+
+Lines 4-7: `Person` node with `name` and `age` attributes
+Lines 9-11: `City` node with `name` attribute
+Lines 13-15: `LivesIn` edge with `years` attribute
+Lines 17-19: `Friend` edge with `since` attribute
+Lines 21-23: `Colleague` edge with `department` attribute
+
+**Untyped Connect Operators (Lines 28-41)**
+
+These create generic edges without specifying an edge type:
+
+**Forward connection (Line 34)**:
+- Arrow points right: alice → bob
+- Line 35 prints confirmation
+
+**Backward connection (Line 37)**:
+- Arrow points left: charlie → bob (not bob → charlie!)
+- Line 38 notes the actual direction
+
+**Bidirectional connection (Line 40)**:
+- Creates alice → charlie AND charlie → alice
+- Line 41 confirms both directions created
+
+**Direction Flow Diagram**
+
+```mermaid
+graph LR
+    A[alice] -->|++>| B[bob]
+    C[charlie] -->|<++| B
+    A <-->|<++>| C
+
+    style A fill:#1565c0,stroke:#fff,color:#fff
+    style B fill:#1565c0,stroke:#fff,color:#fff
+    style C fill:#1565c0,stroke:#fff,color:#fff
 ```
 
-This creates a directed edge from the source node to the destination node, enabling walker traversal from source to destination.
+**Typed Connect Operators (Lines 43-58)**
 
-**Typed Edge Connections**
-More sophisticated connections can specify edge types and properties:
-```jac
-source +>:EdgeType:property=value:+> destination
+These specify the edge archetype during connection:
+
+**Forward typed (Line 51)**:
+- Creates `LivesIn` edge from diana to nyc
+- Edge type is explicitly `LivesIn`
+- Line 52 shows the syntax
+
+**Backward typed (Line 54)**:
+- Creates `LivesIn` edge from london to eve (not eve to london!)
+- Line 55 clarifies the actual direction
+
+**Bidirectional typed (Line 57)**:
+- Creates `Friend` edges in both directions
+- Both diana → eve and eve → diana are `Friend` type
+
+**Edge Attribute Initialization (Lines 60-73)**
+
+Initialize edge attributes during connection:
+
+**Forward with attributes (Line 66)**:
+- Creates `Friend` edge from grace to henry
+- Sets `since` attribute to 2015
+- Line 67 shows the full syntax
+
+**Backward with attributes (Line 69)**:
+- Creates `Friend` edge from iris to henry
+- Edge has `since=2018`
+
+**Bidirectional with attributes (Line 72)**:
+- Creates `Colleague` edges in both directions
+- Both edges have `department="Engineering"`
+
+**Chained Connections (Lines 75-83)**
+
+Connect operators can be chained left-to-right:
+
+Line 82: `jack ++> kate ++> liam ++> mike;`
+- Creates path: jack → kate → liam → mike
+- Evaluates left-to-right
+- Line 83 shows the resulting chain
+
+**Chaining Visualization**
+
+```mermaid
+graph LR
+    J[jack] --> K[kate]
+    K --> L[liam]
+    L --> M[mike]
 ```
 
-This syntax allows for:
-- **Edge typing**: Specifying the class of edge to create (`EdgeType`)
-- **Property assignment**: Setting initial values for edge properties (`property=value`)
-- **Semantic relationships**: Encoding meaning into the connection itself
+**Inline Node Creation (Lines 85-92)**
 
-**Edge as First-Class Objects**
+Create nodes directly in connect expressions:
 
-Edges in Jac are not merely references but full-fledged objects with their own properties and behaviors:
+Line 89: `nina ++> Person(name="InlineNode1", age=35);`
+- Creates a new `Person` node inline
+- Immediately connects nina to it
+- No need for intermediate variable
 
-```jac
-edge MyEdge {
-    has val: int = 5;
-}
+Line 90: `nina +>:Friend:+> Person(name="InlineNode2", age=40);`
+- Inline node creation with typed edge
+
+Line 91: `nina +>: Friend(since=2010) :+> Person(name="InlineNode3", age=45);`
+- Combines inline creation with edge attributes
+
+**Multiple Target Connections (Lines 94-103)**
+
+One node can connect to multiple targets:
+
+Lines 100-102:
+- Oscar connects to three different nodes
+- Creates a hub/star pattern
+- Line 103 confirms all connections
+
+**Hub Pattern Diagram**
+
+```mermaid
+graph TD
+    O[oscar] --> P[paula]
+    O --> Q[quinn]
+    O --> R[Rita]
 ```
 
-This defines an edge class with:
-- **State**: Properties that can store data (`val: int`)
-- **Default values**: Initial property assignments (`= 5`)
-- **Type identity**: Distinguished from other edge types
+**Disconnect Operator (Lines 105-108)**
 
-**Dynamic Connection Creation**
+Line 107: `node del [-->] target`
+- Deletes edges from node to target
+- Uses `del` keyword with edge reference syntax
+- Can specify edge type: `node del [->:Type:->] target`
 
-The example demonstrates dynamic topology construction within walker abilities:
+**Connect in Expressions (Lines 110-116)**
 
-```jac
-impl Creator.create {
-    end = here;
-    for i=0 to i<7 by i+=1  {
-        if i % 2 == 0 {
-            end ++> (end := node_a(value=i));
-        } else {
-            end +>:MyEdge:val=i:+> (end := node_a(value=i + 10));
-        }
-    }
-}
+Connect expressions return values and integrate with other expressions:
+
+Lines 115-116:
+- Connect can be part of larger expressions
+- Returns a value that can be used in subsequent code
+
+**Edge Traversal Integration (Lines 123-146)**
+
+The example demonstrates how created edges are traversed:
+
+**Building the graph (Lines 133-136)**:
+
+**Traversing edges (Line 140)**:
+- Visits all outgoing edges from current node
+- Uses edge reference syntax (different from connect operators)
+
+**Traversal Flow**
+
+```mermaid
+graph TD
+    Root --> A[Person A]
+    A -->|Friend since=2010| B[Person B]
+    A -->|Colleague Sales| C[Person C]
+    B -->|Friend since=2015| C
+
+    W[Walker] -.->|visit| A
+    W -.->|visit| B
+    W -.->|visit| C
 ```
 
-Key aspects:
-- **Contextual reference**: `here` refers to the walker's current location
-- **Sequential construction**: Building connected chains of nodes dynamically
-- **Conditional topology**: Using different connection types based on conditions
-- **Property parameterization**: Setting edge properties based on runtime values (`val=i`)
+**Connect vs Edge References**
 
-**Connection Patterns**
+| Aspect | Connect Operators | Edge References |
+|--------|------------------|-----------------|
+| Purpose | CREATE edges | TRAVERSE edges |
+| Examples | `++>`, `+>:Type:+>` | `[-->]`, `[->:Type:->]` |
+| Usage | Graph construction | Visit statements, queries |
+| Action | Imperative (make connection) | Declarative (find connections) |
+| Context | Building graph structure | Navigating graph structure |
 
-**Chain Building**
-Creating linear sequences of connected nodes:
-```jac
-end ++> (end := node_a(value=i));
-```
+**Common Graph Patterns**
 
-This pattern:
-- Connects the current `end` node to a newly created node
-- Updates `end` to reference the new node for the next iteration
-- Builds a chain topology suitable for sequential processing
+Linear chain (line 82):
 
-**Typed Connections with Properties**
-Creating semantically rich connections:
-```jac
-end +>:MyEdge:val=i:+> (end := node_a(value=i + 10));
-```
+Star/hub (lines 100-102):
 
-This pattern:
-- Creates edges of specific type (`MyEdge`)
-- Assigns properties during creation (`val=i`)
-- Enables edge-based filtering and processing in traversal
+Bidirectional network:
 
-**Edge Traversal and Filtering**
+Heterogeneous typed graph (lines 134-136):
 
-Connect expressions enable sophisticated traversal patterns through edge filtering:
+**Operator Directionality Guide**
 
-```jac
-for i in [->:MyEdge:val <= 6:->] {
-    print(i.value);
-}
-```
+Understanding arrow direction is critical:
 
-This demonstrates:
-- **Edge-type filtering**: Only traverse `MyEdge` connections
-- **Property-based selection**: Filter edges where `val <= 6`
-- **Traversal integration**: Iterate over filtered edge destinations
-- **Data access**: Access properties of connected nodes (`i.value`)
+| Code | Actual Edge Direction | Memory Aid |
+|------|----------------------|------------|
+| `a ++> b` | a → b | Arrow points to target |
+| `a <++ b` | b → a | Arrow points away, so b → a |
+| `a <++> b` | a ↔ b | Arrows both ways = both edges |
 
-**Bidirectional vs. Directional Connections**
+**Best Practices**
 
-Jac supports various connection directionalities:
-- **Outgoing**: `++>` creates edges from source to destination
-- **Incoming**: `<++` creates edges from destination to source  
-- **Bidirectional**: `<++>` creates edges in both directions
+1. **Choose typed edges for clarity**: Use `+>:Type:+>` when edge semantics matter
+2. **Initialize attributes during connect**: Cleaner than setting attributes after
+3. **Use backward operators intentionally**: `<++` can improve code readability
+4. **Chain for linear structures**: Paths and sequences benefit from chaining
+5. **Inline creation for temporary nodes**: Reduces variable clutter
+6. **Document edge semantics**: Comment complex graph structures
 
-**Connection in Object-Spatial Context**
+**Integration with OSP**
 
-Connect expressions integrate seamlessly with walker traversal:
+Connect expressions work seamlessly with walkers:
 
-1. **Topology Construction**: Walkers can build the graph structure they will later traverse
-2. **Dynamic Adaptation**: Connections can be created based on discovered data or conditions
-3. **Typed Relationships**: Different edge types enable specialized traversal behaviors
-4. **Property-Rich Edges**: Edge properties provide context for traversal decisions
+Building during traversal:
 
-**Lifecycle and Memory Management**
-
-Connected structures follow OSP lifecycle rules:
-- **Node dependency**: Edges automatically deleted when endpoint nodes are deleted
-- **Referential integrity**: Prevents dangling edge references
-- **Dynamic modification**: Connections can be created and destroyed during execution
-
-**Use Cases**
-
-Connect expressions enable various topological patterns:
-
-**Graph Construction**
-- **Social networks**: Users connected by relationship types (friend, follower, etc.)
-- **Workflow systems**: Tasks connected by dependency relationships
-- **State machines**: States connected by transition conditions
-
-**Algorithm Implementation**
-- **Search trees**: Building searchable hierarchical structures
-- **Path planning**: Creating route networks with weighted connections
-- **Data pipelines**: Connecting processing stages with typed flows
-
-**Real-World Modeling**
-- **Transportation networks**: Locations connected by route types (road, rail, air)
-- **Organizational structures**: Entities connected by reporting relationships
-- **Knowledge graphs**: Concepts connected by semantic relationships
-
-**Performance Considerations**
-
-Connect expressions in Jac are designed for efficiency:
-- **Incremental construction**: Build topology as needed rather than pre-allocating
-- **Type-specific optimization**: Edge types enable specialized storage and traversal
-- **Property indexing**: Edge properties can be indexed for fast filtering
-- **Memory locality**: Related nodes and edges can be co-located for cache efficiency
-
-The example demonstrates a complete pattern where a walker constructs a mixed topology using both simple and typed connections, then traverses the structure using edge filtering to process specific subsets of the data. This showcases how connect expressions enable both the construction and utilization phases of object-spatial programming, creating rich topological structures that support sophisticated computational patterns.
-
-Connect expressions represent a fundamental departure from traditional data structure approaches, enabling developers to construct and modify graph topologies dynamically while maintaining type safety and semantic clarity through edge typing and property systems.
+Conditional connections:

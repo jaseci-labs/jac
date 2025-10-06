@@ -3236,13 +3236,21 @@ class FString(AtomExpr):
             for part in self.parts:
                 res = res and part.normalize(deep)
         new_kid: list[UniNode] = []
-        is_single_quote = (
-            isinstance(self.kid[0], Token) and self.kid[0].name == Tok.FSTR_SQ_START
-        )
-        if is_single_quote:
-            new_kid.append(self.gen_token(Tok.FSTR_SQ_START))
+        # Determine quote type from first token
+        start_token = self.kid[0] if isinstance(self.kid[0], Token) else None
+        if start_token:
+            if start_token.name == Tok.FSTR_SQ_TRIPLE_START:
+                start_tok, end_tok = Tok.FSTR_SQ_TRIPLE_START, Tok.FSTR_SQ_TRIPLE_END
+            elif start_token.name == Tok.FSTR_TRIPLE_START:
+                start_tok, end_tok = Tok.FSTR_TRIPLE_START, Tok.FSTR_TRIPLE_END
+            elif start_token.name == Tok.FSTR_SQ_START:
+                start_tok, end_tok = Tok.FSTR_SQ_START, Tok.FSTR_SQ_END
+            else:
+                start_tok, end_tok = Tok.FSTR_START, Tok.FSTR_END
         else:
-            new_kid.append(self.gen_token(Tok.FSTR_START))
+            start_tok, end_tok = Tok.FSTR_START, Tok.FSTR_END
+
+        new_kid.append(self.gen_token(start_tok))
         for i in self.parts:
             if isinstance(i, String):
                 i.value = (
@@ -3253,10 +3261,7 @@ class FString(AtomExpr):
                 new_kid.append(self.gen_token(Tok.LBRACE))
                 new_kid.append(i)
                 new_kid.append(self.gen_token(Tok.RBRACE))
-        if is_single_quote:
-            new_kid.append(self.gen_token(Tok.FSTR_SQ_END))
-        else:
-            new_kid.append(self.gen_token(Tok.FSTR_END))
+        new_kid.append(self.gen_token(end_tok))
         self.set_kids(nodes=new_kid)
         return res
 

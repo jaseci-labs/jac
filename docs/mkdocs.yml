@@ -8,9 +8,11 @@ nav:
     # - Getting Started: "learn/getting_started.md"
     - Tour of Jac/Jaseci: "learn/tour.md"
     - Installation: "learn/installation.md"
-    - Learn Jac in 5 Minutes: "learn/jac_in_a_flash.md"
+    - Jac as Your First Language: "learn/beginners_guide_to_jac.md"
     - Native Superset of Python: "learn/superset_python.md"
-    - Jac Playground: "learn/jac_playground.md"
+    - Learn Jac in 5 Minutes: "learn/jac_in_a_flash.md"
+    - Full Language Specification: "learn/jac_ref.md"
+    - Run Jac In Browser: "learn/jac_playground.md"
     - Learn By Example:
       - LittleX (your own twitter): "learn/examples/littleX/tutorial.md"
       - Jac MCP Conversational Chatbot: "learn/examples/rag_chatbot/Overview.md"
@@ -73,7 +75,6 @@ nav:
     - Specifications:
       - Jac Keywords: "learn/keywords.md"
       - Object-Spatial Programming Specification: "learn/dspfoundation.md"
-      - Full Language Specification: "learn/jac_ref.md"
     - Misc Docs:
       - Understanding Object-Spatial:
         - "learn/data_spatial/nodes_and_edges.md" # Introduction to DS primitives
@@ -96,6 +97,7 @@ nav:
         - "communityhub/fun/p3.md"
       - Content Pieces: "communityhub/content_pieces.md"
     - Internals:
+      - Lang Ref Coverage: "internals/refs_coverage_report.md"
       - Roadmap: "communityhub/roadmap.md"
       - Design Docs and Guides:
         - Compiler/Runtime Design: "internals/internals.md"

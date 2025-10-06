@@ -1,59 +1,136 @@
-Jac provides a rich set of built-in data types that cover the fundamental data structures needed for most programming tasks. These types are similar to Python's built-in types but are integrated into Jac's type system and syntax.
+Jac provides a rich set of built-in types for representing different kinds of data, with optional type annotations to make your code clearer and safer.
 
-**Primitive Types**
+**String Type**
 
-- **`int`**: Integer numbers (e.g., `42`, `-17`, `0`)
-- **`float`**: Floating-point numbers (e.g., `3.14`, `-2.5`, `1e-10`)
-- **`str`**: String literals (e.g., `"hello"`, `'world'`)
-- **`bool`**: Boolean values (`True` or `False`)
-- **`bytes`**: Byte sequences for binary data
+Lines 5-6 demonstrate the string type `str`. Strings hold text data - sequences of characters. The type annotation `: str` documents that `s` should contain a string value.
+
+**Integer Type**
+
+Lines 9-10 show the integer type `int`. Integers are whole numbers without decimal points. They can be positive, negative, or zero.
+
+**Float Type**
+
+Lines 13-14 demonstrate the floating-point type `float`. Floats represent numbers with decimal points, used for measurements, calculations requiring precision, and scientific notation.
+
+**Core Data Types Summary**
+
+| Type | Line | Example Value | Purpose |
+|------|------|---------------|---------|
+| `str` | 5 | `"hello"` | Text and characters |
+| `int` | 9 | `42` | Whole numbers |
+| `float` | 13 | `3.14` | Decimal numbers |
+| `bool` | 33 | `True` | Truth values |
+| `bytes` | 37 | `b"binary"` | Binary data |
 
 **Collection Types**
 
-- **`list`**: Ordered, mutable sequences (e.g., `[1, 2, 3]`, `['a', 'b', 'c']`)
-- **`tuple`**: Ordered, immutable sequences (e.g., `(1, 2, 3)`, `('a', 'b')`)
-- **`dict`**: Key-value mappings (e.g., `{'name': 'john', 'age': 28}`)
-- **`set`**: Unordered collections of unique elements (e.g., `{1, 2, 3}`, `{'unique', 'values'}`)
+Jac provides four main collection types for organizing multiple values:
 
-**Meta Types**
+**List Type**
 
-- **`type`**: Represents the type of a type (metaclass)
-- **`any`**: Represents any type (used for type annotations when type is unknown or flexible)
+Lines 17-18 show lists - mutable, ordered sequences. Lists can grow, shrink, and have elements modified. Use square brackets `[]` to create them.
 
-#### Implicit Typing Library
+**Tuple Type**
 
-Jac exposes common generics from Python's `typing` module without requiring
-explicit imports.  Standard type names such as `List`, `Dict`, and `Optional`
-can be referenced directly by prefixing them with a backtick:
+Lines 21-22 demonstrate tuples - immutable, ordered sequences. Once created, tuples cannot be changed. Use parentheses `()` to create them. Tuples are faster than lists and can be used as dictionary keys.
 
-```jac
-let names: `List[str]` = [];
-let cache: `Dict[str, int]` = {};
+**Set Type**
+
+Lines 25-26 show sets - unordered collections of unique values. Sets automatically remove duplicates and provide fast membership testing. Use curly braces `{}` with just values.
+
+**Dictionary Type**
+
+Lines 29-30 demonstrate dictionaries - key-value mappings. Dictionaries store associations between keys and values. Use curly braces with `key: value` pairs.
+
+**Collection Characteristics**
+
+```mermaid
+graph TD
+    A[Collections] --> B[Ordered]
+    A --> C[Unordered]
+    B --> D[List: mutable]
+    B --> E[Tuple: immutable]
+    C --> F[Set: unique values]
+    C --> G[Dict: key-value pairs]
 ```
 
-These identifiers are recognized by the compiler automatically, simplifying type
-annotations and eliminating repetitive import statements. All available types from
-python `typing` library is availabe through this idiom. 
+| Type | Ordered | Mutable | Duplicates | Syntax |
+|------|---------|---------|------------|--------|
+| list | Yes | Yes | Yes | `[1, 2, 3]` |
+| tuple | Yes | No | Yes | `(1, 2, 3)` |
+| set | No | Yes | No | `{1, 2, 3}` |
+| dict | No* | Yes | Keys: No | `{"k": "v"}` |
 
-**Type Usage**
+*Dictionaries preserve insertion order in modern implementations.
 
-Built-in types can be used in several contexts:
+**Boolean Type**
 
-1. **Variable declarations**: `glob name: str = "Jaseci";`
-2. **Function parameters**: `def process(data: list) -> dict { ... }`
-3. **Type checking**: `type(variable)` returns the type of a variable
-4. **Type annotations**: Providing explicit type information for better code clarity
+Lines 33-34 show the boolean type `bool`. Booleans have exactly two values: `True` and `False`. They're used for conditions, flags, and logic. Note the capitalization - these are keywords.
 
-**Type Inference**
+**Bytes Type**
 
-Jac can automatically infer types from literal values:
-- `9.2` → `float`
-- `44` → `int`  
-- `[2, 4, 6, 10]` → `list`
-- `{'name':'john', 'age':28}` → `dict`
-- `("jaseci", 5, 4, 14)` → `tuple`
-- `True` → `bool`
-- `"Jaseci"` → `str`
-- `{5, 8, 12, "unique"}` → `set`
+Lines 37-38 demonstrate the bytes type. Bytes represent binary data - sequences of integers from 0-255. The `b` prefix before the string creates bytes. This type is essential for:
+- Reading/writing binary files
+- Network protocols
+- Cryptography
+- Image/video data
 
-The provided code example demonstrates the declaration of global variables using different built-in types and shows how the `type()` function can be used to inspect the runtime type of variables. This type introspection capability is useful for debugging and dynamic programming scenarios.
+**Special Types**
+
+**Any Type**
+
+Lines 41-44 introduce the `any` type. The `any` type accepts values of any type. Variable `a` starts as a string, then becomes an integer. This provides flexibility but sacrifices type safety.
+
+**Type Type**
+
+Lines 47-48 show the `type` type. The `type` type holds type objects themselves. This allows you to:
+- Store types in variables
+- Pass types as arguments
+- Create instances dynamically
+- Check types at runtime
+
+**Type Annotations in Functions**
+
+Lines 51-56 demonstrate function type annotations. Function signatures can specify:
+- Parameter types: `x: int, y: str`
+- Return type: `-> tuple`
+
+The `->` arrow indicates what the function returns. Line 55 calls the function with an integer and string, returning a tuple containing both.
+
+**Benefits of Type Annotations**
+
+```mermaid
+graph LR
+    A[Type Annotations] --> B[Documentation]
+    A --> C[Type Checking]
+    A --> D[IDE Support]
+    B --> E[Self-documenting code]
+    C --> F[Catch errors early]
+    D --> G[Autocomplete & hints]
+```
+
+Type annotations provide:
+- **Documentation**: Makes code intent clear
+- **Type Checking**: Tools can verify type correctness
+- **IDE Support**: Better autocomplete and error detection
+- **Refactoring Safety**: Helps catch breaking changes
+
+**Optional vs Required**
+
+Type annotations in Jac are **optional** - code works without them. However, they're strongly recommended for:
+- Public APIs and functions
+- Complex data structures
+- Long-lived codebases
+- Team projects
+
+**Type Annotation Patterns**
+
+| Pattern | Example | When to Use |
+|---------|---------|-------------|
+| Variable with value | `name: str = "Alice"` | Clear declaration |
+| Function parameters | `def foo(x: int, y: str)` | Document inputs |
+| Function returns | `-> tuple` | Document outputs |
+| Flexible typing | `value: any = ...` | When type varies |
+| No annotation | `x = 42` | Quick scripts |
+
+All the built-in types work together to give you powerful tools for representing and manipulating data in your Jac programs.

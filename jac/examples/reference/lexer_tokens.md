@@ -1,98 +1,85 @@
-Lexer tokens in Jac define the fundamental building blocks that the lexical analyzer recognizes when parsing source code. These tokens represent the smallest meaningful units of the language.
+Builtin type keywords are special tokens in Jac that represent fundamental data types. These keywords are recognized by the lexer and can be used both as type annotations and as runtime type objects.
 
-#### Token Categories
+**What are Builtin Type Keywords?**
 
-**Built-in type tokens:**
-```jac
-str int float list tuple set dict bool bytes any type
+When you write code in Jac, the lexer (the part of the compiler that reads your code) recognizes certain words as special type keywords. These keywords represent the basic building blocks of data in your programs.
+
+**The Eight Builtin Type Keywords**
+
+Lines 7-14 demonstrate all eight builtin type keywords used as type annotations:
+
+| Keyword | Type | Example Value | Line |
+|---------|------|---------------|------|
+| `str` | String (text) | `"string"` | 7 |
+| `int` | Integer (whole number) | `42` | 8 |
+| `float` | Floating-point (decimal) | `3.14` | 9 |
+| `list` | List (ordered collection) | `[1, 2, 3]` | 10 |
+| `tuple` | Tuple (immutable sequence) | `(1, 2)` | 11 |
+| `set` | Set (unique values) | `{1, 2}` | 12 |
+| `dict` | Dictionary (key-value pairs) | `{"key": "value"}` | 13 |
+| `bool` | Boolean (true/false) | `True` | 14 |
+
+**Type Annotation Syntax**
+
+The pattern for declaring a variable with a type annotation is:
+
+For example, line 7 shows `x: str = "string"`, which means:
+- `x` is the variable name
+- `str` is the type annotation (telling Jac this should be a string)
+- `"string"` is the value being assigned
+
+**How the Lexer Treats These Keywords**
+
+Lines 17-18 explain an important detail: these keywords are "tokenized specially" by the lexer. This means the lexer gives them special treatment so they can serve two purposes:
+
+```mermaid
+graph TD
+    A[Builtin Type Keyword] --> B[Used as Type Annotation]
+    A --> C[Used as Runtime Type Object]
+    B --> D["Example: x: int = 5"]
+    C --> E["Example: type(x) == int"]
 ```
 
-**Declaration keywords:**
-```jac
-let has can def class obj node edge walker enum impl
-```
+**Purpose 1: Type Annotations**
 
-**Control flow keywords:**
-```jac
-if elif else for while match case try except finally
-```
+Type annotations provide compile-time type information. They tell Jac (and developers reading the code) what type of data a variable should hold:
 
-**Data spatial keywords:**
-```jac
-visit spawn ignore disengage here visitor entry exit
-```
+| Declaration | What It Means |
+|-------------|---------------|
+| `x: str` | x should hold string values |
+| `y: int` | y should hold integer values |
+| `z: float` | z should hold floating-point values |
 
-#### Operator Tokens
+**Purpose 2: Runtime Type Objects**
 
-**Arithmetic operators:**
-```jac
-+ - * / // % ** @
-```
+The same keywords can also be used at runtime as type objects. For example, you can use them with `type()` checks, type conversions, or as values in your code.
 
-**Comparison operators:**
-```jac
-== != < <= > >= is in
-```
+**Where These Keywords Appear**
 
-**Assignment operators:**
-```jac
-= := += -= *= /= //= %= **= @=
-```
+These builtin type keywords can be used in several contexts:
 
-**Data spatial operators:**
-```jac
---> <-- <--> ++> <++ <++>  # Navigation and connection
-|> <| :> <: .> <.          # Pipe operators
-```
+| Context | Example | Lines |
+|---------|---------|-------|
+| Variable declarations | `x: str = "hello"` | 7-14 |
+| Function parameters | `def greet(name: str) {...}` | - |
+| Return type annotations | `def get_age() -> int {...}` | - |
+| Class attributes | `has name: str` | - |
 
-#### Literal Tokens
+**Complete Example Breakdown**
 
-```jac
-42          # Integer
-3.14159     # Float
-"hello"     # String
-True False  # Boolean
-None        # Null
-```
+Line 16 prints all the variables, demonstrating that:
+- Each variable holds a value of its declared type
+- The type annotations don't prevent the code from running
+- All the builtin types work together in a single program
 
-#### Special Reference Tokens
+**Related Information**
 
-```jac
-init postinit here visitor self super root
-```
+Line 18 points to `builtin_types.jac` for more comprehensive examples of how to use these types. This file (`lexer_tokens.jac`) focuses specifically on showing that these are special keywords recognized by the lexer, not just regular identifiers.
 
-#### Delimiter Tokens
+**Why Special Tokenization Matters**
 
-```jac
-( ) [ ] { }     # Grouping
-; : , . ... ?   # Punctuation
-->              # Return type hint
-```
-
-#### Comment Tokens
-
-Single-line comments begin with `#` and extend to the end of the line.  Jac also
-supports multiline comments delimited by `#*` and `*#`:
-
-```jac
-# This is a line comment
-#*
-This entire block is ignored by the compiler.
-*#
-```
-
-#### Identifier Rules
-
-- Case-sensitive token recognition
-- Keywords take precedence over identifiers
-- Escaped identifiers: `<>reserved_word`
-
-#### Lexical Analysis Process
-
-1. Character stream processing
-2. Token recognition using longest match
-3. Token classification and value assignment
-4. Error reporting with position information
-5. Token stream generation for parser
-
-Understanding lexer tokens is fundamental to writing correct Jac code, as these tokens form the basic vocabulary for the language parser.
+By tokenizing these keywords specially, Jac can:
+1. Provide better error messages when types are misused
+2. Enable type checking and inference
+3. Allow these words to be used both as types and values
+4. Reserve these words so they can't be used as variable names in most contexts

@@ -1,119 +1,245 @@
-Disengage statements in Jac provide a mechanism for terminating walker traversal within the object-spatial topology. This statement enables walkers to exit their active traversal state and return to inactive object status, representing a controlled termination of the "computation moving to data" process that characterizes Object-Spatial Programming.
+**Disengage Statements in Jac**
 
-**Theoretical Foundation**
+The `disengage` statement is a walker-specific control flow mechanism that immediately terminates walker execution and returns control to the spawn point. It's essential for controlling graph traversal and implementing search patterns.
 
-In OSP theory, the disengage statement allows a walker to immediately terminate its entire object-spatial traversal and return to an inactive object state. When executed, it sets the walker's location to inactive (L(w) ← ∅) and clears its traversal queue (Q_w ← []), effectively removing the walker from active participation in the distributed computational system.
+**Walker Control Statements**
 
-**Basic Disengage Syntax**
+| Statement | Context | Effect | Continues After |
+|-----------|---------|--------|-----------------|
+| `disengage` | Walker abilities | Stop entire walker | No (walker terminates) |
+| `skip` | Walker abilities | Skip current node only | Yes (next node) |
+| `break` | Loops (for/while) | Exit innermost loop | Yes (after loop) |
+| `continue` | Loops (for/while) | Skip current iteration | Yes (next iteration) |
 
-The disengage statement uses simple syntax:
-```jac
-disengage;
+**Basic Disengage (Lines 7-22)**
+
+The example defines `BasicDisengage` walker to demonstrate core functionality:
+
+**Walker structure (Lines 8-22)**:
+- Lines 9-12: `start` ability with `root entry` - executes when walker begins at root
+- Lines 14-21: `visit_person` ability with `Person entry` - executes when visiting Person nodes
+
+**Disengage execution (Lines 16-18)**:
+- Line 16: Checks if current node's name is "Bob"
+- Line 17: Prints message
+- Line 18: `disengage` stops the walker immediately
+- Line 20: `visit [-->]` will NOT execute if disengage was called
+
+**Disengage Flow Diagram**
+
+```mermaid
+graph TD
+    A[Walker spawned at root] --> B[Execute root entry ability]
+    B --> C[visit results queued]
+    C --> D[Visit Alice]
+    D --> E{Alice == Bob?}
+    E -->|No| F[Queue more visits]
+    F --> G[Visit Bob]
+    G --> H{Bob == Bob?}
+    H -->|Yes| I[disengage]
+    I --> J[Walker stops]
+    E -->|Yes| I
+
+    style I fill:#c62828,stroke:#fff,color:#fff
+    style J fill:#c62828,stroke:#fff,color:#fff
 ```
 
-This statement can be executed from various contexts within the object-spatial execution environment.
+**Conditional Disengage (Lines 24-42)**
 
-**Execution Contexts**
+The `ConditionalDisengage` walker demonstrates using state to control termination:
 
-Disengage statements can be called from multiple contexts:
+**Walker attributes (Lines 26-27)**:
+- `max_visits: int = 2` - maximum allowed visits
+- `visit_count: int = 0` - tracks visits made
 
-**From Walker Abilities**
-Walkers can disengage themselves during their traversal:
-```jac
-walker Visitor {
-    can travel with `root entry {
-        visit [-->] else {
-            visit root;
-            # Walker disengages itself
-        }
-    }
-}
+**Visit counting (Lines 33-40)**:
+- Line 34: Increments visit counter
+- Line 35: Prints visit information
+- Line 36: Checks if max visits reached
+- Line 38: Disengages when limit hit
+- Line 40: Only executes if disengage not called
+
+**Search Walker Pattern (Lines 44-62)**
+
+The `SearchWalker` demonstrates a common pattern - searching for a specific node:
+
+**Walker state (Lines 46-47)**:
+- `target_name: str` - what we're looking for
+- `found: bool = False` - whether we found it
+
+**Search logic (Lines 53-60)**:
+- Line 55: Compares current node name to target
+- Line 56: Prints success message
+- Line 57: Updates walker state
+- Line 58: Disengages (stops searching)
+
+**Graph Construction (Lines 64-74)**
+
+Lines 66-74 build a test graph:
+
+**Graph Structure Visualization**
+
+```mermaid
+graph TD
+    Root --> Alice
+    Alice --> Bob
+    Alice --> Charlie
+    Bob --> Diana
+
+    style Root fill:#1976d2,stroke:#fff,color:#fff
+    style Alice fill:#6a1b9a,stroke:#fff,color:#fff
+    style Bob fill:#6a1b9a,stroke:#fff,color:#fff
+    style Charlie fill:#6a1b9a,stroke:#fff,color:#fff
+    style Diana fill:#6a1b9a,stroke:#fff,color:#fff
 ```
 
-**From Node Abilities**
-Nodes can disengage visiting walkers, as demonstrated in the example:
-```jac
-node item {
-    can speak with Visitor entry {
-        print("Hey There!!!");
-        disengage;  # Node disengages the visiting walker
-    }
-}
-```
+**Walker Execution Examples**
 
-This showcases the bidirectional nature of object-spatial computation, where both walkers and the locations they visit can control the traversal process.
+**BasicDisengage execution (Line 77)**:
+- Starts at root
+- Visits Alice (processes normally)
+- Visits Bob (disengages immediately)
+- Charlie and Diana are NEVER visited
 
-**Execution Semantics**
+**ConditionalDisengage execution (Line 80)**:
+- Visits Alice (count=1, continues)
+- Visits Bob (count=2, disengages)
+- Limit reached, walker stops
 
-When a disengage statement executes:
+**SearchWalker execution (Lines 83-84)**:
+- Line 83: Spawns walker looking for "Charlie"
+- Walker visits nodes until finding Charlie or exhausting graph
+- Line 84: Prints result from walker's state
 
-1. **Immediate Termination**: All remaining ability execution at the current location is immediately terminated
-2. **Bypass Exit Processing**: Any exit abilities for the current location type are bypassed
-3. **Queue Clearing**: The walker's traversal queue is completely cleared (Q_w ← [])
-4. **Location Reset**: The walker's location is set to inactive (L(w) ← ∅)
-5. **State Transition**: The walker transitions from an active participant in the distributed computational system to an inactive object
-6. **Data Preservation**: The walker retains all its properties and data accumulated during traversal
+**Disengage vs Skip Comparison**
 
-**Comparison with Traditional Control Flow**
+**Disengage semantics**:
+1. Stops walker execution immediately
+2. Clears all queued visits
+3. Returns control to spawn point
+4. Walker state preserved and accessible
 
-The disengage statement is analogous to the `break` statement in traditional loop constructs, but operates within the context of topological traversal rather than iterative control structures. While `break` exits loops, `disengage` exits the entire object-spatial execution context.
+**Skip semantics** (not shown but compared):
+1. Stops processing current node only
+2. Queued visits continue
+3. Walker moves to next node
+4. Walker continues running
 
-**Use Cases**
+**Comparison Table**
 
-Disengage statements are commonly used for:
+| Scenario | disengage | skip |
+|----------|-----------|------|
+| Current node processing | Stops | Stops |
+| Queued nodes | Discarded | Processed |
+| Walker state | Preserved | Preserved |
+| Walker continues | No | Yes |
+| Return to spawn | Yes | No |
+| Use case | Search complete, error | Filter node |
 
-**Early Termination**
-- **Target Found**: Stopping traversal when a specific node or condition is discovered
-- **Completion Criteria**: Terminating when computational objectives are achieved
-- **Error Conditions**: Exiting traversal when invalid states or data are encountered
+**Execution Model**
 
-**Resource Management**
-- **Traversal Limits**: Preventing infinite or excessively long traversals
-- **Performance Optimization**: Stopping unnecessary exploration when results are obtained
-- **Memory Conservation**: Freeing walker resources when computation is complete
+When a walker is spawned:
+1. Walker created at spawn node
+2. Entry ability for spawn node type executes
+3. `visit` statements queue nodes to visit
+4. Walker processes queued visits in order
+5. For each node, matching entry abilities execute
+6. Process continues until:
+   - No more queued visits (normal completion)
+   - `disengage` called (early termination)
+   - Exception raised (error)
 
-**Algorithm Implementation**
-- **Search Termination**: Ending search algorithms when targets are located
-- **Conditional Processing**: Stopping based on dynamic conditions discovered during traversal
-- **State Machine Transitions**: Exiting traversal phases in complex algorithmic processes
+**Walker State Preservation**
 
-**Lifecycle Integration**
+The walker object persists after disengage:
 
-The example demonstrates how disengage integrates with the complete walker lifecycle:
+After disengage:
+- All `has` attributes accessible
+- Can inspect walker's final state
+- Useful for collecting data during traversal
+- Return values from graph exploration
 
-1. **Creation and Spawning**: `root spawn Visitor()` activates the walker
-2. **Traversal Execution**: Walker moves through connected nodes via visit statements
-3. **Node Interaction**: Each visited node's ability executes upon walker arrival
-4. **Controlled Termination**: The node's `speak` ability calls `disengage` after processing
-5. **State Cleanup**: Walker transitions back to inactive status with preserved data
+**Common Disengage Patterns**
 
-**Design Patterns**
+**Search pattern** (lines 55-58):
 
-**Visitor Pattern Termination**
-The example shows a common pattern where nodes control visitor lifecycle:
-- Nodes perform their processing (printing a message)
-- Nodes then terminate the visitor's traversal
-- This enables data locations to control when computation should stop
+**Depth limit** (lines 36-38):
 
-**Conditional Disengage**
-Disengage can be combined with conditional logic:
-```jac
-if (condition_met) {
-    disengage;
-}
-```
+**Error condition**:
 
-**Graceful vs. Immediate Termination**
-Unlike error-based termination, disengage provides graceful termination that:
-- Preserves walker state and accumulated data
-- Maintains system integrity
-- Enables post-traversal analysis or processing
+**Resource limit**:
 
-**Relationship to Other Control Statements**
+**Goal achievement**:
 
-Disengage complements other object-spatial control statements:
-- **Visit**: Adds destinations to walker traversal queue
-- **Skip**: Terminates processing at current location but continues traversal
-- **Disengage**: Terminates entire traversal and returns walker to inactive state
+**Best Practices**
 
-The disengage statement provides essential control over walker lifecycle management, enabling sophisticated algorithms that can terminate based on discovered conditions, computational completion, or resource constraints. It represents a key mechanism for managing the autonomous nature of walkers while maintaining programmatic control over the distributed computational process that characterizes Object-Spatial Programming.
+1. **Document termination conditions**: Make it clear when/why walker disengages
+2. **Update walker state before disengage**: Set result flags for caller to check
+3. **Use for early termination**: Don't traverse entire graph if you found what you need
+4. **Combine with skip for filtering**: Skip unwanted nodes, disengage when done
+5. **Consider depth limits**: Prevent infinite traversal in cyclic graphs
+
+**Disengage Use Cases**
+
+| Use Case | Pattern | Example |
+|----------|---------|---------|
+| Search | Find target, disengage | Find node by ID (lines 55-58) |
+| Limit depth | Track depth, disengage at max | Bounded exploration (lines 36-38) |
+| Collect data | Gather until satisfied, disengage | Collect N samples |
+| Validate | Check condition, disengage on fail | Schema validation |
+| Count nodes | Increment counter, disengage at threshold | Count specific types |
+
+**Multiple Disengage Points**
+
+A walker can have multiple conditional disengage points:
+
+The walker stops at the first matching condition.
+
+**Disengage and Visit Interaction**
+
+Lines 11 and 20 show `visit` statements:
+- `visit [-->]` queues outgoing nodes for visiting
+- If disengage is called, queued visits are discarded
+- Walker stops immediately without processing queue
+
+**Before disengage**:
+
+**After disengage**:
+
+**Walker Abilities Execution Order**
+
+If multiple abilities match a node type, they execute in definition order:
+
+If `first` disengages, `second` never executes.
+
+**Return to Spawn Point**
+
+Line 77: `root spawn BasicDisengage();`
+
+Disengage returns control to the spawn statement:
+- Spawn expression completes
+- Next statement executes
+- Walker object available for inspection
+- Normal program flow continues
+
+**Disengage in Different Abilities**
+
+Disengage works in any walker ability:
+
+**Root entry** (lines 9-12):
+
+**Node entry** (lines 14-21):
+
+**Exit ability** (if defined):
+
+Note: Exit abilities may still run after disengage, depending on implementation.
+
+**Comparison with Return**
+
+| Feature | disengage | return |
+|---------|-----------|--------|
+| Context | Walker abilities | Functions |
+| Stops | Entire walker | Current function |
+| Returns value | No (use walker state) | Yes |
+| Continues after | No | Yes (caller continues) |
+| State preservation | Walker object persists | Function locals lost |

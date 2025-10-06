@@ -1,38 +1,32 @@
+"""Concurrent expressions: Flow (spawn async task) and wait (await result)."""
+
 import from time { sleep }
 
-node A {
-    has val: int = 0;
-
-    can do with entry {
-        print("Started");
-        sleep(2);
-        print(visitor);
-
-    }
+def compute(x: int, y: int) -> int {
+    print(f"Computing {x} + {y}");
+    sleep(1);
+    return x + y;
 }
 
-walker B {
-    has name: str;
-
-}
-
-def add(x: int, y: int) -> int {
-    print(x);
-    z = x + y;
-    sleep(2);
-    print(x);
-    return z;
+def slow_task(n: int) -> int {
+    print(f"Task {n} started");
+    sleep(1);
+    print(f"Task {n} done");
+    return n * 2;
 }
 
 with entry {
-    t1 = flow A() spawn B("Hi") ;
+    # Flow - start concurrent execution (returns future/task)
+    task1 = flow compute(5, 10);
+    task2 = flow compute(3, 7);
+    task3 = flow slow_task(42);
 
-    task1 = flow add(1, 10) ;
-    task2 = flow add(2, 11) ;
-    print("All are started");
-    res1 = wait task1 ;
-    res2 = wait task2 ;
-    print("All are done");
-    print(res1);
-    print(res2);
+    print("All tasks started concurrently");
+
+    # Wait - wait for task completion and get result
+    result1 = wait task1;
+    result2 = wait task2;
+    result3 = wait task3;
+
+    print(f"Results: {result1}, {result2}, {result3}");
 }

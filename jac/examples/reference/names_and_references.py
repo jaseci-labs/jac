@@ -1,32 +1,75 @@
-from dataclasses import dataclass, field
+from __future__ import annotations
+from jaclang.runtimelib.builtin import *
+from jaclang import JacMachineInterface as _jl
 
+class Counter(_jl.Obj):
+    count: int = 0
 
-@dataclass
-class Animal:
-    species: str
-    sound: str
+    def increment(self) -> None:
+        self.count += 1
+        print(self.count)
 
+class Animal(_jl.Obj):
 
-@dataclass
-class Dog(Animal):
-    breed: str
-    trick: str = field(init=False)
+    def speak(self) -> None:
+        print('animal sound')
 
-    def __post_init__(self):
-        self.trick = "Roll over"
+class Dog(Animal, _jl.Obj):
 
+    def speak(self) -> None:
+        super().speak()
+        print('woof')
 
-@dataclass
-class Cat(Animal):
+class Task(_jl.Node):
+    name: str
 
-    def __init__(self, fur_color: str):
-        super().__init__(species="Cat", sound="Meow!")
-        self.fur_color = fur_color
+class TaskWalker(_jl.Walker):
 
+    @_jl.entry
+    def process(self, here: Task) -> None:
+        print(f'at {here.name}')
+        _jl.visit(self, _jl.refs(_jl.Path(here)._out().visit()))
 
-dog = Dog(breed="Labrador", species="Dog", sound="Woof!")
-cat = Cat(fur_color="Tabby")
+class Interactive(_jl.Node):
+    visitor_name: str = 'none'
 
-print(dog.breed, dog.sound, dog.trick)
-# print(f'The dog is a {dog.breed} and says "{dog.sound}"')
-# print(f"The cat's fur color is {cat.fur_color}")
+    @_jl.entry
+    def track(self, visitor: TaskWalker) -> None:
+        self.visitor_name = visitor.__class__.__name__
+        print(f'visited by {self.visitor_name}')
+
+class RootWalker(_jl.Walker):
+
+    @_jl.entry
+    def start(self, here: _jl.Root) -> None:
+        print(f'at root: {_jl.root()}')
+        print(f'here is root: {here is _jl.root()}')
+        _jl.visit(self, _jl.refs(_jl.Path(here)._out().visit()))
+
+    @_jl.entry
+    def at_task(self, here: Task) -> None:
+        print(f'root is: {_jl.root()}')
+
+class Configured(_jl.Obj):
+    value: int
+    doubled: int = 0
+
+    def __init__(self, value: int) -> None:
+        self.value = value
+        self.__post_init__()
+
+    def __post_init__(self) -> None:
+        self.doubled = self.value * 2
+c = Counter()
+c.increment()
+c.increment()
+d = Dog()
+d.speak()
+task = Task(name='test')
+inter = Interactive()
+_jl.connect(left=_jl.root(), right=task)
+_jl.connect(left=task, right=inter)
+_jl.spawn(_jl.root(), TaskWalker())
+_jl.spawn(_jl.root(), RootWalker())
+cfg = Configured(value=10)
+print(f'value={cfg.value}, doubled={cfg.doubled}')

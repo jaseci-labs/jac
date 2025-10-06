@@ -1,20 +1,54 @@
-obj Car {
-    has make: str,
-        model: str,
+"""Archetype bodies: Member statements (has, static, methods, nested types)."""
+
+"""This is a module-level docstring"""
+
+obj Vehicle {
+    """Member docstring"""
+
+    # Has statements with type annotations
+    has name: str,
         year: int;
-    static has wheels: int = 4;
 
-    def display_car_info {
-        print(f"Car Info: {self.year} {self.make} {self.model}");
+    # Static members
+    static has count: int = 0;
+
+    # Access modifiers
+    has :pub public_id: str = "V123";
+    has :priv private_data: int = 0;
+
+    # Has with postinit initialization
+    has config: dict by postinit;
+
+    def postinit {
+        self.config = {"active": True};
+        Vehicle.count += 1;
     }
 
-    static def get_wheels -> int {
-        return Car.wheels;
+    # Instance methods
+    def display -> str {
+        return f"{self.year} {self.name}";
     }
+
+    # Static methods
+    static def get_count -> int {
+        return Vehicle.count;
+    }
+
+    # Nested class
+    class Part {
+        has part_name: str;
+    }
+
+    # Inline Python
+    ::py::
+    def py_method(self):
+        return "Python code"
+    ::py::
 }
 
 with entry {
-    car = Car("Toyota", "Camry", 2020);
-    car.display_car_info();
-    print("Number of wheels:", Car.get_wheels());
+    v1 = Vehicle(name="Car", year=2020);
+    v2 = Vehicle(name="Truck", year=2021);
+
+    print(v1.display(), v2.display(), Vehicle.get_count());
 }

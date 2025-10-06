@@ -1,342 +1,106 @@
-Return statements in Jac provide the mechanism for functions and methods to exit and optionally return values to their callers. The return statement syntax supports both value-returning and void functions, enabling clear control flow and data passing in function-based programming.
+**Return Statements**
 
-**Basic Return Statement Syntax**
+Return statements exit a function or method and send a value back to the caller. They are fundamental to function-based programming and control flow in Jac.
 
-Return statements follow this pattern from the grammar:
-```jac
-return expression;  # Return a value
-return;             # Return without a value (void)
-```
+**Returning a Value**
 
-**Example Implementation**
+Line 4 demonstrates the simplest form: `return 42;`. This exits the `return_value` function immediately and sends the integer 42 back to the caller. The function signature on line 3 includes `-> int`, indicating the function returns an integer type. Line 49 calls this function and prints the returned value.
 
-The provided example demonstrates a function that returns a computed value:
-```jac
-def foo -> int {
-    a = 42;
-    return a;
-}
-```
+**Returning an Expression**
 
-**Key aspects:**
-- **Type annotation**: Function specifies return type `-> int`
-- **Variable assignment**: Local variable `a` holds the return value
-- **Return expression**: `return a` exits function and returns the variable's value
-- **Caller usage**: `foo()` can be used in expressions like `print("Returned:", foo())`
+Lines 7-10 show returning a computed value. Line 9 evaluates `x * 2` (which is 10 * 2 = 20) and returns the result. The expression is evaluated before the function exits, and the calculated value is sent to the caller. Line 50 demonstrates calling this function.
 
-**Return Statement Variations**
+**Return without a Value**
 
-**Value Returns**
-```jac
-def calculate(x: int, y: int) -> int {
-    result = x * y + 10;
-    return result;
-}
-```
+Lines 12-15 demonstrate `return;` with no expression. Line 14 shows the bare return statement, which exits the function and implicitly returns `None`. This is useful for early exits when you don't need to provide a return value. Line 51 calls this function, which returns None.
 
-**Expression Returns**
-```jac
-def add(a: int, b: int) -> int {
-    return a + b;  # Return expression directly
-}
-```
+**Implicit None Return**
+
+Lines 17-19 show a function without any return statement. Line 18 executes print, then the function ends, implicitly returning `None`. Functions without explicit return statements automatically return None when they reach the end. Line 52 demonstrates this behavior.
 
 **Conditional Returns**
-```jac
-def absolute(x: int) -> int {
-    if x < 0 {
-        return -x;
-    }
-    return x;
-}
+
+Lines 21-27 show return statements in different conditional branches:
+
+| Condition | Line | Return Value |
+|-----------|------|--------------|
+| `x > 0` (true) | 23 | Returns x |
+| `x > 0` (false) | 25 | Returns 0 |
+
+Line 53 calls with argument 5 (positive), taking the first branch and returning 5. Line 54 calls with -3 (negative), taking the else branch and returning 0. This pattern ensures all code paths return a value.
+
+**Early Return Pattern**
+
+Lines 29-34 demonstrate using return for early exit. When `flag` is True, line 31 executes `return;` and the function exits immediately, never reaching line 33. When `flag` is False, the early return is skipped and line 33 executes. Lines 55-56 demonstrate both cases.
+
+```mermaid
+graph TD
+    A[Function entry] --> B{flag == True?}
+    B -->|Yes| C[return - exit immediately]
+    B -->|No| D[print statement]
+    D --> E[Function ends, returns None]
 ```
 
-**Void Returns**
-```jac
-def print_message(msg: str) {
-    print(msg);
-    return;  # Optional - function ends here
-}
-```
-
-**Early Returns**
-
-Return statements enable early function exit:
-
-**Guard Clauses**
-```jac
-def process_data(data: list) -> bool {
-    if data is None {
-        return false;  # Early exit for invalid input
-    }
-    if len(data) == 0 {
-        return false;  # Early exit for empty data
-    }
-    # Main processing logic
-    return process(data);
-}
-```
-
-**Error Conditions**
-```jac
-def divide(a: float, b: float) -> float {
-    if b == 0.0 {
-        return float('inf');  # Early return for division by zero
-    }
-    return a / b;
-}
-```
+This pattern is valuable for:
+- Guard clauses validating inputs
+- Handling special cases before main logic
+- Avoiding deep nesting in conditionals
+- Simplifying complex control flow
 
 **Multiple Return Paths**
 
-Functions can have multiple return statements:
+Lines 36-46 show a function with multiple return statements across different branches:
 
-**Branching Logic**
-```jac
-def grade_score(score: int) -> str {
-    if score >= 90 {
-        return "A";
-    } elif score >= 80 {
-        return "B";
-    } elif score >= 70 {
-        return "C";
-    } else {
-        return "F";
-    }
-}
-```
+| Input | Line | Returns |
+|-------|------|---------|
+| "high" | 38 | 100 |
+| "medium" | 40 | 50 |
+| "low" | 42 | 10 |
+| Other | 44 | 0 |
 
-**Complex Control Flow**
-```jac
-def search_array(arr: list, target: int) -> int {
-    for i=0 to i<len(arr) by i+=1 {
-        if arr[i] == target {
-            return i;  # Return index when found
-        }
-    }
-    return -1;  # Return -1 when not found
-}
-```
+Lines 57-59 demonstrate calling with different arguments, each taking a different return path through the function.
 
-**Return Types and Type Safety**
+**Return Statement Execution**
 
-Jac enforces return type consistency:
+Key behaviors to understand:
+- Execution stops immediately at the return statement
+- No code after the return in that code path will execute
+- The expression is evaluated before exiting
+- Return values should match the function's type annotation
+- Functions without explicit returns implicitly return None
+- Unlike `report`, return can only execute once per function call
 
-**Type Matching**
-```jac
-def get_name() -> str {
-    return "John";     # Valid: string literal
-    # return 42;      # Error: int doesn't match str
-}
-```
+**Return Type Annotations**
 
-**Multiple Value Returns**
-```jac
-def get_coordinates() -> (int, int) {
-    return (10, 20);   # Return tuple
-}
+The examples show different return type patterns:
 
-def get_stats() -> dict {
-    return {"count": 5, "average": 3.2};
-}
-```
-
-**Nullable Returns**
-```jac
-def find_user(id: int) -> User? {
-    user = database.find(id);
-    if user.exists {
-        return user;
-    }
-    return None;       # Explicit null return
-}
-```
-
-**Returns in Different Contexts**
-
-**Method Returns**
-```jac
-obj Calculator {
-    def multiply(a: int, b: int) -> int {
-        return a * b;
-    }
-}
-```
-
-**Ability Returns**
-```jac
-walker DataCollector {
-    can collect_data with `node entry -> dict {
-        data = here.extract_data();
-        return data;
-    }
-}
-```
-
-**Lambda Returns**
-```jac
-square = lambda x: int : x * x;  # Implicit return
-```
-
-**Object-Spatial Context Returns**
-
-Returns work within object-spatial programming:
-
-**Walker Method Returns**
-```jac
-walker Analyzer {
-    can analyze with `node entry -> bool {
-        if here.is_valid {
-            analysis = here.perform_analysis();
-            return analysis.is_successful;
-        }
-        return false;
-    }
-}
-```
-
-**Node Method Returns**
-```jac
-node DataNode {
-    can get_value with Reader entry -> int {
-        if visitor.has_permission {
-            return self.value;
-        }
-        return 0;  # Default value for unauthorized access
-    }
-}
-```
-
-**Return Statement Control Flow**
-
-**Function Termination**
-- Return immediately exits the function
-- No code after return in the same block executes
-- Function control returns to the caller
-
-**Nested Block Returns**
-```jac
-def complex_function(x: int) -> str {
-    if x > 0 {
-        return "positive";  # Exits entire function
-    }
-    # This code executes only if x <= 0
-    return "non-positive";
-}
-```
-
-**Loop Returns**
-```jac
-def find_first_even(numbers: list) -> int {
-    for num in numbers {
-        if num % 2 == 0 {
-            return num;     # Exits function and loop
-        }
-    }
-    return -1;  # No even number found
-}
-```
-
-**Performance Considerations**
-
-**Early Returns for Efficiency**
-```jac
-def expensive_computation(data: list) -> bool {
-    if len(data) == 0 {
-        return false;      # Avoid expensive computation
-    }
-    # Expensive processing only if needed
-    return process_data(data);
-}
-```
-
-**Avoiding Unnecessary Computation**
-```jac
-def validate_and_process(input: str) -> str {
-    if not is_valid(input) {
-        return "Invalid input";  # Skip processing
-    }
-    return expensive_process(input);
-}
-```
-
-**Best Practices**
-
-**Clear Return Logic**
-```jac
-def is_prime(n: int) -> bool {
-    if n < 2 {
-        return false;
-    }
-    for i=2 to i*i<=n by i+=1 {
-        if n % i == 0 {
-            return false;
-        }
-    }
-    return true;
-}
-```
-
-**Single Responsibility**
-```jac
-def calculate_tax(income: float) -> float {
-    if income <= 0 {
-        return 0.0;
-    }
-    # Single calculation responsibility
-    return income * TAX_RATE;
-}
-```
+| Line | Function | Return Type | Meaning |
+|------|----------|-------------|---------|
+| 3 | `return_value` | `-> int` | Returns an integer |
+| 7 | `return_expression` | `-> int` | Returns an integer |
+| 12 | `return_none` | (none) | No type specified, returns None |
+| 17 | `no_return` | (none) | No type specified, implicitly returns None |
+| 21 | `conditional_return` | `-> int` | Returns integer from either branch |
+| 29 | `early_return` | (none) | Returns None |
+| 36 | `multiple_returns` | `-> int` | Returns integer from any branch |
 
 **Common Patterns**
 
-**Factory Functions**
-```jac
-def create_user(name: str, age: int) -> User {
-    user = User();
-    user.name = name;
-    user.age = age;
-    return user;
-}
-```
+Return statements enable several important programming patterns demonstrated in this example:
 
-**Transformer Functions**
-```jac
-def to_uppercase(text: str) -> str {
-    return text.upper();
-}
-```
+1. **Value computation** (lines 3-5): Calculate and return a result
+2. **Early exit** (lines 29-34): Return early from guard clauses
+3. **Branching logic** (lines 21-27): Return different values based on conditions
+4. **Multiple exit points** (lines 36-46): Handle different cases with appropriate returns
+5. **Explicit None** (lines 12-15): Use bare `return;` to exit without a value
 
-**Validator Functions**
-```jac
-def is_valid_email(email: str) -> bool {
-    return "@" in email and "." in email;
-}
-```
+**Complete Example Flow**
 
-**Error Handling with Returns**
-
-```jac
-def safe_divide(a: float, b: float) -> (float, str) {
-    if b == 0.0 {
-        return (0.0, "Division by zero");
-    }
-    return (a / b, "Success");
-}
-```
-
-**Integration with Exception Handling**
-
-```jac
-def risky_operation() -> int {
-    try {
-        result = perform_operation();
-        return result;
-    } except OperationError as e {
-        log_error(e);
-        return -1;  # Error indicator
-    }
-}
-```
-
-Return statements in Jac provide essential function control flow, enabling clean separation of concerns, early optimization, and clear data flow patterns. The mandatory type annotations ensure return consistency while supporting both simple value returns and complex conditional logic, making functions reliable and type-safe components in Jac applications.
+Lines 48-60 in the entry block call all the example functions in sequence, demonstrating each return pattern:
+- Simple value return
+- Expression evaluation return
+- Explicit None return
+- Implicit None return
+- Conditional returns with different arguments
+- Early return with different flags
+- Multiple return paths with different inputs

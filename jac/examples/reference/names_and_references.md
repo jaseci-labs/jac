@@ -1,103 +1,180 @@
-Jac employs a familiar identifier system similar to Python and C-style languages while introducing specialized references essential for object-spatial programming. The naming system supports both traditional programming patterns and the unique requirements of computation moving through topological structures.
+Jac provides special reference keywords that are automatically available in specific contexts, allowing access to important runtime objects and enabling key Object-Spatial Programming patterns.
 
-#### Standard Identifiers
+**What are Special References?**
 
-Standard identifiers follow conventional rules: they must begin with an ASCII letter or underscore, followed by any combination of letters, digits, or underscores:
+Special references are keywords that Jac makes available automatically in certain contexts. They provide access to important objects like the current instance, parent class, current node, visiting walker, and root node. Understanding when each reference is available is crucial for effective Jac programming.
 
-```jac
-foo         # valid
-_bar_42     # valid
-my_variable # valid
-3cats       # invalid – cannot start with digit
+**Reference Availability Table**
+
+| Reference | Object Methods | Walker Abilities | Node Abilities | What It Refers To |
+|-----------|---------------|------------------|----------------|-------------------|
+| `self` | ✓ | ✓ | ✓ | Current instance (object/walker/node) |
+| `super` | ✓ | ✓ | ✓ | Parent class for inheritance |
+| `here` | ✗ | ✓ | ✓ | Current node being visited |
+| `visitor` | ✗ | ✗ | ✓ | Current walker (only in node abilities) |
+| `root` | ✗ | ✓ | ✓ | Root node (persistence anchor) |
+
+**self - The Instance Reference**
+
+Lines 4-11 demonstrate `self` in an object. Line 8 shows `self.count += 1`, which accesses the instance's `count` attribute. Line 9 uses `self.count` to print the current value.
+
+When you create an instance (line 79) and call its methods (lines 80-81), `self` refers to that specific instance. Each instance has its own `self` that refers to itself.
+
+Think of `self` as the answer to "who am I?" - it always points to the current instance, whether that's an object, a walker, or a node.
+
+**super - The Parent Reference**
+
+Lines 14-25 demonstrate inheritance with `super`. The `Dog` object inherits from `Animal` (line 20). Line 22 shows `super.speak()`, which calls the parent class's `speak` method before adding the dog's own behavior.
+
+```mermaid
+classDiagram
+    Animal <|-- Dog
+    Animal: +speak()
+    Dog: +speak()
+    Dog: super.speak() calls parent
 ```
 
-#### Keyword Escaping
+When `d.speak()` executes on line 85:
+1. Line 22: `super.speak()` calls Animal's speak (line 15-16)
+2. Line 23: Dog adds its own behavior
 
-When necessary, keywords can be used as identifiers by wrapping them with angle brackets:
+This allows you to extend parent behavior without replacing it entirely.
 
-```jac
-<>with = 10;        # valid despite "with" being a keyword
-print(<>with);
+**here - The Current Node Reference**
+
+Lines 28-37 show `here` used in a walker. Line 34 demonstrates `here.name`, accessing the current node's attributes.
+
+When a walker visits different nodes:
+- At root: `here` refers to the root node
+- At Task node: `here` refers to that specific Task node
+- Line 35: `visit [-->]` moves to the next node, updating what `here` points to
+
+```mermaid
+graph LR
+    A[Root] -->|walker visits| B[Task1]
+    B -->|walker visits| C[Task2]
+
+    style A fill:#7b1fa2,stroke:#fff,color:#fff
+    style B fill:#1565c0,stroke:#fff,color:#fff
+    style C fill:#1565c0,stroke:#fff,color:#fff
+
+    Note1[here = Root]
+    Note2[here = Task1]
+    Note3[here = Task2]
 ```
 
-This escaping mechanism provides flexibility when interfacing with external systems or when identifier names conflict with Jac keywords.
+Think of `here` as "where am I right now?" - it automatically updates as the walker moves through the graph.
 
-#### Special References
+**visitor - The Walker Reference (in Node Abilities)**
 
-Jac provides built-in special references that enable object-spatial programming patterns. These references have well-defined semantic meanings and cannot be reassigned:
+Lines 40-47 demonstrate `visitor` in a node ability. Line 44 shows `visitor.__class__.__name__`, accessing the walker's type from within a node's ability.
 
-| Reference | Context | Purpose |
-|-----------|---------|---------|
-| `self` | Archetype methods/abilities | Current instance reference |
-| `here` | Walker abilities | Current node/edge location |
-| `visitor` | Node/edge abilities | Visiting walker reference |
-| `super` | Archetype methods | Parent archetype access |
-| `root` | Any context | Root graph instance |
-| `init`/`postinit` | Archetype bodies | Lifecycle hook references |
+This creates bidirectional communication:
+- Walker abilities: Define what the walker does when visiting a node
+- Node abilities (with `visitor`): Define what the node does when visited by a walker
 
-#### Explicit Notation for Special Variables
+The node can inspect the walker using `visitor` to customize its behavior based on which walker is visiting.
 
-These keywords are reserved by the language and must appear exactly as shown.
-They cannot be redefined or used for other identifiers.  Their explicit spelling
-makes object-spatial code easier to read and prevents accidental shadowing of core
-context references.
+**root - The Global Root Reference**
 
-#### Object-Spatial Reference Usage
+Lines 50-60 show `root` being accessed from different contexts. Line 52 demonstrates printing `root`, and line 53 checks `here is root` to see if the current position is the root node.
 
-Special references enable the bidirectional interaction model central to object-spatial programming:
+The `root` reference is central to Jac's persistence model:
 
-```jac
-node DataNode {
-    has name: str;
-    has data: dict;
+```mermaid
+graph TD
+    R[root - Persistent]
+    A[Node A - Persistent]
+    B[Node B - Persistent]
+    C[Node C - Temporary]
 
-    can process with visitor entry {
-        # 'self' refers to this node, 'visitor' to the walker
-        print(f"Node {self.name} processing data for {visitor.id}");
-        
-        # Process data and update visitor state
-        result = self.analyze_data();
-        visitor.add_result(result);
-    }
-}
+    R -->|connected| A
+    A -->|connected| B
 
-walker DataProcessor {
-    has id: str;
-    has results: list = [];
+    style R fill:#2e7d32,stroke:#fff,color:#fff
+    style A fill:#2e7d32,stroke:#fff,color:#fff
+    style B fill:#2e7d32,stroke:#fff,color:#fff
+    style C fill:#b71c1c,stroke:#fff,color:#fff
 
-    can explore with entry {
-        # 'self' refers to this walker, 'here' to current location
-        print(f"Walker {self.id} arrived at {here.name}");
-        
-        # Continue traversal based on local context
-        if (here.has_more_data()) {
-            visit here.neighbors;
-        }
-    }
-}
+    Note[Anything connected to root persists]
 ```
 
-#### Name Resolution Hierarchy
+Key insights about `root`:
+- **Automatic Persistence**: Anything connected to root (via edges) persists automatically
+- **Per-User Isolation**: Each user gets their own distinct root node
+- **Global Accessibility**: Available anywhere in spatial contexts (walkers, node abilities)
+- **No Explicit Save**: Just connect to root - persistence happens automatically
 
-Jac resolves names using a systematic hierarchy:
+**init and postinit - Constructor Hooks**
 
-1. **Local scope**: Parameters, local variables, and `let` bindings
-2. **Enclosing archetype scope**: Instance variables and methods
-3. **Module scope**: Module-level definitions and globals
-4. **Imported modules**: External module references
-5. **Built-in references**: Special references and system functions
+Lines 63-75 demonstrate the initialization lifecycle. Line 67 shows `def init(value: int)`, which is the constructor. Line 69 calls `self.postinit()`, which executes after initialization.
 
-This resolution order ensures predictable behavior while supporting both lexical scoping and object-spatial context access.
+The initialization flow:
+1. Object is created: `Configured(value=10)` on line 98
+2. `init` method executes (lines 67-69), setting `self.value`
+3. `postinit` method executes (lines 72-73), computing derived values
 
-#### Naming Conventions
+This two-phase initialization lets you:
+- `init`: Set up basic attributes with parameters
+- `postinit`: Compute derived values that depend on those attributes
 
-Consistent naming enhances code clarity and supports Jac's static analysis capabilities:
+**Context Matters: When References Are Available**
 
-- **Variables and functions**: `lower_snake_case`
-- **Archetypes and enums**: `UpperCamelCase`
-- **Constants**: `UPPER_SNAKE_CASE`
-- **Special references**: Reserved lowercase names
+In walker abilities (lines 12-14, 17-21):
+- ✓ `self` - the walker instance
+- ✓ `here` - the current node being visited
+- ✓ `root` - the root node
+- ✗ `visitor` - NOT available (the walker IS the visitor)
 
-Descriptive naming is particularly important in object-spatial contexts where walkers, nodes, and edges interact dynamically, making clear semantic meaning essential for maintainable code.
+In node abilities (lines 43-46):
+- ✓ `self` - the node instance (same as `here`)
+- ✓ `here` - also the node instance
+- ✓ `visitor` - the walker that's visiting
+- ✓ `root` - the root node
 
-The naming system provides the foundation for clear, expressive object-spatial programs where computation flows through well-defined topological structures with unambiguous reference semantics.
+In regular object methods (lines 7-10):
+- ✓ `self` - the object instance
+- ✓ `super` - parent class
+- ✗ Spatial references (`here`, `visitor`, `root`) - NOT available
+
+**Common Patterns**
+
+**Pattern 1: Walker state accumulation** (lines 88-92)
+
+**Pattern 2: Node responding to walker** (lines 43-46)
+
+**Pattern 3: Persistence via root** (lines 88-92)
+
+**Pattern 4: Parent method delegation** (lines 21-24)
+
+**Understanding the Execution Model**
+
+When `root spawn TaskWalker()` executes on line 92:
+
+1. Walker is created and spawned at root
+2. Walker's root entry ability executes with:
+   - `self` = the TaskWalker instance
+   - `here` = root node
+   - `root` = root node (so `here is root` is True)
+3. `visit [-->]` queues nodes to visit
+4. Walker visits task node with:
+   - `self` = still the same TaskWalker instance
+   - `here` = now the task node (changed!)
+   - `root` = still the root node
+5. Node's ability executes (if defined) with:
+   - `self` = the task node
+   - `here` = the task node (same as self)
+   - `visitor` = the TaskWalker instance
+   - `root` = the root node
+
+**Why These References Matter**
+
+Special references enable Object-Spatial Programming's key features:
+
+- **self**: Track instance state as computation moves
+- **here**: Access data where computation currently is
+- **visitor**: Let data respond to different computations differently
+- **root**: Anchor persistence without databases or explicit saves
+- **super**: Build on existing behavior through inheritance
+
+Understanding when each reference is available and what it refers to is essential for writing effective Jac programs. The references work together to create a programming model where computation flows to data, rather than data flowing to computation.

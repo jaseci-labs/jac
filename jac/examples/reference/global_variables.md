@@ -1,55 +1,98 @@
-Global variables provide module-level data storage that persists throughout program execution and can be accessed across different scopes within a Jac program. Jac offers two declaration keywords with distinct semantic meanings and access control capabilities.
+**Global Variables in Jac**
 
-#### Declaration Keywords
+Global variables are module-level declarations that can have access control tags specifying visibility and mutability. Jac provides two keywords for global declarations: `let` and `glob`.
 
-**`let` Keyword**: Declares module-level variables with lexical scoping semantics, suitable for configuration values and module-local state that may be reassigned during execution.
+**Let with Access Modifiers**
 
-**`glob` Keyword**: Explicitly declares global variables with program-wide scope, emphasizing their global nature and intended use for shared state across multiple modules or components.
+Lines 4-5 demonstrate `let` declarations with access tags. Line 4: `let:priv` creates a private module-level variable accessible only within the current module.
+Line 5: `let:pub` creates a public module-level variable accessible from other modules.
 
-#### Access Control Modifiers
+**Glob with Access Modifiers**
 
-Jac provides three access control levels for global variables:
+Lines 8-9 show `glob` declarations with access control. Line 8: `glob:protect` creates a protected variable with restricted access.
+Line 9: `glob shared_var` creates a global variable with default visibility.
 
-- **`:priv`**: Private to the current module, preventing external access
-- **`:pub`**: Publicly accessible from other modules and external code
-- **`:protect`**: Protected access with limited external visibility
+**Multiple Variable Declarations**
 
-When no access modifier is specified, variables default to module-level visibility with standard scoping rules.
+Line 12 demonstrates declaring multiple globals in one statement. This comma-separated syntax declares three global variables simultaneously.
 
-#### Syntax and Usage
+**Typed Global Variables**
 
-```jac
-let:priv config_value = "development";
-glob:pub shared_counter = 0;
-glob:protect system_state = "initialized";
-glob default_timeout = 30;
+Line 15 shows a typed global declaration. The type annotation `: int` specifies that `counter` must be an integer.
+
+**Access Control Tags**
+
+| Access Tag | Visibility | Example Line |
+|------------|------------|--------------|
+| `:priv` | Private to module | 4 |
+| `:pub` | Public, exportable | 5 |
+| `:protect` | Protected access | 8 |
+| (none) | Default visibility | 9 |
+
+**Using Global Variables**
+
+Lines 17-19 show accessing all declared globals in an entry block. All module-level globals are accessible within the module's entry blocks and functions.
+
+**Global Variable Declaration Patterns**
+
+```mermaid
+flowchart TD
+    Start([Global Declaration]) --> Type{Access<br/>Modifier?}
+    Type -->|:priv| Private[Private Scope<br/>Module Only]
+    Type -->|:pub| Public[Public Scope<br/>Exportable]
+    Type -->|:protect| Protected[Protected Scope<br/>Limited Access]
+    Type -->|None| Default[Default Scope]
+    Private --> Store[Store in Module<br/>Symbol Table]
+    Public --> Store
+    Protected --> Store
+    Default --> Store
+    Store --> Done([Variable Ready])
 ```
 
-#### Integration with Entry Points
+**Let vs Glob**
 
-Global variables integrate seamlessly with entry blocks and named execution contexts:
+Both `let` and `glob` create module-level variables:
 
-```jac
-let:priv module_data = initialize_data();
-glob:pub api_version = "2.1";
+| Keyword | Purpose | Typical Use |
+|---------|---------|-------------|
+| `let` | Module-level variable | Immutable-like semantics (by convention) |
+| `glob` | Explicit global variable | Clearly indicates global scope |
 
-with entry:main {
-    print(f"Module data: {module_data}");
-    print(f"API Version: {api_version}");
-    
-    # Global variables remain accessible throughout execution
-    process_with_globals();
-}
-```
+**Choice between them is often stylistic**, though `glob` more explicitly indicates module-wide scope and mutability.
 
-#### Common Usage Patterns
+**Access Control in Practice**
 
-**Configuration Management**: Global variables provide centralized configuration storage accessible across the entire program without parameter passing.
+**Private variables** (`:priv`):
+- Only accessible within the defining module
+- Cannot be imported by other modules
+- Useful for internal implementation details
 
-**Shared State**: Multiple components can access and modify shared program state through globally accessible variables.
+**Public variables** (`:pub`):
+- Accessible from other modules
+- Part of the module's public API
+- Can be imported and used externally
 
-**Module Interfaces**: Public global variables create clean interfaces between modules, exposing necessary data while maintaining encapsulation through access controls.
+**Protected variables** (`:protect`):
+- Accessible to subclasses and related code
+- Limited visibility between private and public
+- Used for semi-internal state
 
-**System Constants**: Global variables store system-wide constants and settings that remain consistent throughout program execution.
+**Common Patterns**
 
-Global variables complement Jac's object-spatial programming model by providing persistent state that walkers and other computational entities can access during graph traversal and distributed computation operations.
+**Configuration constants:**
+
+**Module state:**
+
+**Typed globals:**
+
+**Multiple related globals:**
+
+**Key Points**
+
+1. Both `let` and `glob` create module-level variables
+2. Access tags control visibility across module boundaries
+3. Multiple variables can be declared in one statement
+4. Type annotations are optional but recommended
+5. Private variables encapsulate implementation details
+6. Public variables form the module's API
+7. Default visibility when no access tag is specified

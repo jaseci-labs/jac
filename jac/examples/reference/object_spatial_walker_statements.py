@@ -1,15 +1,13 @@
 from __future__ import annotations
 from jaclang.runtimelib.builtin import *
-from jaclang import JacMachineInterface as _
+from jaclang import JacMachineInterface as _jl
 
+class Visitor(_jl.Walker):
 
-class Visitor(_.Walker):
-
-    @_.entry
-    def self_destruct(self, here: _.Root) -> None:
+    @_jl.entry
+    def self_destruct(self, here: _jl.Root) -> None:
         print("get's here")
-        return _.disengage(self)
-        print("but not here")
-
-
-_.spawn(_.root(), Visitor())
+        _jl.disengage(self)
+        return
+        print('but not here')
+_jl.spawn(_jl.root(), Visitor())

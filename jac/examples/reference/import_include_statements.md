@@ -1,70 +1,122 @@
-Jac provides flexible module importing capabilities that extend Python's import system with additional convenience features and compile-time source inclusion. The language supports three distinct import mechanisms for different use cases.
+**Import and Include Statements**
 
-#### Standard Import
+Import statements control module dependencies, allowing code to access functionality from other modules and packages. Jac supports various import patterns including simple imports, aliases, selective imports, and relative imports.
 
-Standard imports bring entire modules into the current namespace:
+**Simple Imports**
 
-```jac
-import math;
-import my_utils.helpers as utils;
+Lines 4-5 demonstrate basic import patterns. Line 4: Imports a single module (`os`)
+Line 5: Imports multiple modules in one statement, comma-separated (`sys`, `json`)
+
+After importing, all module members are accessible via dot notation: `os.getcwd()`, `sys.path`, `json.dumps()`.
+
+**Import with Alias**
+
+Line 8 shows renaming a module during import. The module is imported but referenced by the shorter name `dt` instead of `datetime`. Use this for:
+- Shorter names (convenience)
+- Avoiding naming conflicts
+- Conventional abbreviations
+
+Line 26 demonstrates usage: `dt.datetime.now().year`
+
+**Import From with Specific Items**
+
+Line 11 demonstrates selective imports using `import from`. This syntax:
+- Imports only specific items from a module (`sqrt`, `pi`, `log`)
+- Can alias imported items (`log as logarithm`)
+- Uses curly braces `{ }` to group the imports
+- Makes imported items directly accessible without module prefix
+
+Lines 23-25 show usage: `sqrt(16)`, `pi`, `logarithm(10)` - no `math.` prefix needed.
+
+**Import From with Trailing Comma**
+
+Line 14 shows that trailing commas are allowed. The trailing comma after `Counter` is valid and useful for version control (adding/removing items creates cleaner diffs).
+
+**Relative Imports**
+
+Lines 17-19 (commented) show relative import syntax for package-relative imports. The dot notation indicates package hierarchy:
+- `.` - Current package
+- `..` - Parent package
+- `...` - Grandparent package
+
+Each additional dot goes one level up in the package hierarchy.
+
+**Import Patterns Summary**
+
+| Pattern | Syntax | Access Method | Example Line |
+|---------|--------|---------------|--------------|
+| Simple | `import module` | `module.item` | 4 |
+| Multiple | `import mod1, mod2` | `mod1.item`, `mod2.item` | 5 |
+| Aliased | `import module as alias` | `alias.item` | 8 |
+| Selective | `import from module { items }` | `item` directly | 11 |
+| Aliased items | `import from module { item as alias }` | `alias` directly | 11 |
+| Relative | `import from . { module }` | `module.item` | 17-19 |
+
+**Import Flow Diagram**
+
+```mermaid
+flowchart TD
+    Start([Import Statement]) --> Type{Import<br/>Type?}
+    Type -->|Simple| Simple[import module]
+    Type -->|From| From[import from module]
+    Simple --> Alias1{With<br/>Alias?}
+    Alias1 -->|Yes| UseAlias1[module as alias]
+    Alias1 -->|No| UseDirect1[Use module.item]
+    From --> Items{Specific<br/>Items?}
+    Items -->|Yes| SelectItems["Curly braces with items"]
+    Items -->|No| ImportAll[Import all]
+    SelectItems --> Alias2{Item<br/>Aliases?}
+    Alias2 -->|Yes| ItemAlias[item as alias]
+    Alias2 -->|No| DirectItem[Use item directly]
+    UseAlias1 --> Done([Module Available])
+    UseDirect1 --> Done
+    ItemAlias --> Done
+    DirectItem --> Done
+    ImportAll --> Done
 ```
 
-The compiler automatically detects module types: paths ending with `.jac` are treated as Jac modules, while other paths are forwarded to Python's import machinery. The `as` keyword provides aliasing functionality identical to Python's behavior.
+**Usage Examples**
 
-#### Selective Import with Curly Braces
+Lines 21-27 demonstrate using imported items:
 
-Jac enables selective importing using curly brace syntax borrowed from ES modules:
+**When to Use Each Pattern**
 
-```jac
-import from my_pkg.subpkg { foo, bar as baz };
-```
+**Simple import** - Best for:
+- Need many items from the module
+- Module name is short and clear
+- Standard library modules
 
-This syntax avoids ambiguity in comma-separated import lists while maintaining visual consistency with Jac's block delimiters. The curly brace notation clearly distinguishes between multiple import paths and multiple items from a single path.
+**Aliased import** - Best for:
+- Long module names
+- Conventional abbreviations (numpy as np, pandas as pd)
+- Avoiding naming conflicts
 
-#### Include Statement
+**Selective import** - Best for:
+- Only need specific items
+- Frequently used functions
+- Cleaner code without module prefix
 
-The `include` statement imports all exported symbols from the target module into the current namespace:
+**Relative import** - Best for:
+- Package-internal imports
+- Maintaining package structure
+- Avoiding absolute path dependencies
 
-```jac
-include os.path;
-```
+**Import Best Practices**
 
-Include operations are functionally equivalent to Python's `from target import *` syntax, bringing all public symbols from the target module into the current scope. This mechanism is particularly useful for importing helper functions from Python files or accessing all symbols from Jac modules without explicit enumeration, while maintaining clean namespace organization.
+**At module top:**
 
-#### Module Resolution
+**Group by category:**
 
-Jac follows a systematic approach to module resolution:
+**Use aliases for clarity:**
 
-1. **Relative paths** are resolved relative to the current file's location
-2. **Absolute module names** are searched first in `JAC_PATH`, then in Python's `sys.path`
-3. **Module caching** ensures each file is processed only once per build cycle
+**Import only what you need:**
 
-#### Interface and Implementation Separation
+**Key Points**
 
-Jac's `impl` keyword enables separation of interface declarations from implementation details. Import statements bring only the interface unless the implementation file is found on the module path, supporting lightweight static analysis and efficient incremental builds.
-
-#### Integration with Object-Spatial Programming
-
-Import statements work seamlessly with Jac's object-spatial constructs, enabling modular organization of walkers, nodes, and edges across multiple files while maintaining the topological relationships essential for graph-based computation.
-
-```jac
-import from graph_utils { PathFinder, DataNode }
-import spatial_algorithms as algorithms;
-
-walker MyWalker {
-    can traverse with entry {
-        finder = PathFinder();
-        path = finder.find_path(here, target);
-        visit path;
-    }
-}
-```
-
-Organized imports enable the Jac compiler to analyze dependencies effectively and optimize distributed execution graphs for object-spatial operations.
-
-#### Application Bundling
-
-Jac programs can be packaged together with their dependencies into a single
-deployable bundle using the toolchain.  Bundling resolves imports at build time
-and embeds module contents so that applications can be distributed without
-external file dependencies.
+1. Simple imports require module prefix for access
+2. `import from` enables direct access to specific items
+3. Aliases improve code readability and avoid conflicts
+4. Trailing commas are allowed in import lists
+5. Relative imports use dot notation for package hierarchy
+6. Multiple modules can be imported in one statement
+7. Items can be individually aliased in `import from` syntax

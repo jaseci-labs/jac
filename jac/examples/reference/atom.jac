@@ -1,20 +1,49 @@
-impl x {
-    aa=67,
-    y="aaa" + f"b{aa}bbcc"
-}
+"""Atom: Atomic expressions and literals (strings, numbers, bools, None, types)."""
 
-glob c = (3, 4, 5), list1 = [2, 3, 4, 5];
+enum NumEnum { aa = 67, y = 68 }
 
 with entry {
-    a = "abcde....";
-    b = True;
-    c = bin(12);
-    d = hex(78);
-    print(list1, a, b, c, d);
+    # Literals
+    s = "string";
+    b1 = True;
+    b2 = False;
+    n = None;
 
-    # pp=0x4e;
-    # print(0b1100);
+    # Integer formats
+    dec = 42;
+    binary = 0b1100;
+    octal = 0o755;
+    hexa = 0xFF;
 
-    enum x;
-    print(x.y.value);
+    # Float formats
+    flt = 3.14;
+    sci = 1.5e10;
+
+    # Ellipsis
+    ellip = ...;
+
+    # Parenthesized expressions
+    result = (5 + 3) * 2;
+
+    # Named references
+    var = 100;
+
+    # Builtin types as values
+    type1 = str;
+    type2 = int;
+
+    # Collections
+    tpl = (1, 2, 3);
+    lst = [1, 2, 3];
+    dct = {"k": "v"};
+    st = {1, 2, 3};
+
+    # Multistring
+    multi = "Hello " "World";
+
+    # F-string
+    name = "Alice";
+    fstr = f"Hello {name}";
+
+    print(dec, binary, octal, hexa, flt, sci, multi, fstr, NumEnum.aa.value);
 }

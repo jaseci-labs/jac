@@ -1,268 +1,184 @@
-Control statements provide essential flow control mechanisms for managing program execution within loops and conditional structures. These statements enable precise control over iteration and branching, complementing Jac's object-spatial features with traditional imperative programming constructs.
+**Control Statements in Jac**
 
-#### Basic Control Operations
+Control statements alter the normal flow of execution within loops, providing mechanisms to exit early or skip iterations. Jac supports `break`, `continue`, and the walker-specific `skip` statement.
 
-Jac supports fundamental control statements for loop management:
+**Control Statement Types**
 
-**`break`**: Immediately exits the current loop and transfers control to the statement following the loop structure.
+| Statement | Context | Scope | Effect |
+|-----------|---------|-------|--------|
+| `break` | Loops (for/while) | Innermost loop | Exit loop completely |
+| `continue` | Loops (for/while) | Current iteration | Skip to next iteration |
+| `skip` | Walker abilities | Current node | Skip node, continue traversal |
 
-**`continue`**: Skips the remainder of the current loop iteration and proceeds to the next iteration.
+**Break Statement (Lines 4-10)**
 
-**`skip`**: Data spatial equivalent for walker traversal control (covered in walker statements documentation).
+The `break` keyword immediately exits the innermost loop:
 
-**Break Statement**
+Lines 5-10:
+- Loop starts with `i` from 0 to 9
+- Line 6: When `i > 3` (i.e., when i=4), condition is true
+- Line 7: `break` executes, exiting the loop
+- Only 0, 1, 2, 3 are printed
+- Remaining iterations (4-9) never execute
 
-The `break` statement immediately terminates the innermost loop and transfers control to the statement following the loop:
+**Break Flow Diagram**
 
-```jac
-for i in range(9) {
-    if i > 2 {
-        print("loop is stopped!!");
-        break;
-    }
-    print(i);
-}
+```mermaid
+graph TD
+    A[Start loop] --> B{i > 3?}
+    B -->|No| C[print i]
+    C --> D[Next iteration]
+    D --> B
+    B -->|Yes| E[break]
+    E --> F[Exit loop]
 ```
 
-**Execution flow:**
-1. Loop begins with `i = 0`
-2. Prints `0`, then `1`, then `2`
-3. When `i = 3`, condition `i > 2` becomes true
-4. Prints "loop is stopped!!"
-5. `break` executes, immediately exiting the loop
-6. Execution continues after the loop block
+**Continue Statement (Lines 12-18)**
 
-**Continue Statement**
+The `continue` keyword skips the rest of the current iteration and proceeds to the next:
 
-The `continue` statement skips the remainder of the current loop iteration and jumps to the next iteration:
+Lines 13-18:
+- Loop iterates j from 0 to 4
+- Line 14: When `j == 2`, condition is true
+- Line 15: `continue` skips to next iteration
+- Line 17: `print(j)` is skipped for j=2
+- Output: 0, 1, 3, 4 (2 is skipped)
 
-```jac
-for j in "WIN" {
-    if j == "W" {
-        continue;
-    }
-    print(j);
-}
+**Continue Flow Diagram**
+
+```mermaid
+graph TD
+    A[Start iteration] --> B{j == 2?}
+    B -->|No| C[print j]
+    C --> D[End iteration]
+    B -->|Yes| E[continue]
+    E --> D
+    D --> F{More items?}
+    F -->|Yes| A
+    F -->|No| G[Exit loop]
 ```
 
-**Execution flow:**
-1. First iteration: `j = "W"`
-2. Condition `j == "W"` is true
-3. `continue` executes, skipping the `print(j)` statement
-4. Second iteration: `j = "I"`
-5. Condition is false, `print("I")` executes
-6. Third iteration: `j = "N"`
-7. Condition is false, `print("N")` executes
+**Break in While Loop (Lines 20-28)**
 
-**Loop Integration**
+Break works the same in while loops:
 
-Control statements work with all Jac loop constructs:
+Lines 21-28:
+- Line 22: Infinite loop (`while True`)
+- Line 23: Increment counter
+- Line 24: When count exceeds 3, break executes
+- Prints: 1, 2, 3
+- Without break, this would be an infinite loop
 
-**For-In Loops**
-```jac
-for item in collection {
-    if condition {
-        break;     # Exit loop
-    }
-    if other_condition {
-        continue;  # Skip to next item
-    }
-    # Process item
-}
+**Continue in While Loop (Lines 30-38)**
+
+Continue skips iterations in while loops:
+
+Lines 31-38:
+- Line 33: Increment n first (important!)
+- Line 34: If n is even, skip print
+- Line 37: Only odd numbers are printed
+- Output: 1, 3, 5
+
+**Skip Statement - Walker-Specific (Lines 40-45)**
+
+Line 41-44:
+- `skip` is used in walker contexts (not regular loops)
+- Stops processing current node
+- Walker continues to next queued node
+- Different from `break` (which exits loops) and `disengage` (which stops the walker)
+
+**Control Statements Comparison**
+
+| Feature | break | continue | skip |
+|---------|-------|----------|------|
+| Exits loop | Yes | No | N/A |
+| Skips iteration | Remaining iterations | Current iteration | Current node |
+| Continues loop | No | Yes | N/A |
+| Walker-specific | No | No | Yes |
+| Affects outer loops | No | No | No |
+
+**Nested Loops with Break (Lines 47-55)**
+
+Lines 48-55:
+- Nested loops: outer (x) and inner (y)
+- Line 50: When x=1 and y=1, break executes
+- **Break only exits inner loop**, not outer loop
+- When x=1, prints (1,0) then breaks; outer loop continues with x=2
+
+**Break Scope Visualization**
+
+```mermaid
+graph TD
+    A[x=0] --> B[y: 0,1,2]
+    B --> C[x=1]
+    C --> D[y=0]
+    D --> E{x==y==1?}
+    E -->|No| D
+    E -->|Yes| F[break inner loop]
+    F --> G[x=2]
+    G --> H[y: 0,1,2]
+
+    style F fill:#c62828,stroke:#fff,color:#fff
 ```
 
-**For-To-By Loops**
-```jac
-for i=0 to i<10 by i+=1 {
-    if i % 2 == 0 {
-        continue;  # Skip even numbers
-    }
-    if i > 7 {
-        break;     # Stop when i exceeds 7
-    }
-    print(i);      # Prints 1, 3, 5, 7
-}
-```
+**Nested Loops with Continue (Lines 57-65)**
 
-**While Loops**
-```jac
-while condition {
-    if exit_condition {
-        break;     # Exit while loop
-    }
-    if skip_condition {
-        continue;  # Skip to condition check
-    }
-    # Loop body
-}
-```
-
-**Nested Loop Behavior**
-
-Control statements affect only the innermost loop:
-
-```jac
-for i in range(3) {
-    for j in range(3) {
-        if j == 1 {
-            break;     # Exits inner loop only
-        }
-        print(i, j);
-    }
-    print("Outer loop continues");
-}
-```
-
-**Output pattern:**
-- Inner loop breaks when `j == 1`
-- Outer loop continues for all values of `i`
-- Each outer iteration prints "Outer loop continues"
-
-**Conditional Integration**
-
-Control statements work seamlessly with Jac's conditional expressions:
-
-**Simple Conditions**
-```jac
-for item in items {
-    if item.is_valid() {
-        continue;  # Skip invalid items
-    }
-    process(item);
-}
-```
-
-**Complex Conditions**
-```jac
-for data in dataset {
-    if data.type == "error" and data.severity > threshold {
-        print("Critical error found");
-        break;     # Stop processing on critical error
-    }
-    analyze(data);
-}
-```
-
-**Function and Method Context**
-
-Control statements can be used within functions and methods:
-
-```jac
-def process_list(items: list) -> list {
-    results = [];
-    for item in items {
-        if item < 0 {
-            continue;   # Skip negative values
-        }
-        if item > 100 {
-            break;      # Stop at first value over 100
-        }
-        results.append(item * 2);
-    }
-    return results;
-}
-```
-
-**Object-Spatial Integration**
-
-While control statements primarily affect traditional loops, they complement object-spatial operations:
-
-```jac
-walker Processor {
-    can process_nodes with `root entry {
-        for node in [-->] {
-            if node.should_skip {
-                continue;  # Skip certain nodes
-            }
-            if node.stop_condition {
-                break;     # Exit processing loop
-            }
-            node.process();
-        }
-    }
-}
-```
-
-**Error Handling Patterns**
-
-Control statements enable robust error handling:
-
-**Early Exit on Error**
-```jac
-for operation in operations {
-    if operation.has_error() {
-        print("Error detected, stopping");
-        break;
-    }
-    operation.execute();
-}
-```
-
-**Skip Invalid Data**
-```jac
-for record in data_records {
-    if not record.is_valid() {
-        continue;  # Skip malformed records
-    }
-    process_record(record);
-}
-```
-
-**Performance Considerations**
-
-Control statements are optimized for efficiency:
-
-**Break Optimization**
-- Immediately exits loop without further condition checking
-- Minimal overhead for early termination
-- Useful for search algorithms and error conditions
-
-**Continue Optimization**
-- Jumps directly to next iteration
-- Skips unnecessary computation in current iteration
-- Efficient for filtering operations
+Lines 58-65:
+- Line 60: When a equals b, skip that iteration
+- **Continue only affects inner loop**
+- Prints all pairs where a ≠ b
+- Output: (0,1), (0,2), (1,0), (1,2), (2,0), (2,1)
 
 **Common Patterns**
 
-**Search and Exit**
-```jac
-found = false;
-for item in search_space {
-    if item.matches(criteria) {
-        found = true;
-        break;
-    }
-}
-```
+Early exit on condition:
 
-**Filter Processing**
-```jac
-for data in input_stream {
-    if not meets_criteria(data) {
-        continue;
-    }
-    process_valid_data(data);
-}
-```
+Filter during iteration:
 
-**Batch Processing with Limits**
-```jac
-processed = 0;
-for item in large_dataset {
-    if processed >= batch_limit {
-        break;
-    }
-    process_item(item);
-    processed += 1;
-}
-```
+Bounded loop:
+
+Skip diagonal in matrix:
 
 **Best Practices**
 
-1. **Clear Intent**: Use control statements to make loop logic explicit
-2. **Early Exit**: Use `break` for efficiency when search conditions are met
-3. **Filtering**: Use `continue` to skip invalid or unnecessary data
-4. **Limit Scope**: Control statements affect only the immediate loop
-5. **Readable Code**: Combine with clear conditional logic for maintainability
+1. **Use break for early termination**: When you've found what you need, exit the loop
+2. **Use continue for filtering**: Skip unwanted items instead of wrapping code in if statements
+3. **Avoid deep nesting**: Multiple levels of break/continue can be confusing
+4. **Consider alternatives**: Sometimes restructuring with functions is clearer
+5. **Document intent**: Comment why you're breaking or continuing
 
-Control statements in Jac provide essential building blocks for algorithmic logic, enabling developers to implement efficient loops with precise flow control. While Jac's object-spatial features offer novel traversal mechanisms, traditional control statements remain crucial for implementing conventional algorithms and handling edge cases in data processing workflows.
+**Break vs Return**
+
+| Aspect | break | return |
+|--------|-------|--------|
+| Exits loop | Yes | N/A |
+| Exits function | No | Yes |
+| Continues after | Yes (after loop) | No (leaves function) |
+| Can return value | No | Yes |
+
+**Loop Control Limitations**
+
+1. **Only affects innermost loop**: Cannot break/continue outer loops directly
+2. **No labeled breaks**: Jac doesn't support labeled break statements
+3. **Function boundaries**: Cannot break/continue across function calls
+4. **Walker context**: Use `skip` for walker-specific control, not break/continue
+
+**When to Use Each**
+
+Use `break` when:
+- Search finds target
+- Error condition detected
+- Maximum iterations reached
+- Early termination improves performance
+
+Use `continue` when:
+- Filtering items in a collection
+- Skipping invalid data
+- Processing only subset of items
+- Avoiding nested if statements
+
+Use `skip` when:
+- Walker should skip current node
+- Node doesn't meet criteria
+- Avoiding duplicate processing
+- Conditional graph traversal

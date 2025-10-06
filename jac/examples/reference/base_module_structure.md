@@ -1,23 +1,84 @@
-In Jac, a module is analogous to a Python module, serving as a container for various elements such as functions, classes (referred to as "archetypes" later in this document), global variables, and other constructs that facilitate code organization and reusability. Each module begins with an optional module-level docstring, which provides a high-level overview of the module's purpose and functionality. This docstring, if present, is positioned at the very start of the module, before any other elements.
+Jac modules organize code with docstrings for documentation and entry points for execution control.
 
-???+ Note "Docstrings"
+**Module-Level Docstrings**
 
-    Jac adopts a stricter approach to docstring usage compared to Python. It mandates the inclusion of a single docstring at the module level and permits individual docstrings for each element within the module. This ensures that both the module itself and its constituent elements are adequately documented. If only one docstring precedes the first element, it is automatically designated as the module-level docstring.
+Lines 1-5 show the module docstring - a string literal at the very beginning of the file. This triple-quoted string documents what the entire module does. It appears before any code elements (functions, classes, etc.). Module docstrings are used by documentation tools and can be accessed at runtime to provide help text.
 
-    Also Note, that Jac enforces type annotations in function signatures and class fields to promote type safety and ultimately more readable and scalable codebases.
+**Function Definitions**
 
-Elements within a Jac module encompass familiar constructs from Python, including functions and classes, with the addition of some unique elements that will be discussed in further detail. Below is a table of module elements in Jac. These constructs are described in detail later in this document.
+Lines 7-13 define two simple functions:
 
-| Module Item           | Description       |
-|----------------|-------------------|
-| [**Import Statements**](#importinclude-statements)    |   Same as python with slightly different syntax, works with both `.jac` and `.py` files (in addition to packages)                |
-| [**Archetypes**](#archetypes)       |    Includes traditional python `class` construct with equiviant semantics, and additionaly introduces a number of new class-like constructs including `obj`, `node`, `edge`, and `walker` to enable the object-spatial programming paradigmn               |
-| [**Function Abilities**](#abilities) | Equivalent to traditional python function semantics with change of keyword `def` to `can`. Type hints are required in parameters and returns |
-| [**Object-Spatial Abilities**](#abilities)         |  A function like construct that is triggered by types of `node`s or `walker`s in the object-spatial paradigm            |
-| [**Free Floating Code**](#free-code)      |  Construct (`with entry {...}`) to express presence of free floating code within a module that is not part of a function or class-like object. Primarily for code cleanliness, readability, and maintainability.    |
-| [**Global Variables**](#global-variables)    |   Module level construct to express global module level variables without using `with entry` syntax. (`glob x=5` is equivalent to `with entry {x=5;}`)                |
-| [**Test**](#tests)           |   A language level construct for testing, functionality realized with `test` and `check` keywords.                |
-| [**Inline Python**](#inline-python)  |  Native python code can be inlined alongside jac code at arbitrary locations in a Jac program using `::py::` directive                 |
+| Function | Lines | Purpose |
+|----------|-------|---------|
+| `add` | 7-9 | Adds two integers and returns the result |
+| `subtract` | 11-13 | Subtracts second integer from first |
 
+Both functions use type annotations (`a: int, b: int -> int`) to specify parameter and return types. These functions can be called from within the module or imported by other modules.
 
-Moreover, Jac requires that any standalone, module-level code be encapsulated within a `with entry {}` block. This design choice aims to enhance the clarity and cleanliness of Jac codebase.
+**Default Entry Point**
+
+Lines 16-18 define the default entry point using `with entry`. This code block executes when the module runs. Let's trace the execution:
+
+```mermaid
+graph LR
+    A[Entry point starts] --> B[subtract 8, 3]
+    B --> C[Result: 5]
+    C --> D[add 5, 5]
+    D --> E[Result: 10]
+    E --> F[Print: Default entry: 10]
+```
+
+The nested call evaluates from inside out:
+1. `subtract(8, 3)` returns 5
+2. `add(5, 5)` returns 10
+3. Prints "Default entry: 10"
+
+**Named Entry Point**
+
+Lines 21-23 define a named entry point using `with entry:__main__`:
+
+The `:__main__` label creates a conditional entry point that only executes when the module is run directly as the main program (not when imported by another module).
+
+This pattern is similar to Python's `if __name__ == "__main__":` idiom.
+
+Execution trace:
+1. `subtract(3, 1)` returns 2
+2. `add(1, 2)` returns 3
+3. Prints "Named entry: 3"
+
+**Entry Point Behavior**
+
+```mermaid
+graph TD
+    A[Module Loaded] --> B{How was it loaded?}
+    B -->|Run directly| C[Execute both entry blocks]
+    B -->|Imported| D[Skip :__main__ block]
+    C --> E[Default entry runs]
+    C --> F[:__main__ entry runs]
+    D --> G[Only default entry runs]
+```
+
+When you run the module directly:
+- The default `with entry` block executes
+- The `with entry:__main__` block executes
+
+When you import the module:
+- The default `with entry` block may execute (depending on implementation)
+- The `with entry:__main__` block is skipped
+
+This separation allows you to:
+- Define reusable functions (lines 7-13)
+- Provide examples or tests in the `__main__` block (lines 21-23)
+- Keep library code separate from executable code
+
+**Practical Module Organization**
+
+A typical Jac module structure:
+
+1. Module docstring (lines 1-5)
+2. Imports (not shown in this example)
+3. Function/class definitions (lines 7-13)
+4. Default entry point for module initialization (lines 16-18)
+5. Main entry point for direct execution (lines 21-23)
+
+This structure keeps your code organized: documentation at the top, reusable components in the middle, and execution logic at the bottom.

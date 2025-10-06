@@ -1,9 +1,37 @@
+# Match capture patterns - Pattern matching in match statements
+
 with entry {
-    day = " sunday";
+    # Wildcard pattern (_) - matches anything but doesn't bind
+    day = "sunday";
     match day {
         case "monday":
-            print("confirmed");
+            print("It's Monday");
         case _:
-            print("other");
+            print("Wildcard matched: not Monday");
+    }
+
+    # MatchAs pattern - capture and bind value
+    value = 42;
+    match value {
+        case val as captured:
+            print(f"Captured value: {captured}");
+    }
+
+    # MatchAs in sequence pattern
+    data = [1, 2, 3];
+    match data {
+        case [first, second as mid, third]:
+            print(f"First: {first}, captured middle: {mid}, third: {third}");
+    }
+
+    # MatchAs with class pattern
+    obj Point {
+        has x: float,
+            y: float;
+    }
+    p = Point(x=5.0, y=10.0);
+    match p {
+        case Point(x=x_val, y=y_val) as point:
+            print(f"Captured point: {point}, x={x_val}, y={y_val}");
     }
 }

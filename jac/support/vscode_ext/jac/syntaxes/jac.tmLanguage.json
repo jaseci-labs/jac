@@ -1,6 +1,7 @@
 {
 	"name": "The Jac Programming Language",
 	"scopeName": "source.jac",
+	"fileTypes": ["jac"],
 	"patterns": [
 		{
 			"include": "#elements"
@@ -617,7 +618,7 @@
 				},
 				{
 					"name": "storage.modifier.declaration.jac",
-					"match": "(?x)\n  \\b(?<!\\.)(\n    priv|protect|pub|static|override|let|abs\n  )\\b\n"
+					"match": "(?x)\n  \\b(?<!\\.)(\n    priv|protect|pub|static|override|let|abs|glob|global|nonlocal\n  )\\b\n"
 				},
 				{
 					"name": "storage.type.class.jac",

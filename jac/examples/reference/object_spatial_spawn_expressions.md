@@ -1,288 +1,122 @@
-Data spatial spawn expressions in Jac implement the fundamental mechanism for activating walkers within the topological structure, transitioning them from inactive objects to active participants in the distributed computational system. This operation embodies the initialization phase of the "computation moving to data" paradigm that characterizes Data Spatial Programming.
+Object spatial spawn expressions provide an alternative syntax for spawning walkers, with the walker instance specified before the spawn keyword rather than after.
 
-**Theoretical Foundation**
+**What are Spawn Expressions?**
 
-In DSP theory, the spawn operator (⇒) activates a walker within the topological structure by placing it at a specified node, edge, or path. This operation transitions the walker from a standard object state to an active data spatial entity within the graph G, updating the location mapping L and potentially initializing the walker's traversal queue Q_w.
+Spawn expressions let you launch walkers on nodes using two equivalent syntaxes:
+- Node-first: `root spawn Walker()` (more common)
+- Walker-first: `Walker() spawn root` (demonstrated in this example)
 
-**Basic Spawn Syntax**
+Both forms do exactly the same thing - they create a walker instance and start its execution at a specified node.
 
-Jac provides flexible syntax for spawn expressions:
+**The Two Spawn Syntaxes**
 
-**Walker-First Syntax**
-```jac
-walker_instance spawn location;
+Lines 24 and 27 demonstrate both forms:
+
+| Syntax | Form | Example Line |
+|--------|------|--------------|
+| `Counter() spawn root` | Walker-first | 24 |
+| `root spawn Counter()` | Node-first | 27 |
+
+Line 24 shows `Counter() spawn root`, which:
+1. Creates a new `Counter` walker instance: `Counter()`
+2. Uses the `spawn` operator to launch it
+3. Starts execution at `root`
+
+Line 27 shows `root spawn Counter()`, which does the same thing but in reverse order.
+
+**When to Use Walker-First Syntax**
+
+The walker-first form (line 24) can be more readable when:
+- The walker construction is complex with many parameters
+- You want to emphasize the walker being created
+- You're chaining operations on the walker
+
+For example:
+
+This makes it clear what's being created before showing where it's being spawned.
+
+**How Walker Execution Works**
+
+When either form executes, the same sequence occurs:
+
+```mermaid
+graph TD
+    A[Walker instance created] --> B[Spawn at target node]
+    B --> C[Find matching entry ability]
+    C --> D[Execute entry ability]
+    D --> E[Process visit queue]
+    E --> F[Walker completes]
 ```
 
-**Location-First Syntax**  
-```jac
-location spawn walker_instance;
-```
+Line 3-5 define the walker with a `can count with root entry` ability. When spawned (lines 24 or 27), this ability executes automatically because the walker starts at root and the ability is marked for root entry.
 
-Both forms achieve the same result, allowing developers to choose the syntax that best fits their code organization and readability preferences.
+**Walker and Node Definitions**
 
-**Spawn Expression Types**
+Lines 3-5 define a `Counter` walker:
+- Line 4: `can count with root entry;` declares an ability that triggers when visiting root
+- The backtick syntax `\`root` specifies this ability executes at root nodes
 
-**Direct Node Spawning**
-The example demonstrates spawning a walker directly on a node:
-```jac
-Adder() spawn root;
-```
+Lines 7-10 define a `NumberNode` node:
+- Line 8: `has value: int = 0;` defines a value attribute
+- Line 9: `can process with Counter entry;` declares an ability that triggers when a Counter walker visits
 
-This syntax:
-- Creates a new `Adder` walker instance (`Adder()`)
-- Activates it at the `root` node location
-- Transitions the walker from inactive to active state
-- Sets the walker's location mapping: L(walker) = root
-- Initializes an empty traversal queue: Q_w = []
-- Executes abilities only on the spawned node
+**Ability Implementations**
 
-**Edge Spawning**
-Walkers can also be spawned directly on edges:
-```jac
-Walker() spawn edge_instance;
-```
+Lines 12-16 implement the walker's `count` ability:
+- Lines 13-14: Create two NumberNode instances and connect them to `here` (which is root)
+- Line 15: `visit [-->]` queues all outgoing nodes for visiting
 
-When spawning on an edge:
-- Walker is activated at the edge location
-- **Automatically queues both the edge and its target node**
-- Sets the walker's location mapping: L(walker) = edge
-- Initializes traversal queue with target node: Q_w = [target_node]
-- Executes abilities on both the edge and the connected node
+Lines 18-20 implement the node's `process` ability:
+- Line 19: Prints the node's value when visited by a Counter walker
 
-This automatic queueing behavior ensures that edge-spawned walkers process both the relationship (edge) and the destination (node), enabling complete traversal of the topological structure.
+**The Execution Flow**
 
-**Walker Lifecycle and Activation**
+When `Counter() spawn root` executes on line 24:
 
-The spawn operation transforms a walker through several phases:
+1. Counter walker created
+2. Walker spawns at root
+3. `count` ability executes (matches `\`root entry`)
+4. Lines 13-14: Two NumberNode instances created and connected to root
+5. Line 15: Both nodes queued for visiting
+6. Walker visits NumberNode(value=10)
+7. Node's `process` ability executes, printing "Processing node with value: 10"
+8. Walker visits NumberNode(value=20)
+9. Node's `process` ability executes, printing "Processing node with value: 20"
+10. Visit queue empty, walker completes
 
-**Pre-Spawn State**
-```jac
-walker Adder {
-    can do with `root entry;
-}
-```
+**Spawn Expression Components**
 
-Before spawning:
-- Walker exists as a standard object
-- Abilities are defined but inactive
-- No location context or traversal queue
-- Cannot participate in data spatial operations
+The spawn expression has three parts:
 
-**Spawn Activation**
-When `Adder() spawn root` executes:
-1. **Location Assignment**: Walker is positioned at the root node
-2. **Context Activation**: Walker gains access to spatial references (`here`, `self`)
-3. **Ability Triggering**: Entry abilities for the spawn location execute
-4. **Queue Initialization**: Traversal queue is prepared for future visits
+| Component | Description | Example |
+|-----------|-------------|---------|
+| Walker instance | Creates the walker | `Counter()` |
+| `spawn` operator | Launches the walker | `spawn` |
+| Starting node | Where execution begins | `root` |
 
-**Post-Spawn Execution**
-After activation, the walker's abilities execute in the established order:
-1. **Location entry abilities**: Node's abilities for the arriving walker type
-2. **Walker entry abilities**: Walker's abilities for the current location type
+The order can be reversed, but the components remain the same.
 
-**Contextual References in Spawned Walkers**
+**When Both Syntaxes Are Equivalent**
 
-Once spawned, walkers gain access to spatial context:
+Both forms produce identical behavior:
+- Same walker instance created
+- Same starting node
+- Same execution sequence
+- Same results
 
-```jac
-impl Adder.do {
-    here ++> node_a();  # 'here' refers to current location (root)
-    visit [-->];        # Navigate to connected nodes
-}
-```
+Choose the form that makes your code most readable for the specific situation.
 
-Key contextual references:
-- **`here`**: References the walker's current location (the spawn point initially)
-- **`self`**: References the walker instance itself
-- **Spatial operations**: Connect expressions and visit statements become available
+**Practical Usage**
 
-**Interaction with Node Abilities**
+The walker-first syntax shines when:
 
-Spawned walkers trigger location-bound computation:
+The node-first syntax is better for simple cases:
 
-```jac
-node node_a {
-    can add with Adder entry;  # Responds to Adder walker visits
-}
+**Key Takeaways**
 
-impl node_a.add {
-    self.x = 550;              # Node modifies its own state
-    self.y = 450;              # Access to node properties via 'self'
-    print(int(self.x) + int(self.y));  # Computation at data location
-}
-```
-
-This demonstrates:
-- **Bidirectional activation**: Walker spawning triggers node responses
-- **Location-bound computation**: Nodes contain computational abilities
-- **State modification**: Both walkers and nodes can modify state during interaction
-
-**Spawn Timing and Execution Flow**
-
-The execution sequence differs based on spawn location:
-
-**Node Spawn Sequence**:
-1. **Spawn Expression**: `Adder() spawn root` activates the walker
-2. **Walker Positioning**: Walker is placed at root node
-3. **Entry Ability Execution**: 
-   - Root node's abilities for Adder walkers (if any)
-   - Adder walker's abilities for root node type
-4. **Topology Construction**: Walker creates connections (`here ++> node_a()`)
-5. **Traversal Initiation**: Walker visits connected nodes (`visit [-->]`)
-6. **Node Interaction**: Visited nodes execute their abilities for the Adder walker
-7. **Computational Completion**: Process continues until walker queue is exhausted
-
-**Edge Spawn Sequence**:
-1. **Spawn Expression**: `Walker() spawn edge_instance` activates on edge
-2. **Walker Positioning**: Walker is placed at edge
-3. **Automatic Queueing**: Target node is automatically added to walker's queue
-4. **Edge Ability Execution**:
-   - Edge's abilities for the walker type
-   - Walker's abilities for the edge type
-5. **Automatic Node Visit**: Walker automatically visits the queued target node
-6. **Node Ability Execution**:
-   - Target node's abilities for the walker type
-   - Walker's abilities for the node type
-7. **Continued Traversal**: Walker proceeds based on visit statements
-
-The key difference: edge spawning ensures both edge and node processing, while node spawning processes only the node unless explicitly visiting edges.
-
-**Spawn Patterns and Use Cases**
-
-**Initialization Patterns**
-Spawn expressions commonly initialize computational processes:
-- **Algorithm activation**: Starting search, traversal, or analysis algorithms
-- **System initialization**: Activating monitoring or management walkers
-- **Event triggering**: Spawning responsive walkers based on system events
-
-**Multiple Walker Scenarios**
-Systems may spawn multiple walkers:
-```jac
-root spawn Walker1();
-root spawn Walker2();
-node_x spawn SpecializedWalker();
-```
-
-Each walker operates independently with its own traversal queue and state.
-
-**Conditional Spawning**
-Spawn operations can be conditional:
-```jac
-if (condition) {
-    walker_instance spawn target_node;
-}
-```
-
-**Spawn Location Flexibility**
-
-Spawn expressions support various targets with distinct behaviors:
-
-**Node Spawning**:
-- **Behavior**: Walker executes abilities only on the spawned node
-- **Queue State**: Starts with empty queue unless walker adds visits
-- **Use Case**: Starting point for graph exploration, node-centric processing
-```jac
-walker spawn node;              # Process single node
-walker spawn root;              # Start from root
-```
-
-**Edge Spawning**:
-- **Behavior**: Walker automatically processes edge AND target node
-- **Queue State**: Target node automatically queued after edge processing
-- **Use Case**: Relationship analysis, edge-weight calculations, path following
-```jac
-walker spawn edge_ref;          # Process edge and its target
-walker spawn connection;        # Analyze connection and destination
-```
-
-**Key Behavioral Difference**:
-- Node spawn: Single location processing
-- Edge spawn: Dual location processing (edge + automatic node visit)
-
-This distinction is crucial for algorithm design:
-```jac
-# Node-centric algorithm
-DataProcessor() spawn data_node;     # Process node data only
-
-# Edge-centric algorithm  
-PathAnalyzer() spawn path_edge;      # Analyze path AND destination
-```
-
-**Error Handling and Constraints**
-
-Spawn expressions have important constraints:
-- **Walker state**: Can only spawn inactive walkers (not already active)
-- **Location validity**: Spawn targets must be valid nodes, edges, or paths
-- **Type compatibility**: Walker and location types must support interaction
-
-**Performance Considerations**
-
-Spawn expressions are designed for efficiency:
-- **Lazy activation**: Walkers only consume resources when active
-- **Context switching**: Minimal overhead for walker state transitions
-- **Memory locality**: Spawned walkers can exploit data locality at spawn points
-
-**Integration with Traditional Programming**
-
-Spawn expressions bridge DSP and traditional programming:
-- **Method integration**: Can be called from regular methods and functions
-- **Conditional logic**: Work with standard control flow constructs
-- **Data preparation**: Can follow traditional data initialization patterns
-
-The example demonstrates a complete spawn-to-computation cycle where a walker is spawned, builds topology, traverses to connected nodes, and triggers location-bound computation. This showcases how spawn expressions initialize the distributed computational process that characterizes Data Spatial Programming, transforming passive objects into active participants in a topologically-aware computational system.
-
-**Comprehensive Example: Node vs Edge Spawning**
-
-```jac
-edge Connection {
-    has weight: float;
-    can process with AnalysisWalker entry {
-        print(f"Processing edge with weight: {self.weight}");
-    }
-}
-
-node DataPoint {
-    has value: int;
-    can analyze with AnalysisWalker entry {
-        print(f"Analyzing node with value: {self.value}");
-    }
-}
-
-walker AnalysisWalker {
-    can traverse with DataPoint entry {
-        # Default behavior: visit nodes
-        print("Visiting connected nodes:");
-        visit [-->];                    # Only visits nodes
-        
-        # Explicit edge traversal
-        print("Visiting edges and their nodes:");
-        visit [edge -->];               # Visits edges AND nodes
-    }
-}
-
-with entry {
-    # Build topology
-    n1 = DataPoint(value=10);
-    n2 = DataPoint(value=20);
-    n3 = DataPoint(value=30);
-    
-    edge1 = n1 +>:Connection(weight=0.5):+> n2;
-    edge2 = n2 +>:Connection(weight=0.8):+> n3;
-    
-    # Node spawn - processes only the starting node
-    print("=== Node Spawn ===");
-    AnalysisWalker() spawn n1;
-    
-    # Edge spawn - processes edge AND automatically visits target
-    print("=== Edge Spawn ===");
-    AnalysisWalker() spawn edge1;
-}
-```
-
-Output demonstrates the behavioral difference:
-- Node spawn: Starts at n1, processes node abilities only
-- Edge spawn: Starts at edge1, processes edge abilities, then automatically visits n2
-
-This example illustrates how spawn location affects the initial computational flow and how edge references (`[edge -->]`) enable explicit edge processing during traversal.
-
-Spawn expressions represent the activation gateway between traditional object-oriented programming and data spatial computation, enabling the transition from static object interactions to dynamic, topology-driven computational flows.
+- Both `Walker() spawn node` and `node spawn Walker()` are valid
+- They produce identical execution behavior
+- Walker-first emphasizes what's being created
+- Node-first emphasizes where execution starts
+- Choose the form that makes your intent clearest
+- The spawn expression creates and immediately executes the walker at the specified node

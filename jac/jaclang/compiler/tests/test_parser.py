@@ -198,7 +198,7 @@ class TestLarkParser(TestCaseMicroSuite):
         self.assertEqual(len(prog.errors_had), 3)
         expected_errors = [
             """
-            Missing right parenthesis
+            Missing RPAREN
                 with entry {
                     foo = Foo(;
                               ^
@@ -206,7 +206,7 @@ class TestLarkParser(TestCaseMicroSuite):
                     foo.bar;
             """,
             """
-            Missing comma
+            Missing COMMA
                 with entry {
                     foo = Foo(;
                     func(foo bar)
@@ -215,7 +215,7 @@ class TestLarkParser(TestCaseMicroSuite):
                 }
             """,
             """
-            Missing semicollon
+            Missing SEMI
                     foo = Foo(;
                     func(foo bar)
                     foo.bar;

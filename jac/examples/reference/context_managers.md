@@ -1,310 +1,180 @@
-Context managers in Jac provide automatic resource management through `with` statements, ensuring proper acquisition and release of resources. This feature supports the context management protocol for clean handling of files, connections, locks, and other resources.
+**Context Managers in Jac**
 
-#### Syntax
+Context managers provide automatic resource management using the `with` statement, ensuring proper setup and cleanup of resources even when errors occur. This is essential for handling files, locks, network connections, and other resources requiring paired acquire/release operations.
 
-```jac
-with expression as variable {
-    # code using the resource
-}
+**Basic With Statement (Lines 4-7)**
 
-# Multiple context managers
-with expr1 as var1, expr2 as var2 {
-    # code using both resources
-}
+Line 5: `with open(__file__, 'r') as f {`
+- Opens the file in read mode
+- Binds the file object to variable `f`
+- Automatically closes the file when the block ends
+- Works even if exceptions occur
 
-# Async context managers
-async with async_expression as variable {
-    # async code using the resource
-}
+The `as` clause binds the context manager's return value (from `__enter__`) to a variable for use within the block.
+
+**Context Manager Protocol**
+
+| Method | When Called | Purpose | Returns |
+|--------|-------------|---------|---------|
+| `__enter__` | Block starts | Acquire resource | Resource object (bound to `as` variable) |
+| `__exit__` | Block ends | Release resource | None (or True to suppress exceptions) |
+
+**Multiple Context Managers (Lines 9-12)**
+
+Line 10: `with open(__file__, 'r') as f1, open(__file__, 'r') as f2 {`
+- Manages multiple resources in one statement
+- Separated by commas
+- All resources properly cleaned up in reverse order
+- Equivalent to nested `with` statements
+
+**Cleanup Order Diagram**
+
+```mermaid
+graph TD
+    A[Enter with statement] --> B[Acquire f1]
+    B --> C[Acquire f2]
+    C --> D[Execute block]
+    D --> E[Release f2]
+    E --> F[Release f1]
+    F --> G[Continue execution]
+
+    style D fill:#2e7d32,stroke:#fff,color:#fff
+    style E fill:#c62828,stroke:#fff,color:#fff
+    style F fill:#c62828,stroke:#fff,color:#fff
 ```
 
-#### Basic Usage
+**Custom Context Manager (Lines 14-33)**
 
-```jac
-# File handling
-with open("data.txt", "r") as file {
-    content = file.read();
-    process(content);
-}  # File automatically closed
+The example defines a `Printer` class implementing the context manager protocol:
 
-# Database connection
-with get_connection() as conn {
-    cursor = conn.cursor();
-    cursor.execute("SELECT * FROM users");
-    results = cursor.fetchall();
-}  # Connection automatically closed
+**__enter__ method (Lines 16-19)**:
+- Line 16: `def __enter__(self: Printer) -> Printer {`
+- Called when entering the `with` block
+- Line 17: Prints "entering" (setup logic)
+- Line 18: Returns `self` (the object to bind to `as` variable)
+
+**__exit__ method (Lines 21-23)**:
+- Line 21: `def __exit__(self: Printer, exc_type: object, exc_val: object, exc_tb: object) -> None {`
+- Called when exiting the `with` block
+- Receives exception information if an error occurred:
+  - `exc_type`: Exception class (or None if no error)
+  - `exc_val`: Exception instance (or None)
+  - `exc_tb`: Traceback object (or None)
+- Line 22: Prints "exiting" (cleanup logic)
+- Returns None (doesn't suppress exceptions)
+
+**Using Custom Context Managers (Lines 26-33)**
+
+**Without as binding (Lines 26-28)**:
+- Line 26: Creates Printer, enters context
+- Prints: "entering", "inside", "exiting"
+- The `as` clause is optional when you don't need to reference the resource
+
+**With as binding (Lines 31-33)**:
+- Line 31: Binds the returned object to `p`
+- Can use `p` within the block
+- Still automatically calls cleanup
+
+**Nested Context Managers (Lines 36-40)**
+
+Lines 36-40:
+- Outer context entered first (p1)
+- Inner context entered second (p2)
+- Cleanup happens in reverse: p2 exits, then p1 exits
+- Ensures proper resource ordering
+
+**Execution Flow**
+
+```mermaid
+sequenceDiagram
+    participant Code as Main Code
+    participant P1 as Printer 1
+    participant P2 as Printer 2
+
+    Code->>P1: __enter__()
+    P1-->>Code: self (as p1)
+    Code->>P2: __enter__()
+    P2-->>Code: self (as p2)
+    Code->>Code: print("nested")
+    Code->>P2: __exit__(None, None, None)
+    Code->>P1: __exit__(None, None, None)
 ```
 
-#### Multiple Context Managers
+**Async Context Managers (Lines 42-58)**
 
-Manage multiple resources simultaneously:
+Line 43: `async def test_async_with {`
+- Defines an async function demonstrating async context managers
 
-```jac
-with open("input.txt", "r") as infile,
-     open("output.txt", "w") as outfile {
-    
-    data = infile.read();
-    processed = transform(data);
-    outfile.write(processed);
-}  # Both files automatically closed
-```
+**AsyncContext class (Lines 44-53)**:
+- Line 45: `async def __aenter__(self: AsyncContext) -> AsyncContext {`
+  - Async version of `__enter__`
+  - Used with `async with` statements
+  - Can perform async operations during setup
 
-#### Custom Context Managers
+- Line 50: `async def __aexit__(self: AsyncContext, ...)`
+  - Async version of `__exit__`
+  - Can perform async cleanup
 
-Create your own context managers:
+**Using async context managers (Lines 55-57)**:
+- Uses `async with` instead of `with`
+- Only works in async functions
+- Allows await operations in setup/cleanup
 
-```jac
-obj TimedOperation {
-    has name: str;
-    has start_time: float;
-    
-    can __enter__(self) {
-        self.start_time = time.now();
-        print(f"Starting {self.name}");
-        return self;
-    }
-    
-    can __exit__(self, exc_type, exc_val, exc_tb) {
-        duration = time.now() - self.start_time;
-        print(f"{self.name} took {duration}s");
-        return False;  # Don't suppress exceptions
-    }
-}
+**Exception Safety**
 
-# Usage
-with TimedOperation("data_processing") as timer {
-    process_large_dataset();
-}
-```
+The key benefit of context managers is guaranteed cleanup:
 
-#### Graph Lock Management
+| Scenario | __enter__ Called | __exit__ Called | Cleanup Happens |
+|----------|-----------------|-----------------|-----------------|
+| Normal execution | Yes | Yes | Yes |
+| Exception in block | Yes | Yes | Yes |
+| Return in block | Yes | Yes | Yes |
+| Break/continue in loop | Yes | Yes | Yes |
 
-Context managers for thread-safe graph operations:
+**Exception Handling in __exit__**
 
-```jac
-node ThreadSafeNode {
-    has lock: Lock = Lock();
-    has data: dict = {};
-    
-    can safe_update(key: str, value: any) {
-        with self.lock {
-            old_value = self.data.get(key);
-            self.data[key] = value;
-            log_change(key, old_value, value);
-        }
-    }
-}
-```
+The `__exit__` method receives exception details:
 
-#### Transaction Management
+**Common Use Cases**
 
-Database-style transactions:
+File I/O (line 5):
 
-```jac
-obj Transaction {
-    has operations: list = [];
-    has committed: bool = False;
-    
-    can __enter__(self) {
-        self.begin();
-        return self;
-    }
-    
-    can __exit__(self, exc_type, exc_val, exc_tb) {
-        if exc_type is None {
-            self.commit();
-        } else {
-            self.rollback();
-        }
-        return False;
-    }
-    
-    can add_operation(op: func) {
-        self.operations.append(op);
-    }
-    
-    can commit(self) {
-        for op in self.operations {
-            op();
-        }
-        self.committed = True;
-    }
-    
-    can rollback(self) {
-        # Undo operations
-        print("Transaction rolled back");
-    }
-}
-```
+Database connections:
 
-#### Walker State Management
+Locks and synchronization:
 
-Manage walker state during traversal:
+Temporary state changes:
 
-```jac
-obj WalkerContext {
-    has walker: walker;
-    has original_state: dict;
-    
-    can __enter__(self) {
-        self.original_state = self.walker.get_state();
-        return self.walker;
-    }
-    
-    can __exit__(self, exc_type, exc_val, exc_tb) {
-        if exc_type {
-            # Restore state on error
-            self.walker.set_state(self.original_state);
-        }
-        return False;
-    }
-}
+**Best Practices**
 
-walker StatefulWalker {
-    has state: dict = {};
-    
-    can process with entry {
-        with WalkerContext(self) as ctx {
-            # Modify state during processing
-            ctx.state["processing"] = True;
-            
-            # Process node
-            result = here.complex_operation();
-            
-            # State automatically restored on error
-        }
-    }
-}
-```
+1. **Always use for resources**: Files, connections, locks should use context managers
+2. **Keep blocks focused**: Context manager blocks should contain only resource-dependent code
+3. **Avoid suppressing exceptions**: Return False from `__exit__` unless you have a specific reason
+4. **Document cleanup behavior**: Make it clear what resources are managed
+5. **Use multiple managers**: Prefer `with a, b, c` over deeply nested statements
 
-#### Async Context Managers
+**Context Manager Types Comparison**
 
-For asynchronous resource management:
+| Type | Syntax | Use Case | Example |
+|------|--------|----------|---------|
+| Synchronous | `with` | Regular I/O, locks | File operations |
+| Asynchronous | `async with` | Async I/O | Network connections |
+| Multiple | `with a, b` | Multiple resources | Multiple files |
+| Nested | `with a { with b }` | Ordered setup/cleanup | Transaction contexts |
 
-```jac
-async with acquire_async_resource() as resource {
-    data = await resource.fetch_data();
-    processed = await process_async(data);
-    await resource.save(processed);
-}
-```
+**Implementation Pattern**
 
-#### Graph Session Management
+To create a context manager:
 
-```jac
-obj GraphSession {
-    has graph: node;
-    has changes: list = [];
-    
-    can __enter__(self) {
-        self.changes = [];
-        return self;
-    }
-    
-    can __exit__(self, exc_type, exc_val, exc_tb) {
-        if exc_type is None {
-            # Apply all changes
-            for change in self.changes {
-                change.apply();
-            }
-        } else {
-            # Discard changes on error
-            print(f"Discarding {len(self.changes)} changes");
-        }
-        return False;
-    }
-    
-    can add_node(self, node: node) {
-        self.changes.append(AddNodeChange(node));
-    }
-    
-    can add_edge(self, src: node, dst: node, edge_type: type) {
-        self.changes.append(AddEdgeChange(src, dst, edge_type));
-    }
-}
+1. Define `__enter__` method:
+   - Acquire/setup resource
+   - Return resource object
 
-# Usage
-with GraphSession(root) as session {
-    n1 = DataNode(value=10);
-    n2 = DataNode(value=20);
-    
-    session.add_node(n1);
-    session.add_node(n2);
-    session.add_edge(n1, n2, DataEdge);
-}  # Changes committed atomically
-```
+2. Define `__exit__` method:
+   - Accept exception parameters
+   - Perform cleanup
+   - Return True to suppress exceptions (rare)
 
-#### Temporary State Changes
-
-```jac
-obj TemporaryState {
-    has target: obj;
-    has attr: str;
-    has new_value: any;
-    has old_value: any;
-    
-    can __enter__(self) {
-        self.old_value = getattr(self.target, self.attr);
-        setattr(self.target, self.attr, self.new_value);
-        return self.target;
-    }
-    
-    can __exit__(self, exc_type, exc_val, exc_tb) {
-        setattr(self.target, self.attr, self.old_value);
-        return False;
-    }
-}
-
-# Usage
-node ConfigNode {
-    has debug: bool = False;
-    
-    can process_with_debug {
-        with TemporaryState(self, "debug", True) {
-            # Debug is True here
-            self.process_data();
-        }
-        # Debug restored to False
-    }
-}
-```
-
-#### Best Practices
-
-1. **Always Use With**: For resources that need cleanup
-2. **Don't Suppress Exceptions**: Return False from __exit__
-3. **Minimal Scope**: Keep with blocks focused
-4. **Document Side Effects**: Clear about what's managed
-5. **Test Error Cases**: Ensure cleanup on exceptions
-
-#### Common Patterns
-
-##### Resource Pool
-```jac
-with get_resource_from_pool() as resource {
-    # Use resource
-    resource.execute(operation);
-}  # Resource returned to pool
-```
-
-##### Nested Contexts
-```jac
-with outer_context() as outer {
-    # Outer resource acquired
-    with inner_context() as inner {
-        # Both resources available
-        process(outer, inner);
-    }  # Inner released
-}  # Outer released
-```
-
-##### Optional Context
-```jac
-context = get_optional_context() if condition else nullcontext();
-with context as ctx {
-    # Works whether context exists or not
-    process_data(ctx);
-}
-```
-
-Context managers in Jac provide a robust pattern for resource management, ensuring proper cleanup even in the presence of errors, making code more reliable and maintainable.
+3. Use with `with` statement:
+   - Resource automatically managed
+   - Cleanup guaranteed

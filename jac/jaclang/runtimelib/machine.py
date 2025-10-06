@@ -1102,6 +1102,7 @@ class JacBasics:
         if custom:
             ctx.custom = expr
         else:
+            print(expr)
             ctx.reports.append(expr)
 
     @staticmethod
@@ -1716,4 +1717,5 @@ class JacMachine(JacMachineInterface):
         JacMachine.base_path_dir = os.getcwd()
         JacMachine.program = JacProgram()
         JacMachine.pool = ThreadPoolExecutor()
+        JacMachine.exec_ctx.mem.close()
         JacMachine.exec_ctx = ExecutionContext()

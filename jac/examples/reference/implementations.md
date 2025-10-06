@@ -1,336 +1,90 @@
-Implementations in Jac provide a powerful mechanism for separating interface declarations from their concrete implementations. This feature supports modular programming, interface segregation, and flexible code organization patterns common in modern software development.
+**Implementation Blocks in Jac**
 
-#### Implementation Concept
+Implementation blocks (`impl`) provide bodies for forward-declared elements, separating interface declarations from their implementations. This pattern enables modular code organization and resolves circular dependencies.
 
-Jac-lang offers a unique feature which allows developers to separate the functional declaration of code from their implementation. This facilitates cleaner code organization without requiring manual imports.
+**Forward Declarations**
 
-The `impl` keyword (or the `:type:name` syntax) allows you to define the concrete implementation of previously declared interfaces, including:
+Lines 4-6 show forward declarations using semicolons to declare signatures without bodies. Line 4: Function signature without implementation
+Line 5: Object declaration without members
+Line 6: Enum declaration without values
 
-- **Function implementations**: Providing bodies for declared function signatures
-- **Object implementations**: Adding members and behavior to declared objects  
-- **Enumeration implementations**: Defining the values and structure of enums
-- **Test implementations**: Defining test cases separately from main code
+Forward declarations establish names and interfaces early, allowing references before full implementation.
 
-#### Comparison with Traditional Approaches
+**Function Implementation**
 
-Usually when coding with Python, the body of a function or method is coded right after the function/method declaration as shown in the following Python code snippet:
+Lines 9-11 implement the forward-declared function. The `impl` keyword introduces the implementation block. The signature must match the forward declaration exactly.
 
-```python
-from enum import Enum
+**Object Implementation**
 
-def foo() -> str:
-    return "Hello"
+Lines 14-18 implement the forward-declared object. The implementation adds the object's structure: member variables and methods.
 
-class vehicle:
-    def __init__(self) -> None:
-        self.name = "Car"
+**Enum Implementation**
 
-class Size(Enum):
-    Small = 1
-    Medium = 2
-    Large = 3
+Lines 21-25 implement the forward-declared enum. Enum implementations provide member names and their associated values.
 
-car = vehicle()
-print(foo())
-print(car.name)
-print(Size.Medium.value)
+**Using Implemented Elements**
+
+Lines 27-35 demonstrate using the implemented elements. All elements work normally after implementation, as if they were defined in a single step.
+
+**Forward Declaration and Implementation Pattern**
+
+```mermaid
+flowchart TD
+    Start([Code Organization]) --> Forward[Forward Declarations<br/>Signatures Only]
+    Forward --> Refs[Can Reference<br/>in Other Code]
+    Refs --> Impl[Implementation Blocks<br/>impl keyword]
+    Impl --> Full[Fully Defined<br/>Elements]
+    Full --> Use[Use in Code]
 ```
 
-However, Jac-lang offers novel language features which allow programmers to organize their code effortlessly by separating declarations from implementations.
+**Use Cases**
 
-#### Function Implementations
+| Use Case | Benefit | Example |
+|----------|---------|---------|
+| Circular dependencies | Break dependency cycles | Two objects referencing each other |
+| Interface/Implementation separation | Clear API boundaries | Public signatures, private implementations |
+| Large codebases | Organize related code | Headers and implementations in different sections |
+| Code generation | Stable interfaces | Generated signatures, manual implementations |
 
-Functions can be declared with just their signature and implemented separately using two different syntaxes:
+**Declaration vs Implementation Comparison**
 
-##### Modern `impl` Syntax
+| Aspect | Forward Declaration | Implementation Block |
+|--------|---------------------|----------------------|
+| Keyword | `def`, `obj`, `enum` | `impl` |
+| Ends with | Semicolon (`;`) | Block (`{ }`) |
+| Contains | Signature only | Full definition |
+| Purpose | Establish interface | Provide functionality |
+| Location | Typically at top | Later in file or separate file |
 
-**Declaration:**
-```jac
-can foo() -> str;
+**Implementation Flow Example**
+
+```mermaid
+flowchart LR
+    FD1[def compute;] --> Ref[Code can reference compute]
+    FD2[obj Vehicle;] --> Ref
+    FD3[enum Priority;] --> Ref
+    Ref --> I1["impl compute with body"]
+    Ref --> I2["impl Vehicle with members"]
+    Ref --> I3["impl Priority with values"]
+    I1 --> Ready[All Elements Ready]
+    I2 --> Ready
+    I3 --> Ready
 ```
 
-**Implementation:**
-```jac
-impl foo() -> str {
-    return "Hello";
-}
-```
+**Common Patterns**
 
-##### Legacy Colon Syntax
+**Separating interface from implementation:**
 
-**Declaration:**
-```jac
-can foo() -> str;
-```
+**Resolving circular dependencies:**
 
-**Implementation:**
-```jac
-:can:foo() -> str {
-    return "Hello";
-}
-```
+**Organizing complex types:**
 
-This separation enables:
-- **Interface definition**: Clearly specify what functions are available
-- **Deferred implementation**: Implement functionality when convenient
-- **Multiple implementations**: Different implementations for different contexts
+**Key Points**
 
-#### Object Implementations
-
-Objects can be declared as empty shells and have their structure defined later:
-
-##### Modern `impl` Syntax
-
-**Declaration:**
-```jac
-obj vehicle;
-```
-
-**Implementation:**
-```jac
-impl vehicle {
-    has name: str = "Car";
-}
-```
-
-##### Legacy Colon Syntax
-
-**Declaration:**
-```jac
-obj vehicle;
-```
-
-**Implementation:**
-```jac
-:obj:vehicle {
-    has name: str = "Car";
-}
-```
-
-This allows for:
-- **Progressive definition**: Build object structure incrementally
-- **Modular design**: Separate interface from implementation concerns
-- **Flexible organization**: Organize code based on logical groupings
-
-#### Enumeration Implementations
-
-Enumerations can be declared and have their values specified in implementations:
-
-##### Modern `impl` Syntax
-
-**Declaration:**
-```jac
-enum Size;
-```
-
-**Implementation:**
-```jac
-impl Size {
-    Small = 1,
-    Medium = 2,
-    Large = 3
-}
-```
-
-##### Legacy Colon Syntax
-
-**Declaration:**
-```jac
-enum Size;
-```
-
-**Implementation:**
-```jac
-:enum:Size {
-    Small = 1,
-    Medium = 2,
-    Large = 3
-}
-```
-
-#### Test Implementations
-
-Tests can also be declared and implemented separately:
-
-**Declaration:**
-```jac
-test check_vehicle;
-```
-
-**Implementation:**
-```jac
-:test:check_vehicle {
-    check assertEqual(vehicle(name='Van').name, 'Van');
-}
-```
-
-#### Complete Example
-
-Here's a complete example showing declarations and their usage:
-
-```jac
-can foo() -> str;
-obj vehicle;
-enum Size;
-test check_vehicle;
-
-with entry {
-    car = vehicle();
-    print(foo());
-    print(car.name);
-    print(Size.Medium.value);
-}
-```
-
-#### File Organization Strategies
-
-There are multiple locations where implementations can be organized for optimal code management:
-
-##### Same `.jac` File as Declaration
-
-The implementations can be held in the same file as the declaration. This improves code organization visually during declaration while keeping everything in one place:
-
-```jac
-can foo() -> str;
-obj vehicle;
-
-impl foo() -> str {
-    return "Hello";
-}
-
-impl vehicle {
-    has name: str = "Car";
-}
-```
-
-##### Separate Implementation Files
-
-###### Using `.impl.jac` and `.test.jac` Files
-
-For better codebase management, implementations can be separated into dedicated files living in the same directory as the main module, named as `<main_module_name>.impl.jac` and `<main_module_name>.test.jac`. Including or importing these files is not required - they are automatically discovered.
-
-File structure:
-```
-base
-├── main.jac
-├── main.impl.jac
-└── main.test.jac
-```
-
-**main.jac:**
-```jac
-can foo() -> str;
-obj vehicle;
-enum Size;
-test check_vehicle;
-
-with entry {
-    car = vehicle();
-    print(foo());
-    print(car.name);
-    print(Size.Medium.value);
-}
-```
-
-**main.impl.jac:**
-```jac
-:can:foo() -> str {
-    return "Hello";
-}
-
-:obj:vehicle {
-    has name: str = "Car";
-}
-
-:enum:Size {
-    Small = 1,
-    Medium = 2,
-    Large = 3
-}
-```
-
-**main.test.jac:**
-```jac
-:test:check_vehicle {
-    check assertEqual(vehicle(name='Van').name, 'Van');
-}
-```
-
-###### Using `.impl` and `.test` Folders
-
-For even better organization, implementations can be organized within individual `.impl` and `.test` folders named as `<main_module_name>.impl` and `<main_module_name>.test`.
-
-Inside these folders, implementations can be broken down into multiple files as per the programmer's preference, as long as each file has the `.impl.jac` or `.test.jac` suffixes.
-
-File structure:
-```
-base
-├── main.jac
-│
-├── main.impl
-│   ├── foo.impl.jac
-│   ├── vehicle.impl.jac
-│   └── size.impl.jac
-│
-└── main.test
-    └── check_vehicle.test.jac
-```
-
-**main.impl/foo.impl.jac:**
-```jac
-:can:foo() -> str {
-    return "Hello";
-}
-```
-
-**main.impl/vehicle.impl.jac:**
-```jac
-:obj:vehicle {
-    has name: str = "Car";
-}
-```
-
-**main.impl/size.impl.jac:**
-```jac
-:enum:Size {
-    Small = 1,
-    Medium = 2,
-    Large = 3
-}
-```
-
-**main.test/check_vehicle.test.jac:**
-```jac
-:test:check_vehicle {
-    check assertEqual(vehicle(name='Van').name, 'Van');
-}
-```
-
-These file separation features in Jac-lang allow programmers to organize their code seamlessly without any extra `include` or `import` statements.
-
-#### Benefits of Implementation Separation
-
-1. **Interface Clarity**: Clean separation between what is available (interface) and how it works (implementation)
-
-2. **Code Organization**: Group related implementations together regardless of where interfaces are declared
-
-3. **Modularity**: Implement different parts of a system in separate modules or files
-
-4. **Testing**: Mock implementations can be provided for testing purposes, and tests can be organized separately
-
-5. **Flexibility**: Switch between different implementations based on requirements
-
-6. **Team Collaboration**: Different team members can work on interfaces and implementations independently
-
-7. **Progressive Development**: Define interfaces early and implement them as development progresses
-
-#### Implementation Requirements
-
-- **Signature Matching**: Implementation must exactly match the declared signature
-- **Type Compatibility**: Return types and parameter types must be consistent
-- **Completeness**: All declared interfaces must eventually have implementations
-- **File Organization**: Implementation files are automatically discovered when following naming conventions
-
-> **Note:** Even if the specific suffixes described above are not used for separated files and folders, the separated code bodies can still live in separate files and folders as long as they are explicitly included in the main module.
-
-Implementations provide a robust foundation for building scalable, maintainable Jac applications with clear architectural boundaries and flexible code organization strategies.
+1. Forward declarations establish names without full definitions
+2. Implementation blocks provide the actual functionality
+3. Signatures must match exactly between declaration and implementation
+4. Useful for circular dependencies and code organization
+5. Similar to header/source separation in C/C++
+6. Elements can be referenced after forward declaration, before implementation
+7. All types (functions, objects, enums) support this pattern

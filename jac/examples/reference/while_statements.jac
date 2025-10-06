@@ -1,7 +1,71 @@
+# While Statements
+
 with entry {
-    i = 1;
-    while i < 6 {
+    # Basic while loop
+    x = 0;
+    while x < 5 {
+        print(x);
+        x += 1;
+    }
+
+    # While with complex condition
+    a = 0;
+    b = 10;
+    while a < 5 and b > 5 {
+        print(f"a={a}, b={b}");
+        a += 1;
+        b -= 1;
+    }
+
+    # While with else clause (executes when condition becomes false)
+    count = 0;
+    while count < 3 {
+        print(count);
+        count += 1;
+    } else {
+        print("completed");
+    }
+
+    # While with break (else clause skipped)
+    i = 0;
+    while i < 10 {
+        if i == 3 {
+            break;
+        }
         print(i);
-        i+=1;
+        i += 1;
+    } else {
+        print("not reached");
+    }
+
+    # While with continue
+    num = 0;
+    while num < 5 {
+        num += 1;
+        if num % 2 == 0 {
+            continue;
+        }
+        print(num);
+    }
+
+    # Infinite loop with break
+    counter = 0;
+    while True {
+        print(counter);
+        counter += 1;
+        if counter >= 3 {
+            break;
+        }
+    }
+
+    # Nested while loops
+    outer = 0;
+    while outer < 2 {
+        inner = 0;
+        while inner < 2 {
+            print(f"{outer},{inner}");
+            inner += 1;
+        }
+        outer += 1;
     }
 }

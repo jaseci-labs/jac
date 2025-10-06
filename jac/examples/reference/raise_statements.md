@@ -1,365 +1,176 @@
-Raise statements in Jac provide the mechanism for explicitly throwing exceptions, enabling structured error handling and control flow disruption. These statements allow functions and methods to signal error conditions, invalid states, or exceptional circumstances that require special handling by calling code.
+Raise statements are used to explicitly throw exceptions, signaling error conditions or exceptional situations that need to be handled by calling code.
 
-**Basic Raise Statement Syntax**
+**What are Raise Statements?**
 
-Raise statements follow this pattern from the grammar:
-```jac
-raise exception_expression;           # Raise specific exception
-raise;                               # Re-raise current exception (in except block)
-raise exception_expression from cause; # Raise with explicit cause chain
-```
+The `raise` statement creates and throws an exception, immediately interrupting normal program flow. When raised, the exception propagates up the call stack until it finds a matching exception handler (an `except` clause) or terminates the program.
 
-**Example Implementation**
+Think of exceptions as a way to say "something went wrong" and jump directly to error-handling code, skipping everything in between.
 
-The provided example demonstrates exception raising and handling:
-```jac
-def foo(value: int) {
-    if value < 0 {
-        raise ValueError("Value must be non-negative");
-    }
-}
-```
+**Basic Raise Syntax**
 
-**Exception handling:**
-```jac
-try {
-    foo(-1);
-} except ValueError as e {
-    print("Raised:", e);
-}
-```
+Lines 3-5 demonstrate the simplest form. Line 4 breaks down as:
+- `raise` - the keyword that throws an exception
+- `ValueError` - the exception type/class
+- `"error message"` - descriptive message about what went wrong
 
-**Key aspects:**
-- **Conditional raising**: Exceptions raised based on input validation
-- **Exception type**: `ValueError` indicates the type of error
-- **Error message**: Descriptive string explaining the error condition
-- **Exception catching**: Try-catch block handles the raised exception
+When line 41 calls this function, the exception is raised and caught by the handler on lines 42-43.
 
 **Exception Types**
 
-Jac supports various built-in exception types:
+The example uses several standard exception types:
 
-**Built-in Exceptions**
-```jac
-raise ValueError("Invalid value provided");
-raise TypeError("Expected int, got str");
-raise IndexError("List index out of range");
-raise KeyError("Dictionary key not found");
-raise RuntimeError("General runtime error");
+| Exception Type | Used For | Example Line |
+|----------------|----------|--------------|
+| `ValueError` | Invalid value for expected type | 4, 31, 34 |
+| `RuntimeError` | General runtime error | 9, 16 |
+| `ZeroDivisionError` | Division by zero | 15 (caught) |
+
+Choose the exception type that best describes the error condition.
+
+**Raise with Expressions**
+
+Lines 7-10 show using expressions in the error message. Line 9 uses an f-string to include the value of `x` in the error message. This makes debugging easier by providing context about the error:
+
+```mermaid
+graph TD
+    A[Error occurs] --> B[Raise with context]
+    B --> C[Error message includes x=10]
+    C --> D[Handler receives detailed info]
 ```
 
-**Custom Exceptions**
-```jac
-class CustomError : Exception {
-    def init(message: str) {
-        self.message = message;
-    }
-}
+When caught on lines 48-50, the error message will be "value is 10", helping identify the problem.
 
-raise CustomError("Application-specific error");
+**Exception Chaining with raise...from**
+
+Lines 12-18 demonstrate exception chaining. Line 16 uses `raise ... from` to chain exceptions:
+- A `ZeroDivisionError` occurs on line 14 (division by zero)
+- Line 16 catches it and raises a new `RuntimeError`
+- The `from e` part links the new exception to the original
+
+This creates an exception chain showing both:
+1. The original low-level error (ZeroDivisionError)
+2. The higher-level context (RuntimeError: "division failed")
+
+**Why chain exceptions?**
+
+| Without Chaining | With Chaining |
+|------------------|---------------|
+| Lose original error details | Preserve full error history |
+| Hard to debug root cause | Can trace back to source |
+| Only see latest error | See entire error chain |
+
+**Bare Raise (Re-raising)**
+
+Lines 20-27 demonstrate re-raising an exception. Line 25 shows `raise;` without any arguments - this is a "bare raise". It can only be used inside an `except` clause and re-raises the currently active exception.
+
+**Bare raise is useful when you want to:**
+1. Log or inspect an exception
+2. Perform cleanup actions
+3. Then let the exception continue propagating
+
+Lines 61-64 show this in action:
+1. Line 62 calls `bare_raise()`
+2. Line 24 prints "caught, re-raising"
+3. Line 25 re-raises the exception
+4. Line 63 catches the re-raised exception
+
+**Conditional Raise for Validation**
+
+Lines 29-36 demonstrate using `raise` for input validation. This pattern validates input and raises exceptions for invalid values:
+- Line 30-31: Checks if value is negative
+- Line 33-34: Checks if value exceeds maximum
+
+Lines 68-72 test the validation:
+- `conditional_raise(-5)` raises ValueError (negative)
+- `conditional_raise(150)` raises ValueError (too large)
+- `conditional_raise(50)` doesn't raise (valid)
+
+**The Try-Except Pattern**
+
+All raise examples are tested with try-except blocks:
+
+```mermaid
+graph TD
+    A[try block starts] --> B[Call function that might raise]
+    B --> C{Exception raised?}
+    C -->|No| D[Continue normally]
+    C -->|Yes| E[Jump to except block]
+    E --> F[Handle exception]
+    F --> G[Continue after try-except]
+    D --> G
 ```
 
-**Raise Patterns**
+The pattern:
+1. **try** block (lines 40-41): Code that might raise exceptions
+2. **except** clause (lines 42-43): Handles specific exception type
+3. **as e** (line 42): Captures exception object for inspection
 
-**Input Validation**
-```jac
-def divide(a: float, b: float) -> float {
-    if b == 0.0 {
-        raise ZeroDivisionError("Cannot divide by zero");
-    }
-    return a / b;
-}
-```
+**Exception Handling Flow**
 
-**State Validation**
-```jac
-def process_data(data: list) {
-    if data is None {
-        raise ValueError("Data cannot be None");
-    }
-    if len(data) == 0 {
-        raise ValueError("Data cannot be empty");
-    }
-    # Process data
-}
-```
+When an exception is raised:
 
-**Type Checking**
-```jac
-def calculate_area(shape: Shape) {
-    if not isinstance(shape, Shape) {
-        raise TypeError("Expected Shape instance");
-    }
-    return shape.calculate_area();
-}
-```
+1. **Normal execution stops** at the raise statement
+2. **Stack unwinding begins** - runtime searches for handler
+3. **First matching except found** - that handler executes
+4. **Exception object accessible** via the `as` variable
+5. **Continue after try-except** - normal flow resumes
 
-**Re-raising Exceptions**
+If no handler is found, the exception propagates up until:
+- A handler catches it, or
+- The program terminates with an error message
 
-Bare raise statements re-raise the current exception:
+**Testing Different Scenarios**
 
-**Exception Logging and Re-raising**
-```jac
-def sensitive_operation() {
-    try {
-        risky_function();
-    } except Exception as e {
-        log_error("Operation failed", e);
-        raise;  # Re-raise the same exception
-    }
-}
-```
+The example tests various scenarios:
 
-**Exception Transformation**
-```jac
-def api_call() {
-    try {
-        internal_operation();
-    } except InternalError as e {
-        raise APIError("Public API failed") from e;
-    }
-}
-```
+| Test | Lines | What Happens |
+|------|-------|--------------|
+| Basic raise | 40-43 | ValueError raised and caught |
+| Raise with expression | 47-50 | RuntimeError with context raised |
+| Exception chaining | 54-57 | Chained RuntimeError raised |
+| Bare raise | 61-64 | Exception re-raised |
+| Validation failure (negative) | 68-71 | ValueError for negative input |
+| Validation failure (too large) | 74-77 | ValueError for excessive input |
+| Validation success | 81-86 | No exception raised |
 
-**Exception Chaining**
+**Common Patterns**
 
-The `from` clause enables exception chaining:
+**Pattern 1: Input validation** (lines 29-36)
 
-**Explicit Cause Chain**
-```jac
-def high_level_operation() {
-    try {
-        low_level_operation();
-    } except LowLevelError as e {
-        raise HighLevelError("High-level operation failed") from e;
-    }
-}
-```
+**Pattern 2: Error context** (lines 7-10)
 
-**Suppressing Chain**
-```jac
-def clean_operation() {
-    try {
-        messy_operation();
-    } except MessyError {
-        raise CleanError("Clean error message") from None;
-    }
-}
-```
+**Pattern 3: Exception wrapping** (lines 12-18)
 
-**Conditional Exception Raising**
-
-Raise statements often appear in conditional contexts:
-
-**Guard Clauses**
-```jac
-def process_file(filename: str) {
-    if not filename {
-        raise ValueError("Filename cannot be empty");
-    }
-    if not file_exists(filename) {
-        raise FileNotFoundError("File does not exist");
-    }
-    # Process file
-}
-```
-
-**State Machine Validation**
-```jac
-class StateMachine {
-    def transition(new_state: str) {
-        if not self.is_valid_transition(new_state) {
-            raise InvalidStateError("Invalid state transition");
-        }
-        self.state = new_state;
-    }
-}
-```
-
-**Integration with Object-Spatial Features**
-
-Raise statements work within object-spatial contexts:
-
-**Walker Error Handling**
-```jac
-walker DataProcessor {
-    can process with `node entry {
-        if not here.is_valid {
-            raise ProcessingError("Invalid node data");
-        }
-        try {
-            here.process_data();
-        } except DataError as e {
-            raise WalkerError("Walker processing failed") from e;
-        }
-    }
-}
-```
-
-**Node Validation**
-```jac
-node SecureNode {
-    can validate_access with Visitor entry {
-        if not visitor.has_permission {
-            raise PermissionError("Access denied");
-        }
-        if visitor.security_level < self.required_level {
-            raise SecurityError("Insufficient security level");
-        }
-    }
-}
-```
-
-**Exception Handling Patterns**
-
-**Resource Management**
-```jac
-def acquire_resource() {
-    resource = None;
-    try {
-        resource = allocate_resource();
-        if not resource.is_valid {
-            raise ResourceError("Failed to allocate resource");
-        }
-        return resource;
-    } except Exception as e {
-        if resource {
-            resource.cleanup();
-        }
-        raise;
-    }
-}
-```
-
-**Retry Patterns**
-```jac
-def retry_operation(max_attempts: int) {
-    for attempt=1 to attempt<=max_attempts by attempt+=1 {
-        try {
-            return perform_operation();
-        } except TemporaryError as e {
-            if attempt == max_attempts {
-                raise FinalError("All retry attempts failed") from e;
-            }
-            wait_before_retry();
-        }
-    }
-}
-```
-
-**Error Context Preservation**
-
-**Detailed Error Information**
-```jac
-def parse_config(config_data: str) {
-    try {
-        return json.parse(config_data);
-    } except JsonError as e {
-        line_number = e.get_line_number();
-        raise ConfigError("Invalid config at line {}".format(line_number)) from e;
-    }
-}
-```
-
-**Performance Considerations**
-
-**Exception Overhead**
-- Raising exceptions is expensive compared to normal control flow
-- Use exceptions for exceptional conditions, not normal program flow
-- Consider early validation to avoid deep call stack exceptions
-
-**Optimization Strategies**
-```jac
-# Efficient: Check before expensive operation
-def safe_operation(data: list) {
-    if not validate_data(data) {
-        raise ValidationError("Invalid data");
-    }
-    return expensive_operation(data);
-}
-
-# Less efficient: Exception in expensive operation
-def unsafe_operation(data: list) {
-    try {
-        return expensive_operation(data);
-    } except InternalError {
-        raise OperationError("Operation failed");
-    }
-}
-```
-
-**Exception Safety**
-
-**Exception-Safe Code**
-```jac
-def atomic_operation() {
-    state = save_state();
-    try {
-        perform_risky_operation();
-    } except Exception as e {
-        restore_state(state);
-        raise;
-    }
-}
-```
+**Pattern 4: Logging and re-raising** (lines 20-27)
 
 **Best Practices**
 
-1. **Use specific exception types**: Choose appropriate exception classes
-2. **Provide descriptive messages**: Include context and possible solutions
-3. **Validate early**: Check preconditions at function entry
-4. **Preserve exception chains**: Use `from` clause for causal relationships
-5. **Clean up resources**: Ensure proper cleanup even when exceptions occur
+1. **Use specific exception types** - ValueError, TypeError, etc. (not generic Exception)
+2. **Provide descriptive messages** - Include context about what went wrong
+3. **Chain exceptions** - Use `from` to preserve error history
+4. **Validate early** - Check inputs at function boundaries
+5. **Re-raise when appropriate** - Use bare `raise` to propagate after logging
 
-**Common Exception Patterns**
+**Exception Types Guide**
 
-**Factory Methods**
-```jac
-def create_object(type_name: str) {
-    if type_name not in valid_types {
-        raise ValueError("Unknown type: {}".format(type_name));
-    }
-    return type_constructors[type_name]();
-}
-```
+| Exception | When to Use | Example |
+|-----------|-------------|---------|
+| `ValueError` | Invalid value for correct type | Negative number where positive expected |
+| `TypeError` | Wrong type entirely | String where int expected |
+| `RuntimeError` | General runtime errors | Configuration error, state error |
+| `KeyError` | Missing dictionary key | Accessing non-existent key |
+| `IndexError` | Invalid sequence index | List index out of range |
+| `AttributeError` | Missing attribute | Accessing undefined attribute |
 
-**Protocol Validation**
-```jac
-def send_message(message: Message) {
-    if not message.is_valid() {
-        raise ProtocolError("Invalid message format");
-    }
-    if message.size() > MAX_MESSAGE_SIZE {
-        raise MessageTooLargeError("Message exceeds size limit");
-    }
-    transmit(message);
-}
-```
+**Key Takeaways**
 
-**Graceful Degradation**
-```jac
-def get_user_preference(user_id: str, key: str) {
-    try {
-        return database.get_preference(user_id, key);
-    } except DatabaseError as e {
-        log_warning("Database error, using default", e);
-        raise PreferenceError("Cannot retrieve preference") from e;
-    }
-}
-```
+- `raise ExceptionType("message")` throws an exception
+- Exceptions interrupt normal flow and jump to handlers
+- Use specific exception types that describe the error
+- Include descriptive messages with context
+- Chain exceptions with `from` to preserve error history
+- Bare `raise` re-raises the current exception (only in except blocks)
+- Use raise for input validation and error signaling
+- Always handle or document exceptions your code can raise
 
-**Integration with Testing**
-
-```jac
-def test_division_by_zero() {
-    try {
-        result = divide(10, 0);
-        assert false, "Expected ZeroDivisionError";
-    } except ZeroDivisionError {
-        # Test passes - expected exception
-        pass;
-    }
-}
-```
-
-Raise statements in Jac provide essential error signaling capabilities that enable robust exception handling, clear error communication, and structured error recovery patterns. They support both simple error reporting and sophisticated exception chaining, making them valuable tools for building reliable applications that can gracefully handle exceptional conditions and provide meaningful error feedback.
+Raise statements are essential for robust error handling, enabling your code to signal problems clearly and allowing calling code to handle errors appropriately.

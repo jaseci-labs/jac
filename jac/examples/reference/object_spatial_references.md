@@ -1,230 +1,224 @@
-Data spatial references provide specialized syntax for navigating and manipulating topological structures, enabling direct expression of graph relationships and traversal patterns. These references make topological relationships first-class citizens in the programming model.
+Edge reference expressions are the fundamental mechanism for querying and traversing graph structures in Jac. Unlike connect operators that CREATE edges, edge references QUERY existing edges to retrieve connected nodes or edge objects.
 
-#### Edge Reference Syntax
+**What are Edge References?**
 
-Edge references use square bracket notation with directional operators to express graph navigation:
+Edge references let you ask questions like "which nodes are connected to this one?" or "what edges of type Friend exist?". They're enclosed in square brackets and return lists of nodes or edges.
 
-```jac
-[-->]                    # All nodes connected by outgoing edges (default)
-[<--]                    # All nodes connected by incoming edges (default)
-[<-->]                   # All nodes connected by bidirectional edges (default)
-[edge -->]               # All outgoing edges themselves
-[edge <--]               # All incoming edges themselves
-[edge <-->]              # All bidirectional edges themselves
-[->:EdgeType:->]          # Typed nodes via outgoing edges
-[edge ->:EdgeType:->]     # Typed outgoing edges themselves
-[node --> target]        # Specific edge path to nodes
-[edge --> target]        # Specific edges in path
+Think of edge references as the "SELECT" statement of graph databases - they let you query the graph structure without modifying it.
+
+**Basic Directional Forms**
+
+Lines 32-59 demonstrate the three fundamental directions:
+
+| Syntax | Direction | Returns | Example Line |
+|--------|-----------|---------|--------------|
+| `[-->]` | Outgoing | Nodes connected via outgoing edges | 32 |
+| `[<--]` | Incoming | Nodes with edges pointing to here | 54 |
+| `[<-->]` | Bidirectional | Nodes connected in either direction | 58 |
+
+Line 32 shows `out_from_root = [-->]`, which retrieves all nodes connected via outgoing edges from root. Since line 26 connected Alice to root, the result includes Alice.
+
+Lines 47-59 show all three directions from Alice's perspective:
+- Outgoing (line 47): Bob and Charlie (Alice connects to them)
+- Incoming (line 54): Root (root connects to Alice)
+- Bidirectional (line 58): All three (root, Bob, Charlie)
+
+```mermaid
+graph LR
+    R[Root] -->|outgoing from Root| A[Alice]
+    A -->|outgoing from Alice| B[Bob]
+    A -->|outgoing from Alice| C[Charlie]
+
+    style A fill:#2e7d32,stroke:#fff,color:#fff
+
+    Note1[From Root: <br/> -->  = Alice]
+    Note2[From Alice: <br/> -->  = Bob, Charlie <br/> <--  = Root <br/> <-->  = Root, Bob, Charlie]
 ```
 
-The square bracket syntax creates collections of edges or nodes that can be used for traversal, filtering, or manipulation operations. **By default, edge reference syntax returns the connected nodes**, not the edges themselves. To explicitly reference edges, use the `edge` keyword prefix.
+**Typed Edge References**
 
-#### Node vs Edge References
+Lines 64-74 show filtering by edge type. The syntax `[->:Type:->]` traverses only edges of the specified type. Line 27 creates a Friend edge to Bob, and line 28 creates a Colleague edge to Charlie. Line 64 finds only Bob (Friend connections), while line 70 finds only Charlie (Colleague connections).
 
-Understanding the distinction between node and edge references is crucial for effective graph navigation:
+| Pattern | Matches | Example |
+|---------|---------|---------|
+| `[->:Friend:->]` | Outgoing Friend edges | Line 64 |
+| `[<-:Friend:<-]` | Incoming Friend edges | - |
+| `[<-:Friend:->]` | Friend edges in either direction | - |
 
-**Default Node References**:
-```jac
-[-->]                    # Returns: connected nodes via outgoing edges
-[<--]                    # Returns: connected nodes via incoming edges
-visit [-->];             # Walker visits the connected nodes
+The type name between colons filters which edges to traverse.
+
+**Filtered Edge References**
+
+Lines 79-87 demonstrate filtering on edge attributes. The syntax `[->:Type:condition:->]` filters edges based on their attributes:
+- Line 79: Only Friend edges where the `since` attribute is less than 2018
+- Line 82: Only Colleague edges where `years` attribute is greater than 2
+- Line 86: Multiple conditions combined with AND logic (years between 1 and 5)
+
+The filters apply to EDGE attributes, not node attributes. Line 27 creates `Friend(since=2015)`, so the filter on line 79 matches because 2015 < 2018.
+
+**Edge vs Node Retrieval**
+
+Lines 92-97 show retrieving edge objects instead of nodes:
+
+| Keyword | Returns | Use When |
+|---------|---------|----------|
+| `[edge -->]` | Edge objects | Need to access edge attributes |
+| `[node -->]` | Node objects | Need to access node attributes (default) |
+| `[-->]` | Node objects | Default behavior, same as `[node -->]` |
+
+Line 92 returns edge objects that have attributes like `since` (Friend edges) or `years` (Colleague edges). This is useful when you need to examine or modify edge properties.
+
+**Chained Edge References for Multi-Hop Traversal**
+
+Lines 114-120 demonstrate chaining to traverse multiple hops. Chaining syntax: `[start ->:Type1:-> ->:Type2:->]`
+
+Line 114 performs a two-hop traversal:
+1. Start at `here` (Alice)
+2. Follow Friend edges to reach Bob
+3. From Bob, follow Friend edges to reach David
+4. Returns David (2 hops away)
+
+```mermaid
+graph LR
+    A[Alice] -->|Friend| B[Bob]
+    B -->|Friend| D[David]
+
+    style A fill:#2e7d32,stroke:#fff,color:#fff
+    style D fill:#b71c1c,stroke:#fff,color:#fff
+
+    Note[here ->:Friend:-> ->:Friend:-> <br/> starts at Alice, returns David]
 ```
 
-**Explicit Edge References**:
-```jac
-[edge -->]               # Returns: the edge objects themselves
-[edge <--]               # Returns: incoming edge objects
-visit [edge -->];        # Walker visits the edges (and their connected nodes)
-```
+Line 119 shows mixed-type chaining - Friend edges then Colleague edges. You can chain as many hops as needed: `[node ->:T1:-> ->:T2:-> ->:T3:->]`.
 
-When a walker visits edges explicitly, it will execute abilities on both the edge and its connected node, providing access to edge properties and enabling edge-based computation.
+**Edge References in Different Contexts**
 
-#### Directional Navigation
+Lines 128-144 show edge references used in various ways:
 
-Directional operators express the flow of relationships within the graph:
+| Context | Syntax | Purpose | Example Line |
+|---------|--------|---------|--------------|
+| Assignment | `targets = [-->]` | Store results | 128 |
+| Conditional | `if [-->] { ... }` | Check if edges exist | 132 |
+| For loop | `for n in [-->] { ... }` | Iterate nodes | 138 |
+| Visit statement | `visit [->:Friend:->]` | Walker traversal | 143 |
 
-**Outgoing (`-->`)**: References edges that originate from the current node, representing relationships where the current node is the source.
+Line 132 shows using an edge reference as a boolean condition - non-empty lists are truthy, so this checks "do any outgoing edges exist?".
 
-**Incoming (`<--`)**: References edges that terminate at the current node, representing relationships where the current node is the target.
+Lines 138-140 show iteration, which is very common for processing all neighbors.
 
-**Bidirectional (`<-->`)**: References edges that can be traversed in either direction, representing symmetric relationships.
+**Evaluation Context**
 
-#### Edge Connection Operations
+Edge references are evaluated relative to a spatial context:
 
-Connection operators create new edges between nodes, establishing topological relationships:
+**Implicit context** (inside walker abilities):
+- Line 47: `outgoing = [-->]` evaluates from `here` (current node)
+- Most common usage in walkers
 
-```jac
-source_node ++> target_node;                    # Create directed edge
-source_node <++ target_node;                    # Create reverse directed edge
-source_node <++> target_node;                   # Create bidirectional edge
-source_node ++>:EdgeType(weight=5):++> target;  # Create typed edge with data
-```
+**Explicit context**:
+- Lines 108, 114, 119: `[here ->:Type:->]` explicitly specifies starting node
+- Can use any node variable: `[root -->]`, `[alice -->]`, `[some_node -->]`
 
-These operators enable dynamic graph construction where relationships can be established programmatically based on computational logic.
+When no starting node is specified in walker abilities, `here` is the implicit starting point.
 
-#### Edge Disconnection Operations
+**Edge References vs Connect Operators**
 
-The `del` operator removes edges from the graph structure:
+Understanding the difference is crucial:
 
-```jac
-del source_node --> target_node;    # Remove specific edge
-del [-->];                          # Remove all outgoing edges
-del [<--:FollowEdge:];             # Remove typed incoming edges
-```
+| Feature | Edge Reference | Connect Operator |
+|---------|---------------|------------------|
+| Purpose | Query existing edges | Create new edges |
+| Syntax | `[-->]` | `++>` |
+| Returns | List of nodes/edges | Target node |
+| Modifies graph | No | Yes |
+| Example line | 32, 47, 64 | 26, 27, 28 |
 
-Disconnection operations maintain graph integrity by properly cleaning up references and ensuring consistent topological state.
+Lines 26-28 use connect operators (`++>`, `+>:Type:+>`) to CREATE the graph structure. Lines 32-144 use edge references to QUERY that structure.
 
-#### Filtered References
+The workflow: First connect to build the graph, then reference to traverse it.
 
-Edge references support inline filtering for selective graph operations:
+**Common Edge Reference Patterns**
 
-```jac
-# Node filtering (default behavior)
-[-->(active == true)]              # Nodes that are active
-[<--(score > threshold)]            # Nodes with high scores
-[<-->(?name.startswith("test"))]   # Nodes with test names
+**Pattern 1: Neighbor Query** (line 47)
 
-# Edge filtering (explicit edge references)
-[edge -->(weight > threshold)]     # Edges meeting weight criteria
-[edge <--:FollowEdge:]             # Incoming edges of specific type
-[edge <-->(`ConnectionType)]        # Edges of specific type
-```
+**Pattern 2: Typed Relationship Query** (line 64)
 
-Filtering enables precise graph queries that combine topological navigation with data-driven selection criteria. When filtering edges explicitly, the walker can access edge properties during traversal.
+**Pattern 3: Filtered Relationship Query** (line 79)
 
-#### Integration with Walker Traversal
+**Pattern 4: Multi-Hop Query** (line 114)
 
-Data spatial references integrate seamlessly with walker traversal patterns:
+**Pattern 5: Existence Check** (line 132)
 
-```jac
-walker NetworkAnalyzer {
-    has visited: set = set();
-    
-    can explore with entry {
-        # Mark current node as visited
-        self.visited.add(here);
-        
-        # Find unvisited neighbors (returns nodes by default)
-        unvisited_neighbors = [-->] |> filter(|n| n not in self.visited);
-        
-        # Continue traversal to unvisited nodes
-        if (unvisited_neighbors) {
-            visit unvisited_neighbors;  # Visits nodes only
-        }
-        
-        # Analyze connection patterns (edge references)
-        strong_connections = [edge <-->:StrongEdge:];
-        weak_connections = [edge <-->:WeakEdge:];
-        
-        # Visit edges to analyze their properties
-        # This will execute abilities on both edges and connected nodes
-        visit [edge -->:AnalysisEdge:];
-        
-        # Report analysis results
-        report {
-            "node_id": here.id,
-            "strong_count": len(strong_connections),
-            "weak_count": len(weak_connections)
-        };
-    }
-}
-```
+**Pattern 6: Edge Inspection** (line 92)
 
-When visiting edges explicitly with `visit [edge -->]`, the walker will:
-1. Execute entry abilities on the edge
-2. Automatically queue and visit the connected node
-3. Execute abilities on both the edge and the target node
+**Complete Syntax Reference**
 
-When visiting nodes with `visit [-->]` (default), the walker will:
-1. Execute abilities only on the target nodes
-2. Skip edge traversal abilities
+The example's summary walker (lines 152-185) provides a comprehensive syntax reference:
 
-#### Type-Safe Graph Operations
+**Basic forms**:
+- `[-->]` - All outgoing edges
+- `[<--]` - All incoming edges
+- `[<-->]` - Bidirectional (both ways)
 
-References support type checking and validation for robust graph manipulation:
+**Typed forms**:
+- `[->:Type:->]` - Outgoing of specific type
+- `[<-:Type:<-]` - Incoming of specific type
+- `[<-:Type:->]` - Bidirectional of specific type
 
-```jac
-node DataNode {
-    has data: dict;
-    has node_type: str;
-}
+**Filtered forms**:
+- `[->:Type:attr > val:->]` - Filter on edge attribute
+- `[->:Type:a > x, b < y:->]` - Multiple conditions (AND)
 
-edge ProcessingEdge(DataNode, DataNode) {
-    has processing_weight: float;
-    has edge_type: str = "processing";
-}
+**Special forms**:
+- `[edge -->]` - Get edge objects
+- `[node -->]` - Get node objects (explicit)
+- `[node ->:T1:-> ->:T2:->]` - Chained (multi-hop)
 
-walker TypedProcessor {
-    can process with DataNode entry {
-        # Type-safe edge references
-        processing_edges = [-->:ProcessingEdge:];
-        
-        # Filtered by edge properties
-        high_priority = processing_edges |> filter(|e| e.processing_weight > 0.8);
-        
-        # Continue to high-priority targets
-        visit high_priority |> map(|e| e.target);
-    }
-}
-```
+**Common Usage Patterns**
 
-#### Dynamic Graph Construction
+**In visit statements** (most common):
 
-References enable dynamic graph construction based on runtime conditions:
+**In for loops**:
 
-```jac
-walker GraphBuilder {
-    can build_connections with entry {
-        # Analyze current node data
-        similarity_threshold = 0.7;
-        
-        # Find similar nodes in the graph
-        all_nodes = [-->*];  # Get all reachable nodes
-        similar_nodes = all_nodes |> filter(|n| 
-            calculate_similarity(here.data, n.data) > similarity_threshold
-        );
-        
-        # Create similarity edges
-        for similar_node in similar_nodes {
-            similarity_score = calculate_similarity(here.data, similar_node.data);
-            here ++>:SimilarityEdge(score=similarity_score):++> similar_node;
-        }
-    }
-}
-```
+**In conditionals**:
 
-Data spatial references provide the foundational syntax for expressing topological relationships and enabling computation to flow naturally through graph structures, making complex graph algorithms both intuitive and maintainable.
+**In assignments**:
 
-#### Edge vs Node Traversal Behavior
+**Understanding Return Values**
 
-Understanding the distinction between edge and node traversal is fundamental to effective data spatial programming:
+All edge references return lists (collections):
 
-**Default Node Traversal**:
-- `[-->]` returns connected nodes, not edges
-- `visit [-->]` executes abilities only on target nodes
-- Walker moves directly from node to node
-- Edge properties are not accessible during traversal
+- `[-->]` returns a list of nodes (or empty list `[]` if no matches)
+- `[edge -->]` returns a list of edge objects
+- Can check length: `len([-->])`
+- Can use in boolean context: `if [-->]` (empty = false, non-empty = true)
 
-**Explicit Edge Traversal**:
-- `[edge -->]` returns edge objects themselves
-- `visit [edge -->]` executes abilities on both edges and nodes
-- Walker processes edge first, then automatically queues connected node
-- Full access to edge properties and data during traversal
+**Common Mistakes to Avoid**
 
-This distinction enables precise control over computational flow:
-```jac
-# Process only nodes
-visit [-->];                      # Direct node-to-node movement
+1. **Filtering on wrong attributes**:
+   - ✗ Wrong: `[->:Friend:->](?since < 2020)` - this is comprehension syntax
+   - ✓ Right: `[->:Friend:since < 2020:->]` - edge attribute filter
 
-# Process edges and nodes
-visit [edge -->];                 # Edge abilities execute, then node abilities
+2. **Incorrect chaining**:
+   - ✗ Wrong: `[-->][-->]` - can't concatenate brackets
+   - ✓ Right: `[here --> -->]` or `[here ->:T1:-> ->:T2:->]` - chain within brackets
 
-# Access edge data without traversal
-edge_weights = [edge -->] |> map(|e| e.weight);
+3. **Context confusion**:
+   - Edge reference `[-->]` in walker evaluates from `here`, not spawn point
+   - Use explicit node if needed: `[root -->]`
 
-# Filter by edge properties, visit connected nodes
-high_priority_nodes = [edge -->(priority > 0.8)] |> map(|e| e.target);
-visit high_priority_nodes;
-```
+4. **Confusing reference and connect**:
+   - `[-->]` queries edges (read-only)
+   - `++>` creates edges (write)
 
-The choice between node and edge traversal depends on whether edge computation or properties are needed for the algorithm's logic.
+**Practical Applications**
+
+Edge references enable key graph operations:
+
+1. **Graph queries**: "Find all nodes of type X connected via relationship Y"
+2. **Path exploration**: "What's 3 hops away via Friend edges?"
+3. **Relationship inspection**: "What edges exist from this node?"
+4. **Filtered traversal**: "Only follow edges where attribute > threshold"
+5. **Reverse lookup**: "Who points to me?" (incoming edges)
+6. **Pattern matching**: "Find nodes matching this graph pattern"
+
+Edge references are the query language for Jac's graph model, providing declarative, concise syntax for navigating spatial structures. Combined with visit statements and walkers, they form the foundation of Object-Spatial Programming's data-to-computation paradigm.

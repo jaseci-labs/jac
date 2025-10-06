@@ -1,111 +1,107 @@
-Jac provides comprehensive data access mechanisms through attribute access and subscript operations that extend Python's familiar syntax with additional conveniences for pipe operations and null-safe access patterns.
+**Subscripted and Dotted Expressions**
 
-#### Attribute Access
+Subscripted and dotted expressions provide syntax for accessing collection elements and object attributes, forming the foundation of data access in Jac.
 
-Standard dot notation provides access to object attributes and methods:
+**Object Definition**
 
-```jac
-car = Car(make="Tesla", model="3");
-print(car.model);      # → "3"
-```
+Lines 3-7 define a `Sample` object with three attributes:
+- `items`: a list initialized to `[10, 20, 30, 40, 50]`
+- `data`: a dictionary initialized to `{"name": "Alice", "age": 30}`
+- `value`: an integer initialized to `42`
 
-Jac extends attribute access with directional dot operators that integrate with pipe expressions:
+Line 10 creates an instance of this object for demonstration.
 
-| Operator | Syntax | Purpose |
-|----------|--------|---------|
-| `.` | `obj.attr` | Standard attribute access |
-| `.>` | `obj.>method` | Forward piping attribute access |
-| `<.` | `obj<.method` | Backward piping attribute access |
+**Dotted Expressions (Attribute Access)**
 
-The directional operators provide syntactic sugar for pipe operations, enabling more fluid expression chaining.
+Line 13 demonstrates dot notation: `val = s.value;`
 
-#### Null-Safe Access
+The dot operator `.` accesses an attribute on an object:
+- `s` - The object instance
+- `.value` - The attribute name
+- Result: 42
 
-The optional access operator (`?`) provides null-safe attribute and method access:
+This is the standard way to access object attributes in Jac.
 
-```jac
-print(user?.address?.zip_code);
-# Returns None if user or address is None, avoiding exceptions
-```
+**Subscripted Expressions (Index/Key Access)**
 
-This operator short-circuits the entire access chain when encountering null values, preventing runtime errors in complex object hierarchies.
+Lines 16-18 demonstrate subscript notation with square brackets `[...]`:
 
-#### Subscript Operations
+| Line | Expression | Type | Result |
+|------|------------|------|--------|
+| 16 | `s.items[0]` | List index | 10 (first element) |
+| 17 | `s.items[-1]` | Negative index | 50 (last element) |
+| 18 | `s.data["name"]` | Dictionary key | "Alice" |
 
-Array-style indexing follows Python conventions with support for negative indices and slice operations:
+For lists, subscripts use zero-based integer indexing. Negative indices count from the end (-1 is the last element).
 
-```jac
-letters = ["a", "b", "c", "d"];
-print(letters[0]);     # "a"
-print(letters[1:3]);   # ["b", "c"]
-print(letters[-1]);    # "d"
-print(letters[::2]);   # ["a", "c"] - every second element
-```
+For dictionaries, subscripts use keys to access associated values.
 
-Subscript operations support the full range of Python slicing syntax including start, stop, and step parameters.
+**Slicing Syntax**
 
-#### Chained Access Patterns
+Lines 21-23 demonstrate slice operations on lists:
 
-Attribute and subscript operations can be freely combined to access nested data structures:
+| Line | Slice | Start | End | Result |
+|------|-------|-------|-----|--------|
+| 21 | `s.items[1:4]` | 1 | 4 | `[20, 30, 40]` (indices 1, 2, 3) |
+| 22 | `s.items[:3]` | 0 | 3 | `[10, 20, 30]` (beginning to index 3) |
+| 23 | `s.items[2:]` | 2 | end | `[30, 40, 50]` (index 2 to end) |
 
-```jac
-node DataContainer {
-    has metadata: dict = {"values": [1, 2, 3], "config": {"debug": true}};
-}
+Slice syntax is `[start:end]` where:
+- `start` is inclusive (included in result)
+- `end` is exclusive (not included in result)
+- Omitting `start` defaults to beginning (0)
+- Omitting `end` defaults to end of list
 
-container = DataContainer();
-value = container.metadata["values"][2];        # 3
-debug_mode = container.metadata["config"]["debug"];  # true
-```
+**Chained Access**
 
-#### Null-Safe Subscripting
+Line 26 shows chaining operations: `first_char = s.data["name"][0];`
 
-Null-safe access extends to subscript operations:
+Execution left-to-right:
+1. `s.data` - Access data attribute (returns dictionary)
+2. `["name"]` - Get value for key "name" (returns "Alice")
+3. `[0]` - Get first character (returns "A")
 
-```jac
-config_value = settings?.["theme"]?.["primary_color"];
-# Safely accesses nested dictionary values
-```
+Chaining allows you to access nested data structures in a single expression.
 
-This pattern is particularly useful when working with optional configuration data or API responses with variable structure.
+**Null-Safe Access**
 
-#### Integration with Object-Spatial Constructs
+Line 29 demonstrates null-safe access: `safe_val = s?.value;`
 
-Access operations work seamlessly with object-spatial programming elements:
+The `?.` operator:
+- Accesses the attribute if the object is not None
+- Returns None if the object is None (instead of raising an error)
+- Useful for optional attributes or nullable objects
 
-```jac
-walker DataInspector {
-    can analyze with entry {
-        # Safe access to node properties
-        node_type = here?.node_type;
-        data_size = here?.data?.["size"];
-        
-        # Process based on available data
-        if (node_type == "processing" and data_size > threshold) {
-            visit here.high_priority_neighbors;
-        }
-    }
-}
+This prevents `AttributeError` when the object might be None.
 
-node ProcessingNode {
-    has data: dict;
-    has node_type: str = "processing";
-    has high_priority_neighbors: list;
-    
-    can get_status with visitor entry {
-        # Visitor can access node data safely
-        status = self.data?.["status"] or "unknown";
-        visitor.record_status(status);
-    }
-}
-```
+**Subscript Type Behaviors**
 
-#### Performance Considerations
+Different types handle subscripts differently:
 
-Null-safe operations include runtime checks that add minimal overhead while significantly improving code robustness. The compiler optimizes common access patterns to minimize performance impact.
+| Type | Subscript | Example | Result |
+|------|-----------|---------|--------|
+| List | Integer index | `[10, 20, 30][1]` | `20` |
+| Tuple | Integer index | `(10, 20, 30)[1]` | `20` |
+| String | Integer index | `"hello"[1]` | `"e"` |
+| Dictionary | Key | `{"a": 1}["a"]` | `1` |
 
-#### Error Handling
+Negative indices work for ordered sequences (lists, tuples, strings) but not dictionaries.
 
-Standard access operations raise appropriate exceptions for invalid keys or attributes, while null-safe operations return `None` for missing intermediate values. This distinction enables explicit error handling strategies based on application requirements.
+**Complete Example Flow**
 
-Subscripted and dotted expressions provide the foundation for safe, expressive data access patterns that integrate naturally with both traditional programming constructs and object-spatial operations.
+Line 31 prints all the values extracted in lines 13-29:
+- `val` = 42
+- `item1` = 10
+- `item2` = 50
+- `name` = "Alice"
+- `slice1` = [20, 30, 40]
+- `slice2` = [10, 20, 30]
+- `slice3` = [30, 40, 50]
+- `first_char` = "A"
+- `safe_val` = 42
+
+**Common Patterns**
+
+Combining dot and subscript notation enables powerful data access:
+
+These expressions form the basis for navigating complex data structures in Jac programs.

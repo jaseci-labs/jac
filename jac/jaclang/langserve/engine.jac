@@ -8,9 +8,10 @@ import from typing { Callable, Optional }
 
 import jaclang.compiler.unitree as uni;
 import from jaclang { JacMachineInterface as Jac }
-import from jaclang.compiler.constant {SymbolType}
+import from jaclang.compiler.constant { SymbolType }
 import from jaclang.compiler.program { JacProgram }
-import from jaclang.compiler.type_system.types{ ClassType}
+import from jaclang.compiler.type_system.type_utils { get_completion_items }
+import from jaclang.compiler.type_system.types { ClassType, TypeBase }
 import from jaclang.compiler.unitree { UniScopeNode }
 import from sem_manager { SemTokManager }
 import from jaclang.vendor.pygls { uris }
@@ -201,121 +202,154 @@ class JacLangServer(JacProgram , LanguageServer) {
         }
     }
 
+    def get_token_at_position(self: JacLangServer, file_path: str, position: lspt.Position) -> Optional[uni.AstNode] {
+        fs_path = uris.to_fs_path(file_path);
+        if fs_path not in self.mod.hub {
+            return None;
+        }
+        sem_mgr = self.sem_managers.get(fs_path);
+        if not sem_mgr {
+            return None;
+        }
+        token_index =
+            utils.find_index(sem_mgr.sem_tokens, position.line, position.character);
+        if token_index is None {
+            return None;
+        }
+        node_selected = sem_mgr.static_sem_tokens[token_index][3];
+        return node_selected;
+    }
+
+    def debug(self: JacLangServer, msg: str) -> None {
+        self.log_py("[DEBUG] " + ("-" * 80));
+        self.log_py(f"[DEBUG] {msg}");
+        self.log_py("[DEBUG] " + ("-" * 80));
+    }
+
     """Return completion for a file."""
     def get_completion(
         self: JacLangServer,
-        file_path: str,
+        file_uri: str,
         position: lspt.Position,
         completion_trigger: Optional[str]
     ) -> lspt.CompletionList {
+        self.debug("getting completion for " + file_uri + " at " + str(position));
+
         try {
-            document = self.workspace.get_text_document(file_path);
-            mod_ir = self.get_ir(document.path);
-            if not mod_ir {
-                return lspt.CompletionList(is_incomplete=False, items=[]);
-            }
-            current_line = document.lines[position.line];
-            current_pos = position.character;
-            current_symbol_path = utils.parse_symbol_path(current_line, current_pos);
-            builtin_mod =
-                next(
-                    ( mod for (name, mod) in self.mod.hub.items() if 'builtins' in name )
-                );
-            builtin_tab = builtin_mod.sym_tab;
-            assert isinstance(builtin_tab, UniScopeNode) ;
-            completion_items = [];
-            node_selected =
-                utils.find_deepest_symbol_node_at_pos(
-                    mod_ir,
-                    position.line,
-                    (position.character - 2)
-                );
-            mod_tab = mod_ir.sym_tab if not node_selected else node_selected.sym_tab;
-            current_symbol_table = mod_tab;
-            if completion_trigger == '.' {
-                if current_symbol_path {
-                    temp_tab = mod_tab;
-                    for symbol in current_symbol_path {
-                        if symbol == 'self' {
-                            is_ability_def =
-                                temp_tab
-                                if isinstance(temp_tab, uni.ImplDef)
-                                else temp_tab.find_parent_of_type(uni.ImplDef);
-                            if not is_ability_def {
-                                archi_owner =
-                                    mod_tab.find_parent_of_type(uni.Archetype);
-                                temp_tab =
-                                    archi_owner.sym_tab
-                                    if archi_owner and archi_owner.sym_tab
-                                    else mod_tab;
-                                continue;
-                            } else {
-                                archi_owner =
-                                    is_ability_def.decl_link.find_parent_of_type(
-                                        uni.Archetype
-                                    )
-                                    if is_ability_def.decl_link
-                                    else None;
-                                temp_tab =
-                                    archi_owner.sym_tab
-                                    if archi_owner and archi_owner.sym_tab
-                                    else temp_tab;
-                                continue;
-                            }
+            file_path = uris.to_fs_path(file_uri);
+
+            if (node_at_pos := self.get_node_at_position(file_path, position.line, position.character - 1)) {
+                self.debug("found the node at pos " + str(position) + " " + str(node_at_pos));
+
+                # For each trigger character we need to handle the completion differently
+                if isinstance(node_at_pos, uni.Token) {
+                    if node_at_pos.name == "DOT" {
+                        member_access = node_at_pos.parent;
+                        self.debug("found dot " + str(member_access));
+                        if isinstance(member_access, uni.AtomTrailer) {
+                            self.debug("before returning the list");
+                            return self.get_completion_of_node(member_access.target);
                         }
-                        symb = temp_tab.lookup(symbol);
-                        if symb {
-                            fetc_tab = symb.symbol_table;
-                            if fetc_tab {
-                                temp_tab = fetc_tab;
-                            } else {
-                                temp_tab =
-                                    symb.defn[0].type_sym_tab
-                                    if symb.defn[0].type_sym_tab
-                                    else temp_tab;
-                            }
-                        } else {
-                            break;
+
+                    # FIXME: This is wrong but imma do it anyways like this for now.
+                    } elif node_at_pos.name == "NAME" {
+
+                        # Name of atom trailer.
+                        if node_at_pos.parent and isinstance(node_at_pos.parent, uni.AtomTrailer) {
+                            self.debug("found name in atom trailer " + str(node_at_pos.parent));
+                            return self.get_completion_of_node(node_at_pos.parent.target);
                         }
-                    }
-                    completion_items += utils.collect_all_symbols_in_scope(
-                        temp_tab,
-                        up_tree=False
-                    );
-                    if isinstance(temp_tab, uni.Archetype) and temp_tab.base_classes  {
-                        base = [];
-                        for base_name in temp_tab.base_classes {
-                            if isinstance(base_name, uni.Name) and base_name.sym  {
-                                base.append(base_name.sym);
-                            }
-                        }
-                        for base_class_symbol in base {
-                            if base_class_symbol.symbol_table {
-                                completion_items += utils.collect_all_symbols_in_scope(
-                                    base_class_symbol.symbol_table,
-                                    up_tree=False
-                                );
-                            }
+
+                        # Just a name field.
+                        if scope_node := node_at_pos.find_parent_of_type(uni.UniScopeNode) {
+                            self.debug("found name in scope node " + str(scope_node));
+                            return self.get_completion_of_node(scope_node);
                         }
                     }
                 }
-            } elif node_selected and node_selected.find_parent_of_type(uni.Archetype)
-            or node_selected.find_parent_of_type(uni.ImplDef)
-             {
-                self_symbol =
-
-                    [lspt.CompletionItem(
-                        label='self',
-                        kind=lspt.CompletionItemKind.Variable
-                    )];
-            } else {
-                self_symbol = [];
             }
-            return lspt.CompletionList(is_incomplete=False, items=completion_items);
+
+            return lspt.CompletionList(is_incomplete=False, items=[]);
+
         } except Exception as e {
             self.log_py(f"'Error during completion: '{e}");
             return lspt.CompletionList(is_incomplete=False, items=[]);
         }
+
+        self.debug("returning empty list");
+    }
+
+    def get_ast_of_file(self: JacLangServer, file_path: str) -> Optional[uni.AstNode] {
+        if file_path in self.mod.hub {
+            return self.mod.hub[file_path];
+        }
+        return None;
+    }
+
+    def get_node_at_position(self: JacLangServer, file_path: str, line:int, col: int) -> Optional[uni.AstNode] {
+        if (ast := self.get_ast_of_file(file_path)) {
+            for ast_node in ast._in_mod_nodes {
+                if not isinstance(ast_node, uni.Token) {
+                    continue;
+                }
+                if (utils.position_within_node(ast_node, line + 1, col + 1)) {
+                    return ast_node;
+                }
+            }
+        }
+        return None;
+    }
+
+    def get_completion_of_node(self: JacLangServer, node: uni.AstNode) -> lspt.CompletionList {
+        if (node_type := self.get_node_type(node)) {
+            self.debug("found type " + str(node_type));
+            return self.get_completion_items_of(node_type);
+        } elif isinstance(node, UniScopeNode) {
+            self.debug("found scope node " + str(node));
+            return self.get_completion_items_of(node);
+        }
+
+        self.debug("no type found for node " + str(node));
+        return lspt.CompletionList(is_incomplete=False, items=[]);
+    }
+
+    """Return the type of an AST node if it has one."""
+    def get_node_type(self: JacLangServer, n: uni.AstNode) -> Optional[TypeBase] {
+        if isinstance(n, uni.Expr) {
+            typ = self.get_type_evaluator().get_type_of_expression(n);
+            self.debug("found type " + str(typ) + " for expr " + str(n));
+            return typ;
+        }
+        self.debug("no type found for node " + str(n));
+        return None;
+    }
+
+    """Get type members for completion."""
+    def get_completion_items_of(self: JacLangServer, ty: TypeBase | uni.UniScopeNode) -> lspt.CompletionList {
+        evaluator = self.get_type_evaluator();
+        self.debug("getting completion of " + str(ty));
+        items = get_completion_items(ty);
+        self.debug("completion items are " + str(items));
+
+        items: list[lspt.CompletionItem] = [];
+        for item in get_completion_items(ty) {
+            detail: lspt.CompletionItemLabelDetails | None = None;
+            if item.detail {
+                detail = lspt.CompletionItemLabelDetails(detail=item.detail);
+            }
+            items.append(
+                lspt.CompletionItem(
+                    label=item.label,
+                    kind=item.kind,
+                    label_details=detail,
+                )
+            );
+        }
+
+        return lspt.CompletionList(
+            is_incomplete=False,
+            items=items,
+        );
     }
 
     """Rename module."""
@@ -370,21 +404,7 @@ class JacLangServer(JacProgram , LanguageServer) {
         file_path: str,
         position: lspt.Position
     ) -> Optional[lspt.Hover] {
-        fs_path = uris.to_fs_path(file_path);
-
-        if fs_path not in self.mod.hub {
-            return None;
-        }
-        sem_mgr = self.sem_managers.get(fs_path);
-        if not sem_mgr {
-            return None;
-        }
-        token_index =
-            utils.find_index(sem_mgr.sem_tokens, position.line, position.character);
-        if token_index is None {
-            return None;
-        }
-        node_selected = sem_mgr.static_sem_tokens[token_index][3];
+        node_selected = self.get_token_at_position(file_path, position);
         value = self.get_node_info(node_selected) if node_selected else None;
         if value {
             return lspt.Hover(
@@ -441,21 +461,7 @@ class JacLangServer(JacProgram , LanguageServer) {
         file_path: str,
         position: lspt.Position
     ) -> Optional[lspt.Location] {
-        fs_path = uris.to_fs_path(file_path);
-
-        if fs_path not in self.mod.hub {
-            return None;
-        }
-        sem_mgr = self.sem_managers.get(fs_path);
-        if not sem_mgr {
-            return None;
-        }
-        token_index =
-            utils.find_index(sem_mgr.sem_tokens, position.line, position.character);
-        if token_index is None {
-            return None;
-        }
-        node_selected = sem_mgr.static_sem_tokens[token_index][3];
+        node_selected = self.get_token_at_position(file_path, position);
         if node_selected {
             if (node_selected.sym.sym_type == SymbolType.MODULE) {
                 spec = node_selected.sym.decl.parent.resolve_relative_path();
@@ -554,21 +560,7 @@ class JacLangServer(JacProgram , LanguageServer) {
         file_path: str,
         position: lspt.Position
     ) -> list[lspt.Location] {
-        fs_path = uris.to_fs_path(file_path);
-
-        if fs_path not in self.mod.hub {
-            return [];
-        }
-        sem_mgr = self.sem_managers.get(fs_path);
-        if not sem_mgr {
-            return [];
-        }
-        index1 =
-            utils.find_index(sem_mgr.sem_tokens, position.line, position.character);
-        if index1 is None {
-            return [];
-        }
-        node_selected = sem_mgr.static_sem_tokens[index1][3];
+        node_selected = self.get_token_at_position(file_path, position);
         if node_selected and node_selected.sym  {
             list_of_references: list[lspt.Location] =
                 [ lspt.Location(
@@ -587,20 +579,7 @@ class JacLangServer(JacProgram , LanguageServer) {
         position: lspt.Position,
         new_name: str
     ) -> Optional[lspt.WorkspaceEdit] {
-        fs_path = uris.to_fs_path(file_path);
-        if fs_path not in self.mod.hub {
-            return None;
-        }
-        sem_mgr = self.sem_managers.get(fs_path);
-        if not sem_mgr {
-            return None;
-        }
-        index1 =
-            utils.find_index(sem_mgr.sem_tokens, position.line, position.character);
-        if index1 is None {
-            return None;
-        }
-        node_selected = sem_mgr.static_sem_tokens[index1][3];
+        node_selected = self.get_token_at_position(file_path, position);
         if node_selected and node_selected.sym  {
             changes: dict[(str, list[lspt.TextEdit])] = {};
             for node in [*node_selected.sym.uses, node_selected.sym.defn[0]] {

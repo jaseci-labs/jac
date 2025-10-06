@@ -3,6 +3,9 @@
 PyrightReference: packages/pyright-internal/src/analyzer/typeUtils.ts
 """
 
+from dataclasses import dataclass
+from enum import Enum
+
 import jaclang.compiler.unitree as uni
 from jaclang.compiler.constant import Tokens as Tok
 from jaclang.compiler.unitree import Symbol
@@ -196,3 +199,89 @@ class ParamAssignmentTracker:
             ):
                 ret.append(param)
         return ret
+
+
+# -----------------------------------------------------------------------------
+# Completion item utils
+# -----------------------------------------------------------------------------
+
+
+@dataclass
+class CompletionItem:
+    """A completion item."""
+
+    label: str
+    kind: int
+    detail: str | None = None
+
+
+class CompletionItemKind(int, Enum):
+    """The kind of a completion entry."""
+
+    Text = 1
+    Method = 2
+    Function = 3
+    Constructor = 4
+    Field = 5
+    Variable = 6
+    Class = 7
+    Interface = 8
+    Module = 9
+    Property = 10
+    Unit = 11
+    Value = 12
+    Enum = 13
+    Keyword = 14
+    Snippet = 15
+    Color = 16
+    File = 17
+    Reference = 18
+    Folder = 19
+    EnumMember = 20
+    Constant = 21
+    Struct = 22
+    Event = 23
+    Operator = 24
+    TypeParameter = 25
+
+
+def completion_kind_from_sym(sym: Symbol) -> int:
+    """Get the completion item kind from a symbol."""
+    match sym.decl.name_of:
+        case uni.ModulePath():
+            return CompletionItemKind.Module
+        case uni.Ability():
+            return CompletionItemKind.Function
+        case uni.Archetype():
+            return CompletionItemKind.Class
+        case uni.Enum():
+            return CompletionItemKind.Enum
+        case uni.HasVar():
+            return CompletionItemKind.Variable
+    return CompletionItemKind.Text
+
+
+def get_completion_items(ty: types.TypeBase | uni.UniScopeNode) -> list[CompletionItem]:
+    """Return a list of completion items for the type."""
+    ret = []
+
+    if isinstance(ty, uni.UniScopeNode):
+        scope = ty
+        while scope:
+            for name, sym in scope.names_in_scope.items():
+                kind = completion_kind_from_sym(sym)
+                ret.append(CompletionItem(label=name, kind=kind))
+            scope = scope.parent_scope
+
+    elif isinstance(ty, types.ClassType):
+        for cls in ty.shared.mro:
+            for name, sym in cls.shared.symbol_table.names_in_scope.items():
+                kind = completion_kind_from_sym(sym)
+                ret.append(CompletionItem(label=name, kind=kind))
+
+    elif isinstance(ty, types.ModuleType):
+        for name, sym in ty.symbol_table.names_in_scope.items():
+            kind = completion_kind_from_sym(sym)
+            ret.append(CompletionItem(label=name, kind=kind))
+
+    return ret

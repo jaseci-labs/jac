@@ -1,281 +1,164 @@
-If statements provide conditional execution control, enabling programs to make decisions based on boolean expressions. Jac's if statement syntax supports the familiar if-elif-else pattern with mandatory code blocks, ensuring clear and safe conditional logic.
+**If Statements in Jac**
 
-#### Basic Conditional Syntax
+If statements provide conditional control flow through `if`, `elif`, and `else` keywords. They allow code to execute different paths based on boolean conditions.
 
-If statements follow a structured pattern with required code blocks:
+**Basic If Statement**
 
-```jac
-if condition {
-    # code block executed when condition is true
-}
+Lines 4-8 demonstrate the simplest conditional. When the condition `x > 5` evaluates to true, the block executes.
+
+**If-Else Statement**
+
+Lines 11-16 show binary choice logic. Exactly one block executes: the `if` block when true, otherwise the `else` block.
+
+**If-Elif-Else Chain**
+
+Lines 19-28 demonstrate multiple exclusive conditions. Evaluation is top-down. The first true condition executes, then the entire chain terminates.
+
+**Multiple Elif Branches**
+
+Lines 31-42 show extended conditional chains with many branches. Each `elif` provides an additional condition to check if previous conditions were false.
+
+**Nested If Statements**
+
+Lines 45-55 demonstrate if statements within if statements. Inner conditions only evaluate if outer conditions are true.
+
+**Complex Boolean Expressions**
+
+Lines 58-72 show combining conditions with logical operators:
+
+**AND operator** (line 58-60):
+
+Both conditions must be true.
+
+**OR operator** (line 62-64):
+
+At least one condition must be true.
+
+**NOT operator** (line 66-68):
+
+Negates the condition.
+
+**Combined operators** (line 70-72):
+
+Parentheses control precedence.
+
+**Chained Comparisons**
+
+Lines 75-78 demonstrate Python-style chained comparisons. Equivalent to `20 <= temp and temp <= 30`, but evaluates `temp` only once.
+
+**Membership Tests**
+
+Lines 81-88 show `in` and `not in` operators. Works with any iterable: lists, tuples, sets, dictionaries (checks keys), strings.
+
+**Identity Tests**
+
+Lines 91-100 demonstrate `is` and `is not` for identity checking. Use `is` for None checks, not `==`.
+
+**Comparison Operators**
+
+| Operator | Meaning | Example Line |
+|----------|---------|--------------|
+| `==` | Equal | Throughout |
+| `!=` | Not equal | Implicit |
+| `<` | Less than | 32 |
+| `<=` | Less than or equal | 76 |
+| `>` | Greater than | 6 |
+| `>=` | Greater than or equal | 12, 20 |
+| `is` | Identity | 92 |
+| `is not` | Not identity | 96 |
+| `in` | Membership | 82 |
+| `not in` | Non-membership | 86 |
+
+**Logical Operators**
+
+| Operator | Meaning | Precedence |
+|----------|---------|------------|
+| `not` | Negation | Highest |
+| `and` | Both must be true | Medium |
+| `or` | At least one must be true | Lowest |
+
+**Control Flow Diagram**
+
+```mermaid
+flowchart TD
+    Start([If Statement]) --> Cond1{If Condition<br/>True?}
+    Cond1 -->|Yes| IfBlock[Execute If Block]
+    Cond1 -->|No| Elif{Elif<br/>Present?}
+    IfBlock --> Done([Continue])
+    Elif -->|Yes| ElifCond{Elif Condition<br/>True?}
+    Elif -->|No| Else{Else<br/>Present?}
+    ElifCond -->|Yes| ElifBlock[Execute Elif Block]
+    ElifCond -->|No| NextElif{More<br/>Elif?}
+    ElifBlock --> Done
+    NextElif -->|Yes| ElifCond
+    NextElif -->|No| Else
+    Else -->|Yes| ElseBlock[Execute Else Block]
+    Else -->|No| Done
+    ElseBlock --> Done
 ```
 
-The condition must evaluate to a boolean value, and the code block is enclosed in mandatory curly braces for clarity and consistency.
+**Truthy and Falsy Values**
 
-#### Complete Conditional Structure
+Jac follows Python's truthiness rules:
 
-The full conditional structure supports multiple decision branches:
+**Falsy values:**
+- `False`
+- `None`
+- `0` (numeric zero)
+- `""` (empty string)
+- `[]` (empty list)
+- `{}` (empty dict)
 
-```jac
-if primary_condition {
-    # executed when primary condition is true
-} elif secondary_condition {
-    # executed when secondary condition is true
-} else {
-    # executed when no conditions are true
-}
-```
+**Truthy values:**
+- Everything else
 
-#### Chained Comparison Operations
+Example:
 
-Jac supports elegant chained comparisons for range checking and multiple relationships:
+**Common Patterns**
 
-```jac
-score = 85;
-if 0 <= score <= 59 {
-    grade = "F";
-} elif 60 <= score <= 69 {
-    grade = "D";
-} elif 70 <= score <= 79 {
-    grade = "C";
-} elif 80 <= score <= 89 {
-    grade = "B";
-} else {
-    grade = "A";
-}
-```
+**Guard pattern (early return):**
 
-Chained comparisons provide natural mathematical notation that improves readability and reduces the need for complex boolean expressions.
+**Range checking:**
 
-#### Boolean Logic Integration
+**None checking:**
 
-If statements work with complex boolean expressions using logical operators:
+**Membership filtering:**
 
-```jac
-# Logical AND
-if user.is_authenticated and user.has_permission("read") {
-    display_content();
-}
+**Multi-condition validation:**
 
-# Logical OR
-if is_admin or is_moderator {
-    access_admin_panel();
-}
+**Short-Circuit Evaluation**
 
-# Logical NOT
-if not is_maintenance_mode {
-    process_requests();
-}
+`and` and `or` use short-circuit evaluation:
 
-# Complex combinations
-if (user.age >= 18 and user.verified) or user.has_guardian_consent {
-    allow_registration();
-}
-```
+If `x != 0` is false, `y / x` doesn't execute (preventing division by zero).
 
-#### Sequential Evaluation Behavior
+**If Expression (Ternary)**
 
-Elif statements provide efficient multi-way branching with sequential evaluation:
+Jac supports if expressions for value selection:
 
-```jac
-temperature = 75;
-if temperature < 32 {
-    status = "freezing";
-} elif temperature < 50 {
-    status = "cold";        # Only checked if temperature >= 32
-} elif temperature < 80 {
-    status = "comfortable"; # Only checked if temperature >= 50
-} else {
-    status = "hot";         # Only if temperature >= 80
-}
-```
+**If expressions must have an else clause** and return a value.
 
-Once a condition matches, remaining elif and else blocks are skipped, ensuring exactly one block executes and optimizing performance.
+**Block Syntax Rules**
 
-#### Object-Spatial Integration
+1. **Braces required**: `{ }` delimit blocks, not indentation
+2. **Semicolons required**: Each statement ends with `;`
+3. **Single-line allowed**: `if x > 5 { print("yes"); }` is valid
+4. **Multi-line preferred**: For readability
 
-If statements integrate seamlessly with object-spatial programming constructs:
+**If Statement vs If Expression**
 
-```jac
-walker PathValidator {
-    can validate_path with entry {
-        if here.is_accessible {
-            # Continue traversal
-            visit [-->];
-        } elif here.has_alternate_route {
-            # Try alternate path
-            visit here.alternate_nodes;
-        } else {
-            # No valid path found
-            report "Path blocked at node";
-            disengage;
-        }
-    }
-}
+| Feature | If Statement | If Expression |
+|---------|--------------|---------------|
+| Syntax | `if cond { ... } else { ... }` | `val1 if cond else val2` |
+| Returns value | No | Yes |
+| Multiple statements | Yes | No (expressions only) |
+| Else required | No | Yes |
+| Use case | Control flow | Value selection |
 
-node SecurityNode {
-    has access_level: int;
-    
-    can check_access with visitor entry {
-        if visitor.security_clearance >= self.access_level {
-            visitor.grant_access();
-        } else {
-            visitor.deny_access();
-            # Prevent further traversal
-        }
-    }
-}
-```
+**Key Differences from Python**
 
-#### Type-Safe Conditional Operations
-
-Jac's type system ensures conditional safety through compile-time checking:
-
-```jac
-# Type checking with isinstance
-if isinstance(data, dict) {
-    process_dictionary(data);
-} elif isinstance(data, list) {
-    process_list(data);
-}
-
-# Null safety patterns
-if user_input is not None {
-    validated_input = validate(user_input);
-    if validated_input.is_valid {
-        process_input(validated_input);
-    }
-}
-```
-
-#### Nested Conditional Patterns
-
-If statements support nesting for complex decision trees:
-
-```jac
-walker DecisionMaker {
-    can make_decision with entry {
-        if here.has_data {
-            if here.data.is_valid {
-                if here.data.priority == "high" {
-                    process_immediately(here.data);
-                } else {
-                    queue_for_processing(here.data);
-                }
-            } else {
-                clean_invalid_data(here);
-            }
-        } else {
-            request_data_update(here);
-        }
-    }
-}
-```
-
-#### Conditional Expression Support
-
-If statements work with various expression types:
-
-```jac
-# Function call conditions
-if validate_credentials(username, password) {
-    login_user(username);
-}
-
-# Property access conditions
-if node.status == "active" and node.load < threshold {
-    assign_task(node, new_task);
-}
-
-# Collection membership
-if user_id in authorized_users {
-    grant_access();
-}
-
-# Complex expressions
-if calculate_risk_score(transaction) > risk_threshold {
-    flag_for_review(transaction);
-}
-```
-
-#### Performance Optimization
-
-If statements include several performance optimizations:
-
-**Short-Circuit Evaluation**: Logical operators (`and`, `or`) stop evaluation as soon as the result is determined, minimizing unnecessary computation.
-
-**Branch Prediction**: The compiler optimizes frequently taken branches based on usage patterns.
-
-**Condition Ordering**: Place most likely conditions first in elif chains for optimal performance.
-
-#### Common Conditional Patterns
-
-**Input Validation**:
-```jac
-if input_data is None or len(input_data) == 0 {
-    raise ValueError("Invalid input data");
-}
-```
-
-**Range Validation**:
-```jac
-if not (0 <= index < array_length) {
-    raise IndexError("Index out of bounds");
-}
-```
-
-**Error Handling**:
-```jac
-if operation.has_error() {
-    log_error(operation.get_error());
-    return default_value;
-} else {
-    return operation.get_result();
-}
-```
-
-**Configuration-Based Logic**:
-```jac
-if config.debug_enabled {
-    log_debug_info(current_state);
-}
-
-if config.feature_flags.new_algorithm {
-    use_new_algorithm();
-} else {
-    use_legacy_algorithm();
-}
-```
-
-#### Integration with Graph Traversal
-
-If statements enable sophisticated conditional traversal patterns:
-
-```jac
-walker SmartTraverser {
-    has visited: set = set();
-    
-    can traverse with entry {
-        # Avoid cycles
-        if here in self.visited {
-            disengage;
-        }
-        
-        self.visited.add(here);
-        
-        # Conditional traversal based on node properties
-        if here.node_type == "data" {
-            process_data_node(here);
-            visit [-->:DataEdge:];
-        } elif here.node_type == "control" {
-            if here.should_continue() {
-                visit [-->];
-            } else {
-                disengage;
-            }
-        }
-    }
-}
-```
-
-If statements provide the foundation for decision-making in Jac programs, supporting both traditional programming patterns and sophisticated object-spatial operations with clear, readable syntax and robust type safety.
+1. **Braces required**: Jac uses `{ }`, not indentation
+2. **Semicolons required**: Each statement ends with `;`
+3. **Same truthiness**: Empty collections are falsy
+4. **Same operators**: `and`, `or`, `not`, `in`, `is`
+5. **Same chaining**: `a <= b <= c` works identically

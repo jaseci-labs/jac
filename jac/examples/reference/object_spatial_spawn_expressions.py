@@ -1,25 +1,23 @@
+"""Object spatial spawn expressions: Walker instantiation with spawn operator."""
 from __future__ import annotations
 from jaclang.runtimelib.builtin import *
-from jaclang import JacMachineInterface as _
+from jaclang import JacMachineInterface as _jl
 
+class Counter(_jl.Walker):
 
-class Adder(_.Walker):
+    @_jl.entry
+    @_jl.impl_patch_filename('/home/ninja/jaseci/jac/examples/reference/object_spatial_spawn_expressions.jac')
+    def count(self, here: _jl.Root) -> None:
+        _jl.connect(left=here, right=NumberNode(value=10))
+        _jl.connect(left=here, right=NumberNode(value=20))
+        _jl.visit(self, _jl.refs(_jl.Path(here)._out().visit()))
 
-    @_.entry
-    def do(self, here: _.Root) -> None:
-        _.connect(here, node_a())
-        _.visit(self, _.refs(here))
+class NumberNode(_jl.Node):
+    value: int = 0
 
-
-class node_a(_.Node):
-    x: int = 0
-    y: int = 0
-
-    @_.entry
-    def add(self, here: Adder) -> None:
-        self.x = 550
-        self.y = 450
-        print(int(self.x) + int(self.y))
-
-
-_.spawn(Adder(), _.root())
+    @_jl.entry
+    @_jl.impl_patch_filename('/home/ninja/jaseci/jac/examples/reference/object_spatial_spawn_expressions.jac')
+    def process(self, visitor: Counter) -> None:
+        print(f'Processing node with value: {self.value}')
+_jl.spawn(Counter(), _jl.root())
+_jl.spawn(_jl.root(), Counter())

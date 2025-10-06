@@ -1,223 +1,84 @@
-Global and nonlocal statements in Jac provide mechanisms for accessing and modifying variables from outer scopes. These statements enable controlled access to variables defined outside the current function or ability scope.
+**Global and Nonlocal Statements**
 
-#### Global Statement
+The `global` and `nonlocal` statements control variable scope, allowing functions to modify variables from outer scopes rather than creating local shadows.
 
-The global statement declares that variables refer to globally scoped names:
+**Module-Level Global Variables**
 
-```jac
-# Using :g: prefix
-:g: counter, total;
+Lines 3-4 declare module-level global variables. These variables exist at module scope and are accessible throughout the module.
 
-# Using :global: prefix  
-:global: config, state;
+**Global Statement - Single Variable**
+
+Lines 6-11 demonstrate the `global` statement. Line 8: `global x` declares that `x` refers to the module-level global variable (line 3). Without this statement, line 9's assignment would create a new local variable instead of modifying the global.
+
+**Global Statement - Multiple Variables**
+
+Lines 13-19 show declaring multiple global variables. Line 15: `global a, b` is more concise than separate `global` statements for each variable.
+
+**Nonlocal Statement - Single Variable**
+
+Lines 21-34 demonstrate the `nonlocal` statement for nested functions. Line 26: `nonlocal y` declares that `y` refers to the enclosing function's variable (line 22), not a global or new local. Line 27's assignment modifies the outer function's `y`.
+
+**Nonlocal Statement - Multiple Variables**
+
+Lines 36-52 show declaring multiple nonlocal variables. Line 43: `nonlocal p, q, r` modifies all three variables from the enclosing scope.
+
+**Scope Resolution Rules**
+
+Without `global` or `nonlocal`, assignments create new local variables. These keywords alter this behavior:
+
+| Keyword | Accesses | Scope Level | Use Case |
+|---------|----------|-------------|----------|
+| `global` | Module-level variables | Global | Modify module state from functions |
+| `nonlocal` | Enclosing function variables | Enclosing | Closures, nested function state |
+
+**Execution Flow**
+
+Lines 54-65 demonstrate the execution and effects:
+
+**Variable Modification Flow**
+
+```mermaid
+flowchart TD
+    Start([Assignment in Function]) --> Check{global or<br/>nonlocal<br/>declared?}
+    Check -->|global| ModGlobal[Modify module-level<br/>global variable]
+    Check -->|nonlocal| ModEnclosing[Modify enclosing<br/>function variable]
+    Check -->|Neither| CreateLocal[Create new<br/>local variable]
+    ModGlobal --> Done([Assignment Complete])
+    ModEnclosing --> Done
+    CreateLocal --> Done
 ```
 
-##### Basic Usage
+**Scope Levels Example**
 
-```jac
-# Global variable
-glob state: dict = {};
-
-obj Controller {
-    can update_state(key: str, value: any) {
-        :g: state;
-        state[key] = value;
-    }
-    
-    can get_state -> dict {
-        :g: state;
-        return state;
-    }
-}
+```mermaid
+flowchart TD
+    Global[Global Scope<br/>x, a, b] --> Outer1[outer function<br/>y variable]
+    Outer1 --> Inner1[inner function<br/>accesses y with nonlocal]
+    Global --> Outer2[outer_multi function<br/>p, q, r variables]
+    Outer2 --> Inner2[inner_multi function<br/>accesses p,q,r with nonlocal]
+    Global --> TestGlobal[test_global function<br/>accesses x with global]
 ```
 
-##### Multiple Global Variables
+**Common Patterns**
 
-```jac
-glob counter: int = 0;
-glob total: float = 0.0;
-glob items: list = [];
+**Modifying module state:**
 
-can process_item(value: float) {
-    :g: counter, total, items;
-    
-    counter += 1;
-    total += value;
-    items.append(value);
-}
-```
+**Closure with state:**
 
-#### Nonlocal Statement
+**Multiple scope levels:**
 
-The nonlocal statement declares that variables refer to names in the nearest enclosing scope:
+**Key Differences**
 
-```jac
-# Using :nl: prefix
-:nl: local_var;
+**Global vs Nonlocal:**
+- `global` reaches to module level (skips all intermediate scopes)
+- `nonlocal` reaches to the nearest enclosing function scope (not global)
+- `global` can declare variables that don't exist yet
+- `nonlocal` requires the variable to exist in an enclosing scope
 
-# Using :nonlocal: prefix
-:nonlocal: outer_counter;
-```
+**Important Rules**
 
-##### Nested Function Scopes
-
-```jac
-can create_counter -> (func) {
-    count = 0;
-    
-    can increment -> int {
-        :nl: count;
-        count += 1;
-        return count;
-    }
-    
-    return increment;
-}
-```
-
-##### In Walker Abilities
-
-```jac
-walker StateTracker {
-    has visited: list = [];
-    
-    can track with entry {
-        visited_count = 0;
-        
-        can log_visit {
-            :nl: visited_count;
-            visited_count += 1;
-            self.visited.append(here);
-        }
-        
-        # Visit nodes and track
-        for node in [-->] {
-            visit node;
-            log_visit();
-        }
-        
-        report f"Visited {visited_count} nodes";
-    }
-}
-```
-
-#### Scope Resolution Rules
-
-##### Global Scope
-- Variables declared at module level
-- Accessible throughout the module
-- Require explicit `global` declaration to modify
-
-##### Nonlocal Scope
-- Variables in enclosing function/ability scope
-- Not global, not local
-- Require explicit `nonlocal` declaration to modify
-
-##### Local Scope
-- Variables defined within current function/ability
-- Default scope for assignments
-- Shadow outer scope variables
-
-#### Common Patterns
-
-##### Configuration Management
-```jac
-glob config: dict = {
-    "debug": False,
-    "timeout": 30
-};
-
-obj App {
-    can set_debug(enabled: bool) {
-        :g: config;
-        config["debug"] = enabled;
-    }
-    
-    can with_timeout(seconds: int) -> func {
-        can run_with_timeout(fn: func) {
-            :g: config;
-            old_timeout = config["timeout"];
-            config["timeout"] = seconds;
-            result = fn();
-            config["timeout"] = old_timeout;
-            return result;
-        }
-        return run_with_timeout;
-    }
-}
-```
-
-##### Counter Patterns
-```jac
-can create_id_generator -> func {
-    next_id = 1000;
-    
-    can generate -> int {
-        :nl: next_id;
-        id = next_id;
-        next_id += 1;
-        return id;
-    }
-    
-    return generate;
-}
-```
-
-##### State Accumulation
-```jac
-walker Collector {
-    can collect with entry {
-        results = [];
-        errors = [];
-        
-        can process_node {
-            :nl: results, errors;
-            
-            try {
-                data = here.process();
-                results.append(data);
-            } except as e {
-                errors.append({"node": here, "error": e});
-            }
-        }
-        
-        # Process all nodes
-        for node in [-->] {
-            process_node();
-        }
-        
-        report {"results": results, "errors": errors};
-    }
-}
-```
-
-#### Best Practices
-
-1. **Minimize Global State**: Use sparingly for truly global concerns
-2. **Prefer Parameters**: Pass values explicitly when possible
-3. **Document Side Effects**: Clear comments for global modifications
-4. **Use Nonlocal for Closures**: Appropriate for nested function state
-5. **Consider Alternatives**: Class attributes or node properties
-
-#### Integration with Object-Spatial
-
-In object-spatial contexts, consider using node/edge properties instead of global state:
-
-```jac
-# Instead of global state
-glob graph_metadata: dict = {};
-
-# Prefer node-based state
-node GraphRoot {
-    has metadata: dict = {};
-}
-
-walker Processor {
-    can process with entry {
-        # Access via node instead of global
-        root.metadata["processed"] = True;
-    }
-}
-```
-
-Global and nonlocal statements provide necessary escape hatches for scope management, but should be used judiciously in favor of Jac's more structured object-spatial approaches.
+1. **Without declaration**: Assignments create new local variables
+2. **With global**: Assignments modify module-level variables
+3. **With nonlocal**: Assignments modify enclosing function's variables
+4. **Reading vs Writing**: You can read outer scope variables without declarations; declarations are needed for assignment
+5. **Multiple names**: Both statements support comma-separated variable lists

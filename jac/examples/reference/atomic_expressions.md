@@ -1,47 +1,74 @@
-Atomic expressions in Jac represent the most fundamental and indivisible units of expression evaluation. They serve as building blocks for more complex expressions and include literals, identifiers, and other primary expression forms.
+The atomic forward pipe operator `:>` enables elegant data pipelines by passing values from left to right through a series of transformations.
 
-**Atomic Pipe Forward Expressions**
+**Basic Atomic Pipe Syntax**
 
-The example demonstrates atomic pipe forward operations using the `:>` operator, which enables a functional programming style by passing values through a chain of operations:
+Line 5 introduces the atomic forward pipe operator. This takes the string "Hello" on the left and pipes it to the `print` function on the right. It's equivalent to `print("Hello")`, but the pipe syntax emphasizes the flow of data from source to destination.
 
-```jac
-"Hello world!" :> print;
+The `:>` operator reads naturally: "take this value and send it to this function."
+
+**Chaining Multiple Pipes**
+
+Line 8 demonstrates the real power of pipes - chaining transformations. This creates a pipeline:
+
+```mermaid
+graph LR
+    A["Test"] --> B[type function]
+    B --> C[<class 'str'>]
+    C --> D[print function]
+    D --> E[Output to console]
 ```
 
-This expression takes the string literal `"Hello world!"` and pipes it forward to the `print` function, equivalent to calling `print("Hello world!")`.
+The execution flows left-to-right:
+1. Start with the string `"Test"`
+2. Pipe it to `type()`, which returns the type object `<class 'str'>`
+3. Pipe that type object to `print()`, which displays it
 
-**Chained Atomic Operations**
+Compare this to the nested function call equivalent: `print(type("Test"))`. The piped version reads in the same direction as the data flows, making the sequence of operations clearer.
 
-Atomic expressions can be chained together for more complex operations:
+**Pipes with Lambda Functions**
 
-```jac
-"Welcome" :> type :> print;
-```
+Lines 11-12 show using pipes with lambda expressions for custom transformations. This creates a computation pipeline:
 
-This chains multiple operations:
-1. Start with the string `"Welcome"`
-2. Pipe it to `type` function to get the type information
-3. Pipe the result to `print` to display it
+| Step | Operation | Input | Output |
+|------|-----------|-------|--------|
+| 1 | Start | - | 5 |
+| 2 | First lambda: multiply by 2 | 5 | 10 |
+| 3 | Second lambda: add 10 | 10 | 20 |
 
-**Benefits of Atomic Pipe Expressions**
+The value 5 is doubled to 10, then increased by 10 to get a final result of 20.
 
-- **Readability**: Left-to-right reading flow that matches natural language
-- **Composition**: Easy chaining of operations without nested function calls
-- **Functional style**: Enables pipeline-based programming patterns
-- **Clarity**: Makes data flow explicit and easy to follow
+The lambda syntax `(lambda x: int : x * 2)` defines an anonymous function:
+- `lambda` keyword starts the lambda
+- `x` is the parameter name
+- `: int` is the return type annotation
+- `x * 2` is the function body
 
-**Comparison with Traditional Syntax**
+**Why Atomic Pipes?**
 
-Traditional nested function calls:
-```jac
-print(type("Welcome"));
-```
+The atomic pipe operator is called "atomic" because it passes the complete value as a single unit to each function. Unlike some pipe operators that might do partial application, `:>` always passes the entire left-hand value as the argument to the right-hand function.
 
-Atomic pipe forward style:
-```jac
-"Welcome" :> type :> print;
-```
+**Benefits of Pipe Syntax**
 
-The pipe forward syntax eliminates the need to read expressions from inside-out, making code more intuitive and maintainable.
+Pipes make code more readable when you have multiple transformations:
 
-Atomic expressions form the foundation of Jac's expression system, enabling both traditional and functional programming paradigms while maintaining clear, readable code structure.
+Without pipes (nested):
+
+With pipes (linear):
+
+For longer chains, the difference is even more dramatic:
+
+Without pipes:
+
+With pipes:
+
+The piped version reads like a recipe: "Take the value, apply func1, then func2, then func3."
+
+**Practical Applications**
+
+Atomic pipes are especially useful for:
+- Data transformation pipelines
+- Method chaining alternatives
+- Functional programming patterns
+- Making data flow explicit in your code
+
+When you see `:>`, think "and then send it to" - it describes the journey of data through your program.

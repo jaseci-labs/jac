@@ -1,97 +1,161 @@
-Logical and comparison expressions in Jac provide the foundation for conditional logic, enabling programs to make decisions based on data relationships and boolean conditions with enhanced type safety and null-aware comparisons.
+Jac provides a comprehensive set of operators for comparing values, checking object identity and membership, and combining boolean conditions to make decisions in your code.
 
-#### Comparison Operators
+**Comparison Operators**
 
-```jac
-a == b          # Equal to
-a != b          # Not equal to
-a < b           # Less than
-a <= b          # Less than or equal to
-a > b           # Greater than
-a >= b          # Greater than or equal to
-a is b          # Identity comparison
-a in collection # Membership test
+Lines 5-10 demonstrate the six comparison operators that evaluate to boolean values (True or False):
+
+| Operator | Meaning | Example (Line) | Result |
+|----------|---------|----------------|--------|
+| `>` | Greater than | `5 > 4` (line 5) | True |
+| `>=` | Greater than or equal | `5 >= 5` (line 6) | True |
+| `<` | Less than | `3 < 10` (line 7) | True |
+| `<=` | Less than or equal | `3 <= 3` (line 8) | True |
+| `==` | Equal to | `5 == 5` (line 9) | True |
+| `!=` | Not equal to | `5 != 3` (line 10) | True |
+
+These operators work with any comparable types, including numbers, strings, and custom objects that implement comparison methods.
+
+**Identity Operators**
+
+Lines 13-18 demonstrate identity operators, which check whether two variables refer to the same object in memory, not just whether they have equal values.
+
+```mermaid
+graph TD
+    A[a = [1,2,3]] --> OBJ1[Object 1: [1,2,3]]
+    B[b = [1,2,3]] --> OBJ2[Object 2: [1,2,3]]
+    C[c = a] --> OBJ1
+    D{a is b?} --> E[False - Different objects]
+    F{a is c?} --> G[True - Same object]
 ```
 
-#### Logical Operators
+| Operator | Meaning | Example (Line) | Result |
+|----------|---------|----------------|--------|
+| `is` | Same object identity | `a is b` (line 16) | False |
+| `is` | Same object identity | `a is c` (line 17) | True |
+| `is not` | Different object identity | `a is not b` (line 18) | True |
 
-```jac
-condition1 and condition2    # Logical AND
-condition1 or condition2     # Logical OR
-not condition               # Logical NOT
-condition1 && condition2    # Alternative AND syntax
-condition1 || condition2    # Alternative OR syntax
+Even though lists `a` and `b` contain the same values, they are different objects. Variable `c` references the same object as `a`, so `a is c` returns True.
+
+**Membership Operators**
+
+Lines 21-23 showcase membership operators for testing whether a value exists within a collection:
+
+| Operator | Meaning | Example (Line) | Result |
+|----------|---------|----------------|--------|
+| `in` | Value exists in collection | `3 in a` (line 21) | True |
+| `in` | Value exists in collection | `5 in a` (line 22) | False |
+| `not in` | Value doesn't exist | `5 not in a` (line 23) | True |
+
+The `in` operator works with lists, tuples, sets, dictionaries (checks keys), and strings (checks substrings).
+
+**Logical AND Operator**
+
+Lines 26-28 demonstrate the `and` operator, which returns True only when both operands are True:
+
+| Expression (Line) | Left | Right | Result |
+|-------------------|------|-------|--------|
+| `True and True` (26) | True | True | True |
+| `True and False` (27) | True | False | False |
+| `False and False` (28) | False | False | False |
+
+The `and` operator uses short-circuit evaluation: if the left operand is False, the right operand is never evaluated.
+
+**Logical OR Operator**
+
+Lines 31-33 demonstrate the `or` operator, which returns True if at least one operand is True:
+
+| Expression (Line) | Left | Right | Result |
+|-------------------|------|-------|--------|
+| `True or False` (31) | True | False | True |
+| `False or False` (32) | False | False | False |
+| `True or True` (33) | True | True | True |
+
+The `or` operator also uses short-circuit evaluation: if the left operand is True, the right operand is never evaluated.
+
+**Logical NOT Operator**
+
+Lines 36-37 demonstrate the `not` operator, which inverts a boolean value:
+
+| Expression (Line) | Operand | Result |
+|-------------------|---------|--------|
+| `not True` (36) | True | False |
+| `not False` (37) | False | True |
+
+**Chained Comparisons**
+
+Lines 40-43 illustrate one of Jac's most powerful features: chained comparison operators. Instead of writing `10 < x and x < 20`, you can write `10 < x < 20`:
+
+| Expression (Line) | Equivalent To | Result (x=15) |
+|-------------------|---------------|---------------|
+| `10 < x < 20` (41) | `10 < x and x < 20` | True |
+| `0 <= x <= 100` (42) | `0 <= x and x <= 100` | True |
+
+This creates more readable code and is more efficient because `x` is only evaluated once.
+
+**Complex Boolean Expressions**
+
+Lines 46-48 demonstrate combining multiple conditions with parentheses for clarity:
+
+| Expression (Line) | Breakdown | Result |
+|-------------------|-----------|--------|
+| `(5 > 3) and (10 < 20)` (46) | True and True | True |
+| `(5 > 10) or (3 < 7)` (47) | False or True | True |
+| `not (5 > 10)` (48) | not False | True |
+
+**Multiple Chained Comparisons**
+
+Lines 51-52 show that you can chain more than two comparisons:
+
+| Expression (Line) | How It Works | Result |
+|-------------------|--------------|--------|
+| `1 < 2 < 3 < 4` (51) | All pairs must be true: 1<2, 2<3, 3<4 | True |
+| `10 >= 10 >= 10` (52) | All pairs must be true: 10≥10, 10≥10 | True |
+
+**Combined Logical Operations**
+
+Lines 55-57 show chaining multiple logical operators:
+
+| Expression (Line) | Type | Result |
+|-------------------|------|--------|
+| `True and True and True` (55) | Multiple AND | True |
+| `False or False or True` (56) | Multiple OR | True |
+| `(True and False) or (False and True)` (57) | Mixed | False |
+
+**Operator Precedence**
+
+When combining operators, Jac follows this precedence order (highest to lowest):
+
+```mermaid
+graph TD
+    A[Highest Priority] --> B[not]
+    B --> C[Comparison operators: <, <=, >, >=, ==, !=]
+    C --> D[and]
+    D --> E[or]
+    E --> F[Lowest Priority]
 ```
 
-#### Short-Circuit Evaluation
+Examples:
+- `not False and True` is evaluated as `(not False) and True` = `True and True` = `True`
+- `True or False and False` is evaluated as `True or (False and False)` = `True or False` = `True`
 
-```jac
-# Safe evaluation - second expression not evaluated if first is false
-user and user.is_active()
+**Practical Usage Tips**
 
-# Efficient computation - avoids expensive call if cached
-cached_result or expensive_computation()
-```
+| Scenario | Best Practice | Example |
+|----------|---------------|---------|
+| Range checking | Use chained comparisons | `0 <= value <= 100` |
+| Multiple conditions | Use `and`/`or` with parentheses | `(age >= 18) and (has_license)` |
+| Identity checking | Use `is` for None, True, False | `if value is None:` |
+| Value checking | Use `==` for other values | `if count == 0:` |
+| Collection checking | Use `in` operator | `if item in my_list:` |
 
-#### Chained Comparisons
+**Common Patterns**
 
-```jac
-# Range checking
-if 0 <= value <= 100 {
-    print("Value is in valid range");
-}
+Lines throughout the file demonstrate these common patterns:
 
-# Multiple conditions
-if min_age <= user.age < max_age and user.is_verified() {
-    grant_access();
-}
-```
-
-#### Object-Spatial Integration
-
-```jac
-walker GraphValidator {
-    can validate with entry {
-        neighbors = [-->];
-        
-        if here.value < 0 or here.value > 100 {
-            report f"Invalid value: {here.value}";
-        }
-        
-        if len(neighbors) > 5 and here.is_hub() {
-            visit neighbors.filter(lambda n: Node : n.priority > 0);
-        }
-    }
-}
-```
-
-#### Type-Safe Comparisons
-
-```jac
-let count: int = 5;
-let limit: int = 10;
-if count < limit {  # Type-compatible comparison
-    proceed();
-}
-```
-
-#### Performance Considerations
-
-- Order cheaper conditions first for short-circuit efficiency
-- Use parentheses for complex logical expressions
-- Avoid repeated expensive function calls in conditions
-
-#### Elvis Operator
-
-Jac offers a concise conditional expression using the Elvis operator `?:`.  The
-expression `a ?: b` evaluates to `a` if it is not `None`, otherwise it yields
-`b`:
-
-```jac
-let name = input_name ?: "anonymous";
-```
-
-This operator provides the common ternary pattern without repeating the tested
-value, improving readability for simple defaulting logic.
-
-Logical and comparison expressions provide the decision-making foundation for Jac programs, enabling sophisticated conditional logic while maintaining type safety and performance optimization.
+| Pattern | Lines | Use Case |
+|---------|-------|----------|
+| Boundary checking | 41-42 | Validate input ranges |
+| Boolean flags | 26-28, 31-33 | State management |
+| Object identity | 16-18 | Check for None or singletons |
+| Collection membership | 21-23 | Search operations |
+| Complex conditions | 46-48 | Business logic |

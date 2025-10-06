@@ -1,26 +1,28 @@
-walker Adder {
-    can do with `root entry;
+"""Object spatial spawn expressions: Walker instantiation with spawn operator."""
+
+walker Counter {
+    can count with `root entry;
 }
 
-node node_a {
-    has x: int = 0,
-        y: int = 0;
-
-    can add with Adder entry;
+node NumberNode {
+    has value: int = 0;
+    can process with Counter entry;
 }
 
-impl Adder.do {
-    here ++> node_a();
+impl Counter.count {
+    here ++> NumberNode(value=10);
+    here ++> NumberNode(value=20);
     visit [-->];
 }
 
-impl node_a.add {
-    self.x = 550;
-    self.y = 450;
-    print(int(self.x) + int(self.y));
+impl NumberNode.process {
+    print(f"Processing node with value: {self.value}");
 }
 
 with entry {
-    # spawn will iniiate the walker Adder from root node
-    Adder() spawn root;
+    # spawn operator: walker spawn starting_node
+    Counter() spawn root;
+
+    # Also valid: starting_node spawn walker
+    root spawn Counter();
 }

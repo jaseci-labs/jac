@@ -155,15 +155,15 @@ def gen_diagnostics(
     from_path: str, errors: list[Alert], warnings: list[Alert]
 ) -> list[lspt.Diagnostic] {
     if (
-        isinstance(node_selected, uni.Name)
-        and node_selected.parent
-        and isinstance(node_selected.parent, uni.ModulePath)
+        isinstance(node_selected, uni.Name) and
+        node_selected.parent and
+        isinstance(node_selected.parent, uni.ModulePath)
     ) {
         node_selected = node_selected.name_of;
     } elif (
-        isinstance(node_selected, uni.Name)
-        and node_selected.parent
-        and isinstance(node_selected.parent, uni.ModulePath)
+        isinstance(node_selected, uni.Name) and
+        node_selected.parent and
+        isinstance(node_selected.parent, uni.ModulePath)
     ) {
         spec = node_selected.parent.parent.abs_path;
     }

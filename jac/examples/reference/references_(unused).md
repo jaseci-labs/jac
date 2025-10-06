@@ -1,69 +1,41 @@
-The "References (unused)" section in Jac's grammar represents reference patterns that are currently defined but not actively utilized in the language implementation. This section documents these unused reference constructs for completeness.
+**Reference Operator with BW_AND (&) - Unused Feature**
 
-#### Current Status
+This file documents the `&` (BW_AND) operator as a reference operator, which is defined in Jac's grammar but is currently unused or deprecated.
 
-The grammar defines a `ref` rule that is currently bypassed:
+**What This Example Shows**
 
-```jac
-# Grammar definition (unused):
-# ref: BW_AND? pipe_call
+Line 7 demonstrates a simple variable assignment where `x` is set to 42. The example notes that while the grammar includes a reference operator syntax using `&`, this feature is not currently active in Jac. Line 13 explicitly states that the reference operator `&` is defined in the grammar but remains unused.
 
-# Current implementation uses pipe_call directly
-```
+**Grammar Definition**
 
-#### Potential Reference Syntax
+Lines 9-10 explain the grammar rule that defines this unused feature. The `ref` rule in Jac's grammar uses the pattern `BW_AND? pipe_call`, where the `?` indicates the `&` prefix is optional. This means syntax like `&x` would be recognized by the parser, but it doesn't have active runtime behavior.
 
-If implemented, references could support:
+**Current Status**
 
-```jac
-# Hypothetical reference syntax (not implemented)
-let value = 42;
-let ref_to_value = &value;  # Reference to variable
-let func_ref = &function;   # Reference to function
-```
+| Aspect | Status |
+|--------|--------|
+| Grammar Support | Defined (BW_AND? allows optional & prefix) |
+| Parser Recognition | Yes (syntax is valid) |
+| Runtime Behavior | No (feature is inactive) |
+| Recommended Usage | Do not use in production code |
 
-#### Current Alternatives
+**Why It's Unused**
 
-Jac handles similar needs through existing mechanisms:
+Jac follows Python's reference semantics model where:
+- Variables automatically hold references to objects
+- Assignment creates new references to the same object
+- Explicit reference operators are unnecessary
 
-**Direct access:**
-```jac
-let value = 42;
-value = 100;  # Direct modification
-```
+Languages like C++ use `&` for explicit references, but Python-influenced languages like Jac make this redundant since reference semantics are built into the object model.
 
-**Function objects:**
-```jac
-can processor(data: list) -> dict {
-    return {"processed": data};
-}
+**Practical Implications**
 
-let func = processor;  # Functions are first-class objects
-result = func(my_data);
-```
+For developers working with Jac:
+- Avoid using the `&` operator in your code
+- Use standard variable assignment instead
+- The grammar may include this for parsing compatibility
+- Future versions might remove it or give it new meaning
 
-#### Object-Spatial Context
+**Historical Context**
 
-Reference-like behavior is achieved through spatial navigation:
-
-```jac
-walker DataProcessor {
-    can process with entry {
-        here.value = process(here.value);  # Direct node access
-        visit [-->];  # Direct navigation
-    }
-}
-```
-
-#### Future Considerations
-
-The unused reference syntax may support future enhancements:
-
-1. Performance optimization for large data structures
-2. Advanced memory management
-3. Enhanced object-spatial operations
-4. Better interoperability with systems programming
-
-#### Documentation Purpose
-
-This documentation acknowledges unused grammar constructs while explaining current alternatives and potential future development directions. 
+The presence of this unused operator suggests it was considered during language design. Many programming languages evolve away from explicit reference operators when adopting implicit reference semantics, similar to how Python, JavaScript, and Ruby work compared to C/C++.

@@ -55,7 +55,7 @@ type_tag: COLON expression
 // [Heading]: Enumerations.
 enum: decorators? enum_decl
 enum_decl: KW_ENUM access_tag? NAME inherited_archs? (enum_block | SEMI)
-enum_block: LBRACE assignment_list COMMA? (py_code_block | free_code)* RBRACE
+enum_block: LBRACE assignment_list (py_code_block | free_code)* RBRACE
 
 // [Heading]: Functions and Abilities.
 ability: decorators? KW_ASYNC? (ability_decl | function_decl)
@@ -83,7 +83,7 @@ sem_def: KW_SEM dotted_name EQ STRING SEMI
 
 // [Heading]: Global variables.
 global_var: (KW_LET | KW_GLOBAL) access_tag? assignment_list SEMI
-assignment_list: (assignment_list COMMA)? (assignment | named_ref)
+assignment_list: (assignment | named_ref) (COMMA (assignment | named_ref))* COMMA?
 
 // [Heading]: Free code.
 free_code: KW_WITH KW_ENTRY (COLON NAME)? code_block
@@ -235,7 +235,6 @@ assignment: KW_LET? (atomic_chain EQ)+ (yield_expr | expression)
 
 aug_op: RSHIFT_EQ
        | LSHIFT_EQ
-       | BW_NOT_EQ
        | BW_XOR_EQ
        | BW_OR_EQ
        | BW_AND_EQ
@@ -361,9 +360,13 @@ multistring: (fstring | STRING)+
 
 fstring: FSTR_START fstr_parts FSTR_END
        | FSTR_SQ_START fstr_sq_parts FSTR_SQ_END
+       | FSTR_TRIPLE_START fstr_triple_parts FSTR_TRIPLE_END
+       | FSTR_SQ_TRIPLE_START fstr_sq_triple_parts FSTR_SQ_TRIPLE_END
 
 fstr_parts: (FSTR_PIECE | FSTR_BESC | LBRACE expression RBRACE )*
 fstr_sq_parts: (FSTR_SQ_PIECE | FSTR_BESC | LBRACE expression RBRACE )*
+fstr_triple_parts: (FSTR_TRIPLE_PIECE | FSTR_BESC | LBRACE expression RBRACE )*
+fstr_sq_triple_parts: (FSTR_SQ_TRIPLE_PIECE | FSTR_BESC | LBRACE expression RBRACE )*
 
 // [Heading]: Collection values.
 atom_collection: dict_compr
@@ -389,7 +392,6 @@ set_val: LBRACE expr_list COMMA? RBRACE
 kv_pair: expression COLON expression | STAR_POW expression
 expr_list: (expr_list COMMA)? expression
 
-// [Heading]: Tuples and Jac Tuples.
 tuple_list: expression COMMA expr_list COMMA kw_expr_list COMMA?
           | expression COMMA kw_expr_list COMMA?
           | expression COMMA expr_list COMMA?
@@ -455,10 +457,16 @@ GLOBAL_OP: "global"
 NONLOCAL_OP: "nonlocal"
 
 // [Heading]: f-string tokens.
+FSTR_TRIPLE_START.2: "f\"\"\""
+FSTR_TRIPLE_END: "\"\"\""
+FSTR_SQ_TRIPLE_START.2: "f'''"
+FSTR_SQ_TRIPLE_END: "'''"
 FSTR_START.1: "f\""
 FSTR_END: "\""
 FSTR_SQ_START.1: "f'"
 FSTR_SQ_END: "'"
+FSTR_TRIPLE_PIECE.-1: /(?:(?!""")(?![{}])[\s\S])+/
+FSTR_SQ_TRIPLE_PIECE.-1: /(?:(?!''')(?![{}])[\s\S])+/
 FSTR_PIECE.-1: /[^\{\}\"]+/
 FSTR_SQ_PIECE.-1: /[^\{\}\']+/
 FSTR_BESC.1: /{{|}}/
@@ -624,7 +632,6 @@ FLOOR_DIV_EQ: "//="
 BW_AND_EQ: "&="
 BW_OR_EQ: "|="
 BW_XOR_EQ: "^="
-BW_NOT_EQ: "~="
 LSHIFT_EQ: "<<="
 RSHIFT_EQ: ">>="
 

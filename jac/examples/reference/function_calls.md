@@ -1,209 +1,99 @@
-Function calls in Jac provide the fundamental mechanism for invoking defined functions and methods, supporting both traditional positional arguments and named keyword arguments. The function call system integrates seamlessly with Jac's type system and expression evaluation, enabling flexible and expressive function invocation patterns.
+**Function Calls in Jac**
 
-**Basic Function Call Syntax**
+Jac supports flexible function calling with positional arguments, keyword arguments, default parameters, and variadic arguments (*args and **kwargs).
 
-Function calls in Jac follow the familiar pattern:
-```jac
-function_name(arguments)
-```
+**Function Definitions**
 
-**Function Definition Context**
+Lines 3-5 define a function with three parameters, the last having a default value. The parameter `z` defaults to 10 if not provided. The function returns a tuple of two computed values.
 
-The example demonstrates calling a function with a clear signature:
-```jac
-def foo(x: int, y: int, z: int) {
-    return (x * y, y * z);
-}
-```
+Lines 7-9 define a variadic function accepting both *args and **kwargs:
 
-Key aspects:
-- **Required type annotations**: All parameters must specify their types
-- **Multiple return values**: Functions can return tuples
-- **Clear interface**: Type system provides compile-time verification
+**Positional Arguments**
+
+Line 13 demonstrates the most basic calling pattern - positional arguments. Arguments are matched to parameters by position: `x=2`, `y=3`, `z=4`. The order matters.
 
 **Keyword Arguments**
 
-Jac supports keyword argument syntax for explicit parameter naming:
-```jac
-output = foo(x=4, y=4 if a % 3 == 2 else 3, z=9);
+Line 16 shows calling with all keyword arguments. Each argument explicitly specifies which parameter it's for. This allows:
+- Arguments in any order
+- Clear intent for each value
+- Better readability for complex calls
+
+**Mixed Positional and Keyword Arguments**
+
+Line 19 demonstrates combining both styles:
+
+**Rules for mixing:**
+1. Positional arguments must come first
+2. Keyword arguments follow positionals
+3. Once you use a keyword argument, all subsequent arguments must be keywords
+4. The first positional (8) maps to `x`, then `y` and `z` are specified by name
+
+**Default Parameter Usage**
+
+Line 22 shows omitting parameters with default values. Only `x` and `y` are provided. The parameter `z` automatically uses its default value of 10.
+
+**Variadic Arguments**
+
+Line 25 demonstrates calling a function with *args and **kwargs. In this call:
+- Positional arguments (1, 2, 3) are collected into `args` tuple
+- Keyword arguments (a=4, b=5) are collected into `kwargs` dictionary
+- The function sums all values: 1+2+3+4+5 = 15
+
+**Argument Passing Patterns**
+
+| Pattern | Example | Parameters Receive |
+|---------|---------|-------------------|
+| Positional only | `compute(2, 3, 4)` | x=2, y=3, z=4 |
+| Keyword only | `compute(x=5, y=6, z=7)` | x=5, y=6, z=7 |
+| Mixed | `compute(8, y=9, z=10)` | x=8, y=9, z=10 |
+| Default usage | `compute(2, 3)` | x=2, y=3, z=10 (default) |
+| Variadic | `variadic(1, 2, a=3)` | args=(1,2), kwargs={'a':3} |
+
+**Function Call Flow**
+
+```mermaid
+flowchart TD
+    Start([Function Call]) --> Pos{Positional<br/>Args?}
+    Pos -->|Yes| MapPos[Map to Parameters<br/>by Position]
+    Pos -->|No| Kw{Keyword<br/>Args?}
+    MapPos --> Kw
+    Kw -->|Yes| MapKw[Map to Parameters<br/>by Name]
+    Kw -->|No| Def{Parameters with<br/>Defaults?}
+    MapKw --> Def
+    Def -->|Yes| UseDef[Use Default Values]
+    Def -->|No| Exec[Execute Function]
+    UseDef --> Exec
+    Exec --> Return([Return Result])
 ```
 
-**Benefits of keyword arguments:**
-- **Clarity**: Makes function calls self-documenting
-- **Flexibility**: Arguments can be provided in any order
-- **Maintainability**: Changes to parameter order don't break existing calls
-- **Readability**: Complex function calls become more understandable
+**When to Use Each Style**
 
-**Complex Expressions as Arguments**
+**Positional arguments** - Best for:
+- Functions with few parameters (2-3)
+- When parameter order is obvious
+- Frequently called functions
 
-Function arguments can be sophisticated expressions:
-```jac
-y=4 if a % 3 == 2 else 3
-```
+**Keyword arguments** - Best for:
+- Functions with many parameters
+- When clarity is more important than brevity
+- Parameters with non-obvious purposes
+- Boolean flags and configuration options
 
-This demonstrates:
-- **Conditional expressions**: Using ternary operator syntax in arguments
-- **Variable references**: Accessing variables from enclosing scope (`a`)
-- **Expression evaluation**: Complex computations resolved before function call
-- **Type safety**: Expression results must match parameter types
+**Mixed style** - Best for:
+- Required parameters positionally
+- Optional parameters by keyword
+- Balancing clarity and conciseness
 
-**Argument Evaluation Order**
+**Default parameters** - Best for:
+- Optional configuration
+- Backward compatibility
+- Sensible fallback values
 
-Arguments are evaluated from left to right before the function is called:
-1. `x=4` evaluates to `4`
-2. `y=4 if a % 3 == 2 else 3` evaluates the conditional expression
-3. `z=9` evaluates to `9`
-4. Function `foo` is called with the resolved values
+**Key Points**
 
-**Return Value Handling**
-
-Functions can return multiple values as tuples:
-```jac
-return (x * y, y * z);
-```
-
-**Calling code receives the tuple:**
-```jac
-output = foo(x=4, y=4 if a % 3 == 2 else 3, z=9);
-```
-
-The `output` variable contains the returned tuple, which can be:
-- **Used directly**: Passed to other functions or printed
-- **Unpacked**: Destructured into individual variables
-- **Indexed**: Accessed using tuple indexing syntax
-
-**Mixed Argument Styles**
-
-Jac supports combining positional and keyword arguments:
-```jac
-# Positional arguments first
-result = foo(4, y=3, z=9);
-
-# All keyword arguments
-result = foo(x=4, y=3, z=9);
-
-# All positional arguments
-result = foo(4, 3, 9);
-```
-
-**Method Calls**
-
-Function call syntax extends to method invocation:
-```jac
-obj.method(arg1, arg2=value);
-```
-
-**Static method calls:**
-```jac
-ClassName.static_method(arg1, arg2);
-```
-
-**Chained Calls**
-
-Function calls can be chained for fluent interfaces:
-```jac
-result = obj.method1(arg).method2().method3(param=value);
-```
-
-**Function Calls in Expressions**
-
-Function calls integrate with all expression contexts:
-
-**Arithmetic expressions:**
-```jac
-total = calculate(a, b) + calculate(c, d);
-```
-
-**Conditional expressions:**
-```jac
-value = process(data) if is_valid(data) else default_value();
-```
-
-**Assignment expressions:**
-```jac
-x, y = get_coordinates(location);
-```
-
-**Nested function calls:**
-```jac
-result = outer_function(inner_function(param), other_param);
-```
-
-**Error Handling**
-
-Function calls participate in Jac's exception handling:
-```jac
-try {
-    result = potentially_failing_function(args);
-} except Exception as e {
-    handle_error(e);
-}
-```
-
-**Type Safety and Validation**
-
-Jac's type system ensures function call safety:
-- **Compile-time checking**: Argument types verified against parameter types
-- **Type inference**: Return types inferred for further usage
-- **Error prevention**: Mismatched types caught before runtime
-
-**Performance Considerations**
-
-Function calls in Jac are optimized for:
-- **Efficient argument passing**: Minimal overhead for parameter transmission
-- **Type specialization**: Optimized execution paths for specific type combinations
-- **Inlining opportunities**: Small functions may be inlined for performance
-
-**Integration with Object-Spatial Features**
-
-Function calls work seamlessly with Jac's object-spatial constructs:
-
-**Within walker abilities:**
-```jac
-walker Processor {
-    can process with `node entry {
-        result = calculate_value(here.property);
-        here.update_state(result);
-    }
-}
-```
-
-**Within node abilities:**
-```jac
-node DataNode {
-    can process with Walker entry {
-        processed = transform_data(self.data);
-        visitor.receive_result(processed);
-    }
-}
-```
-
-**Common Patterns**
-
-**Configuration and Setup**
-```jac
-config = load_configuration(file_path, defaults=default_config);
-```
-
-**Data Processing**
-```jac
-cleaned_data = clean_data(raw_data, rules=cleaning_rules);
-processed = transform(cleaned_data, format="json");
-```
-
-**Validation and Error Checking**
-```jac
-if validate_input(user_data, schema=input_schema) {
-    process_valid_data(user_data);
-}
-```
-
-**Best Practices**
-
-1. **Use keyword arguments**: For functions with multiple parameters of the same type
-2. **Type consistency**: Ensure argument expressions match parameter types
-3. **Clear naming**: Choose descriptive function and parameter names
-4. **Error handling**: Wrap potentially failing function calls in try-catch blocks
-5. **Documentation**: Use type annotations to self-document function interfaces
-
-Function calls in Jac provide a robust foundation for code organization and reuse, combining the familiarity of traditional function invocation with the safety and expressiveness of a modern type system. The support for keyword arguments and complex expressions as parameters enables clear, maintainable code that integrates well with both traditional programming patterns and Jac's innovative object-spatial features.
+1. Positional arguments must precede keyword arguments
+2. Default parameters allow omitting arguments
+3. Variadic functions collect excess arguments
+4. *args captures positional, **kwargs captures keyword arguments
+5. Keyword arguments improve readability at the cost of verbosity

@@ -1,54 +1,126 @@
-Inline Python in Jac provides a powerful mechanism to seamlessly integrate native Python code within Jac programs. This feature enables developers to leverage the vast Python ecosystem and existing Python libraries directly within their Jac applications.
+**Inline Python in Jac**
 
-**Inline Python Syntax**
+Jac supports embedding Python code blocks using the `::py::` delimiter syntax, enabling seamless integration with Python libraries and existing Python code.
 
-Python code can be embedded in Jac using the `::py::` directive:
+**Basic Python Block**
 
-```jac
-::py::
-# Python code goes here
-def python_function():
-    return "Hello from Python!"
-::py::
+Lines 4-10 demonstrate the simplest Python embedding. Python code is delimited by `::py::` markers at the beginning and end. Functions defined in Python blocks are directly callable from Jac code (lines 14-15).
+
+**Python Block Syntax**
+
+The `::py::` delimiter:
+- Opens a Python code block (line 4)
+- Closes the block with a matching `::py::` (line 10)
+- Contains valid Python code using Python syntax (indentation-based, no semicolons)
+- Can appear at module level or within archetype bodies
+
+**Python Methods in Objects**
+
+Lines 19-41 show Python methods within a Jac object. Python methods:
+- Use `self` to access Jac member variables (line 25: `self.data`)
+- Follow Python syntax and conventions
+- Can use Python built-ins and comprehensions
+- Are called like normal methods from Jac (lines 46, 49)
+
+**Data Interoperability**
+
+Lines 55-76 demonstrate Jac-Python data exchange. Data structures seamlessly pass between Jac and Python:
+- Jac lists work as Python lists (line 70)
+- Jac dicts work as Python dicts (line 74)
+- Return values integrate naturally into Jac code
+
+**Python Libraries Integration**
+
+Lines 79-106 show importing and using Python libraries. Standard Python libraries and third-party packages are fully available within `::py::` blocks. Import statements work normally (lines 80-81).
+
+**Python in Nodes**
+
+Lines 109-135 demonstrate Python methods in node definitions. Python methods in nodes can:
+- Access node state via `self.value` (line 117)
+- Modify node attributes (line 118)
+- Import libraries locally (line 116)
+- Return computed results (line 124)
+
+**Mixed Jac and Python Methods**
+
+Lines 166-205 show combining Jac and Python methods in the same object. Objects can have both Jac methods (lines 170-173) and Python methods (lines 177-191). Both types:
+- Access the same `self.history` attribute
+- Are called the same way from Jac code (lines 198-200)
+- Can modify shared state
+
+**Usage Contexts for Python Blocks**
+
+| Context | Example Line | Purpose |
+|---------|--------------|---------|
+| Global scope | 4-10 | Define utility functions |
+| Object body | 22-40 | Add Python methods to objects |
+| Node body | 113-125 | Add Python methods to nodes |
+| Mixed with Jac | 169-191 | Combine Jac and Python methods |
+
+**When to Use Inline Python**
+
+**Use Python for:**
+- Computationally intensive operations
+- Leveraging existing Python libraries
+- Complex numerical/statistical operations
+- String processing with Python's rich ecosystem
+- Integration with Python-only APIs
+
+**Use Jac for:**
+- Object-Spatial Programming features
+- Graph operations and traversal
+- Walker-node interactions
+- OSP-specific patterns
+
+**Data Flow Diagram**
+
+```mermaid
+flowchart LR
+    JacCode[Jac Code] -->|Call| PyFunc[Python Function]
+    PyFunc -->|Access| JacData[Jac Data Structures]
+    JacData -->|Lists, Dicts| PyProcess[Python Processing]
+    PyProcess -->|Return| PyResult[Python Result]
+    PyResult -->|Use| JacCode
+
+    PyBlock[::py:: Block] -->|Import| PyLibs[Python Libraries]
+    PyLibs -->|Use| PyFunc
 ```
 
-The `::py::` markers act as delimiters that tell the Jac compiler to treat the enclosed content as native Python code rather than Jac syntax.
+**Method Access Patterns**
 
-**Integration with Jac Code**
-
-Inline Python code can coexist with Jac code in the same module. Variables, functions, and classes defined in Python blocks are accessible to subsequent Jac code, and vice versa, creating a seamless integration between the two languages.
-
-**Use Cases**
-
-Inline Python is particularly useful for:
-
-- **Library Integration**: Using existing Python libraries that don't have Jac equivalents
-- **Performance Critical Code**: Writing performance-sensitive algorithms in Python
-- **Legacy Code Reuse**: Incorporating existing Python code into new Jac projects
-- **Gradual Migration**: Transitioning from Python to Jac incrementally
-- **Specialized Operations**: Accessing Python-specific features or libraries
-
-**Execution Context**
-
-The Python code executes in the same runtime environment as the Jac code, sharing the same namespace and variable scope. This allows for natural interaction between Jac and Python components.
-
-**Example Usage**
-
-The provided code example demonstrates a simple integration where:
-
-1. Jac code prints "hello " using the standard Jac print function
-2. An inline Python block defines a function `foo()` that prints "world"
-3. The Python function is called immediately within the same Python block
-
-This creates a seamless output of "hello world" by combining Jac and Python execution.
+```mermaid
+flowchart TD
+    Object[Jac Object/Node] --> JacMethod["Jac Methods (def)"]
+    Object --> PyMethods["Python Methods (::py::)"]
+    JacMethod -->|Access| State[Shared State<br/>self.attributes]
+    PyMethods -->|Access| State
+    State -->|Available| Both[Both Method Types]
+```
 
 **Best Practices**
 
-When using inline Python:
+**Organize imports at the top of Python blocks:**
 
-- Keep Python blocks focused and cohesive
-- Document the purpose of Python integration
-- Consider whether the functionality could be achieved in pure Jac
-- Be mindful of the mixing of language paradigms for code maintainability
+**Use Python for library integration:**
 
-Inline Python support makes Jac highly interoperable with the Python ecosystem while maintaining the benefits of Jac's unique language features.
+**Mix Python and Jac strategically:**
+
+**Common Patterns**
+
+**State modification from Python:**
+
+**Using Python libraries:**
+
+**Python comprehensions:**
+
+**Key Points**
+
+1. `::py::` delimiters mark Python code blocks
+2. Python blocks can appear at global scope or in archetypes
+3. Python code follows Python syntax (indentation, no semicolons)
+4. Jac data structures (lists, dicts) work seamlessly in Python
+5. Python methods access Jac state via `self`
+6. Standard and third-party Python libraries are fully available
+7. Objects can mix Jac and Python methods
+8. Return values from Python integrate naturally into Jac
+9. Use Python for computation, Jac for OSP features

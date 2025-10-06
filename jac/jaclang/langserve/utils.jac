@@ -1,5 +1,6 @@
 """Utility functions for the language server."""
 
+
 import asyncio;
 import builtins;
 import re;
@@ -112,25 +113,21 @@ def find_deepest_symbol_node_at_pos(
 
 
 """Check if the position falls within the node's location."""
-def position_within_node(<>node: uni.UniNode, line: int, character: int) -> bool {
-    if <>node.loc.first_line < (line + 1) < <>node.loc.last_line {
+# All lines and columns are 1-Based
+def position_within_node(n: uni.UniNode, line: int, character: int) -> bool {
+    if n.loc.first_line < line < n.loc.last_line {
         return True;
     }
-    if <>node.loc.first_line == (line + 1)
-    and <>node.loc.col_start <= (character + 1)
-    and <>node.loc.last_line == (line + 1)
-    and <>node.loc.col_end >= (character + 1)
-
-    or <>node.loc.last_line > (line + 1)
-     {
-        return True;
+    if line < n.loc.first_line or line > n.loc.last_line {
+        return False;
     }
-    if <>node.loc.last_line == (line + 1)
-    and <>node.loc.col_start <= (character + 1) <= <>node.loc.col_end
-     {
-        return True;
+    if line == n.loc.first_line and character < n.loc.col_start {
+        return False;
     }
-    return False;
+    if line == n.loc.last_line and character >= n.loc.col_end {
+        return False;
+    }
+    return True;
 }
 
 

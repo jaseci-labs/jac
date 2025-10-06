@@ -1,76 +1,90 @@
-Free code in Jac refers to executable statements that exist at the module level but are not part of a function, class, or other structural element. Unlike many programming languages that allow loose statements to float freely in a module, Jac requires such code to be explicitly wrapped in `with entry` blocks for better code organization and clarity.
+**Free Code and Entry Points**
 
-**Entry Blocks**
+Free code refers to executable code blocks at the module level, primarily using the `with entry` construct. This allows code to run when a module is loaded or executed directly.
 
-The `with entry` construct serves as a container for free-floating code that should execute when the module is run. This design choice promotes:
+**Module Organization**
 
-- **Code cleanliness**: Makes module structure more explicit and organized
-- **Readability**: Clearly identifies executable code vs. definitions
-- **Maintainability**: Reduces ambiguity about what runs when
+A typical Jac module follows this structure (lines 3-21):
+1. Import statements (line 3)
+2. Object definitions (lines 5-10)
+3. Function definitions (lines 12-14)
+4. Entry blocks (lines 17-21)
 
-**Basic Syntax**
+This organization separates reusable definitions from executable logic.
 
-```jac
-with entry {
-    # executable statements here
-}
-```
+**Import Statement**
+
+Line 3 imports the `math` module to access mathematical constants and functions like `math.pi`.
+
+**Object Definition**
+
+Lines 5-10 define a `Circle` object with two members:
+- `has radius: float` (line 6): Declares a typed member variable
+- `def area -> float` (lines 7-9): A method that calculates the circle's area using `math.pi * self.radius ** 2`
+
+The object uses `self.radius` to access its member variable.
+
+**Function Definition**
+
+Lines 12-14 define a standalone function `square` that returns `n ** 2`. This function exists at module level and can be called from anywhere in the module.
+
+**Entry Block (Main Execution)**
+
+Lines 17-21 demonstrate the `with entry` block, which executes when the module runs. Line 18: `print("Free code execution")` - Executes unconditionally
+
+Line 19: `print(square(7))` - Calls the square function with 7, printing 49
+
+Line 20: `print(int(Circle(radius=10).area()))` - Demonstrates chained operations:
+1. Creates a Circle with radius 10
+2. Calls the `.area()` method
+3. Converts the float result to int with `int(...)`
+4. Prints the value (approximately 314)
 
 **Named Entry Points**
 
-Entry blocks can optionally be given names for specific execution contexts:
+Lines 24-26 show a named entry point using `with entry:custom`:
 
-```jac
-with entry:name {
-    # named entry point code
-}
+Named entry points allow conditional or selective execution. The `:custom` label can be used to execute this block specifically.
+
+**Entry Point Semantics**
+
+| Entry Type | Syntax | When Executes |
+|-----------|--------|---------------|
+| Default entry | `with entry` | Module load/execution |
+| Named entry | `with entry:name` | When specifically invoked |
+| Main entry | `with entry:__main__` | Only when module is the main program |
+
+**Execution Flow**
+
+```mermaid
+flowchart TD
+    Start([Module Loaded]) --> Imports[Process Imports]
+    Imports --> Defs[Parse Definitions<br/>Objects, Functions]
+    Defs --> Entry{Entry Block<br/>Present?}
+    Entry -->|Yes| Execute[Execute Entry Block]
+    Entry -->|No| Done([Module Ready])
+    Execute --> Done
 ```
 
-This type of block can be used to define the program's initialization and execution starting point, similar to Python's `if __name__ == "__main__"`: idiom. This design decision creates a clear separation between declarations and executable code at the module level, leading to more maintainable and better-organized programs. Note that declaring multiple instances of ```with entry``` in one script is supported and, they will be executed one after the other, top to bottom.
+**Use Cases for Entry Blocks**
 
-Here's a with example usage of a named block:
+Entry blocks are useful for:
+- **Main program logic**: Implementing the primary functionality in executable scripts
+- **Module initialization**: Setting up module-level state
+- **Testing and examples**: Demonstrating API usage
+- **Quick scripts**: Writing small programs without defining main functions
 
-```jac linenums="1"
-"""Calculates the area of a circle"""
-can calculate_area(radius: float) -> float{
-    return math.pi * radius * radius;
-}
+**Access to Module Definitions**
 
-# Main entry point for the program
-with entry:__main__{
-    # Define constants
-    RADIUS = 5.0;
+The entry block has access to all module-level definitions (lines 18-20):
+- Functions defined in the module (`square`)
+- Objects defined in the module (`Circle`)
+- Imported modules (`math` via the Circle definition)
 
-    # Program execution
-    print(f"Area of the circle: {calculate_area(RADIUS)}");
-}
-```
-**Module Organization**
+**Key Points**
 
-A typical Jac module structure includes:
-
-1. **Import statements**: Bringing in external dependencies
-2. **Type definitions**: Classes, objects, and other archetype definitions  
-3. **Function definitions**: Standalone functions and abilities
-4. **Entry blocks**: Executable code that runs when the module is executed
-
-**Use Cases**
-
-Entry blocks are commonly used for:
-
-- **Main program logic**: The primary execution flow of a script
-- **Initialization code**: Setting up module state or configuration
-- **Testing and examples**: Demonstrating how defined functions and classes work
-- **Script execution**: Code that should run when the module is executed directly
-
-**Interaction with Definitions**
-
-Code within entry blocks can access and use any functions, classes, and variables defined elsewhere in the module. The provided example demonstrates this by:
-
-- Defining a `circle` object with `init` and `area` methods
-- Defining a standalone `foo` function
-- Using both within the entry block to perform calculations and print results
-
-The entry block executes the main program logic: printing "Hello World!", calling the `foo` function with argument 7, and creating a circle instance to calculate and display its area.
-
-This approach ensures that Jac modules maintain a clear separation between definitions and executable code, leading to more maintainable and understandable programs.
+1. Entry blocks execute at module load time
+2. They can access all module-level definitions
+3. Named entries allow multiple execution contexts
+4. The pattern separates definitions from executable code
+5. Useful for both libraries (with limited entry code) and scripts (with extensive entry logic)

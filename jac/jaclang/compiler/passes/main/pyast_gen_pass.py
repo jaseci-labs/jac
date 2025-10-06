@@ -64,7 +64,6 @@ TOKEN_AST_MAP: dict[Tok, type[ast3.AST]] = {
     Tok.MINUS: ast3.Sub,
     Tok.SUB_EQ: ast3.Sub,
     Tok.BW_NOT: ast3.Invert,
-    Tok.BW_NOT_EQ: ast3.Invert,
     Tok.NOT: ast3.Not,
     Tok.EQ: ast3.NotEq,
     Tok.EE: ast3.Eq,
@@ -93,8 +92,10 @@ class PyastGenPass(UniPass):
     """Jac blue transpilation to python pass."""
 
     def before_pass(self) -> None:
+        self.child_passes: list[PyastGenPass] = []
         for i in self.ir_in.impl_mod + self.ir_in.test_mod:
-            PyastGenPass(ir_in=i, prog=self.prog)
+            child_pass = PyastGenPass(ir_in=i, prog=self.prog)
+            self.child_passes.append(child_pass)
         self.debuginfo: dict[str, list[str]] = {"jac_mods": []}
         self.already_added: list[str] = []
         self.preamble: list[ast3.AST] = [
@@ -123,23 +124,6 @@ class PyastGenPass(UniPass):
                     jac_node=self.ir_out,
                 )
             ),
-            (
-                self.sync(
-                    ast3.ImportFrom(
-                        module="jaclang",
-                        names=[
-                            self.sync(
-                                ast3.alias(
-                                    name="JacMachineInterface",
-                                    asname=settings.pyout_jaclib_alias,
-                                )
-                            ),
-                        ],
-                        level=0,
-                    ),
-                    jac_node=self.ir_out,
-                )
-            ),
         ]
 
     def enter_node(self, node: uni.UniNode) -> None:
@@ -161,6 +145,7 @@ class PyastGenPass(UniPass):
 
     def jaclib_obj(self, obj_name: str) -> ast3.Name | ast3.Attribute:
         """Return the object from jaclib as ast node based on the import config."""
+        self.needs_jaclib()
         return self.sync(
             ast3.Attribute(
                 value=self.sync(
@@ -217,6 +202,24 @@ class PyastGenPass(UniPass):
             ast3.ImportFrom(
                 module="concurrent.futures",
                 names=[self.sync(ast3.alias(name="Future", asname=None))],
+                level=0,
+            ),
+        )
+
+    def needs_jaclib(self) -> None:
+        """Ensure JacMachineInterface is imported only once."""
+        self._add_preamble_once(
+            self.needs_jaclib.__name__,
+            ast3.ImportFrom(
+                module="jaclang",
+                names=[
+                    self.sync(
+                        ast3.alias(
+                            name="JacMachineInterface",
+                            asname=settings.pyout_jaclib_alias,
+                        )
+                    )
+                ],
                 level=0,
             ),
         )
@@ -417,6 +420,11 @@ class PyastGenPass(UniPass):
         node.gen.py_ast = node.tag.gen.py_ast
 
     def exit_module(self, node: uni.Module) -> None:
+        # Check if any child passes (impl_mod or test_mod) needed jaclib
+        for child_pass in self.child_passes:
+            if "needs_jaclib" in child_pass.already_added:
+                self.needs_jaclib()
+                break
         clean_body = [i for i in node.body if not isinstance(i, uni.ImplDef)]
         pre_body: list[uni.UniNode] = []
         for pbody in node.impl_mod:

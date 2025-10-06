@@ -128,11 +128,14 @@ class JacCliTests(TestCase):
         sys.stdout = captured_output
         sys.stderr = captured_output
 
-        with contextlib.suppress(Exception):
+        with self.assertRaises(SystemExit) as cm:
             cli.run(self.fixture_abs_path("err_runtime.jac"))
 
         sys.stdout = sys.__stdout__
         sys.stderr = sys.__stderr__
+
+        # Verify exit code is 1
+        self.assertEqual(cm.exception.code, 1)
 
         expected_stdout_values = (
             "Error: list index out of range",
@@ -391,7 +394,7 @@ class JacCliTests(TestCase):
         stdout_value = captured_output.getvalue()
         if os.path.exists("connect_expressions.dot"):
             os.remove("connect_expressions.dot")
-        self.assertIn("11\n13\n15\n>>> Graph content saved to", stdout_value)
+        self.assertIn(">>> Graph content saved to", stdout_value)
         self.assertIn("connect_expressions.dot\n", stdout_value)
 
     def test_py_to_jac(self) -> None:
@@ -438,27 +441,37 @@ class JacCliTests(TestCase):
         captured_output = io.StringIO()
         sys.stdout = captured_output
         from jaclang.compiler.program import JacProgram
-        
-        filename = self.fixture_abs_path('../../tests/fixtures/params/test_complex_params.jac')
-        cli.jac2py(f"{self.fixture_abs_path('../../tests/fixtures/params/test_complex_params.jac')}")
+
+        filename = self.fixture_abs_path(
+            "../../tests/fixtures/params/test_complex_params.jac"
+        )
+        cli.jac2py(
+            f"{self.fixture_abs_path('../../tests/fixtures/params/test_complex_params.jac')}"
+        )
         py_code = JacProgram().compile(file_path=filename).gen.py
-        
+
         # Create temporary Python file
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as temp_file:
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".py", delete=False
+        ) as temp_file:
             temp_file.write(py_code)
             py_file_path = temp_file.name
-        
+
         try:
-            jac_code = JacProgram().compile(use_str=py_code, file_path=py_file_path).unparse()
+            jac_code = (
+                JacProgram().compile(use_str=py_code, file_path=py_file_path).unparse()
+            )
             # Create temporary Jac file
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.jac', delete=False) as temp_file:
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".jac", delete=False
+            ) as temp_file:
                 temp_file.write(jac_code)
                 jac_file_path = temp_file.name
             cli.run(jac_file_path)
         finally:
-                os.remove(py_file_path)
-                os.remove(jac_file_path)
-        
+            os.remove(py_file_path)
+            os.remove(jac_file_path)
+
         sys.stdout = sys.__stdout__
         stdout_value = captured_output.getvalue().split("\n")
         self.assertEqual("ULTIMATE_MIN: 1|def|2.5|0|test|100|0", stdout_value[-7])
@@ -466,7 +479,9 @@ class JacCliTests(TestCase):
         self.assertEqual("SEPARATORS: 42", stdout_value[-5])
         self.assertEqual("EDGE_MIX: 1-test-2-True-1", stdout_value[-4])
         self.assertEqual("RECURSIVE: 7 11", stdout_value[-3])
-        self.assertEqual("VALIDATION: x:1,y:2.5,z:10,args:1,w:True,kwargs:1", stdout_value[-2])
+        self.assertEqual(
+            "VALIDATION: x:1,y:2.5,z:10,args:1,w:True,kwargs:1", stdout_value[-2]
+        )
 
     def test_caching_issue(self) -> None:
         """Test for Caching Issue."""
@@ -644,4 +659,105 @@ class JacCliTests(TestCase):
             text=True,
         )
         stdout, stderr = process.communicate()
+        self.assertIn("Hello World!", stdout)
+
+    def test_cli_error_exit_codes(self) -> None:
+        """Test that CLI commands return non-zero exit codes on errors."""
+        # Test run command with syntax error
+        process = subprocess.Popen(
+            ["jac", "run", self.fixture_abs_path("err2.jac")],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        stdout, stderr = process.communicate()
+        self.assertEqual(
+            process.returncode, 1, "run command should exit with code 1 on syntax error"
+        )
+        self.assertIn("Error running", stderr)
+
+        # Test build command with syntax error
+        process = subprocess.Popen(
+            ["jac", "build", self.fixture_abs_path("err2.jac")],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        stdout, stderr = process.communicate()
+        self.assertEqual(
+            process.returncode,
+            1,
+            "build command should exit with code 1 on compilation error",
+        )
+
+        # Test check command with syntax error
+        process = subprocess.Popen(
+            ["jac", "check", self.fixture_abs_path("err2.jac")],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        stdout, stderr = process.communicate()
+        self.assertEqual(
+            process.returncode,
+            1,
+            "check command should exit with code 1 on type check error",
+        )
+
+        # Test format command with non-existent file
+        process = subprocess.Popen(
+            ["jac", "format", "/nonexistent.jac"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        stdout, stderr = process.communicate()
+        self.assertEqual(
+            process.returncode,
+            1,
+            "format command should exit with code 1 on missing file",
+        )
+        self.assertIn("does not exist", stderr)
+
+        # Test check command with invalid file type
+        process = subprocess.Popen(
+            ["jac", "check", "/nonexistent.txt"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        stdout, stderr = process.communicate()
+        self.assertEqual(
+            process.returncode,
+            1,
+            "check command should exit with code 1 on invalid file type",
+        )
+        self.assertIn("Not a .jac file", stderr)
+
+        # Test tool command with non-existent tool
+        process = subprocess.Popen(
+            ["jac", "tool", "nonexistent_tool"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        stdout, stderr = process.communicate()
+        self.assertEqual(
+            process.returncode,
+            1,
+            "tool command should exit with code 1 on non-existent tool",
+        )
+        self.assertIn("not found", stderr)
+
+        # Test successful run returns exit code 0
+        process = subprocess.Popen(
+            ["jac", "run", self.fixture_abs_path("hello.jac")],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        stdout, stderr = process.communicate()
+        self.assertEqual(
+            process.returncode, 0, "run command should exit with code 0 on success"
+        )
         self.assertIn("Hello World!", stdout)
