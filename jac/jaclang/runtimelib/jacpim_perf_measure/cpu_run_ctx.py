@@ -388,6 +388,7 @@ class DPUAllMemoryCtx:
         )
         metadata.extra_mram_space_ptr = extra_mram_space_ptr
         metadata.walker_num = len(JacPIMCPURunCtx.get_active_walkers()[dpu_id])
+        print(f"DEBUG: DPU {dpu_id} has {metadata.walker_num} active walkers")
         metadata.walker_container_ptrs = [
             mem_ctx.get_container_range(
                 JacPIMCPURunCtx.get_all_walkers().index(walker)
