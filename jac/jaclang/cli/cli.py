@@ -668,20 +668,14 @@ def start_cli() -> None:
     parser = cmd_registry.parser
     raw_argv = sys.argv[1:]
 
-    # Fast path for --help and --version (skip plugin loading)
-    if "-h" in raw_argv or "--help" in raw_argv:
-        # Initialize plugin commands for help display
-        Jac.create_cmd()
-        Jac.setup()
-        parser.print_help()
-        return
-
-    if "-V" in raw_argv or "--version" in raw_argv:
+    # Fast path for --version (no plugin loading needed)
+    if ("-V" in raw_argv or "--version" in raw_argv) and len(raw_argv) == 1:
         version = pkg_version("jaclang")
         print(f"Jac version {version}")
         print("Jac path:", __file__)
         return
 
+    # For --help, we need to load plugins to show subcommands
     # Initialize plugin commands (lazy loaded only when actually needed)
     Jac.create_cmd()
     Jac.setup()

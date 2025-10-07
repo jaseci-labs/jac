@@ -18,10 +18,11 @@ import sys
 from importlib.metadata import EntryPoint, entry_points
 from logging import getLogger
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    import pluggy
+    from pluggy._hooks import HookCaller, HookRelay
+    from pluggy._manager import PluginManager
 
 logger = getLogger(__name__)
 
@@ -35,7 +36,7 @@ def discover_hooks_from_ast(module_path: str) -> set[str]:
     Returns:
         Set of hook method names
     """
-    hooks = set()
+    hooks: set[str] = set()
 
     try:
         # Parse module:class format
@@ -106,7 +107,7 @@ class HookAwareLazyHookCaller:
     def __init__(
         self,
         hook_name: str,
-        real_hook_caller: Any,
+        real_hook_caller: HookCaller,
         lazy_manager: HookAwareLazyPluginManager,
     ) -> None:
         """Initialize lazy hook caller."""
@@ -114,12 +115,12 @@ class HookAwareLazyHookCaller:
         self._real_hook_caller = real_hook_caller
         self._lazy_manager = lazy_manager
 
-    def __call__(self, **kwargs: Any) -> Any:
+    def __call__(self, **kwargs: object) -> object:
         """Call hook, loading only relevant plugins first."""
         self._lazy_manager._ensure_loaded_for_hook(self._hook_name)
         return self._real_hook_caller(**kwargs)
 
-    def __getattr__(self, name: str) -> Any:
+    def __getattr__(self, name: str) -> object:
         """Proxy to real hook caller."""
         return getattr(self._real_hook_caller, name)
 
@@ -128,7 +129,7 @@ class HookAwareLazyHookRelay:
     """Proxy for hook relay that returns lazy hook callers."""
 
     def __init__(
-        self, real_hook_relay: Any, lazy_manager: HookAwareLazyPluginManager
+        self, real_hook_relay: HookRelay, lazy_manager: HookAwareLazyPluginManager
     ) -> None:
         """Initialize lazy hook relay."""
         self._real_hook_relay = real_hook_relay
@@ -150,7 +151,7 @@ class HookAwareLazyPluginManager:
     Plugins are only loaded when a hook they implement is called.
     """
 
-    def __init__(self, pm: pluggy.PluginManager) -> None:
+    def __init__(self, pm: PluginManager) -> None:
         """Initialize with existing PluginManager."""
         self._pm = pm
         self._lazy_plugins: dict[str, EntryPoint] = {}
@@ -170,11 +171,10 @@ class HookAwareLazyPluginManager:
         """
         # Get plugin entry points
         eps = entry_points(group=group)
-        count = 0
-        for ep in eps:
+        for _, ep in enumerate(eps, start=1):
             self._lazy_plugins[ep.name] = ep
-            count += 1
 
+        count = len(self._lazy_plugins)
         logger.debug(f"Found {count} plugins in group '{group}'")
         return count
 
@@ -210,9 +210,7 @@ class HookAwareLazyPluginManager:
                             self._hook_to_plugins[hook] = set()
                         self._hook_to_plugins[hook].add(plugin_name)
 
-                    logger.debug(
-                        f"Plugin '{plugin_name}' declares hooks: {set(hooks)}"
-                    )
+                    logger.debug(f"Plugin '{plugin_name}' declares hooks: {set(hooks)}")
 
                 except Exception as e:
                     logger.warning(
@@ -269,9 +267,7 @@ class HookAwareLazyPluginManager:
         for plugin_name in self._undeclared_plugins:
             if plugin_name not in self._loaded_plugins:
                 self._load_plugin(plugin_name)
-                logger.debug(
-                    f"Loaded undeclared plugin '{plugin_name}' conservatively"
-                )
+                logger.debug(f"Loaded undeclared plugin '{plugin_name}' conservatively")
 
     def _load_plugin(self, plugin_name: str) -> None:
         """Load and register a specific plugin.
@@ -302,11 +298,11 @@ class HookAwareLazyPluginManager:
             if plugin_name not in self._loaded_plugins:
                 self._load_plugin(plugin_name)
 
-    def register(self, plugin: Any, name: str | None = None) -> str | None:
+    def register(self, plugin: object, name: str | None = None) -> str | None:
         """Register a plugin directly (non-lazy)."""
         return self._pm.register(plugin, name)
 
-    def add_hookspecs(self, module_or_class: Any) -> None:
+    def add_hookspecs(self, module_or_class: object) -> None:
         """Add hook specifications."""
         self._pm.add_hookspecs(module_or_class)
 
@@ -315,7 +311,7 @@ class HookAwareLazyPluginManager:
         """Get hook relay with lazy loading."""
         return HookAwareLazyHookRelay(self._pm.hook, self)
 
-    def __getattr__(self, name: str) -> Any:
+    def __getattr__(self, name: str) -> object:
         """Proxy to real PluginManager."""
         return getattr(self._pm, name)
 

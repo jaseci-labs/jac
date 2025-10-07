@@ -166,8 +166,10 @@ nav:
             - "internals/symbol_tables/linking.md"
             - "internals/symbol_tables/resolution.md"
           - UniIR Nodes: "internals/uniir_node.md"
-        - Runtime Plugin Interface: "internals/jac_plugins.md"
-        - main py plugin Interface: "internals/plugin_documentation.md"
+        - Plugin System:
+          - Plugin Development Guide: "internals/plugin_system_guide.md"
+          - Runtime Plugin Interface: "internals/jac_plugins.md"
+          - main py plugin Interface: "internals/plugin_documentation.md"
       - Planning Specs and Docs:
         - Language Ref Roadmap: "internals/planning_specs/ref_roadmap.md"
         - Archetype Lifecycle Enhancement Roadmap: "internals/planning_specs/spawn_life_cycle.md"
