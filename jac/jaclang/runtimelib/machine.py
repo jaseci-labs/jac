@@ -63,8 +63,10 @@ from jaclang.utils import infer_language
 
 import pluggy
 
+from jaclang.runtimelib.lazy_plugins import create_lazy_plugin_manager
 
-plugin_manager = pluggy.PluginManager("jac")
+
+plugin_manager = create_lazy_plugin_manager("jac")
 hookspec = pluggy.HookspecMarker("jac")
 hookimpl = pluggy.HookimplMarker("jac")
 logger = getLogger(__name__)

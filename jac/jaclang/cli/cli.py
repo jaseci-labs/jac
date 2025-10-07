@@ -22,9 +22,6 @@ from jaclang.settings import settings
 from jaclang.utils.helpers import debugger as db
 from jaclang.utils.lang_tools import AstTool
 
-Jac.create_cmd()
-Jac.setup()
-
 
 @cmd_registry.register
 def format(path: str, outfile: str = "", to_screen: bool = False) -> None:
@@ -669,8 +666,27 @@ def start_cli() -> None:
     - None
     """
     parser = cmd_registry.parser
-    # Default to `run` when a file is provided without a subcommand
     raw_argv = sys.argv[1:]
+
+    # Fast path for --help and --version (skip plugin loading)
+    if "-h" in raw_argv or "--help" in raw_argv:
+        # Initialize plugin commands for help display
+        Jac.create_cmd()
+        Jac.setup()
+        parser.print_help()
+        return
+
+    if "-V" in raw_argv or "--version" in raw_argv:
+        version = pkg_version("jaclang")
+        print(f"Jac version {version}")
+        print("Jac path:", __file__)
+        return
+
+    # Initialize plugin commands (lazy loaded only when actually needed)
+    Jac.create_cmd()
+    Jac.setup()
+
+    # Default to `run` when a file is provided without a subcommand
     if (
         raw_argv
         and not raw_argv[0].startswith("-")
@@ -682,12 +698,6 @@ def start_cli() -> None:
 
     # Apply global settings overrides from CLI flags before running commands
     settings.load_command_line_arguments(args)
-
-    if args.version:
-        version = pkg_version("jaclang")
-        print(f"Jac version {version}")
-        print("Jac path:", __file__)
-        return
 
     if args.command is None:
         parser.print_help()

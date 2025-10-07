@@ -57,5 +57,9 @@ build-backend = "poetry.core.masonry.api"
 jac = "jac_cloud.plugin.cli:JacCmd"
 serve = "jac_cloud.plugin.jaseci:JacPlugin"
 
+[tool.poetry.plugins."jac.hooks"]
+jac = "jac_cloud.plugin.hooks_metadata:get_cli_hooks"
+serve = "jac_cloud.plugin.hooks_metadata:get_serve_hooks"
+
 [tool.poetry.scripts]
 standalone = "jac_cloud.runner:run"
