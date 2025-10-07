@@ -28,6 +28,11 @@ class ContainerObject:
             self.edge_num,
             self.func_call,
         )
+    
+    @classmethod
+    def get_size(cls) -> int:
+        """Get the size of the container object in bytes."""
+        return 8 * 6
 
     @classmethod
     def get_type_def(cls) -> str:
@@ -61,11 +66,23 @@ class Metadata:
 
     def get_byte_stream(self) -> bytes:
         """Get the C type definition of the metadata object."""
-        return (
+        print(f"DEBUG: len(walker_container_ptrs) = {len(self.walker_container_ptrs)}, len(trace_lengths) = {len(self.trace_lengths)}")
+
+        # Fill in with zeros if not enough walkers
+        walker_container_ptrs = self.walker_container_ptrs + [0] * (MAX_DPU_THREAD_NUM - len(self.walker_container_ptrs))
+        trace_lengths = self.trace_lengths + [0] * (MAX_DPU_THREAD_NUM - len(self.trace_lengths))
+        res = (
             struct.pack("<QQ", self.extra_mram_space_ptr, self.walker_num)
-            + b"".join(struct.pack("<Q", ptr) for ptr in self.walker_container_ptrs)
-            + b"".join(struct.pack("<Q", length) for length in self.trace_lengths)
+            + b"".join(struct.pack("<Q", ptr) for ptr in walker_container_ptrs)
+            + b"".join(struct.pack("<Q", length) for length in trace_lengths)
         )
+        assert len(res) == self.get_metadata_size()
+        return res
+    
+    @classmethod
+    def get_metadata_size(cls) -> int:
+        """Get the size of the metadata object in bytes."""
+        return 8 + 8 + 8 * MAX_DPU_THREAD_NUM + 8 * MAX_DPU_THREAD_NUM
 
     @classmethod
     def get_type_def(cls) -> str:

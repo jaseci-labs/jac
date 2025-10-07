@@ -81,7 +81,8 @@ class DPUMemoryCtx:
     def dump(self) -> bytes:
         """Sum up all the memory context contents."""
         return (
-            self.node_mem_ctx.obj_memory
+            self.metadata_mem_ctx.obj_memory
+            + self.node_mem_ctx.obj_memory
             + self.walker_mem_ctx.obj_memory
             + self.container_mem_ctx.obj_memory
         )

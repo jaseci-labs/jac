@@ -75,7 +75,7 @@ class JacPIMDumpSaver:
                     with open(core_file, "wb") as f:
                         f.write(binary_data)
 
-                    print(f"    Saved {core_file} ({len(binary_data)} bytes)")
+                    # print(f"    Saved {core_file} ({len(binary_data)} bytes)")
 
                 except Exception as e:
                     print(f"    Error saving {core_file}: {e}")
@@ -119,7 +119,7 @@ class JacPIMDumpSaver:
                 with open(core_file, "wb") as f:
                     f.write(binary_data)
 
-                print(f"  Saved {core_file} ({len(binary_data)} bytes)")
+                # print(f"  Saved {core_file} ({len(binary_data)} bytes)")
 
             except Exception as e:
                 print(f"  Error saving {core_file}: {e}")

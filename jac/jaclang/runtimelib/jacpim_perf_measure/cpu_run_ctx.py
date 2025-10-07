@@ -221,7 +221,6 @@ class JacPIMCPURunCtx:
         If a walker wants to jump to another DPU, it will be moved to the pending list.
         A walker that finishes will be removed.
         """
-        print("DEBUG: One round of running all active walkers")
         active_walkers = cls.get_active_walkers()
         DPUAllMemoryCtx.start_running()
         for dpu_id in range(DPU_NUM):
@@ -336,9 +335,7 @@ class DPUAllMemoryCtx:
                 edge_num = len(node.__jac__.edges)
                 container_objects.append(
                     ContainerObject(
-                        walker_ptr=cls.dpu_walker_ctxs[dpu_id]
-                        .get_obj_range(walker_id)
-                        .ptr,
+                        walker_ptr=cls.dpu_walker_ctxs[dpu_id].get_obj_range(walker_id).add_offset(Metadata.get_metadata_size()).add_offset(len(cls.dpu_node_ctxs[dpu_id])).ptr,
                         walker_size=walker_size,
                         node_ptr=cls.dpu_node_ctxs[dpu_id].get_obj_range(node_idx).ptr,
                         node_size=node_size,
@@ -370,9 +367,9 @@ class DPUAllMemoryCtx:
         """Create a memory context for metadata on a DPU."""
         metadata = Metadata(
             walker_num=0,  # to be filled later
-            walker_container_ptrs=[],  # to be filled later
+            walker_container_ptrs=[0] * MAX_DPU_THREAD_NUM,  # to be filled later
             extra_mram_space_ptr=0,  # to be filled later
-            trace_lengths=[],  # to be filled later
+            trace_lengths=[0] * MAX_DPU_THREAD_NUM,  # to be filled later
         )
         extra_mram_space_ptr = (
             len(metadata.get_byte_stream())
@@ -392,7 +389,7 @@ class DPUAllMemoryCtx:
         metadata.walker_container_ptrs = [
             mem_ctx.get_container_range(
                 JacPIMCPURunCtx.get_all_walkers().index(walker)
-            ).ptr
+            ).add_offset(Metadata.get_metadata_size()).add_offset(len(cls.dpu_node_ctxs[dpu_id])).add_offset(len(cls.dpu_walker_ctxs[dpu_id])).ptr
             for walker in JacPIMCPURunCtx.get_active_walkers()[dpu_id]
         ]
         metadata.trace_lengths = [
@@ -400,7 +397,9 @@ class DPUAllMemoryCtx:
             for walker_arch in JacPIMCPURunCtx.get_active_walkers()[dpu_id]
         ]
         metadata_mem_ctx = DPUObjMemoryCtx()
+        print("DEBUG: Downloading metadata")
         metadata_mem_ctx.download_obj(0, metadata.get_byte_stream())
+        print(metadata.get_byte_stream())
         return metadata_mem_ctx
 
     @classmethod
