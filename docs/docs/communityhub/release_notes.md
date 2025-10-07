@@ -5,6 +5,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.8.9 / jac-cloud 0.2.9 / byllm 0.4.4 (Unreleased)
 
+- **Lazy Plugin Loading System**: Implemented hook-aware lazy loading for Jac plugins, dramatically improving CLI startup performance. The new system only loads plugins when their specific hooks are actually called via plugin self-declaration via entry points for optimal performance.
 - **Typed Context Blocks (OSP)**: Fully implemented typed context blocks (`-> NodeType { }` and `-> WalkerType { }`) for Object-Spatial Programming, enabling conditional code execution based on runtime types.
 - **Triple Quoted F-String Support**: Added support for triple quoted f-strings in the language, enabling multi-line formatted strings with embedded expressions (e.g., `f"""Hello {name}"""`).
 - **`is` Keyword for Semstrings**: Added support for using `is` as an alternative to `=` in semantic string declarations (e.g., `sem MyObject.value is "A value stored in MyObject"`).
