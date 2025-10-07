@@ -337,7 +337,7 @@ class DPUAllMemoryCtx:
                     ContainerObject(
                         walker_ptr=cls.dpu_walker_ctxs[dpu_id].get_obj_range(walker_id).add_offset(Metadata.get_metadata_size()).add_offset(len(cls.dpu_node_ctxs[dpu_id])).ptr,
                         walker_size=walker_size,
-                        node_ptr=cls.dpu_node_ctxs[dpu_id].get_obj_range(node_idx).ptr,
+                        node_ptr=cls.dpu_node_ctxs[dpu_id].get_obj_range(node_idx).add_offset(Metadata.get_metadata_size()).ptr,
                         node_size=node_size,
                         edge_num=edge_num,
                         func_call=JacPIMSimulationCtx.index_function_defs(
