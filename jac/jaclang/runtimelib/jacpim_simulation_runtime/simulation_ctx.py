@@ -54,6 +54,19 @@ def generate_stats(simulation_results: dict[tuple[int, ...], SimStats]) -> None:
         for stats in simulation_results.values()
     )
 
+    all_instructions: set[str] = set()
+    for stats in simulation_results.values():
+        all_instructions.update(stats.logic.inst.keys())
+    
+    print("Instruction counts:")
+    for inst in sorted(all_instructions):
+        print(inst)
+    for inst in sorted(all_instructions):
+        inst_count = sum(
+            stats.logic.inst.get(inst, 0) for stats in simulation_results.values()
+        )
+        print(inst_count)
+
     # Log the aggregated stats
     print(f"Total DMA cycles: {total_dma}")
     print(f"Total ETC cycles: {total_etc}")

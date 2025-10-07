@@ -1,8 +1,8 @@
-from dataclasses import dataclass
-from typing import Optional, Dict, Tuple
+from dataclasses import dataclass, field
+from typing import Dict, Tuple
 import re
 
-# --- Dataclasses for the structured result (unchanged) ---
+# --- Dataclasses (extended, but names preserved) ---
 
 @dataclass
 class ThreadScheduler:
@@ -12,10 +12,18 @@ class ThreadScheduler:
 
 @dataclass
 class Logic:
+    # original fields (kept for compatibility)
     active_tasklets_0: int = 0
     active_tasklets_1: int = 0
     logic_cycle: int = 0
     num_instructions: int = 0
+
+    # new fields / containers
+    backpressure: int = 0
+    # arbitrary active_tasklets_k captured here as k -> value
+    active_tasklets: Dict[int, int] = field(default_factory=dict)
+    # arbitrary inst_* captured here as suffix -> value (e.g., "ld", "add", "lsr_add")
+    inst: Dict[str, int] = field(default_factory=dict)
 
 @dataclass
 class CycleRule:
@@ -48,10 +56,8 @@ class SimStats:
     row_buffer: RowBuffer
 
 
-# --- Parsers ---
+# --- Parser ---
 
-# Capture section, indices, metric, and value.
-# Example line: "ThreadScheduler[0_0_9]_breakdown_run: 7020"
 _LINE_RE = re.compile(
     r'^(?P<section>[A-Za-z]+)\[(?P<indices>[0-9_]+)\]_(?P<metric>[A-Za-z0-9_]+):\s*(?P<value>-?\d+)\s*$'
 )
@@ -68,11 +74,17 @@ def _new_stats() -> SimStats:
 
 def parse_sim_stats_multi(text: str) -> Dict[Tuple[int, ...], SimStats]:
     """
-    Parse the whole simulator output into a dict keyed by the bracketed indices tuple.
-
-    Returns:
-        cores: dict where key is a tuple of indices (e.g., (0,0,9))
-               and value is a SimStats populated from the lines for that core.
+    Parse the whole simulator output into a dict keyed by the [i_j_k] tuple.
+    Handles:
+      - ThreadScheduler.* breakdown_*
+      - Logic.* (logic_cycle, num_instructions, backpressure)
+      - Logic.active_tasklets_<N>  -> Logic.active_tasklets[N]
+        (also mirrors to active_tasklets_0/1 for N==0/1 for backward compat)
+      - Logic.inst_*               -> Logic.inst["*"]
+      - CycleRule.cycle_rule
+      - MemoryController.memory_cycle
+      - MemoryScheduler.num_fcfs
+      - RowBuffer.* (reads/writes/activations/precharges/bytes)
     """
     cores: Dict[Tuple[int, ...], SimStats] = {}
 
@@ -94,20 +106,28 @@ def parse_sim_stats_multi(text: str) -> Dict[Tuple[int, ...], SimStats]:
             stats = _new_stats()
             cores[idx_tuple] = stats
 
-        # Populate fields (unknown metrics are ignored)
         if section == "ThreadScheduler":
             if metric == "breakdown_dma": stats.thread_scheduler.breakdown_dma = value
             elif metric == "breakdown_etc": stats.thread_scheduler.breakdown_etc = value
             elif metric == "breakdown_run": stats.thread_scheduler.breakdown_run = value
 
         elif section == "Logic":
-            if metric == "active_tasklets_0": stats.logic.active_tasklets_0 = value
-            elif metric == "active_tasklets_1": stats.logic.active_tasklets_1 = value
-            elif metric == "logic_cycle": stats.logic.logic_cycle = value
+            if metric == "logic_cycle": stats.logic.logic_cycle = value
             elif metric == "num_instructions": stats.logic.num_instructions = value
-
-            # NOTE: Your dataclass only has active_tasklets_0 and _1.
-            # Lines like active_tasklets_2..12 will be ignored by design.
+            elif metric == "backpressure": stats.logic.backpressure = value
+            elif metric.startswith("active_tasklets_"):
+                # active_tasklets_<N>
+                try:
+                    n = int(metric.split("_")[-1])
+                except ValueError:
+                    continue
+                stats.logic.active_tasklets[n] = value
+                if n == 0: stats.logic.active_tasklets_0 = value
+                if n == 1: stats.logic.active_tasklets_1 = value
+            elif metric.startswith("inst_"):
+                # inst_*  -> store suffix (after "inst_")
+                stats.logic.inst[metric[len("inst_"):]] = value
+            # silently ignore other Logic.* lines
 
         elif section == "CycleRule":
             if metric == "cycle_rule": stats.cycle_rule.cycle_rule = value
@@ -129,41 +149,71 @@ def parse_sim_stats_multi(text: str) -> Dict[Tuple[int, ...], SimStats]:
     return cores
 
 
-# Backwards-compatible helper if you still want a single-core parse:
+# Optional: keep your old single-core API (defaulting to (0,0,0))
 def parse_sim_stats(text: str, core: Tuple[int, ...] = (0, 0, 0)) -> SimStats:
-    """
-    Preserve the old API by selecting one core from the multi-core results.
-    Defaults to (0,0,0). If the core isn't found, returns an empty SimStats.
-    """
-    cores = parse_sim_stats_multi(text)
-    return cores.get(core, _new_stats())
+    return parse_sim_stats_multi(text).get(core, _new_stats())
 
 
 # --- Example ---
 if __name__ == "__main__":
     example = """\
-ThreadScheduler[0_0_0]_breakdown_dma: 362
-ThreadScheduler[0_0_0]_breakdown_etc: 2344
-ThreadScheduler[0_0_0]_breakdown_run: 233
-Logic[0_0_0]_active_tasklets_1: 2298
-Logic[0_0_0]_logic_cycle: 2939
-Logic[0_0_0]_num_instructions: 233
-Logic[0_0_0]_active_tasklets_0: 641
-CycleRule[0_0_0]_cycle_rule: 65
-MemoryController[0_0_0]_memory_cycle: 17634
-MemoryScheduler[0_0_0]_num_fcfs: 23
-RowBuffer[0_0_0]_num_reads: 13
-RowBuffer[0_0_0]_read_bytes: 104
-RowBuffer[0_0_0]_num_activations: 3
-RowBuffer[0_0_0]_num_precharges: 2
-RowBuffer[0_0_0]_num_writes: 13
-RowBuffer[0_0_0]_write_bytes: 104
-
-ThreadScheduler[0_0_9]_breakdown_run: 6920
-Logic[0_0_9]_num_instructions: 6920
-RowBuffer[0_0_9]_num_reads: 1650
+ThreadScheduler[0_0_0]_breakdown_etc: 8897
+ThreadScheduler[0_0_0]_breakdown_run: 7020
+ThreadScheduler[0_0_0]_breakdown_dma: 7685
+Logic[0_0_0]_inst_stop: 115
+Logic[0_0_0]_active_tasklets_10: 885
+Logic[0_0_0]_active_tasklets_11: 780
+Logic[0_0_0]_logic_cycle: 24465
+Logic[0_0_0]_num_instructions: 7020
+Logic[0_0_0]_active_tasklets_7: 781
+Logic[0_0_0]_active_tasklets_8: 790
+Logic[0_0_0]_inst_resume: 55
+Logic[0_0_0]_inst_ldma: 90
+Logic[0_0_0]_inst_sd: 195
+Logic[0_0_0]_inst_boot: 55
+Logic[0_0_0]_active_tasklets_2: 2880
+Logic[0_0_0]_inst_acquire: 3230
+Logic[0_0_0]_inst_sw: 25
+Logic[0_0_0]_inst_lbs: 115
+Logic[0_0_0]_inst_lslx: 20
+Logic[0_0_0]_inst_lsr_add: 40
+Logic[0_0_0]_inst_add: 310
+Logic[0_0_0]_backpressure: 863
+Logic[0_0_0]_active_tasklets_6: 842
+Logic[0_0_0]_inst_lsl: 20
+Logic[0_0_0]_inst_addc: 30
+Logic[0_0_0]_active_tasklets_1: 7186
+Logic[0_0_0]_inst_or: 405
+Logic[0_0_0]_inst_ld: 415
+Logic[0_0_0]_active_tasklets_3: 2033
+Logic[0_0_0]_active_tasklets_5: 866
+Logic[0_0_0]_active_tasklets_0: 5346
+Logic[0_0_0]_inst_call: 305
+Logic[0_0_0]_active_tasklets_4: 904
+Logic[0_0_0]_active_tasklets_9: 797
+Logic[0_0_0]_inst_subc: 90
+Logic[0_0_0]_active_tasklets_12: 375
+Logic[0_0_0]_inst_sb: 225
+Logic[0_0_0]_inst_lsl_add: 115
+Logic[0_0_0]_inst_sdma: 20
+Logic[0_0_0]_inst_sub: 595
+Logic[0_0_0]_inst_release: 90
+Logic[0_0_0]_inst_lbu: 185
+Logic[0_0_0]_inst_lw: 140
+Logic[0_0_0]_inst_and: 135
+CycleRule[0_0_0]_cycle_rule: 1155
+MemoryController[0_0_0]_memory_cycle: 146790
+MemoryScheduler[0_0_0]_num_fcfs: 1641
+RowBuffer[0_0_0]_num_reads: 1640
+RowBuffer[0_0_0]_read_bytes: 13120
+RowBuffer[0_0_0]_num_activations: 19
+RowBuffer[0_0_0]_num_precharges: 14
+RowBuffer[0_0_0]_num_writes: 20
+RowBuffer[0_0_0]_write_bytes: 160
 """
     cores = parse_sim_stats_multi(example)
-    print("cores parsed:", list(cores.keys()))
-    print("(0,0,0):", cores[(0,0,0)])
-    print("(0,0,9):", cores[(0,0,9)])
+    core = cores[(0,0,0)]
+    print("num_instructions:", core.logic.num_instructions)
+    print("backpressure:", core.logic.backpressure)
+    print("active_tasklets[10]:", core.logic.active_tasklets.get(10))
+    print("inst['lsr_add']:", core.logic.inst.get("lsr_add"))
