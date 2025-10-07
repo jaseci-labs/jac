@@ -30,7 +30,6 @@ from typing import (
 )
 from uuid import UUID
 
-
 from jaclang.compiler.constant import Constants as Con, EdgeDir, colors
 from jaclang.compiler.program import JacProgram
 from jaclang.runtimelib.archetype import (
@@ -54,6 +53,7 @@ from jaclang.runtimelib.constructs import (
     WalkerAnchor,
     WalkerArchetype,
 )
+from jaclang.runtimelib.lazy_plugins import create_lazy_plugin_manager
 from jaclang.runtimelib.memory import Memory, Shelf, ShelfStorage
 from jaclang.runtimelib.utils import (
     all_issubclass,
@@ -62,9 +62,6 @@ from jaclang.runtimelib.utils import (
 from jaclang.utils import infer_language
 
 import pluggy
-
-from jaclang.runtimelib.lazy_plugins import create_lazy_plugin_manager
-
 
 plugin_manager = create_lazy_plugin_manager("jac")
 hookspec = pluggy.HookspecMarker("jac")

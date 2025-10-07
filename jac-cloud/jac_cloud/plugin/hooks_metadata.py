@@ -1,12 +1,12 @@
 """Hook metadata for jac-cloud plugins."""
 
 
-def get_cli_hooks():
+def get_cli_hooks() -> list[str]:
     """Return list of hooks implemented by JacCmd plugin."""
     return ["create_cmd"]
 
 
-def get_serve_hooks():
+def get_serve_hooks() -> list[str]:
     """Return list of hooks implemented by JacPlugin (serve) plugin."""
     return [
         "setup",
