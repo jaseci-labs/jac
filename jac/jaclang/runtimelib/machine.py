@@ -68,6 +68,7 @@ from jaclang.runtimelib.utils import (
     traverse_graph,
 )
 from jaclang.utils import infer_language
+from jaclang.runtimelib.jacpim_simulation_runtime.simulation_ctx import run_simulator, generate_stats
 
 import pluggy
 
@@ -1595,7 +1596,11 @@ class JacPIM:
         JacPIMCPURunCtx.run_until_all_done()
         save_all_memory_dumps()
         print("Total Cross DPU Jumps", JacPIMCPURunCtx.total_cross_dpu_jumps)
-        JacPIMSimulationCtx.save_codegen_file("task.c")
+        src = JacPIMSimulationCtx.save_codegen_file("task.c")
+        res = run_simulator(src)
+        print(res)
+
+        generate_stats(res)
 
         # plot_ttg(mapping_ctx.get_ttg(), static_ctx.get_layout(), "temp.png")
 

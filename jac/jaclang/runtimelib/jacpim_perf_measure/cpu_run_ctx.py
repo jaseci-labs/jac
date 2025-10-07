@@ -385,7 +385,7 @@ class DPUAllMemoryCtx:
         )
         metadata.extra_mram_space_ptr = extra_mram_space_ptr
         metadata.walker_num = len(JacPIMCPURunCtx.get_active_walkers()[dpu_id])
-        print(f"DEBUG: DPU {dpu_id} has {metadata.walker_num} active walkers")
+        # print(f"DEBUG: DPU {dpu_id} has {metadata.walker_num} active walkers")
         metadata.walker_container_ptrs = [
             mem_ctx.get_container_range(
                 JacPIMCPURunCtx.get_all_walkers().index(walker)
@@ -397,9 +397,9 @@ class DPUAllMemoryCtx:
             for walker_arch in JacPIMCPURunCtx.get_active_walkers()[dpu_id]
         ]
         metadata_mem_ctx = DPUObjMemoryCtx()
-        print("DEBUG: Downloading metadata")
+        # print("DEBUG: Downloading metadata")
         metadata_mem_ctx.download_obj(0, metadata.get_byte_stream())
-        print(metadata.get_byte_stream())
+        # print(metadata.get_byte_stream())
         return metadata_mem_ctx
 
     @classmethod
@@ -559,9 +559,10 @@ class JacPIMSimulationCtx:
         )
 
     @classmethod
-    def save_codegen_file(cls, file_path: str) -> None:
+    def save_codegen_file(cls, file_path: str) -> str:
         """Save the codegen file to the specified path."""
         context = cls.context_gen()
         code = gen_code(context)
         with open(file_path, "w") as f:
             f.write(code)
+        return code

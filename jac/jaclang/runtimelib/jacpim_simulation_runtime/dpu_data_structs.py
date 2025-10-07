@@ -66,7 +66,7 @@ class Metadata:
 
     def get_byte_stream(self) -> bytes:
         """Get the C type definition of the metadata object."""
-        print(f"DEBUG: len(walker_container_ptrs) = {len(self.walker_container_ptrs)}, len(trace_lengths) = {len(self.trace_lengths)}")
+        # print(f"DEBUG: len(walker_container_ptrs) = {len(self.walker_container_ptrs)}, len(trace_lengths) = {len(self.trace_lengths)}")
 
         # Fill in with zeros if not enough walkers
         walker_container_ptrs = self.walker_container_ptrs + [0] * (MAX_DPU_THREAD_NUM - len(self.walker_container_ptrs))
