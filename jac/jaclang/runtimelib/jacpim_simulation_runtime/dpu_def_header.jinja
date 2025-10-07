@@ -63,7 +63,7 @@ void run_on_node(uint64_t walker_ptr, uint64_t node_ptr, uint64_t edge_num, uint
   {% endfor %}
 }
 
-inline void mem_init() {
+void mem_malloc() {
     node_buffer = mem_alloc({{max_node_size}});
     walker_buffer = mem_alloc({{max_walker_size}});
 }

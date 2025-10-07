@@ -52,6 +52,10 @@ walker bs {
   def get_impl_rundown_on_BranchNode() {
     # Write C implementation for the rundown walker on BranchNode here
   return """
+  #ifdef DEBUG
+  printf("DPU Tasklet %u: BranchNode - Mid: %lu\\n", me(), node->mid);
+  #endif
+
     if (walker->value < node->mid) {
       push_new_element_to_container(0);
     } else {
@@ -66,6 +70,10 @@ walker bs {
 
   def get_impl_printnode_on_DataNode() {
   return """
+  #ifdef DEBUG
+  printf("DPU Tasklet %u: DataNode - Value: %lu, Index: %lu\\n", me(), node->value, node->index);
+  #endif
+
   """;
   }
 
