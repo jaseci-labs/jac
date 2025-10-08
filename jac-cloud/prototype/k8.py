@@ -5,6 +5,7 @@ import time
 import docker
 
 from kubernetes import client, config
+from kubernetes.client.exceptions import ApiException
 
 
 # -------------------
@@ -14,16 +15,16 @@ app_name = "fastapi-app"
 image_name = "fastapi-app:latest"
 namespace = "default"
 container_port = 8000
-node_port = 30080
+node_port = 30001
 dockerfile_path = "./"  # path where Dockerfile exists
-context_path = "./"  # path for docker build context
+context_path = "./littleX"  # path for docker build context
 
 # -------------------
 # Step 1: Build Docker image programmatically
 # -------------------
 docker_client = docker.from_env()
 
-print("🚀 Building Docker image...")
+print("Building Docker image...")
 image, logs = docker_client.images.build(
     path=context_path, dockerfile="Dockerfile", tag=image_name, rm=True
 )
@@ -31,7 +32,7 @@ for chunk in logs:
     if "stream" in chunk:
         print(chunk["stream"], end="")
 
-print(f"✅ Docker image '{image_name}' built successfully!")
+print(f"Docker image '{image_name}' built successfully!")
 
 # -------------------
 # Step 2: Load kubeconfig
@@ -56,10 +57,29 @@ deployment = {
                 "containers": [
                     {
                         "name": app_name,
-                        "image": image_name,
-                        "ports": [{"containerPort": container_port}],
+                        "image": "python:3.12-slim",
+                        "ports": [{"containerPort": 8000}],
+                        "command": ["bash", "-c"],
+                        "args": [
+                            """
+                            apt-get update && apt-get install -y build-essential curl git && \
+                            pip install --upgrade pip && \
+                            pip install -r /app/requirements.txt && \
+                            jac serve littleX.jac --host 0.0.0.0 --port 8000
+                            """
+                        ],
+                        "volumeMounts": [{"name": "app-volume", "mountPath": "/app"}],
                     }
-                ]
+                ],
+                "volumes": [
+                    {
+                        "name": "app-volume",
+                        "hostPath": {
+                            "path": "C:/Users/jzlco/OneDrive/Desktop/office/jaseci/jac-cloud/prototype/littleX",
+                            "type": "Directory",
+                        },
+                    }
+                ],
             },
         },
     },
@@ -91,8 +111,26 @@ service = {
 # -------------------
 # Delete existing deployment/service if exist
 
-apps_v1.delete_namespaced_deployment(app_name, namespace)
-core_v1.delete_namespaced_service(f"{app_name}-service", namespace)
+# Delete existing deployment if it exists
+try:
+    apps_v1.delete_namespaced_deployment(app_name, namespace)
+    print(f"Deleted existing deployment '{app_name}'")
+except ApiException as e:
+    if e.status == 404:
+        print(f"Deployment '{app_name}' not found, skipping delete.")
+    else:
+        raise  # re-raise unexpected API errors
+
+# Delete existing service if it exists
+try:
+    core_v1.delete_namespaced_service(f"{app_name}-service", namespace)
+    print(f"Deleted existing service '{app_name}-service'")
+except ApiException as e:
+    if e.status == 404:
+        print(f"Service '{app_name}-service' not found, skipping delete.")
+    else:
+        raise
+
 time.sleep(5)  # wait for cleanup
 
 
