@@ -56,3 +56,5 @@ out.txt
 # Jac-Cloud #
 logs/
 mydatabase/
+prototype/littleX/**
+prototype/fastapi_app.zip
