@@ -227,8 +227,12 @@ class UniNode:
         return res
 
 
-# Symbols can have mulitple definitions but resolves decl to be the
+# Symbols can have multiple definitions but resolves decl to be the
 # first such definition in a given scope.
+# Symbols may exist without a parent symbol table (parent_tab=None),
+# such as imports like 'from a.b.c {...}'.
+# These symbols(a,b,c) are not inserted into symbol tables
+# but are still used for go-to-def, find references, and rename.
 class Symbol:
     """Symbol."""
 
@@ -236,7 +240,7 @@ class Symbol:
         self,
         defn: NameAtom,
         access: SymbolAccess,
-        parent_tab: UniScopeNode,
+        parent_tab: Optional[UniScopeNode] = None,
         imported: bool = False,
     ) -> None:
         """Initialize."""
@@ -277,7 +281,9 @@ class Symbol:
     @property
     def symbol_table(self) -> Optional[UniScopeNode]:
         """Get symbol table."""
-        return self.parent_tab.find_scope(self.sym_name)
+        if self.parent_tab:
+            return self.parent_tab.find_scope(self.sym_name)
+        return None
 
     def add_defn(self, node: NameAtom) -> None:
         """Add defn."""
@@ -345,8 +351,7 @@ class UniScopeNode(UniNode):
             else None
         )
         if force_overwrite or node.sym_name not in self.names_in_scope:
-            self.names_in_scope[node.sym_name] = Symbol(
-                defn=node.name_spec,
+            self.names_in_scope[node.sym_name] = node.name_spec.create_symbol(
                 access=(
                     access_spec
                     if isinstance(access_spec, SymbolAccess)
@@ -766,6 +771,16 @@ class NameAtom(AtomExpr, EnumBlockStmt):
     @property
     def sym_category(self) -> SymbolType:
         return self._sym_category
+
+    def create_symbol(
+        self,
+        access: SymbolAccess,
+        parent_tab: Optional[UniScopeNode] = None,
+        imported: bool = False,
+    ) -> Symbol:
+        """Create symbol."""
+        sym = Symbol(defn=self, access=access, parent_tab=parent_tab, imported=imported)
+        return sym
 
     @property
     def clean_type(self) -> str:
@@ -1255,7 +1270,7 @@ class Import(ElementStmt, CodeBlockStmt):
         return res
 
 
-class ModulePath(AstSymbolNode):
+class ModulePath(UniNode):
     """ModulePath node type for Jac Ast."""
 
     def __init__(
@@ -1269,25 +1284,7 @@ class ModulePath(AstSymbolNode):
         self.level = level
         self.alias = alias
         self.abs_path: Optional[str] = None
-
-        name_spec = alias if alias else path[0] if path else None
-
         UniNode.__init__(self, kid=kid)
-        if not name_spec:
-            pkg_name = self.loc.mod_path
-            for _ in range(self.level):
-                pkg_name = os.path.dirname(pkg_name)
-            pkg_name = pkg_name.split(os.sep)[-1]
-            name_spec = Name.gen_stub_from_node(self, pkg_name)
-            self.level += 1
-        if not isinstance(name_spec, Name):
-            raise ValueError("ModulePath should have a name spec. Impossible.")
-        AstSymbolNode.__init__(
-            self,
-            sym_name=name_spec.sym_name,
-            name_spec=name_spec,
-            sym_category=SymbolType.MODULE,
-        )
 
     @property
     def is_import_from(self) -> bool:
@@ -1300,8 +1297,22 @@ class ModulePath(AstSymbolNode):
     def dot_path_str(self) -> str:
         """Get path string."""
         return ("." * self.level) + ".".join(
-            [p.value for p in self.path] if self.path else [self.name_spec.sym_name]
+            [p.value for p in self.path] if self.path else []
         )
+
+    def resolve_relative_path(self, target_item: Optional[str] = None) -> str:
+        """Convert an import target string into a relative file path."""
+        target = self.dot_path_str + (f".{target_item}" if target_item else "")
+        return resolve_relative_path(target, self.loc.mod_path)
+
+    def resolve_relative_path_list(self) -> list[str]:
+        """Convert an import target string into a relative file path."""
+        parts = self.dot_path_str.split(".")
+        paths = []
+        for i in range(len(parts)):
+            sub_path = ".".join(parts[: i + 1])
+            paths.append(resolve_relative_path(sub_path, self.loc.mod_path))
+        return paths
 
     def normalize(self, deep: bool = False) -> bool:
         res = True
@@ -1324,13 +1335,8 @@ class ModulePath(AstSymbolNode):
         self.set_kids(nodes=new_kid)
         return res
 
-    def resolve_relative_path(self, target_item: Optional[str] = None) -> str:
-        """Convert an import target string into a relative file path."""
-        target = self.dot_path_str + (f".{target_item}" if target_item else "")
-        return resolve_relative_path(target, self.loc.mod_path)
 
-
-class ModuleItem(AstSymbolNode):
+class ModuleItem(UniNode):
     """ModuleItem node type for Jac Ast."""
 
     def __init__(
@@ -1342,12 +1348,6 @@ class ModuleItem(AstSymbolNode):
         self.name = name
         self.alias = alias
         UniNode.__init__(self, kid=kid)
-        AstSymbolNode.__init__(
-            self,
-            sym_name=alias.sym_name if alias else name.sym_name,
-            name_spec=alias or name,
-            sym_category=SymbolType.MOD_VAR,
-        )
         self.abs_path: Optional[str] = None
 
     @property

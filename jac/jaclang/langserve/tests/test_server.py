@@ -213,8 +213,73 @@ class TestJacLangServer(TestCase):
             with self.subTest(line=line, char=char):
                 self.assertIn(
                     expected,
-                    str(lsp.get_definition(import_file, lspt.Position(line, char))),
+                    str(
+                        lsp.get_definition(
+                            import_file, lspt.Position(line - 1, char - 1)
+                        )
+                    ),
                 )
+
+    def test_go_to_defintion_md_path(self) -> None:
+        """Test that the go to definition is correct."""
+        lsp = JacLangServer()
+        workspace_path = self.fixture_abs_path("")
+        workspace = Workspace(workspace_path, lsp)
+        lsp.lsp._workspace = workspace
+        import_file = uris.from_fs_path(self.fixture_abs_path("md_path.jac"))
+        lsp.deep_check(import_file)
+        # fmt: off
+        positions = [
+            (3, 11, "asyncio/__init__.py:0:0-0:0"),
+            (6, 17, "concurrent/__init__.py:0:0-0:0"),
+            (6, 28, "concurrent/futures/__init__.py:0:0-0:0"),
+            (7, 17, "typing.py:0:0-0:0"),
+            (7, 27, "typing.py:2636:0-2636:7"),
+            (9, 18, "compiler/__init__.py:0:0-0:0"),
+            (9, 38, "compiler/unitree.py:0:0-0:0"),
+            (11, 35, "compiler/constant.py:0:0-0:0"),
+            (11, 47, "compiler/constant.py:5:0-34:9"),
+            (13, 47, "compiler/type_system/type_utils.py:0:0-0:0"),
+            (14, 34, "compiler/type_system/__init__.py:0:0-0:0"),
+            (14, 55, "compiler/type_system/types.py:143:0-226:8"),
+            (15, 34, "compiler/unitree.py:0:0-0:0"),
+            (15, 48, "compiler/unitree.py:302:0-502:11"),
+            (17, 22, "langserve/tests/fixtures/circle.jac:8:5-8:8"),
+            (18, 38, "langserve/tests/fixtures/circle.jac:8:5-8:8"),
+            (19, 52, "vendor/pygls/server.py:351:0-615:13"),
+            (21, 31, "vendor/lsprotocol/types.py:0:0-0:0"),
+        ]
+        # fmt: on
+
+        for line, char, expected in positions:
+            with self.subTest(line=line, char=char):
+                self.assertIn(
+                    expected,
+                    str(
+                        lsp.get_definition(
+                            import_file, lspt.Position(line - 1, char - 1)
+                        )
+                    ),
+                )
+
+    def test_missing_mod_warning(self) -> None:
+        """Test that the missing module warning is correct."""
+        lsp = JacLangServer()
+        workspace_path = self.fixture_abs_path("")
+        workspace = Workspace(workspace_path, lsp)
+        lsp.lsp._workspace = workspace
+        import_file = uris.from_fs_path(self.fixture_abs_path("md_path.jac"))
+        lsp.deep_check(import_file)
+
+        positions = [
+            "fixtures/md_path.jac, line 16, col 13: Module not found",
+            "fixtures/md_path.jac, line 22, col 8: Module not found",
+        ]
+        for idx, expected in enumerate(positions):
+            self.assertIn(
+                expected,
+                str(lsp.warnings_had[idx]),
+            )
 
     @pytest.mark.xfail(
         reason="TODO: Fix the go to definition for imports[ abs_path is not set]"
@@ -541,7 +606,3 @@ class TestJacLangServer(TestCase):
             "/tests/fixtures/M1.jac:0:0-0:0",
             str(lsp.get_definition(guess_game_file, lspt.Position(29, 9))),
         )
-
-
-
-TestJacLangServer().test_completion()

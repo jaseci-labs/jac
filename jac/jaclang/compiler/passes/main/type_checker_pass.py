@@ -69,10 +69,17 @@ class TypeCheckPass(UniPass):
 
     def exit_import(self, node: uni.Import) -> None:
         """Exit an import node."""
+        # import from math {sqrt, sin as s}
         if node.from_loc:
+            self.evaluator.get_type_of_module(node.from_loc)
             for item in node.items:
                 if isinstance(item, uni.ModuleItem):
                     self.evaluator.get_type_of_module_item(item)
+        else:
+            # import math as m, os, sys;
+            for item in node.items:
+                if isinstance(item, uni.ModulePath):
+                    self.evaluator.get_type_of_module(item)
 
     def exit_assignment(self, node: uni.Assignment) -> None:
         """Pyright: Checker.visitAssignment(node: AssignmentNode): boolean."""

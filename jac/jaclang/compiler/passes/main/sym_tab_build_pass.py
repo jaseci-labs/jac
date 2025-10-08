@@ -19,6 +19,7 @@ type checking, and semantic analysis throughout the compilation process.
 """
 
 import jaclang.compiler.unitree as uni
+from jaclang.compiler.constant import SymbolAccess
 from jaclang.compiler.passes import UniPass
 from jaclang.compiler.unitree import UniScopeNode
 
@@ -75,7 +76,8 @@ class SymTabBuildPass(UniPass):
     def exit_module_path(self, node: uni.ModulePath) -> None:
         if node.alias:
             node.alias.sym_tab.def_insert(node.alias, single_decl="import")
-        elif (not node.is_import_from) and node.path:
+            # print(node.resolve_relative_path_list())
+        elif node.path and not node.is_import_from:
             if node.parent_of_type(uni.Import) and not (
                 node.parent_of_type(uni.Import).from_loc
                 and node.parent_of_type(uni.Import).is_jac
@@ -84,9 +86,25 @@ class SymTabBuildPass(UniPass):
         else:
             pass  # Need to support pythonic import symbols with dots in it
 
+        # There will be symbols for
+        # import from math {sqrt}  <- math will have a symbol but no symtab entry
+        # import math as m  <- m will have a symbol and symtab entry
+        if node.path and (node.is_import_from or (node.alias)):
+            for n in node.path:
+                n.sym = n.create_symbol(
+                    access=SymbolAccess.PUBLIC,
+                    imported=True,
+                )
+
     def exit_module_item(self, node: uni.ModuleItem) -> None:
         sym_node = node.alias or node.name
         sym_node.sym_tab.def_insert(sym_node, single_decl="import")
+        if node.alias:
+            # create symbol for module item
+            node.name.sym = node.name.create_symbol(
+                access=SymbolAccess.PUBLIC,
+                imported=True,
+            )
 
     def enter_archetype(self, node: uni.Archetype) -> None:
         self.push_scope_and_link(node)
