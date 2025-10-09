@@ -2,8 +2,6 @@
 
 import time
 
-import docker
-
 from kubernetes import client, config
 from kubernetes.client.exceptions import ApiException
 
@@ -12,27 +10,11 @@ from kubernetes.client.exceptions import ApiException
 # Configuration
 # -------------------
 app_name = "fastapi-app"
-image_name = "fastapi-app:latest"
+image_name = "juzailmlwork/littlex:latest"
 namespace = "default"
 container_port = 8000
 node_port = 30001
-dockerfile_path = "./"  # path where Dockerfile exists
-context_path = "./littleX"  # path for docker build context
 
-# -------------------
-# Step 1: Build Docker image programmatically
-# -------------------
-docker_client = docker.from_env()
-
-print("Building Docker image...")
-image, logs = docker_client.images.build(
-    path=context_path, dockerfile="Dockerfile", tag=image_name, rm=True
-)
-for chunk in logs:
-    if "stream" in chunk:
-        print(chunk["stream"], end="")
-
-print(f"Docker image '{image_name}' built successfully!")
 
 # -------------------
 # Step 2: Load kubeconfig
@@ -49,7 +31,7 @@ deployment = {
     "kind": "Deployment",
     "metadata": {"name": app_name},
     "spec": {
-        "replicas": 1,
+        "replicas": 3,
         "selector": {"matchLabels": {"app": app_name}},
         "template": {
             "metadata": {"labels": {"app": app_name}},
@@ -57,27 +39,8 @@ deployment = {
                 "containers": [
                     {
                         "name": app_name,
-                        "image": "python:3.12-slim",
+                        "image": image_name,
                         "ports": [{"containerPort": 8000}],
-                        "command": ["bash", "-c"],
-                        "args": [
-                            """
-                            apt-get update && apt-get install -y build-essential curl git && \
-                            pip install --upgrade pip && \
-                            pip install -r /app/requirements.txt && \
-                            jac serve littleX.jac --host 0.0.0.0 --port 8000
-                            """
-                        ],
-                        "volumeMounts": [{"name": "app-volume", "mountPath": "/app"}],
-                    }
-                ],
-                "volumes": [
-                    {
-                        "name": "app-volume",
-                        "hostPath": {
-                            "path": "C:/Users/jzlco/OneDrive/Desktop/office/jaseci/jac-cloud/prototype/littleX",
-                            "type": "Directory",
-                        },
                     }
                 ],
             },
@@ -106,12 +69,6 @@ service = {
     },
 }
 
-# -------------------
-# Step 5: Deploy to Kubernetes
-# -------------------
-# Delete existing deployment/service if exist
-
-# Delete existing deployment if it exists
 try:
     apps_v1.delete_namespaced_deployment(app_name, namespace)
     print(f"Deleted existing deployment '{app_name}'")
@@ -119,7 +76,7 @@ except ApiException as e:
     if e.status == 404:
         print(f"Deployment '{app_name}' not found, skipping delete.")
     else:
-        raise  # re-raise unexpected API errors
+        raise
 
 # Delete existing service if it exists
 try:
@@ -134,7 +91,7 @@ except ApiException as e:
 time.sleep(5)  # wait for cleanup
 
 
-print("🛠 Deploying FastAPI app to Kubernetes...")
+print("Deploying FastAPI app to Kubernetes...")
 apps_v1.create_namespaced_deployment(namespace=namespace, body=deployment)
 core_v1.create_namespaced_service(namespace=namespace, body=service)
 
