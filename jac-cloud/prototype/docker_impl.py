@@ -1,0 +1,77 @@
+"""File covering Docker implementation."""
+
+import os
+
+import docker
+from docker.errors import APIError, BuildError
+
+
+def build_docker_image(
+    image_name: str, context_path: str, dockerfile: str = "Dockerfile"
+) -> None:
+    """
+    Build a Docker image programmatically.
+
+    Args:
+        image_name (str): Name and tag for the image (e.g. 'jusail/fastapi-app:latest').
+        context_path (str): Path to the build context (where Dockerfile and app code reside).
+        dockerfile (str): Dockerfile name (default: 'Dockerfile').
+
+    Returns:
+        Tuple[str, str]: The image name and its ID.
+    """
+    docker_client = docker.from_env()
+
+    print(f"Building Docker image '{image_name}' from {context_path}...")
+    try:
+        image, logs = docker_client.images.build(
+            path=context_path, dockerfile=dockerfile, tag=image_name, rm=True
+        )
+        print("image is built sucessfully with image id", image.id)
+    except (BuildError, APIError) as e:
+        print("Image build failed:", e)
+
+
+def push_docker_image(
+    image_name: str,
+    username: str,
+    password: str,
+) -> None:
+    """
+    Push a Docker image to Docker Hub and store logs in a file.
+
+    Args:
+        image_name (str): Full image name (e.g. 'jusail/fastapi-app:latest').
+        username (str): Docker Hub username.
+        password (str): Docker Hub password or access token.
+
+    Returns:
+        Tuple[bool, str]: (success_flag, log_file_path)
+    """
+    docker_client = docker.from_env()
+    print("Logging in to Docker Hub...\n")
+    docker_client.login(username=username, password=password)
+    print("Login successful.\n")
+    sucess = True
+    print("pushing docker image to dockerhub")
+    for line in docker_client.images.push(image_name, stream=True, decode=True):
+        if "error" in line:
+            sucess = False
+            print("failed to push docker image")
+            break
+    if sucess:
+        print("pushed image sucessfully to dockerhub")
+
+
+if __name__ == "__main__":
+    image_name = os.getenv("IMAGE_NAME", "jaseci:latest")
+    context_path = os.getenv("CONTEXT_PATH", "./fastapi-app")
+    docker_username = os.getenv("DOCKER_USERNAME", "juzailmlwork")
+    docker_password = os.getenv("DOCKER_PASSWORD", "12345")
+    repository_name = f"{docker_username}/{image_name}"
+    print(repository_name)
+
+    build_docker_image(image_name=repository_name, context_path=context_path)
+    push_docker_image(
+        image_name=repository_name, username=docker_username, password=docker_password
+    )
