@@ -11,7 +11,7 @@ void save(void * buf, uint32_t start, uint32_t size) {
 }
 
 
-void run_thread(uint64_t walker_container_ptr, uint64_t trace_length) {
+void run_thread(uint64_t walker_container_ptr, uint64_t trace_length, char * node_buffer, char * walker_buffer) {
     ContainerObject container_obj;
     for (uint64_t i = 0; i < trace_length; i++) {
         get(&container_obj, walker_container_ptr + i * sizeof(ContainerObject), sizeof(ContainerObject));
@@ -31,23 +31,3 @@ void run_thread(uint64_t walker_container_ptr, uint64_t trace_length) {
     }
 }
 BARRIER_INIT(my_barrier, NR_TASKLETS);
-
-int main() {
-    uint64_t walker_id = me();
-    if (walker_id == 0) {
-        mem_reset();
-        mem_malloc();
-    }
-    // Barrier
-    barrier_wait(&my_barrier);
-    Metadata metadata;
-    get(&metadata, 0, sizeof(Metadata));
-    if (walker_id >= metadata.walker_num) {
-        return 0;
-    }
-
-    uint64_t walker_container_ptr = metadata.walker_container_ptrs[walker_id];
-    uint64_t trace_length = metadata.trace_lengths[walker_id];
-    run_thread(walker_container_ptr, trace_length);
-
-}

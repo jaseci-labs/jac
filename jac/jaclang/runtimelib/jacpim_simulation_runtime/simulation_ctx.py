@@ -65,7 +65,7 @@ def generate_stats(simulation_results: dict[tuple[int, ...], SimStats]) -> None:
         inst_count = sum(
             stats.logic.inst.get(inst, 0) for stats in simulation_results.values()
         )
-        print(inst_count)
+        print(inst, inst_count)
 
     # Log the aggregated stats
     print(f"Total DMA cycles: {total_dma}")

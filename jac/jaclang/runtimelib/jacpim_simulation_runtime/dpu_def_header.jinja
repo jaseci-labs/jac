@@ -7,9 +7,6 @@
 #include <barrier.h>
 
 // #define DEBUG
-
-void *node_buffer;
-void *walker_buffer;
 typedef struct __Metadata {
   {{metadata_definition}}
 } Metadata;
@@ -61,9 +58,4 @@ void run_on_node(uint64_t walker_ptr, uint64_t node_ptr, uint64_t edge_num, uint
     {{run_ability_function.full_name()}}(node_ptr, 0, walker_ptr);
   }
   {% endfor %}
-}
-
-void mem_malloc() {
-    node_buffer = mem_alloc({{max_node_size}});
-    walker_buffer = mem_alloc({{max_walker_size}});
 }

@@ -1,2 +1,18 @@
 {% include "dpu_def_header.jinja" %}
 {% include "dpu_support.h" %}
+
+int main() {
+    uint64_t walker_id = me();
+    char node_buffer[{{max_node_size}}];
+    char walker_buffer[{{max_walker_size}}];
+    Metadata metadata;
+    get(&metadata, 0, sizeof(Metadata));
+    if (walker_id >= metadata.walker_num) {
+        return 0;
+    }
+
+    uint64_t walker_container_ptr = metadata.walker_container_ptrs[walker_id];
+    uint64_t trace_length = metadata.trace_lengths[walker_id];
+    run_thread(walker_container_ptr, trace_length, node_buffer, walker_buffer);
+
+}
