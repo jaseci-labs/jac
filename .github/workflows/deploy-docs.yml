@@ -128,16 +128,17 @@ jobs:
 
       # Prepare documentation for serving
       - name: Prepare documentation for serving
+        working-directory: .
         run: |
           echo "Preparing MkDocs for serving..."
 
-          # Create build info file
-          echo "Build Information:" > build-info.txt
-          echo "Version: ${{ steps.tag.outputs.tag }}" >> build-info.txt
-          echo "Built: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> build-info.txt
-          echo "Commit: ${{ github.sha }}" >> build-info.txt
-          echo "Branch: ${{ github.ref_name }}" >> build-info.txt
-          echo "Trigger: ${{ github.event_name }}" >> build-info.txt
+          # Create build info file in docs directory
+          echo "Build Information:" > docs/build-info.txt
+          echo "Version: ${{ steps.tag.outputs.tag }}" >> docs/build-info.txt
+          echo "Built: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> docs/build-info.txt
+          echo "Commit: ${{ github.sha }}" >> docs/build-info.txt
+          echo "Branch: ${{ github.ref_name }}" >> docs/build-info.txt
+          echo "Trigger: ${{ github.event_name }}" >> docs/build-info.txt
 
           echo "Documentation prepared for serving"      # Build and push Docker image
       - name: Build and push Docker image
@@ -163,6 +164,7 @@ jobs:
           # Copy documentation files
           COPY docs/ ./docs/
           COPY jac/ ./jac/
+          COPY scripts/ ./scripts/
 
           # Install Python dependencies
           RUN pip install -e ./jac
