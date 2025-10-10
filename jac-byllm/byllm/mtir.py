@@ -8,7 +8,6 @@ from typing import Callable, get_type_hints
 
 from byllm.schema import json_to_instance, type_to_schema
 from byllm.types import (
-    LiteLLMMessage,
     Media,
     Message,
     MessageRole,
@@ -150,7 +149,7 @@ class MTIR:
         """Add a message to the request."""
         self.messages.append(message)
 
-    def get_msg_list(self) -> list[dict[str, object] | LiteLLMMessage]:
+    def get_msg_list(self) -> "list[dict[str, object] | MessageType]":
         """Return the messages in a format suitable for LLM API."""
         return [
             msg.to_dict() if isinstance(msg, Message) else msg for msg in self.messages

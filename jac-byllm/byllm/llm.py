@@ -17,7 +17,6 @@ from byllm.mtir import MTIR
 # https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json
 os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
 
-from .llm_connector import LLMConnector
 from .types import CompletionResult
 
 SYSTEM_PERSONA = """\
@@ -48,6 +47,8 @@ class Model:
             api_key: API key for the model provider
             **kwargs: Additional configuration options
         """
+        from .llm_connector import LLMConnector
+
         self.llm_connector = LLMConnector.for_model(model_name, **kwargs)
 
     def __call__(self, **kwargs: object) -> "Model":

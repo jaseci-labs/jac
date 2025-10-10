@@ -12,19 +12,22 @@ from contextlib import suppress
 from dataclasses import dataclass
 from enum import StrEnum
 from io import BytesIO
-from typing import Callable, TypeAlias, get_type_hints
+from typing import Callable, TYPE_CHECKING, TypeAlias, get_type_hints
 
 from PIL.Image import open as open_image
-
-from litellm.types.utils import Message as LiteLLMMessage
 
 from pydantic import TypeAdapter
 
 from .schema import tool_to_schema
 
-# The message can be a jaclang defined message or what ever the llm
-# returned object that was feed back to the llm as it was given (dict).
-MessageType: TypeAlias = "Message | LiteLLMMessage"
+if TYPE_CHECKING:
+    from litellm.types.utils import Message as LiteLLMMessage
+
+    # The message can be a jaclang defined message or what ever the llm
+    # returned object that was feed back to the llm as it was given (dict).
+    MessageType: TypeAlias = "Message | LiteLLMMessage"
+else:
+    MessageType: TypeAlias = "Message"
 
 
 class MessageRole(StrEnum):

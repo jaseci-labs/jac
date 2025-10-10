@@ -22,6 +22,7 @@ os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
 
 import litellm
 from litellm._logging import _disable_debugging
+from litellm.types.utils import Message as LiteLLMMessage
 
 from openai import OpenAI
 
@@ -29,7 +30,6 @@ from .mtir import MTIR
 
 from .types import (
     CompletionResult,
-    LiteLLMMessage,
     MockToolCall,
     ToolCall,
 )
