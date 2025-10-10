@@ -1,7 +1,7 @@
 """Semstrings: Semantic string definitions for LLM-guided functions."""
 from __future__ import annotations
 from jaclang.lib import call_llm, get_mtir, sem
-from byllm.lib import Model
+from byllm import Model
 llm = Model(model_name='mockllm', outputs=['SecureP@ss1'])
 
 @sem('\nPassword is at least 8 characters, has one uppercase letter,\none lowercase letter, one digit, and one special character.\n', {})

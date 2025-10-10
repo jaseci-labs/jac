@@ -1,6 +1,6 @@
 """Semstrings: Semantic string definitions for LLM-guided functions."""
 
-import from byllm.lib { Model }
+import from byllm { Model }
 
 let llm = Model(model_name="mockllm", outputs=["SecureP@ss1"]);
 

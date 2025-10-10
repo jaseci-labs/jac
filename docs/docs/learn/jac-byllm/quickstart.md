@@ -44,7 +44,7 @@ The `by` keyword abstraction enables functions to process inputs of any type and
 #### Step 1: Configure LLM Model
 
 ```jac linenums="1"
-import from byllm.lib {Model}
+import from byllm {Model}
 
 glob llm = Model(model_name="gemini/gemini-2.0-flash");
 ```
@@ -77,7 +77,7 @@ As byLLM is a python package, it can be natively used in jac. The following code
 
 ```python linenums="1"
 import jaclang
-from byllm.lib import Model, by
+from byllm import Model, by
 from enum import Enum
 
 llm = Model(model_name="gemini/gemini-2.0-flash")

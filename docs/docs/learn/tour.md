@@ -35,7 +35,7 @@ This snippet natively imports Python packages `math` and `random` and runs ident
 Jac provides novel constructs for integrating LLMs into code. A function body can simply be replaced with a call to an LLM, removing the need for prompt engineering or extensive use of new libraries.
 
 ```jac
-import from byllm.lib { Model }
+import from byllm { Model }
 glob llm = Model(model_name="gpt-4o");
 
 enum Personality {

@@ -1,4 +1,4 @@
-import from byllm.lib { Model, Video }
+import from byllm { Model, Video }
 
 glob llm = Model(model_name="gpt-4o");
 

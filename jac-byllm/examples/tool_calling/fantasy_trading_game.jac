@@ -3,7 +3,7 @@ Fantasy Trading Game - An interactive RPG trading simulation using byLLM
 Demonstrates byLLM character generation, conversation, and transaction systems
 """
 
-import from byllm.lib { Model }
+import from byllm { Model }
 import from os { get_terminal_size }
 
 

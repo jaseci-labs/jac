@@ -1,4 +1,4 @@
-import from byllm.lib { Model }
+import from byllm { Model }
 import wikipedia;
 
 glob llm = Model(model_name="gpt-4o-mini");

@@ -13,7 +13,7 @@ pip install byllm[video]
 byLLM supports image inputs through the `Image` format. Images can be provided as input to byLLM functions or methods:
 
 ```jac
-import from byllm.lib { Model, Image }
+import from byllm { Model, Image }
 
 glob llm = Model(model_name="gpt-4o");
 
@@ -57,7 +57,7 @@ In this example, an image of a person is provided as input to the `get_person_in
 byLLM supports video inputs through the `Video` format. Videos can be provided as input to byLLM functions or methods:
 
 ```jac
-import from byllm.lib { Model, Video }
+import from byllm { Model, Video }
 
 glob llm = Model(model_name="gpt-4o");
 

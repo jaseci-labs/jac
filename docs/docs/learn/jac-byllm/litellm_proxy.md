@@ -11,7 +11,7 @@ Reference: [https://docs.litellm.ai/docs/proxy/deploy](https://docs.litellm.ai/d
 Once The proxy server is setted up and running, you can connect to it by simply passing the URL of the proxy server to the byLLM model with the parameter `proxy_url`:
 
 ```python
-from byllm.lib import Model
+from byllm import Model
 
 llm = Model(
     model_name="gpt-4o",                # The model name to be used

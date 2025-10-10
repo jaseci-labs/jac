@@ -1,8 +1,8 @@
+
 from os import path
 from dataclasses import dataclass
 
-from byllm.lib import by, Model, Image
-
+from byllm import by, Model, Image
 
 @dataclass
 class Person:
@@ -10,22 +10,21 @@ class Person:
     birth_year: int
     description: str
 
-
 llm = Model(
     # model_name="gpt-4o",
     model_name="mockllm",
     outputs=[
         Person(
-            name="Alan Turing",
+            name='Alan Turing',
             birth_year=1912,
             description=(
-                "A pioneering mathematician and computer scientist, known for "
-                "his work in developing the concept of a Turing machine and "
-                "for his crucial role in breaking the Enigma code during World "
-                "War II."
-            ),
+                'A pioneering mathematician and computer scientist, known for '
+                'his work in developing the concept of a Turing machine and '
+                'for his crucial role in breaking the Enigma code during World '
+                'War II.'
+            )
         )
-    ],
+    ]
 )
 
 

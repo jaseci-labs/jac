@@ -1,15 +1,11 @@
 """Plugin for Jac's with_llm feature."""
 
-from __future__ import annotations
+from typing import Callable
 
-
-from typing import Callable, TYPE_CHECKING
+from byllm.llm import Model
+from byllm.mtir import MTIR
 
 from jaclang.runtimelib.machine import hookimpl
-
-if TYPE_CHECKING:
-    from byllm.llm import Model
-    from byllm.mtir import MTIR
 
 
 class JacMachine:
@@ -19,8 +15,6 @@ class JacMachine:
     @hookimpl
     def get_mtir(caller: Callable, args: dict, call_params: dict) -> object:
         """Call JacLLM and return the result."""
-        from byllm.mtir import MTIR
-
         return MTIR.factory(caller, args, call_params)
 
     @staticmethod
@@ -36,8 +30,6 @@ class JacMachine:
 
         def _decorator(caller: Callable) -> Callable:
             def _wrapped_caller(*args: object, **kwargs: object) -> object:
-                from byllm.mtir import MTIR
-
                 invoke_args: dict[int | str, object] = {}
                 for i, arg in enumerate(args):
                     invoke_args[i] = arg

@@ -1,5 +1,5 @@
 
-import from byllm.lib { Model }
+import from byllm { Model }
 import from pathlib { Path }
 
 glob llm = Model(model_name="gpt-4o-mini");

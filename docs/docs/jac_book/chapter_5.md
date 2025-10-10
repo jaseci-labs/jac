@@ -82,7 +82,7 @@ pip install byllm
 Next we replace the OpenAI import with that of the byLLM package
 
 ```jac
-import from byllm.lib { Model }
+import from byllm { Model }
 glob llm = Model(model_name="gpt-4.1-mini");
 ```
 <br />
@@ -94,7 +94,7 @@ def write_poetry(topic: str) -> str by llm();
 Finally, lets put it all together and run the Jac code:
 ```jac
 # mt_poem.jac - Simple AI integration
-import from byllm.lib { Model }
+import from byllm { Model }
 
 glob llm = Model(model_name="gpt-4.1-mini");
 
@@ -137,7 +137,7 @@ Next we'll make use of MLTLLM's `Image` function to handle image inputs. This fu
 
 ```jac
 # image_captioning.jac - Simple Image Captioning Tool
-import from byllm.lib { Model, Image }
+import from byllm { Model, Image }
 
 glob llm = Model(model_name="gpt-4o-mini");
 
@@ -169,7 +169,7 @@ byLLM supports various AI models through the unified `Model` interface. For exam
 
 ```jac
 # basic_setup.jac
-import from byllm.lib { Model, Image }
+import from byllm { Model, Image }
 
 # Configure different models
 glob text_model = Model(model_name="gpt-4o");
@@ -182,7 +182,7 @@ glob gemini_model = Model(model_name="gemini-2.0-flash");
 The `Model` class allows you to configure various parameters for your AI model, such as temperature, max tokens, and more. Here's an example of how to set up a model with custom parameters:
 
 ```jac
-import from byllm.lib { Model, Image }
+import from byllm { Model, Image }
 
 # Configure model with custom parameters
 glob creative_model = Model(
@@ -210,7 +210,7 @@ Below is a breakdown of the parameters you can configure when creating a `Model`
 Here we have a simple example of how to use the `Model` class to create a model instance with custom parameters:
 ```jac
 # model_config.jac
-import from byllm.lib { Model, Image }
+import from byllm { Model, Image }
 
 # Configure model with custom parameters
 glob creative_model = Model(
@@ -252,7 +252,7 @@ Let's progressively build an image captioning tool that demonstrates byLLM's cap
 
 ```jac
 # image_captioner.jac
-import from byllm.lib { Model, Image }
+import from byllm { Model, Image }
 
 glob vision_llm = Model(model_name="gpt-4o-mini");
 
@@ -307,7 +307,7 @@ the stylish outfit of the dog contribute to a fun and lighthearted atmosphere.
 
 ```jac
 # enhanced_captioner.jac
-import from byllm.lib { Model, Image }
+import from byllm { Model, Image }
 
 glob vision_llm = Model(model_name="gpt-4.1-mini");
 
@@ -363,7 +363,7 @@ AI applications require robust error handling and testing strategies.
 
 ```jac
 # robust_ai.jac
-import from byllm.lib { Model, Image }
+import from byllm { Model, Image }
 
 glob reliable_llm = Model(model_name="gpt-4o", max_tries=3);
 

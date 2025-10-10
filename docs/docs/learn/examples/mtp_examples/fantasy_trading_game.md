@@ -59,7 +59,7 @@ obj Chat {
 Configure the LLM for AI operations:
 
 ```jac
-import from byllm.lib {Model}
+import from byllm {Model}
 
 glob llm = Model(model_name="gpt-4o");
 ```
