@@ -123,18 +123,19 @@ class JacProgram:
         # options in it.
         no_cgen: bool = False,
         type_check: bool = False,
+        cancel_token = None,
     ) -> uni.Module:
         """Convert a Jac file to an AST."""
         keep_str = use_str or read_file_with_encoding(file_path)
         mod_targ = self.parse_str(keep_str, file_path)
-        self.run_schedule(mod=mod_targ, passes=ir_gen_sched)
+        self.run_schedule(mod=mod_targ, passes=ir_gen_sched, cancel_token=cancel_token)
         if type_check:
-            self.run_schedule(mod=mod_targ, passes=type_check_sched)
+            self.run_schedule(mod=mod_targ, passes=type_check_sched, cancel_token=cancel_token)
         # If the module has syntax errors, we skip code generation.
         if (not mod_targ.has_syntax_errors) and (not no_cgen):
             if settings.predynamo_pass and PreDynamoPass not in py_code_gen:
                 py_code_gen.insert(0, PreDynamoPass)
-            self.run_schedule(mod=mod_targ, passes=py_code_gen)
+            self.run_schedule(mod=mod_targ, passes=py_code_gen, cancel_token=cancel_token)
         return mod_targ
 
     def build(
@@ -151,14 +152,20 @@ class JacProgram:
         self,
         mod: uni.Module,
         passes: list[type[Transform[uni.Module, uni.Module]]],
+        cancel_token=None,
     ) -> None:
         """Run the passes on the module."""
         final_pass: Optional[type[Transform[uni.Module, uni.Module]]] = None
         for current_pass in passes:
+            if cancel_token and cancel_token.is_set():
+                logger.info("Compilation cancelled")
+                return
             if current_pass == PyBytecodeGenPass:
                 final_pass = current_pass
                 break
             current_pass(ir_in=mod, prog=self)  # type: ignore
+        if cancel_token and cancel_token.is_set():
+            return
         if final_pass:
             final_pass(mod, prog=self)
 

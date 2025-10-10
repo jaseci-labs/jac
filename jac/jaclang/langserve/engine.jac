@@ -3,6 +3,7 @@
 import asyncio;
 import logging;
 import time;
+import threading;
 import from concurrent.futures { ThreadPoolExecutor }
 import from typing { Callable, Optional }
 
@@ -19,7 +20,6 @@ import from jaclang.vendor.pygls.server { LanguageServer }
 
 import lsprotocol.types as lspt;
 import utils;
-
 
 """Handles Jac module, semantic manager, and alert management."""
 class ModuleManager {
@@ -49,10 +49,9 @@ class ModuleManager {
 
     """Remove errors and warnings for a specific file from the lists."""
     def clear_alerts_for_file(self: ModuleManager, file_path_fs: str) -> None {
-        self.program.errors_had =
-            [ e for e in self.program.errors_had if e.loc.mod_path != file_path_fs ];
-        self.program.warnings_had =
-            [ w for w in self.program.warnings_had if w.loc.mod_path != file_path_fs ];
+        self.program.errors_had =[ e for e in self.program.errors_had if e.loc.mod_path != file_path_fs ];
+        self.program.warnings_had = [ w for w in self.program.warnings_had if w.loc.mod_path != file_path_fs ];
+    
     }
 }
 
@@ -64,11 +63,11 @@ class JacLangServer(JacProgram , LanguageServer) {
         LanguageServer.init(self, 'jac-lsp', 'v0.1');
         JacProgram.init(self);
         self.executor = ThreadPoolExecutor();
-        self.tasks: dict[(str, asyncio.Task)] = {};
         self.sem_managers: dict[(str, SemTokManager)] = {};
         self.module_manager = ModuleManager(self, self.sem_managers);
-        self._quick_tasks: dict[str, asyncio.Task] = {};
-        self._deep_tasks: dict[str, asyncio.Task] = {};
+        # Threading support - per file thread with cancellation token
+        self.type_check_threads: dict[str, threading.Thread] = {};
+        self.cancel_tokens: dict[str, threading.Event] = {};
     }
 
     """Return diagnostics for all files as a dict {uri: diagnostics}."""
@@ -104,102 +103,49 @@ class JacLangServer(JacProgram , LanguageServer) {
         self.module_manager.update(file_path, build, update_annexed=need);
     }
 
-    """Rebuild a file (syntax only)."""
-    def quick_check(self: JacLangServer, file_path: str) -> bool {
+    """Type check a file with cancellation support."""
+    def type_check_file(self: JacLangServer, file_path: str, cancel_token: threading.Event) -> None {
         try {
             document = self.workspace.get_text_document(file_path);
             fs_path = document.path;
 
             self._clear_alerts_for_file(fs_path);
-            build = self.compile(use_str=document.source, file_path=fs_path);
-            self.update_modules(fs_path, build, need=False);
-            # to display diagnostics, it needs URI starts with "file://"
-            self.publish_diagnostics(
-                file_path,
-                utils.gen_diagnostics(fs_path, self.errors_had, self.warnings_had)
-            );
-            build_errors =
-                [ e for e in self.errors_had if e.loc.mod_path == fs_path];
-            return len(build_errors) == 0;
-        } except Exception as e {
-            self.log_error(f"'Error during syntax check: '{e}");
-            return False;
-        }
-    }
-
-    """Rebuild a file and its dependencies (typecheck)."""
-    def deep_check(
-        self: JacLangServer,
-        file_path: str,
-        annex_view: Optional[str] = None
-    ) -> bool {
-        try {
-            start_time = time.time();
-            document = self.workspace.get_text_document(file_path);
-            fs_path = document.path;
-
-            self._clear_alerts_for_file(fs_path);
-            build = self.compile(use_str=document.source, file_path=document.path,type_check=True);
-            self.update_modules(fs_path, build);
-            if build.annexable_by {
-                return self.deep_check(
-                    uris.from_fs_path(build.annexable_by),
-                    annex_view=fs_path
-                );
-            }
-            self.publish_diagnostics(
-                # to display diagnostic , it need URI starts with "file://"
-                uris.from_fs_path(annex_view) if annex_view else uris.from_fs_path(fs_path) ,
-                utils.gen_diagnostics(
-                    annex_view if annex_view else fs_path,
-                    self.errors_had,
-                    self.warnings_had
-                )
-            );
-            if annex_view {
+            # Pass cancel_token to compile method for cancellation support
+            build = self.compile(fs_path, document.source, type_check=True, cancel_token=cancel_token);
+            if not cancel_token.is_set() {
+                self.update_modules(fs_path, build);
+                # to display diagnostics, it needs URI starts with "file://"
                 self.publish_diagnostics(
-                    uris.from_fs_path(fs_path) ,
+                    file_path,
                     utils.gen_diagnostics(fs_path, self.errors_had, self.warnings_had)
                 );
             }
-            self.log_py(
-                f"'PROFILE: Deep check took '{(time.time() - start_time)}' seconds.'"
-            );
-            return len(self.errors_had) == 0;
         } except Exception as e {
-            self.log_py(f"'Error during deep check: '{e}");
-            return False;
+            if not cancel_token.is_set() {
+                self.log_error(f"'Error during type check: '{e}");
+            }
         }
     }
 
-    """Analyze and publish diagnostics with debouncing."""
-    async def launch_quick_check(self: JacLangServer, uri: str, delay: float = 0.5) -> bool {
-        try {
-            return await self._debounced_run(self.quick_check, uri, delay, self._quick_tasks);
-        } except asyncio.CancelledError {
-            return False;
-        } except Exception as e {
-            self.log_error(f" 'Error during quick check launch: ' {e} ");
-            return False;
+    """Type check with thread cancellation."""
+    async def type_check(self: JacLangServer, file_path: str) -> None {
+        # Cancel existing thread for this file if running
+        if file_path in self.cancel_tokens {
+            self.cancel_tokens[file_path].set();
         }
-    }
-    """Analyze and publish diagnostics with debouncing."""
-    async def launch_deep_check(
-        self: JacLangServer,
-        uri: str,
-        delay: float = 1.0,
-        annex_view: Optional[str] = None
-    ) -> bool {
-        def deep_check_wrapper(file_uri: str) -> bool {
-            return self.deep_check(file_uri, annex_view);
-        }
-        try {
-            return await self._debounced_run(deep_check_wrapper, uri, delay, self._deep_tasks);
-        } except asyncio.CancelledError {
-            return False;
-        } except Exception as e {
-            self.log_error(f" 'Error during deep check launch: ' {e} ");
-        }
+        
+        # Create new cancellation token
+        self.cancel_tokens[file_path] = threading.Event();
+        
+        # Start new thread for type checking
+        self.type_check_threads[file_path] = threading.Thread(
+            target=self.type_check_file, 
+            args=(file_path, self.cancel_tokens[file_path])
+        );
+        self.type_check_threads[file_path].start();
+        
+        # Synchronous wait for thread to finish
+        await asyncio.to_thread(self.type_check_threads[file_path].join);
     }
 
     def get_token_at_position(self: JacLangServer, file_path: str, position: lspt.Position) -> Optional[uni.AstNode] {
@@ -591,36 +537,6 @@ class JacLangServer(JacProgram , LanguageServer) {
         logging.info(message);
     }
 
-    """Run a function with debouncing per file."""
-    async def _debounced_run(
-        self: JacLangServer,
-        func: Callable,
-        file_uri: str,
-        delay: float,
-        task_dict: dict[(str, asyncio.Task)]
-    ) -> None {
-        if ((file_uri in task_dict) and not task_dict[file_uri].done() ) {
-            task_dict[file_uri].cancel();
-            self.log_py(
-                f" {func.__name__} ' was cancelled due to debounce for ' {file_uri} "
-            );
-        }
-        async def wrapper() {
-            try {
-                await asyncio.sleep(delay);
-                loop = asyncio.get_event_loop();
-                result = await loop.run_in_executor(None, func, file_uri);
-                return result;
-            } except asyncio.CancelledError {
-                self.log_py(
-                    f" {func.__name__} ' was cancelled due to debounce for ' {file_uri} "
-                );
-                raise ;
-            }
-        }
-        new_task = asyncio.create_task(wrapper());
-        task_dict[file_uri] = new_task;
-        return await new_task;
-    }
+
 
 }

@@ -28,20 +28,17 @@ def debug(ls: JacLangServer, msg: str) -> None {
 """Check syntax on change."""
 @server.feature(lspt.TEXT_DOCUMENT_DID_OPEN)
 async def did_open(ls: JacLangServer, params: lspt.DidOpenTextDocumentParams) -> None {
-    await ls.launch_deep_check(params.text_document.uri, delay=0.001);
+    await ls.type_check(params.text_document.uri);
     ls.lsp.send_request(lspt.WORKSPACE_SEMANTIC_TOKENS_REFRESH);
 }
 
 
 """Check syntax on change."""
 @server.feature(lspt.TEXT_DOCUMENT_DID_SAVE)
-async def did_save(ls: JacLangServer, params: lspt.DidOpenTextDocumentParams) -> None {
+async def did_save(ls: JacLangServer, params: lspt.DidOpenTextDocumentParams) -> None { 
+    
     file_path = params.text_document.uri;
-    quick_check_passed = await ls.launch_quick_check(file_path, delay=0.1);
-    if not quick_check_passed {
-        return;
-    }
-    await ls.launch_deep_check(file_path, delay=0.2);
+    await ls.type_check(file_path);
     ls.lsp.send_request(lspt.WORKSPACE_SEMANTIC_TOKENS_REFRESH);
 }
 
@@ -70,19 +67,12 @@ async def did_change(
         ls.log_py(f" 'Failed to update semantic tokens: ' {e} ");
     }
 
-    debug(ls, "Compilation started...");
-    ls.log_py(f" 'Launching debounced quick check for ' {file_path} ");
-    quick_check_passed = await ls.launch_quick_check(file_path, delay=0.5);
-    if quick_check_passed {
-        ls.log_py(
-            f" 'Quick check passed, launching debounced deep check for ' {file_path} "
-        );
-        await ls.launch_deep_check(file_path, delay=1.0);
-
-        ls.lsp.send_request(lspt.WORKSPACE_SEMANTIC_TOKENS_REFRESH);
-    }
+    debug(ls, "Type checking started...");
+    ls.log_py(f" 'Launching type check for ' {file_path} ");
+    await ls.type_check(file_path);
+    ls.lsp.send_request(lspt.WORKSPACE_SEMANTIC_TOKENS_REFRESH);
     still_compiling = False;
-    debug(ls, "Compilation finished...");
+    debug(ls, "Type checking finished...");
 }
 
 """Format the given document."""
