@@ -1,20 +1,25 @@
 """File covering k8 automation."""
 
+import os
 import time
+
+
+from dotenv import load_dotenv
 
 from kubernetes import client, config
 from kubernetes.client.exceptions import ApiException
 
-
+load_dotenv()
 # -------------------
 # Configuration
 # -------------------
-app_name = "fastapi-app"
-image_name = "juzailmlwork/littlex:latest"
-namespace = "default"
-container_port = 8000
-node_port = 30001
-
+app_name = os.getenv("APP_NAME", "./fastapi-app")
+image_name = os.getenv("IMAGE_NAME", "jaseci:latest")
+namespace = os.getenv("NAMESPACE", "default")
+container_port = os.getenv("CONTAINER_PORT", "8000")
+node_port = os.getenv("NODE_PORT", "30001")
+docker_username = os.getenv("DOCKER_USERNAME", "juzailmlwork")
+repository_name = f"{docker_username}/{image_name}"
 
 # -------------------
 # Step 2: Load kubeconfig
@@ -39,8 +44,8 @@ deployment = {
                 "containers": [
                     {
                         "name": app_name,
-                        "image": image_name,
-                        "ports": [{"containerPort": 8000}],
+                        "image": repository_name,
+                        "ports": [{"containerPort": int(container_port)}],
                     }
                 ],
             },

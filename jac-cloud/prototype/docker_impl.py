@@ -68,7 +68,7 @@ def push_docker_image(
 
 
 if __name__ == "__main__":
-    image_name = os.getenv("IMAGE_NAME", "jaseci:latest")
+    image_name = os.getenv("APP_NAME", "jaseci:latest")
     context_path = os.getenv("CONTEXT_PATH", "./fastapi-app")
     docker_username = os.getenv("DOCKER_USERNAME", "juzailmlwork")
     docker_password = os.getenv("DOCKER_PASSWORD", "12345")
