@@ -67,15 +67,20 @@ def push_docker_image(
         print("pushed image sucessfully to dockerhub")
 
 
-if __name__ == "__main__":
-    image_name = os.getenv("APP_NAME", "jaseci:latest")
+def build_and_push_docker() -> None:
+    """Deploy example."""
+    image_name = os.getenv("IMAGE_NAME", "jaseci:latest")
     context_path = os.getenv("CONTEXT_PATH", "./fastapi-app")
     docker_username = os.getenv("DOCKER_USERNAME", "juzailmlwork")
     docker_password = os.getenv("DOCKER_PASSWORD", "12345")
     repository_name = f"{docker_username}/{image_name}"
-    print(repository_name)
+    print("the repo name is", repository_name)
 
     build_docker_image(image_name=repository_name, context_path=context_path)
     push_docker_image(
         image_name=repository_name, username=docker_username, password=docker_password
     )
+
+
+if __name__ == "__main__":
+    build_and_push_docker()

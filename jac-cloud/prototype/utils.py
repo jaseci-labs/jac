@@ -25,6 +25,6 @@ def zip_project(source_dir: str) -> str:
                 filepath = os.path.join(root, file)
                 arcname = os.path.relpath(filepath, source_dir)
                 zf.write(filepath, arcname)
-                print(f" Added: {arcname}")
+                # print(f" Added: {arcname}")
     print(f"Project zipped as {output_filename}")
     return output_filename
