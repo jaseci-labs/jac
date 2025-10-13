@@ -47,6 +47,8 @@ obj Chat {
     has person: str;
     has message: str;
 }
+
+glob person_record: dict[str, Person] = {};
 ```
 
 **Structure definitions:**
