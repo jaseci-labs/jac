@@ -1,0 +1,44 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "ElasticBeanstalkPermissions",
+            "Effect": "Allow",
+            "Action": [
+                "elasticbeanstalk:CreateApplication",
+                "elasticbeanstalk:CreateEnvironment",
+                "elasticbeanstalk:UpdateEnvironment",
+                "elasticbeanstalk:CreateApplicationVersion",
+                "elasticbeanstalk:DescribeApplications",
+                "elasticbeanstalk:DescribeEnvironments",
+                "elasticbeanstalk:DeleteApplication",
+                "elasticbeanstalk:DeleteEnvironment"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Sid": "IAMPermissions",
+            "Effect": "Allow",
+            "Action": [
+                "iam:CreateRole",
+                "iam:AttachRolePolicy",
+                "iam:CreateInstanceProfile",
+                "iam:AddRoleToInstanceProfile",
+                "iam:GetRole",
+                "iam:PassRole"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Sid": "S3Permissions",
+            "Effect": "Allow",
+            "Action": [
+                "s3:PutObject",
+                "s3:GetObject",
+                "s3:CreateBucket",
+                "s3:ListBucket"
+            ],
+            "Resource": "*"
+        }
+    ]
+}

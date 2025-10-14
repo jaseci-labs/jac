@@ -26,8 +26,39 @@ def deploy_beanstalk() -> None:
     s3_bucket = os.getenv("S3_BUCKET", "jaseci-deploy")
     region = os.getenv("REGION", "us-east-1")
     zip_folder = os.getenv("FOLDER", "littleX")
+    # Load credentials from environment (if any)
+    aws_access_key_id = os.getenv("AWS_ACCESS_KEY_ID")
+    aws_secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY")
 
-    eb_client = boto3.client("elasticbeanstalk", region_name=region)
+    # Ensure both or none are provided
+    if bool(aws_access_key_id) ^ bool(aws_secret_access_key):
+        raise ValueError(
+            "Both AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY must be set, or neither."
+        )
+
+    # Create Elastic Beanstalk client
+    if aws_access_key_id and aws_secret_access_key:
+        print("Using provided AWS credentials...")
+        eb_client = boto3.client(
+            "elasticbeanstalk",
+            region_name=region,
+            aws_access_key_id=aws_access_key_id,
+            aws_secret_access_key=aws_secret_access_key,
+            verify=True,
+        )
+    else:
+        print(
+            "Using pre-configured AWS credentials (from ~/.aws/credentials, IAM role, or environment)."
+        )
+        eb_client = boto3.client("elasticbeanstalk", region_name=region, verify=True)
+
+    try:
+        # Make a harmless call to verify credentials
+        eb_client.describe_applications()
+        print("✅ AWS credentials verified successfully.")
+    except Exception:
+        print("AWS credentials are wrong")
+        return
     print("🚀 Starting Elastic Beanstalk deployment...")
 
     # Setup IAM resources first
