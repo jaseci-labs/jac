@@ -71,6 +71,7 @@ class FuseCommentsPass(UniPass):
 
             # Start collecting consecutive comments
             comment_batch = [token]
+            current_token_index = i - 1
             next_idx = i + 1
 
             # Gather consecutive comments
@@ -86,14 +87,32 @@ class FuseCommentsPass(UniPass):
             else:
                 # Insert before the next non-comment token in its parent's children
                 next_token = merged_tokens[next_idx]
-                if next_token.parent is None:
-                    raise self.ice(
-                        f"Token {next_token.pp()} without parent in AST while"
-                        f" inserting comments batch"
-                    )
-                parent_node = next_token.parent
-                insert_index = parent_node.kid.index(next_token)
-                parent_node.insert_kids_at_pos(comment_batch, insert_index)
+                current_token = merged_tokens[current_token_index]
+
+                if current_token.loc.first_line == comment_batch[0].loc.first_line:
+                    # Current token is on the same line as the first comment in batch
+                    # This means first comment is inline, so insert after current_token
+                    # and insert rest of batch after that
+                    if current_token.parent is None:
+                        raise self.ice(
+                            f"Token {next_token.pp()} without parent in AST while"
+                            f" inserting comments batch"
+                        )
+                    parent_node = current_token.parent
+                    insert_index = parent_node.kid.index(current_token) + 1
+                    parent_node.insert_kids_at_pos([comment_batch[0]], insert_index)
+                    comment_batch.pop(0)
+
+                # Normal case: insert before next_token
+                if len(comment_batch):
+                    if next_token.parent is None:
+                        raise self.ice(
+                            f"Token {next_token.pp()} without parent in AST while"
+                            f" inserting comments batch"
+                        )
+                    parent_node = next_token.parent
+                    insert_index = parent_node.kid.index(next_token)
+                    parent_node.insert_kids_at_pos(comment_batch, insert_index)
 
             # Skip past all the comments we just processed
             i = next_idx
