@@ -1,7 +1,17 @@
 """File covering plugin implementation."""
 
+import os
+
+from beanstalk import deploy_beanstalk
+
+from docker_impl import build_and_push_docker
+
+from dotenv import load_dotenv
+
 from jaclang.cli.cmdreg import cmd_registry
 from jaclang.runtimelib.machine import hookimpl
+
+from k8 import deploy_k8
 
 
 class JacCmd:
@@ -15,9 +25,14 @@ class JacCmd:
         @cmd_registry.register
         def scale(code_folder: str, implementation_type: str) -> None:
             """Jac Scale functionality."""
-            print(
-                f"Jac learner lets scale your application! lets implement your application using {implementation_type}"
-            )
+            load_dotenv()
+            deployment_type = os.getenv("DEPLOYMENT_TYPE", "aws")
+
+            if deployment_type == "aws":
+                deploy_beanstalk()
+            elif deployment_type == "k8":
+                build_and_push_docker()
+                deploy_k8()
 
         @cmd_registry.register
         def destroy() -> None:
