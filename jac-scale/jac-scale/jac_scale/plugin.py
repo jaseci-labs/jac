@@ -2,16 +2,14 @@
 
 import os
 
-from beanstalk import deploy_beanstalk
-
-from docker_impl import build_and_push_docker
-
 from dotenv import load_dotenv
 
 from jaclang.cli.cmdreg import cmd_registry
 from jaclang.runtimelib.machine import hookimpl
 
-from k8 import deploy_k8
+from .beanstalk import deploy_beanstalk
+from .docker_impl import build_and_push_docker
+from .k8 import deploy_k8
 
 
 class JacCmd:

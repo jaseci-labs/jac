@@ -3,7 +3,11 @@
 import os
 from datetime import datetime
 
-from aws import (
+import boto3
+
+from dotenv import load_dotenv
+
+from .aws import (
     availability_precheck,
     create_application_version,
     ensure_environment_exists_docker,
@@ -11,12 +15,7 @@ from aws import (
     setup_iam_resources,
     upload_to_s3,
 )
-
-import boto3
-
-from dotenv import load_dotenv
-
-from utils import zip_project
+from .utils import zip_project
 
 load_dotenv()
 
