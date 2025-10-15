@@ -1,11 +1,15 @@
 """File covering beanstalk implementation."""
 
 import json
+import os
 import time
 
 import boto3
 
+
 from botocore.exceptions import ClientError
+
+from dotenv import dotenv_values
 
 from mypy_boto3_elasticbeanstalk import ElasticBeanstalkClient
 
@@ -193,6 +197,7 @@ def ensure_environment_exists_docker(
     region: str,
     app_name: str,
     env_name: str,
+    options_settings: list,
 ) -> None:
     """Temperary doc string."""
     envs = eb_client.describe_environments(ApplicationName=app_name)["Environments"]
@@ -224,28 +229,31 @@ def ensure_environment_exists_docker(
     platform_arn = platform_list[0]["PlatformArn"]
     print(f"✅ Using platform ARN: {platform_arn}")
     if not existing_env:
+        first_time_options_settings = [
+            {
+                "Namespace": "aws:elasticbeanstalk:environment",
+                "OptionName": "EnvironmentType",
+                "Value": "SingleInstance",
+            },
+            {
+                "Namespace": "aws:autoscaling:launchconfiguration",
+                "OptionName": "IamInstanceProfile",
+                "Value": instance_profile_name,
+            },
+            {
+                "Namespace": "aws:elasticbeanstalk:environment",
+                "OptionName": "ServiceRole",
+                "Value": f"arn:aws:iam::{account_id}:role/{service_role_name}",
+            },
+        ]
+        options_settings.extend(first_time_options_settings)
+
         env_response = eb_client.create_environment(
             ApplicationName=app_name,
             EnvironmentName=env_name,
             VersionLabel=version_label,
             PlatformArn=platform_arn,
-            OptionSettings=[
-                {
-                    "Namespace": "aws:elasticbeanstalk:environment",
-                    "OptionName": "EnvironmentType",
-                    "Value": "SingleInstance",
-                },
-                {
-                    "Namespace": "aws:autoscaling:launchconfiguration",
-                    "OptionName": "IamInstanceProfile",
-                    "Value": instance_profile_name,
-                },
-                {
-                    "Namespace": "aws:elasticbeanstalk:environment",
-                    "OptionName": "ServiceRole",
-                    "Value": f"arn:aws:iam::{account_id}:role/{service_role_name}",
-                },
-            ],
+            OptionSettings=options_settings,
         )
         print(f"Created single-instance environment '{env_name}'")
         print(f"Environment ID: {env_response.get('EnvironmentId')}")
@@ -254,6 +262,7 @@ def ensure_environment_exists_docker(
             ApplicationName=app_name,
             EnvironmentName=env_name,
             VersionLabel=version_label,
+            OptionSettings=options_settings,
         )
         print(f"Updated environment '{env_name}' to version {version_label}")
 
@@ -284,3 +293,33 @@ def ensure_environment_exists_docker(
             "Environment creation may still be in progress. Check AWS console for status."
         )
         print(f"Error details: {str(e)}")
+
+
+def load_env_variables(code_folder: str = ".env") -> list:
+    """Temperary doc string."""
+    env_file = os.path.join(code_folder, ".env")
+    env_vars = dotenv_values(env_file)
+    option_settings = []
+    if os.path.exists(env_file):
+        for key, value in env_vars.items():
+            option_settings.append(
+                {
+                    "Namespace": "aws:elasticbeanstalk:application:environment",
+                    "OptionName": key,
+                    "Value": value,
+                }
+            )
+    return option_settings
+
+
+def availability_precheck(code_folder: str) -> None:
+    """Temperary doc string."""
+    all_files = os.listdir(code_folder)
+    needed_files = ["Dockerfile", "requirements.txt"]
+
+    missing_files = [f for f in needed_files if f not in all_files]
+
+    if missing_files:
+        raise FileNotFoundError(f"Missing required files: {', '.join(missing_files)}")
+    else:
+        print("All required files are available.")
