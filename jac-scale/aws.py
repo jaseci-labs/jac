@@ -18,7 +18,6 @@ from mypy_boto3_iam import IAMClient
 
 def create_ec2_instance_role(iam_client: IAMClient, app_name: str) -> None:
     """Create IAM role for EC2 instances in Elastic Beanstalk."""
-    # Trust policy for EC2 service
     iam_role_name = f"{app_name}-ec2-role"
     trust_policy = {
         "Version": "2012-10-17",
@@ -54,7 +53,7 @@ def create_ec2_instance_role(iam_client: IAMClient, app_name: str) -> None:
     for policy_arn in required_policies:
         try:
             iam_client.attach_role_policy(RoleName=iam_role_name, PolicyArn=policy_arn)
-            print(f" Attached policy: {policy_arn}")
+            # print(f" Attached policy: {policy_arn}")
         except ClientError as e:
             if e.response["Error"]["Code"] == "EntityAlreadyExists":
                 print(f" Policy already attached: {policy_arn}")
@@ -104,7 +103,7 @@ def create_service_role(iam_client: IAMClient, app_name: str) -> None:
     try:
         # Check if service role already exists
         iam_client.get_role(RoleName=service_role_name)
-        print(f"ℹ Service role '{service_role_name}' already exists.")
+        print(f"Service role '{service_role_name}' already exists.")
     except ClientError as e:
         if e.response["Error"]["Code"] == "NoSuchEntity":
             # Create the service role
@@ -128,10 +127,10 @@ def create_service_role(iam_client: IAMClient, app_name: str) -> None:
             iam_client.attach_role_policy(
                 RoleName=service_role_name, PolicyArn=policy_arn
             )
-            print(f" Attached service policy: {policy_arn}")
+            # print(f" Attached service policy: {policy_arn}")
         except ClientError as e:
             if e.response["Error"]["Code"] == "EntityAlreadyExists":
-                print(f"ℹ Service policy already attached: {policy_arn}")
+                print(f"Service policy already attached: {policy_arn}")
             else:
                 raise
 
@@ -143,7 +142,7 @@ def setup_iam_resources(app_name: str, region: str) -> None:
     create_ec2_instance_role(iam_client, app_name)
     create_instance_profile(iam_client, app_name)
     create_service_role(iam_client, app_name)
-    print("✅ IAM resources setup complete!")
+    print("IAM resources setup complete!")
 
 
 def get_account_id(region: str) -> str:
@@ -162,7 +161,7 @@ def ensure_application_exists(eb_client: ElasticBeanstalkClient, app_name: str) 
         )
         print(f"Created application '{app_name}'")
     else:
-        print(f"ℹ Application '{app_name}' already exists.")
+        print(f"Application '{app_name}' already exists.")
 
 
 def create_application_version(
@@ -184,9 +183,30 @@ def create_application_version(
 
 
 def upload_to_s3(region: str, file_path: str, bucket: str, key: str) -> None:
-    """Temperary doc string."""
-    print("file path is", file_path)
+    """Upload file to S3, create bucket if missing."""
+    print("File path is:", file_path)
+
     s3_client = boto3.client("s3", region_name=region)
+
+    try:
+        s3_client.head_bucket(Bucket=bucket)
+        print(f"Bucket '{bucket}' already exists.")
+    except ClientError as e:
+        error_code = int(e.response["Error"]["Code"])
+        if error_code == 404:
+            print(f"Bucket '{bucket}' not found. Creating new bucket...")
+            if region == "us-east-1":
+                s3_client.create_bucket(Bucket=bucket)
+            else:
+                s3_client.create_bucket(
+                    Bucket=bucket,
+                    CreateBucketConfiguration={"LocationConstraint": region},
+                )
+            print(f"Bucket '{bucket}' created successfully.")
+        else:
+            raise e
+
+    # Upload file
     s3_client.upload_file(file_path, bucket, key)
     print(f"Uploaded {file_path} to s3://{bucket}/{key}")
 
@@ -227,7 +247,6 @@ def ensure_environment_exists_docker(
         raise RuntimeError("No Docker platform found in this region!")
 
     platform_arn = platform_list[0]["PlatformArn"]
-    print(f"✅ Using platform ARN: {platform_arn}")
     if not existing_env:
         first_time_options_settings = [
             {
@@ -248,7 +267,8 @@ def ensure_environment_exists_docker(
         ]
         options_settings.extend(first_time_options_settings)
 
-        env_response = eb_client.create_environment(
+        # env_response = eb_client.create_environment(
+        eb_client.create_environment(
             ApplicationName=app_name,
             EnvironmentName=env_name,
             VersionLabel=version_label,
@@ -256,7 +276,7 @@ def ensure_environment_exists_docker(
             OptionSettings=options_settings,
         )
         print(f"Created single-instance environment '{env_name}'")
-        print(f"Environment ID: {env_response.get('EnvironmentId')}")
+        # print(f"Environment ID: {env_response.get('EnvironmentId')}")
     else:
         eb_client.update_environment(
             ApplicationName=app_name,
