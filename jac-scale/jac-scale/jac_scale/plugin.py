@@ -13,9 +13,11 @@ class JacCmd:
         """Create Jac CLI cmds."""
 
         @cmd_registry.register
-        def scale() -> None:
+        def scale(code_folder: str, implementation_type: str) -> None:
             """Jac Scale functionality."""
-            print("Hello, Jac learner lets scale your application!")
+            print(
+                f"Jac learner lets scale your application! lets implement your application using {implementation_type}"
+            )
 
         @cmd_registry.register
         def destroy() -> None:
