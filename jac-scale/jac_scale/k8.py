@@ -19,10 +19,10 @@ load_dotenv()
 def deploy_k8() -> None:
     """Deploy example."""
     app_name = os.getenv("APP_NAME", "fastapi-app")
-    image_name = os.getenv("IMAGE_NAME", "jaseci:latest")
-    namespace = os.getenv("NAMESPACE", "default")
-    container_port = int(os.getenv("CONTAINER_PORT", "8000"))
-    node_port = int(os.getenv("NODE_PORT", "30001"))
+    image_name = os.getenv("DOCKER_IMAGE_NAME", "jaseci:latest")
+    namespace = os.getenv("K8_NAMESPACE", "default")
+    container_port = int(os.getenv("K8_CONTAINER_PORT", "8000"))
+    node_port = int(os.getenv("K8_NODE_PORT", "30001"))
     docker_username = os.getenv("DOCKER_USERNAME", "juzailmlwork")
     repository_name = f"{docker_username}/{image_name}"
     mongodb_enabled = os.getenv("MONGODB", "false").lower() == "true"

@@ -20,16 +20,14 @@ from .utils import zip_project
 load_dotenv()
 
 
-def deploy_beanstalk() -> None:
+def deploy_beanstalk(code_folder: str) -> None:
     """Deploy example."""
     app_name = os.getenv("APP_NAME", "jaseci-app8")
-    env_name = os.getenv("ENV_NAME", "development8")
-    s3_bucket = os.getenv("S3_BUCKET", "jaseci-deploy")
-    region = os.getenv("REGION", "us-east-1")
-    code_folder = os.getenv("FOLDER", "littleX")
+    env_name = os.getenv("AWS_ENV_NAME", "development")
+    s3_bucket = os.getenv("AWS_S3_BUCKET", app_name)
+    region = os.getenv("AWS_REGION", "us-east-1")
     aws_access_key_id = os.getenv("AWS_ACCESS_KEY_ID")
     aws_secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY")
-
     availability_precheck(code_folder)
 
     # Ensure both or none are provided
@@ -84,5 +82,7 @@ def deploy_beanstalk() -> None:
 
 
 # ---- Main ----
+
 if __name__ == "__main__":
-    deploy_beanstalk()
+    code_folder = os.getcwd()
+    deploy_beanstalk(code_folder)
