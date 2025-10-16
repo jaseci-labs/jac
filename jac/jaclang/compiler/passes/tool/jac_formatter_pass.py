@@ -168,7 +168,7 @@ class JacFormatPass(Transform[uni.Module, uni.Module]):
 
                 if "\n" in part_str:
                     # After a newline, reset budget to full width at this indent.
-                    last_line = part_str.splitlines()[-1]
+                    last_line = part_str.split("\n")[-1]
                     full_budget = max(
                         0, self.MAX_LINE_LENGTH - indent_level * self.indent_size
                     )

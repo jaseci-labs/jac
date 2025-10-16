@@ -282,3 +282,10 @@ hru
 """;
     }
 }
+
+
+# ===== Part 4: Implementation Blocks =====
+# Implement forward-declared methods using impl
+impl AbstractCalculator.process(value: float) -> float {
+    return value * 1.5;
+}

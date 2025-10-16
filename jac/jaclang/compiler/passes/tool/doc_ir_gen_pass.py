@@ -127,6 +127,16 @@ class DocIRGenPass(UniPass):
                 if prev_kid and self.has_gap(prev_kid, i):
                     parts.append(self.hard_line())
                 parts.append(i.gen.doc_ir)
+            elif self.is_comment(i):
+                if (
+                    isinstance(i, uni.CommentToken)
+                    and i.left_node
+                    and not self.is_comment(i.left_node)
+                ):
+                    parts.append(self.hard_line())
+                    parts.append(self.hard_line())
+                parts.append(i.gen.doc_ir)
+                continue
             else:
                 if not first_kid and not (
                     prev_kid
@@ -1726,13 +1736,14 @@ class DocIRGenPass(UniPass):
 
     def exit_comment_token(self, node: uni.CommentToken) -> None:
         """Generate DocIR for comment tokens."""
+        # Last token was a comment then it's multiple comments in a row
         if isinstance(node.left_node, uni.CommentToken):
             node.gen.doc_ir = self.group(
                 self.concat([self.text(node.value), self.hard_line()])
             )
         elif node.left_node and node.left_node.loc.last_line == node.loc.first_line:
             node.gen.doc_ir = self.group(
-                self.concat([self.space(), self.text(node.value)])
+                self.concat([self.space(), self.text(node.value), self.hard_line()])
             )
         else:
             node.gen.doc_ir = self.group(
