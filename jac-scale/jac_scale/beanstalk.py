@@ -23,7 +23,7 @@ load_dotenv()
 def deploy_beanstalk(code_folder: str) -> None:
     """Deploy example."""
     app_name = os.getenv("APP_NAME", "jaseci-app8")
-    env_name = os.getenv("AWS_ENV_NAME", "development")
+    env_name = os.getenv("AWS_ENV_NAME", app_name)
     s3_bucket = os.getenv("AWS_S3_BUCKET", app_name)
     region = os.getenv("AWS_REGION", "us-east-1")
     aws_access_key_id = os.getenv("AWS_ACCESS_KEY_ID")
