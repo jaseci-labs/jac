@@ -5,7 +5,7 @@ from datetime import datetime
 
 import boto3
 
-from .aws import (
+from .aws_utils import (
     availability_precheck,
     create_application_version,
     ensure_environment_exists_docker,
@@ -51,31 +51,32 @@ def deploy_beanstalk(code_folder: str) -> None:
     # 1️⃣ Zip the project
     print("\nPreparing application package...")
     zipped_file = zip_project(code_folder)
+    try:
+        env_config = load_env_variables(code_folder)
+        # 2️⃣ Upload to S3
+        print("\n Uploading to S3...")
+        upload_to_s3(region, zipped_file, s3_bucket, s3_key)
 
-    env_config = load_env_variables(code_folder)
-    # 2️⃣ Upload to S3
-    print("\n Uploading to S3...")
-    upload_to_s3(region, zipped_file, s3_bucket, s3_key)
+        # 3️⃣ Create application version (creates app if missing)
+        print("\n Creating application version...")
+        create_application_version(eb_client, app_name, s3_bucket, version, s3_key)
 
-    # 3️⃣ Create application version (creates app if missing)
-    print("\n Creating application version...")
-    create_application_version(eb_client, app_name, s3_bucket, version, s3_key)
+        # 4️⃣ Create or update environment with single instance
+        print("\n Setting up environment...")
+        print("env_config is", env_config)
+        ensure_environment_exists_docker(
+            eb_client, version, region, app_name, env_name, env_config
+        )
 
-    # 4️⃣ Create or update environment with single instance
-    print("\n Setting up environment...")
-    print("env_config is", env_config)
-    ensure_environment_exists_docker(
-        eb_client, version, region, app_name, env_name, env_config
-    )
-
-    print("\n Deployment complete!")
-    print(
-        " Tip: You can check the deployment status in the AWS Elastic Beanstalk console."
-    )
-    print(
-        f" If deployment fails, check logs with: aws logs tail eb-engine.log --region {region}"
-    )
-    os.remove(zipped_file)
+        print("\n Deployment complete!")
+        print(
+            " Tip: You can check the deployment status in the AWS Elastic Beanstalk console."
+        )
+        print(
+            f" If deployment fails, check logs with: aws logs tail eb-engine.log --region {region}"
+        )
+    except Exception:
+        os.remove(zipped_file)
 
 
 # ---- Main ----

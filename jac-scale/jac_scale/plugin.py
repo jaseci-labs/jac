@@ -7,9 +7,9 @@ from dotenv import load_dotenv
 from jaclang.cli.cmdreg import cmd_registry
 from jaclang.runtimelib.machine import hookimpl
 
-from .beanstalk import deploy_beanstalk
-from .docker_impl import build_and_push_docker
-from .k8 import deploy_k8
+from .beanstalk.beanstalk import deploy_beanstalk
+from .kubernetes.docker_impl import build_and_push_docker
+from .kubernetes.k8 import deploy_k8
 
 
 class JacCmd:
