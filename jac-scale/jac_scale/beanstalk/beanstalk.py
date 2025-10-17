@@ -70,12 +70,6 @@ def deploy_beanstalk(code_folder: str) -> None:
         )
 
         print("\n Deployment complete!")
-        print(
-            " Tip: You can check the deployment status in the AWS Elastic Beanstalk console."
-        )
-        print(
-            f" If deployment fails, check logs with: aws logs tail eb-engine.log --region {region}"
-        )
     except Exception as e:
         print(e)
         os.remove(zipped_file)
