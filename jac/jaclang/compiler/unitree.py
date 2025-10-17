@@ -117,8 +117,6 @@ class UniNode:
     ) -> UniNode:
         """Insert kids at position."""
         self.kid = [*self.kid[:pos], *nodes, *self.kid[pos:]]
-        # if hasattr(self, "body") and self.body is not None:
-        #     self.body.extend(nodes)  # type: ignore
         if pos_update:
             for i in nodes:
                 i.parent = self
