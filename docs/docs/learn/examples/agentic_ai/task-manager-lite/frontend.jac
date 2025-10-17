@@ -28,7 +28,9 @@ def bootstrap_frontend(token: str) {
         if st.button("➕ Add a task") {
             st.session_state.user_input = "Add a task to buy groceries tomorrow at 3 PM";
         }
-
+        if st.button("📝 Summarize tasks") {
+            st.session_state.user_input = "Summarize all my tasks";
+        }
         st.markdown("**📧 Email Writing**");
         if st.button("✉️ Write a meeting email") {
             st.session_state.user_input = "Write an email to schedule a meeting with my team for next Friday";
