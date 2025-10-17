@@ -11,7 +11,7 @@ Follow the steps below to configure your AWS environment and start using the plu
 
 If you don't already have an AWS account, sign up at:
 
-👉 [https://aws.amazon.com/](https://aws.amazon.com/)
+[https://aws.amazon.com/](https://aws.amazon.com/)
 
 ---
 
@@ -91,7 +91,7 @@ If you don't already have an AWS account, sign up at:
    - `AWS_ACCESS_KEY_ID`
    - `AWS_SECRET_ACCESS_KEY`
 
-> 💡 **Important:** Keep these keys secure. Do not share or upload them to any public repository.
+> **Important:** Keep these keys secure. Do not share or upload them to any public repository.
 
 ---
 
