@@ -42,7 +42,7 @@ def push_docker_image(
     password: str,
 ) -> None:
     """
-    Push a Docker image to Docker Hub and store logs in a file.
+    Push a Docker image to Docker Hub.
 
     Args:
         image_name (str): Full image name (e.g. 'jusail/fastapi-app:latest').
@@ -67,20 +67,21 @@ def push_docker_image(
         print("pushed image sucessfully to dockerhub")
 
 
-def build_and_push_docker() -> None:
-    """Deploy example."""
-    image_name = os.getenv("IMAGE_NAME", "jaseci:latest")
-    context_path = os.getenv("CONTEXT_PATH", "./fastapi-app")
+def build_and_push_docker(code_folder: str) -> None:
+    """Build and push docker image to dockerhub."""
+    app_name = os.getenv("APP_NAME", "jaseci")
+    image_name = os.getenv("DOCKER_IMAGE_NAME", f"{app_name}:latest")
     docker_username = os.getenv("DOCKER_USERNAME", "juzailmlwork")
     docker_password = os.getenv("DOCKER_PASSWORD", "12345")
     repository_name = f"{docker_username}/{image_name}"
     print("the repo name is", repository_name)
 
-    build_docker_image(image_name=repository_name, context_path=context_path)
+    build_docker_image(image_name=repository_name, context_path=code_folder)
     push_docker_image(
         image_name=repository_name, username=docker_username, password=docker_password
     )
 
 
 if __name__ == "__main__":
-    build_and_push_docker()
+    code_folder = os.getcwd()
+    build_and_push_docker(code_folder)

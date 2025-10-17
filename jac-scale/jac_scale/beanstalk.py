@@ -5,8 +5,6 @@ from datetime import datetime
 
 import boto3
 
-from dotenv import load_dotenv
-
 from .aws import (
     availability_precheck,
     create_application_version,
@@ -17,11 +15,9 @@ from .aws import (
 )
 from .utils import zip_project
 
-load_dotenv()
-
 
 def deploy_beanstalk(code_folder: str) -> None:
-    """Deploy example."""
+    """Deploy jac application to beanstalk."""
     app_name = os.getenv("APP_NAME", "jaseci-app8")
     env_name = os.getenv("AWS_ENV_NAME", app_name)
     s3_bucket = os.getenv("AWS_S3_BUCKET", app_name)
@@ -67,6 +63,7 @@ def deploy_beanstalk(code_folder: str) -> None:
 
     # 4️⃣ Create or update environment with single instance
     print("\n Setting up environment...")
+    print("env_config is", env_config)
     ensure_environment_exists_docker(
         eb_client, version, region, app_name, env_name, env_config
     )

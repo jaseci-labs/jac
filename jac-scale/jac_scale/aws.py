@@ -87,7 +87,6 @@ def create_instance_profile(iam_client: IAMClient, app_name: str) -> None:
 
 def create_service_role(iam_client: IAMClient, app_name: str) -> None:
     """Create service role for Elastic Beanstalk."""
-    # Trust policy for Elastic Beanstalk service
     service_role_name = f"{app_name}-service-role"
     trust_policy = {
         "Version": "2012-10-17",
@@ -152,7 +151,7 @@ def get_account_id(region: str) -> str:
 
 
 def ensure_application_exists(eb_client: ElasticBeanstalkClient, app_name: str) -> None:
-    """Temperary doc string."""
+    """Check if the aws beanstalk application exists if not creates it."""
     apps = eb_client.describe_applications(ApplicationNames=[app_name])["Applications"]
     if not apps:
         eb_client.create_application(
@@ -171,7 +170,7 @@ def create_application_version(
     version_label: str,
     s3_key: str,
 ) -> None:
-    """Temperary doc string."""
+    """Create application version."""
     ensure_application_exists(eb_client, app_name)
     eb_client.create_application_version(
         ApplicationName=app_name,
@@ -219,7 +218,7 @@ def ensure_environment_exists_docker(
     env_name: str,
     options_settings: list,
 ) -> None:
-    """Temperary doc string."""
+    """Check if the aws beanstalk environement exists if not creates docker environment."""
     envs = eb_client.describe_environments(ApplicationName=app_name)["Environments"]
     existing_env = next(
         (env for env in envs if env["EnvironmentName"] == env_name), None
@@ -267,7 +266,6 @@ def ensure_environment_exists_docker(
         ]
         options_settings.extend(first_time_options_settings)
 
-        # env_response = eb_client.create_environment(
         eb_client.create_environment(
             ApplicationName=app_name,
             EnvironmentName=env_name,
@@ -276,7 +274,6 @@ def ensure_environment_exists_docker(
             OptionSettings=options_settings,
         )
         print(f"Created single-instance environment '{env_name}'")
-        # print(f"Environment ID: {env_response.get('EnvironmentId')}")
     else:
         eb_client.update_environment(
             ApplicationName=app_name,
@@ -304,19 +301,17 @@ def ensure_environment_exists_docker(
         if env_info["Environments"]:
             env = env_info["Environments"][0]
             if env.get("CNAME"):
-                print(f"Your app is live at: http://{env['CNAME']}")
+                print(f"Your jaseci app is live at: http://{env['CNAME']}")
             else:
                 print(f"Environment created successfully. Status: {env.get('Status')}")
 
     except Exception as e:
-        print(
-            "Environment creation may still be in progress. Check AWS console for status."
-        )
+        print("Environment creation may still be in progress.")
         print(f"Error details: {str(e)}")
 
 
-def load_env_variables(code_folder: str = ".env") -> list:
-    """Temperary doc string."""
+def load_env_variables(code_folder: str) -> list:
+    """Load env variables in .env to aws beanstalk environment."""
     env_file = os.path.join(code_folder, ".env")
     env_vars = dotenv_values(env_file)
     option_settings = []
@@ -333,7 +328,7 @@ def load_env_variables(code_folder: str = ".env") -> list:
 
 
 def availability_precheck(code_folder: str) -> None:
-    """Temperary doc string."""
+    """Precheck for needed files inside the code folder for aws beanstalk deployment."""
     all_files = os.listdir(code_folder)
     needed_files = ["Dockerfile", "requirements.txt"]
 

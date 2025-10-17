@@ -25,12 +25,11 @@ class JacCmd:
             """Jac Scale functionality."""
             load_dotenv()
             deployment_type = os.getenv("DEPLOYMENT_TYPE", "aws")
-
+            code_folder = os.getenv("CODE_FOLDER", os.getcwd())
             if deployment_type == "aws":
-                code_folder = os.getenv("AWS_FOLDER", os.getcwd())
                 deploy_beanstalk(code_folder)
             elif deployment_type == "k8":
-                build_and_push_docker()
+                build_and_push_docker(code_folder)
                 deploy_k8()
 
         @cmd_registry.register

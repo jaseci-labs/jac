@@ -4,22 +4,14 @@ import os
 import time
 from typing import Callable
 
-from dotenv import load_dotenv
-
 from kubernetes import client, config
 from kubernetes.client.exceptions import ApiException
 
 
-# -------------------
-# Load configuration
-# -------------------
-load_dotenv()
-
-
 def deploy_k8() -> None:
-    """Deploy example."""
-    app_name = os.getenv("APP_NAME", "fastapi-app")
-    image_name = os.getenv("DOCKER_IMAGE_NAME", "jaseci:latest")
+    """Deploy jac application to k8."""
+    app_name = os.getenv("APP_NAME", "jaseci")
+    image_name = os.getenv("DOCKER_IMAGE_NAME", f"{app_name}:latest")
     namespace = os.getenv("K8_NAMESPACE", "default")
     container_port = int(os.getenv("K8_CONTAINER_PORT", "8000"))
     node_port = int(os.getenv("K8_NODE_PORT", "30001"))
