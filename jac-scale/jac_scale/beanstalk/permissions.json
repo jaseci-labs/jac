@@ -2,31 +2,6 @@
 	"Version": "2012-10-17",
 	"Statement": [
 		{
-			"Sid": "ElasticBeanstalkPermissions",
-			"Effect": "Allow",
-			"Action": [
-				"elasticbeanstalk:CreateApplication",
-				"elasticbeanstalk:CreateEnvironment",
-				"elasticbeanstalk:UpdateEnvironment",
-				"elasticbeanstalk:CreateApplicationVersion",
-				"elasticbeanstalk:DescribeApplications",
-				"elasticbeanstalk:DescribeEnvironments",
-				"elasticbeanstalk:DescribePlatformVersion",
-				"elasticbeanstalk:ListPlatformVersions",
-				"elasticbeanstalk:DeleteApplication",
-				"elasticbeanstalk:TerminateEnvironment",
-				"ec2:DescribeLaunchTemplates",
-				"autoscaling:Describe*",
-				"autoscaling:CreateAutoScalingGroup",
-				"autoscaling:UpdateAutoScalingGroup",
-				"autoscaling:PutNotificationConfiguration",
-				"autoscaling:SuspendProcesses",
-				"ec2:RunInstances",
-				"autoscaling:ResumeProcesses"
-			],
-			"Resource": "*"
-		},
-		{
 			"Sid": "IAMPermissions",
 			"Effect": "Allow",
 			"Action": [
@@ -41,74 +16,20 @@
 			"Resource": "*"
 		},
 		{
-			"Sid": "S3Permissions",
+			"Sid": "EC2S3Permissions",
 			"Effect": "Allow",
 			"Action": [
+				"ec2:DescribeAvailabilityZones",
+				"ec2:CreateTags",
+				"ec2:DeleteTags",
+				"ec2:Describe*",
+				"ec2:ModifyLaunchTemplate",
 				"s3:PutObject",
 				"s3:GetObject",
 				"s3:CreateBucket",
-				"s3:ListBucket",
-				"s3:PutBucketOwnershipControls",
-				"s3:GetBucketOwnershipControls",
-				"s3:PutBucketPublicAccessBlock",
-				"s3:GetBucketPublicAccessBlock",
-				"s3:GetObjectAcl",
-				"s3:PutObjectAcl",
-				"s3:GetBucketPolicy",
-				"s3:PutBucketPolicy",
-				"s3:DeleteObject"
+				"s3:ListBucket"
 			],
 			"Resource": "*"
-		},
-		{
-			"Sid": "EC2Permissions",
-			"Effect": "Allow",
-			"Action": [
-				"ec2:CreateSecurityGroup",
-				"ec2:AllocateAddress",
-				"ec2:AuthorizeSecurityGroupIngress",
-				"ec2:DescribeAvailabilityZones",
-				"ec2:AssociateAddress",
-				"ec2:AuthorizeSecurityGroup*",
-				"ec2:CreateLaunchTemplate*",
-				"ec2:CreateSecurityGroup",
-				"ec2:CreateTags",
-				"ec2:DeleteLaunchTemplate*",
-				"ec2:DeleteSecurityGroup",
-				"ec2:DeleteTags",
-				"ec2:Describe*",
-				"ec2:DisassociateAddress",
-				"ec2:ReleaseAddress",
-				"ec2:RevokeSecurityGroup*",
-				"ec2:RunInstances",
-				"ec2:DescribeLaunchTemplates",
-				"ec2:DescribeLaunchTemplateVersions",
-				"ec2:CreateLaunchTemplate",
-				"ec2:CreateLaunchTemplateVersion",
-				"ec2:ModifyLaunchTemplate"
-			],
-			"Resource": "*"
-		},
-		{
-			"Sid": "CloudFormationPermissions",
-			"Effect": "Allow",
-			"Action": [
-				"cloudformation:CancelUpdateStack",
-				"cloudformation:ContinueUpdateRollback",
-				"cloudformation:CreateStack",
-				"cloudformation:DeleteStack",
-				"cloudformation:GetTemplate",
-				"cloudformation:ListStackResources",
-				"cloudformation:SignalResource",
-				"cloudformation:TagResource",
-				"cloudformation:UntagResource",
-				"cloudformation:UpdateStack",
-				"cloudformation:Describe*"
-			],
-			"Resource": [
-				"arn:aws:cloudformation:*:*:stack/awseb-*",
-				"arn:aws:cloudformation:*:*:stack/eb-*"
-			]
 		}
 	]
 }

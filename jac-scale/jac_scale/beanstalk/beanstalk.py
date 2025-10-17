@@ -63,7 +63,8 @@ def deploy_beanstalk(code_folder: str) -> None:
 
         # 4️⃣ Create or update environment with single instance
         print("\n Setting up environment...")
-        print("env_config is", env_config)
+        if len(env_config) > 0:
+            print("environement variables are loaded")
         ensure_environment_exists_docker(
             eb_client, version, region, app_name, env_name, env_config
         )
@@ -75,7 +76,8 @@ def deploy_beanstalk(code_folder: str) -> None:
         print(
             f" If deployment fails, check logs with: aws logs tail eb-engine.log --region {region}"
         )
-    except Exception:
+    except Exception as e:
+        print(e)
         os.remove(zipped_file)
 
 

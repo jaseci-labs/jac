@@ -24,7 +24,6 @@ class JacCmd:
         def scale(deployment_type: str) -> None:
             """Jac Scale functionality."""
             load_dotenv()
-            deployment_type = os.getenv("DEPLOYMENT_TYPE", "aws")
             code_folder = os.getenv("CODE_FOLDER", os.getcwd())
             if deployment_type == "aws":
                 deploy_beanstalk(code_folder)
