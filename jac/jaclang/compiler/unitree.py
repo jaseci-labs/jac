@@ -1125,6 +1125,330 @@ class Test(ClientFacingNode, AstSymbolNode, ElementStmt, UniScopeNode):
         return res
 
 
+class CssValue(UniNode):
+    """CSS value node for Jac AST."""
+
+    def __init__(self, items: Sequence[UniNode]) -> None:
+        self.items = list(items)
+        UniNode.__init__(self, kid=list(items))
+
+    def normalize(self, deep: bool = False) -> bool:
+        res = True
+        if deep:
+            for item in self.items:
+                if isinstance(item, UniNode):
+                    res = res and item.normalize(deep)
+        self.set_kids(nodes=list(self.items))
+        return res
+
+    @staticmethod
+    def _node_text(node: UniNode) -> str:
+        if hasattr(node, "text") and isinstance(text := getattr(node, "text"), str):
+            return text
+        if isinstance(node, Token):
+            return node.value
+        if hasattr(node, "value") and isinstance(node.value, str):
+            return node.value
+        if isinstance(node, CssValue):
+            return node.text
+        return ""
+
+    @property
+    def text(self) -> str:
+        return "".join(self._node_text(item) for item in self.items)
+
+
+class CssIdentifier(CssValue):
+    """CSS identifier node."""
+
+    def __init__(self, items: Sequence[UniNode], kind: str = "identifier") -> None:
+        self.kind = kind
+        super().__init__(items=items)
+
+    def normalize(self, deep: bool = False) -> bool:
+        return super().normalize(deep)
+
+
+class CssStatement(UniNode):
+    """Base class for CSS statements."""
+
+    def __init__(self, kid: Sequence[UniNode]) -> None:
+        UniNode.__init__(self, kid=kid)
+
+    def normalize(self, deep: bool = False) -> bool:  # pragma: no cover - simple wrapper
+        res = True
+        if deep:
+            for child in self.kid:
+                res = res and child.normalize(deep)
+        return res
+
+
+class CssImportant(UniNode):
+    """Representation of !important."""
+
+    def __init__(self, bang: Token, value: CssIdentifier, kid: Sequence[UniNode]) -> None:
+        self.bang = bang
+        self.value = value
+        UniNode.__init__(self, kid=kid)
+
+    def normalize(self, deep: bool = False) -> bool:
+        res = self.value.normalize(deep) if deep else True
+        self.set_kids(nodes=[self.bang, self.value])
+        return res
+
+
+class CssComment(CssStatement):
+    """CSS comment statement."""
+
+    def __init__(self, comment: Token, kid: Sequence[UniNode]) -> None:
+        self.comment = comment
+        CssStatement.__init__(self, kid=kid)
+
+    def normalize(self, deep: bool = False) -> bool:
+        res = self.comment.normalize(deep) if deep else True
+        self.set_kids(nodes=[self.comment])
+        return res
+
+
+class CssFunction(UniNode):
+    """CSS function call."""
+
+    def __init__(
+        self, name: CssIdentifier, arguments: Sequence[CssValue], kid: Sequence[UniNode]
+    ) -> None:
+        self.name = name
+        self.arguments = list(arguments)
+        UniNode.__init__(self, kid=kid)
+
+    def normalize(self, deep: bool = False) -> bool:
+        res = True
+        if deep:
+            res = self.name.normalize(deep)
+            for arg in self.arguments:
+                res = res and arg.normalize(deep)
+        new_kid: list[UniNode] = [self.name, self.gen_token(Tok.LPAREN)]
+        for idx, arg in enumerate(self.arguments):
+            new_kid.append(arg)
+            if idx < len(self.arguments) - 1:
+                new_kid.append(self.gen_token(Tok.COMMA))
+        new_kid.append(self.gen_token(Tok.RPAREN))
+        self.set_kids(nodes=new_kid)
+        return res
+
+    @property
+    def text(self) -> str:
+        args = ", ".join(arg.text for arg in self.arguments)
+        return f"{self.name.text}({args})"
+
+
+class CssParenBlock(UniNode):
+    """Parenthesized CSS sequence."""
+
+    def __init__(self, values: Sequence[CssValue], kid: Sequence[UniNode]) -> None:
+        self.values = list(values)
+        UniNode.__init__(self, kid=kid)
+
+    def normalize(self, deep: bool = False) -> bool:
+        res = True
+        if deep:
+            for value in self.values:
+                res = res and value.normalize(deep)
+        new_kid: list[UniNode] = [self.gen_token(Tok.LPAREN)]
+        new_kid.extend(self.values)
+        new_kid.append(self.gen_token(Tok.RPAREN))
+        self.set_kids(nodes=new_kid)
+        return res
+
+
+class CssBracketBlock(UniNode):
+    """Bracketed CSS sequence."""
+
+    def __init__(self, values: Sequence[CssValue], kid: Sequence[UniNode]) -> None:
+        self.values = list(values)
+        UniNode.__init__(self, kid=kid)
+
+    def normalize(self, deep: bool = False) -> bool:
+        res = True
+        if deep:
+            for value in self.values:
+                res = res and value.normalize(deep)
+        new_kid: list[UniNode] = [self.gen_token(Tok.LSQUARE)]
+        new_kid.extend(self.values)
+        new_kid.append(self.gen_token(Tok.RSQUARE))
+        self.set_kids(nodes=new_kid)
+        return res
+
+
+class CssRawStatement(CssStatement):
+    """Raw CSS statement for unknown constructs."""
+
+    def __init__(
+        self, value: CssValue, has_semicolon: bool, kid: Sequence[UniNode]
+    ) -> None:
+        self.value = value
+        self.has_semicolon = has_semicolon
+        CssStatement.__init__(self, kid=kid)
+
+    def normalize(self, deep: bool = False) -> bool:
+        res = self.value.normalize(deep) if deep else True
+        new_kid: list[UniNode] = [self.value]
+        if self.has_semicolon:
+            new_kid.append(self.gen_token(Tok.SEMI))
+        self.set_kids(nodes=new_kid)
+        return res
+
+
+class CssDeclaration(CssStatement):
+    """CSS declaration statement."""
+
+    def __init__(
+        self,
+        name: CssIdentifier,
+        value: CssValue,
+        important: CssImportant | None,
+        has_semicolon: bool,
+        kid: Sequence[UniNode],
+    ) -> None:
+        self.name = name
+        self.value = value
+        self.important = important
+        self.has_semicolon = has_semicolon
+        CssStatement.__init__(self, kid=kid)
+
+    def normalize(self, deep: bool = False) -> bool:
+        res = self.name.normalize(deep) if deep else True
+        if deep:
+            res = res and self.value.normalize(deep)
+            if self.important:
+                res = res and self.important.normalize(deep)
+        new_kid: list[UniNode] = [self.name, self.gen_token(Tok.COLON), self.value]
+        if self.important:
+            new_kid.append(self.important)
+        if self.has_semicolon:
+            new_kid.append(self.gen_token(Tok.SEMI))
+        self.set_kids(nodes=new_kid)
+        return res
+
+
+class CssSelectorList(UniNode):
+    """List of CSS selectors."""
+
+    def __init__(self, selectors: Sequence[CssValue], kid: Sequence[UniNode]) -> None:
+        self.selectors = list(selectors)
+        UniNode.__init__(self, kid=kid)
+
+    def normalize(self, deep: bool = False) -> bool:
+        res = True
+        if deep:
+            for selector in self.selectors:
+                res = res and selector.normalize(deep)
+        new_kid: list[UniNode] = []
+        for idx, selector in enumerate(self.selectors):
+            new_kid.append(selector)
+            if idx < len(self.selectors) - 1:
+                new_kid.append(self.gen_token(Tok.COMMA))
+        self.set_kids(nodes=new_kid)
+        return res
+
+
+class CssBlock(UniNode):
+    """Brace-enclosed CSS block."""
+
+    def __init__(self, statements: Sequence[CssStatement], kid: Sequence[UniNode]) -> None:
+        self.statements = list(statements)
+        UniNode.__init__(self, kid=kid)
+
+    def normalize(self, deep: bool = False) -> bool:
+        res = True
+        if deep:
+            for stmt in self.statements:
+                res = res and stmt.normalize(deep)
+        new_kid: list[UniNode] = [self.gen_token(Tok.LBRACE)]
+        new_kid.extend(self.statements)
+        new_kid.append(self.gen_token(Tok.RBRACE))
+        self.set_kids(nodes=new_kid)
+        return res
+
+
+class CssQualifiedRule(CssStatement):
+    """CSS qualified rule."""
+
+    def __init__(
+        self, selectors: CssSelectorList, block: CssBlock, kid: Sequence[UniNode]
+    ) -> None:
+        self.selectors = selectors
+        self.block = block
+        CssStatement.__init__(self, kid=kid)
+
+    def normalize(self, deep: bool = False) -> bool:
+        res = True
+        if deep:
+            res = self.selectors.normalize(deep) and self.block.normalize(deep)
+        self.set_kids(nodes=[self.selectors, self.block])
+        return res
+
+
+class CssAtRule(CssStatement):
+    """CSS at-rule."""
+
+    def __init__(
+        self,
+        name: Token,
+        prelude: CssValue,
+        block: CssBlock | None,
+        has_semicolon: bool,
+        kid: Sequence[UniNode],
+    ) -> None:
+        self.name = name
+        self.prelude = prelude
+        self.block = block
+        self.has_semicolon = has_semicolon
+        CssStatement.__init__(self, kid=kid)
+
+    def normalize(self, deep: bool = False) -> bool:
+        res = self.prelude.normalize(deep) if deep else True
+        if deep and self.block:
+            res = res and self.block.normalize(deep)
+        new_kid: list[UniNode] = [self.name]
+        if self.prelude.items:
+            new_kid.append(self.prelude)
+        if self.block:
+            new_kid.append(self.block)
+        elif self.has_semicolon:
+            new_kid.append(self.gen_token(Tok.SEMI))
+        self.set_kids(nodes=new_kid)
+        return res
+
+
+class CssModule(ClientFacingNode, ElementStmt, ArchBlockStmt, EnumBlockStmt):
+    """Top-level CSS block."""
+
+    def __init__(
+        self,
+        block: CssBlock,
+        kid: Sequence[UniNode],
+        is_enum_stmt: bool = False,
+        doc: Optional[String] = None,
+    ) -> None:
+        self.block = block
+        UniNode.__init__(self, kid=kid)
+        AstDocNode.__init__(self, doc=doc)
+        EnumBlockStmt.__init__(self, is_enum_stmt=is_enum_stmt)
+        ClientFacingNode.__init__(self)
+
+    def normalize(self, deep: bool = False) -> bool:
+        res = self.block.normalize(deep) if deep else True
+        new_kid: list[UniNode] = []
+        if self.doc:
+            new_kid.append(self.doc)
+        if self.is_client_decl:
+            new_kid.append(self.gen_token(Tok.KW_CLIENT))
+        new_kid.append(self.gen_token(Tok.KW_CSS))
+        new_kid.append(self.block)
+        self.set_kids(nodes=new_kid)
+        return res
+
+
 class ModuleCode(ClientFacingNode, ElementStmt, ArchBlockStmt, EnumBlockStmt):
     """ModuleCode node type for Jac Ast."""
 

@@ -11,7 +11,13 @@ from jaclang.compiler import jac_lark as jl
 from jaclang.compiler.constant import Tokens
 from jaclang.compiler.parser import JacParser
 from jaclang.compiler.program import JacProgram
-from jaclang.compiler.unitree import Source
+from jaclang.compiler.unitree import (
+    CssAtRule,
+    CssDeclaration,
+    CssModule,
+    CssQualifiedRule,
+    Source,
+)
 from jaclang.utils.test import TestCaseMicroSuite
 
 
@@ -27,6 +33,45 @@ class TestLarkParser(TestCaseMicroSuite):
         source = Source('glob a=f"{{}}", not_b=4;', mod_path="")
         prse = JacParser(root_ir=source, prog=JacProgram())
         self.assertFalse(prse.errors_had)
+
+    def test_css_block_parse(self) -> None:
+        """Ensure css blocks parse into structured AST."""
+
+        source = Source(
+            """css {
+  body { color: red; }
+  #app { margin: 0; }
+  @media screen and (max-width: 600px) {
+    body { font-size: 14px; }
+  }
+}
+""",
+            mod_path="",
+        )
+        prse = JacParser(root_ir=source, prog=JacProgram())
+        self.assertFalse(prse.errors_had)
+
+        module = prse.ir_out
+        self.assertTrue(module.body)
+        css_block = module.body[0]
+        self.assertIsInstance(css_block, CssModule)
+        self.assertEqual(len(css_block.block.statements), 3)
+
+        first_rule = css_block.block.statements[0]
+        self.assertIsInstance(first_rule, CssQualifiedRule)
+        self.assertEqual(first_rule.selectors.selectors[0].text.strip(), "body")
+        first_decl = first_rule.block.statements[0]
+        self.assertIsInstance(first_decl, CssDeclaration)
+        self.assertEqual(first_decl.name.text, "color")
+        self.assertEqual(first_decl.value.text.strip(), "red")
+
+        media_rule = css_block.block.statements[2]
+        self.assertIsInstance(media_rule, CssAtRule)
+        self.assertIsNotNone(media_rule.block)
+        nested_rule = media_rule.block.statements[0] if media_rule.block else None
+        self.assertIsInstance(nested_rule, CssQualifiedRule)
+        nested_decl = nested_rule.block.statements[0]
+        self.assertEqual(nested_decl.value.text.strip(), "14px")
 
     def micro_suite_test(self, filename: str) -> None:
         """Parse micro jac file."""

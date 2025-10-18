@@ -525,6 +525,241 @@ class JacParser(Transform[uni.Source, uni.Module]):
                 kid=self.flat_cur_nodes,
             )
 
+        def css_block(self, _: None) -> uni.CssModule:
+            """Grammar rule.
+
+            css_block: KW_CSS css_brace_block
+            """
+            self.consume_token(Tok.KW_CSS)
+            block = self.consume(uni.CssBlock)
+            return uni.CssModule(block=block, kid=self.cur_nodes)
+
+        def css_brace_block(self, _: None) -> uni.CssBlock:
+            """Grammar rule.
+
+            css_brace_block: LBRACE css_statement* RBRACE
+            """
+            self.consume_token(Tok.LBRACE)
+            statements: list[uni.CssStatement] = []
+            while stmt := self.match(uni.CssStatement):
+                statements.append(stmt)
+            self.consume_token(Tok.RBRACE)
+            return uni.CssBlock(statements=statements, kid=self.cur_nodes)
+
+        def css_statement(self, _: None) -> uni.CssStatement:
+            """Grammar rule.
+
+            css_statement: css_comment
+                        | css_at_rule
+                        | css_qualified_rule
+                        | css_declaration
+                        | css_raw_statement
+            """
+            return self.consume(uni.CssStatement)
+
+        def css_comment(self, _: None) -> uni.CssComment:
+            """Grammar rule.
+
+            css_comment: CSS_COMMENT
+            """
+            comment = self.consume(uni.Token)
+            return uni.CssComment(comment=comment, kid=self.cur_nodes)
+
+        def css_at_rule(self, _: None) -> uni.CssAtRule:
+            """Grammar rule.
+
+            css_at_rule: CSS_ATKEYWORD css_prelude (css_brace_block | SEMI)
+            """
+            name = self.consume_token(Tok.CSS_ATKEYWORD)
+            prelude = self.consume(uni.CssValue)
+            block = self.match(uni.CssBlock)
+            has_semicolon = False
+            if not block:
+                self.consume_token(Tok.SEMI)
+                has_semicolon = True
+            return uni.CssAtRule(
+                name=name,
+                prelude=prelude,
+                block=block,
+                has_semicolon=has_semicolon,
+                kid=self.cur_nodes,
+            )
+
+        def css_prelude(self, _: None) -> uni.CssValue:
+            """Grammar rule.
+
+            css_prelude: css_component_value*
+            """
+            return uni.CssValue(items=list(self.cur_nodes))
+
+        def css_qualified_rule(self, _: None) -> uni.CssQualifiedRule:
+            """Grammar rule.
+
+            css_qualified_rule: css_selector_list css_brace_block
+            """
+            selectors = self.consume(uni.CssSelectorList)
+            block = self.consume(uni.CssBlock)
+            return uni.CssQualifiedRule(
+                selectors=selectors,
+                block=block,
+                kid=self.cur_nodes,
+            )
+
+        def css_selector_list(self, _: None) -> uni.CssSelectorList:
+            """Grammar rule.
+
+            css_selector_list: css_value (COMMA css_value)*
+            """
+            selectors = self.extract_from_list(self.cur_nodes, uni.CssValue)
+            return uni.CssSelectorList(selectors=selectors, kid=self.cur_nodes)
+
+        def css_declaration(self, _: None) -> uni.CssDeclaration:
+            """Grammar rule.
+
+            css_declaration: css_identifier COLON css_value css_important? SEMI?
+            """
+            name = self.consume(uni.CssIdentifier)
+            self.consume_token(Tok.COLON)
+            value = self.consume(uni.CssValue)
+            important = self.match(uni.CssImportant)
+            has_semicolon = bool(self.match_token(Tok.SEMI))
+            return uni.CssDeclaration(
+                name=name,
+                value=value,
+                important=important,
+                has_semicolon=has_semicolon,
+                kid=self.cur_nodes,
+            )
+
+        def css_identifier(self, _: None) -> uni.CssIdentifier:
+            """Grammar rule.
+
+            css_identifier: MINUS? MINUS? NAME (MINUS NAME)*
+            """
+            return uni.CssIdentifier(items=list(self.cur_nodes), kind="identifier")
+
+        def css_important(self, _: None) -> uni.CssImportant:
+            """Grammar rule.
+
+            css_important: BANG css_identifier
+            """
+            bang = self.consume_token(Tok.BANG)
+            identifier = self.consume(uni.CssIdentifier)
+            return uni.CssImportant(bang=bang, value=identifier, kid=self.cur_nodes)
+
+        def css_raw_statement(self, _: None) -> uni.CssRawStatement:
+            """Grammar rule.
+
+            css_raw_statement: css_value SEMI?
+            """
+            value = self.consume(uni.CssValue)
+            has_semicolon = bool(self.match_token(Tok.SEMI))
+            return uni.CssRawStatement(
+                value=value,
+                has_semicolon=has_semicolon,
+                kid=self.cur_nodes,
+            )
+
+        def css_value(self, _: None) -> uni.CssValue:
+            """Grammar rule.
+
+            css_value: css_component_value+
+            """
+            return uni.CssValue(items=list(self.cur_nodes))
+
+        def css_component_value(self, _: None) -> uni.UniNode:
+            """Grammar rule.
+
+            css_component_value: css_ident_with_args
+                              | css_paren_block
+                              | css_bracket_block
+                              | CSS_HASH
+                              | CSS_DIMENSION
+                              | CSS_SUFFIX_MATCH
+                              | CSS_INCLUDE_MATCH
+                              | STRING
+                              | INT
+                              | FLOAT
+                              | HEX
+                              | OCT
+                              | BIN
+                              | KW_AND
+                              | KW_OR
+                              | NOT
+                              | PLUS
+                              | MINUS
+                              | STAR_MUL
+                              | DIV
+                              | MOD
+                              | GT
+                              | LT
+                              | LTE
+                              | GTE
+                              | EE
+                              | NE
+                              | BW_AND
+                              | BW_OR
+                              | BW_XOR
+                              | BW_NOT
+                              | BW_XOR_EQ
+                              | BW_OR_EQ
+                              | MUL_EQ
+                              | EQ
+                              | DOT
+                              | COMMA
+                              | COLON
+            """
+            node = cast(uni.UniNode, self.cur_nodes[self.node_idx])
+            self.node_idx += 1
+            return node
+
+        def css_ident_with_args(self, _: None) -> uni.UniNode:
+            """Grammar rule.
+
+            css_ident_with_args: css_identifier css_function_args?
+            """
+            identifier = self.consume(uni.CssIdentifier)
+            args = self.match(list)
+            if args is not None:
+                values = self.extract_from_list(args, uni.CssValue)
+                return uni.CssFunction(
+                    name=identifier,
+                    arguments=values,
+                    kid=self.cur_nodes,
+                )
+            return identifier
+
+        def css_function_args(self, _: None) -> list[uni.UniNode]:
+            """Grammar rule.
+
+            css_function_args: LPAREN (css_value (COMMA css_value)*)? RPAREN
+            """
+            return self.cur_nodes
+
+        def css_paren_block(self, _: None) -> uni.CssParenBlock:
+            """Grammar rule.
+
+            css_paren_block: LPAREN css_value* RPAREN
+            """
+            self.consume_token(Tok.LPAREN)
+            values: list[uni.CssValue] = []
+            while value := self.match(uni.CssValue):
+                values.append(cast(uni.CssValue, value))
+            self.consume_token(Tok.RPAREN)
+            return uni.CssParenBlock(values=values, kid=self.cur_nodes)
+
+        def css_bracket_block(self, _: None) -> uni.CssBracketBlock:
+            """Grammar rule.
+
+            css_bracket_block: LSQUARE css_value* RSQUARE
+            """
+            self.consume_token(Tok.LSQUARE)
+            values: list[uni.CssValue] = []
+            while value := self.match(uni.CssValue):
+                values.append(cast(uni.CssValue, value))
+            self.consume_token(Tok.RSQUARE)
+            return uni.CssBracketBlock(values=values, kid=self.cur_nodes)
+
         def py_code_block(self, _: None) -> uni.PyInlineCode:
             """Grammar rule.
 

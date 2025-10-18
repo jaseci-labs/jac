@@ -15,6 +15,7 @@ onelang_stmt: import_stmt
        | ability
        | global_var
        | free_code
+       | css_block
        | test
        | impl_def
        | sem_def
@@ -91,6 +92,67 @@ assignment_list: (assignment | named_ref) (COMMA (assignment | named_ref))* COMM
 
 // [Heading]: With entry blocks.
 free_code: KW_WITH KW_ENTRY (COLON NAME)? code_block
+
+// [Heading]: CSS blocks.
+css_block: KW_CSS css_brace_block
+css_brace_block: LBRACE css_statement* RBRACE
+css_statement: css_comment
+            | css_at_rule
+            | css_qualified_rule
+            | css_declaration
+            | css_raw_statement
+css_comment: CSS_COMMENT
+css_at_rule: CSS_ATKEYWORD css_prelude (css_brace_block | SEMI)
+css_prelude: css_component_value*
+css_qualified_rule: css_selector_list css_brace_block
+css_selector_list: css_value (COMMA css_value)*
+css_declaration: css_identifier COLON css_value css_important? SEMI?
+css_identifier: MINUS? MINUS? NAME (MINUS NAME)*
+css_important: BANG css_identifier
+css_raw_statement: css_value SEMI?
+css_value: css_component_value+
+css_component_value: css_ident_with_args
+                  | css_paren_block
+                  | css_bracket_block
+                  | CSS_HASH
+                  | CSS_DIMENSION
+                  | CSS_SUFFIX_MATCH
+                  | CSS_INCLUDE_MATCH
+                  | STRING
+                  | INT
+                  | FLOAT
+                  | HEX
+                  | OCT
+                  | BIN
+                  | KW_AND
+                  | KW_OR
+                  | NOT
+                  | PLUS
+                  | MINUS
+                  | STAR_MUL
+                  | DIV
+                  | MOD
+                  | GT
+                  | LT
+                  | LTE
+                  | GTE
+                  | EE
+                  | NE
+                  | BW_AND
+                  | BW_OR
+                  | BW_XOR
+                  | BW_NOT
+                  | BW_XOR_EQ
+                  | BW_OR_EQ
+                  | MUL_EQ
+                  | EQ
+                  | DOT
+                  | COMMA
+                  | COLON
+css_ident_with_args: css_identifier css_function_args?
+css_function_args: LPAREN (css_value (COMMA css_value)*)? RPAREN
+css_paren_block: LPAREN css_value* RPAREN
+css_bracket_block: LSQUARE css_value* RSQUARE
 
 // [Heading]: Inline python.
 py_code_block: PYNLINE
@@ -499,6 +561,7 @@ GLOBAL_OP: "global"
 NONLOCAL_OP: "nonlocal"
 
 RETURN_HINT: "->"
+BANG: "!"
 NULL_OK: "?"
 COLON: ":"
 SEMI: ";"
@@ -552,6 +615,7 @@ KW_ASYNC: "async"
 KW_AWAIT: "await"
 KW_FLOW: "flow"
 KW_WAIT: "wait"
+KW_CSS: "css"
 KW_TEST: "test"
 KW_IMPL: "impl"
 KW_SEM: "sem"
@@ -652,6 +716,15 @@ INT: /[0-9][0-9_]*/
 
 KWESC_NAME: /<>[a-zA-Z_][a-zA-Z0-9_]*/
 NAME: /[a-zA-Z_][a-zA-Z0-9_]*/
+
+// CSS specific tokens ---------------------------------------------------- //
+
+CSS_ATKEYWORD.1: /@[a-zA-Z_-][a-zA-Z0-9_-]*/
+CSS_HASH.5: /#[a-zA-Z0-9_-]+/
+CSS_DIMENSION.2: /[+-]?(?:\d*\.\d+|\d+)(?:[a-zA-Z_][a-zA-Z0-9_-]*)/
+CSS_SUFFIX_MATCH: "$="
+CSS_INCLUDE_MATCH: "~="
+CSS_COMMENT: /\/\*(.|\n|\r)*?\*\//
 
 
 // Object-Spatial Operators -------------------------------------------------- //
