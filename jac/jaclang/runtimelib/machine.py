@@ -68,7 +68,7 @@ from jaclang.runtimelib.utils import (
     traverse_graph,
 )
 from jaclang.utils import infer_language
-from jaclang.runtimelib.jacpim_simulation_runtime.simulation_ctx import run_simulator, generate_stats
+from jaclang.runtimelib.jacpim_simulation_runtime.simulation_ctx import run_simulator
 
 import pluggy
 
@@ -1599,8 +1599,6 @@ class JacPIM:
         src = JacPIMSimulationCtx.save_codegen_file("task.c")
         res = run_simulator(src)
         print(res)
-
-        generate_stats(res)
 
         # plot_ttg(mapping_ctx.get_ttg(), static_ctx.get_layout(), "temp.png")
 

@@ -154,6 +154,52 @@ def parse_sim_stats(text: str, core: Tuple[int, ...] = (0, 0, 0)) -> SimStats:
     return parse_sim_stats_multi(text).get(core, _new_stats())
 
 
+@dataclass
+class SimulationSummary:
+    total_dma: int
+    total_etc: int
+    total_run: int
+    max_total_cycle: int
+    instruction_counts: dict[str, int]
+
+@dataclass
+class BenchmarkSummary:
+    simulation_summary: dict[str, SimulationSummary]
+
+
+
+def generate_stats(sim_output: str) -> SimulationSummary:
+    """Generate aggregated stats from simulation results."""
+    simulation_results = parse_sim_stats_multi(sim_output)
+    total_dma = 0
+    total_etc = 0
+    total_run = 0
+
+    for stats in simulation_results.values():
+        total_dma += stats.thread_scheduler.breakdown_dma
+        total_etc += stats.thread_scheduler.breakdown_etc
+        total_run += stats.thread_scheduler.breakdown_run
+    
+    max_total_cycle = max(
+        stats.thread_scheduler.breakdown_dma +
+        stats.thread_scheduler.breakdown_etc +
+        stats.thread_scheduler.breakdown_run
+        for stats in simulation_results.values()
+    )
+
+    all_instructions: set[str] = set()
+    for stats in simulation_results.values():
+        all_instructions.update(stats.logic.inst.keys())
+    # Log the aggregated stats
+    return SimulationSummary(
+        total_dma=total_dma,
+        total_etc=total_etc,
+        total_run=total_run,
+        max_total_cycle=max_total_cycle,
+        instruction_counts={inst: sum(
+            stats.logic.inst.get(inst, 0) for stats in simulation_results.values()
+        ) for inst in all_instructions}
+    )
 # --- Example ---
 if __name__ == "__main__":
     example = """\
