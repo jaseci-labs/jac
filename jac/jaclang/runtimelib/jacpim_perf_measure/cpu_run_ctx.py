@@ -50,6 +50,7 @@ class JacPIMCPURunCtx:
     ) -> None:
         """Add a walker to the pending list."""
         walker.__jac__.next = [start_node.__jac__]
+        print(f"Adding pending walker: {extract_name(walker)} starting at node {extract_name(start_node)}")
         cls.pending_walkers.append(walker)
         cls.all_walkers.append(walker)
 
@@ -81,6 +82,7 @@ class JacPIMCPURunCtx:
     def set_pending_walkers_to_active(cls) -> None:
         """Move pending walkers to active walkers if there is space in the target DPU."""
         new_pending_walkers: list[WalkerArchetype] = []
+        print(f"{cls.active_walker_count()} walkers already active. Setting {len(cls.pending_walkers)} pending walkers to active")
         for walker in cls.pending_walkers:
             if len(walker.__jac__.next) == 0:
                 raise RuntimeError("Walker has no next node to visit.")
@@ -107,6 +109,8 @@ class JacPIMCPURunCtx:
         """
         walker_anchor = walker.__jac__
         warch = walker_anchor.archetype
+        # print(f"Running walker: {extract_name(warch)}")
+        # print(f" Next number of next anchors: {len(walker_anchor.next)}")
 
         # Get static context and partitioning once
         all_nodes = JacPIMStaticCtx.get_all_nodes()
@@ -222,6 +226,7 @@ class JacPIMCPURunCtx:
         A walker that finishes will be removed.
         """
         active_walkers = cls.get_active_walkers()
+        print(f"Running all {cls.active_walker_count()} active walkers")
         DPUAllMemoryCtx.start_running()
         for dpu_id in range(DPU_NUM):
             for walker in active_walkers[dpu_id]:
@@ -238,6 +243,11 @@ class JacPIMCPURunCtx:
     def has_pending_walkers(cls) -> bool:
         """Check if there are pending walkers."""
         return len(cls.pending_walkers) > 0
+    
+    @classmethod
+    def active_walker_count(cls) -> int:
+        """Get the total count of active walkers across all DPUs."""
+        return sum(len(dpu_walkers) for dpu_walkers in cls.get_active_walkers())
 
     @classmethod
     def has_active_walkers(cls) -> bool:
@@ -250,6 +260,26 @@ class JacPIMCPURunCtx:
         while cls.has_pending_walkers() or cls.has_active_walkers():
             cls.set_pending_walkers_to_active()
             cls.run_all_active_walkers()
+    
+    @classmethod
+    def stop_walker(cls, walker: WalkerArchetype) -> None:
+        """Stop a walker."""
+        # Remove from active walkers
+        walker.__jac__.disengaged = True
+        for dpu_walkers in cls.get_active_walkers():
+            if walker in dpu_walkers:
+                print(f"Found walker to stop: {extract_name(walker)}")
+                
+                dpu_walkers.remove(walker)
+                print(f"Stopped active walker: {extract_name(walker)}")
+                print(f"  Remaining active walkers: {cls.active_walker_count()}")
+                return
+        # Remove from pending walkers
+        if walker in cls.pending_walkers:
+            cls.pending_walkers.remove(walker)
+            print(f"Stopped pending walker: {extract_name(walker)}")
+            return
+        print(f"Walker {extract_name(walker)} not found among active or pending walkers.")
 
     @classmethod
     def get_all_active_walkers(cls) -> list[WalkerArchetype]:

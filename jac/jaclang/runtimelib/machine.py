@@ -1579,6 +1579,10 @@ class JacPIM:
         """Spawn a walker at a start node."""
         JacPIMCPURunCtx.add_pending_walker(walker, start_node)
 
+    def jacpim_stop_walker(walker: WalkerArchetype) -> None:
+        """Stop a walker."""
+        JacPIMCPURunCtx.stop_walker(walker)
+
     @staticmethod
     def jacpim_start() -> None:
         """Imaginary entry point of JacPIM."""
@@ -1594,11 +1598,11 @@ class JacPIM:
         mapping_ctx.setter(nodes_and_walkers)
 
         JacPIMCPURunCtx.run_until_all_done()
-        save_all_memory_dumps()
-        print("Total Cross DPU Jumps", JacPIMCPURunCtx.total_cross_dpu_jumps)
-        src = JacPIMSimulationCtx.save_codegen_file("task.c")
-        res = run_simulator(src)
-        print(res)
+        # save_all_memory_dumps()
+        # print("Total Cross DPU Jumps", JacPIMCPURunCtx.total_cross_dpu_jumps)
+        # src = JacPIMSimulationCtx.save_codegen_file("task.c")
+        # res = run_simulator(src)
+        # print(res)
 
         # plot_ttg(mapping_ctx.get_ttg(), static_ctx.get_layout(), "temp.png")
 

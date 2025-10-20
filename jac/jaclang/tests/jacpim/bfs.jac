@@ -12,15 +12,20 @@ node BFSNode {
   }
 }
 
+glob NODE_NUM = 500;
 
 walker BFS {
   has visited_512: list[bool] = [False] * 512;
   can run with BFSNode entry {
-    print("Visited node ID: %d" % here.id);
+    # print("Visited node ID: %d" % here.id);
     if (self.visited_512[here.id]) {
       return;
     }
     self.visited_512[here.id] = True;
+    print("Visited %d nodes so far." % sum(self.visited_512));
+    if (sum(self.visited_512) == NODE_NUM) {
+      JacMachine.jacpim_stop_walker(self);
+    }
     visit [-->];
   }
 
@@ -47,7 +52,6 @@ walker BFS {
 
 with entry {
 nodes = [];
-NODE_NUM = 500;
 for i in range(NODE_NUM) {
   nodes.append(BFSNode(id = i));
   root ++> nodes[i];
@@ -64,7 +68,7 @@ for i in range(NODE_NUM) {
   }
 }
   JacMachine.jacpim_init();
-  wlk = nodes[0] spawn BFS();
+  # wlk = nodes[0] spawn BFS();
   JacMachine.jacpim_spawn(BFS(), nodes[0]);
-# JacMachine.jacpim_start();
+  JacMachine.jacpim_start();
 }
