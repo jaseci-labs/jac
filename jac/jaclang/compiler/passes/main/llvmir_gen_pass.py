@@ -35,9 +35,7 @@ class LlvmIrGenPass(BaseAstGenPass[Any]):
                 "Install it with `pip install llvmlite`."
             )
 
-        self.child_passes: list[LlvmIrGenPass] = self._init_child_passes(
-            LlvmIrGenPass
-        )
+        self.child_passes: list[LlvmIrGenPass] = self._init_child_passes(LlvmIrGenPass)
 
         if not LlvmIrGenPass._llvm_initialized:
             _llvm.initialize()
@@ -118,7 +116,9 @@ class LlvmIrGenPass(BaseAstGenPass[Any]):
             self.prune()
             return
 
-        signature = node.signature if isinstance(node.signature, uni.FuncSignature) else None
+        signature = (
+            node.signature if isinstance(node.signature, uni.FuncSignature) else None
+        )
         params = signature.get_parameters() if signature else []
 
         arg_types: list[_ir.Type] = []
@@ -131,12 +131,16 @@ class LlvmIrGenPass(BaseAstGenPass[Any]):
                 )
                 self.prune()
                 return
-            llvm_type = self._resolve_annotation(param.type_tag.tag if param.type_tag else None)
+            llvm_type = self._resolve_annotation(
+                param.type_tag.tag if param.type_tag else None
+            )
             arg_types.append(llvm_type)
             arg_names.append(param.name.value)
 
         return_type = (
-            self._resolve_annotation(signature.return_type) if signature else self._int_type
+            self._resolve_annotation(signature.return_type)
+            if signature
+            else self._int_type
         )
         func_type = _ir.FunctionType(return_type, arg_types)
         func_name = node.py_resolve_name()
@@ -388,7 +392,9 @@ class LlvmIrGenPass(BaseAstGenPass[Any]):
         if op == Tok.NOT.value:
             bool_val = self._coerce(operand, self._bool_type, node)
             return (
-                self._builder.icmp_unsigned("==", bool_val, _ir.Constant(self._bool_type, 0))
+                self._builder.icmp_unsigned(
+                    "==", bool_val, _ir.Constant(self._bool_type, 0)
+                )
                 if bool_val is not None
                 else None
             )
@@ -428,7 +434,9 @@ class LlvmIrGenPass(BaseAstGenPass[Any]):
         )
         return None, None
 
-    def _emit_cmp(self, op: str, left: _ir.Value, right: _ir.Value, node: uni.BinaryExpr) -> Optional[_ir.Value]:
+    def _emit_cmp(
+        self, op: str, left: _ir.Value, right: _ir.Value, node: uni.BinaryExpr
+    ) -> Optional[_ir.Value]:
         if self._builder is None:
             return None
         if self._is_float_type(left.type):
@@ -499,7 +507,9 @@ class LlvmIrGenPass(BaseAstGenPass[Any]):
     def _encode_type(self, typ: _ir.Type) -> str:
         return str(typ)
 
-    def _default_value(self, typ: _ir.Type, node: Optional[uni.UniNode]) -> Optional[_ir.Constant]:
+    def _default_value(
+        self, typ: _ir.Type, node: Optional[uni.UniNode]
+    ) -> Optional[_ir.Constant]:
         if self._is_void_type(typ):
             return None
         if self._is_int_type(typ):
@@ -520,18 +530,38 @@ class LlvmIrGenPass(BaseAstGenPass[Any]):
         if str(value.type) == str(target):
             return value
         if self._is_float_type(target) and self._is_int_type(value.type):
-            return self._builder.sitofp(value, target, name="coerce_fp") if self._builder else None
+            return (
+                self._builder.sitofp(value, target, name="coerce_fp")
+                if self._builder
+                else None
+            )
         if self._is_int_type(target) and self._is_float_type(value.type):
-            return self._builder.fptosi(value, target, name="coerce_int") if self._builder else None
+            return (
+                self._builder.fptosi(value, target, name="coerce_int")
+                if self._builder
+                else None
+            )
         if self._is_int_type(target) and self._is_int_type(value.type):
             src = self._int_bitwidth(value.type)
             dst = self._int_bitwidth(target)
             if src < dst:
-                return self._builder.sext(value, target, name="sext") if self._builder else None
+                return (
+                    self._builder.sext(value, target, name="sext")
+                    if self._builder
+                    else None
+                )
             if src > dst:
-                return self._builder.trunc(value, target, name="trunc") if self._builder else None
+                return (
+                    self._builder.trunc(value, target, name="trunc")
+                    if self._builder
+                    else None
+                )
         if self._is_pointer_type(target) and self._is_pointer_type(value.type):
-            return self._builder.bitcast(value, target, name="bitcast") if self._builder else None
+            return (
+                self._builder.bitcast(value, target, name="bitcast")
+                if self._builder
+                else None
+            )
         self.log_error(
             f"Cannot coerce value of type '{value.type}' to '{target}'.",
             node_override=node,
@@ -547,7 +577,9 @@ class LlvmIrGenPass(BaseAstGenPass[Any]):
 
     @staticmethod
     def _int_bitwidth(typ: _ir.Type) -> int:
-        return getattr(typ, "width", int(str(typ)[1:]) if str(typ).startswith("i") else 0)
+        return getattr(
+            typ, "width", int(str(typ)[1:]) if str(typ).startswith("i") else 0
+        )
 
     @staticmethod
     def _is_int_type(typ: _ir.Type) -> bool:

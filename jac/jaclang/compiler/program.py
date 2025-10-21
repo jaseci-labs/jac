@@ -170,9 +170,7 @@ class JacProgram:
         mod_targ = self.compile(
             file_path, use_str=use_str, no_cgen=True, cancel_token=cancel_token
         )
-        self.run_schedule(
-            mod=mod_targ, passes=llvm_code_gen, cancel_token=cancel_token
-        )
+        self.run_schedule(mod=mod_targ, passes=llvm_code_gen, cancel_token=cancel_token)
         return mod_targ
 
     def run_schedule(
