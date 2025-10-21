@@ -21,11 +21,15 @@ void run_thread(uint64_t walker_container_ptr, uint64_t trace_length, char * nod
         // Load node
         get(node_buffer, container_obj.node_ptr, container_obj.node_size);
         // Load walker
-        get(walker_buffer, container_obj.walker_ptr, container_obj.walker_size);
+        if (i == 0) {
+          get(walker_buffer, container_obj.walker_ptr, container_obj.walker_size);
+        }
         // Run on node
         run_on_node(walker_buffer, node_buffer, container_obj.edge_num, container_obj.func_call);
         // Save walker
-        save(walker_buffer, container_obj.walker_ptr, container_obj.walker_size);
+        if (i == trace_length - 1) {
+          save(walker_buffer, container_obj.walker_ptr, container_obj.walker_size);
+        }
         // Save node
         save(node_buffer, container_obj.node_ptr, container_obj.node_size);
     }

@@ -1597,12 +1597,12 @@ class JacPIM:
         mapping_ctx = JacPIMMappingCtx
         mapping_ctx.setter(nodes_and_walkers)
 
-        JacPIMCPURunCtx.run_until_all_done()
-        # save_all_memory_dumps()
-        # print("Total Cross DPU Jumps", JacPIMCPURunCtx.total_cross_dpu_jumps)
-        # src = JacPIMSimulationCtx.save_codegen_file("task.c")
-        # res = run_simulator(src)
-        # print(res)
+        JacPIMCPURunCtx.run_until_all_done(os.environ.get("OVERHEAD_ONLY") == "1")
+        save_all_memory_dumps()
+        print("Total Cross DPU Jumps", JacPIMCPURunCtx.total_cross_dpu_jumps)
+        src = JacPIMSimulationCtx.save_codegen_file("task.c")
+        res = run_simulator(src)
+        print(res)
 
         # plot_ttg(mapping_ctx.get_ttg(), static_ctx.get_layout(), "temp.png")
 

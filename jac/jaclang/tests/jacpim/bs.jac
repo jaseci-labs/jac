@@ -111,7 +111,7 @@ with entry {
   JacMachine.jacpim_init();
   root ++> data_nodes[0][0];
   print("Walker instance created with value 5");
-  for i in range(10){
+  for i in range(1){
     JacMachine.jacpim_spawn(bs(value=i), data_nodes[0][0]);
   }
   JacMachine.jacpim_start();

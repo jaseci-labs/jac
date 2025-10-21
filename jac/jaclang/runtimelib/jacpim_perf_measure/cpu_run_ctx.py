@@ -218,7 +218,7 @@ class JacPIMCPURunCtx:
         return True
 
     @classmethod
-    def run_all_active_walkers(cls) -> None:
+    def run_all_active_walkers(cls, overhead_only: bool) -> None:
         """
         Run all active walkers once.
 
@@ -235,7 +235,7 @@ class JacPIMCPURunCtx:
                     # Move to pending list
                     cls.pending_walkers.append(walker)
             # A walker is either done or moved to pending - clear active list
-        DPUAllMemoryCtx.finish_running()
+        DPUAllMemoryCtx.finish_running(overhead_only)
         for dpu_id in range(DPU_NUM):
             active_walkers[dpu_id] = []
 
@@ -255,11 +255,11 @@ class JacPIMCPURunCtx:
         return any(len(dpu_walkers) > 0 for dpu_walkers in cls.get_active_walkers())
 
     @classmethod
-    def run_until_all_done(cls) -> None:
+    def run_until_all_done(cls, overhead_only: bool) -> None:
         """Run until all walkers are done."""
         while cls.has_pending_walkers() or cls.has_active_walkers():
             cls.set_pending_walkers_to_active()
-            cls.run_all_active_walkers()
+            cls.run_all_active_walkers(overhead_only)
     
     @classmethod
     def stop_walker(cls, walker: WalkerArchetype) -> None:
@@ -393,7 +393,7 @@ class DPUAllMemoryCtx:
         return cls.dpu_container_ctxs
 
     @classmethod
-    def metadata_snapshot_one_dpu(cls, dpu_id: int) -> DPUObjMemoryCtx:
+    def metadata_snapshot_one_dpu(cls, dpu_id: int, overhead_only: bool) -> DPUObjMemoryCtx:
         """Create a memory context for metadata on a DPU."""
         metadata = Metadata(
             walker_num=0,  # to be filled later
@@ -414,7 +414,7 @@ class DPUAllMemoryCtx:
             container_mem_ctx=cls.dpu_container_ctxs[dpu_id],
         )
         metadata.extra_mram_space_ptr = extra_mram_space_ptr
-        metadata.walker_num = len(JacPIMCPURunCtx.get_active_walkers()[dpu_id])
+        metadata.walker_num = len(JacPIMCPURunCtx.get_active_walkers()[dpu_id]) if not overhead_only else 0
         # print(f"DEBUG: DPU {dpu_id} has {metadata.walker_num} active walkers")
         metadata.walker_container_ptrs = [
             mem_ctx.get_container_range(
@@ -433,10 +433,10 @@ class DPUAllMemoryCtx:
         return metadata_mem_ctx
 
     @classmethod
-    def metadata_snapshot_all_dpu(cls) -> list[DPUObjMemoryCtx]:
+    def metadata_snapshot_all_dpu(cls, overhead_only: bool) -> list[DPUObjMemoryCtx]:
         """Create a memory context for metadata on all DPUs."""
         cls.dpu_metadata_ctxs = [
-            cls.metadata_snapshot_one_dpu(dpu_id) for dpu_id in range(DPU_NUM)
+            cls.metadata_snapshot_one_dpu(dpu_id, overhead_only) for dpu_id in range(DPU_NUM)
         ]
         return cls.dpu_metadata_ctxs
 
@@ -462,10 +462,10 @@ class DPUAllMemoryCtx:
         cls.walker_traces[walker_id].append(node_idx)
 
     @classmethod
-    def finish_running(cls) -> list[DPUMemoryCtx]:
+    def finish_running(cls, overhead_only: bool) -> list[DPUMemoryCtx]:
         """Snapshot containers and metadata for all DPUs."""
         cls.container_snapshot_all_dpu(cls.walker_traces)
-        cls.metadata_snapshot_all_dpu()
+        cls.metadata_snapshot_all_dpu(overhead_only)
         res = [
             DPUMemoryCtx(
                 metadata_mem_ctx=cls.dpu_metadata_ctxs[dpu_id],
