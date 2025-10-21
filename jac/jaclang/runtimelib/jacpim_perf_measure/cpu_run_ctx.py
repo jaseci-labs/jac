@@ -438,7 +438,7 @@ class DPUAllMemoryCtx:
             for walker in JacPIMCPURunCtx.get_active_walkers()[dpu_id]
         ]
         metadata.trace_lengths = [
-            len(cls.walker_traces[JacPIMCPURunCtx.get_all_walkers().index(walker_arch)])
+            (len(cls.walker_traces[JacPIMCPURunCtx.get_all_walkers().index(walker_arch)]) if os.environ.get("OVERHEAD_ONLY") != "1" else 0)
             for walker_arch in JacPIMCPURunCtx.get_active_walkers()[dpu_id]
         ]
         metadata_mem_ctx = DPUObjMemoryCtx()

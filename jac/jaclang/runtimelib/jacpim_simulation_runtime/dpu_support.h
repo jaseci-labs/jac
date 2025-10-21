@@ -11,7 +11,7 @@ void save(void * buf, uint32_t start, uint32_t size) {
 }
 
 
-void run_thread(uint64_t walker_container_ptr, uint64_t trace_length, char * node_buffer, char * walker_buffer) {
+void run_thread(uint32_t walker_container_ptr, uint32_t trace_length, char * node_buffer, char * walker_buffer) {
     ContainerObject container_obj;
     for (uint32_t i = 0; i < trace_length; i++) {
         get(&container_obj, walker_container_ptr + i * sizeof(ContainerObject), sizeof(ContainerObject));
@@ -23,4 +23,3 @@ void run_thread(uint64_t walker_container_ptr, uint64_t trace_length, char * nod
         save(node_buffer, container_obj.node_ptr, container_obj.node_size);
     }
 }
-BARRIER_INIT(my_barrier, NR_TASKLETS);

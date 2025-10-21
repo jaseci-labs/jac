@@ -2,7 +2,7 @@
 {% include "dpu_support.h" %}
 
 int main() {
-    uint64_t walker_id = me();
+    uint32_t walker_id = me();
     char node_buffer[{{max_node_size}}];
     char walker_buffer[{{max_walker_size}}];
     Metadata metadata;
@@ -11,10 +11,10 @@ int main() {
         return 0;
     }
 
-    uint64_t walker_container_ptr = metadata.walker_container_ptrs[walker_id];
-    uint64_t trace_length = metadata.trace_lengths[walker_id];
-    uint64_t walker_ptr = metadata.walker_ptrs[walker_id];
-    uint64_t walker_size = metadata.walker_sizes[walker_id];
+    uint32_t walker_container_ptr = metadata.walker_container_ptrs[walker_id];
+    uint32_t trace_length = metadata.trace_lengths[walker_id];
+    uint32_t walker_ptr = metadata.walker_ptrs[walker_id];
+    uint32_t walker_size = metadata.walker_sizes[walker_id];
     get(walker_buffer, walker_ptr, walker_size);
     run_thread(walker_container_ptr, trace_length, node_buffer, walker_buffer);
     save(walker_buffer, walker_ptr, walker_size);
