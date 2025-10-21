@@ -23,8 +23,8 @@ if __name__ == "__main__":
       with open(path / "log.txt", "r") as f:
           output = f.read()
       summary = generate_stats(output)
-      summaries[f"{experiment_info.TEST_NAME} / {experiment_info.MAPPING} / {experiment_info.OVERHEAD_ONLY}"] = summary
+      summaries[f"{experiment_info.TEST_NAME} / {experiment_info.MAPPING} / {"Overhead only" if experiment_info.OVERHEAD_ONLY else "Overhead + Walker workload"}"] = summary
     df1, df2 = generate_pandas_df(summaries)
     print(df1)
     print(df2)
-    plot_instruction_breakdown(df2)
+    plot_instruction_breakdown(df2, title="Instruction Mix per Benchmark")

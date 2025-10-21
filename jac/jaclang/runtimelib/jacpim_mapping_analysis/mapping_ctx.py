@@ -53,7 +53,7 @@ class JacPIMMappingCtx:
         mapping_method = os.environ.get("MAPPING")
         if mapping_method is None:
             raise RuntimeError("Mapping method not specified")
-        elif mapping_method == "ROUND":
+        elif mapping_method == "JACPIM":
             cls.partitioning = RoundRobinPartitioner(
                 cls.ttg, [start_node for start_node, _ in nodes_and_walkers]
             ).get_data_partitioning()

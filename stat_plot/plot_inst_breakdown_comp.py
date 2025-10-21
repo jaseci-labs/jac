@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-def plot_instruction_breakdown(df: pd.DataFrame, filename: str = "instruction_mix_absolute.png") -> None:
+def plot_instruction_breakdown(df: pd.DataFrame, filename: str = "instruction_mix_absolute.png", title: str = "Instruction Mix per Benchmark (Absolute)") -> None:
 
     # Remove any columns that are all zeros
     df = df.loc[:, (df != 0).any(axis=0)]
@@ -16,7 +16,7 @@ def plot_instruction_breakdown(df: pd.DataFrame, filename: str = "instruction_mi
         ax.bar(df.index, df[op].values, bottom=bottom, label=op)
         bottom += df[op].values
 
-    ax.set_title("Instruction Mix per Benchmark (Absolute)")
+    ax.set_title(title)
     ax.set_ylabel("Instruction count")
     plt.xticks(rotation=15, ha="right")
     ax.legend(ncol=4, bbox_to_anchor=(1, 1.02), loc="lower right", frameon=True)
