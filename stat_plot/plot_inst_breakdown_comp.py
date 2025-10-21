@@ -5,6 +5,9 @@ import pandas as pd
 
 def plot_instruction_breakdown(df: pd.DataFrame, filename: str = "instruction_mix_absolute.png") -> None:
 
+    # Remove any columns that are all zeros
+    df = df.loc[:, (df != 0).any(axis=0)]
+
     sns.set_theme(style="whitegrid")
     op_order = df.sum(axis=0).sort_values(ascending=False).index
     fig, ax = plt.subplots(figsize=(10, 6))

@@ -1,5 +1,6 @@
 """CPU-based execution context for JacPIM walkers, managing their lifecycle and DPU boundary crossings."""
 
+import os
 from jaclang.runtimelib.archetype import (
     EdgeAnchor,
     NodeAnchor,
@@ -358,15 +359,17 @@ class DPUAllMemoryCtx:
             container_objects: list[ContainerObject] = []
             walker = JacPIMCPURunCtx.get_all_walkers()[walker_idx]
             walker_id = JacPIMCPURunCtx.get_all_walkers().index(walker)
-            walker_size = len(walker.get_byte_stream())
+            # walker_size = len(walker.get_byte_stream())
+            if os.environ.get("OVERHEAD_ONLY") == "1":
+                walker_trace = []
             for node_idx in walker_trace:
                 node = JacPIMStaticCtx.get_all_nodes()[node_idx]
                 node_size = len(node.get_byte_stream())
                 edge_num = len(node.__jac__.edges)
                 container_objects.append(
                     ContainerObject(
-                        walker_ptr=cls.dpu_walker_ctxs[dpu_id].get_obj_range(walker_id).add_offset(Metadata.get_metadata_size()).add_offset(len(cls.dpu_node_ctxs[dpu_id])).ptr,
-                        walker_size=walker_size,
+                        # walker_ptr=cls.dpu_walker_ctxs[dpu_id].get_obj_range(walker_id).add_offset(Metadata.get_metadata_size()).add_offset(len(cls.dpu_node_ctxs[dpu_id])).ptr,
+                        # walker_size=walker_size,
                         node_ptr=cls.dpu_node_ctxs[dpu_id].get_obj_range(node_idx).add_offset(Metadata.get_metadata_size()).ptr,
                         node_size=node_size,
                         edge_num=edge_num,
@@ -396,10 +399,12 @@ class DPUAllMemoryCtx:
     def metadata_snapshot_one_dpu(cls, dpu_id: int, overhead_only: bool) -> DPUObjMemoryCtx:
         """Create a memory context for metadata on a DPU."""
         metadata = Metadata(
+            extra_mram_space_ptr=0,  # to be filled later
             walker_num=0,  # to be filled later
             walker_container_ptrs=[0] * MAX_DPU_THREAD_NUM,  # to be filled later
-            extra_mram_space_ptr=0,  # to be filled later
             trace_lengths=[0] * MAX_DPU_THREAD_NUM,  # to be filled later
+            walker_ptrs=[0] * MAX_DPU_THREAD_NUM,  # to be filled later
+            walker_sizes=[0] * MAX_DPU_THREAD_NUM,  # to be filled later
         )
         extra_mram_space_ptr = (
             len(metadata.get_byte_stream())
@@ -414,12 +419,22 @@ class DPUAllMemoryCtx:
             container_mem_ctx=cls.dpu_container_ctxs[dpu_id],
         )
         metadata.extra_mram_space_ptr = extra_mram_space_ptr
-        metadata.walker_num = len(JacPIMCPURunCtx.get_active_walkers()[dpu_id]) if not overhead_only else 0
+        metadata.walker_num = len(JacPIMCPURunCtx.get_active_walkers()[dpu_id])
         # print(f"DEBUG: DPU {dpu_id} has {metadata.walker_num} active walkers")
         metadata.walker_container_ptrs = [
             mem_ctx.get_container_range(
                 JacPIMCPURunCtx.get_all_walkers().index(walker)
             ).add_offset(Metadata.get_metadata_size()).add_offset(len(cls.dpu_node_ctxs[dpu_id])).add_offset(len(cls.dpu_walker_ctxs[dpu_id])).ptr
+            for walker in JacPIMCPURunCtx.get_active_walkers()[dpu_id]
+        ]
+        metadata.walker_ptrs = [
+            mem_ctx.get_walker_range(
+                JacPIMCPURunCtx.get_all_walkers().index(walker)
+            ).add_offset(Metadata.get_metadata_size()).add_offset(len(cls.dpu_node_ctxs[dpu_id])).add_offset(len(cls.dpu_walker_ctxs[dpu_id])).ptr
+            for walker in JacPIMCPURunCtx.get_active_walkers()[dpu_id]
+        ]
+        metadata.walker_sizes = [
+            len(walker.get_byte_stream())
             for walker in JacPIMCPURunCtx.get_active_walkers()[dpu_id]
         ]
         metadata.trace_lengths = [

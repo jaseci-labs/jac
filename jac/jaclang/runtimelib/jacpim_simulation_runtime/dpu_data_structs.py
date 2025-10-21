@@ -10,8 +10,6 @@ MAX_DPU_THREAD_NUM = 12
 class ContainerObject:
     """Container object to store walker state on DPU."""
 
-    walker_ptr: int
-    walker_size: int
     node_ptr: int
     node_size: int
     edge_num: int
@@ -20,9 +18,7 @@ class ContainerObject:
     def get_byte_stream(self) -> bytes:
         """Get the byte stream of the container object."""
         return struct.pack(
-            "<QQQQQQ",
-            self.walker_ptr,
-            self.walker_size,
+            "<QQQQ",
             self.node_ptr,
             self.node_size,
             self.edge_num,
@@ -32,12 +28,12 @@ class ContainerObject:
     @classmethod
     def get_size(cls) -> int:
         """Get the size of the container object in bytes."""
-        return 8 * 6
+        return 8 * 4
 
     @classmethod
     def get_type_def(cls) -> str:
         """Get the C type definition of the container object."""
-        return "uint64_t walker_ptr; uint64_t walker_size; uint64_t node_ptr; uint64_t node_size; uint64_t edge_num; uint64_t func_call;"  # noqa: E501
+        return "uint64_t node_ptr; uint64_t node_size; uint64_t edge_num; uint64_t func_call;"  # noqa: E501
 
 
 @dataclass
@@ -63,6 +59,8 @@ class Metadata:
     walker_num: int
     walker_container_ptrs: list[int]  # Pointers to each walker's container
     trace_lengths: list[int]  # Lengths of each walker's trace
+    walker_ptrs: list[int]
+    walker_sizes: list[int]
 
     def get_byte_stream(self) -> bytes:
         """Get the C type definition of the metadata object."""
@@ -71,10 +69,14 @@ class Metadata:
         # Fill in with zeros if not enough walkers
         walker_container_ptrs = self.walker_container_ptrs + [0] * (MAX_DPU_THREAD_NUM - len(self.walker_container_ptrs))
         trace_lengths = self.trace_lengths + [0] * (MAX_DPU_THREAD_NUM - len(self.trace_lengths))
+        walker_ptrs = self.walker_ptrs + [0] * (MAX_DPU_THREAD_NUM - len(self.walker_ptrs))
+        walker_sizes = self.walker_sizes + [0] * (MAX_DPU_THREAD_NUM - len(self.walker_sizes))
         res = (
             struct.pack("<QQ", self.extra_mram_space_ptr, self.walker_num)
             + b"".join(struct.pack("<Q", ptr) for ptr in walker_container_ptrs)
             + b"".join(struct.pack("<Q", length) for length in trace_lengths)
+            + b"".join(struct.pack("<Q", ptr) for ptr in walker_ptrs)
+            + b"".join(struct.pack("<Q", size) for size in walker_sizes)
         )
         assert len(res) == self.get_metadata_size()
         return res
@@ -82,9 +84,9 @@ class Metadata:
     @classmethod
     def get_metadata_size(cls) -> int:
         """Get the size of the metadata object in bytes."""
-        return 8 + 8 + 8 * MAX_DPU_THREAD_NUM + 8 * MAX_DPU_THREAD_NUM
+        return 8 + 8 + 8 * MAX_DPU_THREAD_NUM + 8 * MAX_DPU_THREAD_NUM + 8 * MAX_DPU_THREAD_NUM + 8 * MAX_DPU_THREAD_NUM
 
     @classmethod
     def get_type_def(cls) -> str:
         """Get the C type definition of the metadata object."""
-        return f"uint64_t extra_mram_space; uint64_t walker_num; uint64_t walker_container_ptrs[{MAX_DPU_THREAD_NUM}]; uint64_t trace_lengths[{MAX_DPU_THREAD_NUM}];"  # noqa: E501
+        return f"uint64_t extra_mram_space; uint64_t walker_num; uint64_t walker_container_ptrs[{MAX_DPU_THREAD_NUM}]; uint64_t trace_lengths[{MAX_DPU_THREAD_NUM}]; uint64_t walker_ptrs[{MAX_DPU_THREAD_NUM}]; uint64_t walker_sizes[{MAX_DPU_THREAD_NUM}];"  # noqa: E501
