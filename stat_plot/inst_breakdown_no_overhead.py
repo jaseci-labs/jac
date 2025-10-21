@@ -3,6 +3,7 @@ from simulation_parser import generate_stats
 import experimented
 from plot_inst_breakdown_comp import plot_instruction_breakdown
 from extract_pd import generate_pandas_df
+import pandas as pd
 
 
 class SimulationConfig(pydantic.BaseModel):
@@ -25,6 +26,21 @@ if __name__ == "__main__":
       summary = generate_stats(output)
       summaries[f"{experiment_info.TEST_NAME} / {experiment_info.MAPPING} / {experiment_info.OVERHEAD_ONLY}"] = summary
     df1, df2 = generate_pandas_df(summaries)
-    print(df1)
-    print(df2)
-    plot_instruction_breakdown(df2)
+    df_diff = pd.DataFrame()
+    for test_name in ["BS"]:
+        for mapping in ["ROUND", "RANDOM"]:
+            key1 = f"{test_name} / {mapping} / True"
+            key2 = f"{test_name} / {mapping} / False"
+            # Extract the two rows and subtract their instruction counts
+            row1 = df2.loc[key1]
+            row2 = df2.loc[key2]
+            diff = row2 - row1
+            print(diff)
+
+            # Summarize all test, mapping combinations diff into a new dataframe
+            df_diff = pd.concat([df_diff, diff.to_frame().T])
+    df_diff.index = [f"{test_name} / {mapping} / No Overhead" for test_name in ["BS"] for mapping in ["ROUND", "RANDOM"]]
+    print("Instruction counts without overhead:")
+    print(df_diff)
+    plot_instruction_breakdown(df_diff, filename ="instruction_mix_no_overhead.png")
+

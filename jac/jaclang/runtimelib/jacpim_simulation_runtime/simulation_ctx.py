@@ -16,6 +16,7 @@ class SimulationConfig(pydantic.BaseModel):
     max_dpu_thread_num: int = MAX_DPU_THREAD_NUM
     MAPPING: str = os.environ.get("MAPPING")
     TEST_NAME: str = os.environ.get("TEST_NAME")
+    OVERHEAD_ONLY: bool = os.environ.get("OVERHEAD_ONLY") == "1"
   
 SIMULATOR_REPO_PATH = Path.home() / "uPIMulator" / "golang" / "uPIMulator"
 

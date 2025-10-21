@@ -1,5 +1,6 @@
 import from jaclang.runtimelib.machine {JacMachine}
 import struct;
+import random;
 edge Left {}
 edge Right {}
 
@@ -87,6 +88,7 @@ walker bs {
 }
 
 with entry {
+  random.seed(0);
   NUM=1000;
   values = [i for i in range(NUM)];
   data_nodes = [(DataNode(value=values[i], index=i), values[i], values[i]) for i in range(NUM)];
