@@ -10,6 +10,7 @@ import sys
 import tempfile
 import traceback
 import unittest
+import importlib.util
 from jaclang.cli import cli
 from jaclang.cli.cmdreg import cmd_registry, extract_param_descriptions
 from jaclang.runtimelib.builtin import printgraph
@@ -35,6 +36,25 @@ class JacCliTests(TestCase):
         stdout_value = captured_output.getvalue()
 
         self.assertIn("Hello World!", stdout_value)
+
+    def test_jac_cli_native(self) -> None:
+        """Ensure the native CLI command executes compiled LLVM code."""
+        if importlib.util.find_spec("llvmlite") is None:
+            self.skipTest("llvmlite is not installed")
+
+        captured_output = io.StringIO()
+        original_stdout = sys.stdout
+        try:
+            sys.stdout = captured_output
+            cli.native(
+                self.fixture_abs_path("native_simple.jac"),
+                entry="add",
+                args=["3", "4"],
+            )
+        finally:
+            sys.stdout = original_stdout
+
+        self.assertEqual(captured_output.getvalue().strip(), "7")
 
     def test_jac_cli_run_python_file(self) -> None:
         """Test running Python files with jac run command."""

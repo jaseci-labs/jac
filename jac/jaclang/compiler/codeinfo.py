@@ -40,6 +40,11 @@ class CodeGenTarget:
         self.py_ast: list[ast3.AST] = []
         self.py_bytecode: Optional[bytes] = None
         self.es_ast: Optional[EsNode] = None
+        self.llvm_module: Any | None = None
+        self.llvm_ir: str = ""
+        self.llvm_metadata: dict[str, Any] = {}
+        self.llvm_triple: str = ""
+        self.llvm_data_layout: str = ""
 
 
 class CodeLocInfo:

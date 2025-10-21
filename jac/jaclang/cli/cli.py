@@ -8,7 +8,7 @@ import sys
 import types
 from importlib.metadata import version as pkg_version
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import jaclang.compiler.unitree as uni
 from jaclang.cli.cmdreg import cmd_registry
@@ -170,6 +170,151 @@ def run(
             exit(1)
 
     mach.close()
+
+
+@cmd_registry.register
+def native(
+    filename: str,
+    entry: str = "main",
+    dump_ir: bool = False,
+    args: list[str] | None = None,
+) -> None:
+    """Run a Jac file natively using llvmlite's MCJIT backend.
+
+    Compiles the specified Jac source with the LLVM IR generator and executes the
+    chosen entry function through an MCJIT execution engine. Arguments supplied
+    after ``--`` are forwarded to the native entrypoint.
+
+    Args:
+        filename: Path to the Jac source file.
+        entry: Name of the ability to execute (default: ``main``).
+        dump_ir: Print the generated LLVM IR before execution.
+        args: Additional arguments passed to the entrypoint (use ``--``).
+    """
+    if not filename.endswith(".jac"):
+        print("Only .jac files are supported by the native backend.", file=sys.stderr)
+        exit(1)
+
+    try:
+        import ctypes
+        import llvmlite.binding as llvm
+    except ImportError:
+        print(
+            "llvmlite is required for native execution. Install it with `pip install llvmlite`.",
+            file=sys.stderr,
+        )
+        exit(1)
+
+    forwarded_args = list(args) if args else []
+    if forwarded_args and forwarded_args[0] == "--":
+        forwarded_args = forwarded_args[1:]
+
+    program = JacProgram()
+    module = program.compile_to_llvm(file_path=filename)
+
+    errs = len(program.errors_had)
+    warnings = len(program.warnings_had)
+    if errs or warnings:
+        for alert in program.errors_had + program.warnings_had:
+            print(alert.pretty_print(), file=sys.stderr)
+    if errs:
+        exit(1)
+
+    llvm_ir = module.gen.llvm_ir
+    if not llvm_ir:
+        print(
+            "LLVM IR was not generated for the requested module.",
+            file=sys.stderr,
+        )
+        exit(1)
+
+    metadata = module.gen.llvm_metadata
+    signature = metadata.get(entry)
+    if signature is None:
+        available = ", ".join(sorted(metadata.keys())) or "<none>"
+        print(
+            f"Entry '{entry}' not found in LLVM output. Available functions: {available}",
+            file=sys.stderr,
+        )
+        exit(1)
+
+    if dump_ir:
+        print(llvm_ir)
+
+    llvm.initialize()
+    llvm.initialize_native_target()
+    llvm.initialize_native_asmprinter()
+
+    target = llvm.Target.from_default_triple()
+    target_machine = target.create_target_machine()
+    backing_mod = llvm.parse_assembly(llvm_ir)
+    backing_mod.triple = module.gen.llvm_triple or llvm.get_default_triple()
+    if module.gen.llvm_data_layout:
+        backing_mod.data_layout = module.gen.llvm_data_layout
+    backing_mod.verify()
+    engine = llvm.create_mcjit_compiler(backing_mod, target_machine)
+    engine.finalize_object()
+    engine.run_static_constructors()
+
+    arg_types = signature.get("args", [])
+    ret_type = signature.get("return", "void")
+
+    def llvm_to_ctype(type_str: str) -> Optional[type]:
+        if type_str == "void":
+            return None
+        if type_str in {"i1", "bool"}:
+            return ctypes.c_uint8
+        if type_str in {"i8"}:
+            return ctypes.c_int8
+        if type_str in {"i16"}:
+            return ctypes.c_int16
+        if type_str in {"i32"}:
+            return ctypes.c_int32
+        if type_str in {"i64"}:
+            return ctypes.c_int64
+        if type_str in {"float"}:
+            return ctypes.c_float
+        if type_str in {"double"}:
+            return ctypes.c_double
+        if type_str.endswith("*"):
+            return ctypes.c_void_p
+        raise ValueError(f"Unsupported LLVM type '{type_str}'.")
+
+    def convert_arg(value: str, type_str: str) -> Any:
+        if type_str in {"i1", "bool"}:
+            lowered = value.lower()
+            return 1 if lowered in {"1", "true", "yes"} else 0
+        if type_str.startswith("i"):
+            return int(value, 0)
+        if type_str in {"float", "double"}:
+            return float(value)
+        if type_str.endswith("*"):
+            return int(value, 0)
+        raise ValueError(f"Cannot convert argument '{value}' to '{type_str}'.")
+
+    if len(arg_types) != len(forwarded_args):
+        print(
+            f"Entry '{entry}' expects {len(arg_types)} arguments but received {len(forwarded_args)}.",
+            file=sys.stderr,
+        )
+        exit(1)
+
+    try:
+        c_ret_type = llvm_to_ctype(ret_type)
+        c_arg_types = [llvm_to_ctype(t) for t in arg_types]
+        if None in c_arg_types:
+            raise ValueError("Void argument types are not supported.")
+        cfunctype = ctypes.CFUNCTYPE(c_ret_type or None, *c_arg_types)
+        func_ptr = engine.get_function_address(entry)
+        native_func = cfunctype(func_ptr)
+        converted_args = [convert_arg(v, t) for v, t in zip(forwarded_args, arg_types)]
+        result = native_func(*converted_args)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        exit(1)
+
+    if ret_type != "void":
+        print(result)
 
 
 @cmd_registry.register

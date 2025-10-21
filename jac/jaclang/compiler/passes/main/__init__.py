@@ -14,6 +14,7 @@ from .predynamo_pass import PreDynamoPass  # noqa: I100
 from .pybc_gen_pass import PyBytecodeGenPass  # noqa: I100
 from .cfg_build_pass import CFGBuildPass  # noqa: I100
 from .pyjac_ast_link_pass import PyJacAstLinkPass  # noqa: I100
+from .llvmir_gen_pass import LlvmIrGenPass  # noqa: I100
 
 
 __all__ = [
@@ -33,4 +34,5 @@ __all__ = [
     "PyBytecodeGenPass",
     "CFGBuildPass",
     "PyJacAstLinkPass",
+    "LlvmIrGenPass",
 ]

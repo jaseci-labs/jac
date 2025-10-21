@@ -27,6 +27,7 @@ from jaclang.compiler.passes.main import (
     SymTabBuildPass,
     Transform,
     TypeCheckPass,
+    LlvmIrGenPass,
 )
 from jaclang.compiler.passes.tool import (
     DocIRGenPass,
@@ -54,6 +55,9 @@ py_code_gen = [
     PyastGenPass,
     PyJacAstLinkPass,
     PyBytecodeGenPass,
+]
+llvm_code_gen = [
+    LlvmIrGenPass,
 ]
 format_sched = [FuseCommentsPass, DocIRGenPass, JacFormatPass]
 
@@ -154,6 +158,21 @@ class JacProgram:
         mod_targ = self.compile(file_path, use_str, type_check=type_check)
         JacImportDepsPass(ir_in=mod_targ, prog=self)
         SemanticAnalysisPass(ir_in=mod_targ, prog=self)
+        return mod_targ
+
+    def compile_to_llvm(
+        self,
+        file_path: str,
+        use_str: str | None = None,
+        cancel_token: Event | None = None,
+    ) -> uni.Module:
+        """Compile a Jac file and emit LLVM IR via the LlvmIrGenPass."""
+        mod_targ = self.compile(
+            file_path, use_str=use_str, no_cgen=True, cancel_token=cancel_token
+        )
+        self.run_schedule(
+            mod=mod_targ, passes=llvm_code_gen, cancel_token=cancel_token
+        )
         return mod_targ
 
     def run_schedule(
