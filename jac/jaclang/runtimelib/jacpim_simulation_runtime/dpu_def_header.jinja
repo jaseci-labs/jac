@@ -31,8 +31,8 @@ typedef struct __{{walker_type.name}} {
 {% endfor %}
 
 #define MAX_CONTAINER_BUFFER_SIZE 128
-uint64_t container_buffer[MAX_CONTAINER_BUFFER_SIZE];
-uint64_t container_buffer_size = 0;
+__host uint64_t container_buffer[MAX_CONTAINER_BUFFER_SIZE];
+__host uint64_t container_buffer_size = 0;
 void push_new_element_to_container(uint32_t id) {
     #ifdef DEBUG
     printf("Pushing new element to container: %u\n", id);
@@ -47,7 +47,7 @@ void push_new_element_to_container(uint32_t id) {
 }
 
 {% for run_ability_function in run_ability_functions %}
-void {{run_ability_function.full_name()}} ({{run_ability_function.node_type.name}} *node, uint32_t node_id, {{run_ability_function.walker_type.name}}* walker) {
+void {{run_ability_function.full_name()}} ({{run_ability_function.node_type.name}} *node, uint32_t edge_num, {{run_ability_function.walker_type.name}}* walker) {
 {{run_ability_function.body}}
 }
 {% endfor %}
@@ -55,7 +55,7 @@ void {{run_ability_function.full_name()}} ({{run_ability_function.node_type.name
 void run_on_node(uint64_t walker_ptr, uint64_t node_ptr, uint64_t edge_num, uint64_t func_call) {
   {% for run_ability_function in run_ability_functions %}
   if (func_call == {{loop.index0}}) {
-    {{run_ability_function.full_name()}}(node_ptr, 0, walker_ptr);
+    {{run_ability_function.full_name()}}(node_ptr, edge_num, walker_ptr);
   }
   {% endfor %}
 }

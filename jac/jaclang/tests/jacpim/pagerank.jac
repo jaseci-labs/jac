@@ -20,10 +20,10 @@ node Page {
   has score: float = 0;
   has new_score: float = 0;
   def get_byte_stream() {
-    return struct.pack("<qdd", self.id, self.score, self.new_score);
+    return struct.pack("<Qdd", self.id, self.score, self.new_score);
   }
   static def get_type_def() {
-    return "int id; float score; float new_score;";
+    return "uint64_t id; double score; double new_score;";
   }
 }
 
@@ -52,7 +52,7 @@ walker PageRank{
     }
   }
   def get_type_def() {
-    return "float collected_score_8;";
+    return "double collected_score_8;";
   }
   def get_byte_stream() {
     if self.collected_score_8 is None {
@@ -71,7 +71,7 @@ walker PageRank{
     return """
     if (walker->collected_score_8 < 0) {
      walker->collected_score_8 = node->score / 100;
-      for (int i = 0; i < 100; i++) {
+      for (int i = 0; i < edge_num; i++) {
         push_new_element_to_container(0);
       }
     } else {
@@ -83,8 +83,9 @@ walker PageRank{
 
 with entry {
   
+  random.seed(0);
   nodes = [];
-  NODE_NUM = 512;
+  NODE_NUM = 256;
   for i in range(NODE_NUM) {
     nodes.append(Page(id = i));
     root ++> nodes[i];

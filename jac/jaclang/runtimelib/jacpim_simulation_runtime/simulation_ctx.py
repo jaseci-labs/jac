@@ -5,11 +5,16 @@ import os
 from jaclang.runtimelib.jacpim_simulation_runtime.dpu_data_structs import MAX_DPU_THREAD_NUM
 from pathlib import Path
 from jaclang.runtimelib.jacpim_mapping_analysis.data_mapper import DPU_NUM
+from jaclang.runtimelib.jacpim_perf_measure.cpu_run_ctx import JacPIMCPURunCtx
 import seaborn as sns
 import matplotlib.pyplot as plt
 import numpy as np
 import experimented
 import pydantic
+
+class JacData(pydantic.BaseModel):
+    walker_jump_sizes: list[list[int]]
+
 
 class SimulationConfig(pydantic.BaseModel):
     dpu_num: int = DPU_NUM
@@ -43,6 +48,10 @@ def run_simulator(src: str) -> str:
     metadata = experimented.experiment_management.BaseExperimentMetadata(time_start=start_time, time_end=end_time)
     data = experimented.BaseExperiment[SimulationConfig](metadata=metadata, data=SimulationConfig())
     experiment = experimented.Experiment[SimulationConfig]()
+    with open(Path(SIMULATOR_REPO_PATH) / "bin" / "jac_data.json", "w") as f:
+        walker_jump_sizes = JacPIMCPURunCtx.get_walker_jump_sizes()
+        f.write(JacData(walker_jump_sizes=walker_jump_sizes).model_dump_json())
+
     experiment.add_experiment(data, Path(SIMULATOR_REPO_PATH) / "bin")
 
     # Get the output from path/to/simulator/bin/log.txt

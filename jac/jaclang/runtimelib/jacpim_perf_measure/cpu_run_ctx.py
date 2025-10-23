@@ -36,6 +36,7 @@ class JacPIMCPURunCtx:
     active_walkers: list[list[WalkerArchetype]] | None = None
     all_walkers: list[WalkerArchetype] = []
     total_cross_dpu_jumps: int = 0
+    walker_jump_sizes: list[list[int]] = []
 
     @classmethod
     def setter(cls) -> None:
@@ -54,6 +55,7 @@ class JacPIMCPURunCtx:
         print(f"Adding pending walker: {extract_name(walker)} starting at node {extract_name(start_node)}")
         cls.pending_walkers.append(walker)
         cls.all_walkers.append(walker)
+        cls.walker_jump_sizes.append([])
 
     @classmethod
     def get_pending_nodes_and_walkers(
@@ -153,10 +155,13 @@ class JacPIMCPURunCtx:
             if current_dpu is None:
                 current_dpu = target_dpu  # First move
 
+            walker_idx = cls.all_walkers.index(walker)
             # DPU BOUNDARY CHECK
             if target_dpu != current_dpu:
                 # Walker wants to cross DPU boundary - stop here
+                size = len(walker.get_byte_stream()) + len(walker.__jac__.next) * 8
                 cls.total_cross_dpu_jumps += 1
+                cls.walker_jump_sizes[walker_idx].append(size)
                 return False
 
             # Same DPU - execute one step
@@ -168,7 +173,6 @@ class JacPIMCPURunCtx:
                 else current_loc.__jac__.target.archetype
             )
             current_node_idx = all_nodes.index(current_node)
-            walker_idx = cls.all_walkers.index(walker)
             # Log the visit
             DPUAllMemoryCtx.record_walker_trace(walker_idx, current_node_idx)
 
@@ -296,6 +300,11 @@ class JacPIMCPURunCtx:
     def get_all_walkers(cls) -> list[WalkerArchetype]:
         """Get a list of all walkers that have been added to the context."""
         return cls.all_walkers
+    
+    @classmethod
+    def get_walker_jump_sizes(cls) -> list[list[int]]:
+        """Get the recorded jump sizes for all walkers."""
+        return cls.walker_jump_sizes
 
 
 class DPUAllMemoryCtx:

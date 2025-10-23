@@ -56,10 +56,9 @@ walker LoadFeed {
     return """
     if (walker->visiting_neighbors == false) {
       walker->visiting_neighbors = true;
-    push_new_element_to_container(0);
-    push_new_element_to_container(0);
-    push_new_element_to_container(0);
-    push_new_element_to_container(0);
+    for (uint32_t i = 0; i < edge_num; i++) {
+      push_new_element_to_container(1);
+      }
     } else {
     push_new_element_to_container(0);
     push_new_element_to_container(0);
