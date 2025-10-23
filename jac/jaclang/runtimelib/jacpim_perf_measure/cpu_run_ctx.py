@@ -83,7 +83,7 @@ class JacPIMCPURunCtx:
     def set_pending_walkers_to_active(cls) -> None:
         """Move pending walkers to active walkers if there is space in the target DPU."""
         new_pending_walkers: list[WalkerArchetype] = []
-        print(f"{cls.active_walker_count()} walkers already active. Setting {len(cls.pending_walkers)} pending walkers to active")
+        # print(f"{cls.active_walker_count()} walkers already active. Setting {len(cls.pending_walkers)} pending walkers to active")
         for walker in cls.pending_walkers:
             if len(walker.__jac__.next) == 0:
                 raise RuntimeError("Walker has no next node to visit.")
@@ -227,7 +227,7 @@ class JacPIMCPURunCtx:
         A walker that finishes will be removed.
         """
         active_walkers = cls.get_active_walkers()
-        print(f"Running all {cls.active_walker_count()} active walkers")
+        # print(f"Running all {cls.active_walker_count()} active walkers")
         DPUAllMemoryCtx.start_running()
         for dpu_id in range(DPU_NUM):
             for walker in active_walkers[dpu_id]:

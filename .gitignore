@@ -68,4 +68,4 @@ mydatabase/
 *.png
 input_bins/
 task.c
-.ex
+.ex*
