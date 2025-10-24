@@ -24,7 +24,7 @@ class ContainerObject:
             self.edge_num,
             self.func_call,
         )
-    
+
     @classmethod
     def get_size(cls) -> int:
         """Get the size of the container object in bytes."""
@@ -67,10 +67,18 @@ class Metadata:
         # print(f"DEBUG: len(walker_container_ptrs) = {len(self.walker_container_ptrs)}, len(trace_lengths) = {len(self.trace_lengths)}")
 
         # Fill in with zeros if not enough walkers
-        walker_container_ptrs = self.walker_container_ptrs + [0] * (MAX_DPU_THREAD_NUM - len(self.walker_container_ptrs))
-        trace_lengths = self.trace_lengths + [0] * (MAX_DPU_THREAD_NUM - len(self.trace_lengths))
-        walker_ptrs = self.walker_ptrs + [0] * (MAX_DPU_THREAD_NUM - len(self.walker_ptrs))
-        walker_sizes = self.walker_sizes + [0] * (MAX_DPU_THREAD_NUM - len(self.walker_sizes))
+        walker_container_ptrs = self.walker_container_ptrs + [0] * (
+            MAX_DPU_THREAD_NUM - len(self.walker_container_ptrs)
+        )
+        trace_lengths = self.trace_lengths + [0] * (
+            MAX_DPU_THREAD_NUM - len(self.trace_lengths)
+        )
+        walker_ptrs = self.walker_ptrs + [0] * (
+            MAX_DPU_THREAD_NUM - len(self.walker_ptrs)
+        )
+        walker_sizes = self.walker_sizes + [0] * (
+            MAX_DPU_THREAD_NUM - len(self.walker_sizes)
+        )
         res = (
             struct.pack("<II", self.extra_mram_space_ptr, self.walker_num)
             + b"".join(struct.pack("<I", ptr) for ptr in walker_container_ptrs)
@@ -80,11 +88,18 @@ class Metadata:
         )
         assert len(res) == self.get_metadata_size()
         return res
-    
+
     @classmethod
     def get_metadata_size(cls) -> int:
         """Get the size of the metadata object in bytes."""
-        return 4 + 4 + 4 * MAX_DPU_THREAD_NUM + 4 * MAX_DPU_THREAD_NUM + 4 * MAX_DPU_THREAD_NUM + 4 * MAX_DPU_THREAD_NUM
+        return (
+            4
+            + 4
+            + 4 * MAX_DPU_THREAD_NUM
+            + 4 * MAX_DPU_THREAD_NUM
+            + 4 * MAX_DPU_THREAD_NUM
+            + 4 * MAX_DPU_THREAD_NUM
+        )
 
     @classmethod
     def get_type_def(cls) -> str:

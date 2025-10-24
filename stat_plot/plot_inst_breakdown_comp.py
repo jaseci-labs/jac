@@ -3,7 +3,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-def plot_instruction_breakdown(df: pd.DataFrame, filename: str = "instruction_mix_absolute.png", title: str = "Instruction Mix per Benchmark (Absolute)") -> None:
+
+def plot_instruction_breakdown(
+    df: pd.DataFrame,
+    filename: str = "instruction_mix_absolute.png",
+    title: str = "Instruction Mix per Benchmark (Absolute)",
+) -> None:
 
     # Remove any columns that are all zeros
     df = df.loc[:, (df != 0).any(axis=0)]

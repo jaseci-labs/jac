@@ -9,7 +9,7 @@ import pandas as pd
 class SimulationConfig(pydantic.BaseModel):
     dpu_num: int
     max_dpu_thread_num: int
-    MAPPING: str 
+    MAPPING: str
     TEST_NAME: str
     OVERHEAD_ONLY: bool
 
@@ -20,11 +20,13 @@ if __name__ == "__main__":
     paths_and_data = experiment.list_experiments(experimented.find_store())
     summaries = {}
     for path, data in paths_and_data:
-      experiment_info = SimulationConfig(**data.data)
-      with open(path / "log.txt", "r") as f:
-          output = f.read()
-      summary = generate_stats(output)
-      summaries[f"{experiment_info.TEST_NAME} / {experiment_info.MAPPING} / {experiment_info.OVERHEAD_ONLY}"] = summary
+        experiment_info = SimulationConfig(**data.data)
+        with open(path / "log.txt", "r") as f:
+            output = f.read()
+        summary = generate_stats(output)
+        summaries[
+            f"{experiment_info.TEST_NAME} / {experiment_info.MAPPING} / {experiment_info.OVERHEAD_ONLY}"
+        ] = summary
     df1, df2 = generate_pandas_df(summaries)
     df_diff = pd.DataFrame()
     for test_name in ["BFS"]:
@@ -39,8 +41,15 @@ if __name__ == "__main__":
 
             # Summarize all test, mapping combinations diff into a new dataframe
             df_diff = pd.concat([df_diff, diff.to_frame().T])
-    df_diff.index = [f"{test_name} / {mapping} / No Overhead" for test_name in ["BFS"] for mapping in ["JACPIM", "RANDOM"]]
+    df_diff.index = [
+        f"{test_name} / {mapping} / No Overhead"
+        for test_name in ["BFS"]
+        for mapping in ["JACPIM", "RANDOM"]
+    ]
     print("Instruction counts without overhead:")
     print(df_diff)
-    plot_instruction_breakdown(df_diff, filename ="instruction_mix_no_overhead.png", title="Instruction Mix per Benchmark (No Overhead)")
-
+    plot_instruction_breakdown(
+        df_diff,
+        filename="instruction_mix_no_overhead.png",
+        title="Instruction Mix per Benchmark (No Overhead)",
+    )

@@ -52,7 +52,9 @@ class JacPIMCPURunCtx:
     ) -> None:
         """Add a walker to the pending list."""
         walker.__jac__.next = [start_node.__jac__]
-        print(f"Adding pending walker: {extract_name(walker)} starting at node {extract_name(start_node)}")
+        print(
+            f"Adding pending walker: {extract_name(walker)} starting at node {extract_name(start_node)}"
+        )
         cls.pending_walkers.append(walker)
         cls.all_walkers.append(walker)
         cls.walker_jump_sizes.append([])
@@ -248,7 +250,7 @@ class JacPIMCPURunCtx:
     def has_pending_walkers(cls) -> bool:
         """Check if there are pending walkers."""
         return len(cls.pending_walkers) > 0
-    
+
     @classmethod
     def active_walker_count(cls) -> int:
         """Get the total count of active walkers across all DPUs."""
@@ -265,7 +267,7 @@ class JacPIMCPURunCtx:
         while cls.has_pending_walkers() or cls.has_active_walkers():
             cls.set_pending_walkers_to_active()
             cls.run_all_active_walkers(overhead_only)
-    
+
     @classmethod
     def stop_walker(cls, walker: WalkerArchetype) -> None:
         """Stop a walker."""
@@ -274,7 +276,7 @@ class JacPIMCPURunCtx:
         for dpu_walkers in cls.get_active_walkers():
             if walker in dpu_walkers:
                 print(f"Found walker to stop: {extract_name(walker)}")
-                
+
                 dpu_walkers.remove(walker)
                 print(f"Stopped active walker: {extract_name(walker)}")
                 print(f"  Remaining active walkers: {cls.active_walker_count()}")
@@ -284,7 +286,9 @@ class JacPIMCPURunCtx:
             cls.pending_walkers.remove(walker)
             print(f"Stopped pending walker: {extract_name(walker)}")
             return
-        print(f"Walker {extract_name(walker)} not found among active or pending walkers.")
+        print(
+            f"Walker {extract_name(walker)} not found among active or pending walkers."
+        )
 
     @classmethod
     def get_all_active_walkers(cls) -> list[WalkerArchetype]:
@@ -300,7 +304,7 @@ class JacPIMCPURunCtx:
     def get_all_walkers(cls) -> list[WalkerArchetype]:
         """Get a list of all walkers that have been added to the context."""
         return cls.all_walkers
-    
+
     @classmethod
     def get_walker_jump_sizes(cls) -> list[list[int]]:
         """Get the recorded jump sizes for all walkers."""
@@ -379,7 +383,10 @@ class DPUAllMemoryCtx:
                     ContainerObject(
                         # walker_ptr=cls.dpu_walker_ctxs[dpu_id].get_obj_range(walker_id).add_offset(Metadata.get_metadata_size()).add_offset(len(cls.dpu_node_ctxs[dpu_id])).ptr,
                         # walker_size=walker_size,
-                        node_ptr=cls.dpu_node_ctxs[dpu_id].get_obj_range(node_idx).add_offset(Metadata.get_metadata_size()).ptr,
+                        node_ptr=cls.dpu_node_ctxs[dpu_id]
+                        .get_obj_range(node_idx)
+                        .add_offset(Metadata.get_metadata_size())
+                        .ptr,
                         node_size=node_size,
                         edge_num=edge_num,
                         func_call=JacPIMSimulationCtx.index_function_defs(
@@ -405,7 +412,9 @@ class DPUAllMemoryCtx:
         return cls.dpu_container_ctxs
 
     @classmethod
-    def metadata_snapshot_one_dpu(cls, dpu_id: int, overhead_only: bool) -> DPUObjMemoryCtx:
+    def metadata_snapshot_one_dpu(
+        cls, dpu_id: int, overhead_only: bool
+    ) -> DPUObjMemoryCtx:
         """Create a memory context for metadata on a DPU."""
         metadata = Metadata(
             extra_mram_space_ptr=0,  # to be filled later
@@ -431,15 +440,19 @@ class DPUAllMemoryCtx:
         metadata.walker_num = len(JacPIMCPURunCtx.get_active_walkers()[dpu_id])
         # print(f"DEBUG: DPU {dpu_id} has {metadata.walker_num} active walkers")
         metadata.walker_container_ptrs = [
-            mem_ctx.get_container_range(
-                JacPIMCPURunCtx.get_all_walkers().index(walker)
-            ).add_offset(Metadata.get_metadata_size()).add_offset(len(cls.dpu_node_ctxs[dpu_id])).add_offset(len(cls.dpu_walker_ctxs[dpu_id])).ptr
+            mem_ctx.get_container_range(JacPIMCPURunCtx.get_all_walkers().index(walker))
+            .add_offset(Metadata.get_metadata_size())
+            .add_offset(len(cls.dpu_node_ctxs[dpu_id]))
+            .add_offset(len(cls.dpu_walker_ctxs[dpu_id]))
+            .ptr
             for walker in JacPIMCPURunCtx.get_active_walkers()[dpu_id]
         ]
         metadata.walker_ptrs = [
-            mem_ctx.get_walker_range(
-                JacPIMCPURunCtx.get_all_walkers().index(walker)
-            ).add_offset(Metadata.get_metadata_size()).add_offset(len(cls.dpu_node_ctxs[dpu_id])).add_offset(len(cls.dpu_walker_ctxs[dpu_id])).ptr
+            mem_ctx.get_walker_range(JacPIMCPURunCtx.get_all_walkers().index(walker))
+            .add_offset(Metadata.get_metadata_size())
+            .add_offset(len(cls.dpu_node_ctxs[dpu_id]))
+            .add_offset(len(cls.dpu_walker_ctxs[dpu_id]))
+            .ptr
             for walker in JacPIMCPURunCtx.get_active_walkers()[dpu_id]
         ]
         metadata.walker_sizes = [
@@ -447,7 +460,15 @@ class DPUAllMemoryCtx:
             for walker in JacPIMCPURunCtx.get_active_walkers()[dpu_id]
         ]
         metadata.trace_lengths = [
-            (len(cls.walker_traces[JacPIMCPURunCtx.get_all_walkers().index(walker_arch)]) if os.environ.get("OVERHEAD_ONLY") != "1" else 0)
+            (
+                len(
+                    cls.walker_traces[
+                        JacPIMCPURunCtx.get_all_walkers().index(walker_arch)
+                    ]
+                )
+                if os.environ.get("OVERHEAD_ONLY") != "1"
+                else 0
+            )
             for walker_arch in JacPIMCPURunCtx.get_active_walkers()[dpu_id]
         ]
         metadata_mem_ctx = DPUObjMemoryCtx()
@@ -460,7 +481,8 @@ class DPUAllMemoryCtx:
     def metadata_snapshot_all_dpu(cls, overhead_only: bool) -> list[DPUObjMemoryCtx]:
         """Create a memory context for metadata on all DPUs."""
         cls.dpu_metadata_ctxs = [
-            cls.metadata_snapshot_one_dpu(dpu_id, overhead_only) for dpu_id in range(DPU_NUM)
+            cls.metadata_snapshot_one_dpu(dpu_id, overhead_only)
+            for dpu_id in range(DPU_NUM)
         ]
         return cls.dpu_metadata_ctxs
 

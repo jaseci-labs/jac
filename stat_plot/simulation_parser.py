@@ -4,11 +4,13 @@ import re
 
 # --- Dataclasses (extended, but names preserved) ---
 
+
 @dataclass
 class ThreadScheduler:
     breakdown_dma: int = 0
     breakdown_etc: int = 0
     breakdown_run: int = 0
+
 
 @dataclass
 class Logic:
@@ -25,17 +27,21 @@ class Logic:
     # arbitrary inst_* captured here as suffix -> value (e.g., "ld", "add", "lsr_add")
     inst: Dict[str, int] = field(default_factory=dict)
 
+
 @dataclass
 class CycleRule:
     cycle_rule: int = 0
+
 
 @dataclass
 class MemoryController:
     memory_cycle: int = 0
 
+
 @dataclass
 class MemoryScheduler:
     num_fcfs: int = 0
+
 
 @dataclass
 class RowBuffer:
@@ -45,6 +51,7 @@ class RowBuffer:
     num_precharges: int = 0
     num_writes: int = 0
     write_bytes: int = 0
+
 
 @dataclass
 class SimStats:
@@ -59,8 +66,9 @@ class SimStats:
 # --- Parser ---
 
 _LINE_RE = re.compile(
-    r'^(?P<section>[A-Za-z]+)\[(?P<indices>[0-9_]+)\]_(?P<metric>[A-Za-z0-9_]+):\s*(?P<value>-?\d+)\s*$'
+    r"^(?P<section>[A-Za-z]+)\[(?P<indices>[0-9_]+)\]_(?P<metric>[A-Za-z0-9_]+):\s*(?P<value>-?\d+)\s*$"
 )
+
 
 def _new_stats() -> SimStats:
     return SimStats(
@@ -71,6 +79,7 @@ def _new_stats() -> SimStats:
         memory_scheduler=MemoryScheduler(),
         row_buffer=RowBuffer(),
     )
+
 
 def parse_sim_stats_multi(text: str) -> Dict[Tuple[int, ...], SimStats]:
     """
@@ -107,14 +116,20 @@ def parse_sim_stats_multi(text: str) -> Dict[Tuple[int, ...], SimStats]:
             cores[idx_tuple] = stats
 
         if section == "ThreadScheduler":
-            if metric == "breakdown_dma": stats.thread_scheduler.breakdown_dma = value
-            elif metric == "breakdown_etc": stats.thread_scheduler.breakdown_etc = value
-            elif metric == "breakdown_run": stats.thread_scheduler.breakdown_run = value
+            if metric == "breakdown_dma":
+                stats.thread_scheduler.breakdown_dma = value
+            elif metric == "breakdown_etc":
+                stats.thread_scheduler.breakdown_etc = value
+            elif metric == "breakdown_run":
+                stats.thread_scheduler.breakdown_run = value
 
         elif section == "Logic":
-            if metric == "logic_cycle": stats.logic.logic_cycle = value
-            elif metric == "num_instructions": stats.logic.num_instructions = value
-            elif metric == "backpressure": stats.logic.backpressure = value
+            if metric == "logic_cycle":
+                stats.logic.logic_cycle = value
+            elif metric == "num_instructions":
+                stats.logic.num_instructions = value
+            elif metric == "backpressure":
+                stats.logic.backpressure = value
             elif metric.startswith("active_tasklets_"):
                 # active_tasklets_<N>
                 try:
@@ -122,29 +137,40 @@ def parse_sim_stats_multi(text: str) -> Dict[Tuple[int, ...], SimStats]:
                 except ValueError:
                     continue
                 stats.logic.active_tasklets[n] = value
-                if n == 0: stats.logic.active_tasklets_0 = value
-                if n == 1: stats.logic.active_tasklets_1 = value
+                if n == 0:
+                    stats.logic.active_tasklets_0 = value
+                if n == 1:
+                    stats.logic.active_tasklets_1 = value
             elif metric.startswith("inst_"):
                 # inst_*  -> store suffix (after "inst_")
-                stats.logic.inst[metric[len("inst_"):]] = value
+                stats.logic.inst[metric[len("inst_") :]] = value
             # silently ignore other Logic.* lines
 
         elif section == "CycleRule":
-            if metric == "cycle_rule": stats.cycle_rule.cycle_rule = value
+            if metric == "cycle_rule":
+                stats.cycle_rule.cycle_rule = value
 
         elif section == "MemoryController":
-            if metric == "memory_cycle": stats.memory_controller.memory_cycle = value
+            if metric == "memory_cycle":
+                stats.memory_controller.memory_cycle = value
 
         elif section == "MemoryScheduler":
-            if metric == "num_fcfs": stats.memory_scheduler.num_fcfs = value
+            if metric == "num_fcfs":
+                stats.memory_scheduler.num_fcfs = value
 
         elif section == "RowBuffer":
-            if metric == "num_reads": stats.row_buffer.num_reads = value
-            elif metric == "read_bytes": stats.row_buffer.read_bytes = value
-            elif metric == "num_activations": stats.row_buffer.num_activations = value
-            elif metric == "num_precharges": stats.row_buffer.num_precharges = value
-            elif metric == "num_writes": stats.row_buffer.num_writes = value
-            elif metric == "write_bytes": stats.row_buffer.write_bytes = value
+            if metric == "num_reads":
+                stats.row_buffer.num_reads = value
+            elif metric == "read_bytes":
+                stats.row_buffer.read_bytes = value
+            elif metric == "num_activations":
+                stats.row_buffer.num_activations = value
+            elif metric == "num_precharges":
+                stats.row_buffer.num_precharges = value
+            elif metric == "num_writes":
+                stats.row_buffer.num_writes = value
+            elif metric == "write_bytes":
+                stats.row_buffer.write_bytes = value
 
     return cores
 
@@ -162,10 +188,10 @@ class SimulationSummary:
     max_total_cycle: int
     instruction_counts: dict[str, int]
 
+
 @dataclass
 class BenchmarkSummary:
     simulation_summary: dict[str, SimulationSummary]
-
 
 
 def generate_stats(sim_output: str) -> SimulationSummary:
@@ -179,11 +205,11 @@ def generate_stats(sim_output: str) -> SimulationSummary:
         total_dma += stats.thread_scheduler.breakdown_dma
         total_etc += stats.thread_scheduler.breakdown_etc
         total_run += stats.thread_scheduler.breakdown_run
-    
+
     max_total_cycle = max(
-        stats.thread_scheduler.breakdown_dma +
-        stats.thread_scheduler.breakdown_etc +
-        stats.thread_scheduler.breakdown_run
+        stats.thread_scheduler.breakdown_dma
+        + stats.thread_scheduler.breakdown_etc
+        + stats.thread_scheduler.breakdown_run
         for stats in simulation_results.values()
     )
 
@@ -196,10 +222,15 @@ def generate_stats(sim_output: str) -> SimulationSummary:
         total_etc=total_etc,
         total_run=total_run,
         max_total_cycle=max_total_cycle,
-        instruction_counts={inst: sum(
-            stats.logic.inst.get(inst, 0) for stats in simulation_results.values()
-        ) for inst in all_instructions}
+        instruction_counts={
+            inst: sum(
+                stats.logic.inst.get(inst, 0) for stats in simulation_results.values()
+            )
+            for inst in all_instructions
+        },
     )
+
+
 # --- Example ---
 if __name__ == "__main__":
     example = """\
@@ -258,7 +289,7 @@ RowBuffer[0_0_0]_num_writes: 20
 RowBuffer[0_0_0]_write_bytes: 160
 """
     cores = parse_sim_stats_multi(example)
-    core = cores[(0,0,0)]
+    core = cores[(0, 0, 0)]
     print("num_instructions:", core.logic.num_instructions)
     print("backpressure:", core.logic.backpressure)
     print("active_tasklets[10]:", core.logic.active_tasklets.get(10))
