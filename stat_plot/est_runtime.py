@@ -13,6 +13,7 @@ class SimulationConfig(pydantic.BaseModel):
     TEST_NAME: str
     OVERHEAD_ONLY: bool
 
+
 if __name__ == "__main__":
     experiment = experimented.Experiment[SimulationConfig]()
     paths_and_data = experiment.list_experiments(experimented.find_store())
@@ -25,9 +26,7 @@ if __name__ == "__main__":
             output = f.read()
         summary = generate_stats(output)
         if experiment_info.OVERHEAD_ONLY:
-          continue
-        summaries[
-            f"{experiment_info.TEST_NAME} / {experiment_info.MAPPING}"
-        ] = summary
+            continue
+        summaries[f"{experiment_info.TEST_NAME} / {experiment_info.MAPPING}"] = summary
     df1, df2 = generate_pandas_df(summaries)
     print(df1)

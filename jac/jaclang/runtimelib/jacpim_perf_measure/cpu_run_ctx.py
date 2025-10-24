@@ -183,7 +183,9 @@ class JacPIMCPURunCtx:
 
             # Execute walker abilities on this location (same pattern as spawn_call)
             # walker ability with loc entry
-            print(f" Walker {cls.get_all_walkers().index(warch)} visiting node {extract_name(current_node)} on DPU {current_dpu}")
+            print(
+                f" Walker {cls.get_all_walkers().index(warch)} visiting node {extract_name(current_node)} on DPU {current_dpu}"
+            )
             for i in warch._jac_entry_funcs_:
                 if i.trigger and isinstance(current_loc, i.trigger):
                     i.func(warch, current_loc)

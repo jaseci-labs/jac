@@ -92,7 +92,7 @@ class RoundRobinPartitioner:
         for idx, start_node in enumerate(start_nodes):
             start_node_idx = JacPIMStaticCtx.get_all_nodes().index(start_node)
             self._dfs_round_robin_on_node(
-                self.node_distribution, ttg, start_node_idx, offset = idx
+                self.node_distribution, ttg, start_node_idx, offset=idx
             )
         for node_idx in range(len(JacPIMStaticCtx.get_all_nodes())):
             if not self.node_distribution.node_assigned(node_idx):
