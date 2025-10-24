@@ -23,6 +23,8 @@ if __name__ == "__main__":
       with open(path / "log.txt", "r") as f:
           output = f.read()
       summary = generate_stats(output)
+      if experiment_info.TEST_NAME not in ["BFS"]:
+          continue
       summaries[f"{experiment_info.TEST_NAME} / {experiment_info.MAPPING} / {"Overhead only" if experiment_info.OVERHEAD_ONLY else "Overhead + Walker workload"}"] = summary
     df1, df2 = generate_pandas_df(summaries)
     print(df1)

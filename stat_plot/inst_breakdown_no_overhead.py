@@ -27,7 +27,7 @@ if __name__ == "__main__":
       summaries[f"{experiment_info.TEST_NAME} / {experiment_info.MAPPING} / {experiment_info.OVERHEAD_ONLY}"] = summary
     df1, df2 = generate_pandas_df(summaries)
     df_diff = pd.DataFrame()
-    for test_name in ["LITTLEX"]:
+    for test_name in ["BFS"]:
         for mapping in ["JACPIM", "RANDOM"]:
             key1 = f"{test_name} / {mapping} / True"
             key2 = f"{test_name} / {mapping} / False"
@@ -39,7 +39,7 @@ if __name__ == "__main__":
 
             # Summarize all test, mapping combinations diff into a new dataframe
             df_diff = pd.concat([df_diff, diff.to_frame().T])
-    df_diff.index = [f"{test_name} / {mapping} / No Overhead" for test_name in ["LITTLEX"] for mapping in ["JACPIM", "RANDOM"]]
+    df_diff.index = [f"{test_name} / {mapping} / No Overhead" for test_name in ["BFS"] for mapping in ["JACPIM", "RANDOM"]]
     print("Instruction counts without overhead:")
     print(df_diff)
     plot_instruction_breakdown(df_diff, filename ="instruction_mix_no_overhead.png", title="Instruction Mix per Benchmark (No Overhead)")
