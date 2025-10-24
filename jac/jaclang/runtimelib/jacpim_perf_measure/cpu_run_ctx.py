@@ -161,6 +161,9 @@ class JacPIMCPURunCtx:
             # DPU BOUNDARY CHECK
             if target_dpu != current_dpu:
                 # Walker wants to cross DPU boundary - stop here
+                print(
+                    f"Walker {extract_name(warch)} jumping from DPU {current_dpu} to DPU {target_dpu} on DPU {target_dpu}"
+                )
                 size = len(walker.get_byte_stream()) + len(walker.__jac__.next) * 8
                 cls.total_cross_dpu_jumps += 1
                 cls.walker_jump_sizes[walker_idx].append(size)
@@ -180,6 +183,7 @@ class JacPIMCPURunCtx:
 
             # Execute walker abilities on this location (same pattern as spawn_call)
             # walker ability with loc entry
+            print(f" Walker {cls.get_all_walkers().index(warch)} visiting node {extract_name(current_node)} on DPU {current_dpu}")
             for i in warch._jac_entry_funcs_:
                 if i.trigger and isinstance(current_loc, i.trigger):
                     i.func(warch, current_loc)
@@ -233,7 +237,7 @@ class JacPIMCPURunCtx:
         A walker that finishes will be removed.
         """
         active_walkers = cls.get_active_walkers()
-        # print(f"Running all {cls.active_walker_count()} active walkers")
+        print(f"Running all {cls.active_walker_count()} active walkers")
         DPUAllMemoryCtx.start_running()
         for dpu_id in range(DPU_NUM):
             for walker in active_walkers[dpu_id]:
@@ -512,6 +516,7 @@ class DPUAllMemoryCtx:
         """Snapshot containers and metadata for all DPUs."""
         cls.container_snapshot_all_dpu(cls.walker_traces)
         cls.metadata_snapshot_all_dpu(overhead_only)
+        print("FINISH RUNNING: Generating all memory dumps for DPUs")
         res = [
             DPUMemoryCtx(
                 metadata_mem_ctx=cls.dpu_metadata_ctxs[dpu_id],

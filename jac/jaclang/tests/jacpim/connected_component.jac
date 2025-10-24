@@ -59,6 +59,7 @@ def random_tree(nodes: list) -> None {
 with entry {
     NUM_NODES_PER_TREE = 128;
     NUM_TREE = 40;
+    random.seed(0);
     all_nodes = [];
     for i in range(NUM_TREE) {
         nodes = [Data(id = id) for id in range(i * NUM_NODES_PER_TREE, (i + 1) * NUM_NODES_PER_TREE)];
@@ -73,7 +74,7 @@ with entry {
     # JacMachine.jacpim_spawn(Finder(), all_nodes[NUM_NODES_PER_TREE * NUM_TREE - 1]);
     for i in range(NUM_TREE) {
         wlk = Finder();
-        JacMachine.jacpim_spawn(wlk, all_nodes[i * NUM_NODES_PER_TREE]);
+        JacMachine.jacpim_spawn(wlk, all_nodes[i * NUM_NODES_PER_TREE + (random.randint(0, NUM_NODES_PER_TREE - 1))]);
     }
     JacMachine.jacpim_start();
 }
