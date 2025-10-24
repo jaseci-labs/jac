@@ -21,6 +21,7 @@ keywords = [
 repository = "https://github.com/Jaseci-Labs/jaseci"
 homepage = "https://jaseci.org"
 documentation = "https://jac-lang.org"
+packages = [{ include = "jaseci" }]
 
 [tool.poetry.dependencies]
 python = "^3.11.0"
