@@ -27,7 +27,22 @@ from jaclang.runtimelib.jacpim_simulation_runtime.upmem_codegen import (
 )
 from jaclang.runtimelib.jacpim_static_analysis.info_extract import extract_name
 from jaclang.runtimelib.jacpim_static_analysis.static_ctx import JacPIMStaticCtx
+from dataclasses import dataclass
+from enum import Enum
 
+
+class TransferDirection(Enum):
+    """Direction of walker transfer between DPUs."""
+
+    TO_DPU = "TO_DPU"
+    FROM_DPU = "FROM_DPU"
+
+@dataclass
+class TransferRecord:
+    """Record of a walker transfer between DPUs."""
+
+    direction: TransferDirection
+    size: int
 
 class JacPIMCPURunCtx:
     """CPU-based execution context for JacPIM walkers."""
@@ -36,7 +51,7 @@ class JacPIMCPURunCtx:
     active_walkers: list[list[WalkerArchetype]] | None = None
     all_walkers: list[WalkerArchetype] = []
     total_cross_dpu_jumps: int = 0
-    walker_jump_sizes: list[list[int]] = []
+    walker_jump_sizes: list[list[TransferRecord]] = []
 
     @classmethod
     def setter(cls) -> None:
@@ -164,9 +179,6 @@ class JacPIMCPURunCtx:
                 print(
                     f"Walker {extract_name(warch)} jumping from DPU {current_dpu} to DPU {target_dpu} on DPU {target_dpu}"
                 )
-                size = len(walker.get_byte_stream()) + len(walker.__jac__.next) * 8
-                cls.total_cross_dpu_jumps += 1
-                cls.walker_jump_sizes[walker_idx].append(size)
                 return False
 
             # Same DPU - execute one step
@@ -243,10 +255,31 @@ class JacPIMCPURunCtx:
         DPUAllMemoryCtx.start_running()
         for dpu_id in range(DPU_NUM):
             for walker in active_walkers[dpu_id]:
+                # Get the length of the walker next trace to indicate jump size
+                walker_idx = cls.all_walkers.index(walker)
+                jump_size = len(walker.__jac__.next)
+
+                transfer_size = len(walker.get_byte_stream()) + jump_size * 4  # assuming 4 bytes per node index
+                cls.walker_jump_sizes[walker_idx].append(
+                    TransferRecord(
+                        direction=TransferDirection.TO_DPU,
+                        size=transfer_size,
+                    )
+                )
                 is_done = cls.run_one_walker(walker)
                 if not is_done:
                     # Move to pending list
                     cls.pending_walkers.append(walker)
+                    # Record the transfer
+                    jump_size = len(walker.__jac__.next)
+                    transfer_size = len(walker.get_byte_stream()) + jump_size * 4  # assuming 4 bytes per node index
+                    cls.walker_jump_sizes[walker_idx].append(
+                        TransferRecord(
+                            direction=TransferDirection.FROM_DPU,
+                            size=transfer_size,
+                        )
+                    )
+                    
             # A walker is either done or moved to pending - clear active list
         DPUAllMemoryCtx.finish_running(overhead_only)
         for dpu_id in range(DPU_NUM):
@@ -312,7 +345,7 @@ class JacPIMCPURunCtx:
         return cls.all_walkers
 
     @classmethod
-    def get_walker_jump_sizes(cls) -> list[list[int]]:
+    def get_walker_jump_sizes(cls) -> list[list[TransferRecord]]:
         """Get the recorded jump sizes for all walkers."""
         return cls.walker_jump_sizes
 
