@@ -37,12 +37,14 @@ class TransferDirection(Enum):
     TO_DPU = "TO_DPU"
     FROM_DPU = "FROM_DPU"
 
+
 @dataclass
 class TransferRecord:
     """Record of a walker transfer between DPUs."""
 
     direction: TransferDirection
     size: int
+
 
 class JacPIMCPURunCtx:
     """CPU-based execution context for JacPIM walkers."""
@@ -259,7 +261,9 @@ class JacPIMCPURunCtx:
                 walker_idx = cls.all_walkers.index(walker)
                 jump_size = len(walker.__jac__.next)
 
-                transfer_size = len(walker.get_byte_stream()) + jump_size * 4  # assuming 4 bytes per node index
+                transfer_size = (
+                    len(walker.get_byte_stream()) + jump_size * 4
+                )  # assuming 4 bytes per node index
                 cls.walker_jump_sizes[walker_idx].append(
                     TransferRecord(
                         direction=TransferDirection.TO_DPU,
@@ -272,14 +276,16 @@ class JacPIMCPURunCtx:
                     cls.pending_walkers.append(walker)
                     # Record the transfer
                     jump_size = len(walker.__jac__.next)
-                    transfer_size = len(walker.get_byte_stream()) + jump_size * 4  # assuming 4 bytes per node index
+                    transfer_size = (
+                        len(walker.get_byte_stream()) + jump_size * 4
+                    )  # assuming 4 bytes per node index
                     cls.walker_jump_sizes[walker_idx].append(
                         TransferRecord(
                             direction=TransferDirection.FROM_DPU,
                             size=transfer_size,
                         )
                     )
-                    
+
             # A walker is either done or moved to pending - clear active list
         DPUAllMemoryCtx.finish_running(overhead_only)
         for dpu_id in range(DPU_NUM):

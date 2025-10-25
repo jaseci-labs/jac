@@ -8,7 +8,10 @@ from jaclang.runtimelib.jacpim_simulation_runtime.dpu_data_structs import (
 )
 from pathlib import Path
 from jaclang.runtimelib.jacpim_mapping_analysis.data_mapper import DPU_NUM
-from jaclang.runtimelib.jacpim_perf_measure.cpu_run_ctx import JacPIMCPURunCtx, TransferRecord
+from jaclang.runtimelib.jacpim_perf_measure.cpu_run_ctx import (
+    JacPIMCPURunCtx,
+    TransferRecord,
+)
 import seaborn as sns
 import matplotlib.pyplot as plt
 import numpy as np
