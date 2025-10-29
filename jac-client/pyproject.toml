@@ -19,5 +19,4 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.plugins."jac"]
-serve = "jac_client.plugin.client:JacClient"
 create_jac_app = "jac_client.plugin.cli:JacCmd"
