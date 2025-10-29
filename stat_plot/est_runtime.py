@@ -6,19 +6,20 @@ from extract_pd import generate_pandas_df
 import pandas as pd
 from jaclang.runtimelib.jacpim_simulation_runtime.simulation_ctx import JacData
 from jaclang.runtimelib.jacpim_perf_measure.cpu_run_ctx import TransferDirection
+from config import TESTCASES
 
 
 def get_pim_runtime(cycles: int) -> float:
     """Convert cycles to runtime in milliseconds."""
     CLOCK_FREQUENCY_HZ = 350 * 2**20
-    return cycles / CLOCK_FREQUENCY_HZ
+    return float(cycles / CLOCK_FREQUENCY_HZ)
 
 
 def get_transfer_time(bytes_transferred: int) -> float:
     """Estimate transfer time in milliseconds."""
     TRANSFER_BANDWIDTH_BYTES_PER_SEC = 1.2 * 2**30  # 1.2 GB/s
     TRANSFER_LATENCY = 310 / (10**9)  # 310 ns
-    return bytes_transferred / TRANSFER_BANDWIDTH_BYTES_PER_SEC + TRANSFER_LATENCY
+    return float(bytes_transferred / TRANSFER_BANDWIDTH_BYTES_PER_SEC + TRANSFER_LATENCY)
 
 
 class SimulationConfig(pydantic.BaseModel):
@@ -39,12 +40,14 @@ if __name__ == "__main__":
             "PIM_RUN_TIME",
             "CPU->DPU_TRANSFERS",
             "DPU->CPU_TRANSFERS",
-        ]
+        ], dtype=float
     )
     for path, data in paths_and_data:
         print(path)
         print(data)
         experiment_info = SimulationConfig(**data.data)
+        if experiment_info.TEST_NAME not in TESTCASES:
+            continue
         with open(path / "log.txt", "r") as f:
             output = f.read()
         summary = generate_stats(output)
@@ -90,6 +93,7 @@ if __name__ == "__main__":
         )
     df.set_index("benchmark", inplace=True)
     print(df)
+    print(df.dtypes) 
     plot_instruction_breakdown(
         df,
         title="Estimated Runtime Breakdown per Benchmark",

@@ -3,6 +3,7 @@ from simulation_parser import generate_stats
 import experimented
 from plot_inst_breakdown_comp import plot_instruction_breakdown
 from extract_pd import generate_pandas_df
+from config import TESTCASES
 
 
 class SimulationConfig(pydantic.BaseModel):
@@ -23,7 +24,7 @@ if __name__ == "__main__":
         with open(path / "log.txt", "r") as f:
             output = f.read()
         summary = generate_stats(output)
-        if experiment_info.TEST_NAME not in ["LITTLEX"]:
+        if experiment_info.TEST_NAME not in TESTCASES:
             continue
         summaries[
             f"{experiment_info.TEST_NAME} / {experiment_info.MAPPING} / {"Overhead only" if experiment_info.OVERHEAD_ONLY else "Overhead + Walker workload"}"

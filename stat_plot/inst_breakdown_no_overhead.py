@@ -4,6 +4,7 @@ import experimented
 from plot_inst_breakdown_comp import plot_instruction_breakdown
 from extract_pd import generate_pandas_df
 import pandas as pd
+from config import TESTCASES
 
 
 class SimulationConfig(pydantic.BaseModel):
@@ -29,7 +30,7 @@ if __name__ == "__main__":
         ] = summary
     df1, df2 = generate_pandas_df(summaries)
     df_diff = pd.DataFrame()
-    for test_name in ["LITTLEX"]:
+    for test_name in TESTCASES:
         for mapping in ["JACPIM", "RANDOM"]:
             key1 = f"{test_name} / {mapping} / True"
             key2 = f"{test_name} / {mapping} / False"
@@ -43,7 +44,7 @@ if __name__ == "__main__":
             df_diff = pd.concat([df_diff, diff.to_frame().T])
     df_diff.index = [
         f"{test_name} / {mapping} / No Overhead"
-        for test_name in ["LITTLEX"]
+        for test_name in TESTCASES
         for mapping in ["JACPIM", "RANDOM"]
     ]
     print("Instruction counts without overhead:")
