@@ -437,6 +437,7 @@ class DPUAllMemoryCtx:
                         func_call=JacPIMSimulationCtx.index_function_defs(
                             extract_name(node), extract_name(walker)
                         ),
+                        node_id = node_idx,
                     )
                 )
             cls.dpu_container_ctxs[dpu_id].download_obj(

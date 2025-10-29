@@ -85,6 +85,7 @@ class RoundRobinPartitioner:
                 raise RuntimeError("No available partitions.")
             partition = partitions[offset % len(partitions)]
             node_distribution.add_node(node, partition, node_size)
+        print(f"Visited {len(visited)} nodes.")
 
     def __init__(self, ttg: nx.MultiDiGraph, start_nodes: list[NodeArchetype]) -> None:
         """Get the partitioning done."""

@@ -18,7 +18,7 @@ void run_thread(uint32_t walker_container_ptr, uint32_t trace_length, char * nod
         // Load node
         get(node_buffer, container_obj.node_ptr, container_obj.node_size);
         // Run on node
-        run_on_node(walker_buffer, node_buffer, container_obj.edge_num, container_obj.func_call);
+        run_on_node(container_obj.node_id, walker_buffer, node_buffer, container_obj.edge_num, container_obj.func_call);
         // Save node
         save(node_buffer, container_obj.node_ptr, container_obj.node_size);
     }

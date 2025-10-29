@@ -14,26 +14,28 @@ class ContainerObject:
     node_size: int
     edge_num: int
     func_call: int  # Index of the function to call
+    node_id: int
 
     def get_byte_stream(self) -> bytes:
         """Get the byte stream of the container object."""
         return struct.pack(
-            "<IIII",
+            "<IIIIQ",
             self.node_ptr,
             self.node_size,
             self.edge_num,
             self.func_call,
+            self.node_id,
         )
 
     @classmethod
     def get_size(cls) -> int:
         """Get the size of the container object in bytes."""
-        return 4 * 4
+        return 4 * 4 + 8
 
     @classmethod
     def get_type_def(cls) -> str:
         """Get the C type definition of the container object."""
-        return "uint32_t node_ptr; uint32_t node_size; uint32_t edge_num; uint32_t func_call;"  # noqa: E501
+        return "uint32_t node_ptr; uint32_t node_size; uint32_t edge_num; uint32_t func_call; uint64_t node_id;"  # noqa: E501
 
 
 @dataclass
