@@ -62,18 +62,25 @@ class RoundRobinPartitioner:
         offset: int,
     ) -> None:
         """Run a basic dfs to get the partitioning in DFS order."""
-        stack: list[int] = [start_node_idx]
+        stack: list[tuple[int, int]] = [(0, start_node_idx)]
         visited: set[int] = set()
+        print(f"Starting DFS from node {start_node_idx}")
         while len(stack) > 0:
-            node = stack.pop(0)
+            print(f"Stack size: {len(stack)}")
+            depth, node = stack.pop(0)
             next_nodes = ttg.edges(node, keys=True, data=True)
             next_nodes = [
-                next_node[1]
+                (depth + 1, next_node[1])
                 for next_node in next_nodes
                 if not (next_node[3].get("ttg_attr").is_parallel_edge)
+                if (next_node[3].get("ttg_attr").timestamp == depth)
                 if next_node[1] not in visited
+                if next_node[1] != node
+                if next_node[1] not in stack
             ]
-            visited |= set(next_nodes)
+            next_nodes_idx = [n[1] for n in next_nodes]
+            # print(next_nodes)
+            visited |= set(next_nodes_idx)
             stack += next_nodes
             node_size = get_node_info_from_node_arch(
                 JacPIMStaticCtx.get_all_nodes()[node]
@@ -85,7 +92,7 @@ class RoundRobinPartitioner:
                 raise RuntimeError("No available partitions.")
             partition = partitions[offset % len(partitions)]
             node_distribution.add_node(node, partition, node_size)
-        print(f"Visited {len(visited)} nodes.")
+            print(f"Visited {len(visited)} nodes.")
 
     def __init__(self, ttg: nx.MultiDiGraph, start_nodes: list[NodeArchetype]) -> None:
         """Get the partitioning done."""

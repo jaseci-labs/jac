@@ -11,7 +11,9 @@ from jaclang.runtimelib.jacpim_mapping_analysis.data_mapper import DPU_NUM
 from jaclang.runtimelib.jacpim_perf_measure.cpu_run_ctx import (
     JacPIMCPURunCtx,
     TransferRecord,
+    TransferDirection
 )
+from jaclang.runtimelib.jacpim_static_analysis.static_ctx import JacPIMStaticCtx
 import seaborn as sns
 import matplotlib.pyplot as plt
 import numpy as np
@@ -21,6 +23,7 @@ import pydantic
 
 class JacData(pydantic.BaseModel):
     walker_jump_sizes: list[list[TransferRecord]]
+    node_sizes: list[TransferRecord]
 
 
 class SimulationConfig(pydantic.BaseModel):
@@ -64,7 +67,9 @@ def run_simulator(src: str) -> str:
     experiment = experimented.Experiment[SimulationConfig]()
     with open(Path(SIMULATOR_REPO_PATH) / "bin" / "jac_data.json", "w") as f:
         walker_jump_sizes = JacPIMCPURunCtx.get_walker_jump_sizes()
-        f.write(JacData(walker_jump_sizes=walker_jump_sizes).model_dump_json())
+        node_sizes = [len(node.get_byte_stream()) for node in JacPIMStaticCtx.get_all_nodes()]
+        node_sizes_records = [TransferRecord(size=size, direction=TransferDirection.TO_DPU) for size in node_sizes]
+        f.write(JacData(walker_jump_sizes=walker_jump_sizes, node_sizes=node_sizes_records).model_dump_json())
 
     experiment.add_experiment(data, Path(SIMULATOR_REPO_PATH) / "bin")
 
