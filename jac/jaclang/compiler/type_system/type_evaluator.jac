@@ -323,27 +323,55 @@ class TypeEvaluator {
             is_dir = from_path.is_dir() or (from_path.stem == "__init__");
 
             # import from .. { mod }
+            # import from package.subpackage { item}
+            #                     ^^^^^^^^^^^
+            # subpackage can be a module or a package (dir with __init__.jac)
+
             if is_dir {
                 mod_dir = from_path.parent if not from_path.is_dir() else from_path;
                 # FIXME: Implement module resolution properly.
                 for ext in (".jac", ".py", ".pyi") {
-                    if (path := (mod_dir / (node_.name.value + ext)).resolve()).exists() {
+                    # Try resolving both "__init__" module and direct module file.
+                    candidate_paths = [
+                        (mod_dir / f"__init__{ext}").resolve(),
+                        (mod_dir / f"{node_.name.value}{ext}").resolve(),
+                    ];
+                    for path in candidate_paths{
+                        if not path.exists(){
+                            continue;
+                        }
+
                         mod = self._import_module_from_path(str(path));
+
+                        # Case 1: Look for symbol inside __init__.ext module
+                        if path.name.startswith("__init__"){
+                            if sym := mod.lookup(node_.name.value){
+                                node_.name.sym = sym;
+                                if node_.alias{
+                                    node_.alias.sym = sym;
+                                }
+                                # Cache the type.
+                                node_.name.type = self.get_type_of_symbol(sym);
+                                return node_.name.type;
+                            }
+                            continue;  # Try next candidate
+                        }
+
+                        # Case 2: The module itself (mod_name.ext)
                         mod_type = types.ModuleType(
                             mod_name=node_.name.sym_name,
                             file_uri=path,
                             symbol_table=mod,
                         );
-                        # Cache the type.
                         node_.name.type = mod_type;
 
-                        # FIXME: goto definition works on imported symbol by checking if it's a MODULE
-                        # type and in that case it'll call resolve_relative_path on the parent node of
-                        # the symbol's definition node (a module path), So the goto definition to work
-                        # properly the category should be module on a module path, If we set like this
-                        # below should work but because of the above assumption (should be a mod path)
-                        # it won't, This needs to be discussed.
-                        #
+                    #     # FIXME: goto definition works on imported symbol by checking if it's a MODULE
+                    #     # type and in that case it'll call resolve_relative_path on the parent node of
+                    #     # the symbol's definition node (a module path), So the goto definition to work
+                    #     # properly the category should be module on a module path, If we set like this
+                    #     # below should work but because of the above assumption (should be a mod path)
+                    #     # it won't, This needs to be discussed.
+                    #     #
                         node_.name._sym_category = SymbolType.MODULE;
                         return mod_type;
                     }
