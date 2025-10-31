@@ -26,6 +26,7 @@ from typing import List, Optional, Sequence, TypeVar, Union, cast
 
 import jaclang.compiler.unitree as uni
 from jaclang.compiler.constant import Constants as Con, EdgeDir, Tokens as Tok
+from jaclang.compiler.errors import JacErrorCode
 from jaclang.compiler.passes.ast_gen import BaseAstGenPass
 from jaclang.compiler.passes.ast_gen.jsx_processor import PyJsxProcessor
 
@@ -764,10 +765,9 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
             import_node = node.parent_of_type(uni.Import)
             if import_node and not import_node.is_client_decl:
                 self.log_error(
-                    f'String literal imports (e.g., from "{node.path[0].lit_value}") are only supported '
-                    f"in client (cl) imports, not Python imports. "
-                    f"Use 'cl import from \"{node.path[0].lit_value}\" {{ ... }}' instead.",
-                    node,
+                    JacErrorCode.INVALID_STRING_IMPORT,
+                    module=node.path[0].lit_value if node.path and node.path[0] else "",
+                    node_override=node,
                 )
 
         node.gen.py_ast = [
@@ -786,9 +786,13 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
             if not import_node.is_client_decl:
                 import_type = "Default" if node.name.value == "default" else "Namespace"
                 self.log_error(
-                    f"{import_type} imports (using '{node.name.value}') are only supported "
-                    f"in client (cl) imports, not Python imports",
-                    node,
+                    JacErrorCode.INVALID_IMPORT,
+                    details=(
+                        f"{import_type} imports (using '{node.name.value}') "
+                        "are only supported in client (cl) imports, "
+                        "not Python imports"
+                    ),
+                    node_override=node,
                 )
                 # Skip generating Python AST for invalid imports
                 node.gen.py_ast = []
@@ -816,9 +820,7 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
             inner = node.body
         body: list[ast3.AST] = self.resolve_stmt_block(inner, doc=node.doc)
         if not body and not isinstance(node.body, uni.Expr):
-            self.log_error(
-                "Archetype has no body. Perhaps an impl must be imported.", node
-            )
+            self.log_error(JacErrorCode.ARCHETYPE_NO_BODY, node_override=node)
             body = [self.sync(ast3.Pass(), node)]
         if node.is_async:
             body.insert(
@@ -1056,8 +1058,9 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
         )
         if node.is_abstract and node.body:
             self.log_error(
-                f"Abstract ability {node.sym_name} should not have a body.",
-                node,
+                JacErrorCode.ABSTRACT_ABILITY_HAS_BODY,
+                ability_name=node.sym_name,
+                node_override=node,
             )
         decorator_list = (
             [cast(ast3.expr, i.gen.py_ast[0]) for i in node.decorators]
@@ -1096,9 +1099,7 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
                 0, self.sync(ast3.Name(id="staticmethod", ctx=ast3.Load()))
             )
         if not body and not isinstance(node.body, uni.Expr):
-            self.log_error(
-                "Ability has no body. Perhaps an impl must be imported.", node
-            )
+            self.log_error(JacErrorCode.ABILITY_NO_BODY, node_override=node)
             body = [self.sync(ast3.Pass(), node)]  # type: ignore
 
         ast_returns: ast3.expr = self.sync(ast3.Constant(value=None))
@@ -2280,10 +2281,12 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
             self.exit_func_call(func_node)
             return func_node.gen.py_ast
         elif node.op.name == Tok.PIPE_FWD and isinstance(node.right, uni.TupleVal):
-            self.log_error("Invalid pipe target.")
+            self.log_error(JacErrorCode.INVALID_PIPE_TARGET, node_override=node)
         else:
             self.log_error(
-                f"Binary operator {node.op.value} not supported in bootstrap Jac"
+                JacErrorCode.UNSUPPORTED_BINARY_OPERATOR,
+                operator=node.op.value,
+                node_override=node,
             )
         return []
 
@@ -2673,7 +2676,9 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
                     )
                 ]
             else:
-                self.log_error("Invalid attribute access")
+                self.log_error(
+                    JacErrorCode.INVALID_ATTRIBUTE_ACCESS, node_override=node
+                )
         elif isinstance(node.right, uni.FilterCompr):
             node.gen.py_ast = [
                 self.sync(

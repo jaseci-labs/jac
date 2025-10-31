@@ -22,6 +22,7 @@ from typing import Optional, Sequence, TYPE_CHECKING, TypeAlias, TypeVar, cast
 
 import jaclang.compiler.unitree as uni
 from jaclang.compiler.constant import Tokens as Tok
+from jaclang.compiler.errors import JacErrorCode
 from jaclang.compiler.passes.uni_pass import Transform
 from jaclang.utils.helpers import pascal_to_snake
 
@@ -602,7 +603,7 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
         body = [self.convert(stmt) for stmt in node.body]
         valid_body = [stmt for stmt in body if isinstance(stmt, uni.CodeBlockStmt)]
         if len(valid_body) != len(body):
-            self.log_error("Length mismatch in async for body")
+            self.log_error(JacErrorCode.LENGTH_MISMATCH_ASYNC_FOR)
         body2 = valid_body
 
         orelse = [self.convert(stmt) for stmt in node.orelse]
@@ -1269,7 +1270,7 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
         names = [self.convert(name) for name in node.names]
         valid_names = [name for name in names if isinstance(name, uni.ExprAsItem)]
         if len(valid_names) != len(names):
-            self.log_error("Length mismatch in import names")
+            self.log_error(JacErrorCode.LENGTH_MISMATCH_IMPORT)
         paths = []
         for name in valid_names:
             if isinstance(name.expr, uni.Name) and (

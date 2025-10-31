@@ -12,6 +12,7 @@ from typing import Callable, Optional, Sequence, TYPE_CHECKING, TypeAlias, TypeV
 import jaclang.compiler.unitree as uni
 from jaclang.compiler import TOKEN_MAP, jac_lark as jl
 from jaclang.compiler.constant import EdgeDir, Tokens as Tok
+from jaclang.compiler.errors import JacErrorCode
 from jaclang.compiler.passes.main import Transform
 from jaclang.utils.helpers import ANSIColors
 
@@ -99,7 +100,12 @@ class JacParser(Transform[uni.Source, uni.Module]):
 
             if len(e.args) >= 1 and isinstance(e.args[0], str):
                 error_msg += e.args[0]
-            self.log_error(error_msg, node_override=catch_error)
+            # Use SYNTAX_ERROR with message_suffix for the detailed error message
+            self.log_error(
+                JacErrorCode.SYNTAX_ERROR,
+                message_suffix=f": {error_msg}",
+                node_override=catch_error,
+            )
 
         except Exception as e:
             raise e
@@ -176,19 +182,28 @@ class JacParser(Transform[uni.Source, uni.Module]):
                 and last_tok.type == Tok.DOT.name
                 and (Tok.NAME.name in e.accepts)
             ):
-                self.log_error("Incomplete member access", self.error_to_token(e))
+                self.log_error(
+                    JacErrorCode.INCOMPLETE_MEMBER_ACCESS,
+                    node_override=self.error_to_token(e),
+                )
                 iparser.feed_token(jl.Token(Tok.NAME.name, "recover_name_token"))
                 return feed_current_token(iparser, e.token)
 
             # We're calling try_feed_missing_token twice here because the first missing
             # will be reported as such and we don't for the consequent missing token.
             if tk := try_feed_missing_token(iparser):
-                self.log_error(f"Missing {tk.name}", self.error_to_token(e))
+                self.log_error(
+                    JacErrorCode.MISSING_TOKEN,
+                    token=tk.name,
+                    node_override=self.error_to_token(e),
+                )
                 return feed_current_token(iparser, e.token)
 
             # Ignore unexpected tokens and continue parsing till we reach a known state.
             self.log_error(
-                f"Unexpected token '{e.token.value}'", self.error_to_token(e)
+                JacErrorCode.UNEXPECTED_TOKEN,
+                token=e.token.value if e.token else "",
+                node_override=self.error_to_token(e),
             )
             return True
 
@@ -252,7 +267,7 @@ class JacParser(Transform[uni.Source, uni.Module]):
 
         def ice(self) -> Exception:
             """Raise internal compiler error."""
-            self.parse_ref.log_error("Internal Compiler Error, Invalid Parse Tree!")
+            self.parse_ref.log_error(JacErrorCode.INVALID_PARSE_TREE)
             return RuntimeError(
                 f"{self.parse_ref.__class__.__name__} - Internal Compiler Error, Invalid Parse Tree!"
             )
@@ -733,7 +748,9 @@ class JacParser(Transform[uni.Source, uni.Module]):
                 assert isinstance(archspec, uni.Archetype)
                 if archspec.arch_type.name != Tok.KW_WALKER:
                     self.parse_ref.log_error(
-                        f"Expected async archetype to be walker, but got {archspec.arch_type.value}"
+                        JacErrorCode.INVALID_ASYNC_ARCHETYPE,
+                        arch_type=archspec.arch_type.value,
+                        node_override=archspec,
                     )
             return archspec
 
@@ -1153,14 +1170,16 @@ class JacParser(Transform[uni.Source, uni.Module]):
                 if cur_nd.name == Tok.DIV:
                     if cur_state in ["keyword_only", "kwargs", "positional"]:
                         self.parse_ref.log_error(
-                            "Invalid syntax in function parameters: '/' cannot appear after '*' or '**'.",
+                            JacErrorCode.INVALID_FUNCTION_PARAMETERS,
+                            details="'/' cannot appear after '*' or '**'.",
                             node_override=cur_nd,
                         )
                     return "positional"
                 elif cur_nd.name == Tok.STAR_MUL:
                     if cur_state in ["keyword_only", "kwargs"]:
                         self.parse_ref.log_error(
-                            "Invalid syntax in function parameters: '*' cannot appear after '**'.",
+                            JacErrorCode.INVALID_FUNCTION_PARAMETERS_ORDER,
+                            details="'*' cannot appear after '**'.",
                             node_override=cur_nd,
                         )
                     return "keyword_only"

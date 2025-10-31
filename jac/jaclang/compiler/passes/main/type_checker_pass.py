@@ -10,6 +10,7 @@ Reference:
 """
 
 import jaclang.compiler.unitree as uni
+from jaclang.compiler.errors import JacErrorCode
 from jaclang.compiler.passes import UniPass
 from jaclang.compiler.type_system import types as jtypes
 
@@ -23,12 +24,20 @@ class TypeCheckPass(UniPass):
         self.evaluator.diagnostic_callback = self._add_diagnostic
         self._insert_builtin_symbols()
 
-    def _add_diagnostic(self, node: uni.UniNode, message: str, warning: bool) -> None:
-        """Add a diagnostic message to the pass."""
-        if warning:
-            self.log_warning(message, node)
+    def _add_diagnostic(
+        self, node: uni.UniNode, code: JacErrorCode, kwargs: dict
+    ) -> None:
+        """Add a diagnostic message to the pass.
+
+        Args:
+            node: The node where the error occurred
+            code: The error code
+            kwargs: Arguments for error message formatting
+        """
+        if code.is_warning():
+            self.log_warning(code, node_override=node, **kwargs)
         else:
-            self.log_error(message, node)
+            self.log_error(code, node_override=node, **kwargs)
 
     # --------------------------------------------------------------------------
     # Internal helper functions
@@ -94,7 +103,12 @@ class TypeCheckPass(UniPass):
             left_type = self.evaluator.get_type_of_expression(node.target[0])
             right_type = self.evaluator.get_type_of_expression(node.value)
             if not self.evaluator.assign_type(right_type, left_type):
-                self.log_error(f"Cannot assign {right_type} to {left_type}")
+                self.log_error(
+                    JacErrorCode.TYPE_ASSIGNMENT_ERROR,
+                    right_type=str(right_type),
+                    left_type=str(left_type),
+                    node_override=node,
+                )
         else:
             pass  # TODO: handle
 

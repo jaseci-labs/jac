@@ -38,7 +38,11 @@ class PyBytecodeGenPass(Transform[uni.Module, uni.Module]):
     def compile_module_to_bytecode(self, mod: uni.Module) -> None:
         """Compile a module to Python bytecode."""
         if not mod.gen.py_ast or not isinstance(mod.gen.py_ast[0], ast3.Module):
-            self.log_error(f"Unable to find ast for module {mod.loc.mod_path}.")
+            from jaclang.compiler.errors import JacErrorCode
+
+            self.log_error(
+                JacErrorCode.AST_NOT_FOUND, module=mod.loc.mod_path, node_override=mod
+            )
             return
 
         root_node = mod.gen.py_ast[0]

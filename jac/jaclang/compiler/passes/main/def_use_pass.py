@@ -23,6 +23,7 @@ creates the complete symbol resolution map for the program.
 
 import jaclang.compiler.unitree as uni
 from jaclang.compiler.constant import Tokens as Tok
+from jaclang.compiler.errors import JacErrorCode
 from jaclang.compiler.passes import UniPass
 
 
@@ -68,7 +69,9 @@ class DefUsePass(UniPass):
             elif isinstance(i, uni.AstSymbolNode):
                 i.sym_tab.def_insert(i)
             else:
-                self.log_error("Assignment target not valid")
+                self.log_error(
+                    JacErrorCode.INVALID_ASSIGNMENT_TARGET, node_override=node
+                )
 
     def enter_inner_compr(self, node: uni.InnerCompr) -> None:
         if isinstance(node.target, uni.AtomTrailer):
@@ -77,7 +80,7 @@ class DefUsePass(UniPass):
         elif isinstance(node.target, uni.AstSymbolNode):
             node.target.sym_tab.def_insert(node.target)
         else:
-            self.log_error("Named target not valid")
+            self.log_error(JacErrorCode.INVALID_NAMED_TARGET, node_override=node.target)
 
     def enter_atom_trailer(self, node: uni.AtomTrailer) -> None:
         chain = node.as_attr_list
@@ -111,7 +114,9 @@ class DefUsePass(UniPass):
         elif isinstance(node.target, uni.AstSymbolNode):
             node.target.sym_tab.def_insert(node.target)
         else:
-            self.log_error("For loop assignment target not valid")
+            self.log_error(
+                JacErrorCode.INVALID_FOR_LOOP_TARGET, node_override=node.target
+            )
 
     def enter_expr_as_item(self, node: uni.ExprAsItem) -> None:
         if node.alias:
@@ -120,4 +125,6 @@ class DefUsePass(UniPass):
             elif isinstance(node.alias, uni.AstSymbolNode):
                 node.alias.sym_tab.def_insert(node.alias)
             else:
-                self.log_error("For expr as target not valid")
+                self.log_error(
+                    JacErrorCode.INVALID_FOR_EXPR_TARGET, node_override=node.alias
+                )

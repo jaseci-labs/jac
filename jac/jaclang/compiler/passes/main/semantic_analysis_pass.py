@@ -4,6 +4,7 @@ import ast as ast3
 
 import jaclang.compiler.unitree as uni
 from jaclang.compiler.constant import Tokens as Tok
+from jaclang.compiler.errors import JacErrorCode
 from jaclang.compiler.passes import UniPass
 
 
@@ -35,7 +36,11 @@ class SemanticAnalysisPass(UniPass):
         elif isinstance(node, uni.AstSymbolNode):
             node.sym_tab.update_py_ctx_for_def(node)
         else:
-            self.log_error(f"Invalid target for context update: {type(node).__name__}")
+            self.log_error(
+                JacErrorCode.INVALID_TARGET_CONTEXT,
+                target=type(node).__name__,
+                node_override=node,
+            )
 
     def enter_has_var(self, node: uni.HasVar) -> None:
         if isinstance(node.parent, uni.ArchHas):

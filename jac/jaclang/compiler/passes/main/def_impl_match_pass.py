@@ -21,6 +21,7 @@ from typing import Sequence
 
 import jaclang.compiler.unitree as uni
 from jaclang.compiler.constant import Tokens as Tok
+from jaclang.compiler.errors import JacErrorCode
 from jaclang.compiler.passes.transform import Transform
 from jaclang.compiler.unitree import Symbol, UniScopeNode
 
@@ -109,8 +110,9 @@ class DeclImplMatchPass(Transform[uni.Module, uni.Module]):
                 continue
             elif isinstance(decl_node, uni.Ability) and decl_node.is_abstract:
                 self.log_warning(
-                    f"Abstract ability {decl_node.py_resolve_name()} should not have a definition.",
-                    decl_node,
+                    JacErrorCode.ABSTRACT_ABILITY_HAS_DEFINITION,
+                    ability_name=decl_node.py_resolve_name(),
+                    node_override=decl_node,
                 )
                 continue
 
@@ -163,12 +165,16 @@ class DeclImplMatchPass(Transform[uni.Module, uni.Module]):
                 # Check if the parameter count is matched.
                 if len(params_defn) != len(params_decl):
                     self.log_error(
-                        f"Parameter count mismatch for ability {sym.sym_name}.",
-                        sym.decl.name_of.name_spec,
+                        JacErrorCode.PARAMETER_COUNT_MISMATCH,
+                        ability_name=sym.sym_name,
+                        node_override=sym.decl.name_of.name_spec,
                     )
+                    # Use the ability's resolved name from the declaration node
+                    ability_name = valid_decl.py_resolve_name()
                     self.log_error(
-                        f"From the declaration of {valid_decl.name_spec.sym_name}.",
-                        valid_decl.name_spec,
+                        JacErrorCode.SYNTAX_ERROR,
+                        message_suffix=f". From the declaration of {ability_name}.",
+                        node_override=valid_decl.name_spec,
                     )
                 else:
                     # Copy the parameter names from the declaration to the definition.
@@ -197,7 +203,8 @@ class DeclImplMatchPass(Transform[uni.Module, uni.Module]):
                     else:
                         if found_default_init:
                             self.log_error(
-                                f"Non default attribute '{var.name.value}' follows default attribute",
+                                JacErrorCode.NON_DEFAULT_AFTER_DEFAULT,
+                                attr_name=var.name.value if var.name else "",
                                 node_override=var.name,
                             )
                             break
@@ -224,6 +231,6 @@ class DeclImplMatchPass(Transform[uni.Module, uni.Module]):
             # Check if postinit needed and not provided.
             if len(post_init_vars) != 0 and (postinit_method is None):
                 self.log_error(
-                    'Missing "postinit" method required by un initialized attribute(s).',
+                    JacErrorCode.MISSING_POSTINIT_METHOD,
                     node_override=post_init_vars[0].name_spec,
                 )  # We show the error on the first uninitialized var.

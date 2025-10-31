@@ -180,12 +180,21 @@ class TestJacLangServer(TestCase):
         lsp.type_check_file(import_file)
 
         positions = [
-            "fixtures/md_path.jac, line 16, col 13: Module not found",
-            "fixtures/md_path.jac, line 22, col 8: Module not found",
+            "fixtures/md_path.jac, line 16, col 13",
+            "fixtures/md_path.jac, line 22, col 8",
         ]
         for idx, expected in enumerate(positions):
             self.assertIn(
                 expected,
+                str(lsp.warnings_had[idx]),
+            )
+            # Check that it contains "Module not found" message
+            self.assertIn(
+                "Module",
+                str(lsp.warnings_had[idx]),
+            )
+            self.assertIn(
+                "not found",
                 str(lsp.warnings_had[idx]),
             )
 

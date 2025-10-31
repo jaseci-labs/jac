@@ -5,9 +5,10 @@ from __future__ import annotations
 import time
 from abc import ABC, abstractmethod
 from threading import Event
-from typing import Generic, Optional, TYPE_CHECKING, Type, TypeVar
+from typing import Any, Dict, Generic, Optional, TYPE_CHECKING, Type, TypeVar
 
 from jaclang.compiler.codeinfo import CodeLocInfo
+from jaclang.compiler.errors import JacErrorCode, get_error_message
 from jaclang.compiler.unitree import UniNode
 from jaclang.settings import settings
 from jaclang.utils.helpers import ANSIColors, pretty_print_source_location
@@ -21,18 +22,33 @@ R = TypeVar("R", bound=UniNode)
 
 
 class Alert:
-    """Alert interface."""
+    """Alert interface with centralized error codes."""
 
-    def __init__(self, msg: str, loc: CodeLocInfo, from_pass: Type[Transform]) -> None:
-        """Initialize alert."""
-        self.msg = msg
+    def __init__(
+        self,
+        code: JacErrorCode,
+        loc: CodeLocInfo,
+        from_pass: Type[Transform],
+        args: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Initialize alert.
+
+        Args:
+            code: The JacErrorCode for this alert
+            loc: Location information for the error
+            from_pass: The transform pass that generated this alert
+            args: Optional dictionary of arguments for error message formatting
+        """
+        self.code: JacErrorCode = code
         self.loc: CodeLocInfo = loc
         self.from_pass: Type[Transform] = from_pass
+        self.args: Dict[str, Any] = args if args else {}
+        self.msg: str = get_error_message(self.code, **self.args)
 
     def __str__(self) -> str:
         """Return string representation of alert."""
         return (
-            f" {self.loc.mod_path}, line {self.loc.first_line},"
+            f"[{self.code.value}] {self.loc.mod_path}, line {self.loc.first_line},"
             f" col {self.loc.col_start}: {self.msg}"
         )
 
@@ -44,14 +60,22 @@ class Alert:
         """Return the alert as a single line log as opposed to the pretty print."""
         file_path: str = self.loc.mod_path
         if file_path == "":
-            return self.msg  # There are error messages without file references.
+            return f"[{self.code.value}] {self.msg}"
 
         line: int = self.loc.first_line
         column: int = self.loc.col_start
 
-        # TODO: Set if the alert is error or warning and color accordingly.
-        msg = self.msg if not colors else f"{ANSIColors.RED}{self.msg}{ANSIColors.END}"
-        return f"{file_path}:{line}:{column} {msg}"
+        # Color coding based on error vs warning
+        if colors:
+            if self.code.is_warning():
+                color = ANSIColors.YELLOW
+            else:
+                color = ANSIColors.RED
+            msg = f"{color}{self.msg}{ANSIColors.END}"
+        else:
+            msg = self.msg
+
+        return f"{file_path}:{line}:{column}: [{self.code.value}] {msg}"
 
     def pretty_print(self, *, colors: bool = False) -> str:
         """Pretty prints the Alert to show the alert with source location."""
@@ -114,23 +138,49 @@ class Transform(ABC, Generic[T, R]):
         """Transform interface."""
         pass
 
-    def log_error(self, msg: str, node_override: Optional[UniNode] = None) -> None:
-        """Pass Error."""
+    def log_error(
+        self,
+        code: JacErrorCode,
+        node_override: Optional[UniNode] = None,
+        **kwargs: object,
+    ) -> None:
+        """Log an error with centralized error codes.
+
+        Args:
+            code: The JacErrorCode for this error
+            node_override: Optional node to use for location instead of self.cur_node
+            **kwargs: Arguments for error message template formatting
+        """
+        loc = self.cur_node.loc if not node_override else node_override.loc
         alrt = Alert(
-            msg,
-            self.cur_node.loc if not node_override else node_override.loc,
+            code,
+            loc,
             self.__class__,
+            args=kwargs if kwargs else None,
         )
         self.errors_had.append(alrt)
         self.prog.errors_had.append(alrt)
         # self.logger.error(alrt.as_log())
 
-    def log_warning(self, msg: str, node_override: Optional[UniNode] = None) -> None:
-        """Pass Error."""
+    def log_warning(
+        self,
+        code: JacErrorCode,
+        node_override: Optional[UniNode] = None,
+        **kwargs: object,
+    ) -> None:
+        """Log a warning with centralized error codes.
+
+        Args:
+            code: The JacErrorCode for this warning
+            node_override: Optional node to use for location instead of self.cur_node
+            **kwargs: Arguments for error message template formatting
+        """
+        loc = self.cur_node.loc if not node_override else node_override.loc
         alrt = Alert(
-            msg,
-            self.cur_node.loc if not node_override else node_override.loc,
+            code,
+            loc,
             self.__class__,
+            args=kwargs if kwargs else None,
         )
         self.warnings_had.append(alrt)
         self.prog.warnings_had.append(alrt)
@@ -145,8 +195,12 @@ class Transform(ABC, Generic[T, R]):
         return self.cancel_token is not None and self.cancel_token.is_set()
 
     def ice(self, msg: str = "Something went horribly wrong!") -> RuntimeError:
-        """Pass Error."""
-        self.log_error(f"ICE: Pass {self.__class__.__name__} - {msg}")
+        """Internal Compiler Error (ICE)."""
+        self.log_error(
+            JacErrorCode.ICE_PASS_ERROR,
+            pass_name=self.__class__.__name__,
+            message=msg,
+        )
         return RuntimeError(
             f"Internal Compiler Error: Pass {self.__class__.__name__} - {msg}"
         )

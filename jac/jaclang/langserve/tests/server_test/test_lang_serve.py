@@ -62,7 +62,7 @@ class TestLangServe:
 
         try:
             await helper.open_document()
-            helper.assert_has_diagnostics(count=2, message_contains="Unexpected token 'error'")
+            helper.assert_has_diagnostics(count=2, message_contains="Unexpected token: error")
 
             diagnostics = helper.get_diagnostics()
             assert str(diagnostics[0].range) == "65:0-65:5"
@@ -119,7 +119,7 @@ class TestLangServe:
             )
             await helper.save_document(broken_code)
             helper.assert_semantic_tokens_count(self.EXPECTED_CIRCLE_TOKEN_COUNT)
-            helper.assert_has_diagnostics(count=2, message_contains="Unexpected token 'error'")
+            helper.assert_has_diagnostics(count=2, message_contains="Unexpected token: error")
         finally:
             ls.shutdown()
             test_file.cleanup()
