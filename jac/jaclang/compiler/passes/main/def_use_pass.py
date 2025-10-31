@@ -70,7 +70,8 @@ class DefUsePass(UniPass):
                 i.sym_tab.def_insert(i)
             else:
                 self.log_error(
-                    JacErrorCode.INVALID_ASSIGNMENT_TARGET, node_override=node
+                    JacErrorCode.INVALID_ASSIGNMENT_TARGET,
+                    node_override=node,
                 )
 
     def enter_inner_compr(self, node: uni.InnerCompr) -> None:
@@ -80,7 +81,10 @@ class DefUsePass(UniPass):
         elif isinstance(node.target, uni.AstSymbolNode):
             node.target.sym_tab.def_insert(node.target)
         else:
-            self.log_error(JacErrorCode.INVALID_NAMED_TARGET, node_override=node.target)
+            self.log_error(
+                JacErrorCode.INVALID_NAMED_TARGET,
+                node_override=node.target,
+            )
 
     def enter_atom_trailer(self, node: uni.AtomTrailer) -> None:
         chain = node.as_attr_list
@@ -115,7 +119,8 @@ class DefUsePass(UniPass):
             node.target.sym_tab.def_insert(node.target)
         else:
             self.log_error(
-                JacErrorCode.INVALID_FOR_LOOP_TARGET, node_override=node.target
+                JacErrorCode.INVALID_FOR_LOOP_TARGET,
+                node_override=node.target,
             )
 
     def enter_expr_as_item(self, node: uni.ExprAsItem) -> None:
@@ -126,5 +131,6 @@ class DefUsePass(UniPass):
                 node.alias.sym_tab.def_insert(node.alias)
             else:
                 self.log_error(
-                    JacErrorCode.INVALID_FOR_EXPR_TARGET, node_override=node.alias
+                    JacErrorCode.INVALID_FOR_EXPR_TARGET,
+                    node_override=node.alias,
                 )

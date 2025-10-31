@@ -34,6 +34,7 @@ class TypeCheckPass(UniPass):
             code: The error code
             kwargs: Arguments for error message formatting
         """
+        # Use log_error/log_warning directly for compile-time type safety
         if code.is_warning():
             self.log_warning(code, node_override=node, **kwargs)
         else:
@@ -105,9 +106,9 @@ class TypeCheckPass(UniPass):
             if not self.evaluator.assign_type(right_type, left_type):
                 self.log_error(
                     JacErrorCode.TYPE_ASSIGNMENT_ERROR,
+                    node_override=node,
                     right_type=str(right_type),
                     left_type=str(left_type),
-                    node_override=node,
                 )
         else:
             pass  # TODO: handle

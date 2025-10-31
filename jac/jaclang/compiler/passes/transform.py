@@ -15,7 +15,7 @@ from jaclang.utils.helpers import ANSIColors, pretty_print_source_location
 from jaclang.utils.log import logging
 
 if TYPE_CHECKING:
-    from jaclang.compiler.program import JacProgram
+    from jaclang.compiler.program import JacProgram  # noqa: I300
 
 T = TypeVar("T", bound=UniNode)
 R = TypeVar("R", bound=UniNode)
@@ -146,11 +146,14 @@ class Transform(ABC, Generic[T, R]):
     ) -> None:
         """Log an error with centralized error codes.
 
+        Type safety is enforced by get_error_message() overloads.
+
         Args:
             code: The JacErrorCode for this error
             node_override: Optional node to use for location instead of self.cur_node
             **kwargs: Arguments for error message template formatting
         """
+        msg = get_error_message(code, **kwargs)
         loc = self.cur_node.loc if not node_override else node_override.loc
         alrt = Alert(
             code,
@@ -158,9 +161,9 @@ class Transform(ABC, Generic[T, R]):
             self.__class__,
             args=kwargs if kwargs else None,
         )
+        alrt.msg = msg
         self.errors_had.append(alrt)
         self.prog.errors_had.append(alrt)
-        # self.logger.error(alrt.as_log())
 
     def log_warning(
         self,
@@ -170,11 +173,14 @@ class Transform(ABC, Generic[T, R]):
     ) -> None:
         """Log a warning with centralized error codes.
 
+        Type safety is enforced by get_error_message() overloads.
+
         Args:
             code: The JacErrorCode for this warning
             node_override: Optional node to use for location instead of self.cur_node
             **kwargs: Arguments for error message template formatting
         """
+        msg = get_error_message(code, **kwargs)
         loc = self.cur_node.loc if not node_override else node_override.loc
         alrt = Alert(
             code,
@@ -182,9 +188,9 @@ class Transform(ABC, Generic[T, R]):
             self.__class__,
             args=kwargs if kwargs else None,
         )
+        alrt.msg = msg
         self.warnings_had.append(alrt)
         self.prog.warnings_had.append(alrt)
-        # self.logger.warning(alrt.as_log())
 
     def log_info(self, msg: str) -> None:
         """Log info."""

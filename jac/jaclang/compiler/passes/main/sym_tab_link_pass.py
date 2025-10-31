@@ -79,8 +79,8 @@ class SymTabLinkPass(Transform[uni.Module, uni.Module]):
 
                 self.log_error(
                     JacErrorCode.MISSING_MODULE_IN_PROGRAM,
-                    module=rel_path,
                     node_override=node,
+                    module=rel_path,
                 )
                 return None
             return rel_path

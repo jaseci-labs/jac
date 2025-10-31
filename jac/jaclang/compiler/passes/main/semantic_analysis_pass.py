@@ -38,8 +38,8 @@ class SemanticAnalysisPass(UniPass):
         else:
             self.log_error(
                 JacErrorCode.INVALID_TARGET_CONTEXT,
-                target=type(node).__name__,
                 node_override=node,
+                target=type(node).__name__,
             )
 
     def enter_has_var(self, node: uni.HasVar) -> None:

@@ -41,7 +41,9 @@ class PyBytecodeGenPass(Transform[uni.Module, uni.Module]):
             from jaclang.compiler.errors import JacErrorCode
 
             self.log_error(
-                JacErrorCode.AST_NOT_FOUND, module=mod.loc.mod_path, node_override=mod
+                JacErrorCode.AST_NOT_FOUND,
+                node_override=mod,
+                module=mod.loc.mod_path,
             )
             return
 

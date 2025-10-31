@@ -109,10 +109,11 @@ class DeclImplMatchPass(Transform[uni.Module, uni.Module]):
                 # )
                 continue
             elif isinstance(decl_node, uni.Ability) and decl_node.is_abstract:
+                ability_name = decl_node.py_resolve_name()
                 self.log_warning(
                     JacErrorCode.ABSTRACT_ABILITY_HAS_DEFINITION,
-                    ability_name=decl_node.py_resolve_name(),
                     node_override=decl_node,
+                    ability_name=ability_name,
                 )
                 continue
 
@@ -166,15 +167,15 @@ class DeclImplMatchPass(Transform[uni.Module, uni.Module]):
                 if len(params_defn) != len(params_decl):
                     self.log_error(
                         JacErrorCode.PARAMETER_COUNT_MISMATCH,
-                        ability_name=sym.sym_name,
                         node_override=sym.decl.name_of.name_spec,
+                        ability_name=sym.sym_name,
                     )
                     # Use the ability's resolved name from the declaration node
                     ability_name = valid_decl.py_resolve_name()
                     self.log_error(
                         JacErrorCode.SYNTAX_ERROR,
-                        message_suffix=f". From the declaration of {ability_name}.",
                         node_override=valid_decl.name_spec,
+                        message_suffix=f". From the declaration of {ability_name}.",
                     )
                 else:
                     # Copy the parameter names from the declaration to the definition.
@@ -202,10 +203,11 @@ class DeclImplMatchPass(Transform[uni.Module, uni.Module]):
                         found_default_init = True
                     else:
                         if found_default_init:
+                            attr_name = var.name.value if var.name else ""
                             self.log_error(
                                 JacErrorCode.NON_DEFAULT_AFTER_DEFAULT,
-                                attr_name=var.name.value if var.name else "",
                                 node_override=var.name,
+                                attr_name=attr_name,
                             )
                             break
 

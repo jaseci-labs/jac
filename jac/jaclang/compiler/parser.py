@@ -101,10 +101,11 @@ class JacParser(Transform[uni.Source, uni.Module]):
             if len(e.args) >= 1 and isinstance(e.args[0], str):
                 error_msg += e.args[0]
             # Use SYNTAX_ERROR with message_suffix for the detailed error message
+            # Use log_error directly for compile-time type safety
             self.log_error(
                 JacErrorCode.SYNTAX_ERROR,
-                message_suffix=f": {error_msg}",
                 node_override=catch_error,
+                message_suffix=f": {error_msg}",
             )
 
         except Exception as e:
@@ -182,6 +183,7 @@ class JacParser(Transform[uni.Source, uni.Module]):
                 and last_tok.type == Tok.DOT.name
                 and (Tok.NAME.name in e.accepts)
             ):
+                # Use log_error directly for compile-time type safety
                 self.log_error(
                     JacErrorCode.INCOMPLETE_MEMBER_ACCESS,
                     node_override=self.error_to_token(e),
@@ -192,18 +194,21 @@ class JacParser(Transform[uni.Source, uni.Module]):
             # We're calling try_feed_missing_token twice here because the first missing
             # will be reported as such and we don't for the consequent missing token.
             if tk := try_feed_missing_token(iparser):
+                # Use log_error directly for compile-time type safety
                 self.log_error(
                     JacErrorCode.MISSING_TOKEN,
-                    token=tk.name,
                     node_override=self.error_to_token(e),
+                    token=tk.name,
                 )
                 return feed_current_token(iparser, e.token)
 
             # Ignore unexpected tokens and continue parsing till we reach a known state.
+            # Use log_error directly for compile-time type safety
+            token_value = e.token.value if e.token else ""
             self.log_error(
                 JacErrorCode.UNEXPECTED_TOKEN,
-                token=e.token.value if e.token else "",
                 node_override=self.error_to_token(e),
+                token=token_value,
             )
             return True
 
