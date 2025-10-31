@@ -75,10 +75,10 @@ class SymTabLinkPass(Transform[uni.Module, uni.Module]):
                 else:
                     rel_path = f"{init_path}.py"
             if rel_path not in self.prog.mod.hub:
-                from jaclang.compiler.errors import JacErrorCode
+                from jaclang.compiler.errors.error_definitions import ErrorCode
 
                 self.log_error(
-                    JacErrorCode.MISSING_MODULE_IN_PROGRAM,
+                    ErrorCode.MISSING_MODULE_IN_PROGRAM,
                     node_override=node,
                     module=rel_path,
                 )

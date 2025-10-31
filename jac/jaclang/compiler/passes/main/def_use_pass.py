@@ -23,7 +23,7 @@ creates the complete symbol resolution map for the program.
 
 import jaclang.compiler.unitree as uni
 from jaclang.compiler.constant import Tokens as Tok
-from jaclang.compiler.errors import JacErrorCode
+from jaclang.compiler.errors.error_definitions import ErrorCode
 from jaclang.compiler.passes import UniPass
 
 
@@ -70,7 +70,7 @@ class DefUsePass(UniPass):
                 i.sym_tab.def_insert(i)
             else:
                 self.log_error(
-                    JacErrorCode.INVALID_ASSIGNMENT_TARGET,
+                    ErrorCode.INVALID_ASSIGNMENT_TARGET,
                     node_override=node,
                 )
 
@@ -82,7 +82,7 @@ class DefUsePass(UniPass):
             node.target.sym_tab.def_insert(node.target)
         else:
             self.log_error(
-                JacErrorCode.INVALID_NAMED_TARGET,
+                ErrorCode.INVALID_NAMED_TARGET,
                 node_override=node.target,
             )
 
@@ -119,7 +119,7 @@ class DefUsePass(UniPass):
             node.target.sym_tab.def_insert(node.target)
         else:
             self.log_error(
-                JacErrorCode.INVALID_FOR_LOOP_TARGET,
+                ErrorCode.INVALID_FOR_LOOP_TARGET,
                 node_override=node.target,
             )
 
@@ -131,6 +131,6 @@ class DefUsePass(UniPass):
                 node.alias.sym_tab.def_insert(node.alias)
             else:
                 self.log_error(
-                    JacErrorCode.INVALID_FOR_EXPR_TARGET,
+                    ErrorCode.INVALID_FOR_EXPR_TARGET,
                     node_override=node.alias,
                 )

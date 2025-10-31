@@ -38,12 +38,12 @@ import from jaclang.compiler.type_system.types { TypeBase }
 
 # The callback type definition for the diagnostic messages.
 # Now accepts error codes and kwargs for formatting instead of raw strings
- import from jaclang.compiler.errors {
-    JacErrorCode
+ import from jaclang.compiler.errors.error_definitions {
+    ErrorCode
 }
 
 
-glob DiagnosticCallback = Callable[[uni.UniNode, JacErrorCode, dict], None];
+glob DiagnosticCallback = Callable[[uni.UniNode, ErrorCode, dict], None];
 
 
 """Types whose definitions are prefetched and cached by the type evaluator."""
@@ -177,7 +177,7 @@ class TypeEvaluator {
 
     """Add a diagnostic message to the program."""
     def add_diagnostic(
-        self: TypeEvaluator, node: uni.UniNode, code: JacErrorCode, **kwargs: object
+        self: TypeEvaluator, node: uni.UniNode, code: ErrorCode, **kwargs: object
     ) -> None {
         if self.diagnostic_callback {
             self.diagnostic_callback(node, code, kwargs);
@@ -288,7 +288,7 @@ class TypeEvaluator {
                     );
                     self.add_diagnostic(
                         npath,
-                        JacErrorCode.MODULE_NOT_FOUND_WARNING,
+                        ErrorCode.MODULE_NOT_FOUND_WARNING,
                         module=module_name
                     );
                     return npath.type;
@@ -957,7 +957,7 @@ class TypeEvaluator {
                 # For unexpected exceptions, use generic error code with details
                 details_suffix = f": {str(e)}" if str(e) else "";
                 self.add_diagnostic(
-                    arg, JacErrorCode.TYPE_MISMATCH, details_suffix=details_suffix
+                    arg, ErrorCode.TYPE_MISMATCH, details_suffix=details_suffix
                 );
                 argument_errors = True;
             }
@@ -966,7 +966,7 @@ class TypeEvaluator {
             names = ", ".join([f"'{p.name}'" for p in unmatched_params]);
             argument_errors = True;
             self.add_diagnostic(
-                expr, JacErrorCode.MISSING_FUNCTION_PARAMETERS, param_names=names,
+                expr, ErrorCode.MISSING_FUNCTION_PARAMETERS, param_names=names,
             );
         }
         return MatchArgsToParamsResult(
@@ -1043,7 +1043,7 @@ class TypeEvaluator {
             if not self.assign_type(arg_type, param.param_type) {
                 self.add_diagnostic(
                     arg,
-                    JacErrorCode.TYPE_ASSIGNMENT_TO_PARAMETER,
+                    ErrorCode.TYPE_ASSIGNMENT_TO_PARAMETER,
                     arg_type=str(arg_type),
                     param_name=param.name,
                     param_type=str(param.param_type),

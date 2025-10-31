@@ -21,7 +21,7 @@ from typing import Sequence
 
 import jaclang.compiler.unitree as uni
 from jaclang.compiler.constant import Tokens as Tok
-from jaclang.compiler.errors import JacErrorCode
+from jaclang.compiler.errors.error_definitions import ErrorCode
 from jaclang.compiler.passes.transform import Transform
 from jaclang.compiler.unitree import Symbol, UniScopeNode
 
@@ -111,7 +111,7 @@ class DeclImplMatchPass(Transform[uni.Module, uni.Module]):
             elif isinstance(decl_node, uni.Ability) and decl_node.is_abstract:
                 ability_name = decl_node.py_resolve_name()
                 self.log_warning(
-                    JacErrorCode.ABSTRACT_ABILITY_HAS_DEFINITION,
+                    ErrorCode.ABSTRACT_ABILITY_HAS_DEFINITION,
                     node_override=decl_node,
                     ability_name=ability_name,
                 )
@@ -166,14 +166,14 @@ class DeclImplMatchPass(Transform[uni.Module, uni.Module]):
                 # Check if the parameter count is matched.
                 if len(params_defn) != len(params_decl):
                     self.log_error(
-                        JacErrorCode.PARAMETER_COUNT_MISMATCH,
+                        ErrorCode.PARAMETER_COUNT_MISMATCH,
                         node_override=sym.decl.name_of.name_spec,
                         ability_name=sym.sym_name,
                     )
                     # Use the ability's resolved name from the declaration node
                     ability_name = valid_decl.py_resolve_name()
                     self.log_error(
-                        JacErrorCode.SYNTAX_ERROR,
+                        ErrorCode.SYNTAX_ERROR,
                         node_override=valid_decl.name_spec,
                         message_suffix=f". From the declaration of {ability_name}.",
                     )
@@ -205,7 +205,7 @@ class DeclImplMatchPass(Transform[uni.Module, uni.Module]):
                         if found_default_init:
                             attr_name = var.name.value if var.name else ""
                             self.log_error(
-                                JacErrorCode.NON_DEFAULT_AFTER_DEFAULT,
+                                ErrorCode.NON_DEFAULT_AFTER_DEFAULT,
                                 node_override=var.name,
                                 attr_name=attr_name,
                             )
@@ -233,6 +233,6 @@ class DeclImplMatchPass(Transform[uni.Module, uni.Module]):
             # Check if postinit needed and not provided.
             if len(post_init_vars) != 0 and (postinit_method is None):
                 self.log_error(
-                    JacErrorCode.MISSING_POSTINIT_METHOD,
+                    ErrorCode.MISSING_POSTINIT_METHOD,
                     node_override=post_init_vars[0].name_spec,
                 )  # We show the error on the first uninitialized var.

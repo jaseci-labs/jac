@@ -4,7 +4,7 @@ import ast as ast3
 
 import jaclang.compiler.unitree as uni
 from jaclang.compiler.constant import Tokens as Tok
-from jaclang.compiler.errors import JacErrorCode
+from jaclang.compiler.errors.error_definitions import ErrorCode
 from jaclang.compiler.passes import UniPass
 
 
@@ -37,7 +37,7 @@ class SemanticAnalysisPass(UniPass):
             node.sym_tab.update_py_ctx_for_def(node)
         else:
             self.log_error(
-                JacErrorCode.INVALID_TARGET_CONTEXT,
+                ErrorCode.INVALID_TARGET_CONTEXT,
                 node_override=node,
                 target=type(node).__name__,
             )

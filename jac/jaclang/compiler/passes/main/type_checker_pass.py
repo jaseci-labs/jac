@@ -10,7 +10,7 @@ Reference:
 """
 
 import jaclang.compiler.unitree as uni
-from jaclang.compiler.errors import JacErrorCode
+from jaclang.compiler.errors.error_definitions import ErrorCode
 from jaclang.compiler.passes import UniPass
 from jaclang.compiler.type_system import types as jtypes
 
@@ -24,9 +24,7 @@ class TypeCheckPass(UniPass):
         self.evaluator.diagnostic_callback = self._add_diagnostic
         self._insert_builtin_symbols()
 
-    def _add_diagnostic(
-        self, node: uni.UniNode, code: JacErrorCode, kwargs: dict
-    ) -> None:
+    def _add_diagnostic(self, node: uni.UniNode, code: ErrorCode, kwargs: dict) -> None:
         """Add a diagnostic message to the pass.
 
         Args:
@@ -105,7 +103,7 @@ class TypeCheckPass(UniPass):
             right_type = self.evaluator.get_type_of_expression(node.value)
             if not self.evaluator.assign_type(right_type, left_type):
                 self.log_error(
-                    JacErrorCode.TYPE_ASSIGNMENT_ERROR,
+                    ErrorCode.TYPE_ASSIGNMENT_ERROR,
                     node_override=node,
                     right_type=str(right_type),
                     left_type=str(left_type),

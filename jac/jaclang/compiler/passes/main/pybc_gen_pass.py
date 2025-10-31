@@ -16,6 +16,7 @@ import ast as ast3
 import marshal
 
 import jaclang.compiler.unitree as uni
+from jaclang.compiler.errors.error_definitions import ErrorCode
 from jaclang.compiler.passes.transform import Transform
 
 
@@ -38,10 +39,8 @@ class PyBytecodeGenPass(Transform[uni.Module, uni.Module]):
     def compile_module_to_bytecode(self, mod: uni.Module) -> None:
         """Compile a module to Python bytecode."""
         if not mod.gen.py_ast or not isinstance(mod.gen.py_ast[0], ast3.Module):
-            from jaclang.compiler.errors import JacErrorCode
-
             self.log_error(
-                JacErrorCode.AST_NOT_FOUND,
+                ErrorCode.AST_NOT_FOUND,
                 node_override=mod,
                 module=mod.loc.mod_path,
             )

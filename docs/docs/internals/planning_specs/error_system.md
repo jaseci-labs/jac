@@ -2,7 +2,7 @@
 
 ## 1. Introduction
 
-This document describes the implemented error handling subsystem for the Jac compiler. The system provides a robust, maintainable, and developer-friendly way to report, manage, and diagnose errors and warnings encountered during the various compilation phases (parsing, semantic analysis, code generation, etc.).
+This document describes the error handling subsystem for the Jac compiler. The system provides a robust, maintainable, and developer-friendly way to report, manage, and diagnose errors and warnings encountered during the various compilation phases (parsing, semantic analysis, code generation, etc.).
 
 The system achieves the following objectives:
 -   **Centralization**: A single source of truth for all error and warning definitions (codes, message templates).
@@ -16,21 +16,19 @@ The system achieves the following objectives:
 The error handling system uses an `Alert` class (`jaclang.compiler.passes.transform.Alert`) that supports centralized error codes.
 
 -   Each `Transform` (base class for compiler passes) maintains its own `errors_had` and `warnings_had` lists.
--   Passes report errors using `log_error(JacErrorCode, ...)` or `log_warning(JacErrorCode, ...)` with centralized error codes.
+-   Passes report errors using `log_error(ErrorCode, ...)` or `log_warning(ErrorCode, ...)` with centralized error codes.
 -   These methods create `Alert` objects, storing the error code, formatted message, code location (`CodeLocInfo`), and the originating pass type.
 -   Alerts from individual passes are also aggregated into global `errors_had` and `warnings_had` lists in the `JacProgram` instance.
--   The system maintains backward compatibility with legacy string-based error messages.
 
-## 3. Implemented Design
+## 3. Design
 
-The system introduces a centralized error registry, standardized error codes, and an enhanced error reporting structure.
+The system uses a simplified, co-located error definition approach where error codes, categories, and message templates are defined together in a single file.
 
 ### 3.1. Error Code Enumeration
 
-**Location:** `jaclang.compiler.errors.error_codes.py`
+**Location:** `jaclang.compiler.errors.error_definitions.py`
 
-The `JacErrorCode` enum provides centralized error codes organized by category:
-
+The `ErrorCode` enum provides centralized error codes organized by category:
 -   **E0000-E0999**: General/Syntax errors (e.g., `SYNTAX_ERROR`, `UNEXPECTED_TOKEN`, `MISSING_SEMICOLON`)
 -   **E1000-E1999**: Symbol Table errors (e.g., `SYMBOL_NOT_FOUND`, `DUPLICATE_SYMBOL_DECL`)
 -   **E2000-E2999**: Type System errors (e.g., `TYPE_MISMATCH`, `TYPE_ASSIGNMENT_ERROR`)
@@ -39,29 +37,33 @@ The `JacErrorCode` enum provides centralized error codes organized by category:
 -   **E5000-E5999**: Internal Compiler Errors (e.g., `ICE_PASS_ERROR`, `ICE_UNEXPECTED_NODE`)
 -   **W0000-W0999**: Warnings (e.g., `UNUSED_VARIABLE`, `UNUSED_IMPORT`)
 
-Each error code has:
+Each error code is defined with:
 -   A unique identifier (e.g., `"E2002"` for `TYPE_ASSIGNMENT_ERROR`)
+-   A category (e.g., `"type"`, `"syntax"`, `"symbol"`)
+-   A message template with format placeholders
 -   Helper methods `is_error()` and `is_warning()` to categorize the code
 
-### 3.2. Error Message Templates
+### 3.2. Error Definitions
 
-**Location:** `jaclang.compiler.errors.error_messages.py`
+All error information is co-located in `error_definitions.py`:
 
-The `ERROR_MESSAGE_TEMPLATES` dictionary maps each `JacErrorCode` to a formatted message template using Python format string syntax.
-
-Example:
 ```python
-JacErrorCode.TYPE_ASSIGNMENT_ERROR: "Cannot assign {right_type} to {left_type}"
-JacErrorCode.SYMBOL_NOT_FOUND: "Symbol '{name}' not found"
+TYPE_ASSIGNMENT_ERROR = ErrorDef(
+    "E2002", "type",
+    "Cannot assign {right_type} to {left_type}"
+)
 ```
 
-The `get_error_message(code, **kwargs)` function formats error messages using the templates and provided arguments.
+This single definition includes:
+-   The error code string
+-   The category
+-   The message template with format placeholders
 
-### 3.3. Enhanced Alert Structure
+### 3.3. Alert Structure
 
 **Location:** `jaclang.compiler.passes.transform.py`
 
-The `Alert` class has been enhanced to support both the new error code system and legacy string messages:
+The `Alert` class stores error information:
 
 ```python
 class Alert:
@@ -69,91 +71,103 @@ class Alert:
 
     def __init__(
         self,
-        msg_or_code: str | JacErrorCode,
+        code: ErrorCode,
         loc: CodeLocInfo,
         from_pass: Type[Transform],
         args: Optional[Dict[str, Any]] = None,
     ):
-        # Supports both JacErrorCode and legacy string messages
-        if isinstance(msg_or_code, JacErrorCode):
-            self.code: JacErrorCode = msg_or_code
-            self.msg: str = get_error_message(self.code, **self.args)
-        else:
-            # Legacy support
-            self.code = JacErrorCode.SYNTAX_ERROR
-            self.msg = str(msg_or_code)
+        self.code: ErrorCode = code
+        self.loc: CodeLocInfo = loc
+        self.from_pass: Type[Transform] = from_pass
+        self.args: Dict[str, Any] = args if args else {}
+        self.msg: str = code.format_message(**self.args)
 ```
 
 Key properties:
--   `code`: The `JacErrorCode` enum value
--   `msg`: The formatted error message
+-   `code`: The `ErrorCode` enum value
+-   `msg`: The formatted error message (automatically generated from template)
 -   `loc`: Location information (`CodeLocInfo`)
 -   `from_pass`: The transform pass that generated the alert
 -   `args`: Arguments used for message formatting
 
-### 3.4. Updated Error Reporting Methods
+### 3.4. Error Reporting Methods
 
-The `Transform` class methods have been updated to support error codes:
+The `Transform` class methods support error codes:
 
 ```python
 def log_error(
     self,
-    msg_or_code: str | JacErrorCode,
+    code: ErrorCode,
     node_override: Optional[UniNode] = None,
-    **kwargs: Any,
+    **kwargs: object,
 ) -> None:
     """Log an error with centralized error codes.
 
-    Supports both JacErrorCode (preferred) and legacy string messages.
+    Args:
+        code: The ErrorCode for this error
+        node_override: Optional node to use for location instead of self.cur_node
+        **kwargs: Arguments for error message template formatting
     """
 ```
 
 **Example Usage:**
 
 ```python
-# Using error codes (preferred)
+from jaclang.compiler.errors import ErrorCode
+
+# Using error codes with parameters
 self.log_error(
-    JacErrorCode.TYPE_ASSIGNMENT_ERROR,
+    ErrorCode.TYPE_ASSIGNMENT_ERROR,
     right_type="int",
     left_type="str",
     node_override=assignment_node
 )
 
-# Legacy string messages still work
-self.log_error("Cannot assign int to str", node_override=assignment_node)
+# Using error codes without parameters
+self.log_error(
+    ErrorCode.MISSING_COLON,
+    node_override=node
+)
+
+# Warnings
+self.log_warning(
+    ErrorCode.UNUSED_VARIABLE,
+    name="temp",
+    node_override=var_node
+)
 ```
 
-### 3.5. Backward Compatibility
+### 3.5. Runtime Validation
 
-The system maintains full backward compatibility:
--   Legacy string-based error messages are still accepted
--   Old code using `log_error("message")` continues to work
--   Legacy messages are automatically assigned `SYNTAX_ERROR` code
+The system validates that all required parameters are provided when formatting error messages. If a parameter is missing, a helpful `ValueError` is raised:
+
+```python
+ErrorCode.TYPE_ASSIGNMENT_ERROR.format_message(right_type="int")
+# Raises: ValueError: Error E2002: Missing required parameter(s): left_type.
+#         Template requires: left_type, right_type
+```
 
 ## 4. Benefits
 
--   **Standardization**: Error codes provide a clear, unambiguous way to identify specific issues.
--   **Maintainability**: Error messages are centrally managed, making them easier to update, correct, or translate.
--   **Improved Diagnostics**: Formatted messages with contextual arguments provide more precise information.
--   **Reduced Redundancy**: Eliminates scattered string literals for error messages across the codebase.
--   **Testability**: Easier to write tests that check for specific error codes rather than matching fragile message strings.
--   **Production Ready**: Error codes can be tracked, categorized, and used for analytics and monitoring.
+-   **Simplified Code**: Single file (~400 lines) instead of multiple files (~1054 lines)
+-   **Co-location**: Error code, category, and template defined together
+-   **Easy Maintenance**: Adding a new error requires only one line
+-   **Runtime Validation**: Helpful error messages if parameters are missing
+-   **Standardization**: Error codes provide a clear, unambiguous way to identify specific issues
+-   **Improved Diagnostics**: Formatted messages with contextual arguments provide more precise information
+-   **Testability**: Easier to write tests that check for specific error codes
+-   **Production Ready**: Error codes can be tracked, categorized, and used for analytics and monitoring
 
-## 5. Migration Guide
+## 5. Usage Guide
 
 ### For Compiler Pass Developers
 
-**Before:**
+**Basic Usage:**
 ```python
-self.log_error(f"Cannot assign {right_type} to {left_type}", node)
-```
-
-**After:**
-```python
-from jaclang.compiler.errors import JacErrorCode
+from jaclang.compiler.errors import ErrorCode
 
 self.log_error(
-    JacErrorCode.TYPE_ASSIGNMENT_ERROR,
+    ErrorCode.TYPE_ASSIGNMENT_ERROR,
     right_type=right_type,
     left_type=left_type,
     node_override=node
@@ -168,7 +182,20 @@ self.log_error(
 -   `ICE_PASS_ERROR`: Internal compiler error
 -   `FORMATTING_ERROR`: Code formatting error
 
-See `jaclang.compiler.errors.error_codes.py` for the complete list.
+See `jaclang.compiler.errors.error_definitions.py` for the complete list.
+
+### Adding a New Error
+
+To add a new error, simply add one line to `error_definitions.py`:
+
+```python
+NEW_ERROR = ErrorDef(
+    "E9999", "category",
+    "Error message with {param1} and {param2}"
+)
+```
+
+That's it! The system handles validation and formatting automatically.
 
 ## 6. Future Enhancements
 

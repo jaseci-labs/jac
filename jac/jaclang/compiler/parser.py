@@ -12,7 +12,7 @@ from typing import Callable, Optional, Sequence, TYPE_CHECKING, TypeAlias, TypeV
 import jaclang.compiler.unitree as uni
 from jaclang.compiler import TOKEN_MAP, jac_lark as jl
 from jaclang.compiler.constant import EdgeDir, Tokens as Tok
-from jaclang.compiler.errors import JacErrorCode
+from jaclang.compiler.errors.error_definitions import ErrorCode
 from jaclang.compiler.passes.main import Transform
 from jaclang.utils.helpers import ANSIColors
 
@@ -103,7 +103,7 @@ class JacParser(Transform[uni.Source, uni.Module]):
             # Use SYNTAX_ERROR with message_suffix for the detailed error message
             # Use log_error directly for compile-time type safety
             self.log_error(
-                JacErrorCode.SYNTAX_ERROR,
+                ErrorCode.SYNTAX_ERROR,
                 node_override=catch_error,
                 message_suffix=f": {error_msg}",
             )
@@ -185,7 +185,7 @@ class JacParser(Transform[uni.Source, uni.Module]):
             ):
                 # Use log_error directly for compile-time type safety
                 self.log_error(
-                    JacErrorCode.INCOMPLETE_MEMBER_ACCESS,
+                    ErrorCode.INCOMPLETE_MEMBER_ACCESS,
                     node_override=self.error_to_token(e),
                 )
                 iparser.feed_token(jl.Token(Tok.NAME.name, "recover_name_token"))
@@ -196,7 +196,7 @@ class JacParser(Transform[uni.Source, uni.Module]):
             if tk := try_feed_missing_token(iparser):
                 # Use log_error directly for compile-time type safety
                 self.log_error(
-                    JacErrorCode.MISSING_TOKEN,
+                    ErrorCode.MISSING_TOKEN,
                     node_override=self.error_to_token(e),
                     token=tk.name,
                 )
@@ -206,7 +206,7 @@ class JacParser(Transform[uni.Source, uni.Module]):
             # Use log_error directly for compile-time type safety
             token_value = e.token.value if e.token else ""
             self.log_error(
-                JacErrorCode.UNEXPECTED_TOKEN,
+                ErrorCode.UNEXPECTED_TOKEN,
                 node_override=self.error_to_token(e),
                 token=token_value,
             )
@@ -272,7 +272,7 @@ class JacParser(Transform[uni.Source, uni.Module]):
 
         def ice(self) -> Exception:
             """Raise internal compiler error."""
-            self.parse_ref.log_error(JacErrorCode.INVALID_PARSE_TREE)
+            self.parse_ref.log_error(ErrorCode.INVALID_PARSE_TREE)
             return RuntimeError(
                 f"{self.parse_ref.__class__.__name__} - Internal Compiler Error, Invalid Parse Tree!"
             )
@@ -753,7 +753,7 @@ class JacParser(Transform[uni.Source, uni.Module]):
                 assert isinstance(archspec, uni.Archetype)
                 if archspec.arch_type.name != Tok.KW_WALKER:
                     self.parse_ref.log_error(
-                        JacErrorCode.INVALID_ASYNC_ARCHETYPE,
+                        ErrorCode.INVALID_ASYNC_ARCHETYPE,
                         arch_type=archspec.arch_type.value,
                         node_override=archspec,
                     )
@@ -1175,7 +1175,7 @@ class JacParser(Transform[uni.Source, uni.Module]):
                 if cur_nd.name == Tok.DIV:
                     if cur_state in ["keyword_only", "kwargs", "positional"]:
                         self.parse_ref.log_error(
-                            JacErrorCode.INVALID_FUNCTION_PARAMETERS,
+                            ErrorCode.INVALID_FUNCTION_PARAMETERS,
                             details="'/' cannot appear after '*' or '**'.",
                             node_override=cur_nd,
                         )
@@ -1183,7 +1183,7 @@ class JacParser(Transform[uni.Source, uni.Module]):
                 elif cur_nd.name == Tok.STAR_MUL:
                     if cur_state in ["keyword_only", "kwargs"]:
                         self.parse_ref.log_error(
-                            JacErrorCode.INVALID_FUNCTION_PARAMETERS_ORDER,
+                            ErrorCode.INVALID_FUNCTION_PARAMETERS_ORDER,
                             details="'*' cannot appear after '**'.",
                             node_override=cur_nd,
                         )

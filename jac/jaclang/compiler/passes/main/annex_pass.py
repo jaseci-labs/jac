@@ -18,7 +18,7 @@ import os
 from typing import TYPE_CHECKING
 
 from jaclang.compiler import unitree as uni
-from jaclang.compiler.errors import JacErrorCode
+from jaclang.compiler.errors.error_definitions import ErrorCode
 from jaclang.compiler.passes import Transform
 from jaclang.settings import settings
 
@@ -53,7 +53,7 @@ class JacAnnexPass(Transform[uni.Module, uni.Module]):
         if node.stub_only or not self.mod_path.endswith(".jac"):
             return
         if not self.mod_path:
-            self.log_error(JacErrorCode.EMPTY_MODULE_PATH)
+            self.log_error(ErrorCode.EMPTY_MODULE_PATH)
             return
 
         for path in self.find_annex_paths():

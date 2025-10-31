@@ -26,7 +26,7 @@ from typing import List, Optional, Sequence, TypeVar, Union, cast
 
 import jaclang.compiler.unitree as uni
 from jaclang.compiler.constant import Constants as Con, EdgeDir, Tokens as Tok
-from jaclang.compiler.errors import JacErrorCode
+from jaclang.compiler.errors.error_definitions import ErrorCode
 from jaclang.compiler.passes.ast_gen import BaseAstGenPass
 from jaclang.compiler.passes.ast_gen.jsx_processor import PyJsxProcessor
 
@@ -768,7 +768,7 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
                     node.path[0].lit_value if node.path and node.path[0] else ""
                 )
                 self.log_error(
-                    JacErrorCode.INVALID_STRING_IMPORT,
+                    ErrorCode.INVALID_STRING_IMPORT,
                     node_override=node,
                     module=module_value,
                 )
@@ -794,7 +794,7 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
                     "not Python imports"
                 )
                 self.log_error(
-                    JacErrorCode.INVALID_IMPORT,
+                    ErrorCode.INVALID_IMPORT,
                     node_override=node,
                     details=details,
                 )
@@ -825,7 +825,7 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
         body: list[ast3.AST] = self.resolve_stmt_block(inner, doc=node.doc)
         if not body and not isinstance(node.body, uni.Expr):
             self.log_error(
-                JacErrorCode.ARCHETYPE_NO_BODY,
+                ErrorCode.ARCHETYPE_NO_BODY,
                 node_override=node,
             )
             body = [self.sync(ast3.Pass(), node)]
@@ -1065,7 +1065,7 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
         )
         if node.is_abstract and node.body:
             self.log_error(
-                JacErrorCode.ABSTRACT_ABILITY_HAS_BODY,
+                ErrorCode.ABSTRACT_ABILITY_HAS_BODY,
                 node_override=node,
                 ability_name=node.sym_name,
             )
@@ -1107,7 +1107,7 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
             )
         if not body and not isinstance(node.body, uni.Expr):
             self.log_error(
-                JacErrorCode.ABILITY_NO_BODY,
+                ErrorCode.ABILITY_NO_BODY,
                 node_override=node,
             )
             body = [self.sync(ast3.Pass(), node)]  # type: ignore
@@ -2292,12 +2292,12 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
             return func_node.gen.py_ast
         elif node.op.name == Tok.PIPE_FWD and isinstance(node.right, uni.TupleVal):
             self.log_error(
-                JacErrorCode.INVALID_PIPE_TARGET,
+                ErrorCode.INVALID_PIPE_TARGET,
                 node_override=node,
             )
         else:
             self.log_error(
-                JacErrorCode.UNSUPPORTED_BINARY_OPERATOR,
+                ErrorCode.UNSUPPORTED_BINARY_OPERATOR,
                 node_override=node,
                 operator=node.op.value,
             )
@@ -2690,7 +2690,7 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
                 ]
             else:
                 self.log_error(
-                    JacErrorCode.INVALID_ATTRIBUTE_ACCESS,
+                    ErrorCode.INVALID_ATTRIBUTE_ACCESS,
                     node_override=node,
                 )
         elif isinstance(node.right, uni.FilterCompr):
