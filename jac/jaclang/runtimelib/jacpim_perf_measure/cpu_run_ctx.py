@@ -9,6 +9,9 @@ from jaclang.runtimelib.archetype import (
 )
 from jaclang.runtimelib.jacpim_mapping_analysis import JacPIMMappingCtx
 from jaclang.runtimelib.jacpim_mapping_analysis.data_mapper import DPU_NUM
+from jaclang.runtimelib.jacpim_perf_measure.ttg_trace_verification import (
+    all_walkers_all_jumps_included_in_ttg,
+)
 from jaclang.runtimelib.jacpim_simulation_runtime.dpu_data_structs import (
     Container,
     ContainerObject,
@@ -289,6 +292,9 @@ class JacPIMCPURunCtx:
                     )
 
             # A walker is either done or moved to pending - clear active list
+        assert all_walkers_all_jumps_included_in_ttg(
+            ttg=JacPIMMappingCtx.get_ttg(), traces=JacPIMCPURunCtx.get_walker_traces()
+        )
         DPUAllMemoryCtx.finish_running(overhead_only)
         for dpu_id in range(DPU_NUM):
             active_walkers[dpu_id] = []
@@ -361,6 +367,7 @@ class JacPIMCPURunCtx:
     def get_walker_traces(cls) -> dict[int, list[int]]:
         """Get the recorded walker traces."""
         return DPUAllMemoryCtx.walker_traces
+
 
 class DPUAllMemoryCtx:
     """Generator for all DPUs' memory layout."""
@@ -443,7 +450,7 @@ class DPUAllMemoryCtx:
                         func_call=JacPIMSimulationCtx.index_function_defs(
                             extract_name(node), extract_name(walker)
                         ),
-                        node_id = node_idx,
+                        node_id=node_idx,
                     )
                 )
             cls.dpu_container_ctxs[dpu_id].download_obj(
