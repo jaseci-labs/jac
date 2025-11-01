@@ -33,6 +33,7 @@ from uuid import UUID
 
 
 from jaclang.runtimelib.jacpim_mapping_analysis.plot import plot_ttg
+from jaclang.runtimelib.jacpim_perf_measure.ttg_trace_verification import all_walkers_all_jumps_included_in_ttg
 import jaclang.runtimelib.jacpim_static_analysis as jacpim_static_analysis
 from jaclang.compiler.constant import Constants as Con, EdgeDir, colors
 from jaclang.compiler.program import JacProgram
@@ -1600,6 +1601,7 @@ class JacPIM:
         plot_ttg(mapping_ctx.get_ttg(), static_ctx.get_layout(), "ttg.png")
 
         JacPIMCPURunCtx.run_until_all_done(os.environ.get("OVERHEAD_ONLY") == "1")
+        all_walkers_all_jumps_included_in_ttg(ttg=mapping_ctx.get_ttg(), traces=JacPIMCPURunCtx.get_walker_traces())
         save_all_memory_dumps()
         print("Total Cross DPU Jumps", JacPIMCPURunCtx.total_cross_dpu_jumps)
         src = JacPIMSimulationCtx.save_codegen_file("task.c")

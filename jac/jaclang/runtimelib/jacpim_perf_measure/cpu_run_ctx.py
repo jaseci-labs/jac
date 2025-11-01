@@ -357,6 +357,10 @@ class JacPIMCPURunCtx:
         """Get the recorded jump sizes for all walkers."""
         return cls.walker_jump_sizes
 
+    @classmethod
+    def get_walker_traces(cls) -> dict[int, list[int]]:
+        """Get the recorded walker traces."""
+        return DPUAllMemoryCtx.walker_traces
 
 class DPUAllMemoryCtx:
     """Generator for all DPUs' memory layout."""

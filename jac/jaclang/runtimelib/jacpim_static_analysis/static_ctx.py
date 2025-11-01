@@ -98,7 +98,7 @@ class JacPIMStaticCtx:
     def get_layout(cls) -> dict:
         """Get the graph layout."""
         if cls.layout is None:
-            cls.layout = nx.kamada_kawai_layout(cls.get_networkx())
+            cls.layout = nx.spring_layout(cls.get_networkx())
         return cls.layout
 
     @classmethod
