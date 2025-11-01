@@ -50,6 +50,10 @@ class MemoryBlockRegister:
         """Dump all memory blocks into bytes, in order of their pointers."""
         dumps: dict[int, bytes] = {}
         for block in self.blocks:
+            assert dumps.get(block.get_ptr()) is None, (
+                "Duplicate memory block pointer detected."
+                f" Pointer: {block.get_ptr()}",
+            )
             dumps[block.get_ptr()] = block.get_dump()
         # assert that the entire dumps cover continuous memory from 0 to end
         max_ptr = max(dumps.keys())
