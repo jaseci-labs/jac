@@ -32,6 +32,7 @@ from typing import (
 from uuid import UUID
 
 
+from jaclang.runtimelib.jacpim_mapping_analysis.plot import plot_ttg
 import jaclang.runtimelib.jacpim_static_analysis as jacpim_static_analysis
 from jaclang.compiler.constant import Constants as Con, EdgeDir, colors
 from jaclang.compiler.program import JacProgram
@@ -1596,6 +1597,7 @@ class JacPIM:
         nodes_and_walkers = JacPIMCPURunCtx.get_pending_nodes_and_walkers()
         mapping_ctx = JacPIMMappingCtx
         mapping_ctx.setter(nodes_and_walkers)
+        plot_ttg(mapping_ctx.get_ttg(), static_ctx.get_layout(), "ttg.png")
 
         JacPIMCPURunCtx.run_until_all_done(os.environ.get("OVERHEAD_ONLY") == "1")
         save_all_memory_dumps()

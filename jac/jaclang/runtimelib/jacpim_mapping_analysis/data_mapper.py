@@ -9,6 +9,7 @@ from jaclang.runtimelib.jacpim_static_analysis.info_extract import (
 from jaclang.runtimelib.jacpim_static_analysis.static_ctx import JacPIMStaticCtx
 
 import networkx as nx
+import os
 
 DPU_SIZE_LIMIT = 1024
 DPU_NUM = 50
@@ -54,6 +55,16 @@ class NodeDistribution:
 class RoundRobinPartitioner:
     """Round Robin JacPIM Partitioner."""
 
+    def _remove_duplicates(self, lst: list[tuple[int, int]]) -> list[tuple[int, int]]:
+        """Remove duplicates while preserving order."""
+        seen = set()
+        result = []
+        for depth, item in lst:
+            if item not in seen:
+                seen.add(item)
+                result.append((depth, item))
+        return result
+
     def _dfs_round_robin_on_node(
         self,
         node_distribution: NodeDistribution,
@@ -66,7 +77,6 @@ class RoundRobinPartitioner:
         visited: set[int] = set()
         print(f"Starting DFS from node {start_node_idx}")
         while len(stack) > 0:
-            print(f"Stack size: {len(stack)}")
             depth, node = stack.pop(0)
             next_nodes = ttg.edges(node, keys=True, data=True)
             next_nodes = [
@@ -78,6 +88,8 @@ class RoundRobinPartitioner:
                 if next_node[1] != node
                 if next_node[1] not in stack
             ]
+            next_nodes = self._remove_duplicates(next_nodes)
+            
             next_nodes_idx = [n[1] for n in next_nodes]
             # print(next_nodes)
             visited |= set(next_nodes_idx)
@@ -110,7 +122,10 @@ class RoundRobinPartitioner:
                 partitions = self.node_distribution.available_partitions(node_size)
                 if len(partitions) == 0:
                     raise RuntimeError("No available partitions.")
-                partition = random.choice(partitions)
+                if os.environ.get("MAPPING_STRATEGY") == "FIRST_FIT":
+                    partition = min(partitions)
+                else:
+                    partition = random.choice(partitions)
                 self.node_distribution.add_node(node_idx, partition, node_size)
 
     def get_data_partitioning(self) -> dict[int, int]:

@@ -86,6 +86,7 @@ class JacPIMCPURunCtx:
             if len(walker.__jac__.next) == 0:
                 raise RuntimeError("Walker has no next node to visit.")
             start_node = walker.__jac__.next[0]
+            # print(f"Pending walker: {extract_name(walker)} starting at node {extract_name(start_node)}")
             if isinstance(start_node, EdgeAnchor):
                 start_node = start_node.target
             if not isinstance(start_node, NodeAnchor):
@@ -181,6 +182,7 @@ class JacPIMCPURunCtx:
                 print(
                     f"Walker {extract_name(warch)} jumping from DPU {current_dpu} to DPU {target_dpu} on DPU {target_dpu}"
                 )
+                cls.total_cross_dpu_jumps += 1
                 return False
 
             # Same DPU - execute one step

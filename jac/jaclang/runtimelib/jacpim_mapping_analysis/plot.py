@@ -15,7 +15,7 @@ def plot_ttg(graph: nx.MultiDiGraph, pos: dict, filename: str) -> None:
     plt.figure()
     nx.draw_networkx_nodes(graph, pos, node_size=100)
     display_names = {
-        n: get_node_info_from_node_arch(graph.nodes[n]["archetype"]).display_name
+        n: str(get_node_info_from_node_arch(graph.nodes[n]["archetype"]).display_name) + f"({n})"
         for n in graph.nodes()
     }
     edge_labels = {
