@@ -441,7 +441,7 @@ async def __jacSpawn(walker: str, fields: dict = {}) -> any {
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {token}" if token else ""
             },
-            "body": JSON.stringify({"fields": {"nd": "root", **fields}})
+            "body": JSON.stringify({"fields": fields})
         }
     );
 
