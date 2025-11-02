@@ -1064,12 +1064,28 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
         op_name = getattr(node.op, "name", None)
 
         if op_name == Tok.KW_SPAWN:
+            kw_args = []
+            if isinstance(left, es.CallExpression):
+                kw_args = left.arguments
+                left = left.callee
+            left = self.sync_loc(
+                es.Literal(
+                    value=left.name if isinstance(left, es.Identifier) else "unknown"
+                ),
+                jac_node=node.left,
+            )
+            right = self.sync_loc(
+                es.Literal(
+                    value=right.name if isinstance(right, es.Identifier) else ""
+                ),
+                jac_node=node.right,
+            )
             spawn_call = self.sync_loc(
                 es.CallExpression(
                     callee=self.sync_loc(
                         es.Identifier(name="__jacSpawn"), jac_node=node
                     ),
-                    arguments=[left, right],
+                    arguments=[left, right] + kw_args,
                 ),
                 jac_node=node,
             )
