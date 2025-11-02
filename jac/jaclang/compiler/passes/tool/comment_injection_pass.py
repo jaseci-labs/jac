@@ -5,10 +5,10 @@ from typing import Sequence, Set
 import jaclang.compiler.passes.tool.doc_ir as doc
 import jaclang.compiler.unitree as uni
 from jaclang.compiler.constant import Tokens as Tok
-from jaclang.compiler.passes import UniPass
+from jaclang.compiler.passes import Transform
 
 
-class CommentInjectionPass(UniPass):
+class CommentInjectionPass(Transform[uni.Module, uni.Module]):
     """
     Injects comments using token sequence analysis for perfect precision.
 
@@ -17,16 +17,21 @@ class CommentInjectionPass(UniPass):
     Line collapsing.
     """
 
-    def before_pass(self) -> None:
-        """Initialize with token analysis."""
+    def transform(self, ir_in: uni.Module) -> uni.Module:
+        """Inject comments using token-level precision."""
+        # Initialize state
         self.inline_comment_ids: Set[int] = set()
         self.used_comments: Set[int] = set()
         self.token_to_comment: dict[int, list[tuple[int, uni.CommentToken]]] = {}
+        self.ir_out = ir_in  # Set for helper methods to access
 
-        if isinstance(self.ir_out, uni.Module):
+        if isinstance(ir_in, uni.Module):
             self._analyze_comments()
+            ir_in.gen.doc_ir = self._process(ir_in, ir_in.gen.doc_ir)
+            # Post-process to remove unnecessary line breaks after inline comments
+            ir_in.gen.doc_ir = self._remove_redundant_lines(ir_in.gen.doc_ir)
 
-        return super().before_pass()
+        return ir_in
 
     def _analyze_comments(self) -> None:
         """Analyze token sequence to detect inline comments and build lookup map."""
@@ -64,15 +69,6 @@ class CommentInjectionPass(UniPass):
                 if token_id not in self.token_to_comment:
                     self.token_to_comment[token_id] = []
                 self.token_to_comment[token_id].append((comment_idx, comment))
-
-    def after_pass(self) -> None:
-        """Inject comments."""
-        if not isinstance(self.ir_out, uni.Module):
-            return
-
-        self.ir_out.gen.doc_ir = self._process(self.ir_out, self.ir_out.gen.doc_ir)
-        # Post-process to remove unnecessary line breaks after inline comments
-        self.ir_out.gen.doc_ir = self._remove_redundant_lines(self.ir_out.gen.doc_ir)
 
     def _process(self, ctx: uni.UniNode, node: doc.DocType) -> doc.DocType:
         """Main recursive processor with type-specific handling."""
