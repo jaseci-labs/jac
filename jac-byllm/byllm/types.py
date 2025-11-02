@@ -5,6 +5,8 @@ tools, and tool calls. It provides a structured way to represent messages,
 tool calls, and tools that can be used in LLM requests and responses.
 """
 
+from __future__ import annotations
+
 import base64
 import mimetypes
 import os
@@ -127,7 +129,7 @@ class Tool:
         return func.__doc__ or func.__name__
 
     @staticmethod
-    def make_finish_tool(resp_type: type) -> "Tool":
+    def make_finish_tool(resp_type: type) -> Tool:
         """Create a finish tool that returns the final output."""
 
         def finish_tool(final_output: object) -> object:

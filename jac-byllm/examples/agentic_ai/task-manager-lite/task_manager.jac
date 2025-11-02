@@ -1,4 +1,5 @@
 import from byllm.llm { Model }
+import time;
 
 glob llm = Model(model_name="gpt-4o");
 
@@ -9,29 +10,21 @@ node Task {
 }
 
 node TaskHandling {
-    def add_task(task: Task) -> str {
-        self ++> task;
+    def get_current_time() -> str {
+        return time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime());
+    }
+    def add_task(task: str, date: str, time: str) -> str {
+        task_created = Task(task=task, date=date, time=time);
+        self ++> task_created;
         return "Task added successfully";
     }
-    def check_scheduled_tasks -> list[Task] {
-        self ++> Task(
-            task="Check scheduled tasks",
-            date="2025-10-10",
-            time="10:00:00"
-        ); # Add a sample task for demonstration
-        return [self --> (`?Task)];
+    def summarize_tasks -> str {
+        scheduled_tasks = [self-->(`?Task)];
+        return str(scheduled_tasks);
     }
-    def extract_task_info(utterance: str) -> str by llm(
-        method="ReAct",
-        tools=([self.add_task])
-    );
-    def summarize_tasks() -> str by llm(
-        method="ReAct",
-        tools=([self.check_scheduled_tasks])
-    );
     def route_and_run(utterance: str) -> str by llm(
         method="ReAct",
-        tools=([self.extract_task_info, self.summarize_tasks])
+        tools=([self.add_task, self.get_current_time, self.summarize_tasks])
     );
     can execute with task_manager entry {
         print("[TaskHandling Node Activated]");
@@ -90,13 +83,16 @@ walker task_manager {
     can execute with `root entry {
         routed_node_name = self.route_to_node(self.utterance);
 
-        if routed_node_name == RoutingNodes.TASK_HANDLING {
-            routed_node = here ++> TaskHandling();
-        } elif routed_node_name == RoutingNodes.EMAIL_HANDLING {
-            routed_node = here ++> EmailHandling();
-        } elif routed_node_name == RoutingNodes.GENERAL_CHAT {
-            routed_node = here ++> GeneralChat();
+        node_map = {
+            RoutingNodes.TASK_HANDLING: TaskHandling,
+            RoutingNodes.EMAIL_HANDLING: EmailHandling,
+            RoutingNodes.GENERAL_CHAT: GeneralChat
+        };
+        node_type = node_map[routed_node_name];
+        routed_node = [-->(`?node_type)];
+        if not routed_node {
+            routed_node = here ++> node_type();
         }
-        visit routed_node;
+        visit routed_node[0];
     }
 }

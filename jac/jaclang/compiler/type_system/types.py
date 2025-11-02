@@ -81,7 +81,7 @@ class TypeBase(ABC):
         return self.CATEGORY
 
     @staticmethod
-    def unknown() -> "UnknownType":
+    def unknown() -> UnknownType:
         """Return an instance of an unknown type."""
         return UnknownType()
 
@@ -164,6 +164,7 @@ class ClassType(TypeBase):
             symbol_table: SymbolTable,
             base_classes: list[TypeBase] | None = None,
             is_builtin_class: bool = False,
+            is_data_class: bool = False,
         ) -> None:
             """Initialize obviously."""
             self.class_name = class_name
@@ -182,6 +183,7 @@ class ClassType(TypeBase):
             #   ...
             #
             self.is_builtin_class = is_builtin_class
+            self.is_data_class = is_data_class
 
     def __init__(
         self,
@@ -196,7 +198,7 @@ class ClassType(TypeBase):
         """Return a string representation of the class type."""
         return f"<class {self.shared.class_name}>"
 
-    def clone_as_instance(self) -> "ClassType":
+    def clone_as_instance(self) -> ClassType:
         """Clone this class type as an instance type."""
         if self.is_instance():
             return self
@@ -225,6 +227,10 @@ class ClassType(TypeBase):
         if class_name is not None:
             return self.shared.class_name == class_name
         return True
+
+    def is_data_class(self) -> bool:
+        """Return true if this class is a data class."""
+        return self.shared.is_data_class
 
 
 class ParamKind(IntEnum):

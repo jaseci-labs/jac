@@ -1,6 +1,6 @@
 """Typed context blocks: Conditional code execution based on node/walker types."""
 from __future__ import annotations
-from jaclang.lib import Node, Path, Root, Walker, build_edge, connect, on_entry, refs, root, spawn, visit
+from jaclang.lib import Node, OPath, Root, Walker, build_edge, connect, on_entry, refs, root, spawn, visit
 
 class Product(Node):
     price: float
@@ -37,7 +37,7 @@ class ShoppingCart(Walker):
         connect(left=root(), right=Book(title='Jac Programming', author='John Doe', price=29.99))
         connect(left=root(), right=Magazine(title='Tech Today', issue=42, price=5.99))
         connect(left=root(), right=Electronics(name='Laptop', price=999.99, warranty_years=2))
-        visit(self, refs(Path(here).edge_out().visit()))
+        visit(self, refs(OPath(here).edge_out().visit()))
 
     @on_entry
     def process_item(self, here: Product) -> None:
@@ -50,7 +50,7 @@ class ShoppingCart(Walker):
             print(f'  -> Electronics block: {here.name}, {here.warranty_years}yr warranty')
         self.items_count += 1
         self.total += here.price
-        visit(self, refs(Path(here).edge_out().visit()))
+        visit(self, refs(OPath(here).edge_out().visit()))
 
     @on_entry
     def apply_discount(self, here: (Book, Magazine)) -> None:
@@ -61,7 +61,7 @@ class ShoppingCart(Walker):
         if isinstance(here, Magazine):
             discount = here.price * 0.2
             print(f'  -> Magazine: 20% off = ${discount}')
-        visit(self, refs(Path(here).edge_out().visit()))
+        visit(self, refs(OPath(here).edge_out().visit()))
 
 class Checkout(Node):
     transactions: int = 0

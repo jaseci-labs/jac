@@ -59,7 +59,15 @@ class SymTabBuildPass(UniPass):
                 if isinstance(j, uni.AstSymbolNode):
                     j.sym_tab.def_insert(j, access_spec=node, single_decl="global var")
                 else:
-                    self.ice("Expected name type for globabl vars")
+                    self.ice("Expected name type for global vars")
+
+    def exit_assignment(self, node: uni.Assignment) -> None:
+        for i in node.target:
+            if isinstance(i, uni.AstSymbolNode):
+                if (sym := i.sym_tab.lookup(i.sym_name, deep=False)) is None:
+                    i.sym_tab.def_insert(i, single_decl="local var")
+                else:
+                    sym.add_use(i.name_spec)
 
     def enter_test(self, node: uni.Test) -> None:
         self.push_scope_and_link(node)
@@ -76,11 +84,17 @@ class SymTabBuildPass(UniPass):
     def exit_module_path(self, node: uni.ModulePath) -> None:
         if node.alias:
             node.alias.sym_tab.def_insert(node.alias, single_decl="import")
-        elif node.path and not node.is_import_from:
-            if node.parent_of_type(uni.Import) and not (
+        elif (
+            node.path
+            and not node.is_import_from
+            and node.parent_of_type(uni.Import)
+            and not (
                 node.parent_of_type(uni.Import).from_loc
                 and node.parent_of_type(uni.Import).is_jac
-            ):
+            )
+        ):
+            # Only process if first element is a Name (not a String literal)
+            if isinstance(node.path[0], uni.Name):
                 node.path[0].sym_tab.def_insert(node.path[0])
         else:
             pass  # Need to support pythonic import symbols with dots in it
@@ -90,20 +104,28 @@ class SymTabBuildPass(UniPass):
         # import math as m  <- m will have a symbol and symtab entry
         if node.path and (node.is_import_from or (node.alias)):
             for n in node.path:
-                n.sym = n.create_symbol(
+                # Only create symbols for Name nodes, not String literals
+                if isinstance(n, uni.Name):
+                    n.sym = n.create_symbol(
+                        access=SymbolAccess.PUBLIC,
+                        imported=True,
+                    )
+
+    def exit_module_item(self, node: uni.ModuleItem) -> None:
+        # Check Name first (since Name is a subclass of Token)
+        if isinstance(node.name, uni.Name):
+            # Regular named import
+            sym_node = node.alias or node.name
+            sym_node.sym_tab.def_insert(sym_node, single_decl="import")
+            if node.alias:
+                # create symbol for module item
+                node.name.sym = node.name.create_symbol(
                     access=SymbolAccess.PUBLIC,
                     imported=True,
                 )
-
-    def exit_module_item(self, node: uni.ModuleItem) -> None:
-        sym_node = node.alias or node.name
-        sym_node.sym_tab.def_insert(sym_node, single_decl="import")
-        if node.alias:
-            # create symbol for module item
-            node.name.sym = node.name.create_symbol(
-                access=SymbolAccess.PUBLIC,
-                imported=True,
-            )
+        elif isinstance(node.name, uni.Token) and node.alias:
+            sym_node = node.alias
+            sym_node.sym_tab.def_insert(sym_node, single_decl="import")
 
     def enter_archetype(self, node: uni.Archetype) -> None:
         self.push_scope_and_link(node)
@@ -148,6 +170,54 @@ class SymTabBuildPass(UniPass):
         self.push_scope_and_link(node)
         assert node.parent_scope is not None
         node.parent_scope.def_insert(node, access_spec=node, single_decl="enum")
+
+    def enter_has_var(self, node: uni.HasVar) -> None:
+        if isinstance(node.parent, uni.ArchHas):
+            node.sym_tab.def_insert(
+                node, single_decl="has var", access_spec=node.parent
+            )
+
+    def enter_param_var(self, node: uni.ParamVar) -> None:
+        node.sym_tab.def_insert(node, single_decl="param")
+
+    def exit_atom_trailer(self, node: uni.AtomTrailer) -> None:
+        """Handle attribute access for self member assignments."""
+        if not self._is_self_member_assignment(node):
+            return
+
+        chain = node.as_attr_list
+        ability = node.find_parent_of_type(uni.Ability)
+
+        # Register the attribute in the archetype's symbol table
+        # Example: self.attr = value → add 'attr' to archetype.sym_tab
+        if ability and ability.method_owner:
+            archetype = ability.method_owner
+            if isinstance(archetype, uni.Archetype):
+                archetype.sym_tab.def_insert(chain[1], access_spec=archetype)
+
+    def _is_self_member_assignment(self, node: uni.AtomTrailer) -> bool:
+        """Check if the node represents a simple `self.attr = value` assignment."""
+        # Must be inside an assignment as the target
+        if not (node.parent and isinstance(node.parent, uni.Assignment)):
+            return False
+
+        if node != node.parent.target[0]:  # TODO: Support multiple assignment targets
+            return False
+
+        chain = node.as_attr_list
+
+        # Must be a direct self attribute (no nested attributes)
+        if len(chain) != 2 or chain[0].sym_name != "self":
+            return False
+
+        # Must be inside a non-static, non-class instance method
+        ability = node.find_parent_of_type(uni.Ability)
+        return (
+            ability is not None
+            and ability.is_method
+            and not ability.is_static
+            and not ability.is_cls_method
+        )
 
     def exit_enum(self, node: uni.Enum) -> None:
         self.pop_scope()

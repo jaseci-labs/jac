@@ -1,25 +1,5 @@
 [flake8]
-exclude = fixtures, __jac_gen__, build, examples, venv, vendor, generated
+exclude = fixtures, build, examples, venv, vendor, generated
 plugins = flake8_import_order, flake8_comprehensions, flake8_bugbear, flake8_annotations, pep8_naming, flake8_simplify
 max-line-length = 120
 ignore = E203, W503, ANN101, ANN102
-
-per-file-ignores =
-    jac/jaclang/compiler/unitree.py:D102,D105,D107
-    jac/jaclang/compiler/constant.py:D102,D105,D107
-    jac/jaclang/compiler/codeinfo.py:D102,D105,D107
-    jac/jaclang/compiler/passes/main/pybc_gen_pass.py:D102,D105,D107
-    jac/jaclang/compiler/passes/main/access_modifier_pass.py:D102,D105,D107
-    jac/jaclang/compiler/passes/main/def_impl_match_pass.py:D102,D105,D107
-    jac/jaclang/compiler/passes/main/def_use_pass.py:D102,D105,D107
-    jac/jaclang/compiler/passes/main/fuse_typeinfo_pass.py:D102,D105,D107
-    jac/jaclang/compiler/passes/main/import_pass.py:D102,D105,D107
-    jac/jaclang/compiler/passes/main/pyjac_ast_link_pass.py:D102,D105,D107
-    jac/jaclang/compiler/passes/main/pyast_gen_pass.py:D102,D105,D107
-    jac/jaclang/compiler/passes/main/pyast_load_pass.py:D102,D105,D107
-    jac/jaclang/compiler/passes/main/pyout_pass.py:D102,D105,D107
-    jac/jaclang/compiler/passes/main/sym_tab_build_pass.py:D102,D105,D107
-    jac/jaclang/compiler/passes/tool/jac_formatter_pass.py:D102,D105,D107
-    jac/jaclang/compiler/passes/tool/fuse_comments_pass.py:D102,D105,D107
-    jac/jaclang/compiler/passes/tool/doc_ir.py:D102,D105,D107
-    jac/jaclang/compiler/passes/main/binder_pass.py:D102,E266

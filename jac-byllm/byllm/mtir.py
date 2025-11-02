@@ -1,5 +1,7 @@
 """MTIR (Meaning Typed Intermediate Representation) module for JacLang runtime library."""
 
+from __future__ import annotations
+
 import inspect
 import json
 from dataclasses import dataclass
@@ -46,7 +48,7 @@ class MTIR:
     @staticmethod
     def factory(
         caller: Callable, args: dict[int | str, object], call_params: dict[str, object]
-    ) -> "MTIR":
+    ) -> MTIR:
         """Create an MTIR instance."""
         # Prepare the tools for the LLM call.
         tools = [Tool(func) for func in call_params.get("tools", [])]  # type: ignore

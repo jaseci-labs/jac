@@ -1,5 +1,5 @@
 from __future__ import annotations
-from jaclang.lib import Edge, Node, Obj, Path, Root, Walker, build_edge, connect, disengage, field, on_entry, refs, root, spawn, visit
+from jaclang.lib import Edge, Node, Obj, OPath, Root, Walker, build_edge, connect, disengage, field, on_entry, refs, root, spawn, visit
 
 class ClassicAnimal:
 
@@ -63,13 +63,13 @@ class Person(Animal, Walker):
     @on_entry
     def greet(self, here: Root) -> None:
         print(f'{self.name}: Starting walk from root')
-        visit(self, refs(Path(here).edge_out().visit()))
+        visit(self, refs(OPath(here).edge_out().visit()))
 
     @on_entry
     def visit_pet(self, here: Pet) -> None:
         self.visited_count += 1
         print(f'{self.name} visits {here.name}')
-        visit(self, refs(Path(here).edge_out().visit()))
+        visit(self, refs(OPath(here).edge_out().visit()))
 
 class Caretaker(Person, Walker):
     care_quality: int = 10
@@ -77,7 +77,7 @@ class Caretaker(Person, Walker):
     @on_entry
     def care_for(self, here: Pet) -> None:
         print(f'{self.name} cares for {here.name} (quality: {self.care_quality})')
-        visit(self, refs(Path(here).edge_out().visit()))
+        visit(self, refs(OPath(here).edge_out().visit()))
 
 class Veterinarian(Caretaker, Walker):
     specialty: str = 'general'
@@ -85,7 +85,7 @@ class Veterinarian(Caretaker, Walker):
     @on_entry
     def examine(self, here: Pet) -> None:
         print(f'Dr. {self.name} ({self.specialty}) examines {here.name}')
-        visit(self, refs(Path(here).edge_out().visit()))
+        visit(self, refs(OPath(here).edge_out().visit()))
 
 class AsyncInspector(Walker):
     __jac_async__ = True
@@ -94,13 +94,13 @@ class AsyncInspector(Walker):
     @on_entry
     async def inspect(self, here: Root) -> None:
         print('AsyncInspector: starting')
-        visit(self, refs(Path(here).edge_out().visit()))
+        visit(self, refs(OPath(here).edge_out().visit()))
 
     @on_entry
     async def check(self, here: Pet) -> None:
         self.inspected.append(here.name)
         print(f'  Async checking: {here.name}')
-        visit(self, refs(Path(here).edge_out().visit()))
+        visit(self, refs(OPath(here).edge_out().visit()))
 
 class PrivateConfig(Obj):
     secret_key: str = 'hidden'
@@ -151,12 +151,12 @@ class OwnershipWalker(Walker):
     @on_entry
     def start(self, here: Root) -> None:
         print('OwnershipWalker: tracking ownership edges')
-        visit(self, refs(Path(here).edge_out().visit()))
+        visit(self, refs(OPath(here).edge_out().visit()))
 
     @on_entry
     def visit_node(self, here: Pet) -> None:
         print(f'  At pet: {here.name}')
-        visit(self, refs(Path(here).edge_out().edge().visit()))
+        visit(self, refs(OPath(here).edge_out().edge().visit()))
 print('=== 1. Basic Archetypes ===')
 print('\n--- Class with Init Constructor (Python-style explicit self) ---')
 classic = ClassicAnimal('Cat', 3, 'Whiskers')

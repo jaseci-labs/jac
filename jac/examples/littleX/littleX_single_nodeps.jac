@@ -1,4 +1,7 @@
 import datetime;
+cl import from .littlex_fe {
+    App
+}
 
 
 node Profile {
@@ -97,9 +100,7 @@ node Tweet {
 
     can get with load_feed entry {
         tweet_info = self.get_info();
-        visitor.results.append(
-            {"Tweet_Info" : tweet_info}
-        );
+        visitor.results.append({"Tweet_Info" : tweet_info });
     }
 }
 
@@ -148,10 +149,6 @@ walker get_profile(visit_profile) {}
 
 
 walker load_user_profiles {
-    obj __specs__ {
-        static has auth: bool = False;
-    }
-
     can load_profiles with `root entry {
         self.profiles: list = [];
         for each_root in allroots() {
@@ -224,4 +221,14 @@ walker load_feed(visit_profile) {
     can report_feed with exit {
         report self.results ;
     }
+}
+
+
+# Client-side UI Components (marked with 'cl' for browser execution)
+# ===================================================================
+
+
+# Main SPA entry point - simplified with reactive routing
+cl def littlex_app() -> any {
+    return App();
 }

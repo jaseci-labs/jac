@@ -1,6 +1,6 @@
 """Edge references (OSP): Edge reference expressions for graph queries."""
 from __future__ import annotations
-from jaclang.lib import Edge, Node, Path, Root, Walker, build_edge, connect, disengage, on_entry, refs, root, spawn, visit
+from jaclang.lib import Edge, Node, OPath, Root, Walker, build_edge, connect, disengage, on_entry, refs, root, spawn, visit
 
 class Person(Node):
     name: str
@@ -23,62 +23,62 @@ class EdgeRefWalker(Walker):
         connect(left=alice, right=bob, edge=Friend(since=2015))
         connect(left=alice, right=charlie, edge=Colleague(years=3))
         print('From root:')
-        out_from_root = refs(Path(here).edge_out())
+        out_from_root = refs(OPath(here).edge_out())
         print(f'  [-->] found {len(out_from_root)} outgoing nodes')
         for n in out_from_root:
             print(f'    - {n.name}')
-        visit(self, refs(Path(here).edge_out().visit()))
+        visit(self, refs(OPath(here).edge_out().visit()))
 
     @on_entry
     def show_refs(self, here: Person) -> None:
         if here.name == 'Alice':
             print(f'\\n=== 2. Edge References from {here.name} ===\\n')
-            outgoing = refs(Path(here).edge_out())
+            outgoing = refs(OPath(here).edge_out())
             print(f'Outgoing [-->]: {len(outgoing)} nodes')
             for n in outgoing:
                 print(f'  - {n.name}')
-            incoming = refs(Path(here).edge_in())
+            incoming = refs(OPath(here).edge_in())
             print(f'\\nIncoming [<--]: {len(incoming)} nodes')
-            both = refs(Path(here).edge_any())
+            both = refs(OPath(here).edge_any())
             print(f'\\nBidirectional [<-->]: {len(both)} nodes')
             print('\n=== 3. Typed Edge References ===\n')
-            friends = refs(Path(here).edge_out(edge=lambda i: isinstance(i, Friend)))
+            friends = refs(OPath(here).edge_out(edge=lambda i: isinstance(i, Friend)))
             print(f'Friend edges [->:Friend:->]: {len(friends)} nodes')
             for n in friends:
                 print(f'  - {n.name}')
-            colleagues = refs(Path(here).edge_out(edge=lambda i: isinstance(i, Colleague)))
+            colleagues = refs(OPath(here).edge_out(edge=lambda i: isinstance(i, Colleague)))
             print(f'Colleague edges [->:Colleague:->]: {len(colleagues)} nodes')
             for n in colleagues:
                 print(f'  - {n.name}')
             print('\n=== 4. Filtered Edge References ===\n')
-            old_friends = refs(Path(here).edge_out(edge=lambda i: isinstance(i, Friend) and i.since < 2018))
+            old_friends = refs(OPath(here).edge_out(edge=lambda i: isinstance(i, Friend) and i.since < 2018))
             print(f'Friends since before 2018: {len(old_friends)} nodes')
-            experienced_colleagues = refs(Path(here).edge_out(edge=lambda i: isinstance(i, Colleague) and i.years > 2))
+            experienced_colleagues = refs(OPath(here).edge_out(edge=lambda i: isinstance(i, Colleague) and i.years > 2))
             print(f'Colleagues with years > 2: {len(experienced_colleagues)} nodes')
-            specific = refs(Path(here).edge_out(edge=lambda i: isinstance(i, Colleague) and i.years >= 1 and (i.years <= 5)))
+            specific = refs(OPath(here).edge_out(edge=lambda i: isinstance(i, Colleague) and i.years >= 1 and (i.years <= 5)))
             print(f'Colleagues with 1-5 years: {len(specific)} nodes')
             print('\n=== 5. Edge and Node Keywords ===\n')
-            edge_objs = refs(Path(here).edge_out().edge())
+            edge_objs = refs(OPath(here).edge_out().edge())
             print(f'[edge -->]: Retrieved {len(edge_objs)} edge objects')
-            node_objs = refs(Path(here).edge_out())
+            node_objs = refs(OPath(here).edge_out())
             print(f'[node -->]: Retrieved {len(node_objs)} node objects')
             print('\n=== 6. Chained Edge References ===\n')
             david = Person(name='David')
-            bob_list = refs(Path(here).edge_out(edge=lambda i: isinstance(i, Friend)))
+            bob_list = refs(OPath(here).edge_out(edge=lambda i: isinstance(i, Friend)))
             if bob_list:
                 connect(left=bob_list[0], right=david, edge=Friend(since=2018))
-            two_hop = refs(Path(here).edge_out(edge=lambda i: isinstance(i, Friend)).edge_out(edge=lambda i: isinstance(i, Friend)))
+            two_hop = refs(OPath(here).edge_out(edge=lambda i: isinstance(i, Friend)).edge_out(edge=lambda i: isinstance(i, Friend)))
             print(f'[here ->:Friend:-> ->:Friend:->]: {len(two_hop)} nodes (2 hops via Friend)')
-            mixed = refs(Path(here).edge_out(edge=lambda i: isinstance(i, Friend)).edge_out(edge=lambda i: isinstance(i, Colleague)))
+            mixed = refs(OPath(here).edge_out(edge=lambda i: isinstance(i, Friend)).edge_out(edge=lambda i: isinstance(i, Colleague)))
             print(f'[here ->:Friend:-> ->:Colleague:->]: {len(mixed)} nodes (Friend then Colleague)')
             print('Can chain multiple: [node ->:T1:-> ->:T2:-> ->:T3:->]')
             print('\n=== 7. Edge References in Different Contexts ===\n')
-            targets = refs(Path(here).edge_out())
+            targets = refs(OPath(here).edge_out())
             print(f'Assignment: targets = [-->] → {len(targets)} nodes')
-            if refs(Path(here).edge_out()):
+            if refs(OPath(here).edge_out()):
                 print('Conditional: if [-->] → edges exist!')
             print('For loop:')
-            for person in refs(Path(here).edge_out()):
+            for person in refs(OPath(here).edge_out()):
                 print(f'  Iterating: {person.name}')
             print('\nVisit statement: visit [->:Friend:->]')
         disengage(self)

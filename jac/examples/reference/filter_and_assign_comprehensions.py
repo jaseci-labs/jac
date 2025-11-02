@@ -1,6 +1,6 @@
 """Filter and assign comprehensions: Filter and assign comprehension syntax."""
 from __future__ import annotations
-from jaclang.lib import Edge, Node, Obj, Path, Root, Walker, assign_all, build_edge, connect, disengage, filter_on, on_entry, refs, root, spawn, visit
+from jaclang.lib import Edge, Node, Obj, OPath, Root, Walker, assign_all, build_edge, connect, disengage, filter_on, on_entry, refs, root, spawn, visit
 import random
 
 class TestObj(Obj):
@@ -69,17 +69,17 @@ class ComprehensionDemo(Walker):
         connect(left=mgr, right=dev3, edge=ReportsTo(years=1))
         connect(left=dev1, right=dev2, edge=Collaborates(project='ProjectX'), undir=True)
         print('Graph built: Manager -> 3 Devs')
-        visit(self, refs(Path(here).edge_out().visit()))
+        visit(self, refs(OPath(here).edge_out().visit()))
 
     @on_entry
     def demo_edge_filters(self, here: Employee) -> None:
         print(f'\\n=== At {here.name} ===')
         print('=== 7. Filter Comprehension on Edge Results ===')
-        all_reports = refs(Path(here).edge_out())
+        all_reports = refs(OPath(here).edge_out())
         high_paid = filter_on(items=all_reports, func=lambda i: i.salary > 75000)
         print(f'Direct reports: {len(all_reports)}, high paid (>75k): {len(high_paid)}')
         print('\n=== 8. Typed Edge with Node Filter ===')
-        reports_via_edge = refs(Path(here).edge_out(edge=lambda i: isinstance(i, ReportsTo)))
+        reports_via_edge = refs(OPath(here).edge_out(edge=lambda i: isinstance(i, ReportsTo)))
         engineering = filter_on(items=reports_via_edge, func=lambda i: i.department == 'Engineering')
         print(f'ReportsTo edges: {len(reports_via_edge)}, in Engineering: {len(engineering)}')
         print('\n=== 9. Assign Comprehension on Edge Results ===')
@@ -87,14 +87,14 @@ class ComprehensionDemo(Walker):
             assign_all(all_reports, (('department',), ('Updated',)))
             print(f'Updated department for {len(all_reports)} employees')
         print('\n=== 10. Chained Edge Traversal + Filter + Assign ===')
-        targets = refs(Path(here).edge_out())
+        targets = refs(OPath(here).edge_out())
         if len(targets) > 0:
             high_earners = filter_on(items=targets, func=lambda i: i.salary >= 75000)
             if len(high_earners) > 0:
                 assign_all(high_earners, (('salary',), (90000,)))
                 print(f'Gave raise to {len(high_earners)} employees')
         print('\n=== 11. Outgoing Edge Results Only ===')
-        out_edges = refs(Path(here).edge_out())
+        out_edges = refs(OPath(here).edge_out())
         print(f'Total outgoing connections: {len(out_edges)}')
         disengage(self)
         return

@@ -51,7 +51,7 @@ class PreDynamoPass(UniPass):
                 if old_node in lst:
                     idx = lst.index(old_node)
                     lst[idx] = new_nodes
-            if hasattr(parent, "kid") and old_node in parent.kid:
+            if old_node in parent.kid:
                 idx = parent.kid.index(old_node)
                 parent.kid[idx] = new_nodes
         else:  # list of nodes
@@ -62,7 +62,7 @@ class PreDynamoPass(UniPass):
                 if old_node in lst:
                     idx = lst.index(old_node)
                     setattr(parent, attr, lst[:idx] + new_nodes + lst[idx + 1 :])
-            if hasattr(parent, "kid") and old_node in parent.kid:
+            if old_node in parent.kid:
                 idx = parent.kid.index(old_node)
                 parent.kid = parent.kid[:idx] + new_nodes + parent.kid[idx + 1 :]
 

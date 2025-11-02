@@ -33,7 +33,11 @@ class TestServeCommand(TestCase):
         self.server_thread = None
         self.httpd = None
         # Use dynamically allocated free port for each test
-        self.port = get_free_port()
+        try:
+            self.port = get_free_port()
+        except PermissionError:
+            self.skipTest("Socket operations are not permitted in this environment")
+            return
         self.base_url = f"http://localhost:{self.port}"
         # Use unique session file for each test
         test_name = self._testMethodName
@@ -117,15 +121,25 @@ class TestServeCommand(TestCase):
         max_attempts = 50
         for _ in range(max_attempts):
             try:
-                self._request("GET", "/")
+                self._request("GET", "/", timeout=10)
                 break
             except Exception:
                 time.sleep(0.1)
 
     def _request(
-        self, method: str, path: str, data: dict = None, token: str = None
+        self, method: str, path: str, data: dict = None, token: str = None, timeout: int = 5
     ) -> dict:
         """Make HTTP request to server."""
+        status, payload, _ = self._request_raw(method, path, data=data, token=token, timeout=timeout)
+        try:
+            return json.loads(payload)
+        except json.JSONDecodeError as exc:  # pragma: no cover - sanity guard
+            raise AssertionError(f"Expected JSON response, got: {payload}") from exc
+
+    def _request_raw(
+        self, method: str, path: str, data: dict = None, token: str = None, timeout: int = 5
+    ) -> tuple[int, str, dict[str, str]]:
+        """Make an HTTP request and return status, body, and headers."""
         url = f"{self.base_url}{path}"
         headers = {"Content-Type": "application/json"}
 
@@ -136,10 +150,12 @@ class TestServeCommand(TestCase):
         request = Request(url, data=body, headers=headers, method=method)
 
         try:
-            with urlopen(request, timeout=5) as response:
-                return json.loads(response.read().decode())
+            with urlopen(request, timeout=timeout) as response:
+                payload = response.read().decode()
+                return response.status, payload, dict(response.headers)
         except HTTPError as e:
-            return json.loads(e.read().decode())
+            payload = e.read().decode()
+            return e.code, payload, dict(e.headers)
 
     def test_user_manager_creation(self) -> None:
         """Test UserManager creates users with unique roots."""
@@ -253,7 +269,7 @@ class TestServeCommand(TestCase):
         self._start_server()
 
         # Try to access protected endpoint without token
-        result = self._request("GET", "/functions")
+        result = self._request("GET", "/protected")
         self.assertIn("error", result)
         self.assertIn("Unauthorized", result["error"])
 
@@ -523,6 +539,37 @@ class TestServeCommand(TestCase):
 
         self.assertIn("error", result)
 
+    def test_client_page_and_bundle_endpoints(self) -> None:
+        """Render a client page and fetch the bundled JavaScript."""
+        self._start_server()
+
+        create_result = self._request(
+            "POST",
+            "/user/create",
+            {"username": "pageuser", "password": "pass"}
+        )
+        token = create_result["token"]
+
+        # Use longer timeout for page requests (they trigger bundle building)
+        status, html_body, headers = self._request_raw(
+            "GET",
+            "/page/client_page",
+            token=token,
+            timeout=15
+        )
+
+        self.assertEqual(status, 200)
+        self.assertIn("text/html", headers.get("Content-Type", ""))
+        self.assertIn("<div id=\"__jac_root\">", html_body)
+        self.assertIn("Runtime Test", html_body)
+        self.assertIn("/static/client.js?hash=", html_body)
+
+        # Bundle should be cached from page request, but use longer timeout for CI safety
+        status_js, js_body, js_headers = self._request_raw("GET", "/static/client.js", timeout=15)
+        self.assertEqual(status_js, 200)
+        self.assertIn("application/javascript", js_headers.get("Content-Type", ""))
+        self.assertIn("function __jacJsx", js_body)
+
     def test_server_root_endpoint(self) -> None:
         """Test root endpoint returns API information."""
         self._start_server()
@@ -582,6 +629,108 @@ class TestServeCommand(TestCase):
         self.assertIn("fields", walker_info)
         self.assertIn("title", walker_info["fields"])
         self.assertIn("priority", walker_info["fields"])
+
+        mach.close()
+
+    def test_csr_mode_empty_root(self) -> None:
+        """Test CSR mode returns empty __jac_root for client-side rendering."""
+        self._start_server()
+
+        # Create user
+        create_result = self._request(
+            "POST",
+            "/user/create",
+            {"username": "csruser", "password": "pass"}
+        )
+        token = create_result["token"]
+
+        # Request page in CSR mode using query parameter (longer timeout for bundle building)
+        status, html_body, headers = self._request_raw(
+            "GET",
+            "/page/client_page?mode=csr",
+            token=token,
+            timeout=15
+        )
+
+        self.assertEqual(status, 200)
+        self.assertIn("text/html", headers.get("Content-Type", ""))
+
+        # In CSR mode, __jac_root should be empty (no SSR)
+        self.assertIn('<div id="__jac_root"></div>', html_body)
+
+        # But __jac_init__ and client.js should still be present
+        self.assertIn('<script id="__jac_init__" type="application/json">', html_body)
+        self.assertIn("/static/client.js?hash=", html_body)
+
+        # __jac_init__ should still contain the function name and args
+        self.assertIn('"function": "client_page"', html_body)
+
+    def test_default_page_is_csr(self) -> None:
+        """Requesting a page without mode parameter returns empty CSR shell."""
+        self._start_server()
+
+        # Create user
+        create_result = self._request(
+            "POST",
+            "/user/create",
+            {"username": "ssruser", "password": "pass"}
+        )
+        token = create_result["token"]
+
+        # Request page without specifying mode (CSR-only, longer timeout for bundle building)
+        status, html_body, headers = self._request_raw(
+            "GET",
+            "/page/client_page",
+            token=token,
+            timeout=15
+        )
+
+        self.assertEqual(status, 200)
+        self.assertIn("text/html", headers.get("Content-Type", ""))
+
+        # CSR shell should be empty; client renders later
+        self.assertIn('<div id="__jac_root"></div>', html_body)
+
+        # __jac_init__ and client.js should still be present for hydration
+        self.assertIn('<script id="__jac_init__" type="application/json">', html_body)
+        self.assertIn("/static/client.js?hash=", html_body)
+
+    def test_csr_mode_with_server_default(self) -> None:
+        """render_client_page returns an empty shell when called directly."""
+        # Load module
+        base, mod, mach = cli.proc_file_sess(
+            self.fixture_abs_path("serve_api.jac"), ""
+        )
+        Jac.set_base_path(base)
+        Jac.jac_import(
+            target=mod,
+            base_path=base,
+            override_name="__main__",
+            lng="jac",
+        )
+
+        # Create server
+        server = JacAPIServer(
+            module_name="__main__",
+            session_path=self.session_file,
+            port=9998,
+        )
+        server.load_module()
+
+        # Create a test user
+        server.user_manager.create_user("testuser", "testpass")
+
+        # Call render_client_page (always CSR)
+        result = server.render_client_page(
+            function_name="client_page",
+            args={},
+            username="testuser",
+        )
+
+        # Should have empty HTML body (CSR mode)
+        self.assertIn("html", result)
+        html_content = result["html"]
+        self.assertIn('<div id="__jac_root"></div>', html_content)
 
         mach.close()
 
@@ -696,3 +845,598 @@ class TestServeCommand(TestCase):
             token=new_token
         )
         self.assertIn("result", complete_result)
+
+    def test_client_bundle_has_object_get_polyfill(self) -> None:
+        """Test that client bundle includes Object.prototype.get polyfill."""
+        self._start_server()
+
+        # Pre-warm the bundle by requesting a page first (triggers bundle build)
+        # This ensures the bundle is cached before we test it directly
+        try:
+            self._request("GET", "/")
+        except Exception:
+            pass  # Ignore errors, we just want to trigger bundle building
+
+        # Fetch the client bundle with longer timeout for CI environments
+        # Bundle building can be slow on CI runners with limited resources
+        status, js_body, headers = self._request_raw("GET", "/static/client.js", timeout=15)
+
+        self.assertEqual(status, 200)
+        self.assertIn("application/javascript", headers.get("Content-Type", ""))
+
+
+        # Verify core runtime functions are present
+        self.assertIn("__jacJsx", js_body)
+        self.assertIn("__jacRegisterClientModule", js_body)
+
+    def test_login_form_renders_with_correct_elements(self) -> None:
+        """Test that client page renders with correct HTML elements via HTTP endpoint."""
+        self._start_server()
+
+        # Create user
+        create_result = self._request(
+            "POST",
+            "/user/create",
+            {"username": "formuser", "password": "pass"}
+        )
+        token = create_result["token"]
+
+        # Request the client_page endpoint (longer timeout for bundle building)
+        status, html_body, headers = self._request_raw(
+            "GET",
+            "/page/client_page",
+            token=token,
+            timeout=15
+        )
+
+        self.assertEqual(status, 200)
+        self.assertIn("text/html", headers.get("Content-Type", ""))
+
+        # Check basic HTML structure
+        self.assertIn("<!DOCTYPE html>", html_body)
+        self.assertIn('<div id="__jac_root">', html_body)
+        self.assertIn('<script id="__jac_init__"', html_body)
+        self.assertIn("/static/client.js?hash=", html_body)
+
+        # Verify __jac_init__ contains the right function and global
+        self.assertIn('"function": "client_page"', html_body)
+        self.assertIn('"WELCOME_TITLE": "Runtime Test"', html_body)  # Global variable
+
+        # Fetch and verify the bundle (should be cached from page request, but use longer timeout for CI)
+        status_js, js_body, _ = self._request_raw("GET", "/static/client.js", timeout=15)
+        self.assertEqual(status_js, 200)
+
+        # Verify the bundle has the polyfill setup function (now part of client_runtime.jac)
+        self.assertIn("__jacEnsureObjectGetPolyfill", js_body)
+
+        # Verify the function is in the bundle
+        self.assertIn("function client_page", js_body)
+
+    def test_default_page_is_csr(self) -> None:
+        """Test that the default page response is CSR (client-side rendering)."""
+        self._start_server()
+
+        # Create user
+        create_result = self._request(
+            "POST",
+            "/user/create",
+            {"username": "csrdefaultuser", "password": "pass"}
+        )
+        token = create_result["token"]
+
+        # Request page WITHOUT specifying mode (should use default, longer timeout for bundle building)
+        status, html_body, headers = self._request_raw(
+            "GET",
+            "/page/client_page",
+            token=token,
+            timeout=15
+        )
+
+        self.assertEqual(status, 200)
+        self.assertIn("text/html", headers.get("Content-Type", ""))
+
+        # In CSR mode (default), __jac_root should be empty
+        self.assertIn('<div id="__jac_root"></div>', html_body)
+
+        # Should NOT contain pre-rendered content
+        # (The content will be rendered on the client side)
+        # Note: We check that the root div is completely empty
+        import re
+        root_match = re.search(r'<div id="__jac_root">(.*?)</div>', html_body)
+        self.assertIsNotNone(root_match)
+        root_content = root_match.group(1)
+        self.assertEqual(root_content, "")  # Should be empty string
+
+        # Verify that explicitly requesting SSR mode is ignored (still CSR, longer timeout for bundle building)
+        status_ssr, html_ssr, _ = self._request_raw(
+            "GET",
+            "/page/client_page?mode=ssr",
+            token=token,
+            timeout=15
+        )
+        self.assertEqual(status_ssr, 200)
+
+        self.assertIn('<div id="__jac_root"></div>', html_ssr)
+
+    def test_faux_flag_prints_endpoint_docs(self) -> None:
+        """Test that --faux flag prints endpoint documentation without starting server."""
+        import io
+        import sys
+        from contextlib import redirect_stdout
+
+        # Capture stdout
+        captured_output = io.StringIO()
+
+        try:
+            with redirect_stdout(captured_output):
+                # Call serve with faux=True
+                cli.serve(
+                    filename=self.fixture_abs_path("serve_api.jac"),
+                    session=self.session_file,
+                    port=self.port,
+                    main=True,
+                    faux=True
+                )
+        except SystemExit:
+            pass  # serve() may call exit() in some error cases
+
+        output = captured_output.getvalue()
+
+        # Verify function endpoints are documented
+        self.assertIn("FUNCTIONS", output)
+        self.assertIn("/function/add_numbers", output)
+        self.assertIn("/function/greet", output)
+
+        # Verify walker endpoints are documented
+        self.assertIn("WALKERS", output)
+        self.assertIn("/walker/CreateTask", output)
+        self.assertIn("/walker/ListTasks", output)
+        self.assertIn("/walker/CompleteTask", output)
+
+        # Verify client page endpoints section is documented
+        self.assertIn("CLIENT PAGES", output)
+        self.assertIn("client_page", output)
+
+        # Verify summary is present
+        self.assertIn("TOTAL:", output)
+        self.assertIn("2 functions", output)
+        self.assertIn("3 walkers", output)
+        self.assertIn("16 endpoints", output)
+
+        # Verify parameter details are included
+        self.assertIn("required", output)
+        self.assertIn("optional", output)
+        self.assertIn("Bearer token", output)
+
+    def test_faux_flag_with_littlex_example(self) -> None:
+        """Test that --faux flag correctly identifies functions, walkers, and endpoints in littleX example."""
+        import io
+        from contextlib import redirect_stdout
+
+        # Get the absolute path to littleX file
+        import os
+        littlex_path = os.path.abspath(
+            os.path.join(
+                os.path.dirname(__file__),
+                "../../../examples/littleX/littleX_single_nodeps.jac"
+            )
+        )
+
+        # Skip test if file doesn't exist
+        if not os.path.exists(littlex_path):
+            self.skipTest(f"LittleX example not found at {littlex_path}")
+
+        # Capture stdout
+        captured_output = io.StringIO()
+
+        try:
+            with redirect_stdout(captured_output):
+                # Call serve with faux=True on littleX example
+                cli.serve(
+                    filename=littlex_path,
+                    session=self.session_file,
+                    port=self.port,
+                    main=True,
+                    faux=True
+                )
+        except SystemExit:
+            pass  # serve() may call exit() in some error cases
+
+        output = captured_output.getvalue()
+
+
+        self.assertIn("littleX_single_nodeps", output)
+        self.assertIn("0 functions", output)
+        self.assertIn("15 walkers", output)
+        self.assertIn("36 endpoints", output)
+
+        # Verify some specific walker endpoints are documented
+        self.assertIn("/walker/visit_profile", output)
+        self.assertIn("/walker/create_tweet", output)
+        self.assertIn("/walker/load_feed", output)
+        self.assertIn("/walker/update_profile", output)
+
+        # Verify authentication and introspection endpoints are still present
+        self.assertIn("/user/create", output)
+        self.assertIn("Available", output)
+        self.assertIn("1 client functions", output)  # 15 client functions
+        # Verify some client functions are listed
+        self.assertIn("App", output)
+        self.assertIn("/page/", output)
+
+
+class TestAccessLevelAuthentication(TestCase):
+    """Test access level-based authentication for endpoints."""
+
+    def setUp(self) -> None:
+        """Set up test."""
+        super().setUp()
+        self.server = None
+        self.server_thread = None
+        self.httpd = None
+        # Use dynamically allocated free port for each test
+        try:
+            self.port = get_free_port()
+        except PermissionError:
+            self.skipTest("Socket operations are not permitted in this environment")
+            return
+        self.base_url = f"http://localhost:{self.port}"
+        # Use unique session file for each test
+        test_name = self._testMethodName
+        self.session_file = self.fixture_abs_path(f"test_serve_access_{test_name}.session")
+
+    def tearDown(self) -> None:
+        """Tear down test."""
+        # Close user manager if it exists
+        if self.server and hasattr(self.server, 'user_manager'):
+            try:
+                self.server.user_manager.close()
+            except Exception:
+                pass
+
+        # Stop server if running
+        if self.httpd:
+            try:
+                self.httpd.shutdown()
+                self.httpd.server_close()
+            except Exception:
+                pass
+
+        # Wait for thread to finish
+        if self.server_thread and self.server_thread.is_alive():
+            self.server_thread.join(timeout=2)
+
+        # Clean up session files
+        self._del_session(self.session_file)
+        super().tearDown()
+
+    def _del_session(self, session: str) -> None:
+        """Delete session files including user database files."""
+        path = os.path.dirname(session)
+        prefix = os.path.basename(session)
+        if os.path.exists(path):
+            for file in os.listdir(path):
+                # Clean up session files and user database files (.users)
+                if file.startswith(prefix):
+                    try:
+                        os.remove(f"{path}/{file}")
+                    except Exception:
+                        pass
+
+    def _start_server(self) -> None:
+        """Start the API server in a background thread."""
+        from http.server import HTTPServer
+
+        # Load the module
+        base, mod, mach = cli.proc_file_sess(
+            self.fixture_abs_path("serve_api_access.jac"), ""
+        )
+        Jac.set_base_path(base)
+        Jac.jac_import(
+            target=mod,
+            base_path=base,
+            override_name="__main__",
+            lng="jac",
+        )
+
+        # Create server
+        self.server = JacAPIServer(
+            module_name="__main__",
+            session_path=self.session_file,
+            port=self.port,
+        )
+
+        # Start server in thread
+        def run_server():
+            try:
+                self.server.load_module()
+                handler_class = self.server.create_handler()
+                self.httpd = HTTPServer(("127.0.0.1", self.port), handler_class)
+                self.httpd.serve_forever()
+            except Exception:
+                pass
+
+        self.server_thread = threading.Thread(target=run_server, daemon=True)
+        self.server_thread.start()
+
+        # Wait for server to be ready
+        max_attempts = 50
+        for _ in range(max_attempts):
+            try:
+                self._request("GET", "/", timeout=10)
+                break
+            except Exception:
+                time.sleep(0.1)
+
+    def _request(
+        self, method: str, path: str, data: dict = None, token: str = None, timeout: int = 5
+    ) -> dict:
+        """Make HTTP request to server."""
+        status, payload, _ = self._request_raw(method, path, data=data, token=token, timeout=timeout)
+        try:
+            return json.loads(payload)
+        except json.JSONDecodeError as exc:  # pragma: no cover - sanity guard
+            raise AssertionError(f"Expected JSON response, got: {payload}") from exc
+
+    def _request_raw(
+        self, method: str, path: str, data: dict = None, token: str = None, timeout: int = 5
+    ) -> tuple[int, str, dict[str, str]]:
+        """Make an HTTP request and return status, body, and headers."""
+        url = f"{self.base_url}{path}"
+        headers = {"Content-Type": "application/json"}
+
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+
+        body = json.dumps(data).encode() if data else None
+        request = Request(url, data=body, headers=headers, method=method)
+
+        try:
+            with urlopen(request, timeout=timeout) as response:
+                payload = response.read().decode()
+                return response.status, payload, dict(response.headers)
+        except HTTPError as e:
+            payload = e.read().decode()
+            return e.code, payload, dict(e.headers)
+
+    def test_public_function_without_auth(self) -> None:
+        """Test that public functions can be called without authentication."""
+        self._start_server()
+
+        # Call public function without authentication
+        result = self._request(
+            "POST",
+            "/function/public_function",
+            {"args": {"name": "Test"}}
+        )
+
+        self.assertIn("result", result)
+        self.assertEqual(result["result"], "Hello, Test! (public)")
+
+    def test_public_function_get_info_without_auth(self) -> None:
+        """Test that public function info can be retrieved without authentication."""
+        self._start_server()
+
+        # Get public function info without authentication
+        result = self._request("GET", "/function/public_function")
+
+        self.assertIn("signature", result)
+        self.assertIn("parameters", result["signature"])
+
+    def test_protected_function_requires_auth(self) -> None:
+        """Test that protected functions require authentication."""
+        self._start_server()
+
+        # Try to call protected function without authentication - should fail
+        result = self._request(
+            "POST",
+            "/function/protected_function",
+            {"args": {"message": "test"}}
+        )
+
+        self.assertIn("error", result)
+        self.assertIn("Unauthorized", result["error"])
+
+    def test_protected_function_with_auth(self) -> None:
+        """Test that protected functions work with authentication."""
+        self._start_server()
+
+        # Create user and get token
+        create_result = self._request(
+            "POST",
+            "/user/create",
+            {"username": "authuser", "password": "pass123"}
+        )
+        token = create_result["token"]
+
+        # Call protected function with authentication
+        result = self._request(
+            "POST",
+            "/function/protected_function",
+            {"args": {"message": "secret"}},
+            token=token
+        )
+
+        self.assertIn("result", result)
+        self.assertEqual(result["result"], "Protected: secret")
+
+    def test_private_function_requires_auth(self) -> None:
+        """Test that private functions require authentication."""
+        self._start_server()
+
+        # Try to call private function without authentication - should fail
+        result = self._request(
+            "POST",
+            "/function/private_function",
+            {"args": {"secret": "test"}}
+        )
+
+        self.assertIn("error", result)
+        self.assertIn("Unauthorized", result["error"])
+
+    def test_private_function_with_auth(self) -> None:
+        """Test that private functions work with authentication."""
+        self._start_server()
+
+        # Create user and get token
+        create_result = self._request(
+            "POST",
+            "/user/create",
+            {"username": "privuser", "password": "pass456"}
+        )
+        token = create_result["token"]
+
+        # Call private function with authentication
+        result = self._request(
+            "POST",
+            "/function/private_function",
+            {"args": {"secret": "topsecret"}},
+            token=token
+        )
+
+        self.assertIn("result", result)
+        self.assertEqual(result["result"], "Private: topsecret")
+
+    def test_public_walker_without_auth(self) -> None:
+        """Test that public walkers can be spawned without authentication."""
+        self._start_server()
+
+        # Spawn public walker without authentication
+        result = self._request(
+            "POST",
+            "/walker/PublicWalker",
+            {"fields": {"message": "hello"}}
+        )
+
+        self.assertIn("result", result)
+        self.assertIn("reports", result)
+
+    def test_protected_walker_requires_auth(self) -> None:
+        """Test that protected walkers require authentication."""
+        self._start_server()
+
+        # Try to spawn protected walker without authentication - should fail
+        result = self._request(
+            "POST",
+            "/walker/ProtectedWalker",
+            {"fields": {"data": "test"}}
+        )
+
+        self.assertIn("error", result)
+        self.assertIn("Unauthorized", result["error"])
+
+    def test_protected_walker_with_auth(self) -> None:
+        """Test that protected walkers work with authentication."""
+        self._start_server()
+
+        # Create user and get token
+        create_result = self._request(
+            "POST",
+            "/user/create",
+            {"username": "walkuser", "password": "pass789"}
+        )
+        token = create_result["token"]
+
+        # Spawn protected walker with authentication
+        result = self._request(
+            "POST",
+            "/walker/ProtectedWalker",
+            {"fields": {"data": "mydata"}},
+            token=token
+        )
+
+        self.assertIn("result", result)
+        self.assertIn("reports", result)
+
+    def test_private_walker_requires_auth(self) -> None:
+        """Test that private walkers require authentication."""
+        self._start_server()
+
+        # Try to spawn private walker without authentication - should fail
+        result = self._request(
+            "POST",
+            "/walker/PrivateWalker",
+            {"fields": {"secret": "test"}}
+        )
+
+        self.assertIn("error", result)
+        self.assertIn("Unauthorized", result["error"])
+
+    def test_private_walker_with_auth(self) -> None:
+        """Test that private walkers work with authentication."""
+        self._start_server()
+
+        # Create user and get token
+        create_result = self._request(
+            "POST",
+            "/user/create",
+            {"username": "privwalk", "password": "pass000"}
+        )
+        token = create_result["token"]
+
+        # Spawn private walker with authentication
+        result = self._request(
+            "POST",
+            "/walker/PrivateWalker",
+            {"fields": {"secret": "verysecret"}},
+            token=token
+        )
+
+        self.assertIn("result", result)
+        self.assertIn("reports", result)
+
+    def test_introspection_list_requires_auth(self) -> None:
+        """Test that introspection list endpoints require authentication."""
+        self._start_server()
+
+        # Try to list walkers without authentication - should fail
+        result = self._request("GET", "/protected")
+        self.assertIn("error", result)
+        self.assertIn("Unauthorized", result["error"])
+
+    def test_mixed_access_levels(self) -> None:
+        """Test server with mixed access levels (public, protected, private)."""
+        self._start_server()
+
+        # Create authenticated user
+        create_result = self._request(
+            "POST",
+            "/user/create",
+            {"username": "mixeduser", "password": "mixedpass"}
+        )
+        token = create_result["token"]
+
+        # Public function without auth - should work
+        result1 = self._request(
+            "POST",
+            "/function/public_add",
+            {"args": {"a": 5, "b": 10}}
+        )
+        self.assertIn("result", result1)
+        self.assertEqual(result1["result"], 15)
+
+        # Protected function without auth - should fail
+        result2 = self._request(
+            "POST",
+            "/function/protected_function",
+            {"args": {"message": "test"}}
+        )
+        self.assertIn("error", result2)
+
+        # Protected function with auth - should work
+        result3 = self._request(
+            "POST",
+            "/function/protected_function",
+            {"args": {"message": "test"}},
+            token=token
+        )
+        self.assertIn("result", result3)
+
+        # Private function with auth - should work
+        result4 = self._request(
+            "POST",
+            "/function/private_function",
+            {"args": {"secret": "test"}},
+            token=token
+        )
+        self.assertIn("result", result4)

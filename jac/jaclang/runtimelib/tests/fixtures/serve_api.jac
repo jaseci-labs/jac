@@ -1,5 +1,9 @@
 """Example Jac program for REST API server."""
 
+cl import from jac:client_runtime {
+    renderJsxTree,
+}
+
 # Define some nodes
 node Task {
     has title: str;
@@ -63,4 +67,13 @@ def add_numbers(a: int, b: int) -> int {
 """Function to generate a greeting message."""
 def greet(name: str = "World") -> str {
     return "Hello, " + name + "!";
+}
+
+cl let WELCOME_TITLE: str = "Runtime Test";
+
+cl def client_page() {
+    return <section class="welcome">
+        <h1>{WELCOME_TITLE}</h1>
+        <p>{greet()}</p>
+    </section>;
 }

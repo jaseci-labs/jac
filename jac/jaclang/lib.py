@@ -3,7 +3,7 @@
 from jaclang.runtimelib.machine import JacMachineInterface
 
 # Automatically expose all public attributes from JacMachineInterface
-# This includes archetype classes (Obj, Node, Edge, Walker, Root, Path) and all methods
+# This includes archetype classes (Obj, Node, Edge, Walker, Root, OPath) and all methods
 _jac_interface_attrs = {
     name: getattr(JacMachineInterface, name)
     for name in dir(JacMachineInterface)

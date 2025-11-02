@@ -1,5 +1,5 @@
 from __future__ import annotations
-from jaclang.lib import Node, Obj, Path, Root, Walker, build_edge, connect, on_entry, refs, root, spawn, visit
+from jaclang.lib import Node, Obj, OPath, Root, Walker, build_edge, connect, on_entry, refs, root, spawn, visit
 
 class Counter(Obj):
     count: int = 0
@@ -27,7 +27,7 @@ class TaskWalker(Walker):
     @on_entry
     def process(self, here: Task) -> None:
         print(f'at {here.name}')
-        visit(self, refs(Path(here).edge_out().visit()))
+        visit(self, refs(OPath(here).edge_out().visit()))
 
 class Interactive(Node):
     visitor_name: str = 'none'
@@ -43,7 +43,7 @@ class RootWalker(Walker):
     def start(self, here: Root) -> None:
         print(f'at root: {root()}')
         print(f'here is root: {here is root()}')
-        visit(self, refs(Path(here).edge_out().visit()))
+        visit(self, refs(OPath(here).edge_out().visit()))
 
     @on_entry
     def at_task(self, here: Task) -> None:

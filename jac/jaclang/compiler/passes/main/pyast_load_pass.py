@@ -17,6 +17,7 @@ from __future__ import annotations
 import ast as py_ast
 import os
 import re
+from threading import Event
 from typing import Optional, Sequence, TYPE_CHECKING, TypeAlias, TypeVar, cast
 
 import jaclang.compiler.unitree as uni
@@ -33,11 +34,16 @@ T = TypeVar("T", bound=uni.UniNode)
 class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
     """Jac Parser."""
 
-    def __init__(self, ir_in: uni.PythonModuleAst, prog: JacProgram) -> None:
+    def __init__(
+        self,
+        ir_in: uni.PythonModuleAst,
+        prog: JacProgram,
+        cancel_token: Event | None = None,
+    ) -> None:
         """Initialize parser."""
         self.mod_path = ir_in.loc.mod_path
         self.orig_src = ir_in.loc.orig_src
-        Transform.__init__(self, ir_in=ir_in, prog=prog)
+        Transform.__init__(self, ir_in=ir_in, prog=prog, cancel_token=cancel_token)
 
     def nu(self, node: T) -> T:
         """Update node."""
@@ -46,6 +52,8 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
 
     def convert(self, node: py_ast.AST) -> uni.UniNode:
         """Get python node type."""
+        if self.is_canceled():
+            raise StopIteration
         if hasattr(self, f"proc_{pascal_to_snake(type(node).__name__)}"):
             ret = getattr(self, f"proc_{pascal_to_snake(type(node).__name__)}")(node)
         else:

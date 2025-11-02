@@ -1,0 +1,43 @@
+[tool.poetry]
+name = "jaseci"
+version = "2.0.0"
+description = "Jaseci - A complete AI-native programming ecosystem with Jac language, LLM integration, cloud deployment, and Streamlit visualization"
+authors = ["Jason Mars <jason@mars.ninja>"]
+maintainers = ["Jason Mars <jason@mars.ninja>"]
+license = "MIT"
+readme = "README.md"
+keywords = [
+    "jac",
+    "jaclang",
+    "jaseci",
+    "ai",
+    "llm",
+    "cloud",
+    "streamlit",
+    "programming-language",
+    "machine-learning",
+    "artificial-intelligence",
+]
+repository = "https://github.com/Jaseci-Labs/jaseci"
+homepage = "https://jaseci.org"
+documentation = "https://jac-lang.org"
+packages = [{ include = "jaseci" }]
+
+[tool.poetry.dependencies]
+python = "^3.11.0"
+jaclang = "^0.8.10"
+byllm = "^0.4.5"
+jac-cloud = "^0.2.10"
+jac-streamlit = "^0.0.4"
+
+# [tool.poetry.extras]
+# # All packages are included by default in jaseci v2.0
+# # These extras are kept for backward compatibility
+# llm = ["byllm"]
+# cloud = ["jac-cloud"]
+# streamlit = ["jac-streamlit"]
+# all = ["jaclang", "byllm", "jac-cloud", "jac-streamlit"]
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

@@ -36,7 +36,12 @@ except ModuleNotFoundError:
     generate_static_parser(force=True)
     from jaclang.compiler.larkparse import jac_parser as jac_lark
 
-jac_lark.logger.setLevel(logging.DEBUG)
+if not hasattr(jac_lark, "Lark_StandAlone"):
+    generate_static_parser(force=True)
+    from jaclang.compiler.larkparse import jac_parser as jac_lark
+
+with contextlib.suppress(AttributeError):
+    jac_lark.logger.setLevel(logging.DEBUG)
 contextlib.suppress(ModuleNotFoundError)
 
 TOKEN_MAP = {

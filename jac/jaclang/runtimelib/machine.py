@@ -10,6 +10,7 @@ import sys
 import tempfile
 import types
 from collections import OrderedDict
+from collections.abc import Mapping, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import MISSING, dataclass, field
 from functools import wraps
@@ -41,6 +42,7 @@ from jaclang.runtimelib.archetype import (
     ObjectSpatialPath,
     Root as _Root,
 )
+from jaclang.runtimelib.client_bundle import ClientBundle, ClientBundleBuilder
 from jaclang.runtimelib.constructs import (
     AccessLevel,
     Anchor,
@@ -116,10 +118,6 @@ class ExecutionContext:
     def get_root(self) -> Root:
         """Get current root."""
         return cast(Root, self.root_state.archetype)
-
-    def global_system_root(self) -> NodeAnchor:
-        """Get global system root."""
-        return self.system_root
 
 
 class JacAccessValidation:
@@ -694,7 +692,7 @@ class JacClassReferences:
     Root: TypeAlias = _Root
     GenericEdge: TypeAlias = _GenericEdge
 
-    Path: TypeAlias = ObjectSpatialPath
+    OPath: TypeAlias = ObjectSpatialPath
 
 
 class JacBuiltin:
@@ -1044,7 +1042,7 @@ class JacBasics:
                     to_keep = {
                         k: v for k, v in module.__dict__.items() if k.startswith("__")
                     }
-                    module.__dict__.clear()
+                    # module.__dict__.clear()
                     module.__dict__.update(to_keep)
                 else:
                     module = types.ModuleType("__main__")
@@ -1104,6 +1102,30 @@ class JacBasics:
         JacTestCheck.add_test(file_path, func_name, test_deco)
 
         return test_deco
+
+    @staticmethod
+    def jsx(
+        tag: object,
+        attributes: Mapping[str, object] | None = None,
+        children: Sequence[object] | None = None,
+    ) -> dict[str, object]:
+        """JSX interface for creating elements.
+
+        Args:
+            tag: Element tag (string for HTML elements, callable for components)
+            attributes: Element attributes/props
+            children: Child elements
+
+        Returns:
+            JSX element representation (implementation-defined)
+        """
+        props: dict[str, object] = dict(attributes) if attributes else {}
+        child_list = list(children) if children else []
+        return {
+            "tag": tag,
+            "props": props,
+            "children": child_list,
+        }
 
     @staticmethod
     def run_test(
@@ -1425,6 +1447,24 @@ class JacBasics:
         return func
 
 
+class JacClientBundle:
+    """Jac Client Bundle Operations - Generic interface for client bundling."""
+
+    @staticmethod
+    def get_client_bundle_builder() -> ClientBundleBuilder:
+        """Get the client bundle builder instance."""
+        return ClientBundleBuilder()
+
+    @staticmethod
+    def build_client_bundle(
+        module: types.ModuleType,
+        force: bool = False,
+    ) -> ClientBundle:
+        """Build a client bundle for the supplied module."""
+        builder = JacMachineInterface.get_client_bundle_builder()
+        return builder.build(module, force=force)
+
+
 class JacByLLM:
     """Jac byLLM integration."""
 
@@ -1711,6 +1751,7 @@ class JacMachineInterface(
     JacBuiltin,
     JacCmd,
     JacBasics,
+    JacClientBundle,
     JacByLLM,
     JacUtils,
 ):

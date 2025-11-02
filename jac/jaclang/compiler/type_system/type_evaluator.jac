@@ -112,9 +112,11 @@ class TypeEvaluator {
     def __init__(self: TypeEvaluator, program: "JacProgram") -> None {
         self.program = program;
         self.symbol_resolution_stack: list[SymbolResolutionStackEntry] = [];
+        self.prefetch: PrefetchedTypes | None = None;
         self.builtins_module = self._load_builtins_stub_module();
-        self.prefetch = self._prefetch_types();
         self.diagnostic_callback: DiagnosticCallback | None = None;
+
+        self._prefetch_types();
     }
 
     """Load and return the builtins stub module."""
@@ -147,7 +149,7 @@ class TypeEvaluator {
 
     """Return the prefetched types for the type evaluator."""
     def _prefetch_types(self: TypeEvaluator) -> "PrefetchedTypes" {
-        return PrefetchedTypes(
+        self.prefetch = PrefetchedTypes(
             # TODO: Pyright first try load NoneType from typeshed and if it cannot
             # then it set to unknown type.
             none_type_class=types.UnknownType(),
@@ -385,12 +387,18 @@ class TypeEvaluator {
         }
         is_builtin_class = node_.find_parent_of_type(uni.Module) == self.builtins_module;
 
+        # NOTE: obj, walker, node, edge are dataclass with symbol type as such but
+        # other classes are with symbol type TYPE.
+        # TODO: We need to handle @dataclass decorator as well.
+        is_data_class = node_.sym_category != SymbolType.TYPE;
+
         cls_type = types.ClassType(
             types.ClassType.ClassDetailsShared(
                 class_name=node_.name_spec.sym_name,
                 symbol_table=node_,
                 base_classes=base_classes,
                 is_builtin_class=is_builtin_class,
+                is_data_class=is_data_class,
             ),
             flags=types.TypeFlags.Instantiable,
         );
@@ -437,20 +445,19 @@ class TypeEvaluator {
 
         # Define helper function for parameter kind conversion.
         def _convert_param_kind(kind: uni.ParamKind) -> types.ParamKind {
-            ::py::
-            match kind:
+            match kind {
                 case uni.ParamKind.POSONLY:
-                    return types.ParamKind.POSONLY
+                    return types.ParamKind.POSONLY;
                 case uni.ParamKind.NORMAL:
-                    return types.ParamKind.NORMAL
+                    return types.ParamKind.NORMAL;
                 case uni.ParamKind.VARARG:
-                    return types.ParamKind.VARARG
+                    return types.ParamKind.VARARG;
                 case uni.ParamKind.KWONLY:
-                    return types.ParamKind.KWONLY
+                    return types.ParamKind.KWONLY;
                 case uni.ParamKind.KWARG:
-                    return types.ParamKind.KWARG
-            return types.ParamKind.NORMAL
-            ::py::
+                    return types.ParamKind.KWARG;
+            return types.ParamKind.NORMAL;
+            }
         }
 
         parameters: list[types.Parameter] = [];
@@ -619,7 +626,7 @@ class TypeEvaluator {
     def _get_type_of_symbol(self: TypeEvaluator, symbol: uni.Symbol) -> TypeBase {
         node_ = symbol.decl.name_of;
         match node_ {
-            case uni.Archetype():
+            case uni.Archetype() | uni.Enum():
                 return self.get_type_of_class(node_);
 
             case uni.Ability():
@@ -634,6 +641,8 @@ class TypeEvaluator {
             # This actually defined in the function getTypeForDeclaration();
             # Pyright has DeclarationType.Variable.
             case uni.Name():
+
+                # ---- Handle simple assignment: var = <expr> ----
                 if isinstance(node_.parent, uni.Assignment) {
                     if node_.parent.type_tag is not None {
                         annotation_type = self.get_type_of_expression(
@@ -648,6 +657,30 @@ class TypeEvaluator {
                         }
                     }
                 }
+
+                # ---- Handle member assignment: obj.attr = <expr> ----
+                # Pyright handles this in getDeclInfoForNameNode()
+                if (
+                    isinstance(node_.parent, uni.AtomTrailer)
+                    and node_.parent.parent
+                    and isinstance(node_.parent.parent, uni.Assignment)
+                ) {
+                    # Member assignment with a type annotation: obj.member: <type> = <expr>
+                    if node_.parent.parent.type_tag is not None {
+                        annotation_type = self.get_type_of_expression(
+                            node_.parent.parent.type_tag.tag
+                        );
+                        return self._convert_to_instance(annotation_type);
+                    }
+
+                    # Assignment without a type annotation: obj.member = <expr>
+                    else {
+                        if node_.parent.parent.value is not None {
+                            return self.get_type_of_expression(node_.parent.parent.value);
+                        }
+                    }
+                }
+
                 if isinstance(node_.parent, uni.ModulePath) {
                     return self.get_type_of_module(node_.parent);
                 }
@@ -676,14 +709,30 @@ class TypeEvaluator {
     def _get_type_of_expression_core(self: TypeEvaluator, expr: uni.Expr) -> TypeBase {
         match expr {
 
+            # ----------------------------------------------------------------------
+            # Prefetched types: These types may not have prefetched and we need to
+            # check if they are available, if the're not, we're inside builtins or
+            # typeshed module itself and in that case we can just return unknown type.
+            # ----------------------------------------------------------------------
+
             case uni.String() | uni.MultiString():
-                return self._convert_to_instance(self.get_type_of_string(expr));
+                if self.prefetch {
+                    return self._convert_to_instance(self.get_type_of_string(expr));
+                }
 
             case uni.Int():
-                return self._convert_to_instance(self.get_type_of_int(expr));
+                if self.prefetch {
+                    return self._convert_to_instance(self.get_type_of_int(expr));
+                }
 
             case uni.Float():
-                return self._convert_to_instance(self.get_type_of_float(expr));
+                if self.prefetch {
+                    return self._convert_to_instance(self.get_type_of_float(expr));
+                }
+
+            # ----------------------------------------------------------------------
+            # End of prefetched types
+            # ----------------------------------------------------------------------
 
             case uni.AtomTrailer():
                 # NOTE: Pyright is using CFG to figure out the member type by narrowing the base
@@ -750,7 +799,8 @@ class TypeEvaluator {
                 }
 
                 if symbol := expr.sym_tab.lookup(expr.value, deep=True) {
-                    expr.sym = self.resolve_imported_symbols(symbol);
+                    symbol = self.resolve_imported_symbols(symbol);
+                    symbol.add_use(expr);
                     return self.get_type_of_symbol(symbol);
                 }
         }
@@ -778,7 +828,7 @@ class TypeEvaluator {
     }
 
     def _set_symbol_to_expr(self: TypeEvaluator, expr: uni.Expr, sym: uni.Symbol) -> TypeBase {
-        expr.sym = sym;
+        sym.add_use(expr);
         expr.type = self.get_type_of_symbol(sym);
         return expr.type;
     }
@@ -789,7 +839,7 @@ class TypeEvaluator {
             isinstance(expr, uni.Name)
             and (expr.value == TOKEN_MAP[Tok.KW_SELF])
             and (fn := self._get_enclosing_method(expr))
-            and (not fn.is_static)
+            and (not fn.is_static) and (not fn.is_cls_method)
         ) {
             return True;
         }
@@ -819,11 +869,13 @@ class TypeEvaluator {
     }
 
     """Return the effective type of self."""
-    def _get_type_of_self(self: TypeEvaluator, node: uni.Name) -> TypeBase {
-        if method := self._get_enclosing_method(node) {
+    def _get_type_of_self(self: TypeEvaluator, node_: uni.Name) -> TypeBase {
+        if method := self._get_enclosing_method(node_) {
             cls = method.method_owner;
             if isinstance(cls, uni.Archetype) {
-                return self.get_type_of_class(cls).clone_as_instance();
+                node_.sym = method.lookup(node_.value);
+                node_.type = self.get_type_of_class(cls).clone_as_instance();
+                return node_.type;
             }
             if isinstance(cls, uni.Enum) {
                 # TODO: Implement type from enum.
@@ -848,7 +900,6 @@ class TypeEvaluator {
 
     """Lookup the class member type."""
     def _lookup_class_member(self: TypeEvaluator, base_type: types.ClassType, member: str) -> type_utils.ClassMember | None {
-        assert self.prefetch.int_class is not None;
         # FIXME: Pyright's way: Implement class member iterator (based on mro and the multiple inheritance)
         # return the first found member from the iterator.
 
@@ -944,6 +995,8 @@ class TypeEvaluator {
     """
     def validate_call_args(self: TypeEvaluator, expr: uni.FuncCall) -> TypeBase {
         caller_type = self.get_type_of_expression(expr.target);
+
+        # 1. Call to a function.
         if isinstance(caller_type, types.FunctionType) {
             arg_param_match = self.match_args_to_params(expr, caller_type);
             if not arg_param_match.argument_errors {
@@ -952,14 +1005,34 @@ class TypeEvaluator {
             return caller_type.return_type or types.UnknownType();
         }
 
-        if (
-            isinstance(caller_type, types.ClassType)
-            and caller_type.is_instantiable_class()
-        ) {
+        # 2. Call to an instantiable class.
+        if (isinstance(caller_type, types.ClassType) and caller_type.is_instantiable_class()) {
             # TODO: validate args for __init__()
+
+            # If it has __init__ method, try to call it.
+            if init_method := self._lookup_class_member(caller_type, "__init__") {
+                init_fn_type = self.get_type_of_symbol(init_method.symbol);
+                if isinstance(init_fn_type, types.FunctionType) {
+                    arg_param_match = self.match_args_to_params(expr, init_fn_type);
+                    if not arg_param_match.argument_errors {
+                        self.validate_arg_types(arg_param_match);
+                    }
+                }
+            }
+
+            # If it's a data class, create the __init__ method and validate.
+            elif caller_type.is_data_class() {
+                init_fn_type = self._create_dataclass_init_method(caller_type);
+                arg_param_match = self.match_args_to_params(expr, init_fn_type);
+                if not arg_param_match.argument_errors {
+                    self.validate_arg_types(arg_param_match);
+                }
+            }
+
             return caller_type.clone_as_instance();
         }
 
+        # 3. Call to a callable object (__call__).
         if caller_type.is_class_instance() {
             # TODO: validate args.
             magic_call_ret = self.get_type_of_magic_method_call(caller_type, "__call__");
@@ -991,5 +1064,43 @@ class TypeEvaluator {
             }
         }
     }
+
+    def _create_dataclass_init_method(self: TypeEvaluator, class_type: types.ClassType) -> types.FunctionType {
+
+        parameters: list[types.Parameter] = [];
+
+        # Iterate over the has vars and create parameters.
+        for has_var in class_type.shared.symbol_table.get_has_vars() {
+
+            # Get parameter type.
+            param_type: TypeBase | None = None;
+            if has_var.type_tag {
+                var_type_expr = has_var.type_tag.tag;
+                type_cls = self.get_type_of_expression(var_type_expr);
+                param_type = self._convert_to_instance(type_cls);
+            }
+
+            # Create parameter.
+            parameters.append(
+                types.Parameter(
+                    name=has_var.name.value,
+                    category=types.ParameterCategory.Positional,
+                    param_type=param_type,
+                    default_value=has_var.value,
+                    is_self=False,
+                    param_kind=types.ParamKind.NORMAL,
+                )
+            );
+        }
+
+        # Create and return the __init__ method type.
+        return types.FunctionType(
+            func_name="__init__",
+            return_type=types.UnknownType(),
+            parameters=parameters,
+        );
+
+    }
+
 
 }

@@ -34,6 +34,7 @@ class JacAnnexPass(Transform[uni.Module, uni.Module]):
         self.base_path = self.mod_path[:-4]
         self.impl_folder = self.base_path + ".impl"
         self.test_folder = self.base_path + ".test"
+        self.cl_folder = self.base_path + ".cl"
         self.directory = os.path.dirname(self.mod_path) or os.getcwd()
         self.load_annexes(jac_program=self.prog, node=ir_in)
         return ir_in
@@ -41,7 +42,7 @@ class JacAnnexPass(Transform[uni.Module, uni.Module]):
     def find_annex_paths(self) -> list[str]:
         """Return list of .impl.jac and .test.jac files related to base module."""
         paths = [os.path.join(self.directory, f) for f in os.listdir(self.directory)]
-        for folder in [self.impl_folder, self.test_folder]:
+        for folder in [self.impl_folder, self.test_folder, self.cl_folder]:
             if os.path.exists(folder):
                 paths += [os.path.join(folder, f) for f in os.listdir(folder)]
         return paths
@@ -66,6 +67,15 @@ class JacAnnexPass(Transform[uni.Module, uni.Module]):
                 if mod:
                     node.impl_mod.append(mod)
 
+            elif path.endswith(".cl.jac") and (
+                path.startswith(f"{self.base_path}.")
+                or os.path.dirname(path) == self.cl_folder
+            ):
+                mod = jac_program.compile(file_path=path, no_cgen=True)
+                if mod:
+                    self._mark_client_declarations(mod)
+                    node.impl_mod.append(mod)
+
             elif (
                 path.endswith(".test.jac")
                 and not settings.ignore_test_annex
@@ -77,3 +87,15 @@ class JacAnnexPass(Transform[uni.Module, uni.Module]):
                 mod = jac_program.compile(file_path=path, no_cgen=True)
                 if mod:
                     node.test_mod.append(mod)
+
+    def _mark_client_declarations(self, module: uni.Module) -> None:
+        """Recursively mark client-facing nodes in the module as client declarations."""
+
+        def _mark(node: uni.UniNode) -> None:
+            if isinstance(node, uni.ClientFacingNode):
+                node.is_client_decl = True
+            for child in getattr(node, "kid", []):
+                if child:
+                    _mark(child)
+
+        _mark(module)

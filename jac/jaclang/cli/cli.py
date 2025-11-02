@@ -542,6 +542,7 @@ def dot(
     edge_limit: int = 512,
     node_limit: int = 512,
     saveto: str = "",
+    to_screen: bool = False,
 ) -> None:
     """Generate a DOT graph visualization from a Jac program.
 
@@ -560,12 +561,14 @@ def dot(
         edge_limit: Maximum number of edges to include (default: 512)
         node_limit: Maximum number of nodes to include (default: 512)
         saveto: Output file path for the DOT file (default: <module_name>.dot)
+        to_screen: Print DOT output to stdout instead of saving to file (default: False)
 
     Examples:
         jac dot myprogram.jac
         jac dot myprogram.jac --initial root_node --depth 3
         jac dot myprogram.jac --traverse --connection edge_type1 edge_type2
         jac dot myprogram.jac --saveto graph.dot
+        jac dot myprogram.jac --to_screen
     """
     base, mod, jac_machine = proc_file_sess(filename, session)
 
@@ -591,10 +594,13 @@ def dot(
             traceback.print_exc()
             jac_machine.close()
             return
-        file_name = saveto if saveto else f"{mod}.dot"
-        with open(file_name, "w") as file:
-            file.write(graph)
-        print(f">>> Graph content saved to {os.path.join(os.getcwd(), file_name)}")
+        if to_screen:
+            print(graph)
+        else:
+            file_name = saveto if saveto else f"{mod}.dot"
+            with open(file_name, "w") as file:
+                file.write(graph)
+            print(f">>> Graph content saved to {os.path.join(os.getcwd(), file_name)}")
         jac_machine.close()
     else:
         print("Not a .jac file.", file=sys.stderr)
@@ -663,6 +669,49 @@ def jac2py(filename: str) -> None:
         exit(1)
 
 
+@cmd_registry.register
+def js(filename: str) -> None:
+    """Convert a Jac file to JavaScript code.
+
+    Translates Jac source code to equivalent JavaScript/ECMAScript code using
+    the ESTree AST specification. This allows Jac programs to run in JavaScript
+    environments like Node.js or web browsers.
+
+    Args:
+        filename: Path to the .jac file to convert
+
+    Examples:
+        jac js myprogram.jac > myprogram.js
+        jac js myprogram.jac
+    """
+    if filename.endswith(".jac"):
+        try:
+            prog = JacProgram()
+            ir = prog.compile(file_path=filename)
+
+            if prog.errors_had:
+                for error in prog.errors_had:
+                    print(f"Error: {error}", file=sys.stderr)
+                exit(1)
+            js_output = ir.gen.js or ""
+            if not js_output.strip():
+                print(
+                    "ECMAScript code generation produced no output.",
+                    file=sys.stderr,
+                )
+                exit(1)
+            print(js_output)
+        except Exception as e:
+            print(f"Error generating JavaScript: {e}", file=sys.stderr)
+            import traceback
+
+            traceback.print_exc()
+            exit(1)
+    else:
+        print("Not a .jac file.", file=sys.stderr)
+        exit(1)
+
+
 # Register core commands first (before plugins load)
 # These can be overridden by plugins with higher priority
 
@@ -673,6 +722,7 @@ def serve(
     session: str = "",
     port: int = 8000,
     main: bool = True,
+    faux: bool = False,
 ) -> None:
     """Start a REST API server for the specified .jac file.
 
@@ -689,11 +739,13 @@ def serve(
         session: Session identifier for persistent state (default: auto-generated)
         port: Port to run the server on (default: 8000)
         main: Treat the module as __main__ (default: True)
+        faux: Perform introspection and print endpoint docs without starting server (default: False)
 
     Examples:
         jac serve myprogram.jac
         jac serve myprogram.jac --port 8080
         jac serve myprogram.jac --session myapp.session
+        jac serve myprogram.jac --faux
     """
     from jaclang.runtimelib.server import JacAPIServer
 
@@ -728,9 +780,6 @@ def serve(
             mach.close()
             exit(1)
 
-    # Don't close the context - keep the module loaded for the server
-    # mach.close()
-
     # Create and start the API server
     # Use session path for persistent storage across user sessions
     session_path = session if session else os.path.join(base, f"{mod}.session")
@@ -739,7 +788,22 @@ def serve(
         module_name=mod,
         session_path=session_path,
         port=port,
+        base_path=base,
     )
+
+    # If faux mode, print endpoint documentation and exit
+    if faux:
+        try:
+            server.print_endpoint_docs()
+            mach.close()
+            return
+        except Exception as e:
+            print(f"Error generating endpoint documentation: {e}", file=sys.stderr)
+            mach.close()
+            exit(1)
+
+    # Don't close the context - keep the module loaded for the server
+    # mach.close()
 
     try:
         server.start()

@@ -5,15 +5,19 @@ module: (toplevel_stmt (tl_stmt_with_doc | toplevel_stmt)*)?
        | STRING        (tl_stmt_with_doc | toplevel_stmt)*
 
 tl_stmt_with_doc: STRING toplevel_stmt
-toplevel_stmt: import_stmt
+
+toplevel_stmt: KW_CLIENT? onelang_stmt
+       | KW_CLIENT LBRACE onelang_stmt* RBRACE
+       | py_code_block
+
+onelang_stmt: import_stmt
        | archetype
-       | impl_def
-       | sem_def
        | ability
        | global_var
        | free_code
-       | py_code_block
        | test
+       | impl_def
+       | sem_def
 
 // [Heading]: Import/Include Statements.
 import_stmt: KW_IMPORT KW_FROM from_path LBRACE import_items RBRACE
@@ -23,9 +27,9 @@ import_stmt: KW_IMPORT KW_FROM from_path LBRACE import_items RBRACE
 from_path: (DOT | ELLIPSIS)* import_path
          | (DOT | ELLIPSIS)+
 
-import_path: dotted_name (KW_AS NAME)?
+import_path: (NAME COLON)? (dotted_name | STRING) (KW_AS NAME)?
 import_items: (import_item COMMA)* import_item COMMA?
-import_item: named_ref (KW_AS NAME)?
+import_item: (KW_DEFAULT | STAR_MUL | named_ref) (KW_AS NAME)?
 dotted_name: named_ref (DOT named_ref)*
 
 // [Heading]: Class Archetypes.
@@ -61,7 +65,7 @@ enum_block: LBRACE assignment_list (py_code_block | free_code)* RBRACE
 ability: decorators? KW_ASYNC? (ability_decl | function_decl)
 
 function_decl: KW_OVERRIDE? KW_STATIC? KW_DEF access_tag? named_ref func_decl? (block_tail | KW_ABSTRACT? SEMI)
-ability_decl: KW_OVERRIDE? KW_STATIC? KW_CAN access_tag? named_ref event_clause (block_tail | KW_ABSTRACT? SEMI)
+ability_decl: KW_OVERRIDE? KW_STATIC? KW_CAN access_tag? named_ref? event_clause (block_tail | KW_ABSTRACT? SEMI)
 block_tail: code_block | KW_BY expression SEMI
 event_clause: KW_WITH expression? (KW_EXIT | KW_ENTRY)
 
@@ -107,6 +111,7 @@ statement: import_stmt
        | for_stmt
        | try_stmt
        | match_stmt
+       | switch_stmt
        | with_stmt
        | global_ref SEMI
        | nonlocal_ref SEMI
@@ -146,6 +151,10 @@ finally_stmt: KW_FINALLY code_block
 // [Heading]: Match statements.
 match_stmt: KW_MATCH expression LBRACE match_case_block+ RBRACE
 match_case_block: KW_CASE pattern_seq (KW_IF expression)? COLON statement+
+
+// [Heading]: Switch statements.
+switch_stmt: KW_SWITCH expression LBRACE switch_case_block+ RBRACE
+switch_case_block: (KW_CASE pattern_seq | KW_DEFAULT) COLON statement*
 
 pattern_seq: (or_pattern | as_pattern)
 or_pattern: (pattern BW_OR)* pattern
@@ -243,7 +252,8 @@ concurrent_expr: (KW_FLOW | KW_WAIT)? walrus_assign
 walrus_assign: (named_ref WALRUS_EQ)? pipe
 
 // [Heading]: Lambda expressions.
-lambda_expr: KW_LAMBDA func_decl_params? (RETURN_HINT expression)? COLON expression
+lambda_expr: KW_LAMBDA func_decl_params (RETURN_HINT expression)? ( COLON expression | code_block )
+           | KW_LAMBDA func_decl? ( COLON expression | code_block )
 
 // [Heading]: Pipe expressions.
 pipe: (pipe PIPE_FWD)? pipe_back
@@ -324,10 +334,11 @@ param_list: expr_list COMMA kw_expr_list COMMA?
 
 // [Heading]: Atomic expressions.
 atom: named_ref
-    | LPAREN (expression | yield_expr) RPAREN
+    | LPAREN (expression | yield_expr | function_decl) RPAREN
     | atom_collection
     | atom_literal
     | type_ref
+    | jsx_element
 
 atom_literal: builtin_type
             | NULL
@@ -438,6 +449,37 @@ special_ref: KW_INIT
             | KW_SELF
             | KW_HERE
             | KW_VISITOR
+
+// [Heading]: JSX Elements.
+jsx_element: jsx_self_closing
+           | jsx_fragment
+           | jsx_opening_closing
+
+jsx_self_closing: JSX_OPEN_START jsx_element_name jsx_attributes? JSX_SELF_CLOSE
+jsx_opening_closing: jsx_opening_element jsx_children? jsx_closing_element
+jsx_fragment: JSX_FRAG_OPEN jsx_children? JSX_FRAG_CLOSE
+
+jsx_opening_element: JSX_OPEN_START jsx_element_name jsx_attributes? JSX_TAG_END
+jsx_closing_element: JSX_CLOSE_START jsx_element_name JSX_TAG_END
+
+jsx_element_name: JSX_NAME (DOT JSX_NAME)*
+
+jsx_attributes: jsx_attribute+
+jsx_attribute: jsx_spread_attribute | jsx_normal_attribute
+
+jsx_spread_attribute: LBRACE ELLIPSIS expression RBRACE
+jsx_normal_attribute: JSX_NAME (EQ jsx_attr_value)?
+
+jsx_attr_value: STRING
+              | LBRACE expression RBRACE
+
+jsx_children: jsx_child+
+jsx_child: jsx_element
+         | jsx_expression
+         | jsx_text
+
+jsx_expression: LBRACE expression RBRACE
+jsx_text: JSX_TEXT
 
 // [Heading]: Builtin types.
 builtin_type: TYP_TYPE
@@ -550,7 +592,10 @@ KW_DEF: "def"
 KW_STATIC: "static"
 KW_OVERRIDE: "override"
 KW_MATCH: "match"
+KW_SWITCH: "switch"
 KW_CASE: "case"
+KW_DEFAULT: "default"
+KW_CLIENT: "cl"
 
 KW_INIT: "init"
 KW_POST_INIT: "postinit"
@@ -688,6 +733,34 @@ PIPE_FWD: "|>"
 PIPE_BKWD: "<|"
 DOT_FWD: ".>"
 DOT_BKWD: "<."
+
+// JSX Contextual Tokens --------------------------------------------------- //
+
+// JSX opening tag start: < followed by identifier or uppercase
+// Using lower priority so it doesn't interfere with LT operator
+JSX_OPEN_START.2: /<(?=[A-Z_a-z])/
+
+// JSX self-closing end: />
+JSX_SELF_CLOSE: /\/>/
+
+// JSX tag end: > (used for both opening and closing)
+JSX_TAG_END: />/
+
+// JSX closing tag start: </
+JSX_CLOSE_START: /<\//
+
+// JSX fragment open: <>
+JSX_FRAG_OPEN: /<>/
+
+// JSX fragment close: </>
+JSX_FRAG_CLOSE: /<\/>/
+
+// JSX identifier (NAME in JSX context) - allows hyphens for attributes like data-age, aria-label
+JSX_NAME: /[A-Z_a-z][A-Z_a-z0-9\-]*/
+
+// JSX text content (anything except < > { } and must not start/end with whitespace-only)
+// Using negative priority so it's only matched as last resort within JSX
+JSX_TEXT.-1: /[^<>{}\n]+/
 
 
 // ************************************************************************* //

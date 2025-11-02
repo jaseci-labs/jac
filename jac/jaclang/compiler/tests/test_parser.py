@@ -4,9 +4,11 @@ import inspect
 import io
 import os
 import sys
+from pathlib import Path
 
 from jaclang import JacMachineInterface as Jac
 from jaclang.compiler import jac_lark as jl
+from jaclang.compiler import unitree as uni
 from jaclang.compiler.constant import Tokens
 from jaclang.compiler.parser import JacParser
 from jaclang.compiler.program import JacProgram
@@ -215,12 +217,12 @@ class TestLarkParser(TestCaseMicroSuite):
                 }
             """,
             """
-            Missing SEMI
+            Unexpected token 'bar'
+                with entry {
                     foo = Foo(;
                     func(foo bar)
+                             ^^^
                     foo.bar;
-                    ^^^
-                }
             """
         ]
         for idx, alrt in enumerate(prog.errors_had):
@@ -228,5 +230,331 @@ class TestLarkParser(TestCaseMicroSuite):
             for line in expected_errors[idx].strip().split("\n"):
                 line = line.strip()
                 self.assertIn(line, pretty)
+
+    def _load_combined_jsx_fixture(self) -> tuple[str, JacParser]:
+        """Parse the consolidated JSX fixture once for downstream assertions."""
+        fixture_path = (
+            Path(__file__)
+            .resolve()
+            .parent
+            .parent
+            / "passes"
+            / "ecmascript"
+            / "tests"
+            / "fixtures"
+            / "client_jsx.jac"
+        )
+        source_text = fixture_path.read_text(encoding="utf-8")
+        prse = JacParser(
+            root_ir=Source(source_text, mod_path=str(fixture_path)),
+            prog=JacProgram(),
+        )
+        self.assertFalse(
+            prse.errors_had,
+            f"Parser reported errors for JSX fixture: {[str(e) for e in prse.errors_had]}",
+        )
+        return source_text, prse
+
+    def test_jsx_comprehensive_fixture(self) -> None:
+        """Ensure the consolidated JSX fixture exercises varied grammar shapes."""
+        source_text, prse = self._load_combined_jsx_fixture()
+        tree_repr = prse.ir_out.pp()
+
+        expected_snippets = {
+            "self_closing": "<div />",
+            "attribute_binding": 'id={name}',
+            "namespaced_component": "<Form.Input.Text />",
+            "fragment": "<>",
+            "spread_attribute": "{...props}",
+            "expression_child": '{"Hello " + name + "!"}',
+        }
+        for label, snippet in expected_snippets.items():
+            with self.subTest(label=label):
+                self.assertIn(snippet, source_text)
+
+        ast_markers = {
+            "JsxElement": "JsxElement" in tree_repr,
+            "FragmentTokens": "Token - <>" in tree_repr and "Token - </>" in tree_repr,
+            "JsxSpreadAttribute": "JsxSpreadAttribute" in tree_repr,
+        }
+        for label, present in ast_markers.items():
+            with self.subTest(node=label):
+                self.assertTrue(present, f"{label} missing from AST pretty print")
+
+    def test_client_keyword_tagging(self) -> None:
+        """Test that cl keyword properly tags elements as client declarations.
+
+        Tests:
+        - Single statement with cl prefix
+        - Statement without cl prefix
+        - Block of statements with cl { }
+        - Empty cl blocks
+        - Multiple cl blocks at top level
+        - Various statement types (import, let, obj, test)
+        """
+        # Test 1: Mixed single and block client markers
+        source = """
+cl let foo = 1;
+let bar = 2;
+cl {
+    let baz = 3;
+    test sample {}
+}
+"""
+        module = JacProgram().parse_str(source, "test.jac")
+        body = module.body
+
+        # With ClientBlock, cl {} creates a single ClientBlock node
+        self.assertEqual(
+            [type(stmt).__name__ for stmt in body],
+            ["GlobalVars", "GlobalVars", "ClientBlock"],
+        )
+        self.assertEqual(
+            [getattr(stmt, "is_client_decl", False) for stmt in body],
+            [True, False, False],  # cl let, let, ClientBlock (not ClientFacingNode)
+        )
+        # Check the ClientBlock's body
+        client_block = body[2]
+        self.assertIsInstance(client_block, uni.ClientBlock)
+        self.assertEqual(len(client_block.body), 2)
+        self.assertEqual(
+            [type(stmt).__name__ for stmt in client_block.body],
+            ["GlobalVars", "Test"],
+        )
+        self.assertTrue(
+            all(
+                getattr(stmt, "is_client_decl", False)
+                for stmt in client_block.body
+                if hasattr(stmt, "is_client_decl")
+            )
+        )
+
+        # Test 2: Block with different statement types
+        source = """
+cl {
+    import foo;
+    let x = 1;
+    obj MyClass {}
+    test my_test {}
+}
+"""
+        module = JacProgram().parse_str(source, "test.jac")
+        body = module.body
+
+        # With ClientBlock, all statements are wrapped in a single ClientBlock
+        self.assertEqual(len(body), 1)
+        self.assertIsInstance(body[0], uni.ClientBlock)
+        # Check the ClientBlock's body has 4 statements
+        self.assertEqual(len(body[0].body), 4)
+        self.assertTrue(
+            all(
+                getattr(stmt, "is_client_decl", False)
+                for stmt in body[0].body
+                if hasattr(stmt, "is_client_decl")
+            )
+        )
+
+        # Test 3: Multiple cl blocks at top level
+        source = """
+cl {
+    let a = 1;
+}
+let b = 2;
+cl {
+    let c = 3;
+}
+"""
+        module = JacProgram().parse_str(source, "test.jac")
+        body = module.body
+
+        # Now we have: ClientBlock, GlobalVars, ClientBlock
+        self.assertEqual(len(body), 3)
+        self.assertIsInstance(body[0], uni.ClientBlock)
+        self.assertIsInstance(body[1], uni.GlobalVars)
+        self.assertIsInstance(body[2], uni.ClientBlock)
+        self.assertFalse(getattr(body[1], "is_client_decl", False))  # let b is not client
+
+        # Test 4: Empty client block
+        source = """
+cl {}
+let x = 1;
+"""
+        module = JacProgram().parse_str(source, "test.jac")
+        body = module.body
+
+        # Empty ClientBlock followed by GlobalVars
+        self.assertEqual(len(body), 2)
+        self.assertIsInstance(body[0], uni.ClientBlock)
+        self.assertEqual(len(body[0].body), 0)  # Empty
+        self.assertIsInstance(body[1], uni.GlobalVars)
+        self.assertFalse(getattr(body[1], "is_client_decl", False))
+
+        # Test 5: Various statement types with single cl marker
+        source = """
+cl import foo;
+cl obj MyClass {}
+cl test my_test {}
+"""
+        module = JacProgram().parse_str(source, "test.jac")
+        body = module.body
+
+        self.assertEqual(len(body), 3)
+        self.assertTrue(
+            all(
+                getattr(stmt, "is_client_decl", False)
+                for stmt in body
+                if hasattr(stmt, "is_client_decl")
+            )
+        )
+
+    def test_anonymous_ability_decl(self) -> None:
+        """Test that abilities can be declared without explicit names.
+
+        Tests:
+        - Anonymous ability with entry event
+        - Anonymous ability with exit event
+        - Named ability still works
+        - Autogenerated names are unique based on location
+        """
+        # Test 1: Anonymous ability with entry event
+        source = """
+walker MyWalker {
+    can with entry {
+        print("hello");
+    }
+}
+"""
+        prog = JacProgram()
+        module = prog.parse_str(source, "test.jac")
+        self.assertFalse(prog.errors_had)
+
+        # Find the walker and its ability
+        walker = module.body[0]
+        abilities = [stmt for stmt in walker.body if type(stmt).__name__ == "Ability"]
+        self.assertEqual(len(abilities), 1)
+
+        ability = abilities[0]
+        self.assertIsNone(ability.name_ref)
+        # Check that py_resolve_name generates a name
+        resolved_name = ability.py_resolve_name()
+        self.assertTrue(resolved_name.startswith("__ability_entry_"))
+        self.assertTrue(resolved_name.endswith("__"))
+
+        # Test 2: Anonymous ability with exit event
+        source = """
+walker MyWalker {
+    can with exit {
+        print("goodbye");
+    }
+}
+"""
+        prog = JacProgram()
+        module = prog.parse_str(source, "test.jac")
+        self.assertFalse(prog.errors_had)
+
+        walker = module.body[0]
+        abilities = [stmt for stmt in walker.body if type(stmt).__name__ == "Ability"]
+        ability = abilities[0]
+        resolved_name = ability.py_resolve_name()
+        self.assertTrue(resolved_name.startswith("__ability_exit_"))
+
+        # Test 3: Named ability still works
+        source = """
+walker MyWalker {
+    can my_ability with entry {
+        print("named");
+    }
+}
+"""
+        prog = JacProgram()
+        module = prog.parse_str(source, "test.jac")
+        self.assertFalse(prog.errors_had)
+
+        walker = module.body[0]
+        abilities = [stmt for stmt in walker.body if type(stmt).__name__ == "Ability"]
+        ability = abilities[0]
+        self.assertIsNotNone(ability.name_ref)
+        self.assertEqual(ability.py_resolve_name(), "my_ability")
+
+        # Test 4: Multiple anonymous abilities generate unique names
+        source = """
+walker MyWalker {
+    can with entry {
+        print("first");
+    }
+    can with entry {
+        print("second");
+    }
+}
+"""
+        prog = JacProgram()
+        module = prog.parse_str(source, "test.jac")
+        self.assertFalse(prog.errors_had)
+
+        walker = module.body[0]
+        abilities = [stmt for stmt in walker.body if type(stmt).__name__ == "Ability"]
+        self.assertEqual(len(abilities), 2)
+
+        name1 = abilities[0].py_resolve_name()
+        name2 = abilities[1].py_resolve_name()
+        # Names should be different due to different locations
+        self.assertNotEqual(name1, name2)
+
+    def test_cl_import_with_prefix(self) -> None:
+        """Test that cl import with jac: prefix is properly parsed.
+
+        Tests:
+        - cl import from jac:client_runtime syntax
+        - Prefix field is captured in ModulePath
+        - Import is marked as client-side
+        """
+        source = """
+cl import from jac:client_runtime {
+    jacLogin,
+    jacLogout,
+    renderJsxTree,
+}
+"""
+        prog = JacProgram()
+        module = prog.parse_str(source, "test.jac")
+        self.assertFalse(prog.errors_had, f"Parser errors: {prog.errors_had}")
+
+        # Find the import statement
+        imports = [stmt for stmt in module.body if type(stmt).__name__ == "Import"]
+        self.assertEqual(len(imports), 1, "Should have one import statement")
+
+        import_stmt = imports[0]
+
+        # Check that it's a client import
+        self.assertTrue(
+            getattr(import_stmt, "is_client_decl", False),
+            "Import should be marked as client-side"
+        )
+
+        # Check the from_loc has the prefix
+        self.assertIsNotNone(import_stmt.from_loc, "Import should have from_loc")
+        self.assertIsNotNone(
+            import_stmt.from_loc.prefix, "ModulePath should have prefix"
+        )
+        self.assertEqual(
+            import_stmt.from_loc.prefix.value,
+            "jac",
+            "Prefix should be 'jac'"
+        )
+
+        # Check the module path
+        self.assertEqual(
+            import_stmt.from_loc.dot_path_str,
+            "client_runtime",
+            "Module path should be 'client_runtime'"
+        )
+
+        # Check the imported items
+        self.assertEqual(len(import_stmt.items), 3, "Should have 3 imported items")
+        item_names = [item.name.value for item in import_stmt.items]
+        self.assertIn("jacLogin", item_names)
+        self.assertIn("jacLogout", item_names)
+        self.assertIn("renderJsxTree", item_names)
+
 
 TestLarkParser.self_attach_micro_tests()

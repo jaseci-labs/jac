@@ -1,5 +1,7 @@
 """Jaseci Models."""
 
+from __future__ import annotations
+
 from dataclasses import MISSING, asdict, dataclass, field, fields
 from typing import Any, Mapping, Type, cast, get_type_hints
 
@@ -60,7 +62,7 @@ class User:
         __indexes__ = [{"keys": ["email"], "unique": True}]
 
         @classmethod
-        def __document__(cls, doc: Mapping[str, Any]) -> "User":
+        def __document__(cls, doc: Mapping[str, Any]) -> User:
             """
             Return parsed User from document.
 
@@ -76,7 +78,7 @@ class User:
             )
 
         @classmethod
-        def find_by_email(cls, email: str) -> "User | None":
+        def find_by_email(cls, email: str) -> User | None:
             """Retrieve user via email."""
             return cls.find_one(filter={"email": email}, projection={})
 

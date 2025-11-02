@@ -30,29 +30,31 @@ class ImportPassPassTests(TestCase):
         (prog := JacProgram()).compile(self.fixture_abs_path("autoimpl.jac"))
         num_modules = len(list(prog.mod.hub.values())[0].impl_mod)
         mod_names = [i.name for i in list(prog.mod.hub.values())[0].impl_mod]
-        self.assertEqual(num_modules, 4)
+        self.assertEqual(num_modules, 5)
         self.assertIn("getme.impl", mod_names)
         self.assertIn("autoimpl.impl", mod_names)
         self.assertIn("autoimpl.something.else.impl", mod_names)
+        self.assertIn("autoimpl.cl", mod_names)
 
     def test_import_include_auto_impl(self) -> None:
         """Basic test for pass."""
         (prog := JacProgram()).build(self.fixture_abs_path("incautoimpl.jac"))
         num_modules = len(list(prog.mod.hub.values())[1].impl_mod) + 1
         mod_names = [i.name for i in list(prog.mod.hub.values())[1].impl_mod]
-        self.assertEqual(num_modules, 5)
+        self.assertEqual(num_modules, 6)
         self.assertEqual("incautoimpl", list(prog.mod.hub.values())[0].name)
         self.assertEqual("autoimpl", list(prog.mod.hub.values())[1].name)
         self.assertIn("getme.impl", mod_names)
         self.assertIn("autoimpl.impl", mod_names)
         self.assertIn("autoimpl.something.else.impl", mod_names)
+        self.assertIn("autoimpl.cl", mod_names)
 
     def test_annexalbe_by_discovery(self) -> None:
         """Basic test for pass."""
         (prog := JacProgram()).build(self.fixture_abs_path("incautoimpl.jac"))
         count = 0
         all_mods = prog.mod.hub.values()
-        self.assertEqual(len(all_mods), 6)
+        self.assertEqual(len(all_mods), 7)
         for main_mod in all_mods:
             for i in main_mod.impl_mod:
                 if i.name not in ["autoimpl", "incautoimpl"]:
@@ -60,7 +62,24 @@ class ImportPassPassTests(TestCase):
                     self.assertEqual(
                         i.annexable_by, self.fixture_abs_path("autoimpl.jac")
                     )
-        self.assertEqual(count, 4)
+        self.assertEqual(count, 5)
+
+    def test_cl_annex_marked_client(self) -> None:
+        """Ensure .cl.jac annex files are autoloaded and marked client."""
+
+        (prog := JacProgram()).compile(self.fixture_abs_path("autoimpl.jac"))
+        main_mod = list(prog.mod.hub.values())[0]
+        cl_mod = next(
+            (mod for mod in main_mod.impl_mod if mod.name.endswith(".cl")), None
+        )
+        self.assertIsNotNone(cl_mod, "Expected .cl annex module to be loaded")
+        abilities = cl_mod.get_all_sub_nodes(uni.Ability)
+        self.assertTrue(abilities, "Expected abilities in .cl annex module")
+        for ability in abilities:
+            self.assertTrue(
+                ability.is_client_decl,
+                "All client annex abilities should be marked as client declarations",
+            )
 
     @unittest.skip("TODO: Fix when we have the type checker")
     def test_py_raise_map(self) -> None:

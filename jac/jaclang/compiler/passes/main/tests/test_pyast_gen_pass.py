@@ -153,6 +153,58 @@ class PyastGenPassTests(TestCaseMicroSuite, AstSyncTestMixin):
 
         self.assertFalse(out.errors_had)
 
+    def test_iife_fixture_executes(self) -> None:
+        """Ensure IIFE and block lambdas lower to executable Python."""
+        fixture_path = self.lang_fixture_abs_path("iife_functions.jac")
+        code_gen = (prog := JacProgram()).compile(fixture_path)
+        self.assertFalse(prog.errors_had)
+        if code_gen.gen.py_ast and isinstance(code_gen.gen.py_ast[0], ast3.Module):
+            module_ast = code_gen.gen.py_ast[0]
+            compiled = compile(module_ast, filename="<ast>", mode="exec")
+            captured = io.StringIO()
+            original_stdout = sys.stdout
+            try:
+                sys.stdout = captured
+                module = types.ModuleType("__main__")
+                module.__dict__["__file__"] = code_gen.loc.mod_path
+                exec(compiled, module.__dict__)
+            finally:
+                sys.stdout = original_stdout
+            output = captured.getvalue()
+            self.assertIn("Test 1 - Basic IIFE: 42", output)
+            self.assertIn(
+                "Test 6 - IIFE returning function, adder(5): 15",
+                output,
+            )
+            self.assertIn("All IIFE tests completed!", output)
+
+    def test_string_literal_import_requires_cl(self) -> None:
+        """Test that string literal imports require cl prefix."""
+        # Test that string literal import without cl produces an error
+        code = '''import from "react-dom" { render }'''
+        prog = JacProgram()
+        prog.compile(file_path="test.jac", use_str=code)
+
+        # Should have an error about string literals requiring cl
+        self.assertTrue(prog.errors_had)
+        error_messages = [str(e) for e in prog.errors_had]
+        self.assertTrue(
+            any("String literal imports" in msg and "client (cl) imports" in msg for msg in error_messages),
+            f"Expected error about string literal imports requiring cl, got: {error_messages}"
+        )
+
+    def test_string_literal_import_works_with_cl(self) -> None:
+        """Test that string literal imports work correctly with cl prefix."""
+        # Test that string literal import with cl works
+        code = '''cl {
+    import from "react-dom" { render }
+}'''
+        prog = JacProgram()
+        prog.compile(file_path="test.jac", use_str=code)
+
+        # Should not have errors
+        self.assertFalse(prog.errors_had, f"Unexpected errors: {[str(e) for e in prog.errors_had]}")
+
     def parent_scrub(self, node: uni.UniNode) -> bool:
         """Validate every node has parent."""
         success = True

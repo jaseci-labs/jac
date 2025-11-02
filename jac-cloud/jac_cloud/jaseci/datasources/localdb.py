@@ -1,5 +1,7 @@
 """Monty Implementations."""
 
+from __future__ import annotations
+
 from contextvars import ContextVar
 from threading import current_thread
 from typing import Any, Mapping, Sequence
@@ -24,7 +26,7 @@ MONTY_CLIENT = ContextVar[_MontyClient | None]("MONTY_CLIENT", default=None)
 class MontyClientSession:
     """Monty Client Session."""
 
-    def start_transaction(self) -> "MontyClientSession":
+    def start_transaction(self) -> MontyClientSession:
         """Start transaction."""
         return self
 
@@ -34,7 +36,7 @@ class MontyClientSession:
     def commit_transaction(self) -> None:
         """Commit transaction."""
 
-    def __enter__(self) -> "MontyClientSession":
+    def __enter__(self) -> MontyClientSession:
         """Enter execution."""
         return self
 

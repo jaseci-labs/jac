@@ -1,5 +1,7 @@
 """Unit test utilities for JacLangServer."""
 
+from __future__ import annotations
+
 import os
 import tempfile
 from typing import Optional
@@ -44,16 +46,16 @@ def create_ls_with_workspace(file_path: str):
 
 
 @dataclass
-class TestFile:
+class JacTestFile:
     """Encapsulates test file information and operations."""
-    
+
     path: str
     uri: str
     code: str
     version: int = 1
-    
+
     @classmethod
-    def from_template(cls, template_name: str, content: str = "") -> "TestFile":
+    def from_template(cls, template_name: str, content: str = "") -> JacTestFile:
         """Create a test file from a template."""
         code = load_jac_template(cls._get_template_path(template_name), content)
         temp_path = create_temp_jac_file(code)
@@ -84,8 +86,8 @@ class TestFile:
 
 class LanguageServerTestHelper:
     """Helper class for language server testing operations."""
-    
-    def __init__(self, ls, test_file: TestFile):
+
+    def __init__(self, ls, test_file: JacTestFile):
         self.ls = ls
         self.test_file = test_file
     

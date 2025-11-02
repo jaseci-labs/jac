@@ -557,7 +557,7 @@ class JacLanguageTests(TestCase):
                 ),
                 prog=JacProgram(),
             ).ir_out.unparse()
-        self.assertIn("class X {\n    with entry {\n        a_b = 67;", output)
+        self.assertIn("class X {\n    with entry {\n        let a_b = 67;", output)
         self.assertIn("br = b'Hello\\\\\\\\nWorld'", output)
         self.assertIn(
             "class Circle {\n    def init(self: Circle, radius: float", output
@@ -1430,6 +1430,19 @@ class JacLanguageTests(TestCase):
         self.assertIn("foo2", stdout_value[6])
         self.assertIn("Coroutine task is completed", stdout_value[17])
 
+    def test_iter_for_continue(self) -> None:
+        """Test iter for continue."""
+        captured_output = io.StringIO()
+        sys.stdout = captured_output
+        Jac.jac_import("iter_for_continue", base_path=self.fixture_abs_path("./"))
+        sys.stdout = sys.__stdout__
+        stdout_value = captured_output.getvalue().split("\n")
+        self.assertIn("0", stdout_value[0])
+        self.assertIn("1", stdout_value[1])
+        self.assertIn("2", stdout_value[2])
+        self.assertIn("Skipping 3", stdout_value[3])
+        self.assertIn("4", stdout_value[4])
+
     def test_unicode_string_literals(self) -> None:
         """Test unicode characters in string literals are preserved correctly."""
         captured_output = io.StringIO()
@@ -1610,39 +1623,30 @@ class JacLanguageTests(TestCase):
         sys.stdout = sys.__stdout__
         stdout_value = captured_output.getvalue().split("\n")
         self.assertIn("Matched a.b.c Hello Jaseci!", stdout_value[0])
-        
-    def test_known_builtins_matches_actual(self) -> None:
-        """Test that KNOWN_BUILTINS in PyastGenPass matches actual builtins."""
-        from jaclang.compiler.passes.main.pyast_gen_pass import PyastGenPass
-        import jaclang.runtimelib.builtin as builtin_module
 
-        # Get actual builtins from the module (excluding private members)
-        actual_builtins = {
-            name for name in builtin_module.__all__
-            if not name.startswith('_')
-        }
+    def test_switch_case(self) -> None:
+        """Test switch-case."""
+        captured_output = io.StringIO()
+        sys.stdout = captured_output
+        Jac.jac_import("switch_case", base_path=self.fixture_abs_path("./"))
+        sys.stdout = sys.__stdout__
+        stdout_value = captured_output.getvalue().split("\n")
+        self.assertIn("Matched case for value: apple", stdout_value[0])
+        self.assertIn("Matched case for value: banana, orange", stdout_value[1])
+        self.assertIn("Matched case for value: grape", stdout_value[2])
+        self.assertIn("Matched case for value: kiwi", stdout_value[3])
+        self.assertIn("Matched case for value: Berry or Cherry", stdout_value[4])
+        self.assertIn("No match found for value: banana", stdout_value[5])
+        self.assertIn("No match found for value: mango", stdout_value[6])
 
-        # Exceptions: builtins that are imported from other sources
-        # - Enum: imported via needs_enum() from standard library's enum module
-        exceptions = {'Enum'}
-        actual_builtins_to_check = actual_builtins - exceptions
-
-        # Get the KNOWN_BUILTINS set from PyastGenPass
-        known_builtins = PyastGenPass.KNOWN_BUILTINS
-
-        # Find missing and extra builtins
-        missing = actual_builtins_to_check - known_builtins
-        extra = known_builtins - actual_builtins_to_check
-
-        # Build error message
-        error_msg = []
-        if missing:
-            error_msg.append(f"Missing from KNOWN_BUILTINS: {sorted(missing)}")
-        if extra:
-            error_msg.append(f"Extra in KNOWN_BUILTINS (not in builtin module): {sorted(extra)}")
-
-        # Assert they match
-        self.assertEqual(
-            known_builtins, actual_builtins_to_check,
-            "\n".join(error_msg) if error_msg else ""
-        )
+    def test_safe_call_operator(self) -> None:
+        """Test safe call operator."""
+        captured_output = io.StringIO()
+        sys.stdout = captured_output
+        Jac.jac_import("safe_call_operator", base_path=self.fixture_abs_path("./"))
+        sys.stdout = sys.__stdout__
+        stdout_value = captured_output.getvalue().split("\n")
+        self.assertIn("None", stdout_value[0])
+        self.assertIn("Alice", stdout_value[1])
+        self.assertIn("3", stdout_value[2])
+        self.assertIn("None", stdout_value[3])

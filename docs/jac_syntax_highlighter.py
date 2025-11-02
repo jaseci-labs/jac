@@ -113,6 +113,7 @@ class JacLexer(RegexLexer):
             (r"#.*$", Comment.Single),
             (r"\\\n", Text),
             (r"\\", Text),
+            include("jsx"),
             include("keywords"),
             include("soft-keywords"),
             (r"(static\s+can)((?:\s|\\\s)+)", bygroups(Keyword, Text), "funcname"),
@@ -156,6 +157,81 @@ class JacLexer(RegexLexer):
                 bygroups(Keyword.Namespace, Text, Name.Namespace),
                 "fromimport",
             ),
+            include("expr"),
+        ],
+        "jsx": [
+            # JSX Fragment: <>...</>
+            (r"(<>)", Punctuation, "jsx-fragment"),
+            # JSX opening tag: <Component or <div
+            (
+                r"(<)([A-Z][A-Za-z0-9_]*(?:\.[A-Z][A-Za-z0-9_]*)*)",
+                bygroups(Punctuation, Name.Class),
+                "jsx-tag",
+            ),
+            (r"(<)([a-z][A-Za-z0-9_\-]*)", bygroups(Punctuation, Name.Tag), "jsx-tag"),
+        ],
+        "jsx-fragment": [
+            (r"(</>)", Punctuation, "#pop"),
+            include("jsx-children"),
+        ],
+        "jsx-tag": [
+            # Self-closing tag end: />
+            (r"(/>)", Punctuation, "#pop"),
+            # Opening tag end: >
+            (r"(>)", Punctuation, "jsx-children-tag"),
+            # Attributes
+            (r"\s+", Whitespace),
+            # Attribute name (including hyphenated names like data-id, aria-label)
+            (
+                r"([A-Za-z_][-A-Za-z0-9_]*)(=)",
+                bygroups(Name.Attribute, Operator),
+                "jsx-attr-value",
+            ),
+            # Attribute without value
+            (r"[A-Za-z_][-A-Za-z0-9_]*", Name.Attribute),
+            # Spread attribute: {...}
+            (r"(\{)(\.\.\.)", bygroups(Punctuation, Operator), "jsx-spread"),
+        ],
+        "jsx-attr-value": [
+            # String values
+            (r'"[^"]*"', String, "#pop"),
+            (r"'[^']*'", String, "#pop"),
+            # Expression values: {expr}
+            (r"\{", Punctuation, "jsx-expr-attr"),
+        ],
+        "jsx-spread": [
+            (r"\}", Punctuation, "#pop"),
+            include("expr"),
+        ],
+        "jsx-expr-attr": [
+            (r"\}", Punctuation, "#pop:2"),
+            include("expr"),
+        ],
+        "jsx-children-tag": [
+            # Closing tag: </Component>
+            (
+                r"(</)([A-Z][A-Za-z0-9_]*(?:\.[A-Z][A-Za-z0-9_]*)*)(>)",
+                bygroups(Punctuation, Name.Class, Punctuation),
+                "#pop:2",
+            ),
+            (
+                r"(</)([a-z][A-Za-z0-9_\-]*)(>)",
+                bygroups(Punctuation, Name.Tag, Punctuation),
+                "#pop:2",
+            ),
+            include("jsx-children"),
+        ],
+        "jsx-children": [
+            # Nested JSX elements
+            include("jsx"),
+            # JSX expressions: {expr}
+            (r"\{", Punctuation, "jsx-expr-child"),
+            # Text content (anything except < > { })
+            (r"[^<>{}\n]+", String),
+            (r"\n", Whitespace),
+        ],
+        "jsx-expr-child": [
+            (r"\}", Punctuation, "#pop"),
             include("expr"),
         ],
         "expr": [
@@ -341,6 +417,7 @@ class JacLexer(RegexLexer):
                         "raise",
                         "nonlocal",
                         "return",
+                        "report",
                         "try",
                         "while",
                         "yield",
@@ -366,6 +443,7 @@ class JacLexer(RegexLexer):
                         "protect",
                         "has",
                         "check",
+                        "cl",
                     ),
                     suffix=r"\b",
                 ),
@@ -377,7 +455,7 @@ class JacLexer(RegexLexer):
             # `match`, `case` and `_` soft keywords
             (
                 r"(^[ \t]*)"  # at beginning of line + possible indentation
-                r"(match|case)\b"  # a possible keyword
+                r"(match|case|switch|default)\b"  # a possible keyword
                 r"(?![ \t]*(?:"  # not followed by...
                 r"[:,;=^&|@~)\]}]|(?:"
                 + r"|".join(  # characters and keywords that mean this isn't

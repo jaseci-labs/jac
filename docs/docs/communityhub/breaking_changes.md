@@ -6,6 +6,29 @@ This page documents significant breaking changes in Jac and Jaseci that may affe
 
 MTLLM library is now deprecated and replaced by the byLLM package. In all place where `mtllm` was used before can be replaced with `byllm`.
 
+### Version 0.8.10
+
+#### 1. byLLM Imports Moved to `byllm.lib`
+
+All byLLM exports have been moved under the `byllm.lib` module to enable lazy loading and faster startup. Direct imports from `byllm` are removed.
+
+
+**Before**
+
+```jac
+import from byllm { Model }
+
+glob llm = Model(model_name="gpt-4o-mini", verbose=True);
+```
+
+**After**
+
+```jac
+import from byllm.lib { Model }
+
+glob llm = Model(model_name="gpt-4o-mini", verbose=True);
+```
+
 ### Version 0.8.8
 
 #### 1. `check` Keyword Removed - Use `assert` in Test Blocks

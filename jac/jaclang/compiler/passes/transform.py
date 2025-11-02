@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 from abc import ABC, abstractmethod
+from threading import Event
 from typing import Generic, Optional, TYPE_CHECKING, Type, TypeVar
 
 from jaclang.compiler.codeinfo import CodeLocInfo
@@ -70,7 +71,9 @@ class Alert:
 class Transform(ABC, Generic[T, R]):
     """Abstract class for IR passes."""
 
-    def __init__(self, ir_in: T, prog: JacProgram) -> None:
+    def __init__(
+        self, ir_in: T, prog: JacProgram, cancel_token: Event | None = None
+    ) -> None:
         """Initialize pass."""
         self.logger = logging.getLogger(self.__class__.__name__)
         self.errors_had: list[Alert] = []
@@ -79,6 +82,7 @@ class Transform(ABC, Generic[T, R]):
         self.prog = prog
         self.time_taken = 0.0
         self.ir_in: T = ir_in
+        self.cancel_token = cancel_token
         self.pre_transform()
         self.ir_out: R = self.timed_transform(ir_in=ir_in)
         self.post_transform()
@@ -135,6 +139,10 @@ class Transform(ABC, Generic[T, R]):
     def log_info(self, msg: str) -> None:
         """Log info."""
         self.logger.info(msg)
+
+    def is_canceled(self) -> bool:
+        """Check if the pass has been canceled."""
+        return self.cancel_token is not None and self.cancel_token.is_set()
 
     def ice(self, msg: str = "Something went horribly wrong!") -> RuntimeError:
         """Pass Error."""

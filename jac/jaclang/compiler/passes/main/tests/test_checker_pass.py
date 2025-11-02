@@ -1,8 +1,6 @@
 
 """Tests for typechecker pass (the pyright implementation)."""
 
-from tempfile import NamedTemporaryFile
-
 from jaclang.utils.test import TestCase
 from jaclang.compiler.passes.main import TypeCheckPass
 from jaclang.compiler.program import JacProgram
@@ -270,6 +268,37 @@ class TypeCheckerPassTests(TestCase):
         for i, expected in enumerate(expected_errors):
             self._assert_error_pretty_found(expected, program.errors_had[i].pretty_print())
 
+    def test_class_construct(self) -> None:
+        program = JacProgram()
+        path = self.fixture_abs_path("checker_class_construct.jac")
+        mod = program.compile(path)
+        TypeCheckPass(ir_in=mod, prog=program)
+        self.assertEqual(len(program.errors_had), 3)
+
+        expected_errors = [
+            """
+            Cannot assign <class float> to parameter 'color' of type <class str>
+                    with entry {
+                        c1 = Circle1(RAD);
+                                    ^^^
+            """,
+            """
+            Not all required parameters were provided in the function call: 'age'
+                    with entry {
+                    c2 = Square(length);
+                         ^^^^^^^^^^^^^^
+            """,
+            """
+            Not all required parameters were provided in the function call: 'name'
+                    c = Person(name=name, age=25);
+                    c = Person();
+                        ^^^^^^^^
+            """,
+        ]
+
+        for i, expected in enumerate(expected_errors):
+            self._assert_error_pretty_found(expected, program.errors_had[i].pretty_print())
+
     def test_self_type_inference(self) -> None:
         path = self.fixture_abs_path("checker_self_type.jac")
         program = JacProgram()
@@ -328,6 +357,40 @@ class TypeCheckerPassTests(TestCase):
             animal_func(lion);       # <-- Ok
             animal_func(not_animal); # <-- Error
                         ^^^^^^^^^^
+        """, program.errors_had[0].pretty_print())
+
+    def test_checker_member_access(self) -> None:
+        path = self.fixture_abs_path("symtab_build.jac")
+        program = JacProgram()
+        mod = program.compile(path)
+        TypeCheckPass(ir_in=mod, prog=program)
+        self.assertEqual(
+            len(mod.sym_tab.names_in_scope.values()),
+            2,
+        )
+        mod_scope_symbols = ['Symbol(alice', 'Symbol(Person']
+        for sym in mod_scope_symbols:
+            self.assertIn(sym, str(mod.sym_tab.names_in_scope.values()))
+        self.assertEqual(
+            len(mod.sym_tab.kid_scope[0].names_in_scope.values()),
+            5,
+        )
+        kid_scope_symbols = [
+            'Symbol(age',
+            'Symbol(greet',
+            'Symbol(name,',
+            'Symbol(create_person',
+            'Symbol(class_info',
+        ]
+        for sym in kid_scope_symbols:
+            self.assertIn(sym, str(mod.sym_tab.kid_scope[0].names_in_scope.values()))
+        age_sym = mod.sym_tab.kid_scope[0].lookup("age")
+        assert age_sym is not None
+        self.assertIn('(NAME, age, 23:11 - 23:14)', str(age_sym.uses))
+        self.assertEqual(len(program.errors_had), 1)
+        self._assert_error_pretty_found("""
+            alice.age = '909'; # <-- Error
+            ^^^^^^^^^^^^^^^^^^
         """, program.errors_had[0].pretty_print())
 
     def test_checker_import_missing_module(self) -> None:

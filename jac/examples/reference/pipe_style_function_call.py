@@ -1,6 +1,6 @@
 """Pipe-style function call: Pipe-style function invocation."""
 from __future__ import annotations
-from jaclang.lib import Node, Path, Root, Walker, build_edge, connect, disengage, field, on_entry, refs, root, spawn, visit
+from jaclang.lib import Node, OPath, Root, Walker, build_edge, connect, disengage, field, on_entry, refs, root, spawn, visit
 
 class Task(Node):
     name: str
@@ -12,25 +12,25 @@ class SimpleWalker(Walker):
     @on_entry
     def start(self, here: Root) -> None:
         print('SimpleWalker: Starting at root')
-        visit(self, refs(Path(here).edge_out().visit()))
+        visit(self, refs(OPath(here).edge_out().visit()))
 
     @on_entry
     def process(self, here: Task) -> None:
         self.visited_names.append(here.name)
         print(f'  Processing: {here.name} (priority {here.priority})')
-        visit(self, refs(Path(here).edge_out().visit()))
+        visit(self, refs(OPath(here).edge_out().visit()))
 
 class BasicSpawn(Walker):
 
     @on_entry
     def start(self, here: Root) -> None:
         print('BasicSpawn: started at root')
-        visit(self, refs(Path(here).edge_out().visit()))
+        visit(self, refs(OPath(here).edge_out().visit()))
 
     @on_entry
     def handle_task(self, here: Task) -> None:
         print(f'  BasicSpawn at: {here.name}')
-        visit(self, refs(Path(here).edge_out().visit()))
+        visit(self, refs(OPath(here).edge_out().visit()))
 
 class DepthFirst(Walker):
     depth: int = 0
@@ -38,13 +38,13 @@ class DepthFirst(Walker):
     @on_entry
     def start(self, here: Root) -> None:
         print('DepthFirst: root')
-        visit(self, refs(Path(here).edge_out().visit()))
+        visit(self, refs(OPath(here).edge_out().visit()))
 
     @on_entry
     def process(self, here: Task) -> None:
         self.depth += 1
         print(f'  Depth-first [{self.depth}]: {here.name}')
-        visit(self, refs(Path(here).edge_out().visit()))
+        visit(self, refs(OPath(here).edge_out().visit()))
 
 class BreadthFirst(Walker):
     order: list = field(factory=lambda: [])
@@ -52,13 +52,13 @@ class BreadthFirst(Walker):
     @on_entry
     def start(self, here: Root) -> None:
         print('BreadthFirst: root')
-        visit(self, refs(Path(here).edge_out().visit()))
+        visit(self, refs(OPath(here).edge_out().visit()))
 
     @on_entry
     def process(self, here: Task) -> None:
         self.order.append(here.name)
         print(f'  Breadth-first: {here.name}')
-        visit(self, refs(Path(here).edge_out().visit()))
+        visit(self, refs(OPath(here).edge_out().visit()))
 
 class DataCollector(Walker):
     collected: list = field(factory=lambda: [])
@@ -66,19 +66,19 @@ class DataCollector(Walker):
 
     @on_entry
     def start(self, here: Root) -> None:
-        visit(self, refs(Path(here).edge_out().visit()))
+        visit(self, refs(OPath(here).edge_out().visit()))
 
     @on_entry
     def collect(self, here: Task) -> None:
         self.collected.append(here.name)
         self.sum += here.priority
-        visit(self, refs(Path(here).edge_out().visit()))
+        visit(self, refs(OPath(here).edge_out().visit()))
 
 class NodeSpawner(Walker):
 
     @on_entry
     def start(self, here: Root) -> None:
-        visit(self, refs(Path(here).edge_out().visit()))
+        visit(self, refs(OPath(here).edge_out().visit()))
 
     @on_entry
     def process(self, here: Task) -> None:
@@ -86,19 +86,19 @@ class NodeSpawner(Walker):
         if here.name == 'Task2':
             print('    Spawning SubWalker from Task2')
             spawn(here, SubWalker())
-        visit(self, refs(Path(here).edge_out().visit()))
+        visit(self, refs(OPath(here).edge_out().visit()))
 
 class SubWalker(Walker):
 
     @on_entry
     def start(self, here: Task) -> None:
         print(f'    SubWalker started at: {here.name}')
-        visit(self, refs(Path(here).edge_out().visit()))
+        visit(self, refs(OPath(here).edge_out().visit()))
 
     @on_entry
     def handle(self, here: Task) -> None:
         print(f'      SubWalker processing: {here.name}')
-        visit(self, refs(Path(here).edge_out().visit()))
+        visit(self, refs(OPath(here).edge_out().visit()))
 
 class ConstructedWalker(Walker):
     label: str
@@ -108,7 +108,7 @@ class ConstructedWalker(Walker):
     @on_entry
     def start(self, here: Root) -> None:
         print(f"ConstructedWalker '{self.label}' starting")
-        visit(self, refs(Path(here).edge_out().visit()))
+        visit(self, refs(OPath(here).edge_out().visit()))
 
     @on_entry
     def process(self, here: Task) -> None:
@@ -118,19 +118,19 @@ class ConstructedWalker(Walker):
             print(f'  [{self.label}] Max visits reached')
             disengage(self)
             return
-        visit(self, refs(Path(here).edge_out().visit()))
+        visit(self, refs(OPath(here).edge_out().visit()))
 
 class Counter(Walker):
     total: int = 0
 
     @on_entry
     def start(self, here: Root) -> None:
-        visit(self, refs(Path(here).edge_out().visit()))
+        visit(self, refs(OPath(here).edge_out().visit()))
 
     @on_entry
     def count_task(self, here: Task) -> None:
         self.total += 1
-        visit(self, refs(Path(here).edge_out().visit()))
+        visit(self, refs(OPath(here).edge_out().visit()))
 
 class Analyzer(Walker):
     high_priority: int = 0
@@ -138,7 +138,7 @@ class Analyzer(Walker):
 
     @on_entry
     def start(self, here: Root) -> None:
-        visit(self, refs(Path(here).edge_out().visit()))
+        visit(self, refs(OPath(here).edge_out().visit()))
 
     @on_entry
     def analyze(self, here: Task) -> None:
@@ -146,7 +146,7 @@ class Analyzer(Walker):
             self.high_priority += 1
         else:
             self.low_priority += 1
-        visit(self, refs(Path(here).edge_out().visit()))
+        visit(self, refs(OPath(here).edge_out().visit()))
 
 class SyntaxDemo(Walker):
 

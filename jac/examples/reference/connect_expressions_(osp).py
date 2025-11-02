@@ -1,6 +1,6 @@
 """Connect expressions (OSP): Graph edge creation and connection operators."""
 from __future__ import annotations
-from jaclang.lib import Edge, Node, Path, Root, Walker, build_edge, connect, disengage, on_entry, refs, root, spawn, visit
+from jaclang.lib import Edge, Node, OPath, Root, Walker, build_edge, connect, disengage, on_entry, refs, root, spawn, visit
 
 class Person(Node):
     name: str
@@ -100,7 +100,7 @@ class EdgeTraverser(Walker):
         connect(left=b, right=c, edge=Friend(since=2015))
         print('Graph: root->A, A-Friend->B, A-Colleague->C, B-Friend->C')
         print('Visiting all outgoing edges from root:')
-        visit(self, refs(Path(here).edge_out().visit()))
+        visit(self, refs(OPath(here).edge_out().visit()))
 
     @on_entry
     def traverse(self, here: Person) -> None:

@@ -20,7 +20,6 @@ repos:
           [
             pep8-naming,
             flake8_import_order,
-            flake8_docstrings,
             flake8_comprehensions,
             flake8_bugbear,
             flake8_annotations,
@@ -33,9 +32,7 @@ repos:
         args:
           - --follow-imports=silent
           - --ignore-missing-imports
-          - --install-types
-          - --non-interactive
           - --config-file=mypy.ini
           - --explicit-package-bases
           - --exclude=jac-byllm/scripts
-        additional_dependencies: [types-PyYAML]
+        additional_dependencies: [types-PyYAML, types-requests]

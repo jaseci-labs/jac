@@ -90,7 +90,7 @@ from __future__ import annotations
 from jaclang.lib import (
     Edge,
     Node,
-    Path,
+    OPath,
     Root,
     Walker,
     build_edge,
@@ -142,17 +142,17 @@ class FriendFinder(Walker):
             print(f"{here.name} is a friend of friend, or family")
         else:
             self.started = True
-            visit(self, refs(Path(here).edge_out().visit()))
+            visit(self, refs(OPath(here).edge_out().visit()))
         visit(
             self,
             refs(
-                Path(here).edge_out(edge=lambda i: isinstance(i, Family)).edge().visit()
+                OPath(here).edge_out(edge=lambda i: isinstance(i, Family)).edge().visit()
             ),
         )
 
     @on_entry
     def move_to_person(self, here: Root) -> None:
-        visit(self, refs(Path(here).edge_out().visit()))
+        visit(self, refs(OPath(here).edge_out().visit()))
 
 
 result = spawn(FriendFinder(), root())
@@ -276,15 +276,15 @@ visit [edge ->:Family :->];       # Visit only Family edges
 
 **In Library Mode:**
 ```python
-from jaclang.lib import visit, refs, Path
+from jaclang.lib import visit, refs, OPath
 
-visit(self, refs(Path(here).edge_out().visit()))
+visit(self, refs(OPath(here).edge_out().visit()))
 visit(
-    self, refs(Path(here).edge_out(edge=lambda i: isinstance(i, Family)).edge().visit())
+    self, refs(OPath(here).edge_out(edge=lambda i: isinstance(i, Family)).edge().visit())
 )
 ```
 
-The `Path()` class constructs traversal paths from a given node. The `edge_out()` method specifies outgoing edges to follow, while `edge_in()` specifies incoming edges. The `edge()` method filters the path to include only edges, excluding destination nodes. The `visit()` method marks the constructed path for the walker to traverse, and `refs()` converts the path into concrete node or edge references.
+The `OPath()` class constructs traversal paths from a given node. The `edge_out()` method specifies outgoing edges to follow, while `edge_in()` specifies incoming edges. The `edge()` method filters the path to include only edges, excluding destination nodes. The `visit()` method marks the constructed path for the walker to traverse, and `refs()` converts the path into concrete node or edge references.
 
 ---
 
@@ -308,7 +308,7 @@ The `Path()` class constructs traversal paths from a given node. The `edge_out()
 | `Walker` | Graph traversal agent | `class MyWalker(Walker):` |
 | `Root` | Root node type | Entry point for graphs |
 | `GenericEdge` | Generic edge when no type specified | Default edge type |
-| `Path` | Object-spatial path builder | `Path(node).edge_out()` |
+| `OPath` | Object-spatial path builder | `OPath(node).edge_out()` |
 
 ### **Decorators**
 
@@ -340,11 +340,11 @@ The `Path()` class constructs traversal paths from a given node. The `edge_out()
 | `arefs(path)` | Async path references (placeholder) | `path`: ObjectSpatialPath |
 | `filter_on(items, func)` | Filter archetype list by predicate | `items`: list of archetypes<br>`func`: filter function |
 
-### **Path Building (Methods on Path class)**
+### **Path Building (Methods on OPath class)**
 
 | Method | Description | Returns |
 |--------|-------------|---------|
-| `Path(node)` | Create path from node | ObjectSpatialPath |
+| `OPath(node)` | Create path from node | ObjectSpatialPath |
 | `.edge_out(edge, node)` | Filter outgoing edges | Self (chainable) |
 | `.edge_in(edge, node)` | Filter incoming edges | Self (chainable) |
 | `.edge_any(edge, node)` | Filter any direction | Self (chainable) |
@@ -474,13 +474,13 @@ Use lambda functions for flexible filtering:
 # Filter by edge type
 visit(
     self,
-    refs(Path(here).edge_out(edge=lambda e: isinstance(e, (Friend, Family))).visit()),
+    refs(OPath(here).edge_out(edge=lambda e: isinstance(e, (Friend, Family))).visit()),
 )
 
 # Filter by node attribute
 visit(
     self,
-    refs(Path(here).edge_out(node=lambda n: hasattr(n, "active") and n.active).visit()),
+    refs(OPath(here).edge_out(node=lambda n: hasattr(n, "active") and n.active).visit()),
 )
 ```
 
@@ -510,9 +510,9 @@ from jaclang.lib import *
 | `root ++> node` | `connect(root(), node)` |
 | `a +>: Edge :+> b` | `connect(a, b, Edge)` |
 | `W() spawn root` | `spawn(W(), root())` |
-| `visit [-->]` | `visit(self, refs(Path(here).edge_out().visit()))` |
-| `visit [<--]` | `visit(self, refs(Path(here).edge_in().visit()))` |
-| `visit [--]` | `visit(self, refs(Path(here).edge_any().visit()))` |
+| `visit [-->]` | `visit(self, refs(OPath(here).edge_out().visit()))` |
+| `visit [<--]` | `visit(self, refs(OPath(here).edge_in().visit()))` |
+| `visit [--]` | `visit(self, refs(OPath(here).edge_any().visit()))` |
 | `can f with T entry {}` | `@on_entry`<br>`def f(self, here: T): ...` |
 | `disengage;` | `disengage(self)` |
 

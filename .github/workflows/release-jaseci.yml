@@ -1,0 +1,32 @@
+name: Release jaseci to PYPI
+
+on:
+  workflow_dispatch:
+
+jobs:
+  release-jaseci:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .github/jaseci-package
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Install Poetry
+        run: |
+          pip install poetry
+
+      - name: Build package
+        run: poetry build
+
+      - name: Publish package to PyPI
+        run: |
+          poetry config pypi-token.pypi ${{ secrets.PYPI_TOKEN }}
+          poetry publish

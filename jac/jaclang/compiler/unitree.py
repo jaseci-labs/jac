@@ -18,6 +18,8 @@ from typing import (
     Sequence,
     Type,
     TypeVar,
+    Union,
+    cast,
 )
 
 
@@ -571,8 +573,19 @@ class AstAccessNode(UniNode):
             )
         )
 
+    @property
+    def public_access(self) -> bool:
+        return self.access_type == SymbolAccess.PUBLIC
+
 
 T = TypeVar("T", bound=UniNode)
+
+
+class ClientFacingNode:
+    """Mixin for nodes that can be marked as client-facing declarations."""
+
+    def __init__(self, is_client_decl: bool = False) -> None:
+        self.is_client_decl = is_client_decl
 
 
 class AstDocNode(UniNode):
@@ -905,6 +918,7 @@ class Module(AstDocNode, UniScopeNode):
         if not self.stub_only and (
             self.loc.mod_path.endswith(".impl.jac")
             or self.loc.mod_path.endswith(".test.jac")
+            or self.loc.mod_path.endswith(".cl.jac")
         ):
             head_mod_name = self.name.split(".")[0]
             potential_path = os.path.join(
@@ -914,7 +928,11 @@ class Module(AstDocNode, UniScopeNode):
             if os.path.exists(potential_path) and potential_path != self.loc.mod_path:
                 return potential_path
             annex_dir = os.path.split(os.path.dirname(self.loc.mod_path))[-1]
-            if annex_dir.endswith(".impl") or annex_dir.endswith(".test"):
+            if (
+                annex_dir.endswith(".impl")
+                or annex_dir.endswith(".test")
+                or annex_dir.endswith(".cl")
+            ):
                 head_mod_name = os.path.split(os.path.dirname(self.loc.mod_path))[
                     -1
                 ].split(".")[0]
@@ -1002,7 +1020,7 @@ class ProgramModule(UniNode):
         self.hub: dict[str, Module] = {self.loc.mod_path: main_mod} if main_mod else {}
 
 
-class GlobalVars(ElementStmt, AstAccessNode):
+class GlobalVars(ClientFacingNode, ElementStmt, AstAccessNode):
     """GlobalVars node type for Jac Ast."""
 
     def __init__(
@@ -1018,6 +1036,7 @@ class GlobalVars(ElementStmt, AstAccessNode):
         UniNode.__init__(self, kid=kid)
         AstAccessNode.__init__(self, access=access)
         AstDocNode.__init__(self, doc=doc)
+        ClientFacingNode.__init__(self)
 
     def normalize(self, deep: bool = False) -> bool:
         res = True
@@ -1029,6 +1048,8 @@ class GlobalVars(ElementStmt, AstAccessNode):
         new_kid: list[UniNode] = []
         if self.doc:
             new_kid.append(self.doc)
+        if self.is_client_decl:
+            new_kid.append(self.gen_token(Tok.KW_CLIENT))
         if self.is_frozen:
             new_kid.append(self.gen_token(Tok.KW_LET))
         else:
@@ -1043,7 +1064,7 @@ class GlobalVars(ElementStmt, AstAccessNode):
         return res
 
 
-class Test(AstSymbolNode, ElementStmt, UniScopeNode):
+class Test(ClientFacingNode, AstSymbolNode, ElementStmt, UniScopeNode):
     """Test node type for Jac Ast."""
 
     TEST_COUNT = 0
@@ -1089,6 +1110,7 @@ class Test(AstSymbolNode, ElementStmt, UniScopeNode):
         )
         AstDocNode.__init__(self, doc=doc)
         UniScopeNode.__init__(self, name=self.sym_name)
+        ClientFacingNode.__init__(self)
 
     def normalize(self, deep: bool = False) -> bool:
         res = True
@@ -1100,6 +1122,8 @@ class Test(AstSymbolNode, ElementStmt, UniScopeNode):
         new_kid: list[UniNode] = []
         if self.doc:
             new_kid.append(self.doc)
+        if self.is_client_decl:
+            new_kid.append(self.gen_token(Tok.KW_CLIENT))
         new_kid.append(self.gen_token(Tok.KW_TEST))
         new_kid.append(self.name)
         new_kid.append(self.gen_token(Tok.LBRACE))
@@ -1110,7 +1134,7 @@ class Test(AstSymbolNode, ElementStmt, UniScopeNode):
         return res
 
 
-class ModuleCode(ElementStmt, ArchBlockStmt, EnumBlockStmt):
+class ModuleCode(ClientFacingNode, ElementStmt, ArchBlockStmt, EnumBlockStmt):
     """ModuleCode node type for Jac Ast."""
 
     def __init__(
@@ -1126,6 +1150,7 @@ class ModuleCode(ElementStmt, ArchBlockStmt, EnumBlockStmt):
         UniNode.__init__(self, kid=kid)
         AstDocNode.__init__(self, doc=doc)
         EnumBlockStmt.__init__(self, is_enum_stmt=is_enum_stmt)
+        ClientFacingNode.__init__(self)
 
     def normalize(self, deep: bool = False) -> bool:
         res = True
@@ -1137,11 +1162,39 @@ class ModuleCode(ElementStmt, ArchBlockStmt, EnumBlockStmt):
         new_kid: list[UniNode] = []
         if self.doc:
             new_kid.append(self.doc)
+        if self.is_client_decl:
+            new_kid.append(self.gen_token(Tok.KW_CLIENT))
         new_kid.append(self.gen_token(Tok.KW_WITH))
         new_kid.append(self.gen_token(Tok.KW_ENTRY))
         if self.name:
             new_kid.append(self.gen_token(Tok.COLON))
             new_kid.append(self.name)
+        new_kid.append(self.gen_token(Tok.LBRACE))
+        for stmt in self.body:
+            new_kid.append(stmt)
+        new_kid.append(self.gen_token(Tok.RBRACE))
+        self.set_kids(nodes=new_kid)
+        return res
+
+
+class ClientBlock(ElementStmt):
+    """ClientBlock node type for cl { ... } blocks in Jac Ast."""
+
+    def __init__(
+        self,
+        body: Sequence[ElementStmt],
+        kid: Sequence[UniNode],
+    ) -> None:
+        self.body = list(body)
+        UniNode.__init__(self, kid=kid)
+
+    def normalize(self, deep: bool = False) -> bool:
+        res = True
+        if deep:
+            for stmt in self.body:
+                res = res and stmt.normalize(deep)
+        new_kid: list[UniNode] = []
+        new_kid.append(self.gen_token(Tok.KW_CLIENT))
         new_kid.append(self.gen_token(Tok.LBRACE))
         for stmt in self.body:
             new_kid.append(stmt)
@@ -1179,7 +1232,7 @@ class PyInlineCode(ElementStmt, ArchBlockStmt, EnumBlockStmt, CodeBlockStmt):
         return res
 
 
-class Import(ElementStmt, CodeBlockStmt):
+class Import(ClientFacingNode, ElementStmt, CodeBlockStmt):
     """Import node type for Jac Ast."""
 
     def __init__(
@@ -1197,6 +1250,7 @@ class Import(ElementStmt, CodeBlockStmt):
         UniNode.__init__(self, kid=kid)
         AstDocNode.__init__(self, doc=doc)
         CodeBlockStmt.__init__(self)
+        ClientFacingNode.__init__(self)
 
     @property
     def is_py(self) -> bool:
@@ -1250,6 +1304,8 @@ class Import(ElementStmt, CodeBlockStmt):
         new_kid: list[UniNode] = []
         if self.doc:
             new_kid.append(self.doc)
+        if self.is_client_decl:
+            new_kid.append(self.gen_token(Tok.KW_CLIENT))
         if self.is_absorb:
             new_kid.append(self.gen_token(Tok.KW_INCLUDE))
         else:
@@ -1275,14 +1331,16 @@ class ModulePath(UniNode):
 
     def __init__(
         self,
-        path: Optional[Sequence[Name]],
+        path: Optional[Sequence[Name | String]],
         level: int,
         alias: Optional[Name],
         kid: Sequence[UniNode],
+        prefix: Optional[Name] = None,
     ) -> None:
         self.path = path
         self.level = level
         self.alias = alias
+        self.prefix = prefix
         self.abs_path: Optional[str] = None
         UniNode.__init__(self, kid=kid)
 
@@ -1296,6 +1354,9 @@ class ModulePath(UniNode):
     @property
     def dot_path_str(self) -> str:
         """Get path string."""
+        if self.path and len(self.path) == 1 and isinstance(self.path[0], String):
+            # Handle string literal import path
+            return ("." * self.level) + self.path[0].lit_value
         return ("." * self.level) + ".".join(
             [p.value for p in self.path] if self.path else []
         )
@@ -1303,6 +1364,26 @@ class ModulePath(UniNode):
     def resolve_relative_path(self, target_item: Optional[str] = None) -> str:
         """Convert an import target string into a relative file path."""
         target = self.dot_path_str + (f".{target_item}" if target_item else "")
+
+        # Handle 'jac:' prefix for runtime imports
+        if self.prefix and self.prefix.value == "jac":
+            # For jac: imports, resolve relative to the jac runtime directory
+            import jaclang.runtimelib
+
+            runtime_dir = os.path.dirname(jaclang.runtimelib.__file__)
+            # Handle both .jac and .js file extensions
+            if not (target.endswith(".jac") or target.endswith(".js")):
+                # Try .jac first, then .js
+                jac_path = os.path.join(runtime_dir, target + ".jac")
+                if os.path.exists(jac_path):
+                    return jac_path
+                js_path = os.path.join(runtime_dir, target + ".js")
+                if os.path.exists(js_path):
+                    return js_path
+                # Default to .jac
+                return jac_path
+            return os.path.join(runtime_dir, target)
+
         return resolve_relative_path(target, self.loc.mod_path)
 
     def resolve_relative_path_list(self) -> list[str]:
@@ -1317,11 +1398,16 @@ class ModulePath(UniNode):
     def normalize(self, deep: bool = False) -> bool:
         res = True
         if deep:
+            if self.prefix:
+                res = res and self.prefix.normalize(deep)
             if self.path:
                 for item in self.path:
                     res = res and item.normalize(deep)
             res = res and self.alias.normalize(deep) if self.alias else res
         new_kid: list[UniNode] = []
+        if self.prefix:
+            new_kid.append(self.prefix)
+            new_kid.append(self.gen_token(Tok.COLON))
         for _ in range(self.level):
             new_kid.append(self.gen_token(Tok.DOT))
         if self.path:
@@ -1337,11 +1423,17 @@ class ModulePath(UniNode):
 
 
 class ModuleItem(UniNode):
-    """ModuleItem node type for Jac Ast."""
+    """ModuleItem node type for Jac Ast.
+
+    Name can be either:
+    - Name: for regular named imports (e.g., useState, axios)
+    - Token (KW_DEFAULT): for default imports (Category 2)
+    - Token (STAR_MUL): for namespace imports (Category 4)
+    """
 
     def __init__(
         self,
-        name: Name,
+        name: Name | Token,
         alias: Optional[Name],
         kid: Sequence[UniNode],
     ) -> None:
@@ -1378,6 +1470,7 @@ class ModuleItem(UniNode):
 
 
 class Archetype(
+    ClientFacingNode,
     ArchSpec,
     AstAccessNode,
     ArchBlockStmt,
@@ -1419,10 +1512,10 @@ class Archetype(
         ArchSpec.__init__(self, decorators=decorators)
         UniScopeNode.__init__(self, name=self.sym_name)
         CodeBlockStmt.__init__(self)
+        ClientFacingNode.__init__(self)
 
-    @property
-    def is_abstract(self) -> bool:
-        body = (
+    def _get_impl_resolved_body(self) -> list:
+        return (
             list(self.body)
             if isinstance(self.body, Sequence)
             else (
@@ -1432,7 +1525,22 @@ class Archetype(
                 else []
             )
         )
+
+    @property
+    def is_abstract(self) -> bool:
+        body = self._get_impl_resolved_body()
         return any(isinstance(i, Ability) and i.is_abstract for i in body)
+
+    def get_has_vars(self) -> list[HasVar]:
+        body = self._get_impl_resolved_body()
+        has_vars: list[HasVar] = []
+        for node in body:
+            if not isinstance(node, ArchHas):
+                continue
+            for has_ in node.vars:
+                if isinstance(has_, HasVar):
+                    has_vars.append(has_)
+        return has_vars
 
     def normalize(self, deep: bool = False) -> bool:
         res = True
@@ -1455,6 +1563,8 @@ class Archetype(
         new_kid: list[UniNode] = []
         if self.doc:
             new_kid.append(self.doc)
+        if self.is_client_decl:
+            new_kid.append(self.gen_token(Tok.KW_CLIENT))
         if self.decorators:
             new_kid.append(self.gen_token(Tok.DECOR_OP))
             for idx, dec in enumerate(self.decorators):
@@ -1646,7 +1756,14 @@ class SemDef(ElementStmt, AstSymbolNode, UniScopeNode):
         return res
 
 
-class Enum(ArchSpec, AstAccessNode, AstImplNeedingNode, ArchBlockStmt, UniScopeNode):
+class Enum(
+    ClientFacingNode,
+    ArchSpec,
+    AstAccessNode,
+    AstImplNeedingNode,
+    ArchBlockStmt,
+    UniScopeNode,
+):
     """Enum node type for Jac Ast."""
 
     def __init__(
@@ -1673,6 +1790,7 @@ class Enum(ArchSpec, AstAccessNode, AstImplNeedingNode, ArchBlockStmt, UniScopeN
         AstDocNode.__init__(self, doc=doc)
         ArchSpec.__init__(self, decorators=decorators)
         UniScopeNode.__init__(self, name=self.sym_name)
+        ClientFacingNode.__init__(self)
 
     def normalize(self, deep: bool = False) -> bool:
         res = True
@@ -1700,6 +1818,8 @@ class Enum(ArchSpec, AstAccessNode, AstImplNeedingNode, ArchBlockStmt, UniScopeN
                     new_kid.append(self.gen_token(Tok.DECOR_OP))
         if self.doc:
             new_kid.append(self.doc)
+        if self.is_client_decl:
+            new_kid.append(self.gen_token(Tok.KW_CLIENT))
         new_kid.append(self.gen_token(Tok.KW_ENUM))
         if self.access:
             new_kid.append(self.access)
@@ -1730,6 +1850,7 @@ class Enum(ArchSpec, AstAccessNode, AstImplNeedingNode, ArchBlockStmt, UniScopeN
 
 
 class Ability(
+    ClientFacingNode,
     AstAccessNode,
     ElementStmt,
     AstAsyncNode,
@@ -1742,7 +1863,7 @@ class Ability(
 
     def __init__(
         self,
-        name_ref: NameAtom,
+        name_ref: Optional[NameAtom],
         is_async: bool,
         is_override: bool,
         is_static: bool,
@@ -1763,10 +1884,36 @@ class Ability(
 
         UniNode.__init__(self, kid=kid)
         AstImplNeedingNode.__init__(self, body=body)
+
+        # Create a synthetic name_ref if none provided
+        if name_ref is None:
+            # Extract location info from kid for positioning
+            # Note: kid should always contain at least KW_CAN token from parser
+            first_tok = kid[0] if kid and isinstance(kid[0], Token) else None
+            if first_tok is None:
+                raise ValueError(
+                    "Cannot create synthetic name_ref without location info."
+                )
+            synthetic_name_ref = Name(
+                orig_src=first_tok.orig_src,
+                name=Tok.NAME,
+                value=self.py_resolve_name(),
+                line=first_tok.line_no,
+                end_line=first_tok.end_line,
+                col_start=first_tok.c_start,
+                col_end=first_tok.c_end,
+                pos_start=first_tok.pos_start,
+                pos_end=first_tok.pos_end,
+                is_enum_stmt=False,
+            )
+            name_spec_for_init: Name | NameAtom = synthetic_name_ref
+        else:
+            name_spec_for_init = name_ref
+
         AstSymbolNode.__init__(
             self,
             sym_name=self.py_resolve_name(),
-            name_spec=name_ref,
+            name_spec=name_spec_for_init,
             sym_category=SymbolType.ABILITY,
         )
         AstAccessNode.__init__(self, access=access)
@@ -1774,10 +1921,19 @@ class Ability(
         AstAsyncNode.__init__(self, is_async=is_async)
         UniScopeNode.__init__(self, name=self.sym_name)
         CodeBlockStmt.__init__(self)
+        ClientFacingNode.__init__(self)
 
     @property
     def is_method(self) -> bool:
         return self.method_owner is not None
+
+    @property
+    def is_cls_method(self) -> bool:
+        """Check if this ability is a class method."""
+        return self.is_method and any(
+            isinstance(dec, Name) and dec.sym_name == "classmethod"
+            for dec in self.decorators or ()
+        )
 
     @property
     def is_def(self) -> bool:
@@ -1819,7 +1975,18 @@ class Ability(
         return mn, mx
 
     def py_resolve_name(self) -> str:
-        if isinstance(self.name_ref, Name):
+        if self.name_ref is None:
+            # Generate anonymous name based on event type and location
+            event_type = (
+                "entry"
+                if isinstance(self.signature, EventSignature)
+                and self.signature.event.name == Tok.KW_ENTRY
+                else "exit"
+            )
+            return (
+                f"__ability_{event_type}_{self.loc.first_line}_{self.loc.col_start}__"
+            )
+        elif isinstance(self.name_ref, Name):
             return self.name_ref.value
         elif isinstance(self.name_ref, SpecialVarRef):
             return self.name_ref.py_resolve_name()
@@ -1829,7 +1996,7 @@ class Ability(
     def normalize(self, deep: bool = False) -> bool:
         res = True
         if deep:
-            res = self.name_ref.normalize(deep)
+            res = self.name_ref.normalize(deep) if self.name_ref else res
             res = res and self.access.normalize(deep) if self.access else res
             res = res and self.signature.normalize(deep) if self.signature else res
             if isinstance(self.body, ImplDef):
@@ -1845,6 +2012,8 @@ class Ability(
         new_kid: list[UniNode] = []
         if self.doc:
             new_kid.append(self.doc)
+        if self.is_client_decl:
+            new_kid.append(self.gen_token(Tok.KW_CLIENT))
         if self.decorators:
             new_kid.append(self.gen_token(Tok.DECOR_OP))
             for idx, dec in enumerate(self.decorators):
@@ -1865,7 +2034,8 @@ class Ability(
         )
         if self.access:
             new_kid.append(self.access)
-        new_kid.append(self.name_ref)
+        if self.name_ref:
+            new_kid.append(self.name_ref)
         if self.signature:
             new_kid.append(self.signature)
         if self.is_genai_ability:
@@ -1947,6 +2117,8 @@ class FuncSignature(UniNode):
             new_kid = new_kid[:-1]
         if not is_lambda:
             new_kid.append(self.gen_token(Tok.RPAREN))
+        elif not new_kid:
+            new_kid.extend([self.gen_token(Tok.LPAREN), self.gen_token(Tok.RPAREN)])
         if self.return_type:
             new_kid.append(self.gen_token(Tok.RETURN_HINT))
             new_kid.append(self.return_type)
@@ -2967,6 +3139,8 @@ class Assignment(AstTypedVarNode, EnumBlockStmt, CodeBlockStmt):
             res = res and self.type_tag.normalize(deep) if self.type_tag else res
             res = res and self.aug_op.normalize(deep) if self.aug_op else res
         new_kid: list[UniNode] = []
+        if self.mutable and not self.is_enum_stmt:
+            new_kid.append(self.gen_token(Tok.KW_LET))
         for idx, targ in enumerate(self.target):
             new_kid.append(targ)
             if idx < len(self.target) - 1:
@@ -3113,12 +3287,15 @@ class LambdaExpr(Expr, UniScopeNode):
 
     def __init__(
         self,
-        body: Expr,
+        body: Union[Expr, Sequence[CodeBlockStmt]],
         kid: Sequence[UniNode],
         signature: Optional[FuncSignature] = None,
     ) -> None:
         self.signature = signature
-        self.body = body
+        if isinstance(body, Sequence) and not isinstance(body, Expr):
+            self.body: Expr | Sequence[CodeBlockStmt] = list(body)
+        else:
+            self.body = cast(Expr, body)
         UniNode.__init__(self, kid=kid)
         Expr.__init__(self)
         UniScopeNode.__init__(self, name=f"{self.__class__.__name__}")
@@ -3127,11 +3304,21 @@ class LambdaExpr(Expr, UniScopeNode):
         res = True
         if deep:
             res = self.signature.normalize(deep) if self.signature else res
-            res = res and self.body.normalize(deep)
+            if isinstance(self.body, list):
+                for stmt in self.body:
+                    res = res and stmt.normalize(deep)
+            elif isinstance(self.body, Expr):
+                res = res and self.body.normalize(deep)
         new_kid: list[UniNode] = [self.gen_token(Tok.KW_LAMBDA)]
         if self.signature:
             new_kid.append(self.signature)
-        new_kid += [self.gen_token(Tok.COLON), self.body]
+        # For code block lambdas, we add LBRACE, statements, RBRACE
+        if isinstance(self.body, list):
+            new_kid.append(self.gen_token(Tok.LBRACE))
+            new_kid.extend(self.body)
+            new_kid.append(self.gen_token(Tok.RBRACE))
+        elif isinstance(self.body, Expr):
+            new_kid += [self.gen_token(Tok.COLON), self.body]
         self.set_kids(nodes=new_kid)
         return res
 
@@ -3680,7 +3867,7 @@ class AtomUnit(Expr):
 
     def __init__(
         self,
-        value: Expr | YieldExpr,
+        value: Expr | YieldExpr | Ability,
         kid: Sequence[UniNode],
     ) -> None:
         self.value = value
@@ -4081,6 +4268,206 @@ class AssignCompr(AtomExpr):
         return res
 
 
+# JSX Nodes
+# ---------
+
+
+class JsxElement(AtomExpr):
+    """JsxElement node type for Jac Ast."""
+
+    def __init__(
+        self,
+        name: Optional["JsxElementName"],
+        attributes: Optional[Sequence["JsxAttribute"]],
+        children: Optional[Sequence["JsxChild"]],
+        is_self_closing: bool,
+        is_fragment: bool,
+        kid: Sequence[UniNode],
+    ) -> None:
+        self.name = name
+        self.attributes = list(attributes) if attributes else []
+        self.children = list(children) if children else []
+        self.is_self_closing = is_self_closing
+        self.is_fragment = is_fragment
+        UniNode.__init__(self, kid=kid)
+        Expr.__init__(self)
+        AstSymbolStubNode.__init__(self, sym_type=SymbolType.OBJECT_ARCH)
+
+    def normalize(self, deep: bool = False) -> bool:
+        """Normalize JSX element by recursively normalizing children.
+
+        Unlike most normalize methods, JSX elements don't need to rebuild
+        their kid structure since the parser already creates it correctly.
+        We just need to normalize child nodes if deep=True.
+        """
+        res = True
+        if deep:
+            if self.name:
+                res = res and self.name.normalize(deep)
+            if self.attributes:
+                for attr in self.attributes:
+                    res = res and attr.normalize(deep)
+            if self.children:
+                for child in self.children:
+                    res = res and child.normalize(deep)
+        return res
+
+
+class JsxElementName(UniNode):
+    """JsxElementName node type for Jac Ast."""
+
+    def __init__(
+        self,
+        parts: Sequence[Name],
+        kid: Sequence[UniNode],
+    ) -> None:
+        self.parts = list(parts)
+        UniNode.__init__(self, kid=kid)
+
+    def normalize(self, deep: bool = False) -> bool:
+        res = True
+        if deep:
+            for part in self.parts:
+                res = res and part.normalize(deep)
+        new_kid: list[UniNode] = []
+        for i, part in enumerate(self.parts):
+            new_kid.append(part)
+            if i < len(self.parts) - 1:
+                new_kid.append(self.gen_token(Tok.DOT))
+        self.set_kids(nodes=new_kid)
+        return res
+
+
+class JsxAttribute(UniNode):
+    """JsxAttribute node type for Jac Ast (base class)."""
+
+    def __init__(self, kid: Sequence[UniNode]) -> None:
+        UniNode.__init__(self, kid=kid)
+
+    def normalize(self, deep: bool = False) -> bool:
+        """Normalize the node (base implementation)."""
+        # Base class normalize - subclasses should override if needed
+        return True
+
+
+class JsxSpreadAttribute(JsxAttribute):
+    """JsxSpreadAttribute node type for Jac Ast."""
+
+    def __init__(
+        self,
+        expr: Expr,
+        kid: Sequence[UniNode],
+    ) -> None:
+        self.expr = expr
+        JsxAttribute.__init__(self, kid=kid)
+
+    def normalize(self, deep: bool = False) -> bool:
+        res = True
+        if deep:
+            res = self.expr.normalize(deep)
+        new_kid: list[UniNode] = [
+            self.gen_token(Tok.LBRACE),
+            self.gen_token(Tok.ELLIPSIS),
+            self.expr,
+            self.gen_token(Tok.RBRACE),
+        ]
+        self.set_kids(nodes=new_kid)
+        return res
+
+
+class JsxNormalAttribute(JsxAttribute):
+    """JsxNormalAttribute node type for Jac Ast."""
+
+    def __init__(
+        self,
+        name: Name,
+        value: Optional[Union[String, Expr]],
+        kid: Sequence[UniNode],
+    ) -> None:
+        self.name = name
+        self.value = value
+        JsxAttribute.__init__(self, kid=kid)
+
+    def normalize(self, deep: bool = False) -> bool:
+        res = True
+        if deep:
+            res = self.name.normalize(deep)
+            if self.value:
+                res = res and self.value.normalize(deep)
+        new_kid: list[UniNode] = [self.name]
+        if self.value:
+            new_kid.append(self.gen_token(Tok.EQ))
+            if isinstance(self.value, String):
+                new_kid.append(self.value)
+            else:  # Expression in braces
+                new_kid.extend(
+                    [
+                        self.gen_token(Tok.LBRACE),
+                        self.value,
+                        self.gen_token(Tok.RBRACE),
+                    ]
+                )
+        self.set_kids(nodes=new_kid)
+        return res
+
+
+class JsxChild(UniNode):
+    """JsxChild node type for Jac Ast (base class)."""
+
+    def __init__(self, kid: Sequence[UniNode]) -> None:
+        UniNode.__init__(self, kid=kid)
+
+    def normalize(self, deep: bool = False) -> bool:
+        """Normalize the node (base implementation)."""
+        # Base class normalize - subclasses should override if needed
+        return True
+
+
+class JsxText(JsxChild):
+    """JsxText node type for Jac Ast."""
+
+    def __init__(
+        self,
+        value: str,
+        kid: Sequence[UniNode],
+    ) -> None:
+        self.value = value
+        JsxChild.__init__(self, kid=kid)
+
+    def normalize(self, deep: bool = False) -> bool:
+        # JSX text is represented as a token
+        if isinstance(self.value, Token):
+            new_kid: list[UniNode] = [self.value]
+        else:
+            new_kid = [self.gen_token(Tok.JSX_TEXT, value=str(self.value))]
+        self.set_kids(nodes=new_kid)
+        return True
+
+
+class JsxExpression(JsxChild):
+    """JsxExpression node type for Jac Ast."""
+
+    def __init__(
+        self,
+        expr: Expr,
+        kid: Sequence[UniNode],
+    ) -> None:
+        self.expr = expr
+        JsxChild.__init__(self, kid=kid)
+
+    def normalize(self, deep: bool = False) -> bool:
+        res = True
+        if deep:
+            res = self.expr.normalize(deep)
+        new_kid: list[UniNode] = [
+            self.gen_token(Tok.LBRACE),
+            self.expr,
+            self.gen_token(Tok.RBRACE),
+        ]
+        self.set_kids(nodes=new_kid)
+        return res
+
+
 # Match Nodes
 # ------------
 
@@ -4145,6 +4532,72 @@ class MatchCase(UniScopeNode):
         if self.guard:
             new_kid.append(self.gen_token(Tok.KW_IF))
             new_kid.append(self.guard)
+        new_kid.append(self.gen_token(Tok.COLON))
+        if self.body:
+            new_kid.extend([*self.body])
+        self.set_kids(nodes=new_kid)
+        return res
+
+
+class SwitchStmt(CodeBlockStmt):
+    """SwitchStmt node type for Jac Ast."""
+
+    def __init__(
+        self,
+        target: Expr,
+        cases: list[SwitchCase],
+        kid: Sequence[UniNode],
+    ) -> None:
+        self.target = target
+        self.cases = cases
+        UniNode.__init__(self, kid=kid)
+        CodeBlockStmt.__init__(self)
+
+    def normalize(self, deep: bool = False) -> bool:
+        res = True
+        if deep:
+            res = self.target.normalize(deep)
+            for case in self.cases:
+                res = res and case.normalize(deep)
+        new_kid: list[UniNode] = [
+            self.gen_token(Tok.KW_SWITCH),
+            self.target,
+        ]
+        new_kid.append(self.gen_token(Tok.LBRACE))
+        for case in self.cases:
+            new_kid.append(case)
+        new_kid.append(self.gen_token(Tok.RBRACE))
+
+        self.set_kids(nodes=new_kid)
+        return res
+
+
+class SwitchCase(UniScopeNode):
+    """SwitchCase node type for Jac Ast."""
+
+    def __init__(
+        self,
+        pattern: Optional[MatchPattern],
+        body: list[CodeBlockStmt],
+        kid: Sequence[UniNode],
+    ) -> None:
+        self.pattern = pattern
+        self.body = body
+        UniNode.__init__(self, kid=kid)
+        UniScopeNode.__init__(self, name=f"{self.__class__.__name__}")
+
+    def normalize(self, deep: bool = False) -> bool:
+        res = True
+        if deep:
+            res = self.pattern.normalize(deep) if self.pattern else res
+            for stmt in self.body:
+                res = res and stmt.normalize(deep)
+        new_kid: list[UniNode] = [self.gen_token(Tok.KW_CASE)]
+        if self.pattern is not None:
+            new_kid.append(self.pattern)
+        else:
+            new_kid.pop()
+            new_kid.append(self.gen_token(Tok.KW_DEFAULT))
         new_kid.append(self.gen_token(Tok.COLON))
         if self.body:
             new_kid.extend([*self.body])

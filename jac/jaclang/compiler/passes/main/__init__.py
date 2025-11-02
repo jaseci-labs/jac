@@ -3,7 +3,7 @@
 from ..transform import Alert, Transform  # noqa: I100
 from .annex_pass import JacAnnexPass  # noqa: I100
 from .sym_tab_build_pass import SymTabBuildPass, UniPass  # noqa: I100
-from .def_use_pass import DefUsePass  # noqa: I100
+from .semantic_analysis_pass import SemanticAnalysisPass  # noqa: I100
 from .sem_def_match_pass import SemDefMatchPass  # noqa: I100
 from .import_pass import JacImportDepsPass  # noqa: I100
 from .def_impl_match_pass import DeclImplMatchPass  # noqa: I100
@@ -24,8 +24,8 @@ __all__ = [
     "JacImportDepsPass",
     "TypeCheckPass",
     "SymTabBuildPass",
+    "SemanticAnalysisPass",
     "DeclImplMatchPass",
-    "DefUsePass",
     "SemDefMatchPass",
     "PyastBuildPass",
     "PyastGenPass",

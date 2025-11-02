@@ -1,6 +1,6 @@
 from __future__ import annotations
 from enum import Enum, auto
-from jaclang.lib import Node, Path, Root, Walker, build_edge, connect, field, on_entry, on_exit, refs, root, spawn, visit
+from jaclang.lib import Node, OPath, Root, Walker, build_edge, connect, field, on_entry, on_exit, refs, root, spawn, visit
 from enum import unique
 
 class Color(Enum):
@@ -93,7 +93,7 @@ class TaskFilter(Walker):
 
     @on_entry
     def traverse(self, here: Root) -> None:
-        visit(self, refs(Path(here).edge_out().visit()))
+        visit(self, refs(OPath(here).edge_out().visit()))
 
     @on_entry
     def filter(self, here: Task) -> None:
@@ -101,7 +101,7 @@ class TaskFilter(Walker):
         if here.priority == self.target_priority:
             self.matched.append(here.title)
             print('      Matched!')
-        visit(self, refs(Path(here).edge_out().visit()))
+        visit(self, refs(OPath(here).edge_out().visit()))
 
     @on_exit
     def make_report(self, here) -> None:

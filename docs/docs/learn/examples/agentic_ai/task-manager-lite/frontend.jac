@@ -31,7 +31,6 @@ def bootstrap_frontend(token: str) {
         if st.button("📝 Summarize tasks") {
             st.session_state.user_input = "Summarize all my tasks";
         }
-
         st.markdown("**📧 Email Writing**");
         if st.button("✉️ Write a meeting email") {
             st.session_state.user_input = "Write an email to schedule a meeting with my team for next Friday";
@@ -168,31 +167,6 @@ def bootstrap_frontend(token: str) {
             st.session_state.user_input = "";
             st.rerun();
         }
-    }
-
-    # Sidebar with information
-    with st.sidebar {
-        st.markdown("## 🎯 Features");
-        st.markdown("""
-        **📋 Task Management**
-        - Add new tasks with dates/times
-        - View and summarize tasks
-        - Intelligent task extraction
-
-        **📧 Email Assistant**
-        - Generate professional emails
-        - Context-aware content
-        - Various email types
-
-        **💬 General Chat**
-        - Ask questions
-        - Get advice and tips
-        - General assistance
-        """);
-
-        st.markdown("---");
-        st.markdown("**🧠 AI Routing**");
-        st.markdown("Your requests are automatically routed to the most appropriate handler for optimal results.");
     }
 
     # Footer

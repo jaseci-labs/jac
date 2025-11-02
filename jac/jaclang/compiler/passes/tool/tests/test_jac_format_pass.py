@@ -133,6 +133,8 @@ class JacFormatPassTests(TestCaseMicroSuite):
                     self.assertEqual(tokens[i + 1], "{")
             self.assertEqual(num_test, 3)
             return
+        before = ""
+        after = ""
         try:
             before = ast3.dump(code_gen_pure.gen.py_ast[0], indent=2)
             after = ast3.dump(code_gen_jac.gen.py_ast[0], indent=2)
@@ -151,7 +153,8 @@ class JacFormatPassTests(TestCaseMicroSuite):
             print("\n+++++++++++++++++++++++++++++++++++++++\n")
             print(add_line_numbers(code_gen_format))
             print("\n+++++++++++++++++++++++++++++++++++++++\n")
-            print("\n".join(unified_diff(before.splitlines(), after.splitlines())))
+            if before and after:
+                print("\n".join(unified_diff(before.splitlines(), after.splitlines())))
             raise e
 
 
