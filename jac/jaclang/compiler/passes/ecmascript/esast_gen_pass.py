@@ -31,8 +31,9 @@ from jaclang.compiler.constant import Tokens as Tok
 from jaclang.compiler.passes.ast_gen import BaseAstGenPass
 from jaclang.compiler.passes.ast_gen.jsx_processor import EsJsxProcessor
 from jaclang.compiler.passes.ecmascript.es_unparse import es_to_js
-from jaclang.compiler.type_system import types as jtypes
 from jaclang.utils import convert_to_js_import_path
+
+# from jaclang.compiler.type_system import types as jtypes
 
 ES_LOGICAL_OPS: dict[Tok, str] = {Tok.KW_AND: "&&", Tok.KW_OR: "||"}
 
@@ -1419,7 +1420,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
 
     def exit_func_call(self, node: uni.FuncCall) -> None:
         """Process function call."""
-        from jaclang.compiler.type_system.type_evaluator import TypeEvaluator
+        # from jaclang.compiler.type_system.type_evaluator import TypeEvaluator
 
         # Special case: type(x) -> typeof x in JavaScript
         # Check the target directly before processing it into an es_ast
@@ -1548,15 +1549,15 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
                     ),
                     jac_node=node,
                 )
-        callee_type = TypeEvaluator(self.prog).get_type_of_expression(node.target)
-        if isinstance(callee_type, jtypes.ClassType):
-            node.gen.es_ast = self.sync_loc(
-                es.NewExpression(callee=callee, arguments=args), jac_node=node
-            )
-        else:
-            node.gen.es_ast = self.sync_loc(
-                es.CallExpression(callee=callee, arguments=args), jac_node=node
-            )
+        # callee_type = TypeEvaluator(self.prog).get_type_of_expression(node.target)
+        # if isinstance(callee_type, jtypes.ClassType):
+        #     node.gen.es_ast = self.sync_loc(
+        #         es.NewExpression(callee=callee, arguments=args), jac_node=node
+        #     )
+        # else:
+        node.gen.es_ast = self.sync_loc(
+            es.CallExpression(callee=callee, arguments=args), jac_node=node
+        )
 
     def exit_index_slice(self, node: uni.IndexSlice) -> None:
         """Process index/slice - just store the slice info, actual member access is handled by AtomTrailer."""
