@@ -45,9 +45,7 @@ class Text(Doc):
     def treeprint(self, level: int = 0) -> str:
         indent = "  " * level
         token_info = (
-            f" [token@L{self.source_token.loc.first_line}]"
-            if self.source_token and hasattr(self.source_token, "loc")
-            else ""
+            f" [token@L{self.source_token.loc.first_line}]" if self.source_token else ""
         )
         return f'{indent}Text("{self.text}"){token_info}'
 

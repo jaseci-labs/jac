@@ -1,8 +1,5 @@
 import datetime;
-cl import from .littlex_fe {
-    App
-}
-
+cl import from .littlex_fe { App }
 
 node Profile {
     has username: str = "";
@@ -34,7 +31,6 @@ node Profile {
     }
 }
 
-
 obj TweetInfo {
     has username: str;
     has id: str;
@@ -43,7 +39,6 @@ obj TweetInfo {
     has likes: list;
     has comments: list;
 }
-
 
 node Tweet {
     has content: str;
@@ -104,7 +99,6 @@ node Tweet {
     }
 }
 
-
 node Comment {
     has content: str;
 
@@ -119,15 +113,9 @@ node Comment {
     }
 }
 
-
 edge Follow {}
-
-
 edge Like {}
-
-
 edge Post {}
-
 
 walker visit_profile {
     can visit_profile with `root entry {
@@ -139,14 +127,11 @@ walker visit_profile {
     }
 }
 
-
 walker update_profile(visit_profile) {
     has new_username: str;
 }
 
-
 walker get_profile(visit_profile) {}
-
 
 walker load_user_profiles {
     can load_profiles with `root entry {
@@ -162,12 +147,8 @@ walker load_user_profiles {
     }
 }
 
-
 walker follow_request {}
-
-
 walker un_follow_request {}
-
 
 walker create_tweet(visit_profile) {
     has content: str;
@@ -179,33 +160,23 @@ walker create_tweet(visit_profile) {
     }
 }
 
-
 walker update_tweet {
     has updated_content: str;
 }
 
-
 walker remove_tweet {}
-
-
 walker like_tweet {}
-
-
 walker remove_like {}
-
 
 walker comment_tweet {
     has content: str;
 }
 
-
 walker update_comment {
     has updated_content: str;
 }
 
-
 walker remove_comment {}
-
 
 walker load_feed(visit_profile) {
     has search_query: str = "";
@@ -223,12 +194,10 @@ walker load_feed(visit_profile) {
     }
 }
 
-
 # Client-side UI Components (marked with 'cl' for browser execution)
 # ===================================================================
 
-
 # Main SPA entry point - simplified with reactive routing
-cl def littlex_app() -> any {
+cl def littlex_app()  -> any {
     return App();
 }

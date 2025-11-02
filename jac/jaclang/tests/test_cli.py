@@ -383,7 +383,7 @@ class JacCliTests(TestCase):
         }
         printgraph_params.update({"initial", "saveto", "connection", "session"})
         self.assertTrue(printgraph_params.issubset(graph_params))
-        self.assertEqual(len(printgraph_params) + 1, len(graph_params))
+        self.assertEqual(len(printgraph_params) + 2, len(graph_params))
 
     def test_graph(self) -> None:
         """Test for graph CLI cmd."""
