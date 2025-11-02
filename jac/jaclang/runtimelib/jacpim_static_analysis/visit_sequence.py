@@ -19,6 +19,15 @@ class VisitInfo:
 VisitSequence: TypeAlias = list[VisitInfo]
 _TracingInfo: TypeAlias = list[uni.UniCFGNode]
 
+def visit_sequence_start_by(seq_a: VisitSequence, seq_b: VisitSequence) -> bool:
+    """Check if seq_a starts with seq_b."""
+    if len(seq_a) < len(seq_b):
+        return False
+    for i in range(len(seq_b)):
+        if seq_a[i] != seq_b[i]:
+            return False
+    return True
+
 
 def get_visit_sequences(ability: uni.Ability) -> Generator[list[VisitInfo], None, None]:
     """Get visit sequences for one ability."""
@@ -102,6 +111,18 @@ def _get_visit_info(visit_stmt: uni.VisitStmt) -> VisitInfo:
     )
     return res
 
+def remove_redundant_visit_sequences(
+    visit_sequences: list[VisitSequence],
+) -> list[VisitSequence]:
+    """Remove redundant visit sequences, redundant sequence means it is a prefix of another sequence."""
+    # Sort by length descending
+    visit_sequences.sort(key=lambda seq: len(seq), reverse=True)
+    non_redundant_seqs: list[VisitSequence] = []
+    for seq in visit_sequences:
+        if not any(visit_sequence_start_by(other_seq, seq) for other_seq in non_redundant_seqs):
+            non_redundant_seqs.append(seq)
+    return non_redundant_seqs
+
 
 def get_walker_info(walker: uni.Archetype) -> dict[str, list[list[VisitInfo]]]:
     """Get the visit info of a walker."""
@@ -115,7 +136,9 @@ def get_walker_info(walker: uni.Archetype) -> dict[str, list[list[VisitInfo]]]:
             .get_all_sub_nodes(uni.Name)[0]
             .value
         )
-        visit_info[name] = list(get_visit_sequences(ability))
-    # print(visit_info)
-
+        # visit_info[name] = list(get_visit_sequences(ability))
+        visit_info[name] = remove_redundant_visit_sequences(
+            list(get_visit_sequences(ability))
+        )
+    print(visit_info)
     return visit_info

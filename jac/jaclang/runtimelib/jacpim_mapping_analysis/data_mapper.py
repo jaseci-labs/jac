@@ -132,6 +132,71 @@ class RoundRobinPartitioner:
         """Retrieve the partitioning."""
         return self.node_distribution.get_partition()
 
+class JacPIMStepFFPartitioner:
+    """JacPIM Step-based First-Fit Partitioner."""
+
+    def __init__(self, ttg: nx.MultiDiGraph, start_nodes: list[NodeArchetype]) -> None:
+        """Get the partitioning done."""
+        self.node_distribution = NodeDistribution()
+        for idx, start_node in enumerate(start_nodes):
+            start_node_idx = JacPIMStaticCtx.get_all_nodes().index(start_node)
+            node_size = get_node_info_from_node_arch(
+                JacPIMStaticCtx.get_all_nodes()[start_node_idx]
+            ).node_size_bytes
+            self.node_distribution.add_node(start_node_idx, idx % DPU_NUM, node_size)
+        
+        # Get the max depth of the TTG
+        max_depth = 0
+        for u, v, data in ttg.edges(data=True):
+            ttg_attr = data.get("ttg_attr")
+            if ttg_attr and ttg_attr.timestamp > max_depth:
+                max_depth = ttg_attr.timestamp
+        
+        for depth in range(max_depth + 1):
+            # Get all edges at this depth
+            edges_at_depth = [
+                (u, v) for u, v, data in ttg.edges(data=True)
+                if data.get("ttg_attr") and data.get("ttg_attr").timestamp == depth
+            ]
+            for u, v in edges_at_depth:
+                # Assert the the source node has been assigned
+                assert self.node_distribution.node_assigned(u), f"Node {u} not assigned yet."
+                # If the target node is already assigned, skip
+                if self.node_distribution.node_assigned(v):
+                    continue
+                node_size = get_node_info_from_node_arch(
+                    JacPIMStaticCtx.get_all_nodes()[v]
+                ).node_size_bytes
+                available_partitions = self.node_distribution.available_partitions(node_size)
+                # Try to assign to the same partition as the source node
+                preferred_partition = self.node_distribution.node_to_partition[u]
+                if preferred_partition in available_partitions:
+                    self.node_distribution.add_node(v, preferred_partition, node_size)
+                elif len(available_partitions) > 0:
+                    # Assign to the first available partition
+                    self.node_distribution.add_node(v, available_partitions[0], node_size)
+                else:
+                    raise RuntimeError("No available partitions.")
+        print(f"Assigned nodes up to depth {max_depth}. Assigned nodes: {len(self.node_distribution.node_to_partition)}")
+        for node_idx in range(len(JacPIMStaticCtx.get_all_nodes())):
+            if not self.node_distribution.node_assigned(node_idx):
+                node_size = get_node_info_from_node_arch(
+                    JacPIMStaticCtx.get_all_nodes()[node_idx]
+                ).node_size_bytes
+                partitions = self.node_distribution.available_partitions(node_size)
+                if len(partitions) == 0:
+                    raise RuntimeError("No available partitions.")
+                if os.environ.get("MAPPING_STRATEGY") == "FIRST_FIT":
+                    partition = min(partitions)
+                else:
+                    partition = random.choice(partitions)
+                self.node_distribution.add_node(node_idx, partition, node_size)
+
+
+    def get_data_partitioning(self) -> dict[int, int]:
+        """Retrieve the partitioning."""
+        return self.node_distribution.get_partition()
+
 
 class RandomPartitioner:
     """Random JacPIM Partitioner (baseline)."""

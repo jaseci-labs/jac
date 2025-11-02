@@ -1598,7 +1598,7 @@ class JacPIM:
         nodes_and_walkers = JacPIMCPURunCtx.get_pending_nodes_and_walkers()
         mapping_ctx = JacPIMMappingCtx
         mapping_ctx.setter(nodes_and_walkers)
-        plot_ttg(mapping_ctx.get_ttg(), static_ctx.get_layout(), "ttg.png")
+        # plot_ttg(mapping_ctx.get_ttg(), static_ctx.get_layout(), "ttg.png")
 
         JacPIMCPURunCtx.run_until_all_done(os.environ.get("OVERHEAD_ONLY") == "1")
         all_walkers_all_jumps_included_in_ttg(ttg=mapping_ctx.get_ttg(), traces=JacPIMCPURunCtx.get_walker_traces())

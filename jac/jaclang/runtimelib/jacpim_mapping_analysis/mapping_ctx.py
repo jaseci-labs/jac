@@ -7,6 +7,7 @@ from jaclang.runtimelib.archetype import NodeArchetype, WalkerArchetype
 from jaclang.runtimelib.jacpim_mapping_analysis.data_mapper import (
     RandomPartitioner,
     RoundRobinPartitioner,
+    JacPIMStepFFPartitioner
 )
 from jaclang.runtimelib.jacpim_mapping_analysis.temporal_trace_graph import (
     get_access_pattern_single_walker,
@@ -55,6 +56,10 @@ class JacPIMMappingCtx:
             raise RuntimeError("Mapping method not specified")
         elif mapping_method == "JACPIM":
             cls.partitioning = RoundRobinPartitioner(
+                cls.ttg, [start_node for start_node, _ in nodes_and_walkers]
+            ).get_data_partitioning()
+        elif mapping_method == "JACPIMSTEP":
+            cls.partitioning = JacPIMStepFFPartitioner(
                 cls.ttg, [start_node for start_node, _ in nodes_and_walkers]
             ).get_data_partitioning()
         elif mapping_method == "RANDOM":

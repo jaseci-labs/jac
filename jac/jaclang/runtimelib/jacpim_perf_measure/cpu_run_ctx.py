@@ -292,9 +292,9 @@ class JacPIMCPURunCtx:
                     )
 
             # A walker is either done or moved to pending - clear active list
-        assert all_walkers_all_jumps_included_in_ttg(
-            ttg=JacPIMMappingCtx.get_ttg(), traces=JacPIMCPURunCtx.get_walker_traces()
-        )
+        # assert all_walkers_all_jumps_included_in_ttg(
+        #     ttg=JacPIMMappingCtx.get_ttg(), traces=JacPIMCPURunCtx.get_walker_traces()
+        # )
         DPUAllMemoryCtx.finish_running(overhead_only)
         for dpu_id in range(DPU_NUM):
             active_walkers[dpu_id] = []
