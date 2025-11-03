@@ -357,15 +357,16 @@ class TypeEvaluator {
                             file_uri=path,
                             symbol_table=mod,
                         );
+                        # Cache the type.
                         node_.name.type = mod_type;
 
-                    #     # FIXME: goto definition works on imported symbol by checking if it's a MODULE
-                    #     # type and in that case it'll call resolve_relative_path on the parent node of
-                    #     # the symbol's definition node (a module path), So the goto definition to work
-                    #     # properly the category should be module on a module path, If we set like this
-                    #     # below should work but because of the above assumption (should be a mod path)
-                    #     # it won't, This needs to be discussed.
-                    #     #
+                        # FIXME: goto definition works on imported symbol by checking if it's a MODULE
+                        # type and in that case it'll call resolve_relative_path on the parent node of
+                        # the symbol's definition node (a module path), So the goto definition to work
+                        # properly the category should be module on a module path, If we set like this
+                        # below should work but because of the above assumption (should be a mod path)
+                        # it won't, This needs to be discussed.
+                        #
                         node_.name._sym_category = SymbolType.MODULE;
                         return mod_type;
                     }
