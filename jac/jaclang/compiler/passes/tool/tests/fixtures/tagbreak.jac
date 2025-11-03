@@ -60,12 +60,12 @@ class ModuleManager {
         ];
 
         # dict comprehension example
-        squares_dict = {x : x ** 2 for x in numbers};
+        squares_dict = {x: x ** 2 for x in numbers};
         squares_dict = {
-            x : x ** 2 for x in numberssssssssssssssssssssssssssssssssssssssssssssss
+            x: x ** 2 for x in numberssssssssssssssssssssssssssssssssssssssssssssss
         };
         squares_dict = {
-            x : x ** 2
+            x: x ** 2
             for x in numbersssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss
         };
         # set comprehension example
@@ -359,7 +359,7 @@ cl import from jac:client_runtime {
 
 cl {
     # Reactive state management
-    let [appState, setAppState] = createState({"tweets" : [] , "loading" : False });
+    let [appState, setAppState] = createState({"tweets": [], "loading": False});
 
     # Shared data model for client/server
     obj ClientTweet {
@@ -374,17 +374,40 @@ cl {
     def TweetCard(tweet: ClientTweet) -> any {
         return <div
             class="tweet-card"
-            style={
-            {"border" : "1px solid #e1e8ed" , "padding" : "15px" , "margin" : "10px 0" , "borderRadius" : "8px" }}>
-        <div
-            class="tweet-header"
-            style={{"fontWeight" : "bold" , "marginBottom" : "8px" }}>@{tweet.username}</div>
-        <div class="tweet-content" style={{"marginBottom" : "12px" }}>{tweet.content}</div>
-        <div class="tweet-actions" style={{"display" : "flex" , "gap" : "15px" }}>
-            <button
-                onclick={like_tweet_action(tweet.id)}
-                style={{"padding" : "5px 10px" , "cursor" : "pointer" }}>Like ({tweet.likes.length})</button>
-            <button style={{"padding" : "5px 10px" }}>Comment ({tweet.comments.length})</button>
+            style={{
+                "border": "1px solid #e1e8ed",
+                "padding": "15px",
+                "margin": "10px 0",
+                "borderRadius": "8px"
+            }}
+        >
+            <div
+                class="tweet-header"
+                style={{"fontWeight": "bold", "marginBottom": "8px"}}
+            >
+                @{tweet.username}
+            </div>
+            <div
+                class="tweet-content"
+                style={{"marginBottom": "12px"}}
+            >
+                {tweet.content}
+            </div>
+            <div
+                class="tweet-actions"
+                style={{"display": "flex", "gap": "15px"}}
+            >
+                <button
+                    onclick={like_tweet_action(tweet.id)}
+                    style={{"padding": "5px 10px", "cursor": "pointer"}}
+                >
+                    Like ({tweet.likes.length})
+                </button>
+                <button
+                    style={{"padding": "5px 10px"}}
+                >
+                    Comment ({tweet.comments.length})
+                </button>
             </div>
         </div>;
     }

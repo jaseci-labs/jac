@@ -80,6 +80,7 @@ class AstTool:
                 "UniNode",
                 "UniScopeNode",
                 "UniCFGNode",
+                "ClientFacingNode",
                 "ProgramModule",
                 "OOPAccessNode",
                 "WalkerStmtOnlyNode",

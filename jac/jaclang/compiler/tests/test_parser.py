@@ -128,6 +128,7 @@ class TestLarkParser(TestCaseMicroSuite):
             "UniNode",
             "UniScopeNode",
             "UniCFGNode",
+            "ClientFacingNode",
             "ProgramModule",
             "WalkerStmtOnlyNode",
             "Source",
@@ -223,7 +224,7 @@ class TestLarkParser(TestCaseMicroSuite):
                     func(foo bar)
                              ^^^
                     foo.bar;
-            """
+            """,
         ]
         for idx, alrt in enumerate(prog.errors_had):
             pretty = alrt.pretty_print()
@@ -234,10 +235,7 @@ class TestLarkParser(TestCaseMicroSuite):
     def _load_combined_jsx_fixture(self) -> tuple[str, JacParser]:
         """Parse the consolidated JSX fixture once for downstream assertions."""
         fixture_path = (
-            Path(__file__)
-            .resolve()
-            .parent
-            .parent
+            Path(__file__).resolve().parent.parent
             / "passes"
             / "ecmascript"
             / "tests"
@@ -262,7 +260,7 @@ class TestLarkParser(TestCaseMicroSuite):
 
         expected_snippets = {
             "self_closing": "<div />",
-            "attribute_binding": 'id={name}',
+            "attribute_binding": "id={name}",
             "namespaced_component": "<Form.Input.Text />",
             "fragment": "<>",
             "spread_attribute": "{...props}",
@@ -372,7 +370,9 @@ cl {
         self.assertIsInstance(body[0], uni.ClientBlock)
         self.assertIsInstance(body[1], uni.GlobalVars)
         self.assertIsInstance(body[2], uni.ClientBlock)
-        self.assertFalse(getattr(body[1], "is_client_decl", False))  # let b is not client
+        self.assertFalse(
+            getattr(body[1], "is_client_decl", False)
+        )  # let b is not client
 
         # Test 4: Empty client block
         source = """
@@ -434,7 +434,7 @@ walker MyWalker {
         self.assertEqual(len(abilities), 1)
 
         ability = abilities[0]
-        self.assertIsNone(ability.name_ref)
+        self.assertIsNotNone(ability.name_ref)
         # Check that py_resolve_name generates a name
         resolved_name = ability.py_resolve_name()
         self.assertTrue(resolved_name.startswith("__ability_entry_"))
@@ -528,7 +528,7 @@ cl import from jac:client_runtime {
         # Check that it's a client import
         self.assertTrue(
             getattr(import_stmt, "is_client_decl", False),
-            "Import should be marked as client-side"
+            "Import should be marked as client-side",
         )
 
         # Check the from_loc has the prefix
@@ -537,16 +537,14 @@ cl import from jac:client_runtime {
             import_stmt.from_loc.prefix, "ModulePath should have prefix"
         )
         self.assertEqual(
-            import_stmt.from_loc.prefix.value,
-            "jac",
-            "Prefix should be 'jac'"
+            import_stmt.from_loc.prefix.value, "jac", "Prefix should be 'jac'"
         )
 
         # Check the module path
         self.assertEqual(
             import_stmt.from_loc.dot_path_str,
             "client_runtime",
-            "Module path should be 'client_runtime'"
+            "Module path should be 'client_runtime'",
         )
 
         # Check the imported items

@@ -129,6 +129,7 @@ class AstSyncTestMixin:
                 "uni_node",
                 "uni_scope_node",
                 "uni_c_f_g_node",
+                "client_facing_node",
                 "program_module",
                 "walker_stmt_only_node",
                 "source",

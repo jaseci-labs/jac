@@ -581,11 +581,23 @@ class AstAccessNode(UniNode):
 T = TypeVar("T", bound=UniNode)
 
 
-class ClientFacingNode:
-    """Mixin for nodes that can be marked as client-facing declarations."""
+class ClientFacingNode(UniNode):
+    """Base class for nodes that can be marked as client-facing declarations."""
 
     def __init__(self, is_client_decl: bool = False) -> None:
         self.is_client_decl = is_client_decl
+
+    @property
+    def in_client_block(self) -> bool:
+        """Return True when this node is nested inside a client block."""
+        return self.find_parent_of_type(ClientBlock) is not None
+
+    def _source_client_token(self) -> Optional[Token]:
+        """Return the original client token if present on this node."""
+        for kid in self.kid:
+            if isinstance(kid, Token) and kid.name == Tok.KW_CLIENT:
+                return kid
+        return None
 
 
 class AstDocNode(UniNode):
@@ -1048,8 +1060,9 @@ class GlobalVars(ClientFacingNode, ElementStmt, AstAccessNode):
         new_kid: list[UniNode] = []
         if self.doc:
             new_kid.append(self.doc)
-        if self.is_client_decl:
-            new_kid.append(self.gen_token(Tok.KW_CLIENT))
+        client_tok = self._source_client_token()
+        if self.is_client_decl and (client_tok is not None or not self.in_client_block):
+            new_kid.append(client_tok if client_tok else self.gen_token(Tok.KW_CLIENT))
         if self.is_frozen:
             new_kid.append(self.gen_token(Tok.KW_LET))
         else:
@@ -1122,8 +1135,9 @@ class Test(ClientFacingNode, AstSymbolNode, ElementStmt, UniScopeNode):
         new_kid: list[UniNode] = []
         if self.doc:
             new_kid.append(self.doc)
-        if self.is_client_decl:
-            new_kid.append(self.gen_token(Tok.KW_CLIENT))
+        client_tok = self._source_client_token()
+        if self.is_client_decl and (client_tok is not None or not self.in_client_block):
+            new_kid.append(client_tok if client_tok else self.gen_token(Tok.KW_CLIENT))
         new_kid.append(self.gen_token(Tok.KW_TEST))
         new_kid.append(self.name)
         new_kid.append(self.gen_token(Tok.LBRACE))
@@ -1162,8 +1176,9 @@ class ModuleCode(ClientFacingNode, ElementStmt, ArchBlockStmt, EnumBlockStmt):
         new_kid: list[UniNode] = []
         if self.doc:
             new_kid.append(self.doc)
-        if self.is_client_decl:
-            new_kid.append(self.gen_token(Tok.KW_CLIENT))
+        client_tok = self._source_client_token()
+        if self.is_client_decl and (client_tok is not None or not self.in_client_block):
+            new_kid.append(client_tok if client_tok else self.gen_token(Tok.KW_CLIENT))
         new_kid.append(self.gen_token(Tok.KW_WITH))
         new_kid.append(self.gen_token(Tok.KW_ENTRY))
         if self.name:
@@ -1304,8 +1319,9 @@ class Import(ClientFacingNode, ElementStmt, CodeBlockStmt):
         new_kid: list[UniNode] = []
         if self.doc:
             new_kid.append(self.doc)
-        if self.is_client_decl:
-            new_kid.append(self.gen_token(Tok.KW_CLIENT))
+        client_tok = self._source_client_token()
+        if self.is_client_decl and (client_tok is not None or not self.in_client_block):
+            new_kid.append(client_tok if client_tok else self.gen_token(Tok.KW_CLIENT))
         if self.is_absorb:
             new_kid.append(self.gen_token(Tok.KW_INCLUDE))
         else:
@@ -1563,8 +1579,9 @@ class Archetype(
         new_kid: list[UniNode] = []
         if self.doc:
             new_kid.append(self.doc)
-        if self.is_client_decl:
-            new_kid.append(self.gen_token(Tok.KW_CLIENT))
+        client_tok = self._source_client_token()
+        if self.is_client_decl and (client_tok is not None or not self.in_client_block):
+            new_kid.append(client_tok if client_tok else self.gen_token(Tok.KW_CLIENT))
         if self.decorators:
             new_kid.append(self.gen_token(Tok.DECOR_OP))
             for idx, dec in enumerate(self.decorators):
@@ -1818,8 +1835,9 @@ class Enum(
                     new_kid.append(self.gen_token(Tok.DECOR_OP))
         if self.doc:
             new_kid.append(self.doc)
-        if self.is_client_decl:
-            new_kid.append(self.gen_token(Tok.KW_CLIENT))
+        client_tok = self._source_client_token()
+        if self.is_client_decl and (client_tok is not None or not self.in_client_block):
+            new_kid.append(client_tok if client_tok else self.gen_token(Tok.KW_CLIENT))
         new_kid.append(self.gen_token(Tok.KW_ENUM))
         if self.access:
             new_kid.append(self.access)
@@ -1875,7 +1893,6 @@ class Ability(
         doc: Optional[String] = None,
         decorators: Sequence[Expr] | None = None,
     ) -> None:
-        self.name_ref = name_ref
         self.is_override = is_override
         self.is_static = is_static
         self.is_abstract = is_abstract
@@ -1894,10 +1911,20 @@ class Ability(
                 raise ValueError(
                     "Cannot create synthetic name_ref without location info."
                 )
-            synthetic_name_ref = Name(
+            # Generate anonymous name based on event type and location
+            event_type = (
+                "entry"
+                if isinstance(signature, EventSignature)
+                and signature.event.name == Tok.KW_ENTRY
+                else "exit"
+            )
+            synthetic_name = (
+                f"__ability_{event_type}_{first_tok.line_no}_{first_tok.c_start}__"
+            )
+            synthetic_name_ref: NameAtom = Name(
                 orig_src=first_tok.orig_src,
                 name=Tok.NAME,
-                value=self.py_resolve_name(),
+                value=synthetic_name,
                 line=first_tok.line_no,
                 end_line=first_tok.end_line,
                 col_start=first_tok.c_start,
@@ -1907,8 +1934,10 @@ class Ability(
                 is_enum_stmt=False,
             )
             name_spec_for_init: Name | NameAtom = synthetic_name_ref
+            self.name_ref = synthetic_name_ref
         else:
             name_spec_for_init = name_ref
+            self.name_ref = name_ref
 
         AstSymbolNode.__init__(
             self,
@@ -2012,8 +2041,9 @@ class Ability(
         new_kid: list[UniNode] = []
         if self.doc:
             new_kid.append(self.doc)
-        if self.is_client_decl:
-            new_kid.append(self.gen_token(Tok.KW_CLIENT))
+        client_tok = self._source_client_token()
+        if self.is_client_decl and (client_tok is not None or not self.in_client_block):
+            new_kid.append(client_tok if client_tok else self.gen_token(Tok.KW_CLIENT))
         if self.decorators:
             new_kid.append(self.gen_token(Tok.DECOR_OP))
             for idx, dec in enumerate(self.decorators):
