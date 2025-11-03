@@ -57,19 +57,12 @@ walker update_session {
     has utterance: str = "";
 
     can visit_session with `root entry {
-        # Find session with matching image_url (active session for this image)
-        target_session = None;
-        for sess in [-->](`?session) {
-            if sess.image_url == self.image_url and not sess.terminate_conversation {
-                target_session = sess;
-                break;
-            }
-        }
+        # Find or create session for this image
+        matching_sessions = [sess for sess in [-->](`?session) if sess.image_url == self.image_url and not sess.terminate_conversation];
         
-        if target_session {
-            visit target_session;
+        if matching_sessions {
+            visit matching_sessions[0];
         } else {
-            # Create new session for this image
             session_node = here ++> session();
             visit session_node[0];
         }
