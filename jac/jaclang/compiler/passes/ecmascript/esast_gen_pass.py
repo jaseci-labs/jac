@@ -1549,7 +1549,9 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
                     jac_node=node,
                 )
         callee_type = TypeEvaluator(self.prog).get_type_of_expression(node.target)
-        if isinstance(callee_type, jtypes.ClassType) and isinstance(callee, es.Expression):
+        if isinstance(callee_type, jtypes.ClassType) and isinstance(
+            callee, es.Expression
+        ):
             # Ensure callee is an Expression for NewExpression
             node.gen.es_ast = self.sync_loc(
                 es.NewExpression(callee=callee, arguments=args), jac_node=node
