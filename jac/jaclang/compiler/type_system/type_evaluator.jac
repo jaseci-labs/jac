@@ -346,13 +346,7 @@ class TypeEvaluator {
                         # Case 1: Look for symbol inside __init__.ext module
                         if path.name.startswith("__init__"){
                             if sym := mod.lookup(node_.name.value){
-                                node_.name.sym = sym;
-                                if node_.alias{
-                                    node_.alias.sym = sym;
-                                }
-                                # Cache the type.
-                                node_.name.type = self.get_type_of_symbol(sym);
-                                return node_.name.type;
+                                return self._set_module_item_symbol_and_type(node_, sym);
                             }
                             continue;  # Try next candidate
                         }
@@ -387,13 +381,8 @@ class TypeEvaluator {
                     # Eg: 'Import "scipy" could not be resolved'
                     return node_.name.type;
                 }
-                if sym := mod_type.symbol_table.lookup(node_.name.value, deep=True) {
-                    node_.name.sym = sym;
-                    if node_.alias {
-                        node_.alias.sym = sym;
-                    }
-                    node_.name.type = self.get_type_of_symbol(sym);
-                    return node_.name.type;
+                if sym := mod_type.symbol_table.lookup(node_.name.value) {
+                    return self._set_module_item_symbol_and_type(node_, sym);
                 }
             }
         }
@@ -840,6 +829,17 @@ class TypeEvaluator {
     # -----------------------------------------------------------------------------
     # Helper functions
     # -----------------------------------------------------------------------------
+
+    """Set symbol and type for a module item node and its alias if present."""
+    def _set_module_item_symbol_and_type(self: TypeEvaluator, node_: uni.ModuleItem, sym: uni.Symbol) -> TypeBase {
+        node_.name.sym = sym;
+        if node_.alias {
+            node_.alias.sym = sym;
+        }
+        # Cache the type.
+        node_.name.type = self.get_type_of_symbol(sym);
+        return node_.name.type;
+    }
 
     """Resolve the imported symbols to the actual symbol."""
     def resolve_imported_symbols(self: TypeEvaluator, sym: uni.Symbol) -> uni.Symbol {
