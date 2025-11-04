@@ -1547,7 +1547,12 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
                     ),
                     jac_node=node,
                 )
-        callee_type = self.prog.get_type_evaluator().get_type_of_expression(node.target)
+        if isinstance(node.target, uni.Name):
+            callee_type = self.prog.get_type_evaluator().get_type_of_expression(
+                node.target
+            )
+        else:
+            callee_type = None
         if isinstance(callee_type, jtypes.ClassType) and isinstance(
             callee, es.Expression
         ):
