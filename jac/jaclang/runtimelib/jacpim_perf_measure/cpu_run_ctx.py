@@ -57,6 +57,7 @@ class JacPIMCPURunCtx:
     all_walkers: list[WalkerArchetype] = []
     total_cross_dpu_jumps: int = 0
     walker_jump_sizes: list[list[TransferRecord]] = []
+    all_walker_traces: dict[int, list[int]] = {}
 
     @classmethod
     def setter(cls) -> None:
@@ -144,6 +145,8 @@ class JacPIMCPURunCtx:
 
         # Determine current DPU
         current_dpu = None
+        if (cls.all_walker_traces.get(cls.all_walkers.index(walker))) is None:
+            cls.all_walker_traces[cls.all_walkers.index(walker)] = []
 
         # Main execution loop - continue until done or DPU boundary
         while walker_anchor.next and len(walker_anchor.next) > 0:
@@ -173,6 +176,8 @@ class JacPIMCPURunCtx:
 
             except ValueError:
                 raise RuntimeError(f"Node {next_node} not found in static context")
+
+            cls.all_walker_traces[cls.all_walkers.index(walker)].append(next_node_idx) 
 
             # Determine current DPU if not set yet
             if current_dpu is None:
@@ -366,7 +371,7 @@ class JacPIMCPURunCtx:
     @classmethod
     def get_walker_traces(cls) -> dict[int, list[int]]:
         """Get the recorded walker traces."""
-        return DPUAllMemoryCtx.walker_traces
+        return cls.all_walker_traces
 
 
 class DPUAllMemoryCtx:

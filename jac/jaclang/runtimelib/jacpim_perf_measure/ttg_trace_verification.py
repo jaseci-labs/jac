@@ -11,7 +11,7 @@ def single_walker_all_jumps_included_in_ttg_counts(
         jump = (trace[i], trace[i + 1])
         total_count += 1
         # Check if the jump exists in the TTG edges
-        if jump not in ttg_edges:
+        if jump in ttg_edges:
             included_count += 1
     return included_count, total_count
 
@@ -42,5 +42,5 @@ def all_walkers_all_jumps_included_in_ttg_counts(
         )
         total_included += included_count
         total_jumps += total_count
-    print(f"DEBUG: Total included jumps: {total_included}, Total jumps: {total_jumps}")
+    print(f"DEBUG: Total included jumps: {total_included}, Total jumps: {total_jumps}. Percentage: {total_included / total_jumps if total_jumps > 0 else 0:.2%}")
     return total_included, total_jumps
