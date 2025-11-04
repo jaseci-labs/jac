@@ -11,25 +11,64 @@
 | Parameter | Description |
 |-----------|-------------|
 | `APP_NAME` | Name of your JAC application |
-| `DOCKER_USERNAME` | DockerHub username for pushing the image |
-| `DOCKER_PASSWORD` | DockerHub password or access token |
+
 
 ### Optional environment variables
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
+| `DOCKER_USERNAME` | DockerHub username for pushing the image |
+| `DOCKER_PASSWORD` | DockerHub password or access token |
 | `K8_NAMESPACE` | Kubernetes namespace to deploy the application | - |
 | `K8_NODE_PORT` | NodePort to expose the service | - |
 | `K8_MONGODB` | Whether MongoDB is needed (`True`/`False`) | `False` |
-| `K8_POSTGRESQL` | Whether PostgreSQL is needed (`True`/`False`) | `False` |
 | `K8_REDIS` | Whether Redis is needed (`True`/`False`) | `False` |
 
 ## How to run jac scale
-Navigate to the folder containing your JAC application and run:
+
+Navigate to your JAC application folder:
+```bash
+cd /path/to/your/jac/app
+```
+
+Run the scale command:
+```bash
+jac scale <filename>
+```
+
+**Example:**
+```bash
+jac scale littlex.jac
+```
+## Deployment Modes
+
+### Mode 1: Deploy Without Building (Default)
+Deploys your JAC application to Kubernetes without building docker image.
 
 ```bash
-jac scale
+jac scale littlex.jac
 ```
+
+**Use this when:**
+- You want faster deployments without rebuilding
+- You're testing configuration changes
+
+### Mode 2: Build, Push, and Deploy
+Builds a new Docker image, pushes it to Docker Hub, then deploys to Kubernetes.
+
+```bash
+jac scale littlex.jac -b
+```
+
+**Requirements for Build Mode:**
+- A `Dockerfile` in your application directory
+- Environment variables set:
+  - `DOCKER_USERNAME` - Your Docker Hub username
+  - `DOCKER_PASSWORD` - Your Docker Hub password/access token
+
+**Use this when:**
+- In production settings.
+- Build and host docker image.
 
 ## Architecture
 

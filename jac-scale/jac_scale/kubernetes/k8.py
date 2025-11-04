@@ -244,7 +244,6 @@ def deploy_k8(code_folder: str, file_name: str = "none", build: bool = False) ->
             check=True,
         )
 
-        # print("Installing dependencies and starting Jaseci app...")
         # --- Build command dynamically ---
         exec_parts = ["cd /app"]
 
