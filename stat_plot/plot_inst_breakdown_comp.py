@@ -8,6 +8,7 @@ def plot_instruction_breakdown(
     df: pd.DataFrame,
     filename: str = "instruction_mix_absolute.png",
     title: str = "Instruction Mix per Benchmark (Absolute)",
+    y_label: str = "Instruction Count",
 ) -> None:
 
     # Remove any columns that are all zeros
@@ -22,7 +23,7 @@ def plot_instruction_breakdown(
         bottom += df[op].values
 
     ax.set_title(title)
-    ax.set_ylabel("Instruction count")
+    ax.set_ylabel(y_label)
     plt.xticks(rotation=15, ha="right")
     ax.legend(ncol=4, bbox_to_anchor=(1, 1.02), loc="lower right", frameon=True)
     plt.tight_layout()

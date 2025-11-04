@@ -43,28 +43,51 @@ class WalkerState:
     # path: list[int]
     ttt_node: TemporalTraceTreeNode
 
+class NeighborFilterCtx:
+    results: dict[tuple[int, VisitInfo], list[int]] = {}
+    network: nx.MultiDiGraph | None = None
 
-def filter_neighbors(
-    node_idx: int, network: nx.MultiDiGraph, visit: VisitInfo
-) -> list[int]:
-    """Filter neighbors based on visit info and walker type."""
-    filtered_neighbors = []
+    @classmethod
+    def setter(cls, network: nx.MultiDiGraph) -> None:
+        cls.network = network
+    
+    @classmethod
+    def get_network(cls) -> nx.MultiDiGraph:
+        if cls.network is None:
+            raise RuntimeError("Network is not set")
+        return cls.network
 
-    # Get all neighbors
-    for neighbor_idx in network.neighbors(node_idx):
-        # Get edge data between current node and neighbor
-        edge_datas = network.get_edge_data(node_idx, neighbor_idx)
-        for edge_data in edge_datas.values():
-            edge_arch = edge_data.get("archetype")
-            if edge_arch is None:
-                raise RuntimeError("Archetype not found")
-            edge_type = extract_name(edge_arch)
+    @classmethod
+    def _filter_neighbors(cls,
+        node_idx: int, visit: VisitInfo
+    ) -> list[int]:
+        network = cls.get_network()
+        """Filter neighbors based on visit info and walker type."""
+        filtered_neighbors = []
 
-            if visit.edge_type is None or visit.edge_type == edge_type:
-                filtered_neighbors.append(neighbor_idx)
+        # Get all neighbors
+        for neighbor_idx in network.neighbors(node_idx):
+            # Get edge data between current node and neighbor
+            edge_datas = network.get_edge_data(node_idx, neighbor_idx)
+            for edge_data in edge_datas.values():
+                edge_arch = edge_data.get("archetype")
+                if edge_arch is None:
+                    raise RuntimeError("Archetype not found")
+                edge_type = extract_name(edge_arch)
 
-    return filtered_neighbors
+                if visit.edge_type is None or visit.edge_type == edge_type:
+                    filtered_neighbors.append(neighbor_idx)
 
+        return filtered_neighbors
+    
+    @classmethod
+    def filter_neighbors(cls,
+        node_idx: int, visit: VisitInfo
+    ) -> list[int]:
+        key = (node_idx, visit)
+        if key not in cls.results:
+            cls.results[key] = cls._filter_neighbors(node_idx, visit)
+        return cls.results[key]
 
 def exec_sync_visit_sequence(
     state: WalkerState, network: nx.MultiDiGraph, visits: list[VisitInfo]
@@ -75,7 +98,7 @@ def exec_sync_visit_sequence(
     node = new_container.pop(0)
     visits = [visit for visit in visits if visit.async_edge is False]
     for visit in visits:
-        filtered_neighbors = filter_neighbors(node, network, visit)
+        filtered_neighbors = NeighborFilterCtx.filter_neighbors(node, visit)
         new_container.extend(
             filtered_neighbors
         )  # TODO: Insert one by one with regard to the visit index.
@@ -98,12 +121,13 @@ def get_new_walker_states(
 ) -> list[WalkerState]:
     """Get new walker states based on the visit sequences."""
     new_states: list[WalkerState] = []
+    NeighborFilterCtx.setter(network)
     for visit_sequence in visit_sequences:
         new_state = exec_sync_visit_sequence(state, network, visit_sequence)
         new_states.append(new_state)
         for visit_info in [v for v in visit_sequence if v.async_edge]:
-            filtered_neighbors = filter_neighbors(
-                state.container[0], network, visit_info
+            filtered_neighbors = NeighborFilterCtx.filter_neighbors(
+                state.container[0], visit_info
             )
             for neighbor in filtered_neighbors:
                 new_container = [neighbor]

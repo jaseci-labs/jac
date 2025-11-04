@@ -3,7 +3,7 @@ from simulation_parser import generate_stats
 import experimented
 from plot_inst_breakdown_comp import plot_instruction_breakdown
 from extract_pd import generate_pandas_df
-from config import TESTCASES
+from config import TESTCASES, MAPPINGS
 
 
 class SimulationConfig(pydantic.BaseModel):

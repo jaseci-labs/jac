@@ -1602,14 +1602,14 @@ class JacPIM:
 
         JacPIMCPURunCtx.run_until_all_done(os.environ.get("OVERHEAD_ONLY") == "1")
         # all_walkers_all_jumps_included_in_ttg(ttg=mapping_ctx.get_ttg(), traces=JacPIMCPURunCtx.get_walker_traces())
-        save_all_memory_dumps()
+        # save_all_memory_dumps()
         print("Total Cross DPU Jumps", JacPIMCPURunCtx.total_cross_dpu_jumps)
         all_walkers_all_jumps_included_in_ttg_counts(
             ttg=mapping_ctx.get_ttg(), traces=JacPIMCPURunCtx.get_walker_traces()
         )
-        # src = JacPIMSimulationCtx.save_codegen_file("task.c")
-        # res = run_simulator(src)
-        # print(res)
+        src = JacPIMSimulationCtx.save_codegen_file("task.c")
+        res = run_simulator(src)
+        print(res)
 
         # plot_ttg(mapping_ctx.get_ttg(), static_ctx.get_layout(), "temp.png")
 

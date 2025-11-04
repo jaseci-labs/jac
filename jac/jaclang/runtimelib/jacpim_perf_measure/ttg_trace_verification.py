@@ -1,4 +1,5 @@
 import networkx as nx
+import pprint
 
 
 def single_walker_all_jumps_included_in_ttg_counts(
@@ -42,5 +43,8 @@ def all_walkers_all_jumps_included_in_ttg_counts(
         )
         total_included += included_count
         total_jumps += total_count
+    print("DEBUG: all_walkers_all_jumps_included_in_ttg_counts")
+    pp = pprint.PrettyPrinter(width=1200)
+    pp.pprint(traces)
     print(f"DEBUG: Total included jumps: {total_included}, Total jumps: {total_jumps}. Percentage: {total_included / total_jumps if total_jumps > 0 else 0:.2%}")
     return total_included, total_jumps

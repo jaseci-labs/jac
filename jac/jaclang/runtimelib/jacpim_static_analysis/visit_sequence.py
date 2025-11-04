@@ -6,7 +6,7 @@ from typing import Generator, TypeAlias
 import jaclang.compiler.unitree as uni
 
 
-@dataclass
+@dataclass(frozen=True)
 class VisitInfo:
     """A struct that stores the visit key information."""
 

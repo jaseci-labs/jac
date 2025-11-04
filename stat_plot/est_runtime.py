@@ -6,7 +6,7 @@ from extract_pd import generate_pandas_df
 import pandas as pd
 from jaclang.runtimelib.jacpim_simulation_runtime.simulation_ctx import JacData
 from jaclang.runtimelib.jacpim_perf_measure.cpu_run_ctx import TransferDirection
-from config import TESTCASES
+from config import TESTCASES, MAPPINGS
 
 
 def get_pim_runtime(cycles: int) -> float:
@@ -98,4 +98,5 @@ if __name__ == "__main__":
         df,
         title="Estimated Runtime Breakdown per Benchmark",
         filename="est_runtime_breakdown.png",
+        y_label="Estimated Runtime (s)"
     )

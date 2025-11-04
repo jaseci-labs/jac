@@ -177,7 +177,6 @@ class JacPIMCPURunCtx:
             except ValueError:
                 raise RuntimeError(f"Node {next_node} not found in static context")
 
-            cls.all_walker_traces[cls.all_walkers.index(walker)].append(next_node_idx) 
 
             # Determine current DPU if not set yet
             if current_dpu is None:
@@ -204,6 +203,7 @@ class JacPIMCPURunCtx:
             current_node_idx = all_nodes.index(current_node)
             # Log the visit
             DPUAllMemoryCtx.record_walker_trace(walker_idx, current_node_idx)
+            cls.all_walker_traces[cls.all_walkers.index(walker)].append(next_node_idx) 
 
             # Execute walker abilities on this location (same pattern as spawn_call)
             # walker ability with loc entry
@@ -530,7 +530,7 @@ class DPUAllMemoryCtx:
                         JacPIMCPURunCtx.get_all_walkers().index(walker_arch)
                     ]
                 )
-                if os.environ.get("OVERHEAD_ONLY") != "1"
+                if not overhead_only
                 else 0
             )
             for walker_arch in JacPIMCPURunCtx.get_active_walkers()[dpu_id]
