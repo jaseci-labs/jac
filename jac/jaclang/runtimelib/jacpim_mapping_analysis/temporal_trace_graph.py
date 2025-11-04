@@ -6,7 +6,6 @@ import jaclang.compiler.unitree as uni
 from jaclang.runtimelib.archetype import NodeArchetype
 from jaclang.runtimelib.jacpim_static_analysis import (
     VisitInfo,
-    get_walker_info,
     static_ctx,
 )
 from jaclang.runtimelib.jacpim_static_analysis.info_extract import extract_name
@@ -136,7 +135,7 @@ def get_access_pattern_single_walker(
     active_state_set: list[WalkerState] = [
         WalkerState(container=[start_idx], ttt_node=root_ttt_node)
     ]
-    visit_sequences = get_walker_info(walker_type)
+    visit_sequences = static_ctx.JacPIMStaticCtx.get_walker_info(walker_type)
     # paths: list[list[int]] = []
     cnt = 0
     while len(active_state_set) > 0 and cnt < min(target_node_cnt, len(network.nodes)):

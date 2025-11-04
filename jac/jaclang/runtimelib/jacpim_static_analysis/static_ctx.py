@@ -14,6 +14,10 @@ import networkx as nx
 
 from .info_extract import extract_name
 
+from .visit_sequence import get_walker_info, WalkerInfo
+
+from jaclang.compiler import unitree as uni
+
 
 class JacPIMStaticCtx:
     """Global static context for JacPIM."""
@@ -23,6 +27,7 @@ class JacPIMStaticCtx:
     network: nx.MultiDiGraph | None = None
     layout: dict | None = None
     program: JacProgram | None = None
+    walker_infos: dict[str, WalkerInfo] = {}
 
     @classmethod
     def setter(
@@ -107,3 +112,11 @@ class JacPIMStaticCtx:
         if cls.program is None:
             raise RuntimeError("JacProgram Not set.")
         return cls.program
+    
+    @classmethod
+    def get_walker_info(cls, walker: uni.Archetype) -> WalkerInfo:
+        """Get the visit info of a walker."""
+        walker_name = extract_name(walker)
+        if walker_name not in cls.walker_infos:
+            cls.walker_infos[walker_name] = get_walker_info(walker)
+        return cls.walker_infos[walker_name]

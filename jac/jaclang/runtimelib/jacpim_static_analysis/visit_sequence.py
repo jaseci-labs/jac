@@ -123,8 +123,8 @@ def remove_redundant_visit_sequences(
             non_redundant_seqs.append(seq)
     return non_redundant_seqs
 
-
-def get_walker_info(walker: uni.Archetype) -> dict[str, list[list[VisitInfo]]]:
+type WalkerInfo = dict[str, list[list[VisitInfo]]]
+def get_walker_info(walker: uni.Archetype) -> WalkerInfo:
     """Get the visit info of a walker."""
     visit_info: dict[str, list[list[VisitInfo]]] = {}
     abilities = walker.get_all_sub_nodes(uni.Ability)
