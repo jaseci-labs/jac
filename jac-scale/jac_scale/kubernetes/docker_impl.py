@@ -11,31 +11,33 @@ load_dotenv()
 
 
 def build_docker_image(
-    image_name: str, context_path: str, dockerfile: str = "Dockerfile"
+    image_name: str, code_folder: str, dockerfile: str = "Dockerfile"
 ) -> None:
     """
     Build a Docker image programmatically.
 
     Args:
         image_name (str): Name and tag for the image (e.g. 'jusail/fastapi-app:latest').
-        context_path (str): Path to the build context (where Dockerfile and app code reside).
+        code_folder (str): Path to the build context (where Dockerfile and app code reside).
         dockerfile (str): Dockerfile name (default: 'Dockerfile').
 
     Returns:
         Tuple[str, str]: The image name and its ID.
     """
+    docker_file_path = os.path.join(code_folder, dockerfile)
+    if not os.path.exists(docker_file_path):
+        raise FileNotFoundError("Dockerfile is missing.")
     try:
         docker_client = docker.from_env()
         # Quick test to see if daemon is reachable
         docker_client.ping()
-        print("Docker daemon is running and accessible.")
     except Exception as e:
         raise RuntimeError("Docker daemon is down or unreachable.") from e
 
-    print(f"Building Docker image '{image_name}' from {context_path}...")
+    # print(f"Building Docker image '{image_name}' from {context_path}...")
     try:
         image, logs = docker_client.images.build(
-            path=context_path, dockerfile=dockerfile, tag=image_name, rm=True
+            path=code_folder, dockerfile=dockerfile, tag=image_name, rm=True
         )
         print("image is built sucessfully with image id", image.id)
     except (BuildError, APIError) as e:
@@ -81,8 +83,7 @@ def build_and_push_docker(code_folder: str) -> None:
     docker_password = os.getenv("DOCKER_PASSWORD", "12345")
     repository_name = f"{docker_username}/{image_name}"
     print("the repo name is", repository_name)
-
-    build_docker_image(image_name=repository_name, context_path=code_folder)
+    build_docker_image(image_name=repository_name, code_folder=code_folder)
     push_docker_image(
         image_name=repository_name, username=docker_username, password=docker_password
     )

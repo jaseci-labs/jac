@@ -1,6 +1,7 @@
 """File covering plugin implementation."""
 
 import os
+import pathlib
 
 from dotenv import load_dotenv
 
@@ -21,12 +22,19 @@ class JacCmd:
         """Create Jac CLI cmds."""
 
         @cmd_registry.register
-        def scale() -> None:
+        def scale(file_path: str, build: bool = False) -> None:
             """Jac Scale functionality."""
             load_dotenv()
-            code_folder = os.getenv("CODE_FOLDER", os.getcwd())
-            build_and_push_docker(code_folder)
-            deploy_k8(code_folder)
+
+            if not os.path.exists(file_path):
+                raise FileNotFoundError(f"File not found: '{file_path}'")
+            code_folder = os.path.dirname(file_path) or "."
+            code_folder = os.path.relpath(code_folder)
+            code_folder = pathlib.Path(code_folder).as_posix()
+            base_file_path = os.path.basename(file_path)
+            if build:
+                build_and_push_docker(code_folder)
+            deploy_k8(code_folder, base_file_path, build)
 
         @cmd_registry.register
         def destroy() -> None:
