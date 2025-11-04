@@ -219,6 +219,11 @@ class JacLangServer(JacProgram , LanguageServer) {
         print(f"[Engine] {msg}", file=sys.stderr);
     }
 
+    async def wait_till_idle(self: JacLangServer) -> None {
+        self.debug("Waiting for queue to empty...");
+        await asyncio.to_thread(self.queue.join);
+    }
+
     """Return completion for a file."""
     async def get_completion(
         self: JacLangServer,
@@ -228,8 +233,7 @@ class JacLangServer(JacProgram , LanguageServer) {
     ) -> lspt.CompletionList {
 
         # NOTE: We may only need to wait for the current file's type check.
-        self.debug("Completion waiting for queue to empty...");
-        await asyncio.to_thread(self.queue.join);
+        self.wait_till_idle();
 
         self.debug("Getting completion for " + file_uri + " at " + str(position));
         try {

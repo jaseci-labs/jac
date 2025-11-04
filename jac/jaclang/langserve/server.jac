@@ -19,12 +19,12 @@ import lsprotocol.types as lspt;
 
 
 with entry {
-    logging.getLogger().setLevel(logging.CRITICAL);
+    # logging.getLogger().setLevel(logging.CRITICAL);
     server = JacLangServer();
 }
 
 
-def debug(ls: JacLangServer, msg: str) -> None {
+def debug(msg: str) -> None {
     print(f"[SERVER] {msg}", file=sys.stderr);
 }
 
@@ -49,7 +49,7 @@ async def did_save(ls: JacLangServer, params: lspt.DidOpenTextDocumentParams) ->
 async def did_change(
     ls: JacLangServer, params: lspt.DidChangeTextDocumentParams
 ) -> None {
-    debug(ls, "Did change: Type checking started...");
+    debug("Did change: Type checking started...");
     ls.type_check(params.text_document.uri);
 }
 
@@ -118,7 +118,7 @@ async def completion(
     ls: JacLangServer, params: lspt.CompletionParams
 ) -> lspt.CompletionList{
     file_path = params.text_document.uri;
-    debug(ls, "Completion requested");
+    debug("Completion requested");
     return await ls.get_completion(
         params.text_document.uri,
         params.position,
