@@ -30,7 +30,6 @@ def deploy_k8(code_folder: str, file_name: str = "none", build: bool = False) ->
     redis_enabled = os.getenv("K8_REDIS", "false").lower() == "true"
     if not build:
         repository_name = "python:3.12-slim"
-    print("the repository name is", repository_name)
     # -------------------
     # Kubernetes setup
     # -------------------
@@ -80,6 +79,15 @@ def deploy_k8(code_folder: str, file_name: str = "none", build: bool = False) ->
             }
         )
 
+    container_config = {
+        "name": app_name,
+        "image": repository_name,
+        "ports": [{"containerPort": container_port}],
+        "env": env_list,
+    }
+
+    if not build:
+        container_config["command"] = ["sleep", "infinity"]
     deployment = {
         "apiVersion": "apps/v1",
         "kind": "Deployment",
@@ -91,15 +99,7 @@ def deploy_k8(code_folder: str, file_name: str = "none", build: bool = False) ->
                 "metadata": {"labels": {"app": app_name}},
                 "spec": {
                     "initContainers": init_containers,
-                    "containers": [
-                        {
-                            "name": app_name,
-                            "image": repository_name,
-                            "ports": [{"containerPort": container_port}],
-                            "env": env_list,
-                            # "command": ["sleep", "infinity"],
-                        }
-                    ],
+                    "containers": [container_config],
                 },
             },
         },
