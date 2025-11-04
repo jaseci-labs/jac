@@ -66,14 +66,14 @@ def bootstrap_frontend(token: str) {
     if st.session_state.view_memories {
         st.markdown("---");
         st.markdown("### 📚 Captured Memories");
-        
+
         if st.session_state.captured_memories {
             mem_idx = 0;
             for memory in st.session_state.captured_memories {
                 mem_idx = mem_idx + 1;
                 with st.expander(f"Memory {mem_idx}: {memory.get('summary', 'Untitled')[:50]}...", expanded=False) {
                     mem_columns = st.columns([1, 2]);
-                    
+
                     with mem_columns[0] {
                         if memory.get("image_url") {
                             try {
@@ -83,19 +83,19 @@ def bootstrap_frontend(token: str) {
                             }
                         }
                     }
-                    
+
                     with mem_columns[1] {
                         st.markdown(f"**📋 Summary:**");
                         st.write(memory.get("summary", "N/A"));
-                        
+
                         st.markdown(f"**📅 When:** {memory.get('when', 'Not specified')}");
-                        
+
                         who_list = memory.get("who", []);
                         st.markdown(f"**👥 Who:** {', '.join(who_list) if who_list else 'Not specified'}");
-                        
+
                         where_list = memory.get("where", []);
                         st.markdown(f"**📍 Where:** {', '.join(where_list) if where_list else 'Not specified'}");
-                        
+
                         st.markdown(f"**🎯 What:** {memory.get('what', 'Not specified')}");
                     }
                 }

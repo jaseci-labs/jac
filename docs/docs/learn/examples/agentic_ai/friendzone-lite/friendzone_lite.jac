@@ -59,7 +59,7 @@ walker update_session {
     can visit_session with `root entry {
         # Find or create session for this image
         matching_sessions = [sess for sess in [-->](`?session) if sess.image_url == self.image_url and not sess.terminate_conversation];
-        
+
         if matching_sessions {
             visit matching_sessions[0];
         } else {

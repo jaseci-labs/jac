@@ -137,7 +137,7 @@ walker GeniusAgent {
         here.results = self.results;
         # Let the node handle its own summary display
         here.show_summary();
-        
+
         # Report results for API endpoint
         report {
             "status": "success",
