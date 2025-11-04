@@ -206,6 +206,7 @@ class JacLangServer(JacProgram , LanguageServer) {
         while True {
             try {
                 self.queue.get_nowait();
+                self.queue.task_done();
             } except Empty {
                 break;
             }
@@ -276,13 +277,18 @@ class JacLangServer(JacProgram , LanguageServer) {
     }
 
     """Return completion for a file."""
-    def get_completion(
+    async def get_completion(
         self: JacLangServer,
         file_uri: str,
         position: lspt.Position,
         completion_trigger: Optional[str]
     ) -> lspt.CompletionList {
-        self.debug("getting completion for " + file_uri + " at " + str(position));
+
+        # NOTE: We may only need to wait for the current file's type check.
+        self.debug("Completion waiting for queue to empty...");
+        await asyncio.to_thread(self.queue.join);
+
+        self.debug("Getting completion for " + file_uri + " at " + str(position));
         try {
             file_path = uris.to_fs_path(file_uri);
             if (
@@ -630,4 +636,3 @@ class JacLangServer(JacProgram , LanguageServer) {
     }
 
 }
-

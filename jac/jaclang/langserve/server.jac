@@ -43,17 +43,13 @@ async def did_save(ls: JacLangServer, params: lspt.DidOpenTextDocumentParams) ->
 }
 
 
-glob still_compiling = False;
-
 
 """Check syntax on change with debouncing."""
 @server.feature(lspt.TEXT_DOCUMENT_DID_CHANGE)
 async def did_change(
     ls: JacLangServer, params: lspt.DidChangeTextDocumentParams
 ) -> None {
-    print("********* ->", time.time(), file=sys.stderr);
-
-    debug(ls, "Type checking started...");
+    debug(ls, "Did change: Type checking started...");
     ls.type_check(params.text_document.uri);
 }
 
@@ -113,36 +109,22 @@ def did_delete_files(ls: JacLangServer, params: lspt.DeleteFilesParams) -> None 
 }
 
 
-# """Provide completion."""
-# @server.feature(
-#     lspt.TEXT_DOCUMENT_COMPLETION,
-#     lspt.CompletionOptions(trigger_characters=['.', ':', 'a-zA-Z0-9'])
-# )
-# async def completion(
-#     ls: JacLangServer, params: lspt.CompletionParams
-# ) -> lspt.CompletionList{
-#     file_path = params.text_document.uri;
-#     debug(ls, f"Waiting for any pending debounce or type check for {file_path}...");
-
-#     while True{
-#         debounce_active = ls.is_debounce_active(file_path);
-#         thread_active = ls.is_type_check_thread_active(file_path);
-
-#         # Break only when both debounce and type-check threads are done
-#         if (not debounce_active) and (not thread_active) {
-#             break;
-#         }
-
-#         await asyncio.sleep(0.1);
-#     }
-
-#     debug(ls, f"All checks done for {file_path}, providing completions...");
-#     return ls.get_completion(
-#         params.text_document.uri,
-#         params.position,
-#         (params.context.trigger_character if params.context else None)
-#     );
-# }
+"""Provide completion."""
+@server.feature(
+    lspt.TEXT_DOCUMENT_COMPLETION,
+    lspt.CompletionOptions(trigger_characters=['.', ':', 'a-zA-Z0-9'])
+)
+async def completion(
+    ls: JacLangServer, params: lspt.CompletionParams
+) -> lspt.CompletionList{
+    file_path = params.text_document.uri;
+    debug(ls, "Completion requested");
+    return await ls.get_completion(
+        params.text_document.uri,
+        params.position,
+        (params.context.trigger_character if params.context else None)
+    );
+}
 
 
 """Provide hover information for the given hover request."""
