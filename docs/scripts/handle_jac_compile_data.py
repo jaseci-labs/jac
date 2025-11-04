@@ -84,16 +84,38 @@ def create_playground_zip() -> None:
     if not os.path.exists(TARGET_FOLDER):
         raise FileNotFoundError(f"Folder not found: {TARGET_FOLDER}")
 
+    # Files/directories to exclude for faster zipping
+    exclude_patterns = {
+        ".pyi",  # Type stub files (4427 files!)
+        ".pyc",  # Compiled Python
+        "__pycache__",  # Cache directories
+        ".git",
+        ".pytest_cache",
+        "tests",  # Test files may not be needed for playground
+    }
+
+    def should_exclude(path: str) -> bool:
+        """Check if file/directory should be excluded."""
+        return any(
+            pattern in path or path.endswith(pattern) for pattern in exclude_patterns
+        )
+
+    files_added = 0
     with zipfile.ZipFile(PLAYGROUND_ZIP_PATH, "w", zipfile.ZIP_DEFLATED) as zipf:
-        for root, _, files in os.walk(TARGET_FOLDER):
+        for root, dirs, files in os.walk(TARGET_FOLDER):
+            # Remove excluded directories from traversal
+            dirs[:] = [d for d in dirs if not should_exclude(os.path.join(root, d))]
+
             for file in files:
                 file_path = os.path.join(root, file)
-                arcname = os.path.join(
-                    ZIP_FOLDER_NAME, os.path.relpath(file_path, TARGET_FOLDER)
-                )
-                zipf.write(file_path, arcname)
+                if not should_exclude(file_path):
+                    arcname = os.path.join(
+                        ZIP_FOLDER_NAME, os.path.relpath(file_path, TARGET_FOLDER)
+                    )
+                    zipf.write(file_path, arcname)
+                    files_added += 1
 
-    print("Zip saved to:", PLAYGROUND_ZIP_PATH)
+    print(f"Zip saved to: {PLAYGROUND_ZIP_PATH} ({files_added} files)")
 
 
 def get_top_contributors(repos: list[str] | None = None) -> str:

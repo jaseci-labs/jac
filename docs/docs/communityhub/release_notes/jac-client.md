@@ -2,7 +2,7 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Client**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking_changes.md) page.
 
-## jaclang 0.9.0 / jac-client 0.1.0 (Unreleased)
+## jac-client 0.1.0 (Unreleased)
 
 - **Client Bundler Plugin Support**: Extended the existing `pluggy`-based plugin architecture to support custom client bundling implementations. Two static methods were added to `JacMachineInterface` to enable client bundler plugins:
   - `get_client_bundle_builder()`: Returns the client bundle builder instance, allowing plugins to provide custom bundler implementations
@@ -33,5 +33,6 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## jaclang 0.8.3 / jac-cloud 0.2.3 / mtllm 0.3.8
 
 ## jaclang 0.8.1 / jac-cloud 0.2.1 / mtllm 0.3.6
+
 
 ## Version 0.8.0

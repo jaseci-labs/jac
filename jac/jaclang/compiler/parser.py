@@ -1073,8 +1073,11 @@ class JacParser(Transform[uni.Source, uni.Module]):
             return_spec: uni.Expr | None = None
 
             # Check if starting with RETURN_HINT
-            if self.match_token(Tok.RETURN_HINT):
+            if return_hint := self.match_token(Tok.RETURN_HINT):
                 return_spec = self.consume(uni.Expr)
+                kid_list = [return_hint]
+                if return_spec:
+                    kid_list.append(return_spec)
                 return uni.FuncSignature(
                     posonly_params=[],
                     params=[],
@@ -1082,18 +1085,28 @@ class JacParser(Transform[uni.Source, uni.Module]):
                     kwonlyargs=[],
                     kwargs=None,
                     return_type=return_spec,
-                    kid=self.flat_cur_nodes,
+                    kid=kid_list,
                 )
             # Otherwise, parse the traditional parameter list form
             else:
-                self.consume_token(Tok.LPAREN)
+                lparen = self.consume_token(Tok.LPAREN)
                 all_params = self.match(list) or []
                 posonly_params, params, varargs, kwonlyargs, kwargs = (
                     self._parse_parameter_categories(all_params)
                 )
-                self.consume_token(Tok.RPAREN)
-                if self.match_token(Tok.RETURN_HINT):
+                rparen = self.consume_token(Tok.RPAREN)
+                return_hint = self.match_token(Tok.RETURN_HINT)
+                if return_hint:
                     return_spec = self.consume(uni.Expr)
+                # Build kid list with all tokens
+                kid_list = [lparen]
+                if all_params:
+                    kid_list.extend(all_params)
+                kid_list.append(rparen)
+                if return_hint:
+                    kid_list.append(return_hint)
+                    if return_spec:
+                        kid_list.append(return_spec)
                 return uni.FuncSignature(
                     posonly_params=posonly_params,
                     params=params,
@@ -1101,7 +1114,7 @@ class JacParser(Transform[uni.Source, uni.Module]):
                     kwonlyargs=kwonlyargs,
                     kwargs=kwargs,
                     return_type=return_spec,
-                    kid=self.flat_cur_nodes,
+                    kid=kid_list,
                 )
 
         def _parse_parameter_categories(self, all_params: list[uni.UniNode]) -> tuple[
@@ -2314,15 +2327,15 @@ class JacParser(Transform[uni.Source, uni.Module]):
                  | type_ref
                  | jsx_element
             """
-            if self.match_token(Tok.LPAREN):
+            if lparen := self.match_token(Tok.LPAREN):
                 # Try to match expression first, then yield_expr, then function_decl
                 value = self.match(uni.Expr)
                 if value is None:
                     value = self.match(uni.YieldExpr)
                 if value is None:
                     value = self.consume(uni.Ability)
-                self.consume_token(Tok.RPAREN)
-                return uni.AtomUnit(value=value, kid=self.cur_nodes)
+                rparen = self.consume_token(Tok.RPAREN)
+                return uni.AtomUnit(value=value, kid=[lparen, value, rparen])
             return self.consume(uni.AtomExpr)
 
         def yield_expr(self, _: None) -> uni.YieldExpr:
@@ -2527,16 +2540,23 @@ class JacParser(Transform[uni.Source, uni.Module]):
 
             list_val: LSQUARE (expr_list COMMA?)? RSQUARE
             """
-            self.consume_token(Tok.LSQUARE)
+            lsquare = self.consume_token(Tok.LSQUARE)
             values_node = self.match(list)
-            self.match_token(Tok.COMMA)
-            self.consume_token(Tok.RSQUARE)
+            trailing_comma = self.match_token(Tok.COMMA)
+            rsquare = self.consume_token(Tok.RSQUARE)
             values = (
                 self.extract_from_list(values_node, uni.Expr) if values_node else []
             )
+            # Build kid list with all tokens
+            kid_list = [lsquare]
+            if values_node:
+                kid_list.extend(values_node)
+            if trailing_comma:
+                kid_list.append(trailing_comma)
+            kid_list.append(rsquare)
             return uni.ListVal(
                 values=values,
-                kid=self.flat_cur_nodes,
+                kid=kid_list,
             )
 
         def tuple_val(self, _: None) -> uni.TupleVal:
@@ -2544,16 +2564,20 @@ class JacParser(Transform[uni.Source, uni.Module]):
 
             tuple_val: LPAREN tuple_list? RPAREN
             """
-            self.consume_token(Tok.LPAREN)
+            lparen = self.consume_token(Tok.LPAREN)
             target = self.match(list)
-            self.consume_token(Tok.RPAREN)
+            rparen = self.consume_token(Tok.RPAREN)
+            values = (
+                self.extract_from_list(target, (uni.Expr, uni.KWPair)) if target else []
+            )
+            # Build kid list with all tokens
+            kid_list = [lparen]
+            if target:
+                kid_list.extend(target)
+            kid_list.append(rparen)
             return uni.TupleVal(
-                values=(
-                    self.extract_from_list(target, (uni.Expr, uni.KWPair))
-                    if target
-                    else []
-                ),
-                kid=self.flat_cur_nodes,
+                values=values,
+                kid=kid_list,
             )
 
         def set_val(self, _: None) -> uni.SetVal:
@@ -2561,14 +2585,24 @@ class JacParser(Transform[uni.Source, uni.Module]):
 
             set_val: LBRACE expr_list COMMA? RBRACE
             """
-            self.match_token(Tok.LBRACE)
+            lbrace = self.match_token(Tok.LBRACE)
             expr_list = self.match(list)
-            self.match_token(Tok.COMMA)
-            self.match_token(Tok.RBRACE)
+            trailing_comma = self.match_token(Tok.COMMA)
+            rbrace = self.match_token(Tok.RBRACE)
             values = self.extract_from_list(expr_list, uni.Expr) if expr_list else []
+            # Build kid list with all tokens
+            kid_list: list[uni.UniNode] = []
+            if lbrace:
+                kid_list.append(lbrace)
+            if expr_list:
+                kid_list.extend(expr_list)
+            if trailing_comma:
+                kid_list.append(trailing_comma)
+            if rbrace:
+                kid_list.append(rbrace)
             return uni.SetVal(
                 values=values,
-                kid=self.flat_cur_nodes,
+                kid=kid_list,
             )
 
         def expr_list(self, kid: list[uni.UniNode]) -> list[uni.UniNode]:
@@ -2626,15 +2660,19 @@ class JacParser(Transform[uni.Source, uni.Module]):
 
             dict_val: LBRACE ((kv_pair COMMA)* kv_pair COMMA?)? RBRACE
             """
-            self.consume_token(Tok.LBRACE)
+            lbrace = self.consume_token(Tok.LBRACE)
             kv_pairs: list = []
+            kid_list: list[uni.UniNode] = [lbrace]
             while item := self.match(uni.KVPair):
                 kv_pairs.append(item)
-                self.match_token(Tok.COMMA)
-            self.consume_token(Tok.RBRACE)
+                kid_list.append(item)
+                if comma := self.match_token(Tok.COMMA):
+                    kid_list.append(comma)
+            rbrace = self.consume_token(Tok.RBRACE)
+            kid_list.append(rbrace)
             return uni.DictVal(
                 kv_pairs=kv_pairs,
-                kid=self.cur_nodes,
+                kid=kid_list,
             )
 
         def kv_pair(self, _: None) -> uni.KVPair:
@@ -2642,20 +2680,20 @@ class JacParser(Transform[uni.Source, uni.Module]):
 
             kv_pair: expression COLON expression | STAR_POW expression
             """
-            if self.match_token(Tok.STAR_POW):
+            if star_pow := self.match_token(Tok.STAR_POW):
                 value = self.consume(uni.Expr)
                 return uni.KVPair(
                     key=None,
                     value=value,
-                    kid=self.cur_nodes,
+                    kid=[star_pow, value],
                 )
             key = self.consume(uni.Expr)
-            self.consume_token(Tok.COLON)
+            colon = self.consume_token(Tok.COLON)
             value = self.consume(uni.Expr)
             return uni.KVPair(
                 key=key,
                 value=value,
-                kid=self.cur_nodes,
+                kid=[key, colon, value],
             )
 
         def list_compr(self, _: None) -> uni.ListCompr:
@@ -2663,14 +2701,14 @@ class JacParser(Transform[uni.Source, uni.Module]):
 
             list_compr: LSQUARE expression inner_compr+ RSQUARE
             """
-            self.consume_token(Tok.LSQUARE)
+            lsquare = self.consume_token(Tok.LSQUARE)
             out_expr = self.consume(uni.Expr)
             comprs = self.consume_many(uni.InnerCompr)
-            self.consume_token(Tok.RSQUARE)
+            rsquare = self.consume_token(Tok.RSQUARE)
             return uni.ListCompr(
                 out_expr=out_expr,
                 compr=comprs,
-                kid=self.cur_nodes,
+                kid=[lsquare, out_expr, *comprs, rsquare],
             )
 
         def gen_compr(self, _: None) -> uni.GenCompr:
@@ -2678,14 +2716,14 @@ class JacParser(Transform[uni.Source, uni.Module]):
 
             gen_compr: LPAREN expression inner_compr+ RPAREN
             """
-            self.consume_token(Tok.LPAREN)
+            lparen = self.consume_token(Tok.LPAREN)
             out_expr = self.consume(uni.Expr)
             comprs = self.consume_many(uni.InnerCompr)
-            self.consume_token(Tok.RPAREN)
+            rparen = self.consume_token(Tok.RPAREN)
             return uni.GenCompr(
                 out_expr=out_expr,
                 compr=comprs,
-                kid=self.cur_nodes,
+                kid=[lparen, out_expr, *comprs, rparen],
             )
 
         def set_compr(self, _: None) -> uni.SetCompr:
@@ -2693,14 +2731,14 @@ class JacParser(Transform[uni.Source, uni.Module]):
 
             set_compr: LBRACE expression inner_compr+ RBRACE
             """
-            self.consume_token(Tok.LBRACE)
+            lbrace = self.consume_token(Tok.LBRACE)
             out_expr = self.consume(uni.Expr)
             comprs = self.consume_many(uni.InnerCompr)
-            self.consume_token(Tok.RBRACE)
+            rbrace = self.consume_token(Tok.RBRACE)
             return uni.SetCompr(
                 out_expr=out_expr,
                 compr=comprs,
-                kid=self.cur_nodes,
+                kid=[lbrace, out_expr, *comprs, rbrace],
             )
 
         def dict_compr(self, _: None) -> uni.DictCompr:
@@ -2708,14 +2746,14 @@ class JacParser(Transform[uni.Source, uni.Module]):
 
             dict_compr: LBRACE kv_pair inner_compr+ RBRACE
             """
-            self.consume_token(Tok.LBRACE)
+            lbrace = self.consume_token(Tok.LBRACE)
             kv_pair = self.consume(uni.KVPair)
             comprs = self.consume_many(uni.InnerCompr)
-            self.consume_token(Tok.RBRACE)
+            rbrace = self.consume_token(Tok.RBRACE)
             return uni.DictCompr(
                 kv_pair=kv_pair,
                 compr=comprs,
-                kid=self.cur_nodes,
+                kid=[lbrace, kv_pair, *comprs, rbrace],
             )
 
         def inner_compr(self, _: None) -> uni.InnerCompr:
@@ -2959,10 +2997,14 @@ class JacParser(Transform[uni.Source, uni.Module]):
             value = None
             if self.match_token(Tok.EQ):
                 value = self.consume(uni.Expr)
+            kids = [*self.cur_nodes]
+            if hasattr(value, "attached_tokens"):  # <-- TEMP WORKAROUND
+                kids.insert(kids.index(value) + 1, value.attached_tokens[1])  # type: ignore
+                kids.insert(kids.index(value), value.attached_tokens[0])  # type: ignore
             return uni.JsxNormalAttribute(
                 name=name,
                 value=value,
-                kid=self.cur_nodes,
+                kid=kids,
             )
 
         def jsx_attr_value(self, _: None) -> uni.String | uni.Expr:
@@ -2972,9 +3014,10 @@ class JacParser(Transform[uni.Source, uni.Module]):
             """
             if string := self.match(uni.String):
                 return string
-            self.consume_token(Tok.LBRACE)
+            lbrace = self.consume_token(Tok.LBRACE)
             expr = self.consume(uni.Expr)
-            self.consume_token(Tok.RBRACE)
+            rbrace = self.consume_token(Tok.RBRACE)
+            expr.attached_tokens = [lbrace, rbrace]  # <-- TEMP WORKAROUND
             return expr
 
         def jsx_children(self, _: None) -> list[uni.JsxChild]:

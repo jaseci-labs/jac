@@ -425,3 +425,31 @@ cl {
         }
     }
 }
+
+def x(
+    # comment
+) {
+    print(
+        "111"  #
+    );
+}
+
+def gg() {
+    #1234
+}
+
+obj A {
+    # 123
+    def x() {
+        # 123
+    }
+}
+
+def x(
+    x: int = 123
+    # comment
+) {
+    print(
+        "111"  #
+    );
+}

@@ -192,7 +192,7 @@ def process_contributors(
         commit_date: date = datetime.strptime(
             commit["commit"]["author"]["date"], "%Y-%m-%dT%H:%M:%SZ"
         ).date()
-        if commit_date >= since_date and commit["author"]:
+        if commit_date > since_date and commit["author"]:
             author_login = commit["author"]["login"]
             contributors[author_login]["commits"] += 1
             contributors[author_login]["active_days"].add(commit_date)
