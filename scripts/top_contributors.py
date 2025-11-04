@@ -122,8 +122,9 @@ def process_contributors(
 ) -> List[Dict[str, Any]]:
     """Process commits to get contributor stats for a specific period."""
     since_date = (datetime.now(timezone.utc) - timedelta(days=days)).date()
+    # Group by email to deduplicate same person with different names
     contributors: Dict[str, Dict[str, Any]] = defaultdict(
-        lambda: {"commits": 0, "active_days": set(), "email": ""}
+        lambda: {"commits": 0, "active_days": set(), "names": defaultdict(int)}
     )
 
     for commit in commits:
@@ -132,23 +133,24 @@ def process_contributors(
         except ValueError:
             continue
 
-        if commit_date >= since_date:
+        if commit_date > since_date:
             author_name = commit["author_name"]
             author_email = commit["author_email"]
 
-            contributors[author_name]["commits"] += 1
-            contributors[author_name]["active_days"].add(commit_date)
-            contributors[author_name]["email"] = author_email
+            contributors[author_email]["commits"] += 1
+            contributors[author_email]["active_days"].add(commit_date)
+            contributors[author_email]["names"][author_name] += 1
 
+    # Use the most frequently used name for each email
     return sorted(
         [
             {
-                "name": name,
-                "email": data["email"],
+                "name": max(data["names"].items(), key=lambda x: x[1])[0],
+                "email": email,
                 "commits": data["commits"],
                 "active_days": len(data["active_days"]),
             }
-            for name, data in contributors.items()
+            for email, data in contributors.items()
         ],
         key=lambda x: x["commits"],
         reverse=True,

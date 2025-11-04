@@ -46,11 +46,8 @@ def pre_build_hook(**kwargs: dict) -> None:
     else:
         print(f"File is recent: {LANG_REF_DOC}. Skipping creation.")
 
-    if is_file_older_than_minutes(TOP_CONTRIBUTORS_DOC, 5):
-        with open(TOP_CONTRIBUTORS_DOC, "w") as f:
-            f.write(get_top_contributors())
-    else:
-        print(f"File is recent: {TOP_CONTRIBUTORS_DOC}. Skipping creation.")
+    with open(TOP_CONTRIBUTORS_DOC, "w") as f:
+        f.write(get_top_contributors())
 
 
 def is_file_older_than_minutes(file_path: str, minutes: int) -> bool:
