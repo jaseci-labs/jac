@@ -127,10 +127,13 @@ class CFGBuildPass(UniPass):
                     for parent in to_remove:
                         self.to_connect.remove(parent)
                 else:
-                    for i in range(len(bb_stmts)):
-                        if bb_stmts[i] == node:
-                            parent_bb = bb_stmts[i - 1]
+                    try:
+                        idx = bb_stmts.index(node)
+                        if idx > 0:
+                            parent_bb = bb_stmts[idx - 1]
                             self.link_bbs(parent_bb, node)
+                    except ValueError:
+                        pass  # node not in bb_stmts
 
             else:
                 parent_bb = self.get_parent_bb_stmt(node)

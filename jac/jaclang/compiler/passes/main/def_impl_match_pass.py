@@ -41,8 +41,7 @@ class DeclImplMatchPass(Transform[uni.Module, uni.Module]):
 
     def defn_lookup(self, lookup: Symbol) -> uni.NameAtom | None:
         """Lookup a definition in a symbol table."""
-        for defn in range(len(lookup.defn)):
-            candidate = lookup.defn[len(lookup.defn) - (defn + 1)]
+        for candidate in reversed(lookup.defn):
             if (
                 isinstance(candidate.name_of, uni.AstImplNeedingNode)
                 and candidate.name_of.needs_impl
@@ -172,11 +171,11 @@ class DeclImplMatchPass(Transform[uni.Module, uni.Module]):
                     )
                 else:
                     # Copy the parameter names from the declaration to the definition.
-                    for idx in range(len(params_defn)):
+                    for idx, param_defn in enumerate(params_defn):
                         if (par := params_decl[idx].parent) is not None:
                             loc_in_kid = par.kid.index(params_decl[idx])
-                            par.kid[loc_in_kid] = params_defn[idx]
-                        params_decl[idx] = params_defn[idx]
+                            par.kid[loc_in_kid] = param_defn
+                        params_decl[idx] = param_defn
 
     def check_archetypes(self, ir_in: uni.Module) -> None:
         """Check all archetypes for issues with attributes and methods."""

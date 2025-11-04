@@ -1676,7 +1676,7 @@ class JacUtils:
                 # Update the old module's attributes if specific items were requested
                 if items:
                     ret_items = []
-                    for idx, item_name in enumerate(items.keys()):
+                    for idx, item_name in enumerate(items):
                         if hasattr(old_module, item_name) and idx < len(result):
                             new_attr = result[idx]
                             ret_items.append(new_attr)

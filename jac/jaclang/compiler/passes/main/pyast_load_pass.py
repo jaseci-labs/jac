@@ -1041,12 +1041,11 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
         valid_keys = [i for i in keys if isinstance(i, uni.Expr) or i is None]
         valid_values = [i for i in values if isinstance(i, uni.Expr)]
         kvpair: list[uni.KVPair] = []
-        for i in range(len(values)):
-            key_pluck = valid_keys[i]
+        for i, (key_pluck, value) in enumerate(zip(valid_keys, valid_values)):
             kvp = uni.KVPair(
                 key=key_pluck,
-                value=valid_values[i],
-                kid=([key_pluck, valid_values[i]] if key_pluck else [valid_values[i]]),
+                value=value,
+                kid=([key_pluck, value] if key_pluck else [value]),
             )
             kvpair.append(kvp)
         return uni.DictVal(
@@ -1558,12 +1557,12 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
             valid_kwd_patterns = [
                 i for i in kwd_patterns if isinstance(i, uni.MatchPattern)
             ]
-            for i in range(len(kwd_patterns)):
+            for name, valid_kwd_pattern in zip(names, valid_kwd_patterns):
                 kv_pairs.append(
                     uni.MatchKVPair(
-                        key=names[i],
-                        value=valid_kwd_patterns[i],
-                        kid=[names[i], valid_kwd_patterns[i]],
+                        key=name,
+                        value=valid_kwd_pattern,
+                        kid=[name, valid_kwd_pattern],
                     )
                 )
 
@@ -1598,11 +1597,11 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
         ]
         patterns = [self.convert(i) for i in node.patterns]
         valid_patterns = [i for i in patterns if isinstance(i, uni.MatchPattern)]
-        for i in range(len(valid_keys)):
+        for valid_key, valid_pattern in zip(valid_keys, valid_patterns):
             kv_pair = uni.MatchKVPair(
-                key=valid_keys[i],
-                value=valid_patterns[i],
-                kid=[valid_keys[i], valid_patterns[i]],
+                key=valid_key,
+                value=valid_pattern,
+                kid=[valid_key, valid_pattern],
             )
             values.append(kv_pair)
         if node.rest:
@@ -2169,9 +2168,7 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
         kwonlyargs = _apply_kind(
             [self.convert(arg) for arg in node.kwonlyargs], uni.ParamKind.KWONLY
         )
-        for i in range(len(kwonlyargs)):
-            kwa = kwonlyargs[i]
-            kwd = node.kw_defaults[i]
+        for kwa, kwd in zip(kwonlyargs, node.kw_defaults):
             kwdefault = self.convert(kwd) if kwd else None
             if (
                 kwdefault

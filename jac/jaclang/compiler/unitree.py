@@ -1406,8 +1406,8 @@ class ModulePath(UniNode):
         """Convert an import target string into a relative file path."""
         parts = self.dot_path_str.split(".")
         paths = []
-        for i in range(len(parts)):
-            sub_path = ".".join(parts[: i + 1])
+        for i, _ in enumerate(parts, 1):
+            sub_path = ".".join(parts[:i])
             paths.append(resolve_relative_path(sub_path, self.loc.mod_path))
         return paths
 
