@@ -97,14 +97,14 @@ walker update_session {
 
         if response.show_summary {
             if response.terminate_conversation {
-                print("🤖 Assistant: " + response.follow_up_questions);
-                print("✅ Final Memory Summary:" + response.summary);
+                print("Assistant: " + response.follow_up_questions);
+                print("Final Memory Summary:" + response.summary);
             } else {
-                print("📝 Memory Summary (in progress):" + response.summary);
-                print("🤖 Assistant: " + response.follow_up_questions);
+                print("Memory Summary (in progress):" + response.summary);
+                print("Assistant: " + response.follow_up_questions);
             }
         } else {
-            print("🤖 Assistant: " + response.follow_up_questions);
+            print("Assistant: " + response.follow_up_questions);
         }
 
         # Report session state for frontend
