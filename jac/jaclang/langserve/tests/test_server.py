@@ -116,7 +116,7 @@ class TestJacLangServer(TestCase):
             (6, 28, "concurrent/futures/__init__.py:0:0-0:0"),
             (7, 17, "typing.py:0:0-0:0"),
             # not a good one since there may be different typing.py versions
-            # (7, 27, "typing.py:2636:0-2636:7"), 
+            # (7, 27, "typing.py:2636:0-2636:7"),
             (9, 18, "compiler/__init__.py:0:0-0:0"),
             (9, 38, "compiler/unitree.py:0:0-0:0"),
             (11, 35, "compiler/constant.py:0:0-0:0"),
@@ -189,9 +189,9 @@ class TestJacLangServer(TestCase):
                 str(lsp.warnings_had[idx]),
             )
 
-  
 
-    def test_completion(self) -> None:
+    @pytest.mark.asyncio
+    async def test_completion(self) -> None:
         """Test that the completions are correct."""
         lsp = JacLangServer()
         workspace_path = self.fixture_abs_path("")
@@ -215,9 +215,10 @@ class TestJacLangServer(TestCase):
             ),
         ]
         for case in test_cases:
-            completions = lsp.get_completion(
+            results = await lsp.get_completion(
                 base_module_file, case.pos, completion_trigger=case.trigger
-            ).items
+            )
+            completions = results.items
             for completion in case.expected:
                 self.assertIn(completion, str(completions))
 
@@ -234,7 +235,7 @@ class TestJacLangServer(TestCase):
             (47, 12, ["circle.jac:47:8-47:14", "69:8-69:14", "74:8-74:14"]),
             (54, 66, ["54:62-54:76", "65:23-65:37"]),
 
-            # TODO: Even if we cannot find the function decl, 
+            # TODO: Even if we cannot find the function decl,
             # we should connect the function args to their decls
             # (62, 14, ["65:44-65:57", "70:33-70:46"]),
         ]
