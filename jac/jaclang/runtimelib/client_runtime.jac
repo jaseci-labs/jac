@@ -429,7 +429,7 @@ def __jacGetHashPath() -> str {
 # Walker spawn function
 # ============================================================================
 
-async def __jacSpawn(left: str, right: str, fields: *args) -> any {
+async def __jacSpawn(left: str, right: str = "", fields: dict = {}) -> any {
     token = __getLocalStorage("jac_token");
     url =  f"/walker/{left}";
     if right != "root" {
@@ -443,7 +443,7 @@ async def __jacSpawn(left: str, right: str, fields: *args) -> any {
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {token}" if token else ""
             },
-            "body": JSON.stringify({"fields": {*fields}})
+            "body": JSON.stringify({"fields": fields})
         }
     );
 
