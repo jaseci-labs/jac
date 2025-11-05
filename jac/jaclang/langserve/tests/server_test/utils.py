@@ -93,7 +93,7 @@ class LanguageServerTestHelper:
 
     async def open_document(self) -> None:
         """Open a document in the language server."""
-        from jaclang.langserve.server import did_open, server
+        from jaclang.langserve.server import did_open
 
         params = DidOpenTextDocumentParams(
             text_document=TextDocumentItem(
@@ -104,11 +104,11 @@ class LanguageServerTestHelper:
             )
         )
         await did_open(self.ls, params)
-        await server.wait_till_idle()
+        await self.ls.wait_till_idle()
 
     async def save_document(self, code: Optional[str] = None) -> None:
         """Save a document in the language server."""
-        from jaclang.langserve.server import did_save, server
+        from jaclang.langserve.server import did_save
 
         content = code if code is not None else self.test_file.code
         version = self.test_file.increment_version()
@@ -123,11 +123,11 @@ class LanguageServerTestHelper:
             text=content
         )
         await did_save(self.ls, params)
-        await server.wait_till_idle()
+        await self.ls.wait_till_idle()
 
     async def change_document(self, code: str) -> None:
         """Change document content in the language server."""
-        from jaclang.langserve.server import did_change, server
+        from jaclang.langserve.server import did_change
 
         version = self.test_file.increment_version()
         self._update_workspace(code, version)
@@ -140,7 +140,7 @@ class LanguageServerTestHelper:
             content_changes=[{"text": code}],  # type: ignore
         )
         await did_change(self.ls, params)
-        await server.wait_till_idle()
+        await self.ls.wait_till_idle()
 
     def _update_workspace(self, code: str, version: int) -> None:
         """Update workspace with new document content."""

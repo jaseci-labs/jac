@@ -60,9 +60,16 @@ class JacLangServer(JacProgram , LanguageServer) {
     }
 
     def dispatcher(self: JacLangServer) -> None {
+
         while True {
             start_time = time.time();
-            task: Task = self.queue.get();
+            task: Task | None = self.queue.get();
+
+            if task is None {
+                self.debug("Task was None, exiting dispatcher.");
+                break;
+            }
+
             self.debug("Dispatching task id: " + str(task.task_id));
             try {
                 self.type_check_file(task.file_uri);
@@ -175,7 +182,7 @@ class JacLangServer(JacProgram , LanguageServer) {
     }
 
     def type_check(self: JacLangServer, file_uri: str) -> None {
-        if self.last_task {
+        if self.last_task and not self.last_task.cancel_token.is_set() {
             self.last_task.cancel_token.set();
             self.debug(f" Cancelling id: " + str(self.last_task.task_id));
         }
@@ -222,6 +229,7 @@ class JacLangServer(JacProgram , LanguageServer) {
     async def wait_till_idle(self: JacLangServer) -> None {
         self.debug("Waiting for queue to empty...");
         await asyncio.to_thread(self.queue.join);
+        self.debug("Queue is now empty");
     }
 
     """Return completion for a file."""
@@ -233,7 +241,7 @@ class JacLangServer(JacProgram , LanguageServer) {
     ) -> lspt.CompletionList {
 
         # NOTE: We may only need to wait for the current file's type check.
-        self.wait_till_idle();
+        await self.wait_till_idle();
 
         self.debug("Getting completion for " + file_uri + " at " + str(position));
         try {
@@ -580,6 +588,16 @@ class JacLangServer(JacProgram , LanguageServer) {
     """Log a message."""
     def log_py(self: JacLangServer, message: str) -> None {
         logging.info(message);
+    }
+
+
+    def shutdown(self: JacLangServer) -> None {
+        try {
+            self.queue.put(None);  # Signal the worker thread to exit
+            self.worker_thread.join(timeout=1.0);  # Wait for the worker thread to finish
+        } finally {
+            super.shutdown();
+        }
     }
 
 }
