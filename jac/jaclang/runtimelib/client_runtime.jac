@@ -432,8 +432,8 @@ def __jacGetHashPath() -> str {
 async def __jacSpawn(left: str, right: str = "", fields: dict = {}) -> any {
     token = __getLocalStorage("jac_token");
     url =  f"/walker/{left}";
-    if right != "root" {
-        url =  f"/walker/{left}/node/{right}";
+    if right != "" {
+        url =  f"/walker/{left}/{right}";
     }
     response = await fetch(url,
         {

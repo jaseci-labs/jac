@@ -419,27 +419,30 @@ def __jacGetHashPath() -> str {
 # Walker spawn function
 # ============================================================================
 
-async def __jacSpawn(walker: str, fields: dict = {}, nd: str  | None = None) -> any {
+async def __jacSpawn(left: str, right: str = "", fields: dict = {}) -> any {
     token = __getLocalStorage("jac_token");
-
-    response = await fetch(
-        f"/walker/{walker}",
+    url =  f"/walker/{left}";
+    if right != "" {
+        url =  f"/walker/{left}/{right}";
+    }
+    response = await fetch(url,
         {
             "method": "POST",
+            "accept": "application/json",
             "headers": {
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {token}" if token else ""
             },
-            "body": JSON.stringify({"nd": nd if nd else "root", **fields})
+            "body": JSON.stringify({"fields": fields})
         }
     );
 
     if not response.ok {
-        error_text = await response.text();
+        error_text = await response.json();
         raise Exception(f"Walker {walker} failed: {error_text}");
     }
 
-    return JSON.parse(await response.text());
+    return await response.json();
 }
 
 # Function call function - calls server-side functions from client
