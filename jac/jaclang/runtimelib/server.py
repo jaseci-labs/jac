@@ -770,11 +770,9 @@ class JacAPIServer:
 
         # Core components
         self.user_manager = UserManager(session_path)
+        self.introspector = Jac.get_module_introspector(module_name, base_path)
         self.execution_manager = ExecutionManager(session_path, self.user_manager)
 
-    def __post__init__(self) -> None:
-        """Post-initialization to setup ModuleIntrospector."""
-        self.introspector = ModuleIntrospector(self.module_name, self.base_path)
         # Route handlers
         self.auth_handler = AuthHandler(
             self.introspector, self.execution_manager, self.user_manager

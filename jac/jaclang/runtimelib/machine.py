@@ -67,6 +67,9 @@ from jaclang.utils import infer_language
 
 import pluggy
 
+if TYPE_CHECKING:
+    from jaclang.runtimelib.server import ModuleIntrospector
+
 
 plugin_manager = pluggy.PluginManager("jac")
 hookspec = pluggy.HookspecMarker("jac")
@@ -1465,6 +1468,20 @@ class JacClientBundle:
         return builder.build(module, force=force)
 
 
+class JacAPIServer:
+    """Jac API Server Operations - Generic interface for API server."""
+
+    @staticmethod
+    def get_module_introspector(
+        module_name: str,
+        base_path: str | None = None,
+    ) -> "ModuleIntrospector":
+        from jaclang.runtimelib.server import ModuleIntrospector
+
+        """Get the module introspector instance."""
+        return ModuleIntrospector(module_name, base_path)
+
+
 class JacByLLM:
     """Jac byLLM integration."""
 
@@ -1752,6 +1769,7 @@ class JacMachineInterface(
     JacCmd,
     JacBasics,
     JacClientBundle,
+    JacAPIServer,
     JacByLLM,
     JacUtils,
 ):
