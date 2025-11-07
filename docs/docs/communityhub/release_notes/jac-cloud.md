@@ -3,24 +3,18 @@
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Cloud**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking_changes.md) page.
 
 
-## jaclang 0.9.0 / jac-cloud 0.2.11 / byllm 0.4.6 / jac-client 0.1.0 (Unreleased)
+## jac-cloud 0.2.11 (Unreleased)
 
 
-## jaclang 0.8.10 / jac-cloud 0.2.10 / byllm 0.4.5 (Latest Release)
+## jac-cloud 0.2.10 (Latest Release)
 
 - **Jac Serve Faux Mode**: Added `--faux` flag to `jac serve` command that prints documentation for API endpoints instead of starting the server, useful for quickly inspecting available endpoints and their specifications.
 
-## jaclang 0.8.9 / jac-cloud 0.2.9 / byllm 0.4.4
-
-## jaclang 0.8.8 / jac-cloud 0.2.8 / byllm 0.4.3
+## jac-cloud 0.2.8
 
 - **Consistent Jac Code Execution**: Fixed an issue allowing Jac code to be executed both as a standalone program and as an application. Running `jac run` now executes the `main()` function, while `jac serve` launches the application without invoking `main()`.
 
-## jaclang 0.8.7 / jac-cloud 0.2.7 / byllm 0.4.2
-
-## jaclang 0.8.6 / jac-cloud 0.2.6 / byllm 0.4.1
-
-## jaclang 0.8.5 / jac-cloud 0.2.5 / mtllm 0.4.0
+## jac-cloud 0.2.5
 
 - **Jac Cloud Hot Reload**: Introduced the ability to enable development mode like uvicorn by adding `--reload` in `jac serve`. This supports targetting specific directories by using `--watch path/to/dir1,path/to/dir2` (comma separated).
 - **Dynamic Runtime Walker Endpoint**: Fixes auto-generated endpoints for walkers created at runtime.
@@ -32,7 +26,7 @@ This document provides a summary of new features, improvements, and bug fixes in
   - edge_types - Edge filter by name. Defaults to no filter
 - **Dedicated Memory commit interface.**: Introduced the interface to commit memory to db at runtime. Previously, we only have it on jac-cloud but we generalized it and support it for both jac and jac-cloud.
 
-## jaclang 0.8.4 / jac-cloud 0.2.4 / mtllm 0.3.9
+## jac-cloud 0.2.4
 
 - **Support Spawning a Walker with List of Nodes and Edges**: Introduced the ability to spawn a walker on a list of nodes and edges. This feature enables initiating traversal across multiple graph elements simultaneously, providing greater flexibility and efficiency in handling complex graph structures.
 - **save(...) should not override root in runtime**: The previous version bypassed access validation because the target archetype root was overridden by the current root, simulating ownership of the archetype.
@@ -41,11 +35,9 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Permission Update Builtin Methods**: Introduced `grant`, `revoke` builtin methods, `NoPerm`, `ReadPerm`, `ConnectPerm`, `WritePerm` builtin enums, to give the permission to a node or revoke the permission. Developers can use them by calling `grant(node_1, ConnectPerm)` or `revoke(node_1)` method.
 - **`jac create_system_admin` cli now support local db**: `DATABASE_HOST` are now not required when creating system admin.
 
-## jaclang 0.8.3 / jac-cloud 0.2.3 / mtllm 0.3.8
+## jac-cloud 0.2.3
 
 - **Async Walker Support**: Introduced comprehensive async walker functionality that brings Python's async/await paradigm to object-spatial programming. Async walkers enable non-blocking spawns during graph traversal, allowing for concurrent execution of multiple walkers and efficient handling of I/O-bound operations.
-
-## jaclang 0.8.1 / jac-cloud 0.2.1 / mtllm 0.3.6
 
 ## Version 0.8.0
 

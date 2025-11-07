@@ -526,7 +526,7 @@ class DocIRGenPass(UniPass):
                 parts.append(i.gen.doc_ir)
                 parts.append(self.space())
         parts.pop()
-        node.gen.doc_ir = self.group(self.concat(parts))
+        node.gen.doc_ir = self.group(self.concat(parts, ast_node=node))
 
     def exit_param_var(self, node: uni.ParamVar) -> None:
         """Generate DocIR for parameter variables."""
@@ -600,20 +600,6 @@ class DocIRGenPass(UniPass):
                 parts.pop()
                 parts.append(i.gen.doc_ir)
                 parts.append(self.space())
-            elif i == node.condition and isinstance(i, uni.BoolExpr):
-                cond_str = i.gen.doc_ir
-                flat = self.concat([cond_str, self.space()])
-                broken = self.group(
-                    self.concat(
-                        [
-                            self.text("("),
-                            self.indent(self.concat([self.line(), cond_str])),
-                            self.line(),
-                            self.text(")"),
-                        ]
-                    )
-                )
-                parts.append(self.group(self.if_break(broken, flat)))
             else:
                 parts.append(i.gen.doc_ir)
                 parts.append(self.space())
@@ -636,21 +622,6 @@ class DocIRGenPass(UniPass):
                 parts.pop()
                 parts.append(i.gen.doc_ir)
                 parts.append(self.space())
-            elif i == node.condition and isinstance(i, uni.BoolExpr):
-                cond_str = i.gen.doc_ir
-                flat = self.concat([cond_str, self.space()])
-                broken = self.group(
-                    self.concat(
-                        [
-                            self.text("("),
-                            self.indent(self.concat([self.line(), cond_str])),
-                            self.line(),
-                            self.text(")"),
-                            self.space(),
-                        ]
-                    )
-                )
-                parts.append(self.if_break(broken, flat))
             else:
                 parts.append(i.gen.doc_ir)
                 parts.append(self.space())
@@ -789,62 +760,59 @@ class DocIRGenPass(UniPass):
             node.gen.doc_ir = self.group(self.concat([]))
             return
 
-        kv_indices = [
-            idx for idx, kid in enumerate(node.kid) if isinstance(kid, uni.KVPair)
-        ]
-        kv_pairs = [node.kid[idx] for idx in kv_indices]
-
-        if not kv_pairs:
+        # Simple case: no pairs, just braces
+        if not node.kv_pairs:
             node.gen.doc_ir = self.group(
                 self.concat([kid.gen.doc_ir for kid in node.kid])
             )
             return
 
-        first_idx = kv_indices[0]
-        last_idx = kv_indices[-1]
+        # Build inline (not broken) and broken versions
+        inline_parts: list[doc.DocType] = []
+        broken_parts: list[doc.DocType] = []
 
-        prefix_docs = [node.kid[i].gen.doc_ir for i in range(first_idx)]
-        suffix_nodes = node.kid[last_idx + 1 :]
+        for i in node.kid:
+            if (
+                isinstance(i, uni.Token)
+                and i.name in [Tok.LBRACE, Tok.RBRACE]
+                or isinstance(i, uni.KVPair)
+            ):
+                inline_parts.append(i.gen.doc_ir)
+                broken_parts.append(i.gen.doc_ir)
+            elif isinstance(i, uni.Token) and i.name == Tok.COMMA:
+                # Inline: "key: value, "
+                inline_parts.append(i.gen.doc_ir)
+                inline_parts.append(self.space())
+                # Broken: "key: value,\n"
+                broken_parts.append(i.gen.doc_ir)
+                broken_parts.append(self.hard_line())
 
-        has_trailing_comma = (
-            bool(suffix_nodes)
-            and isinstance(suffix_nodes[0], uni.Token)
-            and suffix_nodes[0].name == Tok.COMMA
-        )
+        # Trim trailing space from inline (after last comma before RBRACE)
+        if (
+            len(inline_parts) >= 2
+            and isinstance(inline_parts[-2], doc.Text)
+            and inline_parts[-2].text == " "
+        ):
+            inline_parts.pop(-2)
 
-        if has_trailing_comma:
-            suffix_docs = [kid.gen.doc_ir for kid in suffix_nodes[1:]]
-        else:
-            suffix_docs = [kid.gen.doc_ir for kid in suffix_nodes]
+        # Trim trailing hard_line from broken (before RBRACE)
+        self.trim_trailing_line(broken_parts)
 
-        opening = self.concat(prefix_docs) if prefix_docs else self.concat([])
-        closing = self.concat(suffix_docs) if suffix_docs else self.concat([])
+        not_broke = self.concat(inline_parts)
 
-        inline_body = self.join(
-            self.text(", "),
-            [pair.gen.doc_ir for pair in kv_pairs],
-        )
-        if has_trailing_comma:
-            inline_body = self.concat([inline_body, self.text(",")])
-        not_broke = self.concat([opening, inline_body, closing])
-
-        body_parts: list[doc.DocType] = []
-        pair_docs = [pair.gen.doc_ir for pair in kv_pairs]
-        for idx, pair_doc in enumerate(pair_docs):
-            body_parts.append(pair_doc)
-            if idx < len(pair_docs) - 1 or has_trailing_comma:
-                body_parts.append(self.text(","))
-            body_parts.append(self.hard_line())
-        self.trim_trailing_line(body_parts)
+        # Extract LBRACE, middle content, and RBRACE
+        lbrace_doc = broken_parts[0]
+        rbrace_doc = broken_parts[-1]
+        middle_parts = broken_parts[1:-1]
 
         broke = self.concat(
             [
-                opening,
+                lbrace_doc,
                 self.indent(
-                    self.concat([self.hard_line(), *body_parts]), ast_node=node
+                    self.concat([self.hard_line(), *middle_parts]), ast_node=node
                 ),
                 self.hard_line(),
-                closing,
+                rbrace_doc,
             ]
         )
 
@@ -856,20 +824,6 @@ class DocIRGenPass(UniPass):
         kid_count = len(node.kid)
 
         for idx, kid in enumerate(node.kid):
-            if not isinstance(
-                kid.gen.doc_ir,
-                (
-                    doc.Text,
-                    doc.Concat,
-                    doc.Group,
-                    doc.Indent,
-                    doc.Line,
-                    doc.Align,
-                    doc.IfBreak,
-                ),
-            ):
-                self.enter_exit(kid)
-
             parts.append(kid.gen.doc_ir)
 
             is_last = idx == kid_count - 1
@@ -1058,7 +1012,6 @@ class DocIRGenPass(UniPass):
     def exit_if_else_expr(self, node: uni.IfElseExpr) -> None:
         """Generate DocIR for conditional expressions."""
         parts: list[doc.DocType] = []
-        need_parens = not isinstance(node.parent, uni.AtomUnit)
 
         for i in node.kid:
             if isinstance(i, uni.Expr):
@@ -1072,26 +1025,7 @@ class DocIRGenPass(UniPass):
                 parts.append(self.line())
         parts.pop()
 
-        flat = self.group(self.concat(parts))
-        parens = self.group(
-            self.concat(
-                [
-                    self.text("("),
-                    self.indent(self.concat([self.tight_line(), flat])),
-                    self.tight_line(),
-                    self.text(")"),
-                ]
-            )
-        )
-        node.gen.doc_ir = flat
-
-        if need_parens:
-            if isinstance(node.parent, uni.Assignment):
-                node.gen.doc_ir = self.if_break(
-                    break_contents=parens, flat_contents=flat
-                )
-            else:
-                node.gen.doc_ir = parens
+        node.gen.doc_ir = self.group(self.concat(parts))
 
     def exit_bool_expr(self, node: uni.BoolExpr) -> None:
         """Generate DocIR for boolean expressions (and/or)."""
@@ -1975,62 +1909,10 @@ class DocIRGenPass(UniPass):
         """Generate DocIR for JSX normal attributes."""
         parts: list[doc.DocType] = []
 
-        has_brace_tokens = any(
-            isinstance(child, uni.Token) and child.name in {Tok.LBRACE, Tok.RBRACE}
-            for child in node.kid
-        )
-
-        if has_brace_tokens:
-            for child in node.kid:
-                if not isinstance(
-                    child.gen.doc_ir,
-                    (
-                        doc.Text,
-                        doc.Concat,
-                        doc.Group,
-                        doc.Indent,
-                        doc.Line,
-                        doc.Align,
-                        doc.IfBreak,
-                    ),
-                ):
-                    self.enter_exit(child)
-                parts.append(child.gen.doc_ir)
-            node.gen.doc_ir = self.concat(parts)
-            return
-
+        # Simply render all kids - expressions with braces will render them as part of their kids
         for child in node.kid:
-            if child is node.value and child and not isinstance(child, uni.String):
-                if not isinstance(
-                    child.gen.doc_ir,
-                    (
-                        doc.Text,
-                        doc.Concat,
-                        doc.Group,
-                        doc.Indent,
-                        doc.Line,
-                        doc.Align,
-                        doc.IfBreak,
-                    ),
-                ):
-                    self.enter_exit(child)
-                parts.extend([self.text("{"), child.gen.doc_ir, self.text("}")])
-                continue
-
-            if not isinstance(
-                child.gen.doc_ir,
-                (
-                    doc.Text,
-                    doc.Concat,
-                    doc.Group,
-                    doc.Indent,
-                    doc.Line,
-                    doc.Align,
-                    doc.IfBreak,
-                ),
-            ):
-                self.enter_exit(child)
             parts.append(child.gen.doc_ir)
+
         node.gen.doc_ir = self.concat(parts)
 
     def exit_jsx_text(self, node: uni.JsxText) -> None:

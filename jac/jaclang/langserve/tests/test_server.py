@@ -119,6 +119,7 @@ class TestJacLangServer(TestCase):
             # (7, 27, "typing.py:2636:0-2636:7"),
             (9, 18, "compiler/__init__.py:0:0-0:0"),
             (9, 38, "compiler/unitree.py:0:0-0:0"),
+            (10, 34, "jac/jaclang/__init__.py:7:3-7:22"),
             (11, 35, "compiler/constant.py:0:0-0:0"),
             (11, 47, "compiler/constant.py:5:0-34:9"),
             (13, 47, "compiler/type_system/type_utils.py:0:0-0:0"),
@@ -189,9 +190,8 @@ class TestJacLangServer(TestCase):
                 str(lsp.warnings_had[idx]),
             )
 
-
-
-    def test_completion(self) -> None:
+    @pytest.mark.asyncio
+    async def test_completion(self) -> None:
         """Test that the completions are correct."""
         lsp = JacLangServer()
         workspace_path = self.fixture_abs_path("")
@@ -215,9 +215,10 @@ class TestJacLangServer(TestCase):
             ),
         ]
         for case in test_cases:
-            completions = lsp.get_completion(
+            results = await lsp.get_completion(
                 base_module_file, case.pos, completion_trigger=case.trigger
-            ).items
+            )
+            completions = results.items
             for completion in case.expected:
                 self.assertIn(completion, str(completions))
 

@@ -7,6 +7,7 @@ import sys;
 import time;
 import threading;
 import from concurrent.futures { ThreadPoolExecutor }
+import from queue { Queue, Empty }
 import from typing { Callable, Optional }
 
 import jaclang.compiler.unitree as uni;
@@ -27,46 +28,17 @@ import from jaclang.vendor.pygls.server { LanguageServer }
 
 import lsprotocol.types as lspt;
 import from . { utils }
+import from .module_manager { ModuleManager }
 
 
-"""Handles Jac module, semantic manager, and alert management."""
-class ModuleManager {
-    """Initialize ModuleManager."""
-    def init(self: ModuleManager, program: JacProgram, sem_managers: dict) -> None {
-        self.program = program;
-        self.sem_managers = sem_managers;
-    }
+class Task {
+    has _task_id: int = 0;
 
-    """Update modules in JacProgram's hub and semantic managers."""
-    def update(
-        self: ModuleManager,
-        file_path: str,
-        build: uni.Module,
-        update_annexed: bool = True
-    ) -> None {
-        self.program.mod.hub[file_path] = build;
-        if update_annexed {
-            self.sem_managers[file_path] = SemTokManager(ir=build);
-            for (p, mod) in self.program.mod.hub.items() {
-                if p != file_path {
-                    self.sem_managers[p] = SemTokManager(ir=mod);
-                }
-            }
-        }
-    }
-
-    """Remove errors and warnings for a specific file from the lists."""
-    def clear_alerts_for_file(self: ModuleManager, file_path_fs: str) -> None {
-        self.program.errors_had = [
-            e
-            for e in self.program.errors_had
-            if e.loc.mod_path != file_path_fs
-        ];
-        self.program.warnings_had = [
-            w
-            for w in self.program.warnings_had
-            if w.loc.mod_path != file_path_fs
-        ];
+    def init(self: Task, file_uri: str) {
+        self.task_id = Task._task_id;
+        self.cancel_token = threading.Event();
+        self.file_uri = file_uri;
+        Task._task_id += 1;
     }
 }
 
@@ -80,14 +52,38 @@ class JacLangServer(JacProgram , LanguageServer) {
         self.sem_managers: dict[(str, SemTokManager)] = {};
         self.module_manager = ModuleManager(self, self.sem_managers);
 
-        # Threading support - per file thread with cancellation token
-        self.type_check_threads: dict[str, threading.Thread] = {};
-        self.cancel_tokens: dict[str, threading.Event] = {};
+        # Worker thread for type checking.
+        self.queue = Queue();
+        self.last_task: Task | None = None;
+        self.worker_thread = threading.Thread(target=self.dispatcher);
+        self.worker_thread.start();
+    }
 
-        self.debounce_timers: dict[str, threading.Timer] = {};
+    def dispatcher(self: JacLangServer) -> None {
 
-        # Disable logging library from logging anything
-        # logging.getLogger().setLevel(logging.CRITICAL);
+        while True {
+            start_time = time.time();
+            task: Task | None = self.queue.get();
+
+            if task is None {
+                self.debug("Task was None, exiting dispatcher.");
+                break;
+            }
+
+            self.debug("Dispatching task id: " + str(task.task_id));
+            try {
+                self.type_check_file(task.file_uri);
+                self.lsp.send_request(lspt.WORKSPACE_SEMANTIC_TOKENS_REFRESH);
+            } finally {
+                self.queue.task_done();
+            }
+            if task.cancel_token.is_set() {
+                self.debug("Task cancled id: " + str(task.task_id));
+            } else {
+                elapsed = time.time() - start_time;
+                self.debug(f"Task completed id: {str(task.task_id)}, took: {elapsed:.4f}s");
+            }
+        }
     }
 
     """Return diagnostics for all files as a dict {uri: diagnostics}."""
@@ -123,40 +119,48 @@ class JacLangServer(JacProgram , LanguageServer) {
 
     """Rebuild a file and its dependencies (typecheck)."""
     def type_check_file(
-        self: JacLangServer, file_path: str,cancel_token: Event | None = None, annex_view: Optional[str] = None
+        self: JacLangServer,
+        file_uri: str,
+        cancel_token: Event | None = None,
+
+        # This parameter will be passed recursively
+        # and dont need to pass when the function itself is called
+        # outside.
+        annex_view: Optional[str] = None,
     ) -> bool {
+
+        if cancel_token and cancel_token.is_set(){
+            return;
+        }
+
         try {
-            start_time = time.time();
-            document = self.workspace.get_text_document(file_path);
+            document = self.workspace.get_text_document(file_uri);
             fs_path = document.path;
             self._clear_alerts_for_file(fs_path);
 
-            t = time.time();
-            f = file_path.split("/")[-1].split("\\")[-1];
-            self.debug("Type checking started for " + f + " t=" + str(t));
-
             build = self.compile(
-                use_str=document.source, file_path=document.path, type_check=True
+                use_str=document.source,
+                file_path=document.path,
+                type_check=True,
+                cancel_token=cancel_token,
             );
-            self.debug(f"     'Type checking for '{f}' done {str(time.time())} in '{(time.time() - t)}' seconds.'");
+
             if cancel_token and cancel_token.is_set(){
-                self.debug("      ** Type checking canceled for " + f + " t=" + str(time.time()));
-                self.debug(f"     'Type checking for '{f}' was canceled in '{(time.time() - t)}' seconds.'");
                 return;
             }
-
             self.update_modules(fs_path, build);
+
             if build.annexable_by {
                 return self.type_check_file(
-                    uris.from_fs_path(build.annexable_by), cancel_token=cancel_token, annex_view=fs_path
+                    uris.from_fs_path(build.annexable_by),
+                    cancel_token=cancel_token,
+                    annex_view=fs_path,
                 );
             }
             self.publish_diagnostics(
                 (
                     # to display diagnostic , it need URI starts with "file://"
-                    uris.from_fs_path(
-                        annex_view
-                    )
+                    uris.from_fs_path(annex_view)
                     if annex_view
                     else uris.from_fs_path(fs_path)
                 ),
@@ -172,66 +176,29 @@ class JacLangServer(JacProgram , LanguageServer) {
                     utils.gen_diagnostics(fs_path, self.errors_had, self.warnings_had)
                 );
             }
-            self.log_py(
-                f"'PROFILE: Deep check took '{(time.time() - start_time)}' seconds.'"
-            );
         } except Exception as e {
-            if cancel_token and not cancel_token.is_set() {
-                self.log_py(f"'Error during type check: '{e}");
+            self.debug(f"Error during type check: {e}");
+        }
+    }
+
+    def type_check(self: JacLangServer, file_uri: str) -> None {
+        if self.last_task and not self.last_task.cancel_token.is_set() {
+            self.last_task.cancel_token.set();
+            self.debug(f" Cancelling id: " + str(self.last_task.task_id));
+        }
+        self.last_task = Task(file_uri);
+
+        # Remove all the previous tasks.
+        while True {
+            try {
+                self.queue.get_nowait();
+                self.queue.task_done();
+            } except Empty {
+                break;
             }
         }
-    }
 
-    """Check if debounce timer is active for a file."""
-    def is_debounce_active(self: JacLangServer, file_path: str) -> bool {
-        return (
-            file_path in self.debounce_timers and
-            self.debounce_timers[file_path].is_alive()
-        );
-    }
-
-    """Check if type check thread is active for a file."""
-    def is_type_check_thread_active(self: JacLangServer, file_path: str) -> bool {
-        return (
-            file_path in self.type_check_threads and
-            self.type_check_threads[file_path].is_alive()
-        );
-    }
-
-    """Type check with thread cancellation and proper debouncing."""
-    async def type_check(self: JacLangServer, file_path: str) -> None {
-        # Cancel existing debounce timer for this file
-        if file_path in self.debounce_timers {
-            self.debounce_timers[file_path].cancel();
-        }
-
-        # Cancel existing type check thread for this file if running
-        if file_path in self.cancel_tokens {
-            self.cancel_tokens[file_path].set();
-        }
-
-        # Create new cancellation token for the upcoming type check
-        self.cancel_tokens[file_path] = threading.Event();
-
-        # Create a debounced function that will run the actual type check
-        def debounced_type_check() -> None {
-            # Start new thread for type checking
-            print(" debounced_type_check ->", time.time(), file=sys.stderr);
-            self.type_check_threads[file_path] = threading.Thread(
-                target=self.type_check_file,
-                args=(file_path, self.cancel_tokens[file_path])
-            );
-            self.type_check_threads[file_path].start();
-            self.type_check_threads[file_path].join();
-        }
-
-        # Set up debounce timer with the actual type check function
-        self.debounce_timers[file_path] = threading.Timer(0.5, debounced_type_check);
-        self.debounce_timers[file_path].start();
-
-        # Wait for the current type check thread to finish (if any)
-        await asyncio.to_thread(self.debounce_timers[file_path].join);
-
+        self.queue.put(self.last_task);
     }
 
     def get_token_at_position(
@@ -256,18 +223,27 @@ class JacLangServer(JacProgram , LanguageServer) {
     }
 
     def debug(self: JacLangServer, msg: str) -> None {
-        print(f"[DEBUG] {msg}", file=sys.stderr);
-        self.log_py(f"[DEBUG] {msg}");
+        print(f"[Engine] {msg}", file=sys.stderr);
+    }
+
+    async def wait_till_idle(self: JacLangServer) -> None {
+        self.debug("Waiting for queue to empty...");
+        await asyncio.to_thread(self.queue.join);
+        self.debug("Queue is now empty");
     }
 
     """Return completion for a file."""
-    def get_completion(
+    async def get_completion(
         self: JacLangServer,
         file_uri: str,
         position: lspt.Position,
         completion_trigger: Optional[str]
     ) -> lspt.CompletionList {
-        self.debug("getting completion for " + file_uri + " at " + str(position));
+
+        # NOTE: We may only need to wait for the current file's type check.
+        await self.wait_till_idle();
+
+        self.debug("Getting completion for " + file_uri + " at " + str(position));
         try {
             file_path = uris.to_fs_path(file_uri);
             if (
@@ -586,6 +562,7 @@ class JacLangServer(JacProgram , LanguageServer) {
         sem_mgr = self.sem_managers.get(fs_path);
         if not sem_mgr {
             return lspt.SemanticTokens(data=[]);
+            return lspt.SemanticToken();
         }
         return lspt.SemanticTokens(data=sem_mgr.sem_tokens);
     }
@@ -611,6 +588,16 @@ class JacLangServer(JacProgram , LanguageServer) {
     """Log a message."""
     def log_py(self: JacLangServer, message: str) -> None {
         logging.info(message);
+    }
+
+
+    def shutdown(self: JacLangServer) -> None {
+        try {
+            self.queue.put(None);  # Signal the worker thread to exit
+            self.worker_thread.join(timeout=1.0);  # Wait for the worker thread to finish
+        } finally {
+            super.shutdown();
+        }
     }
 
 }
