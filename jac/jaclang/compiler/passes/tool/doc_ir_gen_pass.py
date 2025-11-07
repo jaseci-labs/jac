@@ -1403,6 +1403,11 @@ class DocIRGenPass(UniPass):
                 parts.append(i.gen.doc_ir)
                 parts.append(self.text("::py::"))
                 parts.append(self.hard_line())
+            elif isinstance(i, uni.Token) and i.name == Tok.JSINLINE:
+                parts.append(self.text("::js::"))
+                parts.append(i.gen.doc_ir)
+                parts.append(self.text("::js::"))
+                parts.append(self.hard_line())
             else:
                 parts.append(i.gen.doc_ir)
                 parts.append(self.space())

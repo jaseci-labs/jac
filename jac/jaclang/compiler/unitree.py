@@ -1246,6 +1246,7 @@ class PyInlineCode(ElementStmt, ArchBlockStmt, EnumBlockStmt, CodeBlockStmt):
         self.set_kids(nodes=new_kid)
         return res
 
+
 class JsInlineCode(ElementStmt, ArchBlockStmt, EnumBlockStmt, CodeBlockStmt):
     """JsInlineCode node type for Jac Ast."""
 
@@ -1273,6 +1274,7 @@ class JsInlineCode(ElementStmt, ArchBlockStmt, EnumBlockStmt, CodeBlockStmt):
         new_kid.append(self.code)
         self.set_kids(nodes=new_kid)
         return res
+
 
 class Import(ClientFacingNode, ElementStmt, CodeBlockStmt):
     """Import node type for Jac Ast."""
