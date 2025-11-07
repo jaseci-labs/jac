@@ -9,6 +9,7 @@ tl_stmt_with_doc: STRING toplevel_stmt
 toplevel_stmt: KW_CLIENT? onelang_stmt
        | KW_CLIENT LBRACE onelang_stmt* RBRACE
        | py_code_block
+       | js_code_block
 
 onelang_stmt: import_stmt
        | archetype
@@ -50,7 +51,7 @@ arch_type: KW_WALKER
 
 // [Heading]: Class Archetype bodies.
 member_block: LBRACE member_stmt* RBRACE
-member_stmt: STRING? (py_code_block | ability | archetype | impl_def | has_stmt | free_code)
+member_stmt: STRING? (py_code_block |js_code_block | ability | archetype | impl_def | has_stmt | free_code)
 has_stmt: KW_STATIC? (KW_LET | KW_HAS) access_tag? has_assign_list SEMI
 has_assign_list: (has_assign_list COMMA)? typed_has_clause
 typed_has_clause: named_ref type_tag (EQ expression | KW_BY KW_POST_INIT)?
@@ -59,7 +60,7 @@ type_tag: COLON expression
 // [Heading]: Enumerations.
 enum: decorators? enum_decl
 enum_decl: KW_ENUM access_tag? NAME inherited_archs? (enum_block | SEMI)
-enum_block: LBRACE assignment_list (py_code_block | free_code)* RBRACE
+enum_block: LBRACE assignment_list (py_code_block | js_code_block| free_code)* RBRACE
 
 // [Heading]: Functions and Abilities.
 ability: decorators? KW_ASYNC? (ability_decl | function_decl)
@@ -94,6 +95,7 @@ free_code: KW_WITH KW_ENTRY (COLON NAME)? code_block
 
 // [Heading]: Inline python.
 py_code_block: PYNLINE
+js_code_block: JSINLINE
 
 // [Heading]: Tests.
 test: KW_TEST NAME? code_block
@@ -499,6 +501,7 @@ builtin_type: TYP_TYPE
 // ************************************************************************* //
 
 PYNLINE: /::py::(.|\n|\r)*?::py::/
+JSINLINE: /::js::(.|\n|\r)*?::js::/
 TYPE_OP: /`/
 GLOBAL_OP: "global"
 NONLOCAL_OP: "nonlocal"
