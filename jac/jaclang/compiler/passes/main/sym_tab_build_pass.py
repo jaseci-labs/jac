@@ -272,6 +272,11 @@ class SymTabBuildPass(UniPass):
 
     def enter_in_for_stmt(self, node: uni.InForStmt) -> None:
         self.push_scope_and_link(node)
+        # 1. for <name> in collection
+        if isinstance(node.target, uni.Name):
+            node.sym_tab.def_insert(node.target, single_decl="iterator")
+        # 2. for (<name> (, <name> ...)*) in collection
+        # TODO:
 
     def exit_in_for_stmt(self, node: uni.InForStmt) -> None:
         self.pop_scope()

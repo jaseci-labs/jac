@@ -9,6 +9,10 @@ from jaclang.compiler.program import JacProgram
 class TypeCheckerPassTests(TestCase):
     """Test class obviously."""
 
+    def _assert_error_pretty_found(self, needle: str, haystack: str) -> None:
+        for line in [line.strip() for line in needle.splitlines() if line.strip()]:
+            self.assertIn(line, haystack, f"Expected line '{line}' not found in:\n{haystack}")
+
     def test_explicit_type_annotation_in_assignment(self) -> None:
         """Test explicit type annotation in assignment."""
         program = JacProgram()
@@ -409,6 +413,96 @@ class TypeCheckerPassTests(TestCase):
         TypeCheckPass(ir_in=mod, prog=program)
         self.assertEqual(len(program.errors_had), 0)
 
-    def _assert_error_pretty_found(self, needle: str, haystack: str) -> None:
-        for line in [line.strip() for line in needle.splitlines() if line.strip()]:
-            self.assertIn(line, haystack, f"Expected line '{line}' not found in:\n{haystack}")
+    def test_param_arg_match(self) -> None:
+        program = JacProgram()
+        path = self.fixture_abs_path("checker_generics.jac")
+        mod = program.compile(path)
+        TypeCheckPass(ir_in=mod, prog=program)
+        self.assertEqual(len(program.errors_had), 9)
+
+        expected_errors = [
+            """
+            Cannot assign <class Foo> to <class str>
+                for it in tl {
+                    tifoo: Foo = it;
+                    tistr: str = it; # <-- Error
+                    ^^^^^^^^^^^^^^^^
+                }
+            }
+            """,
+            """
+            Cannot assign <class Foo> to <class str>
+                lst: list[Foo] = [Foo(), Foo()];
+                f: Foo = lst[0];  # <-- Ok
+                s: str = lst[0];  # <-- Error
+                ^^^^^^^^^^^^^^^^
+
+                for it in lst {
+            """,
+            """
+            Cannot assign <class Foo> to <class str>
+                for it in lst {
+                    tifoo: Foo = it; # <-- Ok
+                    tistr: str = it; # <-- Error
+                    ^^^^^^^^^^^^^^^^
+                }
+
+            """,
+            """
+            Cannot assign <class int> to <class str>
+                m: list[int] = [1, 2, 3];
+                n: int = m[0];
+                p: str = m[0];  # <-- Error
+                ^^^^^^^^^^^^^^
+
+                x: list[str] = ["a", "b", "c"];
+            """,
+            """
+            Cannot assign <class str> to <class int>
+                x: list[str] = ["a", "b", "c"];
+                y: str = x[1];
+                z: int = x[1];  # <-- Error
+                ^^^^^^^^^^^^^^
+
+                d: dict[int, str] = {1: "one", 2: "two"};
+            """,
+            """
+            Cannot assign <class str> to <class int>
+                d: dict[int, str] = {1: "one", 2: "two"};
+                s: str = d[1];
+                i: int = d[1]; # <-- Error
+                ^^^^^^^^^^^^^^
+
+                ht = HashTable[int, str]();
+            """,
+            """
+            Cannot assign <class str> to parameter 'key' of type <class int>
+                ht = HashTable[int, str]();
+                ht.insert(1, "one");
+                ht.insert("one", "one");  # <-- Error
+                        ^^^^^
+                ht.insert(1, 1);          # <-- Error
+
+            """,
+            """
+            Cannot assign <class int> to parameter 'value' of type <class str>
+                ht.insert(1, "one");
+                ht.insert("one", "one");  # <-- Error
+                ht.insert(1, 1);          # <-- Error
+                            ^
+
+                hv1: str = ht.get(1);
+            """,
+            """
+            Cannot assign <class str> to <class int>
+
+                hv1: str = ht.get(1);
+                hv2: int = ht.get(1);  # <-- Error
+                ^^^^^^^^^^^^^^^^^^^^^
+
+            }
+            """,
+        ]
+
+        for i, expected in enumerate(expected_errors):
+            self._assert_error_pretty_found(expected, program.errors_had[i].pretty_print())

@@ -59,6 +59,7 @@ obj PrefetchedTypes {
     has supports_keys_and_get_item_class: TypeBase | None = None;
     has mapping_class: TypeBase | None = None;
     has template_class: TypeBase | None = None;
+    has type_var_class: TypeBase | None = None;
 }
 
 """Represents a single entry in the symbol resolution stack."""
@@ -99,6 +100,11 @@ class TypeEvaluator {
         "../../vendor/typeshed/stdlib/builtins.pyi",
     );
 
+    has _TYPING_STUB_FILE_PATH: str = os.path.join(
+        os.path.dirname(__file__),
+        "../../vendor/typeshed/stdlib/typing.pyi",
+    );
+
     """Initialize the type evaluator with prefetched types.
 
     Implementation Note:
@@ -112,22 +118,25 @@ class TypeEvaluator {
     def __init__(self: TypeEvaluator, program: "JacProgram") -> None {
         self.program = program;
         self.symbol_resolution_stack: list[SymbolResolutionStackEntry] = [];
-        self.prefetch: PrefetchedTypes | None = None;
-        self.builtins_module = self._load_builtins_stub_module();
+        self.prefetch: PrefetchedTypes = PrefetchedTypes();
         self.diagnostic_callback: DiagnosticCallback | None = None;
+        self.typing_module = self._load_stub_module(TypeEvaluator._TYPING_STUB_FILE_PATH);
+        self.builtins_module = None;
+
+        # These prefetch type are essential for the builtin types.
+        self.prefetch.type_var_class = self._get_typing_type("TypeVar");
+        self.builtins_module = self._load_stub_module(TypeEvaluator._BUILTINS_STUB_FILE_PATH);
 
         self._prefetch_types();
     }
 
     """Load and return the builtins stub module."""
-    def _load_builtins_stub_module(self: TypeEvaluator) -> uni.Module {
-        if not os.path.exists(TypeEvaluator._BUILTINS_STUB_FILE_PATH) {
-            raise FileNotFoundError(
-                f"Builtins stub file not found at {TypeEvaluator._BUILTINS_STUB_FILE_PATH}"
-            );
+    def _load_stub_module(self: TypeEvaluator, path: str) -> uni.Module {
+        if not os.path.exists(path) {
+            raise FileNotFoundError(f"Stub file not found at {path}");
         }
-        file_content = read_file_with_encoding(TypeEvaluator._BUILTINS_STUB_FILE_PATH);
-        uni_source = uni.Source(file_content, TypeEvaluator._BUILTINS_STUB_FILE_PATH);
+        file_content = read_file_with_encoding(path);
+        uni_source = uni.Source(file_content, path);
         mod = PyastBuildPass(
             ir_in=uni.PythonModuleAst(
                 py_ast.parse(file_content),
@@ -136,6 +145,7 @@ class TypeEvaluator {
             prog=self.program,
         ).ir_out;
         SymTabBuildPass(ir_in=mod, prog=self.program);
+        self.program.mod.hub[path] = mod;
         return mod;
     }
 
@@ -147,31 +157,37 @@ class TypeEvaluator {
         return types.UnknownType();
     }
 
+    """Return the typing type with the given name."""
+    def _get_typing_type(self: TypeEvaluator, name: str) -> TypeBase {
+        if (symbol := self.typing_module.lookup(name)) is not None {
+            return self.get_type_of_symbol(symbol);
+        }
+        return types.UnknownType();
+    }
+
     """Return the prefetched types for the type evaluator."""
     def _prefetch_types(self: TypeEvaluator) -> "PrefetchedTypes" {
-        self.prefetch = PrefetchedTypes(
-            # TODO: Pyright first try load NoneType from typeshed and if it cannot
-            # then it set to unknown type.
-            none_type_class=types.UnknownType(),
-            object_class=self._get_builtin_type("object"),
-            type_class=self._get_builtin_type("type"),
-            # union_type_class=
-            # awaitable_class=
-            # function_class=
-            # method_class=
-            tuple_class=self._get_builtin_type("tuple"),
-            bool_class=self._get_builtin_type("bool"),
-            int_class=self._get_builtin_type("int"),
-            float_class=self._get_builtin_type("float"),
-            str_class=self._get_builtin_type("str"),
-            dict_class=self._get_builtin_type("dict"),
-            # module_type_class=
-            # typed_dict_class=
-            # typed_dict_private_class=
-            # supports_keys_and_get_item_class=
-            # mapping_class=
-            # template_class=
-        );
+        # TODO: Pyright first try load NoneType from typeshed and if it cannot
+        # then it set to unknown type.
+        self.prefetch.none_type_class = types.UnknownType();
+        self.prefetch.object_class = self._get_builtin_type("object");
+        self.prefetch.type_class = self._get_builtin_type("type");
+        # self.prefetch.union_type_class =
+        # self.prefetch.awaitable_class =
+        # self.prefetch.function_class =
+        # self.prefetch.method_class =
+        self.prefetch.tuple_class = self._get_builtin_type("tuple");
+        self.prefetch.bool_class = self._get_builtin_type("bool");
+        self.prefetch.int_class = self._get_builtin_type("int");
+        self.prefetch.float_class = self._get_builtin_type("float");
+        self.prefetch.str_class = self._get_builtin_type("str");
+        self.prefetch.dict_class = self._get_builtin_type("dict");
+        # self.prefetch.module_type_class =
+        # self.prefetch.typed_dict_class =
+        # self.prefetch.typed_dict_private_class =
+        # self.prefetch.supports_keys_and_get_item_class =
+        # self.prefetch.mapping_class =
+        # self.prefetch.template_class =
     }
 
     """Add a diagnostic message to the program."""
@@ -243,6 +259,12 @@ class TypeEvaluator {
     # for the following functions.
     """Import a module from the given path."""
     def _import_module_from_path(self: TypeEvaluator, path: str) -> uni.Module {
+        # FIXME: This is ad-hoc way to override the typeing.py with typeing.pyi file
+        # implemented to make it work for now, please revisit this and implement it properly.
+        if path.endswith("typing.py") {
+            path = TypeEvaluator._TYPING_STUB_FILE_PATH;
+        }
+
         # Get the module, if it's not loaded yet, compile and get it.
         #
         # TODO:
@@ -373,12 +395,45 @@ class TypeEvaluator {
         return types.UnknownType();
     }
 
+    def _extract_type_params(self: TypeEvaluator, node_: uni.Archetype) -> list[types.TypeVarType] {
+        type_params: list[types.TypeVarType] = [];
+        for base_class in node_.base_classes or [] {
+            if (not isinstance(base_class, uni.AtomTrailer))
+               or base_class.is_attr
+               or base_class.is_null_ok {
+                continue;
+            }
+
+            if isinstance(base_class.right, uni.IndexSlice) and base_class.right.slices {
+                type_vars = base_class.right.slices[0].start;
+                if isinstance(type_vars, uni.TupleVal) {
+                    for val in type_vars.values {
+                        type_var_type = self.get_type_of_expression(val);
+                        if isinstance(type_var_type, types.TypeVarType) {
+                            type_params.append(type_var_type);
+                        }
+                    }
+                } else {
+                    type_var_type = self.get_type_of_expression(type_vars);
+                    if isinstance(type_var_type, types.TypeVarType) {
+                        type_params.append(type_var_type);
+                    }
+                }
+            }
+
+        }
+        return type_params;
+    }
+
     """Return the effective type of the class."""
     def get_type_of_class(self: TypeEvaluator, node_: uni.Archetype) -> types.ClassType {
         # Is this type already cached?
         if node_.name_spec.type is not None {
             return cast(types.ClassType, node_.name_spec.type);
         }
+
+        # Gather type parameters.
+        type_params = self._extract_type_params(node_);
 
         base_classes: list[TypeBase] = [];
         for base_class in node_.base_classes or [] {
@@ -396,10 +451,12 @@ class TypeEvaluator {
             types.ClassType.ClassDetailsShared(
                 class_name=node_.name_spec.sym_name,
                 symbol_table=node_,
+                type_params=type_params,
                 base_classes=base_classes,
                 is_builtin_class=is_builtin_class,
                 is_data_class=is_data_class,
             ),
+            private=None,
             flags=types.TypeFlags.Instantiable,
         );
 
@@ -573,7 +630,7 @@ class TypeEvaluator {
             if member := self._lookup_class_member(obj_type, method_name) {
                 member_ty = self.get_type_of_symbol(member.symbol);
                 if isinstance(member_ty, types.FunctionType) {
-                    return member_ty.return_type;
+                    return member_ty.specialize(obj_type).return_type;
                 }
                 # If we reached here, magic method is not a function.
                 # 1. recursively check __call__() on the type, TODO
@@ -681,6 +738,20 @@ class TypeEvaluator {
                     }
                 }
 
+                # ---- Handle member assignment: for <name> in <expr> ----
+                if isinstance(node_.parent, uni.InForStmt) {
+                    collection_type = self.get_type_of_expression(node_.parent.collection);
+
+                    # FIXME: This is the proper way to do it however Iterator[T] cannot be
+                    # resolved as a generic type because of the definition. So I'm doing this ad-hoc
+                    # way, will come back and have to fix it properly.
+                    #
+                    # iter_type = self.get_type_of_magic_method_call(collection_type, "__iter__");
+                    #
+                    iter_type = self.get_type_of_magic_method_call(collection_type, "__getitem__");
+                    return iter_type or types.UnknownType();
+                }
+
                 if isinstance(node_.parent, uni.ModulePath) {
                     return self.get_type_of_module(node_.parent);
                 }
@@ -767,7 +838,11 @@ class TypeEvaluator {
                         if member := self._lookup_object_member(
                             base_type, expr.right.value
                         ) {
-                            return self._set_symbol_to_expr(expr.right, member.symbol);
+                            expr_type = self._set_symbol_to_expr(expr.right, member.symbol);
+                            if isinstance(expr_type, types.FunctionType) {
+                                expr_type = expr_type.specialize(base_type);
+                            }
+                            return expr_type;
                         }
                         return types.UnknownType();
                     }
@@ -778,7 +853,30 @@ class TypeEvaluator {
                 }
 
                 else {  # <expr>[<expr>]
-                     # TODO:
+
+                    # if <expr> is a class type, the atom trailer will be the type params.
+                    if isinstance(base_type, types.ClassType) and base_type.is_instantiable_class() {
+
+                        # Collect the type arguments.
+                        type_args: list[types.TypeBase] = [];
+                        if isinstance(expr.right, uni.IndexSlice) and expr.right.slices {
+                            type_args_vals = expr.right.slices[0].start;
+                            if isinstance(type_args_vals, uni.TupleVal) {
+                                for val in type_args_vals.values {
+                                    type_arg_type = self.get_type_of_expression(val);
+                                    type_args.append(type_arg_type);
+                                }
+                            } else {
+                                type_arg_type = self.get_type_of_expression(type_args_vals);
+                                type_args.append(type_arg_type);
+                            }
+                        }
+
+                        return base_type.specialize_generics(type_args);
+                    }
+
+                    # Regular <expr>[<expr>] case, we need to call __getitem__()
+                    return self.get_type_of_magic_method_call(base_type, "__getitem__") or types.UnknownType();
                 }
 
             case uni.AtomUnit():
@@ -1005,7 +1103,14 @@ class TypeEvaluator {
             return caller_type.return_type or types.UnknownType();
         }
 
-        # 2. Call to an instantiable class.
+        # 2. Call to TypeVar.
+        if isinstance(caller_type, types.ClassType)
+           and caller_type.shared == (self.prefetch and self.prefetch.type_var_class.shared) {
+            # TODO: validate the args and pass the typevar name.
+            return types.TypeVarType();
+        }
+
+        # 3. Call to an instantiable class.
         if (isinstance(caller_type, types.ClassType) and caller_type.is_instantiable_class()) {
             # TODO: validate args for __init__()
 
@@ -1032,7 +1137,7 @@ class TypeEvaluator {
             return caller_type.clone_as_instance();
         }
 
-        # 3. Call to a callable object (__call__).
+        # 4. Call to a callable object (__call__).
         if caller_type.is_class_instance() {
             # TODO: validate args.
             magic_call_ret = self.get_type_of_magic_method_call(caller_type, "__call__");
