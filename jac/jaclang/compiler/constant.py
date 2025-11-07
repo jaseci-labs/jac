@@ -135,6 +135,7 @@ class Tokens(str, Enum):
     FLOAT = "FLOAT"
     STRING = "STRING"
     PYNLINE = "PYNLINE"
+    JSINLINE = "JSINLINE"
     BOOL = "BOOL"
     INT = "INT"
     HEX = "HEX"

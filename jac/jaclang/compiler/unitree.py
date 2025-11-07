@@ -1246,6 +1246,33 @@ class PyInlineCode(ElementStmt, ArchBlockStmt, EnumBlockStmt, CodeBlockStmt):
         self.set_kids(nodes=new_kid)
         return res
 
+class JsInlineCode(ElementStmt, ArchBlockStmt, EnumBlockStmt, CodeBlockStmt):
+    """JsInlineCode node type for Jac Ast."""
+
+    def __init__(
+        self,
+        code: Token,
+        kid: Sequence[UniNode],
+        is_enum_stmt: bool = False,
+        doc: Optional[String] = None,
+    ) -> None:
+        self.code = code
+        UniNode.__init__(self, kid=kid)
+        AstDocNode.__init__(self, doc=doc)
+        CodeBlockStmt.__init__(self)
+        EnumBlockStmt.__init__(self, is_enum_stmt=is_enum_stmt)
+
+    def normalize(self, deep: bool = False) -> bool:
+        res = True
+        if deep:
+            res = self.code.normalize(deep)
+            res = res and self.doc.normalize(deep) if self.doc else res
+        new_kid: list[UniNode] = []
+        if self.doc:
+            new_kid.append(self.doc)
+        new_kid.append(self.code)
+        self.set_kids(nodes=new_kid)
+        return res
 
 class Import(ClientFacingNode, ElementStmt, CodeBlockStmt):
     """Import node type for Jac Ast."""

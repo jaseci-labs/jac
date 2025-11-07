@@ -64,7 +64,7 @@ TOKEN_MAP.update(
         "PIPE_FWD": "|>", "PIPE_BKWD": "<|", "A_PIPE_FWD": ":>",
         "A_PIPE_BKWD": "<:", "DOT_FWD": ".>", "STAR_POW": "**",
         "STAR_MUL": "*", "FLOOR_DIV": "//", "DIV": "/",
-        "PYNLINE": "::py::", "ADD_EQ": "+=", "SUB_EQ": "-=",
+        "PYNLINE": "::py::", "JSINLINE": "::js::", "ADD_EQ": "+=", "SUB_EQ": "-=",
         "STAR_POW_EQ": "**=", "MUL_EQ": "*=", "FLOOR_DIV_EQ": "//=",
         "DIV_EQ": "/=", "MOD_EQ": "%=", "BW_AND_EQ": "&=",
         "BW_OR_EQ": "|=", "BW_XOR_EQ": "^=", "BW_NOT_EQ": "~=",

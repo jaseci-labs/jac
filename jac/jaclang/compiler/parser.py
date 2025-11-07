@@ -552,6 +552,17 @@ class JacParser(Transform[uni.Source, uni.Module]):
                 kid=self.cur_nodes,
             )
 
+        def js_code_block(self, _: None) -> uni.JsInlineCode:
+            """Grammar rule.
+
+            js_code_block: JSINLINE
+            """
+            jsinline = self.consume_token(Tok.JSINLINE)
+            return uni.JsInlineCode(
+                code=jsinline,
+                kid=self.cur_nodes,
+            )
+
         def import_stmt(self, _: None) -> uni.Import:
             """Grammar rule.
 
@@ -3713,6 +3724,8 @@ class JacParser(Transform[uni.Source, uni.Module]):
                 ret_type = uni.Bool
             elif token.type == Tok.PYNLINE and isinstance(token.value, str):
                 token.value = token.value.replace("::py::", "")
+            elif token.type == Tok.JSINLINE and isinstance(token.value, str):
+                token.value = token.value.replace("::js::", "")
             ret = ret_type(
                 orig_src=self.parse_ref.ir_in,
                 name=token.type,
