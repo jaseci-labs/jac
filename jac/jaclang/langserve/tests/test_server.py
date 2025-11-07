@@ -116,14 +116,14 @@ class TestJacLangServer(TestCase):
             (6, 28, "concurrent/futures/__init__.py:0:0-0:0"),
             (7, 17, "typing.py:0:0-0:0"),
             # not a good one since there may be different typing.py versions
-            # (7, 27, "typing.py:2636:0-2636:7"), 
+            # (7, 27, "typing.py:2636:0-2636:7"),
             (9, 18, "compiler/__init__.py:0:0-0:0"),
             (9, 38, "compiler/unitree.py:0:0-0:0"),
             (11, 35, "compiler/constant.py:0:0-0:0"),
             (11, 47, "compiler/constant.py:5:0-34:9"),
             (13, 47, "compiler/type_system/type_utils.py:0:0-0:0"),
             (14, 34, "compiler/type_system/__init__.py:0:0-0:0"),
-            (14, 55, "compiler/type_system/types.py:143:0-232:8"),
+            (14, 55, "compiler/type_system/types.py:154:0-266:8"),
             (15, 34, "compiler/unitree.py:0:0-0:0"),
             (15, 48, "compiler/unitree.py:304:0-504:11"),
             (17, 22, "langserve/tests/fixtures/circle.jac:8:5-8:8"),
@@ -189,7 +189,7 @@ class TestJacLangServer(TestCase):
                 str(lsp.warnings_had[idx]),
             )
 
-  
+
 
     def test_completion(self) -> None:
         """Test that the completions are correct."""
@@ -234,7 +234,7 @@ class TestJacLangServer(TestCase):
             (47, 12, ["circle.jac:47:8-47:14", "69:8-69:14", "74:8-74:14"]),
             (54, 66, ["54:62-54:76", "65:23-65:37"]),
 
-            # TODO: Even if we cannot find the function decl, 
+            # TODO: Even if we cannot find the function decl,
             # we should connect the function args to their decls
             # (62, 14, ["65:44-65:57", "70:33-70:46"]),
         ]
