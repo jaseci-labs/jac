@@ -8,31 +8,31 @@ byLLM uses [LiteLLM](https://docs.litellm.ai/docs) to provide integration with a
 
 === "OpenAI"
     ```jac linenums="1"
-    import from byllm.lib {Model}
+    import from byllm {Model}
 
     glob llm = Model(model_name = "gpt-4o")
     ```
 === "Gemini"
     ```jac linenums="1"
-    import from byllm.lib {Model}
+    import from byllm {Model}
 
     glob llm = Model(model_name = "gemini/gemini-2.0-flash")
     ```
 === "Anthropic"
     ```jac linenums="1"
-    import from byllm.lib {Model}
+    import from byllm {Model}
 
     glob llm = Model(model_name = "claude-3-5-sonnet-20240620")
     ```
 === "Ollama"
     ```jac linenums="1"
-    import from byllm.lib {Model}
+    import from byllm {Model}
 
     glob llm = Model(model_name = "ollama/llama3:70b")
     ```
 === "HuggingFace Models"
     ```jac linenums="1"
-    import from byllm.lib {Model}
+    import from byllm {Model}
 
     glob llm = Model(model_name = "huggingface/meta-llama/Llama-3.3-70B-Instruct")
     ```
@@ -270,7 +270,7 @@ In this example:
 The ReAct (Reasoning and Acting) method enables agentic behavior by allowing functions to reason about problems and use external tools. Functions can be made agentic by adding the `by llm(tools=[...])` declaration.
 
 ```jac linenums="1"
-import from byllm.lib { Model }
+import from byllm { Model }
 import from datetime { datetime }
 
 glob llm = Model(model_name="gpt-4o");
@@ -304,7 +304,7 @@ The streaming feature enables real-time token reception from LLM functions, usef
 Set `stream=True` in the invoke parameters to enable streaming:
 
 ```jac linenums="1"
-import from byllm.lib { Model }
+import from byllm { Model }
 
 glob llm = Model(model_name="gpt-4o-mini");
 

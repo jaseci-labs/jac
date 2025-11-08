@@ -16,11 +16,10 @@ dependencies = [
     "mkdocs-open-in-new-tab",
     "starlette",
     "uvicorn",
-    "watchdog",
-    "mkdocs-graphviz"
+    "watchdog"
 ]
 authors = [
-    { name = "Jason Mars", email = "jason@mars.ninja" }
+    { name = "Jason Mars", email = "jason@jaseci.org" }
 ]
 readme = "README.md"
 license = { text = "MIT" }

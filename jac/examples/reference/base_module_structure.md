@@ -1,71 +1,23 @@
-Jac modules organize code using top-level statements including imports, archetypes, implementations, globals, abilities, and entry points. This example demonstrates all top-level statement types.
+In Jac, a module is analogous to a Python module, serving as a container for various elements such as functions, classes (referred to as "archetypes" later in this document), global variables, and other constructs that facilitate code organization and reusability. Each module begins with an optional module-level docstring, which provides a high-level overview of the module's purpose and functionality. This docstring, if present, is positioned at the very start of the module, before any other elements.
 
-**Module-Level Docstrings**
+???+ Note "Docstrings"
 
-Lines 1-5 show the module docstring - a string literal at the very beginning of the file. This triple-quoted string documents what the entire module does. It appears before any code elements and is used by documentation tools.
+    Jac adopts a stricter approach to docstring usage compared to Python. It mandates the inclusion of a single docstring at the module level and permits individual docstrings for each element within the module. This ensures that both the module itself and its constituent elements are adequately documented. If only one docstring precedes the first element, it is automatically designated as the module-level docstring.
 
-**Top-Level Statements Coverage**
+    Also Note, that Jac enforces type annotations in function signatures and class fields to promote type safety and ultimately more readable and scalable codebases.
 
-This module demonstrates all 9 top-level statement types from the grammar:
+Elements within a Jac module encompass familiar constructs from Python, including functions and classes, with the addition of some unique elements that will be discussed in further detail. Below is a table of module elements in Jac. These constructs are described in detail later in this document.
 
-| Statement Type | Lines | Example |
-|---------------|-------|---------|
-| Import | 8 | `import math;` |
-| Global Variable | 11 | `let global_value: int = 42;` |
-| Archetype | 14-16 | `obj MyObject { ... }` |
-| Implementation | 19-23 | `impl MyObject { ... }` |
-| Semstring | 26 | `sem MyObject.value = "...";` |
-| Ability (Function) | 29-31 | `def add(a: int, b: int) -> int { ... }` |
-| Free Code (Default Entry) | 34-36 | `with entry { ... }` |
-| Free Code (Named Entry) | 39-41 | `with entry:__main__ { ... }` |
-| Inline Python | 44-47 | `::py:: ... ::py::` |
-| Test | 50-53 | `test basic_test { ... }` |
+| Module Item           | Description       |
+|----------------|-------------------|
+| [**Import Statements**](#importinclude-statements)    |   Same as python with slightly different syntax, works with both `.jac` and `.py` files (in addition to packages)                |
+| [**Archetypes**](#archetypes)       |    Includes traditional python `class` construct with equiviant semantics, and additionaly introduces a number of new class-like constructs including `obj`, `node`, `edge`, and `walker` to enable the object-spatial programming paradigmn               |
+| [**Function Abilities**](#abilities) | Equivalent to traditional python function semantics with change of keyword `def` to `can`. Type hints are required in parameters and returns |
+| [**Object-Spatial Abilities**](#abilities)         |  A function like construct that is triggered by types of `node`s or `walker`s in the object-spatial paradigm            |
+| [**Free Floating Code**](#free-code)      |  Construct (`with entry {...}`) to express presence of free floating code within a module that is not part of a function or class-like object. Primarily for code cleanliness, readability, and maintainability.    |
+| [**Global Variables**](#global-variables)    |   Module level construct to express global module level variables without using `with entry` syntax. (`glob x=5` is equivalent to `with entry {x=5;}`)                |
+| [**Test**](#tests)           |   A language level construct for testing, functionality realized with `test` and `check` keywords.                |
+| [**Inline Python**](#inline-python)  |  Native python code can be inlined alongside jac code at arbitrary locations in a Jac program using `::py::` directive                 |
 
-**1. Import Statements (Line 8)**
 
-The `import math;` statement makes Python's math module available. Jac supports standard Python imports and Jac-specific imports using `import from module { items }` syntax.
-
-**2. Global Variables (Line 11)**
-
-`let global_value: int = 42;` declares a module-level variable using the `let` keyword. Global variables can have access modifiers (`:priv`, `:pub`, `:protect`) and type annotations.
-
-**3. Archetypes (Lines 14-16)**
-
-`obj MyObject` defines an object archetype with a `value` field. Jac has 5 archetype types: `obj`, `class`, `node`, `edge`, and `walker`.
-
-**Key distinction**: `obj` vs `class`:
-- **`obj`**: All `has` fields are instance variables (each instance gets its own copy). **Methods have implicit `self`** - it doesn't appear in the parameter list (e.g., `def init(param: str)`). Compatible with spatial archetypes (`node`, `edge`, `walker` also use implicit `self`).
-- **`class`**: `has` fields with defaults become class variables (shared across instances). **Methods require explicit `self` parameter with type annotation** (e.g., `def init(self: MyClass, param: str)`).
-
-See [class_archetypes.md](class_archetypes.md) for detailed examples.
-
-**4. Implementations (Lines 19-23)**
-
-The `impl MyObject` block adds the `get_value` method to the MyObject archetype. Implementations allow forward declarations and deferred definitions, separating interface from implementation.
-
-**5. Semstrings (Line 26)**
-
-`sem MyObject.value = "..."` attaches semantic documentation to the `value` field. Semstrings guide LLM-based code generation and provide rich semantic context.
-
-**6. Abilities (Lines 29-31)**
-
-The `def add` function is a top-level ability that can be called throughout the module. Functions use type annotations and can be defined with `def` or `can` keywords.
-
-**7. Free Code - Entry Points (Lines 34-41)**
-
-Entry points execute when the module runs:
-
-- **Default entry** (`with entry`): Executes when the module runs
-- **Named entry** (`with entry:__main__`): Only executes when run directly (not when imported)
-
-The default entry prints "Default entry: 13" by calling `add(5, 8)`.
-The named entry prints "Named entry: 3" by calling `add(1, 2)`.
-
-**8. Inline Python (Lines 44-47)**
-
-The `::py:: ... ::py::` block embeds pure Python code. This allows seamless Python interop - the `python_multiply` function can be called from Jac code.
-
-**9. Tests (Lines 50-53)**
-
-`test basic_test` defines a unit test that verifies `add(2, 3)` returns 5. Tests can be run with `jac test` command and use assertions to validate behavior.
-
+Moreover, Jac requires that any standalone, module-level code be encapsulated within a `with entry {}` block. This design choice aims to enhance the clarity and cleanliness of Jac codebase.

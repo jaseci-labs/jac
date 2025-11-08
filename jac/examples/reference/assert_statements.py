@@ -1,24 +1,29 @@
 from __future__ import annotations
-assert True
-print('assertion passed')
-x = 10
-assert x > 5
-print('x > 5')
-assert x < 100, 'x must be less than 100'
-print('x < 100')
+from jaclang.runtimelib.builtin import *
+from jaclang import JacMachineInterface as _jl
+
+def foo(value: int) -> None:
+    assert value > 0, 'Value must be positive'
 try:
-    assert False
-except AssertionError:
-    print('assertion failed')
-try:
-    assert 1 > 2, '1 is not greater than 2'
+    foo(-5)
 except AssertionError as e:
-    print(f'assertion failed: {e}')
-assert len([1, 2, 3]) == 3
-print('list length is 3')
-assert 'hello' != 'world'
-print('strings are different')
-assert 5 in [1, 2, 3, 4, 5]
-print('5 in list')
-assert None is None
-print('None is None')
+    print('Asserted:', e)
+    
+a = 5
+b = 2
+
+@_jl.jac_test
+def test_test1(_check) -> None:
+    _check.assertAlmostEqual(a, 6)
+
+@_jl.jac_test
+def test_test2(_check) -> None:
+    _check.assertNotEqual(a, b)
+
+@_jl.jac_test
+def test_test3(_check) -> None:
+    _check.assertIn('d', 'abc')
+
+@_jl.jac_test
+def test_test4(_check) -> None:
+    _check.assertEqual(a - b, 3)

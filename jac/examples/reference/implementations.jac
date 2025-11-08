@@ -1,66 +1,26 @@
-"""Implementations: Forward declarations and impl blocks for deferred definitions."""
+def foo -> str;
 
-# Forward declarations
-def compute(x: int, y: int) -> int;
-obj Vehicle;
-enum Priority;
+obj vehicle;
 
-obj Calculator {
-    has total: float = 0.0;
-    def add(value: float);
-    def subtract(value: float);
-    def multiply(value: float);
-    def get_result -> float;
+enum Size; #implementations
+
+impl foo -> str {
+    return ("Hello");
 }
 
-# Implement function
-impl compute(x: int, y: int) -> int {
-    return x + y;
-}
-
-# Implement object
-impl Vehicle {
+impl vehicle  {
     has name: str = "Car";
-    has speed: int = 0;
-    def accelerate { self.speed += 10; }
 }
 
-# Implement enum
-impl Priority {
-    LOW = 1,
-    MEDIUM = 2,
-    HIGH = 3
-}
-
-# Implement object methods
-impl Calculator.add(value: float) {
-    self.total += value;
-}
-
-impl Calculator.subtract(value: float) {
-    self.total -= value;
-}
-
-impl Calculator.multiply(value: float) {
-    self.total *= value;
-}
-
-impl Calculator.get_result -> float {
-    return self.total;
+impl Size {
+    Small=1,
+    Medium=2,
+    Large=3
 }
 
 with entry {
-    # Test implementations
-    result = compute(5, 3);
-    v = Vehicle();
-    v.accelerate();
-    p = Priority.HIGH;
-
-    calc = Calculator();
-    calc.add(10.5);
-    calc.multiply(2.0);
-    calc.subtract(5.0);
-
-    print(result, v.name, v.speed, p.value);
-    print("Calculator result:", calc.get_result());
+    car = vehicle();
+    print(foo());
+    print(car.name);
+    print(Size.Medium.value);
 }

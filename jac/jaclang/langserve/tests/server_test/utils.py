@@ -1,7 +1,5 @@
 """Unit test utilities for JacLangServer."""
 
-from __future__ import annotations
-
 import os
 import tempfile
 from typing import Optional
@@ -46,16 +44,16 @@ def create_ls_with_workspace(file_path: str):
 
 
 @dataclass
-class JacTestFile:
+class TestFile:
     """Encapsulates test file information and operations."""
-
+    
     path: str
     uri: str
     code: str
     version: int = 1
-
+    
     @classmethod
-    def from_template(cls, template_name: str, content: str = "") -> JacTestFile:
+    def from_template(cls, template_name: str, content: str = "") -> "TestFile":
         """Create a test file from a template."""
         code = load_jac_template(cls._get_template_path(template_name), content)
         temp_path = create_temp_jac_file(code)
@@ -65,19 +63,19 @@ class JacTestFile:
             uri=uri or "",
             code=code,
         )
-
+    
     @staticmethod
     def _get_template_path(file_name: str) -> str:
         """Get absolute path to test template file."""
         return os.path.abspath(
             os.path.join(os.path.dirname(__file__), file_name)
         )
-
+    
     def cleanup(self):
         """Remove temporary test file."""
         if os.path.exists(self.path):
             os.remove(self.path)
-
+    
     def increment_version(self) -> int:
         """Increment and return the version number."""
         self.version += 1
@@ -86,15 +84,15 @@ class JacTestFile:
 
 class LanguageServerTestHelper:
     """Helper class for language server testing operations."""
-
-    def __init__(self, ls, test_file: JacTestFile):
+    
+    def __init__(self, ls, test_file: TestFile):
         self.ls = ls
         self.test_file = test_file
-
+    
     async def open_document(self) -> None:
         """Open a document in the language server."""
         from jaclang.langserve.server import did_open
-
+        
         params = DidOpenTextDocumentParams(
             text_document=TextDocumentItem(
                 uri=self.test_file.uri,
@@ -104,34 +102,32 @@ class LanguageServerTestHelper:
             )
         )
         await did_open(self.ls, params)
-        await self.ls.wait_till_idle()
-
+    
     async def save_document(self, code: Optional[str] = None) -> None:
         """Save a document in the language server."""
         from jaclang.langserve.server import did_save
-
+        
         content = code if code is not None else self.test_file.code
         version = self.test_file.increment_version()
-
+        
         if code:
             self._update_workspace(code, version)
-
+        
         from lsprotocol.types import TextDocumentIdentifier
-
+        
         params = DidSaveTextDocumentParams(
             text_document=TextDocumentIdentifier(uri=self.test_file.uri),
             text=content
         )
         await did_save(self.ls, params)
-        await self.ls.wait_till_idle()
-
+    
     async def change_document(self, code: str) -> None:
         """Change document content in the language server."""
         from jaclang.langserve.server import did_change
-
+        
         version = self.test_file.increment_version()
         self._update_workspace(code, version)
-
+        
         params = DidChangeTextDocumentParams(
             text_document=VersionedTextDocumentIdentifier(
                 uri=self.test_file.uri,
@@ -140,8 +136,7 @@ class LanguageServerTestHelper:
             content_changes=[{"text": code}],  # type: ignore
         )
         await did_change(self.ls, params)
-        await self.ls.wait_till_idle()
-
+    
     def _update_workspace(self, code: str, version: int) -> None:
         """Update workspace with new document content."""
         self.ls.workspace.put_text_document(
@@ -152,31 +147,31 @@ class LanguageServerTestHelper:
                 text=code,
             )
         )
-
+    
     def get_diagnostics(self) -> list:
         """Get diagnostics for the current document."""
         return self.ls.diagnostics.get(self.test_file.uri, [])
-
+    
     def get_semantic_tokens(self):
         """Get semantic tokens for the current document."""
         return self.ls.get_semantic_tokens(self.test_file.uri)
-
+    
     def assert_no_diagnostics(self) -> None:
         """Assert that there are no diagnostics."""
         diagnostics = self.get_diagnostics()
         assert isinstance(diagnostics, list)
         assert len(diagnostics) == 0, f"Expected no diagnostics, found {len(diagnostics)}"
-
+    
     def assert_has_diagnostics(self, count: int = 1, message_contains: Optional[str] = None) -> None:
         """Assert that diagnostics exist with optional message validation."""
         diagnostics = self.get_diagnostics()
         assert isinstance(diagnostics, list)
         assert len(diagnostics) == count, f"Expected {count} diagnostic(s), found {len(diagnostics)}"
-
+        
         if message_contains:
             assert message_contains in diagnostics[0].message, \
                 f"Expected '{message_contains}' in diagnostic message"
-
+    
     def assert_semantic_tokens_count(self, expected_count: int) -> None:
         """Assert semantic tokens data has expected count."""
         tokens = self.get_semantic_tokens()

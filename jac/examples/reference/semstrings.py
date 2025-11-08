@@ -1,11 +1,11 @@
-"""Semstrings: Semantic string definitions for LLM-guided functions."""
 from __future__ import annotations
-from jaclang.lib import call_llm, get_mtir, sem
-from byllm.lib import Model
-llm = Model(model_name='mockllm', outputs=['SecureP@ss1'])
+from jaclang.runtimelib.builtin import *
+from jaclang import JacMachineInterface as _
+from byllm import Model, MTIR
+llm = Model(model_name='mockllm', outputs=['R8@jL3pQ'])
 
-@sem('\nPassword is at least 8 characters, has one uppercase letter,\none lowercase letter, one digit, and one special character.\n', {})
+@_.sem('Generates and returns password that:\n- contain at least 8 characters\n- contain at least one uppercase letter\n- contain at least one lowercase letter\n- contain at least one digit\n- contain at least one special character\n', {})
 def generate_password() -> str:
-    return call_llm(model=llm(), mtir=get_mtir(caller=generate_password, args={}, call_params=llm().call_params))
-pwd = generate_password()
-print(f'Generated: {pwd}')
+    return _.call_llm(model=llm(), mtir=MTIR.factory(caller=generate_password, args={}, call_params=llm.call_params))
+password = generate_password()
+print('Generated password:', password)

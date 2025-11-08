@@ -19,6 +19,6 @@ setup(
         "jac": ["walkerapi = jaclang_walkerapi.walkerapi:JacMachineInterface"],
     },
     author="Jason Mars",
-    author_email="jason@mars.ninja",
+    author_email="jason@jaseci.org",
     url="https://github.com/Jaseci-Labs/jaclang",
 )

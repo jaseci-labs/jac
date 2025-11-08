@@ -1,8 +1,8 @@
 
-import from byllm.lib { Model }
+import from byllm { Model }
 import from pathlib { Path }
 
-glob llm = Model(model_name="gemini/gemini-2.5-flash");
+glob llm = Model(model_name="gpt-4o-mini");
 
 # Simple task object with semantic annotations
 obj Task {
@@ -137,8 +137,18 @@ walker GeniusAgent {
         here.results = self.results;
         # Let the node handle its own summary display
         here.show_summary();
+    }
+}
 
-        # Report results for API endpoint
+# API walker for frontend interaction
+walker generate_code {
+    has request: str;
+
+    can execute with `root entry {
+        print(f"Processing request: {self.request}");
+        agent = GeniusAgent(request=self.request) spawn root;
+
+        # Return the results
         report {
             "status": "success",
             "tasks": [
@@ -147,9 +157,9 @@ walker GeniusAgent {
                     "code": result.code,
                     "status": result.status,
                     "feedback": result.feedback
-                } for result in self.results
+                } for result in agent.results
             ],
-            "total_tasks": len(self.results)
+            "total_tasks": len(agent.results)
         };
     }
 }

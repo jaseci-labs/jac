@@ -1,92 +1,103 @@
-**Unpack Expressions**
+Unpack expressions enable the expansion of iterables and mappings into their constituent elements using the `*` and `**` operators. Jac follows Python's unpacking semantics while integrating seamlessly with pipe operations and object-spatial programming constructs.
 
-Unpack expressions use the `*` and `**` operators to expand collections inline, enabling concise collection composition and flexible function calls.
+#### Iterable Unpacking
 
-**Function Definition**
+The single asterisk (`*`) operator unpacks iterables into individual elements:
 
-Lines 3-5 define a function that takes four integer parameters (`a`, `b`, `c`, `d`) and returns their sum. This function will be used to demonstrate unpacking in function calls.
+```jac
+first = [1, 2, 3];
+second = [4, 5];
+combined = [*first, *second];  # [1, 2, 3, 4, 5]
 
-**List Unpacking with Asterisk**
+coords = (3, 4);
+point3d = (*coords, 5);        # (3, 4, 5)
+```
 
-Lines 9-11 demonstrate list unpacking using `*`. Line 11 shows `[*list1, *list2]`, which unpacks both lists into a new list:
-- `*list1` expands to elements: `1, 2, 3`
-- `*list2` expands to elements: `4, 5, 6`
-- Combined result: `[1, 2, 3, 4, 5, 6]`
+Unpacking preserves evaluation order, ensuring predictable behavior when side effects are involved.
 
-This provides a clean way to concatenate lists without using the `+` operator or `extend()` method.
+#### Mapping Unpacking
 
-**Dictionary Unpacking with Double Asterisk**
+The double asterisk (`**`) operator unpacks mappings into key-value pairs:
 
-Lines 14-16 demonstrate dictionary unpacking using `**`. Line 16 shows `{**dict1, **dict2}`, which unpacks both dictionaries into a new dictionary:
-- `**dict1` expands to key-value pairs: `'a': 1, 'b': 2`
-- `**dict2` expands to key-value pairs: `'c': 3, 'd': 4`
-- Merged result: `{'a': 1, 'b': 2, 'c': 3, 'd': 4}`
+```jac
+base = {"a": 1, "b": 2};
+extend = {"b": 99, "c": 3};
+merged = {**base, **extend};   # {"a": 1, "b": 99, "c": 3}
+```
 
-If both dictionaries had the same key, the rightmost dictionary's value would take precedence.
+When duplicate keys exist, later values override earlier ones, following Python's precedence rules.
 
-**Unpacking in Function Calls**
+#### Function Call Unpacking
 
-Lines 19-20 demonstrate unpacking dictionaries as keyword arguments. Line 19: `result1 = compute(**merged);`
-- `merged` is `{'a': 1, 'b': 2, 'c': 3, 'd': 4}`
-- `**merged` unpacks to keyword arguments: `a=1, b=2, c=3, d=4`
-- Calls: `compute(a=1, b=2, c=3, d=4)`
-- Returns: `1 + 2 + 3 + 4 = 10`
+Unpacking integrates with function calls and pipe operations:
 
-Line 20: `result2 = compute(**dict1, **dict2);`
-- `**dict1` provides: `a=1, b=2`
-- `**dict2` provides: `c=3, d=4`
-- Same result: `10`
+```jac
+def process_data(x: int, y: int, z: int) -> int {
+    return x + y + z;
+}
 
-This allows you to pass collected arguments to functions without explicitly naming each parameter.
+# Traditional call unpacking
+args = [1, 2, 3];
+result = process_data(*args);
 
-**Unpacking Operators**
+# Pipe operation with unpacking
+kwargs = {"x": 1, "y": 2, "z": 3};
+result = kwargs |> process_data;
+```
 
-| Operator | Works With | Use Case | Example |
-|----------|-----------|----------|---------|
-| `*` | Sequences (lists, tuples) | Expand elements | `[*list1, *list2]` |
-| `**` | Mappings (dictionaries) | Expand key-value pairs | `{**dict1, **dict2}` |
+#### Mixed Argument Patterns
 
-**Multiple Unpacking**
+Unpacking can be combined with explicit arguments in flexible patterns:
 
-You can unpack multiple collections in a single expression:
-- Lists: `[*a, *b, *c]` combines three lists
-- Dicts: `{**x, **y, **z}` merges three dictionaries
-- Function calls: `func(**d1, **d2)` passes arguments from two dicts
+```jac
+def complex_function(a, b, c=10, d=20) {
+    return a + b + c + d;
+}
 
-**Literal Collection Building**
+# Mixed positional and keyword unpacking
+positional = [1, 2];
+keywords = {"d": 30};
+result = complex_function(*positional, c=15, **keywords);
+```
 
-Unpacking is powerful for building collections with mixed content:
+#### Integration with Object-Spatial Operations
 
-**Common Use Cases**
+Unpacking works seamlessly with object-spatial constructs:
 
-| Use Case | Example | Benefit |
-|----------|---------|---------|
-| Concatenate lists | `[*list1, *list2]` | Cleaner than `list1 + list2` |
-| Merge configs | `{**defaults, **overrides}` | Override precedence |
-| Pass collected args | `func(**kwargs)` | Flexible function calls |
-| Copy with modifications | `{**original, 'key': new_val}` | Update while copying |
+```jac
+walker DataCollector {
+    has collected_data: list = [];
+    
+    can gather with entry {
+        # Unpack node data into processing function
+        node_values = here.get_values();
+        processed = process_batch(*node_values);
+        
+        # Collect results using unpacking
+        self.collected_data = [*self.collected_data, *processed];
+    }
+}
 
-**Example Execution**
+node DataNode {
+    has config: dict;
+    
+    can configure with visitor entry {
+        # Unpack configuration into visitor
+        visitor.update_config(**self.config);
+    }
+}
+```
 
-Line 22 prints all results from lines 11, 16, 19, and 20:
-- `combined` = [1, 2, 3, 4, 5, 6]
-- `merged` = {'a': 1, 'b': 2, 'c': 3, 'd': 4}
-- `result1` = 10
-- `result2` = 10
+#### Type Safety and Validation
 
-**Shallow Copy Semantics**
+Unpacking operations include runtime type checking:
 
-When unpacking creates a new collection, it performs a shallow copy:
-- New outer collection is created
-- Elements/values themselves are not copied (references are copied)
-- Modifying nested objects affects both collections
+- `*` requires iterable objects (lists, tuples, sets, etc.)
+- `**` requires mapping objects with string keys
+- Type mismatches raise `TypeError` at runtime
 
-**Practical Examples**
+#### Performance Considerations
 
-Combining configuration:
+Unpacking creates new collections rather than sharing references, ensuring data isolation but requiring consideration of memory usage in performance-critical applications. The compiler optimizes common unpacking patterns to minimize overhead.
 
-Building lists with interspersed values:
-
-Passing function arguments:
-
-These unpacking operators make collection manipulation more concise and expressive in Jac.
+Unpack expressions provide essential functionality for flexible data manipulation while maintaining the clean, expressive syntax that characterizes Jac's approach to both traditional programming and object-spatial operations.

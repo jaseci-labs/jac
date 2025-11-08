@@ -162,12 +162,6 @@ def serve_with_watch() -> None:
     # Create Starlette app and add middleware + static files
     app = Starlette()
     app.add_middleware(SecurityHeadersMiddleware)
-
-    # Add health check endpoint
-    @app.route("/health")
-    async def health_check(request: Request) -> Response:
-        return Response("healthy\n", media_type="text/plain")
-
     app.mount("/", StaticFiles(directory=site_dir, html=True), name="static")
 
     print(f"Serving at http://localhost:{port}")

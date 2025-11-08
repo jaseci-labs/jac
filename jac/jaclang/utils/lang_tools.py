@@ -80,7 +80,6 @@ class AstTool:
                 "UniNode",
                 "UniScopeNode",
                 "UniCFGNode",
-                "ClientFacingNode",
                 "ProgramModule",
                 "OOPAccessNode",
                 "WalkerStmtOnlyNode",
@@ -182,7 +181,7 @@ class AstTool:
         """Generate a AST, SymbolTable tree for .jac file, or Python AST for .py file."""
         error = (
             "Usage: ir <choose one of (sym / sym. / ast / ast. / docir / "
-            "pyast / py / unparse / esast / es)> <.py or .jac file_path>"
+            "pyast / py / unparse)> <.py or .jac file_path>"
         )
         if len(args) != 2:
             return error
@@ -264,29 +263,6 @@ class AstTool:
                         if isinstance(ir.gen.py[0], str)
                         else "Compile failed."
                     )
-                case "esast":
-                    from jaclang.compiler.passes.ecmascript import (
-                        EsastGenPass,
-                        es_node_to_dict,
-                    )
-                    import json
-
-                    esast_pass = EsastGenPass(ir, prog)
-                    es_ir = esast_pass.ir_out
-                    if es_ir.gen.es_ast:
-                        return f"\n{json.dumps(es_node_to_dict(es_ir.gen.es_ast), indent=2)}"
-                    else:
-                        return "ECMAScript AST generation failed."
-                case "es":
-                    from jaclang.compiler.passes.ecmascript import EsastGenPass
-                    from jaclang.compiler.passes.ecmascript.es_unparse import es_to_js
-
-                    esast_pass = EsastGenPass(ir, prog)
-                    es_ir = esast_pass.ir_out
-                    if es_ir.gen.es_ast:
-                        return f"\n{es_to_js(es_ir.gen.es_ast)}"
-                    else:
-                        return "ECMAScript code generation failed."
                 case _:
                     return f"Invalid key: {error}"
         else:
@@ -303,18 +279,14 @@ class AstTool:
             for kid in cls.kids:
                 if "_end" in kid.name:
                     kid.name = kid.name.replace("_end", "_end_")
-                typ_str = str(kid.typ)
-                arrow = "-.->" if "Optional" in typ_str else "-->"
+                arrow = "-.->" if "Optional" in kid.typ else "-->"
                 typ = (
-                    typ_str.replace("typing.", "")
-                    .replace("jaclang.compiler.unitree.", "")
-                    .replace("Optional[", "")
-                    .replace("Union[", "")
+                    kid.typ.replace("Optional[", "")
                     .replace("SubTag[", "")
                     .replace("Sequence[", "")
-                    .replace("list[", "list - ")
                     .replace("]", "")
                     .replace("|", ",")
+                    .replace("list[", "list - ")
                 )
                 output += f"{cls.name} {arrow}|{typ}| {kid.name}\n"
             output += "```\n\n"

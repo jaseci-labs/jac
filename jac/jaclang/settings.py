@@ -14,10 +14,13 @@ class Settings:
     filter_sym_builtins: bool = True
     ast_symbol_info_detailed: bool = False
     pass_timer: bool = False
+    collect_py_dep_debug: bool = False
     print_py_raised_ast: bool = False
 
     # Compiler configuration
+    disable_mtllm: bool = False
     ignore_test_annex: bool = False
+    pyout_jaclib_alias: str = "_jl"
     pyfile_raise: bool = False
     pyfile_raise_full: bool = False
 

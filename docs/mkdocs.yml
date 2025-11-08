@@ -6,15 +6,20 @@ use_directory_urls: true
 nav:
   - Learn:
     # - Getting Started: "learn/getting_started.md"
-    - Getting Started:
-      - Installation: "learn/installation.md"
-      - Jac as Your First Programming Language: "learn/beginners_guide_to_jac.md"
-      - Syntax Quick Reference: "learn/quick_reference.md"
-      - Native Superset of Python: "learn/superset_python.md"
-      - Jac Library in Pure Python: "learn/library_mode.md"
-      - Tour of Jac/Jaseci: "learn/tour.md"
-      - Learn Jac in 5 Minutes: "learn/jac_in_a_flash.md"
-    - The Jac Book:
+    - Tour of Jac/Jaseci: "learn/tour.md"
+    - Installation: "learn/installation.md"
+    - Learn Jac in 5 Minutes: "learn/jac_in_a_flash.md"
+    - Native Superset of Python: "learn/superset_python.md"
+    - Jac Playground: "learn/jac_playground.md"
+    - Learn By Example:
+      - LittleX (your own twitter): "learn/examples/littleX/tutorial.md"
+      - Jac MCP Conversational Chatbot: "learn/examples/rag_chatbot/Overview.md"
+      - RPG game with AI Genarated Maps: "learn/examples/mtp_examples/rpg_game.md"
+      - Agentic Fantasy Trading Game: "learn/examples/mtp_examples/fantasy_trading_game.md"
+      - Friendzone Lite: "learn/examples/agentic_ai/friendzone-lite/friendzone-lite.md"
+      - Aider Genius Lite: "learn/examples/agentic_ai/aider-genius-lite/aider-genius-lite.md"
+      - Task Manager Lite: "learn/examples/agentic_ai/task-manager-lite/task-manager-lite.md"
+    - Learn Jac Language (WIP):
       - Introduction: "jac_book/index.md"
       - 1. Welcome to Jac: "jac_book/chapter_1.md"
       - 2. Variables, Types, and Basic Syntax: "jac_book/chapter_2.md"
@@ -36,16 +41,6 @@ nav:
       - 18. Deployment Strategies: "jac_book/chapter_18.md"
       - 19. Performance Optimization: "jac_book/chapter_19.md"
       - 20. Python to Jac Migration: "jac_book/chapter_20.md"
-      - Specifications:
-        - Jac Keywords: "learn/keywords.md"
-        - Object-Spatial Programming Specification: "learn/dspfoundation.md"
-      - Misc Docs:
-        - Understanding Object-Spatial:
-          - "learn/data_spatial/nodes_and_edges.md" # Introduction to DS primitives
-          - "learn/data_spatial/walkers.md" # Walker
-          - "learn/data_spatial/filtering.md" # Filtering
-          - "learn/data_spatial/sequence.md"
-        - FAQ: "learn/data_spatial/FAQ.md" # faq
     - Programming 'by' LLM:
         - byLLM: "learn/jac-byllm/with_llm.md"
         - Quick-start: "learn/jac-byllm/quickstart.md"
@@ -53,7 +48,6 @@ nav:
         - Examples: "learn/jac-byllm/examples.md"
         - Python byllm Interface: "learn/jac-byllm/python_integration.md"
         - Using Multimodal models: "learn/jac-byllm/multimodality.md"
-        - Create Your Own Language Model: "learn/jac-byllm/create_own_lm.md"
         # - Build your own byllm plugin: "learn/jac-byllm/creating_byllm_plugins.md". # Needs review and update
         - LiteLLM Proxy Server: "learn/jac-byllm/litellm_proxy.md"
     - Scale-Native Programming:
@@ -74,95 +68,62 @@ nav:
         - "learn/jac-cloud/utilities.md"
       - Jac Lens: "learn/jac-lens.md"
     - Tooling:
-      - Run Jac In Browser: "learn/jac_playground.md"
       - "learn/tools/cli.md"
-      - "learn/tools/jac_serve.md"
       - "learn/tools/streamlit.md"
-    - Examples:
-      - LittleX (your own twitter): "learn/examples/littleX/tutorial.md"
-      - Jac MCP Conversational Chatbot: "learn/examples/rag_chatbot/Overview.md"
-      - RPG game with AI Genarated Maps: "learn/examples/mtp_examples/rpg_game.md"
-      - Agentic Fantasy Trading Game: "learn/examples/mtp_examples/fantasy_trading_game.md"
-      - Friendzone Lite: "learn/examples/agentic_ai/friendzone-lite/friendzone-lite.md"
-      - Aider Genius Lite: "learn/examples/agentic_ai/aider-genius-lite/aider-genius-lite.md"
-      - Task Manager Lite: "learn/examples/agentic_ai/task-manager-lite/task-manager-lite.md"
-  - Full Jac Specification:
-    - Introduction: "learn/jac_ref.md"
-    - Base Module structure: "learn/jac_ref/base_module_structure.md"
-    - Import/Include Statements: "learn/jac_ref/import_include_statements.md"
-    - Class Archetypes: "learn/jac_ref/class_archetypes.md"
-    - Class Archetype bodies: "learn/jac_ref/class_archetype_bodies.md"
-    - Enumerations: "learn/jac_ref/enumerations.md"
-    - Functions and Abilities: "learn/jac_ref/functions_and_abilities.md"
-    - Implementations: "learn/jac_ref/implementations.md"
-    - Semstrings: "learn/jac_ref/semstrings.md"
-    - Global variables: "learn/jac_ref/global_variables.md"
-    - With entry blocks: "learn/jac_ref/with_entry_blocks.md"
-    - Inline python: "learn/jac_ref/inline_python.md"
-    - Tests: "learn/jac_ref/tests.md"
-    - Codeblocks and Statements: "learn/jac_ref/codeblocks_and_statements.md"
-    - If statements: "learn/jac_ref/if_statements.md"
-    - While statements: "learn/jac_ref/while_statements.md"
-    - For statements: "learn/jac_ref/for_statements.md"
-    - Try statements: "learn/jac_ref/try_statements.md"
-    - Match statements: "learn/jac_ref/match_statements.md"
-    - Switch statements: "learn/jac_ref/switch_statements.md"
-    - Context managers: "learn/jac_ref/context_managers.md"
-    - Global and nonlocal statements: "learn/jac_ref/global_and_nonlocal_statements.md"
-    - Typed context blocks (OSP): "learn/jac_ref/typed_context_blocks_(osp).md"
-    - Return statements: "learn/jac_ref/return_statements.md"
-    - Yield statements: "learn/jac_ref/yield_statements.md"
-    - Raise statements: "learn/jac_ref/raise_statements.md"
-    - Assert statements: "learn/jac_ref/assert_statements.md"
-    - Delete statements: "learn/jac_ref/delete_statements.md"
-    - Report statements: "learn/jac_ref/report_statements.md"
-    - Control statements: "learn/jac_ref/control_statements.md"
-    - Walker visit and disengage (OSP): "learn/jac_ref/walker_visit_and_disengage_(osp).md"
-    - Assignments: "learn/jac_ref/assignments.md"
-    - Expressions: "learn/jac_ref/expressions.md"
-    - Concurrent expressions: "learn/jac_ref/concurrent_expressions.md"
-    - Walrus assignments: "learn/jac_ref/walrus_assignments.md"
-    - Lambda expressions: "learn/jac_ref/lambda_expressions.md"
-    - Pipe expressions: "learn/jac_ref/pipe_expressions.md"
-    - Pipe back expressions: "learn/jac_ref/pipe_back_expressions.md"
-    - Bitwise expressions: "learn/jac_ref/bitwise_expressions.md"
-    - Logical and compare expressions: "learn/jac_ref/logical_and_compare_expressions.md"
-    - Arithmetic expressions: "learn/jac_ref/arithmetic_expressions.md"
-    - Connect expressions (OSP): "learn/jac_ref/connect_expressions_(osp).md"
-    - Pipe atomic expressions: "learn/jac_ref/pipe_atomic_expressions.md"
-    - Pipe back atomic expressions: "learn/jac_ref/pipe_back_atomic_expressions.md"
-    - Spawn expressions (OSP): "learn/jac_ref/spawn_expressions_(osp).md"
-    - Unpack expressions: "learn/jac_ref/unpack_expressions.md"
-    - References (OSP): "learn/jac_ref/references_(osp).md"
-    - Pipe-style function call: "learn/jac_ref/pipe_style_function_call.md"
-    - Attributes and Subscript expressions: "learn/jac_ref/attributes_and_subscript_expressions.md"
-    - Function calls: "learn/jac_ref/function_calls.md"
-    - Atomic expressions: "learn/jac_ref/atomic_expressions.md"
-    - Collection values: "learn/jac_ref/collection_values.md"
-    - Edge references (OSP): "learn/jac_ref/edge_references_(osp).md"
-    - Filter and assign comprehensions: "learn/jac_ref/filter_and_assign_comprehensions.md"
-    - Names and references: "learn/jac_ref/names_and_references.md"
-    - Jsx elements: "learn/jac_ref/jsx_elements.md"
-    - Builtin types: "learn/jac_ref/builtin_types.md"
-    - Formatted string literals: "learn/jac_ref/formatted_string_literals.md"
-    - Lexer Tokens: "learn/jac_ref/lexer_tokens.md"
+    - Specifications:
+      - Jac Keywords: "learn/keywords.md"
+      - Object-Spatial Programming Specification: "learn/dspfoundation.md"
+      - Full Language Specification: "learn/jac_ref.md"
+    - Misc Docs:
+      - Understanding Object-Spatial:
+        - "learn/data_spatial/nodes_and_edges.md" # Introduction to DS primitives
+        - "learn/data_spatial/walkers.md" # Walker
+        - "learn/data_spatial/filtering.md" # Filtering
+        - "learn/data_spatial/sequence.md"
+      - FAQ: "learn/data_spatial/FAQ.md" # faq
+
 
   - Contributor Hub:
     - Contributing: "internals/contrib.md"
-    - Release Notes:
-      - Jaclang: "communityhub/release_notes/jaclang.md"
-      - Jac-Cloud: "communityhub/release_notes/jac-cloud.md"
-      - byLLM: "communityhub/release_notes/byllm.md"
-      - Jac-Client: "communityhub/release_notes/jac-client.md"
+    - Release Notes: "communityhub/release_notes.md"
     - Breaking Changes: "communityhub/breaking_changes.md"
     - Leaderboard: "communityhub/top_contributors.md"
     - Fun Stuff:
       - Project Ideas:
-        - "communityhub/fun/static_fx.md"
+        - "communityhub/fun/projects.md"
+        - "communityhub/fun/p1.md"
+        - "communityhub/fun/p2.md"
+        - "communityhub/fun/p3.md"
+      - Content Pieces: "communityhub/content_pieces.md"
     - Internals:
-      - JSX 'Project OneLang' Design Doc: "internals/jsx_client_serv_design.md"
-      - Jac Client Import Patterns Proposal: "internals/jac_import_patterns.md"
-      - UniIR Nodes: "internals/uniir_node.md"
+      - Roadmap: "communityhub/roadmap.md"
+      - Design Docs and Guides:
+        - Compiler/Runtime Design: "internals/internals.md"
+        - Static Compilation:
+          - Sym Table Design Docs:
+            - "internals/symbol_tables/index.md"
+            - "internals/symbol_tables/structure.md"
+            - "internals/symbol_tables/building.md"
+            - "internals/symbol_tables/def_use.md"
+            - "internals/symbol_tables/linking.md"
+            - "internals/symbol_tables/resolution.md"
+          - UniIR Nodes: "internals/uniir_node.md"
+        - Runtime Plugin Interface: "internals/jac_plugins.md"
+        - main py plugin Interface: "internals/plugin_documentation.md"
+      - Planning Specs and Docs:
+        - Language Ref Roadmap: "internals/planning_specs/ref_roadmap.md"
+        - Archetype Lifecycle Enhancement Roadmap: "internals/planning_specs/spawn_life_cycle.md"
+        - Error System: "internals/planning_specs/error_system.md"
+        - Formatter System: "internals/planning_specs/formatter_system.md"
+        - Native Type System:
+          - Introduction: "internals/planning_specs/native_type_system/index.md"
+          - Architecture: "internals/planning_specs/native_type_system/architecture.md"
+          - Type Representation: "internals/planning_specs/native_type_system/type_representation.md"
+          - Type Resolution: "internals/planning_specs/native_type_system/type_resolution.md"
+          - Type Rules: "internals/planning_specs/native_type_system/type_rules.md"
+          - Type Inference: "internals/planning_specs/native_type_system/type_inference.md"
+          - Compiler Integration: "internals/planning_specs/native_type_system/compiler_integration.md"
+          - Let's Build: "internals/planning_specs/native_type_system/lets_build.md"
 
 
   - Jac Playground:
@@ -209,7 +170,6 @@ theme:
       quote: octicons/quote-16
 
 markdown_extensions:
-
   - pymdownx.tabbed:
       alternate_style: true
   - pymdownx.highlight:
@@ -236,8 +196,6 @@ markdown_extensions:
   - pymdownx.details
   - pymdownx.superfences
   - tables
-  - mkdocs_graphviz
-
   - toc:
         permalink: "#"
 
@@ -254,8 +212,6 @@ copyright: Copyright &copy; 2025 Jac Hackers Everwhere
 
 extra_javascript:
   - assets/mathjax-config.js
-  - https://unpkg.com/viz.js@2.1.2/viz.js
-  - https://unpkg.com/viz.js@2.1.2/full.render.js
   - https://polyfill.io/v3/polyfill.min.js?features=es6
   - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
   - https://cdn.jsdelivr.net/pyodide/v0.27.0/full/pyodide.js
@@ -275,7 +231,7 @@ plugins:
       video_controls: False
   - redirects:
       redirect_maps:
-        index.md: learn/installation.md
+        index.md: learn/tour.md
 
 hooks:
   - scripts/handle_jac_compile_data.py

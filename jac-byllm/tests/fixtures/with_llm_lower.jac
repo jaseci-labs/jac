@@ -1,4 +1,4 @@
-import from byllm.lib { Model }
+import from byllm { Model }
 
 enum Personality {
     INTROVERT = "Introvert",

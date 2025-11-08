@@ -69,13 +69,13 @@ class AnchorReport:
     context: dict[str, Any]
 
 
-ObjectSpatialFilter: TypeAlias = (
+DataSpatialFilter: TypeAlias = (
     Callable[["Archetype"], bool] | "Archetype" | list["Archetype"] | None
 )
 
 
 @dataclass(eq=False, repr=False)
-class ObjectSpatialDestination:
+class DataSpatialDestination:
     """Object-Spatial Destination."""
 
     direction: EdgeDir
@@ -92,18 +92,18 @@ class ObjectSpatialDestination:
 
 
 @dataclass(eq=False, repr=False)
-class ObjectSpatialPath:
+class DataSpatialPath:
     """Object-Spatial Path."""
 
     origin: list[NodeArchetype]
-    destinations: list[ObjectSpatialDestination]
+    destinations: list[DataSpatialDestination]
     edge_only: bool
     from_visit: bool
 
     def __init__(
         self,
         origin: NodeArchetype | list[NodeArchetype],
-        destinations: list[ObjectSpatialDestination] | None = None,
+        destinations: list[DataSpatialDestination] | None = None,
     ) -> None:
         """Override Init."""
         if not isinstance(origin, list):
@@ -115,7 +115,7 @@ class ObjectSpatialPath:
 
     def convert(
         self,
-        filter: ObjectSpatialFilter,
+        filter: DataSpatialFilter,
     ) -> Callable[["Archetype"], bool] | None:
         """Convert filter."""
         if not filter:
@@ -129,44 +129,44 @@ class ObjectSpatialPath:
     def append(
         self,
         direction: EdgeDir,
-        edge: ObjectSpatialFilter,
-        node: ObjectSpatialFilter,
-    ) -> ObjectSpatialPath:
+        edge: DataSpatialFilter,
+        node: DataSpatialFilter,
+    ) -> DataSpatialPath:
         """Append destination."""
         self.destinations.append(
-            ObjectSpatialDestination(direction, self.convert(edge), self.convert(node))
+            DataSpatialDestination(direction, self.convert(edge), self.convert(node))
         )
         return self
 
-    def edge_out(
-        self, edge: ObjectSpatialFilter = None, node: ObjectSpatialFilter = None
-    ) -> ObjectSpatialPath:
+    def _out(
+        self, edge: DataSpatialFilter = None, node: DataSpatialFilter = None
+    ) -> DataSpatialPath:
         """Override greater than function."""
         return self.append(EdgeDir.OUT, edge, node)
 
-    def edge_in(
-        self, edge: ObjectSpatialFilter = None, node: ObjectSpatialFilter = None
-    ) -> ObjectSpatialPath:
+    def _in(
+        self, edge: DataSpatialFilter = None, node: DataSpatialFilter = None
+    ) -> DataSpatialPath:
         """Override greater than function."""
         return self.append(EdgeDir.IN, edge, node)
 
-    def edge_any(
-        self, edge: ObjectSpatialFilter = None, node: ObjectSpatialFilter = None
-    ) -> ObjectSpatialPath:
+    def _any(
+        self, edge: DataSpatialFilter = None, node: DataSpatialFilter = None
+    ) -> DataSpatialPath:
         """Override greater than function."""
         return self.append(EdgeDir.ANY, edge, node)
 
-    def edge(self) -> ObjectSpatialPath:
+    def edge(self) -> DataSpatialPath:
         """Set edge only."""
         self.edge_only = True
         return self
 
-    def visit(self) -> ObjectSpatialPath:
+    def visit(self) -> DataSpatialPath:
         """Set from visit."""
         self.from_visit = True
         return self
 
-    def repr_builder(self, repr: str, dest: ObjectSpatialDestination, mark: str) -> str:
+    def repr_builder(self, repr: str, dest: DataSpatialDestination, mark: str) -> str:
         """Repr builder."""
         repr += mark
         repr += f' (edge{" filter" if dest.edge else ""}) '
@@ -361,8 +361,8 @@ class ObjectAnchor(Anchor):
 class Archetype:
     """Archetype Protocol."""
 
-    _jac_entry_funcs_: ClassVar[list[ObjectSpatialFunction]] = []
-    _jac_exit_funcs_: ClassVar[list[ObjectSpatialFunction]] = []
+    _jac_entry_funcs_: ClassVar[list[DataSpatialFunction]] = []
+    _jac_exit_funcs_: ClassVar[list[DataSpatialFunction]] = []
 
     @cached_property
     def __jac__(self) -> Anchor:
@@ -454,7 +454,7 @@ class Root(NodeArchetype):
 
 
 @dataclass(eq=False)
-class ObjectSpatialFunction:
+class DataSpatialFunction:
     """Object-Spatial Function."""
 
     name: str

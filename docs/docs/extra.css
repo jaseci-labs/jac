@@ -1,8 +1,9 @@
 :root>* {
+    /* --md-code-bg-color: #ececec; */
     --md-code-hl-operator-color: #b68500;
 }
 
-
+/* Admonition styles */
 .md-typeset .admonition {
     border-radius: 10px;
 }
@@ -41,10 +42,8 @@
     border-radius: 4px;
 }
 
-
-.code-block .run-code-btn,
-.code-block .dot-code-btn,
-.code-block .serve-code-btn {
+/* Run button */
+.code-block .run-code-btn {
     margin-top: 0.5em;
     padding: 0.4em 1.2em;
     background: linear-gradient(90deg, #ff9800 0%, #ffab40 100%);
@@ -67,35 +66,12 @@
     box-shadow: 0 4px 16px rgba(255, 171, 64, 0.15);
 }
 
-.code-block .serve-code-btn:hover,
-.code-block .serve-code-btn:focus {
-    background: linear-gradient(90deg, #29b6f6 0%, #4fc3f7 100%);
-    color: #111;
-    box-shadow: 0 4px 16px rgba(255, 171, 64, 0.15);
-}
-
-.code-block .dot-code-btn:hover,
-.code-block .dot-code-btn:focus {
-    background: linear-gradient(90deg, #b859e0ff 0%, #df76f1ff 100%);
-    color: #111;
-    box-shadow: 0 4px 16px rgba(255, 171, 64, 0.15);
-}
-
 .code-block .run-code-btn:active {
     background: #ff9800;
     color: #fff;
 }
 
-.code-block .serve-code-btn:active {
-    background: #0288d1;
-    color: #fff;
-}
-
-.code-block .dot-code-btn:active {
-    background: #7b1fa2;
-    color: #fff;
-}
-
+/* Output block */
 .code-block .code-output {
     margin-top: 0.5em;
     background: #1e1e1e;
@@ -116,6 +92,14 @@
     margin-top: 0;
 }
 
+/* =============================
+   Jac Global Theme Overrides
+   These styles ensure that all documentation pages
+   adopt the same aesthetic as the custom landing page
+   (docs/docs/index.html)
+   ============================= */
+
+/* ---------- Core page colours ---------- */
 body,
 [data-md-color-scheme="slate"] {
     background-color: #1a1a1a !important;
@@ -123,180 +107,91 @@ body,
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
 }
 
-
+/* Material uses a lot of CSS variables.  We override the key ones for our palette. */
 [data-md-color-scheme="slate"] {
+    /* Primary & accent colours */
     --md-primary-fg-color: #000000;
+    /* black */
     --md-primary-bg-color: #1a1a1a;
+    /* background behind header/nav */
     --md-accent-fg-color: #ff6b35;
+    /* orange gradient start */
     --md-accent-fg-color--light: #f7931e;
+    /* gradient end */
+
+    /* Muted foreground colours */
     --md-default-fg-color: #cccccc;
     --md-default-bg-color: #1a1a1a;
 }
 
-/* Header */
-.md-header,
-.md-header[data-md-state],
-.md-header[data-md-state~="shadow"],
-.md-header[data-md-state~="primary"] {
-    background: linear-gradient(135deg, #0f0f0f 0%, #1a1a1a 100%) !important;
-    border-bottom: 1px solid #333 !important;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
-    color: white !important;
-    position: fixed !important;
-    top: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
-    width: 100% !important;
-    z-index: 1100 !important;
-    height: 64px !important;
-    padding: 0 24px !important;
+/* ---------- Header (site name / search bar) ---------- */
+.md-header {
+    background-color: #1a1a1a !important;
+    border-bottom: 1px solid #404040;
+    box-shadow: none;
+    color: white;
 }
 
+/* Keep header sticky just like landing page */
+.md-header[data-md-state~="primary"] {
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+}
 
+/* Site title & logo */
 .md-header__title {
-    display: flex !important;
-    align-items: center !important;
-    gap: 12px !important;
-    font-weight: 600 !important;
-    font-size: 18px !important;
-    letter-spacing: 0.5px !important;
+    display: flex;
+    align-items: center;
+    gap: 10px;
 }
 
 .md-header__title img {
-    width: 32px !important;
-    height: 32px !important;
-    border-radius: 8px !important;
-    box-shadow: 0 2px 4px rgba(255, 107, 53, 0.2) !important;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
 }
 
 .md-ellipsis {
-    padding: 0 !important;
-    color: #ffffff !important;
+    padding: 5px 10px;
 }
 
-
-.md-search__input {
-    background-color: rgba(255, 255, 255, 0.08) !important;
-    border: 1px solid rgba(255, 255, 255, 0.12) !important;
-    border-radius: 8px !important;
-    color: #ffffff !important;
-    font-size: 14px !important;
-}
-
-.md-search__input:focus {
-    background-color: rgba(255, 255, 255, 0.12) !important;
-    border-color: #ff6b35 !important;
-    box-shadow: 0 0 0 2px rgba(255, 107, 53, 0.2) !important;
-}
-
-.md-search__input::placeholder {
-    color: rgba(255, 255, 255, 0.6) !important;
-}
-
-/* Navigation Tabs */
-.md-tabs,
-.md-tabs[data-md-state],
-.md-tabs[data-md-state="hidden"] {
-    background: linear-gradient(135deg, #2a2a2a 0%, #1f1f1f 100%) !important;
-    border-bottom: 1px solid #444 !important;
-    border-top: 1px solid #333 !important;
-    padding: 0 24px !important;
-    position: fixed !important;
-    top: 64px !important;
-    left: 0 !important;
-    right: 0 !important;
-    width: 100vw !important;
-    z-index: 1002 !important;
-    height: 56px !important;
-    min-height: 56px !important;
-    max-height: 56px !important;
-    box-sizing: border-box !important;
-    transform: none !important;
-    transition: none !important;
-    visibility: visible !important;
-    opacity: 1 !important;
-    overflow: visible !important;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
-    pointer-events: auto !important;
+/* ---------- Navigation Tabs / Top level nav ---------- */
+.md-tabs {
+    background-color: #2d2d2d;
+    border-bottom: 1px solid #404040;
+    padding-bottom: 18px;
 }
 
 .md-tabs__item {
-    margin: 0 !important;
-    display: inline-block !important;
-    position: relative !important;
-    visibility: visible !important;
-    opacity: 1 !important;
-    transform: none !important;
-    transition: none !important;
-    height: auto !important;
-    z-index: 1003 !important;
-    pointer-events: auto !important;
+    margin: 0 4px;
 }
 
-.md-tabs__link,
-.md-tabs__link[data-md-state] {
-    color: #b0b0b0 !important;
-    border-radius: 6px !important;
-    padding: 10px 20px !important;
-    display: inline-flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    text-decoration: none !important;
-    white-space: nowrap !important;
-    visibility: visible !important;
-    opacity: 1 !important;
-    line-height: 1.4 !important;
-    font-size: 14px !important;
-    font-weight: 500 !important;
-    height: 36px !important;
-    box-sizing: border-box !important;
-    transform: none !important;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
-    border: 1px solid transparent !important;
-    letter-spacing: 0.25px !important;
-    margin: 0 4px !important;
-    z-index: 1004 !important;
-    pointer-events: auto !important;
-    cursor: pointer !important;
-}
-
-/* Override any MkDocs Material scroll behavior that might block clicks */
-.md-tabs[data-md-state="hidden"] .md-tabs__link,
-.md-tabs[data-md-state="shadow"] .md-tabs__link,
-.md-tabs__link[data-md-state="hidden"],
-.md-tabs__link[data-md-state="shadow"] {
-    pointer-events: auto !important;
-    visibility: visible !important;
-    opacity: 1 !important;
-    z-index: 1004 !important;
-    cursor: pointer !important;
+.md-tabs__link {
+    color: #cccccc;
+    border-radius: 25px;
+    padding: 8px 16px;
 }
 
 .md-tabs__link:hover {
-    background-color: rgba(255, 255, 255, 0.08) !important;
-    color: #ffffff !important;
-    border-color: rgba(255, 255, 255, 0.12) !important;
-    transform: translateY(-1px) !important;
+    background-color: #404040;
+    color: #ffffff;
 }
 
-
+/* Active tab gradient */
 .md-tabs__item--active .md-tabs__link,
 .md-tabs__link--active {
-    background: linear-gradient(135deg, #ff6b35 0%, #f7931e 100%) !important;
+    background-image: linear-gradient(135deg, #ff6b35, #f7931e);
     color: #ffffff !important;
-    font-weight: 600 !important;
-    box-shadow: 0 2px 8px rgba(255, 107, 53, 0.3) !important;
-    border-color: rgba(255, 255, 255, 0.2) !important;
 }
 
-/* Sidebar */
+/* ---------- Sidebar nav ---------- */
 .md-nav {
     background-color: #1a1a1a;
 }
 
 .md-nav__link {
     color: #cccccc;
-    padding: 8px 12px;
 }
 
 .md-nav__link:hover {
@@ -309,89 +204,10 @@ body,
     border-radius: 6px;
 }
 
-/* Content */
+/* ---------- Content area ---------- */
 .md-content,
 .md-main__inner {
     background-color: #1a1a1a;
-}
-
-.md-main {
-    padding-top: 120px !important;
-}
-
-@media (max-width: 1024px) {
-    .md-main {
-        padding-top: 20px !important;
-    }
-}
-.md-container {
-    padding-top: 0 !important;
-}
-
-
-html, body {
-    scroll-behavior: smooth;
-}
-
-.md-sidebar--primary {
-    top: 120px !important;
-}
-
-.md-sidebar--secondary {
-    top: 120px !important;
-}
-
-@media (max-width: 1024px) {
-    .md-sidebar--primary,
-    .md-sidebar--secondary {
-        top: auto !important;
-    }
-}
-
-
-.md-tabs__list {
-    display: flex !important;
-    visibility: visible !important;
-    opacity: 1 !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    align-items: center !important;
-    height: 56px !important;
-    min-height: 56px !important;
-    max-height: 56px !important;
-    box-sizing: border-box !important;
-    transform: none !important;
-    transition: none !important;
-    overflow: visible !important;
-    gap: 4px !important;
-    justify-content: flex-start !important;
-    z-index: 1003 !important;
-    pointer-events: auto !important;
-}
-
-
-.md-tabs__list[data-md-scrolled],
-.md-tabs__list[data-md-state] {
-    transform: none !important;
-    visibility: visible !important;
-    opacity: 1 !important;
-    display: flex !important;
-    pointer-events: auto !important;
-    z-index: 1003 !important;
-}
-
-
-.md-tabs__item,
-.md-tabs__item[data-md-state] {
-    display: inline-block !important;
-    visibility: visible !important;
-    opacity: 1 !important;
-    pointer-events: auto !important;
-    z-index: 1004 !important;
-    transform: none !important;
-    transition: none !important;
-    margin: 0 4px !important;
-    height: auto !important;
 }
 
 .md-typeset h1,
@@ -416,7 +232,7 @@ html, body {
     color: #f7931e;
 }
 
-/* Buttons */
+/* ---------- Buttons (e.g., admonition copy button) ---------- */
 .md-clipboard.md-icon {
     color: #cccccc;
 }
@@ -467,7 +283,7 @@ html, body {
     --md-code-fg-color: #f8f8f2;
 }
 
-/* Footer */
+/* ---------- Footer ---------- */
 .md-footer {
     background-color: #2d2d2d;
     border-top: 1px solid #404040;
@@ -482,7 +298,7 @@ html, body {
     color: #ff6b35;
 }
 
-
+/* ---------- custom Footer ---------- */
 .footer {
     background-color: #2d2d2d;
     border-top: 1px solid #404040;
@@ -516,7 +332,7 @@ html, body {
     max-width: 100vw;
 }
 
-/* Quotes */
+/* ---------- Custom Quote Styling ---------- */
 .md-typeset blockquote,
 blockquote {
     background: linear-gradient(90deg, #23272e 0%, #1a1a1a 100%);
@@ -560,9 +376,10 @@ blockquote::after {
     opacity: 0.7;
 }
 
-/* List Items */
+/* ---------- Themed List Items ---------- */
 .md-typeset ul,
 .md-typeset ol {
+    /* padding-left: 1.5em; */
     margin-bottom: 1.2em;
 }
 
@@ -576,14 +393,14 @@ blockquote::after {
     padding-left: 0.5em;
 }
 
-
+/* Use small squares for unordered list markers */
 .md-typeset ul li::marker {
     color: #ffab40;
     font-size: 1em;
     content: "▪ ";
 }
 
-
+/* Ordered lists: revert to default decimal */
 .md-typeset ol li::marker {
     color: inherit;
     font-weight: normal;
@@ -591,7 +408,7 @@ blockquote::after {
     content: counter(list-item) ". ";
 }
 
-
+/* Remove custom task list checkmark styling */
 .md-typeset ul li.task-list-item input[type="checkbox"]:checked+label::before {
     content: "";
     color: inherit;
@@ -599,7 +416,7 @@ blockquote::after {
     margin-right: 0;
 }
 
-
+/* Reduce the padding/margin for horizontal rules */
 .md-typeset hr,
 hr {
     margin-top: 0.0em !important;
@@ -608,7 +425,7 @@ hr {
     border-color: #404040;
 }
 
-/* Feedback Form */
+/* Feedback Form Styles */
 .feedback-container {
     position: fixed;
     bottom: 20px;
@@ -617,7 +434,7 @@ hr {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
-
+/* Hide on main domain */
 body[data-domain="https://www.jac-lang.org/"] .feedback-container {
     display: none !important;
 }
@@ -789,14 +606,14 @@ body[data-domain="https://www.jac-lang.org/"] .feedback-container {
     display: block;
 }
 
-
+/* Icons */
 .icon {
     width: 16px;
     height: 16px;
     fill: currentColor;
 }
 
-
+/* Mobile responsiveness */
 @media (max-width: 768px) {
     .feedback-container {
         bottom: 15px;
@@ -807,54 +624,4 @@ body[data-domain="https://www.jac-lang.org/"] .feedback-container {
         width: 280px;
         right: 0;
     }
-}
-
-/* viewport for rendered SVG */
-.viz-viewport {
-  width: 100%;
-  height: 100%;
-  overflow: hidden;        /* change to auto if scrollbars are desired */
-  position: relative;
-  touch-action: none;
-  cursor: grab;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  box-sizing: border-box;
-}
-
-/* when user is panning, toggle this class in JS for cursor feedback */
-.viz-viewport.grabbing {
-    cursor: grabbing;
-}
-/* container for controls (Reset button) should be absolute inside graph container */
-.graph-controls {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  z-index: 120;
-  display: flex;
-  gap: 6px;
-  pointer-events: auto;
-}
-
-/* reset button styling */
-.graph-reset-btn {
-  color: #111;
-  padding: 6px 10px;
-  font-size: 13px;
-  font-weight: 600;
-  min-width: 56px;
-  border-radius: 6px;
-  border: 1px solid rgba(0,0,0,0.12);
-  background: rgba(255,255,255,0.95);
-  cursor: pointer;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.12);
-}
-
-/* responsive tweak: allow scrolling on small screens */
-@media (max-width: 600px) {
-  .viz-viewport {
-    overflow: auto;
-  }
 }

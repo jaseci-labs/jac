@@ -22,6 +22,9 @@ from jaclang.settings import settings
 from jaclang.utils.helpers import debugger as db
 from jaclang.utils.lang_tools import AstTool
 
+Jac.create_cmd()
+Jac.setup()
+
 
 @cmd_registry.register
 def format(path: str, outfile: str = "", to_screen: bool = False) -> None:
@@ -59,7 +62,7 @@ def format(path: str, outfile: str = "", to_screen: bool = False) -> None:
     if path.endswith(".jac"):
         if not path_obj.exists():
             print(f"Error: File '{path}' does not exist.", file=sys.stderr)
-            exit(1)
+            return
         formatted_code = JacProgram.jac_file_formatter(str(path_obj))
         write_formatted_code(formatted_code, str(path_obj))
         return
@@ -76,7 +79,6 @@ def format(path: str, outfile: str = "", to_screen: bool = False) -> None:
 
     # Case 3: Invalid path
     print(f"Error: '{path}' is not a .jac file or directory.", file=sys.stderr)
-    exit(1)
 
 
 def proc_file_sess(
@@ -102,7 +104,6 @@ def proc_file_sess(
             "Not a valid file!\nOnly supports `.jac`, `.jir`, and `.py`",
             file=sys.stderr,
         )
-        exit(1)
     mach = ExecutionContext(session=session, root=root)
     Jac.set_context(mach)
     return base, mod, mach
@@ -147,11 +148,7 @@ def run(
                 lng=lng,
             )
         except Exception as e:
-            from jaclang.utils.helpers import dump_traceback
-
-            print(dump_traceback(e), file=sys.stderr)
-            mach.close()
-            exit(1)
+            print(f"Error running {filename}: {e}", file=sys.stderr)
     elif filename.endswith(".jir"):
         try:
             with open(filename, "rb") as f:
@@ -163,11 +160,7 @@ def run(
                     lng=lng,
                 )
         except Exception as e:
-            from jaclang.utils.helpers import dump_traceback
-
-            print(dump_traceback(e), file=sys.stderr)
-            mach.close()
-            exit(1)
+            print(f"Error running {filename}: {e}", file=sys.stderr)
 
     mach.close()
 
@@ -215,8 +208,6 @@ def get_object(filename: str, id: str, session: str = "", main: bool = True) -> 
         data = obj.__jac__.__getstate__()
     else:
         print(f"Object with id {id} not found.", file=sys.stderr)
-        mach.close()
-        exit(1)
     mach.close()
     return data
 
@@ -246,9 +237,6 @@ def build(filename: str, typecheck: bool = False) -> None:
 
     for alrt in out.errors_had + out.warnings_had:
         print(alrt.pretty_print(), file=sys.stderr)
-
-    if errs > 0:
-        exit(1)
 
     with open(filename[:-4] + ".jir", "wb") as f:
         pickle.dump(out, f)
@@ -285,11 +273,8 @@ def bind(filename: str, typecheck: bool = False) -> None:
                 divider = "=" * 40
                 print(f"{divider}\n{header}\n{divider}\n{mods.sym_tab.sym_pp()}")
         print(f"Errors: {errs}, Warnings: {warnings}")
-        if errs > 0:
-            exit(1)
     else:
         print("Not a .jac/.py file.", file=sys.stderr)
-        exit(1)
 
 
 @cmd_registry.register
@@ -316,11 +301,8 @@ def check(filename: str, print_errs: bool = True) -> None:
             for e in prog.errors_had:
                 print("Error:", e, file=sys.stderr)
         print(f"Errors: {errs}, Warnings: {warnings}")
-        if errs > 0:
-            exit(1)
     else:
         print("Not a .jac file.", file=sys.stderr)
-        exit(1)
 
 
 @cmd_registry.register
@@ -394,8 +376,6 @@ def enter(
         (loaded_mod,) = ret_module
         if not loaded_mod:
             print("Errors occurred while importing the module.", file=sys.stderr)
-            mach.close()
-            exit(1)
         else:
             archetype = getattr(loaded_mod, entrypoint)(*args)
 
@@ -486,7 +466,6 @@ def tool(tool: str, args: Optional[list] = None) -> None:
             raise e
     else:
         print(f"Ast tool {tool} not found.", file=sys.stderr)
-        exit(1)
 
 
 @cmd_registry.register
@@ -524,10 +503,8 @@ def debug(filename: str, main: bool = True, cache: bool = False) -> None:
                 print("Done debugging.")
         else:
             print(f"Error while generating bytecode in {filename}.", file=sys.stderr)
-            exit(1)
     else:
         print("Not a .jac file.", file=sys.stderr)
-        exit(1)
 
 
 @cmd_registry.register
@@ -542,7 +519,6 @@ def dot(
     edge_limit: int = 512,
     node_limit: int = 512,
     saveto: str = "",
-    to_screen: bool = False,
 ) -> None:
     """Generate a DOT graph visualization from a Jac program.
 
@@ -561,14 +537,12 @@ def dot(
         edge_limit: Maximum number of edges to include (default: 512)
         node_limit: Maximum number of nodes to include (default: 512)
         saveto: Output file path for the DOT file (default: <module_name>.dot)
-        to_screen: Print DOT output to stdout instead of saving to file (default: False)
 
     Examples:
         jac dot myprogram.jac
         jac dot myprogram.jac --initial root_node --depth 3
         jac dot myprogram.jac --traverse --connection edge_type1 edge_type2
         jac dot myprogram.jac --saveto graph.dot
-        jac dot myprogram.jac --to_screen
     """
     base, mod, jac_machine = proc_file_sess(filename, session)
 
@@ -594,17 +568,13 @@ def dot(
             traceback.print_exc()
             jac_machine.close()
             return
-        if to_screen:
-            print(graph)
-        else:
-            file_name = saveto if saveto else f"{mod}.dot"
-            with open(file_name, "w") as file:
-                file.write(graph)
-            print(f">>> Graph content saved to {os.path.join(os.getcwd(), file_name)}")
+        file_name = saveto if saveto else f"{mod}.dot"
+        with open(file_name, "w") as file:
+            file.write(graph)
+        print(f">>> Graph content saved to {os.path.join(os.getcwd(), file_name)}")
         jac_machine.close()
     else:
         print("Not a .jac file.", file=sys.stderr)
-        exit(1)
 
 
 @cmd_registry.register
@@ -637,20 +607,17 @@ def py2jac(filename: str) -> None:
             print(formatted_code)
         else:
             print("Error converting Python code to Jac.", file=sys.stderr)
-            exit(1)
     else:
         print("Not a .py file.")
-        exit(1)
 
 
 @cmd_registry.register
 def jac2py(filename: str) -> None:
     """Convert a Jac file to Python code.
 
-    Translates Jac source code to equivalent Python code. The generated Python
-    uses direct imports from jaclang.lib, making the output clean and suitable
-    for use as a standalone library or for integrating Jac components with
-    Python projects.
+    Translates Jac source code to equivalent Python code. This is useful for
+    understanding how Jac code is executed or for integrating Jac components
+    with Python projects.
 
     Args:
         filename: Path to the .jac file to convert
@@ -660,166 +627,9 @@ def jac2py(filename: str) -> None:
     """
     if filename.endswith(".jac"):
         code = JacProgram().compile(file_path=filename).gen.py
-        if code:
-            print(code)
-        else:
-            exit(1)
+        print(code)
     else:
         print("Not a .jac file.", file=sys.stderr)
-        exit(1)
-
-
-@cmd_registry.register
-def js(filename: str) -> None:
-    """Convert a Jac file to JavaScript code.
-
-    Translates Jac source code to equivalent JavaScript/ECMAScript code using
-    the ESTree AST specification. This allows Jac programs to run in JavaScript
-    environments like Node.js or web browsers.
-
-    Args:
-        filename: Path to the .jac file to convert
-
-    Examples:
-        jac js myprogram.jac > myprogram.js
-        jac js myprogram.jac
-    """
-    if filename.endswith(".jac"):
-        try:
-            prog = JacProgram()
-            ir = prog.compile(file_path=filename)
-
-            if prog.errors_had:
-                for error in prog.errors_had:
-                    print(f"Error: {error}", file=sys.stderr)
-                exit(1)
-            js_output = ir.gen.js or ""
-            if not js_output.strip():
-                print(
-                    "ECMAScript code generation produced no output.",
-                    file=sys.stderr,
-                )
-                exit(1)
-            print(js_output)
-        except Exception as e:
-            print(f"Error generating JavaScript: {e}", file=sys.stderr)
-            import traceback
-
-            traceback.print_exc()
-            exit(1)
-    else:
-        print("Not a .jac file.", file=sys.stderr)
-        exit(1)
-
-
-# Register core commands first (before plugins load)
-# These can be overridden by plugins with higher priority
-
-
-@cmd_registry.register
-def serve(
-    filename: str,
-    session: str = "",
-    port: int = 8000,
-    main: bool = True,
-    faux: bool = False,
-) -> None:
-    """Start a REST API server for the specified .jac file.
-
-    Executes the target module and turns all functions into authenticated REST API
-    endpoints. Function signatures are introspected to create the API interface.
-    Walkers are converted to REST APIs where their fields become the interface,
-    with an additional target_node field for spawning location.
-
-    Each user gets their own persistent root node that persists across runs.
-    Users must create an account and authenticate to access the API.
-
-    Args:
-        filename: Path to the .jac file to serve
-        session: Session identifier for persistent state (default: auto-generated)
-        port: Port to run the server on (default: 8000)
-        main: Treat the module as __main__ (default: True)
-        faux: Perform introspection and print endpoint docs without starting server (default: False)
-
-    Examples:
-        jac serve myprogram.jac
-        jac serve myprogram.jac --port 8080
-        jac serve myprogram.jac --session myapp.session
-        jac serve myprogram.jac --faux
-    """
-    from jaclang.runtimelib.server import JacAPIServer
-
-    # Process file and session
-    base, mod, mach = proc_file_sess(filename, session)
-    lng = filename.split(".")[-1]
-    Jac.set_base_path(base)
-
-    # Import the module
-    if filename.endswith((".jac", ".py")):
-        try:
-            Jac.jac_import(
-                target=mod,
-                base_path=base,
-                lng=lng,
-            )
-        except Exception as e:
-            print(f"Error loading {filename}: {e}", file=sys.stderr)
-            mach.close()
-            exit(1)
-    elif filename.endswith(".jir"):
-        try:
-            with open(filename, "rb") as f:
-                Jac.attach_program(pickle.load(f))
-                Jac.jac_import(
-                    target=mod,
-                    base_path=base,
-                    lng=lng,
-                )
-        except Exception as e:
-            print(f"Error loading {filename}: {e}", file=sys.stderr)
-            mach.close()
-            exit(1)
-
-    # Create and start the API server
-    # Use session path for persistent storage across user sessions
-    session_path = session if session else os.path.join(base, f"{mod}.session")
-
-    server = JacAPIServer(
-        module_name=mod,
-        session_path=session_path,
-        port=port,
-        base_path=base,
-    )
-
-    # If faux mode, print endpoint documentation and exit
-    if faux:
-        try:
-            server.print_endpoint_docs()
-            mach.close()
-            return
-        except Exception as e:
-            print(f"Error generating endpoint documentation: {e}", file=sys.stderr)
-            mach.close()
-            exit(1)
-
-    # Don't close the context - keep the module loaded for the server
-    # mach.close()
-
-    try:
-        server.start()
-    except KeyboardInterrupt:
-        print("\nServer stopped.")
-        mach.close()  # Close on shutdown
-    except Exception as e:
-        print(f"Server error: {e}", file=sys.stderr)
-        mach.close()
-        exit(1)
-
-
-Jac.create_cmd()
-Jac.setup()
-
-cmd_registry.finalize()
 
 
 def start_cli() -> None:

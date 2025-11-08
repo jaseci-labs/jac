@@ -18,7 +18,7 @@ The MTP concept is implemented in Jac-lang through the **byLLM** plugin, which i
 
 <div align="left" style="margin-top: 1em;">
     <a href="https://arxiv.org/abs/2405.08965" class="md-button" style="display: inline-block; margin-right: 10px;">MTP Research</a>
-    <a href="https://www.jac-lang.org/learn/jac-byllm/quickstart/" class="md-button" style="display: inline-block; margin-right: 10px;">Get Started with MTP</a>
+    <a href="./quickstart.md" class="md-button" style="display: inline-block; margin-right: 10px;">Get Started with MTP</a>
     <a href="https://github.com/jaseci-labs/jaseci/tree/main/jac-byllm" class="md-button" style="display: inline-block;">GitHub</a>
 </div>
 
@@ -43,7 +43,7 @@ pip install byllm
 Consider building an application that translates english to other languages using an LLM. This can be simply built as follows:
 === "Jac"
     ```jac linenums="1"
-    import from byllm.lib { Model }
+    import from byllm { Model }
 
     glob llm = Model(model_name="gpt-4o");
 
@@ -56,7 +56,7 @@ Consider building an application that translates english to other languages usin
     ```
 === "python"
     ```python linenums="1"
-    from byllm.lib import Model, by
+    from byllm import Model, by
 
     llm = Model(model_name="gpt-4o")
 
@@ -75,7 +75,7 @@ Consider a program that detects the personality type of a historical figure from
 
 === "Jac"
     ```jac linenums="1"
-    import from byllm.lib { Model }
+    import from byllm { Model }
     glob llm = Model(model_name="gemini/gemini-2.0-flash");
 
     enum Personality {
@@ -94,7 +94,7 @@ Consider a program that detects the personality type of a historical figure from
     ```
 === "Python"
     ```python linenums="1"
-    from byllm.lib import Model, by
+    from byllm import Model, by
     from enum import Enum
     llm =  Model(model_name="gemini/gemini-2.0-flash")
 
@@ -115,11 +115,11 @@ Similarly, custom types can be used as output types which force the LLM to adher
 
 ## Control! Control! Control!
 
-Even if we are elimination prompt engineering entirely, we allow specific ways to enrich code semantics through **docstrings** and **semstrings**.
+Even if we are elimination prompt engineering entierly, we allow specific ways to enrich code semantics through **docstrings** and **semstrings**.
 
 === "Jac"
     ```jac linenums="1"
-    import from byllm.lib { Model }
+    import from byllm { Model }
     glob llm = Model(model_name="gemini/gemini-2.0-flash");
 
     """Represents the personal record of a person"""
@@ -140,7 +140,7 @@ Even if we are elimination prompt engineering entirely, we allow specific ways t
     ```python linenums="1"
     from jaclang import JacMachineInterface as Jac
     from dataclasses import dataclass
-    from byllm.lib import Model, by
+    from byllm import Model, by
     llm =  Model(model_name="gemini/gemini-2.0-flash")
 
     @Jac.sem('', {  'name': 'Full name of the person',

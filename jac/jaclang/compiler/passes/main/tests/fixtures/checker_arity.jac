@@ -15,7 +15,4 @@ with entry {
     f.with_default_args(1, 2);    # <-- Ok
     f.with_default_args(1, 2, 3); # <-- Error
     f.with_default_args();        # <-- Error
-
-    # Argument unpacking
-    f.with_default_args(*[1, 2]); # <-- Ok
 }

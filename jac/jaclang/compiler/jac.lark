@@ -5,19 +5,15 @@ module: (toplevel_stmt (tl_stmt_with_doc | toplevel_stmt)*)?
        | STRING        (tl_stmt_with_doc | toplevel_stmt)*
 
 tl_stmt_with_doc: STRING toplevel_stmt
-
-toplevel_stmt: KW_CLIENT? onelang_stmt
-       | KW_CLIENT LBRACE onelang_stmt* RBRACE
-       | py_code_block
-
-onelang_stmt: import_stmt
+toplevel_stmt: import_stmt
        | archetype
+       | impl_def
+       | sem_def
        | ability
        | global_var
        | free_code
+       | py_code_block
        | test
-       | impl_def
-       | sem_def
 
 // [Heading]: Import/Include Statements.
 import_stmt: KW_IMPORT KW_FROM from_path LBRACE import_items RBRACE
@@ -27,12 +23,12 @@ import_stmt: KW_IMPORT KW_FROM from_path LBRACE import_items RBRACE
 from_path: (DOT | ELLIPSIS)* import_path
          | (DOT | ELLIPSIS)+
 
-import_path: (NAME COLON)? (dotted_name | STRING) (KW_AS NAME)?
+import_path: dotted_name (KW_AS NAME)?
 import_items: (import_item COMMA)* import_item COMMA?
-import_item: (KW_DEFAULT | STAR_MUL | named_ref) (KW_AS NAME)?
+import_item: named_ref (KW_AS NAME)?
 dotted_name: named_ref (DOT named_ref)*
 
-// [Heading]: Class Archetypes.
+// [Heading]: Archetypes.
 archetype: decorators? KW_ASYNC? archetype_decl
          | enum
 
@@ -48,7 +44,7 @@ arch_type: KW_WALKER
           | KW_NODE
           | KW_CLASS
 
-// [Heading]: Class Archetype bodies.
+// [Heading]: Archetype bodies.
 member_block: LBRACE member_stmt* RBRACE
 member_stmt: STRING? (py_code_block | ability | archetype | impl_def | has_stmt | free_code)
 has_stmt: KW_STATIC? (KW_LET | KW_HAS) access_tag? has_assign_list SEMI
@@ -59,13 +55,13 @@ type_tag: COLON expression
 // [Heading]: Enumerations.
 enum: decorators? enum_decl
 enum_decl: KW_ENUM access_tag? NAME inherited_archs? (enum_block | SEMI)
-enum_block: LBRACE assignment_list (py_code_block | free_code)* RBRACE
+enum_block: LBRACE assignment_list COMMA? (py_code_block | free_code)* RBRACE
 
 // [Heading]: Functions and Abilities.
 ability: decorators? KW_ASYNC? (ability_decl | function_decl)
 
 function_decl: KW_OVERRIDE? KW_STATIC? KW_DEF access_tag? named_ref func_decl? (block_tail | KW_ABSTRACT? SEMI)
-ability_decl: KW_OVERRIDE? KW_STATIC? KW_CAN access_tag? named_ref? event_clause (block_tail | KW_ABSTRACT? SEMI)
+ability_decl: KW_OVERRIDE? KW_STATIC? KW_CAN access_tag? named_ref event_clause (block_tail | KW_ABSTRACT? SEMI)
 block_tail: code_block | KW_BY expression SEMI
 event_clause: KW_WITH expression? (KW_EXIT | KW_ENTRY)
 
@@ -83,13 +79,13 @@ impl_spec: inherited_archs | func_decl | event_clause
 impl_tail: enum_block | block_tail
 
 // [Heading]: Semstrings.
-sem_def: KW_SEM dotted_name (EQ | KW_IS) STRING SEMI
+sem_def: KW_SEM dotted_name EQ STRING SEMI
 
 // [Heading]: Global variables.
 global_var: (KW_LET | KW_GLOBAL) access_tag? assignment_list SEMI
-assignment_list: (assignment | named_ref) (COMMA (assignment | named_ref))* COMMA?
+assignment_list: (assignment_list COMMA)? (assignment | named_ref)
 
-// [Heading]: With entry blocks.
+// [Heading]: Free code.
 free_code: KW_WITH KW_ENTRY (COLON NAME)? code_block
 
 // [Heading]: Inline python.
@@ -111,7 +107,6 @@ statement: import_stmt
        | for_stmt
        | try_stmt
        | match_stmt
-       | switch_stmt
        | with_stmt
        | global_ref SEMI
        | nonlocal_ref SEMI
@@ -152,10 +147,7 @@ finally_stmt: KW_FINALLY code_block
 match_stmt: KW_MATCH expression LBRACE match_case_block+ RBRACE
 match_case_block: KW_CASE pattern_seq (KW_IF expression)? COLON statement+
 
-// [Heading]: Switch statements.
-switch_stmt: KW_SWITCH expression LBRACE switch_case_block+ RBRACE
-switch_case_block: (KW_CASE pattern_seq | KW_DEFAULT) COLON statement*
-
+// [Heading]: Match patterns.
 pattern_seq: (or_pattern | as_pattern)
 or_pattern: (pattern BW_OR)* pattern
 as_pattern: or_pattern KW_AS NAME
@@ -165,18 +157,28 @@ pattern: literal_pattern
     | capture_pattern
     | sequence_pattern
     | mapping_pattern
-    | attr_pattern
     | class_pattern
 
+
+// [Heading]: Match literal patterns.
 literal_pattern: (INT | FLOAT | multistring)
+
+// [Heading]: Match singleton patterns.
 singleton_pattern: (NULL | BOOL)
+
+// [Heading]: Match capture patterns.
 capture_pattern: NAME
+
+// [Heading]: Match sequence patterns.
 sequence_pattern: LSQUARE list_inner_pattern (COMMA list_inner_pattern)* RSQUARE
                 | LPAREN list_inner_pattern (COMMA list_inner_pattern)* RPAREN
+
+// [Heading]: Match mapping patterns.
 mapping_pattern: LBRACE (dict_inner_pattern (COMMA dict_inner_pattern)*)? RBRACE
 list_inner_pattern: (pattern_seq | STAR_MUL NAME)
 dict_inner_pattern: (literal_pattern COLON pattern_seq | STAR_POW NAME)
-attr_pattern: NAME (DOT NAME)+
+
+// [Heading]: Match class patterns.
 class_pattern: NAME (DOT NAME)* LPAREN kw_pattern_list? RPAREN
              | NAME (DOT NAME)* LPAREN pattern_list (COMMA kw_pattern_list)? RPAREN
 
@@ -193,7 +195,7 @@ global_ref: GLOBAL_OP name_list
 nonlocal_ref: NONLOCAL_OP name_list
 name_list: (named_ref COMMA)* named_ref
 
-// [Heading]: Typed context blocks (OSP).
+// [Heading]: Object spatial typed context blocks.
 typed_ctx_block: RETURN_HINT expression code_block
 
 // [Heading]: Return statements.
@@ -217,9 +219,13 @@ report_stmt: KW_REPORT expression
 // [Heading]: Control statements.
 ctrl_stmt: KW_SKIP | KW_BREAK | KW_CONTINUE
 
-// [Heading]: Walker visit and disengage (OSP).
+// [Heading]: Object spatial Walker statements.
 spatial_stmt: visit_stmt | disenage_stmt
+
+// [Heading]: Visit statements.
 visit_stmt: KW_VISIT (COLON expression COLON)? expression (else_stmt | SEMI)
+
+// [Heading]: Disengage statements.
 disenage_stmt: KW_DISENGAGE SEMI
 
 // [Heading]: Assignments.
@@ -229,6 +235,7 @@ assignment: KW_LET? (atomic_chain EQ)+ (yield_expr | expression)
 
 aug_op: RSHIFT_EQ
        | LSHIFT_EQ
+       | BW_NOT_EQ
        | BW_XOR_EQ
        | BW_OR_EQ
        | BW_AND_EQ
@@ -252,8 +259,7 @@ concurrent_expr: (KW_FLOW | KW_WAIT)? walrus_assign
 walrus_assign: (named_ref WALRUS_EQ)? pipe
 
 // [Heading]: Lambda expressions.
-lambda_expr: KW_LAMBDA func_decl_params (RETURN_HINT expression)? ( COLON expression | code_block )
-           | KW_LAMBDA func_decl? ( COLON expression | code_block )
+lambda_expr: KW_LAMBDA func_decl_params? (RETURN_HINT expression)? COLON expression
 
 // [Heading]: Pipe expressions.
 pipe: (pipe PIPE_FWD)? pipe_back
@@ -290,29 +296,28 @@ term: (term (MOD | DIV | FLOOR_DIV | STAR_MUL | DECOR_OP))? power
 power: (power STAR_POW)? factor
 factor: (BW_NOT | MINUS | PLUS) factor | connect
 
-// [Heading]: Connect expressions (OSP).
+// [Heading]: Connect expressions.
 connect: (connect (connect_op | disconnect_op))? atomic_pipe
 
-// [Heading]: Pipe atomic expressions.
+// [Heading]: Atomic expressions.
 atomic_pipe: (atomic_pipe A_PIPE_FWD)? atomic_pipe_back
 
-// [Heading]: Pipe back atomic expressions.
+// [Heading]: Atomic pipe back expressions.
 atomic_pipe_back: (atomic_pipe_back A_PIPE_BKWD)? os_spawn
 
-// [Heading]: Spawn expressions (OSP).
+// [Heading]: Object spatial spawn expressions.
 os_spawn: (os_spawn KW_SPAWN)? unpack
 
 // [Heading]: Unpack expressions.
 unpack: STAR_MUL? ref
 
-// [Heading]: References (OSP).
-ref: BW_AND? await_expr
+// [Heading]: References (unused).
+ref: BW_AND? pipe_call
 
-// [Heading]: Pipe-style function call.
-await_expr: KW_AWAIT? pipe_call
-pipe_call: (PIPE_FWD | A_PIPE_FWD | KW_SPAWN)? atomic_chain
+// [Heading]: Object spatial calls.
+pipe_call: (PIPE_FWD | A_PIPE_FWD | KW_SPAWN | KW_AWAIT)? atomic_chain
 
-// [Heading]: Attributes and Subscript expressions.
+// [Heading]: Subscripted and dotted expressions.
 atomic_chain: atomic_chain NULL_OK? (filter_compr | assign_compr | index_slice)
             | atomic_chain NULL_OK? (DOT_BKWD | DOT_FWD | DOT) named_ref
             | (atomic_call | atom | edge_ref_chain)
@@ -324,7 +329,7 @@ index_slice: LSQUARE                                                            
            | list_val
 
 // [Heading]: Function calls.
-atomic_call: atomic_chain (gen_compr | LPAREN param_list? by_llm? RPAREN)
+atomic_call: atomic_chain LPAREN param_list? by_llm? RPAREN
 
 by_llm: KW_BY expression
 
@@ -332,13 +337,12 @@ param_list: expr_list COMMA kw_expr_list COMMA?
           | kw_expr_list COMMA?
           | expr_list COMMA?
 
-// [Heading]: Atomic expressions.
+// [Heading]: Atom.
 atom: named_ref
-    | LPAREN (expression | yield_expr | function_decl) RPAREN
+    | LPAREN (expression | yield_expr) RPAREN
     | atom_collection
     | atom_literal
     | type_ref
-    | jsx_element
 
 atom_literal: builtin_type
             | NULL
@@ -355,34 +359,11 @@ type_ref: TYPE_OP (named_ref | builtin_type)
 
 multistring: (fstring | STRING)+
 
-// [Heading]: Formatted string literals.
-fstring: F_DQ_START fstr_dq_part* F_DQ_END
-       | F_SQ_START fstr_sq_part* F_SQ_END
-       | F_TDQ_START fstr_tdq_part* F_TDQ_END
-       | F_TSQ_START fstr_tsq_part* F_TSQ_END
-       | RF_DQ_START rfstr_dq_part* F_DQ_END
-       | RF_SQ_START rfstr_sq_part* F_SQ_END
-       | RF_TDQ_START rfstr_tdq_part* F_TDQ_END
-       | RF_TSQ_START rfstr_tsq_part* F_TSQ_END
+fstring: FSTR_START fstr_parts FSTR_END
+       | FSTR_SQ_START fstr_sq_parts FSTR_SQ_END
 
-fstr_dq_part: F_TEXT_DQ | D_LBRACE | D_RBRACE | LBRACE expression CONV? (COLON fformat*)? RBRACE
-
-fstr_sq_part: F_TEXT_SQ | D_LBRACE | D_RBRACE | LBRACE expression CONV? (COLON fformat*)? RBRACE
-
-fstr_tdq_part: F_TEXT_TDQ | D_LBRACE | D_RBRACE | LBRACE expression CONV? (COLON fformat*)? RBRACE
-
-fstr_tsq_part: F_TEXT_TSQ | D_LBRACE | D_RBRACE | LBRACE expression CONV? (COLON fformat*)? RBRACE
-
-// Add separate rules for raw f-strings
-rfstr_dq_part: RF_TEXT_DQ | D_LBRACE | D_RBRACE | LBRACE expression CONV? (COLON fformat*)? RBRACE
-
-rfstr_sq_part: RF_TEXT_SQ | D_LBRACE | D_RBRACE | LBRACE expression CONV? (COLON fformat*)? RBRACE
-
-rfstr_tdq_part: RF_TEXT_TDQ | D_LBRACE | D_RBRACE | LBRACE expression CONV? (COLON fformat*)? RBRACE
-
-rfstr_tsq_part: RF_TEXT_TSQ | D_LBRACE | D_RBRACE | LBRACE expression CONV? (COLON fformat*)? RBRACE
-
-fformat: F_FORMAT_TEXT | D_LBRACE | D_RBRACE | LBRACE expression CONV? (COLON fformat*)? RBRACE
+fstr_parts: (FSTR_PIECE | FSTR_BESC | LBRACE expression RBRACE )*
+fstr_sq_parts: (FSTR_SQ_PIECE | FSTR_BESC | LBRACE expression RBRACE )*
 
 // [Heading]: Collection values.
 atom_collection: dict_compr
@@ -408,6 +389,7 @@ set_val: LBRACE expr_list COMMA? RBRACE
 kv_pair: expression COLON expression | STAR_POW expression
 expr_list: (expr_list COMMA)? expression
 
+// [Heading]: Tuples and Jac Tuples.
 tuple_list: expression COMMA expr_list COMMA kw_expr_list COMMA?
           | expression COMMA kw_expr_list COMMA?
           | expression COMMA expr_list COMMA?
@@ -417,7 +399,7 @@ tuple_list: expression COMMA expr_list COMMA kw_expr_list COMMA?
 kw_expr_list: (kw_expr_list COMMA)? kw_expr
 kw_expr: named_ref EQ expression | STAR_POW expression
 
-// [Heading]: Edge references (OSP).
+// [Heading]: Object-Spatial References.
 edge_ref_chain: LSQUARE KW_ASYNC? (KW_NODE| KW_EDGE)? expression? (edge_op_ref (filter_compr | expression)?)+ RSQUARE
 edge_op_ref: edge_any | edge_from | edge_to
 edge_to: ARROW_R | ARROW_R_P1 typed_filter_compare_list ARROW_R_P2
@@ -429,7 +411,7 @@ connect_to: CARROW_R | CARROW_R_P1 expression (COLON kw_expr_list)? CARROW_R_P2
 connect_from: CARROW_L | CARROW_L_P1 expression (COLON kw_expr_list)? CARROW_L_P2
 connect_any: CARROW_BI | CARROW_L_P1 expression (COLON kw_expr_list)? CARROW_R_P2
 
-// [Heading]: Filter and assign comprehensions.
+// [Heading]: Special Comprehensions.
 filter_compr: LPAREN NULL_OK filter_compare_list RPAREN
             | LPAREN TYPE_OP NULL_OK typed_filter_compare_list RPAREN
 assign_compr: LPAREN EQ kw_expr_list RPAREN
@@ -449,37 +431,6 @@ special_ref: KW_INIT
             | KW_SELF
             | KW_HERE
             | KW_VISITOR
-
-// [Heading]: JSX Elements.
-jsx_element: jsx_self_closing
-           | jsx_fragment
-           | jsx_opening_closing
-
-jsx_self_closing: JSX_OPEN_START jsx_element_name jsx_attributes? JSX_SELF_CLOSE
-jsx_opening_closing: jsx_opening_element jsx_children? jsx_closing_element
-jsx_fragment: JSX_FRAG_OPEN jsx_children? JSX_FRAG_CLOSE
-
-jsx_opening_element: JSX_OPEN_START jsx_element_name jsx_attributes? JSX_TAG_END
-jsx_closing_element: JSX_CLOSE_START jsx_element_name JSX_TAG_END
-
-jsx_element_name: JSX_NAME (DOT JSX_NAME)*
-
-jsx_attributes: jsx_attribute+
-jsx_attribute: jsx_spread_attribute | jsx_normal_attribute
-
-jsx_spread_attribute: LBRACE ELLIPSIS expression RBRACE
-jsx_normal_attribute: JSX_NAME (EQ jsx_attr_value)?
-
-jsx_attr_value: STRING
-              | LBRACE expression RBRACE
-
-jsx_children: jsx_child+
-jsx_child: jsx_element
-         | jsx_expression
-         | jsx_text
-
-jsx_expression: LBRACE expression RBRACE
-jsx_text: JSX_TEXT
 
 // [Heading]: Builtin types.
 builtin_type: TYP_TYPE
@@ -502,6 +453,15 @@ PYNLINE: /::py::(.|\n|\r)*?::py::/
 TYPE_OP: /`/
 GLOBAL_OP: "global"
 NONLOCAL_OP: "nonlocal"
+
+// [Heading]: f-string tokens.
+FSTR_START.1: "f\""
+FSTR_END: "\""
+FSTR_SQ_START.1: "f'"
+FSTR_SQ_END: "'"
+FSTR_PIECE.-1: /[^\{\}\"]+/
+FSTR_SQ_PIECE.-1: /[^\{\}\']+/
+FSTR_BESC.1: /{{|}}/
 
 RETURN_HINT: "->"
 NULL_OK: "?"
@@ -592,10 +552,7 @@ KW_DEF: "def"
 KW_STATIC: "static"
 KW_OVERRIDE: "override"
 KW_MATCH: "match"
-KW_SWITCH: "switch"
 KW_CASE: "case"
-KW_DEFAULT: "default"
-KW_CLIENT: "cl"
 
 KW_INIT: "init"
 KW_POST_INIT: "postinit"
@@ -616,35 +573,6 @@ NOT: "not" // TODO:AST: Rename to KW_NOT
 
 STRING: /(r?b?|b?r?)("[^"\r\n]*"|'[^'\r\n]*')/
        | /(r?b?|b?r?)("""(.|\r|\n)*?"""|'''(.|\r|\n)*?''')/
-
-RF_DQ_START.3: /[rR][fF]"|[fF][rR]"/
-RF_SQ_START.3: /[rR][fF]'|[fF][rR]'/
-RF_TDQ_START.3: /[rR][fF]"""|[fF][rR]"""/
-RF_TSQ_START.3: /[rR][fF]'''|[fF][rR]'''/
-F_DQ_START.2: /[fF]"/
-F_SQ_START.2: /[fF]'/
-F_TDQ_START.2: /[fF]"""/
-F_TSQ_START.2: /[fF]'''/
-
-F_DQ_END: "\""
-F_SQ_END: "'"
-F_TDQ_END: "\"\"\""
-F_TSQ_END: "'''"
-
-D_RBRACE: "}}"
-D_LBRACE: "{{"
-
-F_TEXT_DQ.-1: /[^"{}\n\\]+|\\./
-F_TEXT_SQ.-1: /[^'{}\n\\]+|\\./
-F_TEXT_TDQ.-1: /(?:[^"{}\\]|"(?!""))+|\\./s
-F_TEXT_TSQ.-1: /(?:[^'{}\\]|'(?!''))+|\\./s
-RF_TEXT_DQ.-1: /[^"{}]+/
-RF_TEXT_SQ.-1: /[^'{}]+/
-RF_TEXT_TDQ.-1: /(?:[^"{}]|"(?!""))+/s
-RF_TEXT_TSQ.-1: /(?:[^'{}]|'(?!''))+/s
-F_FORMAT_TEXT.-1: /[^{}]+/
-
-CONV: /![rRsSaA]/
 
 NULL.1: "None"
 BOOL.1: /True|False/
@@ -696,6 +624,7 @@ FLOOR_DIV_EQ: "//="
 BW_AND_EQ: "&="
 BW_OR_EQ: "|="
 BW_XOR_EQ: "^="
+BW_NOT_EQ: "~="
 LSHIFT_EQ: "<<="
 RSHIFT_EQ: ">>="
 
@@ -734,40 +663,12 @@ PIPE_BKWD: "<|"
 DOT_FWD: ".>"
 DOT_BKWD: "<."
 
-// JSX Contextual Tokens --------------------------------------------------- //
-
-// JSX opening tag start: < followed by identifier or uppercase
-// Using lower priority so it doesn't interfere with LT operator
-JSX_OPEN_START.2: /<(?=[A-Z_a-z])/
-
-// JSX self-closing end: />
-JSX_SELF_CLOSE: /\/>/
-
-// JSX tag end: > (used for both opening and closing)
-JSX_TAG_END: />/
-
-// JSX closing tag start: </
-JSX_CLOSE_START: /<\//
-
-// JSX fragment open: <>
-JSX_FRAG_OPEN: /<>/
-
-// JSX fragment close: </>
-JSX_FRAG_CLOSE: /<\/>/
-
-// JSX identifier (NAME in JSX context) - allows hyphens for attributes like data-age, aria-label
-JSX_NAME: /[A-Z_a-z][A-Z_a-z0-9\-]*/
-
-// JSX text content (anything except < > { } and must not start/end with whitespace-only)
-// Using negative priority so it's only matched as last resort within JSX
-JSX_TEXT.-1: /[^<>{}\n]+/
-
 
 // ************************************************************************* //
 // Comments and Whitespace                                                   //
 // ************************************************************************* //
 
-COMMENT.4: /#\*(.|\n|\r)*?\*#|#.*/
+COMMENT: /#\*(.|\n|\r)*?\*#|#.*/
 WS.-2: /[ \t\f\r\n]/+
 %ignore COMMENT
 %ignore WS

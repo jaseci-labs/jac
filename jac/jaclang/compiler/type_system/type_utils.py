@@ -167,7 +167,7 @@ class ParamAssignmentTracker:
         if self.curr_param_idx == -1:
             return self.varargs
 
-        if isinstance(arg, uni.UnaryExpr) and arg.op.name == Tok.STAR_MUL:
+        if isinstance(arg, uni.UnaryExpr) and arg.op.value == Tok.STAR_MUL:
             self._mark_all_positional_params_as_matched()
             return None
         else:

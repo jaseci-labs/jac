@@ -3,10 +3,10 @@ name = "mtllm"
 version = "0.4.3"
 description = "DEPRECATED: install `byllm` instead."
 authors = [
-    { name = "Jason Mars", email = "jason@mars.ninja" }
+    { name = "Jason Mars", email = "jason@jaseci.org" }
 ]
 maintainers = [
-    { name = "Jason Mars", email = "jason@mars.ninja" }
+    { name = "Jason Mars", email = "jason@jaseci.org" }
 ]
 license = "MIT"
 readme = "README.md"

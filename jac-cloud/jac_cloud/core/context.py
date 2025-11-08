@@ -1,7 +1,5 @@
 """Core constructs for Jac Language."""
 
-from __future__ import annotations
-
 from contextvars import ContextVar
 from dataclasses import MISSING, dataclass, is_dataclass
 from typing import Any, Generic, TypeVar, cast
@@ -64,7 +62,7 @@ class JaseciContext(ExecutionContext):
     @staticmethod
     def create(  # type: ignore[override]
         connection: Request | WebSocket | None, entry: NodeAnchor | None = None
-    ) -> JaseciContext:
+    ) -> "JaseciContext":
         """Create JacContext."""
         ctx = JaseciContext()
         ctx.connection = connection
@@ -117,7 +115,7 @@ class JaseciContext(ExecutionContext):
         return ctx
 
     @staticmethod
-    def get() -> JaseciContext:
+    def get() -> "JaseciContext":
         """Get current JaseciContext."""
         if ctx := JASECI_CONTEXT.get(None):
             return ctx

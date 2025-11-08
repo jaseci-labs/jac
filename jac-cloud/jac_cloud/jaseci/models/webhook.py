@@ -1,7 +1,5 @@
 """Jaseci Models."""
 
-from __future__ import annotations
-
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from typing import Any, Generator, Mapping, cast
@@ -38,7 +36,7 @@ class Webhook:
         ]
 
         @classmethod
-        def __document__(cls, doc: Mapping[str, Any]) -> Webhook:
+        def __document__(cls, doc: Mapping[str, Any]) -> "Webhook":
             """
             Return parsed Webhook from document.
 
@@ -54,7 +52,7 @@ class Webhook:
             return cls.find({"root_id": root_id})
 
         @classmethod
-        def find_by_key(cls, key: str) -> Webhook | None:
+        def find_by_key(cls, key: str) -> "Webhook | None":
             """Retrieve webhook via root_id."""
             return cls.find_one({"key": key})
 

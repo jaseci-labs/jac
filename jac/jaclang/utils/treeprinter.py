@@ -234,17 +234,12 @@ def print_ast_tree(
             and not print_py_raise
         ):
             return f"{node.__class__.__name__} - PythonModuleRaised: {node.name}"
-        elif isinstance(node, uni.ModuleItem):
+        elif isinstance(node, (uni.ModuleItem, uni.ModulePath)):
             out = (
-                f"{node.__class__.__name__} - {node.name.sym_name} - "
+                f"{node.__class__.__name__} - {node.sym_name} - "
                 f"abs_path: {node.abs_path}"
             )
-            return out
-        elif isinstance(node, uni.ModulePath):
-            out = (
-                f"{node.__class__.__name__} - {'.'.join([n.value for n in node.path] if node.path else [])} - "
-                f"abs_path: {node.abs_path}"
-            )
+
             return out
         elif isinstance(node, AstSymbolNode):
             out = (
@@ -266,7 +261,7 @@ def print_ast_tree(
 
     def __node_repr_in_py_tree(node: ast3.AST) -> str:
         if isinstance(node, ast3.Constant):
-            return f"{node.__class__.__name__} - {node.value!r}"
+            return f"{node.__class__.__name__} - {node.value}"
         elif isinstance(node, ast3.Name):
             return f"{node.__class__.__name__} - {node.id}"
         elif isinstance(node, ast3.FunctionDef | ast3.ClassDef | ast3.AsyncFunctionDef):

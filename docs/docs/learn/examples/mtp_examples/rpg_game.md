@@ -8,17 +8,11 @@ You’ll write code, test it, and see AI-generated levels come to life.
 
 <!-- This tutorial demonstrates how to build a dynamic RPG game level generator using Large Language Models (LLMs) and Jaclang's `by llm` syntax. The tutorial covers creating a system that uses AI to generate balanced, progressively challenging game levels. -->
 
-<!-- <div align="center">
-    <img src="/learn/examples/mtp_examples/assets/rpg_demo.gif" alt="Animated demo of AI-powered RPG level generation" width="528" height="330" loading="lazy" />
-</div> -->
-
 <div align="center">
-    <img src="/learn/examples/mtp_examples/assets/rpg_demo.gif"
-         alt="Animated demo of AI-powered RPG level generation"
-         width="528"
-         height="330"
-         loading="lazy"
-         style="mix-blend-mode: screen;" />
+  <video width="480" height="300" autoplay loop muted playsinline>
+    <source src="/learn/examples/mtp_examples/assets/rpg_demo.mp4" type="video/mp4">
+    Your browser does not support the video tag.
+  </video>
 </div>
 
 <!-- <div align="center" style="margin-top: 20px;">
@@ -30,13 +24,13 @@ You’ll write code, test it, and see AI-generated levels come to life.
   </iframe>
 </div> -->
 
-<!-- #### 📺 **Watch the Tutorial**:
+#### 📺 **Watch the Tutorial**:
 
 You can find the complete video walkthrough of this RPG level generator tutorial. The video covers each step in detail and shows the AI generation process in action.
 
 <div align="center">
 <iframe width="560" height="315" src="https://www.youtube.com/embed/FSIZmwfQD1s?si=rNdyOUNiipFDr6Fn" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
-</div> -->
+</div>
 
 <!-- ## <span style="color: orange">Overview
 
@@ -120,7 +114,7 @@ We’ll connect to an LLM (GPT-4o here) and define AI-powered methods for genera
 At the top of `level_manager.jac`, import the model:
 
 ```jac
-import from byllm.lib { Model }
+import from byllm { Model }
 
 glob llm = Model(model_name="gpt-4o", verbose=True);
 ```

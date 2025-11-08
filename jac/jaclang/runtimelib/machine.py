@@ -10,7 +10,6 @@ import sys
 import tempfile
 import types
 from collections import OrderedDict
-from collections.abc import Mapping, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import MISSING, dataclass, field
 from functools import wraps
@@ -28,7 +27,6 @@ from typing import (
     TypeVar,
     Union,
     cast,
-    get_type_hints,
 )
 from uuid import UUID
 
@@ -36,13 +34,12 @@ from uuid import UUID
 from jaclang.compiler.constant import Constants as Con, EdgeDir, colors
 from jaclang.compiler.program import JacProgram
 from jaclang.runtimelib.archetype import (
+    DataSpatialDestination,
+    DataSpatialFunction,
+    DataSpatialPath,
     GenericEdge as _GenericEdge,
-    ObjectSpatialDestination,
-    ObjectSpatialFunction,
-    ObjectSpatialPath,
     Root as _Root,
 )
-from jaclang.runtimelib.client_bundle import ClientBundle, ClientBundleBuilder
 from jaclang.runtimelib.constructs import (
     AccessLevel,
     Anchor,
@@ -58,7 +55,6 @@ from jaclang.runtimelib.constructs import (
     WalkerArchetype,
 )
 from jaclang.runtimelib.memory import Memory, Shelf, ShelfStorage
-from jaclang.runtimelib.mtp import MTIR
 from jaclang.runtimelib.utils import (
     all_issubclass,
     traverse_graph,
@@ -66,9 +62,6 @@ from jaclang.runtimelib.utils import (
 from jaclang.utils import infer_language
 
 import pluggy
-
-if TYPE_CHECKING:
-    from jaclang.runtimelib.server import ModuleIntrospector
 
 
 plugin_manager = pluggy.PluginManager("jac")
@@ -92,35 +85,45 @@ class ExecutionContext:
         self.mem: Memory = ShelfStorage(session)
         self.reports: list[Any] = []
         self.custom: Any = MISSING
-        self.system_root = self.mem.find_by_id(UUID(Con.SUPER_ROOT_UUID))
-        if not isinstance(self.system_root, NodeAnchor):
-            self.system_root = cast(NodeAnchor, Root().__jac__)
-            self.system_root.id = UUID(Con.SUPER_ROOT_UUID)
-            self.mem.set(self.system_root.id, self.system_root)
-        self.entry_node = self.root_state = (
-            self._get_anchor(root) if root else self.system_root
-        )
+        if not isinstance(
+            system_root := self.mem.find_by_id(UUID(Con.SUPER_ROOT_UUID)), NodeAnchor
+        ):
+            system_root = cast(NodeAnchor, Root().__jac__)  # type: ignore[attr-defined]
+            system_root.id = UUID(Con.SUPER_ROOT_UUID)
+            self.mem.set(system_root.id, system_root)
 
-    def _get_anchor(self, anchor_id: str) -> NodeAnchor:
-        """Get anchor by ID or raise error."""
-        anchor = self.mem.find_by_id(UUID(anchor_id))
-        if not isinstance(anchor, NodeAnchor):
+        self.system_root = system_root
+
+        self.entry_node = self.root_state = self.init_anchor(root, self.system_root)
+
+    def init_anchor(
+        self,
+        anchor_id: str | None,
+        default: NodeAnchor,
+    ) -> NodeAnchor:
+        """Load initial anchors."""
+        if anchor_id:
+            if isinstance(anchor := self.mem.find_by_id(UUID(anchor_id)), NodeAnchor):
+                return anchor
             raise ValueError(f"Invalid anchor id {anchor_id} !")
-        return anchor
+        return default
 
     def set_entry_node(self, entry_node: str | None) -> None:
-        """Override entry node."""
-        self.entry_node = (
-            self._get_anchor(entry_node) if entry_node else self.root_state
-        )
+        """Override entry."""
+        self.entry_node = self.init_anchor(entry_node, self.root_state)
 
     def close(self) -> None:
         """Close current ExecutionContext."""
         self.mem.close()
+        JacMachine.reset_machine()
 
     def get_root(self) -> Root:
         """Get current root."""
         return cast(Root, self.root_state.archetype)
+
+    def global_system_root(self) -> NodeAnchor:
+        """Get global system root."""
+        return self.system_root
 
 
 class JacAccessValidation:
@@ -264,7 +267,7 @@ class JacNode:
 
     @staticmethod
     def get_edges(
-        origin: list[NodeArchetype], destination: ObjectSpatialDestination
+        origin: list[NodeArchetype], destination: DataSpatialDestination
     ) -> list[EdgeArchetype]:
         """Get edges connected to this node."""
         edges: OrderedDict[EdgeAnchor, EdgeArchetype] = OrderedDict()
@@ -297,7 +300,7 @@ class JacNode:
     @staticmethod
     def get_edges_with_node(
         origin: list[NodeArchetype],
-        destination: ObjectSpatialDestination,
+        destination: DataSpatialDestination,
         from_visit: bool = False,
     ) -> list[EdgeArchetype | NodeArchetype]:
         """Get edges connected to this node and the node."""
@@ -334,7 +337,7 @@ class JacNode:
 
     @staticmethod
     def edges_to_nodes(
-        origin: list[NodeArchetype], destination: ObjectSpatialDestination
+        origin: list[NodeArchetype], destination: DataSpatialDestination
     ) -> list[NodeArchetype]:
         """Get set of nodes connected to this node."""
         nodes: OrderedDict[NodeAnchor, NodeArchetype] = OrderedDict()
@@ -418,6 +421,36 @@ class JacWalker:
                 insert_loc += len(wanch.next) + 1
             wanch.next = wanch.next[:insert_loc] + next + wanch.next[insert_loc:]
             return len(wanch.next) > before_len
+        else:
+            raise TypeError("Invalid walker object")
+
+    @staticmethod
+    def ignore(
+        walker: WalkerArchetype,
+        expr: (
+            list[NodeArchetype | EdgeArchetype]
+            | list[NodeArchetype]
+            | list[EdgeArchetype]
+            | NodeArchetype
+            | EdgeArchetype
+        ),
+    ) -> bool:  # noqa: ANN401
+        """Jac's ignore stmt feature."""
+        if isinstance(walker, WalkerArchetype):
+            wanch = walker.__jac__
+            before_len = len(wanch.ignores)
+            for anchor in (
+                (i.__jac__ for i in expr) if isinstance(expr, list) else [expr.__jac__]
+            ):
+                if anchor not in wanch.ignores:
+                    if isinstance(anchor, NodeAnchor):
+                        wanch.ignores.append(anchor)
+                    elif isinstance(anchor, EdgeAnchor):
+                        if target := anchor.target:
+                            wanch.ignores.append(target)
+                        else:
+                            raise ValueError("Edge has no target.")
+            return len(wanch.ignores) > before_len
         else:
             raise TypeError("Invalid walker object")
 
@@ -685,7 +718,7 @@ class JacClassReferences:
 
     TYPE_CHECKING: bool = TYPE_CHECKING
     EdgeDir: TypeAlias = EdgeDir
-    DSFunc: TypeAlias = ObjectSpatialFunction
+    DSFunc: TypeAlias = DataSpatialFunction
 
     Obj: TypeAlias = Archetype
     Node: TypeAlias = NodeArchetype
@@ -695,7 +728,7 @@ class JacClassReferences:
     Root: TypeAlias = _Root
     GenericEdge: TypeAlias = _GenericEdge
 
-    OPath: TypeAlias = ObjectSpatialPath
+    Path: TypeAlias = DataSpatialPath
 
 
 class JacBuiltin:
@@ -934,163 +967,45 @@ class JacBasics:
         target: str,
         base_path: str,
         absorb: bool = False,
+        mdl_alias: Optional[str] = None,
         override_name: Optional[str] = None,
         items: Optional[dict[str, Union[str, Optional[str]]]] = None,
         reload_module: Optional[bool] = False,
         lng: Optional[str] = None,
     ) -> tuple[types.ModuleType, ...]:
-        """Import a Jac or Python module using Python's standard import machinery.
-
-        This function bridges Jac's import semantics with Python's import system,
-        leveraging importlib.import_module() which automatically invokes our
-        JacMetaImporter (registered in sys.meta_path).
-
-        Args:
-            target: Module name to import (e.g., "foo.bar" or ".relative")
-            base_path: Base directory for resolving the module
-            absorb: If True with items, return module instead of items
-            override_name: Special handling for "__main__" execution context
-            items: Specific items to import from module (like "from X import Y")
-            reload_module: Force reload even if already in sys.modules
-            lng: Language hint ("jac", "py", etc.) - auto-detected if None
-
-        Returns:
-            Tuple of imported module(s) or item(s)
-
-        Examples:
-            # Import entire module
-            (mod,) = jac_import("mymod", "/path/to/base")
-
-            # Import specific items
-            (func, cls) = jac_import("mymod", "/path", items={"myfunc": None, "MyClass": None})
-
-            # Run as __main__
-            jac_import("mymod", "/path", override_name="__main__")
-        """
-        import importlib
-        import importlib.util
+        """Core Import Process."""
+        from jaclang.runtimelib.importer import (
+            ImportPathSpec,
+            JacImporter,
+            PythonImporter,
+        )
 
         if lng is None:
             lng = infer_language(target, base_path)
 
+        spec = ImportPathSpec(
+            target,
+            base_path,
+            absorb,
+            mdl_alias,
+            override_name,
+            lng,
+            items,
+        )
+
         if not JacMachine.program:
             JacMachineInterface.attach_program(JacProgram())
 
-        # Compute the module name
-        # Convert relative imports (e.g., ".foo") to absolute
-        if target.startswith("."):
-            # Relative import - need to resolve against base_path
-            caller_dir = (
-                base_path if os.path.isdir(base_path) else os.path.dirname(base_path)
-            )
-            chomp_target = target
-            while chomp_target.startswith("."):
-                if len(chomp_target) > 1 and chomp_target[1] == ".":
-                    caller_dir = os.path.dirname(caller_dir)
-                    chomp_target = chomp_target[1:]
-                else:
-                    chomp_target = chomp_target[1:]
-                    break
-            module_name = chomp_target
+        if lng == "py":
+            import_result = PythonImporter().run_import(spec)
         else:
-            module_name = target
+            import_result = JacImporter().run_import(spec, reload_module)
 
-        # Add base_path to sys.path for import resolution
-        # The meta importer uses this for finding modules
-        caller_dir = (
-            base_path if os.path.isdir(base_path) else os.path.dirname(base_path)
+        return (
+            (import_result.ret_mod,)
+            if absorb or not items
+            else tuple(import_result.ret_items)
         )
-        original_path = None
-
-        # Only modify sys.path if the directory isn't already there
-        if caller_dir and caller_dir not in sys.path:
-            original_path = sys.path.copy()
-            sys.path.insert(0, caller_dir)
-
-        try:
-            # Handle special case: override_name="__main__" means run as script
-            if override_name == "__main__":
-                # For __main__ execution, we use spec_from_file_location
-                from jaclang.runtimelib.meta_importer import JacMetaImporter
-
-                finder = JacMetaImporter()
-                # Pass None as path for top-level imports (e.g., "micro.simple_walk")
-                # This ensures the meta importer searches sys.path correctly
-                spec = finder.find_spec(module_name, None)
-                if (
-                    spec
-                    and spec.origin
-                    and spec.origin.endswith(".jac")
-                    and lng == "py"
-                ):
-                    spec = None
-
-                if (not spec or not spec.origin) and lng == "py":
-                    file_path = os.path.join(caller_dir, f"{module_name}.py")
-                    if os.path.isfile(file_path):
-                        spec_name = (
-                            "__main__" if override_name == "__main__" else module_name
-                        )
-                        spec = importlib.util.spec_from_file_location(
-                            spec_name, file_path
-                        )
-
-                if not spec or not spec.origin:
-                    raise ImportError(f"Cannot find module {module_name}")
-
-                # Create or get __main__ module
-                if "__main__" in sys.modules and not reload_module:
-                    module = sys.modules["__main__"]
-                    # Clear the module's dict except for special attributes
-                    to_keep = {
-                        k: v for k, v in module.__dict__.items() if k.startswith("__")
-                    }
-                    # module.__dict__.clear()
-                    module.__dict__.update(to_keep)
-                else:
-                    module = types.ModuleType("__main__")
-                    sys.modules["__main__"] = module
-
-                # Set module attributes
-                module.__file__ = spec.origin
-                module.__name__ = "__main__"
-                module.__spec__ = spec
-                if spec.submodule_search_locations:
-                    module.__path__ = spec.submodule_search_locations
-
-                # Register in JacMachine
-                JacMachineInterface.load_module("__main__", module)
-
-                # Execute the module
-                if spec.loader:
-                    spec.loader.exec_module(module)
-            elif reload_module and module_name in sys.modules:
-                # Handle reload case
-                module = importlib.reload(sys.modules[module_name])
-            else:
-                # Use Python's standard import machinery
-                # This will invoke JacMetaImporter.find_spec() and exec_module()
-                module = importlib.import_module(module_name)
-
-            # Handle selective item imports
-            if items:
-                imported_items = []
-                for item_name, _ in items.items():
-                    if hasattr(module, item_name):
-                        item = getattr(module, item_name)
-                        imported_items.append(item)
-                    else:
-                        raise ImportError(
-                            f"Cannot import name '{item_name}' from '{module_name}'"
-                        )
-                return tuple(imported_items) if not absorb else (module,)
-
-            return (module,)
-
-        finally:
-            # Restore original sys.path if we modified it
-            if original_path is not None:
-                sys.path[:] = original_path
 
     @staticmethod
     def jac_test(test_fun: Callable) -> Callable:
@@ -1105,30 +1020,6 @@ class JacBasics:
         JacTestCheck.add_test(file_path, func_name, test_deco)
 
         return test_deco
-
-    @staticmethod
-    def jsx(
-        tag: object,
-        attributes: Mapping[str, object] | None = None,
-        children: Sequence[object] | None = None,
-    ) -> dict[str, object]:
-        """JSX interface for creating elements.
-
-        Args:
-            tag: Element tag (string for HTML elements, callable for components)
-            attributes: Element attributes/props
-            children: Child elements
-
-        Returns:
-            JSX element representation (implementation-defined)
-        """
-        props: dict[str, object] = dict(attributes) if attributes else {}
-        child_list = list(children) if children else []
-        return {
-            "tag": tag,
-            "props": props,
-            "children": child_list,
-        }
 
     @staticmethod
     def run_test(
@@ -1205,24 +1096,23 @@ class JacBasics:
         return field(init=init)
 
     @staticmethod
-    def log_report(expr: Any, custom: bool = False) -> None:  # noqa: ANN401
+    def report(expr: Any, custom: bool = False) -> None:  # noqa: ANN401
         """Jac's report stmt feature."""
         ctx = JacMachineInterface.get_context()
         if custom:
             ctx.custom = expr
         else:
-            print(expr)
             ctx.reports.append(expr)
 
     @staticmethod
     def refs(
-        path: ObjectSpatialPath | NodeArchetype | list[NodeArchetype],
+        path: DataSpatialPath | NodeArchetype | list[NodeArchetype],
     ) -> (
         list[NodeArchetype] | list[EdgeArchetype] | list[NodeArchetype | EdgeArchetype]
     ):
         """Jac's apply_dir stmt feature."""
-        if not isinstance(path, ObjectSpatialPath):
-            path = ObjectSpatialPath(path, [ObjectSpatialDestination(EdgeDir.OUT)])
+        if not isinstance(path, DataSpatialPath):
+            path = DataSpatialPath(path, [DataSpatialDestination(EdgeDir.OUT)])
 
         origin = path.origin
 
@@ -1244,13 +1134,13 @@ class JacBasics:
 
     @staticmethod
     async def arefs(
-        path: ObjectSpatialPath | NodeArchetype | list[NodeArchetype],
+        path: DataSpatialPath | NodeArchetype | list[NodeArchetype],
     ) -> None:
         """Jac's apply_dir stmt feature."""
         pass
 
     @staticmethod
-    def filter_on(
+    def filter(
         items: list[Archetype],
         func: Callable[[Archetype], bool],
     ) -> list[Archetype]:
@@ -1336,7 +1226,7 @@ class JacBasics:
         return disconnect_occurred
 
     @staticmethod
-    def assign_all(target: list[T], attr_val: tuple[tuple[str], tuple[Any]]) -> list[T]:
+    def assign(target: list[T], attr_val: tuple[tuple[str], tuple[Any]]) -> list[T]:
         """Jac's assign comprehension feature."""
         for obj in target:
             attrs, values = attr_val
@@ -1438,59 +1328,16 @@ class JacBasics:
                 JacMachineInterface.get_context().mem.remove(anchor.id)
 
     @staticmethod
-    def on_entry(func: Callable) -> Callable:
+    def entry(func: Callable) -> Callable:
         """Mark a method as jac entry with this decorator."""
         setattr(func, "__jac_entry", None)  # noqa:B010
         return func
 
     @staticmethod
-    def on_exit(func: Callable) -> Callable:
+    def exit(func: Callable) -> Callable:
         """Mark a method as jac exit with this decorator."""
         setattr(func, "__jac_exit", None)  # noqa:B010
         return func
-
-
-class JacClientBundle:
-    """Jac Client Bundle Operations - Generic interface for client bundling."""
-
-    @staticmethod
-    def get_client_bundle_builder() -> ClientBundleBuilder:
-        """Get the client bundle builder instance."""
-        return ClientBundleBuilder()
-
-    @staticmethod
-    def build_client_bundle(
-        module: types.ModuleType,
-        force: bool = False,
-    ) -> ClientBundle:
-        """Build a client bundle for the supplied module."""
-        builder = JacMachineInterface.get_client_bundle_builder()
-        return builder.build(module, force=force)
-
-
-class JacAPIServer:
-    """Jac API Server Operations - Generic interface for API server."""
-
-    @staticmethod
-    def get_module_introspector(
-        module_name: str,
-        base_path: str | None = None,
-    ) -> "ModuleIntrospector":
-        from jaclang.runtimelib.server import ModuleIntrospector
-
-        """Get the module introspector instance."""
-        return ModuleIntrospector(module_name, base_path)
-
-
-class JacByLLM:
-    """Jac byLLM integration."""
-
-    @staticmethod
-    def get_mtir(
-        caller: Callable, args: dict[int | str, object], call_params: dict[str, object]
-    ) -> MTIR:
-        """Get byLLM library."""
-        return MTIR(caller=caller, args=args, call_params=call_params)
 
     @staticmethod
     def sem(semstr: str, inner_semstr: dict[str, str]) -> Callable:
@@ -1504,47 +1351,11 @@ class JacByLLM:
         return decorator
 
     @staticmethod
-    def call_llm(model: object, mtir: MTIR) -> Any:  # noqa: ANN401
+    def call_llm(model: object, mtir: object) -> Any:  # noqa: ANN401
         """Call the LLM model."""
-        from jaclang.utils.NonGPT import random_value_for_type
-
-        try:
-            type_hints = get_type_hints(
-                mtir.caller,
-                globalns=getattr(mtir.caller, "__globals__", {}),
-                localns=None,
-                include_extras=True,
-            )
-        except Exception:
-            type_hints = getattr(mtir.caller, "__annotations__", {})
-        return_type = type_hints.get("return", Any)
-
-        # Generate and return a random value matching the return type
-        return random_value_for_type(return_type)
-
-    @staticmethod
-    def by(model: object) -> Callable:
-        """Python library mode decorator for Jac's by llm() syntax."""
-
-        def _decorator(caller: Callable) -> Callable:
-            def _wrapped_caller(*args: object, **kwargs: object) -> object:
-                invoke_args: dict[int | str, object] = {}
-                for i, arg in enumerate(args):
-                    invoke_args[i] = arg
-                for key, value in kwargs.items():
-                    invoke_args[key] = value
-                mtir = JacMachine.get_mtir(
-                    caller=caller,
-                    args=invoke_args,
-                    call_params=(
-                        model.call_params if hasattr(model, "call_params") else {}
-                    ),
-                )
-                return JacMachine.call_llm(model, mtir)
-
-            return _wrapped_caller
-
-        return _decorator
+        raise ImportError(
+            "byLLM is not installed. Please install it with `pip install byllm` and run `jac clean`."
+        )
 
 
 class JacUtils:
@@ -1576,11 +1387,7 @@ class JacUtils:
         if module:
             walkers = []
             for name, obj in inspect.getmembers(module):
-                if (
-                    isinstance(obj, type)
-                    and issubclass(obj, WalkerArchetype)
-                    and obj.__module__ == module_name
-                ):
+                if isinstance(obj, type) and issubclass(obj, WalkerArchetype):
                     walkers.append(name)
             return walkers
         return []
@@ -1592,11 +1399,7 @@ class JacUtils:
         if module:
             nodes = []
             for name, obj in inspect.getmembers(module):
-                if (
-                    isinstance(obj, type)
-                    and issubclass(obj, NodeArchetype)
-                    and obj.__module__ == module_name
-                ):
+                if isinstance(obj, type) and issubclass(obj, NodeArchetype):
                     nodes.append(name)
             return nodes
         return []
@@ -1606,15 +1409,11 @@ class JacUtils:
         """List all edges in a specific module."""
         module = JacMachine.loaded_modules.get(module_name)
         if module:
-            edges = []
+            nodes = []
             for name, obj in inspect.getmembers(module):
-                if (
-                    isinstance(obj, type)
-                    and issubclass(obj, EdgeArchetype)
-                    and obj.__module__ == module_name
-                ):
-                    edges.append(name)
-            return edges
+                if isinstance(obj, type) and issubclass(obj, EdgeArchetype):
+                    nodes.append(name)
+            return nodes
         return []
 
     @staticmethod
@@ -1625,11 +1424,9 @@ class JacUtils:
         cachable: bool = False,
         keep_temporary_files: bool = False,
     ) -> Optional[types.ModuleType]:
-        """Dynamically creates archetypes (nodes, walkers, etc.) from Jac source code.
+        """Dynamically creates archetypes (nodes, walkers, etc.) from Jac source code."""
+        from jaclang.runtimelib.importer import JacImporter, ImportPathSpec
 
-        This leverages Python's standard import machinery via jac_import(),
-        which will automatically invoke JacMetaImporter.
-        """
         if not base_path:
             base_path = JacMachine.base_path_dir or os.getcwd()
 
@@ -1637,7 +1434,6 @@ class JacUtils:
             os.makedirs(base_path)
         if not module_name:
             module_name = f"_dynamic_module_{len(JacMachine.loaded_modules)}"
-
         with tempfile.NamedTemporaryFile(
             mode="w",
             suffix=".jac",
@@ -1649,20 +1445,24 @@ class JacUtils:
             tmp_file.write(source_code)
 
         try:
+            importer = JacImporter()
             tmp_file_basename = os.path.basename(tmp_file_path)
             tmp_module_name, _ = os.path.splitext(tmp_file_basename)
 
-            # Use simplified jac_import which delegates to importlib
-            result = JacMachineInterface.jac_import(
+            spec = ImportPathSpec(
                 target=tmp_module_name,
                 base_path=base_path,
+                absorb=False,
+                mdl_alias=None,
                 override_name=module_name,
                 lng="jac",
+                items=None,
             )
-            module = result[0] if result else None
 
-            if module:
-                JacMachine.loaded_modules[module_name] = module
+            import_result = importer.run_import(spec, reload=False)
+            module = import_result.ret_mod
+
+            JacMachine.loaded_modules[module_name] = module
             return module
         except Exception as e:
             logger.error(f"Error importing dynamic module '{module_name}': {e}")
@@ -1676,31 +1476,36 @@ class JacUtils:
         module_name: str,
         items: Optional[dict[str, Union[str, Optional[str]]]],
     ) -> tuple[types.ModuleType, ...]:
-        """Reimport the module using Python's reload mechanism."""
+        """Reimport the module."""
+        from .importer import JacImporter, ImportPathSpec
+
         if module_name in JacMachine.loaded_modules:
             try:
                 old_module = JacMachine.loaded_modules[module_name]
-
-                # Use jac_import with reload flag
-                result = JacMachineInterface.jac_import(
+                importer = JacImporter()
+                spec = ImportPathSpec(
                     target=module_name,
                     base_path=JacMachine.base_path_dir,
-                    items=items,
-                    reload_module=True,
+                    absorb=False,
+                    mdl_alias=None,
+                    override_name=None,
                     lng="jac",
+                    items=items,
                 )
-
-                # Update the old module's attributes if specific items were requested
+                import_result = importer.run_import(spec, reload=True)
+                ret_items = []
                 if items:
-                    ret_items = []
-                    for idx, item_name in enumerate(items.keys()):
-                        if hasattr(old_module, item_name) and idx < len(result):
-                            new_attr = result[idx]
-                            ret_items.append(new_attr)
-                            setattr(old_module, item_name, new_attr)
-                    return tuple(ret_items)
-
-                return (old_module,)
+                    for item_name in items:
+                        if hasattr(old_module, item_name):
+                            new_attr = getattr(import_result.ret_mod, item_name, None)
+                            if new_attr:
+                                ret_items.append(new_attr)
+                                setattr(
+                                    old_module,
+                                    item_name,
+                                    new_attr,
+                                )
+                return (old_module,) if not items else tuple(ret_items)
             except Exception as e:
                 logger.error(f"Failed to update module {module_name}: {e}")
         else:
@@ -1768,9 +1573,6 @@ class JacMachineInterface(
     JacBuiltin,
     JacCmd,
     JacBasics,
-    JacClientBundle,
-    JacAPIServer,
-    JacByLLM,
     JacUtils,
 ):
     """Jac Feature."""
@@ -1908,15 +1710,10 @@ class JacMachine(JacMachineInterface):
     @staticmethod
     def reset_machine() -> None:
         """Reset the machine."""
-        # Remove Jac modules from sys.modules, but skip special module names
-        # that Python relies on (like __main__, __mp_main__, etc.)
-        special_modules = {"__main__", "__mp_main__", "builtins"}
-        for i in JacMachine.loaded_modules.values():
-            if i.__name__ not in special_modules:
-                sys.modules.pop(i.__name__, None)
+        # for i in JacMachine.loaded_modules.values():
+        #     sys.modules.pop(i.__name__, None)
         JacMachine.loaded_modules.clear()
         JacMachine.base_path_dir = os.getcwd()
         JacMachine.program = JacProgram()
         JacMachine.pool = ThreadPoolExecutor()
-        JacMachine.exec_ctx.mem.close()
         JacMachine.exec_ctx = ExecutionContext()

@@ -15,17 +15,17 @@
     <a href="https://codecov.io/gh/Jaseci-Labs/jaseci">
       <img src="https://img.shields.io/codecov/c/github/Jaseci-Labs/jaseci?style=flat-square" alt="Code Coverage">
     </a>
-    <a href="https://discord.gg/6j3QNdtcN6">
+    <a href="https://discord.gg/tQvx2ZvdM9">
   <img src="https://img.shields.io/badge/Discord-Community-blue?style=flat-square&logo=discord" alt="Discord">
 </a>
   </p>
 
-[**Website**](https://www.jaseci.org/) · [**Full Documentation**](https://www.jac-lang.org/) · [**Contribution Guide**](https://www.jac-lang.org/internals/contrib/)
+[**Website**](https://www.jac-lang.org/) · [**Full Documentation**](https://www.jac-lang.org/learn/getting_started/) · [**Contribution Guide**](https://www.jac-lang.org/internals/contrib/)
 
 <!-- =======
   [jac-lang.org] | [Getting Started] | [Contributing]
 
-  [jac-lang.org]: https://www.jaseci.org/
+  [jac-lang.org]: https://www.jac-lang.org/
   [Getting Started]: https://www.jac-lang.org/learn/getting_started/
   [Contributing]: https://www.jac-lang.org/internals/contrib/ -->
 </div>
@@ -126,7 +126,7 @@ Explore these impressive projects built with Jaseci! These innovative applicatio
 
 We are building the future of AI development, and we welcome all contributors.
 
-*   **`💬` Join our Discord:** The best place to ask questions, share ideas, and collaborate is our [**Discord Server**](https://discord.gg/6j3QNdtcN6).
+*   **`💬` Join our Discord:** The best place to ask questions, share ideas, and collaborate is our [**Discord Server**](https://discord.gg/tQvx2ZvdM9).
 *   **`🐞` Report Bugs:** Find a bug? Please create an issue in this repository with a clear description.
 *   **`💡` Submit PRs:** Check out our [**Contributing Guide**](https://www.jac-lang.org/internals/contrib/) for details on our development process.
 

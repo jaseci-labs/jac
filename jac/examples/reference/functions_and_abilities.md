@@ -1,209 +1,196 @@
-**Functions and Abilities in Jac**
+Jac provides two complementary approaches to defining executable code: traditional functions using `def` and object-spatial abilities using `can`. This dual system supports both conventional programming patterns and the unique requirements of computation moving through topological structures.
 
-Functions and abilities are the core computational units in Jac. Functions provide traditional callable operations, while abilities enable Object-Spatial Programming (OSP) through event-driven, type-specific dispatch during graph traversal.
+#### Omission of Gratuitous `self`
 
-**Important: Self Parameter in Methods**
+Unlike Python, Jac methods of `obj`, `node`, `edge`, and `walker` do not require a `self` parameter unless it is
+actually used.  Instance methods implicitly receive the current object, reducing
+boilerplate and keeping signatures focused on relevant parameters.
 
-Methods in Jac have different self parameter requirements depending on the archetype type:
+#### Function Definitions
 
-| Archetype Type | Self Parameter | Example |
-|----------------|----------------|---------|
-| `class` | **Explicit** with type annotation | `def init(self: MyClass, x: int)` |
-| `obj` | **Implicit** (not in signature) | `def init(x: int)` |
-| `node` | **Implicit** (not in signature) | `def process()` |
-| `edge` | **Implicit** (not in signature) | `def get_weight() -> float` |
-| `walker` | **Implicit** (not in signature) | `can collect(item: str)` |
-
-**Why the difference?** `class` follows traditional Python class semantics for compatibility, while `obj`, `node`, `edge`, and `walker` use Jac's simplified semantics with automatic self handling. Inside method bodies, all methods can access `self` to refer to the current instance, regardless of whether `self` appears in the parameter list. See [class_archetypes.md](class_archetypes.md) for detailed examples.
-
-**Optional Parentheses for No-Parameter Methods**
-
-When defining methods or functions with **no parameters**, the `()` are **optional** in Jac:
+Traditional functions use the `def` keyword with mandatory type annotations:
 
 ```jac
-# With parentheses (traditional)
-def increment() { self.count += 1; }
-
-# Without parentheses (Jac style)
-def increment { self.count += 1; }
+def calculate_distance(x1: float, y1: float, x2: float, y2: float) -> float {
+    return ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5;
+}
 ```
 
-Both are valid. When **calling** the method, parentheses are still required: `obj.increment()`. This syntactic sugar makes method definitions cleaner and more readable.
+Functions provide explicit parameter passing and return value semantics, making them suitable for stateless computations and utility operations.
 
-**Basic Functions**
+#### Abilities
 
-Lines 6-8 show a function with typed parameters and return type. Lines 11-13 demonstrate a function with only a return type (no parameters):
+Abilities represent Jac's distinctive approach to defining behaviors that respond to object-spatial events:
 
-Lines 16-18 use the generic `object` type when flexible typing is needed:
-
-**Static Functions**
-
-Lines 26-28 define a static function that belongs to the class, not instances. Call static functions directly on the class: `Calculator.square(5)` (line 307).
-
-**Access Modifiers**
-
-Lines 31-43 show access control tags:
-
-| Modifier | Example Line | Visibility |
-|----------|--------------|------------|
-| `:priv` | 31-33 | Private to module |
-| `:pub` | 36-38 | Public, accessible anywhere |
-| `:protect` | 41-43 | Protected, accessible to subclasses |
-
-Access tags can be combined with `static`: `static def:priv internal_helper` (line 31).
-
-**Abstract Methods**
-
-Line 49 demonstrates abstract method declaration. The `abs` keyword marks it as abstract - subclasses must implement it. Lines 63-65 show implementation in `ConcreteCalculator`.
-
-**Forward Declarations**
-
-Lines 52, 55, 58 show forward declarations - signatures without bodies. Forward declarations allow separating interface from implementation, useful for circular dependencies.
-
-**Implementation Blocks**
-
-Lines 70-72 implement forward-declared methods using `impl`. The pattern: `impl ClassName.method_name(params) -> return_type { body }`
-
-**Variadic Parameters**
-
-Lines 86-88 show positional variadic (*args). Lines 91-93 show keyword variadic (**kwargs):
-
-Lines 96-102 combine regular parameters, *args, and **kwargs:
-
-**Parameter order must be: regular, *args, **kwargs**
-
-**Async Functions**
-
-Lines 106-108 show async function declaration. Async functions enable concurrent operations and must be awaited when called.
-
-**Decorators**
-
-Lines 128-130 show single decorator application. Lines 134-137 demonstrate multiple decorators (applied bottom-up):
-
-Equivalent to: `double_decorated = logger(tracer(double_decorated))`
-
-**Walker Abilities - Basic Events**
-
-Lines 145-147 show an entry ability that triggers when a walker spawns. Lines 151-153 show an exit ability that triggers when the walker completes:
-
-**Abilities use `can` instead of `def` and specify event clauses with `with`.**
-
-**Walker Abilities with Typed Node Context**
-
-Lines 172-175 show root-specific ability. Lines 178-182 show typed node ability (triggers only for Person nodes):
-
-The `here` reference accesses the current node being visited.
-
-**Execution Flow for TypedWalker (line 338)**
-
-```mermaid
-flowchart TD
-    Start([Walker Spawns at Root]) --> RootAbility[start ability executes]
-    RootAbility --> Visit1[visit [--&gt;] queues Alice, Bob]
-    Visit1 --> AliceVisit[Visit Alice Person]
-    AliceVisit --> AliceAbility[handle_person executes]
-    AliceAbility --> Visit2[visit [--&gt;] queues NYC]
-    Visit2 --> BobVisit[Visit Bob Person]
-    BobVisit --> BobAbility[handle_person executes]
-    BobAbility --> NYCVisit[Visit NYC City]
-    NYCVisit --> NYCAbility[handle_city executes]
-    NYCAbility --> ExitAbility[report exit ability]
-    ExitAbility --> Done([Walker Complete])
+```jac
+walker PathFinder {
+    can explore with node entry {
+        # Ability triggered when walker enters any node
+        print(f"Exploring node: {here.name}");
+        visit [-->];  # Continue to connected nodes
+    }
+    
+    can process with DataNode exit {
+        # Ability triggered when leaving DataNode instances
+        print(f"Finished processing {here.data}");
+    }
+}
 ```
 
-**Multiple Abilities on Same Node Type**
+Abilities execute implicitly based on spatial events rather than explicit invocation, embodying the object-spatial programming paradigm.
 
-Lines 201-212 demonstrate multiple abilities for the same node type:
+#### Access Control
 
-**Both abilities execute sequentially in definition order.** Walker state persists across both.
+Both functions and abilities support access modifiers for encapsulation:
 
-**Node Abilities**
-
-Lines 225-228 show abilities defined on nodes (not walkers). When a TypedWalker visits, both the walker's ability AND the node's ability execute. The `self` in node abilities refers to the node.
-
-**Async Abilities**
-
-Lines 237-240 show async walker and async abilities:
-
-**Abstract Abilities**
-
-Line 251 declares abstract ability. Lines 256-258 show implementation in subclass:
-
-**Static Abilities**
-
-Lines 266-268 show static abilities (rare but allowed). Static abilities belong to the walker class, not instances. Cannot access `self`.
-
-**Ability Control Flow**
-
-Lines 284-287 demonstrate `disengage` for early termination. The `disengage` statement immediately terminates walker execution.
-
-**Ability Event Clauses**
-
-| Event Clause | Triggers When | Example Line |
-|--------------|---------------|--------------|
-| `with entry` | Walker spawns or any node visit | 145 |
-| `with exit` | Walker completes | 151 |
-| `with \`root entry` | Visiting root node specifically | 172 |
-| `with NodeType entry` | Visiting specific node type | 178, 185 |
-| `with (Type1, Type2) entry` | Visiting any of the listed types | See typed_context_blocks_(osp).jac:80 |
-| `with WalkerType entry` | Node ability for specific walker | 225, 231 |
-
-**Note:** You can specify multiple types in parentheses to trigger the ability for any of those types. For example, `can handle with (Person, City) entry` will trigger when visiting either Person or City nodes. See [typed_context_blocks_(osp).md](typed_context_blocks_(osp).md) for detailed examples of using multiple types with typed context blocks.
-
-**Execution Order When Walker Visits Node**
-
-1. All matching walker abilities execute (in definition order)
-2. All matching node abilities execute (in definition order)
-3. Walker processes any `visit` statements to queue next nodes
-4. Walker moves to next queued node or triggers `exit` abilities
-
-**Function vs Ability Comparison**
-
-| Feature | Function (`def`) | Ability (`can`) |
-|---------|-----------------|-----------------|
-| Keyword | `def` | `can` |
-| Context | Objects, classes, walkers, global | Walkers, nodes |
-| Invocation | Explicit call | Event-driven (automatic) |
-| Event clause | None | Required (`with entry`, etc.) |
-| OSP role | Traditional computation | Spatial computation |
-| `here` reference | Not available | Available in spatial context |
-| `visitor` reference | Not available | Available in node abilities |
-
-**Type-Driven Dispatch Pattern**
-
-```mermaid
-flowchart TD
-    WalkerVisit([Walker Visits Node]) --> CheckType{Node Type?}
-    CheckType -->|Person| PersonAbility[Execute Person abilities]
-    CheckType -->|City| CityAbility[Execute City abilities]
-    CheckType -->|Other| GenericAbility[Execute generic abilities]
-    PersonAbility --> NodeCheck{Node has<br/>abilities?}
-    CityAbility --> NodeCheck
-    GenericAbility --> NodeCheck
-    NodeCheck -->|Yes| NodeAbility[Execute node abilities]
-    NodeCheck -->|No| Continue
-    NodeAbility --> Continue[Continue traversal]
-    Continue --> Next([Next node or exit])
+```jac
+obj Calculator {
+    def :pub add(a: float, b: float) -> float {
+        return a + b;
+    }
+    
+    def :priv internal_compute(data: list) -> float {
+        return sum(data) / len(data);
+    }
+    
+    can :protect validate with entry {
+        # Protected ability for internal validation
+        if (not self.is_valid()) {
+            raise ValueError("Invalid calculator state");
+        }
+    }
+}
 ```
 
-**Practical Patterns**
+#### Static Methods
 
-**Search with disengage:**
+Static methods operate at the class level without requiring instance context:
 
-**Multi-stage processing:**
+```jac
+obj MathUtils {
+    static def multiply(a: float, b: float) -> float {
+        return a * b;
+    }
+    
+    static def factorial(n: int) -> int {
+        return 1 if n <= 1 else n * MathUtils.factorial(n - 1);
+    }
+}
+```
 
-**Node-walker interaction:**
+#### Abstract Declarations
 
-**Polymorphic traversal:**
+Abstract methods define interfaces that must be implemented by subclasses:
 
-**Key Insights**
+```jac
+obj Shape {
+    def area() -> float abs;
+    def perimeter() -> float abs;
+}
 
-1. **Type-driven dispatch**: Walker abilities are selected based on node types, enabling polymorphic behavior
-2. **Separation of concerns**: Multiple abilities on same node type allow separating processing stages
-3. **Bidirectional interaction**: Walkers have node-specific behavior, nodes have walker-specific behavior
-4. **Event-driven execution**: Abilities trigger automatically based on graph traversal events
-5. **State preservation**: Walker attributes persist across all ability executions
-6. **Implementation separation**: Forward declarations and impl blocks separate interface from implementation
-7. **Rich type system**: Abstract methods, access modifiers, async support, and decorators provide full OOP features
+obj Rectangle(Shape) {
+    has width: float;
+    has height: float;
+    
+    def area() -> float {
+        return self.width * self.height;
+    }
+    
+    def perimeter() -> float {
+        return 2 * (self.width + self.height);
+    }
+}
+```
 
-Functions provide traditional OOP computation, while abilities enable the unique "computation flows to data" paradigm of Object-Spatial Programming through event-driven, type-specific dispatch during graph traversal.
+#### Implementation Separation
+
+Jac enables separation of declarations from implementations using `impl` blocks:
+
+```jac
+obj DataProcessor {
+    def process_data(data: list) -> dict;
+}
+
+impl DataProcessor {
+    def process_data(data: list) -> dict {
+        return {
+            "count": len(data),
+            "sum": sum(data),
+            "average": sum(data) / len(data)
+        };
+    }
+}
+```
+
+#### Object-Spatial Integration
+
+Abilities integrate seamlessly with object-spatial constructs, enabling sophisticated graph algorithms:
+
+```jac
+node DataNode {
+    has data: dict;
+    has processed: bool = false;
+    
+    can validate with visitor entry {
+        # Node ability triggered by walker visits
+        if (not self.data) {
+            visitor.report_error(f"Empty data at {self.id}");
+        }
+    }
+    
+    can mark_complete with visitor exit {
+        # Mark processing complete when walker leaves
+        self.processed = true;
+    }
+}
+
+walker DataValidator {
+    has errors: list = [];
+    
+    can report_error(message: str) {
+        self.errors.append(message);
+    }
+    
+    can validate_graph with entry {
+        # Start validation process
+        visit [-->*];  # Visit all reachable nodes
+    }
+}
+```
+
+#### Parameter Patterns
+
+Functions and abilities support flexible parameter patterns:
+
+```jac
+def flexible_function(required: int, optional: str = "default", *args: tuple, **kwargs: dict) -> any {
+    return {
+        "required": required,
+        "optional": optional,
+        "args": args,
+        "kwargs": kwargs
+    };
+}
+```
+
+#### Asynchronous Operations
+
+Both functions and abilities support asynchronous execution:
+
+```jac
+async def fetch_data(url: str) -> dict {
+    # Asynchronous data fetching
+    response = await http_client.get(url);
+    return response.json();
+}
+
+walker AsyncProcessor {
+    async can process with entry {
+        # Asynchronous ability execution
+        data = await fetch_data(here.data_url);
+        here.update_data(data);
+    }
+}
+```
+
+Functions and abilities together provide a comprehensive system for organizing computational logic that supports both traditional programming patterns and the innovative object-spatial paradigm where computation flows through topological structures.

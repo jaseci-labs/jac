@@ -2,10 +2,10 @@
 name = "jac-streamlit"
 version = "0.0.4"
 description = "Streamlit integration plugin for Jac programming language - enables running and visualizing Jac applications in Streamlit"
-authors = ["Jason Mars <jason@mars.ninja>"]
+authors = ["Jason Mars <jason@jaseci.org>"]
 license = "MIT"
 readme = "README.md"
-keywords = ["jac", "jaclang", "jaseci", "streamlit", "visualization", "graph", "object-spatial"]
+keywords = ["jac", "jaclang", "jaseci", "streamlit", "visualization", "graph", "data-spatial"]
 repository = "https://github.com/jaseci-labs/jaseci"
 homepage = "https://jac-lang.org"
 documentation = "https://jac-lang.org"

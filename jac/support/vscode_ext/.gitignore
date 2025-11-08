@@ -1,0 +1,7 @@
+out
+node_modules
+client/server
+.vscode-test
+.vscode/settings.json
+env
+*.vsix

@@ -22,7 +22,7 @@ class JacAstToolTests(TestCase):
         self.assertIn("target: Expr,", out)
         self.assertIn("self, node: ast.ReturnStmt", out)
         self.assertIn("exprs: Sequence[ExprAsItem],", out)
-        self.assertIn("path: Optional[Sequence[Name | String]],", out)
+        self.assertIn("path: Optional[Sequence[Name]],", out)
         self.assertIn("value: str,", out)
         self.assertIn("def exit_module(self, node: ast.Module)", out)
         self.assertGreater(out.count("def exit_"), 20)
@@ -112,7 +112,7 @@ class JacAstToolTests(TestCase):
         """Testing for sym, sym. AstTool."""
         jac_file = os.path.normpath(
             os.path.join(
-                os.path.dirname(jaclang.__file__), "../examples/reference/while_statements.jac"
+                os.path.dirname(jaclang.__file__), "../examples/reference/atom.jac"
             )
         )
         out = self.tool.ir(["sym", jac_file])
@@ -122,19 +122,30 @@ class JacAstToolTests(TestCase):
         )
         check_list = [
             "########",
-            "# while_statements #",
+            "# atom #",
             "########",
-            "SymTable::Module(while_statements)",
+            "SymTable::Module(atom)",
+            "|   +-- list1",
+            "|   +-- x",
+            "|   +-- impl.x",
+            "|   +-- c",
+            "|   +-- d",
+            "|   +-- a",
+            "|   +-- b",
+            "+-- SymTable::ImplDef(impl.x)",
+            " SymTable::Enum(x)",
+            "+-- line 19, col 13",
         ]
         for i in check_list:
             self.assertIn(i, out)
         out = self.tool.ir(["sym.", jac_file])
-        self.assertIn('[label="', out)
+        self.assertIn('[label="impl.x"];', out)
+        self.assertNotIn('[label="str"];', out)
 
     def test_uninode_doc(self) -> None:
         """Testing for Autodoc for Uninodes."""
         auto_uni = self.tool.autodoc_uninode()
         self.assertIn(
-            "## LambdaExpr\n```mermaid\nflowchart LR\nLambdaExpr -->|Expr, CodeBlockStmt| body",
+            "## LambdaExpr\n```mermaid\nflowchart LR\nLambdaExpr -->|Expr| body",
             auto_uni,
         )

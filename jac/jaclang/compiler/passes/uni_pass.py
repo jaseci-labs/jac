@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from threading import Event
 from typing import Optional, TYPE_CHECKING, Type, TypeVar
 
 import jaclang.compiler.unitree as uni
@@ -22,12 +21,11 @@ class UniPass(Transform[uni.Module, uni.Module]):
         self,
         ir_in: uni.Module,
         prog: JacProgram,
-        cancel_token: Event | None = None,
     ) -> None:
         """Initialize parser."""
         self.term_signal = False
         self.prune_signal = False
-        Transform.__init__(self, ir_in, prog, cancel_token=cancel_token)
+        Transform.__init__(self, ir_in, prog)
 
     def before_pass(self) -> None:
         """Run once before pass."""
@@ -44,6 +42,10 @@ class UniPass(Transform[uni.Module, uni.Module]):
         """Run on exiting node."""
         if hasattr(self, f"exit_{pascal_to_snake(type(node).__name__)}"):
             getattr(self, f"exit_{pascal_to_snake(type(node).__name__)}")(node)
+
+    def terminate(self) -> None:
+        """Terminate traversal."""
+        self.term_signal = True
 
     def prune(self) -> None:
         """Prune traversal."""
@@ -118,7 +120,7 @@ class UniPass(Transform[uni.Module, uni.Module]):
 
     def traverse(self, node: uni.UniNode) -> uni.UniNode:
         """Traverse tree."""
-        if self.is_canceled():
+        if self.term_signal:
             return node
         self.cur_node = node
         self.enter_node(node)
@@ -129,7 +131,7 @@ class UniPass(Transform[uni.Module, uni.Module]):
         else:
             self.prune_signal = False
         self.cur_node = node
-        if self.is_canceled():
+        if self.term_signal:
             return node
         self.exit_node(node)
         return node

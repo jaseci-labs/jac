@@ -69,17 +69,10 @@ class TypeCheckPass(UniPass):
 
     def exit_import(self, node: uni.Import) -> None:
         """Exit an import node."""
-        # import from math {sqrt, sin as s}
         if node.from_loc:
-            self.evaluator.get_type_of_module(node.from_loc)
             for item in node.items:
                 if isinstance(item, uni.ModuleItem):
                     self.evaluator.get_type_of_module_item(item)
-        else:
-            # import math as m, os, sys;
-            for item in node.items:
-                if isinstance(item, uni.ModulePath):
-                    self.evaluator.get_type_of_module(item)
 
     def exit_assignment(self, node: uni.Assignment) -> None:
         """Pyright: Checker.visitAssignment(node: AssignmentNode): boolean."""
@@ -108,12 +101,3 @@ class TypeCheckPass(UniPass):
         # 1. Function Existence & Callable Validation
         # 2. Argument Matching(count, types, names)
         self.evaluator.get_type_of_expression(node)
-
-    def exit_return_stmt(self, node: uni.ReturnStmt) -> None:
-        """Handle the return statement node."""
-        if node.expr:
-            self.evaluator.get_type_of_expression(node.expr)
-
-    def exit_formatted_value(self, node: uni.FormattedValue) -> None:
-        """Handle the formatted value node."""
-        self.evaluator.get_type_of_expression(node.format_part)

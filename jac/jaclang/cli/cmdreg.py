@@ -4,26 +4,11 @@ from __future__ import annotations
 
 import argparse
 import inspect
-import os
 import re
-import sys
 from dataclasses import fields as dataclass_fields
-from enum import IntEnum
 from typing import Callable, Dict, Optional
 
 from jaclang.settings import Settings as JacSettings
-
-
-class CommandPriority(IntEnum):
-    """Priority levels for command registration.
-
-    Higher values take precedence when multiple commands with the same name are registered.
-    This allows plugins to override core commands in a controlled manner.
-    """
-
-    CORE = 100  # Core jaclang commands (lowest priority, can be overridden)
-    PLUGIN = 200  # Plugin-provided commands (override core)
-    USER = 300  # User-defined commands (highest priority, override everything)
 
 
 class Command:
@@ -31,20 +16,11 @@ class Command:
 
     func: Callable
     sig: inspect.Signature
-    priority: CommandPriority
-    source: str  # Source plugin/module name
 
-    def __init__(
-        self,
-        func: Callable,
-        priority: CommandPriority = CommandPriority.CORE,
-        source: str = "core",
-    ) -> None:
+    def __init__(self, func: Callable) -> None:
         """Initialize a Command instance."""
         self.func = func
         self.sig = inspect.signature(func)
-        self.priority = priority
-        self.source = source
 
     def call(self, *args: list, **kwargs: dict) -> str:
         """Call the associated function with the specified arguments and keyword arguments."""
@@ -106,17 +82,13 @@ class CommandRegistry:
     """Registry for managing commands in the command line interface."""
 
     registry: dict[str, Command]
-    pending_commands: dict[str, list[Command]]  # Commands waiting to be bound
     sub_parsers: argparse._SubParsersAction
     parser: argparse.ArgumentParser
     args: argparse.Namespace
-    _finalized: bool  # Whether command registration has been finalized
 
     def __init__(self) -> None:
         """Initialize a CommandRegistry instance."""
         self.registry = {}
-        self.pending_commands = {}
-        self._finalized = False
         self.parser = argparse.ArgumentParser(
             prog="jac",
             description="Jac Programming Language CLI - A tool for working with Jac programs",
@@ -178,55 +150,11 @@ class CommandRegistry:
                     help=f"str - Override setting '{name}'",
                 )
 
-    def register(
-        self,
-        func: Callable | None = None,
-        *,
-        priority: CommandPriority = CommandPriority.CORE,
-        source: str = "core",
-    ) -> Callable:
-        """Register a command in the registry.
-
-        This method supports both decorator syntax with and without arguments:
-            @cmd_registry.register
-            def my_cmd(): ...
-
-            @cmd_registry.register(priority=CommandPriority.PLUGIN, source="my-plugin")
-            def my_cmd(): ...
-
-        Args:
-            func: The command function to register
-            priority: Priority level for conflict resolution
-            source: Source plugin/module name for introspection
-
-        Returns:
-            The original function (for decorator usage)
-        """
-
-        def _register(f: Callable) -> Callable:
-            """Inner registration function."""
-            name = f.__name__
-            cmd = Command(f, priority=priority, source=source)
-
-            # Add to pending commands for priority resolution
-            if name not in self.pending_commands:
-                self.pending_commands[name] = []
-            self.pending_commands[name].append(cmd)
-
-            # If already finalized, bind immediately (late registration)
-            if self._finalized:
-                self._resolve_and_bind_command(name)
-
-            return f
-
-        # Support both @register and @register(...) syntax
-        if func is not None:
-            return _register(func)
-        return _register
-
-    def _bind_command_to_argparse(self, name: str, cmd: Command) -> None:
-        """Bind a command to argparse subparser."""
-        func = cmd.func
+    def register(self, func: Callable) -> Callable:
+        """Register a command in the registry."""
+        name = func.__name__
+        cmd = Command(func)
+        self.registry[name] = cmd
         # Extract the first paragraph from the docstring for brief description
         doc = func.__doc__ or ""
         brief_desc = doc.split("\n\n")[0].strip()
@@ -336,51 +264,7 @@ class CommandRegistry:
                             else param.annotation
                         ),
                     )
-
-    def _resolve_and_bind_command(self, name: str) -> None:
-        """Resolve command conflicts by priority and bind to argparse."""
-        if name not in self.pending_commands:
-            return
-
-        commands = self.pending_commands[name]
-        if not commands:
-            return
-
-        # Sort by priority (highest first)
-        commands.sort(key=lambda c: c.priority, reverse=True)
-
-        # Winner is the highest priority command
-        winner = commands[0]
-
-        # Warn about conflicts if multiple commands with different priorities
-        # Only warn if JAC_CLI_VERBOSE environment variable is set
-        if len(commands) > 1 and os.getenv("JAC_CLI_VERBOSE"):
-            conflicts = [f"{c.source} (priority={c.priority})" for c in commands[1:]]
-            print(
-                f"Warning: Command '{name}' registered by multiple sources. "
-                f"Using {winner.source} (priority={winner.priority}). "
-                f"Overriding: {', '.join(conflicts)}",
-                file=sys.stderr,
-            )
-
-        # Register the winner
-        self.registry[name] = winner
-        self._bind_command_to_argparse(name, winner)
-
-    def finalize(self) -> None:
-        """Finalize command registration by resolving conflicts and binding to argparse.
-
-        This should be called after all plugins have had a chance to register commands.
-        """
-        if self._finalized:
-            return
-
-        # Resolve all pending commands
-        for name in list(self.pending_commands.keys()):
-            self._resolve_and_bind_command(name)
-
-        self._finalized = True
-        self.pending_commands.clear()
+        return func
 
     def get(self, name: str) -> Optional[Command]:
         """Get the Command instance for a given command name."""
@@ -394,26 +278,6 @@ class CommandRegistry:
             args = comd.sig.parameters
             all_commands[name] = (doc, args)
         return all_commands
-
-    def has_command(self, name: str) -> bool:
-        """Check if a command is already registered."""
-        return name in self.registry
-
-    def list_commands(self) -> dict[str, dict[str, CommandPriority | str]]:
-        """List all registered commands with metadata.
-
-        Returns:
-            Dictionary mapping command names to metadata including source and priority
-        """
-        return {
-            name: {
-                "source": cmd.source,
-                "priority": cmd.priority,
-                "priority_name": cmd.priority.name,
-                "doc": cmd.func.__doc__ or "No documentation",
-            }
-            for name, cmd in self.registry.items()
-        }
 
 
 cmd_registry = CommandRegistry()

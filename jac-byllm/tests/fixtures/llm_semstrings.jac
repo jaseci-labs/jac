@@ -1,4 +1,4 @@
-import from byllm.lib { Model }
+import from byllm { Model }
 glob llm = Model(
     model_name="mockllm",
     outputs=["120597", "R8@jL3pQ"],

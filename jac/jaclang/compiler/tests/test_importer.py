@@ -17,9 +17,6 @@ class TestLoader(TestCase):
 
     def test_import_basic_python(self) -> None:
         """Test basic self loading."""
-        Jac.reset_machine()
-        sys.modules.pop("fixtures", None)
-        sys.modules.pop("fixtures.hello_world", None)
         Jac.set_base_path(self.fixture_abs_path(__file__))
         JacMachineInterface.attach_program(
             JacProgram(),
@@ -29,9 +26,6 @@ class TestLoader(TestCase):
 
     def test_modules_correct(self) -> None:
         """Test basic self loading."""
-        Jac.reset_machine()
-        sys.modules.pop("fixtures", None)
-        sys.modules.pop("fixtures.hello_world", None)
         Jac.set_base_path(self.fixture_abs_path(__file__))
         JacMachineInterface.attach_program(
             JacProgram(),
@@ -147,25 +141,29 @@ class TestLoader(TestCase):
         try:
             os.chdir(os.path.dirname(self.fixture_abs_path("jac_import_py_files.py")))
             Jac.set_base_path(self.fixture_abs_path("jac_import_py_files.py"))
-            JacMachineInterface.attach_program(JacProgram())
+            JacMachineInterface.attach_program(
+            program:=JacProgram(),
+            )
             Jac.jac_import("jac_import_py_files", base_path=self.fixture_abs_path("jac_import_py_files.py"), lng="py")
             cli.run(self.fixture_abs_path("jac_import_py_files.py"))
             sys.stdout = sys.__stdout__
             stdout_value = captured_output.getvalue()
             self.assertIn("This is main test file for jac import of python files", stdout_value)
-            self.assertIn("python_module <jaclang.compiler.unitree.Module object", str(Jac.program.mod.hub))
-            self.assertIn("jac_module <jaclang.compiler.unitree.Module object", str(Jac.program.mod.hub))
+            self.assertIn("python_module <jaclang.compiler.unitree.Module object", str(program.mod.hub))
+            self.assertIn("jac_module <jaclang.compiler.unitree.Module object", str(program.mod.hub))
             os.environ["JAC_PYFILE_RAISE"] = "false"
             settings.load_env_vars()
             os.chdir(os.path.dirname(self.fixture_abs_path("jac_import_py_files.py")))
             Jac.set_base_path(self.fixture_abs_path("jac_import_py_files.py"))
-            JacMachineInterface.attach_program(JacProgram())
+            JacMachineInterface.attach_program(
+            program:=JacProgram(),
+            )
             Jac.jac_import("jac_import_py_files", base_path=self.fixture_abs_path("jac_import_py_files.py"), lng="py")
             cli.run(self.fixture_abs_path("jac_import_py_files.py"))
             sys.stdout = sys.__stdout__
             stdout_value = captured_output.getvalue()
             self.assertIn("This is main test file for jac import of python files", stdout_value)
-            self.assertNotIn("python_module <jaclang.compiler.unitree.Module object", str(Jac.program.mod.hub))
-            self.assertIn("jac_module <jaclang.compiler.unitree.Module object", str(Jac.program.mod.hub))
+            self.assertNotIn("python_module <jaclang.compiler.unitree.Module object", str(program.mod.hub))
+            self.assertNotIn("jac_module <jaclang.compiler.unitree.Module object", str(program.mod.hub))
         finally:
             os.chdir(original_cwd)

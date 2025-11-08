@@ -1,23 +1,40 @@
-"""Concurrent expressions: Flow (spawn async task) and wait (await result)."""
 from __future__ import annotations
-from jaclang.lib import thread_run, thread_wait
+from jaclang.runtimelib.builtin import *
+from jaclang import JacMachineInterface as _
 from time import sleep
 
-def compute(x: int, y: int) -> int:
-    print(f'Computing {x} + {y}')
-    sleep(1)
-    return x + y
+if _.TYPE_CHECKING:
+    from time import sleep
 
-def slow_task(n: int) -> int:
-    print(f'Task {n} started')
-    sleep(1)
-    print(f'Task {n} done')
-    return n * 2
-task1 = thread_run(lambda: compute(5, 10))
-task2 = thread_run(lambda: compute(3, 7))
-task3 = thread_run(lambda: slow_task(42))
-print('All tasks started concurrently')
-result1 = thread_wait(task1)
-result2 = thread_wait(task2)
-result3 = thread_wait(task3)
-print(f'Results: {result1}, {result2}, {result3}')
+
+class A(_.Node):
+    val: int = 0
+
+    @_.entry
+    def do(self, here) -> None:
+        print("Started")
+        sleep(2)
+        print(here)
+
+
+class B(_.Walker):
+    name: str
+
+
+def add(x: int, y: int) -> int:
+    print(x)
+    z = x + y
+    sleep(2)
+    print(x)
+    return z
+
+
+t1 = _.thread_run(lambda: _.spawn(A(), B("Hi")))
+task1 = _.thread_run(lambda: add(1, 10))
+task2 = _.thread_run(lambda: add(2, 11))
+print("All are started")
+res1 = _.thread_wait(task1)
+res2 = _.thread_wait(task2)
+print("All are done")
+print(res1)
+print(res2)

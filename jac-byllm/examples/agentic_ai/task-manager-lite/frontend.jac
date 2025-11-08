@@ -170,6 +170,31 @@ def bootstrap_frontend(token: str) {
         }
     }
 
+    # Sidebar with information
+    with st.sidebar {
+        st.markdown("## 🎯 Features");
+        st.markdown("""
+        **📋 Task Management**
+        - Add new tasks with dates/times
+        - View and summarize tasks
+        - Intelligent task extraction
+
+        **📧 Email Assistant**
+        - Generate professional emails
+        - Context-aware content
+        - Various email types
+
+        **💬 General Chat**
+        - Ask questions
+        - Get advice and tips
+        - General assistance
+        """);
+
+        st.markdown("---");
+        st.markdown("**🧠 AI Routing**");
+        st.markdown("Your requests are automatically routed to the most appropriate handler for optimal results.");
+    }
+
     # Footer
     st.markdown("---");
     st.markdown("**🤖 Powered by Task Manager Lite AI Assistant**");

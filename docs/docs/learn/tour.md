@@ -4,7 +4,7 @@
 
 Jac is a drop-in replacement for Python and supersets Python, much like Typescript supersets Javascript or C++ supersets C. It extends Python's semantics while maintaining full interoperability with the Python ecosystem, introducing cutting-edge abstractions designed to minimize complexity and embrace AI-forward development.
 
-<div class="code-block run-dot" >
+<div class="code-block">
 ```jac
 import math;
 import from random { uniform }
@@ -35,7 +35,7 @@ This snippet natively imports Python packages `math` and `random` and runs ident
 Jac provides novel constructs for integrating LLMs into code. A function body can simply be replaced with a call to an LLM, removing the need for prompt engineering or extensive use of new libraries.
 
 ```jac
-import from byllm.lib { Model }
+import from byllm { Model }
 glob llm = Model(model_name="gpt-4o");
 
 enum Personality {
@@ -73,7 +73,7 @@ Traditional OOP with python classes (`class` or Jac's dataclass-like `obj`) that
 
 Instances of node and edge classes allow for assembling objects in a graph structure to express semantic relationships between objects. This goes beyond only modeling objects in memory as a disconnected soup of instances. Walker classes enables to expression of objects interacting with each other through special methods called abilities.
 
-In this example, nodes represent meaningful entities (like Libraries and Shelves), while walkers (borrowers) traverse these node objects and process them.
+In this example, nodes represent meaningful entities (like Libraries and Shelves), while walkers (borrower) traverse these node objects and process them.
 
 ```jac
 node Library {
@@ -225,7 +225,7 @@ This MTP example demonstrates how Jac seamlessly integrates LLMs with structured
 
 ## Zero to Infinite Scale without any Code Changes
 
-Jac's cloud-native abstractions make persistence and user concepts part of the language so that simple programs can run unchanged locally or in the cloud. Much like every object instance has a self referencial `this` or `self` reference. Every instance of a Jac program invocation has a `root` node reference that is unique to every user and for which any other node or edge objects connected to `root` will persist across code invocations. That's it. Using `root` to access persistent user state and data, Jac deployments can be scaled from local environments infinitely into to the cloud with no code changes.
+Jac's cloud-native abstractions make persistence and user concepts part of the language so that simple programs can run unchanged locally or in the cloud. Much like every object instance has a self referencial `this` or `self` reference. Every instance of a Jac program invocation has a `root` node reference that is unique to every user and for which any ohter node or edge objeccts connected to `root` will persist across code invocations. Thats it. Using `root` to access presistant user state and data, Jac deployments can be scaled from local enviornments infinitely into to the cloud with no code changes..
 
 ```jac
 node Post {
@@ -300,3 +300,25 @@ Jac focuses on type safety and readability. Type hints are required and the buil
     ```
 
     This shows how declarations and implementations can live in separate files for maintainable, typed codebases.
+
+## Next Steps
+
+<div class="grid cards" markdown>
+
+-   __In The Works__
+
+    ---
+
+    *Roadmap Items*
+
+    [In The Roadmap](bigfeatures.md){ .md-button .md-button--primary }
+
+-   __In The Future__
+
+    ---
+
+    *Research in Jac/Jaseci*
+
+    [In Research](research.md){ .md-button }
+
+</div>

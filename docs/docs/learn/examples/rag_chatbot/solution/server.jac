@@ -28,7 +28,6 @@ node Chat {
 walker infer {
     has message: str;
     has chat_history: list[dict];
-    has response: str = "";
     has file_path: str = "";
 
     can init_router with `root entry {

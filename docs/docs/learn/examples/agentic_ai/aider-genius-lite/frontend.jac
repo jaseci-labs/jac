@@ -56,7 +56,7 @@ def bootstrap_frontend(token: str) {
         with st.spinner("🧠 AI is thinking and generating code...") {
             try {
                 response = requests.post(
-                    "http://localhost:8000/walker/GeniusAgent",
+                    "http://localhost:8000/walker/generate_code",
                     json={"request": user_request},
                     headers={"Authorization": f"Bearer {token}"}
                 );

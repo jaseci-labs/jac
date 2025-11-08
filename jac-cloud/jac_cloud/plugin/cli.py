@@ -7,7 +7,7 @@ from pickle import load
 from typing import Any
 
 from jaclang import JacMachine as Jac
-from jaclang.cli.cmdreg import CommandPriority, cmd_registry
+from jaclang.cli.cmdreg import cmd_registry
 from jaclang.runtimelib.machine import hookimpl
 
 from pymongo.errors import ConnectionFailure, OperationFailure
@@ -67,7 +67,7 @@ class JacCmd:
     def create_cmd() -> None:
         """Create Jac CLI cmds."""
 
-        @cmd_registry.register(priority=CommandPriority.PLUGIN, source="jac-cloud")
+        @cmd_registry.register
         def serve(
             filename: str,
             host: str = "0.0.0.0",

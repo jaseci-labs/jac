@@ -1,0 +1,31 @@
+name: Test VSCE Extension
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+jobs:
+  test-vsce:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: jac/support/vscode_ext/jac/package-lock.json
+
+      - name: Install Dependencies
+        working-directory: jac/support/vscode_ext/jac/
+        run: npm ci
+
+      - name: Run Jest Tests
+        working-directory: jac/support/vscode_ext/jac/
+        run: npm test

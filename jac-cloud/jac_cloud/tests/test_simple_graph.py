@@ -911,7 +911,7 @@ class SimpleGraphTest(JacCloudTest):
 
         task_counter = report["id"]
 
-        if False and getenv("TASK_CONSUMER_CRON_SECOND"):
+        if getenv("TASK_CONSUMER_CRON_SECOND"):
             for i in range(1, 4):
                 res = self.post_api("trigger_counter_task", json={"id": i})
 

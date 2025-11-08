@@ -51,7 +51,7 @@ class JacFormatPass(Transform[uni.Module, uni.Module]):
 
             if isinstance(cur, doc.Text):
                 remaining -= len(cur.text)
-                if remaining <= 0:
+                if remaining < 0:
                     return False
 
             elif isinstance(cur, doc.Line):
@@ -63,7 +63,7 @@ class JacFormatPass(Transform[uni.Module, uni.Module]):
                     continue
                 # regular soft line becomes a single space in flat mode
                 remaining -= 1
-                if remaining <= 0:
+                if remaining < 0:
                     return False
 
             # --- Structural nodes (walk children in LIFO) ---

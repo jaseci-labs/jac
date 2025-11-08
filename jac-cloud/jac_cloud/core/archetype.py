@@ -1,7 +1,5 @@
 """Core constructs for Jac Language."""
 
-from __future__ import annotations
-
 from dataclasses import (
     MISSING,
     asdict as _asdict,
@@ -354,7 +352,7 @@ class Access(_Access):
         }
 
     @classmethod
-    def deserialize(cls, data: dict[str, Any]) -> Access:
+    def deserialize(cls, data: dict[str, Any]) -> "Access":
         """Deserialize Access."""
         anchors = cast(dict[str, str], data.get("anchors"))
         return Access(
@@ -373,7 +371,7 @@ class Permission(_Permission):
         return {"all": self.all.name, "roots": self.roots.serialize()}
 
     @classmethod
-    def deserialize(cls, data: dict[str, Any]) -> Permission:
+    def deserialize(cls, data: dict[str, Any]) -> "Permission":
         """Deserialize Permission."""
         return Permission(
             all=AccessLevel[data.get("all", AccessLevel.NO_ACCESS.name)],
@@ -403,7 +401,7 @@ class WalkerAnchorState(AnchorState):
 class BaseAnchor:
     """Base Anchor."""
 
-    archetype: BaseArchetype
+    archetype: "BaseArchetype"
     name: str = ""
     id: ObjectId = field(default_factory=ObjectId)
     root: ObjectId | None = None
@@ -421,7 +419,7 @@ class BaseAnchor:
         return f"{self.__class__.__name__[:1].lower()}:{self.name}:{self.id}"
 
     @staticmethod
-    def ref(ref_id: str) -> BaseAnchor | Anchor:
+    def ref(ref_id: str) -> "BaseAnchor | Anchor":
         """Return ObjectAnchor instance if ."""
         if match := GENERIC_ID_REGEX.search(ref_id):
             cls: type[BaseAnchor]
@@ -517,7 +515,7 @@ class BaseAnchor:
         """Check if populated."""
         return "archetype" in self.__dict__
 
-    def make_stub(self: BaseAnchor | TANCH) -> BaseAnchor | TANCH:
+    def make_stub(self: "BaseAnchor | TANCH") -> "BaseAnchor | TANCH":
         """Return unsynced copy of anchor."""
         if self.is_populated():
             unloaded = object.__new__(self.__class__)
@@ -730,7 +728,7 @@ class BaseAnchor:
 class NodeAnchor(BaseAnchor, _NodeAnchor):  # type: ignore[misc]
     """Node Anchor."""
 
-    archetype: NodeArchetype
+    archetype: "NodeArchetype"
     edges: list["EdgeAnchor"]  # type: ignore[assignment]
 
     class Collection(BaseCollection["NodeAnchor"]):
@@ -742,7 +740,7 @@ class NodeAnchor(BaseAnchor, _NodeAnchor):  # type: ignore[misc]
         ]
 
         @classmethod
-        def __document__(cls, doc: Mapping[str, Any]) -> NodeAnchor:
+        def __document__(cls, doc: Mapping[str, Any]) -> "NodeAnchor":
             """Parse document to NodeAnchor."""
             doc = cast(dict, doc)
 
@@ -764,7 +762,7 @@ class NodeAnchor(BaseAnchor, _NodeAnchor):  # type: ignore[misc]
             return anchor
 
     @classmethod
-    def ref(cls, ref_id: str) -> NodeAnchor:
+    def ref(cls, ref_id: str) -> "NodeAnchor":
         """Return NodeAnchor instance if existing."""
         if match := NODE_ID_REGEX.search(ref_id):
             anchor = object.__new__(cls)
@@ -806,7 +804,7 @@ class NodeAnchor(BaseAnchor, _NodeAnchor):  # type: ignore[misc]
 class EdgeAnchor(BaseAnchor, _EdgeAnchor):  # type: ignore[misc]
     """Edge Anchor."""
 
-    archetype: EdgeArchetype
+    archetype: "EdgeArchetype"
     source: NodeAnchor
     target: NodeAnchor
     is_undirected: bool
@@ -820,7 +818,7 @@ class EdgeAnchor(BaseAnchor, _EdgeAnchor):  # type: ignore[misc]
         ]
 
         @classmethod
-        def __document__(cls, doc: Mapping[str, Any]) -> EdgeAnchor:
+        def __document__(cls, doc: Mapping[str, Any]) -> "EdgeAnchor":
             """Parse document to EdgeAnchor."""
             doc = cast(dict, doc)
             archetype = archetype_to_dataclass(
@@ -842,7 +840,7 @@ class EdgeAnchor(BaseAnchor, _EdgeAnchor):  # type: ignore[misc]
             return anchor
 
     @classmethod
-    def ref(cls, ref_id: str) -> EdgeAnchor:
+    def ref(cls, ref_id: str) -> "EdgeAnchor":
         """Return EdgeAnchor instance if existing."""
         if match := EDGE_ID_REGEX.search(ref_id):
             anchor = object.__new__(cls)
@@ -885,7 +883,7 @@ class EdgeAnchor(BaseAnchor, _EdgeAnchor):  # type: ignore[misc]
 class WalkerAnchor(BaseAnchor, _WalkerAnchor):  # type: ignore[misc]
     """Walker Anchor."""
 
-    archetype: WalkerArchetype
+    archetype: "WalkerArchetype"
     state: WalkerAnchorState
     path: list[NodeAnchor | EdgeAnchor] = field(default_factory=list)  # type: ignore[assignment]
     next: list[NodeAnchor | EdgeAnchor] = field(default_factory=list)  # type: ignore[assignment]
@@ -910,7 +908,7 @@ class WalkerAnchor(BaseAnchor, _WalkerAnchor):  # type: ignore[misc]
         ]
 
         @classmethod
-        def __document__(cls, doc: Mapping[str, Any]) -> WalkerAnchor:
+        def __document__(cls, doc: Mapping[str, Any]) -> "WalkerAnchor":
             """Parse document to WalkerAnchor."""
             doc = cast(dict, doc)
             archetype = archetype_to_dataclass(
@@ -939,7 +937,7 @@ class WalkerAnchor(BaseAnchor, _WalkerAnchor):  # type: ignore[misc]
             return anchor
 
     @classmethod
-    def ref(cls, ref_id: str) -> WalkerAnchor:
+    def ref(cls, ref_id: str) -> "WalkerAnchor":
         """Return EdgeAnchor instance if existing."""
         if match := WALKER_ID_REGEX.search(ref_id):
             anchor = object.__new__(cls)
@@ -992,7 +990,7 @@ class WalkerAnchor(BaseAnchor, _WalkerAnchor):  # type: ignore[misc]
 class ObjectAnchor(BaseAnchor, _ObjectAnchor):  # type: ignore[misc]
     """Object Anchor."""
 
-    archetype: ObjectArchetype
+    archetype: "ObjectArchetype"
 
     class Collection(BaseCollection["ObjectAnchor"]):
         """ObjectAnchor collection interface."""
@@ -1003,7 +1001,7 @@ class ObjectAnchor(BaseAnchor, _ObjectAnchor):  # type: ignore[misc]
         ]
 
         @classmethod
-        def __document__(cls, doc: Mapping[str, Any]) -> ObjectAnchor:
+        def __document__(cls, doc: Mapping[str, Any]) -> "ObjectAnchor":
             """Parse document to NodeAnchor."""
             doc = cast(dict, doc)
 
@@ -1024,7 +1022,7 @@ class ObjectAnchor(BaseAnchor, _ObjectAnchor):  # type: ignore[misc]
             return anchor
 
     @classmethod
-    def ref(cls, ref_id: str) -> ObjectAnchor:
+    def ref(cls, ref_id: str) -> "ObjectAnchor":
         """Return NodeAnchor instance if existing."""
         if match := NODE_ID_REGEX.search(ref_id):
             anchor = object.__new__(cls)

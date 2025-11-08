@@ -3,26 +3,10 @@
 from __future__ import annotations
 
 import ast as ast3
-from dataclasses import dataclass, field
-from typing import Any, Optional, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from jaclang.compiler.passes.ecmascript.estree import Node as EsNode
     from jaclang.compiler.unitree import Source, Token
-
-
-@dataclass
-class ClientManifest:
-    """Client-side rendering manifest metadata."""
-
-    exports: list[str] = field(default_factory=list)
-    globals: list[str] = field(default_factory=list)
-    params: dict[str, list[str]] = field(default_factory=dict)
-    globals_values: dict[str, Any] = field(default_factory=dict)
-    has_client: bool = False
-    imports: dict[str, str] = field(
-        default_factory=dict
-    )  # module_name -> resolved_path
 
 
 class CodeGenTarget:
@@ -36,10 +20,8 @@ class CodeGenTarget:
         self.jac: str = ""
         self.doc_ir: doc.DocType = doc.Text("")
         self.js: str = ""
-        self.client_manifest: ClientManifest = ClientManifest()
         self.py_ast: list[ast3.AST] = []
         self.py_bytecode: Optional[bytes] = None
-        self.es_ast: Optional[EsNode] = None
 
 
 class CodeLocInfo:

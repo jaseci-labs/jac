@@ -46,7 +46,33 @@ In addition to setting up JacLang itself, you may also want to take advantage of
 
 ## Next Steps
 
-- [Jac in a Flash](jac_in_a_flash.md) - See Jac's Syntax with a Toy
-- [A Robust Example](examples/littleX/tutorial.md) - See something real in Jac
-- [Jac Playground](../playground/index.html) - Experience Jac in Browser
+<div class="grid cards" markdown>
+
+-   __Jac in a Flash__
+
+    ---
+
+    *See Jac's Syntax with a Toy*
+
+    [Jac in a Flash](jac_in_a_flash.md){ .md-button .md-button--primary }
+
+-   __A Real World Example__
+
+    ---
+
+    *See somthing real in Jac*
+
+    <!-- [:octicons-arrow-right-24: Getting started](#) -->
+
+    [A Robust Example](examples/littleX/tutorial.md){ .md-button }
+
+-   __Experience Jac in Browser__
+
+    ---
+
+    *Hit the Playground*
+
+    [Jac Playground](../playground/index.html){ .md-button .md-button--primary }
+
+</div>
 

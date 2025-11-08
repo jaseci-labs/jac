@@ -16,8 +16,6 @@ from __future__ import annotations
 
 import ast as py_ast
 import os
-import re
-from threading import Event
 from typing import Optional, Sequence, TYPE_CHECKING, TypeAlias, TypeVar, cast
 
 import jaclang.compiler.unitree as uni
@@ -34,16 +32,11 @@ T = TypeVar("T", bound=uni.UniNode)
 class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
     """Jac Parser."""
 
-    def __init__(
-        self,
-        ir_in: uni.PythonModuleAst,
-        prog: JacProgram,
-        cancel_token: Event | None = None,
-    ) -> None:
+    def __init__(self, ir_in: uni.PythonModuleAst, prog: JacProgram) -> None:
         """Initialize parser."""
         self.mod_path = ir_in.loc.mod_path
         self.orig_src = ir_in.loc.orig_src
-        Transform.__init__(self, ir_in=ir_in, prog=prog, cancel_token=cancel_token)
+        Transform.__init__(self, ir_in=ir_in, prog=prog)
 
     def nu(self, node: T) -> T:
         """Update node."""
@@ -52,8 +45,6 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
 
     def convert(self, node: py_ast.AST) -> uni.UniNode:
         """Get python node type."""
-        if self.is_canceled():
-            raise StopIteration
         if hasattr(self, f"proc_{pascal_to_snake(type(node).__name__)}"):
             ret = getattr(self, f"proc_{pascal_to_snake(type(node).__name__)}")(node)
         else:
@@ -105,8 +96,6 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
             body: list[stmt]
             type_ignores: list[TypeIgnore]
         """
-        if not node.body:
-            return uni.Module.make_stub(inject_src=self.ir_in)
         elements: list[uni.UniNode] = [self.convert(i) for i in node.body]
         elements[0] = (
             elements[0].expr
@@ -1169,7 +1158,7 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
         else:
             raise self.ice()
 
-    def proc_formatted_value(self, node: py_ast.FormattedValue) -> uni.FormattedValue:
+    def proc_formatted_value(self, node: py_ast.FormattedValue) -> uni.ExprStmt:
         """Process python node.
 
         class FormattedValue(expr):
@@ -1180,15 +1169,10 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
         format_spec: expr | None
         """
         value = self.convert(node.value)
-        if node.format_spec:
-            fmt_spec = cast(uni.Expr, self.convert(node.format_spec))
-        else:
-            fmt_spec = None
         if isinstance(value, uni.Expr):
-            ret = uni.FormattedValue(
-                format_part=value,
-                conversion=node.conversion,
-                format_spec=fmt_spec,
+            ret = uni.ExprStmt(
+                expr=value,
+                in_fstring=True,
                 kid=[value],
             )
         else:
@@ -1383,34 +1367,13 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
             __match_args__ = ("values",)
         values: list[expr]
         """
-        valid: list[uni.Token | uni.FormattedValue] = []
-        for i in node.values:
-            if isinstance(i, py_ast.Constant) and isinstance(i.value, str):
-                valid.append(self.operator(Tok.STRING, i.value))
-            elif isinstance(i, py_ast.FormattedValue):
-                converted = self.convert(i)
-                if isinstance(converted, uni.FormattedValue):
-                    valid.append(converted)
-            else:
-                raise self.ice("Invalid node in joined str")
-        ast_seg = py_ast.get_source_segment(self.orig_src.code, node)
-        if ast_seg is None:
-            ast_seg = 'f""'
-        match = re.match(r"(?i)(fr|rf|f)('{3}|\"{3}|'|\")", ast_seg)
-        if match:
-            prefix, quote = match.groups()
-            start = match.group(0)
-            end = quote * (3 if len(quote) == 3 else 1)
-        else:
-            start = "f'"
-            end = "'"
-        tok_start = self.operator(Tok.STRING, start)
-        tok_end = self.operator(Tok.STRING, end)
+        values = [self.convert(value) for value in node.values]
+        valid = [
+            value for value in values if isinstance(value, (uni.String, uni.ExprStmt))
+        ]
         fstr = uni.FString(
-            start=tok_start,
             parts=valid,
-            end=tok_end,
-            kid=[tok_start, *valid, tok_end] if valid else [uni.EmptyToken()],
+            kid=[*valid] if valid else [uni.EmptyToken()],
         )
         return uni.MultiString(strings=[fstr], kid=[fstr])
 

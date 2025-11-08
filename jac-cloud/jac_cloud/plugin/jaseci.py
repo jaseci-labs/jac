@@ -4,7 +4,7 @@ from concurrent.futures import Future
 from contextlib import suppress
 from typing import Callable, Type
 
-from jaclang.runtimelib.archetype import Archetype, ObjectSpatialDestination
+from jaclang.runtimelib.archetype import Archetype, DataSpatialDestination
 from jaclang.runtimelib.machine import (
     JacMachineImpl,
     JacMachineInterface as Jac,
@@ -171,7 +171,7 @@ class JacNodePlugin:
     @staticmethod
     @hookimpl
     def get_edges(
-        origin: list[NodeArchetype], destination: ObjectSpatialDestination
+        origin: list[NodeArchetype], destination: DataSpatialDestination
     ) -> list[EdgeArchetype]:
         """Get edges connected to this node."""
         if FastAPI.is_enabled():
@@ -182,7 +182,7 @@ class JacNodePlugin:
     @staticmethod
     @hookimpl
     def edges_to_nodes(
-        origin: list[NodeArchetype], destination: ObjectSpatialDestination
+        origin: list[NodeArchetype], destination: DataSpatialDestination
     ) -> list[NodeArchetype]:
         """Get set of nodes connected to this node."""
         if FastAPI.is_enabled():

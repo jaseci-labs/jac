@@ -1,24 +1,8 @@
-"""byLLM Package - Lazy Loading."""
+"""byLLM Package."""
 
-import importlib.util
-import sys
+from byllm.llm import Model
+from byllm.mtir import MTIR
+from byllm.plugin import by
+from byllm.types import Image, MockToolCall, Video
 
-spec = importlib.util.find_spec("jaclang")
-
-if spec is None:
-    # Package not installed at all
-    sys.stderr.write(
-        "ImportError: jaclang is required for byLLM to function. "
-        "Please install it via 'pip install jaclang', or reinstall byLLM.\n"
-    )
-    sys.exit(1)
-else:
-    # Package seems to exist, now try importing it
-    try:
-        jaclang = importlib.import_module("jaclang")
-    except Exception:
-        sys.stderr.write(
-            "ImportError: jaclang is installed but could not be imported. "
-            "Try reinstalling it via 'pip install --force-reinstall jaclang'.\n"
-        )
-        sys.exit(1)
+__all__ = ["by", "Image", "MockToolCall", "Model", "MTIR", "Video"]

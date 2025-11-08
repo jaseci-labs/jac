@@ -21,5 +21,5 @@ print(f"Hello {name} , yoo {relation} is {mom_name}. Myself, I am {name}.")
 item = "Apple"
 price = 1.23
 
-print(f"Left aligned: {item:<10}".rstrip() + f" | Price: {price:.2f}")
-print(f"name = {name} 🤔")
+print(f"Left aligned: {item:<10} | Price: {price:.2f}")
+print(f"{name = } 🤔") 

@@ -5,16 +5,16 @@ from __future__ import annotations
 import ast as py_ast
 import marshal
 import types
-from threading import Event
-from typing import Optional, TYPE_CHECKING
+from typing import Optional
 
 import jaclang.compiler.unitree as uni
 from jaclang.compiler.parser import JacParser
-from jaclang.compiler.passes.ecmascript import EsastGenPass
 from jaclang.compiler.passes.main import (
     Alert,
+    BinderPass,
     CFGBuildPass,
     DeclImplMatchPass,
+    DefUsePass,
     JacAnnexPass,
     JacImportDepsPass,
     PreDynamoPass,
@@ -23,26 +23,27 @@ from jaclang.compiler.passes.main import (
     PyastBuildPass,
     PyastGenPass,
     SemDefMatchPass,
-    SemanticAnalysisPass,
     SymTabBuildPass,
     Transform,
     TypeCheckPass,
 )
 from jaclang.compiler.passes.tool import (
-    CommentInjectionPass,
     DocIRGenPass,
+    FuseCommentsPass,
     JacFormatPass,
 )
+from jaclang.compiler.type_system.type_evaluator import TypeEvaluator
 from jaclang.runtimelib.utils import read_file_with_encoding
 from jaclang.settings import settings
+from jaclang.utils.log import logging
 
-if TYPE_CHECKING:
-    from jaclang.compiler.type_system.type_evaluator import TypeEvaluator
+
+logger = logging.getLogger(__name__)
 
 ir_gen_sched = [
     SymTabBuildPass,
     DeclImplMatchPass,
-    SemanticAnalysisPass,
+    DefUsePass,
     SemDefMatchPass,
     CFGBuildPass,
 ]
@@ -50,21 +51,17 @@ type_check_sched: list = [
     TypeCheckPass,
 ]
 py_code_gen = [
-    EsastGenPass,
     PyastGenPass,
     PyJacAstLinkPass,
     PyBytecodeGenPass,
 ]
-format_sched = [DocIRGenPass, CommentInjectionPass, JacFormatPass]
+format_sched = [FuseCommentsPass, DocIRGenPass, JacFormatPass]
 
 
 class JacProgram:
     """JacProgram to handle the Jac program-related functionalities."""
 
-    def __init__(
-        self,
-        main_mod: Optional[uni.ProgramModule] = None,
-    ) -> None:
+    def __init__(self, main_mod: Optional[uni.ProgramModule] = None) -> None:
         """Initialize the JacProgram object."""
         self.mod: uni.ProgramModule = main_mod if main_mod else uni.ProgramModule()
         self.py_raise_map: dict[str, str] = {}
@@ -74,8 +71,6 @@ class JacProgram:
 
     def get_type_evaluator(self) -> TypeEvaluator:
         """Return the type evaluator."""
-        from jaclang.compiler.type_system.type_evaluator import TypeEvaluator
-
         if not self.type_evaluator:
             self.type_evaluator = TypeEvaluator(program=self)
         return self.type_evaluator
@@ -88,9 +83,7 @@ class JacProgram:
         result = self.compile(file_path=full_target)
         return marshal.loads(result.gen.py_bytecode) if result.gen.py_bytecode else None
 
-    def parse_str(
-        self, source_str: str, file_path: str, cancel_token: Event | None = None
-    ) -> uni.Module:
+    def parse_str(self, source_str: str, file_path: str) -> uni.Module:
         """Convert a Jac file to an AST."""
         had_error = False
         if file_path.endswith(".py") or file_path.endswith(".pyi"):
@@ -101,7 +94,6 @@ class JacProgram:
                     orig_src=uni.Source(source_str, mod_path=file_path),
                 ),
                 prog=self,
-                cancel_token=cancel_token,
             )
             had_error = len(py_ast_ret.errors_had) > 0
             mod = py_ast_ret.ir_out
@@ -128,23 +120,25 @@ class JacProgram:
         # options in it.
         no_cgen: bool = False,
         type_check: bool = False,
-        cancel_token: Event | None = None,
     ) -> uni.Module:
         """Convert a Jac file to an AST."""
         keep_str = use_str or read_file_with_encoding(file_path)
-        mod_targ = self.parse_str(keep_str, file_path, cancel_token=cancel_token)
-        self.run_schedule(mod=mod_targ, passes=ir_gen_sched, cancel_token=cancel_token)
+        mod_targ = self.parse_str(keep_str, file_path)
+        self.run_schedule(mod=mod_targ, passes=ir_gen_sched)
         if type_check:
-            self.run_schedule(
-                mod=mod_targ, passes=type_check_sched, cancel_token=cancel_token
-            )
+            self.run_schedule(mod=mod_targ, passes=type_check_sched)
         # If the module has syntax errors, we skip code generation.
         if (not mod_targ.has_syntax_errors) and (not no_cgen):
             if settings.predynamo_pass and PreDynamoPass not in py_code_gen:
                 py_code_gen.insert(0, PreDynamoPass)
-            self.run_schedule(
-                mod=mod_targ, passes=py_code_gen, cancel_token=cancel_token
-            )
+            self.run_schedule(mod=mod_targ, passes=py_code_gen)
+        return mod_targ
+
+    def bind(self, file_path: str, use_str: str | None = None) -> uni.Module:
+        """Bind the Jac module."""
+        keep_str = use_str or read_file_with_encoding(file_path)
+        mod_targ = self.parse_str(keep_str, file_path)
+        BinderPass(ir_in=mod_targ, prog=self)
         return mod_targ
 
     def build(
@@ -153,18 +147,24 @@ class JacProgram:
         """Convert a Jac file to an AST."""
         mod_targ = self.compile(file_path, use_str, type_check=type_check)
         JacImportDepsPass(ir_in=mod_targ, prog=self)
-        SemanticAnalysisPass(ir_in=mod_targ, prog=self)
+        for mod in self.mod.hub.values():
+            DefUsePass(mod, prog=self)
         return mod_targ
 
     def run_schedule(
         self,
         mod: uni.Module,
         passes: list[type[Transform[uni.Module, uni.Module]]],
-        cancel_token: Event | None = None,
     ) -> None:
         """Run the passes on the module."""
+        final_pass: Optional[type[Transform[uni.Module, uni.Module]]] = None
         for current_pass in passes:
-            current_pass(ir_in=mod, prog=self, cancel_token=cancel_token)  # type: ignore
+            if current_pass == PyBytecodeGenPass:
+                final_pass = current_pass
+                break
+            current_pass(ir_in=mod, prog=self)  # type: ignore
+        if final_pass:
+            final_pass(mod, prog=self)
 
     @staticmethod
     def jac_file_formatter(file_path: str) -> str:

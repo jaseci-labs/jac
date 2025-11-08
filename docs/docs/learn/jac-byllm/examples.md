@@ -9,7 +9,7 @@
 
     ---
 
-    *A Tutorial on building an AI-Integrated RPG Game using byLLM.*
+    *A Tutorial on building an AI-Intergrated RPG Game using byLLM.*
 
     [Start](./../../examples/mtp_examples/rpg_game/){ .md-button }
 
@@ -17,7 +17,7 @@
 
     ---
 
-    *A text-based trading game where non-player characters are handled using large language models. Tool calling is used for game mechanics such as bargaining at shops.*
+    *A text-based trding game where non-player charaters are handled using large language models. This is use tool calling for game mechanics such as bargaining at shops.*
 
     [Start](./../../examples/mtp_examples/fantasy_trading_game/){ .md-button }
 
@@ -25,7 +25,7 @@
 
     ---
 
-    *This Tutorial shows how to implement an agentic AI application using the byLLM package and object-spatial programming. MCP integration is also demonstrated here.*
+    *This Tutorial shows how to implemented a agentic AI application using the byLLM package and object-spatiol programming. In additionn MCP integration is demonstrated here.*
 
     [Start](./../../examples/rag_chatbot/Overview/){ .md-button }
 

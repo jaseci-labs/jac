@@ -48,14 +48,8 @@ Read ["Getting Started"] from [Docs] for more information.
 
 ## Installing from Source
 
-If you really want to install from source (though this is not recommended):
-
-```bash
-# with a local clone at `path/to/repo`:
-pip install path/to/repo/jac
-# or to have `pip` clone for you:
-pip install git+https://github.com/jaseci-labs/jaseci#subdirectory=jac
-```
+If you really want to install from source (though this is not recommended), see
+[INSTALL.md](support/INSTALL.md).
 
 ## Getting Help
 

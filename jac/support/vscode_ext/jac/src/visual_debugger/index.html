@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>JacVis</title>
+    <script
+      type="text/javascript"
+      src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"
+    ></script>
+
+    <style type="text/css">
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      #home {
+        width: 100vw;
+        height: 100vh;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        font-size: 2em;
+        font-weight: bold;
+        color: #f1982a;
+      }
+
+      #mynetwork {
+        width: 100vw;
+        height: 100vh;
+        overflow: hidden;
+      }
+
+    </style>
+  </head>
+  <body>
+
+    <div id="home">
+        <p>Jaclang Graph Visualizer</p>
+    </div>
+
+    <div id="mynetwork"></div>
+
+    <script type="text/javascript">
+
+        var network = null;
+        var nodes =  null;
+        var edges =  null;
+
+        var data_nodes = [];
+        var data_edges = [];
+
+        function nodesEqual(node1, node2) {
+            return node1.id === node2.id && node1.label === node2.label;
+        }
+        function edgesEqual(edge1, edge2) {
+            return edge1.from === edge2.from && edge1.to === edge2.to;
+        }
+        function nodeExists(node) {
+            for (let n of data_nodes) {
+                if (nodesEqual(n, node)) return true;
+            }
+            return false;
+        }
+        function edgeExists(edge) {
+            for (let e of data_edges) {
+                if (edgesEqual(e, edge)) return true;
+            }
+            return false;
+        }
+
+        function hideHome() {
+            let home = document.getElementById("home");
+            home.style.display = "none";
+        }
+
+        function showHome() {
+            let home = document.getElementById("home");
+            home.style.display = "flex";
+        }
+
+        function destroyGraph() {
+            if (network !== null) {
+                network.destroy();
+                network = null;
+            }
+        }
+
+        function newGraph(p_data_nodes, p_data_edges) {
+            hideHome();
+            destroyGraph();
+
+            nodes = new vis.DataSet(p_data_nodes);
+            edges = new vis.DataSet(p_data_edges);
+            let container = document.getElementById("mynetwork");
+            let options = {};
+            let data = { nodes: nodes, edges: edges };
+            network = new vis.Network(container, data, options);
+        }
+
+        function updateGraph(p_data_nodes, p_data_edges) {
+            hideHome();
+            if (network === null) {
+                newGraph(p_data_nodes, p_data_edges);
+            } else {
+                for (let node of p_data_nodes) {
+                    if (!nodeExists(node)) {
+                        data_nodes.push(node);
+                        nodes.add([node]);
+                    }
+                }
+                for (let edge of p_data_edges) {
+                    if (!edgeExists(edge)) {
+                        data_edges.push(edge);
+                        edges.add([edge]);
+                    }
+                }
+                network.setOptions({ physics: { enabled: true } });
+                network.stablize();
+            }
+
+        }
+
+        window.addEventListener('message', event => {
+            const message = event.data;
+            if (message['command'] == 'init') {
+                const data = message['data'];
+                newGraph(data['nodes'], data['edges']);
+            } else if (message['command'] == 'update') {
+                const data = message['data'];
+                updateGraph(data['nodes'], data['edges']);
+            } else if (message['command'] == 'clear') {
+                destroyGraph();
+                showHome();
+            }
+        });
+
+    </script>
+  </body>
+</html>

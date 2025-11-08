@@ -15,7 +15,7 @@ byLLM functionality is accessed by importing the `byllm` module and using the `b
 ```python linenums="1"
 import jaclang
 from dataclasses import dataclass
-from byllm.lib import Model, Image, by
+from byllm import Model, Image, by
 
 llm = Model(model_name="gpt-4o")
 
@@ -43,7 +43,7 @@ print(f"Name: {person.full_name}, Description: {person.description}, Year of Bir
 In Jaclang, hyper-parameters are set by passing them to the LLM model:
 
 ```jac linenums="1"
-import from byllm.lib { Model }
+import from byllm { Model }
 
 glob llm = Model(model_name="gpt-4o")
 
@@ -56,7 +56,7 @@ In Python, hyper-parameters are passed as follows:
 
 ```python linenums="1"
 import jaclang
-from byllm.lib import Model, by
+from byllm import Model, by
 
 llm = Model(model_name="gpt-4o")
 
@@ -70,7 +70,7 @@ Python functions can be used as tools in byLLM. Functions defined in Python are 
 
 ```python linenums="1"
 import jaclang
-from byllm.lib import Model
+from byllm import Model
 llm = Model(model_name="gpt-4o")
 
 
@@ -98,7 +98,6 @@ Using `sem` functionality in python is a bit diferent as the attachment is done 
 
 ```python
 from jaclang import JacMachineInterface as Jac
-from byllm.lib import Model, by
 
 @Jac.sem('<Person Semstring>', {
     'name' : '<name semstring>',

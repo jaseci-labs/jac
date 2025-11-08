@@ -9,12 +9,8 @@ var dbg = null;  // The debugger instance.
 var sharedInts = null;
 var continueExecution = false;
 
-// Doc Use
 const PLAYGROUND_PATH = "/playground";
-
-// Development Use
 // const PLAYGROUND_PATH = "";
-
 const JAC_PATH = "/tmp/main.jac";
 const LOG_PATH = "/tmp/logs.log";
 
@@ -53,19 +49,6 @@ onmessage = async (event) => {
       logMessage("Starting execution...");
       await startExecution(data.code);
       logMessage(`Execution finished`);
-      self.postMessage({ type: 'execEnd' });
-      break;
-
-    case 'convertCode':
-      logMessage(`Starting ${data.conversionType} conversion...`);
-      await convertCode(data.conversionType, data.inputCode);
-      logMessage(`Conversion finished`);
-      break;
-
-    case 'executePython':
-      logMessage("Starting Python execution...");
-      await executePython(data.code);
-      logMessage(`Python execution finished`);
       self.postMessage({ type: 'execEnd' });
       break;
 
@@ -281,48 +264,4 @@ with entry {
   }
   logMessage("Execution finished.");
   dbg = null;
-}
-
-async function convertCode(conversionType, inputCode) {
-  pyodide.globals.set('CONVERSION_TYPE', conversionType);
-  pyodide.globals.set('INPUT_CODE', inputCode);
-  pyodide.globals.set('CB_STDOUT', callbackStdout);
-  pyodide.globals.set('CB_STDERR', callbackStderr);
-  pyodide.globals.set('CB_RESULT', callbackConversionResult);
-
-  // Run the conversion script
-  logMessage("Conversion started.");
-  try {
-    await pyodide.runPythonAsync(
-      await readFileAsString("/python/main_conversion.py")
-    );
-  } catch (error) {
-    logMessage(`Conversion error: ${error.message}`);
-    // Send error result back to main thread
-    callbackConversionResult(`// Error during conversion:\n// ${error.message}`);
-  }
-  logMessage("Conversion finished.");
-}
-
-function callbackConversionResult(result) {
-  self.postMessage({ type: 'conversionResult', result: result });
-}
-
-async function executePython(pythonCode) {
-  pyodide.globals.set('PYTHON_CODE', pythonCode);
-  pyodide.globals.set('CB_STDOUT', callbackStdout);
-  pyodide.globals.set('CB_STDERR', callbackStderr);
-
-  // Run the Python execution script
-  logMessage("Python execution started.");
-  try {
-    await pyodide.runPythonAsync(
-      await readFileAsString("/python/main_python_execution.py")
-    );
-  } catch (error) {
-    logMessage(`Python execution error: ${error.message}`);
-    // Send error to stderr callback
-    callbackStderr(`Python execution error: ${error.message}`);
-  }
-  logMessage("Python execution finished.");
 }

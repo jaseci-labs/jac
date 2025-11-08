@@ -1,14 +1,13 @@
-"""Unpack expressions: Unpacking with * (iterable) and ** (mapping)."""
-from __future__ import annotations
-
-def compute(a: int, b: int, c: int, d: int) -> int:
+def combine_via_func(a: int, b: int, c: int, d: int) -> int:
     return a + b + c + d
-list1 = [1, 2, 3]
-list2 = [4, 5, 6]
-combined = [*list1, *list2]
-dict1 = {'a': 1, 'b': 2}
-dict2 = {'c': 3, 'd': 4}
-merged = {**dict1, **dict2}
-result1 = compute(**merged)
-result2 = compute(**dict1, **dict2)
-print(combined, merged, result1, result2)
+
+
+first_list = [1, 2, 3, 4, 5]
+second_list = [5, 8, 7, 6, 9]
+combined_list = [*first_list, *second_list]
+print(combined_list)
+first_dict = {"a": 1, "b": 2}
+second_dict = {"c": 3, "d": 4}
+combined_dict = {**first_dict, **second_dict}
+print(combine_via_func(**combined_dict))
+print(combine_via_func(**first_dict, **second_dict))

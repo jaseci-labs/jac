@@ -6,11 +6,7 @@ import from typing { List, Optional, Tuple }
 
 import jaclang.compiler.unitree as uni;
 import from jaclang { JacMachineInterface as Jac }
-import from jaclang.langserve.utils {
-    find_surrounding_tokens,
-    get_token_start,
-    get_line_of_code
-}
+import utils;
 import lsprotocol.types as lspt;
 
 
@@ -69,14 +65,14 @@ class SemTokManager {
             change_end_line= change.range.end.line;
             change_end_char= change.range.end.character;
             is_delete= change.text == '';
-            (prev_token_index, next_token_index, insert_inside_token)= find_surrounding_tokens(change_start_line,
+            (prev_token_index, next_token_index, insert_inside_token)= utils.find_surrounding_tokens(change_start_line,
             change_start_char,
             change_end_line,
             change_end_char,
             sem_tokens);
-            prev_tok_pos= get_token_start(prev_token_index, sem_tokens);
-            nxt_tok_pos= get_token_start(next_token_index, sem_tokens);
-            changing_line_text= get_line_of_code(change_start_line, document_lines);
+            prev_tok_pos= utils.get_token_start(prev_token_index, sem_tokens);
+            nxt_tok_pos= utils.get_token_start(next_token_index, sem_tokens);
+            changing_line_text= utils.get_line_of_code(change_start_line, document_lines);
             if not changing_line_text {return sem_tokens ;}
             is_edit_between_tokens= bool(change_start_line > prev_tok_pos[0] or change_start_line == prev_tok_pos[0] and change_start_char > ( prev_tok_pos[
                 1
@@ -90,7 +86,7 @@ class SemTokManager {
             if is_delete {
                 next_token_index= ( prev_token_index + 5 ) if insert_inside_token and prev_token_index is not None or next_token_index and prev_token_index is not None and next_token_index >= 10 and ( next_token_index - prev_token_index ) == 10 else next_token_index;
                 if next_token_index is None {return sem_tokens ;}
-                nxt_tok_pos= get_token_start(next_token_index, sem_tokens);
+                nxt_tok_pos= utils.get_token_start(next_token_index, sem_tokens);
                 is_single_line_change= change_end_line == change_start_line;
                 is_next_token_same_line= change_end_line == nxt_tok_pos[0];
                 if is_single_line_change and insert_inside_token and prev_token_index is not None {
@@ -294,7 +290,7 @@ class SemTokManager {
                 } else {
                     is_token_boundary_edit= True;
                     next_token_index= ( prev_token_index + 5 );
-                    nxt_tok_pos= get_token_start(next_token_index, sem_tokens);
+                    nxt_tok_pos= utils.get_token_start(next_token_index, sem_tokens);
                     break ;
                 }
             }
@@ -303,7 +299,7 @@ class SemTokManager {
             selected_region= ( change_end_char - change_start_char );
             index_offset= 2;
             sem_tokens[( prev_token_index + index_offset )] += ( len(change.text) - selected_region );
-            if prev_tok_pos[0] == get_token_start(( prev_token_index + 5 ),
+            if prev_tok_pos[0] == utils.get_token_start(( prev_token_index + 5 ),
             sem_tokens)[0] {
                 sem_tokens[( ( prev_token_index + index_offset ) + 4 )] += ( len(change.text) - selected_region );
             }

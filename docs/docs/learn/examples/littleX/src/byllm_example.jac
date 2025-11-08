@@ -1,4 +1,4 @@
-import from byllm.lib {Model}
+import from byllm {Model}
 
 glob llm = Model(host="http://127.0.0.1:11434", model_name="ollama/llama3.2:1b");
 
