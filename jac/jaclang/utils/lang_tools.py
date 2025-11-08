@@ -80,6 +80,7 @@ class AstTool:
                 "UniNode",
                 "UniScopeNode",
                 "UniCFGNode",
+                "ClientFacingNode",
                 "ProgramModule",
                 "OOPAccessNode",
                 "WalkerStmtOnlyNode",
@@ -272,7 +273,7 @@ class AstTool:
 
                     esast_pass = EsastGenPass(ir, prog)
                     es_ir = esast_pass.ir_out
-                    if hasattr(es_ir.gen, "es_ast") and es_ir.gen.es_ast:
+                    if es_ir.gen.es_ast:
                         return f"\n{json.dumps(es_node_to_dict(es_ir.gen.es_ast), indent=2)}"
                     else:
                         return "ECMAScript AST generation failed."
@@ -282,7 +283,7 @@ class AstTool:
 
                     esast_pass = EsastGenPass(ir, prog)
                     es_ir = esast_pass.ir_out
-                    if hasattr(es_ir.gen, "es_ast") and es_ir.gen.es_ast:
+                    if es_ir.gen.es_ast:
                         return f"\n{es_to_js(es_ir.gen.es_ast)}"
                     else:
                         return "ECMAScript code generation failed."

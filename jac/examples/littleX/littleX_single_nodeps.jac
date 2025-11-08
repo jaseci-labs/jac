@@ -1,11 +1,5 @@
 import datetime;
-cl import from jac:client_runtime {
-    jacLogin,
-    jacLogout,
-    jacSignup,
-    renderJsxTree,
-}
-
+cl import from .littlex_fe { App }
 
 node Profile {
     has username: str = "";
@@ -37,7 +31,6 @@ node Profile {
     }
 }
 
-
 obj TweetInfo {
     has username: str;
     has id: str;
@@ -46,7 +39,6 @@ obj TweetInfo {
     has likes: list;
     has comments: list;
 }
-
 
 node Tweet {
     has content: str;
@@ -107,7 +99,6 @@ node Tweet {
     }
 }
 
-
 node Comment {
     has content: str;
 
@@ -122,15 +113,9 @@ node Comment {
     }
 }
 
-
 edge Follow {}
-
-
 edge Like {}
-
-
 edge Post {}
-
 
 walker visit_profile {
     can visit_profile with `root entry {
@@ -142,14 +127,11 @@ walker visit_profile {
     }
 }
 
-
 walker update_profile(visit_profile) {
     has new_username: str;
 }
 
-
 walker get_profile(visit_profile) {}
-
 
 walker load_user_profiles {
     can load_profiles with `root entry {
@@ -165,12 +147,8 @@ walker load_user_profiles {
     }
 }
 
-
 walker follow_request {}
-
-
 walker un_follow_request {}
-
 
 walker create_tweet(visit_profile) {
     has content: str;
@@ -182,33 +160,23 @@ walker create_tweet(visit_profile) {
     }
 }
 
-
 walker update_tweet {
     has updated_content: str;
 }
 
-
 walker remove_tweet {}
-
-
 walker like_tweet {}
-
-
 walker remove_like {}
-
 
 walker comment_tweet {
     has content: str;
 }
 
-
 walker update_comment {
     has updated_content: str;
 }
 
-
 walker remove_comment {}
-
 
 walker load_feed(visit_profile) {
     has search_query: str = "";
@@ -226,514 +194,10 @@ walker load_feed(visit_profile) {
     }
 }
 
-
 # Client-side UI Components (marked with 'cl' for browser execution)
 # ===================================================================
- # Client-side router state - using a global object to hold state
- cl let appState: dict =
-{"current_route" : "login" , "tweets" : [] , "loading" : False };
 
-
-# Router helper functions
-cl def navigate_to(route: str) -> None {
-    console.log("Navigating to:", route);
-    appState["current_route"] = route;
-    window.history.pushState({}, "", "#" + route);
-    # Call render_app asynchronously
-    render_app();
-# Fire and forget - browser will handle the async
- }
-
-
-cl def render_app()  -> None {
-    console.log("render_app called, route:", appState.get("current_route", "unknown"));
-    root_element = document.getElementById("__jac_root");
-    if root_element {
-        component = App();
-        console.log("Rendering component to root");
-        renderJsxTree(component, root_element);
-        console.log("Render complete");
-    }
-}
-
-
-cl def get_current_route()  -> str {
-    return appState.get("current_route", "login");
-}
-
-
-# Handle browser back/forward buttons
-cl def handle_popstate(event: any) -> None {
-    hash = window.location.hash;
-    if hash {
-        appState["current_route"] = hash[1:];
-    # Remove the '#'
-     } else {
-        appState["current_route"] = "login";
-    }
-    render_app();
-}
-
-
-# Initialize route from URL hash
-cl def init_router()  -> None {
-    hash = window.location.hash;
-    if hash {
-        appState["current_route"] = hash[1:];
-    # Remove the '#'
-     } else {
-        if jacIsLoggedIn() {
-            appState["current_route"] = "home";
-        } else {
-            appState["current_route"] = "login";
-        }
-    }
-    window.addEventListener("popstate", handle_popstate);
-}
-
-
-# Shared data model for client/server
-cl obj ClientTweet {
-    has username: str = "";
-    has id: str = "";
-    has content: str = "";
-    has likes: list = [];
-    has comments: list = [];
-}
-
-
-cl obj ClientProfile {
-    has username: str = "";
-    has id: str = "";
-}
-
-
-# UI Components - Render a single tweet card
-cl def TweetCard(tweet: ClientTweet) -> any {
-    return <div
-        class="tweet-card"
-        style={
-        {"border" : "1px solid #e1e8ed" , "padding" : "15px" , "margin" : "10px 0" , "borderRadius" : "8px" }}>
-    <div
-            class="tweet-header"
-            style={{"fontWeight" : "bold" , "marginBottom" : "8px" }}>
-        @
-        {tweet.username}
-        </div>
-    <div class="tweet-content" style={{"marginBottom" : "12px" }}>
-        {tweet.content}
-        </div>
-    <div class="tweet-actions" style={{"display" : "flex" , "gap" : "15px" }}>
-        <button
-                onclick={like_tweet_action(tweet.id)}
-                style={{"padding" : "5px 10px" , "cursor" : "pointer" }}>
-            Like (
-            {tweet.likes.length}
-            )
-            </button>
-        <button style={{"padding" : "5px 10px" }}>
-            Comment (
-            {tweet.comments.length}
-            )
-            </button>
-        </div>
-    </div>;
-}
-
-
-# Handle liking a tweet - calls server walker directly
-# The compiler automatically transforms this to __jacCallFunction at compile time!
- cl async def like_tweet_action(
-    tweet_id: str
-) -> any {
-    try {
-        result = await like_tweet(tweet_id);
-        print("Tweet liked:", result);
-        # Re-render feed after like
-        window.location.reload();
-    } except Exception as e {
-        print("Error liking tweet:", e);
-    }
-}
-
-
-# Render the main feed view
-cl def FeedView(tweets: list) -> any {
-    return <div
-        class="feed-container"
-        style={
-        {"maxWidth" : "600px" , "margin" : "0 auto" , "fontFamily" : "sans-serif" }}>
-    <div
-            class="feed-header"
-            style={{"padding" : "20px" , "borderBottom" : "1px solid #e1e8ed" }}>
-        <h1 style={{"margin" : "0" }}>
-            LittleX Feed
-            </h1>
-        </div>
-    <div class="feed-content">
-        {[TweetCard(tweet) for tweet in tweets]}
-        </div>
-    </div>;
-}
-
-
-# Render login form
-cl def LoginForm()  -> any {
-    return <div
-        class="login-container"
-        style={
-        {"maxWidth" : "400px" , "margin" : "50px auto" , "padding" : "20px" , "border" : "1px solid #e1e8ed" , "borderRadius" : "8px" , "fontFamily" : "sans-serif" }}>
-    <h2 style={{"marginTop" : "0" }}>
-        Login to LittleX
-        </h2>
-    <form onsubmit={handle_login}>
-        <div style={{"marginBottom" : "15px" }}>
-            <label style={{"display" : "block" , "marginBottom" : "5px" }}>
-                Username:
-                </label>
-            <input
-                type="text"
-                id="username"
-                style={
-                {"width" : "100%" , "padding" : "8px" , "boxSizing" : "border-box" }}/>
-            </div>
-        <div style={{"marginBottom" : "15px" }}>
-            <label style={{"display" : "block" , "marginBottom" : "5px" }}>
-                Password:
-                </label>
-            <input
-                type="password"
-                id="password"
-                style={
-                {"width" : "100%" , "padding" : "8px" , "boxSizing" : "border-box" }}/>
-            </div>
-        <button
-                type="submit"
-                style={
-                {"width" : "100%" , "padding" : "10px" , "backgroundColor" : "#1da1f2" , "color" : "white" , "border" : "none" , "borderRadius" : "4px" , "cursor" : "pointer" }}>
-            Login
-            </button>
-        </form>
-    <div style={{"marginTop" : "15px" , "textAlign" : "center" }}>
-        <a
-                href="#signup"
-                onclick={go_to_signup}
-                style={
-                {"color" : "#1da1f2" , "textDecoration" : "none" , "cursor" : "pointer" }}>
-            Don't have an account? Sign up
-            </a>
-        </div>
-    </div>;
-}
-
-
-# Handle login form submission
-cl async def handle_login(event: any) -> None {
-    event.preventDefault();
-    username = document.getElementById("username").value;
-    password = document.getElementById("password").value;
-    success = await jacLogin(username, password);
-    if success {
-        navigate_to("home");
-    } else {
-        alert("Login failed. Please try again.");
-    }
-}
-
-
-# Render signup form
-cl def SignupForm()  -> any {
-    return <div
-        class="signup-container"
-        style={
-        {"maxWidth" : "400px" , "margin" : "50px auto" , "padding" : "20px" , "border" : "1px solid #e1e8ed" , "borderRadius" : "8px" , "fontFamily" : "sans-serif" }}>
-    <h2 style={{"marginTop" : "0" }}>
-        Sign Up for LittleX
-        </h2>
-    <form onsubmit={handle_signup}>
-        <div style={{"marginBottom" : "15px" }}>
-            <label style={{"display" : "block" , "marginBottom" : "5px" }}>
-                Username:
-                </label>
-            <input
-                type="text"
-                id="signup-username"
-                required
-                style={
-                {"width" : "100%" , "padding" : "8px" , "boxSizing" : "border-box" }}/>
-            </div>
-        <div style={{"marginBottom" : "15px" }}>
-            <label style={{"display" : "block" , "marginBottom" : "5px" }}>
-                Password:
-                </label>
-            <input
-                type="password"
-                id="signup-password"
-                required
-                style={
-                {"width" : "100%" , "padding" : "8px" , "boxSizing" : "border-box" }}/>
-            </div>
-        <div style={{"marginBottom" : "15px" }}>
-            <label style={{"display" : "block" , "marginBottom" : "5px" }}>
-                Confirm Password:
-                </label>
-            <input
-                type="password"
-                id="signup-password-confirm"
-                required
-                style={
-                {"width" : "100%" , "padding" : "8px" , "boxSizing" : "border-box" }}/>
-            </div>
-        <button
-                type="submit"
-                style={
-                {"width" : "100%" , "padding" : "10px" , "backgroundColor" : "#1da1f2" , "color" : "white" , "border" : "none" , "borderRadius" : "4px" , "cursor" : "pointer" }}>
-            Sign Up
-            </button>
-        </form>
-    <div style={{"marginTop" : "15px" , "textAlign" : "center" }}>
-        <a
-                href="#login"
-                onclick={go_to_login}
-                style={
-                {"color" : "#1da1f2" , "textDecoration" : "none" , "cursor" : "pointer" }}>
-            Already have an account? Login
-            </a>
-        </div>
-    </div>;
-}
-
-
-# Navigation helper functions
-cl def go_to_login(event: any) -> None {
-    event.preventDefault();
-    navigate_to("login");
-}
-
-
-cl def go_to_signup(event: any) -> None {
-    event.preventDefault();
-    navigate_to("signup");
-}
-
-
-cl def go_to_home(event: any) -> None {
-    event.preventDefault();
-    navigate_to("home");
-}
-
-
-cl def go_to_profile(event: any) -> None {
-    event.preventDefault();
-    navigate_to("profile");
-}
-
-
-# Handle signup form submission
-cl async def handle_signup(event: any) -> None {
-    event.preventDefault();
-    username = document.getElementById("signup-username").value;
-    password = document.getElementById("signup-password").value;
-    password_confirm = document.getElementById("signup-password-confirm").value;
-    # Client-side validation
-     if password != password_confirm {
-        alert("Passwords do not match!");
-        return;
-    }
-    if username.length < 3 {
-        alert("Username must be at least 3 characters long.");
-        return;
-    }
-    if password.length < 6 {
-        alert("Password must be at least 6 characters long.");
-        return;
-    }
-    # Use runtime auth function - no need to know about /user/create endpoint!
-    result = await jacSignup(username, password);
-    if result.get("success") {
-        alert("Account created successfully! Welcome to LittleX!");
-        navigate_to("home");
-    } else {
-        alert(result.get("error", "Signup failed"));
-    }
-}
-
-
-# Handle logout
-cl def logout_action()  -> None {
-    jacLogout();
-    navigate_to("login");
-}
-
-
-# Main App component that handles routing
-cl def App()  -> any {
-    route = get_current_route();
-    nav_bar = build_nav_bar(route);
-    content_view = get_view_for_route(route);
-    return <div class="app-container">
-    
-    {nav_bar}
-    {content_view}
-    
-    </div>;
-}
-
-
-# Get the view for a given route (handles async)
-cl def get_view_for_route(
-    route: str
-) -> any {
-    if route == "signup" {
-        return SignupForm();
-    }
-    if route == "home" {
-        # For home, return a loading placeholder and load async
-         return HomeViewLoader();
-    }
-    if route == "profile" {
-        return ProfileView();
-    }
-    # Default to login
-     return LoginForm();
-}
-
-
-# Loader component for home view that handles async loading
-cl def HomeViewLoader()  -> any {
-    # Trigger async load
-    load_home_view();
-    # Return loading state
-     return <div
-        style={
-        {"textAlign" : "center" , "padding" : "50px" , "fontFamily" : "sans-serif" }}>
-    <h2>
-        Loading feed...
-        </h2>
-    </div>;
-}
-
-
-# Async function to load and render home view
-cl async def load_home_view()  -> None {
-    view = await HomeView();
-    root = document.getElementById("__jac_root");
-    if root {
-        renderJsxTree(
-            <div class="app-container">
-            
-            {build_nav_bar("home")}
-            {view}
-            
-            </div>,
-            root
-        );
-    }
-}
-
-
-# Helper to build navigation bar
-cl def build_nav_bar(route: str) -> any {
-    if not jacIsLoggedIn() or route == "login" or route == "signup" {
-        return None;
-    }
-    return <nav
-        style={
-        {"backgroundColor" : "#1da1f2" , "padding" : "15px" , "marginBottom" : "20px" }}>
-    <div
-            style={
-            {"maxWidth" : "600px" , "margin" : "0 auto" , "display" : "flex" , "gap" : "20px" , "alignItems" : "center" }}>
-        <a
-                href="#home"
-                onclick={go_to_home}
-                style={
-                {"color" : "white" , "textDecoration" : "none" , "fontWeight" : "bold" , "cursor" : "pointer" }}>
-            Home
-            </a>
-        <a
-                href="#profile"
-                onclick={go_to_profile}
-                style={
-                {"color" : "white" , "textDecoration" : "none" , "fontWeight" : "bold" , "cursor" : "pointer" }}>
-            Profile
-            </a>
-        <button
-                onclick={logout_action}
-                style={
-                {"marginLeft" : "auto" , "padding" : "5px 15px" , "backgroundColor" : "white" , "color" : "#1da1f2" , "border" : "none" , "borderRadius" : "4px" , "cursor" : "pointer" , "fontWeight" : "bold" }}>
-            Logout
-            </button>
-        </div>
-    </nav>;
-}
-
-
-# Home view (async version of littlex_home)
-cl async def HomeView()  -> any {
-    if not jacIsLoggedIn() {
-        navigate_to("login");
-        return <div>
-        </div>;
-    }
-    try {
-        # Call load_feed walker directly - compiler transforms to __jacCallFunction!
-        result = await load_feed();
-        # Transform walker results to ClientTweet objects
-        tweets = [];
-        if result and result.reports and result.reports.length > 0 {
-            feed_data = result.reports[0];
-            for item in feed_data {
-                if item.Tweet_Info {
-                    tweet_info = item.Tweet_Info;
-                    tweets.append(
-                        ClientTweet(
-                            username=tweet_info.username,
-                            id=tweet_info.id,
-                            content=tweet_info.content,
-                            likes=tweet_info.likes,
-                            comments=tweet_info.comments
-                        )
-                    );
-                }
-            }
-        }
-        return FeedView(tweets);
-    } except Exception as e {
-        return <div style={{"padding" : "20px" , "color" : "red" }}>
-        Error loading feed:
-        {String(e)}
-        </div>;
-    }
-}
-
-
-# Profile view
-cl def ProfileView()  -> any {
-    if not jacIsLoggedIn() {
-        navigate_to("login");
-        return <div>
-        </div>;
-    }
-    return <div
-        class="profile-container"
-        style={
-        {"maxWidth" : "600px" , "margin" : "20px auto" , "padding" : "20px" , "fontFamily" : "sans-serif" }}>
-    <h1>
-        Profile
-        </h1>
-    <div
-            style={
-            {"padding" : "15px" , "border" : "1px solid #e1e8ed" , "borderRadius" : "8px" }}>
-        <p>
-            Profile information will be displayed here.
-            </p>
-        </div>
-    </div>;
-}
-
-
-# Main SPA entry point - this is what gets called when the page loads
+# Main SPA entry point - simplified with reactive routing
 cl def littlex_app()  -> any {
-    init_router();
     return App();
 }

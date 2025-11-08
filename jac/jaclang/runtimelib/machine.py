@@ -42,6 +42,7 @@ from jaclang.runtimelib.archetype import (
     ObjectSpatialPath,
     Root as _Root,
 )
+from jaclang.runtimelib.client_bundle import ClientBundle, ClientBundleBuilder
 from jaclang.runtimelib.constructs import (
     AccessLevel,
     Anchor,
@@ -65,6 +66,9 @@ from jaclang.runtimelib.utils import (
 from jaclang.utils import infer_language
 
 import pluggy
+
+if TYPE_CHECKING:
+    from jaclang.runtimelib.server import ModuleIntrospector
 
 
 plugin_manager = pluggy.PluginManager("jac")
@@ -117,10 +121,6 @@ class ExecutionContext:
     def get_root(self) -> Root:
         """Get current root."""
         return cast(Root, self.root_state.archetype)
-
-    def global_system_root(self) -> NodeAnchor:
-        """Get global system root."""
-        return self.system_root
 
 
 class JacAccessValidation:
@@ -1450,6 +1450,38 @@ class JacBasics:
         return func
 
 
+class JacClientBundle:
+    """Jac Client Bundle Operations - Generic interface for client bundling."""
+
+    @staticmethod
+    def get_client_bundle_builder() -> ClientBundleBuilder:
+        """Get the client bundle builder instance."""
+        return ClientBundleBuilder()
+
+    @staticmethod
+    def build_client_bundle(
+        module: types.ModuleType,
+        force: bool = False,
+    ) -> ClientBundle:
+        """Build a client bundle for the supplied module."""
+        builder = JacMachineInterface.get_client_bundle_builder()
+        return builder.build(module, force=force)
+
+
+class JacAPIServer:
+    """Jac API Server Operations - Generic interface for API server."""
+
+    @staticmethod
+    def get_module_introspector(
+        module_name: str,
+        base_path: str | None = None,
+    ) -> "ModuleIntrospector":
+        from jaclang.runtimelib.server import ModuleIntrospector
+
+        """Get the module introspector instance."""
+        return ModuleIntrospector(module_name, base_path)
+
+
 class JacByLLM:
     """Jac byLLM integration."""
 
@@ -1736,6 +1768,8 @@ class JacMachineInterface(
     JacBuiltin,
     JacCmd,
     JacBasics,
+    JacClientBundle,
+    JacAPIServer,
     JacByLLM,
     JacUtils,
 ):

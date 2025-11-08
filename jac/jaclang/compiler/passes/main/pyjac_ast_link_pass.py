@@ -110,10 +110,16 @@ class PyJacAstLinkPass(UniPass):
             self.link_jac_py_nodes(jac_node=node.alias, py_nodes=node.gen.py_ast)
 
     def exit_global_stmt(self, node: uni.GlobalStmt) -> None:
+        # Skip linking if Python AST was not generated (e.g., for client-only nodes)
+        if not node.gen.py_ast or len(node.gen.py_ast) < len(node.target):
+            return
         for x, y in enumerate(node.target):
             self.link_jac_py_nodes(jac_node=y, py_nodes=[node.gen.py_ast[x]])
 
     def exit_non_local_stmt(self, node: uni.NonLocalStmt) -> None:
+        # Skip linking if Python AST was not generated (e.g., for client-only nodes)
+        if not node.gen.py_ast or len(node.gen.py_ast) < len(node.target):
+            return
         for x, y in enumerate(node.target):
             self.link_jac_py_nodes(jac_node=y, py_nodes=[node.gen.py_ast[x]])
 

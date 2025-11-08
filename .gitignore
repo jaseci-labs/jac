@@ -66,3 +66,5 @@ mydatabase/
 *.dir
 *.log
 .env
+
+node_modules

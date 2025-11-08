@@ -4,6 +4,8 @@ This module provides a LLM class that abstracts LiteLLM and offers
 enhanced functionality and interface for language model operations.
 """
 
+from __future__ import annotations
+
 # flake8: noqa: E402
 
 import os
@@ -50,7 +52,7 @@ class Model:
         """
         self.llm_connector = LLMConnector.for_model(model_name, **kwargs)
 
-    def __call__(self, **kwargs: object) -> "Model":
+    def __call__(self, **kwargs: object) -> Model:
         """Construct the call parameters and return self (factory pattern).
 
         Example:

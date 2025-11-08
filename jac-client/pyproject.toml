@@ -1,0 +1,24 @@
+[tool.poetry]
+name = "jac-client"
+version = "0.1.0"
+description = ""
+authors = ["Jason Mars <jason@mars.ninja>"]
+readme = "README.md"
+packages = [{include = "jac_client"}]
+
+[tool.poetry.dependencies]
+python = "^3.12.0"
+jaclang = "0.8.10"
+
+[tool.poetry.group.dev.dependencies]
+python-dotenv = "1.0.1"
+pytest = "8.3.5"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.plugins."jac"]
+serve = "jac_client.plugin.client:JacClient"
+create_jac_app = "jac_client.plugin.cli:JacCmd"
+

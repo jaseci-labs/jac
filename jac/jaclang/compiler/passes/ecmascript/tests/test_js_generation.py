@@ -81,70 +81,77 @@ class JavaScriptGenerationTests(TestCase):
         """Core fixture should cover fundamental language constructs."""
         js_code = self.compile_fixture_to_js(self.CORE_FIXTURE)
 
-        self.assertIn("const global_counter = 0;", js_code)
-        self.assertIn("function add", js_code)
-        self.assertIn("function greet", js_code)
-        self.assertIn("function fibonacci", js_code)
-        self.assertIn("for (const i of range(limit))", js_code)
-        self.assertIn("while (counter > 0)", js_code)
+        # Functions and control flow
+        for pattern in [
+            "function add",
+            "function greet",
+            "function fibonacci",
+            "for (const i of range(limit))",
+            "while (counter > 0)",
+        ]:
+            self.assertIn(pattern, js_code)
 
-        # Operators map to JavaScript equivalents
-        self.assertIn("===", js_code)
-        self.assertIn("!==", js_code)
-        self.assertIn("&&", js_code)
-        self.assertIn("||", js_code)
+        # Operators
+        for op in ["===", "!==", "&&", "||"]:
+            self.assertIn(op, js_code)
 
-        # Classes and enums materialize as expected
-        self.assertIn("class Person", js_code)
-        self.assertIn("class Employee extends Person", js_code)
-        self.assertIn("class Calculator", js_code)
-        self.assertIn("class MathUtils", js_code)
-        self.assertIn("const Status", js_code)
-        self.assertIn("const Priority", js_code)
+        # Classes and enums
+        for pattern in [
+            "class Person",
+            "class Employee extends Person",
+            "class Calculator",
+            "class MathUtils",
+            "const Status",
+            "const Priority",
+        ]:
+            self.assertIn(pattern, js_code)
 
-        # Exception handling remains intact
-        self.assertIn("try", js_code)
-        self.assertIn("catch (err)", js_code)
-        self.assertIn("finally", js_code)
+        # Exception handling
+        for pattern in ["try", "catch (err)", "finally"]:
+            self.assertIn(pattern, js_code)
 
         self.assert_balanced_syntax(js_code, self.CORE_FIXTURE)
         self.assert_no_jac_keywords(js_code, self.CORE_FIXTURE)
-        self.assertGreater(len(js_code), 200, "Core fixture generated suspiciously small output")
+        self.assertGreater(len(js_code), 200)
 
     def test_advanced_fixture_emits_expected_constructs(self) -> None:
         """Advanced fixture should exercise higher-level Jac features."""
         js_code = self.compile_fixture_to_js(self.ADVANCED_FIXTURE)
 
-        self.assertIn("function lambda_examples", js_code)
-        self.assertIn("async function fetch_value", js_code)
-        self.assertIn("await fetch_value", js_code)
-        self.assertIn("async function gather_async", js_code)
-        self.assertIn("function generator_examples", js_code)
-        self.assertIn("function spread_and_rest_examples", js_code)
-        self.assertIn("...defaults", js_code)
-        self.assertIn("function template_literal_examples", js_code)
-        self.assertIn("score >= 60 ? \"pass\" : \"fail\"", js_code)
-        self.assertIn("function do_while_simulation", js_code)
-        self.assertIn("function build_advanced_report", js_code)
-
-        # Ensure pattern matching lowered into a callable
-        self.assertIn("function pattern_matching_examples", js_code)
+        patterns = [
+            "function lambda_examples",
+            "async function fetch_value",
+            "await fetch_value",
+            "async function gather_async",
+            "function generator_examples",
+            "function spread_and_rest_examples",
+            "...defaults",
+            "function template_literal_examples",
+            'score >= 60 ? "pass" : "fail"',
+            "function do_while_simulation",
+            "function build_advanced_report",
+            "function pattern_matching_examples",
+        ]
+        for pattern in patterns:
+            self.assertIn(pattern, js_code)
 
         self.assert_balanced_syntax(js_code, self.ADVANCED_FIXTURE)
         self.assert_no_jac_keywords(js_code, self.ADVANCED_FIXTURE)
-        self.assertGreater(len(js_code), 150, "Advanced fixture output unexpectedly small")
+        self.assertGreater(len(js_code), 150)
 
     def test_client_fixture_generates_client_bundle(self) -> None:
         """Client-focused fixture should emit JSX-flavoured JavaScript."""
         js_code = self.compile_fixture_to_js(self.CLIENT_FIXTURE)
 
-        self.assertIn('const API_URL = "https://api.example.com";', js_code)
-        self.assertIn("function component()", js_code)
-        self.assertIn('__jacJsx("div"', js_code)
-        self.assertIn("class ButtonProps", js_code)
-        self.assertIn("constructor(props", js_code)
-        self.assertNotIn("server_only", js_code, "Server-only code leaked into client bundle")
-
+        for pattern in [
+            'const API_URL = "https://api.example.com";',
+            "function component()",
+            '__jacJsx("div"',
+            "class ButtonProps",
+            "constructor(props",
+        ]:
+            self.assertIn(pattern, js_code)
+        self.assertNotIn("server_only", js_code)
         self.assert_balanced_syntax(js_code, self.CLIENT_FIXTURE)
 
     def test_iife_fixture_generates_function_expressions(self) -> None:
@@ -152,13 +159,17 @@ class JavaScriptGenerationTests(TestCase):
         fixture_path = self.lang_fixture_abs_path("iife_functions_client.jac")
         js_code = self.compile_fixture_to_js(fixture_path)
 
-        # Ensure representative IIFE constructs are present
-        self.assertIn("function get_value()", js_code)
-        self.assertIn("function calculate(x, y)", js_code)
-        self.assertIn("}();", js_code, "IIFE invocation pattern missing in generated JS")
-        self.assertIn("function outer()", js_code)
-        self.assertIn("return () => {\n    let count = count + 1;\n    return count;\n  };", js_code)
-        self.assertIn("All client-side IIFE tests completed!", js_code)
+        for pattern in [
+            "function get_value()",
+            "function calculate(x, y)",
+            "}();",
+            "function outer()",
+            "All client-side IIFE tests completed!",
+        ]:
+            self.assertIn(pattern, js_code)
+        self.assertIn(
+            "return () => {\n    count = count + 1;\n    return count;\n  };", js_code
+        )
 
     def test_cli_js_command_outputs_js(self) -> None:
         """jac js CLI should emit JavaScript for the core fixture."""
@@ -175,8 +186,8 @@ class JavaScriptGenerationTests(TestCase):
             env=env,
         )
 
-        self.assertEqual(result.returncode, 0, f"CLI command failed: {result.stderr}")
-        self.assertGreater(len(result.stdout), 0, "CLI produced no output")
+        self.assertEqual(result.returncode, 0, f"CLI failed: {result.stderr}")
+        self.assertGreater(len(result.stdout), 0)
         self.assertIn("function add", result.stdout)
 
     def test_empty_file_generates_minimal_js(self) -> None:
@@ -187,7 +198,7 @@ class JavaScriptGenerationTests(TestCase):
 
         try:
             js_code = self.compile_fixture_to_js(temp_path)
-            self.assertLess(len(js_code), 100, "Empty file produced unexpectedly large output")
+            self.assertLess(len(js_code), 100)
             self.assert_balanced_syntax(js_code, temp_path)
         finally:
             os.unlink(temp_path)
@@ -218,21 +229,326 @@ cl def check_types() {
         try:
             js_code = self.compile_fixture_to_js(temp_path)
 
-            # Verify typeof operator is present
-            self.assertIn("typeof", js_code, "typeof operator should be present in output")
+            for pattern in ["typeof x", "typeof y", "typeof obj", "typeof arr[0]"]:
+                self.assertIn(pattern, js_code)
+            self.assertNotIn("type(", js_code)
+            self.assertEqual(js_code.count("typeof"), 4)
+            self.assert_balanced_syntax(js_code, temp_path)
+        finally:
+            os.unlink(temp_path)
 
-            # Verify specific transformations
-            self.assertIn("typeof x", js_code, "type(x) should become typeof x")
-            self.assertIn("typeof y", js_code, "type(y) should become typeof y")
-            self.assertIn("typeof obj", js_code, "type(obj) should become typeof obj")
-            self.assertIn("typeof arr[0]", js_code, "type(arr[0]) should become typeof arr[0]")
+    def test_category1_named_imports_generate_correct_js(self) -> None:
+        """Test Category 1 named imports from proposal document."""
+        fixture_path = self.get_fixture_path("category1_named_imports.jac")
+        js_code = self.compile_fixture_to_js(fixture_path)
 
-            # Ensure no type() function calls remain
-            self.assertNotIn("type(", js_code, "No type() calls should remain in JavaScript")
+        imports = [
+            'import { useState } from "react";',
+            'import { map, filter, reduce } from "lodash";',
+            'import { get as httpGet } from "axios";',
+            'import { createApp, ref as reactive, computed } from "vue";',
+            'import { helper } from "./utils.js";',
+            'import { formatter as format } from "../lib.js";',
+            'import { settings } from "../../config.js";',
+            'import { renderJsxTree, jacLogin, jacLogout } from "client_runtime";',
+        ]
+        for pattern in imports:
+            self.assertIn(pattern, js_code)
 
-            # Count typeof occurrences - should have exactly 4
-            typeof_count = js_code.count("typeof")
-            self.assertEqual(typeof_count, 4, f"Expected 4 typeof occurrences, found {typeof_count}")
+        self.assertIn("function example_usage()", js_code)
+        for pattern in ["from react import", "from lodash import"]:
+            self.assertNotIn(pattern, js_code)
+        self.assert_balanced_syntax(js_code, fixture_path)
+
+    def test_category2_default_imports_generate_correct_js(self) -> None:
+        """Test Category 2 default imports from proposal document."""
+        fixture_path = self.get_fixture_path("category2_default_imports.jac")
+        js_code = self.compile_fixture_to_js(fixture_path)
+
+        imports = [
+            'import React from "react";',
+            'import axios from "axios";',
+            'import Vue from "vue";',
+            'import Button from "./components.Button.js";',
+            'import utils from "../lib.utils.js";',
+        ]
+        for pattern in imports:
+            self.assertIn(pattern, js_code)
+
+        self.assertIn("function example_usage()", js_code)
+        for pattern in ["import { React }", "import { axios }", "import { Vue }"]:
+            self.assertNotIn(pattern, js_code)
+        self.assert_balanced_syntax(js_code, fixture_path)
+
+    def test_category4_namespace_imports_generate_correct_js(self) -> None:
+        """Test Category 4 namespace imports from proposal document."""
+        fixture_path = self.get_fixture_path("category4_namespace_imports.jac")
+        js_code = self.compile_fixture_to_js(fixture_path)
+
+        imports = [
+            'import * as React from "react";',
+            'import * as _ from "lodash";',
+            'import * as DateUtils from "dateutils";',
+            'import * as utils from "./utils.js";',
+            'import * as helpers from "../lib.helpers.js";',
+        ]
+        for pattern in imports:
+            self.assertIn(pattern, js_code)
+
+        self.assertIn("function example_usage()", js_code)
+        for pattern in ["import { * }", "import { * as"]:
+            self.assertNotIn(pattern, js_code)
+        self.assert_balanced_syntax(js_code, fixture_path)
+
+    def test_hyphenated_package_imports_generate_correct_js(self) -> None:
+        """Test string literal imports for hyphenated package names."""
+        fixture_path = self.get_fixture_path("hyphenated_imports.jac")
+        js_code = self.compile_fixture_to_js(fixture_path)
+
+        imports = [
+            'import { render, hydrate } from "react-dom";',
+            'import { render as renderDOM } from "react-dom";',
+            'import * as ReactDOM from "react-dom";',
+            'import ReactDOMDefault from "react-dom";',
+            'import RD, { createPortal } from "react-dom";',
+            'import styled from "styled-components";',
+            'import { format, parse, addDays } from "date-fns";',
+            'import { BrowserRouter, Route, Link } from "react-router-dom";',
+            'import { useState, useEffect } from "react";',
+            'import { map, filter } from "lodash";',
+        ]
+        for pattern in imports:
+            self.assertIn(pattern, js_code)
+
+        self.assertIn("function TestComponent()", js_code)
+        for pattern in ["from react-dom import", "from 'react-dom' import"]:
+            self.assertNotIn(pattern, js_code)
+        self.assert_balanced_syntax(js_code, fixture_path)
+
+    def test_relative_imports_include_js_extension(self) -> None:
+        """Test that relative imports generate .js extensions for browser compatibility."""
+        jac_code = '''"""Test relative imports with .js extension."""
+
+cl {
+# Single dot relative import
+import from .utils { MessageFormatter }
+
+# Double dot relative import
+import from ..lib { formatter }
+
+# Triple dot relative import
+import from ...config { settings }
+
+# Module name with dots (should still get .js)
+import from .components.Button { Button }
+
+# Using imported functions
+def test_usage() {
+    let formatter = MessageFormatter();
+    return formatter.format("test");
+}
+}
+'''
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as tmp:
+            tmp.write(jac_code)
+            tmp.flush()
+            temp_path = tmp.name
+
+        try:
+            js_code = self.compile_fixture_to_js(temp_path)
+
+            imports = [
+                'import { MessageFormatter } from "./utils.js";',
+                'import { formatter } from "../lib.js";',
+                'import { settings } from "../../config.js";',
+                'import { Button } from "./components.Button.js";',
+            ]
+            for pattern in imports:
+                self.assertIn(pattern, js_code)
+
+            self.assertIn("function test_usage()", js_code)
+
+            # Verify all relative imports have .js extension
+            import_lines = [
+                line
+                for line in js_code.split("\n")
+                if "import" in line and "from" in line
+            ]
+            relative_imports = [
+                line for line in import_lines if "./" in line or "../" in line
+            ]
+            for line in relative_imports:
+                self.assertTrue(
+                    '.js"' in line or ".js'" in line,
+                    f"Relative import missing .js: {line}",
+                )
+
+            self.assert_balanced_syntax(js_code, temp_path)
+        finally:
+            os.unlink(temp_path)
+
+    def test_fstring_simple_variable_interpolation(self) -> None:
+        """Test that f-strings with simple variable interpolation generate correct template literals."""
+        jac_code = '''"""Test f-string with simple variables."""
+
+cl def greet_user(name: str, age: int) -> str {
+    return f"Hello, {name}! You are {age} years old.";
+}
+'''
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as tmp:
+            tmp.write(jac_code)
+            tmp.flush()
+            temp_path = tmp.name
+
+        try:
+            js_code = self.compile_fixture_to_js(temp_path)
+
+            self.assertIn("function greet_user", js_code)
+            self.assertIn("`", js_code)
+            for pattern in ["${name}", "${age}", "Hello,", "You are", "years old."]:
+                self.assertIn(pattern, js_code)
+            self.assertIn("`Hello, ${name}! You are ${age} years old.`", js_code)
+            self.assert_balanced_syntax(js_code, temp_path)
+        finally:
+            os.unlink(temp_path)
+
+    def test_fstring_with_expressions(self) -> None:
+        """Test that f-strings with expressions generate correct template literals."""
+        jac_code = '''"""Test f-string with expressions."""
+
+cl def calculate_message(x: int, y: int) -> str {
+    return f"The sum of {x} and {y} is {x + y}";
+}
+
+cl def conditional_message(score: int) -> str {
+    return f"Score: {score}, Status: {score >= 60}";
+}
+'''
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as tmp:
+            tmp.write(jac_code)
+            tmp.flush()
+            temp_path = tmp.name
+
+        try:
+            js_code = self.compile_fixture_to_js(temp_path)
+
+            for pattern in [
+                "function calculate_message",
+                "function conditional_message",
+            ]:
+                self.assertIn(pattern, js_code)
+
+            for pattern in [
+                "`",
+                "${x}",
+                "${y}",
+                "${x + y}",
+                "${score}",
+                "${score >= 60}",
+                "The sum of",
+                "and",
+                "is",
+                "Score:",
+                "Status:",
+            ]:
+                self.assertIn(pattern, js_code)
+
+            self.assert_balanced_syntax(js_code, temp_path)
+        finally:
+            os.unlink(temp_path)
+
+    def test_fstring_advanced_fixture_template_literals(self) -> None:
+        """Test that the advanced fixture's f-strings generate proper template literals."""
+        js_code = self.compile_fixture_to_js(self.ADVANCED_FIXTURE)
+
+        self.assertIn("function template_literal_examples", js_code)
+        self.assertGreaterEqual(js_code.count("`"), 2)
+        for pattern in [
+            "${",
+            "${user}",
+            "${score}",
+            "${status}",
+            "scored",
+            "which is a",
+        ]:
+            self.assertIn(pattern, js_code)
+
+    def test_fstring_edge_cases(self) -> None:
+        """Test f-string edge cases: empty, text-only, expression-only."""
+        jac_code = '''"""Test f-string edge cases."""
+
+cl def test_edge_cases() -> dict {
+    let name = "Alice";
+    let value = 42;
+
+    # Text only (no interpolation)
+    let text_only = f"This is just plain text";
+
+    # Expression only (no static text)
+    let expr_only = f"{value}";
+
+    # Multiple consecutive expressions
+    let consecutive = f"{name}{value}";
+
+    # Mixed with spaces
+    let mixed = f"Name: {name}, Value: {value}";
+
+    return {"text": text_only, "expr": expr_only, "cons": consecutive, "mixed": mixed};
+}
+'''
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as tmp:
+            tmp.write(jac_code)
+            tmp.flush()
+            temp_path = tmp.name
+
+        try:
+            js_code = self.compile_fixture_to_js(temp_path)
+
+            self.assertIn("function test_edge_cases", js_code)
+            for pattern in [
+                "`This is just plain text`",
+                "`${value}`",
+                "`${name}${value}`",
+                "Name:",
+                "Value:",
+                "${name}",
+                "${value}",
+            ]:
+                self.assertIn(pattern, js_code)
+            self.assert_balanced_syntax(js_code, temp_path)
+        finally:
+            os.unlink(temp_path)
+
+    def test_fstring_no_concatenation_operators(self) -> None:
+        """Test that f-strings don't generate string concatenation with + operators."""
+        jac_code = '''"""Test that f-strings use template literals, not concatenation."""
+
+cl def format_message(user: str, count: int) -> str {
+    return f"User {user} has {count} items";
+}
+'''
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as tmp:
+            tmp.write(jac_code)
+            tmp.flush()
+            temp_path = tmp.name
+
+        try:
+            js_code = self.compile_fixture_to_js(temp_path)
+
+            for pattern in ["`", "${user}", "${count}"]:
+                self.assertIn(pattern, js_code)
+
+            # Verify return uses template literal, not concatenation
+            return_statements = [
+                line for line in js_code.split("\n") if "return" in line
+            ]
+            fstring_returns = [line for line in return_statements if "${" in line]
+            for ret_line in fstring_returns:
+                self.assertEqual(
+                    ret_line.count("`"),
+                    2,
+                    f"Expected single template literal: {ret_line}",
+                )
 
             self.assert_balanced_syntax(js_code, temp_path)
         finally:

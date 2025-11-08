@@ -31,6 +31,7 @@ from jaclang.compiler.constant import Tokens as Tok
 from jaclang.compiler.passes.ast_gen import BaseAstGenPass
 from jaclang.compiler.passes.ast_gen.jsx_processor import EsJsxProcessor
 from jaclang.compiler.passes.ecmascript.es_unparse import es_to_js
+from jaclang.utils import convert_to_js_import_path
 
 ES_LOGICAL_OPS: dict[Tok, str] = {Tok.KW_AND: "&&", Tok.KW_OR: "||"}
 
@@ -125,6 +126,14 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
 
     def enter_node(self, node: uni.UniNode) -> None:
         """Enter node."""
+        if (
+            isinstance(node, uni.ElementStmt)
+            and isinstance(node, uni.ClientFacingNode)
+            and not node.is_client_decl
+            and (node.parent is None or isinstance(node.parent, uni.Module))
+        ):
+            self.prune()
+            return
         if isinstance(node, uni.UniScopeNode):
             self._push_scope(node)
         if node.gen.es_ast:
@@ -134,6 +143,13 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
 
     def exit_node(self, node: uni.UniNode) -> None:
         """Exit node."""
+        if (
+            isinstance(node, uni.ElementStmt)
+            and isinstance(node, uni.ClientFacingNode)
+            and not node.is_client_decl
+            and (node.parent is None or isinstance(node.parent, uni.Module))
+        ):
+            return
         super().exit_node(node)
         if isinstance(node, uni.UniScopeNode):
             self._pop_scope(node)
@@ -175,6 +191,14 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
         """Check if a name is already declared in the active scope."""
         scope = self._current_scope()
         return name in scope.declared if scope else False
+
+    def _is_declared_in_any_scope(self, name: str) -> bool:
+        """Check if a name is declared in the current scope or any parent scope.
+
+        This is essential for proper closure support - we need to avoid re-declaring
+        variables that exist in parent scopes when generating nested functions.
+        """
+        return any(name in scope.declared for scope in reversed(self.scope_stack))
 
     def _register_declaration(self, name: str) -> None:
         """Mark a name as declared within the current scope."""
@@ -317,15 +341,18 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
     def exit_import(self, node: uni.Import) -> None:
         """Process import statement."""
         if node.from_loc and node.items:
-            # Track client imports with prefix (e.g., jac:client_runtime)
-            if node.is_client_decl and node.from_loc.prefix:
+            # Track client imports (both with prefix like jac:client_runtime and relative imports like .module)
+            if node.is_client_decl:
                 resolved_path = node.from_loc.resolve_relative_path()
                 import_key = node.from_loc.dot_path_str
                 self.client_manifest.imports[import_key] = resolved_path
                 self.client_manifest.has_client = True
 
+            # Convert Jac-style path to JavaScript-style path
+            js_import_path = convert_to_js_import_path(node.from_loc.dot_path_str)
+
             source = self.sync_loc(
-                es.Literal(value=node.from_loc.dot_path_str), jac_node=node.from_loc
+                es.Literal(value=js_import_path), jac_node=node.from_loc
             )
             specifiers: list[
                 Union[
@@ -337,25 +364,61 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
 
             for item in node.items:
                 if isinstance(item, uni.ModuleItem):
-                    imported = self.sync_loc(
-                        es.Identifier(name=item.name.sym_name), jac_node=item.name
-                    )
-                    local = self.sync_loc(
-                        es.Identifier(
-                            name=(
-                                item.alias.sym_name
-                                if item.alias
-                                else item.name.sym_name
-                            )
-                        ),
-                        jac_node=item.alias if item.alias else item.name,
-                    )
-                    specifiers.append(
-                        self.sync_loc(
-                            es.ImportSpecifier(imported=imported, local=local),
-                            jac_node=item,
+                    # Check Name first (since Name is a subclass of Token)
+                    if isinstance(item.name, uni.Name):
+                        # Regular named import (Category 1)
+                        imported = self.sync_loc(
+                            es.Identifier(name=item.name.sym_name), jac_node=item.name
                         )
-                    )
+                        local = self.sync_loc(
+                            es.Identifier(
+                                name=(
+                                    item.alias.sym_name
+                                    if item.alias
+                                    else item.name.sym_name
+                                )
+                            ),
+                            jac_node=item.alias if item.alias else item.name,
+                        )
+                        specifiers.append(
+                            self.sync_loc(
+                                es.ImportSpecifier(imported=imported, local=local),
+                                jac_node=item,
+                            )
+                        )
+                    elif isinstance(item.name, uni.Token):
+                        # Category 2: Handle default imports
+                        # Pattern: cl import from react { default as React }
+                        if item.name.value == "default":
+                            if not item.alias:
+                                # default must have an alias
+                                continue
+                            local = self.sync_loc(
+                                es.Identifier(name=item.alias.sym_name),
+                                jac_node=item.alias,
+                            )
+                            specifiers.append(
+                                self.sync_loc(
+                                    es.ImportDefaultSpecifier(local=local),
+                                    jac_node=item,
+                                )
+                            )
+                        # Category 4: Handle namespace imports
+                        # Pattern: cl import from lodash { * as _ }
+                        elif item.name.value == "*":
+                            if not item.alias:
+                                # namespace import must have an alias
+                                continue
+                            local = self.sync_loc(
+                                es.Identifier(name=item.alias.sym_name),
+                                jac_node=item.alias,
+                            )
+                            specifiers.append(
+                                self.sync_loc(
+                                    es.ImportNamespaceSpecifier(local=local),
+                                    jac_node=item,
+                                )
+                            )
 
             import_decl = self.sync_loc(
                 es.ImportDeclaration(specifiers=specifiers, source=source),
@@ -1288,13 +1351,15 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
 
             should_declare = False
             if decl_name:
-                should_declare = is_first and not self._is_declared_in_current_scope(
+                # Check if this variable is already declared in ANY scope (including parent scopes)
+                # This enables proper closure support - nested functions can access parent scope variables
+                should_declare = is_first and not self._is_declared_in_any_scope(
                     decl_name
                 )
             elif pattern_names:
                 should_declare = any(
                     self._is_name_first_definition(name_node)
-                    and not self._is_declared_in_current_scope(name)
+                    and not self._is_declared_in_any_scope(name)
                     for name, name_node in pattern_names
                 )
 
@@ -1382,9 +1447,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
                 # Get the definition node
                 defn_node = target_sym.defn[0]
                 # Check if it's an Ability (function) and if it's NOT a client function
-                if hasattr(defn_node, "parent") and isinstance(
-                    defn_node.parent, uni.Ability
-                ):
+                if isinstance(defn_node.parent, uni.Ability):
                     ability_node = defn_node.parent
                     is_server_func = not getattr(ability_node, "is_client_decl", False)
 
@@ -1860,37 +1923,98 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
         str_lit = self.sync_loc(es.Literal(value=value, raw=raw_value), jac_node=node)
         node.gen.es_ast = str_lit
 
+    def exit_formatted_value(self, node: uni.FormattedValue) -> None:
+        """Process formatted value in f-string."""
+        # Get the expression being formatted
+        expr = (
+            node.format_part.gen.es_ast
+            if node.format_part.gen.es_ast
+            else self.sync_loc(es.Literal(value=""), jac_node=node.format_part)
+        )
+
+        # For JavaScript template literals, we just need the expression
+        # Conversion and format specs are not directly supported in JS template literals
+        # but we can wrap with String() for type coercion if needed
+        node.gen.es_ast = expr
+
     def exit_f_string(self, node: uni.FString) -> None:
         """Process f-string literal as template literal."""
-        # F-strings need to be converted to template literals (backtick strings) in JS
-        # f"Hello {name}" -> `Hello ${name}`
+        # F-strings are converted to JavaScript template literals (backtick strings)
+        # f"Hello {name}!" -> `Hello ${name}!`
 
-        # For now, convert to concatenation of strings and expressions
-        # This is a simplified version - proper template literals would be better
-        parts: list[es.Expression] = []
+        quasis: list[es.TemplateElement] = []
+        expressions: list[es.Expression] = []
 
-        for part in node.parts:
-            if part.gen.es_ast:
-                expr = part.gen.es_ast
-                if isinstance(expr, es.ExpressionStatement):
-                    expr = expr.expression
-                parts.append(expr)
+        for i, part in enumerate(node.parts):
+            is_last = i == len(node.parts) - 1
 
-        if not parts:
-            # Empty f-string
-            node.gen.es_ast = self.sync_loc(es.Literal(value=""), jac_node=node)
-        elif len(parts) == 1:
-            # Single part
-            node.gen.es_ast = parts[0]
-        else:
-            # Multiple parts - concatenate with +
-            result = parts[0]
-            for part in parts[1:]:
-                result = self.sync_loc(
-                    es.BinaryExpression(operator="+", left=result, right=part),
+            if isinstance(part, uni.String):
+                # This is a literal string part
+                value = part.value
+                # Remove surrounding quotes from the string
+                if value.startswith(('"""', "'''")):
+                    value = value[3:-3]
+                elif value.startswith(('"', "'")):
+                    value = value[1:-1]
+
+                # Create a template element with both cooked and raw values
+                elem = self.sync_loc(
+                    es.TemplateElement(
+                        tail=is_last, value={"cooked": value, "raw": value}
+                    ),
+                    jac_node=part,
+                )
+                quasis.append(elem)
+            elif isinstance(part, uni.FormattedValue):
+                # This is an interpolated expression
+                # Need to add an empty quasi before the expression if this is the first part
+                if i == 0 or not isinstance(node.parts[i - 1], uni.String):
+                    empty_elem = self.sync_loc(
+                        es.TemplateElement(tail=False, value={"cooked": "", "raw": ""}),
+                        jac_node=part,
+                    )
+                    quasis.append(empty_elem)
+
+                # Add the expression
+                expr = (
+                    part.gen.es_ast
+                    if part.gen.es_ast
+                    else self.sync_loc(es.Literal(value=""), jac_node=part)
+                )
+                expressions.append(expr)
+
+                # Add empty quasi after if this is the last part
+                if is_last:
+                    empty_elem = self.sync_loc(
+                        es.TemplateElement(tail=True, value={"cooked": "", "raw": ""}),
+                        jac_node=part,
+                    )
+                    quasis.append(empty_elem)
+
+        # Ensure we always have at least one quasi (even if empty)
+        if not quasis:
+            quasis.append(
+                self.sync_loc(
+                    es.TemplateElement(tail=True, value={"cooked": "", "raw": ""}),
                     jac_node=node,
                 )
-            node.gen.es_ast = result
+            )
+
+        # TemplateLiteral must have len(quasis) == len(expressions) + 1
+        # Adjust if needed
+        while len(quasis) < len(expressions) + 1:
+            quasis.append(
+                self.sync_loc(
+                    es.TemplateElement(tail=True, value={"cooked": "", "raw": ""}),
+                    jac_node=node,
+                )
+            )
+
+        template_lit = self.sync_loc(
+            es.TemplateLiteral(quasis=quasis, expressions=expressions),
+            jac_node=node,
+        )
+        node.gen.es_ast = template_lit
 
     def exit_if_else_expr(self, node: uni.IfElseExpr) -> None:
         """Process ternary expression."""
@@ -1997,6 +2121,21 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
                         body_stmts.append(stmt.gen.es_ast)
 
         # Module code is executed at module level, so just output the statements
+        node.gen.es_ast = body_stmts
+
+    def exit_client_block(self, node: uni.ClientBlock) -> None:
+        """Process client block (cl { ... })."""
+        # Generate the body statements directly - unwrap the block
+        body_stmts: list[es.Statement] = []
+        if node.body:
+            for stmt in node.body:
+                if stmt.gen.es_ast:
+                    if isinstance(stmt.gen.es_ast, list):
+                        body_stmts.extend(stmt.gen.es_ast)
+                    else:
+                        body_stmts.append(stmt.gen.es_ast)
+
+        # ClientBlock is just a grouping construct, output the statements directly
         node.gen.es_ast = body_stmts
 
     def exit_test(self, node: uni.Test) -> None:

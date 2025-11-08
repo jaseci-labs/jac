@@ -8,7 +8,7 @@ import sys
 import types
 from importlib.metadata import version as pkg_version
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional, cast
 
 import jaclang.compiler.unitree as uni
 from jaclang.cli.cmdreg import cmd_registry
@@ -280,7 +280,7 @@ def native(
             return ctypes.c_void_p
         raise ValueError(f"Unsupported LLVM type '{type_str}'.")
 
-    def convert_arg(value: str, type_str: str) -> Any:
+    def convert_arg(value: str, type_str: str) -> int | float:
         if type_str in {"i1", "bool"}:
             lowered = value.lower()
             return 1 if lowered in {"1", "true", "yes"} else 0
@@ -304,7 +304,7 @@ def native(
         c_arg_types = [llvm_to_ctype(t) for t in arg_types]
         if None in c_arg_types:
             raise ValueError("Void argument types are not supported.")
-        cfunctype = ctypes.CFUNCTYPE(c_ret_type or None, *c_arg_types)
+        cfunctype = ctypes.CFUNCTYPE(c_ret_type or None, *cast(list[type], c_arg_types))
         func_ptr = engine.get_function_address(entry)
         native_func = cfunctype(func_ptr)
         converted_args = [convert_arg(v, t) for v, t in zip(forwarded_args, arg_types)]
@@ -687,6 +687,7 @@ def dot(
     edge_limit: int = 512,
     node_limit: int = 512,
     saveto: str = "",
+    to_screen: bool = False,
 ) -> None:
     """Generate a DOT graph visualization from a Jac program.
 
@@ -705,12 +706,14 @@ def dot(
         edge_limit: Maximum number of edges to include (default: 512)
         node_limit: Maximum number of nodes to include (default: 512)
         saveto: Output file path for the DOT file (default: <module_name>.dot)
+        to_screen: Print DOT output to stdout instead of saving to file (default: False)
 
     Examples:
         jac dot myprogram.jac
         jac dot myprogram.jac --initial root_node --depth 3
         jac dot myprogram.jac --traverse --connection edge_type1 edge_type2
         jac dot myprogram.jac --saveto graph.dot
+        jac dot myprogram.jac --to_screen
     """
     base, mod, jac_machine = proc_file_sess(filename, session)
 
@@ -736,10 +739,13 @@ def dot(
             traceback.print_exc()
             jac_machine.close()
             return
-        file_name = saveto if saveto else f"{mod}.dot"
-        with open(file_name, "w") as file:
-            file.write(graph)
-        print(f">>> Graph content saved to {os.path.join(os.getcwd(), file_name)}")
+        if to_screen:
+            print(graph)
+        else:
+            file_name = saveto if saveto else f"{mod}.dot"
+            with open(file_name, "w") as file:
+                file.write(graph)
+            print(f">>> Graph content saved to {os.path.join(os.getcwd(), file_name)}")
         jac_machine.close()
     else:
         print("Not a .jac file.", file=sys.stderr)

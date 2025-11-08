@@ -9,9 +9,15 @@ var dbg = null;  // The debugger instance.
 var sharedInts = null;
 var continueExecution = false;
 
+// Doc Use
 const PLAYGROUND_PATH = "/playground";
+
+// Development Use
+// const PLAYGROUND_PATH = "";
+
 const JAC_PATH = "/tmp/main.jac";
 const LOG_PATH = "/tmp/logs.log";
+
 
 // ----------------------------------------------------------------------------
 // Message passing protocol

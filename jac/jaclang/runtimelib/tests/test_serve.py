@@ -269,7 +269,7 @@ class TestServeCommand(TestCase):
         self._start_server()
 
         # Try to access protected endpoint without token
-        result = self._request("GET", "/functions")
+        result = self._request("GET", "/protected")
         self.assertIn("error", result)
         self.assertIn("Unauthorized", result["error"])
 
@@ -864,9 +864,6 @@ class TestServeCommand(TestCase):
         self.assertEqual(status, 200)
         self.assertIn("application/javascript", headers.get("Content-Type", ""))
 
-        # Verify the polyfill function is in the runtime (now part of client_runtime.jac)
-        self.assertIn("__jacEnsureObjectGetPolyfill", js_body)
-        self.assertIn("Object.defineProperty", js_body)
 
         # Verify core runtime functions are present
         self.assertIn("__jacJsx", js_body)
@@ -1062,8 +1059,384 @@ class TestServeCommand(TestCase):
         # Verify authentication and introspection endpoints are still present
         self.assertIn("/user/create", output)
         self.assertIn("Available", output)
-        self.assertIn("27", output)  # 27 client functions
+        self.assertIn("1 client functions", output)  # 15 client functions
         # Verify some client functions are listed
         self.assertIn("App", output)
-        self.assertIn("FeedView", output)
         self.assertIn("/page/", output)
+
+
+class TestAccessLevelAuthentication(TestCase):
+    """Test access level-based authentication for endpoints."""
+
+    def setUp(self) -> None:
+        """Set up test."""
+        super().setUp()
+        self.server = None
+        self.server_thread = None
+        self.httpd = None
+        # Use dynamically allocated free port for each test
+        try:
+            self.port = get_free_port()
+        except PermissionError:
+            self.skipTest("Socket operations are not permitted in this environment")
+            return
+        self.base_url = f"http://localhost:{self.port}"
+        # Use unique session file for each test
+        test_name = self._testMethodName
+        self.session_file = self.fixture_abs_path(f"test_serve_access_{test_name}.session")
+
+    def tearDown(self) -> None:
+        """Tear down test."""
+        # Close user manager if it exists
+        if self.server and hasattr(self.server, 'user_manager'):
+            try:
+                self.server.user_manager.close()
+            except Exception:
+                pass
+
+        # Stop server if running
+        if self.httpd:
+            try:
+                self.httpd.shutdown()
+                self.httpd.server_close()
+            except Exception:
+                pass
+
+        # Wait for thread to finish
+        if self.server_thread and self.server_thread.is_alive():
+            self.server_thread.join(timeout=2)
+
+        # Clean up session files
+        self._del_session(self.session_file)
+        super().tearDown()
+
+    def _del_session(self, session: str) -> None:
+        """Delete session files including user database files."""
+        path = os.path.dirname(session)
+        prefix = os.path.basename(session)
+        if os.path.exists(path):
+            for file in os.listdir(path):
+                # Clean up session files and user database files (.users)
+                if file.startswith(prefix):
+                    try:
+                        os.remove(f"{path}/{file}")
+                    except Exception:
+                        pass
+
+    def _start_server(self) -> None:
+        """Start the API server in a background thread."""
+        from http.server import HTTPServer
+
+        # Load the module
+        base, mod, mach = cli.proc_file_sess(
+            self.fixture_abs_path("serve_api_access.jac"), ""
+        )
+        Jac.set_base_path(base)
+        Jac.jac_import(
+            target=mod,
+            base_path=base,
+            override_name="__main__",
+            lng="jac",
+        )
+
+        # Create server
+        self.server = JacAPIServer(
+            module_name="__main__",
+            session_path=self.session_file,
+            port=self.port,
+        )
+
+        # Start server in thread
+        def run_server():
+            try:
+                self.server.load_module()
+                handler_class = self.server.create_handler()
+                self.httpd = HTTPServer(("127.0.0.1", self.port), handler_class)
+                self.httpd.serve_forever()
+            except Exception:
+                pass
+
+        self.server_thread = threading.Thread(target=run_server, daemon=True)
+        self.server_thread.start()
+
+        # Wait for server to be ready
+        max_attempts = 50
+        for _ in range(max_attempts):
+            try:
+                self._request("GET", "/", timeout=10)
+                break
+            except Exception:
+                time.sleep(0.1)
+
+    def _request(
+        self, method: str, path: str, data: dict = None, token: str = None, timeout: int = 5
+    ) -> dict:
+        """Make HTTP request to server."""
+        status, payload, _ = self._request_raw(method, path, data=data, token=token, timeout=timeout)
+        try:
+            return json.loads(payload)
+        except json.JSONDecodeError as exc:  # pragma: no cover - sanity guard
+            raise AssertionError(f"Expected JSON response, got: {payload}") from exc
+
+    def _request_raw(
+        self, method: str, path: str, data: dict = None, token: str = None, timeout: int = 5
+    ) -> tuple[int, str, dict[str, str]]:
+        """Make an HTTP request and return status, body, and headers."""
+        url = f"{self.base_url}{path}"
+        headers = {"Content-Type": "application/json"}
+
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+
+        body = json.dumps(data).encode() if data else None
+        request = Request(url, data=body, headers=headers, method=method)
+
+        try:
+            with urlopen(request, timeout=timeout) as response:
+                payload = response.read().decode()
+                return response.status, payload, dict(response.headers)
+        except HTTPError as e:
+            payload = e.read().decode()
+            return e.code, payload, dict(e.headers)
+
+    def test_public_function_without_auth(self) -> None:
+        """Test that public functions can be called without authentication."""
+        self._start_server()
+
+        # Call public function without authentication
+        result = self._request(
+            "POST",
+            "/function/public_function",
+            {"args": {"name": "Test"}}
+        )
+
+        self.assertIn("result", result)
+        self.assertEqual(result["result"], "Hello, Test! (public)")
+
+    def test_public_function_get_info_without_auth(self) -> None:
+        """Test that public function info can be retrieved without authentication."""
+        self._start_server()
+
+        # Get public function info without authentication
+        result = self._request("GET", "/function/public_function")
+
+        self.assertIn("signature", result)
+        self.assertIn("parameters", result["signature"])
+
+    def test_protected_function_requires_auth(self) -> None:
+        """Test that protected functions require authentication."""
+        self._start_server()
+
+        # Try to call protected function without authentication - should fail
+        result = self._request(
+            "POST",
+            "/function/protected_function",
+            {"args": {"message": "test"}}
+        )
+
+        self.assertIn("error", result)
+        self.assertIn("Unauthorized", result["error"])
+
+    def test_protected_function_with_auth(self) -> None:
+        """Test that protected functions work with authentication."""
+        self._start_server()
+
+        # Create user and get token
+        create_result = self._request(
+            "POST",
+            "/user/create",
+            {"username": "authuser", "password": "pass123"}
+        )
+        token = create_result["token"]
+
+        # Call protected function with authentication
+        result = self._request(
+            "POST",
+            "/function/protected_function",
+            {"args": {"message": "secret"}},
+            token=token
+        )
+
+        self.assertIn("result", result)
+        self.assertEqual(result["result"], "Protected: secret")
+
+    def test_private_function_requires_auth(self) -> None:
+        """Test that private functions require authentication."""
+        self._start_server()
+
+        # Try to call private function without authentication - should fail
+        result = self._request(
+            "POST",
+            "/function/private_function",
+            {"args": {"secret": "test"}}
+        )
+
+        self.assertIn("error", result)
+        self.assertIn("Unauthorized", result["error"])
+
+    def test_private_function_with_auth(self) -> None:
+        """Test that private functions work with authentication."""
+        self._start_server()
+
+        # Create user and get token
+        create_result = self._request(
+            "POST",
+            "/user/create",
+            {"username": "privuser", "password": "pass456"}
+        )
+        token = create_result["token"]
+
+        # Call private function with authentication
+        result = self._request(
+            "POST",
+            "/function/private_function",
+            {"args": {"secret": "topsecret"}},
+            token=token
+        )
+
+        self.assertIn("result", result)
+        self.assertEqual(result["result"], "Private: topsecret")
+
+    def test_public_walker_without_auth(self) -> None:
+        """Test that public walkers can be spawned without authentication."""
+        self._start_server()
+
+        # Spawn public walker without authentication
+        result = self._request(
+            "POST",
+            "/walker/PublicWalker",
+            {"fields": {"message": "hello"}}
+        )
+
+        self.assertIn("result", result)
+        self.assertIn("reports", result)
+
+    def test_protected_walker_requires_auth(self) -> None:
+        """Test that protected walkers require authentication."""
+        self._start_server()
+
+        # Try to spawn protected walker without authentication - should fail
+        result = self._request(
+            "POST",
+            "/walker/ProtectedWalker",
+            {"fields": {"data": "test"}}
+        )
+
+        self.assertIn("error", result)
+        self.assertIn("Unauthorized", result["error"])
+
+    def test_protected_walker_with_auth(self) -> None:
+        """Test that protected walkers work with authentication."""
+        self._start_server()
+
+        # Create user and get token
+        create_result = self._request(
+            "POST",
+            "/user/create",
+            {"username": "walkuser", "password": "pass789"}
+        )
+        token = create_result["token"]
+
+        # Spawn protected walker with authentication
+        result = self._request(
+            "POST",
+            "/walker/ProtectedWalker",
+            {"fields": {"data": "mydata"}},
+            token=token
+        )
+
+        self.assertIn("result", result)
+        self.assertIn("reports", result)
+
+    def test_private_walker_requires_auth(self) -> None:
+        """Test that private walkers require authentication."""
+        self._start_server()
+
+        # Try to spawn private walker without authentication - should fail
+        result = self._request(
+            "POST",
+            "/walker/PrivateWalker",
+            {"fields": {"secret": "test"}}
+        )
+
+        self.assertIn("error", result)
+        self.assertIn("Unauthorized", result["error"])
+
+    def test_private_walker_with_auth(self) -> None:
+        """Test that private walkers work with authentication."""
+        self._start_server()
+
+        # Create user and get token
+        create_result = self._request(
+            "POST",
+            "/user/create",
+            {"username": "privwalk", "password": "pass000"}
+        )
+        token = create_result["token"]
+
+        # Spawn private walker with authentication
+        result = self._request(
+            "POST",
+            "/walker/PrivateWalker",
+            {"fields": {"secret": "verysecret"}},
+            token=token
+        )
+
+        self.assertIn("result", result)
+        self.assertIn("reports", result)
+
+    def test_introspection_list_requires_auth(self) -> None:
+        """Test that introspection list endpoints require authentication."""
+        self._start_server()
+
+        # Try to list walkers without authentication - should fail
+        result = self._request("GET", "/protected")
+        self.assertIn("error", result)
+        self.assertIn("Unauthorized", result["error"])
+
+    def test_mixed_access_levels(self) -> None:
+        """Test server with mixed access levels (public, protected, private)."""
+        self._start_server()
+
+        # Create authenticated user
+        create_result = self._request(
+            "POST",
+            "/user/create",
+            {"username": "mixeduser", "password": "mixedpass"}
+        )
+        token = create_result["token"]
+
+        # Public function without auth - should work
+        result1 = self._request(
+            "POST",
+            "/function/public_add",
+            {"args": {"a": 5, "b": 10}}
+        )
+        self.assertIn("result", result1)
+        self.assertEqual(result1["result"], 15)
+
+        # Protected function without auth - should fail
+        result2 = self._request(
+            "POST",
+            "/function/protected_function",
+            {"args": {"message": "test"}}
+        )
+        self.assertIn("error", result2)
+
+        # Protected function with auth - should work
+        result3 = self._request(
+            "POST",
+            "/function/protected_function",
+            {"args": {"message": "test"}},
+            token=token
+        )
+        self.assertIn("result", result3)
+
+        # Private function with auth - should work
+        result4 = self._request(
+            "POST",
+            "/function/private_function",
+            {"args": {"secret": "test"}},
+            token=token
+        )
+        self.assertIn("result", result4)

@@ -5,6 +5,8 @@ tools, and tool calls. It provides a structured way to represent messages,
 tool calls, and tools that can be used in LLM requests and responses.
 """
 
+from __future__ import annotations
+
 import base64
 import mimetypes
 import os
@@ -12,8 +14,9 @@ from contextlib import suppress
 from dataclasses import dataclass
 from enum import StrEnum
 from io import BytesIO
-from typing import Callable, TypeAlias, get_type_hints
+from typing import Callable, IO, TypeAlias, get_type_hints
 
+from PIL.Image import Image as PILImageCls
 from PIL.Image import open as open_image
 
 from litellm.types.utils import Message as LiteLLMMessage
@@ -127,7 +130,7 @@ class Tool:
         return func.__doc__ or func.__name__
 
     @staticmethod
-    def make_finish_tool(resp_type: type) -> "Tool":
+    def make_finish_tool(resp_type: type) -> Tool:
         """Create a finish tool that returns the final output."""
 
         def finish_tool(final_output: object) -> object:
@@ -255,30 +258,126 @@ class Text(Media):
 class Image(Media):
     """Class representing an image."""
 
-    url: str
+    url: (
+        "str | bytes | bytearray | memoryview | BytesIO | IO[bytes] | "
+        "os.PathLike[str] | os.PathLike[bytes] | PILImageCls"
+    )  # type: ignore[name-defined]
     mime_type: str | None = None
 
     def __post_init__(self) -> None:
-        """Post-initialization to ensure the URL is a string."""
-        if self.url.startswith(("http://", "https://", "gs://")):
-            self.url = self.url.strip()
-        else:
-            if not os.path.exists(self.url):
-                raise ValueError(f"Image file does not exist: {self.url}")
-            image = open_image(self.url)
+        """Normalize input into a data URL or leave remote/data URLs as-is.
 
-            # python<3.13 mimetypes doesn't support `webp` format as it wasn't an IANA standard
-            # until November 2024 (RFC-9649:  https://www.rfc-editor.org/rfc/rfc9649.html).
-            if (image.format and image.format.lower()) == "webp":
-                self.mime_type = "image/webp"
-            else:
-                self.mime_type = mimetypes.types_map.get(
-                    "." + (image.format or "png").lower()
-                )
+        Supported inputs:
+        - HTTP(S)/GS URLs (left as-is)
+        - Data URLs (data:...)
+        - Local file paths (opened and encoded to data URL)
+        - Bytes / bytearray / memoryview
+        - File-like objects (BytesIO or any IO[bytes])
+        - os.PathLike
+        - PIL.Image.Image instances
+        """
+        value = self.url
+
+        # Handle path-like inputs by converting to string
+        if isinstance(value, os.PathLike):
+            value = os.fspath(value)
+
+        # Remote or data URLs: keep as-is (trim whitespace)
+        if isinstance(value, str):
+            s = value.strip()
+            if s.startswith(("http://", "https://", "gs://", "data:")):
+                self.url = s
+                return
+            # Treat as local file path
+            if not os.path.exists(s):
+                raise ValueError(f"Image file does not exist: {s}")
+            image = open_image(s)
+            fmt = image.format or "PNG"
+            # Determine MIME type with WEBP special-case for py<3.13
+            self.mime_type = self._format_to_mime(fmt)
             with BytesIO() as buffer:
-                image.save(buffer, format=image.format, quality=100)
-                base64_image = base64.b64encode(buffer.getvalue()).decode("utf-8")
-                self.url = f"data:{self.mime_type};base64,{base64_image}"
+                image.save(buffer, format=fmt)
+                data = buffer.getvalue()
+            self.url = self._data_url_from_bytes(data, fmt)
+            return
+
+        # PIL Image instance
+        if isinstance(value, PILImageCls):
+            fmt = value.format or "PNG"
+            with BytesIO() as buffer:
+                value.save(buffer, format=fmt)
+                data = buffer.getvalue()
+            self.url = self._data_url_from_bytes(data, fmt)
+            return
+
+        # Bytes-like object
+        if isinstance(value, (bytes, bytearray, memoryview)):
+            raw = bytes(value)
+            # Probe format via PIL to set correct MIME
+            img = open_image(BytesIO(raw))
+            fmt = img.format or "PNG"
+            # Use bytes as-is (avoid re-encode) if PIL detects same format as content
+            # Otherwise, re-encode to the detected format to be safe.
+            try:
+                self.url = self._data_url_from_bytes(raw, fmt)
+            except Exception:
+                with BytesIO() as buffer:
+                    img.save(buffer, format=fmt)
+                    self.url = self._data_url_from_bytes(buffer.getvalue(), fmt)
+            return
+
+        # File-like object (e.g., BytesIO, IO[bytes])
+        if hasattr(value, "read") and callable(value.read):
+            # Safely read without permanently moving the cursor
+            stream: IO[bytes] = value  # type: ignore[assignment]
+            pos = None
+            try:
+                pos = stream.tell()  # type: ignore[attr-defined]
+            except Exception:
+                pos = None
+            try:
+                # Prefer getvalue if available (e.g., BytesIO)
+                if hasattr(stream, "getvalue") and callable(stream.getvalue):
+                    raw = stream.getvalue()  # type: ignore[call-arg]
+                else:
+                    if hasattr(stream, "seek"):
+                        with suppress(Exception):
+                            stream.seek(0)
+                    raw = stream.read()
+                img = open_image(BytesIO(raw))
+                fmt = img.format or "PNG"
+                self.url = self._data_url_from_bytes(raw, fmt)
+            finally:
+                if pos is not None and hasattr(stream, "seek"):
+                    with suppress(Exception):
+                        stream.seek(pos)
+            return
+
+        # If we reach here, the input type isn't supported
+        raise TypeError(
+            "Unsupported Image input type. Provide a URL/path string, data URL, bytes, "
+            "BytesIO, file-like object, os.PathLike, or PIL.Image.Image."
+        )
+
+    def _format_to_mime(self, fmt: str | None) -> str:
+        """Map a PIL format name to a MIME type with sensible fallbacks."""
+        fmt = (fmt or "PNG").upper()
+        if fmt == "WEBP":
+            return "image/webp"
+        if fmt == "JPEG" or fmt == "JPG":
+            return "image/jpeg"
+        if fmt == "PNG":
+            return "image/png"
+        # Try mimetypes (uses extension mapping)
+        mime = mimetypes.types_map.get("." + fmt.lower())
+        return mime or "image/png"
+
+    def _data_url_from_bytes(self, data: bytes, fmt: str | None) -> str:
+        mime = self.mime_type or self._format_to_mime(fmt)
+        # Ensure mime_type is set on the instance for downstream usage
+        self.mime_type = mime
+        b64 = base64.b64encode(data).decode("utf-8")
+        return f"data:{mime};base64,{b64}"
 
     def to_dict(self) -> list[dict]:
         """Convert the image to a dictionary."""

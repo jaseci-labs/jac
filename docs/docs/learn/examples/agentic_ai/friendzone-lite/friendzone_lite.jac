@@ -1,18 +1,9 @@
-import from byllm  { Model, Image }
+import from byllm.llm  { Model }
+import from byllm.types { Image }
 import from typing { List, Dict, Any }
 import os;
 
-def clear_terminal() -> None {
-    # For Windows
-    if os.name == "nt" {
-        os.system("cls");
-    # For macOS / Linux
-    } else {
-        os.system("clear");
-    }
-}
-
-glob llm = Model(model_name="gpt-4.1");
+glob llm = Model(model_name="gemini/gemini-2.5-flash");
 
 obj Response {
     has follow_up_questions: str;
@@ -66,7 +57,12 @@ walker update_session {
     has utterance: str = "";
 
     can visit_session with `root entry {
-        visit [-->](`?session) else {
+        # Find or create session for this image
+        matching_sessions = [sess for sess in [-->](`?session) if sess.image_url == self.image_url and not sess.terminate_conversation];
+
+        if matching_sessions {
+            visit matching_sessions[0];
+        } else {
             session_node = here ++> session();
             visit session_node[0];
         }
@@ -101,14 +97,14 @@ walker update_session {
 
         if response.show_summary {
             if response.terminate_conversation {
-                print("🤖 Assistant: " + response.follow_up_questions);
-                print("✅ Final Memory Summary:" + response.summary);
+                print("Assistant: " + response.follow_up_questions);
+                print("Final Memory Summary:" + response.summary);
             } else {
-                print("📝 Memory Summary (in progress):" + response.summary);
-                print("🤖 Assistant: " + response.follow_up_questions);
+                print("Memory Summary (in progress):" + response.summary);
+                print("Assistant: " + response.follow_up_questions);
             }
         } else {
-            print("🤖 Assistant: " + response.follow_up_questions);
+            print("Assistant: " + response.follow_up_questions);
         }
 
         # Report session state for frontend
@@ -124,5 +120,25 @@ walker update_session {
             "conversation": here.conversation,
             "image_url": here.image_url
         };
+    }
+}
+
+walker get_memories {
+    can get_all_memories with `root entry {
+        memories = [];
+        for mem in [-->](`?session) {
+            # Only include completed memories
+            if mem.terminate_conversation and mem.show_summary {
+                memories.append({
+                    "summary": mem.summary,
+                    "when": mem.when,
+                    "who": mem.who,
+                    "where": mem.where,
+                    "what": mem.what,
+                    "image_url": mem.image_url
+                });
+            }
+        }
+        report {"memories": memories};
     }
 }

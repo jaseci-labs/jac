@@ -1,5 +1,6 @@
 """Test fixture for class with separate impl file."""
 
+cl {
 obj Calculator {
     has value: float;
 
@@ -11,4 +12,5 @@ obj Calculator {
 
 obj ScientificCalculator(Calculator) {
     def power(exponent: float) -> float;
+}
 }

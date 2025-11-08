@@ -58,6 +58,10 @@ jobs:
         DATABASE_HOST: mongodb://localhost/?retryWrites=true&w=majority
         REDIS_HOST: redis://localhost
         TASK_CONSUMER_CRON_SECOND: "*"
+    - name: Run Jac-Client tests
+      run: |
+        pip install -e jac-client
+        pytest -x jac-client
     - name: Run littleX tests
       run: |
         pip install numpy

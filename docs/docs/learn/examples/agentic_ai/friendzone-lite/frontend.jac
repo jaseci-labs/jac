@@ -27,9 +27,84 @@ def bootstrap_frontend(token: str) {
     if "loading" not in st.session_state {
         st.session_state.loading = False;
     }
+    if "view_memories" not in st.session_state {
+        st.session_state.view_memories = False;
+    }
+    if "captured_memories" not in st.session_state {
+        st.session_state.captured_memories = [];
+    }
 
     # Main interface
     st.markdown("### 📷 Start Your Memory Journey");
+
+    # Add button to view captured memories
+    columns = st.columns([3, 1]);
+    with columns[1] {
+        if st.button("📚 View Captured Memories") {
+            st.session_state.view_memories = not st.session_state.view_memories;
+            if st.session_state.view_memories {
+                # Fetch memories from backend
+                try {
+                    response = requests.post(
+                        "http://localhost:8000/walker/get_memories",
+                        json={},
+                        headers={"Authorization": f"Bearer {token}"}
+                    );
+                    if response.status_code == 200 {
+                        result = response.json();
+                        st.session_state.captured_memories = result.get("reports", [{}])[0].get("memories", []);
+                    }
+                } except Exception as e {
+                    st.error(f"❌ Error loading memories: {str(e)}");
+                }
+            }
+            st.rerun();
+        }
+    }
+
+    # Display captured memories if view_memories is True
+    if st.session_state.view_memories {
+        st.markdown("---");
+        st.markdown("### 📚 Captured Memories");
+
+        if st.session_state.captured_memories {
+            mem_idx = 0;
+            for memory in st.session_state.captured_memories {
+                mem_idx = mem_idx + 1;
+                with st.expander(f"Memory {mem_idx}: {memory.get('summary', 'Untitled')[:50]}...", expanded=False) {
+                    mem_columns = st.columns([1, 2]);
+
+                    with mem_columns[0] {
+                        if memory.get("image_url") {
+                            try {
+                                st.image(memory["image_url"], caption="Memory Image", use_column_width=True);
+                            } except Exception {
+                                st.write("🖼️ Image not available");
+                            }
+                        }
+                    }
+
+                    with mem_columns[1] {
+                        st.markdown(f"**📋 Summary:**");
+                        st.write(memory.get("summary", "N/A"));
+
+                        st.markdown(f"**📅 When:** {memory.get('when', 'Not specified')}");
+
+                        who_list = memory.get("who", []);
+                        st.markdown(f"**👥 Who:** {', '.join(who_list) if who_list else 'Not specified'}");
+
+                        where_list = memory.get("where", []);
+                        st.markdown(f"**📍 Where:** {', '.join(where_list) if where_list else 'Not specified'}");
+
+                        st.markdown(f"**🎯 What:** {memory.get('what', 'Not specified')}");
+                    }
+                }
+            }
+        } else {
+            st.info("📭 No captured memories yet. Start a memory session to create your first memory!");
+        }
+        st.markdown("---");
+    }
 
     # Image URL input section
     if not st.session_state.conversation_active {

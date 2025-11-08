@@ -4,6 +4,13 @@
 
 This document describes how Jac's `cl` (client) keyword produces browser-ready web experiences. Client-marked declarations compile to JavaScript and ship through `jac serve` as static bundles that execute entirely in the browser. The current implementation is **CSR-only** (Client-Side Rendering): the server returns an empty HTML shell with bootstrapping metadata and a JavaScript bundle that handles all rendering in the browser.
 
+**Key Features:**
+- **JSX Support**: Full JSX syntax for declarative UI components
+- **Reactive State Management**: Signal-based reactivity with automatic dependency tracking (no virtual DOM)
+- **Client-Side Routing**: Hash-based routing with declarative route configuration
+- **Server Integration**: Seamless walker spawning and function calls from client code
+- **Authentication**: Built-in auth helpers with token-based authentication
+
 ## Architecture Overview
 
 ```mermaid
@@ -132,7 +139,19 @@ The client runtime ([client_runtime.jac](../jaclang/runtimelib/client_runtime.ja
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
+| **JSX Rendering** | | |
 | `renderJsxTree` | `(node: any, container: any) -> None` | Renders a JSX tree into a DOM container |
+| **Reactive State Management** | | |
+| `createSignal` | `(initialValue: any) -> list` | Creates a reactive signal (primitive value). Returns `[getter, setter]` |
+| `createState` | `(initialState: dict) -> list` | Creates a reactive state (object). Returns `[getter, setter]` with shallow merge |
+| `createEffect` | `(effectFn: any) -> None` | Runs a side effect function that re-executes when its dependencies change |
+| **Client-Side Routing** | | |
+| `createRouter` | `(routes: list, defaultRoute: str = "/") -> dict` | Creates a router instance with reactive path tracking |
+| `Route` | `(path: str, component: any, guard: any = None) -> dict` | Creates a route configuration object |
+| `Link` | `(props: dict) -> any` | Renders a navigation link component |
+| `navigate` | `(path: str) -> None` | Programmatically navigates to a path |
+| `useRouter` | `() -> dict` | Returns the current router instance |
+| **Authentication** | | |
 | `jacSignup` | `async (username: str, password: str) -> dict` | Creates a new user account and returns `{success, token, username}` or `{success, error}` |
 | `jacLogin` | `async (username: str, password: str) -> bool` | Authenticates user and stores token in localStorage |
 | `jacLogout` | `() -> None` | Clears authentication token from localStorage |
@@ -235,6 +254,244 @@ JSX elements compile to function calls:
 - Tag names starting with uppercase become identifier references
 - Props merge via `Object.assign()` when spreads are present
 
+### 4. Reactive State Management
+
+Jac includes a built-in reactive state management system inspired by modern frameworks like SolidJS and Vue. The system provides automatic dependency tracking and efficient re-rendering without virtual DOM diffing.
+
+#### Core Concepts
+
+The reactive system is based on **signals** - reactive containers for values that automatically track their dependencies and notify subscribers when values change.
+
+**Global Reactive Context** ([client_runtime.jac:79-87](../jaclang/runtimelib/client_runtime.jac#L79-L87)):
+```javascript
+__jacReactiveContext = {
+    signals: [],              // Global signal storage
+    pendingRenders: [],       // Batched re-renders queue
+    flushScheduled: false,    // Debounce flag for batching
+    rootComponent: null,      // Root function to re-render
+    currentComponent: null,   // Current component ID being rendered
+    currentEffect: null,      // Current effect for dependency tracking
+    router: null              // Global router instance
+}
+```
+
+#### createSignal - Reactive Primitives
+
+Creates a reactive signal for primitive values. Returns a `[getter, setter]` tuple.
+
+**Syntax** ([client_runtime.jac:92-110](../jaclang/runtimelib/client_runtime.jac#L92-L110)):
+```jac
+cl import from jac:client_runtime { createSignal }
+
+cl def Counter() {
+    [count, setCount] = createSignal(0);
+
+    def increment() {
+        setCount(count() + 1);  // Read with (), set by calling setter
+    }
+
+    return <div>
+        <p>Count: {count()}</p>
+        <button onclick={increment}>Increment</button>
+    </div>;
+}
+```
+
+**How it works:**
+1. Each signal stores its value and a list of subscribers
+2. When `count()` is called (getter), it automatically tracks which component/effect is reading it
+3. When `setCount(newValue)` is called, it notifies all subscribers
+4. Components are automatically re-rendered when their dependencies change
+5. Re-renders are batched using `requestAnimationFrame` for efficiency
+
+#### createState - Reactive Objects
+
+Creates a reactive state object with shallow merge semantics. Ideal for managing component state with multiple properties.
+
+**Syntax** ([client_runtime.jac:114-139](../jaclang/runtimelib/client_runtime.jac#L114-L139)):
+```jac
+cl import from jac:client_runtime { createState }
+
+cl def TodoList() {
+    [state, setState] = createState({
+        "todos": [],
+        "filter": "all"
+    });
+
+    def addTodo(text: str) {
+        todos = state().todos;
+        todos.push({"text": text, "done": False});
+        setState({"todos": todos});  // Shallow merge with existing state
+    }
+
+    return <div>
+        <ul>
+            {[<li>{todo.text}</li> for todo in state().todos]}
+        </ul>
+    </div>;
+}
+```
+
+**Difference from createSignal:**
+- `setState(updates)` performs shallow merge: `newState = {...oldState, ...updates}`
+- Useful for managing multiple related properties
+- Still tracks dependencies automatically
+
+#### createEffect - Side Effects
+
+Runs a function whenever its reactive dependencies change. Automatically re-executes when any accessed signal/state updates.
+
+**Syntax** ([client_runtime.jac:143-174](../jaclang/runtimelib/client_runtime.jac#L143-L174)):
+```jac
+cl import from jac:client_runtime { createSignal, createEffect }
+
+cl def DataFetcher() {
+    [userId, setUserId] = createSignal(1);
+    [userData, setUserData] = createSignal(None);
+
+    createEffect(lambda -> None {
+        id = userId();  // Track dependency!
+        console.log("Fetching user", id);
+        # In real app, would fetch from API
+        setUserData({"id": id, "name": "User " + str(id)});
+    });
+
+    return <div>
+        <button onclick={lambda: setUserId(userId() + 1)}>Next User</button>
+        <p>Current: {userData() and userData().name or "Loading..."}</p>
+    </div>;
+}
+```
+
+**How it works:**
+1. Effect function executes immediately on creation
+2. Any signals/state accessed during execution are automatically tracked
+3. When tracked dependencies change, effect re-runs
+4. No need to manually specify dependency arrays (unlike React's useEffect)
+
+#### Automatic Re-rendering
+
+Components that use signals are automatically re-rendered when dependencies change:
+
+1. **Initial render**: Component executes, tracking which signals it reads
+2. **Dependency tracking**: Each `getter()` call registers the current component as a subscriber
+3. **Change notification**: When `setter(newValue)` is called, all subscribers are notified
+4. **Batched updates**: Re-renders are queued and flushed on next `requestAnimationFrame`
+5. **Re-execution**: Component function re-runs, generating new JSX
+6. **DOM update**: New JSX is rendered to replace old content
+
+### 5. Client-Side Routing
+
+Jac includes a declarative routing system built on reactive signals. Routes are defined as configuration objects, and navigation automatically triggers re-renders.
+
+#### createRouter - Router Setup
+
+Creates a router instance with reactive path tracking using URL hash.
+
+**Syntax** ([client_runtime.jac:283-345](../jaclang/runtimelib/client_runtime.jac#L283-L345)):
+```jac
+cl import from jac:client_runtime { createRouter, Route }
+
+cl def App() {
+    routes = [
+        Route("/", HomePage),
+        Route("/about", AboutPage),
+        Route("/profile", ProfilePage, guard=jacIsLoggedIn)
+    ];
+
+    router = createRouter(routes, defaultRoute="/");
+
+    return <div>
+        <nav>
+            <Link href="/">Home</Link>
+            <Link href="/about">About</Link>
+            <Link href="/profile">Profile</Link>
+        </nav>
+        <main>{router.render()}</main>
+    </div>;
+}
+```
+
+**Router API:**
+- `router.path()` - Getter for current path (reactive)
+- `router.render()` - Renders component for current route
+- `router.navigate(path)` - Programmatically navigate to path
+
+#### Route Configuration
+
+The `Route` function creates route configuration objects ([client_runtime.jac:348-350](../jaclang/runtimelib/client_runtime.jac#L348-L350)):
+
+```jac
+Route(path, component, guard=None)
+```
+
+- `path` - URL path to match (e.g., `"/"`, `"/profile"`)
+- `component` - Function that returns JSX to render
+- `guard` - Optional function that returns bool; if false, route is blocked
+
+#### Link Component
+
+Renders navigation links that update the router without full page reload ([client_runtime.jac:353-365](../jaclang/runtimelib/client_runtime.jac#L353-L365)):
+
+```jac
+<Link href="/about">About Page</Link>
+
+# Equivalent to:
+<a href="#/about" onclick={handleClick}>About Page</a>
+```
+
+**Features:**
+- Automatically prefixes href with `#` for hash routing
+- Prevents default link behavior
+- Calls `navigate()` to update router state
+- Spreads additional props to `<a>` element
+
+#### Programmatic Navigation
+
+Use `navigate()` to change routes from code ([client_runtime.jac:368-378](../jaclang/runtimelib/client_runtime.jac#L368-L378)):
+
+```jac
+cl import from jac:client_runtime { navigate }
+
+cl def LoginForm() {
+    def handleSubmit() {
+        # After successful login
+        navigate("/dashboard");
+    }
+
+    return <form onsubmit={handleSubmit}>...</form>;
+}
+```
+
+#### Route Guards
+
+Protect routes with guard functions:
+
+```jac
+cl import from jac:client_runtime { Route, jacIsLoggedIn, navigate }
+
+cl def AccessDenied() {
+    return <div>
+        <h1>Access Denied</h1>
+        <button onclick={lambda: navigate("/login")}>Login</button>
+    </div>;
+}
+
+Route("/admin", AdminPanel, guard=jacIsLoggedIn)
+```
+
+If guard returns `False`, the route renders `AccessDenied` component instead.
+
+#### How Routing Works
+
+1. **Hash-based routing**: Uses `window.location.hash` (e.g., `#/profile`)
+2. **Reactive path**: Current path is stored in a signal
+3. **Event listeners**: `hashchange` and `popstate` events update the signal
+4. **Automatic re-render**: Changing the path signal triggers router re-render
+5. **Component lookup**: Router finds matching route and renders its component
+
+**No manual routing updates needed** - the reactive system handles everything!
+
 ## Implementation Details
 
 ### Core Components
@@ -269,14 +526,12 @@ The bundle generated by `ClientBundleBuilder` contains (in order):
    This polyfill is called automatically during module registration and hydration.
 
 2. **Client Runtime** - Compiled from [client_runtime.jac](../jaclang/runtimelib/client_runtime.jac):
-   - `__jacJsx(tag, props, children)` - JSX factory function
-   - `renderJsxTree(node, container)` - DOM rendering
-   - `__buildDom(node)` - Recursive DOM builder
-   - `__applyProp(element, key, value)` - Attribute/event handler application
-   - `__jacSpawn(walker, fields)` - Async walker invocation via `/walker/<name>` endpoint
-   - `__jacCallFunction(function_name, args)` - Async server-side function calls via `/function/<name>` endpoint
-   - Auth helpers: `jacSignup`, `jacLogin`, `jacLogout`, `jacIsLoggedIn`
-   - Registration and hydration: `__jacRegisterClientModule`, `__jacHydrateFromDom`, `__jacEnsureHydration`
+   - **JSX Rendering**: `__jacJsx(tag, props, children)`, `renderJsxTree(node, container)`, `__buildDom(node)`, `__applyProp(element, key, value)`
+   - **Reactive System**: `createSignal(initialValue)`, `createState(initialState)`, `createEffect(effectFn)`, `__jacTrackDependency()`, `__jacNotifySubscribers()`
+   - **Router System**: `createRouter(routes, defaultRoute)`, `Route(path, component, guard)`, `Link(props)`, `navigate(path)`, `useRouter()`
+   - **Server Communication**: `__jacSpawn(walker, fields)` - Async walker invocation via `/walker/<name>` endpoint, `__jacCallFunction(function_name, args)` - Async server-side function calls via `/function/<name>` endpoint
+   - **Authentication**: `jacSignup`, `jacLogin`, `jacLogout`, `jacIsLoggedIn`
+   - **Hydration System**: `__jacRegisterClientModule`, `__jacHydrateFromDom`, `__jacEnsureHydration`
 
 3. **Application Module** - Transpiled user code with `cl` declarations
 
@@ -330,65 +585,75 @@ HTML template (from [server.py:491-504](../jaclang/runtimelib/server.py#L491-L50
 </head>
 <body>
     <div id="__jac_root"></div>
-    <script id="__jac_init__" type="application/json">{"module":"myapp","function":"homepage","args":{},"globals":{},"argOrder":[]}</script>
+    <script id="__jac_init__" type="application/json">
+        {"module":"myapp","function":"homepage","args":{},"globals":{},"argOrder":[]}
+    </script>
     <script src="/static/client.js?hash=abc123..." defer></script>
 </body>
 </html>
 ```
 
+**Note**: The JSON in `__jac_init__` has `</` escaped as `<\/` to prevent script injection attacks.
+
 ### Client-Side Execution
 
-On page load in the browser:
+On page load in the browser ([client_runtime.jac:726-821](../jaclang/runtimelib/client_runtime.jac#L726-L821)):
 
-1. **Wait for DOM** - Registration code waits for `DOMContentLoaded`
-2. **Parse payload** - Extract `__jac_init__` JSON
-3. **Restore globals** - Set global variables from payload
-4. **Lookup function** - Find target function in `__jacClient.functions`
-5. **Order arguments** - Map args dict to positional array using `argOrder`
-6. **Execute function** - Call function with arguments
-7. **Handle result** - If Promise, await; otherwise render immediately
-8. **Render JSX** - Call `renderJsxTree(result, __jac_root)`
+1. **Wait for DOM** - `__jacEnsureHydration()` waits for `DOMContentLoaded`
+2. **Parse payload** - `__jacHydrateFromDom()` extracts `__jac_init__` JSON from script tag
+3. **Validate hydration** - Check if already hydrated (prevent duplicate execution)
+4. **Restore globals** - Set global variables from `payload.globals`
+5. **Lookup function** - Find target function in module's registered functions
+6. **Order arguments** - Map args dict to positional array using `argOrder`
+7. **Setup reactive root** - Create root component wrapper for reactive re-rendering
+8. **Execute function** - Call function with ordered arguments
+9. **Handle result** - If Promise, await; otherwise render immediately
+10. **Render JSX** - Call `renderJsxTree(result, __jac_root)` with batched updates
 
-From [client_runtime.jac:470-488](../jaclang/runtimelib/client_runtime.jac#L470-L488):
+**Key Implementation Details:**
+
 ```jac
+# Set up reactive root component for automatic re-rendering
+__jacReactiveContext.rootComponent = lambda -> any {
+    __jacReactiveContext.currentComponent = "__root__";
+    result = target(...orderedArgs);  # Execute with dependency tracking
+    return result;
+};
+
+# Execute and render
 callOutcome = __jacSafeCallTarget(target, scope, orderedArgs, targetName);
-if not callOutcome or not callOutcome.get("ok") {
-    return;
-}
 value = callOutcome.get("value");
 
 if value and __isObject(value) and __isFunction(value.then) {
-    value.then(
-        lambda node: any -> None {
-            __jacApplyRender(renderer, rootEl, node);
-        }
-    ).catch(
-        lambda err: any -> None {
-            console.error("[Jac] Error resolving client function promise", err);
-        }
-    );
+    # Async result - wait for promise
+    value.then(lambda node: __jacApplyRender(renderer, rootEl, node));
 } else {
+    # Sync result - render immediately
     __jacApplyRender(renderer, rootEl, value);
 }
 ```
 
+**Hydration Safety:** The system marks the `__jac_init__` element with `data-jac-hydrated="true"` to prevent duplicate hydration if scripts execute multiple times.
+
 ### JSX Rendering
 
-The `renderJsxTree` function ([client_runtime.jac:9-11](../jaclang/runtimelib/client_runtime.jac#L9-L11)) calls `__buildDom` ([client_runtime.jac:14-50](../jaclang/runtimelib/client_runtime.jac#L14-L50)) to recursively build DOM:
+The `renderJsxTree` function ([client_runtime.jac:8-10](../jaclang/runtimelib/client_runtime.jac#L8-L10)) calls `__buildDom` ([client_runtime.jac:13-54](../jaclang/runtimelib/client_runtime.jac#L13-L54)) to recursively build DOM:
 
-1. **Null/undefined** → Empty text node
+1. **Null/undefined** → Empty text node (`document.createTextNode("")`)
 2. **Primitive values** → Text node with `String(value)`
-3. **Object with callable `tag`** → Execute component function, recurse
+3. **Object with callable `tag`** → Execute component function with props (including children), recurse on result
 4. **Object with string `tag`** → Create element:
-   - Apply props (attributes, event listeners, styles)
+   - Create element with `document.createElement(tag)`
+   - Apply props (attributes, event listeners, styles) via `__applyProp`
    - Recursively build and append children
-5. **Return DOM node** → Attach to container
+5. **Return DOM node** → Attach to container via `container.replaceChildren(domNode)`
 
-Event handlers are bound in `__applyProp` ([client_runtime.jac:53-68](../jaclang/runtimelib/client_runtime.jac#L53-L68)):
-- Props starting with `on` become `addEventListener(event, handler)`
-- `onclick` → `click`, `onsubmit` → `submit`, etc.
-- `class` and `className` set `element.className`
-- `style` objects are applied to `element.style[key]`
+Event handlers are bound in `__applyProp` ([client_runtime.jac:57-72](../jaclang/runtimelib/client_runtime.jac#L57-L72)):
+- Props starting with `on` (e.g., `onclick`, `onsubmit`) become `addEventListener(eventName, handler)`
+  - Event name is extracted by removing `on` prefix and converting to lowercase
+- `class` and `className` both set `element.className`
+- `style` objects are applied to `element.style[key]` for each key
+- Other props (except `children`) are set via `element.setAttribute(key, String(value))`
 
 ## Example Usage
 
@@ -459,7 +724,84 @@ When the user clicks "Load Users":
 5. **HTTP**: Returns `{"result": {...}, "reports": [...]}`
 6. **Client**: Receives walker results as Promise (can be awaited to update UI)
 
-The `__jacSpawn` function ([client_runtime.jac:71-92](../jaclang/runtimelib/client_runtime.jac#L71-L92)) is async and retrieves the auth token from localStorage before making the request.
+The `__jacSpawn` function is async and retrieves the auth token from localStorage before making the request.
+
+### Reactive Application Example
+
+Here's a complete example using signals, state, and routing:
+
+```jac
+cl import from jac:client_runtime {
+    createSignal,
+    createState,
+    createRouter,
+    Route,
+    Link,
+    navigate,
+}
+
+// Counter component with reactive signal
+cl def Counter() {
+    [count, setCount] = createSignal(0);
+
+    return <div>
+        <h2>Counter: {count()}</h2>
+        <button onclick={lambda: setCount(count() + 1)}>+</button>
+        <button onclick={lambda: setCount(count() - 1)}>-</button>
+    </div>;
+}
+
+// Todo list with reactive state
+cl def TodoApp() {
+    [state, setState] = createState({
+        "todos": [],
+        "input": ""
+    });
+
+    def addTodo() {
+        todos = state().todos;
+        todos.push({"text": state().input, "done": False});
+        setState({"todos": todos, "input": ""});
+    }
+
+    return <div>
+        <h2>Todos</h2>
+        <input
+            value={state().input}
+            oninput={lambda e: setState({"input": e.target.value})}
+        />
+        <button onclick={addTodo}>Add</button>
+        <ul>
+            {[<li>{todo.text}</li> for todo in state().todos]}
+        </ul>
+    </div>;
+}
+
+// Main app with routing
+cl def littlex_app() {
+    routes = [
+        Route("/", Counter),
+        Route("/todos", TodoApp)
+    ];
+
+    router = createRouter(routes, "/");
+
+    return <div>
+        <nav>
+            <Link href="/">Counter</Link>
+            <Link href="/todos">Todos</Link>
+        </nav>
+        <main>{router.render()}</main>
+    </div>;
+}
+```
+
+**Key Features Demonstrated:**
+- Reactive signals (`createSignal`) for simple counters
+- Reactive state (`createState`) for complex component state
+- Client-side routing without page reloads
+- Automatic re-rendering when state changes
+- No manual DOM manipulation needed
 
 ## Test Coverage
 
@@ -468,12 +810,18 @@ The `__jacSpawn` function ([client_runtime.jac:71-92](../jaclang/runtimelib/clie
 | **Client codegen tests** | [test_client_codegen.py](../jaclang/compiler/tests/test_client_codegen.py) | `cl` keyword detection, manifest generation |
 | **ESTree generation tests** | [test_esast_gen_pass.py](../jaclang/compiler/passes/ecmascript/tests/test_esast_gen_pass.py) | JavaScript AST generation |
 | **JavaScript generation tests** | [test_js_generation.py](../jaclang/compiler/passes/ecmascript/tests/test_js_generation.py) | JS code output from ESTree |
-| **Client bundle tests** | [test_client_bundle.py](../jaclang/runtimelib/tests/test_client_bundle.py) | Bundle building, caching |
+| **Client bundle tests** | [test_client_bundle.py](../jaclang/runtimelib/tests/test_client_bundle.py) | Bundle building, caching, import resolution |
 | **Server endpoint tests** | [test_serve.py](../jaclang/runtimelib/tests/test_serve.py) | HTTP endpoints, page rendering |
 | **JSX rendering tests** | [test_jsx_render.py](../jaclang/runtimelib/tests/test_jsx_render.py) | JSX parsing and rendering |
+| **Reactive signals tests** | [test_reactive_signals.py](../jaclang/runtimelib/tests/test_reactive_signals.py) | Signal creation, effects, dependency tracking |
+| **Router tests** | [test_router.py](../jaclang/runtimelib/tests/test_router.py) | Routing, navigation, route guards |
+| **Closures tests** | [test_closures.py](../jaclang/runtimelib/tests/test_closures.py) | Nested functions, closure semantics in JavaScript |
 
 ### Example Test Fixtures
 
 - [client_jsx.jac](../jaclang/compiler/passes/ecmascript/tests/fixtures/client_jsx.jac) - Comprehensive client syntax examples
 - [jsx_elements.jac](../examples/reference/jsx_elements.jac) - JSX feature demonstrations
+- [test_reactive_signals.jac](../jaclang/runtimelib/tests/fixtures/test_reactive_signals.jac) - Reactive signals and effects examples
+- [test_router.jac](../jaclang/runtimelib/tests/fixtures/test_router.jac) - Routing and navigation examples
+- [littleX_single_nodeps.jac](../examples/littleX/littleX_single_nodeps.jac) - Full SPA with reactive state and routing
 

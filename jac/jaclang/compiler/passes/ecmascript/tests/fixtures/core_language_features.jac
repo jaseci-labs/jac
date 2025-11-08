@@ -1,5 +1,6 @@
 """Combined core Jac constructs for ECMAScript generator tests."""
 
+cl {
 let global_counter: int = 0;
 
 # Basic functions and control flow
@@ -192,4 +193,5 @@ def build_report(data: list) -> dict {
         "stats": stats,
         "summary": summarize_status()
     };
+}
 }

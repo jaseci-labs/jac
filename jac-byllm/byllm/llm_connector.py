@@ -4,6 +4,8 @@ This module provides an abstract base class for LLM connectors and concrete impl
 for different LLM services. It includes methods for dispatching requests and handling responses.
 """
 
+from __future__ import annotations
+
 # flake8: noqa: E402
 
 import json
@@ -50,7 +52,7 @@ class LLMConnector(ABC):
         self.call_params: dict[str, object] = {}
 
     @staticmethod
-    def for_model(model_name: str, **kwargs: object) -> "LLMConnector":
+    def for_model(model_name: str, **kwargs: object) -> LLMConnector:
         """Construct the appropriate LLM connector based on the model name."""
         if model_name.lower().strip() == MODEL_MOCK:
             return MockLLMConnector(model_name, **kwargs)

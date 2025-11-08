@@ -113,10 +113,14 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
 
     def enter_node(self, node: uni.UniNode) -> None:
         """Enter node."""
-        if self._should_skip_client(node):
-            node.gen.py_ast = []
-            if hasattr(node.gen, "py"):
-                node.gen.py = ""  # type: ignore[attr-defined]
+        if isinstance(node, uni.ClientBlock):
+            self.prune()
+            return
+        if (
+            isinstance(node, uni.ClientFacingNode)
+            and node.is_client_decl
+            and (node.parent is None or isinstance(node.parent, uni.Module))
+        ):
             self.prune()
             return
         if node.gen.py_ast:
@@ -126,10 +130,14 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
 
     def exit_node(self, node: uni.UniNode) -> None:
         """Exit node."""
-        if self._should_skip_client(node):
-            node.gen.py_ast = []
-            if hasattr(node.gen, "py"):
-                node.gen.py = ""  # type: ignore[attr-defined]
+        # ClientBlock already handled in enter_node
+        if isinstance(node, uni.ClientBlock):
+            return
+        if (
+            isinstance(node, uni.ClientFacingNode)
+            and node.is_client_decl
+            and (node.parent is None or isinstance(node.parent, uni.Module))
+        ):
             return
         super().exit_node(node)
 
@@ -307,10 +315,6 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
             )
         )
 
-    def _should_skip_client(self, node: uni.UniNode) -> bool:
-        """Check if node is a client-facing declaration that should skip Python codegen."""
-        return isinstance(node, uni.ClientFacingNode) and node.is_client_decl
-
     def sync(
         self, py_node: T, jac_node: Optional[uni.UniNode] = None, deep: bool = False
     ) -> T:
@@ -354,6 +358,106 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
                     i.jac_link: ast3.AST = [self.cur_node]  # type: ignore
         return py_nodes
 
+    def resolve_switch_pattern(
+        self, pattern: uni.MatchPattern, target: uni.Expr
+    ) -> ast3.expr:
+        """Resolve switch case pattern."""
+        if isinstance(pattern, uni.MatchValue):
+            return self.sync(
+                ast3.Compare(
+                    left=cast(ast3.expr, target.gen.py_ast[0]),
+                    ops=[self.sync(ast3.Eq())],
+                    comparators=[cast(ast3.expr, pattern.value.gen.py_ast[0])],
+                )
+            )
+        elif isinstance(pattern, uni.MatchOr):
+            return self.sync(
+                ast3.BoolOp(
+                    op=self.sync(ast3.Or()),
+                    values=[
+                        self.resolve_switch_pattern(pat, target)
+                        for pat in pattern.patterns
+                    ],
+                )
+            )
+        elif isinstance(pattern, uni.MatchSingleton):
+            return self.sync(
+                ast3.Compare(
+                    left=cast(ast3.expr, target.gen.py_ast[0]),
+                    ops=[self.sync(ast3.Is())],
+                    comparators=[cast(ast3.expr, pattern.value.gen.py_ast[0])],
+                )
+            )
+        # elif isinstance(pattern, uni.MatchAs):
+        #     pass
+        # elif isinstance(pattern, uni.MatchSequence):
+        #     pass
+        # elif isinstance(pattern, uni.MatchMapping):
+        #     pass
+        # elif isinstance(pattern, uni.MatchKVPair):
+        #     pass
+        # elif isinstance(pattern, uni.MatchStar):
+        #     pass
+        # elif isinstance(pattern, uni.MatchArch):
+        #     pass
+        else:
+            raise self.ice("Unsupported switch pattern type")
+
+    def resolve_switch_stmt(self, node: uni.SwitchStmt) -> list[ast3.AST]:
+        """Resolve switch statement."""
+        var_executed = self.sync(ast3.Name(id="__executed", ctx=ast3.Store()))
+        assign_var = self.sync(
+            ast3.Assign(
+                targets=[var_executed], value=self.sync(ast3.Constant(value=False))
+            )
+        )
+        ast_nodes: list[ast3.AST] = []
+        test_expr: ast3.expr
+        executed_assign = self.sync(
+            ast3.Assign(
+                targets=[var_executed], value=self.sync(ast3.Constant(value=True))
+            )
+        )
+        for case in node.cases:
+            if case.pattern is None:
+                # default case
+                ast_nodes.extend(self.resolve_stmt_block(case.body) + [executed_assign])
+            else:
+                test_expr = self.sync(
+                    ast3.BoolOp(
+                        op=self.sync(ast3.Or()),
+                        values=[
+                            self.resolve_switch_pattern(case.pattern, node.target),
+                            self.sync(ast3.Name(id="__executed", ctx=ast3.Load())),
+                        ],
+                    )
+                )
+                if_stmt = self.sync(
+                    ast3.If(
+                        test=test_expr,
+                        body=cast(
+                            list[ast3.stmt],
+                            self.resolve_stmt_block(case.body) + [executed_assign],
+                        ),
+                        orelse=[],
+                    )
+                )
+                ast_nodes.append(if_stmt)
+        while_cond = self.sync(
+            ast3.UnaryOp(
+                op=self.sync(ast3.Not()),
+                operand=self.sync(ast3.Name(id="__executed", ctx=ast3.Load())),
+            )
+        )
+        return [
+            assign_var,
+            self.sync(
+                ast3.While(
+                    test=while_cond, body=cast(list[ast3.stmt], ast_nodes), orelse=[]
+                )
+            ),
+        ]
+
     def resolve_stmt_block(
         self,
         node: Sequence[uni.CodeBlockStmt] | Sequence[uni.EnumBlockStmt] | None,
@@ -368,7 +472,11 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
             else (
                 self._flatten_ast_list(
                     [
-                        x.gen.py_ast
+                        (
+                            x.gen.py_ast
+                            if not isinstance(x, uni.SwitchStmt)
+                            else self.resolve_switch_stmt(x)
+                        )
                         for x in valid_stmts
                         if not isinstance(x, uni.ImplDef)
                     ]
@@ -561,6 +669,11 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
                 )
             ]
 
+    def exit_client_block(self, node: uni.ClientBlock) -> None:
+        """Handle ClientBlock - already set to empty in enter_node."""
+        # py_ast already set to [] in enter_node, nothing to do here
+        pass
+
     def exit_py_inline_code(self, node: uni.PyInlineCode) -> None:
         if node.doc:
             doc = self.sync(
@@ -645,6 +758,18 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
         node.gen.py_ast = py_nodes
 
     def exit_module_path(self, node: uni.ModulePath) -> None:
+        # Check if this is a string literal import in a non-client context
+        if node.path and len(node.path) == 1 and isinstance(node.path[0], uni.String):
+            # String literal imports are only supported in client (cl) imports
+            import_node = node.parent_of_type(uni.Import)
+            if import_node and not import_node.is_client_decl:
+                self.log_error(
+                    f'String literal imports (e.g., from "{node.path[0].lit_value}") are only supported '
+                    f"in client (cl) imports, not Python imports. "
+                    f"Use 'cl import from \"{node.path[0].lit_value}\" {{ ... }}' instead.",
+                    node,
+                )
+
         node.gen.py_ast = [
             self.sync(
                 ast3.alias(
@@ -655,10 +780,25 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
         ]
 
     def exit_module_item(self, node: uni.ModuleItem) -> None:
+        # Validate that default and namespace imports are only used in cl imports
+        if isinstance(node.name, uni.Token) and node.name.value in ["default", "*"]:
+            import_node = node.from_parent
+            if not import_node.is_client_decl:
+                import_type = "Default" if node.name.value == "default" else "Namespace"
+                self.log_error(
+                    f"{import_type} imports (using '{node.name.value}') are only supported "
+                    f"in client (cl) imports, not Python imports",
+                    node,
+                )
+                # Skip generating Python AST for invalid imports
+                node.gen.py_ast = []
+                return
+
+        # Generate Python AST for regular imports
         node.gen.py_ast = [
             self.sync(
                 ast3.alias(
-                    name=f"{node.name.sym_name}",
+                    name=f"{node.name.sym_name if isinstance(node.name, uni.Name) else node.name.value}",
                     asname=node.alias.sym_name if node.alias else None,
                 )
             )
@@ -2352,9 +2492,9 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
                 combined_multi[-1] += item
             else:
                 combined_multi.append(item)
-        for i in range(len(combined_multi)):
-            if isinstance(combined_multi[i], (str, bytes)):
-                combined_multi[i] = self.sync(ast3.Constant(value=combined_multi[i]))
+        for i, val in enumerate(combined_multi):
+            if isinstance(val, (str, bytes)):
+                combined_multi[i] = self.sync(ast3.Constant(value=val))
         if len(combined_multi) > 1 or not isinstance(combined_multi[0], ast3.Constant):
             node.gen.py_ast = [
                 self.sync(

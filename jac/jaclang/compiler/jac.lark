@@ -27,9 +27,9 @@ import_stmt: KW_IMPORT KW_FROM from_path LBRACE import_items RBRACE
 from_path: (DOT | ELLIPSIS)* import_path
          | (DOT | ELLIPSIS)+
 
-import_path: (NAME COLON)? dotted_name (KW_AS NAME)?
+import_path: (NAME COLON)? (dotted_name | STRING) (KW_AS NAME)?
 import_items: (import_item COMMA)* import_item COMMA?
-import_item: named_ref (KW_AS NAME)?
+import_item: (KW_DEFAULT | STAR_MUL | named_ref) (KW_AS NAME)?
 dotted_name: named_ref (DOT named_ref)*
 
 // [Heading]: Class Archetypes.
@@ -111,6 +111,7 @@ statement: import_stmt
        | for_stmt
        | try_stmt
        | match_stmt
+       | switch_stmt
        | with_stmt
        | global_ref SEMI
        | nonlocal_ref SEMI
@@ -150,6 +151,10 @@ finally_stmt: KW_FINALLY code_block
 // [Heading]: Match statements.
 match_stmt: KW_MATCH expression LBRACE match_case_block+ RBRACE
 match_case_block: KW_CASE pattern_seq (KW_IF expression)? COLON statement+
+
+// [Heading]: Switch statements.
+switch_stmt: KW_SWITCH expression LBRACE switch_case_block+ RBRACE
+switch_case_block: (KW_CASE pattern_seq | KW_DEFAULT) COLON statement*
 
 pattern_seq: (or_pattern | as_pattern)
 or_pattern: (pattern BW_OR)* pattern
@@ -587,7 +592,9 @@ KW_DEF: "def"
 KW_STATIC: "static"
 KW_OVERRIDE: "override"
 KW_MATCH: "match"
+KW_SWITCH: "switch"
 KW_CASE: "case"
+KW_DEFAULT: "default"
 KW_CLIENT: "cl"
 
 KW_INIT: "init"

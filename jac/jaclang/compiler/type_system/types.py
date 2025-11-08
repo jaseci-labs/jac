@@ -81,7 +81,7 @@ class TypeBase(ABC):
         return self.CATEGORY
 
     @staticmethod
-    def unknown() -> "UnknownType":
+    def unknown() -> UnknownType:
         """Return an instance of an unknown type."""
         return UnknownType()
 
@@ -198,7 +198,7 @@ class ClassType(TypeBase):
         """Return a string representation of the class type."""
         return f"<class {self.shared.class_name}>"
 
-    def clone_as_instance(self) -> "ClassType":
+    def clone_as_instance(self) -> ClassType:
         """Clone this class type as an instance type."""
         if self.is_instance():
             return self

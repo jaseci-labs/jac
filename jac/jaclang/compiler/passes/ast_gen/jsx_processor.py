@@ -20,14 +20,14 @@ if TYPE_CHECKING:
 class EsJsxProcessor:
     """Generate ESTree structures for JSX nodes."""
 
-    def __init__(self, pass_ref: "EsastGenPass") -> None:
+    def __init__(self, pass_ref: EsastGenPass) -> None:
         self.pass_ref = pass_ref
         # Import estree at runtime to access AST node classes
         from jaclang.compiler.passes.ecmascript import estree as es
 
         self.es = es
 
-    def element(self, node: uni.JsxElement) -> "Expression":
+    def element(self, node: uni.JsxElement) -> Expression:
         """Process JSX element into __jacJsx(tag, props, children) call."""
         es = self.es
         if node.is_fragment or not node.name:
@@ -128,7 +128,7 @@ class EsJsxProcessor:
         )
         return call_expr
 
-    def element_name(self, node: uni.JsxElementName) -> "Expression":
+    def element_name(self, node: uni.JsxElementName) -> Expression:
         """Process JSX element name."""
         es = self.es
         if not node.parts:
@@ -159,7 +159,7 @@ class EsJsxProcessor:
         node.gen.es_ast = expr
         return expr
 
-    def spread_attribute(self, node: uni.JsxSpreadAttribute) -> "Expression":
+    def spread_attribute(self, node: uni.JsxSpreadAttribute) -> Expression:
         """Process JSX spread attribute."""
         es = self.es
         expr = (
@@ -172,7 +172,7 @@ class EsJsxProcessor:
         node.gen.es_ast = expr
         return expr
 
-    def normal_attribute(self, node: uni.JsxNormalAttribute) -> "Property":
+    def normal_attribute(self, node: uni.JsxNormalAttribute) -> Property:
         """Process JSX normal attribute."""
         es = self.es
         key_expr = self.pass_ref.sync_loc(
@@ -205,7 +205,7 @@ class EsJsxProcessor:
         node.gen.es_ast = prop
         return prop
 
-    def text(self, node: uni.JsxText) -> "Expression":
+    def text(self, node: uni.JsxText) -> Expression:
         """Process JSX text node."""
         es = self.es
         raw_value = node.value.value if hasattr(node.value, "value") else node.value
@@ -213,7 +213,7 @@ class EsJsxProcessor:
         node.gen.es_ast = expr
         return expr
 
-    def expression(self, node: uni.JsxExpression) -> "Expression":
+    def expression(self, node: uni.JsxExpression) -> Expression:
         """Process JSX expression child."""
         es = self.es
         expr = (
@@ -228,7 +228,7 @@ class EsJsxProcessor:
 class PyJsxProcessor:
     """Generate Python AST structures for JSX nodes."""
 
-    def __init__(self, pass_ref: "PyastGenPass") -> None:
+    def __init__(self, pass_ref: PyastGenPass) -> None:
         self.pass_ref = pass_ref
 
     def element(self, node: uni.JsxElement) -> list[ast3.AST]:

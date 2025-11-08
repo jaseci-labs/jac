@@ -14,7 +14,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any, Callable, Literal, TypeAlias, get_type_hints
 from urllib.parse import parse_qs, urlparse
 
-from jaclang.runtimelib.client_bundle import ClientBundleBuilder, ClientBundleError
+from jaclang.runtimelib.client_bundle import ClientBundleError
 from jaclang.runtimelib.constructs import (
     Archetype,
     NodeArchetype,
@@ -74,7 +74,7 @@ class JacSerializer:
                     {k: v for k, v in obj.__dict__.items() if not k.startswith("_")}
                 )
 
-        return str(obj) if hasattr(obj, "__str__") else f"<{type(obj).__name__}>"
+        return str(obj)
 
     @staticmethod
     def _serialize_archetype(arch: Archetype) -> dict[str, JsonValue]:
@@ -278,9 +278,14 @@ class ModuleIntrospector:
     _client_manifest: dict[str, Any] = field(default_factory=dict, init=False)
     _bundle: Any = field(default=None, init=False)
     _bundle_error: str | None = field(default=None, init=False)
-    _bundle_builder: ClientBundleBuilder = field(
-        default_factory=ClientBundleBuilder, init=False
-    )
+    _bundle_builder: Any = field(default=None, init=False)
+    _function_access: dict[str, bool] = field(default_factory=dict, init=False)
+    _walker_access: dict[str, bool] = field(default_factory=dict, init=False)
+
+    def __post_init__(self) -> None:
+        """Initialize bundle builder using plugin system."""
+        # Use plugin system to get bundle builder (allows override)
+        self._bundle_builder = Jac.get_client_bundle_builder()
 
     def load(self, force_reload: bool = False) -> None:
         """Load module and refresh caches."""
@@ -300,6 +305,7 @@ class ModuleIntrospector:
 
         self._module = module
         self._load_manifest()
+        self._extract_access_levels()
         self._functions = self._collect_functions()
         self._walkers = self._collect_walkers()
         self._bundle = None
@@ -324,6 +330,44 @@ class ModuleIntrospector:
                 }
                 return
         self._client_manifest = {}
+
+    def _extract_access_levels(self) -> None:
+        """Extract access level information from module AST."""
+        if not self._module:
+            return
+
+        import jaclang.compiler.unitree as uni
+
+        self._function_access = {}
+        self._walker_access = {}
+
+        mod_path = getattr(self._module, "__file__", None)
+        if not mod_path:
+            return
+
+        mod_ast = Jac.program.mod.hub.get(mod_path)
+        if not mod_ast:
+            return
+
+        # Traverse AST body to find functions and walkers with access levels
+        for item in mod_ast.body:
+            # Top-level abilities (functions) - note: Ability uses 'name_ref' not 'name'
+            if isinstance(item, uni.Ability) and item.name_ref is not None:
+                func_name = item.name_ref.sym_name
+                # Store whether auth is required: True for protected/private, False for public
+                self._function_access[func_name] = not item.public_access
+
+            # Walkers (which are archetypes)
+            elif isinstance(item, uni.Archetype):
+                # Check if it's a walker by checking if it's a subclass of WalkerArchetype
+                arch_name = item.name.sym_name
+
+                # Try to get the actual class from the module to check if it's a walker
+                if hasattr(self._module, arch_name):
+                    cls = getattr(self._module, arch_name)
+                    if isinstance(cls, type) and issubclass(cls, WalkerArchetype):
+                        # Store whether auth is required: True for protected/private, False for public
+                        self._walker_access[arch_name] = not item.public_access
 
     def _collect_functions(self) -> dict[str, Callable[..., Any]]:
         """Collect callable functions from module."""
@@ -508,6 +552,24 @@ class ModuleIntrospector:
             "bundle_hash": bundle_hash,
             "bundle_code": self._bundle.code,
         }
+
+    def is_auth_required_for_function(self, func_name: str) -> bool:
+        """Check if authentication is required for a function based on its access level.
+
+        Public functions: no authentication required
+        Protected/Private functions: authentication required
+        """
+        # _function_access stores: True = auth required, False = public (no auth)
+        return self._function_access.get(func_name, False)
+
+    def is_auth_required_for_walker(self, walker_name: str) -> bool:
+        """Check if authentication is required for a walker based on its access level.
+
+        Public walkers: no authentication required
+        Protected/Private walkers: authentication required
+        """
+        # _walker_access stores: True = auth required, False = public (no auth)
+        return self._walker_access.get(walker_name, False)
 
     def _collect_client_globals(self) -> dict[str, Any]:
         """Collect client-exposed global values."""
@@ -708,7 +770,7 @@ class JacAPIServer:
 
         # Core components
         self.user_manager = UserManager(session_path)
-        self.introspector = ModuleIntrospector(module_name, base_path)
+        self.introspector = Jac.get_module_introspector(module_name, base_path)
         self.execution_manager = ExecutionManager(session_path, self.user_manager)
 
         # Route handlers
@@ -829,29 +891,57 @@ class JacAPIServer:
                         ResponseBuilder.send_json(self, 503, {"error": str(exc)})
                     return
 
-                # Protected endpoints
-                username = self._authenticate()
-                if not username:
-                    ResponseBuilder.send_json(self, 401, {"error": "Unauthorized"})
-                    return
-
                 # Route to introspection handlers
                 if path == "/functions":
                     self._send_response(server.introspection_handler.list_functions())
+                    return
                 elif path == "/walkers":
+                    # # List walkers - always require auth for introspection
+                    # username = self._authenticate()
+                    # if not username:
+                    #     ResponseBuilder.send_json(self, 401, {"error": "Unauthorized"})
+                    #     return
                     self._send_response(server.introspection_handler.list_walkers())
+                    return
                 elif path.startswith("/function/"):
                     name = path.split("/")[-1]
+                    # Check if this function requires authentication
+                    server.introspector.load()
+                    if server.introspector.is_auth_required_for_function(name):
+                        username = self._authenticate()
+                        if not username:
+                            ResponseBuilder.send_json(
+                                self, 401, {"error": "Unauthorized"}
+                            )
+                            return
                     self._send_response(
                         server.introspection_handler.get_function_info(name)
                     )
+                    return
                 elif path.startswith("/walker/"):
                     name = path.split("/")[-1]
+                    # Check if this walker requires authentication
+                    server.introspector.load()
+                    if server.introspector.is_auth_required_for_walker(name):
+                        username = self._authenticate()
+                        if not username:
+                            ResponseBuilder.send_json(
+                                self, 401, {"error": "Unauthorized"}
+                            )
+                            return
                     self._send_response(
                         server.introspection_handler.get_walker_info(name)
                     )
+                    return
+                elif path == "/protected":
+                    username = self._authenticate()
+                    if not username:
+                        ResponseBuilder.send_json(self, 401, {"error": "Unauthorized"})
+                        return
+                    self._send_response(Response(200, {"message": "sucessful"}))
                 else:
                     ResponseBuilder.send_json(self, 404, {"error": "Not found"})
+                # # Protected endpoints
 
             def do_POST(self) -> None:  # noqa: N802
                 """Handle POST requests."""
@@ -879,21 +969,55 @@ class JacAPIServer:
                     self._send_response(response)
                     return
 
-                # Protected endpoints
-                username = self._authenticate()
-                if not username:
-                    ResponseBuilder.send_json(self, 401, {"error": "Unauthorized"})
-                    return
-
-                # Route to execution handlers
+                # Execution endpoints - check access levels for authentication
                 if path.startswith("/function/"):
                     name = path.split("/")[-1]
+                    # Check if this function requires authentication
+                    server.introspector.load()
+                    if server.introspector.is_auth_required_for_function(name):
+                        # Protected/Private function - require authentication
+                        username = self._authenticate()
+                        if not username:
+                            ResponseBuilder.send_json(
+                                self, 401, {"error": "Unauthorized"}
+                            )
+                            return
+                    else:
+                        # Public function - allow guest access
+                        username = self._authenticate()
+                        if not username:
+                            username = "__guest__"
+                            if username not in server.user_manager._users:
+                                server.user_manager.create_user(
+                                    username, "__no_password__"
+                                )
+
                     response = server.execution_handler.call_function(
                         name, data.get("args", {}), username
                     )
                     self._send_response(response)
                 elif path.startswith("/walker/"):
                     name = path.split("/")[-1]
+                    # Check if this walker requires authentication
+                    server.introspector.load()
+                    if server.introspector.is_auth_required_for_walker(name):
+                        # Protected/Private walker - require authentication
+                        username = self._authenticate()
+                        if not username:
+                            ResponseBuilder.send_json(
+                                self, 401, {"error": "Unauthorized"}
+                            )
+                            return
+                    else:
+                        # Public walker - allow guest access
+                        username = self._authenticate()
+                        if not username:
+                            username = "__guest__"
+                            if username not in server.user_manager._users:
+                                server.user_manager.create_user(
+                                    username, "__no_password__"
+                                )
+
                     response = server.execution_handler.spawn_walker(
                         name, data.get("fields", {}), username
                     )

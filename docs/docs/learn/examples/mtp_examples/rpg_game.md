@@ -8,11 +8,17 @@ You’ll write code, test it, and see AI-generated levels come to life.
 
 <!-- This tutorial demonstrates how to build a dynamic RPG game level generator using Large Language Models (LLMs) and Jaclang's `by llm` syntax. The tutorial covers creating a system that uses AI to generate balanced, progressively challenging game levels. -->
 
+<!-- <div align="center">
+    <img src="/learn/examples/mtp_examples/assets/rpg_demo.gif" alt="Animated demo of AI-powered RPG level generation" width="528" height="330" loading="lazy" />
+</div> -->
+
 <div align="center">
-  <video width="480" height="300" autoplay loop muted playsinline>
-    <source src="/learn/examples/mtp_examples/assets/rpg_demo.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
+    <img src="/learn/examples/mtp_examples/assets/rpg_demo.gif"
+         alt="Animated demo of AI-powered RPG level generation"
+         width="528"
+         height="330"
+         loading="lazy"
+         style="mix-blend-mode: screen;" />
 </div>
 
 <!-- <div align="center" style="margin-top: 20px;">

@@ -1,5 +1,6 @@
 """Advanced Jac constructs combined fixture for ECMAScript generator tests."""
 
+cl {
 # Lambdas and higher-order helpers
 def lambda_examples() -> dict {
     adder = lambda a: int, b: int : a + b;
@@ -167,4 +168,5 @@ def build_advanced_report(values: list) -> dict {
         "generator": generator_list,
         "async_helper": gather_async
     };
+}
 }

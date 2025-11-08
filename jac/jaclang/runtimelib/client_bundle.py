@@ -7,13 +7,25 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Iterable, Sequence
+from typing import Any, Iterable, NamedTuple, Sequence, TYPE_CHECKING
 
 from jaclang.compiler.program import JacProgram
+from jaclang.utils import convert_to_js_import_path
+
+if TYPE_CHECKING:
+    from jaclang.compiler.codeinfo import ClientManifest
+    from jaclang.compiler.unitree import Module
 
 
 class ClientBundleError(RuntimeError):
     """Raised when the client bundle cannot be generated."""
+
+
+class ProcessedImports(NamedTuple):
+    """Result of processing client imports."""
+
+    import_pieces: list[str]  # JavaScript code pieces from imports
+    bundled_module_names: set[str]  # Names of modules being bundled
 
 
 @dataclass(slots=True)
@@ -76,19 +88,18 @@ class ClientBundleBuilder:
         self._cache[module.__name__] = _CachedBundle(signature=signature, bundle=bundle)
         return bundle
 
-    def _compile_bundle(
-        self,
-        module: ModuleType,
-        module_path: Path,
-    ) -> ClientBundle:
-        """Compile bundle pieces and stitch them together."""
-        # Get manifest from JacProgram first to check for imports
-        from jaclang.runtimelib.machine import JacMachine as Jac
+    def _process_imports(
+        self, manifest: ClientManifest | None, module_path: Path
+    ) -> ProcessedImports:
+        """Process client imports and return import pieces and bundled module names.
 
-        mod = Jac.program.mod.hub.get(str(module_path))
-        manifest = mod.gen.client_manifest if mod else None
+        Args:
+            manifest: The client manifest containing import information, or None
+            module_path: Path to the module being processed
 
-        # Process client imports and track which modules are being bundled
+        Returns:
+            ProcessedImports containing JavaScript code pieces and bundled module names
+        """
         import_pieces: list[str] = []
         bundled_module_names: set[str] = set()
 
@@ -111,9 +122,44 @@ class ClientBundleBuilder:
                             f"// Warning: Could not find {import_path}"
                         )
                 elif import_path_obj.suffix == ".jac":
-                    # For .jac files, compile to JS
+                    # For .jac files, compile to JS and recursively process transitive imports
                     try:
-                        compiled_js = self._compile_to_js(import_path_obj)
+                        compiled_js, imported_mod = self._compile_to_js(import_path_obj)
+
+                        # Get the manifest of the imported module to recursively process its imports
+                        transitive_imports: set[str] = set()
+                        if imported_mod and imported_mod.gen.client_manifest:
+                            # Process transitive imports (imports from the imported module)
+                            for (
+                                sub_import_name,
+                                sub_import_path,
+                            ) in imported_mod.gen.client_manifest.imports.items():
+                                bundled_module_names.add(sub_import_name)
+                                transitive_imports.add(sub_import_name)
+
+                                # Recursively include the transitive import in the bundle
+                                sub_import_path_obj = Path(sub_import_path)
+                                if (
+                                    sub_import_path_obj.suffix == ".jac"
+                                    and sub_import_path_obj.exists()
+                                ):
+                                    try:
+                                        sub_compiled_js, _ = self._compile_to_js(
+                                            sub_import_path_obj
+                                        )
+                                        import_pieces.append(
+                                            f"// Imported .jac module: {sub_import_name}"
+                                        )
+                                        import_pieces.append(sub_compiled_js)
+                                        import_pieces.append("")
+                                    except ClientBundleError:
+                                        pass
+
+                        # Strip import statements from the imported module
+                        compiled_js = self._strip_import_statements(
+                            compiled_js, transitive_imports
+                        )
+
                         import_pieces.append(f"// Imported .jac module: {import_name}")
                         import_pieces.append(compiled_js)
                         import_pieces.append("")
@@ -122,12 +168,31 @@ class ClientBundleBuilder:
                             f"// Warning: Could not compile {import_path}"
                         )
 
-        # Compile main module and strip import statements for bundled modules
-        module_js = self._compile_to_js(module_path)
-        module_js = self._strip_import_statements(module_js, bundled_module_names)
+        return ProcessedImports(import_pieces, bundled_module_names)
 
-        client_exports = sorted(dict.fromkeys(manifest.exports)) if manifest else []
+    def _extract_client_exports(self, manifest: ClientManifest | None) -> list[str]:
+        """Extract client exports from manifest.
 
+        Args:
+            manifest: The client manifest, or None
+
+        Returns:
+            Sorted list of client export names
+        """
+        return sorted(dict.fromkeys(manifest.exports)) if manifest else []
+
+    def _extract_client_globals(
+        self, manifest: ClientManifest | None, module: ModuleType
+    ) -> dict[str, Any]:
+        """Extract client globals from manifest and module.
+
+        Args:
+            manifest: The client manifest, or None
+            module: The Python module
+
+        Returns:
+            Dictionary of global names to their values
+        """
         client_globals_map: dict[str, Any] = {}
         if manifest:
             for name in manifest.globals:
@@ -137,9 +202,31 @@ class ClientBundleBuilder:
                     client_globals_map[name] = getattr(module, name)
                 else:
                     client_globals_map[name] = None
-        client_globals_map = {
-            key: client_globals_map[key] for key in sorted(client_globals_map)
-        }
+        return {key: client_globals_map[key] for key in sorted(client_globals_map)}
+
+    def _compile_bundle(
+        self,
+        module: ModuleType,
+        module_path: Path,
+    ) -> ClientBundle:
+        """Compile bundle pieces and stitch them together."""
+        # Get manifest from JacProgram first to check for imports
+        from jaclang.runtimelib.machine import JacMachine as Jac
+
+        mod = Jac.program.mod.hub.get(str(module_path))
+        manifest = mod.gen.client_manifest if mod else None
+
+        # Process client imports and track which modules are being bundled
+        import_pieces, bundled_module_names = self._process_imports(
+            manifest, module_path
+        )
+
+        # Compile main module and strip import statements for bundled modules
+        module_js, _ = self._compile_to_js(module_path)
+        module_js = self._strip_import_statements(module_js, bundled_module_names)
+
+        client_exports = self._extract_client_exports(manifest)
+        client_globals_map = self._extract_client_globals(manifest, module)
 
         registration_js = self._generate_registration_js(
             module.__name__, client_exports, client_globals_map
@@ -172,8 +259,12 @@ class ClientBundleBuilder:
             hash=bundle_hash,
         )
 
-    def _compile_to_js(self, source_path: Path) -> str:
-        """Compile the provided Jac file into JavaScript."""
+    def _compile_to_js(self, source_path: Path) -> tuple[str, Module]:
+        """Compile the provided Jac file into JavaScript.
+
+        Returns:
+            Tuple of (js_code, compiled_module) where compiled_module contains the client_manifest
+        """
         program = JacProgram()
         mod = program.compile(str(source_path))
         if program.errors_had:
@@ -181,7 +272,7 @@ class ClientBundleBuilder:
             raise ClientBundleError(
                 f"Failed to compile '{source_path}' for client bundle:\n{formatted}"
             )
-        return mod.gen.js or ""
+        return mod.gen.js or "", mod
 
     @staticmethod
     def _strip_import_statements(js_code: str, bundled_modules: set[str]) -> str:
@@ -196,6 +287,11 @@ class ClientBundleBuilder:
         """
         import re
 
+        # Convert bundled module names to their JS import paths for matching
+        bundled_js_paths = {convert_to_js_import_path(mod) for mod in bundled_modules}
+        # Also keep the original names for backward compatibility
+        all_bundled = bundled_modules | bundled_js_paths
+
         lines = js_code.split("\n")
         filtered_lines = []
 
@@ -207,7 +303,7 @@ class ClientBundleBuilder:
             if import_match:
                 module_name = import_match.group(1)
                 # Skip this line if the module is being bundled
-                if module_name in bundled_modules:
+                if module_name in all_bundled:
                     continue
             filtered_lines.append(line)
 

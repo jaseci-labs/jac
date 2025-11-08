@@ -129,6 +129,7 @@ class AstSyncTestMixin:
                 "uni_node",
                 "uni_scope_node",
                 "uni_c_f_g_node",
+                "client_facing_node",
                 "program_module",
                 "walker_stmt_only_node",
                 "source",
@@ -155,6 +156,8 @@ class AstSyncTestMixin:
                 "name_atom",
                 "arch_spec",
                 "match_pattern",
+                "switch_stmt",
+                "switch_case",
             ]
         ]
         pygen_func_names = []

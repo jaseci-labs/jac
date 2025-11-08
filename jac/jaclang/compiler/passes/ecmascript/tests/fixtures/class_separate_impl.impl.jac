@@ -1,5 +1,6 @@
 """Implementation file for Calculator classes."""
 
+cl {
 impl Calculator.init(initial_value: float) {
     self.value = initial_value;
 }
@@ -27,4 +28,5 @@ impl ScientificCalculator.power(exponent: float) -> float {
     }
     self.value = result;
     return self.value;
+}
 }

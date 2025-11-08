@@ -17,6 +17,7 @@ from jaclang.compiler.passes.main import (
     DeclImplMatchPass,
     JacAnnexPass,
     JacImportDepsPass,
+    LlvmIrGenPass,
     PreDynamoPass,
     PyBytecodeGenPass,
     PyJacAstLinkPass,
@@ -27,11 +28,10 @@ from jaclang.compiler.passes.main import (
     SymTabBuildPass,
     Transform,
     TypeCheckPass,
-    LlvmIrGenPass,
 )
 from jaclang.compiler.passes.tool import (
+    CommentInjectionPass,
     DocIRGenPass,
-    FuseCommentsPass,
     JacFormatPass,
 )
 from jaclang.runtimelib.utils import read_file_with_encoding
@@ -59,7 +59,7 @@ py_code_gen = [
 llvm_code_gen = [
     LlvmIrGenPass,
 ]
-format_sched = [FuseCommentsPass, DocIRGenPass, JacFormatPass]
+format_sched = [DocIRGenPass, CommentInjectionPass, JacFormatPass]
 
 
 class JacProgram:

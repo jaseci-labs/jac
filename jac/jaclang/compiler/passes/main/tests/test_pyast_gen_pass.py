@@ -178,6 +178,33 @@ class PyastGenPassTests(TestCaseMicroSuite, AstSyncTestMixin):
             )
             self.assertIn("All IIFE tests completed!", output)
 
+    def test_string_literal_import_requires_cl(self) -> None:
+        """Test that string literal imports require cl prefix."""
+        # Test that string literal import without cl produces an error
+        code = '''import from "react-dom" { render }'''
+        prog = JacProgram()
+        prog.compile(file_path="test.jac", use_str=code)
+
+        # Should have an error about string literals requiring cl
+        self.assertTrue(prog.errors_had)
+        error_messages = [str(e) for e in prog.errors_had]
+        self.assertTrue(
+            any("String literal imports" in msg and "client (cl) imports" in msg for msg in error_messages),
+            f"Expected error about string literal imports requiring cl, got: {error_messages}"
+        )
+
+    def test_string_literal_import_works_with_cl(self) -> None:
+        """Test that string literal imports work correctly with cl prefix."""
+        # Test that string literal import with cl works
+        code = '''cl {
+    import from "react-dom" { render }
+}'''
+        prog = JacProgram()
+        prog.compile(file_path="test.jac", use_str=code)
+
+        # Should not have errors
+        self.assertFalse(prog.errors_had, f"Unexpected errors: {[str(e) for e in prog.errors_had]}")
+
     def parent_scrub(self, node: uni.UniNode) -> bool:
         """Validate every node has parent."""
         success = True

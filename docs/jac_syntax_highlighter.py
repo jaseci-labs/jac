@@ -455,7 +455,7 @@ class JacLexer(RegexLexer):
             # `match`, `case` and `_` soft keywords
             (
                 r"(^[ \t]*)"  # at beginning of line + possible indentation
-                r"(match|case)\b"  # a possible keyword
+                r"(match|case|switch|default)\b"  # a possible keyword
                 r"(?![ \t]*(?:"  # not followed by...
                 r"[:,;=^&|@~)\]}]|(?:"
                 + r"|".join(  # characters and keywords that mean this isn't

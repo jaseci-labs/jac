@@ -84,11 +84,17 @@ class SymTabBuildPass(UniPass):
     def exit_module_path(self, node: uni.ModulePath) -> None:
         if node.alias:
             node.alias.sym_tab.def_insert(node.alias, single_decl="import")
-        elif node.path and not node.is_import_from:
-            if node.parent_of_type(uni.Import) and not (
+        elif (
+            node.path
+            and not node.is_import_from
+            and node.parent_of_type(uni.Import)
+            and not (
                 node.parent_of_type(uni.Import).from_loc
                 and node.parent_of_type(uni.Import).is_jac
-            ):
+            )
+        ):
+            # Only process if first element is a Name (not a String literal)
+            if isinstance(node.path[0], uni.Name):
                 node.path[0].sym_tab.def_insert(node.path[0])
         else:
             pass  # Need to support pythonic import symbols with dots in it
@@ -98,20 +104,28 @@ class SymTabBuildPass(UniPass):
         # import math as m  <- m will have a symbol and symtab entry
         if node.path and (node.is_import_from or (node.alias)):
             for n in node.path:
-                n.sym = n.create_symbol(
+                # Only create symbols for Name nodes, not String literals
+                if isinstance(n, uni.Name):
+                    n.sym = n.create_symbol(
+                        access=SymbolAccess.PUBLIC,
+                        imported=True,
+                    )
+
+    def exit_module_item(self, node: uni.ModuleItem) -> None:
+        # Check Name first (since Name is a subclass of Token)
+        if isinstance(node.name, uni.Name):
+            # Regular named import
+            sym_node = node.alias or node.name
+            sym_node.sym_tab.def_insert(sym_node, single_decl="import")
+            if node.alias:
+                # create symbol for module item
+                node.name.sym = node.name.create_symbol(
                     access=SymbolAccess.PUBLIC,
                     imported=True,
                 )
-
-    def exit_module_item(self, node: uni.ModuleItem) -> None:
-        sym_node = node.alias or node.name
-        sym_node.sym_tab.def_insert(sym_node, single_decl="import")
-        if node.alias:
-            # create symbol for module item
-            node.name.sym = node.name.create_symbol(
-                access=SymbolAccess.PUBLIC,
-                imported=True,
-            )
+        elif isinstance(node.name, uni.Token) and node.alias:
+            sym_node = node.alias
+            sym_node.sym_tab.def_insert(sym_node, single_decl="import")
 
     def enter_archetype(self, node: uni.Archetype) -> None:
         self.push_scope_and_link(node)

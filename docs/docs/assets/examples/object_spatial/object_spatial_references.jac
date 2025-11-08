@@ -25,7 +25,7 @@ impl Creator.create {
 impl node_a.make_something {
     i = 0;
     while i < 5 {
-        print(f"wlecome to {self}");
+        print(f"welcome to {self}");
         i += 1;
     }
 }

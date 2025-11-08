@@ -43,6 +43,7 @@
 
 
 .code-block .run-code-btn,
+.code-block .dot-code-btn,
 .code-block .serve-code-btn {
     margin-top: 0.5em;
     padding: 0.4em 1.2em;
@@ -73,6 +74,13 @@
     box-shadow: 0 4px 16px rgba(255, 171, 64, 0.15);
 }
 
+.code-block .dot-code-btn:hover,
+.code-block .dot-code-btn:focus {
+    background: linear-gradient(90deg, #b859e0ff 0%, #df76f1ff 100%);
+    color: #111;
+    box-shadow: 0 4px 16px rgba(255, 171, 64, 0.15);
+}
+
 .code-block .run-code-btn:active {
     background: #ff9800;
     color: #fff;
@@ -80,6 +88,11 @@
 
 .code-block .serve-code-btn:active {
     background: #0288d1;
+    color: #fff;
+}
+
+.code-block .dot-code-btn:active {
+    background: #7b1fa2;
     color: #fff;
 }
 
@@ -102,9 +115,6 @@
     overflow: hidden;
     margin-top: 0;
 }
-
-
-
 
 body,
 [data-md-color-scheme="slate"] {
@@ -137,7 +147,7 @@ body,
     left: 0 !important;
     right: 0 !important;
     width: 100% !important;
-    z-index: 1001 !important;
+    z-index: 1100 !important;
     height: 64px !important;
     padding: 0 24px !important;
 }
@@ -797,4 +807,54 @@ body[data-domain="https://www.jac-lang.org/"] .feedback-container {
         width: 280px;
         right: 0;
     }
+}
+
+/* viewport for rendered SVG */
+.viz-viewport {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;        /* change to auto if scrollbars are desired */
+  position: relative;
+  touch-action: none;
+  cursor: grab;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  box-sizing: border-box;
+}
+
+/* when user is panning, toggle this class in JS for cursor feedback */
+.viz-viewport.grabbing {
+    cursor: grabbing;
+}
+/* container for controls (Reset button) should be absolute inside graph container */
+.graph-controls {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 120;
+  display: flex;
+  gap: 6px;
+  pointer-events: auto;
+}
+
+/* reset button styling */
+.graph-reset-btn {
+  color: #111;
+  padding: 6px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  min-width: 56px;
+  border-radius: 6px;
+  border: 1px solid rgba(0,0,0,0.12);
+  background: rgba(255,255,255,0.95);
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.12);
+}
+
+/* responsive tweak: allow scrolling on small screens */
+@media (max-width: 600px) {
+  .viz-viewport {
+    overflow: auto;
+  }
 }

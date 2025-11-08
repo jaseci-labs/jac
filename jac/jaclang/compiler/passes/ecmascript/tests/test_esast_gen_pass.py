@@ -165,3 +165,43 @@ class EsastGenPassTests(TestCase):
         self.assertIn("add(", js_code)
         self.assertIn("multiply(", js_code)
         self.assertIn("power(", js_code)
+
+    def test_fstring_generates_template_literal(self) -> None:
+        """Test that f-strings are converted to JavaScript template literals."""
+        es_ast = self.compile_to_esast(
+            self.get_fixture_path(self.ADVANCED_FIXTURE)
+        )
+        js_code = es_to_js(es_ast)
+
+        # Check that template_literal_examples function exists
+        func_names = {
+            node.id.name
+            for node in es_ast.body
+            if isinstance(node, es.FunctionDeclaration) and node.id
+        }
+        self.assertIn("template_literal_examples", func_names)
+
+        # Verify TemplateLiteral nodes are present in the AST
+        node_types = {type(node).__name__ for node in walk_es_nodes(es_ast)}
+        self.assertIn(
+            "TemplateLiteral",
+            node_types,
+            "F-strings should be converted to TemplateLiteral nodes",
+        )
+        self.assertIn(
+            "TemplateElement",
+            node_types,
+            "TemplateLiteral should contain TemplateElement nodes",
+        )
+
+        # Check that the JavaScript output contains template literal syntax
+        self.assertIn(
+            "`",
+            js_code,
+            "JavaScript output should contain backtick for template literals",
+        )
+
+        # Verify that the f-string variables are interpolated correctly
+        # f"{user} scored {score} which is a {status}"
+        # Should become something like: `${user} scored ${score} which is a ${status}`
+        self.assertIn("${", js_code, "Template literal should contain ${} syntax")

@@ -8,6 +8,7 @@ from pathlib import Path
 
 from jaclang import JacMachineInterface as Jac
 from jaclang.compiler import jac_lark as jl
+from jaclang.compiler import unitree as uni
 from jaclang.compiler.constant import Tokens
 from jaclang.compiler.parser import JacParser
 from jaclang.compiler.program import JacProgram
@@ -127,6 +128,7 @@ class TestLarkParser(TestCaseMicroSuite):
             "UniNode",
             "UniScopeNode",
             "UniCFGNode",
+            "ClientFacingNode",
             "ProgramModule",
             "WalkerStmtOnlyNode",
             "Source",
@@ -222,7 +224,7 @@ class TestLarkParser(TestCaseMicroSuite):
                     func(foo bar)
                              ^^^
                     foo.bar;
-            """
+            """,
         ]
         for idx, alrt in enumerate(prog.errors_had):
             pretty = alrt.pretty_print()
@@ -233,10 +235,7 @@ class TestLarkParser(TestCaseMicroSuite):
     def _load_combined_jsx_fixture(self) -> tuple[str, JacParser]:
         """Parse the consolidated JSX fixture once for downstream assertions."""
         fixture_path = (
-            Path(__file__)
-            .resolve()
-            .parent
-            .parent
+            Path(__file__).resolve().parent.parent
             / "passes"
             / "ecmascript"
             / "tests"
@@ -261,7 +260,7 @@ class TestLarkParser(TestCaseMicroSuite):
 
         expected_snippets = {
             "self_closing": "<div />",
-            "attribute_binding": 'id={name}',
+            "attribute_binding": "id={name}",
             "namespaced_component": "<Form.Input.Text />",
             "fragment": "<>",
             "spread_attribute": "{...props}",
@@ -303,13 +302,29 @@ cl {
         module = JacProgram().parse_str(source, "test.jac")
         body = module.body
 
+        # With ClientBlock, cl {} creates a single ClientBlock node
         self.assertEqual(
             [type(stmt).__name__ for stmt in body],
-            ["GlobalVars", "GlobalVars", "GlobalVars", "Test"],
+            ["GlobalVars", "GlobalVars", "ClientBlock"],
         )
         self.assertEqual(
             [getattr(stmt, "is_client_decl", False) for stmt in body],
-            [True, False, True, True],  # cl let, let, cl{let}, cl{test}
+            [True, False, False],  # cl let, let, ClientBlock (not ClientFacingNode)
+        )
+        # Check the ClientBlock's body
+        client_block = body[2]
+        self.assertIsInstance(client_block, uni.ClientBlock)
+        self.assertEqual(len(client_block.body), 2)
+        self.assertEqual(
+            [type(stmt).__name__ for stmt in client_block.body],
+            ["GlobalVars", "Test"],
+        )
+        self.assertTrue(
+            all(
+                getattr(stmt, "is_client_decl", False)
+                for stmt in client_block.body
+                if hasattr(stmt, "is_client_decl")
+            )
         )
 
         # Test 2: Block with different statement types
@@ -324,11 +339,15 @@ cl {
         module = JacProgram().parse_str(source, "test.jac")
         body = module.body
 
-        self.assertEqual(len(body), 4)
+        # With ClientBlock, all statements are wrapped in a single ClientBlock
+        self.assertEqual(len(body), 1)
+        self.assertIsInstance(body[0], uni.ClientBlock)
+        # Check the ClientBlock's body has 4 statements
+        self.assertEqual(len(body[0].body), 4)
         self.assertTrue(
             all(
                 getattr(stmt, "is_client_decl", False)
-                for stmt in body
+                for stmt in body[0].body
                 if hasattr(stmt, "is_client_decl")
             )
         )
@@ -346,11 +365,14 @@ cl {
         module = JacProgram().parse_str(source, "test.jac")
         body = module.body
 
+        # Now we have: ClientBlock, GlobalVars, ClientBlock
         self.assertEqual(len(body), 3)
-        self.assertEqual(
-            [getattr(stmt, "is_client_decl", False) for stmt in body],
-            [True, False, True],  # cl{let a}, let b, cl{let c}
-        )
+        self.assertIsInstance(body[0], uni.ClientBlock)
+        self.assertIsInstance(body[1], uni.GlobalVars)
+        self.assertIsInstance(body[2], uni.ClientBlock)
+        self.assertFalse(
+            getattr(body[1], "is_client_decl", False)
+        )  # let b is not client
 
         # Test 4: Empty client block
         source = """
@@ -360,8 +382,12 @@ let x = 1;
         module = JacProgram().parse_str(source, "test.jac")
         body = module.body
 
-        self.assertEqual(len(body), 1)
-        self.assertFalse(getattr(body[0], "is_client_decl", False))
+        # Empty ClientBlock followed by GlobalVars
+        self.assertEqual(len(body), 2)
+        self.assertIsInstance(body[0], uni.ClientBlock)
+        self.assertEqual(len(body[0].body), 0)  # Empty
+        self.assertIsInstance(body[1], uni.GlobalVars)
+        self.assertFalse(getattr(body[1], "is_client_decl", False))
 
         # Test 5: Various statement types with single cl marker
         source = """
@@ -408,7 +434,7 @@ walker MyWalker {
         self.assertEqual(len(abilities), 1)
 
         ability = abilities[0]
-        self.assertIsNone(ability.name_ref)
+        self.assertIsNotNone(ability.name_ref)
         # Check that py_resolve_name generates a name
         resolved_name = ability.py_resolve_name()
         self.assertTrue(resolved_name.startswith("__ability_entry_"))
@@ -502,7 +528,7 @@ cl import from jac:client_runtime {
         # Check that it's a client import
         self.assertTrue(
             getattr(import_stmt, "is_client_decl", False),
-            "Import should be marked as client-side"
+            "Import should be marked as client-side",
         )
 
         # Check the from_loc has the prefix
@@ -511,16 +537,14 @@ cl import from jac:client_runtime {
             import_stmt.from_loc.prefix, "ModulePath should have prefix"
         )
         self.assertEqual(
-            import_stmt.from_loc.prefix.value,
-            "jac",
-            "Prefix should be 'jac'"
+            import_stmt.from_loc.prefix.value, "jac", "Prefix should be 'jac'"
         )
 
         # Check the module path
         self.assertEqual(
             import_stmt.from_loc.dot_path_str,
             "client_runtime",
-            "Module path should be 'client_runtime'"
+            "Module path should be 'client_runtime'",
         )
 
         # Check the imported items
