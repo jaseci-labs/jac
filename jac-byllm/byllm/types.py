@@ -14,7 +14,7 @@ from contextlib import suppress
 from dataclasses import dataclass
 from enum import StrEnum
 from io import BytesIO
-from typing import Callable, TypeAlias, get_type_hints
+from typing import Callable, IO, TypeAlias, get_type_hints
 
 from PIL.Image import Image as PILImageCls
 from PIL.Image import open as open_image
