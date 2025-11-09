@@ -142,6 +142,7 @@ class JacProgram:
             self.run_schedule(
                 mod=mod_targ, passes=type_check_sched, cancel_token=cancel_token
             )
+
         # If the module has syntax errors, we skip code generation.
         if (not mod_targ.has_syntax_errors) and (not no_cgen):
             if settings.predynamo_pass and PreDynamoPass not in py_code_gen:
@@ -149,7 +150,51 @@ class JacProgram:
             self.run_schedule(
                 mod=mod_targ, passes=py_code_gen, cancel_token=cancel_token
             )
+
+        # NEW: Hybrid JIT compilation support
+        # Analyze functions for LLVM compatibility and generate LLVM IR for compatible ones
+        # Run AFTER Python codegen to avoid corrupting the AST
+        if settings.jit_enabled and not no_cgen and not mod_targ.has_syntax_errors:
+            self._try_hybrid_compilation(mod_targ, cancel_token)
+
         return mod_targ
+
+    def _try_hybrid_compilation(
+        self, mod_targ: uni.Module, cancel_token: Event | None = None
+    ) -> None:
+        """Attempt hybrid JIT compilation for LLVM-compatible functions.
+
+        This analyzes the module for LLVM-compatible functions and generates
+        LLVM IR for them alongside the Python bytecode.
+
+        Args:
+            mod_targ: The module to compile.
+            cancel_token: Optional cancellation token.
+        """
+        try:
+            # Check if llvmlite is available
+            import importlib.util
+
+            if importlib.util.find_spec("llvmlite") is None:
+                if settings.jit_debug:
+                    print("[JIT] llvmlite not installed, JIT compilation disabled")
+                return
+
+            # Run compatibility analysis pass
+            from jaclang.compiler.passes.main import LlvmCompatibilityPass
+
+            LlvmCompatibilityPass(ir_in=mod_targ, prog=self, cancel_token=cancel_token)
+
+            # Generate LLVM IR for compatible functions
+            self.run_schedule(
+                mod=mod_targ, passes=llvm_code_gen, cancel_token=cancel_token
+            )
+
+        except Exception as e:
+            if settings.jit_debug:
+                print(f"[JIT] Hybrid compilation failed: {e}")
+            # Don't fail the entire compilation if JIT fails
+            pass
 
     def build(
         self, file_path: str, use_str: str | None = None, type_check: bool = False

@@ -99,6 +99,9 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
         self.builtin_imports: set[str] = set()  # Track individual builtin imports
         self._temp_name_counter: int = 0
         self._hoisted_funcs: list[ast3.FunctionDef | ast3.AsyncFunctionDef] = []
+        self.llvm_funcs_metadata: dict[str, bool] = (
+            {}
+        )  # Track LLVM-compatible functions
         self.preamble: list[ast3.AST] = [
             self.sync(
                 ast3.ImportFrom(
@@ -522,6 +525,9 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
         for child_pass in self.child_passes:
             self.jaclib_imports.update(child_pass.jaclib_imports)
             self.builtin_imports.update(child_pass.builtin_imports)
+            # Merge LLVM function metadata from child passes
+            if hasattr(child_pass, "llvm_funcs_metadata"):
+                self.llvm_funcs_metadata.update(child_pass.llvm_funcs_metadata)
 
         # Add builtin imports if any were used
         if self.builtin_imports:
@@ -557,6 +563,108 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
 
         merged_body = self._merge_module_bodies(node)
         body_items: list[ast3.AST | list[ast3.AST] | None] = [*self.preamble]
+
+        # Add __jac_llvm_funcs__ dictionary if there are LLVM-compatible functions
+        if self.llvm_funcs_metadata:
+            from jaclang.settings import settings
+
+            if (
+                settings.jit_enabled
+                and hasattr(node.gen, "llvm_ir")
+                and node.gen.llvm_ir
+            ):
+                # Get module-level LLVM IR
+                module_llvm_ir = node.gen.llvm_ir
+                module_triple = (
+                    node.gen.llvm_triple if hasattr(node.gen, "llvm_triple") else ""
+                )
+                module_data_layout = (
+                    node.gen.llvm_data_layout
+                    if hasattr(node.gen, "llvm_data_layout")
+                    else ""
+                )
+                module_metadata = (
+                    node.gen.llvm_metadata if hasattr(node.gen, "llvm_metadata") else {}
+                )
+
+                # Create dictionary literal with LLVM metadata
+                llvm_dict_keys: list[ast3.expr] = []
+                llvm_dict_values: list[ast3.expr] = []
+
+                for func_name in self.llvm_funcs_metadata.keys():
+                    llvm_dict_keys.append(self.sync(ast3.Constant(value=func_name)))
+
+                    # Get function-specific metadata
+                    func_metadata = module_metadata.get(func_name, {})
+
+                    # Create dict for function metadata (args, return type)
+                    metadata_dict_keys: list[ast3.expr] = []
+                    metadata_dict_values: list[ast3.expr] = []
+                    for k, v in func_metadata.items():
+                        metadata_dict_keys.append(self.sync(ast3.Constant(value=k)))
+                        if isinstance(v, list):
+                            # Handle list of values (e.g., args list)
+                            metadata_dict_values.append(
+                                self.sync(
+                                    ast3.List(
+                                        elts=[
+                                            self.sync(ast3.Constant(value=item))
+                                            for item in v
+                                        ],
+                                        ctx=ast3.Load(),
+                                    )
+                                )
+                            )
+                        else:
+                            metadata_dict_values.append(
+                                self.sync(ast3.Constant(value=v))
+                            )
+
+                    # Create nested dictionary for each function's metadata
+                    # All functions share the same module LLVM IR
+                    meta_dict = self.sync(
+                        ast3.Dict(
+                            keys=[
+                                self.sync(ast3.Constant(value="llvm_ir")),
+                                self.sync(ast3.Constant(value="metadata")),
+                                self.sync(ast3.Constant(value="triple")),
+                                self.sync(ast3.Constant(value="data_layout")),
+                            ],
+                            values=[
+                                self.sync(ast3.Constant(value=module_llvm_ir)),
+                                self.sync(
+                                    ast3.Dict(
+                                        keys=cast(
+                                            list[ast3.expr | None], metadata_dict_keys
+                                        ),
+                                        values=metadata_dict_values,
+                                    )
+                                ),
+                                self.sync(ast3.Constant(value=module_triple)),
+                                self.sync(ast3.Constant(value=module_data_layout)),
+                            ],
+                        )
+                    )
+                    llvm_dict_values.append(meta_dict)
+
+                # Create assignment: __jac_llvm_funcs__ = {...}
+                llvm_funcs_assign = self.sync(
+                    ast3.Assign(
+                        targets=[
+                            self.sync(
+                                ast3.Name(id="__jac_llvm_funcs__", ctx=ast3.Store())
+                            )
+                        ],
+                        value=self.sync(
+                            ast3.Dict(
+                                keys=cast(list[ast3.expr | None], llvm_dict_keys),
+                                values=llvm_dict_values,
+                            )
+                        ),
+                    )
+                )
+                body_items.append(llvm_funcs_assign)
+
         body_items.extend(item.gen.py_ast for item in merged_body)
 
         if node.doc:
@@ -1134,6 +1242,12 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
             )
         )
         node.gen.py_ast = [func_def]
+
+        # Track LLVM-compatible functions for hybrid execution
+        if hasattr(node.gen, "llvm_compatible") and node.gen.llvm_compatible:
+            func_name = node.name_ref.sym_name
+            # Just track the function name; metadata will be retrieved from module level
+            self.llvm_funcs_metadata[func_name] = True
 
     def exit_impl_def(self, node: uni.ImplDef) -> None:
         pass

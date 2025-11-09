@@ -182,7 +182,7 @@ class AstTool:
         """Generate a AST, SymbolTable tree for .jac file, or Python AST for .py file."""
         error = (
             "Usage: ir <choose one of (sym / sym. / ast / ast. / docir / "
-            "pyast / py / unparse / esast / es)> <.py or .jac file_path>"
+            "pyast / py / unparse / esast / es / llvmir / llvmir-opt / asm)> <.py or .jac file_path>"
         )
         if len(args) != 2:
             return error
@@ -287,6 +287,102 @@ class AstTool:
                         return f"\n{es_to_js(es_ir.gen.es_ast)}"
                     else:
                         return "ECMAScript code generation failed."
+                case "llvmir":
+                    try:
+                        llvm_ir = prog.compile_to_llvm(file_name)
+                        if llvm_ir.gen.llvm_ir:
+                            return f"\n{llvm_ir.gen.llvm_ir}"
+                        else:
+                            return "LLVM IR generation failed or produced no output."
+                    except ImportError:
+                        return (
+                            "llvmlite is required for LLVM IR generation. "
+                            "Install it with: pip install llvmlite"
+                        )
+                    except Exception as e:
+                        return f"Error generating LLVM IR: {e}"
+                case "llvmir-opt":
+                    try:
+                        import llvmlite.binding as llvm
+
+                        llvm_ir_mod = prog.compile_to_llvm(file_name)
+                        if not llvm_ir_mod.gen.llvm_ir:
+                            return "LLVM IR generation failed or produced no output."
+
+                        # Initialize LLVM targets
+                        try:
+                            llvm.initialize_all_targets()
+                            llvm.initialize_all_asmprinters()
+                        except AttributeError:
+                            llvm.initialize()
+                            llvm.initialize_native_target()
+                            llvm.initialize_native_asmprinter()
+
+                        # Parse and verify
+                        mod = llvm.parse_assembly(llvm_ir_mod.gen.llvm_ir)
+                        mod.verify()
+
+                        # Create pass manager with optimizations
+                        # Note: Pass manager API has changed in newer llvmlite versions
+                        try:
+                            pmb = llvm.create_pass_manager_builder()
+                            pmb.opt_level = 2  # -O2
+                            pm = llvm.create_module_pass_manager()
+                            pmb.populate(pm)
+                            pm.run(mod)
+                        except AttributeError:
+                            # Newer llvmlite versions don't have create_pass_manager_builder
+                            # Return unoptimized IR with a note
+                            return f"\n; Note: Optimization passes not available in this llvmlite version\n{str(mod)}"
+
+                        return f"\n{str(mod)}"
+                    except ImportError:
+                        return (
+                            "llvmlite is required for LLVM IR optimization. "
+                            "Install it with: pip install llvmlite"
+                        )
+                    except Exception as e:
+                        return f"Error optimizing LLVM IR: {e}"
+                case "asm":
+                    try:
+                        import llvmlite.binding as llvm
+
+                        llvm_ir_mod = prog.compile_to_llvm(file_name)
+                        if not llvm_ir_mod.gen.llvm_ir:
+                            return "LLVM IR generation failed or produced no output."
+
+                        # Initialize LLVM targets
+                        try:
+                            llvm.initialize_all_targets()
+                            llvm.initialize_all_asmprinters()
+                        except AttributeError:
+                            llvm.initialize()
+                            llvm.initialize_native_target()
+                            llvm.initialize_native_asmprinter()
+
+                        # Parse IR
+                        mod = llvm.parse_assembly(llvm_ir_mod.gen.llvm_ir)
+                        mod.triple = (
+                            llvm_ir_mod.gen.llvm_triple or llvm.get_default_triple()
+                        )
+                        if llvm_ir_mod.gen.llvm_data_layout:
+                            mod.data_layout = llvm_ir_mod.gen.llvm_data_layout
+                        mod.verify()
+
+                        # Create target machine
+                        target = llvm.Target.from_triple(mod.triple)
+                        target_machine = target.create_target_machine()
+
+                        # Generate assembly
+                        asm_code = target_machine.emit_assembly(mod)
+                        return f"\n{asm_code}"
+                    except ImportError:
+                        return (
+                            "llvmlite is required for assembly generation. "
+                            "Install it with: pip install llvmlite"
+                        )
+                    except Exception as e:
+                        return f"Error generating assembly: {e}"
                 case _:
                     return f"Invalid key: {error}"
         else:

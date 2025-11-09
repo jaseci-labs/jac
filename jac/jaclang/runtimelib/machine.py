@@ -1064,6 +1064,26 @@ class JacBasics:
                 # Execute the module
                 if spec.loader:
                     spec.loader.exec_module(module)
+
+                # Wrap LLVM-compatible functions for __main__ execution
+                from jaclang.settings import settings
+
+                if settings.jit_enabled and hasattr(module, "__jac_llvm_funcs__"):
+                    from jaclang.runtimelib.hybrid import HybridFunction
+
+                    llvm_funcs = module.__jac_llvm_funcs__
+                    for func_name, llvm_data in llvm_funcs.items():
+                        if hasattr(module, func_name):
+                            original_func = getattr(module, func_name)
+                            if not isinstance(original_func, HybridFunction):
+                                wrapped_func = HybridFunction(
+                                    python_func=original_func,
+                                    llvm_ir=llvm_data.get("llvm_ir"),
+                                    llvm_metadata=llvm_data.get("metadata"),
+                                    llvm_triple=llvm_data.get("triple"),
+                                    llvm_data_layout=llvm_data.get("data_layout"),
+                                )
+                                setattr(module, func_name, wrapped_func)
             elif reload_module and module_name in sys.modules:
                 # Handle reload case
                 module = importlib.reload(sys.modules[module_name])
@@ -1071,6 +1091,27 @@ class JacBasics:
                 # Use Python's standard import machinery
                 # This will invoke JacMetaImporter.find_spec() and exec_module()
                 module = importlib.import_module(module_name)
+
+            # Wrap LLVM-compatible functions with HybridFunction for JIT execution
+            from jaclang.settings import settings
+
+            if settings.jit_enabled and hasattr(module, "__jac_llvm_funcs__"):
+                from jaclang.runtimelib.hybrid import HybridFunction
+
+                llvm_funcs = module.__jac_llvm_funcs__
+                for func_name, llvm_data in llvm_funcs.items():
+                    if hasattr(module, func_name):
+                        original_func = getattr(module, func_name)
+                        # Only wrap if it's a plain function (not already wrapped)
+                        if not isinstance(original_func, HybridFunction):
+                            wrapped_func = HybridFunction(
+                                python_func=original_func,
+                                llvm_ir=llvm_data.get("llvm_ir"),
+                                llvm_metadata=llvm_data.get("metadata"),
+                                llvm_triple=llvm_data.get("triple"),
+                                llvm_data_layout=llvm_data.get("data_layout"),
+                            )
+                            setattr(module, func_name, wrapped_func)
 
             # Handle selective item imports
             if items:

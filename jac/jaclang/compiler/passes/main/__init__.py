@@ -15,6 +15,7 @@ from .pybc_gen_pass import PyBytecodeGenPass  # noqa: I100
 from .cfg_build_pass import CFGBuildPass  # noqa: I100
 from .pyjac_ast_link_pass import PyJacAstLinkPass  # noqa: I100
 from .llvmir_gen_pass import LlvmIrGenPass  # noqa: I100
+from .llvm_compat_pass import LlvmCompatibilityPass  # noqa: I100
 
 
 __all__ = [
@@ -35,4 +36,5 @@ __all__ = [
     "CFGBuildPass",
     "PyJacAstLinkPass",
     "LlvmIrGenPass",
+    "LlvmCompatibilityPass",
 ]

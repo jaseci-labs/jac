@@ -4,11 +4,18 @@ from __future__ import annotations
 
 import ast as ast3
 from dataclasses import dataclass, field
-from typing import Any, Optional, TYPE_CHECKING
+from typing import Any, Optional, TYPE_CHECKING, TypeAlias
 
 if TYPE_CHECKING:
     from jaclang.compiler.passes.ecmascript.estree import Node as EsNode
     from jaclang.compiler.unitree import Source, Token
+
+    try:
+        from llvmlite import ir as _ir
+
+        LlvmModule: TypeAlias = _ir.Module
+    except ImportError:
+        LlvmModule: TypeAlias = Any  # type: ignore
 
 
 @dataclass
@@ -26,25 +33,38 @@ class ClientManifest:
 
 
 class CodeGenTarget:
-    """Code generation target."""
+    """Code generation target.
+
+    This class stores generated code in various target formats including
+    Python, JavaScript, and LLVM IR.
+    """
 
     def __init__(self) -> None:
         """Initialize code generation target."""
         import jaclang.compiler.passes.tool.doc_ir as doc
 
+        # Python code generation
         self.py: str = ""
-        self.jac: str = ""
-        self.doc_ir: doc.DocType = doc.Text("")
-        self.js: str = ""
-        self.client_manifest: ClientManifest = ClientManifest()
         self.py_ast: list[ast3.AST] = []
         self.py_bytecode: Optional[bytes] = None
+
+        # Jac code generation
+        self.jac: str = ""
+
+        # Documentation generation
+        self.doc_ir: doc.DocType = doc.Text("")
+
+        # JavaScript/ECMAScript generation
+        self.js: str = ""
         self.es_ast: Optional[EsNode] = None
-        self.llvm_module: Any | None = None
-        self.llvm_ir: str = ""
-        self.llvm_metadata: dict[str, Any] = {}
-        self.llvm_triple: str = ""
-        self.llvm_data_layout: str = ""
+        self.client_manifest: ClientManifest = ClientManifest()
+
+        # LLVM IR generation (type-safe with proper annotations)
+        self.llvm_module: LlvmModule | None = None  # LLVM Module object
+        self.llvm_ir: str = ""  # LLVM IR text representation
+        self.llvm_metadata: dict[str, dict[str, Any]] = {}  # Function signatures
+        self.llvm_triple: str = ""  # Target triple (e.g., "x86_64-unknown-linux-gnu")
+        self.llvm_data_layout: str = ""  # Data layout string
 
 
 class CodeLocInfo:

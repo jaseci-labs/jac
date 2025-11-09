@@ -37,10 +37,10 @@ class LlvmIrGenPass(BaseAstGenPass[Any]):
 
         self.child_passes: list[LlvmIrGenPass] = self._init_child_passes(LlvmIrGenPass)
 
+        # Initialize LLVM targets (required even though initialize() is deprecated)
         if not LlvmIrGenPass._llvm_initialized:
-            _llvm.initialize()
-            _llvm.initialize_native_target()
-            _llvm.initialize_native_asmprinter()
+            _llvm.initialize_all_targets()
+            _llvm.initialize_all_asmprinters()
             LlvmIrGenPass._llvm_initialized = True
 
         target = _llvm.Target.from_default_triple()
@@ -146,22 +146,28 @@ class LlvmIrGenPass(BaseAstGenPass[Any]):
         func_name = node.py_resolve_name()
         llvm_func = _ir.Function(self._module, func_type, name=func_name)
         entry_block = llvm_func.append_basic_block("entry")
+
+        # Use a single builder for the function
         builder = self._with_builder(_ir.IRBuilder(entry_block))
 
         self.function_stack.append(llvm_func)
         self.symbol_stack.append({})
+
         metadata = self.metadata_stack[-1] if self.metadata_stack else {}
         metadata[func_name] = {
             "return": self._encode_type(return_type),
             "args": [self._encode_type(t) for t in arg_types],
         }
 
-        # Assign parameters to allocas so they can be referenced uniformly.
+        # Create allocas for parameters at the start
         for ir_arg, name in zip(llvm_func.args, arg_names):
             ir_arg.name = name
-            alloca = self._create_entry_alloca(name, ir_arg.type)
-            builder.store(ir_arg, alloca)
+            alloca = builder.alloca(ir_arg.type, name=name)
             self.symbol_stack[-1][name] = alloca
+
+        # Store parameter values into their allocas
+        for ir_arg, name in zip(llvm_func.args, arg_names):
+            builder.store(ir_arg, self.symbol_stack[-1][name])
 
         node.gen.llvm_module = self._module
         node.gen.llvm_function = llvm_func
@@ -302,6 +308,8 @@ class LlvmIrGenPass(BaseAstGenPass[Any]):
             return self._load_symbol(expr)
         if isinstance(expr, uni.BinaryExpr):
             return self._compile_binary(expr)
+        if isinstance(expr, uni.CompareExpr):
+            return self._compile_compare(expr)
         if isinstance(expr, uni.UnaryExpr):
             return self._compile_unary(expr)
         if isinstance(expr, uni.AtomUnit):
@@ -369,6 +377,58 @@ class LlvmIrGenPass(BaseAstGenPass[Any]):
         )
         return None
 
+    def _compile_compare(self, node: uni.CompareExpr) -> Optional[_ir.Value]:
+        """Compile a comparison expression.
+
+        CompareExpr supports chained comparisons like a < b < c.
+        For single comparisons, we use _emit_cmp to generate the appropriate
+        icmp or fcmp instruction.
+        """
+        if self._builder is None:
+            return None
+
+        # Compile the left operand
+        left = self._compile_expr(node.left)
+        if left is None:
+            return None
+
+        # For now, handle single comparison (most common case)
+        if len(node.ops) == 1 and len(node.rights) == 1:
+            right = self._compile_expr(node.rights[0])
+            if right is None:
+                return None
+
+            op_token = node.ops[0]
+            op = op_token.name if isinstance(op_token, uni.Token) else str(op_token)
+
+            # Map token to comparison operator string
+            if op == Tok.EE.value:
+                return self._emit_cmp("==", left, right, node)
+            elif op == Tok.NE.value:
+                return self._emit_cmp("!=", left, right, node)
+            elif op == Tok.LT.value:
+                return self._emit_cmp("<", left, right, node)
+            elif op == Tok.LTE.value:
+                return self._emit_cmp("<=", left, right, node)
+            elif op == Tok.GT.value:
+                return self._emit_cmp(">", left, right, node)
+            elif op == Tok.GTE.value:
+                return self._emit_cmp(">=", left, right, node)
+            else:
+                self.log_warning(
+                    f"Comparison operator '{op}' is not supported by the LLVM backend yet.",
+                    node_override=node,
+                )
+                return None
+        else:
+            # Chained comparisons like a < b < c
+            # This would require AND-ing multiple comparisons together
+            self.log_warning(
+                "Chained comparisons are not yet supported by the LLVM backend.",
+                node_override=node,
+            )
+            return None
+
     def _compile_unary(self, node: uni.UnaryExpr) -> Optional[_ir.Value]:
         operand = self._compile_expr(node.operand)
         if operand is None or self._builder is None:
@@ -424,6 +484,8 @@ class LlvmIrGenPass(BaseAstGenPass[Any]):
     ) -> tuple[Optional[_ir.Value], Optional[_ir.Value]]:
         if str(left.type) == str(right.type):
             return left, right
+        if not self._builder:
+            return None, None
         if self._is_float_type(left.type) and self._is_int_type(right.type):
             return left, self._builder.sitofp(right, left.type, name="coerce_rhs")
         if self._is_float_type(right.type) and self._is_int_type(left.type):
@@ -474,12 +536,11 @@ class LlvmIrGenPass(BaseAstGenPass[Any]):
         return self._builder.icmp_signed(pred, left, right, name="cmptmp")
 
     def _create_entry_alloca(self, name: str, typ: _ir.Type) -> _ir.AllocaInstr:
-        entry = self._function.entry_basic_block if self._function else None
-        builder = _ir.IRBuilder(entry) if entry else self._builder
-        if builder is None:
+        if self._builder is None:
             raise self.ice("Attempted to allocate outside of a function.")
-        builder.position_at_end(entry if entry else builder.block)
-        return builder.alloca(typ, name=name)
+        # Insert alloca at current position
+        # In a well-formed program, variable declarations should come before use
+        return self._builder.alloca(typ, name=name)
 
     def _resolve_annotation(self, annotation: Optional[uni.UniNode]) -> _ir.Type:
         if annotation is None:

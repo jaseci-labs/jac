@@ -30,6 +30,14 @@ class Settings:
     # LSP configuration
     lsp_debug: bool = False
 
+    # JIT/Hybrid execution configuration
+    jit_enabled: bool = False  # Disabled by default until stable
+    jit_debug: bool = False
+    jit_force_python: bool = False
+    jit_force_native: bool = False
+    jit_fallback_on_error: bool = True
+    jit_cache_size: int = 100
+
     def __post_init__(self) -> None:
         """Initialize settings."""
         home_dir = os.path.expanduser("~")
