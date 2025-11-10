@@ -412,3 +412,10 @@ class TypeCheckerPassTests(TestCase):
     def _assert_error_pretty_found(self, needle: str, haystack: str) -> None:
         for line in [line.strip() for line in needle.splitlines() if line.strip()]:
             self.assertIn(line, haystack, f"Expected line '{line}' not found in:\n{haystack}")
+    
+    def test_get_type_of_iife_expression(self) -> None:
+        path = self.fixture_abs_path("checker_iife_expression.jac")
+        program = JacProgram()
+        mod = program.compile(path)
+        TypeCheckPass(ir_in=mod, prog=program)
+        self.assertEqual(len(program.errors_had), 0)
