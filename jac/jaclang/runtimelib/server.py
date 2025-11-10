@@ -997,13 +997,9 @@ class JacAPIServer:
                     )
                     self._send_response(response)
                 elif path.startswith("/walker/"):
-                    name_list = path.split("/")
-                    if len(name_list) > 3:
-                        node_id = name_list[-1]
-                        name = name_list[-2]
-                    else:
-                        node_id = ""
-                        name = name_list[-1]
+                    name_parts = path.split("/")
+                    name = name_parts[-2] if len(name_parts) > 3 else name_parts[-1]
+                    node_id = name_parts[-1] if len(name_parts) > 3 else ""
                     # Check if this walker requires authentication
                     server.introspector.load()
                     if server.introspector.is_auth_required_for_walker(name):

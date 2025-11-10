@@ -3,7 +3,7 @@
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking_changes.md) page.
 
 ## jaclang 0.9.0 / jac-cloud 0.2.11 / byllm 0.4.6 / jac-client 0.1.0 (Unreleased)
-
+- **Node Spawn Walker supported**: Spawning walker on a node with `jac serve` is supported.
 
 ## jaclang 0.8.10 / jac-cloud 0.2.10 / byllm 0.4.5 (Latest Release)
 
