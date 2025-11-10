@@ -538,6 +538,12 @@ class TypeEvaluator {
     # Pyright equivalent function name = getTypeOfExpression();
     """Return the effective type of the expression."""
     def get_type_of_expression(self: TypeEvaluator, node_: uni.Expr) -> TypeBase {
+
+        # To support JS style IIFE, abilities should be treated as expressions.
+        if isinstance(node_, uni.Ability) {
+            return self.get_type_of_ability(node_);
+        }
+
         # If it's alreay "cached" return it.
         if node_.type is not None {
             return node_.type;
