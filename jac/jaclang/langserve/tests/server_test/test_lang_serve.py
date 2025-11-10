@@ -29,12 +29,12 @@ from jaclang.langserve.server import formatting
 
 class TestLangServe:
     """Test suite for Jac language server features."""
-    
+
     CIRCLE_TEMPLATE = "circle_template.jac"
     GLOB_TEMPLATE = "glob_template.jac"
     EXPECTED_CIRCLE_TOKEN_COUNT = 345
     EXPECTED_GLOB_TOKEN_COUNT = 15
-    
+
     @pytest.mark.asyncio
     async def test_open_valid_file_no_diagnostics(self):
         """Test opening a valid Jac file produces no diagnostics."""
@@ -50,7 +50,7 @@ class TestLangServe:
         finally:
             ls.shutdown()
             test_file.cleanup()
-    
+
     @pytest.mark.asyncio
     async def test_open_with_syntax_error(self):
         """Test opening a Jac file with syntax error produces diagnostics."""
@@ -69,7 +69,7 @@ class TestLangServe:
         finally:
             ls.shutdown()
             test_file.cleanup()
-    
+
     @pytest.mark.asyncio
     async def test_did_open_and_simple_syntax_error(self):
         """Test diagnostics evolution from valid to invalid code."""
@@ -96,7 +96,7 @@ class TestLangServe:
         finally:
             ls.shutdown()
             test_file.cleanup()
-    
+
     @pytest.mark.asyncio
     async def test_did_save(self):
         """Test saving a Jac file triggers appropriate diagnostics."""
@@ -123,7 +123,7 @@ class TestLangServe:
         finally:
             ls.shutdown()
             test_file.cleanup()
-    
+
     @pytest.mark.asyncio
     async def test_did_change(self):
         """Test changing a Jac file triggers diagnostics."""
@@ -148,7 +148,7 @@ class TestLangServe:
         finally:
             ls.shutdown()
             test_file.cleanup()
-    
+
     @pytest.mark.filterwarnings("ignore::ResourceWarning")
     def test_vsce_formatting(self):
         """Test formatting a Jac file returns valid edits."""
@@ -171,7 +171,7 @@ class TestLangServe:
         finally:
             ls.shutdown()
             test_file.cleanup()
-    
+
     @pytest.mark.asyncio
     async def test_multifile_workspace(self):
         """Test opening multiple Jac files in a workspace."""

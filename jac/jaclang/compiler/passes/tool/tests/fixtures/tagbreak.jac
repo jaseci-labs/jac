@@ -453,3 +453,7 @@ def x(
         "111"  #
     );
 }
+
+with entry {
+    visit [-->(`?Year:year==self.target_day.year)];
+}

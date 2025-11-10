@@ -286,6 +286,45 @@ class DocIRGenPass(UniPass):
 
             break
 
+    def remove_all_spaces(self, doc_node: doc.DocType) -> doc.DocType:
+        """Recursively remove all space nodes from a doc_ir tree."""
+        if isinstance(doc_node, doc.Text):
+            # Remove space text nodes
+            if doc_node.text == " ":
+                return self.concat([])  # Return empty concat
+            return doc_node
+        elif isinstance(doc_node, doc.Concat):
+            # Recursively process all parts and filter out empty results
+            new_parts = []
+            for part in doc_node.parts:
+                processed = self.remove_all_spaces(part)
+                # Skip empty concats
+                if not (isinstance(processed, doc.Concat) and not processed.parts):
+                    new_parts.append(processed)
+            return doc.Concat(new_parts, ast_node=doc_node.ast_node)
+        elif isinstance(doc_node, doc.Group):
+            # Recursively process the contents
+            return doc.Group(
+                self.remove_all_spaces(doc_node.contents),
+                doc_node.break_contiguous,
+                ast_node=doc_node.ast_node,
+            )
+        elif isinstance(doc_node, doc.Indent):
+            # Recursively process the contents
+            return doc.Indent(
+                self.remove_all_spaces(doc_node.contents),
+                ast_node=doc_node.ast_node,
+            )
+        elif isinstance(doc_node, doc.IfBreak):
+            # Recursively process both branches
+            return doc.IfBreak(
+                self.remove_all_spaces(doc_node.break_contents),
+                self.remove_all_spaces(doc_node.flat_contents),
+            )
+        else:
+            # For other node types (Line, Align, etc.), return as-is
+            return doc_node
+
     def exit_module(self, node: uni.Module) -> None:
         """Exit module."""
         parts: list[doc.DocType] = []
@@ -1380,16 +1419,18 @@ class DocIRGenPass(UniPass):
         parts: list[doc.DocType] = []
         for i in node.kid:
             parts.append(i.gen.doc_ir)
-            parts.append(self.space())
-        node.gen.doc_ir = self.group(self.concat(parts))
+        # Remove all spaces from filter comprehensions for compact formatting
+        compact_doc = self.remove_all_spaces(self.concat(parts))
+        node.gen.doc_ir = self.group(compact_doc)
 
     def exit_assign_compr(self, node: uni.AssignCompr) -> None:
         """Generate DocIR for assignment comprehensions."""
         parts: list[doc.DocType] = []
         for i in node.kid:
             parts.append(i.gen.doc_ir)
-            parts.append(self.space())
-        node.gen.doc_ir = self.group(self.concat(parts))
+        # Remove all spaces from assignment comprehensions for compact formatting
+        compact_doc = self.remove_all_spaces(self.concat(parts))
+        node.gen.doc_ir = self.group(compact_doc)
 
     def exit_py_inline_code(self, node: uni.PyInlineCode) -> None:
         """Generate DocIR for Python inline code blocks."""

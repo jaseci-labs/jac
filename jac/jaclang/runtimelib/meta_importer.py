@@ -189,13 +189,5 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
                 # Empty package is OK - just register it
                 return
             raise ImportError(f"No bytecode found for {file_path}")
-
-        try:
-            # Execute the bytecode directly in the module's namespace
-            exec(codeobj, module.__dict__)
-        except Exception as e:
-            logger.error(f"Error executing module {module.__name__}: {e}")
-            from jaclang.utils.helpers import dump_traceback
-
-            logger.error(dump_traceback(e))
-            raise
+        # Execute the bytecode directly in the module's namespace
+        exec(codeobj, module.__dict__)

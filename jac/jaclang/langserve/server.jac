@@ -3,6 +3,7 @@
 import asyncio;
 import sys;
 import time;
+import logging;
 
 import from typing { Optional }
 
@@ -18,36 +19,29 @@ import lsprotocol.types as lspt;
 
 
 with entry {
+    # logging.getLogger().setLevel(logging.CRITICAL);
     server = JacLangServer();
 }
 
 
-def debug(ls: JacLangServer, msg: str) -> None {
-    ls.log_py(f"[DEBUG] " + ("-" * 80));
-    ls.log_py(f"[DEBUG]' {msg} ");
-    ls.log_py(f"[DEBUG] " + ("-" * 80));
+def debug(msg: str) -> None {
+    print(f"[SERVER] {msg}", file=sys.stderr);
 }
 
 
 """Check syntax on change."""
 @server.feature(lspt.TEXT_DOCUMENT_DID_OPEN)
 async def did_open(ls: JacLangServer, params: lspt.DidOpenTextDocumentParams) -> None {
-    await ls.type_check(params.text_document.uri);
-    ls.lsp.send_request(lspt.WORKSPACE_SEMANTIC_TOKENS_REFRESH);
+    ls.type_check(params.text_document.uri);
 }
 
 
 """Check syntax on change."""
 @server.feature(lspt.TEXT_DOCUMENT_DID_SAVE)
 async def did_save(ls: JacLangServer, params: lspt.DidOpenTextDocumentParams) -> None {
-
-    file_path = params.text_document.uri;
-    await ls.type_check(file_path);
-    ls.lsp.send_request(lspt.WORKSPACE_SEMANTIC_TOKENS_REFRESH);
+    ls.type_check(params.text_document.uri);
 }
 
-
-glob still_compiling = False;
 
 
 """Check syntax on change with debouncing."""
@@ -55,31 +49,8 @@ glob still_compiling = False;
 async def did_change(
     ls: JacLangServer, params: lspt.DidChangeTextDocumentParams
 ) -> None {
-    print("********* ->", time.time(), file=sys.stderr);
-
-    global still_compiling;
-    still_compiling = True;
-    file_path = params.text_document.uri;
-    try {
-        document = ls.workspace.get_text_document(file_path);
-        lines = document.source.splitlines();
-        fs_path :str= document.path;
-        fs_path;
-        if (fs_path in ls.sem_managers) {
-            sem_manager = ls.sem_managers[fs_path];
-            sem_manager.update_sem_tokens(params, sem_manager.sem_tokens, lines);
-            ls.lsp.send_request(lspt.WORKSPACE_SEMANTIC_TOKENS_REFRESH);
-        }
-    } except Exception as e {
-        ls.log_py(f" 'Failed to update semantic tokens: ' {e} ");
-    }
-    debug(ls, "Type checking started...");
-    ls.log_py(f" 'Launching type check for ' {file_path} ");
-    await ls.type_check(file_path);
-    ls.lsp.send_request(lspt.WORKSPACE_SEMANTIC_TOKENS_REFRESH);
-
-    still_compiling = False;
-    debug(ls, "Type checking finished...");
+    debug("Did change: Type checking started...");
+    ls.type_check(params.text_document.uri);
 }
 
 
@@ -147,22 +118,8 @@ async def completion(
     ls: JacLangServer, params: lspt.CompletionParams
 ) -> lspt.CompletionList{
     file_path = params.text_document.uri;
-    debug(ls, f"Waiting for any pending debounce or type check for {file_path}...");
-
-    while True{
-        debounce_active = ls.is_debounce_active(file_path);
-        thread_active = ls.is_type_check_thread_active(file_path);
-
-        # Break only when both debounce and type-check threads are done
-        if (not debounce_active) and (not thread_active) {
-            break;
-        }
-
-        await asyncio.sleep(0.1);
-    }
-
-    debug(ls, f"All checks done for {file_path}, providing completions...");
-    return ls.get_completion(
+    debug("Completion requested");
+    return await ls.get_completion(
         params.text_document.uri,
         params.position,
         (params.context.trigger_character if params.context else None)
@@ -230,7 +187,6 @@ def semantic_tokens_full(
 
 """Run the language server."""
 def run_lang_server()  -> None {
-    settings.pass_timer = True;
     server.start_io();
 }
 

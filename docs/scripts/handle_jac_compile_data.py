@@ -46,20 +46,8 @@ def pre_build_hook(**kwargs: dict) -> None:
     else:
         print(f"File is recent: {LANG_REF_DOC}. Skipping creation.")
 
-    if is_file_older_than_minutes(TOP_CONTRIBUTORS_DOC, 5):
-        with open(TOP_CONTRIBUTORS_DOC, "w") as f:
-            # Add extra repos for tabbed view
-            f.write(
-                get_top_contributors(
-                    [
-                        "jaseci-labs/jaseci",
-                        "TrueSelph/jivas",
-                        "jaseci-labs/jac_playground",
-                    ]
-                )
-            )
-    else:
-        print(f"File is recent: {TOP_CONTRIBUTORS_DOC}. Skipping creation.")
+    with open(TOP_CONTRIBUTORS_DOC, "w") as f:
+        f.write(get_top_contributors())
 
 
 def is_file_older_than_minutes(file_path: str, minutes: int) -> bool:
@@ -118,15 +106,13 @@ def create_playground_zip() -> None:
     print(f"Zip saved to: {PLAYGROUND_ZIP_PATH} ({files_added} files)")
 
 
-def get_top_contributors(repos: list[str] | None = None) -> str:
-    """Get the top contributors for the jaclang repository and extra repos as HTML tabs."""
+def get_top_contributors() -> str:
+    """Get the top contributors for the current repository."""
     # Get the current directory (docs/scripts)
     current_dir = os.path.dirname(os.path.abspath(__file__))
     # Go to the root directory (two levels up from docs/scripts)
     root_dir = os.path.dirname(os.path.dirname(current_dir))
     cmd = ["python3", "scripts/top_contributors.py"]
-    if repos:
-        cmd += ["--repo", repos[0], "--extra-repos"] + repos[1:]
     return subprocess.check_output(cmd, cwd=root_dir).decode("utf-8")
 
 
