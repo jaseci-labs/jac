@@ -1,18 +1,18 @@
 exclude: '(_v1|vendor|larkparse|jac/examples|tests|support|setup.py|langserve/tests|pygame_mock|docs/docs/playground)'
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v2.3.0
+    rev: v6.0.0
     hooks:
       - id: check-yaml
         args: [--allow-multiple-documents]
       - id: check-json
       - id: trailing-whitespace
-  - repo: https://github.com/psf/black
-    rev: 24.8.0
+  - repo: https://github.com/psf/black-pre-commit-mirror
+    rev: 25.9.0
     hooks:
       - id: black
   - repo: https://github.com/PyCQA/flake8
-    rev: 7.2.0
+    rev: 7.3.0
     hooks:
       - id: flake8
         args: ["--config=.flake8"]
@@ -26,7 +26,7 @@ repos:
             flake8_simplify,
           ]
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.15.0
+    rev: v1.18.2
     hooks:
       - id: mypy
         args:

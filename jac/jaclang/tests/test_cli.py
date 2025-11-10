@@ -123,7 +123,7 @@ class JacCliTests(TestCase):
         self.assertIn("Error", stdout_value)
 
     def test_jac_cli_alert_based_runtime_err(self) -> None:
-        """Basic test for pass."""
+        """Test runtime errors with internal calls collapsed (default behavior)."""
         captured_output = io.StringIO()
         sys.stdout = captured_output
         sys.stderr = captured_output
@@ -137,17 +137,82 @@ class JacCliTests(TestCase):
         # Verify exit code is 1
         self.assertEqual(cm.exception.code, 1)
 
-        expected_stdout_values = (
+        output = captured_output.getvalue()
+
+        expected_stderr_values = (
             "Error: list index out of range",
             "    print(some_list[invalid_index]);",
             "          ^^^^^^^^^^^^^^^^^^^^^^^^",
             "  at bar() ",
             "  at foo() ",
             "  at <module> ",
+            "... [internal runtime calls]",
         )
-        logger_capture = "\n".join([rec.message for rec in self.caplog.records])
-        for exp in expected_stdout_values:
-            self.assertIn(exp, logger_capture)
+        for exp in expected_stderr_values:
+            self.assertIn(exp, output)
+
+        # Ensure internal runtime calls are collapsed and NOT shown individually
+        internal_call_patterns = (
+            "meta_importer.py",
+            "machine.py",
+            "/jaclang/vendor/",
+            "pluggy",
+            "_multicall",
+            "_hookexec",
+        )
+        for pattern in internal_call_patterns:
+            self.assertNotIn(pattern, output)
+
+    def test_jac_cli_runtime_err_with_internal_stack(self) -> None:
+        """Test runtime errors with internal calls shown when setting enabled."""
+        from jaclang.settings import settings
+
+        # Save original setting
+        original_setting = settings.show_internal_stack_errs
+
+        try:
+            # Enable internal stack traces
+            settings.show_internal_stack_errs = True
+
+            captured_output = io.StringIO()
+            sys.stdout = captured_output
+            sys.stderr = captured_output
+
+            with self.assertRaises(SystemExit) as cm:
+                cli.run(self.fixture_abs_path("err_runtime.jac"))
+
+            sys.stdout = sys.__stdout__
+            sys.stderr = sys.__stderr__
+
+            # Verify exit code is 1
+            self.assertEqual(cm.exception.code, 1)
+
+            output = captured_output.getvalue()
+
+            # User frames should still be present
+            expected_values = (
+                "Error: list index out of range",
+                "  at bar() ",
+                "  at foo() ",
+                "  at <module> ",
+            )
+            for exp in expected_values:
+                self.assertIn(exp, output)
+
+            # Internal runtime calls should be shown (not collapsed)
+            internal_call_patterns = (
+                "meta_importer.py",
+                "machine.py",
+            )
+            for pattern in internal_call_patterns:
+                self.assertIn(pattern, output)
+
+            # The collapse marker should NOT appear
+            self.assertNotIn("... [internal runtime calls]", output)
+
+        finally:
+            # Restore original setting
+            settings.show_internal_stack_errs = original_setting
 
     def test_jac_impl_err(self) -> None:
         """Basic test for pass."""
@@ -383,7 +448,7 @@ class JacCliTests(TestCase):
         }
         printgraph_params.update({"initial", "saveto", "connection", "session"})
         self.assertTrue(printgraph_params.issubset(graph_params))
-        self.assertEqual(len(printgraph_params) + 1, len(graph_params))
+        self.assertEqual(len(printgraph_params) + 2, len(graph_params))
 
     def test_graph(self) -> None:
         """Test for graph CLI cmd."""

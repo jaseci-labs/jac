@@ -15,6 +15,7 @@ class Settings:
     ast_symbol_info_detailed: bool = False
     pass_timer: bool = False
     print_py_raised_ast: bool = False
+    show_internal_stack_errs: bool = False
 
     # Compiler configuration
     ignore_test_annex: bool = False

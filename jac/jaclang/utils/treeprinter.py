@@ -266,7 +266,7 @@ def print_ast_tree(
 
     def __node_repr_in_py_tree(node: ast3.AST) -> str:
         if isinstance(node, ast3.Constant):
-            return f"{node.__class__.__name__} - {node.value}"
+            return f"{node.__class__.__name__} - {node.value!r}"
         elif isinstance(node, ast3.Name):
             return f"{node.__class__.__name__} - {node.id}"
         elif isinstance(node, ast3.FunctionDef | ast3.ClassDef | ast3.AsyncFunctionDef):

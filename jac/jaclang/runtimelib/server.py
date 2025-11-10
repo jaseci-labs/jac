@@ -770,7 +770,7 @@ class JacAPIServer:
 
         # Core components
         self.user_manager = UserManager(session_path)
-        self.introspector = ModuleIntrospector(module_name, base_path)
+        self.introspector = Jac.get_module_introspector(module_name, base_path)
         self.execution_manager = ExecutionManager(session_path, self.user_manager)
 
         # Route handlers

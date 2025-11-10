@@ -1447,9 +1447,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
                 # Get the definition node
                 defn_node = target_sym.defn[0]
                 # Check if it's an Ability (function) and if it's NOT a client function
-                if hasattr(defn_node, "parent") and isinstance(
-                    defn_node.parent, uni.Ability
-                ):
+                if isinstance(defn_node.parent, uni.Ability):
                     ability_node = defn_node.parent
                     is_server_func = not getattr(ability_node, "is_client_decl", False)
 

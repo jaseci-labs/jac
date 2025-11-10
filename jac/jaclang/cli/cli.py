@@ -542,6 +542,7 @@ def dot(
     edge_limit: int = 512,
     node_limit: int = 512,
     saveto: str = "",
+    to_screen: bool = False,
 ) -> None:
     """Generate a DOT graph visualization from a Jac program.
 
@@ -560,12 +561,14 @@ def dot(
         edge_limit: Maximum number of edges to include (default: 512)
         node_limit: Maximum number of nodes to include (default: 512)
         saveto: Output file path for the DOT file (default: <module_name>.dot)
+        to_screen: Print DOT output to stdout instead of saving to file (default: False)
 
     Examples:
         jac dot myprogram.jac
         jac dot myprogram.jac --initial root_node --depth 3
         jac dot myprogram.jac --traverse --connection edge_type1 edge_type2
         jac dot myprogram.jac --saveto graph.dot
+        jac dot myprogram.jac --to_screen
     """
     base, mod, jac_machine = proc_file_sess(filename, session)
 
@@ -591,10 +594,13 @@ def dot(
             traceback.print_exc()
             jac_machine.close()
             return
-        file_name = saveto if saveto else f"{mod}.dot"
-        with open(file_name, "w") as file:
-            file.write(graph)
-        print(f">>> Graph content saved to {os.path.join(os.getcwd(), file_name)}")
+        if to_screen:
+            print(graph)
+        else:
+            file_name = saveto if saveto else f"{mod}.dot"
+            with open(file_name, "w") as file:
+                file.write(graph)
+            print(f">>> Graph content saved to {os.path.join(os.getcwd(), file_name)}")
         jac_machine.close()
     else:
         print("Not a .jac file.", file=sys.stderr)
