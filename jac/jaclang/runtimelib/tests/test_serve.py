@@ -1009,8 +1009,8 @@ class TestServeCommand(TestCase):
         # Verify summary is present
         self.assertIn("TOTAL:", output)
         self.assertIn("2 functions", output)
-        self.assertIn("3 walkers", output)
-        self.assertIn("16 endpoints", output)
+        self.assertIn("4 walkers", output)
+        self.assertIn("18 endpoints", output)
 
         # Verify parameter details are included
         self.assertIn("required", output)
