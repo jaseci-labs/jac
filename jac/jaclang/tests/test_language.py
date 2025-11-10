@@ -958,6 +958,7 @@ class JacLanguageTests(TestCase):
         sys.stdout = captured_output
 
         try:
+            Jac.reset_machine()
             cli.run(
                 filename=update_file_path,
             )

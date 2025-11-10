@@ -7,6 +7,8 @@ import pdb
 import re
 from traceback import TracebackException
 
+from jaclang.settings import settings
+
 
 def pascal_to_snake(pascal_string: str) -> str:
     """Convert pascal case to snake case."""
@@ -185,13 +187,39 @@ def dump_traceback(e: Exception) -> str:
     # FIXME: should be some settings, we should replace to ensure the anchors length match.
     dump_tab_width = 2
 
+    # Helper function to check if a frame is part of the internal runtime
+    def is_internal_runtime_frame(filename: str) -> bool:
+        """Check if a frame is part of the Jac internal runtime."""
+        normalized: str = filename.replace("\\", "/")
+        return (
+            "/jaclang/runtimelib/" in normalized
+            or "/jaclang/vendor/" in normalized
+            or "/site-packages/pluggy/" in normalized
+        )
+
+    # Process and print frames, collapsing consecutive internal runtime calls
+    seen_runtime_marker: bool = False
+    collapse_internal: bool = not settings.show_internal_stack_errs
+
     for idx, frame in enumerate(tb.stack):
-        func_signature = frame.name + ("()" if frame.name.isidentifier() else "")
+        is_internal: bool = is_internal_runtime_frame(frame.filename)
+
+        # Collapse consecutive internal runtime frames into a single marker (if enabled)
+        if is_internal and collapse_internal:
+            if not seen_runtime_marker:
+                trace_dump += f'\n{" " * dump_tab_width}... [internal runtime calls]'
+                seen_runtime_marker = True
+            continue
+
+        # Reset the marker flag when we hit a user frame
+        seen_runtime_marker = False
+
+        func_signature: str = frame.name + ("()" if frame.name.isidentifier() else "")
 
         # Check if we can map this to a .jac file
         jac_filename, jac_source = get_jac_source_info(frame.filename)
-        display_filename = jac_filename if jac_filename else frame.filename
-        display_source = jac_source if jac_source else None
+        display_filename: str = jac_filename if jac_filename else frame.filename
+        display_source: str | None = jac_source if jac_source else None
 
         # Pretty print the most recent call's location.
         if idx == 0 and (

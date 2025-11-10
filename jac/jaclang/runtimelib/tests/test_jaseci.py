@@ -1060,3 +1060,64 @@ class TestJaseciPlugin(TestCase):
         self.assertEqual(
             "A(val1='NO_ACCESS', val2=2)", self.capturedOutput.getvalue().strip()
         )
+
+    def test_run_persistent_reuse(self) -> None:
+        """Test that cli.run with session persists nodes to session file."""
+        import shelve
+
+        session = self.fixture_abs_path("test_run_persistent_reuse.session")
+
+        ##############################################
+        #          FIRST RUN - CREATE NODES          #
+        ##############################################
+
+        cli.run(
+            filename=self.fixture_abs_path("simple_node_connection.jac"),
+            session=session,
+        )
+
+        # Check session file directly (not via get_object which re-runs code)
+        with shelve.open(session) as shelf:
+            root = shelf["00000000-0000-0000-0000-000000000000"]
+            first_run_edges = len(root.edges)
+            first_run_keys = len(shelf.keys())
+
+        # Should have root + 2 nodes + 2 edges = 5 keys
+        self.assertGreater(
+            first_run_keys,
+            1,
+            "First run should persist nodes to session file",
+        )
+        self.assertEqual(
+            first_run_edges, 2, "Root should have 2 edges after first run"
+        )
+
+        ##############################################
+        #    SECOND RUN - SHOULD REUSE, NOT          #
+        #              RECREATE NODES                #
+        ##############################################
+
+        cli.run(
+            filename=self.fixture_abs_path("simple_node_connection.jac"),
+            session=session,
+        )
+
+        # Check session file again
+        with shelve.open(session) as shelf:
+            root = shelf["00000000-0000-0000-0000-000000000000"]
+            second_run_edges = len(root.edges)
+            second_run_keys = len(shelf.keys())
+
+        # Should have same number of keys (not doubled)
+        self.assertEqual(
+            second_run_keys,
+            first_run_keys,
+            "Second run should reuse persisted nodes, not create duplicates",
+        )
+        self.assertEqual(
+            second_run_edges,
+            2,
+            "Root should still have only 2 edges (not 4)",
+        )
+
+        self._del_session(session)

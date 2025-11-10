@@ -158,6 +158,7 @@ class TestLoader(TestCase):
             os.environ["JAC_PYFILE_RAISE"] = "false"
             settings.load_env_vars()
             os.chdir(os.path.dirname(self.fixture_abs_path("jac_import_py_files.py")))
+            Jac.reset_machine()
             Jac.set_base_path(self.fixture_abs_path("jac_import_py_files.py"))
             JacMachineInterface.attach_program(JacProgram())
             Jac.jac_import("jac_import_py_files", base_path=self.fixture_abs_path("jac_import_py_files.py"), lng="py")
