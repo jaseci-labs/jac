@@ -248,6 +248,7 @@ class ClassType(TypeBase):
 
     def lookup_member_symbol(self, member: str) -> Symbol | None:
         """Lookup a member in the class type."""
+        # FIXME: We have to have a lookup_member for archetype.
         return self.shared.symbol_table.lookup(member, deep=True)
 
     def is_builtin(self, class_name: str | None = None) -> bool:

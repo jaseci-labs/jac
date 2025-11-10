@@ -111,8 +111,21 @@ class TypeCheckPass(UniPass):
 
     def exit_return_stmt(self, node: uni.ReturnStmt) -> None:
         """Handle the return statement node."""
+
+        returning_type = self.evaluator._convert_to_instance(
+            self.evaluator.get_none_type()
+        )
         if node.expr:
-            self.evaluator.get_type_of_expression(node.expr)
+            returning_type = self.evaluator.get_type_of_expression(node.expr)
+
+        if fn := self.evaluator._get_enclosing_function(node):
+            fn_type = self.evaluator.get_type_of_ability(fn)
+            return_type = self.evaluator._convert_to_instance(fn_type.return_type)
+            if not self.evaluator.assign_type(returning_type, return_type):
+                self.log_error(
+                    f"Cannot return {returning_type}, expected {fn_type.return_type}",
+                    node,
+                )
 
     def exit_formatted_value(self, node: uni.FormattedValue) -> None:
         """Handle the formatted value node."""

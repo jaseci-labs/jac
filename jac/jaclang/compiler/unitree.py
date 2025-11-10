@@ -326,12 +326,37 @@ class UniScopeNode(UniNode):
         """Get parent."""
         return self.parent_scope
 
-    def lookup(self, name: str, deep: bool = True) -> Optional[Symbol]:
+    def lookup(
+        self,
+        name: str,
+        deep: bool = True,
+        incl_inner_scope: bool = False,
+    ) -> Optional[Symbol]:
         """Lookup a variable in the symbol table."""
         if name in self.names_in_scope:
             return self.names_in_scope[name]
+
         if deep and self.parent_scope:
             return self.parent_scope.lookup(name, deep)
+
+        if incl_inner_scope:
+            for kid in self.kid_scope:
+                if isinstance(
+                    kid,
+                    (
+                        Module,
+                        Enum,
+                        Archetype,
+                        Ability,
+                        ImplDef,
+                        AstImplNeedingNode,
+                        Test,
+                    ),
+                ):
+                    continue
+                if (sym := kid.lookup(name, False, True)) is not None:
+                    return sym
+
         return None
 
     def insert(
