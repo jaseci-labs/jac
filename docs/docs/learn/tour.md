@@ -1,6 +1,6 @@
 <h1 style="color: orange; font-weight: bold; text-align: center;">Key Features and Design Pillars</h1>
 
-This document provides a quick walkthrough of the key features and design pillars of the **Jac-lang / Jaseci stack**.  
+This document provides a quick walkthrough of the key features and design pillars of the **Jac-lang / Jaseci stack**.
 The **Jac programming language** and **Jaseci runtime** build on Python, introducing **AI-first constructs**, **object-spatial programming (OSP)**, and **scale-native capabilities**.
 
 We will discuss the four foundational pillars of Jac’s design and how each pillar enables faster and more streamlined development.
@@ -9,7 +9,7 @@ We will discuss the four foundational pillars of Jac’s design and how each pil
 
 ## 📘 Document Organization
 
-- **Part 1:** Conceptual Overview  
+- **Part 1:** Conceptual Overview
 - **Part 2:** Code Snippets and Detailed Descriptions
 
 ---
@@ -30,14 +30,14 @@ OSP also provides the foundation for **agentic workflows** and enables **Jaseci�
 
 ### 2. Programming Abstractions for AI
 
- 
-Jac is designed from the ground up to integrate AI directly into the programming model to simplify development of AI-powered applications. 
+
+Jac is designed from the ground up to integrate AI directly into the programming model to simplify development of AI-powered applications.
 
 #### 2.1 `by llm`
 
-Jac introduces language-level constructs such as the `by()` keyword that automatically generate optimized prompts. This **removes the need for manual prompt engineering** and enables seamless model integration.  In production systems, this feature has reduced hundreds of lines of prompt code to a single line. 
+Jac introduces language-level constructs such as the `by()` keyword that automatically generate optimized prompts. This **removes the need for manual prompt engineering** and enables seamless model integration.  In production systems, this feature has reduced hundreds of lines of prompt code to a single line.
 
-<!-- [TODO: Insert example line of `by llm()` code here] --> 
+<!-- [TODO: Insert example line of `by llm()` code here] -->
 
 #### 2.2 Native Agentic AI Workflows (enabled by OSP)
 
@@ -59,9 +59,9 @@ Jac-lang is intentionally designed as an extension of Python.  It provides **Pyt
 
 Developers can freely mix **Jac** and **Python**:
 
-- Import Python libraries and call Python functions from Jac  
-- Inline Python snippets inside Jac code  
-- Import Jac modules directly into Python programs  
+- Import Python libraries and call Python functions from Jac
+- Inline Python snippets inside Jac code
+- Import Jac modules directly into Python programs
 
 This tight interoperability enables teams to adopt Jac incrementally and integrate it seamlessly with existing Python ecosystems.
 
@@ -109,7 +109,7 @@ with entry {
 `by llm()` delegates execution to an LLM without any extra library code.
 
 
-### Object Spatial Programming: Going Beyond OOP 
+### Object Spatial Programming: Going Beyond OOP
 
 Traditional OOP with python classes (`class` or Jac's dataclass-like `obj`) that expresses object hierarchy and behavior is fully supported in Jac. Additionally, Jac programmers can also express object relationships with node classes (`node`), edge classes (`edge`), and object interactions with walker classes (`walker`) for richer modeling of problems called Object-Spatial Programing (OSP). This approach can be used where needed and maps nicely to may categories of problems (which happen to include agentic workflows ;-))
 
