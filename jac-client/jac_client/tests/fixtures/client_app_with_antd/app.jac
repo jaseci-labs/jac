@@ -19,3 +19,10 @@ cl def CardTest() {
     </div>;
 }
 
+cl def app() {
+    return <div>
+        <ButtonTest />
+        <CardTest />
+    </div>;
+}
+

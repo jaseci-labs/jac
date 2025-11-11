@@ -155,13 +155,17 @@ jobs:
           cat > Dockerfile << 'EOF'
           FROM python:3.12-slim
 
-          # Install system dependencies
+          # Install system dependencies including git for contributor data
           RUN apt-get update && apt-get install -y \
               curl \
+              git \
               && rm -rf /var/lib/apt/lists/*
 
           # Set working directory
           WORKDIR /app
+
+          # Copy git repository for real-time contributor data
+          COPY .git/ ./.git/
 
           # Copy documentation files
           COPY docs/ ./docs/

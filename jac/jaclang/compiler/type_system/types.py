@@ -20,6 +20,7 @@ class TypeCategory(IntEnum):
     Never = auto()  # The bottom type, equivalent to an empty union
     Any = auto()  # Type can be anything
     Module = auto()  # Module instance
+    TypeVar = auto()  # Type variable
     Class = auto()  # Class definition
     Function = auto()  # Callable type
     Union = auto()  # Union of two or more other types
@@ -141,6 +142,16 @@ class ModuleType(TypeBase):
         self.symbol_table = symbol_table
 
 
+class TypeVarType(TypeBase):
+    """Represents a type variable."""
+
+    CATEGORY: ClassVar[TypeCategory] = TypeCategory.TypeVar
+
+    def __init__(self) -> None:
+        """Initialize obviously."""
+        super().__init__()
+
+
 class ClassType(TypeBase):
     """Represents a class type."""
 
@@ -162,6 +173,8 @@ class ClassType(TypeBase):
             self,
             class_name: str,
             symbol_table: SymbolTable,
+            *,
+            type_params: list[TypeVarType] | None = None,
             base_classes: list[TypeBase] | None = None,
             is_builtin_class: bool = False,
             is_data_class: bool = False,
@@ -169,6 +182,7 @@ class ClassType(TypeBase):
             """Initialize obviously."""
             self.class_name = class_name
             self.symbol_table = symbol_table
+            self.type_params = type_params or []
             self.base_classes = base_classes or []
             self.mro: list[ClassType] = []
 
@@ -185,14 +199,26 @@ class ClassType(TypeBase):
             self.is_builtin_class = is_builtin_class
             self.is_data_class = is_data_class
 
+    class ClassDetailsPrivate:
+        """Holds the private details of class type.
+
+        The private details of classes will be unique to each class instance.
+        """
+
+        def __init__(self, type_args: list[TypeBase] | None = None) -> None:
+            """Initialize obviously."""
+            self.type_args = type_args or []
+
     def __init__(
         self,
         shared: ClassType.ClassDetailsShared,
+        private: ClassType.ClassDetailsPrivate | None = None,
         flags: TypeFlags = TypeFlags.Null,
     ) -> None:
         """Initialize the class type."""
         super().__init__(flags=flags)
         self.shared = shared
+        self.private = private or ClassType.ClassDetailsPrivate()
 
     def __str__(self) -> str:
         """Return a string representation of the class type."""
@@ -202,7 +228,10 @@ class ClassType(TypeBase):
         """Clone this class type as an instance type."""
         if self.is_instance():
             return self
-        new_instance = ClassType(self.shared)
+
+        # Copy the private details.
+        private = ClassType.ClassDetailsPrivate(type_args=self.private.type_args[:])
+        new_instance = ClassType(self.shared, private=private, flags=self.flags)
 
         # TODO: There is more to this but we're not over complicating this atm.
         new_flag = self.flags
@@ -211,6 +240,11 @@ class ClassType(TypeBase):
         new_instance.flags = new_flags
 
         return new_instance
+
+    def specialize_generics(self, type_args: list[TypeBase]) -> ClassType:
+        """Return a new class type specialized with the given type arguments."""
+        new_private = ClassType.ClassDetailsPrivate(type_args=type_args)
+        return ClassType(self.shared, private=new_private, flags=self.flags)
 
     def lookup_member_symbol(self, member: str) -> Symbol | None:
         """Lookup a member in the class type."""
@@ -289,6 +323,51 @@ class FunctionType(TypeBase):
         self.func_name = func_name
         self.return_type = return_type
         self.parameters = parameters or []
+
+    def specialize(self, class_type: ClassType) -> "FunctionType":
+        """Specialize the function type based on the given class type."""
+        clone = FunctionType(
+            func_name=self.func_name,
+            return_type=self.return_type,
+            parameters=[
+                Parameter(
+                    name=param.name,
+                    category=param.category,
+                    param_type=param.param_type,
+                    default_value=param.default_value,
+                    is_self=param.is_self,
+                    param_kind=param.param_kind,
+                )
+                for param in self.parameters
+            ],
+        )
+
+        # Specialize parameter types.
+        for param in clone.parameters:
+            if not param.param_type or not isinstance(param.param_type, TypeVarType):
+                continue
+            idx = self._index_of_type_param(class_type, param.param_type)
+            if idx != -1 and idx < len(class_type.private.type_args):
+                ty = class_type.private.type_args[idx]
+                ty = ty.clone_as_instance() if isinstance(ty, ClassType) else ty
+                param.param_type = ty
+
+        # Specialize return type.
+        if clone.return_type and isinstance(clone.return_type, TypeVarType):
+            idx = self._index_of_type_param(class_type, clone.return_type)
+            if idx != -1 and idx < len(class_type.private.type_args):
+                ty = class_type.private.type_args[idx]
+                ty = ty.clone_as_instance() if isinstance(ty, ClassType) else ty
+                clone.return_type = ty
+
+        return clone
+
+    def _index_of_type_param(self, class_type: ClassType, type_var: TypeVarType) -> int:
+        """Return the index of the given type variable in the class type."""
+        for idx, type_param in enumerate(class_type.shared.type_params):
+            if type_param is type_var:
+                return idx
+        return -1
 
 
 class UnionType(TypeBase):

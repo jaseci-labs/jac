@@ -113,7 +113,14 @@ def get_top_contributors() -> str:
     # Go to the root directory (two levels up from docs/scripts)
     root_dir = os.path.dirname(os.path.dirname(current_dir))
     cmd = ["python3", "scripts/top_contributors.py"]
-    return subprocess.check_output(cmd, cwd=root_dir).decode("utf-8")
+    try:
+        return subprocess.check_output(cmd, cwd=root_dir).decode("utf-8")
+    except subprocess.CalledProcessError as e:
+        print(f"Warning: Failed to get top contributors: {e}")
+        return "# Top Contributors\n\nUnable to fetch contributor data at this time.\n"
+    except Exception as e:
+        print(f"Warning: Unexpected error getting top contributors: {e}")
+        return "# Top Contributors\n\nUnable to fetch contributor data at this time.\n"
 
 
 pre_build_hook()

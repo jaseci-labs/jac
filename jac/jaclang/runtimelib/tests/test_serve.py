@@ -429,7 +429,6 @@ class TestServeCommand(TestCase):
             {"username": "spawnuser", "password": "pass"}
         )
         token = create_result["token"]
-
         # Spawn CreateTask walker
         result = self._request(
             "POST",
@@ -437,6 +436,7 @@ class TestServeCommand(TestCase):
             {"fields": {"title": "Test Task", "priority": 2}},
             token=token
         )
+        jid = result["reports"][0]['_jac_id']
 
         # If error, print for debugging
         if "error" in result:
@@ -456,6 +456,15 @@ class TestServeCommand(TestCase):
         )
 
         self.assertIn("result", result2)
+
+        # Get Task node using new GetTask walker
+        result3 = self._request(
+            "POST",
+            "/walker/GetTask/" + str(jid),
+            {"fields": {}},
+            token=token
+        )
+        self.assertIn("result", result3)
 
     def test_server_user_isolation(self) -> None:
         """Test that users have isolated graph spaces."""
@@ -1000,8 +1009,8 @@ class TestServeCommand(TestCase):
         # Verify summary is present
         self.assertIn("TOTAL:", output)
         self.assertIn("2 functions", output)
-        self.assertIn("3 walkers", output)
-        self.assertIn("16 endpoints", output)
+        self.assertIn("4 walkers", output)
+        self.assertIn("18 endpoints", output)
 
         # Verify parameter details are included
         self.assertIn("required", output)

@@ -997,7 +997,9 @@ class JacAPIServer:
                     )
                     self._send_response(response)
                 elif path.startswith("/walker/"):
-                    name = path.split("/")[-1]
+                    name_parts = path.split("/")
+                    name = name_parts[-2] if len(name_parts) > 3 else name_parts[-1]
+                    node_id = name_parts[-1] if len(name_parts) > 3 else ""
                     # Check if this walker requires authentication
                     server.introspector.load()
                     if server.introspector.is_auth_required_for_walker(name):
@@ -1017,9 +1019,10 @@ class JacAPIServer:
                                 server.user_manager.create_user(
                                     username, "__no_password__"
                                 )
-
+                    # add two dict to fields to include _jac_spawn_node
+                    fields = data.get("fields", {}) | {"_jac_spawn_node": node_id}
                     response = server.execution_handler.spawn_walker(
-                        name, data.get("fields", {}), username
+                        name, fields, username
                     )
                     self._send_response(response)
                 else:

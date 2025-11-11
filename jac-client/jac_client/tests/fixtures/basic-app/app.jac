@@ -7,7 +7,7 @@ cl obj ButtonProps {
     has color: str = "primary";
 }
 
-cl def client_page() {
+cl def app() {
     let props = ButtonProps(label="Tap Me", color="primary");
     return <div class="app">
         <h1>{API_LABEL}</h1>

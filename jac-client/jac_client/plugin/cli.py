@@ -77,12 +77,12 @@ class JacCmd:
                     package_data = json.load(f)
 
                 # create temp folder
-                temp_folder = os.path.join(project_path, "temp")
-                os.makedirs(temp_folder, exist_ok=True)
+                src_folder = os.path.join(project_path, "src")
+                os.makedirs(src_folder, exist_ok=True)
 
-                # create static/client/js folder
-                client_js_folder = os.path.join(project_path, "static", "client", "js")
-                os.makedirs(client_js_folder, exist_ok=True)
+                # create build folder
+                build_folder = os.path.join(project_path, "build")
+                os.makedirs(build_folder, exist_ok=True)
 
                 # Update package.json with Jac-specific configuration
                 package_data.update(
@@ -91,12 +91,19 @@ class JacCmd:
                         "description": f"Jac application: {name}",
                         "type": "module",
                         "scripts": {
-                            "build": "vite build",
+                            "build": "npm run compile && vite build",
                             "dev": "vite dev",
                             "preview": "vite preview",
+                            "compile": 'babel src --out-dir build --extensions ".jsx,.js" --out-file-extension .js',
                         },
-                        "devDependencies": {"vite": "^5.0.0"},
-                        "dependencies": {"react": "^18.2.0", "react-dom": "^18.2.0"},
+                        "devDependencies": {
+                            "vite": "^6.4.1",
+                            "@babel/cli": "^7.28.3",
+                            "@babel/core": "^7.28.5",
+                            "@babel/preset-env": "^7.28.5",
+                            "@babel/preset-react": "^7.28.5",
+                        },
+                        "dependencies": {"react": "^19.2.0", "react-dom": "^19.2.0"},
                     }
                 )
 
@@ -117,190 +124,90 @@ class JacCmd:
                 # Create a basic Jac file
                 main_jac_content = """
 # Pages
-cl def HomeView() -> any {
-    return <div
-    style={{
-        "minHeight": "100vh",
-        "fontFamily": "-apple-system, BlinkMacSystemFont, sans-serif"
-    }}>
-        <main
-        style={{
-            "maxWidth": "1200px",
-            "margin": "0 auto",
-            "padding": "60px 40px"
-        }}>
-            <div
-            style={{
-                "textAlign": "center",
-                "marginBottom": "80px"
-            }}>
-                <h1
-                style={{
-                    "fontSize": "56px",
-                    "marginBottom": "20px"
-                }}>
-                    Welcome to
-                    <span style={{"color": "#007bff"}}>OneLang</span>
-                </h1>
-                <p
-                style={{
-                    "fontSize": "20px",
-                    "color": "#666"
-                }}>
-                    One Language. One Stack. Zero Friction.
-                </p>
-            </div>
-
-            <div
-            style={{
-                "display": "grid",
-                "gridTemplateColumns": "repeat(2, 1fr)",
-                "gap": "24px",
-                "marginBottom": "60px"
-            }}>
-                <a
-                href="https://docs.jaseci.org"
-                target="_blank"
-                style={{
-                    "padding": "32px",
-                    "backgroundColor": "white",
-                    "border": "1px solid #eaeaea",
-                    "borderRadius": "8px",
-                    "textDecoration": "none",
-                    "color": "#000"
-                }}>
-                    <h3
-                    style={{
-                        "marginTop": "0",
-                        "marginBottom": "12px"
-                    }}>📖 Documentation</h3>
-                    <p style={{"color": "#666", "margin": "0"}}>
-                        Learn how to build with OneLang
-                    </p>
-                </a>
-                <a
-                href="https://docs.jaseci.org/learn"
-                target="_blank"
-                style={{
-                    "padding": "32px",
-                    "backgroundColor": "white",
-                    "border": "1px solid #eaeaea",
-                    "borderRadius": "8px",
-                    "textDecoration": "none",
-                    "color": "#000"
-                }}>
-                    <h3
-                    style={{
-                        "marginTop": "0",
-                        "marginBottom": "12px"
-                    }}>🎓 Learn</h3>
-                    <p style={{"color": "#666", "margin": "0"}}>
-                        Tutorials and guides
-                    </p>
-                </a>
-                <a
-                href="/examples"
-                style={{
-                    "padding": "32px",
-                    "backgroundColor": "white",
-                    "border": "1px solid #eaeaea",
-                    "borderRadius": "8px",
-                    "textDecoration": "none",
-                    "color": "#000"
-                }}>
-                    <h3
-                    style={{
-                        "marginTop": "0",
-                        "marginBottom": "12px"
-                    }}>💡 Examples</h3>
-                    <p style={{"color": "#666", "margin": "0"}}>
-                        Sample applications
-                    </p>
-                </a>
-                <a
-                href="https://github.com/Jaseci-Labs/jaseci"
-                target="_blank"
-                style={{
-                    "padding": "32px",
-                    "backgroundColor": "white",
-                    "border": "1px solid #eaeaea",
-                    "borderRadius": "8px",
-                    "textDecoration": "none",
-                    "color": "#000"
-                }}>
-                    <h3
-                    style={{
-                        "marginTop": "0",
-                        "marginBottom": "12px"
-                    }}>🔧 Community</h3>
-                    <p style={{"color": "#666", "margin": "0"}}>
-                        GitHub repository
-                    </p>
-                </a>
-            </div>
-
-            <footer
-            style={{
-                "borderTop": "1px solid #eaeaea",
-                "paddingTop": "40px",
-                "textAlign": "center",
-                "color": "#999"
-            }}>
-                <p>
-                    Get started by editing
-                    <code
-                    style={{
-                        "backgroundColor": "#f5f5f5",
-                        "padding": "2px 6px",
-                        "borderRadius": "3px"
-                    }}>app.jac</code>
-                </p>
-            </footer>
-        </main>
-    </div>;
-}
-
-
-# Main App component with declarative router
-cl def App() -> any {
-
-    home_route = {
-        "path": "/",
-        "component": lambda -> any { return HomeView(); },
-        "guard": None
-    };
-
-    routes = [home_route];
-    router = initRouter(routes, "/");
-
-    # add all the wrapper components here
-    return <div class="app-container">
-        {router.render()}
-    </div>;
-}
-
-# Main SPA entry point - simplified with reactive routing
-cl def jac_app() -> any {
-    return App();
+cl import from react {useState, useEffect}
+cl {
+    def app() -> any {
+        let [count, setCount] = useState(0);
+        useEffect(lambda -> None {
+            console.log("Count: ", count);
+        }, [count]);
+        return <div>
+            <h1>Hello, World!</h1>
+            <p>Count: {count}</p>
+            <button onClick={lambda e: any ->  None {setCount(count + 1);}}>Increment</button>
+        </div>;
+    }
 }
 """
 
                 with open(os.path.join(project_path, "app.jac"), "w") as f:
                     f.write(main_jac_content)
 
+                # create .babelrc file
+                babel_config_content = """
+{
+    "presets": [[
+        "@babel/preset-env",
+        {
+            "modules": false
+        }
+    ], "@babel/preset-react"]
+}
+"""
+                with open(os.path.join(project_path, ".babelrc"), "w") as f:
+                    f.write(babel_config_content)
+
+                # create vite.config.js file
+                vite_config_content = """
+import { defineConfig } from "vite";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+export default defineConfig({
+  root: ".", // base folder
+  build: {
+    rollupOptions: {
+      input: "build/main.js", // your compiled entry file
+      output: {
+        entryFileNames: "client.[hash].js", // name of the final js file
+        assetFileNames: "[name].[ext]",
+      },
+    },
+    outDir: "dist", // final bundled output
+    emptyOutDir: true,
+  },
+  publicDir: false,
+  resolve: {
+    alias: {
+      "@jac-client/utils": path.resolve(__dirname, "src/client_runtime.js"),
+    },
+  },
+});
+
+"""
+                with open(os.path.join(project_path, "vite.config.js"), "w") as f:
+                    f.write(vite_config_content)
+
                 # Create README.md
                 readme_content = f"""# {name}
 
-                ## Running Jac Code
+## Running Jac Code
 
-                To run your Jac code, use the Jac CLI:
+make sure node modules are installed:
+```bash
+npm install
+```
 
-                ```bash
-                jac serve app.jac
-                ```
+To run your Jac code, use the Jac CLI:
 
-                Happy coding with Jac!
-                """
+```bash
+jac serve app.jac
+```
+
+Happy coding with Jac!
+"""
 
                 with open(os.path.join(project_path, "README.md"), "w") as f:
                     f.write(readme_content)

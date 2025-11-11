@@ -8,6 +8,6 @@ cl def RelativeImport() -> any {
     </div>;
 }
 
-cl def main() -> any {
+cl def app() -> any {
     return <RelativeImport />;
 }

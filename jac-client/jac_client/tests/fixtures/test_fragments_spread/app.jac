@@ -42,3 +42,12 @@ cl def NestedFragments() {
     </div>;
 }
 
+cl def app() {
+    return <div>
+        <FragmentTest />
+        <SpreadPropsTest />
+        <MixedTest />
+        <NestedFragments />
+    </div>;
+}
+

@@ -1,36 +1,78 @@
-<h1 style="color: orange; font-weight: bold; text-align: center;">Tour of Jac</h1>
+<h1 style="color: orange; font-weight: bold; text-align: center;">Key Features and Design Pillars</h1>
 
-## Python Superset Philosophy: All of Python Plus More
+This document provides a quick walkthrough of the key features and design pillars of the **Jac-lang / Jaseci stack**.
+The **Jac programming language** and **Jaseci runtime** build on Python, introducing **AI-first constructs**, **object-spatial programming (OSP)**, and **scale-native capabilities**.
 
-Jac is a drop-in replacement for Python and supersets Python, much like Typescript supersets Javascript or C++ supersets C. It extends Python's semantics while maintaining full interoperability with the Python ecosystem, introducing cutting-edge abstractions designed to minimize complexity and embrace AI-forward development.
+We will discuss the four foundational pillars of Jac’s design and how each pillar enables faster and more streamlined development.
 
-<div class="code-block run-dot" >
-```jac
-import math;
-import from random { uniform }
+---
 
-def calc_distance(x1: float, y1: float, x2: float, y2: float) -> float {
-return math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
-}
+## 📘 Document Organization
 
-with entry { # Generate random points
-(x1, y1) = (uniform(0, 10), uniform(0, 10));
-(x2, y2) = (uniform(0, 10), uniform(0, 10));
+- **Part 1:** Conceptual Overview
+- **Part 2:** Code Snippets and Detailed Descriptions
 
-    distance = calc_distance(x1, y1, x2, y2);
-    area = math.pi * (distance / 2) ** 2;
+---
 
-    print("Distance:", round(distance, 2), ", Circle area:", round(area, 2));
+##  Part 1. Conceptual Overview
 
-}
+### 1. Object-Spatial Programming (OSP)
 
-```
-</div>
+Jac introduces a new programming model that lets developers articulate **relationships between objects** in a **graph-like structure** and express computation as **walkers** that traverse this graph.
 
-This snippet natively imports Python packages `math` and `random` and runs identically to its Python counterpart. Jac targets Python bytecode, so all Python libraries work with Jac.
+This model is particularly effective for applications involving **connected data**, such as social networks, knowledge graphs, or file systems, and can greatly reduce code complexity.
+
+OSP also provides the foundation for **agentic workflows** and enables **Jaseci’s scale-native execution**, reducing backend development and deployment overhead.
+
+<!--  TODO: Insert illustrative graph diagram here -->
+
+---
+
+### 2. Programming Abstractions for AI
 
 
-## Programming Abstractions for AI
+Jac is designed from the ground up to integrate AI directly into the programming model to simplify development of AI-powered applications.
+
+#### 2.1 `by llm`
+
+Jac introduces language-level constructs such as the `by()` keyword that automatically generate optimized prompts. This **removes the need for manual prompt engineering** and enables seamless model integration.  In production systems, this feature has reduced hundreds of lines of prompt code to a single line.
+
+<!-- [TODO: Insert example line of `by llm()` code here] -->
+
+#### 2.2 Native Agentic AI Workflows (enabled by OSP)
+
+By leveraging OSP’s graph-based semantics, Jac naturally supports the creation and articulation of **agentic workflows**, allowing developers to create flows of interacting agents that collaborate, share memory, and act on dynamic context.
+
+***Together, OSP and `by llm` form a powerful foundation for rapid agentic AI development***.
+
+---
+
+### 3. Scale-Native Execution
+
+Jac allows developers to **write code once and run it anywhere**: from local environments to distributed cloud deployments, without code modification.  Jac also automates the process of **generating APIs** and **managing data persistence**, simplifying deployment and scaling of your applications.
+
+---
+
+### 4. Python Super-Set
+
+Jac-lang is intentionally designed as an extension of Python.  It provides **Python-like syntax** while adding new capabilities for **graph-based** and **AI-first programming**.
+
+Developers can freely mix **Jac** and **Python**:
+
+- Import Python libraries and call Python functions from Jac
+- Inline Python snippets inside Jac code
+- Import Jac modules directly into Python programs
+
+This tight interoperability enables teams to adopt Jac incrementally and integrate it seamlessly with existing Python ecosystems.
+
+---
+
+## 📖 Part 2 Code Snippets and Detailed Description
+
+For each feature, we will show simple code examples and explanation to highlight how Jac's key features enables rapid development of scalable, AI-powered applications.
+
+
+### Programming Abstractions for AI
 
 Jac provides novel constructs for integrating LLMs into code. A function body can simply be replaced with a call to an LLM, removing the need for prompt engineering or extensive use of new libraries.
 
@@ -67,7 +109,7 @@ with entry {
 `by llm()` delegates execution to an LLM without any extra library code.
 
 
-## Going Beyond OOP with Object Spatial Programming
+### Object Spatial Programming: Going Beyond OOP
 
 Traditional OOP with python classes (`class` or Jac's dataclass-like `obj`) that expresses object hierarchy and behavior is fully supported in Jac. Additionally, Jac programmers can also express object relationships with node classes (`node`), edge classes (`edge`), and object interactions with walker classes (`walker`) for richer modeling of problems called Object-Spatial Programing (OSP). This approach can be used where needed and maps nicely to may categories of problems (which happen to include agentic workflows ;-))
 
@@ -258,6 +300,35 @@ walker create_post {
     `
 
 ![Fast API Server](../assets/jac_cloud_example.jpg)
+
+## Python Superset Philosophy: All of Python Plus More
+
+Jac is a drop-in replacement for Python and supersets Python, much like Typescript supersets Javascript or C++ supersets C. It extends Python's semantics while maintaining full interoperability with the Python ecosystem, introducing cutting-edge abstractions designed to minimize complexity and embrace AI-forward development.
+
+<div class="code-block run-dot" >
+```jac
+import math;
+import from random { uniform }
+
+def calc_distance(x1: float, y1: float, x2: float, y2: float) -> float {
+return math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+}
+
+with entry { # Generate random points
+(x1, y1) = (uniform(0, 10), uniform(0, 10));
+(x2, y2) = (uniform(0, 10), uniform(0, 10));
+
+    distance = calc_distance(x1, y1, x2, y2);
+    area = math.pi * (distance / 2) ** 2;
+
+    print("Distance:", round(distance, 2), ", Circle area:", round(area, 2));
+
+}
+
+```
+</div>
+
+This snippet natively imports Python packages `math` and `random` and runs identically to its Python counterpart. Jac targets Python bytecode, so all Python libraries work with Jac.
 
 
 ## Better Organized and Well Typed Codebases

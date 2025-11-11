@@ -10,7 +10,7 @@ Jac Client enables you to write React-like components, manage state, and build i
 
 - **Single Language**: Write frontend and backend in Jac
 - **No HTTP Client**: Use `__jacSpawn()` instead of fetch/axios
-- **Reactive State**: Built-in state management with `createState()`
+- **React Hooks**: Use standard React `useState` and `useEffect` hooks
 - **Component-Based**: Build reusable UI components with JSX
 - **Graph Database**: Built-in graph data model eliminates need for SQL/NoSQL
 - **Type Safety**: Type checking across frontend and backend
@@ -34,7 +34,7 @@ cd my-app
 jac serve app.jac
 ```
 
-Visit `http://localhost:8000` to see your app!
+Visit `http://localhost:8000/page/app` to see your app!
 
 ---
 
@@ -43,33 +43,89 @@ Visit `http://localhost:8000` to see your app!
 For detailed guides and tutorials, see the **[docs folder](jac_client/docs/)**:
 
 - **[Getting Started Guide](jac_client/docs/README.md)** - Complete beginner's guide
-- **[Routing](jac_client/docs/routing.md)** - Multi-page applications with `initRouter()`
-- **[Lifecycle Hooks](jac_client/docs/lifecycle-hooks.md)** - Using `onMount()` for initialization
-- **[Advanced State](jac_client/docs/advanced-state.md)** - Managing complex state
-- **[Imports](jac_client/docs/imports.md)** - Importing libraries, Jac files, and JavaScript modules
+- **[Routing](jac_client/docs/routing.md)** - Multi-page applications with declarative routing (`<Router>`, `<Routes>`, `<Route>`)
+- **[Lifecycle Hooks](jac_client/docs/lifecycle-hooks.md)** - Using React hooks (`useState`, `useEffect`)
+- **[Advanced State](jac_client/docs/advanced-state.md)** - Managing complex state with React hooks
+- **[Imports](jac_client/docs/imports.md)** - Importing third-party libraries (React, Ant Design, Lodash), Jac files, and JavaScript modules
 
 ---
 
 ## 💡 Example
 
-```jac
-cl {
-    let [count, setCount] = createState({"value": 0});
+### Simple Counter with React Hooks
 
+```jac
+cl import from react { useState, useEffect }
+
+cl {
     def Counter() -> any {
-        s = count();
+        let [count, setCount] = useState(0);
+
+        useEffect(lambda -> None {
+            console.log("Count changed:", count);
+        }, [count]);
+
         return <div>
-            <h1>Count: {s.value}</h1>
-            <button onClick={lambda -> None {
-                setCount({"value": s.value + 1});
+            <h1>Count: {count}</h1>
+            <button onClick={lambda e: any -> None {
+                setCount(count + 1);
             }}>
                 Increment
             </button>
         </div>;
     }
 
-    def jac_app() -> any {
+    def app() -> any {
         return Counter();
+    }
+}
+```
+
+### Full-Stack Todo App
+
+```jac
+cl import from react { useState, useEffect }
+cl import from '@jac-client/utils' { __jacSpawn }
+
+# Backend: Jac nodes and walkers
+node Todo {
+    has text: str;
+    has done: bool = False;
+}
+
+walker create_todo {
+    has text: str;
+    can create with `root entry {
+        new_todo = here ++> Todo(text=self.text);
+        report new_todo;
+    }
+}
+
+walker read_todos {
+    can read with `root entry {
+        visit [-->(`?Todo)];
+    }
+}
+
+# Frontend: React component
+cl {
+    def app() -> any {
+        let [todos, setTodos] = useState([]);
+
+        useEffect(lambda -> None {
+            async def loadTodos() -> None {
+                result = await __jacSpawn("read_todos", "", {});
+                setTodos(result.reports);
+            }
+            loadTodos();
+        }, []);
+
+        return <div>
+            <h1>My Todos</h1>
+            {todos.map(lambda todo: any -> any {
+                return <div key={todo._jac_id}>{todo.text}</div>;
+            })}
+        </div>;
     }
 }
 ```

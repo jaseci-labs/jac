@@ -26,6 +26,7 @@ walker CreateTask {
         task = task_list[0] if task_list else None;
         if task {
             print("Created task: " + task.title);
+            report task;
         }
     }
 }
@@ -40,6 +41,13 @@ walker ListTasks {
 
     can gather with Task entry {
         print("Found task: " + here.title);
+    }
+}
+
+walker GetTask {
+
+    can fetch with Task entry {
+        return here;
     }
 }
 

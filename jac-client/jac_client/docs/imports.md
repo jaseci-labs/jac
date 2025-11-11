@@ -6,12 +6,457 @@ Learn how to import third-party libraries, other Jac files, and JavaScript modul
 
 ## 📚 Table of Contents
 
+- [Importing Jac-Client Utilities](#importing-jac-client-utilities)
 - [Working with Third-Party Node Modules](#working-with-third-party-node-modules)
 - [Installing Packages](#installing-packages)
 - [Importing Third-Party Libraries](#importing-third-party-libraries)
 - [Importing Other Jac Files](#importing-other-jac-files)
 - [Importing JavaScript Files](#importing-javascript-files)
 - [Best Practices](#best-practices)
+
+---
+
+## Importing Jac-Client Utilities
+
+Jac-Client provides built-in utilities for authentication, backend communication, and routing through the `@jac-client/utils` package.
+
+### Available Utilities
+
+```jac
+cl import from '@jac-client/utils' {
+    __jacSpawn,      # Call backend walkers
+    jacLogin,        # Login user
+    jacSignup,       # Register new user
+    jacLogout,       # Logout user
+    jacIsLoggedIn,   # Check if user is logged in
+    navigate,        # Navigate to routes
+    Link,            # Link component for routing
+}
+```
+
+### Backend Communication
+
+#### `__jacSpawn` - Call Backend Walkers
+
+The `__jacSpawn` function lets you call backend walkers from the frontend:
+
+```jac
+cl import from react { useState, useEffect }
+cl import from '@jac-client/utils' { __jacSpawn }
+
+cl {
+    def TodoApp() -> any {
+        let [todos, setTodos] = useState([]);
+
+        useEffect(lambda -> None {
+            async def loadTodos() -> None {
+                # Call backend walker
+                result = await __jacSpawn("read_todos", "", {});
+                setTodos(result.reports);
+            }
+            loadTodos();
+        }, []);
+
+        async def addTodo(text: str) -> None {
+            # Call walker with parameters
+            new_todo = await __jacSpawn("create_todo", "", {"text": text});
+            setTodos(todos.concat([new_todo]));
+        }
+
+        return <div>{/* UI */}</div>;
+    }
+}
+```
+
+**Signature:**
+```jac
+__jacSpawn(walker_name: str, node_id: str, params: dict) -> any
+```
+
+- `walker_name`: Name of the backend walker to call
+- `node_id`: Target node ID (use `""` for root)
+- `params`: Dictionary of parameters to pass to the walker
+
+### Authentication Functions
+
+#### `jacLogin` - User Login
+
+```jac
+cl import from '@jac-client/utils' { jacLogin, navigate }
+
+cl {
+    def LoginForm() -> any {
+        async def handleLogin(e: any) -> None {
+            e.preventDefault();
+            username = document.getElementById("username").value;
+            password = document.getElementById("password").value;
+
+            success = await jacLogin(username, password);
+
+            if success {
+                navigate("/dashboard");
+            } else {
+                alert("Login failed");
+            }
+        }
+
+        return <form onSubmit={handleLogin}>
+            <input id="username" type="text" placeholder="Username" />
+            <input id="password" type="password" placeholder="Password" />
+            <button type="submit">Login</button>
+        </form>;
+    }
+}
+```
+
+#### `jacSignup` - User Registration
+
+```jac
+cl import from '@jac-client/utils' { jacSignup, navigate }
+
+cl {
+    def SignupForm() -> any {
+        async def handleSignup(e: any) -> None {
+            e.preventDefault();
+            username = document.getElementById("username").value;
+            password = document.getElementById("password").value;
+
+            result = await jacSignup(username, password);
+
+            if result.success {
+                alert("Account created successfully!");
+                navigate("/login");
+            } else {
+                alert(result.error or "Signup failed");
+            }
+        }
+
+        return <form onSubmit={handleSignup}>
+            <input id="username" type="text" placeholder="Username" />
+            <input id="password" type="password" placeholder="Password" />
+            <button type="submit">Sign Up</button>
+        </form>;
+    }
+}
+```
+
+#### `jacLogout` - User Logout
+
+```jac
+cl import from '@jac-client/utils' { jacLogout, navigate }
+
+cl {
+    def Header() -> any {
+        def handleLogout() -> None {
+            jacLogout();
+            navigate("/login");
+        }
+
+        return <header>
+            <button onClick={handleLogout}>Logout</button>
+        </header>;
+    }
+}
+```
+
+#### `jacIsLoggedIn` - Check Authentication Status
+
+```jac
+cl import from '@jac-client/utils' { jacIsLoggedIn, navigate }
+
+cl {
+    def ProtectedPage() -> any {
+        if not jacIsLoggedIn() {
+            navigate("/login");
+            return <div>Redirecting...</div>;
+        }
+
+        return <div>
+            <h1>Protected Content</h1>
+            <p>Only logged-in users can see this!</p>
+        </div>;
+    }
+}
+```
+
+### Routing Functions
+
+#### `navigate` - Programmatic Navigation
+
+```jac
+cl import from '@jac-client/utils' { navigate }
+
+cl {
+    def MyComponent() -> any {
+        def goToHome() -> None {
+            navigate("/");
+        }
+
+        def goToProfile() -> None {
+            navigate("/profile");
+        }
+
+        return <div>
+            <button onClick={goToHome}>Go Home</button>
+            <button onClick={goToProfile}>Go to Profile</button>
+        </div>;
+    }
+}
+```
+
+#### `Link` - Declarative Navigation
+
+```jac
+cl import from '@jac-client/utils' { Link }
+
+cl {
+    def Navigation() -> any {
+        return <nav>
+            <Link href="/">Home</Link>
+            <Link href="/about">About</Link>
+            <Link href="/contact">Contact</Link>
+        </nav>;
+    }
+}
+```
+
+#### `initRouter` - Initialize Router
+
+```jac
+cl import from '@jac-client/utils' { initRouter, jacIsLoggedIn }
+
+cl {
+    def App() -> any {
+        # Define routes
+        routes = [
+            {
+                "path": "/",
+                "component": lambda -> any { return <HomePage />; },
+                "guard": None
+            },
+            {
+                "path": "/dashboard",
+                "component": lambda -> any { return <Dashboard />; },
+                "guard": jacIsLoggedIn  # Require authentication
+            },
+            {
+                "path": "/login",
+                "component": lambda -> any { return <LoginPage />; },
+                "guard": None
+            }
+        ];
+
+        # Initialize router with default route
+        router = initRouter(routes, "/");
+
+        return <div>
+            <Navigation />
+            {router.render()}
+        </div>;
+    }
+}
+```
+
+### Complete Authentication Example
+
+```jac
+cl import from react { useState }
+cl import from '@jac-client/utils' {
+    jacLogin,
+    jacSignup,
+    jacLogout,
+    jacIsLoggedIn,
+    navigate,
+    Link,
+    initRouter
+}
+
+cl {
+    def LoginPage() -> any {
+        let [error, setError] = useState("");
+
+        async def handleLogin(e: any) -> None {
+            e.preventDefault();
+            username = document.getElementById("username").value;
+            password = document.getElementById("password").value;
+
+            success = await jacLogin(username, password);
+
+            if success {
+                navigate("/dashboard");
+            } else {
+                setError("Invalid credentials");
+            }
+        }
+
+        return <div style={{"maxWidth": "400px", "margin": "50px auto"}}>
+            <h1>Login</h1>
+            {error and <p style={{"color": "red"}}>{error}</p>}
+            <form onSubmit={handleLogin}>
+                <input
+                    id="username"
+                    type="text"
+                    placeholder="Username"
+                    style={{"width": "100%", "padding": "10px", "marginBottom": "10px"}}
+                />
+                <input
+                    id="password"
+                    type="password"
+                    placeholder="Password"
+                    style={{"width": "100%", "padding": "10px", "marginBottom": "10px"}}
+                />
+                <button type="submit" style={{"width": "100%", "padding": "10px"}}>
+                    Login
+                </button>
+            </form>
+            <p>
+                Don't have an account? <Link href="/signup">Sign up</Link>
+            </p>
+        </div>;
+    }
+
+    def Dashboard() -> any {
+        if not jacIsLoggedIn() {
+            navigate("/login");
+            return <div>Redirecting...</div>;
+        }
+
+        def handleLogout() -> None {
+            jacLogout();
+            navigate("/login");
+        }
+
+        return <div style={{"padding": "20px"}}>
+            <h1>Dashboard</h1>
+            <p>Welcome! You are logged in.</p>
+            <button onClick={handleLogout}>Logout</button>
+        </div>;
+    }
+
+    def App() -> any {
+        routes = [
+            {"path": "/login", "component": lambda -> any { return LoginPage(); }, "guard": None},
+            {"path": "/dashboard", "component": lambda -> any { return Dashboard(); }, "guard": jacIsLoggedIn}
+        ];
+
+        router = initRouter(routes, "/login");
+
+        return <div>
+            {router.render()}
+        </div>;
+    }
+}
+```
+
+### Common Patterns
+
+#### Pattern 1: Protected Route with Loading State
+
+```jac
+cl import from react { useState, useEffect }
+cl import from '@jac-client/utils' { jacIsLoggedIn, __jacSpawn, navigate }
+
+cl {
+    def ProtectedDashboard() -> any {
+        let [user, setUser] = useState(None);
+        let [loading, setLoading] = useState(True);
+
+        useEffect(lambda -> None {
+            if not jacIsLoggedIn() {
+                navigate("/login");
+                return;
+            }
+
+            async def loadUserData() -> None {
+                result = await __jacSpawn("get_user_profile", "", {});
+                setUser(result);
+                setLoading(False);
+            }
+            loadUserData();
+        }, []);
+
+        if loading { return <div>Loading...</div>; }
+
+        return <div>
+            <h1>Welcome, {user.name}!</h1>
+        </div>;
+    }
+}
+```
+
+#### Pattern 2: Form with Backend Integration
+
+```jac
+cl import from react { useState }
+cl import from '@jac-client/utils' { __jacSpawn }
+
+cl {
+    def CreateTodoForm() -> any {
+        let [text, setText] = useState("");
+        let [loading, setLoading] = useState(False);
+
+        async def handleSubmit(e: any) -> None {
+            e.preventDefault();
+            if not text.trim() { return; }
+
+            setLoading(True);
+            try {
+                await __jacSpawn("create_todo", "", {"text": text});
+                setText("");  # Clear form
+                alert("Todo created!");
+            } catch (err) {
+                alert("Failed to create todo");
+            } finally {
+                setLoading(False);
+            }
+        }
+
+        return <form onSubmit={handleSubmit}>
+            <input
+                value={text}
+                onChange={lambda e: any -> None { setText(e.target.value); }}
+                placeholder="Enter todo..."
+                disabled={loading}
+            />
+            <button type="submit" disabled={loading}>
+                {loading ? "Creating..." : "Add Todo"}
+            </button>
+        </form>;
+    }
+}
+```
+
+#### Pattern 3: Navigation with Auth Check
+
+```jac
+cl import from '@jac-client/utils' { Link, jacIsLoggedIn, jacLogout, navigate }
+
+cl {
+    def Navigation() -> any {
+        isLoggedIn = jacIsLoggedIn();
+
+        def handleLogout() -> None {
+            jacLogout();
+            navigate("/");
+        }
+
+        return <nav style={{"padding": "10px", "background": "#f5f5f5"}}>
+            <Link href="/">Home</Link>
+            {isLoggedIn ? (
+                <>
+                    <Link href="/dashboard">Dashboard</Link>
+                    <button onClick={handleLogout}>Logout</button>
+                </>
+            ) : (
+                <>
+                    <Link href="/login">Login</Link>
+                    <Link href="/signup">Sign Up</Link>
+                </>
+            )}
+        </nav>;
+    }
+}
+```
 
 ---
 
@@ -121,75 +566,122 @@ npm install antd
 ```jac
 """Importing Ant Design components."""
 
-cl import from antd {
-    Button,
-    Card,
-    Input,
-    Space
-}
+cl import from antd { Button, Input, Card, Typography, Space }
 
-cl def MyApp() -> any {
-    return <div>
-        <Space direction="vertical" size="large">
-            <Card title="Welcome">
-                <Input placeholder="Enter text..." />
-                <Button type="primary">Submit</Button>
+cl {
+    def MyApp() -> any {
+        return <div>
+            <Card title="Welcome" style={{"maxWidth": "400px", "margin": "50px auto"}}>
+                <Card.Meta title="Hello" description="Welcome to Jac!" />
+                <Space direction="vertical" style={{"width": "100%"}}>
+                    <Input placeholder="Enter text..." />
+                    <Button type="primary" style={{"width": "100%"}}>Submit</Button>
+                    <Button color="default" variant="dashed">Dashed</Button>
+                    <Button color="default" variant="filled">Filled</Button>
+                    <Button color="default" variant="text">Text</Button>
+                    <Button color="default" variant="link">Link</Button>
+                </Space>
             </Card>
-        </Space>
-    </div>;
-}
+        </div>;
+    }
 
-cl def jac_app() -> any {
-    return MyApp();
+    def jac_app() -> any {
+        return MyApp();
+    }
 }
 ```
 
-### Example: Importing React Icons
+### Example: Importing React Hooks
+
+React hooks can be imported and used directly in Jac:
 
 ```bash
-# Install React Icons
-npm install react-icons
+# React is typically included by default, but if needed:
+npm install react
 ```
 
 ```jac
-"""Importing React Icons."""
+"""Using React hooks in Jac."""
 
-cl import from 'react-icons' {
-    FaHome,
-    FaUser,
-    FaSettings
-}
+cl import from react { useState, useEffect }
 
-cl def Navigation() -> any {
-    return <nav>
-        <FaHome />
-        <FaUser />
-        <FaSettings />
-    </nav>;
+cl {
+    def Counter() -> any {
+        let [count, setCount] = useState(0);
+
+        useEffect(lambda -> None {
+            console.log("Count: ", count);
+        }, [count]);
+
+        return <div>
+            <h1>Count: {count}</h1>
+            <button onClick={lambda e: any -> None {
+                setCount(count + 1);
+            }}>
+                Increment
+            </button>
+        </div>;
+    }
 }
 ```
 
 ### Example: Importing Utility Libraries
 
+Lodash is a popular utility library with many helpful functions:
+
 ```bash
-# Install utility libraries
-npm install date-fns lodash
+# Install lodash
+npm install lodash
 ```
 
 ```jac
-"""Importing utility functions."""
+"""Importing lodash utilities."""
 
-cl import from 'date-fns' {
-    format,
-    parseISO,
-    differenceInDays
+cl import from lodash { * as _ }
+
+cl {
+    def RandomQuoteCard() -> any {
+        suggestions = ['good luck', 'have fun', 'enjoy the ride'];
+        randomSuggestion = _.sample(suggestions);  # Pick random item
+
+        return <div>
+            <h2>{randomSuggestion}</h2>
+            <p>Powered by Lodash!</p>
+        </div>;
+    }
 }
+```
 
-cl import from lodash {
-    debounce,
-    throttle
+### Example: Importing Specialized Libraries
+
+You can import specialized libraries like pluralize or animation libraries:
+
+```bash
+# Install packages
+npm install pluralize
+npm install react-animated-components
+```
+
+```jac
+"""Importing specialized libraries."""
+
+cl import from pluralize { default as pluralize }
+cl import from 'react-animated-components' { Rotate }
+
+cl {
+    def AnimatedDemo() -> any {
+        word = "tweet";
+        count = 5;
+        pluralWord = pluralize(word, count);
+
+        return <div>
+            <h1>{count} {pluralWord}</h1>
+            <Rotate>
+                <span style={{"fontSize": "48px"}}>😂</span>
+            </Rotate>
+        </div>;
+    }
 }
-
 ```
 
 ### Example: Importing Multiple Components

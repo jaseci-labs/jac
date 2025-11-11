@@ -181,9 +181,45 @@ def TodoItem(item: dict) -> any {
 
 ## 🗄️ 4. Adding State
 
-State management in Jac uses `createState()`, which provides reactive state similar to React hooks but simpler.
+Jac supports two approaches to state management: React hooks (recommended) and Jac's custom `createState()`.
 
-### Understanding `createState()`
+### Option 1: React Hooks (Recommended)
+
+You can use React hooks directly in Jac by importing them:
+
+```jac
+cl import from react { useState, useEffect }
+
+cl {
+    def Counter() -> any {
+        let [count, setCount] = useState(0);
+
+        useEffect(lambda -> None {
+            console.log("Count changed:", count);
+        }, [count]);
+
+        return <div>
+            <h1>Count: {count}</h1>
+            <button onClick={lambda e: any -> None {
+                setCount(count + 1);
+            }}>
+                Increment
+            </button>
+        </div>;
+    }
+}
+```
+
+**Available React Hooks:**
+- `useState` - For state management
+- `useEffect` - For side effects
+- `useRef` - For refs
+- `useContext` - For context
+- And more...
+
+### Option 2: Jac's createState()
+
+Jac also provides its own `createState()` function:
 
 ```jac
 let [todoState, setTodoState] = createState({
@@ -198,9 +234,21 @@ let [todoState, setTodoState] = createState({
 - **Getter** (`todoState`): A function that returns the current state value
 - **Setter** (`setTodoState`): A function that updates the state and triggers re-renders
 
-### Reading State
+### Choosing Between React Hooks and createState()
 
-Always call the getter as a function:
+**Use React Hooks if:**
+- You're familiar with React
+- You want to use the React ecosystem
+- You need access to all React features
+
+**Use createState() if:**
+- You want Jac-native state management
+- You prefer simpler syntax for basic state
+- You're building a pure Jac application
+
+### Reading State with createState()
+
+When using `createState()`, always call the getter as a function:
 
 ```jac
 def TodoApp() -> any {
@@ -609,11 +657,21 @@ Then visit `http://localhost:8000` in your browser.
 
 Ready to dive deeper? Explore these advanced topics:
 
-- **[Routing](routing.md)**: Learn about `initRouter()` for multi-page applications
-- **[Lifecycle Hooks](lifecycle-hooks.md)**: Use `onMount()` for initialization logic
-- **[Advanced State](advanced-state.md)**: Combine multiple `createState()` calls for complex apps
-- **[Imports](imports.md)**: Import third-party libraries, other Jac files, and JavaScript modules
+- **[Routing](routing.md)**: Build multi-page apps with declarative routing (`<Router>`, `<Routes>`, `<Route>`)
+- **[Lifecycle Hooks](lifecycle-hooks.md)**: Use `onMount()` and React hooks for initialization logic
+- **[Advanced State](advanced-state.md)**: Manage complex state with multiple `createState()` calls or React hooks
+- **[Imports](imports.md)**: Import third-party libraries (React, Ant Design, Lodash), other Jac files, and JavaScript modules
 - **[Learn JAC](https://www.jac-lang.org)**: Explore Jac's graph-based data modeling
+
+## 🎓 Examples
+
+Check out the `examples/` directory for working applications:
+
+- **[basic](../../examples/basic/)**: Simple counter app using React hooks
+- **[with-router](../../examples/with-router/)**: Multi-page app with declarative routing
+- **[little-x](../../examples/little-x/)**: Social media app with third-party libraries
+- **[todo-app](../../examples/todo-app/)**: Full-featured todo app with authentication
+- **[basic-full-stack](../../examples/basic-full-stack/)**: Full-stack app with backend integration
 
 ---
 

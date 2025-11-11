@@ -63,7 +63,7 @@ class TestCreateJacApp(TestCase):
                 with open(app_jac_path, "r") as f:
                     app_jac_content = f.read()
                 
-                self.assertIn("jac_app()", app_jac_content)
+                self.assertIn("app()", app_jac_content)
                 
                 # Verify README.md was created
                 readme_path = os.path.join(project_path, "README.md")

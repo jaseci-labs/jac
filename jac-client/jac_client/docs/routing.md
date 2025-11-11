@@ -1,394 +1,395 @@
 # Routing in Jac: Building Multi-Page Applications
 
-Learn how to use `initRouter()` to create multi-page applications with navigation, route guards, and dynamic routing.
+Learn how to create multi-page applications with declarative routing components: `Router`, `Routes`, `Route`, and `Link`.
 
 ---
 
 ## 📚 Table of Contents
 
 - [What is Routing?](#what-is-routing)
+- [Declarative Routing API](#declarative-routing-api)
 - [Basic Routing Setup](#basic-routing-setup)
-- [Route Configuration](#route-configuration)
-- [Navigation](#navigation)
-- [Route Guards](#route-guards)
+- [Route Components](#route-components)
+- [Navigation with Link](#navigation-with-link)
+- [Programmatic Navigation](#programmatic-navigation)
 - [Complete Example](#complete-example)
-- [Advanced Patterns](#advanced-patterns)
+- [Legacy API (initRouter)](#legacy-api-initrouter)
 
 ---
 
 ## What is Routing?
 
-Routing allows you to create multi-page applications where different URLs display different components. In Jac, routing is handled by the `initRouter()` function, which manages navigation using hash-based routing (e.g., `#/login`, `#/todos`).
+Routing allows you to create multi-page applications where different URLs display different components. Jac provides a declarative routing API with React-style components for building your navigation structure.
 
 **Key Benefits:**
 - **Single Page Application (SPA)**: No page refreshes when navigating
+- **Declarative Syntax**: Define routes using JSX components
 - **URL-based Navigation**: Each view has its own URL
 - **Browser History**: Back/forward buttons work automatically
-- **Route Guards**: Protect routes with authentication checks
-- **Reactive Updates**: Route changes automatically update components
+- **Simple Integration**: Works seamlessly with Jac components
+
+---
+
+## Declarative Routing API
+
+Jac provides routing components that you can import from `@jac-client/utils`:
+
+```jac
+cl import from "@jac-client/utils" { Router, Routes, Route, Link }
+```
+
+**Core Components:**
+- **`<Router>`**: Container for your routing setup
+- **`<Routes>`**: Groups multiple routes together
+- **`<Route>`**: Defines a single route with path and component
+- **`<Link>`**: Navigation links that don't refresh the page
 
 ---
 
 ## Basic Routing Setup
 
-### Setting Up the Router
+### Simple Three-Page App
 
 ```jac
+cl import from react { useState, useEffect }
+cl import from "@jac-client/utils" { Router, Routes, Route, Link }
+
 cl {
-    def App() -> any {
-        # Define routes
-        routes = [
-            {"path": "/", "component": lambda -> any { return HomeView(); }, "guard": None},
-            {"path": "/about", "component": lambda -> any { return AboutView(); }, "guard": None}
-        ];
-
-        # Initialize router with default route
-        router = initRouter(routes, "/");
-
-        # Render the router
+    # Page Components
+    def Home() -> any {
         return <div>
-            {router.render()}
+            <h1>Home Page</h1>
+            <p>Welcome to the home page!</p>
         </div>;
     }
 
-    def jac_app() -> any {
-        return App();
+    def About() -> any {
+        return <div>
+            <h1>About Page</h1>
+            <p>Learn more about our application.</p>
+        </div>;
+    }
+
+    def Contact() -> any {
+        return <div>
+            <h1>Contact Page</h1>
+            <p>Email: contact@example.com</p>
+        </div>;
+    }
+
+    # Main App with Routing
+    def app() -> any {
+        return <Router defaultRoute="/">
+            <div>
+                <nav>
+                    <Link to="/">Home</Link>
+                    {" | "}
+                    <Link to="/about">About</Link>
+                    {" | "}
+                    <Link to="/contact">Contact</Link>
+                </nav>
+                <Routes>
+                    <Route path="/" component={Home} />
+                    <Route path="/about" component={About} />
+                    <Route path="/contact" component={Contact} />
+                </Routes>
+            </div>
+        </Router>;
     }
 }
 ```
 
-**Key Components:**
-- **`routes`**: Array of route configurations
-- **`initRouter()`**: Creates the router instance
-- **`router.render()`**: Renders the component for the current route
+**How It Works:**
+1. **`<Router>`** wraps your entire app and manages routing state
+2. **`defaultRoute`** specifies which route to show initially
+3. **`<Routes>`** contains all your route definitions
+4. **`<Route>`** maps a URL path to a component
+5. **`<Link>`** creates clickable navigation links
 
 ---
 
-## Route Configuration
+## Route Components
 
-Each route is a dictionary with three properties:
+### Router Component
 
-### Route Structure
+The `<Router>` component is the top-level container for routing:
 
 ```jac
-route = {
-    "path": "/todos",                    # URL path
-    "component": lambda -> any {         # Component to render
-        return TodoApp();
-    },
-    "guard": jacIsLoggedIn              # Optional: route guard function
-};
+<Router defaultRoute="/">
+    {/* Your app content */}
+</Router>
 ```
 
-### Route Properties
+**Props:**
+- **`defaultRoute`**: The initial route to display (e.g., `"/"`, `"/login"`)
 
-| Property | Type | Required | Description |
-|----------|------|----------|-------------|
-| `path` | `str` | ✅ Yes | URL path (must start with `/`) |
-| `component` | `function` | ✅ Yes | Function that returns a JSX component |
-| `guard` | `function` | ❌ No | Function that returns `True` if route is accessible |
+### Routes Component
 
-### Example: Multiple Routes
+The `<Routes>` component groups multiple routes:
+
+```jac
+<Routes>
+    <Route path="/" component={Home} />
+    <Route path="/about" component={About} />
+    <Route path="/contact" component={Contact} />
+</Routes>
+```
+
+### Route Component
+
+Each `<Route>` defines a single route:
+
+```jac
+<Route path="/todos" component={TodoList} />
+```
+
+**Props:**
+- **`path`**: The URL path (must start with `/`)
+- **`component`**: The component function to render (without calling it)
+
+### Example: Protected Routes
 
 ```jac
 cl {
-    def App() -> any {
-        # Define all routes
-        home_route = {
-            "path": "/",
-            "component": lambda -> any { return HomeView(); },
-            "guard": None
-        };
-
-        login_route = {
-            "path": "/login",
-            "component": lambda -> any { return LoginForm(); },
-            "guard": None
-        };
-
-        todos_route = {
-            "path": "/todos",
-            "component": lambda -> any { return TodoApp(); },
-            "guard": jacIsLoggedIn  # Requires authentication
-        };
-
-        profile_route = {
-            "path": "/profile",
-            "component": lambda -> any { return ProfileView(); },
-            "guard": jacIsLoggedIn  # Requires authentication
-        };
-
-        # Combine all routes
-        routes = [home_route, login_route, todos_route, profile_route];
-
-        # Initialize router with default route
-        router = initRouter(routes, "/");
-
+    def ProtectedPage() -> any {
+        if not jacIsLoggedIn() {
+            return <div>Please login to view this page.</div>;
+        }
         return <div>
-            {Nav(router.path())}
-            {router.render()}
+            <h1>Protected Content</h1>
+            <p>You're logged in!</p>
         </div>;
+    }
+
+    def app() -> any {
+        return <Router defaultRoute="/login">
+            <Routes>
+                <Route path="/login" component={LoginForm} />
+                <Route path="/dashboard" component={ProtectedPage} />
+            </Routes>
+        </Router>;
     }
 }
 ```
 
 ---
 
-## Navigation
+## Navigation with Link
 
-Jac provides multiple ways to navigate between routes.
+### The Link Component
 
-### Using the `navigate()` Runtime Function
+The `<Link>` component creates clickable navigation links:
+
+```jac
+<Link to="/about">About Us</Link>
+```
+
+**Props:**
+- **`to`**: The destination path (e.g., `"/"`, `"/about"`)
+- **`style`**: Optional CSS styles for the link
+- **`className`**: Optional CSS class name
+
+### Basic Navigation
+
+```jac
+cl {
+    def Navigation() -> any {
+        return <nav style={{"padding": "1rem", "backgroundColor": "#f0f0f0"}}>
+            <Link to="/">Home</Link>
+            {" | "}
+            <Link to="/about">About</Link>
+            {" | "}
+            <Link to="/contact">Contact</Link>
+        </nav>;
+    }
+}
+```
+
+### Styled Navigation
+
+```jac
+cl {
+    def Navigation() -> any {
+        return <nav style={{
+            "display": "flex",
+            "gap": "20px",
+            "padding": "15px",
+            "backgroundColor": "#1da1f2"
+        }}>
+            <Link to="/home">
+                <span style={{
+                    "color": "white",
+                    "textDecoration": "none",
+                    "fontWeight": "bold"
+                }}>
+                    Home
+                </span>
+            </Link>
+            <Link to="/profile">
+                <span style={{
+                    "color": "white",
+                    "textDecoration": "none",
+                    "fontWeight": "bold"
+                }}>
+                    Profile
+                </span>
+            </Link>
+        </nav>;
+    }
+}
+```
+
+### Link Component Features
+
+- **No Page Refresh**: Navigation happens without reloading the page
+- **Client-Side Routing**: Fast transitions between pages
+- **Browser History**: Works with browser back/forward buttons
+- **Styling Support**: Can be styled like any other element
+
+---
+
+## Programmatic Navigation
+
+For programmatic navigation (e.g., after form submission), use the `navigate()` function:
 
 ```jac
 cl {
     async def handleLogin(e: any) -> None {
         e.preventDefault();
+        username = document.getElementById("username").value;
+        password = document.getElementById("password").value;
+
         success = await jacLogin(username, password);
         if success {
-            navigate("/todos");  # Global navigate function
+            navigate("/dashboard");  # Navigate after successful login
+        } else {
+            alert("Login failed");
         }
     }
-}
-```
 
-### Using the `Link` Component
-
-The `Link` component creates clickable links that navigate to routes:
-
-```jac
-cl {
-    def Nav() -> any {
-        return <nav>
-            <Link href="/">Home</Link>
-            <Link href="/todos">Todos</Link>
-            <Link href="/profile">Profile</Link>
-        </nav>;
+    def LoginForm() -> any {
+        return <form onSubmit={handleLogin}>
+            <input id="username" type="text" placeholder="Username" />
+            <input id="password" type="password" placeholder="Password" />
+            <button type="submit">Login</button>
+        </form>;
     }
 }
 ```
 
-**Link Component Features:**
-- Automatic hash-based navigation
-- Updates URL without page refresh
-- Triggers route changes and component updates
-
-### Complete Navigation Example
-
-```jac
-cl {
-    def Nav(currentPath: str) -> any {
-        return <nav style={{
-            "display": "flex",
-            "gap": "16px",
-            "padding": "12px"
-        }}>
-            <Link href="/" style={{
-                "color": ("#7C3AED" if currentPath == "/" else "#111827"),
-                "textDecoration": "none",
-                "fontWeight": ("700" if currentPath == "/" else "500")
-            }}>
-                Home
-            </Link>
-            <Link href="/todos" style={{
-                "color": ("#7C3AED" if currentPath == "/todos" else "#111827"),
-                "textDecoration": "none",
-                "fontWeight": ("700" if currentPath == "/todos" else "500")
-            }}>
-                Todos
-            </Link>
-            <button onClick={lambda -> None {
-                navigate("/login");
-            }}>
-                Logout
-            </button>
-        </nav>;
-    }
-
-    def App() -> any {
-        routes = [/* routes */];
-        router = initRouter(routes, "/");
-        currentPath = router.path();
-
-        return <div>
-            {Nav(currentPath)}
-            {router.render()}
-        </div>;
-    }
-}
-```
-
----
-
-## Route Guards
-
-Route guards protect routes by checking conditions (like authentication) before allowing access.
-
-### How Guards Work
-
-1. **Guard Function**: A function that returns `True` (allow) or `False` (deny)
-2. **Automatic Check**: Router checks the guard when the route matches
-3. **Access Denied**: If guard returns `False`, shows "Access Denied" instead of the component
-
-### Basic Guard Example
-
-```jac
-cl {
-    def App() -> any {
-        public_route = {
-            "path": "/public",
-            "component": lambda -> any { return PublicView(); },
-            "guard": None  # No guard - always accessible
-        };
-
-        protected_route = {
-            "path": "/private",
-            "component": lambda -> any { return PrivateView(); },
-            "guard": jacIsLoggedIn  # Requires authentication
-        };
-
-        routes = [public_route, protected_route];
-        router = initRouter(routes, "/");
-
-        return <div>{router.render()}</div>;
-    }
-}
-```
-
-### Custom Guard Functions
-
-You can create custom guard functions:
-
-```jac
-cl {
-    # Check if user is admin
-    def isAdmin() -> bool {
-        if not jacIsLoggedIn() {
-            return False;
-        }
-        user = getCurrentUser();  # Your custom function
-        return user.role == "admin";
-    }
-
-    # Check if user has specific permission
-    def hasPermission(permission: str) -> bool {
-        if not jacIsLoggedIn() {
-            return False;
-        }
-        user = getCurrentUser();
-        return permission in user.permissions;
-    }
-
-    def App() -> any {
-        admin_route = {
-            "path": "/admin",
-            "component": lambda -> any { return AdminView(); },
-            "guard": isAdmin  # Custom guard
-        };
-
-        settings_route = {
-            "path": "/settings",
-            "component": lambda -> any { return SettingsView(); },
-            "guard": lambda -> bool { return hasPermission("settings:edit"); }  # Inline guard
-        };
-
-        routes = [admin_route, settings_route];
-        router = initRouter(routes, "/");
-
-        return <div>{router.render()}</div>;
-    }
-}
-```
-
-### Redirecting on Guard Failure
-
-You can automatically redirect when a guard fails:
-
-```jac
-cl {
-    def protectedGuard() -> bool {
-        if not jacIsLoggedIn() {
-            navigate("/login");  # Redirect to login
-            return False;
-        }
-        return True;
-    }
-
-    def App() -> any {
-        protected_route = {
-            "path": "/todos",
-            "component": lambda -> any { return TodoApp(); },
-            "guard": protectedGuard
-        };
-
-        routes = [protected_route];
-        router = initRouter(routes, "/login");
-
-        return <div>{router.render()}</div>;
-    }
-}
-```
+**Common Use Cases:**
+- After form submission
+- After authentication
+- Conditional navigation based on logic
+- In button onClick handlers
 
 ---
 
 ## Complete Example
 
-Here's a complete routing example from the Todo App:
+Here's a complete example with navigation, multiple routes, and authentication:
 
 ```jac
+cl import from react { useState, useEffect }
+cl import from "@jac-client/utils" { Router, Routes, Route, Link }
+
 cl {
-    def Nav(route: str) -> any {
-        if not jacIsLoggedIn() or route == "/login" or route == "/signup" {
-            return None;
-        }
+    # Home Page
+    def Home() -> any {
+        return <div>
+            <h1>Home Page</h1>
+            <p>Welcome to the home page!</p>
+            <p>This is a simple routing example.</p>
+        </div>;
+    }
+
+    # About Page
+    def About() -> any {
+        return <div>
+            <h1>About Page</h1>
+            <p>Learn more about our application here.</p>
+        </div>;
+    }
+
+    # Contact Page
+    def Contact() -> any {
+        return <div>
+            <h1>Contact Page</h1>
+            <p>Get in touch with us!</p>
+            <p>Email: contact@example.com</p>
+        </div>;
+    }
+
+    # Navigation Component
+    def Navigation() -> any {
         return <nav style={{
-            "background": "#FFFFFF",
-            "padding": "12px",
-            "boxShadow": "0 1px 2px rgba(17,24,39,0.06)"
+            "padding": "1rem",
+            "backgroundColor": "#f0f0f0",
+            "marginBottom": "1rem"
         }}>
-            <div style={{
-                "maxWidth": "960px",
-                "margin": "0 auto",
-                "display": "flex",
-                "gap": "16px",
-                "alignItems": "center"
-            }}>
-                <Link href="/todos" style={{"textDecoration": "none"}}>
-                    <span style={{
-                        "color": "#111827",
-                        "fontWeight": "800",
-                        "fontSize": "18px"
-                    }}>📝 My Todos</span>
-                </Link>
-                <button
-                    onClick={logout_action}
-                    style={{
-                        "marginLeft": "auto",
-                        "padding": "8px 12px",
-                        "background": "#FFFFFF",
-                        "color": "#374151",
-                        "border": "1px solid #E5E7EB",
-                        "borderRadius": "18px",
-                        "cursor": "pointer"
-                    }}
-                >
-                    Logout
-                </button>
-            </div>
+            <Link to="/">Home</Link>
+            {" | "}
+            <Link to="/about">About</Link>
+            {" | "}
+            <Link to="/contact">Contact</Link>
         </nav>;
     }
 
+    # Main App with Routing
+    def app() -> any {
+        return <Router defaultRoute="/">
+            <div>
+                <Navigation />
+                <div style={{"padding": "1rem"}}>
+                    <Routes>
+                        <Route path="/" component={Home} />
+                        <Route path="/about" component={About} />
+                        <Route path="/contact" component={Contact} />
+                    </Routes>
+                </div>
+            </div>
+        </Router>;
+    }
+}
+```
+
+---
+
+## Best Practices
+
+1. **Import Statement**: Always import routing components at the top
+2. **Component Functions**: Pass component functions without calling them (`component={Home}`, not `component={Home()}`)
+3. **Default Route**: Always specify a `defaultRoute` in `<Router>`
+4. **Navigation**: Use `<Link>` for navigation, not regular `<a>` tags
+5. **Protected Routes**: Check authentication inside component, not in routing config
+
+---
+
+## Legacy API (initRouter)
+
+Jac also supports a legacy routing API using `initRouter()`. This API is still functional but the declarative API is recommended for new projects.
+
+### Legacy Route Guards
+
+The legacy API supported route guards for protecting routes:
+
+Route guards protect routes by checking conditions (like authentication) before allowing access.
+
+### How Legacy Guards Work
+
+1. **Guard Function**: A function that returns `True` (allow) or `False` (deny)
+2. **Automatic Check**: Router checks the guard when the route matches
+3. **Access Denied**: If guard returns `False`, shows "Access Denied" instead of the component
+
+### Legacy initRouter() Example
+
+```jac
+cl {
     def App() -> any {
-        # Define routes
+        # Define routes with legacy API
         login_route = {
             "path": "/login",
             "component": lambda -> any { return LoginForm(); },
-            "guard": None
-        };
-
-        signup_route = {
-            "path": "/signup",
-            "component": lambda -> any { return SignupForm(); },
             "guard": None
         };
 
@@ -399,25 +400,15 @@ cl {
         };
 
         # Initialize router
-        routes = [login_route, signup_route, todos_route];
-        router = initRouter(routes, "/login");  # Default to login page
+        routes = [login_route, todos_route];
+        router = initRouter(routes, "/login");
 
-        # Get current path for navigation
+        # Get current path
         currentPath = router.path();
 
-        return <div style={{
-            "minHeight": "95vh",
-            "background": "#F7F8FA",
-            "padding": "24px"
-        }}>
+        return <div>
             {Nav(currentPath)}
-            <div style={{
-                "maxWidth": "960px",
-                "margin": "0 auto",
-                "padding": "20px"
-            }}>
-                {router.render()}
-            </div>
+            {router.render()}
         </div>;
     }
 
@@ -427,104 +418,17 @@ cl {
 }
 ```
 
----
-
-## Advanced Patterns
-
-### Getting Current Route
-
-Use `router.path()` to get the current route:
-
-```jac
-cl {
-    def App() -> any {
-        routes = [/* routes */];
-        router = initRouter(routes, "/");
-
-        currentPath = router.path();  # Get current route
-
-        # Use currentPath for conditional rendering
-        return <div>
-            {Nav(currentPath)}
-            {router.render()}
-        </div>;
-    }
-}
-```
-
-### Programmatic Navigation
-
-Navigate programmatically from anywhere:
-
-```jac
-cl {
-    async def handleLogin(e: any) -> None {
-        e.preventDefault();
-        success = await jacLogin(username, password);
-        if success {
-            router = __jacReactiveContext.router;
-            if router {
-                router.navigate("/todos");
-            }
-        }
-    }
-
-    def logout_action() -> None {
-        jacLogout();
-        navigate("/login");  # Or use router.navigate()
-    }
-}
-```
-
-### Dynamic Route Parameters (Future)
-
-While Jac's router uses hash-based routing without path parameters, you can pass state through navigation:
-
-```jac
-cl {
-    def navigateToTodo(id: str) -> None {
-        # Store ID in state before navigating
-        setTodoId(id);
-        navigate("/todo-detail");
-    }
-
-    def TodoDetailView() -> any {
-        id = todoId();
-        todo = getTodoById(id);  # Fetch todo by ID
-        return <div>{todo.text}</div>;
-    }
-}
-```
-
-### 404 Handling
-
-The router automatically shows a 404 message if no route matches:
-
-```jac
-# If user navigates to /unknown-route
-# Router automatically renders: "404 - Route not found: /unknown-route"
-```
-
----
-
-## Best Practices
-
-1. **Default Route**: Always provide a sensible default route in `initRouter()`
-2. **Route Guards**: Use guards for protected routes instead of checking in components
-3. **Link Components**: Use `Link` component instead of manual hash manipulation
-4. **Guard Functions**: Keep guard functions simple and focused
-5. **Navigation**: Use `navigate()` for programmatic navigation
-6. **Current Path**: Use `router.path()` for conditional rendering based on current route
+**Note**: The declarative API (`<Router>`, `<Routes>`, `<Route>`) is recommended for new projects as it's more intuitive and aligns with modern React patterns.
 
 ---
 
 ## Summary
 
-- **Routing**: Use `initRouter()` to create multi-page applications
-- **Routes**: Configure routes with `path`, `component`, and optional `guard`
-- **Navigation**: Use `Link` component or `navigate()` function
-- **Guards**: Protect routes with guard functions
-- **Current Route**: Access current route with `router.path()`
+- **Declarative Routing**: Use `<Router>`, `<Routes>`, `<Route>` components for clean, JSX-based routing
+- **Navigation**: Use `<Link>` component for navigation links
+- **Programmatic Navigation**: Use `navigate()` function for redirects after actions
+- **Protected Routes**: Check authentication inside components
+- **Legacy API**: `initRouter()` is still supported but not recommended for new projects
 
-Routing in Jac is simple, reactive, and powerful! 🚀
+Routing in Jac is simple, declarative, and powerful! 🚀
 

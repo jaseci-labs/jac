@@ -53,125 +53,6 @@ let __jacReactiveContext = {
     "mountedComponents": {}     # Track which components have mounted (for onMount)
 };
 
-# Create a reactive signal (primitive value)
-# Returns [getter, setter] tuple for reactive primitive value
-def createSignal(initialValue: any) -> list {
-    signalId = __jacReactiveContext.signals.length;
-    signalData = {"value": initialValue, "subscribers": []};
-    __jacReactiveContext.signals.push(signalData);
-
-    def getter() -> any {
-        __jacTrackDependency(signalData.subscribers);
-        return signalData.value;
-    }
-
-    def setter(newValue: any) -> None {
-        if newValue != signalData.value {
-            signalData.value = newValue;
-            __jacNotifySubscribers(signalData.subscribers);
-        }
-    }
-
-    return [getter, setter];
-}
-
-
-# Run effect once when component mounts (similar to useEffect with empty deps)
-# Executes mountFn once when the component first renders
-def onMount(mountFn: any) -> None {
-    currentComponent = __jacReactiveContext.currentComponent;
-    if not currentComponent {
-        # Not in a component context, run immediately
-        __jacRunEffect(mountFn);
-        return;
-    }
-
-    # Track mounted components
-    if not __jacReactiveContext.mountedComponents {
-        __jacReactiveContext.mountedComponents = {};
-    }
-
-    # Check if this component has already mounted
-    componentId = f"{currentComponent}";
-    if not __jacHasOwn(__jacReactiveContext.mountedComponents, componentId) {
-        # Mark as mounted and run the effect
-        __jacReactiveContext.mountedComponents[componentId] = True;
-
-        # Run in next tick to ensure component is fully rendered
-        try {
-            setTimeout(lambda -> None {
-                __jacRunEffect(mountFn);
-            }, 0);
-        } except Exception {
-            # Fallback if setTimeout not available
-            __jacRunEffect(mountFn);
-        }
-    }
-}
-
-# Internal: Track component dependencies
-def __jacTrackDependency(subscribers: list) -> None {
-    currentEffect = __jacReactiveContext.currentEffect;
-    if currentEffect {
-        alreadySubscribed = False;
-        for sub in subscribers {
-            if sub == currentEffect {
-                alreadySubscribed = True;
-            }
-        }
-        if not alreadySubscribed {
-            subscribers.push(currentEffect);
-        }
-    }
-
-    currentComponent = __jacReactiveContext.currentComponent;
-    if currentComponent {
-        alreadySubscribed = False;
-        for sub in subscribers {
-            if sub == currentComponent {
-                alreadySubscribed = True;
-            }
-        }
-        if not alreadySubscribed {
-            subscribers.push(currentComponent);
-        }
-    }
-}
-
-# Internal: Notify subscribers of state change
-# Simplified for routing - React Context handles re-rendering
-def __jacNotifySubscribers(subscribers: list) -> None {
-    for subscriber in subscribers {
-        # Check if subscriber is a function by trying to call it
-        # In Jac, we can check if it's callable
-        if subscriber and subscriber != None {
-            try {
-                # Try to check if it's a function - if it has a call method or is callable
-                if subscriber.call or subscriber.apply {
-                    __jacRunEffect(subscriber);
-                }
-            } except Exception {
-                # Not a function, skip
-            }
-        }
-        # Component re-rendering is handled by React Context, not needed here
-    }
-}
-
-# Internal: Run an effect function with dependency tracking
-def __jacRunEffect(effectFn: any) -> None {
-    previousEffect = __jacReactiveContext.currentEffect;
-    __jacReactiveContext.currentEffect = effectFn;
-
-    try {
-        effectFn();
-    } except Exception as err {
-        console.error("[Jac] Error in effect:", err);
-    }
-
-    __jacReactiveContext.currentEffect = previousEffect;
-}
-
 
 # ============================================================================
 # React-Style Routing System (using React Context)
@@ -471,30 +352,27 @@ def __jacGetHashPath() -> str {
 # Walker spawn function
 # ============================================================================
 
-async def __jacSpawn(left: str, right: str = "", fields: dict = {}) -> any {
+async def __jacSpawn(walker: str, fields: dict = {}, nd: str  | None = None) -> any {
     token = __getLocalStorage("jac_token");
-    url =  f"/walker/{left}";
-    if right != "" {
-        url =  f"/walker/{left}/{right}";
-    }
-    response = await fetch(url,
+
+    response = await fetch(
+        f"/walker/{walker}",
         {
             "method": "POST",
-            "accept": "application/json",
             "headers": {
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {token}" if token else ""
             },
-            "body": JSON.stringify({"fields": fields})
+            "body": JSON.stringify({"nd": nd if nd else "root", **fields})
         }
     );
 
     if not response.ok {
-        error_text = await response.json();
+        error_text = await response.text();
         raise Exception(f"Walker {walker} failed: {error_text}");
     }
 
-    return await response.json();
+    return JSON.parse(await response.text());
 }
 
 # Function call function - calls server-side functions from client

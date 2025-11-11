@@ -1,60 +1,141 @@
 # Advanced State Management in Jac
 
-Learn how to combine multiple `createState()` calls, manage complex state patterns, and build scalable state architectures.
+Learn how to manage complex state in Jac using React hooks, combining multiple state instances, and building scalable state architectures.
 
 ---
 
 ## 📚 Table of Contents
 
-- [Multiple State Instances](#multiple-state-instances)
+- [React Hooks Overview](#react-hooks-overview)
+- [Multiple State Variables](#multiple-state-variables)
 - [State Composition Patterns](#state-composition-patterns)
 - [Derived State](#derived-state)
+- [Advanced React Hooks](#advanced-react-hooks)
 - [State Management Patterns](#state-management-patterns)
 - [Best Practices](#best-practices)
 
 ---
 
-## Multiple State Instances
+## React Hooks Overview
 
-### Basic Multiple State Pattern
+Jac uses React hooks for all state management. The most common hooks are:
 
-Instead of putting everything in one state object, you can split state into multiple instances:
+- **`useState`**: Manage component state
+- **`useEffect`**: Handle side effects and lifecycle
+- **`useReducer`**: Manage complex state logic
+- **`useContext`**: Share state across components
+- **`useMemo`**: Memoize expensive computations
+- **`useCallback`**: Memoize callback functions
+
+### Basic useState Example
 
 ```jac
+cl import from react { useState, useEffect }
+cl import from '@jac-client/utils' { __jacSpawn }
+
 cl {
-    # Separate concerns into different state instances
-    let [todoState, setTodoState] = createState({
-        "items": []
-    });
-
-    let [filterState, setFilterState] = createState({
-        "filter": "all"
-    });
-
-    let [uiState, setUiState] = createState({
-        "loading": False,
-        "error": None
-    });
-
     def TodoApp() -> any {
-        todos = todoState();
-        filter = filterState();
-        ui = uiState();
+        let [todos, setTodos] = useState([]);
+        let [filter, setFilter] = useState("all");
+        let [loading, setLoading] = useState(False);
+
+        useEffect(lambda -> None {
+            async def loadTodos() -> None {
+                setLoading(True);
+                result = await __jacSpawn("read_todos", "", {});
+                setTodos(result.reports);
+                setLoading(False);
+            }
+            loadTodos();
+        }, []);
+
+        return <div>{/* your UI */}</div>;
+    }
+}
+```
+
+---
+
+## Multiple State Variables
+
+### Separating State by Concern
+
+Instead of putting everything in one state object, split state into multiple variables:
+
+```jac
+cl import from react { useState, useEffect }
+cl import from '@jac-client/utils' { __jacSpawn }
+
+cl {
+    def TodoApp() -> any {
+        # Separate state variables for different concerns
+        let [todos, setTodos] = useState([]);
+        let [filter, setFilter] = useState("all");
+        let [loading, setLoading] = useState(False);
+        let [error, setError] = useState(None);
+
+        useEffect(lambda -> None {
+            async def loadTodos() -> None {
+                setLoading(True);
+                setError(None);
+                try {
+                    result = await __jacSpawn("read_todos", "", {});
+                    setTodos(result.reports);
+                } catch (err) {
+                    setError(err);
+                } finally {
+                    setLoading(False);
+                }
+            }
+            loadTodos();
+        }, []);
+
+        if loading { return <div>Loading...</div>; }
+        if error { return <div>Error: {error}</div>; }
 
         return <div>
-            {ui.loading and <div>Loading...</div>}
-            {ui.error and <div>Error: {ui.error}</div>}
-            {[TodoItem(item) for item in todos.items]}
+            {todos.map(lambda todo: any -> any {
+                return <TodoItem key={todo._jac_id} todo={todo} />;
+            })}
         </div>;
     }
 }
 ```
 
 **Benefits:**
-- **Separation of Concerns**: Each state manages one aspect
+- **Separation of Concerns**: Each state variable manages one aspect
 - **Selective Updates**: Only components using specific state re-render
-- **Easier Testing**: Test each state independently
-- **Better Organization**: Clearer code structure
+- **Type Safety**: Each variable has its own type
+- **Clearer Code**: Easy to understand what each state represents
+
+### When to Use Object State
+
+Sometimes an object makes sense for closely related data:
+
+```jac
+cl import from react { useState }
+
+cl {
+    def UserProfile() -> any {
+        # Good: Related data in one object
+        let [user, setUser] = useState({
+            "name": "",
+            "email": "",
+            "avatar": ""
+        });
+
+        def updateName(name: str) -> None {
+            setUser({...user, "name": name});
+        }
+
+        return <div>
+            <input value={user.name} onChange={lambda e: any -> None {
+                updateName(e.target.value);
+            }} />
+        </div>;
+    }
+}
+```
 
 ---
 
@@ -62,44 +143,43 @@ cl {
 
 ### Pattern 1: Feature-Based State
 
-Organize state by feature or domain:
+Organize state by feature or domain using multiple `useState` calls:
 
 ```jac
+cl import from react { useState, useEffect }
+cl import from '@jac-client/utils' { __jacSpawn }
+
 cl {
-    # User state
-    let [userState, setUserState] = createState({
-        "profile": None,
-        "isLoggedIn": False
-    });
-
-    # Todo state
-    let [todoState, setTodoState] = createState({
-        "items": [],
-        "selectedId": None
-    });
-
-    # UI state
-    let [uiState, setUiState] = createState({
-        "theme": "light",
-        "sidebarOpen": False,
-        "modalOpen": False
-    });
-
-    # Settings state
-    let [settingsState, setSettingsState] = createState({
-        "notifications": True,
-        "language": "en"
-    });
-
     def App() -> any {
-        user = userState();
-        todos = todoState();
-        ui = uiState();
-        settings = settingsState();
+        # User state
+        let [user, setUser] = useState(None);
+        let [isLoggedIn, setIsLoggedIn] = useState(False);
 
-        return <div className={ui.theme}>
-            {ui.sidebarOpen and <Sidebar />}
-            {todos.items.length > 0 and <TodoList items={todos.items} />}
+        # Todo state
+        let [todos, setTodos] = useState([]);
+        let [selectedId, setSelectedId] = useState(None);
+
+        # UI state
+        let [theme, setTheme] = useState("light");
+        let [sidebarOpen, setSidebarOpen] = useState(False);
+        let [modalOpen, setModalOpen] = useState(False);
+
+        # Settings state
+        let [notifications, setNotifications] = useState(True);
+        let [language, setLanguage] = useState("en");
+
+        useEffect(lambda -> None {
+            async def loadData() -> None {
+                result = await __jacSpawn("get_user_data", "", {});
+                setUser(result.user);
+                setIsLoggedIn(True);
+            }
+            loadData();
+        }, []);
+
+        return <div className={theme}>
+            {sidebarOpen and <Sidebar />}
+            {todos.length > 0 and <TodoList items={todos} />}
         </div>;
     }
 }
@@ -107,106 +187,180 @@ cl {
 
 ### Pattern 2: Local vs Global State
 
-Use different state instances for different scopes:
+Use Context for global state and `useState` for local state:
 
 ```jac
+cl import from react { useState, useContext, createContext }
+
 cl {
-    # Global application state
-    let [appState, setAppState] = createState({
-        "currentUser": None,
-        "theme": "light"
-    });
+    # Create context for global state
+    AppContext = createContext(None);
 
-    # Component-specific state (can be defined inside components)
+    def App() -> any {
+        # Global state
+        let [currentUser, setCurrentUser] = useState(None);
+        let [theme, setTheme] = useState("light");
+
+        appValue = {
+            "currentUser": currentUser,
+            "theme": theme,
+            "setCurrentUser": setCurrentUser,
+            "setTheme": setTheme
+        };
+
+        return <AppContext.Provider value={appValue}>
+            <TodoForm />
+            <TodoList />
+        </AppContext.Provider>;
+    }
+
+    # Component with local state
     def TodoForm() -> any {
-        # Local component state
-        let [formState, setFormState] = createState({
-            "text": "",
-            "valid": False
-        });
+        # Access global context
+        app = useContext(AppContext);
 
-        def validate() -> None {
-            text = formState().text;
-            setFormState({"valid": len(text.trim()) > 0});
+        # Local component state
+        let [text, setText] = useState("");
+        let [valid, setValid] = useState(False);
+
+        def validate(value: str) -> None {
+            setValid(len(value.trim()) > 0);
         }
 
         return <form>
             <input
-                value={formState().text}
+                value={text}
                 onChange={lambda e: any -> None {
-                    setFormState({"text": e.target.value});
-                    validate();
+                    newText = e.target.value;
+                    setText(newText);
+                    validate(newText);
                 }}
+                style={{"background": app.theme == "dark" ? "#333" : "#fff"}}
             />
         </form>;
     }
 
     def TodoList() -> any {
         # Local list state
-        let [listState, setListState] = createState({
-            "sortBy": "date",
-            "order": "asc"
-        });
+        let [sortBy, setSortBy] = useState("date");
+        let [order, setOrder] = useState("asc");
 
-        todos = appState().todos;
-        sorted = sortTodos(todos, listState());
+        # Access global context
+        app = useContext(AppContext);
 
         return <div>
-            {[TodoItem(item) for item in sorted]}
+            <h2>Welcome, {app.currentUser ? app.currentUser.name : "Guest"}</h2>
+            {/* Todo list items */}
         </div>;
     }
 }
 ```
 
-### Pattern 3: State Modules
+### Pattern 3: Custom Hooks (State Modules)
 
-Create reusable state modules:
+Create reusable custom hooks for shared logic:
 
 ```jac
+cl import from react { useState, useEffect }
+cl import from '@jac-client/utils' { __jacSpawn }
+
 cl {
-    # State module: User management
-    let [userState, setUserState] = createState({
-        "currentUser": None,
-        "isLoading": False,
-        "error": None
-    });
+    # Custom hook: User management
+    def useUser() -> dict {
+        let [user, setUser] = useState(None);
+        let [loading, setLoading] = useState(False);
+        let [error, setError] = useState(None);
 
-    async def loadUser() -> None {
-        setUserState({"isLoading": True, "error": None});
-        try {
-            user = await __jacSpawn("get_current_user");
-            setUserState({"currentUser": user, "isLoading": False});
-        } except Exception as err {
-            setUserState({"error": str(err), "isLoading": False});
+        async def loadUser() -> None {
+            setLoading(True);
+            setError(None);
+            try {
+                result = await __jacSpawn("get_current_user", "", {});
+                setUser(result);
+            } catch (err) {
+                setError(err);
+            } finally {
+                setLoading(False);
+            }
         }
-    }
 
-    def logout() -> None {
-        jacLogout();
-        setUserState({"currentUser": None});
-    }
-
-    # State module: Todo management
-    let [todoState, setTodoState] = createState({
-        "items": [],
-        "filter": "all",
-        "loading": False
-    });
-
-    async def loadTodos() -> None {
-        setTodoState({"loading": True});
-        try {
-            todos = await __jacSpawn("read_todos");
-            setTodoState({"items": todos.reports, "loading": False});
-        } except Exception as err {
-            setTodoState({"loading": False});
+        def logout() -> None {
+            jacLogout();
+            setUser(None);
         }
+
+        useEffect(lambda -> None {
+            loadUser();
+        }, []);
+
+        return {
+            "user": user,
+            "loading": loading,
+            "error": error,
+            "logout": logout,
+            "reload": loadUser
+        };
     }
 
-    async def addTodo(text: str) -> None {
-        new_todo = await __jacSpawn("create_todo", {"text": text});
-        s = todoState();
-        setTodoState({"items": s.items.concat([new_todo])});
+    # Custom hook: Todo management
+    def useTodos() -> dict {
+        let [todos, setTodos] = useState([]);
+        let [loading, setLoading] = useState(False);
+
+        async def loadTodos() -> None {
+            setLoading(True);
+            try {
+                result = await __jacSpawn("read_todos", "", {});
+                setTodos(result.reports);
+            } finally {
+                setLoading(False);
+            }
+        }
+
+        async def addTodo(text: str) -> None {
+            new_todo = await __jacSpawn("create_todo", "", {"text": text});
+            setTodos(todos.concat([new_todo]));
+        }
+
+        async def toggleTodo(id: str) -> None {
+            await __jacSpawn("toggle_todo", id, {});
+            setTodos(todos.map(lambda todo: any -> any {
+                if todo._jac_id == id {
+                    return {...todo, "done": not todo.done};
+                }
+                return todo;
+            }));
+        }
+
+        useEffect(lambda -> None {
+            loadTodos();
+        }, []);
+
+        return {
+            "todos": todos,
+            "loading": loading,
+            "addTodo": addTodo,
+            "toggleTodo": toggleTodo,
+            "reload": loadTodos
+        };
+    }
+
+    # Using custom hooks in components
+    def TodoApp() -> any {
+        userData = useUser();
+        todoData = useTodos();
+
+        if userData.loading or todoData.loading {
+            return <div>Loading...</div>;
+        }
+
+        return <div>
+            <h1>Welcome, {userData.user ? userData.user.name : "Guest"}</h1>
+            <button onClick={userData.logout}>Logout</button>
+            {todoData.todos.map(lambda todo: any -> any {
+                return <TodoItem key={todo._jac_id} todo={todo} />;
+            })}
+        </div>;
     }
 }
 ```
@@ -215,96 +369,339 @@ cl {
 
 ## Derived State
 
-### Computed Values from Multiple States
+### Computed Values with useMemo
 
-Combine multiple states to create derived values:
+Use `useMemo` to memoize expensive computations:
 
 ```jac
+cl import from react { useState, useMemo }
+
 cl {
-    let [todoState, setTodoState] = createState({
-        "items": []
-    });
-
-    let [filterState, setFilterState] = createState({
-        "filter": "all"
-    });
-
-    def getFilteredTodos() -> list {
-        todos = todoState();
-        filter = filterState();
-
-        if filter == "active" {
-            return [item for item in todos.items if not item.done];
-        } elif filter == "completed" {
-            return [item for item in todos.items if item.done];
-        }
-        return todos.items;
-    }
-
-    def getStats() -> dict {
-        todos = todoState();
-        total = len(todos.items);
-        active = len([item for item in todos.items if not item.done]);
-        completed = total - active;
-
-        return {
-            "total": total,
-            "active": active,
-            "completed": completed
-        };
-    }
-
     def TodoApp() -> any {
-        filtered = getFilteredTodos();
-        stats = getStats();
+        let [todos, setTodos] = useState([]);
+        let [filter, setFilter] = useState("all");
+
+        # Memoized filtered todos - only recomputes when todos or filter changes
+        filteredTodos = useMemo(lambda -> list {
+            if filter == "active" {
+                return todos.filter(lambda item: any -> bool { return not item.done; });
+            } elif filter == "completed" {
+                return todos.filter(lambda item: any -> bool { return item.done; });
+            }
+            return todos;
+        }, [todos, filter]);
+
+        # Memoized stats - only recomputes when todos changes
+        stats = useMemo(lambda -> dict {
+            total = todos.length;
+            active = todos.filter(lambda item: any -> bool { return not item.done; }).length;
+            completed = total - active;
+
+            return {
+                "total": total,
+                "active": active,
+                "completed": completed
+            };
+        }, [todos]);
 
         return <div>
             <div>
                 Total: {stats.total}, Active: {stats.active}, Completed: {stats.completed}
             </div>
-            {[TodoItem(item) for item in filtered]}
+            {filteredTodos.map(lambda item: any -> any {
+                return <TodoItem key={item._jac_id} todo={item} />;
+            })}
         </div>;
     }
 }
 ```
 
-### Reactive Derived State
+### Simple Derived Values
 
-Use `createEffect()` for reactive derived state:
+For simple computations, you don't need `useMemo`:
 
 ```jac
+cl import from react { useState }
+
 cl {
-    let [todoState, setTodoState] = createState({
-        "items": []
-    });
-
-    let [statsState, setStatsState] = createState({
-        "total": 0,
-        "active": 0,
-        "completed": 0
-    });
-
-    # Automatically update stats when todos change
-    createEffect(lambda -> None {
-        todos = todoState();
-        total = len(todos.items);
-        active = len([item for item in todos.items if not item.done]);
-        completed = total - active;
-
-        setStatsState({
-            "total": total,
-            "active": active,
-            "completed": completed
-        });
-    });
-
     def TodoApp() -> any {
-        todos = todoState();
-        stats = statsState();
+        let [todos, setTodos] = useState([]);
+        let [filter, setFilter] = useState("all");
+
+        # Simple derived values - computed on each render
+        def getFilteredTodos() -> list {
+            if filter == "active" {
+                return todos.filter(lambda item: any -> bool { return not item.done; });
+            } elif filter == "completed" {
+                return todos.filter(lambda item: any -> bool { return item.done; });
+            }
+            return todos;
+        }
+
+        filtered = getFilteredTodos();
+        activeCount = todos.filter(lambda item: any -> bool { return not item.done; }).length;
+
+        return <div>
+            <div>{activeCount} active todos</div>
+            {filtered.map(lambda item: any -> any {
+                return <TodoItem key={item._jac_id} todo={item} />;
+            })}
+        </div>;
+    }
+}
+```
+
+### Reactive Updates with useEffect
+
+Use `useEffect` to sync derived state or perform side effects:
+
+```jac
+cl import from react { useState, useEffect }
+
+cl {
+    def TodoApp() -> any {
+        let [todos, setTodos] = useState([]);
+        let [stats, setStats] = useState({
+            "total": 0,
+            "active": 0,
+            "completed": 0
+        });
+
+        # Update stats whenever todos change
+        useEffect(lambda -> None {
+            total = todos.length;
+            active = todos.filter(lambda item: any -> bool { return not item.done; }).length;
+            completed = total - active;
+
+            setStats({
+                "total": total,
+                "active": active,
+                "completed": completed
+            });
+
+            # Optional: Save to localStorage
+            localStorage.setItem("todoStats", JSON.stringify(stats));
+        }, [todos]);
 
         return <div>
             <StatsDisplay stats={stats} />
-            {[TodoItem(item) for item in todos.items]}
+            {todos.map(lambda item: any -> any {
+                return <TodoItem key={item._jac_id} todo={item} />;
+            })}
+        </div>;
+    }
+}
+```
+
+---
+
+## Advanced React Hooks
+
+### useReducer for Complex State
+
+When state logic becomes complex, use `useReducer` instead of `useState`:
+
+```jac
+cl import from react { useReducer, useEffect }
+cl import from '@jac-client/utils' { __jacSpawn }
+
+cl {
+    # Reducer function
+    def todoReducer(state: dict, action: dict) -> dict {
+        type = action.type;
+
+        if type == "ADD_TODO" {
+            return {...state, "todos": state.todos.concat([action.payload])};
+        } elif type == "TOGGLE_TODO" {
+            return {
+                ...state,
+                "todos": state.todos.map(lambda todo: any -> any {
+                    if todo._jac_id == action.payload {
+                        return {...todo, "done": not todo.done};
+                    }
+                    return todo;
+                })
+            };
+        } elif type == "REMOVE_TODO" {
+            return {
+                ...state,
+                "todos": state.todos.filter(lambda todo: any -> bool {
+                    return todo._jac_id != action.payload;
+                })
+            };
+        } elif type == "SET_FILTER" {
+            return {...state, "filter": action.payload};
+        } elif type == "SET_LOADING" {
+            return {...state, "loading": action.payload};
+        }
+
+        return state;
+    }
+
+    def TodoApp() -> any {
+        # Initial state
+        initialState = {
+            "todos": [],
+            "filter": "all",
+            "loading": False
+        };
+
+        let [state, dispatch] = useReducer(todoReducer, initialState);
+
+        useEffect(lambda -> None {
+            async def loadTodos() -> None {
+                dispatch({"type": "SET_LOADING", "payload": True});
+                result = await __jacSpawn("read_todos", "", {});
+                for todo in result.reports {
+                    dispatch({"type": "ADD_TODO", "payload": todo});
+                }
+                dispatch({"type": "SET_LOADING", "payload": False});
+            }
+            loadTodos();
+        }, []);
+
+        async def addTodo(text: str) -> None {
+            new_todo = await __jacSpawn("create_todo", "", {"text": text});
+            dispatch({"type": "ADD_TODO", "payload": new_todo});
+        }
+
+        def toggleTodo(id: str) -> None {
+            dispatch({"type": "TOGGLE_TODO", "payload": id});
+        }
+
+        return <div>
+            {state.loading and <div>Loading...</div>}
+            {state.todos.map(lambda todo: any -> any {
+                return <TodoItem
+                    key={todo._jac_id}
+                    todo={todo}
+                    onToggle={lambda -> None { toggleTodo(todo._jac_id); }}
+                />;
+            })}
+        </div>;
+    }
+}
+```
+
+### useContext for Global State
+
+Share state across multiple components without prop drilling:
+
+```jac
+cl import from react { useState, useContext, createContext }
+
+cl {
+    # Create context
+    TodoContext = createContext(None);
+
+    # Provider component
+    def TodoProvider(props: dict) -> any {
+        let [todos, setTodos] = useState([]);
+        let [filter, setFilter] = useState("all");
+
+        async def addTodo(text: str) -> None {
+            new_todo = await __jacSpawn("create_todo", "", {"text": text});
+            setTodos(todos.concat([new_todo]));
+        }
+
+        async def toggleTodo(id: str) -> None {
+            await __jacSpawn("toggle_todo", id, {});
+            setTodos(todos.map(lambda todo: any -> any {
+                if todo._jac_id == id {
+                    return {...todo, "done": not todo.done};
+                }
+                return todo;
+            }));
+        }
+
+        value = {
+            "todos": todos,
+            "filter": filter,
+            "setFilter": setFilter,
+            "addTodo": addTodo,
+            "toggleTodo": toggleTodo
+        };
+
+        return <TodoContext.Provider value={value}>
+            {props.children}
+        </TodoContext.Provider>;
+    }
+
+    # Hook to use context
+    def useTodoContext() -> dict {
+        return useContext(TodoContext);
+    }
+
+    # Components using the context
+    def TodoList() -> any {
+        ctx = useTodoContext();
+
+        filteredTodos = ctx.todos.filter(lambda todo: any -> bool {
+            if ctx.filter == "active" { return not todo.done; }
+            if ctx.filter == "completed" { return todo.done; }
+            return True;
+        });
+
+        return <div>
+            {filteredTodos.map(lambda todo: any -> any {
+                return <TodoItem
+                    key={todo._jac_id}
+                    todo={todo}
+                    onToggle={lambda -> None { ctx.toggleTodo(todo._jac_id); }}
+                />;
+            })}
+        </div>;
+    }
+
+    def FilterButtons() -> any {
+        ctx = useTodoContext();
+
+        return <div>
+            <button onClick={lambda -> None { ctx.setFilter("all"); }}>All</button>
+            <button onClick={lambda -> None { ctx.setFilter("active"); }}>Active</button>
+            <button onClick={lambda -> None { ctx.setFilter("completed"); }}>Completed</button>
+        </div>;
+    }
+
+    # App with provider
+    def App() -> any {
+        return <TodoProvider>
+            <FilterButtons />
+            <TodoList />
+        </TodoProvider>;
+    }
+}
+```
+
+### useCallback for Memoized Functions
+
+Prevent unnecessary re-renders by memoizing callbacks:
+
+```jac
+cl import from react { useState, useCallback }
+
+cl {
+    def TodoApp() -> any {
+        let [todos, setTodos] = useState([]);
+
+        # Memoized callback - only recreated if todos changes
+        handleToggle = useCallback(lambda id: str -> None {
+            setTodos(todos.map(lambda todo: any -> any {
+                if todo._jac_id == id {
+                    return {...todo, "done": not todo.done};
+                }
+                return todo;
+            }));
+        }, [todos]);
+
+        return <div>
+            {todos.map(lambda todo: any -> any {
+                return <TodoItem
+                    key={todo._jac_id}
+                    todo={todo}
+                    onToggle={handleToggle}
+                />;
+            })}
         </div>;
     }
 }
@@ -314,288 +711,315 @@ cl {
 
 ## State Management Patterns
 
-### Pattern 1: State Reducers
+### Pattern 1: Action Functions
 
-Create reducer-like functions for complex state updates:
+Encapsulate state logic in reusable action functions:
 
 ```jac
+cl import from react { useState }
+cl import from '@jac-client/utils' { __jacSpawn }
+
 cl {
-    let [todoState, setTodoState] = createState({
-        "items": [],
-        "filter": "all",
-        "input": ""
-    });
+    def TodoApp() -> any {
+        let [todos, setTodos] = useState([]);
+        let [filter, setFilter] = useState("all");
 
-    def todoReducer(action: str, payload: any) -> None {
-        s = todoState();
+        # Action functions
+        async def addTodo(text: str) -> None {
+            if not text.trim() { return; }
+            new_todo = await __jacSpawn("create_todo", "", {"text": text});
+            setTodos(todos.concat([new_todo]));
+        }
 
-        if action == "ADD_TODO" {
-            newItem = {
-                "id": payload.id,
-                "text": payload.text,
-                "done": False
-            };
-            setTodoState({"items": s.items.concat([newItem])});
-
-        } elif action == "TOGGLE_TODO" {
-            updated = [item for item in s.items {
-                if item.id == payload.id {
-                    return {"id": item.id, "text": item.text, "done": not item.done};
+        async def toggleTodo(id: str) -> None {
+            await __jacSpawn("toggle_todo", id, {});
+            setTodos(todos.map(lambda todo: any -> any {
+                if todo._jac_id == id {
+                    return {...todo, "done": not todo.done};
                 }
-                return item;
-            }];
-            setTodoState({"items": updated});
-
-        } elif action == "REMOVE_TODO" {
-            remaining = [item for item in s.items if item.id != payload.id];
-            setTodoState({"items": remaining});
-
-        } elif action == "SET_FILTER" {
-            setTodoState({"filter": payload.filter});
-
-        } elif action == "CLEAR_COMPLETED" {
-            remaining = [item for item in s.items if not item.done];
-            setTodoState({"items": remaining});
+                return todo;
+            }));
         }
-    }
 
-    async def addTodo(text: str) -> None {
-        new_todo = await __jacSpawn("create_todo", {"text": text});
-        todoReducer("ADD_TODO", {
-            "id": new_todo._jac_id,
-            "text": new_todo.text
-        });
-    }
+        def removeTodo(id: str) -> None {
+            setTodos(todos.filter(lambda todo: any -> bool {
+                return todo._jac_id != id;
+            }));
+        }
 
-    async def toggleTodo(id: str) -> None {
-        await __jacSpawn("toggle_todo", {}, id);
-        todoReducer("TOGGLE_TODO", {"id": id});
-    }
+        def clearCompleted() -> None {
+            setTodos(todos.filter(lambda todo: any -> bool {
+                return not todo.done;
+            }));
+        }
 
-    def setFilter(filter: str) -> None {
-        todoReducer("SET_FILTER", {"filter": filter});
+        return <div>
+            {/* UI using these actions */}
+        </div>;
     }
 }
 ```
 
-### Pattern 2: State Selectors
+### Pattern 2: Selector Functions with useMemo
 
-Create selector functions to extract specific state slices:
-
-```jac
-cl {
-    let [todoState, setTodoState] = createState({
-        "items": [],
-        "filter": "all",
-        "loading": False,
-        "error": None
-    });
-
-    # Selectors
-    def getTodos() -> list {
-        return todoState().items;
-    }
-
-    def getActiveTodos() -> list {
-        return [item for item in todoState().items if not item.done];
-    }
-
-    def getCompletedTodos() -> list {
-        return [item for item in todoState().items if item.done];
-    }
-
-    def getFilteredTodos() -> list {
-        s = todoState();
-        if s.filter == "active" {
-            return getActiveTodos();
-        } elif s.filter == "completed" {
-            return getCompletedTodos();
-        }
-        return getTodos();
-    }
-
-    def isLoading() -> bool {
-        return todoState().loading;
-    }
-
-    def getError() -> str | None {
-        return todoState().error;
-    }
-}
-```
-
-### Pattern 3: State Actions
-
-Create action functions that encapsulate state updates:
+Create memoized selector functions for derived data:
 
 ```jac
+cl import from react { useState, useMemo }
+
 cl {
-    let [todoState, setTodoState] = createState({
-        "items": [],
-        "filter": "all"
-    });
+    def TodoApp() -> any {
+        let [todos, setTodos] = useState([]);
+        let [filter, setFilter] = useState("all");
 
-    # Action creators
-    async def createTodoAction(text: str) -> None {
-        if not text.trim() {
-            return;
-        }
-
-        new_todo = await __jacSpawn("create_todo", {"text": text});
-        s = todoState();
-        newItem = {
-            "id": new_todo._jac_id,
-            "text": new_todo.text,
-            "done": new_todo.done
-        };
-        setTodoState({"items": s.items.concat([newItem])});
-    }
-
-    async def toggleTodoAction(id: str) -> None {
-        await __jacSpawn("toggle_todo", {}, id);
-        s = todoState();
-        updated = [item for item in s.items {
-            if item.id == id {
-                return {"id": item.id, "text": item.text, "done": not item.done};
+        # Memoized selectors
+        filteredTodos = useMemo(lambda -> list {
+            if filter == "active" {
+                return todos.filter(lambda t: any -> bool { return not t.done; });
+            } elif filter == "completed" {
+                return todos.filter(lambda t: any -> bool { return t.done; });
             }
-            return item;
-        }];
-        setTodoState({"items": updated});
-    }
+            return todos;
+        }, [todos, filter]);
 
-    def removeTodoAction(id: str) -> None {
-        s = todoState();
-        remaining = [item for item in s.items if item.id != id];
-        setTodoState({"items": remaining});
-    }
+        activeTodos = useMemo(lambda -> list {
+            return todos.filter(lambda t: any -> bool { return not t.done; });
+        }, [todos]);
 
-    def setFilterAction(filter: str) -> None {
-        setTodoState({"filter": filter});
-    }
+        completedTodos = useMemo(lambda -> list {
+            return todos.filter(lambda t: any -> bool { return t.done; });
+        }, [todos]);
 
-    def clearCompletedAction() -> None {
-        s = todoState();
-        remaining = [item for item in s.items if not item.done];
-        setTodoState({"items": remaining});
+        return <div>
+            <div>Active: {activeTodos.length}</div>
+            <div>Completed: {completedTodos.length}</div>
+            {filteredTodos.map(lambda todo: any -> any {
+                return <TodoItem key={todo._jac_id} todo={todo} />;
+            })}
+        </div>;
+    }
+}
+```
+
+### Pattern 3: Combining Multiple Hooks
+
+Combine useState, useReducer, and useContext for complex applications:
+
+```jac
+cl import from react { useState, useReducer, useContext, createContext, useEffect }
+cl import from '@jac-client/utils' { __jacSpawn }
+
+cl {
+    # Context for global state
+    AppContext = createContext(None);
+
+    # Main app with combined hooks
+    def App() -> any {
+        # User state with useState
+        let [user, setUser] = useState(None);
+
+        # Todo state with useReducer
+        def todoReducer(state: dict, action: dict) -> dict {
+            if action.type == "ADD" {
+                return {...state, "todos": state.todos.concat([action.payload])};
+            } elif action.type == "TOGGLE" {
+                return {
+                    ...state,
+                    "todos": state.todos.map(lambda t: any -> any {
+                        if t._jac_id == action.payload {
+                            return {...t, "done": not t.done};
+                        }
+                        return t;
+                    })
+                };
+            }
+            return state;
+        }
+
+        let [todoState, dispatch] = useReducer(todoReducer, {"todos": [], "loading": False});
+
+        # UI state with useState
+        let [theme, setTheme] = useState("light");
+
+        useEffect(lambda -> None {
+            async def loadData() -> None {
+                userData = await __jacSpawn("get_user", "", {});
+                setUser(userData);
+            }
+            loadData();
+        }, []);
+
+        contextValue = {
+            "user": user,
+            "setUser": setUser,
+            "todoState": todoState,
+            "dispatch": dispatch,
+            "theme": theme,
+            "setTheme": setTheme
+        };
+
+        return <AppContext.Provider value={contextValue}>
+            <TodoList />
+        </AppContext.Provider>;
     }
 }
 ```
 
 ---
 
-## Complete Example: Multi-State Todo App
+## Complete Example: Full-Featured Todo App
 
-Here's a complete example combining multiple state patterns:
+Here's a complete example combining multiple React hooks and patterns:
 
 ```jac
+cl import from react { useState, useEffect, useMemo, useCallback }
+cl import from '@jac-client/utils' { __jacSpawn }
+
 cl {
-    # User state
-    let [userState, setUserState] = createState({
-        "profile": None,
-        "isLoading": False
-    });
-
-    # Todo state
-    let [todoState, setTodoState] = createState({
-        "items": [],
-        "loading": False,
-        "error": None
-    });
-
-    # Filter state
-    let [filterState, setFilterState] = createState({
-        "filter": "all"
-    });
-
-    # UI state
-    let [uiState, setUiState] = createState({
-        "sidebarOpen": False,
-        "modalOpen": False
-    });
-
-    # Derived state functions
-    def getFilteredTodos() -> list {
-        todos = todoState();
-        filter = filterState();
-
-        if filter == "active" {
-            return [item for item in todos.items if not item.done];
-        } elif filter == "completed" {
-            return [item for item in todos.items if item.done];
-        }
-        return todos.items;
-    }
-
-    def getStats() -> dict {
-        todos = todoState();
-        total = len(todos.items);
-        active = len([item for item in todos.items if not item.done]);
-        completed = total - active;
-
-        return {"total": total, "active": active, "completed": completed};
-    }
-
-    # Actions
-    async def loadTodos() -> None {
-        setTodoState({"loading": True, "error": None});
-        try {
-            todos = await __jacSpawn("read_todos");
-            items = [{
-                "id": todo._jac_id,
-                "text": todo.text,
-                "done": todo.done
-            } for todo in todos.reports];
-            setTodoState({"items": items, "loading": False});
-        } except Exception as err {
-            setTodoState({"error": str(err), "loading": False});
-        }
-    }
-
-    async def addTodo(text: str) -> None {
-        new_todo = await __jacSpawn("create_todo", {"text": text});
-        s = todoState();
-        newItem = {
-            "id": new_todo._jac_id,
-            "text": new_todo.text,
-            "done": new_todo.done
-        };
-        setTodoState({"items": s.items.concat([newItem])});
-    }
-
-    def setFilter(filter: str) -> None {
-        setFilterState({"filter": filter});
-    }
-
-    def toggleSidebar() -> None {
-        s = uiState();
-        setUiState({"sidebarOpen": not s.sidebarOpen});
-    }
-
-    # Components
     def TodoApp() -> any {
-        onMount(lambda -> None {
-            loadTodos();
-        });
+        # State management
+        let [todos, setTodos] = useState([]);
+        let [filter, setFilter] = useState("all");
+        let [loading, setLoading] = useState(False);
+        let [error, setError] = useState(None);
+        let [user, setUser] = useState(None);
+        let [sidebarOpen, setSidebarOpen] = useState(False);
 
-        todos = todoState();
-        filter = filterState();
-        ui = uiState();
+        # Load initial data
+        useEffect(lambda -> None {
+            async def loadData() -> None {
+                setLoading(True);
+                setError(None);
+                try {
+                    # Load user and todos in parallel
+                    results = await Promise.all([
+                        __jacSpawn("get_current_user", "", {}),
+                        __jacSpawn("read_todos", "", {})
+                    ]);
+                    setUser(results[0]);
+                    setTodos(results[1].reports);
+                } catch (err) {
+                    setError(err);
+                } finally {
+                    setLoading(False);
+                }
+            }
+            loadData();
+        }, []);
 
-        if todos.loading {
-            return <div>Loading...</div>;
+        # Memoized derived state
+        filteredTodos = useMemo(lambda -> list {
+            if filter == "active" {
+                return todos.filter(lambda t: any -> bool { return not t.done; });
+            } elif filter == "completed" {
+                return todos.filter(lambda t: any -> bool { return t.done; });
+            }
+            return todos;
+        }, [todos, filter]);
+
+        stats = useMemo(lambda -> dict {
+            total = todos.length;
+            active = todos.filter(lambda t: any -> bool { return not t.done; }).length;
+            return {"total": total, "active": active, "completed": total - active};
+        }, [todos]);
+
+        # Memoized action functions
+        addTodo = useCallback(lambda text: str -> None {
+            async def _addTodo() -> None {
+                new_todo = await __jacSpawn("create_todo", "", {"text": text});
+                setTodos(todos.concat([new_todo]));
+            }
+            _addTodo();
+        }, [todos]);
+
+        toggleTodo = useCallback(lambda id: str -> None {
+            async def _toggleTodo() -> None {
+                await __jacSpawn("toggle_todo", id, {});
+                setTodos(todos.map(lambda t: any -> any {
+                    if t._jac_id == id {
+                        return {...t, "done": not t.done};
+                    }
+                    return t;
+                }));
+            }
+            _toggleTodo();
+        }, [todos]);
+
+        removeTodo = useCallback(lambda id: str -> None {
+            setTodos(todos.filter(lambda t: any -> bool { return t._jac_id != id; }));
+        }, [todos]);
+
+        clearCompleted = useCallback(lambda -> None {
+            setTodos(todos.filter(lambda t: any -> bool { return not t.done; }));
+        }, [todos]);
+
+        toggleSidebar = useCallback(lambda -> None {
+            setSidebarOpen(not sidebarOpen);
+        }, [sidebarOpen]);
+
+        # Render
+        if loading {
+            return <div style={{"padding": "20px"}}>Loading...</div>;
         }
 
-        if todos.error {
-            return <div>Error: {todos.error}</div>;
+        if error {
+            return <div style={{"padding": "20px", "color": "red"}}>
+                Error: {error}
+            </div>;
         }
 
-        filtered = getFilteredTodos();
-        stats = getStats();
+        return <div style={{"display": "flex", "minHeight": "100vh"}}>
+            # Sidebar
+            {sidebarOpen and <div style={{"width": "250px", "padding": "20px", "background": "#f5f5f5"}}>
+                <h3>Filter</h3>
+                <button onClick={lambda -> None { setFilter("all"); }}>All ({stats.total})</button>
+                <button onClick={lambda -> None { setFilter("active"); }}>Active ({stats.active})</button>
+                <button onClick={lambda -> None { setFilter("completed"); }}>Completed ({stats.completed})</button>
+            </div>}
 
-        return <div>
-            <Header stats={stats} onToggleSidebar={toggleSidebar} />
-            {ui.sidebarOpen and <Sidebar filter={filter} onSetFilter={setFilter} />}
-            <TodoList items={filtered} />
+            # Main content
+            <div style={{"flex": "1", "padding": "20px"}}>
+                # Header
+                <div style={{"display": "flex", "justifyContent": "space-between", "marginBottom": "20px"}}>
+                    <h1>Welcome, {user ? user.name : "Guest"}</h1>
+                    <button onClick={toggleSidebar}>
+                        {sidebarOpen ? "Hide" : "Show"} Sidebar
+                    </button>
+                </div>
+
+                # Stats
+                <div style={{"marginBottom": "20px"}}>
+                    {stats.active} active, {stats.completed} completed, {stats.total} total
+                </div>
+
+                # Todo list
+                <div>
+                    {filteredTodos.map(lambda todo: any -> any {
+                        return <div key={todo._jac_id} style={{"marginBottom": "10px"}}>
+                            <input
+                                type="checkbox"
+                                checked={todo.done}
+                                onChange={lambda -> None { toggleTodo(todo._jac_id); }}
+                            />
+                            <span style={{"marginLeft": "10px"}}>{todo.text}</span>
+                            <button
+                                onClick={lambda -> None { removeTodo(todo._jac_id); }}
+                                style={{"marginLeft": "10px"}}
+                            >
+                                Delete
+                            </button>
+                        </div>;
+                    })}
+                </div>
+
+                # Clear completed button
+                {stats.completed > 0 and <button
+                    onClick={clearCompleted}
+                    style={{"marginTop": "20px"}}
+                >
+                    Clear Completed
+                </button>}
+            </div>
         </div>;
     }
 }
@@ -605,102 +1029,181 @@ cl {
 
 ## Best Practices
 
-### 1. Separate Concerns
+### 1. Separate State Variables by Concern
 
 ```jac
-# ✅ Good: Separate state by concern
-let [userState, setUserState] = createState({"profile": None});
-let [todoState, setTodoState] = createState({"items": []});
-let [uiState, setUiState] = createState({"sidebarOpen": False});
+cl import from react { useState }
 
-# ❌ Avoid: Mixing unrelated state
-let [appState, setAppState] = createState({
-    "user": None,
-    "todos": [],
-    "sidebarOpen": False,
-    "theme": "light"
-});
+# ✅ Good: Separate state variables
+def App() -> any {
+    let [user, setUser] = useState(None);
+    let [todos, setTodos] = useState([]);
+    let [sidebarOpen, setSidebarOpen] = useState(False);
+    let [theme, setTheme] = useState("light");
+}
+
+# ❌ Avoid: One giant state object for unrelated data
+def App() -> any {
+    let [appState, setAppState] = useState({
+        "user": None,
+        "todos": [],
+        "sidebarOpen": False,
+        "theme": "light"
+    });
+}
 ```
 
-### 2. Keep State Flat
+### 2. Use useMemo for Expensive Computations
 
 ```jac
-# ✅ Good: Flat state structure
-let [todoState, setTodoState] = createState({
-    "items": [],
-    "loading": False
-});
+cl import from react { useState, useMemo }
 
-# ❌ Avoid: Deeply nested state
-let [appState, setAppState] = createState({
-    "data": {
-        "todos": {
-            "items": [],
-            "meta": {
-                "loading": False
+# ✅ Good: Memoize expensive calculations
+def TodoApp() -> any {
+    let [todos, setTodos] = useState([]);
+
+    activeTodos = useMemo(lambda -> list {
+        return todos.filter(lambda t: any -> bool { return not t.done; });
+    }, [todos]);
+}
+
+# ❌ Avoid: Computing on every render
+def TodoApp() -> any {
+    let [todos, setTodos] = useState([]);
+
+    # This runs on every render, even if todos hasn't changed
+    activeTodos = todos.filter(lambda t: any -> bool { return not t.done; });
+}
+```
+
+### 3. Don't Store Derived State
+
+```jac
+cl import from react { useState }
+
+# ✅ Good: Calculate derived values
+def TodoApp() -> any {
+    let [todos, setTodos] = useState([]);
+    activeCount = todos.filter(lambda t: any -> bool { return not t.done; }).length;
+}
+
+# ❌ Avoid: Storing derived values in state
+def TodoApp() -> any {
+    let [todos, setTodos] = useState([]);
+    let [activeCount, setActiveCount] = useState(0);  # Redundant!
+}
+```
+
+### 4. Use useReducer for Complex State Logic
+
+```jac
+cl import from react { useReducer }
+
+# ✅ Good: useReducer for complex interdependent state
+def TodoApp() -> any {
+    def reducer(state: dict, action: dict) -> dict {
+        if action.type == "ADD" {
+            return {...state, "todos": state.todos.concat([action.payload]), "count": state.count + 1};
+        }
+        return state;
+    }
+
+    let [state, dispatch] = useReducer(reducer, {"todos": [], "count": 0});
+}
+
+# ❌ Avoid: Multiple useState for interdependent state
+def TodoApp() -> any {
+    let [todos, setTodos] = useState([]);
+    let [count, setCount] = useState(0);
+    # Risk of inconsistency - need to update both together
+}
+```
+
+### 5. Always Handle Loading and Error States
+
+```jac
+cl import from react { useState, useEffect }
+
+# ✅ Good: Comprehensive state management
+def TodoApp() -> any {
+    let [todos, setTodos] = useState([]);
+    let [loading, setLoading] = useState(False);
+    let [error, setError] = useState(None);
+
+    useEffect(lambda -> None {
+        async def loadTodos() -> None {
+            setLoading(True);
+            setError(None);
+            try {
+                result = await __jacSpawn("read_todos", "", {});
+                setTodos(result.reports);
+            } catch (err) {
+                setError(err);
+            } finally {
+                setLoading(False);
             }
         }
-    }
-});
-```
+        loadTodos();
+    }, []);
 
-### 3. Use Selectors for Computed Values
-
-```jac
-# ✅ Good: Computed values via functions
-def getActiveTodos() -> list {
-    return [item for item in todoState().items if not item.done];
-}
-
-# ❌ Avoid: Storing computed values in state
-let [todoState, setTodoState] = createState({
-    "items": [],
-    "activeTodos": []  # Computed, shouldn't be in state
-});
-```
-
-### 4. Encapsulate State Updates
-
-```jac
-# ✅ Good: Action functions
-async def addTodo(text: str) -> None {
-    new_todo = await __jacSpawn("create_todo", {"text": text});
-    # Update state
-    setTodoState(/* ... */);
-}
-
-# ❌ Avoid: Direct state updates everywhere
-def Component() -> any {
-    # Don't call setTodoState directly here
-    # Use action functions instead
+    if loading { return <div>Loading...</div>; }
+    if error { return <div>Error: {error}</div>; }
+    return <div>{/* todos */}</div>;
 }
 ```
 
-### 5. Handle Loading and Error States
+### 6. Use useCallback for Callbacks Passed to Children
 
 ```jac
-# ✅ Good: Include loading/error in state
-let [todoState, setTodoState] = createState({
-    "items": [],
-    "loading": False,
-    "error": None
-});
+cl import from react { useState, useCallback }
 
-# ❌ Avoid: Missing error handling
-let [todoState, setTodoState] = createState({
-    "items": []
-});
+# ✅ Good: Memoized callbacks prevent unnecessary re-renders
+def TodoApp() -> any {
+    let [todos, setTodos] = useState([]);
+
+    handleToggle = useCallback(lambda id: str -> None {
+        setTodos(todos.map(lambda t: any -> any {
+            if t._jac_id == id { return {...t, "done": not t.done}; }
+            return t;
+        }));
+    }, [todos]);
+
+    return <TodoList todos={todos} onToggle={handleToggle} />;
+}
+```
+
+### 7. Use Context for Deeply Nested Props
+
+```jac
+cl import from react { useState, useContext, createContext }
+
+# ✅ Good: Context avoids prop drilling
+ThemeContext = createContext("light");
+
+def App() -> any {
+    let [theme, setTheme] = useState("light");
+    return <ThemeContext.Provider value={theme}>
+        <DeeplyNestedComponent />
+    </ThemeContext.Provider>;
+}
+
+def DeeplyNestedComponent() -> any {
+    theme = useContext(ThemeContext);
+    return <div style={{"background": theme}}></div>;
+}
 ```
 
 ---
 
 ## Summary
 
-- **Multiple States**: Split state by concern for better organization
-- **State Composition**: Combine multiple states for complex applications
-- **Derived State**: Compute values from multiple states using functions
-- **State Patterns**: Use reducers, selectors, and actions for complex state
-- **Best Practices**: Keep state flat, separate concerns, handle errors
+- **useState**: Use for simple, independent state variables
+- **useReducer**: Use for complex, interdependent state logic
+- **useContext**: Use for global state and avoiding prop drilling
+- **useMemo**: Use to memoize expensive computations
+- **useCallback**: Use to memoize callbacks passed to child components
+- **Custom Hooks**: Create reusable state logic
+- **Best Practices**: Separate concerns, avoid derived state, handle errors
 
-Advanced state management helps you build scalable, maintainable applications! 🚀
+React hooks provide a powerful and flexible way to manage state in Jac applications! 🚀
 

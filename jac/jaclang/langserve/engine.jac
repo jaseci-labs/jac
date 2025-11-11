@@ -292,6 +292,7 @@ class JacLangServer(JacProgram , LanguageServer) {
             self.log_py(f"'Error during completion: '{e}");
             return lspt.CompletionList(is_incomplete=False, items=[]);
         }
+
         self.debug("returning empty list");
     }
 

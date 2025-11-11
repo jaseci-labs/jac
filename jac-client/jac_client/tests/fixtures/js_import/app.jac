@@ -24,7 +24,7 @@ cl def JsImportTest() -> any {
     </div>;
 }
 
-cl def Main() -> any {
+cl def app() -> any {
     return <JsImportTest />;
 }
 
