@@ -1,4 +1,4 @@
-pytest -n 30 jac
+pytest -n auto jac
 pytest jac-cloud
 pytest jac-byllm
 pytest jac-streamlit
