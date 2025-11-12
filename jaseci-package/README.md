@@ -1,7 +1,7 @@
 # Jaseci
 ### Complete AI-Native Programming Ecosystem
 
-Jaseci is a meta-package that provides a unified installation for the complete Jaseci ecosystem.
+Jaseci is a **meta-package** that provides a unified installation for the complete Jaseci ecosystem.
 
 ## What's Included
 
