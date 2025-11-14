@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "jaseci"
-version = "2.1.0"
+version = "2.2.0"
 description = "Jaseci - A complete AI-native programming ecosystem with Jac language, LLM integration, cloud deployment, and Streamlit visualization"
 authors = ["Jason Mars <jason@mars.ninja>"]
 maintainers = ["Jason Mars <jason@mars.ninja>"]
@@ -27,7 +27,6 @@ packages = [{ include = "jaseci" }]
 python = "^3.11.0"
 jaclang = "^0.9.0"
 byllm = "^0.4.6"
-jac-cloud = "^0.2.11"
 jac-client = "^0.2.0"
 jac-streamlit = "^0.0.4"
 
