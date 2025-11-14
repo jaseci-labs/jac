@@ -41,7 +41,7 @@ The project brings together a set of components that work seamlessly together:
 - **[`jaclang`](jac/):** The Jac programming language, a drop‑in replacement for and superset of Python.
 - **[`byllm`](jac-byllm/):** Plugin for Jac enabling easy integration of large language models into your applications.
 - **[`jac-cloud`](jac-cloud/):** Plugin for Jac with cloud‑native utilities that automatically turn a Jac application into a production-ready server stack.
-- **[`jac VSCE`](jac/support/vscode_ext):** The official VS Code extension for Jac.
+- **[`jac VSCE`](https://github.com/jaseci-labs/jac-vscode/blob/main/README.md):** The official VS Code extension for Jac.
 
 ---
 
