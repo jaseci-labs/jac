@@ -559,3 +559,66 @@ class TypeCheckerPassTests(TestCase):
 
         for i, expected in enumerate(expected_errors):
             self._assert_error_pretty_found(expected, program.errors_had[i].pretty_print())
+
+    def test_connect_typed(self) -> None:
+        program = JacProgram()
+        path = self.fixture_abs_path("checker_connect_typed.jac")
+        mod = program.compile(path)
+        TypeCheckPass(ir_in=mod, prog=program)
+        # Expect three errors: wrong edge type usage and node class operands
+        self.assertEqual(len(program.errors_had), 3)
+
+    def test_connect_filter(self) -> None:
+        program = JacProgram()
+        path = self.fixture_abs_path("checker_connect_filter.jac")
+        mod = program.compile(path)
+        TypeCheckPass(ir_in=mod, prog=program)
+        self.assertEqual(len(program.errors_had), 7)
+
+        expected_errors = [
+            """
+            Connection type must be an edge instance
+                a_inst +>:edge_inst:+> b_inst; # Ok
+                a_inst +>:NodeA:+> b_inst;     # Error
+                          ^^^^^
+            """,
+            """
+            Connection left operand must be a node instance
+                a_inst +>:NodeA:+> b_inst;     # Error
+                NodeA +>:MyEdge:+> b_inst;     # Error
+                ^^^^^
+            """,
+            """
+            Connection right operand must be a node instance
+                NodeA +>:MyEdge:+> b_inst;     # Error
+                a_inst +>:MyEdge:+> NodeB;     # Error
+                                    ^^^^^
+            """,
+            """
+            Edge type "<class MyEdge>" has no member named "not_mem"
+                # Assign compr in edges
+                a_inst +>:MyEdge:id=1, not_mem="some":+> b_inst; # Error
+                                       ^^^^^^^
+            """,
+            """
+            Member "not_exist not found on type <class Book>"
+                lst(=title="Parry Potter", author="K.J. Bowling", year=1997); # Ok
+                lst(=not_exist="some");  # Error
+                     ^^^^^^^^^
+            """,
+            """
+            Type "<class str> is not assignable to type <class int>"
+                lst(=not_exist="some");  # Error
+                lst(=year="Type Error"); # Error
+                          ^^^^^^^^^^^^
+            """,
+            """
+            Member "not_exists not found on type <class MyEdge>"
+                [->:MyEdge:id == 1:->]; # Ok
+                [->:MyEdge:not_exists >= 1:->]; # Error
+                           ^^^^^^^^^^
+            """,
+        ]
+
+        for i, expected in enumerate(expected_errors):
+            self._assert_error_pretty_found(expected, program.errors_had[i].pretty_print())

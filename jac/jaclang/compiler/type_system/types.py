@@ -267,6 +267,24 @@ class ClassType(TypeBase):
         """Return true if this class is a data class."""
         return self.shared.is_data_class
 
+    def is_edge_type(self) -> bool:
+        """Return true if this class is the built-in Edge type."""
+        from jaclang.compiler.constant import SymbolType
+        import jaclang.compiler.unitree as uni
+
+        arch = self.shared.symbol_table
+        assert isinstance(arch, uni.Archetype)
+        return arch.sym_category == SymbolType.EDGE_ARCH
+
+    def is_node_type(self) -> bool:
+        """Return true if this class is the built-in Node type."""
+        from jaclang.compiler.constant import SymbolType
+        import jaclang.compiler.unitree as uni
+
+        arch = self.shared.symbol_table
+        assert isinstance(arch, uni.Archetype)
+        return arch.sym_category == SymbolType.NODE_ARCH
+
 
 class ParamKind(IntEnum):
     """Enumeration of parameter kinds."""
