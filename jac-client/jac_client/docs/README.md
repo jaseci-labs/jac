@@ -57,48 +57,63 @@ You can access your app at `http://localhost:8000`
 
 Every Jac client application needs an entry point function. This is where your app starts rendering.
 
-### The `jac_app()` Function
+### The `app()` Function
 
-At the bottom of your `app.jac` file, you'll find the entry point:
+Inside your `cl` block, define a function called `app()`:
 
 ```jac
-cl {
-    def App() -> any {
-        # Your main app component with routing
-        return <div>Hello World</div>;
-    }
+cl import from react {useState}
 
-    def jac_app() -> any {
-        return App();
+cl {
+    def app() -> any {
+        let [count, setCount] = useState(0);
+        return <div>
+            <h1>Hello, World!</h1>
+            <p>Count: {count}</p>
+            <button onClick={lambda e: any -> None { setCount(count + 1); }}>
+                Increment
+            </button>
+        </div>;
     }
 }
 ```
 
 **Key Points:**
-- `jac_app()` is the **required entry point** that Jac looks for
-- It should return your root component (usually called `App`)
+- `app()` is the **required entry point** that Jac looks for
+- It must be defined inside a `cl { }` block (client-side code)
 - The `cl` (client) block indicates this code runs in the browser
 - This function gets called automatically when the page loads
+- You can define other components and helper functions in the same `cl` block
 
-**Example from Todo App:**
+**Example with Multiple Components:**
 ```jac
-def App() -> any {
-    login_route = {"path": "/login", "component": lambda -> any { return LoginForm(); }, "guard": None};
-    signup_route = {"path": "/signup", "component": lambda -> any { return SignupForm(); }, "guard": None};
-    todos_route  = {"path": "/todos", "component": lambda -> any { return TodoApp(); }, "guard": jacIsLoggedIn};
+cl import from react {useState, useEffect}
 
-    routes = [login_route, signup_route, todos_route];
-    router = initRouter(routes, "/login");
+cl {
+    def TodoList(todos: list) -> any {
+        return <ul>
+            {todos.map(lambda todo: any -> any {
+                return <li key={todo._jac_id}>{todo.text}</li>;
+            })}
+        </ul>;
+    }
 
-    currentPath = router.path();
-    return <div>
-        {Nav(currentPath)}
-        {router.render()}
-    </div>;
-}
+    def app() -> any {
+        let [todos, setTodos] = useState([]);
 
-def jac_app() -> any {
-    return App();
+        useEffect(lambda -> None {
+            async def loadTodos() -> None {
+                result = root spawn read_todos();
+                setTodos(result.reports if result.reports else []);
+            }
+            loadTodos();
+        }, []);
+
+        return <div>
+            <h1>My Todos</h1>
+            <TodoList todos={todos} />
+        </div>;
+    }
 }
 ```
 
@@ -179,13 +194,9 @@ def TodoItem(item: dict) -> any {
 
 ---
 
-## 🗄️ 4. Adding State
+## 🗄️ 4. Adding State with React Hooks
 
-Jac supports two approaches to state management: React hooks (recommended) and Jac's custom `createState()`.
-
-### Option 1: React Hooks (Recommended)
-
-You can use React hooks directly in Jac by importing them:
+Jac uses React hooks for state management. You can use all standard React hooks by importing them:
 
 ```jac
 cl import from react { useState, useEffect }
@@ -215,123 +226,71 @@ cl {
 - `useEffect` - For side effects
 - `useRef` - For refs
 - `useContext` - For context
+- `useCallback`, `useMemo` - For performance optimization
 - And more...
 
-### Option 2: Jac's createState()
+### State Management Example
 
-Jac also provides its own `createState()` function:
-
-```jac
-let [todoState, setTodoState] = createState({
-    "items": [],
-    "filter": "all",
-    "input": ""
-});
-```
-
-**How it works:**
-- `createState()` returns a tuple: `[getter, setter]`
-- **Getter** (`todoState`): A function that returns the current state value
-- **Setter** (`setTodoState`): A function that updates the state and triggers re-renders
-
-### Choosing Between React Hooks and createState()
-
-**Use React Hooks if:**
-- You're familiar with React
-- You want to use the React ecosystem
-- You need access to all React features
-
-**Use createState() if:**
-- You want Jac-native state management
-- You prefer simpler syntax for basic state
-- You're building a pure Jac application
-
-### Reading State with createState()
-
-When using `createState()`, always call the getter as a function:
+Here's a complete example showing state management in a todo app:
 
 ```jac
-def TodoApp() -> any {
-    s = todoState();  # Call getter function
+cl import from react {useState, useEffect}
 
-    return <div>
-        <p>Total todos: {s.items.length}</p>
-        <p>Current filter: {s.filter}</p>
-    </div>;
-}
-```
-
-### Updating State
-
-The setter merges updates with existing state:
-
-```jac
-# Update single property
-setTodoState({"filter": "active"});
-
-# Update multiple properties
-setTodoState({
-    "filter": "completed",
-    "input": "New todo text"
-});
-
-# Update arrays (create new array)
-s = todoState();
-setTodoState({"items": s.items.concat([newItem])});
-```
-
-**Important:** The setter performs a **shallow merge**, meaning:
-- Existing properties are preserved
-- Only specified properties are updated
-- Arrays and objects are replaced, not merged deeply
-
-### Complete State Example
-
-```jac
 cl {
-    # Initialize state
-    let [todoState, setTodoState] = createState({
-        "items": [],
-        "filter": "all",
-        "input": ""
-    });
+    def app() -> any {
+        let [todos, setTodos] = useState([]);
+        let [input, setInput] = useState("");
+        let [filter, setFilter] = useState("all");
 
-    # Read state in component
-    def TodoApp() -> any {
-        s = todoState();
-        itemsArr = s.items;
+        # Load todos on mount
+        useEffect(lambda -> None {
+            async def loadTodos() -> None {
+                result = root spawn read_todos();
+                setTodos(result.reports if result.reports else []);
+            }
+            loadTodos();
+        }, []);
+
+        # Add new todo
+        async def addTodo() -> None {
+            if not input.trim() { return; }
+            response = root spawn create_todo(text=input.trim());
+            new_todo = response.reports[0][0];
+            setTodos(todos.concat([new_todo]));
+            setInput("");
+        }
+
+        # Filter todos
+        def getFilteredTodos() -> list {
+            if filter == "active" {
+                return todos.filter(lambda todo: any -> bool { return not todo.done; });
+            } elif filter == "completed" {
+                return todos.filter(lambda todo: any -> bool { return todo.done; });
+            }
+            return todos;
+        }
+
+        filteredTodos = getFilteredTodos();
 
         return <div>
+            <h1>My Todos</h1>
             <input
-                value={s.input}
-                onChange={lambda e: any -> None {
-                    setTodoState({"input": e.target.value});
+                value={input}
+                onChange={lambda e: any -> None { setInput(e.target.value); }}
+                onKeyPress={lambda e: any -> None {
+                    if e.key == "Enter" { addTodo(); }
                 }}
             />
+            <button onClick={addTodo}>Add</button>
+
             <div>
-                {[TodoItem(item) for item in itemsArr]}
+                {filteredTodos.map(lambda todo: any -> any {
+                    return <div key={todo._jac_id}>
+                        <span>{todo.text}</span>
+                    </div>;
+                })}
             </div>
         </div>;
-    }
-
-    # Update state in event handler
-    async def onAddTodo(e: any) -> None {
-        e.preventDefault();
-        text = document.getElementById("todo-input").value.trim();
-
-        if not text { return; }
-
-        # Create todo on backend
-        new_todo = await jacSpawn("create_todo", {"text": text});
-
-        # Update frontend state
-        s = todoState();
-        newItem = {
-            "id": new_todo._jac_id,
-            "text": new_todo.text,
-            "done": new_todo.done
-        };
-        setTodoState({"items": s.items.concat([newItem])});
     }
 }
 ```
@@ -358,11 +317,14 @@ def Button() -> any {
 
 ```jac
 def InputField() -> any {
+    let [value, setValue] = useState("");
+
     return <input
         type="text"
+        value={value}
         onChange={lambda e: any -> None {
             console.log("Input value:", e.target.value);
-            setTodoState({"input": e.target.value});
+            setValue(e.target.value);
         }}
     />;
 }
@@ -386,7 +348,8 @@ async def onAddTodo(e: any) -> None {
     if not text { return; }
 
     # Handle form submission
-    new_todo = await jacSpawn("create_todo", {"text": text});
+    response = root spawn create_todo(text=text);
+    new_todo = response.reports[0][0];
     # ... update state
 }
 ```
@@ -403,13 +366,12 @@ async def onAddTodo(e: any) -> None {
 ### Advanced: Conditional Event Handlers
 
 ```jac
-def FilterButton(filterType: str) -> any {
-    s = todoState();
-    isActive = s.filter == filterType;
+def FilterButton(filterType: str, currentFilter: str, onFilterChange: any) -> any {
+    isActive = currentFilter == filterType;
 
     return <button
         onClick={lambda -> None {
-            setFilter(filterType);
+            onFilterChange(filterType);
         }}
         style={{
             "background": ("#7C3AED" if isActive else "#FFFFFF"),
@@ -427,7 +389,7 @@ def FilterButton(filterType: str) -> any {
 
 One of Jac's most powerful features is **seamless backend communication** without writing HTTP requests, fetch calls, or axios code.
 
-### The `jacSpawn()` Function
+### The `spawn` Syntax
 
 Instead of writing:
 ```javascript
@@ -442,30 +404,32 @@ const data = await response.json();
 
 You simply write:
 ```jac
-new_todo = await jacSpawn("create_todo", {"text": "New todo"});
+response = root spawn create_todo(text="New todo");
 ```
 
-### How `jacSpawn()` Works
+### How `spawn` Works
 
 ```jac
-# Call a walker on the backend
-result = await jacSpawn(
-    walker_name,    # Name of the walker to execute
-    fields,         # Dictionary of parameters to pass
-    node_id         # Optional: specific node ID (defaults to "root")
-);
+# Call a walker on a node
+result = node_reference spawn walker_name(parameters);
 ```
+
+**Syntax:**
+- `node_reference` - The node to spawn the walker on (commonly `root` for the root node, or a node ID)
+- `spawn` - The spawn keyword
+- `walker_name` - Name of the walker to execute
+- `parameters` - Parameters to pass to the walker (as function arguments)
 
 **Example from Todo App:**
 ```jac
-# Create a new todo
-new_todo = await jacSpawn("create_todo", {"text": text});
+# Create a new todo (spawn on root node)
+response = root spawn create_todo(text=text);
 
-# Toggle todo status
-toggled_todo = await jacSpawn("toggle_todo", {}, todo_id);
+# Toggle todo status (spawn on specific todo node)
+id spawn toggle_todo();
 
 # Read all todos
-todos = await jacSpawn("read_todos");
+todos = root spawn read_todos();
 ```
 
 ### Backend Walkers
@@ -481,8 +445,9 @@ node Todo {
 
 # Walker: Create a new todo
 walker create_todo {
+    has text: str;
     can create with `root entry {
-        new_todo = here ++> Todo(text="Example Todo");
+        new_todo = here ++> Todo(text=self.text);
         report new_todo;
     }
 }
@@ -517,7 +482,8 @@ async def onAddTodo(e: any) -> None {
     if not text { return; }
 
     # Call backend walker - no fetch/axios needed!
-    new_todo = await jacSpawn("create_todo", {"text": text});
+    response = root spawn create_todo(text=text);
+    new_todo = response.reports[0][0];
 
     # Update frontend state
     s = todoState();
@@ -533,16 +499,16 @@ async def onAddTodo(e: any) -> None {
 **Backend (outside `cl` block):**
 ```jac
 walker create_todo {
+    has text: str;
     can create with `root entry {
-        # 'text' comes from the fields dictionary passed to jacSpawn
-        text = context.text;
-        new_todo = here ++> Todo(text=text);
+        # 'text' comes from the walker parameter
+        new_todo = here ++> Todo(text=self.text);
         report new_todo;
     }
 }
 ```
 
-### Benefits of `jacSpawn()`
+### Benefits of `spawn`
 
 ✅ **No HTTP Configuration**: No need to set up API endpoints, CORS, or request/response formats
 ✅ **Type Safety**: Jac handles serialization automatically
@@ -550,6 +516,7 @@ walker create_todo {
 ✅ **Error Handling**: Exceptions are properly propagated
 ✅ **Graph Operations**: Direct access to graph-based data operations
 ✅ **Less Code**: Eliminates boilerplate HTTP client code
+✅ **Natural Syntax**: Call walkers on nodes using intuitive syntax
 
 ### Authentication Helpers
 
@@ -594,8 +561,9 @@ node Todo {
 }
 
 walker create_todo {
+    has text: str;
     can create with `root entry {
-        new_todo = here ++> Todo(text=context.text);
+        new_todo = here ++> Todo(text=self.text);
         report new_todo;
     }
 }
@@ -603,37 +571,41 @@ walker create_todo {
 # ============================================================================
 # FRONTEND: Components, State, and Events
 # ============================================================================
-cl {
-    # State
-    let [todoState, setTodoState] = createState({
-        "items": [],
-        "filter": "all"
-    });
+cl import from react {useState}
 
-    # Component
-    def TodoApp() -> any {
-        s = todoState();
+cl {
+    def app() -> any {
+        let [todos, setTodos] = useState([]);
+        let [input, setInput] = useState("");
+
+        # Event Handler
+        async def addTodo() -> None {
+            if not input.trim() { return; }
+            response = root spawn create_todo(text=input.trim());
+            new_todo = response.reports[0][0];
+            setTodos(todos.concat([new_todo]));
+            setInput("");
+        }
+
         return <div>
             <h2>My Todos</h2>
-            <form onSubmit={onAddTodo}>
-                <input id="todo-input" type="text" />
-                <button type="submit">Add Todo</button>
-            </form>
-            {[TodoItem(item) for item in s.items]}
+            <input
+                value={input}
+                onChange={lambda e: any -> None { setInput(e.target.value); }}
+                onKeyPress={lambda e: any -> None {
+                    if e.key == "Enter" { addTodo(); }
+                }}
+            />
+            <button onClick={addTodo}>Add Todo</button>
+
+            <div>
+                {todos.map(lambda todo: any -> any {
+                    return <div key={todo._jac_id}>
+                        <span>{todo.text}</span>
+                    </div>;
+                })}
+            </div>
         </div>;
-    }
-
-    # Event Handler
-    async def onAddTodo(e: any) -> None {
-        e.preventDefault();
-        text = document.getElementById("todo-input").value;
-        new_todo = await jacSpawn("create_todo", {"text": text});
-        # Update state...
-    }
-
-    # Entry Point
-    def jac_app() -> any {
-        return TodoApp();
     }
 }
 ```
@@ -659,7 +631,7 @@ Ready to dive deeper? Explore these advanced topics:
 
 - **[Routing](routing.md)**: Build multi-page apps with declarative routing (`<Router>`, `<Routes>`, `<Route>`)
 - **[Lifecycle Hooks](lifecycle-hooks.md)**: Use `onMount()` and React hooks for initialization logic
-- **[Advanced State](advanced-state.md)**: Manage complex state with multiple `createState()` calls or React hooks
+- **[Advanced State](advanced-state.md)**: Manage complex state with React hooks and context
 - **[Imports](imports.md)**: Import third-party libraries (React, Ant Design, Lodash), other Jac files, and JavaScript modules
 - **[Learn JAC](https://www.jac-lang.org)**: Explore Jac's graph-based data modeling
 
@@ -678,8 +650,8 @@ Check out the `examples/` directory for working applications:
 ## 💡 Key Takeaways
 
 1. **Single Language**: Write frontend and backend in Jac
-2. **No HTTP Client**: Use `jacSpawn()` instead of fetch/axios
-3. **Reactive State**: `createState()` manages UI updates automatically
+2. **No HTTP Client**: Use `spawn` syntax instead of fetch/axios
+3. **Reactive State**: React hooks manage UI updates automatically
 4. **Component-Based**: Build reusable UI components with JSX
 5. **Type Safety**: Jac provides type checking across frontend and backend
 6. **Graph Database**: Built-in graph data model eliminates need for SQL/NoSQL

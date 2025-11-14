@@ -31,7 +31,6 @@ Jac uses React hooks for all state management. The most common hooks are:
 
 ```jac
 cl import from react { useState, useEffect }
-cl import from '@jac-client/utils' { jacSpawn }
 
 cl {
     def TodoApp() -> any {
@@ -42,7 +41,7 @@ cl {
         useEffect(lambda -> None {
             async def loadTodos() -> None {
                 setLoading(True);
-                result = await jacSpawn("read_todos", "", {});
+                result = root spawn read_todos();
                 setTodos(result.reports);
                 setLoading(False);
             }
@@ -50,6 +49,10 @@ cl {
         }, []);
 
         return <div>{/* your UI */}</div>;
+    }
+
+    def app() -> any {
+        return <TodoApp />;
     }
 }
 ```
@@ -64,7 +67,6 @@ Instead of putting everything in one state object, split state into multiple var
 
 ```jac
 cl import from react { useState, useEffect }
-cl import from '@jac-client/utils' { jacSpawn }
 
 cl {
     def TodoApp() -> any {
@@ -79,7 +81,7 @@ cl {
                 setLoading(True);
                 setError(None);
                 try {
-                    result = await jacSpawn("read_todos", "", {});
+                    result = root spawn read_todos();
                     setTodos(result.reports);
                 } catch (err) {
                     setError(err);
@@ -98,6 +100,10 @@ cl {
                 return <TodoItem key={todo._jac_id} todo={todo} />;
             })}
         </div>;
+    }
+
+    def app() -> any {
+        return <TodoApp />;
     }
 }
 ```
@@ -147,7 +153,6 @@ Organize state by feature or domain using multiple `useState` calls:
 
 ```jac
 cl import from react { useState, useEffect }
-cl import from '@jac-client/utils' { jacSpawn }
 
 cl {
     def App() -> any {
@@ -170,7 +175,7 @@ cl {
 
         useEffect(lambda -> None {
             async def loadData() -> None {
-                result = await jacSpawn("get_user_data", "", {});
+                result = root spawn get_user_data();
                 setUser(result.user);
                 setIsLoggedIn(True);
             }
@@ -181,6 +186,10 @@ cl {
             {sidebarOpen and <Sidebar />}
             {todos.length > 0 and <TodoList items={todos} />}
         </div>;
+    }
+
+    def app() -> any {
+        return <App />;
     }
 }
 ```
@@ -235,7 +244,7 @@ cl {
                     setText(newText);
                     validate(newText);
                 }}
-                style={{"background": app.theme == "dark" ? "#333" : "#fff"}}
+                style={{"background": ("#333" if app.theme == "dark" else "#fff")}}
             />
         </form>;
     }
@@ -249,9 +258,12 @@ cl {
         app = useContext(AppContext);
 
         return <div>
-            <h2>Welcome, {app.currentUser ? app.currentUser.name : "Guest"}</h2>
-            {/* Todo list items */}
+            <h2>Welcome, {app.currentUser.name if app.currentUser else "Guest"}</h2>
         </div>;
+    }
+
+    def app() -> any {
+        return <App />;
     }
 }
 ```
@@ -262,7 +274,7 @@ Create reusable custom hooks for shared logic:
 
 ```jac
 cl import from react { useState, useEffect }
-cl import from '@jac-client/utils' { jacSpawn }
+cl import from '@jac-client/utils' { jacLogout }
 
 cl {
     # Custom hook: User management
@@ -275,7 +287,7 @@ cl {
             setLoading(True);
             setError(None);
             try {
-                result = await jacSpawn("get_current_user", "", {});
+                result = root spawn get_current_user();
                 setUser(result);
             } catch (err) {
                 setError(err);
@@ -310,7 +322,7 @@ cl {
         async def loadTodos() -> None {
             setLoading(True);
             try {
-                result = await jacSpawn("read_todos", "", {});
+                result = root spawn read_todos();
                 setTodos(result.reports);
             } finally {
                 setLoading(False);
@@ -318,12 +330,13 @@ cl {
         }
 
         async def addTodo(text: str) -> None {
-            new_todo = await jacSpawn("create_todo", "", {"text": text});
+            response = root spawn create_todo(text=text);
+            new_todo = response.reports[0][0];
             setTodos(todos.concat([new_todo]));
         }
 
         async def toggleTodo(id: str) -> None {
-            await jacSpawn("toggle_todo", id, {});
+            id spawn toggle_todo();
             setTodos(todos.map(lambda todo: any -> any {
                 if todo._jac_id == id {
                     return {...todo, "done": not todo.done};
@@ -355,12 +368,16 @@ cl {
         }
 
         return <div>
-            <h1>Welcome, {userData.user ? userData.user.name : "Guest"}</h1>
+            <h1>Welcome, {userData.user.name if userData.user else "Guest"}</h1>
             <button onClick={userData.logout}>Logout</button>
             {todoData.todos.map(lambda todo: any -> any {
                 return <TodoItem key={todo._jac_id} todo={todo} />;
             })}
         </div>;
+    }
+
+    def app() -> any {
+        return <TodoApp />;
     }
 }
 ```
@@ -413,6 +430,10 @@ cl {
             })}
         </div>;
     }
+
+    def app() -> any {
+        return <TodoApp />;
+    }
 }
 ```
 
@@ -447,6 +468,10 @@ cl {
                 return <TodoItem key={item._jac_id} todo={item} />;
             })}
         </div>;
+    }
+
+    def app() -> any {
+        return <TodoApp />;
     }
 }
 ```
@@ -490,6 +515,10 @@ cl {
             })}
         </div>;
     }
+
+    def app() -> any {
+        return <TodoApp />;
+    }
 }
 ```
 
@@ -503,7 +532,6 @@ When state logic becomes complex, use `useReducer` instead of `useState`:
 
 ```jac
 cl import from react { useReducer, useEffect }
-cl import from '@jac-client/utils' { jacSpawn }
 
 cl {
     # Reducer function
@@ -551,7 +579,7 @@ cl {
         useEffect(lambda -> None {
             async def loadTodos() -> None {
                 dispatch({"type": "SET_LOADING", "payload": True});
-                result = await jacSpawn("read_todos", "", {});
+                result = root spawn read_todos();
                 for todo in result.reports {
                     dispatch({"type": "ADD_TODO", "payload": todo});
                 }
@@ -561,7 +589,8 @@ cl {
         }, []);
 
         async def addTodo(text: str) -> None {
-            new_todo = await jacSpawn("create_todo", "", {"text": text});
+            response = root spawn create_todo(text=text);
+            new_todo = response.reports[0][0];
             dispatch({"type": "ADD_TODO", "payload": new_todo});
         }
 
@@ -579,6 +608,10 @@ cl {
                 />;
             })}
         </div>;
+    }
+
+    def app() -> any {
+        return <TodoApp />;
     }
 }
 ```
@@ -600,12 +633,13 @@ cl {
         let [filter, setFilter] = useState("all");
 
         async def addTodo(text: str) -> None {
-            new_todo = await jacSpawn("create_todo", "", {"text": text});
+            response = root spawn create_todo(text=text);
+            new_todo = response.reports[0][0];
             setTodos(todos.concat([new_todo]));
         }
 
         async def toggleTodo(id: str) -> None {
-            await jacSpawn("toggle_todo", id, {});
+            id spawn toggle_todo();
             setTodos(todos.map(lambda todo: any -> any {
                 if todo._jac_id == id {
                     return {...todo, "done": not todo.done};
@@ -664,11 +698,15 @@ cl {
     }
 
     # App with provider
-    def App() -> any {
+    def MainApp() -> any {
         return <TodoProvider>
             <FilterButtons />
             <TodoList />
         </TodoProvider>;
+    }
+
+    def app() -> any {
+        return <MainApp />;
     }
 }
 ```
@@ -704,6 +742,10 @@ cl {
             })}
         </div>;
     }
+
+    def app() -> any {
+        return <TodoApp />;
+    }
 }
 ```
 
@@ -717,7 +759,6 @@ Encapsulate state logic in reusable action functions:
 
 ```jac
 cl import from react { useState }
-cl import from '@jac-client/utils' { jacSpawn }
 
 cl {
     def TodoApp() -> any {
@@ -727,12 +768,13 @@ cl {
         # Action functions
         async def addTodo(text: str) -> None {
             if not text.trim() { return; }
-            new_todo = await jacSpawn("create_todo", "", {"text": text});
+            response = root spawn create_todo(text=text);
+            new_todo = response.reports[0][0];
             setTodos(todos.concat([new_todo]));
         }
 
         async def toggleTodo(id: str) -> None {
-            await jacSpawn("toggle_todo", id, {});
+            id spawn toggle_todo();
             setTodos(todos.map(lambda todo: any -> any {
                 if todo._jac_id == id {
                     return {...todo, "done": not todo.done};
@@ -756,6 +798,10 @@ cl {
         return <div>
             {/* UI using these actions */}
         </div>;
+    }
+
+    def app() -> any {
+        return <TodoApp />;
     }
 }
 ```
@@ -798,6 +844,10 @@ cl {
             })}
         </div>;
     }
+
+    def app() -> any {
+        return <TodoApp />;
+    }
 }
 ```
 
@@ -807,7 +857,6 @@ Combine useState, useReducer, and useContext for complex applications:
 
 ```jac
 cl import from react { useState, useReducer, useContext, createContext, useEffect }
-cl import from '@jac-client/utils' { jacSpawn }
 
 cl {
     # Context for global state
@@ -843,7 +892,7 @@ cl {
 
         useEffect(lambda -> None {
             async def loadData() -> None {
-                userData = await jacSpawn("get_user", "", {});
+                userData = root spawn get_user();
                 setUser(userData);
             }
             loadData();
@@ -862,6 +911,10 @@ cl {
             <TodoList />
         </AppContext.Provider>;
     }
+
+    def app() -> any {
+        return <App />;
+    }
 }
 ```
 
@@ -873,7 +926,6 @@ Here's a complete example combining multiple React hooks and patterns:
 
 ```jac
 cl import from react { useState, useEffect, useMemo, useCallback }
-cl import from '@jac-client/utils' { jacSpawn }
 
 cl {
     def TodoApp() -> any {
@@ -893,8 +945,8 @@ cl {
                 try {
                     # Load user and todos in parallel
                     results = await Promise.all([
-                        jacSpawn("get_current_user", "", {}),
-                        jacSpawn("read_todos", "", {})
+                        root spawn get_current_user(),
+                        root spawn read_todos()
                     ]);
                     setUser(results[0]);
                     setTodos(results[1].reports);
@@ -926,7 +978,8 @@ cl {
         # Memoized action functions
         addTodo = useCallback(lambda text: str -> None {
             async def _addTodo() -> None {
-                new_todo = await jacSpawn("create_todo", "", {"text": text});
+                response = root spawn create_todo(text=text);
+                new_todo = response.reports[0][0];
                 setTodos(todos.concat([new_todo]));
             }
             _addTodo();
@@ -934,7 +987,7 @@ cl {
 
         toggleTodo = useCallback(lambda id: str -> None {
             async def _toggleTodo() -> None {
-                await jacSpawn("toggle_todo", id, {});
+                id spawn toggle_todo();
                 setTodos(todos.map(lambda t: any -> any {
                     if t._jac_id == id {
                         return {...t, "done": not t.done};
@@ -981,9 +1034,9 @@ cl {
             <div style={{"flex": "1", "padding": "20px"}}>
                 # Header
                 <div style={{"display": "flex", "justifyContent": "space-between", "marginBottom": "20px"}}>
-                    <h1>Welcome, {user ? user.name : "Guest"}</h1>
+                    <h1>Welcome, {user.name if user else "Guest"}</h1>
                     <button onClick={toggleSidebar}>
-                        {sidebarOpen ? "Hide" : "Show"} Sidebar
+                        {"Hide" if sidebarOpen else "Show"} Sidebar
                     </button>
                 </div>
 
@@ -1021,6 +1074,10 @@ cl {
                 </button>}
             </div>
         </div>;
+    }
+
+    def app() -> any {
+        return <TodoApp />;
     }
 }
 ```
@@ -1135,7 +1192,7 @@ def TodoApp() -> any {
             setLoading(True);
             setError(None);
             try {
-                result = await jacSpawn("read_todos", "", {});
+                result = root spawn read_todos();
                 setTodos(result.reports);
             } catch (err) {
                 setError(err);

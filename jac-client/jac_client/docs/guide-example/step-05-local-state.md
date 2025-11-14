@@ -1,105 +1,99 @@
-# Step 5: Adding Local State with `useState`
+# Step 5: Local State
 
-In this step, you'll learn about **state** - the data that makes your app interactive and dynamic.
+> **💡 Quick Tip:** Each step has two parts. **Part 1** shows you what to build. **Part 2** explains why it works. Want to just build? Skip all Part 2 sections!
 
-## What is State?
+In this step, you'll learn about **state** - the data that makes your app interactive and dynamic!
 
-Imagine a light switch in Python:
+---
 
-```python
-class LightSwitch:
-    def __init__(self):
-        self.is_on = False  # This is "state"
+## 🏗️ Part 1: Building the App
 
-    def toggle(self):
-        self.is_on = not self.is_on  # Changing state
-        print(f"Light is {'on' if self.is_on else 'off'}")
+### Step 5.1: First, Let's See Why Normal Variables Don't Work
 
-switch = LightSwitch()
-switch.toggle()  # Light is on
-switch.toggle()  # Light is off
-```
-
-In React/Jac, **state** works similarly - it's data that can change over time and causes your UI to update when it changes.
-
-## The `useState` Hook
-
-`useState` is a special function that lets you add state to your components.
-
-**Basic syntax:**
+Let's try using a normal variable to track todos:
 
 ```jac
-let [value, setValue] = useState(initialValue);
-```
+cl {
+    # ... (keep all your components from Step 4)
 
-- `value` - The current state value (read-only)
-- `setValue` - Function to update the state
-- `initialValue` - Starting value
+    def app() -> any {
+        # Try using a normal variable
+        let todos = [
+            {"text": "Learn Jac", "done": false},
+            {"text": "Build app", "done": false}
+        ];
 
-**Python analogy:**
-
-```python
-# Python
-class Component:
-    def __init__(self):
-        self.count = 0  # state
-
-    def increment(self):
-        self.count += 1  # updating state
-
-# Jac
-def Component() -> any {
-    let [count, setCount] = useState(0);  # state
-
-    # Later: setCount(count + 1)  # updating state
+        return <div style={{
+            "maxWidth": "600px",
+            "margin": "20px auto",
+            "padding": "20px"
+        }}>
+            <h1>My Todos ({todos.length})</h1>
+            <p>Todos: {todos.length}</p>
+        </div>;
+    }
 }
 ```
 
-## Your First State: Input Value
+This works for displaying data, but **what if we want to change it?** Normal variables can't trigger UI updates!
 
-Let's make the todo input field work. First, import `useState`:
+### Step 5.2: Introducing `useState`
+
+To make data interactive, we need `useState`. First, import it:
 
 ```jac
 cl import from react {useState}
 
 cl {
-    def TodoInput() -> any {
-        # Create state for the input value
-        let [inputValue, setInputValue] = useState("");
+    def app() -> any {
+        # Create state with useState
+        let [todos, setTodos] = useState([]);
 
+        return <div style={{"padding": "20px"}}>
+            <h1>My Todos</h1>
+            <p>Total: {todos.length}</p>
+        </div>;
+    }
+}
+```
+
+**What's happening:**
+- `useState([])` creates state with initial value `[]` (empty array)
+- Returns two things:
+  - `todos` - The current value (read-only)
+  - `setTodos` - Function to update the value
+
+### Step 5.3: Add State for Input Field
+
+Let's make the input field work:
+
+```jac
+cl import from react {useState}
+
+cl {
+    def TodoInput(props: any) -> any {
         return <div style={{
             "display": "flex",
             "gap": "8px",
-            "marginBottom": "24px",
-            "backgroundColor": "#ffffff",
-            "padding": "16px",
-            "borderRadius": "12px",
-            "boxShadow": "0 1px 3px rgba(0,0,0,0.1)"
+            "marginBottom": "16px"
         }}>
             <input
                 type="text"
-                value={inputValue}
-                onChange={lambda e: any -> None {
-                    setInputValue(e.target.value);
-                }}
+                value={props.input}
                 placeholder="What needs to be done?"
                 style={{
                     "flex": "1",
-                    "padding": "12px 16px",
-                    "border": "1px solid #e5e7eb",
-                    "borderRadius": "8px",
-                    "fontSize": "16px",
-                    "outline": "none"
+                    "padding": "8px",
+                    "border": "1px solid #ddd",
+                    "borderRadius": "4px"
                 }}
             />
             <button style={{
-                "padding": "12px 24px",
-                "backgroundColor": "#3b82f6",
+                "padding": "8px 16px",
+                "background": "#3b82f6",
                 "color": "#ffffff",
                 "border": "none",
-                "borderRadius": "8px",
-                "fontSize": "16px",
-                "fontWeight": "600",
+                "borderRadius": "4px",
                 "cursor": "pointer"
             }}>
                 Add
@@ -108,472 +102,429 @@ cl {
     }
 
     def app() -> any {
-        return <div style={{"padding": "20px"}}>
-            <TodoInput />
+        # State for input field
+        let [input, setInput] = useState("");
+
+        return <div style={{
+            "maxWidth": "600px",
+            "margin": "20px auto",
+            "padding": "20px"
+        }}>
+            <h1>My Todos</h1>
+            <TodoInput input={input} />
+            <p>You typed: {input}</p>
         </div>;
     }
 }
 ```
 
-### What's Happening:
+**Try typing in the input!** Nothing happens yet because we haven't connected the onChange event (we'll do that in the next step).
 
-1. **Import useState**: `cl import from react {useState}`
+### Step 5.4: Add State for Todos List
 
-2. **Create state**: `let [inputValue, setInputValue] = useState("");`
-   - Initial value is empty string `""`
-
-3. **Bind to input**: `value={inputValue}`
-   - The input shows whatever is in `inputValue`
-
-4. **Update on change**: `onChange={lambda e: any -> None { setInputValue(e.target.value); }}`
-   - When you type, it calls `setInputValue` with the new text
-   - This updates the state
-   - React automatically re-renders the input with the new value
-
-**Try it!** Type in the input field. The text should appear as you type!
-
-## Understanding Event Handlers
-
-The `lambda e: any -> None { ... }` is an event handler:
-
-```jac
-onChange={lambda e: any -> None {
-    setInputValue(e.target.value);
-}}
-```
-
-**Breakdown:**
-- `lambda e: any -> None` - Anonymous function (like Python lambda)
-- `e` - The event object (contains info about what happened)
-- `e.target` - The element that triggered the event (the input field)
-- `e.target.value` - The current value of the input field
-
-**Python comparison:**
-
-```python
-# Python
-def on_change(event):
-    self.input_value = event.target.value
-
-# Jac
-lambda e: any -> None {
-    setInputValue(e.target.value);
-}
-```
-
-## Managing Todo List State
-
-Now let's add state for our todo list:
+Now let's track our todos list with state:
 
 ```jac
 cl import from react {useState}
 
 cl {
+    def TodoItem(props: any) -> any {
+        return <div style={{
+            "display": "flex",
+            "alignItems": "center",
+            "gap": "10px",
+            "padding": "10px",
+            "borderBottom": "1px solid #e5e7eb"
+        }}>
+            <input type="checkbox" checked={props.done} />
+            <span style={{
+                "flex": "1",
+                "textDecoration": ("line-through" if props.done else "none"),
+                "color": ("#999" if props.done else "#000")
+            }}>
+                {props.text}
+            </span>
+            <button style={{
+                "padding": "4px 8px",
+                "background": "#ef4444",
+                "color": "white",
+                "border": "none",
+                "borderRadius": "4px",
+                "cursor": "pointer"
+            }}>
+                Delete
+            </button>
+        </div>;
+    }
+
     def app() -> any {
-        # State for the list of todos
+        # State for todos
         let [todos, setTodos] = useState([
-            {"id": 1, "text": "Learn Jac basics", "done": False},
-            {"id": 2, "text": "Build todo app", "done": False},
-            {"id": 3, "text": "Deploy to production", "done": False}
+            {"text": "Learn Jac basics", "done": false},
+            {"text": "Build a todo app", "done": false}
         ]);
 
-        # State for input field
-        let [inputValue, setInputValue] = useState("");
-
         return <div style={{
-            "maxWidth": "720px",
-            "margin": "0 auto",
-            "padding": "24px"
+            "maxWidth": "600px",
+            "margin": "20px auto",
+            "padding": "20px",
+            "background": "#ffffff",
+            "borderRadius": "8px"
         }}>
             <h1>My Todos</h1>
-            <p>Total todos: {todos.length}</p>
 
-            {/* Input field */}
-            <div style={{"display": "flex", "gap": "8px", "marginBottom": "16px"}}>
-                <input
-                    type="text"
-                    value={inputValue}
-                    onChange={lambda e: any -> None {
-                        setInputValue(e.target.value);
-                    }}
-                    placeholder="What needs to be done?"
-                    style={{"flex": "1", "padding": "10px"}}
-                />
-                <button style={{"padding": "10px 20px"}}>
-                    Add
-                </button>
-            </div>
-
-            {/* Display todos */}
+            # Display todos
             <div>
                 {todos.map(lambda todo: any -> any {
-                    return <div key={todo["id"]} style={{
-                        "display": "flex",
-                        "gap": "10px",
-                        "padding": "10px",
-                        "backgroundColor": "#f9fafb",
-                        "marginBottom": "8px",
-                        "borderRadius": "8px"
-                    }}>
-                        <input type="checkbox" checked={todo["done"]} />
-                        <span style={{"flex": "1"}}>{todo["text"]}</span>
-                        <button style={{"color": "red"}}>Delete</button>
-                    </div>;
+                    return <TodoItem
+                        text={todo.text}
+                        done={todo.done}
+                    />;
                 })}
+            </div>
+
+            # Stats
+            <div style={{"marginTop": "16px", "color": "#666"}}>
+                {todos.length} items total
             </div>
         </div>;
     }
 }
 ```
 
-### Understanding Arrays and `.map()`
+### Step 5.5: Add State for Filter
 
-`.map()` is used to render a list:
+Let's add filter state:
 
 ```jac
-{todos.map(lambda todo: any -> any {
-    return <div key={todo["id"]}>
-        {todo["text"]}
-    </div>;
-})}
+cl import from react {useState}
+
+cl {
+    # ... (keep all previous components)
+
+    def TodoFilters(props: any) -> any {
+        return <div style={{
+            "display": "flex",
+            "gap": "8px",
+            "marginBottom": "16px"
+        }}>
+            <button style={{
+                "padding": "6px 12px",
+                "background": ("#3b82f6" if props.filter == "all" else "#e5e7eb"),
+                "color": ("#ffffff" if props.filter == "all" else "#000000"),
+                "border": "none",
+                "borderRadius": "4px",
+                "cursor": "pointer"
+            }}>
+                All
+            </button>
+            <button style={{
+                "padding": "6px 12px",
+                "background": ("#3b82f6" if props.filter == "active" else "#e5e7eb"),
+                "color": ("#ffffff" if props.filter == "active" else "#000000"),
+                "border": "none",
+                "borderRadius": "4px",
+                "cursor": "pointer"
+            }}>
+                Active
+            </button>
+            <button style={{
+                "padding": "6px 12px",
+                "background": ("#3b82f6" if props.filter == "completed" else "#e5e7eb"),
+                "color": ("#ffffff" if props.filter == "completed" else "#000000"),
+                "border": "none",
+                "borderRadius": "4px",
+                "cursor": "pointer"
+            }}>
+                Completed
+            </button>
+        </div>;
+    }
+
+    def app() -> any {
+        let [todos, setTodos] = useState([
+            {"text": "Learn Jac basics", "done": false},
+            {"text": "Build a todo app", "done": true}
+        ]);
+        let [filter, setFilter] = useState("all");
+
+        return <div style={{
+            "maxWidth": "600px",
+            "margin": "20px auto",
+            "padding": "20px"
+        }}>
+            <h1>My Todos</h1>
+            <TodoFilters filter={filter} />
+
+            # Show current filter
+            <p>Current filter: {filter}</p>
+        </div>;
+    }
+}
 ```
+
+**Notice:** The filter buttons now highlight based on the current filter! But clicking them doesn't work yet (we'll add that in Step 6).
+
+---
+
+**⏭️ Want to skip the theory?** Jump to [Step 6: Event Handlers](./step-06-events.md)
+
+---
+
+## 💡 Part 2: Understanding the Concepts
+
+### What is State?
+
+**State** is data that can change over time and causes your UI to update when it changes.
 
 **Python analogy:**
 
 ```python
-# Python list comprehension
-[f"<div>{todo['text']}</div>" for todo in todos]
+# Python class with state
+class TodoApp:
+    def __init__(self):
+        self.todos = []  # This is state
 
-# Jac .map()
-todos.map(lambda todo: any -> any {
-    return <div>{todo["text"]}</div>;
-})
+    def add_todo(self, text):
+        self.todos.append(text)  # Changing state
+        self.render()  # Manually update UI
 ```
 
-**Important**: Always add a `key` prop when mapping:
-- `key={todo["id"]}` helps React track which items changed
-- Use a unique identifier (like an ID)
+```jac
+# Jac with React
+def app() -> any {
+    let [todos, setTodos] = useState([]);  # This is state
 
-## Adding Todos
+    # When you call setTodos(), React automatically updates the UI!
+}
+```
 
-Let's make the "Add" button work:
+### The `useState` Hook
+
+```jac
+let [value, setValue] = useState(initialValue);
+```
+
+**Returns a pair:**
+1. `value` - Current state value (read-only, don't modify directly!)
+2. `setValue` - Function to update state
+
+**Examples:**
+
+```jac
+# String state
+let [name, setName] = useState("Alice");
+
+# Number state
+let [count, setCount] = useState(0);
+
+# Boolean state
+let [isOpen, setIsOpen] = useState(false);
+
+# Array state
+let [todos, setTodos] = useState([]);
+
+# Object state
+let [user, setUser] = useState({"name": "Alice", "age": 30});
+```
+
+### Why Use `useState`?
+
+**Without useState (doesn't work):**
+
+```jac
+def app() -> any {
+    let count = 0;  # Normal variable
+
+    # Button click would change count, but UI won't update!
+    return <button>Count: {count}</button>;
+}
+```
+
+**With useState (works!):**
+
+```jac
+def app() -> any {
+    let [count, setCount] = useState(0);  # State
+
+    # When setCount is called, React re-renders the component!
+    return <button>Count: {count}</button>;
+}
+```
+
+### Multiple State Variables
+
+You can have multiple pieces of state:
+
+```jac
+def app() -> any {
+    let [todos, setTodos] = useState([]);
+    let [input, setInput] = useState("");
+    let [filter, setFilter] = useState("all");
+    let [loading, setLoading] = useState(false);
+
+    # Use them independently
+}
+```
+
+Each state variable is independent and has its own update function.
+
+### State Naming Convention
+
+Follow this pattern:
+
+```jac
+# Pattern: [thing, setThing]
+let [count, setCount] = useState(0);
+let [name, setName] = useState("");
+let [isOpen, setIsOpen] = useState(false);
+let [todos, setTodos] = useState([]);
+
+# ❌ Bad names
+let [count, updateCount] = useState(0);  # Inconsistent
+let [x, y] = useState(0);                 # Not descriptive
+```
+
+### The `.map()` Method for Lists
+
+To render a list of items, use `.map()`:
+
+```jac
+{todos.map(lambda todo: any -> any {
+    return <TodoItem text={todo.text} done={todo.done} />;
+})}
+```
+
+**How it works:**
+
+```python
+# Python equivalent
+todos = [{"text": "Task 1"}, {"text": "Task 2"}]
+items = [TodoItem(text=todo["text"]) for todo in todos]
+```
+
+**Breakdown:**
+- `todos.map(...)` - Loop through each todo
+- `lambda todo: any -> any { ... }` - Function that runs for each item
+- `return <TodoItem ... />` - Returns a component for each item
+
+### State is Immutable
+
+**Never modify state directly:**
+
+```jac
+# ❌ WRONG - Never do this!
+let [todos, setTodos] = useState([]);
+todos.push(newTodo);  # DON'T modify directly!
+
+# ✅ CORRECT - Create new array
+let [todos, setTodos] = useState([]);
+setTodos(todos.concat([newTodo]));  # Create new array
+```
+
+Why? Because React needs to detect changes to update the UI. If you modify directly, React won't know it changed!
+
+### Passing State to Children
+
+State flows down through props:
+
+```jac
+def Parent() -> any {
+    let [name, setName] = useState("Alice");
+
+    # Pass state down as props
+    return <Child name={name} />;
+}
+
+def Child(props: any) -> any {
+    # Access state via props
+    return <div>Hello, {props.name}!</div>;
+}
+```
+
+The child receives state but **cannot modify** the parent's state directly (we'll learn how to do that with callbacks in the next step).
+
+---
+
+## ✅ What You've Learned
+
+- ✅ What state is and why we need it
+- ✅ How to use the `useState` hook
+- ✅ Creating multiple state variables
+- ✅ State naming conventions
+- ✅ Using `.map()` to render lists
+- ✅ State is immutable (don't modify directly)
+- ✅ Passing state to child components via props
+
+---
+
+## 🐛 Common Issues
+
+### Issue: UI not updating when state changes
+
+**Check:** Are you modifying state directly?
+
+```jac
+# ❌ Wrong
+todos.push(newTodo);
+
+# ✅ Correct
+setTodos(todos.concat([newTodo]));
+```
+
+### Issue: "todos is not iterable"
+
+**Check:** Did you initialize state as an array?
+
+```jac
+# ❌ Wrong
+let [todos, setTodos] = useState();  # undefined
+
+# ✅ Correct
+let [todos, setTodos] = useState([]);  # empty array
+```
+
+### Issue: useState is not defined
+
+**Check:** Did you import it?
 
 ```jac
 cl import from react {useState}
-
-cl {
-    def app() -> any {
-        let [todos, setTodos] = useState([]);
-        let [inputValue, setInputValue] = useState("");
-
-        # Function to add a new todo
-        def handleAddTodo() -> None {
-            if inputValue.trim() == "" {
-                return;  # Don't add empty todos
-            }
-
-            # Create new todo object
-            let newTodo = {
-                "id": todos.length + 1,  # Simple ID generation
-                "text": inputValue,
-                "done": False
-            };
-
-            # Add to todos list
-            let updatedTodos = todos.concat([newTodo]);
-            setTodos(updatedTodos);
-
-            # Clear input field
-            setInputValue("");
-        }
-
-        return <div style={{"maxWidth": "720px", "margin": "0 auto", "padding": "24px"}}>
-            <h1>My Todos</h1>
-
-            {/* Input section */}
-            <div style={{"display": "flex", "gap": "8px", "marginBottom": "16px"}}>
-                <input
-                    type="text"
-                    value={inputValue}
-                    onChange={lambda e: any -> None {
-                        setInputValue(e.target.value);
-                    }}
-                    onKeyPress={lambda e: any -> None {
-                        if e.key == "Enter" {
-                            handleAddTodo();
-                        }
-                    }}
-                    placeholder="What needs to be done?"
-                    style={{"flex": "1", "padding": "10px", "fontSize": "16px"}}
-                />
-                <button
-                    onClick={lambda -> None { handleAddTodo(); }}
-                    style={{"padding": "10px 20px", "backgroundColor": "#3b82f6", "color": "white", "border": "none", "borderRadius": "6px", "cursor": "pointer"}}
-                >
-                    Add
-                </button>
-            </div>
-
-            {/* Display todos */}
-            <div>
-                {todos.map(lambda todo: any -> any {
-                    return <div key={todo["id"]} style={{
-                        "display": "flex",
-                        "gap": "10px",
-                        "padding": "12px",
-                        "backgroundColor": "#ffffff",
-                        "marginBottom": "8px",
-                        "borderRadius": "8px",
-                        "border": "1px solid #e5e7eb"
-                    }}>
-                        <input type="checkbox" checked={todo["done"]} />
-                        <span style={{"flex": "1"}}>{todo["text"]}</span>
-                        <button style={{"padding": "4px 12px", "backgroundColor": "#ef4444", "color": "white", "border": "none", "borderRadius": "4px", "cursor": "pointer"}}>
-                            Delete
-                        </button>
-                    </div>;
-                })}
-            </div>
-
-            {/* Empty state */}
-            {(todos.length == 0) ? (
-                <div style={{"textAlign": "center", "padding": "40px", "color": "#9ca3af"}}>
-                    No todos yet. Add one above!
-                </div>
-            ) : <span></span>}
-        </div>;
-    }
-}
 ```
 
-### Key Concepts:
+---
 
-1. **Helper function**: `def handleAddTodo()`
-   - Defined inside the component
-   - Has access to state variables
+## 🎯 Quick Exercise
 
-2. **Updating arrays**:
-   - ❌ Don't mutate: `todos.push(newTodo)`
-   - ✅ Create new array: `todos.concat([newTodo])`
-
-3. **Event handlers**:
-   - `onClick={lambda -> None { handleAddTodo(); }}`
-   - `onKeyPress` detects "Enter" key
-
-## Toggling Todo Completion
-
-Let's make checkboxes work:
+Try adding more initial todos:
 
 ```jac
-def handleToggleTodo(id: int) -> None {
-    let updatedTodos = todos.map(lambda todo: any -> any {
-        if todo["id"] == id {
-            return {
-                "id": todo["id"],
-                "text": todo["text"],
-                "done": not todo["done"]  # Toggle!
-            };
-        }
-        return todo;
-    });
-    setTodos(updatedTodos);
-}
-
-# In your JSX:
-<input
-    type="checkbox"
-    checked={todo["done"]}
-    onChange={lambda -> None { handleToggleTodo(todo["id"]); }}
-/>
+let [todos, setTodos] = useState([
+    {"text": "Learn Jac basics", "done": true},
+    {"text": "Build a todo app", "done": false},
+    {"text": "Deploy to production", "done": false},
+    {"text": "Celebrate!", "done": false}
+]);
 ```
 
-## Deleting Todos
+And display the count of completed todos:
 
 ```jac
-def handleDeleteTodo(id: int) -> None {
-    let remaining = todos.filter(lambda todo: any -> bool {
-        return todo["id"] != id;
-    });
-    setTodos(remaining);
-}
+let completedCount = todos.filter(lambda todo: any -> bool {
+    return todo.done;
+}).length;
 
-# In your JSX:
-<button onClick={lambda -> None { handleDeleteTodo(todo["id"]); }}>
-    Delete
-</button>
+return <div>
+    <p>{completedCount} completed out of {todos.length}</p>
+</div>;
 ```
 
-## Complete Working Example
+---
 
-Here's the actual state management from the todo app:
+## ➡️ Next Step
 
-```jac
-cl import from react {useState, useEffect}
-cl import from "@jac-client/utils" {jacSpawn}
+Great! You now have state in your app, but you can't change it yet. Clicking buttons does nothing!
 
-cl {
-    def TodosPage() -> any {
-        let [todos, setTodos] = useState([]);
-        let [input, setInput] = useState("");
-        let [filter, setFilter] = useState("all");
+In the next step, we'll add **event handlers** to make your app fully interactive!
 
-        # Load todos on mount
-        useEffect(lambda -> None {
-            async def loadTodos() -> None {
-                result = await jacSpawn("read_todos", "", {});
-                setTodos(result.reports if result.reports else []);
-            }
-            loadTodos();
-        }, []);
-
-        # Add todo
-        async def addTodo() -> None {
-            if not input.trim() { return; }
-            result = await jacSpawn("create_todo", "", {"text": input.trim()});
-            setTodos(todos.concat([result.reports[0][0]]));
-            setInput("");
-        }
-
-        # Toggle todo
-        async def toggleTodo(id: any) -> None {
-            await jacSpawn("toggle_todo", id, {});
-            setTodos(todos.map(lambda todo: any -> any {
-                if todo._jac_id == id {
-                    return {
-                        "_jac_id": todo._jac_id,
-                        "text": todo.text,
-                        "done": not todo.done
-                    };
-                }
-                return todo;
-            }));
-        }
-
-        # Delete todo
-        async def deleteTodo(id: any) -> None {
-            await jacSpawn("delete_todo", id, {});
-            setTodos(todos.filter(lambda todo: any -> bool { return todo._jac_id != id; }));
-        }
-
-        # Filter todos
-        def getFilteredTodos() -> list {
-            if filter == "active" {
-                return todos.filter(lambda todo: any -> bool { return not todo.done; });
-            } elif filter == "completed" {
-                return todos.filter(lambda todo: any -> bool { return todo.done; });
-            }
-            return todos;
-        }
-
-        filteredTodos = getFilteredTodos();
-        activeCount = todos.filter(lambda todo: any -> bool { return not todo.done; }).length;
-
-        return <div style={{"maxWidth": "600px", "margin": "20px auto", "padding": "20px"}}>
-            <h1>My Todos</h1>
-
-            {/* Input section */}
-            <div style={{"display": "flex", "gap": "8px", "marginBottom": "16px"}}>
-                <input
-                    type="text"
-                    value={input}
-                    onChange={lambda e: any -> None { setInput(e.target.value); }}
-                    onKeyPress={lambda e: any -> None {
-                        if e.key == "Enter" { addTodo(); }
-                    }}
-                    placeholder="What needs to be done?"
-                    style={{"flex": "1", "padding": "8px"}}
-                />
-                <button onClick={addTodo}>Add</button>
-            </div>
-
-            {/* Filter buttons */}
-            <div style={{"display": "flex", "gap": "8px", "marginBottom": "16px"}}>
-                <button onClick={lambda -> None { setFilter("all"); }}>All</button>
-                <button onClick={lambda -> None { setFilter("active"); }}>Active</button>
-                <button onClick={lambda -> None { setFilter("completed"); }}>Completed</button>
-            </div>
-
-            {/* Todo list */}
-            <div>
-                {filteredTodos.map(lambda todo: any -> any {
-                    return <div key={todo._jac_id}>
-                        <input
-                            type="checkbox"
-                            checked={todo.done}
-                            onChange={lambda -> None { toggleTodo(todo._jac_id); }}
-                        />
-                        <span>{todo.text}</span>
-                        <button onClick={lambda -> None { deleteTodo(todo._jac_id); }}>
-                            Delete
-                        </button>
-                    </div>;
-                })}
-            </div>
-
-            {/* Stats */}
-            {(<div>{activeCount} items left</div>) if todos.length > 0 else None}
-        </div>;
-    }
-}
-```
-
-**Key state patterns:**
-- Three pieces of state: `todos`, `input`, `filter`
-- All mutations create new arrays (no direct mutation)
-- Filter is local-only (doesn't affect backend)
-- Backend calls are async and update state on completion
-
-## State Update Rules
-
-**Golden rules for updating state:**
-
-1. **Never mutate state directly**:
-   ```jac
-   # ❌ Wrong
-   todos.push(newTodo);
-   setTodos(todos);
-
-   # ✅ Correct
-   setTodos(todos.concat([newTodo]));
-   ```
-
-2. **Always create new objects/arrays**:
-   - Use `.concat()` for adding to arrays
-   - Use `.map()` for updating items
-   - Use `.filter()` for removing items
-
-3. **State updates are asynchronous**:
-   - Don't rely on state value immediately after calling setter
-   - React batches updates for performance
-
-## Common Issues
-
-### Issue: Typing doesn't update input
-**Check**: Did you add both `value` and `onChange`?
-
-### Issue: Button click doesn't work
-**Check**: Did you wrap your function in a lambda?
-- ✅ `onClick={lambda -> None { handleAddTodo(); }}`
-- ❌ `onClick={handleAddTodo}` (might work in some cases)
-
-### Issue: List doesn't update
-**Check**: Are you creating a new array or mutating the old one?
-
-## What You Learned
-
-- ✅ What state is and why we need it
-- ✅ How to use `useState` hook
-- ✅ How to handle user input
-- ✅ How to update arrays (add, modify, delete)
-- ✅ Event handlers (`onClick`, `onChange`, `onKeyPress`)
-- ✅ Mapping over arrays to render lists
-- ✅ Conditional rendering with ternary operator
-
-## Next Step
-
-Your app now works locally, but the data isn't saved anywhere! When you refresh, everything is lost. In the next step, we'll learn about `useEffect` to load data when the app starts.
-
-👉 **[Continue to Step 6: Side Effects with useEffect](./step-06-effects.md)**
-
-
-
+👉 **[Continue to Step 6: Event Handlers](./step-06-events.md)**

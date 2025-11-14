@@ -37,7 +37,6 @@ cl {
         useEffect(lambda -> None {
             async def loadTodos() -> None {
                 todos = root spawn read_todos();
-                console.log(todos);
                 setTodos(todos.reports);
             }
             loadTodos();
@@ -51,15 +50,15 @@ cl {
                 "text": inputValue.trim(),
                 "done": False
             };
-            root spawn create_todo(text=inputValue.trim());
-            newTodos = todos.concat([newTodo]);
+            response = root spawn create_todo(text=inputValue.trim());
+            newTodos = todos.concat([response.reports[0][0]]);
             setTodos(newTodos);
             setInputValue("");
         }
 
         # Toggle todo completion status
         async def toggleTodo(id: any) -> None {
-
+            console.log("toggleTodo", id);
             id spawn toggle_todo();
             setTodos(todos.map(lambda todo: any -> any {
                 if todo._jac_id == id {

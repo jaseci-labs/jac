@@ -1,24 +1,32 @@
 # Step 1: Project Setup
 
-In this first step, you'll create a new Jac application from scratch and understand the basic project structure.
+> **💡 Quick Tip:** Each step has two parts. **Part 1** shows you what to build. **Part 2** explains why it works. Want to just build? Skip all Part 2 sections!
 
-## What is a Jac App?
+In this first step, you'll create your Jac project and understand the basic file structure.
 
-Think of a Jac app like a Python package, but it includes:
-- **Backend logic** (similar to Flask/FastAPI routes)
-- **Frontend UI** (the visual interface)
-- **Data structures** (nodes and edges, like a database schema)
-- All in one `.jac` file!
+---
 
-## Creating Your Project
+## 🏗️ Part 1: Building the App
 
-Let's create a new Jac application called "todo-app":
+### Step 1.1: Create Your Project
+
+Open your terminal and run:
 
 ```bash
 jac create_jac_app todo-app
 ```
 
-This command creates a new directory with everything you need:
+This creates a new directory called `todo-app` with everything you need.
+
+### Step 1.2: Navigate to Your Project
+
+```bash
+cd todo-app
+```
+
+### Step 1.3: Understand the Structure
+
+Your project now has these files:
 
 ```
 todo-app/
@@ -28,61 +36,26 @@ todo-app/
 └── README.md         # Basic instructions
 ```
 
-Navigate into your new project:
+**Important**: We'll write ALL our code in `app.jac` - that's it!
 
-```bash
-cd todo-app
-```
+### Step 1.4: Create Your First App
 
-## Understanding `app.jac`
-
-Open `app.jac` in your code editor. You'll see a basic template. Let's understand what's there:
-
-```jac
-# This is app.jac - your entire application will live here!
-```
-
-**Key concept**: Unlike traditional web development where you have separate files for:
-- Backend code (Python/Node.js)
-- Frontend code (JavaScript/React)
-- Database models (SQL/ORM)
-
-In Jac, **everything lives in one file** (or a few files if your app grows large).
-
-## The Entry Point: `def app()`
-
-Every Jac frontend application needs a main entry point. This is a special function called `app()`:
+Open `app.jac` in your code editor and replace everything with this:
 
 ```jac
 cl {
     def app() -> any {
         return <div>
             <h1>Hello, Jac!</h1>
+            <p>My first full-stack app</p>
         </div>;
     }
 }
 ```
 
-Let's break this down:
+### Step 1.5: Run Your App
 
-### `cl { ... }`
-- `cl` stands for "client"
-- Everything inside `cl { }` runs in the **browser** (frontend)
-- Think of it like a decorator in Python that says "this code runs on the client-side"
-
-### `def app() -> any`
-- This is your **main entry point** - like `if __name__ == "__main__":` in Python
-- It must be called `app` (by convention)
-- Returns `any` because it returns JSX (HTML-like syntax)
-
-### The `return <div>...</div>`
-- This looks like HTML, but it's **JSX** (JavaScript XML)
-- You can write HTML directly in your Jac code!
-- It gets compiled to efficient React code under the hood
-
-## Running Your App
-
-Let's see your app in action! In your terminal, run:
+In your terminal, run:
 
 ```bash
 jac serve app.jac
@@ -97,76 +70,191 @@ INFO:     Application startup complete.
 INFO:     Uvicorn running on http://127.0.0.1:8000
 ```
 
-This starts a **single unified server** on port 8000 that:
-1. Exposes your walkers as API endpoints (backend)
-2. Serves your frontend application
-3. Auto-refreshes when you save changes (Coming soon...)
+### Step 1.6: View in Browser
 
-Open your browser and go to: **http://localhost:8000/page/app**
+Open your browser and go to:
 
-You should see "Hello, Jac!" displayed!
+```
+http://localhost:8000/page/app
+```
 
-## Your First Edit
+You should see "Hello, Jac!" and "My first full-stack app" 🎉
 
-Let's make a small change to confirm everything works. Update your `app.jac`:
+---
+
+**⏭️ Want to skip the theory?** Jump to [Step 2: First Component](./step-02-components.md)
+
+---
+
+## 💡 Part 2: Understanding the Concepts
+
+### What is `cl { ... }`?
+
+`cl` stands for "client" - it means this code runs in the **browser** (frontend).
+
+```jac
+cl {
+    # Everything here runs on the client-side (browser)
+}
+```
+
+Think of it like this:
+- Code **inside** `cl { }` → Runs in the browser (frontend)
+- Code **outside** `cl { }` → Runs on the server (backend)
+
+### What is `def app() -> any`?
+
+This is your **main entry point** - the function that Jac calls first.
+
+```jac
+def app() -> any {
+    return <div>...</div>;
+}
+```
+
+**Requirements:**
+- Must be named `app` (by convention)
+- Must return JSX (HTML-like syntax)
+- Located inside `cl { }` block
+
+**Python analogy:**
+
+```python
+# Python
+if __name__ == "__main__":
+    run_app()
+
+# Jac
+def app() -> any {
+    # Start here
+}
+```
+
+### What is JSX?
+
+JSX lets you write HTML directly in your Jac code:
+
+```jac
+return <div>
+    <h1>This is HTML!</h1>
+    <p>But written in Jac code</p>
+</div>;
+```
+
+**Key rules:**
+1. Must have **one root element**
+   ```jac
+   # ✅ Correct
+   return <div><h1>Title</h1><p>Text</p></div>;
+
+   # ❌ Wrong (two root elements)
+   return <h1>Title</h1><p>Text</p>;
+   ```
+
+2. Self-closing tags need `/`
+   ```jac
+   <img src="photo.jpg" />    # ✅ Correct
+   <img src="photo.jpg">       # ❌ Wrong
+   ```
+
+3. Use `{}` to insert Jac code
+   ```jac
+   let name = "Alice";
+   return <h1>Hello, {name}!</h1>;  # Shows: Hello, Alice!
+   ```
+
+### How `jac serve` Works
+
+When you run `jac serve app.jac`:
+
+1. **Jac compiler** reads your `.jac` file
+2. **Frontend code** (inside `cl`) → Compiled to JavaScript
+3. **Backend code** (outside `cl`) → Stays as Python-like backend code
+4. **Single server** serves both on port 8000
+5. **Auto-reload** watches for file changes (coming soon...)
+
+It's like running a Flask/FastAPI server, but it ALSO compiles and serves your React frontend - all in one command!
+
+### File Organization
+
+For now, everything goes in `app.jac`. As your app grows, you can split into multiple files:
+
+```
+todo-app/
+├── app.jac           # Main app
+├── components.jac    # Reusable components
+└── walkers.jac       # Backend logic
+```
+
+But for this tutorial, we'll keep everything in one file for simplicity.
+
+---
+
+## ✅ What You've Learned
+
+- ✅ How to create a Jac project
+- ✅ Project structure basics
+- ✅ What `cl { }` means (client-side code)
+- ✅ The `def app()` entry point
+- ✅ JSX basics (HTML in code)
+- ✅ Running your app with `jac serve`
+
+---
+
+## 🐛 Common Issues
+
+### Issue: `jac: command not found`
+
+**Solution**: Install jac-client:
+```bash
+pip install jac-client
+```
+
+### Issue: Port 8000 already in use
+
+**Solution**: Use a different port:
+```bash
+jac serve app.jac --port 8080
+```
+Then visit `http://localhost:8080/page/app`
+
+### Issue: Blank page in browser
+
+**Check:**
+- Did you visit `/page/app` (not just `/`)?
+- Check terminal for errors
+- Make sure `app()` has a `return` statement
+
+### Issue: Changes not showing
+
+**Solution**:
+- Stop the server (Ctrl+C)
+- Restart: `jac serve app.jac`
+- Refresh browser
+
+---
+
+## 🎯 Quick Exercise
+
+Before moving on, try changing the text:
 
 ```jac
 cl {
     def app() -> any {
         return <div>
             <h1>My Todo App</h1>
-            <p>Building something awesome with Jac!</p>
+            <p>Built with Jac</p>
         </div>;
     }
 }
 ```
 
-Save the file, and your browser will automatically refresh with the new content. Magic! 🎉
+Save, refresh your browser, and see the changes!
 
-## Understanding the Development Workflow
+---
 
-Here's what happens when you run `jac serve app.jac`:
+## ➡️ Next Step
 
-1. **Jac compiler** reads your `.jac` file
-2. **Backend code** (walkers) → Converted to API endpoints
-3. **Frontend code** (`cl` blocks) → Compiled to JavaScript
-4. **Single server** serves both frontend AND backend on the same port
-5. **Auto-reload** watches for changes and refreshes (Coming soon...)
+Great! You have a running Jac app. Now let's learn about **components** - the building blocks of any UI.
 
-**Python analogy**: This is like running `uvicorn main:app --reload` for FastAPI, but it also compiles and serves your React frontend - all in one unified server!
-
-## Common Issues
-
-### Issue: Port 8000 already in use
-**Solution**: Kill the process using port 8000, or specify a different port:
-```bash
-jac serve app.jac --port 8080
-```
-
-### Issue: Module not found errors
-**Solution**: Make sure you're in the correct directory:
-```bash
-cd todo-app
-ls  # Should see app.jac
-```
-
-### Issue: Browser shows blank page
-**Solution**: Check the terminal for errors. Make sure your `app()` function has a `return` statement.
-
-## What You Learned
-
-- ✅ How to create a new Jac application
-- ✅ The basic structure of a Jac app
-- ✅ What `cl { }` means (client-side code)
-- ✅ The `def app()` entry point
-- ✅ How to run and see your app
-- ✅ JSX basics (HTML in your code)
-
-## Next Step
-
-Now that you have a running app, let's learn about **components** - reusable UI building blocks!
-
-👉 **[Continue to Step 2: Components Basics](./step-02-components.md)**
-
-
-
+👉 **[Continue to Step 2: First Component](./step-02-components.md)**

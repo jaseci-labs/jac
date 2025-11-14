@@ -1,218 +1,119 @@
 # Step 8: Backend with Walkers
 
-In this step, you'll learn about **walkers** - Jac's unique way of handling backend logic and data persistence.
+> **💡 Quick Tip:** Each step has two parts. **Part 1** shows you what to build. **Part 2** explains why it works. Want to just build? Skip all Part 2 sections!
 
-## What are Walkers?
+In this step, you'll add a **real backend** to your app using walkers - so your todos are stored on a server!
 
-In traditional web development, you write separate backend code:
+---
 
-```python
-# Python/Flask Backend (separate file)
-@app.route("/api/todos", methods=["GET"])
-def get_todos():
-    todos = db.query(Todo).all()
-    return jsonify(todos)
+## 🏗️ Part 1: Building the App
 
-@app.route("/api/todos", methods=["POST"])
-def create_todo():
-    data = request.json
-    todo = Todo(**data)
-    db.save(todo)
-    return jsonify(todo)
-```
+### Step 8.1: Define the Todo Node
 
-In Jac, **walkers** are special functions that:
-- Run on the **server** (backend)
-- Can traverse your data graph (nodes and edges)
-- Automatically become API endpoints
-- Can be called from your frontend
-
-**Think of walkers as:**
-- Python: "Functions that run on the backend"
-- FastAPI: "Automatically created API endpoints"
-- Database queries: "Functions that fetch/modify data"
-
-## Data Model: Nodes
-
-First, we need to define our data structure using **nodes**:
+First, let's define our data structure. Add this **OUTSIDE** the `cl { }` block (at the top of your file):
 
 ```jac
-# Node is like a Python class or database table
-node Todo {
-    has text: str;
-    has done: bool = False;
-}
-```
-
-**Python analogy:**
-
-```python
-# Python class
-class Todo:
-    def __init__(self, text, done=False):
-        self.text = text
-        self.done = done
-
-# SQL Table
-CREATE TABLE todos (
-    id INTEGER PRIMARY KEY,
-    text TEXT NOT NULL,
-    done BOOLEAN DEFAULT FALSE
-);
-```
-
-## Your First Walker: Reading Todos
-
-Let's create a walker that fetches all todos:
-
-```jac
-# Data model
+# Backend - Data Model
 node Todo {
     has text: str;
     has done: bool = False;
 }
 
-# Walker to read todos
-walker read_todos {
-    # Specs define if authentication is required
-    class __specs__ {
-        has auth: bool = True;
-    }
+# Backend - We'll add walkers here soon
 
-    # Entry point: runs when walker starts at root
-    can read with `root entry {
-        # Visit all Todo nodes connected to root
-        visit [-->(`?Todo)];
-    }
+cl import from react {useState, useEffect}
 
-    # Runs when walker finishes
-    can report_todos with exit {
-        # Report all todos back to client
-        report here;
-    }
+cl {
+    # ... your frontend code
 }
 ```
 
-### Breaking It Down:
+### Step 8.2: Create Your First Walker - Read Todos
 
-1. **`walker read_todos`** - Declares a walker (like a function)
-
-2. **`class __specs__`** - Configuration
-   - `has auth: bool = True` - Requires user to be logged in
-
-3. **`can read with `root entry`** - Entry point
-   - Runs when walker starts at the root node
-   - `` `root `` is a special keyword for the root of your data graph
-
-4. **`visit [-->(`?Todo)]`** - Graph traversal
-   - `-->` means "follow edges going out"
-   - `` `?Todo `` means "find nodes of type Todo"
-   - Think: "Visit all Todo nodes connected to root"
-
-5. **`can report_todos with exit`** - Exit handler
-   - Runs when walker is done
-   - `report here` sends the current node back to frontend
-
-## Walker: Creating Todos
-
-Let's create a walker that adds new todos:
+Add these walkers **AFTER** the node definition but **BEFORE** the `cl {` block:
 
 ```jac
-walker create_todo {
-    # Parameters that frontend passes
-    has text: str;
-
-    class __specs__ {
-        has auth: bool = True;
-    }
-
-    can create with `root entry {
-        # Create new Todo node and connect it to root
-        new_todo = here ++> Todo(text=self.text);
-
-        # Report the new todo back to frontend
-        report new_todo;
-    }
-}
-```
-
-### Key Concepts:
-
-- **`has text: str`** - Walker parameter (passed from frontend)
-- **`here`** - Current node (in this case, root)
-- **`++>`** - Create edge operator
-  - `here ++> Todo(...)` means "create Todo and connect it to current node"
-- **`report new_todo`** - Send data back to frontend
-
-**Python analogy:**
-
-```python
-def create_todo(text):
-    new_todo = Todo(text=text, done=False)
-    db.save(new_todo)
-    return new_todo
-```
-
-## Walker: Toggling Todo Completion
-
-```jac
-walker toggle_todo {
-    class __specs__ {
-        has auth: bool = True;
-    }
-
-    can toggle with Todo entry {
-        # Toggle the done status
-        here.done = not here.done;
-
-        # Report the updated todo
-        report here;
-    }
-}
-```
-
-### What's Different:
-
-- **`can toggle with Todo entry`** - Runs when walker reaches a `Todo` node
-- **`here.done`** - Access properties of current node
-- This walker is called with a specific Todo node ID (not root)
-
-## Complete Backend Example
-
-Here's a complete todo backend with all CRUD operations:
-
-```jac
-# ===== DATA MODEL =====
+# Backend - Data Model
 node Todo {
     has text: str;
     has done: bool = False;
 }
 
-# ===== CREATE =====
-walker create_todo {
-    has text: str;
-
-    can create with `root entry {
-        # Create new todo connected to root
-        new_todo = here ++> Todo(text=self.text);
-        report new_todo;
-    }
-}
-
-# ===== READ =====
+# Backend - Walkers
 walker read_todos {
     can read with `root entry {
-        # Visit all todos
         visit [-->(`?Todo)];
     }
 
     can report_todos with Todo entry {
-        # Report each todo we visited
         report here;
     }
 }
 
-# ===== UPDATE (Toggle) =====
+cl import from react {useState, useEffect}
+
+cl {
+    # ... your frontend code
+}
+```
+
+### Step 8.3: Create Walker for Adding Todos
+
+Add this walker:
+
+```jac
+walker create_todo {
+    has text: str;
+
+    can create with `root entry {
+        new_todo = here ++> Todo(text=self.text);
+        report new_todo;
+    }
+}
+```
+
+### Step 8.4: Create Walkers for Toggle and Delete
+
+Add these walkers:
+
+```jac
+walker toggle_todo {
+    can toggle with Todo entry {
+        here.done = not here.done;
+        report here;
+    }
+}
+```
+
+Your complete backend should now look like this:
+
+```jac
+# Backend - Data Model
+node Todo {
+    has text: str;
+    has done: bool = False;
+}
+
+# Backend - Walkers
+walker create_todo {
+    has text: str;
+
+    can create with `root entry {
+        new_todo = here ++> Todo(text=self.text);
+        report new_todo;
+    }
+}
+
+walker read_todos {
+    can read with `root entry {
+        visit [-->(`?Todo)];
+    }
+
+    can report_todos with Todo entry {
+        report here;
+    }
+}
+
 walker toggle_todo {
     can toggle with Todo entry {
         here.done = not here.done;
@@ -220,191 +121,185 @@ walker toggle_todo {
     }
 }
 
-# ===== DELETE =====
-walker delete_todo {
-    can delete with Todo entry {
-        # Destroy the todo node
-        here.destroy();
-        report {"success": True};
-    }
-}
-```
-
-## Calling Walkers from Frontend
-
-Now let's connect the frontend to these walkers:
-
-```jac
+# Frontend (keep all your existing code)
 cl import from react {useState, useEffect}
-cl import from "@jac-client/utils" {jacSpawn}
 
 cl {
-    def DashboardPage() -> any {
-        let [todos, setTodos] = useState([]);
-        let [inputValue, setInputValue] = useState("");
+    # ... all your frontend components
+}
+```
 
-        # Load todos when component mounts
-        useEffect(lambda -> None {
-            async def loadTodos() -> None {
-                try {
-                    # Call read_todos walker
-                    let response = await jacSpawn("read_todos", "", {});
+### Step 8.5: Call Walkers from Frontend - Load Todos
 
-                    # Get todos from response
-                    let items = response.reports || [];
-                    setTodos(items);
-                } except Exception as err {
-                    console.error("Error loading todos:", err);
-                }
-            }
+Update your `useEffect` to load todos from the backend:
 
-            loadTodos();
-        }, []);
+```jac
+def app() -> any {
+    let [todos, setTodos] = useState([]);
+    let [input, setInput] = useState("");
+    let [filter, setFilter] = useState("all");
 
-        # Add new todo
-        async def handleAddTodo() -> None {
-            if inputValue.trim() == "" {
-                return;
-            }
-
-            try {
-                # Call create_todo walker with parameters
-                let response = await jacSpawn("create_todo", "", {
-                    "text": inputValue
-                });
-
-                # Get the new todo from response
-                let newTodo = response.reports[0];
-
-                # Update local state
-                setTodos(todos.concat([newTodo]));
-                setInputValue("");
-            } except Exception as err {
-                console.error("Error creating todo:", err);
-            }
+    # Load todos from backend when app mounts
+    useEffect(lambda -> None {
+        async def loadTodos() -> None {
+            result = root spawn read_todos();
+            setTodos(result.reports if result.reports else []);
         }
+        loadTodos();
+    }, []);
 
-        # Toggle todo completion
-        async def handleToggle(todoId: any) -> None {
-            try {
-                # Call toggle_todo walker on specific todo node
-                await jacSpawn("toggle_todo", todoId, {});
+    # ... rest of your code
+}
+```
 
-                # Update local state
-                let updated = todos.map(lambda todo: any -> any {
-                    if todo._jac_id == todoId {
-                        return {
-                            "_jac_id": todo._jac_id,
-                            "text": todo.text,
-                            "done": not todo.done
-                        };
-                    }
-                    return todo;
-                });
-                setTodos(updated);
-            } except Exception as err {
-                console.error("Error toggling todo:", err);
-            }
-        }
+### Step 8.6: Call Walkers from Frontend - Add Todo
 
-        return <div style={{"maxWidth": "720px", "margin": "20px auto", "padding": "20px"}}>
-            <h1>My Todos</h1>
+Update your `addTodo` function:
 
-            {/* Input */}
-            <div style={{"display": "flex", "gap": "8px", "marginBottom": "16px"}}>
-                <input
-                    type="text"
-                    value={inputValue}
-                    onChange={lambda e: any -> None { setInputValue(e.target.value); }}
-                    onKeyPress={lambda e: any -> None {
-                        if e.key == "Enter" { handleAddTodo(); }
-                    }}
-                    placeholder="What needs to be done?"
-                    style={{"flex": "1", "padding": "12px"}}
-                />
-                <button onClick={lambda -> None { handleAddTodo(); }}>
-                    Add
-                </button>
-            </div>
-
-            {/* Todo List */}
-            <div>
-                {todos.map(lambda todo: any -> any {
-                    return <div key={todo._jac_id} style={{
-                        "display": "flex",
-                        "gap": "12px",
-                        "padding": "12px",
-                        "backgroundColor": "#fff",
-                        "marginBottom": "8px",
-                        "borderRadius": "8px"
-                    }}>
-                        <input
-                            type="checkbox"
-                            checked={todo.done}
-                            onChange={lambda -> None { handleToggle(todo._jac_id); }}
-                        />
-                        <span style={{
-                            "flex": "1",
-                            "textDecoration": (("line-through" if todo.done else "none"))
-                        }}>
-                            {todo.text}
-                        </span>
-                    </div>;
-                })}
-            </div>
-        </div>;
+```jac
+# Add todo
+async def addTodo() -> None {
+    if not input.trim() {
+        return;
     }
 
-    def app() -> any {
-        return <DashboardPage />;
+    # Call backend walker
+    result = root spawn create_todo(text=input.trim());
+
+    # Add the new todo to local state
+    setTodos(todos.concat([result.reports[0][0]]));
+    setInput("");
+}
+```
+
+### Step 8.7: Call Walkers from Frontend - Toggle and Delete
+
+Update your toggle and delete functions:
+
+```jac
+# Toggle todo
+async def toggleTodo(id: any) -> None {
+    # Call backend walker
+    id spawn toggle_todo();
+
+    # Update local state
+    setTodos(todos.map(lambda todo: any -> any {
+        if todo._jac_id == id {
+            return {
+                "_jac_id": todo._jac_id,
+                "text": todo.text,
+                "done": not todo.done
+            };
+        }
+        return todo;
+    }));
+}
+
+# Delete todo
+async def deleteTodo(id: any) -> None {
+    # Call backend walker
+    #id spawn delete_todo();
+
+    # Update local state
+    setTodos(todos.filter(lambda todo: any -> bool {
+        return todo._jac_id != id;
+    }));
+}
+```
+
+### Step 8.8: Update TodoItem to Use _jac_id
+
+When rendering todos, use `_jac_id` instead of custom id:
+
+```jac
+# In your app() function
+<div>
+    {filteredTodos.map(lambda todo: any -> any {
+        return <TodoItem
+            key={todo._jac_id}
+            id={todo._jac_id}
+            text={todo.text}
+            done={todo.done}
+            toggleTodo={toggleTodo}
+            deleteTodo={deleteTodo}
+        />;
+    })}
+</div>
+```
+
+**Try it!**
+1. Add some todos
+2. Check/uncheck them
+3. Delete some
+4. **Refresh the page** - your todos persist!  🎉
+
+---
+
+**⏭️ Want to skip the theory?** Jump to [Step 9: Authentication](./step-09-authentication.md)
+
+---
+
+## 💡 Part 2: Understanding the Concepts
+
+### What Are Walkers?
+
+Walkers are **backend functions** that:
+- Run on the **server** (not in the browser)
+- Can traverse your data graph
+- Automatically become API endpoints
+- Are called from your frontend
+
+**Traditional way (Flask):**
+
+```python
+# Backend - separate file
+@app.route("/api/todos", methods=["GET"])
+def get_todos():
+    todos = db.query(Todo).all()
+    return jsonify(todos)
+```
+
+**Jac way:**
+
+```jac
+# Backend - same file!
+walker read_todos {
+    can read with `root entry {
+        visit [-->(`?Todo)];
+    }
+    can report_todos with Todo entry {
+        report here;
     }
 }
 ```
 
-### Understanding `jacSpawn`:
+No routes, no manual API setup - it just works!
+### The `spawn` Syntax
+
+This is how you call walkers from your frontend:
 
 ```jac
-let response = await jacSpawn(walkerName, nodeId, parameters);
+# Syntax
+node_reference spawn walker_name(parameters);
+
+# Examples
+root spawn read_todos();                    # On root node
+root spawn create_todo(text="New todo");   # With parameters
+todoId spawn toggle_todo();                 # On specific node
 ```
 
-- **`walkerName`** - Name of walker to call (string)
-- **`nodeId`** - Which node to run walker on (empty string "" for root)
-- **`parameters`** - Object with walker parameters
-- **Returns** - Promise with response containing `reports`
+**What happens:**
+1. Request sent to server
+2. Walker runs on server
+3. Data stored in backend
+4. Response sent back to frontend
 
-**Examples:**
+### Graph Structure
 
-```jac
-# Call walker on root
-jacSpawn("read_todos", "", {})
-
-# Call walker with parameters
-jacSpawn("create_todo", "", {"text": "New todo"})
-
-# Call walker on specific node
-jacSpawn("toggle_todo", "node-id-123", {})
-```
-
-## Data Persistence
-
-Unlike localStorage, walkers automatically persist data! When you:
-
-1. Create a todo → Saved to backend database
-2. Refresh page → Data still there
-3. Login from different device → See your todos
-
-**No extra work needed!** Jac handles:
-- Database storage
-- User isolation (each user sees only their data)
-- Concurrent access
-- Data integrity
-
-## Graph Structure Visualization
-
-Your data looks like this:
+Your data is stored as a graph:
 
 ```
-     root (user's root node)
+     root (your root node)
       |
       +---> Todo("Learn Jac")
       |
@@ -415,178 +310,225 @@ Your data looks like this:
 
 When you call `read_todos`:
 1. Walker starts at `root`
-2. Follows edges (`-->`) to find `Todo` nodes
+2. Follows edges (`-->`) to find Todo nodes
 3. Reports each Todo found
 
-## Advanced: Filtering Todos
-
-Let's add a walker that returns only active todos:
+### Creating Connections (++>)
 
 ```jac
-walker read_active_todos {
-    class __specs__ {
-        has auth: bool = True;
-    }
-
-    can read with `root entry {
-        visit [-->(`?Todo)];
-    }
-
-    can filter with Todo entry {
-        # Only report if not done
-        if not here.done {
-            report here;
-        }
-    }
-}
+new_todo = here ++> Todo(text=self.text);
 ```
 
-## Advanced: Updating Todo Text
+**Breakdown:**
+- `here` - Current node (root)
+- `++>` - Create node and connect it
+- `Todo(...)` - New node to create
+- Result: New Todo connected to root
+
+### Visiting Nodes
 
 ```jac
-walker update_todo {
-    has new_text: str;
-
-    class __specs__ {
-        has auth: bool = True;
-    }
-
-    can update with Todo entry {
-        here.text = self.new_text;
-        report here;
-    }
-}
-
-# Frontend usage
-await jacSpawn("update_todo", todoId, {"new_text": "Updated text"});
+visit [-->(`?Todo)];
 ```
 
-## Error Handling in Walkers
+**Breakdown:**
+- `visit` - Traverse to these nodes
+- `-->` - Follow outgoing edges
+- `` `?Todo `` - Find nodes of type Todo
+- `[...]` - Array of nodes to visit
+
+### Reporting Data
 
 ```jac
+report new_todo;        # Report a node
+report here;            # Report current node
+report {"success": True};  # Report an object
+```
+
+`report` sends data back to the frontend. All reports are collected in the `result.reports` array.
+
+### The `_jac_id` Field
+
+Every node gets a unique `_jac_id`:
+
+```jac
+let todo = result.reports[0][0];
+console.log(todo._jac_id);  # "urn:uuid:abc123..."
+```
+
+Use this ID to reference specific nodes:
+
+```jac
+todoId spawn toggle_todo();  # Operates on that specific todo
+```
+
+### Backend vs Frontend Code
+
+```jac
+# Backend (runs on server)
+node Todo {
+    has text: str;
+}
+
 walker create_todo {
     has text: str;
-
-    class __specs__ {
-        has auth: bool = True;
-    }
-
     can create with `root entry {
-        # Validate input
-        if self.text.trim() == "" {
-            report {"error": "Text cannot be empty"};
-            return;
-        }
+        # This code runs on the server
+    }
+}
 
-        # Check if already exists
-        let existing = [-->(`?Todo)];
-        for todo in existing {
-            if todo.text == self.text {
-                report {"error": "Todo already exists"};
-                return;
-            }
-        }
-
-        # Create todo
-        new_todo = here ++> Todo(text=self.text);
-        report {"success": True, "todo": new_todo};
+# Frontend (runs in browser)
+cl {
+    def app() -> any {
+        # This code runs in the browser
+        let result = root spawn create_todo(text="Todo");
     }
 }
 ```
 
-## Common Walker Patterns
+### Data Persistence
 
-### Pattern 1: Count Items
+**localStorage (Step 7):**
+- Stored in browser only
+- Lost when you clear browser data
+- Not shared across devices
+
+**Walkers (Step 8):**
+- Stored on server
+- Persists forever
+- Accessible from any device
+- Per-user (each user sees only their data)
+
+### async/await for Walkers
+
+Walker calls are asynchronous:
 
 ```jac
-walker count_todos {
-    class __specs__ {
-        has auth: bool = True;
+# Must use async/await
+async def addTodo() -> None {
+    result = await root spawn create_todo(text="Todo");
+    # Wait for result before continuing
+}
+
+# Or use it in a lambda
+useEffect(lambda -> None {
+    async def loadTodos() -> None {
+        result = await root spawn read_todos();
+        setTodos(result.reports);
     }
+    loadTodos();
+}, []);
+```
 
-    can count with `root entry {
-        let total = [-->(`?Todo)].length;
-        let completed = [-->(`?Todo)].filter(
-            lambda t: any -> bool { return t.done; }
-        ).length;
+---
 
-        report {"total": total, "completed": completed};
+## ✅ What You've Learned
+
+- ✅ What walkers are (backend functions)
+- ✅ How to define data models with nodes
+- ✅ Creating walkers for CRUD operations
+- ✅ Calling walkers from frontend with `spawn`
+- ✅ Graph traversal (`-->`, `` `?Node ``)
+- ✅ Creating node connections (`++>`)
+- ✅ Reporting data to frontend
+- ✅ Using `_jac_id` for node references
+- ✅ Data persistence on the server
+
+---
+
+## 🐛 Common Issues
+
+### Issue: Walker not found
+
+**Check:** Is the walker defined OUTSIDE the `cl { }` block?
+
+```jac
+# ✅ Correct
+walker read_todos {
+    # ...
+}
+
+cl {
+    # frontend code
+}
+
+# ❌ Wrong
+cl {
+    walker read_todos {  # Can't define walkers in frontend!
+        # ...
     }
 }
 ```
 
-### Pattern 2: Bulk Operations
+### Issue: Empty reports array
+
+**Check:** Did you call `report` in your walker?
+
+```jac
+# ❌ Wrong - no report
+can read with `root entry {
+    visit [-->(`?Todo)];
+}
+
+# ✅ Correct - report in Todo entry
+can report_todos with Todo entry {
+    report here;
+}
+```
+
+### Issue: "Cannot read property '_jac_id'"
+
+**Check:** Is `result.reports` empty? Does the todo exist?
+
+```jac
+# Safe access
+if result.reports and result.reports.length > 0 {
+    let todo = result.reports[0][0];
+    console.log(todo._jac_id);
+}
+```
+
+### Issue: Data not persisting
+
+**Check:**
+- Are you calling the walker? `root spawn create_todo(...)`
+- Is the walker running successfully? Check browser console
+- Did you remove the localStorage code? (We don't need it anymore!)
+
+---
+
+## 🎯 Quick Exercise
+
+Try adding a walker to clear all completed todos:
 
 ```jac
 walker clear_completed {
-    class __specs__ {
-        has auth: bool = True;
-    }
-
     can clear with `root entry {
         visit [-->(`?Todo)];
     }
 
     can delete_if_done with Todo entry {
         if here.done {
-            del here;
+            here.destroy();
         }
     }
 }
-```
 
-### Pattern 3: Complex Queries
-
-```jac
-walker search_todos {
-    has query: str;
-
-    class __specs__ {
-        has auth: bool = True;
-    }
-
-    can search with `root entry {
-        visit [-->(`?Todo)];
-    }
-
-    can filter with Todo entry {
-        if self.query.lower() in here.text.lower() {
-            report here;
-        }
-    }
+# Call from frontend
+async def clearCompleted() -> None {
+    await root spawn clear_completed();
+    setTodos(todos.filter(lambda todo: any -> bool {
+        return not todo.done;
+    }));
 }
 ```
 
-## Common Issues
+---
 
-### Issue: Walker not found
-**Check**: Is the walker defined outside any `cl` block?
+## ➡️ Next Step
 
-### Issue: Permission denied
-**Check**: Does your walker have `auth: bool = True`? Are you logged in?
+Excellent! Your app now has a real backend. But there's a problem: **everyone can see everyone's todos!**
 
-### Issue: Empty reports array
-**Check**: Did you call `report` in your walker?
+In the next step, we'll add **authentication** to make your app secure and private!
 
-### Issue: Can't access node properties
-**Check**: Are you using `here.property` (not `self.property`)?
-
-## What You Learned
-
-- ✅ What walkers are (backend functions)
-- ✅ How to define data models with nodes
-- ✅ Creating walkers for CRUD operations
-- ✅ Calling walkers from frontend with `jacSpawn`
-- ✅ Graph traversal syntax (`-->`, `` `?Node ``)
-- ✅ Data persistence (automatic!)
-- ✅ Walker parameters and specs
-- ✅ Reporting data back to frontend
-
-## Next Step
-
-Now you can create and store todos! But anyone can see anyone's todos. Let's add **authentication** to make it secure!
-
-👉 **[Continue to Step 9: Adding Authentication](./step-09-authentication.md)**
-
-
-
+👉 **[Continue to Step 9: Authentication](./step-09-authentication.md)**
