@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "jac-streamlit"
-version = "0.0.4"
+version = "0.0.5"
 description = "Streamlit integration plugin for Jac programming language - enables running and visualizing Jac applications in Streamlit"
 authors = ["Jason Mars <jason@mars.ninja>"]
 license = "MIT"
