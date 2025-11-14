@@ -412,6 +412,13 @@ class TypeCheckerPassTests(TestCase):
         TypeCheckPass(ir_in=mod, prog=program)
         self.assertEqual(len(program.errors_had), 0)
 
+    def test_get_type_of_iife_expression(self) -> None:
+        path = self.fixture_abs_path("checker_iife_expression.jac")
+        program = JacProgram()
+        mod = program.compile(path)
+        TypeCheckPass(ir_in=mod, prog=program)
+        self.assertEqual(len(program.errors_had), 0)
+
     def test_param_arg_match(self) -> None:
         program = JacProgram()
         path = self.fixture_abs_path("checker_generics.jac")
