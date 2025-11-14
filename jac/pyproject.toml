@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "jaclang"
-version = "0.8.10"
+version = "0.9.0"
 description = "Jac is a unique and powerful programming language that runs on top of Python, offering an unprecedented level of intelligence and intuitive understanding."
 authors = ["Jason Mars <jason@mars.ninja>"]
 maintainers = ["Jason Mars <jason@mars.ninja>"]
