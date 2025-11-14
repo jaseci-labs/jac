@@ -80,7 +80,7 @@ walker update_profile(visit_profile) {
 walker get_profile(visit_profile) {}
 
 walker load_user_profiles {
-    
+
     can load_profiles with `root entry;
 
     can report_profiles with exit;
@@ -124,7 +124,7 @@ walker load_feed(visit_profile) {
 
     can report_feed with exit;
 
-}       
+}
 
 # Pages
 cl import from "@jac-client/utils" {Router, Routes, Route, Link, useNavigate, useLocation, useParams}
@@ -154,22 +154,22 @@ cl {
             <h1>Welcome to LittleX</h1>
             <div style={{"maxWidth": "400px", "margin": "0 auto"}}>
                 <h2>{titleText}</h2>
-                
+
                 <FormInput
                     type="text"
                     placeholder="Username"
                     value={username}
                     onChange={lambda e: any -> None { handleFieldChange("username", e.target.value); }}
                 />
-                
+
                 <FormInput
                     type="password"
                     placeholder="Password"
                     value={password}
                     onChange={lambda e: any -> None { handleFieldChange("password", e.target.value); }}
                 />
-                
-                {not isLogin and 
+
+                {not isLogin and
                     <FormInput
                         type="password"
                         placeholder="Confirm Password"
@@ -177,19 +177,19 @@ cl {
                         onChange={lambda e: any -> None { handleFieldChange("confirmPassword", e.target.value); }}
                     />
                 }
-                
+
                 <AuthButton
                     text={buttonText}
                     onClick={lambda -> None { handleAuth(); }}
                     variant="primary"
                 />
-                
+
                 <AuthButton
                     text={toggleText}
                     onClick={lambda -> None { toggleMode(); }}
                     variant="secondary"
                 />
-                
+
                 {message and <p style={{"marginTop": "10px", "color": message.includes("success") and "green" or "red"}}>{message}</p>}
             </div>
         </div>;
@@ -210,7 +210,7 @@ cl {
         loading = feed.loading;
         searchQuery = feed.searchQuery;
         isSearching = feed.isSearching;
-        
+
         handleFieldChange = feed.handleFieldChange;
         handleUIAction = feed.handleUIAction;
         handleLogout = feed.handleLogout;
@@ -241,7 +241,7 @@ cl {
                 handleClearSearch={handleClearSearch}
             />
 
-            <TweetComposer 
+            <TweetComposer
                 newTweetContent={newTweetContent}
                 handleFieldChange={handleFieldChange}
                 handleCreateTweet={handleCreateTweet}
@@ -252,7 +252,7 @@ cl {
                     <h3 style={{"color": "#14171a", "marginBottom": "15px"}}>Feed</h3>
                     {loading and <p style={{"textAlign": "center", "color": "#657786"}}>Loading...</p>}
                     {tweets.map(lambda tweet: any -> any {
-                        return <TweetCard 
+                        return <TweetCard
                             key={tweet.id}
                             tweet={tweet}
                             profile={profile}
@@ -274,7 +274,7 @@ cl {
                 </div>
 
                 # <div style={{"position": "sticky", "top": "20px", "height": "fit-content"}}>
-                #     <UsersList 
+                #     <UsersList
                 #         users={users}
                 #         currentProfile={profile}
                 #         handleFollowUser={handleFollowUser}
@@ -285,7 +285,7 @@ cl {
         </div>;
     }
 
-    
+
 
     # Profile Page Component
     def ProfilePage() -> any {
@@ -294,7 +294,7 @@ cl {
         users = profileState.users;
         newUsername = profileState.newUsername;
         message = profileState.message;
-        
+
         handleFieldChange = profileState.handleFieldChange;
         handleLogout = profileState.handleLogout;
         handleProfileUpdate = profileState.handleProfileUpdate;
@@ -307,15 +307,15 @@ cl {
 
         return <div style={{"maxWidth": "678px", "margin": "0 auto", "padding": "20px"}}>
             <Header profile={profile} handleLogout={handleLogout} button={{"name": "Feed", "url": "/feed"}} />
-            
+
             <div >
                 <div style={{"backgroundColor": "white", "border": "1px solid #e1e8ed", "borderRadius": "10px", "padding": "30px"}}>
                     <div style={{"borderBottom": "1px solid #f1f1f1", "paddingBottom": "15px", "marginBottom": "25px"}}>
                         <h1 style={{"margin": "0", "color": "#14171a"}}>Profile Settings</h1>
                     </div>
-                    
+
                     <ProfileHeader profile={profile} />
-                    
+
                     <div>
                         <h3 style={{"color": "#14171a", "marginBottom": "15px"}}>Update Username</h3>
                         <div>
@@ -331,11 +331,11 @@ cl {
                         />
                         </div>
                     </div>
-                    
+
                     <MessageAlert message={message} />
-                    
+
                     # <div style={{"marginTop": "30px"}}>
-                    #     <FollowersList 
+                    #     <FollowersList
                     #         followers={profile.followers}
                     #         users={users}
                     #         currentProfile={profile}
@@ -344,9 +344,9 @@ cl {
                     #     />
                     # </div>
                 </div>
-                
+
                 # <div>
-                #     <UsersList 
+                #     <UsersList
                 #         users={users}
                 #         currentProfile={profile}
                 #         handleFollowUser={handleFollowUser}

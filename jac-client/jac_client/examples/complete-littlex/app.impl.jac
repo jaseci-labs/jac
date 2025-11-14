@@ -97,7 +97,7 @@ impl Comment.delete {
 
 impl visit_profile.visit_profile {
         existing_profiles = [-->(`?Profile)];
-        
+
         visit [-->(`?Profile)] else {
             new_profile = here ++> Profile();
             grant(new_profile[0], level=ConnectPerm);
@@ -107,30 +107,30 @@ impl visit_profile.visit_profile {
 
 impl load_user_profiles.load_profiles {
         self.profiles: list = [];
-        
-        
+
+
         # Get current user's profile
         current_profiles = [root --> (`?Profile)];
         current_username = "";
         if current_profiles and len(current_profiles) > 0 {
             current_username = current_profiles[0].username;
         }
-        
-        # For now, let's try a different approach - add some mock users 
+
+        # For now, let's try a different approach - add some mock users
         # and see if we can find a way to access global profiles
         mock_users = [
             {"name": "john@gmail.com", "id": "mock_id_3"},
             {"name": "jane@gmail.com", "id": "mock_id_4"}
         ];
-        
-        
+
+
         # Filter out current user and add to profiles
         for user in mock_users {
             if user["name"] != current_username {
                 self.profiles.append(user);
             }
         }
-        
+
     }
 
 impl load_user_profiles.report_profiles {
@@ -141,7 +141,7 @@ impl create_tweet.tweet {
     embedding = vectorizer.fit_transform([self.content]).toarray().tolist();
     tweet_node = here +>:Post():+> Tweet(content=self.content, embedding=embedding);
     grant(tweet_node[0], level=ConnectPerm);
-    
+
     tweet_info = TweetInfo(
         id=jid(tweet_node[0]),
         content=tweet_node[0].content,
@@ -151,7 +151,7 @@ impl create_tweet.tweet {
         likes=[],
         comments=[]
     );
-    
+
     report tweet_info;
     }
 

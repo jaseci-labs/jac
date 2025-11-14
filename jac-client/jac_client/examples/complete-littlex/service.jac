@@ -25,7 +25,7 @@ cl{
         try {
             result = await jacSignup(username, password);
             console.log("Signup Result:", result);
-            
+
             success = False;
             message = "";
             if result && not Array.isArray(result) {
@@ -55,7 +55,7 @@ cl{
     }
 
     def logout() -> None {
-        # localStorage.removeItem("username");  
+        # localStorage.removeItem("username");
         jacLogout();
     }
 
@@ -149,7 +149,7 @@ cl{
                 "embedding": data.embedding || [],
                 "created_at": data.created_at || "",
                 "id": tweet_id || "",
-                
+
             };
             return tweetData;
         }except Exception as e {
@@ -207,9 +207,9 @@ cl{
 
 
 
-    
 
-    
+
+
 
     async def getProfile() -> any {
         try {

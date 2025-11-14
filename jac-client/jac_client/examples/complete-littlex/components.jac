@@ -26,7 +26,7 @@ cl {
         editingTweet = props.editingTweet;
         editingComment = props.editingComment;
         editContent = props.editContent;
-        
+
         handleFieldChange = props.handleFieldChange;
         handleUIAction = props.handleUIAction;
         handleUpdateTweet = props.handleUpdateTweet;
@@ -38,13 +38,13 @@ cl {
 
         let isLiked = tweet.likes and tweet.likes.includes(profile.username);
         let showCommentInput = activeCommentTweet == tweet.id;
-        
+
         return <div key={tweet.id} style={{"border": "1px solid #e1e8ed", "borderRadius": "10px", "margin": "15px 0", "padding": "15px", "backgroundColor": "white"}}>
             <div style={{"borderBottom": "1px solid #f1f1f1", "paddingBottom": "10px", "marginBottom": "10px"}}>
                 <strong style={{"color": "#1da1f2"}}>@{tweet.username}</strong>
                 <small style={{"color": "#657786", "marginLeft": "10px"}}>{tweet.created_at}</small>
             </div>
-            
+
             {editingTweet == tweet.id and
                 <div style={{"marginBottom": "10px"}}>
                     <textarea
@@ -60,14 +60,14 @@ cl {
             or
                 <p style={{"margin": "10px 0", "fontSize": "16px", "lineHeight": "1.4"}}>{tweet.content}</p>
             }
-            
+
             <div style={{"display": "flex", "alignItems": "center", "gap": "15px", "marginTop": "10px", "flexWrap": "wrap"}}>
                 <button onClick={lambda -> None { handleToggleLike(tweet.id); }}
                     style={{"padding": "5px 15px", "border": "none", "borderRadius": "20px", "backgroundColor": isLiked and "#ff3040" or "#f8f9fa", "color": isLiked and "white" or "#657786"}}>
                     {isLiked and "♥" or "♡"} {tweet.likes and tweet.likes.length or 0}
                 </button>
-                
-                <button onClick={lambda -> None { 
+
+                <button onClick={lambda -> None {
                     if showCommentInput {
                         handleUIAction("setActiveCommentTweet", "");
                     } else {
@@ -77,12 +77,12 @@ cl {
                 }} style={{"padding": "5px 15px", "border": "none", "borderRadius": "20px", "backgroundColor": showCommentInput and "#1da1f2" or "#f8f9fa", "color": showCommentInput and "white" or "#657786"}}>
                     💬 {tweet.comments and tweet.comments.length or 0}
                 </button>
-                
+
                 {tweet.username == profile.username and
                     <div style={{"marginLeft": "auto", "display": "flex", "gap": "5px"}}>
-                        <button onClick={lambda -> None { 
+                        <button onClick={lambda -> None {
                             handleUIAction("setEditingTweet", tweet.id);
-                            handleFieldChange("editContent", tweet.content); 
+                            handleFieldChange("editContent", tweet.content);
                         }} style={{"padding": "5px 10px", "backgroundColor": "#17a2b8", "color": "white", "border": "none", "borderRadius": "5px"}}>
                             Edit
                         </button>
@@ -93,18 +93,18 @@ cl {
                     </div>
                 }
             </div>
-            
+
             {showCommentInput and
-                <CommentInput 
+                <CommentInput
                     commentContent={commentContent}
                     tweetId={tweet.id}
                     handleFieldChange={handleFieldChange}
                     handleAddComment={handleAddComment}
                 />
             }
-            
+
             {tweet.comments and tweet.comments.length > 0 and
-                <CommentList 
+                <CommentList
                     comments={tweet.comments}
                     profile={profile}
                     editingComment={editingComment}
@@ -134,7 +134,7 @@ cl {
                     onChange={lambda e: any -> None { handleFieldChange("commentContent", e.target.value); }}
                     style={{ "box-sizing": "border-box","flex": "1", "padding": "8px", "border": "1px solid #e1e8ed", "borderRadius": "20px"}}
                 />
-                <button onClick={lambda -> None { 
+                <button onClick={lambda -> None {
                     handleAddComment(tweetId, commentContent);
                 }} style={{"padding": "8px 15px", "backgroundColor": "#1da1f2", "color": "white", "border": "none", "borderRadius": "20px"}}>
                     Post
@@ -156,9 +156,9 @@ cl {
 
         return <div style={{"marginTop": "15px", "paddingTop": "15px", "borderTop": "1px solid #f1f1f1"}}>
             <h4 style={{"margin": "0 0 10px 0", "color": "#14171a", "fontSize": "16px"}}>Comments ({comments.length})</h4>
-            
+
             {comments.map(lambda comment: any -> any {
-                return <CommentItem 
+                return <CommentItem
                     key={comment.id}
                     comment={comment}
                     profile={profile}
@@ -189,7 +189,7 @@ cl {
             <div style={{"display": "flex", "justifyContent": "space-between", "alignItems": "flex-start"}}>
                 <div style={{"flex": "1"}}>
                     <strong style={{"color": "#1da1f2", "fontSize": "14px"}}>@{comment.username}</strong>
-                    
+
                     {editingComment == comment.id and
                         <div style={{"marginTop": "5px"}}>
                             <input
@@ -207,12 +207,12 @@ cl {
                         <p style={{"margin": "5px 0 0 0", "color": "#14171a", "fontSize": "14px"}}>{comment.content}</p>
                     }
                 </div>
-                
+
                 {comment.username == profile.username and
                     <div style={{"display": "flex", "gap": "5px"}}>
-                        <button onClick={lambda -> None { 
+                        <button onClick={lambda -> None {
                             handleUIAction("setEditingComment", comment.id);
-                            handleFieldChange("editContent", comment.content); 
+                            handleFieldChange("editContent", comment.content);
                         }} style={{"padding": "2px 6px", "backgroundColor": "#17a2b8", "color": "white", "border": "none", "borderRadius": "3px", "fontSize": "11px"}}>
                             Edit
                         </button>
@@ -268,9 +268,9 @@ cl {
         text = props.text;
         onClick = props.onClick;
         variant = props.variant or "primary";
-        
+
         let buttonStyle = {};
-        
+
         if variant == "primary" {
             buttonStyle = {"width": "100%", "padding": "10px", "margin": "10px 0", "border": "none", "borderRadius": "5px", "fontSize": "16px", "cursor": "pointer", "backgroundColor": "#007bff", "color": "white"};
         } else {
@@ -284,7 +284,7 @@ cl {
 
     def ProfileHeader(props:dict) -> any {
         profile = props.profile;
-        
+
         return <div style={{"textAlign": "center", "marginBottom": "25px"}}>
             <div style={{"width": "80px", "height": "80px", "borderRadius": "50%", "backgroundColor": "#1da1f2", "color": "white", "display": "inline-flex", "alignItems": "center", "justifyContent": "center", "fontSize": "36px", "marginBottom": "15px"}}>
                 {profile.username and profile.username[0].upper() or "?"}
@@ -296,13 +296,13 @@ cl {
 
     def MessageAlert(props:dict) -> any {
         message = props.message;
-        
+
         if not message {
             return <div></div>;
         }
-        
+
         let isSuccess = message.includes("success");
-        
+
         return <div style={{"marginTop": "15px", "padding": "10px", "borderRadius": "5px", "backgroundColor": isSuccess and "#d4edda" or "#f8d7da", "color": isSuccess and "#155724" or "#721c24", "textAlign": "center"}}>
             {message}
         </div>;
@@ -310,7 +310,7 @@ cl {
 
     def LoadingSpinner(props:dict) -> any {
         text = props.text or "Loading...";
-        
+
         return <div style={{"textAlign": "center", "padding": "50px"}}>
             <h2>{text}</h2>
         </div>;
@@ -321,11 +321,11 @@ cl {
         currentProfile = props.currentProfile;
         handleFollowUser = props.handleFollowUser;
         handleUnfollowUser = props.handleUnfollowUser;
-        
+
         # Check if current user is following this user
         let isFollowing = currentProfile.followers and currentProfile.followers.includes(user.username);
         let isCurrentUser = user.username == currentProfile.username;
-        
+
         return <div style={{"border": "1px solid #e1e8ed", "borderRadius": "10px", "padding": "15px", "margin": "10px 0", "backgroundColor": "white", "display": "flex", "justifyContent": "space-between", "alignItems": "center"}}>
             <div style={{"display": "flex", "alignItems": "center", "gap": "15px"}}>
                 <div style={{"width": "50px", "height": "50px", "borderRadius": "50%", "backgroundColor": "#1da1f2", "color": "white", "display": "flex", "alignItems": "center", "justifyContent": "center", "fontSize": "24px", "fontWeight": "bold"}}>
@@ -338,17 +338,17 @@ cl {
                     </p>
                 </div>
             </div>
-            
+
             {not isCurrentUser and
                 <div>
                     {isFollowing and
-                        <button 
+                        <button
                             onClick={lambda -> None { handleUnfollowUser(user.id); }}
                             style={{"padding": "8px 20px", "backgroundColor": "#f8f9fa", "color": "#1da1f2", "border": "2px solid #1da1f2", "borderRadius": "20px", "fontSize": "14px", "fontWeight": "bold", "cursor": "pointer"}}>
                             Following
                         </button>
                     or
-                        <button 
+                        <button
                             onClick={lambda -> None { handleFollowUser(user.id); }}
                             style={{"padding": "8px 20px", "backgroundColor": "#1da1f2", "color": "white", "border": "none", "borderRadius": "20px", "fontSize": "14px", "fontWeight": "bold", "cursor": "pointer"}}>
                             Follow
@@ -364,17 +364,17 @@ cl {
         currentProfile = props.currentProfile;
         handleFollowUser = props.handleFollowUser;
         handleUnfollowUser = props.handleUnfollowUser;
-        
+
         if not users or users.length == 0 {
             return <div style={{"textAlign": "center", "padding": "30px", "color": "#657786"}}>
                 <p>No users found</p>
             </div>;
         }
-        
+
         return <div style={{"marginTop": "20px"}}>
             <h3 style={{"color": "#14171a", "marginBottom": "15px"}}>All Users ({users.length})</h3>
             {users.map(lambda user: any -> any {
-                return <UserCard 
+                return <UserCard
                     key={user.id}
                     user={user}
                     currentProfile={currentProfile}
@@ -391,22 +391,22 @@ cl {
         currentProfile = props.currentProfile;
         handleFollowUser = props.handleFollowUser;
         handleUnfollowUser = props.handleUnfollowUser;
-        
+
         if not followers or followers.length == 0 {
             return <div style={{"textAlign": "center", "padding": "30px", "color": "#657786", "backgroundColor": "white", "border": "1px solid #e1e8ed", "borderRadius": "10px"}}>
                 <p>No followers yet</p>
             </div>;
         }
-        
+
         # Filter users to only show followers
         let followerUsers = users.filter(lambda user: any -> bool {
             return followers.includes(user.username);
         });
-        
+
         return <div style={{"marginTop": "20px"}}>
             <h3 style={{"color": "#14171a", "marginBottom": "15px"}}>Your Followers ({followerUsers.length})</h3>
             {followerUsers.map(lambda user: any -> any {
-                return <UserCard 
+                return <UserCard
                     key={user.id}
                     user={user}
                     currentProfile={currentProfile}
@@ -423,7 +423,7 @@ cl {
         handleFieldChange = props.handleFieldChange;
         handleSearch = props.handleSearch;
         handleClearSearch = props.handleClearSearch;
-        
+
         return <div style={{"backgroundColor": "white", "border": "1px solid #e1e8ed", "borderRadius": "10px", "padding": "15px", "marginBottom": "20px"}}>
             <div style={{"display": "flex", "gap": "10px", "alignItems": "center"}}>
                 <div style={{"flex": "1", "position": "relative"}}>
@@ -432,7 +432,7 @@ cl {
                         placeholder="Search tweets using TF-IDF similarity..."
                         value={searchQuery}
                         onChange={lambda e: any -> None { handleFieldChange("searchQuery", e.target.value); }}
-                        onKeyPress={lambda e: any -> None { 
+                        onKeyPress={lambda e: any -> None {
                             if e.key == "Enter" {
                                 handleSearch();
                             }
@@ -445,7 +445,7 @@ cl {
                         "position": "absolute", "left": "15px", "top": "50%", "transform": "translateY(-50%)", "color": "#657786", "fontSize": "16px"
                     }}>🔍</span>
                 </div>
-                
+
                 <button
                     onClick={lambda -> None { handleSearch(); }}
                     style={{
@@ -454,7 +454,7 @@ cl {
                 >
                     Search
                 </button>
-                
+
                 {isSearching and
                     <button
                         onClick={lambda -> None { handleClearSearch(); }}
@@ -466,7 +466,7 @@ cl {
                     </button>
                 }
             </div>
-            
+
             {isSearching and
                 <div style={{"marginTop": "10px", "padding": "8px 15px", "backgroundColor": "#e8f5fe", "borderRadius": "5px", "fontSize": "13px", "color": "#1da1f2"}}>
                     🔎 Showing search results of: <strong>{searchQuery}</strong>
