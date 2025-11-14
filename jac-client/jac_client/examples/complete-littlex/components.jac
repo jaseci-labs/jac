@@ -249,15 +249,14 @@ cl {
     }
 
     def FormInput(props:dict) -> any {
-        type = props.type or "text";
+        type = props.type;
         placeholder = props.placeholder;
         value = props.value;
         onChange = props.onChange;
 
         let inputStyle = {"box-sizing": "border-box","width": "100%", "padding": "10px", "margin": "5px 0", "border": "1px solid #ccc", "borderRadius": "5px"};
-
         return <input
-            type={type}
+            type={"password" if props.type == "password" else "text" }
             placeholder={placeholder}
             value={value}
             onChange={onChange}
