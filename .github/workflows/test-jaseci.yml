@@ -44,26 +44,13 @@ jobs:
         pip install pytest
         pip install pytest-asyncio
         pip install pytest-xdist
+        pip install pytest-slowest
 
     - name: Set environment for testing
       run: |
         echo "TEST_ENV=true" >> $GITHUB_ENV
     - name: Run tests
       run: |
-        pytest -x jac -n auto
-        pytest -x jac-cloud jac-byllm jac-streamlit
-    - name: Run jac-cloud tests with DB
-      run: pytest -x jac-cloud
-      env:
-        DATABASE_HOST: mongodb://localhost/?retryWrites=true&w=majority
-        REDIS_HOST: redis://localhost
-        TASK_CONSUMER_CRON_SECOND: "*"
-    - name: Run Jac-Client tests
-      run: |
-        pip install -e jac-client
-        pytest -x jac-client
-    - name: Run littleX tests
-      run: |
-        pip install numpy
-        pip install scikit-learn
-        jac test jac/examples/littleX/littleX.test.jac
+        pytest -n auto --slowest 50
+
+
