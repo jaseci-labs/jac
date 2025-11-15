@@ -44,13 +44,12 @@ jobs:
         pip install pytest
         pip install pytest-asyncio
         pip install pytest-xdist
-        pip install pytest-slowest
 
     - name: Set environment for testing
       run: |
         echo "TEST_ENV=true" >> $GITHUB_ENV
     - name: Run tests
       run: |
-        pytest -n auto --slowest 50
+        pytest -n auto --durations=30
 
 
