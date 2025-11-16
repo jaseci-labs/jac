@@ -15,7 +15,6 @@ const PLAYGROUND_PATH = "/playground";
 // Development Use
 // const PLAYGROUND_PATH = "";
 
-const JAC_PATH = "/tmp/main.jac";
 const LOG_PATH = "/tmp/logs.log";
 
 
@@ -244,7 +243,6 @@ with entry {
 }
   `;
   pyodide.globals.set('SAFE_CODE', safeCode);
-  pyodide.globals.set('JAC_PATH', JAC_PATH);
   pyodide.globals.set('CB_STDOUT', callbackStdout);
   pyodide.globals.set('CB_STDERR', callbackStderr);
 
