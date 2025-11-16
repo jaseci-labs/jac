@@ -1822,13 +1822,13 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
                     ),
                     jac_node=node,
                 )
-        # if isinstance(node.target, uni.Name):
-        #     callee_type = self.prog.get_type_evaluator().get_type_of_expression(
-        #         node.target
-        #     )
-        # else:
-        #     callee_type = None
-        callee_type = None
+        if isinstance(node.target, uni.Name):
+            callee_type = self.prog.get_type_evaluator().get_type_of_expression(
+                node.target
+            )
+        else:
+            callee_type = None
+        # callee_type = None
         args_obj = self.sync_loc(es.ObjectExpression(properties=props), jac_node=node)
         if isinstance(callee_type, jtypes.ClassType) and isinstance(
             callee, es.Expression
