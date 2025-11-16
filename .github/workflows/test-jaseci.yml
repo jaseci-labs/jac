@@ -9,23 +9,35 @@ on:
       - main
 
 jobs:
-  test-jaseci:
+  test-jac-core:
     runs-on: ubuntu-latest
-    services:
-      redis:
-        image: redis
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 6379:6379
     steps:
-    - name: Start MongoDB
-      uses: supercharge/mongodb-github-action@1.10.0
+    - name: Check out code
+      uses: actions/checkout@v3
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v3
       with:
-        mongodb-replica-set: test-rs
+        python-version: 3.12
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e jac
+        pip install pytest
+        pip install pytest-asyncio
+        pip install pytest-xdist
+
+    - name: Set environment for testing
+      run: |
+        echo "TEST_ENV=true" >> $GITHUB_ENV
+
+    - name: Run Jac core tests
+      run: pytest -x jac -n auto
+
+  test-packages:
+    runs-on: ubuntu-latest
+    steps:
     - name: Check out code
       uses: actions/checkout@v3
 
@@ -48,22 +60,105 @@ jobs:
     - name: Set environment for testing
       run: |
         echo "TEST_ENV=true" >> $GITHUB_ENV
-    - name: Run tests
+
+    - name: Run package tests
+      run: pytest -x jac-cloud jac-byllm jac-streamlit
+
+  test-jac-cloud-with-db:
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+    steps:
+    - name: Start MongoDB
+      uses: supercharge/mongodb-github-action@1.10.0
+      with:
+        mongodb-replica-set: test-rs
+
+    - name: Check out code
+      uses: actions/checkout@v3
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v3
+      with:
+        python-version: 3.12
+
+    - name: Install dependencies
       run: |
-        pytest -x jac -n auto
-        pytest -x jac-cloud jac-byllm jac-streamlit
+        python -m pip install --upgrade pip
+        pip install -e jac
+        pip install -e jac-cloud
+        pip install pytest
+        pip install pytest-asyncio
+        pip install pytest-xdist
+
+    - name: Set environment for testing
+      run: |
+        echo "TEST_ENV=true" >> $GITHUB_ENV
+
     - name: Run jac-cloud tests with DB
       run: pytest -x jac-cloud
       env:
         DATABASE_HOST: mongodb://localhost/?retryWrites=true&w=majority
         REDIS_HOST: redis://localhost
         TASK_CONSUMER_CRON_SECOND: "*"
+
+  test-jac-client:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v3
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v3
+      with:
+        python-version: 3.12
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e jac
+        pip install -e jac-client
+        pip install pytest
+        pip install pytest-asyncio
+        pip install pytest-xdist
+
+    - name: Set environment for testing
+      run: |
+        echo "TEST_ENV=true" >> $GITHUB_ENV
+
     - name: Run Jac-Client tests
       run: |
-        pip install -e jac-client
         pytest -x jac-client
-    - name: Run littleX tests
+
+  test-littlex:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v3
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v3
+      with:
+        python-version: 3.12
+
+    - name: Install dependencies
       run: |
+        python -m pip install --upgrade pip
+        pip install -e jac
         pip install numpy
         pip install scikit-learn
-        jac test jac/examples/littleX/littleX.test.jac
+
+    - name: Set environment for testing
+      run: |
+        echo "TEST_ENV=true" >> $GITHUB_ENV
+
+    - name: Run littleX tests
+      run: jac test jac/examples/littleX/littleX.test.jac
