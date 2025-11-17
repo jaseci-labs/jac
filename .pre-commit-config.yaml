@@ -25,6 +25,11 @@ repos:
             flake8_annotations,
             flake8_simplify,
           ]
+  - repo: https://github.com/oxipng/oxipng
+    rev: v9.1.5
+    hooks:
+      - id: oxipng
+        args: ["-o", "4", "--strip", "safe", "--alpha"]
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.18.2
     hooks:
