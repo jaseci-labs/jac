@@ -240,7 +240,7 @@ cl{
                         return {
                             **tweet,
                             comments: updatedComments,
-                          
+
                         };
                     }
                     return {**tweet};
@@ -268,7 +268,7 @@ cl{
                     return {
                         **tweet,
                         comments: updatedComments
-                        
+
                     };
                 });
                 setTweets(updateTweets);
@@ -288,7 +288,7 @@ cl{
                             **tweet,
                             comments: updatedComments,
                             similarity: tweet.similarity
-                            
+
                         };
                     }
                     return {**tweet};
