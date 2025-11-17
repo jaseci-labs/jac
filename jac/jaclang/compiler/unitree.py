@@ -1641,7 +1641,14 @@ class Archetype(
         return res
 
 
-class ImplDef(CodeBlockStmt, ElementStmt, ArchBlockStmt, AstSymbolNode, UniScopeNode):
+class ImplDef(
+    ClientFacingNode,
+    CodeBlockStmt,
+    ElementStmt,
+    ArchBlockStmt,
+    AstSymbolNode,
+    UniScopeNode,
+):
     """AstImplOnlyNode node type for Jac Ast."""
 
     def __init__(
@@ -1669,6 +1676,7 @@ class ImplDef(CodeBlockStmt, ElementStmt, ArchBlockStmt, AstSymbolNode, UniScope
         )
         CodeBlockStmt.__init__(self)
         UniScopeNode.__init__(self, name=self.sym_name)
+        ClientFacingNode.__init__(self)
 
     def create_impl_name_node(self) -> Name:
         ret = Name(

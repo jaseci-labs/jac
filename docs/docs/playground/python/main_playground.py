@@ -1,12 +1,12 @@
 import io
+import os
 import re
 import json
 import contextlib
-import bdb
+import tempfile
 
 # If these variables are not set by the pyodide this will raise an exception.
 SAFE_CODE = globals()["SAFE_CODE"]
-JAC_PATH  = globals()["JAC_PATH"]
 CB_STDOUT = globals()["CB_STDOUT"]
 CB_STDERR = globals()["CB_STDERR"]
 debugger  = globals()["debugger"]
@@ -61,10 +61,6 @@ class JsIO(io.StringIO):
             self.callback(line)
         super().writelines(lines)
 
-
-with open(JAC_PATH, "w") as f:
-    f.write(SAFE_CODE)
-
 # Import our custom exception for better error handling
 try:
     exec("from debugger import DebuggerTerminated", globals())
@@ -77,10 +73,14 @@ with contextlib.redirect_stdout(stdout_buf:=JsIO(CB_STDOUT)), \
         contextlib.redirect_stderr(JsIO(CB_STDERR)):
 
     try:
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.jac', delete=False) as temp_jac:
+            temp_jac.write(SAFE_CODE)
+            temp_jac_path = temp_jac.name
+        
         code = \
         "from jaclang.cli.cli import run\n" \
-        f"run('{JAC_PATH}')\n"
-        debugger.set_code(code=code, filepath=JAC_PATH)
+        f"run('{temp_jac_path}')\n"
+        debugger.set_code(code=code, filepath=temp_jac_path)
         debugger.do_run()
         # Grab the graph output from the debugger
         full_output = stdout_buf.getvalue()
@@ -109,3 +109,8 @@ with contextlib.redirect_stdout(stdout_buf:=JsIO(CB_STDOUT)), \
         else:
             import traceback
             traceback.print_exc()
+    finally:
+        try:
+            os.unlink(temp_jac_path)
+        except:
+            pass
