@@ -166,11 +166,7 @@ cl{
                 let updateTweets = tweets.map(lambda tweet: any -> any {
                     if tweet.id == tweetId {
                         return {
-                            id: tweet.id,
-                            likes: tweet.likes,
-                            comments: tweet.comments,
-                            similarity: tweet.similarity,
-                            username: tweet.username,
+                            **tweet,
                             embedding: updatedTweet.embedding,
                             content: updatedTweet.content,
                             created_at: updatedTweet.created_at
@@ -242,14 +238,9 @@ cl{
                             "content": newComment.content
                         }]);
                         return {
-                            id: tweet.id,
-                            likes: tweet.likes,
+                            **tweet,
                             comments: updatedComments,
-                            similarity: tweet.similarity,
-                            username: tweet.username,
-                            embedding: tweet.embedding,
-                            content: tweet.content,
-                            created_at: tweet.created_at
+                          
                         };
                     }
                     return {**tweet};
@@ -275,14 +266,9 @@ cl{
                         return {**comment};
                     });
                     return {
-                        id: tweet.id,
-                        likes: tweet.likes,
-                        comments: updatedComments,
-                        similarity: tweet.similarity,
-                        username: tweet.username,
-                        embedding: tweet.embedding,
-                        content: tweet.content,
-                        created_at: tweet.created_at
+                        **tweet,
+                        comments: updatedComments
+                        
                     };
                 });
                 setTweets(updateTweets);
@@ -299,14 +285,10 @@ cl{
                             return comment.id != commentId;
                         });
                         return {
-                            id: tweet.id,
-                            likes: tweet.likes,
+                            **tweet,
                             comments: updatedComments,
-                            similarity: tweet.similarity,
-                            username: tweet.username,
-                            embedding: tweet.embedding,
-                            content: tweet.content,
-                            created_at: tweet.created_at
+                            similarity: tweet.similarity
+                            
                         };
                     }
                     return {**tweet};
