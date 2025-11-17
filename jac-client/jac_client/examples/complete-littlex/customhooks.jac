@@ -99,10 +99,10 @@ cl{
                             "followers": userProfile.followers if userProfile.followers else []
                         });
                     }
-
+                    
                     feedTweets = await loadFeed();
                     setTweets(feedTweets or []);
-
+                    
                     allUsers = await loadAllUserProfiles();
                     setUsers(allUsers or []);
                 } except Exception as e {
@@ -111,7 +111,7 @@ cl{
                 }
                 setLoading(False);
             }
-
+            
             loadData();
         }, []);
 
@@ -151,7 +151,7 @@ cl{
             if not newTweetContent.trim() {
                 return;
             }
-
+            
             newTweet = await createTweet(newTweetContent);
             if newTweet {
                 let updatedTweets = tweets.concat([newTweet]);
@@ -176,7 +176,7 @@ cl{
                             created_at: updatedTweet.created_at
                         };
                     }
-                    return tweet;
+                    return {**tweet};
                 });
                 setTweets(updateTweets);
                 setEditingTweet(None);
@@ -195,7 +195,7 @@ cl{
             if not profile {
                 return;
             }
-
+            
             tweet = tweets.find(lambda t: any -> bool { return t.id == tweetId; });
             if not tweet { return; }
 
@@ -221,9 +221,9 @@ cl{
                 if t.id == tweetId {
                     return tweet;
                 }
-                return t;
+                return {**t};
             });
-
+            
             setTweets(updatedTweets);
         }
 
@@ -231,7 +231,7 @@ cl{
             if not content.trim() {
                 return;
             }
-
+            
             newComment = await addComment(tweetId, content);
             if newComment {
                 let updateTweets = tweets.map(lambda tweet: any -> any {
@@ -252,7 +252,7 @@ cl{
                             created_at: tweet.created_at
                         };
                     }
-                    return tweet;
+                    return {**tweet};
                 });
                 setTweets(updateTweets);
                 setCommentContent("");
@@ -272,7 +272,7 @@ cl{
                                 content: updatedComment.content
                             };
                         }
-                        return comment;
+                        return {**comment};
                     });
                     return {
                         id: tweet.id,
@@ -309,7 +309,7 @@ cl{
                             created_at: tweet.created_at
                         };
                     }
-                    return tweet;
+                    return {**tweet};
                 });
                 setTweets(updateTweets);
             }
@@ -319,7 +319,7 @@ cl{
             await followUser(userId);
             allUsers = await loadAllUserProfiles();
             setUsers(allUsers or []);
-
+            
             userProfile = await getProfile();
             if userProfile and userProfile.user {
                 setProfile({
@@ -334,7 +334,7 @@ cl{
             await unFollowUser(userId);
             allUsers = await loadAllUserProfiles();
             setUsers(allUsers or []);
-
+            
             userProfile = await getProfile();
             if userProfile and userProfile.user {
                 setProfile({
@@ -351,17 +351,17 @@ cl{
                 await handleClearSearch();
                 return;
             }
-
+            
             setIsSearching(True);
             setLoading(True);
-
+            
             try {
                 searchResults = await loadFeed(searchQuery);
                 setTweets(searchResults or []);
             } except Exception as e {
                 console.log("Error searching tweets:", e);
             }
-
+            
             setLoading(False);
         }
 
@@ -369,14 +369,14 @@ cl{
             setSearchQuery("");
             setIsSearching(False);
             setLoading(True);
-
+            
             try {
                 feedTweets = await loadFeed("");
                 setTweets(feedTweets or []);
             } except Exception as e {
                 console.log("Error loading feed:", e);
             }
-
+            
             setLoading(False);
         }
 
@@ -394,7 +394,7 @@ cl{
             "loading": loading,
             "searchQuery": searchQuery,
             "isSearching": isSearching,
-
+            
             # Handlers
             "handleFieldChange": handleFieldChange,
             "handleUIAction": handleUIAction,
@@ -434,7 +434,7 @@ cl{
                         });
                         setNewUsername(userProfile.user.username);
                     }
-
+                    
                     allUsers = await loadAllUserProfiles();
                     setUsers(allUsers or []);
                 } except Exception as e {
@@ -442,7 +442,7 @@ cl{
                     navigate("/auth");
                 }
             }
-
+            
             loadProfile();
         }, []);
 
@@ -488,7 +488,7 @@ cl{
             # Reload users and profile to update follow status
             allUsers = await loadAllUserProfiles();
             setUsers(allUsers or []);
-
+            
             userProfile = await getProfile();
             if userProfile and userProfile.user {
                 setProfile({
@@ -504,7 +504,7 @@ cl{
             # Reload users and profile to update follow status
             allUsers = await loadAllUserProfiles();
             setUsers(allUsers or []);
-
+            
             userProfile = await getProfile();
             if userProfile and userProfile.user {
                 setProfile({
@@ -521,7 +521,7 @@ cl{
             "users": users,
             "newUsername": newUsername,
             "message": message,
-
+            
             # Handlers
             "handleFieldChange": handleFieldChange,
             "handleLogout": handleLogout,
