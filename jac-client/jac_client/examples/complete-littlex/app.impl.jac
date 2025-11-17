@@ -108,30 +108,14 @@ impl visit_profile.visit_profile {
 impl load_user_profiles.load_profiles {
         self.profiles: list = [];
 
-
-        # Get current user's profile
-        current_profiles = [root --> (`?Profile)];
-        current_username = "";
-        if current_profiles and len(current_profiles) > 0 {
-            current_username = current_profiles[0].username;
+        for each_root in allroots() {
+            profile = [each_root --> (`?Profile)][0];
+            self.profiles.append(
+                {"name": profile.username, "id": jid(profile)}
+            );
         }
-
-        # For now, let's try a different approach - add some mock users
-        # and see if we can find a way to access global profiles
-        mock_users = [
-            {"name": "john@gmail.com", "id": "mock_id_3"},
-            {"name": "jane@gmail.com", "id": "mock_id_4"}
-        ];
-
-
-        # Filter out current user and add to profiles
-        for user in mock_users {
-            if user["name"] != current_username {
-                self.profiles.append(user);
-            }
-        }
-
     }
+
 
 impl load_user_profiles.report_profiles {
     report self.profiles;
