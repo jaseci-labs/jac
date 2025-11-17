@@ -13,7 +13,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Check out code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v5
+      with:
+        submodules: true
 
     - name: Set up Python 3.12
       uses: actions/setup-python@v3
@@ -39,7 +41,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Check out code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v5
+      with:
+        submodules: true
 
     - name: Set up Python 3.12
       uses: actions/setup-python@v3
@@ -81,7 +85,9 @@ jobs:
         mongodb-replica-set: test-rs
 
     - name: Check out code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v5
+      with:
+        submodules: true
 
     - name: Set up Python 3.12
       uses: actions/setup-python@v3
