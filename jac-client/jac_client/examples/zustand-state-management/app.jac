@@ -6,7 +6,7 @@ cl import from .store {useCounterStore}
 cl {
     def CounterValue() -> any {
         count = useCounterStore(lambda state: any { return state.count; });
-        console.log("Rendering CounterValue with count:");   
+        console.log("Rendering CounterValue with count:");
         return <div style={{"fontSize": "48px", "fontWeight": "700", "color": "#2563eb"}}>{count}</div>;
     }
 

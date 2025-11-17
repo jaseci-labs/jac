@@ -4,7 +4,7 @@ cl {
         return {
             "items": [],
             "total": 0,
-            
+
             "addItem": lambda item: dict -> None {
                 setState(lambda state: any -> dict {
                     newItems = state.items.concat([item]);
@@ -16,19 +16,19 @@ cl {
                     };
                 });
             },
-            
+
             "removeItem": lambda itemId: str -> None {
                 setState(lambda state: any -> dict {
                     itemToRemove = state.items.find(lambda i: any -> bool {
                         return i.id == itemId;
                     });
-                    
+
                     newItems = state.items.filter(lambda i: any -> bool {
                         return i.id != itemId;
                     });
-                    
+
                     priceToSubtract = itemToRemove and itemToRemove.price or 0;
-                    
+
                     return {
                         **state,
                         "items": newItems,
@@ -36,7 +36,7 @@ cl {
                     };
                 });
             },
-            
+
             "clearCart": lambda -> None {
                 setState(lambda state: any -> dict {
                     return {**state, "items": [], "total": 0};

@@ -35,7 +35,7 @@ cl {
     def useCounterStore(selector: any = None) -> any {
         console.log("useCounterStore called");
         if selector {
-            
+
             return counterStore(selector);
         }
         return counterStore();

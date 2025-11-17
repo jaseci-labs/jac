@@ -4,7 +4,7 @@ cl {
         return {
             "user": None,
             "isAuthenticated": False,
-            
+
             "login": lambda username: str, role: str = "user" -> None {
                 setState(lambda state: any -> dict {
                     return {
@@ -14,7 +14,7 @@ cl {
                     };
                 });
             },
-            
+
             "logout": lambda -> None {
                 setState(lambda state: any -> dict {
                     return {
@@ -24,7 +24,7 @@ cl {
                     };
                 });
             },
-            
+
             "updateProfile": lambda updates: dict -> None {
                 setState(lambda state: any -> dict {
                     if not state.user {

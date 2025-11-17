@@ -12,7 +12,7 @@ cl {
             **createCartSlice(setState, getState, store)
         };
     });
-    
+
     def useAppStore(selector: any = None) -> any {
         if selector {
             return appStore(selector);
