@@ -28,10 +28,6 @@ jobs:
         pip install pytest-asyncio
         pip install pytest-xdist
 
-    - name: Set environment for testing
-      run: |
-        echo "TEST_ENV=true" >> $GITHUB_ENV
-
     - name: Run Jac core tests
       run: pytest -x jac -n auto
 
