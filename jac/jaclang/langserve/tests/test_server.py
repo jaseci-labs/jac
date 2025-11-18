@@ -5,7 +5,6 @@ from jaclang.vendor.pygls.workspace import Workspace
 
 import lsprotocol.types as lspt
 import pytest
-from jaclang import JacMachineInterface as _
 from jaclang.langserve.engine import JacLangServer
 
 
@@ -219,8 +218,8 @@ class TestJacLangServer(TestCase):
         lsp.type_check_file(import_file)
         # fmt: off
         positions = [
-            (14, 16, "fixtures/greet.py:12:3-13:15"),
-            (14, 28, "fixtures/greet.py:5:3-6:15"),
+            (14, 16, "fixtures/greet.py:8:3-9:15"),
+            (14, 28, "fixtures/greet.py:2:3-3:15"),
         ]
         # fmt: on
 

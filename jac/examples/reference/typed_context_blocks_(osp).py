@@ -83,7 +83,7 @@ class ShoppingCart(Walker):
         visit(self, refs(OPath(here).edge_out().visit()))
 
     @on_entry
-    def apply_discount(self, here: (Book, Magazine)) -> None:
+    def apply_discount(self, here: tuple[Book, Magazine]) -> None:
         print(f"[Tuple] Applying media discount to {type(here).__name__}")
         if isinstance(here, Book):
             discount = here.price * 0.1

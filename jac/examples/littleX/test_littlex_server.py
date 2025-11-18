@@ -5,6 +5,7 @@ import os
 import socket
 import threading
 import time
+from typing import TypedDict
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -22,20 +23,26 @@ def get_free_port() -> int:
     return port
 
 
+class _User(TypedDict):
+    password: str
+    token: str
+    root_id: str
+
+
 class TestLittleXServer:
     """Test littleX social media API functionality."""
 
     def setUp(self) -> None:
         """Set up test."""
         self.server = None
-        self.server_thread = None
+        self.server_thread: threading.Thread | None = None
         self.httpd = None
         # Use dynamically allocated free port for each test
         self.port = get_free_port()
         self.base_url = f"http://localhost:{self.port}"
         # Use unique session file for each test
         self.session_file = f"/tmp/test_littlex_{self.port}.session"
-        self.users = {}  # Store user credentials and tokens
+        self.users: dict[str, _User] = {}  # Store user credentials and tokens
 
     def tearDown(self) -> None:
         """Tear down test."""
@@ -119,7 +126,7 @@ class TestLittleXServer:
                 time.sleep(0.1)
 
     def _request(
-        self, method: str, path: str, data: dict = None, token: str = None
+        self, method: str, path: str, data: dict | None = None, token: str | None = None
     ) -> dict:
         """Make HTTP request to server."""
         url = f"{self.base_url}{path}"

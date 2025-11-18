@@ -163,7 +163,7 @@ assign_all(people, (("age", "score"), (25, 100)))
 print(f"Assigned age=25, score=100 to {len(people)} people")
 print(f"First person: age={people[0].age}, score={people[0].score}")
 print("\n=== 14. Empty Collection Handling ===")
-empty = []
+empty: list[object] = []
 filtered_empty = filter_on(items=empty, func=lambda i: i.x > 5)
 assigned_empty = assign_all(empty, (("x",), (10,)))
 print(f"Filter on empty: {len(filtered_empty)}")

@@ -6,8 +6,8 @@ lst = [1, 2, 3]
 tpl = (1, 2, 3)
 dct = {"a": 1, "b": 2}
 st = {1, 2, 3}
-empty_lst = []
-empty_dct = {}
+empty_lst: list[object] = []
+empty_dct: dict[object, object] = {}
 empty_tpl = ()
 squares = [x**2 for x in range(5)]
 filtered = [x for x in range(10) if x % 2 == 0]

@@ -1,6 +1,5 @@
 """Test pass module."""
 
-import jaclang.compiler.unitree as uni
 from jaclang.compiler.program import JacProgram
 from jaclang.utils.test import TestCase
 

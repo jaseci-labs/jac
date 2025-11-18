@@ -1,7 +1,6 @@
 """Test ast build pass module."""
 
 import io
-import os
 import sys
 
 from jaclang.compiler.program import JacProgram, py_code_gen

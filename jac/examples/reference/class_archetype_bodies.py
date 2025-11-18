@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 from jaclang.lib import Obj, field
+from typing import ClassVar
 
 
 class Vehicle(Obj):

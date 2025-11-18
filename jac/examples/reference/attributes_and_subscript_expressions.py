@@ -19,6 +19,7 @@ slice1 = s.items[1:4]
 slice2 = s.items[:3]
 slice3 = s.items[2:]
 first_char = s.data["name"][0]
+__jac_tmp: Sample | None
 safe_val = __jac_tmp.value if (__jac_tmp := s) else None
 optional_obj = None
 null_safe1 = __jac_tmp.value if (__jac_tmp := optional_obj) else None

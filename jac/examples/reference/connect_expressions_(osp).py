@@ -127,7 +127,7 @@ class GraphBuilder(Walker):
 class EdgeTraverser(Walker):
 
     @on_entry
-    def traverse(self, here: Root) -> None:
+    def traverse_root(self, here: Root) -> None:
         print("\n=== Edge Traversal with Visit ===")
         a = Person(name="A", age=25)
         b = Person(name="B", age=30)
@@ -141,7 +141,7 @@ class EdgeTraverser(Walker):
         visit(self, refs(OPath(here).edge_out().visit()))
 
     @on_entry
-    def traverse(self, here: Person) -> None:
+    def traverse_person(self, here: Person) -> None:
         print(f"  Visited: {here.name}, age={here.age}")
 
 

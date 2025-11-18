@@ -6,7 +6,6 @@ import os
 import sys
 from pathlib import Path
 
-from jaclang import JacMachineInterface as Jac
 from jaclang.compiler import jac_lark as jl
 from jaclang.compiler import unitree as uni
 from jaclang.compiler.constant import Tokens

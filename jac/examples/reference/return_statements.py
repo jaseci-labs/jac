@@ -45,8 +45,8 @@ def multiple_returns(val: str) -> int:
 
 print(return_value())
 print(return_expression())
-print(return_none())
-print(no_return())
+print(return_none())  # type: ignore[func-returns-value]
+print(no_return())  # type: ignore[func-returns-value]
 print(conditional_return(5))
 print(conditional_return(-3))
 early_return(True)

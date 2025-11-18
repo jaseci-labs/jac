@@ -39,7 +39,7 @@ with contextlib.redirect_stdout(
 
     except SystemExit:
         print("Python execution stopped.")
-    except Exception as e:
+    except Exception:
         import traceback
 
         traceback.print_exc()
@@ -48,5 +48,5 @@ with contextlib.redirect_stdout(
         try:
             if os.path.exists(temp_py_path):
                 os.unlink(temp_py_path)
-        except:
+        except Exception:
             pass

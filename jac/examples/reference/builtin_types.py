@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import Any
 
 s: str = "hello"
 print(s)
@@ -18,7 +19,7 @@ b: bool = True
 print(b)
 byt: bytes = b"binary"
 print(byt)
-a: any = "anything"
+a: Any = "anything"
 print(a)
 a = 123
 print(a)

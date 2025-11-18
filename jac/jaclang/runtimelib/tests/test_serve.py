@@ -30,7 +30,7 @@ class TestServeCommand(TestCase):
         """Set up test."""
         super().setUp()
         self.server = None
-        self.server_thread = None
+        self.server_thread: threading.Thread | None = None
         self.httpd = None
         # Use dynamically allocated free port for each test
         try:
@@ -128,8 +128,8 @@ class TestServeCommand(TestCase):
         self,
         method: str,
         path: str,
-        data: dict = None,
-        token: str = None,
+        data: dict | None = None,
+        token: str | None = None,
         timeout: int = 5,
     ) -> dict:
         """Make HTTP request to server."""
@@ -145,8 +145,8 @@ class TestServeCommand(TestCase):
         self,
         method: str,
         path: str,
-        data: dict = None,
-        token: str = None,
+        data: dict | None = None,
+        token: str | None = None,
         timeout: int = 5,
     ) -> tuple[int, str, dict[str, str]]:
         """Make an HTTP request and return status, body, and headers."""
@@ -621,31 +621,6 @@ class TestServeCommand(TestCase):
         # __jac_init__ should still contain the function name and args
         self.assertIn('"function": "client_page"', html_body)
 
-    def test_default_page_is_csr(self) -> None:
-        """Requesting a page without mode parameter returns empty CSR shell."""
-        self._start_server()
-
-        # Create user
-        create_result = self._request(
-            "POST", "/user/create", {"username": "ssruser", "password": "pass"}
-        )
-        token = create_result["token"]
-
-        # Request page without specifying mode (CSR-only, longer timeout for bundle building)
-        status, html_body, headers = self._request_raw(
-            "GET", "/page/client_page", token=token, timeout=15
-        )
-
-        self.assertEqual(status, 200)
-        self.assertIn("text/html", headers.get("Content-Type", ""))
-
-        # CSR shell should be empty; client renders later
-        self.assertIn('<div id="__jac_root"></div>', html_body)
-
-        # __jac_init__ and client.js should still be present for hydration
-        self.assertIn('<script id="__jac_init__" type="application/json">', html_body)
-        self.assertIn("/static/client.js?hash=", html_body)
-
     def test_csr_mode_with_server_default(self) -> None:
         """render_client_page returns an empty shell when called directly."""
         # Load module
@@ -880,9 +855,13 @@ class TestServeCommand(TestCase):
         import re
 
         root_match = re.search(r'<div id="__jac_root">(.*?)</div>', html_body)
-        self.assertIsNotNone(root_match)
+        assert root_match is not None
         root_content = root_match.group(1)
         self.assertEqual(root_content, "")  # Should be empty string
+
+        # __jac_init__ and client.js should still be present for hydration
+        self.assertIn('<script id="__jac_init__" type="application/json">', html_body)
+        self.assertIn("/static/client.js?hash=", html_body)
 
         # Verify that explicitly requesting SSR mode is ignored (still CSR, longer timeout for bundle building)
         status_ssr, html_ssr, _ = self._request_raw(
@@ -895,7 +874,6 @@ class TestServeCommand(TestCase):
     def test_faux_flag_prints_endpoint_docs(self) -> None:
         """Test that --faux flag prints endpoint documentation without starting server."""
         import io
-        import sys
         from contextlib import redirect_stdout
 
         # Capture stdout
@@ -1006,7 +984,7 @@ class TestAccessLevelAuthentication(TestCase):
         """Set up test."""
         super().setUp()
         self.server = None
-        self.server_thread = None
+        self.server_thread: threading.Thread | None = None
         self.httpd = None
         # Use dynamically allocated free port for each test
         try:
@@ -1108,8 +1086,8 @@ class TestAccessLevelAuthentication(TestCase):
         self,
         method: str,
         path: str,
-        data: dict = None,
-        token: str = None,
+        data: dict | None = None,
+        token: str | None = None,
         timeout: int = 5,
     ) -> dict:
         """Make HTTP request to server."""
@@ -1125,8 +1103,8 @@ class TestAccessLevelAuthentication(TestCase):
         self,
         method: str,
         path: str,
-        data: dict = None,
-        token: str = None,
+        data: dict | None = None,
+        token: str | None = None,
         timeout: int = 5,
     ) -> tuple[int, str, dict[str, str]]:
         """Make an HTTP request and return status, body, and headers."""

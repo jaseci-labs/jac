@@ -65,7 +65,7 @@ class JsIO(io.StringIO):
 # Import our custom exception for better error handling
 try:
     exec("from debugger import DebuggerTerminated", globals())
-except:
+except Exception:
 
     class DebuggerTerminated(Exception):
         pass
@@ -116,5 +116,5 @@ with contextlib.redirect_stdout(
     finally:
         try:
             os.unlink(temp_jac_path)
-        except:
+        except Exception:
             pass

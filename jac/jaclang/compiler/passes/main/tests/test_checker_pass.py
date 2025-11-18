@@ -496,7 +496,7 @@ class TypeCheckerPassTests(TestCase):
         TypeCheckPass(ir_in=mod, prog=program)
         self.assertEqual(len(program.errors_had), 0)
 
-    def test_param_arg_match(self) -> None:
+    def test_generics(self) -> None:
         program = JacProgram()
         path = self.fixture_abs_path("checker_generics.jac")
         mod = program.compile(path)

@@ -1,13 +1,11 @@
 import bdb
 import json
-import time
+from types import FrameType
 from typing import Callable
 
 
 class DebuggerTerminated(Exception):
     """Custom exception for clean debugger termination"""
-
-    pass
 
 
 def fix_duplicate_graph_json(graph_json_str):
@@ -45,12 +43,12 @@ def fix_duplicate_graph_json(graph_json_str):
 
 class Debugger(bdb.Bdb):
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self.filepath: str = ""
         self.code: str = ""
-        self.curframe = None
-        self.breakpoint_buff = []
+        self.curframe: FrameType | None = None
+        self.breakpoint_buff: list[int] = []
         self._terminated = False  # Add termination flag
         self.total_lines = 0
 
@@ -108,7 +106,7 @@ class Debugger(bdb.Bdb):
 
     def _send_graph(self) -> None:
         try:
-            graph_str = self.runeval("printgraph(format='json')")
+            graph_str = self.runeval("printgraph(format='json')")  # type: ignore[func-returns-value]  # typeshed#15049
             self.cb_graph(graph_str)
         except Exception as e:
             print(f"[Debugger] Error sending graph: {e}")
@@ -137,12 +135,14 @@ class Debugger(bdb.Bdb):
         self.set_continue()
 
     def do_step_over(self) -> None:
+        assert self.curframe is not None
         self.set_next(self.curframe)
 
     def do_step_into(self) -> None:
         self.set_step()
 
     def do_step_out(self) -> None:
+        assert self.curframe is not None
         self.set_return(self.curframe)
 
     def do_terminate(self) -> None:

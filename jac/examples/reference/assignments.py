@@ -14,6 +14,7 @@ result = "computed"
 print(result)
 count: int = 5
 print(count)
+num: float
 num = 10
 num += 5
 num -= 3

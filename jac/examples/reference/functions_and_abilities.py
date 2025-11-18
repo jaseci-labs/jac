@@ -17,6 +17,7 @@ from jaclang.lib import (
     spawn,
     visit,
 )
+from typing import Any, Protocol
 
 
 class BasicMath(Obj):
@@ -27,7 +28,7 @@ class BasicMath(Obj):
     def get_default(self) -> int:
         return 42
 
-    def multiply(self, a: object, b: object) -> object:
+    def multiply(self, a: int, b: int) -> int:
         return a * b
 
 
@@ -53,18 +54,18 @@ class AbstractCalculator(Obj):
 
     @abstractmethod
     def compute(self, x: int, y: int) -> int:
-        pass
+        raise NotImplementedError
 
     @impl_patch_filename("functions_and_abilities.jac")
     def process(self, value: float) -> float:
         return value * 1.5
 
     @impl_patch_filename("functions_and_abilities.jac")
-    def aggregate(self, *numbers: tuple) -> float:
+    def aggregate(self, *numbers: float) -> float:
         return sum(numbers) / len(numbers) if numbers else 0.0
 
     @impl_patch_filename("functions_and_abilities.jac")
-    def configure(self, **options: dict) -> dict:
+    def configure(self, **options: Any) -> dict:
         options["configured"] = True
         return options
 
@@ -77,13 +78,13 @@ class ConcreteCalculator(AbstractCalculator, Obj):
 
 class Variadic(Obj):
 
-    def sum_all(self, *values: tuple) -> int:
+    def sum_all(self, *values: int) -> int:
         return sum(values)
 
-    def collect_options(self, **opts: dict) -> dict:
+    def collect_options(self, **opts: Any) -> dict:
         return opts
 
-    def combined(self, base: int, *extras: tuple, **options: dict) -> dict:
+    def combined(self, base: int, *extras: int, **options: Any) -> dict:
         return {"base": base, "extras": extras, "options": options}
 
 
@@ -95,12 +96,16 @@ async def process_batch(items: list) -> list:
     return [item * 2 for item in items]
 
 
-def logger(func: object) -> None:
+class _HasName(Protocol):
+    __name__: str
+
+
+def logger[T: _HasName](func: T) -> T:
     print(f"Decorator applied to {func.__name__}")
     return func
 
 
-def tracer(func: object) -> None:
+def tracer[T](func: T) -> T:
     print("Tracer applied")
     return func
 

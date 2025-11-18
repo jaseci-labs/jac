@@ -5,6 +5,7 @@ import os
 from contextlib import redirect_stdout
 import sys
 from typing import Callable, Optional
+from types import CodeType
 
 import jaclang
 from jaclang.compiler.program import JacProgram
@@ -54,7 +55,9 @@ class JacReferenceTests(TestCase):
         # Reset machine at the start of each test to ensure clean state
         Jac.reset_machine()
 
-        def execute_and_capture_output(code: str | bytes, filename: str = "") -> str:
+        def execute_and_capture_output(
+            code: str | bytes | CodeType, filename: str = ""
+        ) -> str:
             f = io.StringIO()
             with redirect_stdout(f):
                 exec(
@@ -79,12 +82,12 @@ class JacReferenceTests(TestCase):
             if "tests.jac" in filename or "check_statements.jac" in filename:
                 return
             jacast = JacProgram().compile(filename)
-            code_content = compile(
+            code_obj = compile(
                 source=jacast.gen.py_ast[0],
                 filename=jacast.loc.mod_path,
                 mode="exec",
             )
-            output_jac = execute_and_capture_output(code_content, filename=filename)
+            output_jac = execute_and_capture_output(code_obj, filename=filename)
             Jac.reset_machine()
             # Clear byllm modules from cache to ensure consistent behavior between JAC and Python runs
             # when byllm is used

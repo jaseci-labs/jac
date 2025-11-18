@@ -43,7 +43,7 @@ class PyastGenPassTests(TestCaseMicroSuite, AstSyncTestMixin):
 
     def test_sem_decorator(self) -> None:
         """Test for @_.sem(...) decorator."""
-        code_gen = (out := JacProgram()).compile(
+        code_gen = JacProgram().compile(
             self.fixture_abs_path("codegen_sem.jac"),
         )
 

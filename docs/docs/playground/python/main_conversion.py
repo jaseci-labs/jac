@@ -2,7 +2,6 @@ import io
 import tempfile
 import os
 import contextlib
-from pathlib import Path
 
 # If these variables are not set by the pyodide this will raise an exception.
 CONVERSION_TYPE = globals()["CONVERSION_TYPE"]  # "jac2py" or "py2jac"
@@ -56,7 +55,7 @@ with contextlib.redirect_stdout(
             finally:
                 try:
                     os.unlink(temp_jac_path)
-                except:
+                except Exception:
                     pass
 
         elif CONVERSION_TYPE == "py2jac":
@@ -79,7 +78,7 @@ with contextlib.redirect_stdout(
             finally:
                 try:
                     os.unlink(temp_py_path)
-                except:
+                except Exception:
                     pass
         else:
             CB_RESULT(f"# Unknown conversion type: {CONVERSION_TYPE}")

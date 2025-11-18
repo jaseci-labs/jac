@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 from jaclang.lib import Obj
+from typing import TypedDict
 
 
 class Point(Obj):
@@ -93,8 +94,8 @@ data = [100, 200, 300, 400]
 match data:
     case [*start, 400]:
         print(f"Ends with 400, start: {start}")
-    case [100, *rest]:
-        print(f"Starts with 100, rest: {rest}")
+    case [100, *rest_ints]:
+        print(f"Starts with 100, rest: {rest_ints}")
 matrix = [[1, 2], [3, 4]]
 match matrix:
     case [[a, b], [c, d]]:
@@ -125,10 +126,10 @@ origin = Point(x=0.0, y=0.0)
 match origin:
     case Point(x=0.0, y=0.0):
         print("Point at origin")
-    case Point(x=0.0, y=y):
-        print(f"On y-axis at {y}")
-    case Point(x=x, y=0.0):
-        print(f"On x-axis at {x}")
+    case Point(x=0.0, y=yf):
+        print(f"On y-axis at {yf}")
+    case Point(x=xf, y=0.0):
+        print(f"On x-axis at {xf}")
     case _:
         print("Point elsewhere")
 circle = Circle(center=Point(x=3.0, y=4.0), radius=5.0)
@@ -169,7 +170,15 @@ match score:
         print("Grade: D")
     case _:
         print("Grade: F")
-shape_data = {"type": "circle", "center": [0, 0], "radius": 10}
+
+
+class _Shape(TypedDict):
+    type: str
+    center: list[int]
+    radius: int
+
+
+shape_data: _Shape = {"type": "circle", "center": [0, 0], "radius": 10}
 match shape_data:
     case {"type": "circle", "center": [x, y], "radius": r}:
         print(f"Circle at ({x},{y}) r={r}")

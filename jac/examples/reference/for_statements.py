@@ -38,8 +38,8 @@ for char in "abc":
 d = {"a": 1, "b": 2}
 for key in d:
     print(key)
-for i in ["a", "b"]:
+for s in ["a", "b"]:
     j = 0
     while j < 2:
-        print(f"{i}{j}")
+        print(f"{s}{j}")
         j += 1
