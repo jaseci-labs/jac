@@ -26,13 +26,13 @@ cl {
 
     # ===== MOCK API FUNCTIONS =====
     # Now we can use Promise constructor directly in Jac!
-    
+
     async def fetchUsers() -> any {
         # Simulate API delay
         await Promise(lambda resolve: any -> None {
             setTimeout(resolve, 1000);
         });
-        
+
         # Return copy of database
         return usersDatabase.slice();
     }
@@ -45,7 +45,7 @@ cl {
         user = usersDatabase.find(lambda u: any -> any { return u.id == userId; });
 
         if not user {
-               return None; 
+               return None;
         }
 
         return Object.assign({}, user);
@@ -58,13 +58,13 @@ cl {
 
         # Create user with unique ID
         user = Object.assign({}, newUser, {"id": Date.now()});
-        
+
         # Add to database
         usersDatabase.push(user);
-        
+
         console.log("✅ User created and added to database:", user);
         console.log("📊 Total users now:", usersDatabase.length);
-        
+
         return user;
     }
 
@@ -74,14 +74,14 @@ cl {
         });
 
         index = usersDatabase.findIndex(lambda u: any -> any { return u.id == userId; });
-        
+
         if index == -1 {
-            return None;    
+            return None;
         }
-        
+
         # Remove from database
         deletedUser = usersDatabase.splice(index, 1)[0];
-        
+
         console.log("🗑️ User deleted from database:", deletedUser);
         console.log("📊 Total users now:", usersDatabase.length);
 
@@ -115,7 +115,7 @@ cl {
         return <div style={{"padding": "20px"}}>
             <div style={{"display": "flex", "justifyContent": "space-between", "alignItems": "center", "marginBottom": "15px"}}>
                 <h3 style={{"margin": "0", "color": "#0f172a"}}>Users List (useQuery)</h3>
-                <button 
+                <button
                     onClick={lambda -> None { refetch(); }}
                     style={{"padding": "8px 16px", "backgroundColor": "#3b82f6", "color": "white", "border": "none", "borderRadius": "6px", "cursor": "pointer"}}>
                     🔄 Refetch
@@ -167,7 +167,7 @@ cl {
                 <label style={{"display": "block", "marginBottom": "6px", "color": "#64748b", "fontSize": "14px"}}>
                     Select User:
                 </label>
-                <select 
+                <select
                     value={selectedUserId}
                     onChange={lambda e: any -> None { setSelectedUserId(Number(e.target.value)); }}
                     style={{"padding": "8px", "borderRadius": "6px", "border": "1px solid #cbd5e1", "width": "100%"}}>
@@ -201,7 +201,7 @@ cl {
         let [name, setName] = useState("");
         let [email, setEmail] = useState("");
         let [role, setRole] = useState("Developer");
-        
+
         client = useQueryClient();
 
         mutation = useMutation({
@@ -233,7 +233,7 @@ cl {
             <form onSubmit={handleSubmit}>
                 <div style={{"marginBottom": "12px"}}>
                     <label style={{"display": "block", "marginBottom": "6px", "color": "#64748b", "fontSize": "14px"}}>Name:</label>
-                    <input 
+                    <input
                         type="text"
                         value={name}
                         onChange={lambda e: any -> None { setName(e.target.value); }}
@@ -244,7 +244,7 @@ cl {
 
                 <div style={{"marginBottom": "12px"}}>
                     <label style={{"display": "block", "marginBottom": "6px", "color": "#64748b", "fontSize": "14px"}}>Email:</label>
-                    <input 
+                    <input
                         type="email"
                         value={email}
                         onChange={lambda e: any -> None { setEmail(e.target.value); }}
@@ -255,7 +255,7 @@ cl {
 
                 <div style={{"marginBottom": "12px"}}>
                     <label style={{"display": "block", "marginBottom": "6px", "color": "#64748b", "fontSize": "14px"}}>Role:</label>
-                    <select 
+                    <select
                         value={role}
                         onChange={lambda e: any -> None { setRole(e.target.value); }}
                         style={{"width": "100%", "padding": "8px", "borderRadius": "6px", "border": "1px solid #cbd5e1"}}>
@@ -265,7 +265,7 @@ cl {
                     </select>
                 </div>
 
-                <button 
+                <button
                     type="submit"
                     disabled={isLoading or not name or not email}
                     style={{"width": "100%", "padding": "10px", "backgroundColor": isLoading and "#cbd5e1" or "#22c55e", "color": "white", "border": "none", "borderRadius": "6px", "cursor": isLoading and "not-allowed" or "pointer", "fontWeight": "600"}}>
@@ -302,7 +302,7 @@ cl {
 
     # ===== MAIN APP COMPONENT =====
     def app() -> any {
-       
+
         return <QueryClientProvider client={queryClient}>
             <main style={{"minHeight": "100vh", "backgroundColor": "#f8fafc", "padding": "40px", "fontFamily": "system-ui, sans-serif"}}>
                 <div style={{"maxWidth": "1000px", "margin": "0 auto"}}>

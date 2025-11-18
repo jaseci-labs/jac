@@ -37,7 +37,7 @@ cl {
         return <div style={{"padding": "20px"}}>
             <div style={{"display": "flex", "justifyContent": "space-between", "alignItems": "center", "marginBottom": "15px"}}>
                 <h3 style={{"margin": "0", "color": "#0f172a"}}>Users List (useQuery)</h3>
-                <button 
+                <button
                     onClick={lambda -> None { refetch(); }}
                     style={{"padding": "8px 16px", "backgroundColor": "#3b82f6", "color": "white", "border": "none", "borderRadius": "6px", "cursor": "pointer"}}>
                     🔄 Refetch
@@ -90,7 +90,7 @@ cl {
                 <label style={{"display": "block", "marginBottom": "6px", "color": "#64748b", "fontSize": "14px"}}>
                     Select User:
                 </label>
-                <select 
+                <select
                     value={selectedUserId}
                     onChange={lambda e: any -> None { setSelectedUserId(Number(e.target.value)); }}
                     style={{"padding": "8px", "borderRadius": "6px", "border": "1px solid #cbd5e1", "width": "100%"}}>
@@ -124,7 +124,7 @@ cl {
         let [name, setName] = useState("");
         let [email, setEmail] = useState("");
         let [role, setRole] = useState("Developer");
-        
+
         client =   useQueryClient();
 
         mutation = useMutation({
@@ -156,7 +156,7 @@ cl {
             <form onSubmit={handleSubmit}>
                 <div style={{"marginBottom": "12px"}}>
                     <label style={{"display": "block", "marginBottom": "6px", "color": "#64748b", "fontSize": "14px"}}>Name:</label>
-                    <input 
+                    <input
                         type="text"
                         value={name}
                         onChange={lambda e: any -> None { setName(e.target.value); }}
@@ -167,7 +167,7 @@ cl {
 
                 <div style={{"marginBottom": "12px"}}>
                     <label style={{"display": "block", "marginBottom": "6px", "color": "#64748b", "fontSize": "14px"}}>Email:</label>
-                    <input 
+                    <input
                         type="email"
                         value={email}
                         onChange={lambda e: any -> None { setEmail(e.target.value); }}
@@ -178,7 +178,7 @@ cl {
 
                 <div style={{"marginBottom": "12px"}}>
                     <label style={{"display": "block", "marginBottom": "6px", "color": "#64748b", "fontSize": "14px"}}>Role:</label>
-                    <select 
+                    <select
                         value={role}
                         onChange={lambda e: any -> None { setRole(e.target.value); }}
                         style={{"width": "100%", "padding": "8px", "borderRadius": "6px", "border": "1px solid #cbd5e1"}}>
@@ -188,7 +188,7 @@ cl {
                     </select>
                 </div>
 
-                <button 
+                <button
                     type="submit"
                     disabled={isLoading or not name or not email}
                     style={{"width": "100%", "padding": "10px", "backgroundColor": isLoading and "#cbd5e1" or "#22c55e", "color": "white", "border": "none", "borderRadius": "6px", "cursor": isLoading and "not-allowed" or "pointer", "fontWeight": "600"}}>
@@ -213,7 +213,7 @@ cl {
     # Component: Query DevTools Info
     def QueryInfo() -> any {
         client = useQueryClient();
-        
+
         return <div style={{"padding": "15px", "backgroundColor": "#0f172a", "borderRadius": "12px", "marginTop": "20px"}}>
             <h4 style={{"margin": "0 0 10px", "color": "#e2e8f0", "fontSize": "14px"}}>Query Cache Info</h4>
             <div style={{"fontSize": "12px", "color": "#94a3b8"}}>
@@ -227,7 +227,7 @@ cl {
 
     # Main App Component
     def app() -> any {
-        
+
         return <QueryClientProvider client={queryClient}>
             <main style={{"minHeight": "100vh", "backgroundColor": "#f8fafc", "padding": "40px", "fontFamily": "system-ui, sans-serif"}}>
                 <div style={{"maxWidth": "1000px", "margin": "0 auto"}}>
