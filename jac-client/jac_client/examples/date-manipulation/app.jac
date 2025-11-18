@@ -2,11 +2,11 @@
 # Pages
 cl import from react {useState}
 cl import from "date-fns" {
-    format, 
+    format,
     formatISO,
-    addDays, 
-    subDays, 
-    addMonths, 
+    addDays,
+    subDays,
+    addMonths,
     subMonths,
     addYears,
     subYears,
@@ -44,7 +44,7 @@ cl {
     # Formatting Examples Component
     def FormattingExamples() -> any {
         let now = Date();
-        
+
         return <div style={{"padding": "20px", "border": "1px solid #ddd", "marginBottom": "20px", "borderRadius": "8px"}}>
             <h2 style={{"color": "#2c3e50"}}>📅 Date Formatting</h2>
             <div style={{"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "10px"}}>
@@ -61,11 +61,11 @@ cl {
             </div>
         </div>;
     }
-    
+
     # Adding/Subtracting Dates Component
     def DateArithmeticExamples() -> any {
         let now = Date();
-        
+
         return <div style={{"padding": "20px", "border": "1px solid #ddd", "marginBottom": "20px", "borderRadius": "8px"}}>
             <h2 style={{"color": "#2c3e50"}}>➕➖ Date Arithmetic</h2>
             <div style={{"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "10px"}}>
@@ -82,11 +82,11 @@ cl {
             </div>
         </div>;
     }
-    
+
     # Start/End of Period Component
     def PeriodBoundariesExamples() -> any {
         let now = Date();
-        
+
         return <div style={{"padding": "20px", "border": "1px solid #ddd", "marginBottom": "20px", "borderRadius": "8px"}}>
             <h2 style={{"color": "#2c3e50"}}>🎯 Period Boundaries</h2>
             <div style={{"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "10px"}}>
@@ -99,13 +99,13 @@ cl {
             </div>
         </div>;
     }
-    
+
     # Date Differences Component
     def DateDifferenceExamples() -> any {
         let now = Date();
         let futureDate = addMonths(addDays(now, 45), 2);
         let pastDate = subMonths(subDays(now, 15), 1);
-        
+
         return <div style={{"padding": "20px", "border": "1px solid #ddd", "marginBottom": "20px", "borderRadius": "8px"}}>
             <h2 style={{"color": "#2c3e50"}}>📊 Date Differences</h2>
             <p><strong>Comparing:</strong> {format(now, "yyyy-MM-dd")} with {format(futureDate, "yyyy-MM-dd")}</p>
@@ -118,14 +118,14 @@ cl {
             <p style={{"marginTop": "10px"}}><strong>Past date:</strong> {format(pastDate, "yyyy-MM-dd")} was {differenceInDays(now, pastDate)} days ago</p>
         </div>;
     }
-    
+
     # Date Comparisons Component
     def DateComparisonExamples() -> any {
         let now = Date();
         let tomorrow = addDays(now, 1);
         let yesterday = subDays(now, 1);
         let sameDay = Date();
-        
+
         return <div style={{"padding": "20px", "border": "1px solid #ddd", "marginBottom": "20px", "borderRadius": "8px"}}>
             <h2 style={{"color": "#2c3e50"}}>🔍 Date Comparisons</h2>
             <div style={{"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "10px"}}>
@@ -141,14 +141,14 @@ cl {
             </div>
         </div>;
     }
-    
+
     # Relative Time Component
     def RelativeTimeExamples() -> any {
         let now = Date();
         let pastDate = subDays(now, 3);
         let futureDate = addDays(now, 7);
         let hourAgo = addHours(now, -1);
-        
+
         return <div style={{"padding": "20px", "border": "1px solid #ddd", "marginBottom": "20px", "borderRadius": "8px"}}>
             <h2 style={{"color": "#2c3e50"}}>⏰ Relative Time Formatting</h2>
             <div style={{"display": "grid", "gridTemplateColumns": "1fr", "gap": "10px"}}>
@@ -160,32 +160,32 @@ cl {
             </div>
         </div>;
     }
-    
+
     # Interactive Date Calculator
     def DateCalculator() -> any {
         let initialDate=format(Date(), "yyyy-MM-dd");
         let [selectedDate, setSelectedDate] = useState(initialDate);
         let [daysToAdd, setDaysToAdd] = useState("0");
 
-        
+
         let currentDate = parseISO(selectedDate);
         let resultDate = addDays(currentDate, (daysToAdd));
-        
+
         let handleDateChange = lambda e: any -> None {
             setSelectedDate(e.target.value);
         };
-        
+
         let handleDaysChange = lambda e: any -> None {
             setDaysToAdd(e.target.value);
         };
-        
+
         return <div style={{"padding": "20px", "border": "1px solid #ddd", "marginBottom": "20px", "borderRadius": "8px"}}>
             <h2 style={{"color": "#2c3e50"}}>🧮 Interactive Date Calculator</h2>
             <div style={{"display": "flex", "gap": "15px", "marginBottom": "15px"}}>
                 <div>
                     <label style={{"display": "block", "marginBottom": "5px"}}><strong>Select Date:</strong></label>
-                    <input 
-                        type="date" 
+                    <input
+                        type="date"
                         value={selectedDate}
                         onChange={handleDateChange}
                         style={{"padding": "8px", "fontSize": "14px", "borderRadius": "4px", "border": "1px solid #ccc"}}
@@ -193,8 +193,8 @@ cl {
                 </div>
                 <div>
                     <label style={{"display": "block", "marginBottom": "5px"}}><strong>Days to Add/Subtract:</strong></label>
-                    <input 
-                        type="number" 
+                    <input
+                        type="number"
                         value={daysToAdd}
                         onChange={handleDaysChange}
                         style={{"padding": "8px", "fontSize": "14px", "borderRadius": "4px", "border": "1px solid #ccc", "width": "100px"}}
@@ -208,12 +208,12 @@ cl {
             </div>
         </div>;
     }
-    
+
     # Parsing Examples Component
     def ParsingExamples() -> any {
         let isoString = "2024-12-25T10:30:00.000Z";
         let parsedDate = parseISO(isoString);
-        
+
         return <div style={{"padding": "20px", "border": "1px solid #ddd", "marginBottom": "20px", "borderRadius": "8px"}}>
             <h2 style={{"color": "#2c3e50"}}>🔄 Parsing Dates</h2>
             <div style={{"display": "grid", "gridTemplateColumns": "1fr", "gap": "10px"}}>
@@ -231,7 +231,7 @@ cl {
             <h1 style={{"textAlign": "center", "color": "#34495e", "marginBottom": "30px"}}>
                 🗓️ Date-fns Examples in OneLang
             </h1>
-            
+
             <FormattingExamples />
             <DateArithmeticExamples />
             <PeriodBoundariesExamples />
@@ -240,7 +240,7 @@ cl {
             <RelativeTimeExamples />
             <DateCalculator />
             <ParsingExamples />
-            
+
             <div style={{"textAlign": "center", "marginTop": "30px", "padding": "20px", "backgroundColor": "#ecf0f1", "borderRadius": "8px"}}>
                 <p style={{"margin": "0", "color": "#7f8c8d"}}>
                     <strong>All examples are live and running!</strong> Try the interactive calculator above.
