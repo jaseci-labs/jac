@@ -1,6 +1,6 @@
 
 
-cl import from "@jac-client/utils" {jacIsLoggedIn, jacLogin, jacSignup, __jacSpawn, jacLogout}
+cl import from "@jac-client/utils" {jacIsLoggedIn, jacLogin, jacSignup, jacLogout}
 
 cl{
 
