@@ -138,13 +138,13 @@ def semantic_tokens_full(
 """Run the language server."""
 def run_lang_server()  -> None {
     server = JacLangServer();
-    
+
     # Register all features
     server.feature(lspt.TEXT_DOCUMENT_DID_OPEN)(did_open);
     server.feature(lspt.TEXT_DOCUMENT_DID_SAVE)(did_save);
     server.feature(lspt.TEXT_DOCUMENT_DID_CHANGE)(did_change);
     server.feature(lspt.TEXT_DOCUMENT_FORMATTING)(formatting);
-    
+
     server.feature(
         lspt.WORKSPACE_DID_CREATE_FILES,
         lspt.FileOperationRegistrationOptions(
@@ -153,7 +153,7 @@ def run_lang_server()  -> None {
             ]
         )
     )(did_create_files);
-    
+
     server.feature(
         lspt.WORKSPACE_DID_RENAME_FILES,
         lspt.FileOperationRegistrationOptions(
@@ -162,7 +162,7 @@ def run_lang_server()  -> None {
             ]
         )
     )(did_rename_files);
-    
+
     server.feature(
         lspt.WORKSPACE_DID_DELETE_FILES,
         lspt.FileOperationRegistrationOptions(
@@ -171,25 +171,25 @@ def run_lang_server()  -> None {
             ]
         )
     )(did_delete_files);
-    
+
     server.feature(
         lspt.TEXT_DOCUMENT_COMPLETION,
         lspt.CompletionOptions(trigger_characters=['.', ':', 'a-zA-Z0-9'])
     )(completion);
-    
+
     server.feature(lspt.TEXT_DOCUMENT_HOVER, lspt.HoverOptions(work_done_progress=True))(hover);
     server.feature(lspt.TEXT_DOCUMENT_DOCUMENT_SYMBOL)(document_symbol);
     server.feature(lspt.TEXT_DOCUMENT_DEFINITION)(definition);
     server.feature(lspt.TEXT_DOCUMENT_REFERENCES)(references);
     server.feature(lspt.TEXT_DOCUMENT_RENAME)(rename);
-    
+
     server.feature(
         lspt.TEXT_DOCUMENT_SEMANTIC_TOKENS_FULL,
         lspt.SemanticTokensLegend(
             token_types=SemTokType.as_str_list(), token_modifiers=SemTokMod.as_str_list()
         )
     )(semantic_tokens_full);
-    
+
     server.start_io();
 }
 
