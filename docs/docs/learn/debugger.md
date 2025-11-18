@@ -65,8 +65,7 @@ Steps:
     title="YouTube video player"
     frameborder="0"
     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-    allowfullscreen
-    crossorigin>
+    allowfullscreen>
 </iframe>
 
 ### Jac Extension setup
@@ -106,8 +105,7 @@ This ensures you have the minimum tools needed for debugging.
     title="YouTube video player"
     frameborder="0"
     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-    allowfullscreen
-    crossorigin>
+    allowfullscreen>
 </iframe>
 
 
@@ -217,8 +215,7 @@ You will see a side panel like this:
     title="YouTube video player"
     frameborder="0"
     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin"
-    allowfullscreen
-    crossorigin>
+    allowfullscreen>
 </iframe>
 
 As shown in the video, these nodes will show their values and can be dragged around to better visualize the data.
