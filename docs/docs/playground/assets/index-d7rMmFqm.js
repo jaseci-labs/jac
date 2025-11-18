@@ -279,23 +279,23 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
     margin-right: `).concat(a,"px ").concat(r,`;
     `),n==="padding"&&"padding-right: ".concat(a,"px ").concat(r,";")].filter(Boolean).join(""),`
   }
-  
+
   .`).concat(Xs,` {
     right: `).concat(a,"px ").concat(r,`;
   }
-  
+
   .`).concat(qs,` {
     margin-right: `).concat(a,"px ").concat(r,`;
   }
-  
+
   .`).concat(Xs," .").concat(Xs,` {
     right: 0 `).concat(r,`;
   }
-  
+
   .`).concat(qs," .").concat(qs,` {
     margin-right: 0 `).concat(r,`;
   }
-  
+
   body[`).concat(go,`] {
     `).concat(ZN,": ").concat(a,`px;
   }

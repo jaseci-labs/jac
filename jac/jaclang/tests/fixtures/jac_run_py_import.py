@@ -6,8 +6,3 @@ class MyModule:
     @staticmethod
     def do_something():
         print("Doing something...")
-
-
-
-
-

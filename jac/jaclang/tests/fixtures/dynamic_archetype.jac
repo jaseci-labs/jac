@@ -1,5 +1,5 @@
-import from jaclang.runtimelib.machine { JacMachine } 
-import from bar { Item } 
+import from jaclang.runtimelib.machine { JacMachine }
+import from bar { Item }
 
 
 node test_node {
@@ -11,7 +11,7 @@ walker test_walker {
     can visit_nodes with `root entry {
         visit [-->];
     }
-    
+
     can print_value with test_node | Item entry {
         print("Value:", f'{here.value}');
     }

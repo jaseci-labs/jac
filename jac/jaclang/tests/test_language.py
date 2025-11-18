@@ -647,10 +647,7 @@ class JacLanguageTests(TestCase):
                 ),
                 prog=None,
             ).ir_out
-        self.assertIsInstance(
-            converted_ast,
-            ast.Module
-        )
+        self.assertIsInstance(converted_ast, ast.Module)
 
     def test_refs_target(self) -> None:
         """Test py ast to Jac ast conversion output."""
@@ -1606,9 +1603,11 @@ class JacLanguageTests(TestCase):
         sys.stdout = sys.__stdout__
         stdout_value = captured_output.getvalue().split("\n")
         self.assertIn("Result: 30", stdout_value[0])
-        
+
         # Test py2jac conversion
-        py_file_path = f"{self.fixture_abs_path('../../tests/fixtures/funccall_genexpr.py')}"
+        py_file_path = (
+            f"{self.fixture_abs_path('../../tests/fixtures/funccall_genexpr.py')}"
+        )
         captured_output = io.StringIO()
         sys.stdout = captured_output
         cli.py2jac(py_file_path)

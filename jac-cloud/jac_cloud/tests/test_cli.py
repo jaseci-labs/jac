@@ -28,7 +28,10 @@ class JacCloudCliTests(TestCase):
             text=True,
         )
         run_out, _ = run.communicate()
-        self.assertIn("It will be executed during jac run and will not be executed during jac serve", run_out)
+        self.assertIn(
+            "It will be executed during jac run and will not be executed during jac serve",
+            run_out,
+        )
 
         serve = subprocess.Popen(
             [
@@ -41,13 +44,16 @@ class JacCloudCliTests(TestCase):
             stderr=subprocess.PIPE,
             text=True,
             start_new_session=True,
-            bufsize=1
+            bufsize=1,
         )
         time.sleep(2)
         os.killpg(serve.pid, signal.SIGTERM)
         try:
-            serve_out, _= serve.communicate(timeout=10)
+            serve_out, _ = serve.communicate(timeout=10)
         except subprocess.TimeoutExpired:
             os.killpg(serve.pid, signal.SIGKILL)
             serve_out, _ = serve.communicate()
-        self.assertNotIn("It will be executed during jac run and will not be executed during jac serve", serve_out)
+        self.assertNotIn(
+            "It will be executed during jac run and will not be executed during jac serve",
+            serve_out,
+        )

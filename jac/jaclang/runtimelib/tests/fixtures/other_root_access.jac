@@ -1,6 +1,6 @@
-import from jaclang.runtimelib.machine { JacMachine as Jac } 
-import from jaclang.runtimelib.archetype { Anchor } 
-import from uuid { UUID } 
+import from jaclang.runtimelib.machine { JacMachine as Jac }
+import from jaclang.runtimelib.archetype { Anchor }
+import from uuid { UUID }
 
 
 node A {
@@ -12,7 +12,7 @@ walker check_node {
     can enter with `root entry {
         visit [-->];
     }
-    
+
     can enter2 with A entry {
         print(here);
     }
@@ -21,7 +21,7 @@ walker check_node {
 
 walker update_node {
     has val: int;
-    
+
     can enter2 with A entry {
         here.val = self.val;
     }
@@ -31,7 +31,7 @@ walker update_node {
 walker update_target_node {
     has val: int;
     has node_id: str;
-    
+
     can enter with `root entry {
         target_node = & (self.node_id);
         target_node.val = self.val;
@@ -41,7 +41,7 @@ walker update_target_node {
 
 walker update_node_forced {
     has val: int;
-    
+
     can enter2 with A entry {
         Jac.elevate_root();
         here.val = self.val;
@@ -51,7 +51,7 @@ walker update_node_forced {
 
 walker create_node {
     has val: int;
-    
+
     can enter with `root entry {
         a = A(val=self.val);
         here ++> a;
@@ -71,7 +71,7 @@ walker create_other_root {
 
 walker allow_other_root_access {
     has root_id: str , level: int | str = 1 , via_all: bool = False;
-    
+
     can enter_root with `root entry {
         if self.via_all {
             Jac.perm_grant(here, self.level);
@@ -79,7 +79,7 @@ walker allow_other_root_access {
             Jac.allow_root(here, UUID(self.root_id), self.level);
         }
     }
-    
+
     can enter_nested with A entry {
         if self.via_all {
             Jac.perm_grant(here, self.level);
@@ -92,7 +92,7 @@ walker allow_other_root_access {
 
 walker disallow_other_root_access {
     has root_id: str , via_all: bool = False;
-    
+
     can enter_root with `root entry {
         if self.via_all {
             Jac.perm_revoke(here);
@@ -100,7 +100,7 @@ walker disallow_other_root_access {
             Jac.disallow_root(here, UUID(self.root_id));
         }
     }
-    
+
     can enter_nested with A entry {
         if self.via_all {
             Jac.perm_revoke(here);

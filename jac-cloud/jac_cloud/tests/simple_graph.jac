@@ -250,7 +250,7 @@ walker update_nested_node_trigger_save {
         here.arr.append(1);
         here.val = 1;
         here.enum_field = Enum.B;
-        
+
         save(here);
     }
 }

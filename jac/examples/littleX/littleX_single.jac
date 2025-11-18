@@ -156,7 +156,7 @@ walker load_user_profiles {
 
     can load_profiles with `root entry {
         self.profiles: list = [];
-        
+
         for each_root in allroots() {
             profile = [each_root --> (`?Profile)][0];
             self.profiles.append(

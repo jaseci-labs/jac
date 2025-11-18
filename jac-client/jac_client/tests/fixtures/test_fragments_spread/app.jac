@@ -11,7 +11,7 @@ cl def FragmentTest() {
 cl def SpreadPropsTest() {
     # Test spread props
     unwrapped = {"id": "my-div", "class": "container", "data-role": "main"};
-    
+
     return <div {...unwrapped}>
         <span>{"Spread props work!"}</span>
     </div>;
@@ -20,7 +20,7 @@ cl def SpreadPropsTest() {
 cl def MixedTest() {
     # Test mixing spread props with regular props
     baseStyle = {"id": "base-id", "color": "blue"};
-    
+
     return <>
         <div {...baseStyle} class="override">
             {"Mixed test"}

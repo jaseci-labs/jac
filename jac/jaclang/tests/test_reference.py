@@ -69,8 +69,11 @@ class JacReferenceTests(TestCase):
         def normalize_function_addresses(text: str) -> str:
             """Normalize function memory addresses in output for consistent comparison."""
             import re
+
             # Replace <function Name at 0xADDRESS> with <function Name at 0x...>
-            return re.sub(r'<function (\w+) at 0x[0-9a-f]+>', r'<function \1 at 0x...>', text)
+            return re.sub(
+                r"<function (\w+) at 0x[0-9a-f]+>", r"<function \1 at 0x...>", text
+            )
 
         try:
             if "tests.jac" in filename or "check_statements.jac" in filename:

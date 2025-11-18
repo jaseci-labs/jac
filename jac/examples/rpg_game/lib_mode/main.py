@@ -21,7 +21,9 @@ class Game:
         self.terrain_spritesheet = Spritesheet(current_path / "img/terrain.png")
         self.enemy_spritesheet = Spritesheet(current_path / "img/enemy.png")
         self.attack_spritesheet = Spritesheet(current_path / "img/attack.png")
-        self.intro_background = pygame.image.load(current_path / "img/introbackground.png")
+        self.intro_background = pygame.image.load(
+            current_path / "img/introbackground.png"
+        )
         self.go_background = pygame.image.load(current_path / "img/gameover.png")
 
     def createTilemap(self):

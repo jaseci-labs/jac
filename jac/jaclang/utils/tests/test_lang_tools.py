@@ -112,7 +112,8 @@ class JacAstToolTests(TestCase):
         """Testing for sym, sym. AstTool."""
         jac_file = os.path.normpath(
             os.path.join(
-                os.path.dirname(jaclang.__file__), "../examples/reference/while_statements.jac"
+                os.path.dirname(jaclang.__file__),
+                "../examples/reference/while_statements.jac",
             )
         )
         out = self.tool.ir(["sym", jac_file])
