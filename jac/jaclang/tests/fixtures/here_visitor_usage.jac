@@ -2,7 +2,7 @@ node MyNode{
     has val:int;
 
     can ability1 with MyWalker entry {
-        print("Visitor name is ",visitor.name);
+        print("Visitor name is ", visitor.name);
     }
 }
 
@@ -10,7 +10,7 @@ walker MyWalker{
     has name:str;
 
     can ability2 with MyNode entry {
-        print("Here value is ",here.val);
+        print("Here value is ", here.val);
     }
 }
 

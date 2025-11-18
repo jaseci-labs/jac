@@ -141,3 +141,7 @@ class TypeCheckPass(UniPass):
         for chain in node.chain:
             if isinstance(chain, uni.FilterCompr):
                 self.evaluator.get_type_of_expression(chain)
+
+    def exit_special_var_ref(self, node: uni.SpecialVarRef) -> None:
+        """Handle the special variable reference node."""
+        self.evaluator.get_type_of_expression(node)

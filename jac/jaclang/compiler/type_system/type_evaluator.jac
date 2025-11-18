@@ -1012,7 +1012,29 @@ class TypeEvaluator {
                     }
                 }
 
-            case uni.Name():
+            case uni.Name() | uni.SpecialVarRef():
+
+                if isinstance(expr, uni.SpecialVarRef) {
+                    # Handle "here" and "visitor" special name ref.
+                    if expr.name in (Tok.KW_HERE, Tok.KW_VISITOR) {
+                        if (method := self._get_enclosing_method(expr)) {
+                            if isinstance(method.signature, uni.EventSignature) {
+                                if arch := method.signature.arch_tag_info {
+                                    type_arch_cls = self.get_type_of_expression(arch);
+                                    type_arch_inst = self._convert_to_instance(type_arch_cls);
+                                    if isinstance(type_arch_cls, types.ClassType) {
+                                        self._set_symbol_to_expr(expr, type_arch_inst.get_class_symbol());
+                                    }
+                                    return type_arch_inst;
+                                }
+
+                            }
+                        }
+                    }
+
+                }
+
+
                 # NOTE: For self's type pyright is getting the first parameter of a method and
                 # the name can be anything not just self, however we don't have the first parameter
                 # and self is a keyword, we need to do it in this way.
@@ -1025,6 +1047,7 @@ class TypeEvaluator {
                     symbol.add_use(expr);
                     return self.get_type_of_symbol(symbol);
                 }
+
         }
 
         # TODO: More expressions.
