@@ -35,6 +35,7 @@ class TestJacLangServer(TestCase):
             "ability) calculate_area\\n( radius : float ) -> float",
             lsp.get_hover_info(circle_impl_file, pos).contents.value.replace("'", ""),
         )
+        lsp.shutdown()
 
     def test_impl_auto_discover(self) -> None:
         """Test that the server doesn't run if there is a syntax error."""
@@ -53,6 +54,7 @@ class TestJacLangServer(TestCase):
             "(public ability) calculate_area\\n( radius : float ) -> float",
             lsp.get_hover_info(circle_impl_file, pos).contents.value.replace("'", ""),
         )
+        lsp.shutdown()
 
     def test_outline_symbols(self) -> None:
         """Test that the outline symbols are correct."""
@@ -63,6 +65,7 @@ class TestJacLangServer(TestCase):
         circle_file = uris.from_fs_path(self.fixture_abs_path("circle_pure.jac"))
         lsp.type_check_file(circle_file)
         self.assertEqual(8, len(lsp.get_outline(circle_file)))
+        lsp.shutdown()
 
     def test_go_to_definition(self) -> None:
         """Test that the go to definition is correct."""
@@ -99,6 +102,7 @@ class TestJacLangServer(TestCase):
             "fixtures/goto_def_tests.jac:0:5-0:13",
             str(lsp.get_definition(goto_defs_file, lspt.Position(11, 21))),
         )
+        lsp.shutdown()
 
     def test_go_to_definition_method_manual_impl(self) -> None:
         """Test that the go to definition is correct."""
@@ -119,6 +123,7 @@ class TestJacLangServer(TestCase):
             "decl_defs_main.jac:7:8-7:17",
             str(lsp.get_definition(decldef_file, lspt.Position(2, 20))),
         )
+        lsp.shutdown()
 
     def test_go_to_definition_md_path(self) -> None:
         """Test that the go to definition is correct."""
@@ -163,8 +168,9 @@ class TestJacLangServer(TestCase):
                         )
                     ),
                 )
+        lsp.shutdown()
 
-    def test_go_to_definition_connect_filter(self) -> None:
+    def test_go_to_definition_connect_filter(self: JacLangServer) -> None:
         """Test that the go to definition is correct."""
         lsp = JacLangServer()
         workspace_path = self.fixture_abs_path("")
@@ -201,8 +207,9 @@ class TestJacLangServer(TestCase):
                         )
                     ),
                 )
+        lsp.shutdown()
 
-    def test_go_to_definition_atom_trailer(self) -> None:
+    def test_go_to_definition_atom_trailer(self: JacLangServer) -> None:
         """Test that the go to definition is correct."""
         lsp = JacLangServer()
         workspace_path = self.fixture_abs_path("")
@@ -227,8 +234,9 @@ class TestJacLangServer(TestCase):
                         )
                     ),
                 )
+        lsp.shutdown()
 
-    def test_missing_mod_warning(self) -> None:
+    def test_missing_mod_warning(self: JacLangServer) -> None:
         """Test that the missing module warning is correct."""
         lsp = JacLangServer()
         workspace_path = self.fixture_abs_path("")
@@ -246,6 +254,7 @@ class TestJacLangServer(TestCase):
                 expected,
                 str(lsp.warnings_had[idx]),
             )
+        lsp.shutdown()
 
     @pytest.mark.asyncio
     async def test_completion(self) -> None:
@@ -278,6 +287,7 @@ class TestJacLangServer(TestCase):
             completions = results.items
             for completion in case.expected:
                 self.assertIn(completion, str(completions))
+        lsp.shutdown()
 
     def test_go_to_reference(self) -> None:
         """Test that the go to reference is correct."""
@@ -299,3 +309,4 @@ class TestJacLangServer(TestCase):
             references = str(lsp.get_references(circle_file, lspt.Position(line, char)))
             for expected in expected_refs:
                 self.assertIn(expected, references)
+        lsp.shutdown()
