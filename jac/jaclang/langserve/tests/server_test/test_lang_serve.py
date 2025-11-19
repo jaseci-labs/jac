@@ -172,6 +172,7 @@ class TestLangServe:
             ls.shutdown()
             test_file.cleanup()
 
+    @pytest.mark.filterwarnings("ignore::ResourceWarning")
     @pytest.mark.asyncio
     async def test_multifile_workspace(self):
         """Test opening multiple Jac files in a workspace."""
