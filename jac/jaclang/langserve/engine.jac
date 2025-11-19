@@ -598,6 +598,11 @@ class JacLangServer(JacProgram , LanguageServer) {
             self.worker_thread.join(timeout=1.0);  # Wait for the worker thread to finish
         } finally {
             super.shutdown();
+            # Ensure event loop is closed to prevent socket leaks
+            # Parent class may not close it in all cases
+            if hasattr(self, 'loop') and self.loop and not self.loop.is_closed() {
+                self.loop.close();
+            }
         }
     }
 

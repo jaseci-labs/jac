@@ -777,8 +777,9 @@ class TestServeCommand(TestCase):
 
         # Fetch the client bundle with longer timeout for CI environments
         # Bundle building can be slow on CI runners with limited resources
+        # Increased to 30s as 15s was insufficient in GitHub Actions
         status, js_body, headers = self._request_raw(
-            "GET", "/static/client.js", timeout=15
+            "GET", "/static/client.js", timeout=30
         )
 
         self.assertEqual(status, 200)
