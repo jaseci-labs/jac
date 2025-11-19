@@ -84,7 +84,7 @@ class JacLangServer(JacProgram , LanguageServer) {
                 self.debug(f"Task completed id: {str(task.task_id)}, took: {elapsed:.4f}s");
             }
         }
-        # Clean up any remaining tasks in the queue
+        #  Clean up any remaining tasks in the queue
         while True {
             try {
                 self.queue.get_nowait();
