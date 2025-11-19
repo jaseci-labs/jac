@@ -1,4 +1,5 @@
 import os
+import tracemalloc
 import lsprotocol.types as lspt
 import pytest
 
@@ -8,6 +9,9 @@ import jaclang
 from jaclang.vendor.pygls import uris
 from jaclang.vendor.pygls.workspace import Workspace
 from jaclang.langserve.engine import JacLangServer
+
+# Enable tracemalloc to track resource allocations
+tracemalloc.start()
 
 
 class TestJacLangServer:
