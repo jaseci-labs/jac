@@ -45,7 +45,7 @@ def create_ls_with_workspace(file_path: str):
         loop = asyncio.get_running_loop()
     except RuntimeError:
         loop = asyncio.get_event_loop()
-    
+
     ls = JacLangServer(loop=loop)
     uri = from_fs_path(file_path)
     ls.lsp._workspace = Workspace(os.path.dirname(file_path), ls)
