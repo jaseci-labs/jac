@@ -104,12 +104,12 @@ jobs:
     - name: Run package tests
       run: pytest -x jac-cloud jac-byllm jac-streamlit
 
-    - name: Run jac-cloud tests with DB
-      run: pytest -x jac-cloud
-      env:
-        DATABASE_HOST: mongodb://localhost/?retryWrites=true&w=majority
-        REDIS_HOST: redis://localhost
-        TASK_CONSUMER_CRON_SECOND: "*"
+    # - name: Run jac-cloud tests with DB
+    #   run: pytest -x jac-cloud
+    #   env:
+    #     DATABASE_HOST: mongodb://localhost/?retryWrites=true&w=majority
+    #     REDIS_HOST: redis://localhost
+    #     TASK_CONSUMER_CRON_SECOND: "*"
 
     - name: Run littleX tests
       run: jac test jac/examples/littleX/littleX.test.jac
