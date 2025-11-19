@@ -599,7 +599,7 @@ class JacLangServer(JacProgram , LanguageServer) {
         try {
             self.queue.put(None);  # Signal the worker thread to exit
             self.worker_thread.join(timeout=1.0);  # Wait for the worker thread to finish
-            
+
             # Properly cleanup event loop resources before shutdown
             if hasattr(self, 'loop') and self.loop and not self.loop.is_closed() {
                 # Cancel all pending tasks
