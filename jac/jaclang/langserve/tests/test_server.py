@@ -313,10 +313,12 @@ class TestJacLangServer(TestCase):
     
             try:
                 loop = asyncio.get_running_loop()
+                print("Got running loop...",loop)
             except RuntimeError:
                 loop = None
 
             if loop is not None:
+                print("Cleaning up asyncio loop...")
                 # Cancel all remaining tasks
                 tasks = [t for t in asyncio.all_tasks(loop) if not t.done()]
                 for t in tasks:

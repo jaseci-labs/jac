@@ -68,6 +68,7 @@ class JacLangServer(JacProgram , LanguageServer) {
             if task is None {
                 self.debug("Task was None, exiting dispatcher.");
                 break;
+                
             }
 
             self.debug("Dispatching task id: " + str(task.task_id));
@@ -82,6 +83,15 @@ class JacLangServer(JacProgram , LanguageServer) {
             } else {
                 elapsed = time.time() - start_time;
                 self.debug(f"Task completed id: {str(task.task_id)}, took: {elapsed:.4f}s");
+            }
+        }
+        # Clean up any remaining tasks in the queue
+        while True {
+            try {
+                self.queue.get_nowait();
+                self.queue.task_done();
+            } except Empty {
+                break;
             }
         }
     }
