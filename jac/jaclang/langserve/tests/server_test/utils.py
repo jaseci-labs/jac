@@ -40,11 +40,9 @@ def create_ls_with_workspace(file_path: str):
     import asyncio
     from jaclang.langserve.engine import JacLangServer
 
-    # Use the current event loop to avoid creating orphaned loops
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = asyncio.get_event_loop()
+    # Use the current running event loop to avoid creating orphaned loops
+    # In async tests, there's always a running loop, so this should never fail
+    loop = asyncio.get_running_loop()
 
     ls = JacLangServer(loop=loop)
     uri = from_fs_path(file_path)

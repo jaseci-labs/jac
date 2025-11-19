@@ -599,6 +599,31 @@ class JacLangServer(JacProgram , LanguageServer) {
         try {
             self.queue.put(None);  # Signal the worker thread to exit
             self.worker_thread.join(timeout=1.0);  # Wait for the worker thread to finish
+            
+            # Properly cleanup event loop resources before shutdown
+            if hasattr(self, 'loop') and self.loop and not self.loop.is_closed() {
+                # Cancel all pending tasks
+                try {
+                    pending = asyncio.all_tasks(self.loop);
+                    for task in pending {
+                        task.cancel();
+                    }
+                    # Let cancelled tasks clean up
+                    if pending {
+                        self.loop.run_until_complete(
+                            asyncio.gather(*pending, return_exceptions=True)
+                        );
+                    }
+                    # Shutdown async generators
+                    self.loop.run_until_complete(self.loop.shutdown_asyncgens());
+                    # Shutdown default executor
+                    if hasattr(self.loop, '_default_executor') and self.loop._default_executor {
+                        self.loop._default_executor.shutdown(True);
+                    }
+                } except Exception as e {
+                    self.debug(f"Error during loop cleanup: {e}");
+                }
+            }
         } finally {
             super.shutdown();
         }
