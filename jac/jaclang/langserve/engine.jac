@@ -92,6 +92,7 @@ class JacLangServer(JacProgram , LanguageServer) {
             } except Empty {
                 break;
             }
+        }
     }
 
     """Return diagnostics for all files as a dict {uri: diagnostics}."""
