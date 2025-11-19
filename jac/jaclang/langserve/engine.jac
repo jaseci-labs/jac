@@ -593,7 +593,7 @@ class JacLangServer(JacProgram , LanguageServer) {
 
 
     def shutdown(self: JacLangServer) -> None {
-        try { 
+        try {
             self.queue.put(None);  # Signal the worker thread to exit
             self.worker_thread.join(timeout=5.0);  # Wait for the worker thread to finish
         } finally {
