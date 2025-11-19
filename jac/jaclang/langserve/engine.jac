@@ -610,6 +610,18 @@ class JacLangServer(JacProgram , LanguageServer) {
             if self.lsp.transport is not None {
                 self.lsp.transport.close();
             }
+
+            # Cancel all pending tasks in the event loop
+            if self.loop and not self.loop.is_closed() {
+                pending = asyncio.all_tasks(self.loop);
+                for task in pending {
+                    task.cancel();
+                }
+                # Run the loop briefly to allow tasks to be cancelled
+                if pending {
+                    self.loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True));
+                }
+            }
         } finally {
             super.shutdown();
         }
