@@ -25,32 +25,35 @@ class SSLServiceTest(TestCase):
         env["UV_SSL_CERTFILE"] = f"{self.directory}/localhost.crt"
         env["UV_SSL_KEYFILE"] = f"{self.directory}/localhost.key"
 
-        self.server = Popen(
+        server = Popen(
             ["jac", "serve", f"{self.directory}/simple_graph.jac", "--port", "8443"],
             env=env,
         )
 
-        self.host = "https://localhost:8443"
+        try:
+            self.host = "https://localhost:8443"
 
-        count = 0
-        while True:
-            if count > 10:
-                self.check_server()
-                break
-            else:
-                with suppress(Exception):
+            count = 0
+            while True:
+                if count > 10:
                     self.check_server()
                     break
-                sleep(1)
-            count += 1
+                else:
+                    with suppress(Exception):
+                        self.check_server()
+                        break
+                    sleep(1)
+                count += 1
 
-        res = get(f"{self.host}/openapi.yaml", verify=False, timeout=1)
-        res.raise_for_status()
+            res = get(f"{self.host}/openapi.yaml", verify=False, timeout=1)
+            res.raise_for_status()
 
-        with open(f"{self.directory}/openapi_specs.yaml") as file:
-            self.assertEqual(safe_load(file), safe_load(res.text))
-
-        self.server.kill()
+            with open(f"{self.directory}/openapi_specs.yaml") as file:
+                self.assertEqual(safe_load(file), safe_load(res.text))
+        finally:
+            server.kill()
+            server.wait()
+            run(["fuser", "-k", "8443/tcp"])
 
     def check_server(self) -> None:
         """Retrieve OpenAPI Specs JSON."""
