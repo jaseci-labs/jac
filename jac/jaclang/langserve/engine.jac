@@ -595,7 +595,12 @@ class JacLangServer(JacProgram , LanguageServer) {
     def shutdown(self: JacLangServer) -> None {
         try {
             self.queue.put(None);  # Signal the worker thread to exit
-            self.worker_thread.join(timeout=5.0);  # Wait for the worker thread to finish
+            self.worker_thread.join(timeout=1.0);  # Wait for the worker thread to finish
+
+            # If the thread is still alive after the timeout, log a warning
+            if self.worker_thread.is_alive() {
+                self.log_warning("Worker thread did not shut down within the timeout period.");
+            }
         } finally {
             super.shutdown();
         }
