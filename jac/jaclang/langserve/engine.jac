@@ -632,7 +632,7 @@ class JacLangServer(JacProgram , LanguageServer) {
         }
 
         # Call parent shutdown which will close the loop
-        super().shutdown();
+        super.shutdown();
     }
 
 }
