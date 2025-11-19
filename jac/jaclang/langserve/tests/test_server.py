@@ -5,6 +5,7 @@ from jaclang.vendor.pygls.workspace import Workspace
 
 import lsprotocol.types as lspt
 from jaclang.langserve.engine import JacLangServer
+import pytest
 
 
 class TestJacLangServer(TestCase):
@@ -254,7 +255,8 @@ class TestJacLangServer(TestCase):
             )
         lsp.shutdown()
 
-    def test_completion(self) -> None:
+    @pytest.mark.asyncio
+    async def test_completion(self) -> None:
         """Test that the completions are correct."""
         import asyncio
 
@@ -280,10 +282,13 @@ class TestJacLangServer(TestCase):
             ),
         ]
         for case in test_cases:
-            results = asyncio.run(
-                lsp.get_completion(
-                    base_module_file, case.pos, completion_trigger=case.trigger
-                )
+            # results = asyncio.run(
+            #     lsp.get_completion(
+            #         base_module_file, case.pos, completion_trigger=case.trigger
+            #     )
+            # )
+            results = await lsp.get_completion(
+                base_module_file, case.pos, completion_trigger=case.trigger
             )
             completions = results.items
             for completion in case.expected:
