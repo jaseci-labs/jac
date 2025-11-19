@@ -37,9 +37,16 @@ def load_jac_template(template_file: str, code: str = "") -> str:
 
 def create_ls_with_workspace(file_path: str):
     """Create JacLangServer and workspace for a given file path, return (uri, ls)."""
+    import asyncio
     from jaclang.langserve.engine import JacLangServer
 
-    ls = JacLangServer()
+    # Use the current event loop to avoid creating orphaned loops
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = asyncio.get_event_loop()
+    
+    ls = JacLangServer(loop=loop)
     uri = from_fs_path(file_path)
     ls.lsp._workspace = Workspace(os.path.dirname(file_path), ls)
     return uri, ls

@@ -46,8 +46,8 @@ class Task {
 """Jac Language Server, manages JacProgram and LSP."""
 class JacLangServer(JacProgram , LanguageServer) {
     """Initialize JacLangServer."""
-    def init(self: JacLangServer) -> None {
-        LanguageServer.init(self, 'jac-lsp', 'v0.1');
+    def init(self: JacLangServer, loop: Optional[asyncio.AbstractEventLoop] = None) -> None {
+        LanguageServer.init(self, 'jac-lsp', 'v0.1', loop);
         JacProgram.init(self);
         self.sem_managers: dict[(str, SemTokManager)] = {};
         self.module_manager = ModuleManager(self, self.sem_managers);
