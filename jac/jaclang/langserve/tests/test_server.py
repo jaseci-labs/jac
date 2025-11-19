@@ -323,7 +323,7 @@ class TestJacLangServer(TestCase):
                 tasks = [t for t in asyncio.all_tasks(loop) if not t.done()]
                 for t in tasks:
                     t.cancel()
-                # Ensure all tasks finish shutting down
+                # Ensure all tasks finish
                 loop.run_until_complete(asyncio.gather(*tasks, return_exceptions=True))
                 # Finally close the loop
                 loop.close()
