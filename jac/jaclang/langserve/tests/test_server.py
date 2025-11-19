@@ -13,7 +13,6 @@ from jaclang.langserve.engine import JacLangServer
 # Enable tracemalloc to track resource allocations
 tracemalloc.start()
 
-
 class TestJacLangServer:
     """Test suite for JacLangServer functionality."""
 
