@@ -111,17 +111,19 @@ class TestJacLangServer(TestCase):
         decldef_file = uris.from_fs_path(
             self.examples_abs_path("micro/decl_defs_main.impl.jac")
         )
-        lsp.type_check_file(decldef_file)
-        decldef_main_file = uris.from_fs_path(
-            self.examples_abs_path("micro/decl_defs_main.jac")
-        )
-        lsp.type_check_file(decldef_main_file)
-        lsp.type_check_file(decldef_file)
-        self.assertIn(
-            "decl_defs_main.jac:7:8-7:17",
-            str(lsp.get_definition(decldef_file, lspt.Position(2, 20))),
-        )
-        lsp.shutdown()
+        try:
+            lsp.type_check_file(decldef_file)
+            decldef_main_file = uris.from_fs_path(
+                self.examples_abs_path("micro/decl_defs_main.jac")
+            )
+            lsp.type_check_file(decldef_main_file)
+            lsp.type_check_file(decldef_file)
+            self.assertIn(
+                "decl_defs_main.jac:7:8-7:17",
+                str(lsp.get_definition(decldef_file, lspt.Position(2, 20))),
+            )
+        finally:
+            lsp.shutdown()
 
     def test_go_to_definition_md_path(self) -> None:
         """Test that the go to definition is correct."""
@@ -155,18 +157,19 @@ class TestJacLangServer(TestCase):
             (21, 31, "vendor/lsprotocol/types.py:0:0-0:0"),
         ]
         # fmt: on
-
-        for line, char, expected in positions:
-            with self.subTest(line=line, char=char):
-                self.assertIn(
-                    expected,
-                    str(
-                        lsp.get_definition(
-                            import_file, lspt.Position(line - 1, char - 1)
-                        )
-                    ),
-                )
-        lsp.shutdown()
+        try:
+            for line, char, expected in positions:
+                with self.subTest(line=line, char=char):
+                    self.assertIn(
+                        expected,
+                        str(
+                            lsp.get_definition(
+                                import_file, lspt.Position(line - 1, char - 1)
+                            )
+                        ),
+                    )
+        finally:
+            lsp.shutdown()
 
     def test_go_to_definition_connect_filter(self: JacLangServer) -> None:
         """Test that the go to definition is correct."""
@@ -194,18 +197,19 @@ class TestJacLangServer(TestCase):
             (40, 17, "connect_filter.jac:1:6-1:8"),
         ]
         # fmt: on
-
-        for line, char, expected in positions:
-            with self.subTest(line=line, char=char):
-                self.assertIn(
-                    expected,
-                    str(
-                        lsp.get_definition(
-                            import_file, lspt.Position(line - 1, char - 1)
-                        )
-                    ),
-                )
-        lsp.shutdown()
+        try:
+            for line, char, expected in positions:
+                with self.subTest(line=line, char=char):
+                    self.assertIn(
+                        expected,
+                        str(
+                            lsp.get_definition(
+                                import_file, lspt.Position(line - 1, char - 1)
+                            )
+                        ),
+                    )
+        finally:
+            lsp.shutdown()
 
     def test_go_to_definition_atom_trailer(self: JacLangServer) -> None:
         """Test that the go to definition is correct."""
@@ -221,18 +225,19 @@ class TestJacLangServer(TestCase):
             (14, 28, "fixtures/greet.py:2:3-3:15"),
         ]
         # fmt: on
-
-        for line, char, expected in positions:
-            with self.subTest(line=line, char=char):
-                self.assertIn(
-                    expected,
-                    str(
-                        lsp.get_definition(
-                            import_file, lspt.Position(line - 1, char - 1)
-                        )
-                    ),
-                )
-        lsp.shutdown()
+        try:
+            for line, char, expected in positions:
+                with self.subTest(line=line, char=char):
+                    self.assertIn(
+                        expected,
+                        str(
+                            lsp.get_definition(
+                                import_file, lspt.Position(line - 1, char - 1)
+                            )
+                        ),
+                    )
+        finally:
+            lsp.shutdown()
 
     def test_missing_mod_warning(self: JacLangServer) -> None:
         """Test that the missing module warning is correct."""
@@ -247,12 +252,14 @@ class TestJacLangServer(TestCase):
             "fixtures/md_path.jac, line 16, col 13: Module not found",
             "fixtures/md_path.jac, line 22, col 8: Module not found",
         ]
-        for idx, expected in enumerate(positions):
-            self.assertIn(
-                expected,
-                str(lsp.warnings_had[idx]),
-            )
-        lsp.shutdown()
+        try:
+            for idx, expected in enumerate(positions):
+                self.assertIn(
+                    expected,
+                    str(lsp.warnings_had[idx]),
+                )
+        finally:
+            lsp.shutdown()
 
     def test_completion(self) -> None:
         """Test that the completions are correct."""
@@ -279,28 +286,33 @@ class TestJacLangServer(TestCase):
                 ["bar", "baz"],
             ),
         ]
-        for case in test_cases:
-            try:
-                loop = asyncio.get_running_loop()
-            except RuntimeError:
-                loop = None
+        try:
+            for case in test_cases:
+                try:
+                    loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    loop = None
 
-            if loop is None:
-                results = asyncio.run(
-                    lsp.get_completion(
-                        base_module_file, case.pos, completion_trigger=case.trigger
+                if loop is None:
+                    results = asyncio.run(
+                        lsp.get_completion(
+                            base_module_file, case.pos, completion_trigger=case.trigger
+                        )
                     )
-                )
-            else:
-                results = loop.run_until_complete(
-                    lsp.get_completion(
-                        base_module_file, case.pos, completion_trigger=case.trigger
+                else:
+                    results = loop.run_until_complete(
+                        lsp.get_completion(
+                            base_module_file, case.pos, completion_trigger=case.trigger
+                        )
                     )
-                )
-            completions = results.items
-            for completion in case.expected:
-                self.assertIn(completion, str(completions))
-        lsp.shutdown()
+                completions = results.items
+                for completion in case.expected:
+                    self.assertIn(completion, str(completions))
+            print("Completion tests passed.")
+        finally:
+            print("Shutting down LSP...")
+            lsp.shutdown()
+            print("LSP shut down.")
 
     def test_go_to_reference(self) -> None:
         """Test that the go to reference is correct."""
@@ -318,8 +330,12 @@ class TestJacLangServer(TestCase):
             # we should connect the function args to their decls
             # (62, 14, ["65:44-65:57", "70:33-70:46"]),
         ]
-        for line, char, expected_refs in test_cases:
-            references = str(lsp.get_references(circle_file, lspt.Position(line, char)))
-            for expected in expected_refs:
-                self.assertIn(expected, references)
-        lsp.shutdown()
+        try:
+            for line, char, expected_refs in test_cases:
+                references = str(
+                    lsp.get_references(circle_file, lspt.Position(line, char))
+                )
+                for expected in expected_refs:
+                    self.assertIn(expected, references)
+        finally:
+            lsp.shutdown()
