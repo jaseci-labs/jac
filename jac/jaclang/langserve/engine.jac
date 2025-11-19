@@ -604,7 +604,7 @@ class JacLangServer(JacProgram , LanguageServer) {
     def shutdown(self: JacLangServer) -> None {
         # Signal the worker thread to exit
         self.queue.put(None);
-        self.worker_thread.join(timeout=1.0);
+        self.worker_thread.join(timeout=10.0);
 
         # Close the protocol transport if it exists
         if self.lsp.transport is not None {
