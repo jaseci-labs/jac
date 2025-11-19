@@ -256,8 +256,6 @@ class TestJacLangServer(TestCase):
 
     def test_completion(self) -> None:
         """Test that the completions are correct."""
-        import asyncio
-
         lsp = JacLangServer()
         workspace_path = self.fixture_abs_path("")
         workspace = Workspace(workspace_path, lsp)
@@ -280,7 +278,7 @@ class TestJacLangServer(TestCase):
             ),
         ]
         for case in test_cases:
-            results = asyncio.run(
+            results = lsp.loop.run_until_complete(
                 lsp.get_completion(
                     base_module_file, case.pos, completion_trigger=case.trigger
                 )
