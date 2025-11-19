@@ -68,7 +68,6 @@ class JacLangServer(JacProgram , LanguageServer) {
             if task is None {
                 self.debug("Task was None, exiting dispatcher.");
                 break;
-
             }
 
             self.debug("Dispatching task id: " + str(task.task_id));
