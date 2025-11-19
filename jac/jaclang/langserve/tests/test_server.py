@@ -312,7 +312,23 @@ class TestJacLangServer(TestCase):
         finally:
             print("Shutting down LSP...")
             lsp.shutdown()
-            print("LSP shut down.")
+    
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+
+            if loop is not None:
+                # Cancel all remaining tasks
+                tasks = [t for t in asyncio.all_tasks(loop) if not t.done()]
+                for t in tasks:
+                    t.cancel()
+                # Ensure all tasks finish shutting down
+                loop.run_until_complete(asyncio.gather(*tasks, return_exceptions=True))
+                # Finally close the loop
+                loop.close()
+
+    print("LSP shut down.")
 
     def test_go_to_reference(self) -> None:
         """Test that the go to reference is correct."""
@@ -332,9 +348,7 @@ class TestJacLangServer(TestCase):
         ]
         try:
             for line, char, expected_refs in test_cases:
-                references = str(
-                    lsp.get_references(circle_file, lspt.Position(line, char))
-                )
+                references = str(lsp.get_references(circle_file, lspt.Position(line, char)))
                 for expected in expected_refs:
                     self.assertIn(expected, references)
         finally:
