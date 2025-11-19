@@ -605,6 +605,11 @@ class JacLangServer(JacProgram , LanguageServer) {
         try {
             self.queue.put(None);  # Signal the worker thread to exit
             self.worker_thread.join(timeout=1.0);  # Wait for the worker thread to finish
+
+            # Close the protocol transport if it exists
+            if self.lsp.transport is not None {
+                self.lsp.transport.close();
+            }
         } finally {
             super.shutdown();
         }
