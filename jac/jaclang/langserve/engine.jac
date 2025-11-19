@@ -602,29 +602,37 @@ class JacLangServer(JacProgram , LanguageServer) {
 
 
     def shutdown(self: JacLangServer) -> None {
-        try {
-            self.queue.put(None);  # Signal the worker thread to exit
-            self.worker_thread.join(timeout=1.0);  # Wait for the worker thread to finish
+        # Signal the worker thread to exit
+        self.queue.put(None);
+        self.worker_thread.join(timeout=1.0);
 
-            # Close the protocol transport if it exists
-            if self.lsp.transport is not None {
-                self.lsp.transport.close();
-            }
-
-            # Cancel all pending tasks in the event loop
-            if self.loop and not self.loop.is_closed() {
-                pending = asyncio.all_tasks(self.loop);
-                for task in pending {
-                    task.cancel();
-                }
-                # Run the loop briefly to allow tasks to be cancelled
-                if pending {
-                    self.loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True));
-                }
-            }
-        } finally {
-            super.shutdown();
+        # Close the protocol transport if it exists
+        if self.lsp.transport is not None {
+            self.lsp.transport.close();
         }
+
+        # Cancel and clean up all pending tasks in the event loop
+        if self.loop and not self.loop.is_closed() {
+            # Get all pending tasks
+            pending = asyncio.all_tasks(self.loop);
+
+            # Cancel all pending tasks
+            for task in pending {
+                task.cancel();
+            }
+
+            # Run the loop briefly to process cancellations
+            if pending {
+                try {
+                    self.loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True));
+                } except Exception {
+                    ...;  # Ignore errors during cleanup
+                }
+            }
+        }
+
+        # Call parent shutdown which will close the loop
+        super().shutdown();
     }
 
 }
