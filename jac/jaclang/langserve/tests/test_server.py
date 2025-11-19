@@ -311,23 +311,6 @@ class TestJacLangServer(TestCase):
         finally:
             lsp.shutdown()
 
-            # try:
-            #     loop = asyncio.get_running_loop()
-            #     print("Got running loop...", loop)
-            # except RuntimeError:
-            #     loop = None
-
-            # if loop is not None:
-            #     print("Cleaning up asyncio loop...")
-            #     # Cancel all remaining tasks
-            #     tasks = [t for t in asyncio.all_tasks(loop) if not t.done()]
-            #     for t in tasks:
-            #         t.cancel()
-            #     # Ensure all tasks finish shutting down
-            #     loop.run_until_complete(asyncio.gather(*tasks, return_exceptions=True))
-            #     # Finally close the loop
-            #     loop.close()
-
     def test_go_to_reference(self) -> None:
         """Test that the go to reference is correct."""
         lsp = JacLangServer()
