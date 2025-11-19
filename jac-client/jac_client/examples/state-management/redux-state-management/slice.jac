@@ -28,7 +28,7 @@ cl {
                 # }
             },
             "deleteTodo": lambda state: any, action: any -> None {
-                
+
                 # state.items = state.items.filter(lambda t: any -> bool {
                 #     return t.id != action.payload;
                 # });
