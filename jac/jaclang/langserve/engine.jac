@@ -228,7 +228,10 @@ class JacLangServer(JacProgram , LanguageServer) {
 
     async def wait_till_idle(self: JacLangServer) -> None {
         self.debug("Waiting for queue to empty...");
-        await asyncio.to_thread(self.queue.join);
+        # Poll the queue instead of using asyncio.to_thread to avoid resource leaks
+        while self.queue.unfinished_tasks > 0 {
+            await asyncio.sleep(0.01);
+        }
         self.debug("Queue is now empty");
     }
 
