@@ -284,7 +284,7 @@ class TestJacLangServer(TestCase):
                 loop = asyncio.get_running_loop()
             except RuntimeError:
                 loop = None
-
+ 
             if loop is None:
                 results = asyncio.run(
                     lsp.get_completion(
