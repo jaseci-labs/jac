@@ -265,10 +265,6 @@ class TestJacLangServer(TestCase):
         """Test that the completions are correct."""
         import asyncio
 
-        # Create a dedicated clean event loop for this test
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
         lsp = JacLangServer()
         workspace_path = self.fixture_abs_path("")
         workspace = Workspace(workspace_path, lsp)
@@ -284,36 +280,51 @@ class TestJacLangServer(TestCase):
             expected: list[str]
             trigger: str = "."
 
-        test_cases = [
-            Case(lspt.Position(8, 8), ["bar", "baz"]),
+        test_cases: list[Case] = [
+            Case(
+                lspt.Position(8, 8),
+                ["bar", "baz"],
+            ),
         ]
-
         try:
             for case in test_cases:
-                results = loop.run_until_complete(
-                    lsp.get_completion(
-                        base_module_file,
-                        case.pos,
-                        completion_trigger=case.trigger,
-                    )
-                )
+                try:
+                    loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    loop = None
 
+                if loop is None:
+                    results = asyncio.run(
+                        lsp.get_completion(
+                            base_module_file, case.pos, completion_trigger=case.trigger
+                        )
+                    )
+                else:
+                    results = loop.run_until_complete(
+                        lsp.get_completion(
+                            base_module_file, case.pos, completion_trigger=case.trigger
+                        )
+                    )
                 completions = results.items
                 for completion in case.expected:
                     self.assertIn(completion, str(completions))
-
         finally:
-            # Shut down LSP
             lsp.shutdown()
+    
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
 
-            # Cancel and cleanup tasks to avoid warnings
-            pending = asyncio.all_tasks(loop)
-            for task in pending:
-                task.cancel()
-            loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-
-            loop.close()
-            asyncio.set_event_loop(None)
+            if loop is not None:
+                # Cancel all remaining tasks
+                tasks = [t for t in asyncio.all_tasks(loop) if not t.done()]
+                for t in tasks:
+                    t.cancel()
+                # Ensure all tasks finish shutting down
+                loop.run_until_complete(asyncio.gather(*tasks, return_exceptions=True))
+                # Finally close the loop
+                loop.close()
 
     def test_go_to_reference(self) -> None:
         """Test that the go to reference is correct."""
@@ -333,9 +344,7 @@ class TestJacLangServer(TestCase):
         ]
         try:
             for line, char, expected_refs in test_cases:
-                references = str(
-                    lsp.get_references(circle_file, lspt.Position(line, char))
-                )
+                references = str(lsp.get_references(circle_file, lspt.Position(line, char)))
                 for expected in expected_refs:
                     self.assertIn(expected, references)
         finally:
