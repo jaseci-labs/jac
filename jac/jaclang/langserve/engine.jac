@@ -599,7 +599,8 @@ class JacLangServer(JacProgram , LanguageServer) {
 
             # If the thread is still alive after the timeout, log a warning
             if self.worker_thread.is_alive() {
-                self.log_warning("Worker thread did not shut down within the timeout period.");
+                # print("Worker thread did not shut down within the timeout period.");
+                exit();
             }
         } finally {
             super.shutdown();
