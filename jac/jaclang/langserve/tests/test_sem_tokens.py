@@ -2,7 +2,6 @@
 
 import copy
 import lsprotocol.types as lspt
-from jaclang import JacMachineInterface as _
 from jaclang.utils.test import TestCase
 from jaclang.langserve.sem_manager import SemTokManager
 

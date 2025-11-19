@@ -1,4 +1,9 @@
-exclude: '(_v1|vendor|larkparse|jac/examples|tests|support|setup.py|langserve/tests|pygame_mock|docs/docs/playground)'
+exclude: |
+    (?x)(
+        ^jac/jaclang/vendor/|
+        ^jac/jaclang/compiler/larkparse/jac_parser\.py$|
+        ^$
+    )
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
@@ -15,16 +20,13 @@ repos:
     rev: 7.3.0
     hooks:
       - id: flake8
-        args: ["--config=.flake8"]
-        additional_dependencies:
-          [
-            pep8-naming,
-            flake8_import_order,
-            flake8_comprehensions,
-            flake8_bugbear,
-            flake8_annotations,
-            flake8_simplify,
-          ]
+        exclude: |
+            (?x)(
+                # TODO
+                ^jac/examples/|
+                /fixtures/|
+                ^$
+            )
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.18.2
     hooks:
@@ -36,3 +38,4 @@ repos:
           - --explicit-package-bases
           - --exclude=jac-byllm/scripts
         additional_dependencies: [types-PyYAML, types-requests]
+        exclude: /fixtures/

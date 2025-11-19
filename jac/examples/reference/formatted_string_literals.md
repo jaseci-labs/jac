@@ -66,7 +66,7 @@ print(f"Hex: {z:10}")       # Right-aligned in 10 character field
 F-strings support conversion flags to change how values are represented:
 
 - `!r` - calls `repr()` on the value
-- `!s` - calls `str()` on the value  
+- `!s` - calls `str()` on the value
 - `!a` - calls `ascii()` on the value
 
 ```python

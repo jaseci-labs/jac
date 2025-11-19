@@ -59,7 +59,7 @@ class TestFeatures(TestCase):
         class AnotherPlugin:
             @staticmethod
             @hookimpl
-            def setup() -> None:
+            def setup() -> str:
                 return "I'm here"
 
         pm.register(AnotherPlugin())

@@ -3,11 +3,13 @@
 print("Hello from Python!")
 print("This is a test Python file.")
 
+
 def main():
     """Main function to demonstrate execution."""
     result = 42
     print(f"Result: {result}")
     return result
+
 
 if __name__ == "__main__":
     main()

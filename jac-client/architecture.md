@@ -32,13 +32,15 @@ Extends the base `ClientBundleBuilder` to provide Vite integration. Key responsi
      import { createRoot } from "react-dom/client";
      import { app as App } from "./app.js";
      ```
-   - Runs `npm run compile` then `npm run build`
+   - Runs `npm run compile` then copies assets (`_copy_asset_files`)
+   - Runs `npm run build` to bundle with Vite
    - Generates hashed bundle file (`client.[hash].js`)
+   - Vite extracts CSS to `dist/main.css`
    - Returns bundle code and SHA256 hash
 
 ### Build Flow
 
-![Build Pipeline](jac_client/docs/assets/pipe_line.png)
+![Build Pipeline](jac_client/docs/assets/pipe_line-v2.svg)
 
 
 ```
@@ -53,14 +55,96 @@ Extends the base `ClientBundleBuilder` to provide Vite integration. Key responsi
    ├── Accumulate exports & globals
    └── Skip bare specifiers (handled by Vite)
 
-3. Vite bundling
+3. Babel compilation
+   ├── Run npm run compile
+   ├── Transpile JavaScript from src/ to build/
+   └── Preserves CSS import statements
+
+4. Asset copying
+   ├── Copy CSS and other assets from src/ to build/
+   └── Ensures Vite can resolve CSS imports during bundling
+
+5. Vite bundling
    ├── Write entry point (main.js)
-   ├── Run npm compile & build
-   ├── Locate generated bundle in dist/assets/
+   ├── Run npm run build
+   ├── Process CSS imports and extract to dist/main.css
+   ├── Locate generated bundle in dist/
    └── Return code + hash
 
-4. Cleanup
+6. Cleanup
    └── Remove src/ directory
+```
+
+### CSS Serving
+
+CSS files are handled through a multi-stage process that ensures styles are properly bundled and served:
+
+#### 1. CSS Import in Jac Code
+CSS files are imported in Jac code using the `cl import` syntax:
+```jac
+cl import ".styles.css";
+```
+
+This gets compiled to JavaScript:
+```javascript
+import "./styles.css";
+```
+
+#### 2. Asset Copying (`_copy_asset_files`)
+After Babel compilation, CSS and other asset files are copied from `src/` to `build/`:
+- **Why**: Babel only transpiles JavaScript, so CSS files need manual copying
+- **When**: After `npm run compile`, before `npm run build`
+- **What**: Copies `.css`, `.scss`, `.sass`, `.less`, and image files
+- **Location**: `src/styles.css` → `build/styles.css`
+
+#### 3. Vite CSS Processing
+Vite processes CSS imports during bundling:
+- Extracts CSS from JavaScript imports
+- Bundles and minifies CSS
+- Outputs to `dist/main.css` (default filename)
+- Preserves CSS import statements in the bundle
+
+#### 4. HTML Template Generation
+The `JacClientModuleIntrospector.render_page()` method:
+- Detects CSS files in the `dist/` directory
+- Generates a hash from the CSS file content for cache busting
+- Includes a `<link>` tag in the HTML `<head>`:
+  ```html
+  <link rel="stylesheet" href="/static/main.css?hash=abc123..."/>
+  ```
+
+#### 5. Server-Side CSS Serving
+The `JacAPIServer` handles CSS file requests:
+- **Route**: `/static/*.css` (e.g., `/static/main.css`)
+- **Handler**: Reads CSS file from `dist/` directory
+- **Response**: Serves with `text/css` content type
+- **Location**: `{base_path}/dist/{filename}.css`
+
+**Implementation** (`server.py`):
+```python
+# CSS files from dist directory
+if path.startswith("/static/") and path.endswith(".css"):
+    css_file = base_path / "dist" / Path(path).name
+    if css_file.exists():
+        css_content = css_file.read_text(encoding="utf-8")
+        ResponseBuilder.send_css(self, css_content)
+```
+
+#### CSS File Flow
+```
+app.jac (cl import ".styles.css")
+  ↓
+src/app.js (import "./styles.css")
+  ↓
+Babel: src/app.js → build/app.js (preserves import)
+  ↓
+_copy_asset_files: src/styles.css → build/styles.css
+  ↓
+Vite: Processes CSS import, extracts to dist/main.css
+  ↓
+HTML: <link href="/static/main.css?hash=..."/>
+  ↓
+Server: Serves from dist/main.css
 ```
 
 ### Key Design Decisions
@@ -70,6 +154,7 @@ Extends the base `ClientBundleBuilder` to provide Vite integration. Key responsi
 - **React-based**: Entry point uses React 18's `createRoot` API
 - **Hash-based caching**: Bundle hash enables browser cache invalidation
 - **Temp directory isolation**: Builds in `vite_package_json.parent/src/` to avoid conflicts
+- **CSS asset handling**: CSS files are copied after Babel compilation to ensure Vite can resolve imports, then extracted to separate files for optimal loading
 
 ### Vite Configuration
 

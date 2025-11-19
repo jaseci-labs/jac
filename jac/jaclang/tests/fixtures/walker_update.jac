@@ -1,5 +1,5 @@
-import from bar { bar_walk } 
-import from jaclang.runtimelib.machine { JacMachine } 
+import from bar { bar_walk }
+import from jaclang.runtimelib.machine { JacMachine }
 import os;
 
 

@@ -27,7 +27,7 @@ from jaclang.runtimelib.machine import ExecutionContext, JacMachine as Jac
 JsonValue: TypeAlias = (
     None | str | int | float | bool | list["JsonValue"] | dict[str, "JsonValue"]
 )
-StatusCode: TypeAlias = Literal[200, 201, 400, 401, 404, 503]
+StatusCode: TypeAlias = Literal[200, 201, 400, 401, 404, 500, 503]
 
 
 # Response Models
@@ -632,6 +632,18 @@ class ResponseBuilder:
         handler.wfile.write(payload)
 
     @staticmethod
+    def send_css(handler: BaseHTTPRequestHandler, css: str) -> None:
+        """Send CSS response."""
+        payload = css.encode("utf-8")
+        handler.send_response(200)
+        handler.send_header("Content-Type", "text/css; charset=utf-8")
+        handler.send_header("Content-Length", str(len(payload)))
+        handler.send_header("Cache-Control", "no-cache")
+        ResponseBuilder._add_cors_headers(handler)
+        handler.end_headers()
+        handler.wfile.write(payload)
+
+    @staticmethod
     def _add_cors_headers(handler: BaseHTTPRequestHandler) -> None:
         """Add CORS headers to response."""
         handler.send_header("Access-Control-Allow-Origin", "*")
@@ -840,6 +852,27 @@ class JacAPIServer:
                         )
                     except RuntimeError as exc:
                         ResponseBuilder.send_json(self, 503, {"error": str(exc)})
+                    return
+
+                # CSS files from dist directory
+                if path.startswith("/static/") and path.endswith(".css"):
+                    try:
+                        from pathlib import Path
+
+                        base_path = (
+                            Path(Jac.base_path_dir) if Jac.base_path_dir else Path.cwd()
+                        )
+                        css_file = base_path / "dist" / Path(path).name
+
+                        if css_file.exists():
+                            css_content = css_file.read_text(encoding="utf-8")
+                            ResponseBuilder.send_css(self, css_content)
+                        else:
+                            ResponseBuilder.send_json(
+                                self, 404, {"error": "CSS file not found"}
+                            )
+                    except Exception as exc:
+                        ResponseBuilder.send_json(self, 500, {"error": str(exc)})
                     return
 
                 # Root endpoint

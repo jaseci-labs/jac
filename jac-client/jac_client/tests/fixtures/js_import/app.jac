@@ -14,7 +14,7 @@ cl def JsImportTest() -> any {
     let sum = calculateSum(5, 3);
     let formatter = MessageFormatter("JS");
     let formatted = formatter.format("Hello from JS class");
-    
+
     return <div class="js-import-test">
         <h1>{JS_IMPORT_LABEL}</h1>
         <p>Greeting: {greeting}</p>

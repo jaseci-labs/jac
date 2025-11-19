@@ -1,11 +1,7 @@
-
-
-
 class GreetMessage:
 
     def pass_message(self, msg: str) -> str:
         return f"Hello, {msg}!"
-
 
 
 class Greet:

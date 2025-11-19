@@ -1,0 +1,29 @@
+{
+  "name": "styled-components",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "build": "npm run compile && vite build",
+    "dev": "vite dev",
+    "preview": "vite preview",
+    "compile": "babel src --out-dir build --extensions \".jsx,.js\" --out-file-extension .js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "Jac application: styled-components",
+  "type": "module",
+  "devDependencies": {
+    "vite": "^6.4.1",
+    "@babel/cli": "^7.28.3",
+    "@babel/core": "^7.28.5",
+    "@babel/preset-env": "^7.28.5",
+    "@babel/preset-react": "^7.28.5"
+  },
+  "dependencies": {
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-router-dom": "^6.30.1",
+    "styled-components": "^6.1.13"
+  }
+}

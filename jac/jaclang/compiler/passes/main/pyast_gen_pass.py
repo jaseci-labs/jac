@@ -1188,14 +1188,38 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
 
     def exit_event_signature(self, node: uni.EventSignature) -> None:
         arch_kw = Con.HERE.value if node.from_walker else Con.VISITOR.value
+
+        # Convert annotation: if it's a TupleVal, convert to Union type (X | Y)
+        annotation = None
+        if node.arch_tag_info:
+            py_ast = cast(ast3.expr, node.arch_tag_info.gen.py_ast[0])
+            # Check if the annotation is a tuple (from `with (Book, Magazine) entry`)
+            # If so, convert to Union type using bitwise OR operator (Book | Magazine)
+            if isinstance(py_ast, ast3.Tuple) and isinstance(
+                node.arch_tag_info, uni.TupleVal
+            ):
+                # Convert tuple to union type: (A, B, C) -> A | B | C
+                if len(py_ast.elts) > 1:
+                    # Build union by chaining BinOp with BitOr
+                    annotation = py_ast.elts[0]
+                    for elem in py_ast.elts[1:]:
+                        annotation = self.sync(
+                            ast3.BinOp(
+                                left=annotation,
+                                op=self.sync(ast3.BitOr()),
+                                right=elem,
+                            )
+                        )
+                elif len(py_ast.elts) == 1:
+                    # Single element tuple, just use the element
+                    annotation = py_ast.elts[0]
+            else:
+                annotation = py_ast
+
         arch_arg = self.sync(
             ast3.arg(
                 arg=f"{arch_kw}",
-                annotation=(
-                    cast(ast3.expr, node.arch_tag_info.gen.py_ast[0])
-                    if node.arch_tag_info
-                    else None
-                ),
+                annotation=annotation,
             ),
             jac_node=node.arch_tag_info if node.arch_tag_info else node,
         )

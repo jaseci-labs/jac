@@ -17,7 +17,6 @@ from jaclang.vendor.pygls.uris import from_fs_path
 from jaclang.langserve.server import formatting
 
 
-
 # NOTE: circle.jac emits a spurious type error at the call to super.init:
 # obj Circle(Shape) {
 #     def init(radius: float) {
@@ -26,6 +25,7 @@ from jaclang.langserve.server import formatting
 # The call is correct: semantically super refers to the parent class. The
 # current static/type checker cannot reliably infer that relationship and
 # reports a false positive. This should be fixed in the type checker.
+
 
 class TestLangServe:
     """Test suite for Jac language server features."""
@@ -46,7 +46,10 @@ class TestLangServe:
         try:
             await helper.open_document()
             # helper.assert_no_diagnostics()
-            helper.assert_has_diagnostics(count=1, message_contains="Cannot assign <class str> to parameter 'radius' of type <class float>")
+            helper.assert_has_diagnostics(
+                count=1,
+                message_contains="Cannot assign <class str> to parameter 'radius' of type <class float>",
+            )
         finally:
             ls.shutdown()
             test_file.cleanup()
@@ -62,7 +65,9 @@ class TestLangServe:
 
         try:
             await helper.open_document()
-            helper.assert_has_diagnostics(count=2, message_contains="Unexpected token 'error'")
+            helper.assert_has_diagnostics(
+                count=2, message_contains="Unexpected token 'error'"
+            )
 
             diagnostics = helper.get_diagnostics()
             assert str(diagnostics[0].range) == "65:0-65:5"
@@ -83,12 +88,14 @@ class TestLangServe:
             print("Opening valid file...")
             await helper.open_document()
             # helper.assert_no_diagnostics()
-            helper.assert_has_diagnostics(count=1, message_contains="Cannot assign <class str> to parameter 'radius' of type <class float>")
+            helper.assert_has_diagnostics(
+                count=1,
+                message_contains="Cannot assign <class str> to parameter 'radius' of type <class float>",
+            )
 
             # Introduce syntax error
             broken_code = load_jac_template(
-                test_file._get_template_path(self.CIRCLE_TEMPLATE),
-                "error"
+                test_file._get_template_path(self.CIRCLE_TEMPLATE), "error"
             )
             await helper.change_document(broken_code)
             helper.assert_has_diagnostics(count=2)
@@ -110,16 +117,20 @@ class TestLangServe:
             await helper.open_document()
             await helper.save_document()
             # helper.assert_no_diagnostics()
-            helper.assert_has_diagnostics(count=1, message_contains="Cannot assign <class str> to parameter 'radius' of type <class float>")
+            helper.assert_has_diagnostics(
+                count=1,
+                message_contains="Cannot assign <class str> to parameter 'radius' of type <class float>",
+            )
 
             # Save with syntax error
             broken_code = load_jac_template(
-                test_file._get_template_path(self.CIRCLE_TEMPLATE),
-                "error"
+                test_file._get_template_path(self.CIRCLE_TEMPLATE), "error"
             )
             await helper.save_document(broken_code)
             helper.assert_semantic_tokens_count(self.EXPECTED_CIRCLE_TOKEN_COUNT)
-            helper.assert_has_diagnostics(count=2, message_contains="Unexpected token 'error'")
+            helper.assert_has_diagnostics(
+                count=2, message_contains="Unexpected token 'error'"
+            )
         finally:
             ls.shutdown()
             test_file.cleanup()
@@ -139,7 +150,10 @@ class TestLangServe:
             # Change without error
             await helper.change_document("\n" + test_file.code)
             # helper.assert_no_diagnostics()
-            helper.assert_has_diagnostics(count=1, message_contains="Cannot assign <class str> to parameter 'radius' of type <class float>")
+            helper.assert_has_diagnostics(
+                count=1,
+                message_contains="Cannot assign <class str> to parameter 'radius' of type <class float>",
+            )
 
             # Change with syntax error
             await helper.change_document("\nerror" + test_file.code)
@@ -172,6 +186,7 @@ class TestLangServe:
             ls.shutdown()
             test_file.cleanup()
 
+    @pytest.mark.filterwarnings("ignore::ResourceWarning")
     @pytest.mark.asyncio
     async def test_multifile_workspace(self):
         """Test opening multiple Jac files in a workspace."""
@@ -203,8 +218,7 @@ class TestLangServe:
 
             # Change first file
             changed_code = load_jac_template(
-                file1._get_template_path(self.GLOB_TEMPLATE),
-                "glob x = 90;"
+                file1._get_template_path(self.GLOB_TEMPLATE), "glob x = 90;"
             )
             await helper1.change_document(changed_code)
 

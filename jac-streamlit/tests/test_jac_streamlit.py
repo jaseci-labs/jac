@@ -19,13 +19,17 @@ class JacStreamlitPlugin(TestCase):
         """Basic test for pass."""
         command_streamlit = "jac streamlit -h"
         command_dot_view = "jac dot_view -h"
-        
-        result = subprocess.run(command_streamlit, shell=True, capture_output=True, text=True)
-        dot_result = subprocess.run(command_dot_view, shell=True, capture_output=True, text=True)
+
+        result = subprocess.run(
+            command_streamlit, shell=True, capture_output=True, text=True
+        )
+        dot_result = subprocess.run(
+            command_dot_view, shell=True, capture_output=True, text=True
+        )
 
         # Check basic description
         self.assertIn("Streamlit the specified .jac file", result.stdout)
-        
+
         # Check CLI structure
         self.assertIn("positional arguments:", result.stdout)
         self.assertIn("filename", result.stdout)
@@ -34,7 +38,6 @@ class JacStreamlitPlugin(TestCase):
         self.assertIn("View the content of a DOT file", dot_result.stdout)
         self.assertIn("positional arguments:", dot_result.stdout)
         self.assertIn("filename", dot_result.stdout)
-
 
     def test_app(self) -> None:
         """Test Jac Streamlit App."""

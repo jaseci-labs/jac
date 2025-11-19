@@ -160,6 +160,10 @@ class ViteClientBundleBuilder(ClientBundleBuilder):
                     pass
             else:
                 # Bare specifiers or other assets handled by Vite
+                if self.vite_package_json is not None and path_obj.is_file():
+                    (self.vite_package_json.parent / "src" / path_obj.name).write_text(
+                        path_obj.read_text(encoding="utf-8"), encoding="utf-8"
+                    )
                 continue
 
     def _compile_bundle(
@@ -283,6 +287,9 @@ root.render(<App />);
             subprocess.run(
                 command, cwd=project_dir, check=True, capture_output=True, text=True
             )
+            # Copy CSS and other asset files from src/ to build/ after Babel compilation
+            # Babel only transpiles JS, so we need to manually copy assets
+            self._copy_asset_files(project_dir / "src", project_dir / "build")
             # then build the code
             command = ["npm", "run", "build"]
             subprocess.run(
@@ -336,9 +343,53 @@ root.render(<App />);
             }});
         """
 
+    def _copy_asset_files(self, src_dir: Path, build_dir: Path) -> None:
+        """Copy CSS and other asset files from src/ to build/ directory.
+
+        Babel only transpiles JavaScript files, so CSS and other assets need to be
+        manually copied to the build directory for Vite to resolve them.
+        """
+        if not src_dir.exists():
+            return
+
+        # Ensure build directory exists
+        build_dir.mkdir(parents=True, exist_ok=True)
+
+        # Asset file extensions to copy
+        asset_extensions = {
+            ".css",
+            ".scss",
+            ".sass",
+            ".less",
+            ".svg",
+            ".png",
+            ".jpg",
+            ".jpeg",
+            ".gif",
+            ".webp",
+        }
+
+        for src_file in src_dir.iterdir():
+            if src_file.is_file() and src_file.suffix in asset_extensions:
+                dest_file = build_dir / src_file.name
+                with contextlib.suppress(OSError, shutil.Error):
+                    shutil.copy2(src_file, dest_file)
+
     def _find_vite_bundle(self, output_dir: Path) -> Path | None:
         """Find the generated Vite bundle file."""
         for file in output_dir.glob("client.*.js"):
+            return file
+        return None
+
+    def _find_vite_css(self, output_dir: Path) -> Path | None:
+        """Find the generated Vite CSS file."""
+        # Vite typically outputs CSS as main.css or with a hash
+        # Try main.css first (most common), then any .css file
+        css_file = output_dir / "main.css"
+        if css_file.exists():
+            return css_file
+        # Fallback: find any CSS file
+        for file in output_dir.glob("*.css"):
             return file
         return None
 
@@ -351,5 +402,5 @@ root.render(<App />);
         temp_dir = project_dir / "src"
 
         if temp_dir.exists():
-            with contextlib.suppress(OSError):
+            with contextlib.suppress(OSError, shutil.Error):
                 shutil.rmtree(temp_dir)

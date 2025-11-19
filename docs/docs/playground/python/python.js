@@ -204,7 +204,7 @@ function callbackBreak(dbg, line) {
                 logMessage("Forced cleanup after timeout.");
               }
             }, 1000);
-            
+
             dbg.do_terminate();
             logMessage("Execution stopped.");
           } catch (error) {

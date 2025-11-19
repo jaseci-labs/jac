@@ -5,43 +5,34 @@ The **Jac programming language** and **Jaseci runtime** build on Python, introdu
 
 We will discuss the four foundational pillars of Jac’s design and how each pillar enables faster and more streamlined development.
 
----
 
-## 📘 Document Organization
+## 📘 Organization
 
-- **Part 1:** Conceptual Overview
+- **Part 1:** Conceptual Overview of Key Features
 - **Part 2:** Code Snippets and Detailed Descriptions
 
----
 
-##  Part 1. Conceptual Overview
+##  Part 1. Key Feature Conceptual Overview
 
 ### 1. Object-Spatial Programming (OSP)
 
 Jac introduces a new programming model that lets developers articulate **relationships between objects** in a **graph-like structure** and express computation as **walkers** that traverse this graph.
 
-This model is particularly effective for applications involving **connected data**, such as social networks, knowledge graphs, or file systems, and can greatly reduce code complexity.
-
-OSP also provides the foundation for **agentic workflows** and enables **Jaseci’s scale-native execution**, reducing backend development and deployment overhead.
+This model is particularly effective for applications involving **connected data**, such as social networks, knowledge graphs, or file systems, and can greatly reduce code complexity. OSP also provides the foundation for **agentic workflows** and enables **Jaseci’s scale-native execution**, reducing backend development and deployment overhead.
 
 <!--  TODO: Insert illustrative graph diagram here -->
 
 ---
-
 ### 2. Programming Abstractions for AI
 
 
 Jac is designed from the ground up to integrate AI directly into the programming model to simplify development of AI-powered applications.
 
-#### 2.1 `by llm`
-
-Jac introduces language-level constructs such as the `by()` keyword that automatically generate optimized prompts. This **removes the need for manual prompt engineering** and enables seamless model integration.  In production systems, this feature has reduced hundreds of lines of prompt code to a single line.
+-  **`by llm`**   - Jac introduces language-level constructs such as the `by()` keyword that automatically generate optimized prompts. This **removes the need for manual prompt engineering** and enables seamless model integration.  In production systems, this feature has reduced hundreds of lines of prompt code to a single line.
 
 <!-- [TODO: Insert example line of `by llm()` code here] -->
 
-#### 2.2 Native Agentic AI Workflows (enabled by OSP)
-
-By leveraging OSP’s graph-based semantics, Jac naturally supports the creation and articulation of **agentic workflows**, allowing developers to create flows of interacting agents that collaborate, share memory, and act on dynamic context.
+-  **Native Agentic AI Workflows (enabled by OSP)** - By leveraging OSP’s graph-based semantics, Jac naturally supports the creation and articulation of **agentic workflows**, allowing developers to create flows of interacting agents that collaborate, share memory, and act on dynamic context.
 
 ***Together, OSP and `by llm` form a powerful foundation for rapid agentic AI development***.
 
@@ -72,9 +63,9 @@ This tight interoperability enables teams to adopt Jac incrementally and integra
 For each feature, we will show simple code examples and explanation to highlight how Jac's key features enables rapid development of scalable, AI-powered applications.
 
 
-### Programming Abstractions for AI
+### Programming Abstractions for AI - `by llm`
 
-Jac provides novel constructs for integrating LLMs into code. A function body can simply be replaced with a call to an LLM, removing the need for prompt engineering or extensive use of new libraries.
+Jac provides novel constructs for integrating LLMs into code. A function body can simply be replaced with a call to an LLM, removing the need for prompt engineering. `by llm()` delegates execution to an LLM without any extra library code. For more information on `by llm`, check out more documentation [here](https://docs.jaseci.org/learn/jac-byllm/with_llm/).
 
 ```jac
 import from byllm.lib { Model }
@@ -86,6 +77,9 @@ enum Personality {
     AMBIVERT
 }
 
+# by keyword enables the program to integrate an LLM for the needed functionality
+# Jaseci runtime automatically generates an optimized prompt for the LLM,
+# checks errors and converts LLM output to the correct return type
 def get_personality(name: str) -> Personality by llm();
 
 with entry {
@@ -106,164 +100,88 @@ with entry {
     `   Introvert personality detected for Albert Einstein
     `
 
-`by llm()` delegates execution to an LLM without any extra library code.
+
 
 
 ### Object Spatial Programming: Going Beyond OOP
 
-Traditional OOP with python classes (`class` or Jac's dataclass-like `obj`) that expresses object hierarchy and behavior is fully supported in Jac. Additionally, Jac programmers can also express object relationships with node classes (`node`), edge classes (`edge`), and object interactions with walker classes (`walker`) for richer modeling of problems called Object-Spatial Programing (OSP). This approach can be used where needed and maps nicely to may categories of problems (which happen to include agentic workflows ;-))
+Traditional OOP with python classes that expresses object hierarchy and behavior is fully supported in Jac. Additionally, Jac introduces a new concept called Object-Spatial Programing (OSP). Using OSP construts, programmers can express object relationships as graphs using
+- node classes (`node`),
+- edge classes (`edge`),
 
-Instances of node and edge classes allow for assembling objects in a graph structure to express semantic relationships between objects. This goes beyond only modeling objects in memory as a disconnected soup of instances. Walker classes enables to expression of objects interacting with each other through special methods called abilities.
+Instances of these node and edge classes form a graph structure that expresses semantic relationships between objects.
 
-In this example, nodes represent meaningful entities (like Libraries and Shelves), while walkers (borrowers) traverse these node objects and process them.
+Computation in OSP occurs by traversing these graphs using two key constructs:
+ -  walker classes (`walker`), which encapsulate object interactions and specify how computation moves through the graph,
+ -  abilities (`abilities`), special methods that walkers automatically execute when they visit specific node types.
+
+OSP can be used where needed and maps nicely to many categories of problems, espeically those that deal with connected data, such as social network,  knowledge graph, file system, dependency graph, etc. In particular, it is sepcially suitable for describing workflow in Agentic systems  ;-).
+
+By modeling relationships directly as graph edges and expressing computation through walkers, OSP removes much of the boilerplate needed to manage graphs,  traversals, search and state. This makes complex logic simpler, clearer, and more scalable.
+
+In the Examples section, you’ll see cases where OSP cuts code size dramatically. For instance, we built an X-like social network (littleX) in just a few hundred lines, something that would typically take thousands using traditional OOP patterns.
+<!--  TODO: Say benefits of byllm + OSP in agentic AI and how it saves lines of code -->
+
+In this simple example, we aim to just illustrate the basic concepts. Here we have `Person` nodes, while walkers (`Greeter`) traverse the graph of `Person` objects and process them. For more OSP concepts, check out [Quick Start](https://docs.jaseci.org/learn/quickstart/#object-spatial-model), or [Syntax Quick Reference](https://docs.jaseci.org/learn/quick_reference/).
+
 
 ```jac
-node Library {
-    has location: str;
-    can search_shelves with borrower entry;
+node Person {
+    has name: str;
 }
 
-node Shelf {
-    has category: str;
-    can check_books with borrower entry;
-}
+# Greeter can traverse the graph.
+# start and greet are two abilities of Greeter
+walker Greeter {
+    has greeting_count: int = 0;
 
-node Book {
-    has title: str;
-    has available: bool;
-}
+    can start with `root entry {
+        print("Starting journey!");
+        visit [-->];
+    }
 
-walker borrower {
-    has book_needed: str;
-    can find_book with `root entry;
-}
+    # ability greet will only execute when Greeter enters a Person type node
+    can greet with Person entry {
+        print(f"Hello, {here.name}!");
+        self.greeting_count += 1;
 
-with entry {
-    # Building the world is just linking nodes
-    lib1 = root ++> Library("Central Library");
-    lib2 = root ++> Library("Community Library");
-
-    shelf1 = lib1 ++> Shelf("Fiction");
-    shelf2 = lib1 ++> Shelf("Non-Fiction");
-    shelf3 = lib2 ++> Shelf("Science");
-
-    book1 = shelf1 ++> Book("1984", True);
-    book2 = shelf1 ++> Book("Brave New World", False);
-    book3 = shelf2 ++> Book("Sapiens", True);
-    book4 = shelf3 ++> Book("A Brief History of Time", False);
-    book5 = shelf3 ++> Book("The Selfish Gene", True);
-
-    # Send Borrower walking
-    borrower("1984") spawn root;
-}
-
-impl Library.search_shelves {
-    visit [-->(`?Shelf)]; # No loops, just visit
-}
-
-impl Shelf.check_books {
-    found_book = [self -->(`?Book)](
-        ?title == visitor.book_needed, available == True
-    );
-
-    if (found_book) {
-        print(f"Borrowed: {found_book}");
-        print(f"From Shelf: {self.category}");
-        disengage; # Stop traversal cleanly
-    } else {
-        print("Book not available in shelf", self.category);
+        # specify how this walker can traverse the graph
+        # in this case, visit all outgoing edges from the current node
+        visit [-->];
     }
 }
 
-impl borrower.find_book {
-    visit [-->(`?Library)];
+with entry {
+    alice = Person(name="Alice");
+    bob = Person(name="Bob");
+    charlie = Person(name="Charlie");
+
+ # specify the object graph, where root connects to alice, then bob, then charlie
+    root ++> alice ++> bob ++> charlie;
+
+    greeter = Greeter();
+ # root is where the graph starts, and we will start the walker here
+    root spawn greeter;
+    print(f"Total greetings: {greeter.greeting_count}");
 }
+
+
 ```
 
 ??? info "How To Run"
-    1. Install the byLLM plugin by `pip install byllm`
-    2. Save your OpenAI API as an environment variable (`export OPENAI_API_KEY="xxxxxxxx"`).
-    > **Note:** > > You can use Gemini, Anthropic or other API services as well as host your own LLM using Ollama or Huggingface.
-    4. Copy this code into `example.jac` file and run with `jac run example.jac`
+    Copy this code into `example.jac` file and run with `jac run example.jac`
 
 ??? example "Output"
-    `   Your Workout Plan:
-        **Personalized Workout Plan**
-
-        **Duration:** 4 weeks
-        **Frequency:** 5 days a week
-
-        **Week 1-2: Building Strength and Endurance**
-
-        **Day 1: Upper Body Strength**
-        - Warm-up: 5 minutes treadmill walk
-        - Dumbbell Bench Press: 3 sets of 10-12 reps
-        - Dumbbell Rows: 3 sets of 10-12 reps
-        - Shoulder Press: 3 sets of 10-12 reps
-        - Bicep Curls: 3 sets of 12-15 reps
-        - Tricep Extensions: 3 sets of 12-15 reps
-        - Cool down: Stretching
-
-        **Day 2: Cardio and Core**
-        - Warm-up: 5 minutes treadmill walk
-        - Treadmill Intervals: 20 minutes (1 min sprint, 2 min walk)
-        - Plank: 3 sets of 30-45 seconds
-        - Russian Twists: 3 sets of 15-20 reps
-        - Bicycle Crunches: 3 sets of 15-20 reps
-        - Cool down: Stretching
-
-        **Day 3: Lower Body Strength**
-        - Warm-up: 5 minutes treadmill walk
-        - Squats: 3 sets of 10-12 reps
-        - Lunges: 3 sets of 10-12 reps per leg
-        - Deadlifts (dumbbells): 3 sets of 10-12 reps
-        - Calf Raises: 3 sets of 15-20 reps
-        - Glute Bridges: 3 sets of 12-15 reps
-        - Cool down: Stretching
-
-        **Day 4: Active Recovery**
-        - 30-45 minutes light treadmill walk or yoga/stretching
-
-        **Day 5: Full Body Strength**
-        - Warm-up: 5 minutes treadmill walk
-        - Circuit (repeat 3 times):
-        - Push-ups: 10-15 reps
-        - Dumbbell Squats: 10-12 reps
-        - Bent-over Dumbbell Rows: 10-12 reps
-        - Mountain Climbers: 30 seconds
-        - Treadmill: 15 minutes steady pace
-        - Cool down: Stretching
-
-        **Week 3-4: Increasing Intensity**
-
-        **Day 1: Upper Body Strength with Increased Weight**
-        - Follow the same structure as weeks 1-2 but increase weights by 5-10%.
-
-        **Day 2: Longer Cardio Session**
-        - Warm-up: 5 minutes treadmill walk
-        - Treadmill: 30 minutes at a steady pace
-        - Core Exercises: Same as weeks 1-2, but add an additional set.
-
-        **Day 3: Lower Body Strength with Increased Weight**
-        - Increase weights for all exercises by 5-10%.
-        - Add an extra set for each exercise.
-
-        **Day 4: Active Recovery**
-        - 30-60 minutes light treadmill walk or yoga/stretching
-
-        **Day 5: Full Body Strength Circuit with Cardio Intervals**
-        - Circuit (repeat 4 times):
-        - Push-ups: 15 reps
-        - Dumbbell Squats: 12-15 reps
-        - Jumping Jacks: 30 seconds
-        - Dumbbell Shoulder Press: 10-12 reps
-        - Treadmill: 1 minute sprint after each circuit
-        - Cool down: Stretching
-
-        Ensure to hydrate and listen to your body throughout the program. Adjust weights and reps as needed based on your fitness level.
+    `   Starting journey!
+        Hello, Alice!
+        Hello, Bob!
+        Hello, Charlie!
+        Total greetings: 3
     `
 
-This MTP example demonstrates how Jac seamlessly integrates LLMs with structured node-walker logic, enabling intelligent, context-aware agents with just a few lines of code.
+
+
+To read more on how Jac/Jaseci enables rapid development of Agentic AI using combination of `by llm` and OSP, check out [Building Agentic AI Applications with byLLM and Object Spatial Programming](https://docs.jaseci.org/learn/jac-byllm/agentic_ai/)
 
 ## Zero to Infinite Scale without any Code Changes
 
@@ -303,7 +221,7 @@ walker create_post {
 
 ## Python Superset Philosophy: All of Python Plus More
 
-Jac is a drop-in replacement for Python and supersets Python, much like Typescript supersets Javascript or C++ supersets C. It extends Python's semantics while maintaining full interoperability with the Python ecosystem, introducing cutting-edge abstractions designed to minimize complexity and embrace AI-forward development.
+Jac is a drop-in replacement for Python and supersets Python, much like Typescript supersets Javascript or C++ supersets C. It extends Python's semantics while maintaining full interoperability with the Python ecosystem, introducing cutting-edge abstractions designed to minimize complexity and embrace AI-forward development. Learn how we achieve full compatiblity and 5 ways you can use jac together with Python, check out [here] (https://docs.jaseci.org/learn/superset_python/).
 
 <div class="code-block run-dot" >
 ```jac
