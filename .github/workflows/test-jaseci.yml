@@ -29,7 +29,7 @@ jobs:
         pip install pytest-xdist
 
     - name: Run Jac core tests
-      run: pytest -n 8 -W error::ResourceWarning jac/jaclang/langserve/tests/test_server.py
+      run: pytest -x jac -n auto
 
   test-client:
     runs-on: ubuntu-latest
