@@ -312,7 +312,7 @@ class TestJacLangServer(TestCase):
         finally:
             print("Shutting down LSP...")
             lsp.shutdown()
-    
+
             try:
                 loop = asyncio.get_running_loop()
             except RuntimeError:
@@ -348,7 +348,9 @@ class TestJacLangServer(TestCase):
         ]
         try:
             for line, char, expected_refs in test_cases:
-                references = str(lsp.get_references(circle_file, lspt.Position(line, char)))
+                references = str(
+                    lsp.get_references(circle_file, lspt.Position(line, char))
+                )
                 for expected in expected_refs:
                     self.assertIn(expected, references)
         finally:
