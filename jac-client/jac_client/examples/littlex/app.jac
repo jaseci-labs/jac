@@ -273,14 +273,14 @@ cl {
                     })}
                 </div>
 
-                # <div style={{"position": "sticky", "top": "20px", "height": "fit-content"}}>
-                #     <UsersList
-                #         users={users}
-                #         currentProfile={profile}
-                #         handleFollowUser={handleFollowUser}
-                #         handleUnfollowUser={handleUnfollowUser}
-                #     />
-                # </div>
+                <div style={{"position": "sticky", "top": "20px", "height": "fit-content"}}>
+                    <UsersList
+                        users={users}
+                        currentProfile={profile}
+                        handleFollowUser={handleFollowUser}
+                        handleUnfollowUser={handleUnfollowUser}
+                    />
+                </div>
             </div>
         </div>;
     }

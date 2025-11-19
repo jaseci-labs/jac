@@ -96,6 +96,7 @@ impl Comment.delete {
     }
 
 impl visit_profile.visit_profile {
+        print(jid(here));
         existing_profiles = [-->(`?Profile)];
 
         visit [-->(`?Profile)] else {
