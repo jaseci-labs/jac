@@ -280,11 +280,23 @@ class TestJacLangServer(TestCase):
             ),
         ]
         for case in test_cases:
-            results = asyncio.run(
-                lsp.get_completion(
-                    base_module_file, case.pos, completion_trigger=case.trigger
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+            
+            if loop is None:
+                results = asyncio.run(
+                    lsp.get_completion(
+                        base_module_file, case.pos, completion_trigger=case.trigger
+                    )
                 )
-            )
+            else:
+                results = loop.run_until_complete(
+                    lsp.get_completion(
+                        base_module_file, case.pos, completion_trigger=case.trigger
+                    )
+                )
             completions = results.items
             for completion in case.expected:
                 self.assertIn(completion, str(completions))
