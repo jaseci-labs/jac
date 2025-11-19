@@ -10,7 +10,6 @@ from jaclang.vendor.pygls.workspace import Workspace
 from jaclang.langserve.engine import JacLangServer
 
 
-
 class TestJacLangServer:
     """Test suite for JacLangServer functionality."""
 
