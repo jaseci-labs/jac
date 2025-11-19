@@ -310,10 +310,10 @@ class TestJacLangServer(TestCase):
                     self.assertIn(completion, str(completions))
         finally:
             lsp.shutdown()
-    
+
             try:
                 loop = asyncio.get_running_loop()
-                print("Got running loop...",loop)
+                print("Got running loop...", loop)
             except RuntimeError:
                 loop = None
 
@@ -346,7 +346,9 @@ class TestJacLangServer(TestCase):
         ]
         try:
             for line, char, expected_refs in test_cases:
-                references = str(lsp.get_references(circle_file, lspt.Position(line, char)))
+                references = str(
+                    lsp.get_references(circle_file, lspt.Position(line, char))
+                )
                 for expected in expected_refs:
                     self.assertIn(expected, references)
         finally:
