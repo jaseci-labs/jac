@@ -1,0 +1,30 @@
+{
+  "name": "redux-state-management",
+  "version": "1.0.0",
+  "description": "Jac application: redux-state-management",
+  "main": "index.js",
+  "scripts": {
+    "build": "npm run compile && vite build",
+    "dev": "vite dev",
+    "preview": "vite preview",
+    "compile": "babel src --out-dir build --extensions \".jsx,.js\" --out-file-extension .js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "devDependencies": {
+    "@babel/cli": "^7.28.3",
+    "@babel/core": "^7.28.5",
+    "@babel/preset-env": "^7.28.5",
+    "@babel/preset-react": "^7.28.5",
+    "vite": "^6.4.1"
+  },
+  "dependencies": {
+    "@reduxjs/toolkit": "^2.10.1",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-redux": "^9.2.0",
+    "react-router-dom": "^6.30.1"
+  }
+}

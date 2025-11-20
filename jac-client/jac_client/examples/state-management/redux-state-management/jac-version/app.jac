@@ -1,6 +1,10 @@
+# Currently, Redux jac version does not work
+# Need to fix syntex issues on createSlice and configureStore jac implementations
+
+
 cl import from react { useState }
 cl import from "react-redux" { Provider, useSelector, useDispatch }
-cl import from .jacstore { store, addTodo, toggleTodo, deleteTodo, setFilter, clearCompleted }
+cl import from .store { store, addTodo, toggleTodo, deleteTodo, setFilter, clearCompleted }
 
 cl {
     def TodoApp() -> any {

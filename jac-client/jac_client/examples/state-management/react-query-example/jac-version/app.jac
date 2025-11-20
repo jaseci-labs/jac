@@ -1,5 +1,6 @@
-# React Query Example - Pure Jac (No JS helper files needed!)
-# With new Jac compiler: constructors automatically handled
+# Expected Redux example implemented in pure Jac using React Query
+# But, it will not work until fix the new keyword issue in the Jac compiler
+
 cl import from react { useState }
 cl import from "@tanstack/react-query" { QueryClient, QueryClientProvider, useQuery, useMutation, useQueryClient }
 

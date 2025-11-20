@@ -15,7 +15,6 @@ cl import from .reduxExports {
     setFilter,
     clearCompleted
 }
-cl import from .slice {getTodoActions, getTodoReducer}
 
 cl {
     # Counter Component
@@ -244,9 +243,7 @@ cl {
 
     # App with Redux Provider
     def app() -> any {
-        console.log("Rendering App with Redux Provider");
-        console.log(getTodoActions());
-        console.log(getTodoReducer());
+        
         return <Provider store={store}>
             <AppContent />
         </Provider>;
