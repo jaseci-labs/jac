@@ -300,6 +300,14 @@ cl def check_types() {
             self.assertNotIn(pattern, js_code)
         self.assert_balanced_syntax(js_code, fixture_path)
 
+    def test_atom_trailer_starts_with_specialvaref_js(self) -> None:
+        """Test that atom trailers starting with SpecialVarRef generate correct JS."""
+        fixture_path = self.get_fixture_path("root_render.jac")
+        js_code = self.compile_fixture_to_js(fixture_path)
+
+        self.assertIn("root.render();", js_code)
+        self.assertNotIn("obj", js_code)
+
     def test_hyphenated_package_imports_generate_correct_js(self) -> None:
         """Test string literal imports for hyphenated package names."""
         fixture_path = self.get_fixture_path("hyphenated_imports.jac")

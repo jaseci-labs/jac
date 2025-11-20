@@ -1880,6 +1880,10 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
         else:
             node.gen.es_ast = None
 
+    def exit_special_var_ref(self, node: uni.SpecialVarRef) -> None:
+        """Process special variable reference."""
+        self.exit_name(node)
+
     def exit_atom_trailer(self, node: uni.AtomTrailer) -> None:
         """Process attribute access."""
         obj = (
