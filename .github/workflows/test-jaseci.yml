@@ -29,8 +29,10 @@ jobs:
         pip install pytest-xdist
 
     - name: Run Jac core tests
-      run: pytest -x jac -n auto \
-       -k "not test_lang_serve and not test_server and not TestJacLangServer"
+      run: |
+        cd jac
+        pytest -x . -n auto -k "not test_lang_serve and not test_server and not TestJacLangServer"
+
 
   test-client:
     runs-on: ubuntu-latest
