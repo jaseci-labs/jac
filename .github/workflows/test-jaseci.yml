@@ -139,4 +139,4 @@ jobs:
     - name: Run language server tests
       run: |
         cd jac
-        pytest -x . -n auto -k "test_lang_serve or test_server"
+        pytest -x  -k "TestLangServe or TestJacLangServer"
