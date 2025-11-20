@@ -116,3 +116,27 @@ jobs:
 
     - name: Run littleX tests
       run: jac test jac/examples/littleX/littleX.test.jac
+
+  test-langserve:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v3
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v3
+      with:
+        python-version: 3.12
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e jac
+        pip install pytest
+        pip install pytest-asyncio
+        pip install pytest-xdist
+
+    - name: Run language server tests
+      run: |
+        cd jac
+        pytest -x . -n auto -k "test_lang_serve or test_server"
