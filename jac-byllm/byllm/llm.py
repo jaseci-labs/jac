@@ -122,6 +122,7 @@ class BaseLLM:
         # Call the LiteLLM API
         self.log_info(f"Calling LLM: {self.model_name} with params:\n{params}")
         self.api_key = params.get("api_key")
+        self.api_base = params.pop("api_base", DEFAULT_BASE_URL)
         response = self.model_call_no_stream(params)
 
         # Output format:
@@ -137,15 +138,15 @@ class BaseLLM:
 
         tool_calls: list[ToolCall] = []
         for tool_call in message.tool_calls or []:  # type: ignore
-            if tool := mtir.get_tool(tool_call["function"]["name"]):
-                args_json = json.loads(tool_call["function"]["arguments"])
+            print(tool_call)
+            print(type(tool_call))
+            if tool := mtir.get_tool(tool_call.function.name):
+                args_json = json.loads(tool_call.function.arguments)
                 args = tool.parse_arguments(args_json)
-                tool_calls.append(
-                    ToolCall(call_id=tool_call["id"], tool=tool, args=args)
-                )
+                tool_calls.append(ToolCall(call_id=tool_call.id, tool=tool, args=args))
             else:
                 raise RuntimeError(
-                    f"Attempted to call tool: '{tool_call['function']['name']}' which was not present."
+                    f"Attempted to call tool: '{tool_call.function.name}' which was not present."
                 )
 
         return CompletionResult(
@@ -161,6 +162,7 @@ class BaseLLM:
         # Call the LiteLLM API
         self.log_info(f"Calling LLM: {self.model_name} with params:\n{params}")
         self.api_key = params.get("api_key")
+        self.api_base = params.pop("api_base", DEFAULT_BASE_URL)
         response = self.model_call_with_stream(params)
 
         for chunk in response:
@@ -210,8 +212,8 @@ class Model(BaseLLM):
     def model_call_no_stream(self, params):
         if self.proxy:
             client = OpenAI(
-                base_url=params.pop("api_base", "htpp://localhost:4000"),
-                api_key=params.pop("api_key"),
+                base_url=self.api_base,
+                api_key=self.api_key,
             )
             response = client.chat.completions.create(**params)
         else:
@@ -221,8 +223,8 @@ class Model(BaseLLM):
     def model_call_with_stream(self, params):
         if self.proxy:
             client = OpenAI(
-                base_url=params.pop("api_base", "htpp://localhost:4000"),
-                api_key=params.pop("api_key"),
+                base_url=self.api_base,
+                api_key=self.api_key,
             )
             response = client.chat.completions.create(stream=True, **params)
         else:
@@ -268,3 +270,19 @@ class MockLLM(BaseLLM):
                 yield output[:chunk_len]  # Simulate token chunk
                 time.sleep(random.uniform(0.01, 0.05))  # Simulate network delay
                 output = output[chunk_len:]
+
+
+# class MyOpenAIModel(BaseLLM):
+#     def __init__(self, model_name: str, **kwargs: object) -> None:
+#         """Initialize the MockLLM connector."""
+#         super().__init__(model_name, **kwargs)
+
+#     def model_call_no_stream(self, params):
+#         client = OpenAI(api_key=self.api_key)
+#         response = client.chat.completions.create(**params)
+#         return response
+
+#     def model_call_with_stream(self, params):
+#         client = OpenAI(api_key=self.api_key)
+#         response = client.chat.completions.create(stream=True, **params)
+#         return response
