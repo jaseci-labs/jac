@@ -48,6 +48,7 @@ as needed. When done, always call finish_tool(output) to return the final \
 output. Only use tools.
 """  # noqa E501
 
+
 class BaseLLM:
     """Base class for LLM implementations."""
 
@@ -55,21 +56,21 @@ class BaseLLM:
         """Initialize the LLM connector with a model."""
         self.model_name = model_name
         self.config = kwargs
-        self.api_key: str = self.config.get("api_key", "")
+        self.api_key = self.config.get("api_key", "")
         # The parameters for the llm call like temprature, top_k, max_token, etc.
         # This is only applicable for the next call passed from `by llm(**kwargs)`.
         self.call_params: dict[str, object] = {}
-
 
     def __call__(self, **kwargs: object) -> BaseLLM:
         """Construct the call parameters and return self (factory pattern)."""
         self.call_params = kwargs
         return self
+
     # @property
     # def call_params(self) -> dict[str, object]:
     #     """Get the call parameters for the LLM."""
     #     raise NotImplementedError("Subclasses must implement this method.")
-    
+
     def invoke(self, mtir: MTIR) -> object:
         """Invoke the LLM with the given caller and arguments."""
         if mtir.stream:
@@ -88,15 +89,7 @@ class BaseLLM:
                 break
 
         return resp.output
-    
-    # def _completion_no_streaming(self, mtir: MTIR) -> CompletionResult:
-    #     """Perform a completion request with the LLM."""
-    #     raise NotImplementedError("Subclasses must implement this method.")
-    
-    # def _completion_streaming(self, mtir: MTIR) -> Generator[str, None, None]:
-    #     """Perform a streaming completion request with the LLM."""
-    #     raise NotImplementedError("Subclasses must implement this method.")
-    
+
     def make_model_params(self, mtir: MTIR) -> dict:
         """Prepare the parameters for the LLM call."""
         params = {
@@ -106,17 +99,14 @@ class BaseLLM:
                 or self.config.get("host")
                 or self.config.get("api_base")
             ),
-            # "api_key": self.config.get("api_key"),
             "messages": mtir.get_msg_list(),
             "tools": mtir.get_tool_list() or None,
             "response_format": mtir.get_output_schema(),
             "temperature": self.call_params.get("temperature", 0.7),
             "max_tokens": self.call_params.get("max_tokens"),
-            # "top_k": self.call_params.get("top_k", 50),
-            # "top_p": self.call_params.get("top_p", 0.9),
         }
         return params
-    
+
     def log_info(self, message: str) -> None:
         """Log a message to the console."""
         # FIXME: The logger.info will not always log so for now I'm printing to stdout
@@ -174,21 +164,27 @@ class BaseLLM:
         response = self.model_call_with_stream(params)
 
         for chunk in response:
-            if chunk.choices and chunk.choices[0].delta:
-                delta = chunk.choices[0].delta
-                yield delta.content or ""
+            if hasattr(chunk, "choices"):
+                if chunk.choices and chunk.choices[0].delta:
+                    delta = chunk.choices[0].delta
+                    yield delta.content or ""
 
     def model_call_no_stream(self, params: dict) -> dict:
         """Make a direct model call with the given parameters.
         Get api_key from self.api_key if needed.
         """
-        raise NotImplementedError("Subclasses must implement this method for LLM call without streaming.")
+        raise NotImplementedError(
+            "Subclasses must implement this method for LLM call without streaming."
+        )
 
     def model_call_with_stream(self, params: dict) -> Generator[str, None, None]:
         """Make a direct model call with the given parameters.
         Get api_key from self.api_key if needed.
         """
-        raise NotImplementedError("Subclasses must implement this method for LLM call with streaming.")
+        raise NotImplementedError(
+            "Subclasses must implement this method for LLM call with streaming."
+        )
+
 
 class Model(BaseLLM):
     """A wrapper class that abstracts LiteLLM functionality.
@@ -210,7 +206,6 @@ class Model(BaseLLM):
         logging.getLogger("httpx").setLevel(logging.WARNING)
         _disable_debugging()
         litellm.drop_params = True
-        # self.llm_connector = LLMConnector(model_name=model_name, **kwargs)
 
     def model_call_no_stream(self, params):
         if self.proxy:
@@ -234,8 +229,10 @@ class Model(BaseLLM):
             response = litellm.completion(stream=True, **params)
         return response
 
+
 class MockLLM(BaseLLM):
     """LLM Connector for a mock LLM service that simulates responses."""
+
     def __init__(self, model_name: str, **kwargs: object) -> None:
         """Initialize the MockLLM connector."""
         super().__init__(model_name, **kwargs)
