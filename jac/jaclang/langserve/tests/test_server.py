@@ -1,4 +1,4 @@
-# from dataclasses import dataclass
+from dataclasses import dataclass
 from jaclang.utils.test import TestCase
 from jaclang.vendor.pygls import uris
 from jaclang.vendor.pygls.workspace import Workspace
@@ -225,37 +225,37 @@ class TestJacLangServer(TestCase):
                 str(lsp.warnings_had[idx]),
             )
 
-    # def test_completion(self) -> None:
-    #     """Test that the completions are correct."""
-    #     import asyncio
+    def test_completion(self) -> None:
+        """Test that the completions are correct."""
+        import asyncio
 
-    #     lsp = self.create_server()
-    #     base_module_file = uris.from_fs_path(
-    #         self.fixture_abs_path("completion_test_err.jac")
-    #     )
-    #     lsp.type_check_file(base_module_file)
+        lsp = self.create_server()
+        base_module_file = uris.from_fs_path(
+            self.fixture_abs_path("completion_test_err.jac")
+        )
+        lsp.type_check_file(base_module_file)
 
-    #     @dataclass
-    #     class Case:
-    #         pos: lspt.Position
-    #         expected: list[str]
-    #         trigger: str = "."
+        @dataclass
+        class Case:
+            pos: lspt.Position
+            expected: list[str]
+            trigger: str = "."
 
-    #     test_cases: list[Case] = [
-    #         Case(
-    #             lspt.Position(8, 8),
-    #             ["bar", "baz"],
-    #         ),
-    #     ]
-    #     for case in test_cases:
-    #         results = asyncio.run(
-    #             lsp.get_completion(
-    #                 base_module_file, case.pos, completion_trigger=case.trigger
-    #             )
-    #         )
-    #         completions = results.items
-    #         for completion in case.expected:
-    #             self.assertIn(completion, str(completions))
+        test_cases: list[Case] = [
+            Case(
+                lspt.Position(8, 8),
+                ["bar", "baz"],
+            ),
+        ]
+        for case in test_cases:
+            results = asyncio.run(
+                lsp.get_completion(
+                    base_module_file, case.pos, completion_trigger=case.trigger
+                )
+            )
+            completions = results.items
+            for completion in case.expected:
+                self.assertIn(completion, str(completions))
 
     def test_go_to_reference(self) -> None:
         """Test that the go to reference is correct."""
