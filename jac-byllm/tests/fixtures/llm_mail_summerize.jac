@@ -1,5 +1,5 @@
 
-import from byllm.lib { Model }
+import from byllm.lib { MockLLM }
 import from os { path }
 
 
@@ -10,7 +10,7 @@ obj Email {
 }
 
 # Need to define this after email is defined.
-glob llm = Model(
+glob llm = MockLLM(
     model_name="mockllm",
     outputs=[
         [
