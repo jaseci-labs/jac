@@ -243,7 +243,7 @@ cl {
 
     # App with Redux Provider
     def app() -> any {
-        
+
         return <Provider store={store}>
             <AppContent />
         </Provider>;
