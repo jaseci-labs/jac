@@ -137,5 +137,5 @@ jobs:
 
     - name: Run language server tests
       run: |
-        cd jac
-        pytest -x  -k "TestLangServe or TestJacLangServer"
+        pytest jac/jaclang/langserve/tests/test_server.py
+        pytest jac/jaclang/langserve/tests/server_test/test_lang_serve.py
