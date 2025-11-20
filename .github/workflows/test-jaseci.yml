@@ -29,10 +29,7 @@ jobs:
         pip install pytest-xdist
 
     - name: Run Jac core tests
-      run: |
-        cd jac
-        pytest -x . -n auto -k "not TestLangServe and not TestJacLangServer"
-
+      run: pytest -x jac -n auto -k "not TestLangServe and not TestJacLangServer"
 
   test-client:
     runs-on: ubuntu-latest
@@ -136,6 +133,6 @@ jobs:
         pip install pytest-asyncio
 
     - name: Run language server tests
-      run: |
+      run: | # work-around for github CI
         pytest jac/jaclang/langserve/tests/test_server.py
         pytest jac/jaclang/langserve/tests/server_test/test_lang_serve.py
