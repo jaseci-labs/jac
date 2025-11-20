@@ -1,4 +1,4 @@
-# from dataclasses import dataclass 
+# from dataclasses import dataclass
 from jaclang.utils.test import TestCase
 from jaclang.vendor.pygls import uris
 from jaclang.vendor.pygls.workspace import Workspace
