@@ -134,7 +134,6 @@ jobs:
         pip install -e jac
         pip install pytest
         pip install pytest-asyncio
-        pip install pytest-xdist
 
     - name: Run language server tests
       run: |
