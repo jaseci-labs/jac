@@ -1,0 +1,32 @@
+{
+  "name": "react-hook-form",
+  "version": "1.0.0",
+  "description": "Jac application: react-hook-form",
+  "main": "index.js",
+  "scripts": {
+    "build": "npm run compile && vite build",
+    "dev": "vite dev",
+    "preview": "vite preview",
+    "compile": "babel src --out-dir build --extensions \".jsx,.js\" --out-file-extension .js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "devDependencies": {
+    "@babel/cli": "^7.28.3",
+    "@babel/core": "^7.28.5",
+    "@babel/preset-env": "^7.28.5",
+    "@babel/preset-react": "^7.28.5",
+    "vite": "^6.4.1"
+  },
+  "dependencies": {
+    "@hookform/resolvers": "^5.2.2",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-hook-form": "^7.66.1",
+    "react-router-dom": "^6.30.1",
+    "zod": "^4.1.12",
+    "zustand": "^5.0.8"
+  }
+}

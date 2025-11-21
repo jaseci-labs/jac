@@ -22,24 +22,45 @@ cl {
                 let todo = state.items.find(lambda t: any -> bool {
                     return t.id == action.payload;
                 });
+                let index = state.items.findIndex(lambda t: any -> bool {
+                    return t.id == action.payload;
+                });
+               
 
-                # if todo {
-                #     todo.completed = not todo.completed;
-                # }
+                if todo && index != -1 {
+                    new_todo = {**todo, "completed":not todo.completed};
+
+                    #  Only array mutation only works here, immutable methods like map or filter do not work
+                    state.items.splice(index, 1, new_todo);
+                }
             },
             "deleteTodo": lambda state: any, action: any -> None {
+                let todo = state.items.find(lambda t: any -> bool {
+                    return t.id == action.payload;
+                });
+                let index = state.items.findIndex(lambda t: any -> bool {
+                    return t.id == action.payload;
+                });
 
-                # state.items = state.items.filter(lambda t: any -> bool {
-                #     return t.id != action.payload;
-                # });
+                if todo && index != -1 {
+                    #  Only array mutation only works here, immutable methods like map or filter do not work
+                    state.items.splice(index, 1);
+                }
+                
             },
             "setFilter": lambda state: any, action: any -> None {
-                # state.filter = action.payload;
+                # state.filter=action.payload;
+
+                
             },
             "clearCompleted": lambda state: any -> None {
-                # state.items = state.items.filter(lambda t: any -> bool {
-                #     return t.completed == false;
-                # });
+                let new_items = state.items.filter(lambda t: any -> bool {
+                    return t.completed == false;
+                });
+                state.items.splice(0, state.items.length);
+                for item in new_items {
+                    state.items.push(item);
+                }
             }
         }
     });
