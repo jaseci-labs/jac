@@ -542,8 +542,10 @@ export default defineConfig({
             self.assertEqual(bundle.module_name, "app")
             self.assertIn("app", bundle.client_functions)
 
-            self.assertIn('function app()', bundle.code)
-            self.assertIn('__jacJsx("div", {}, [__jacJsx("h2", {}, ["My Todos"])])', bundle.code)
-            self.assertIn('root.render(/* @__PURE__ */ React.c', bundle.code)
+            self.assertIn("function app()", bundle.code)
+            self.assertIn(
+                '__jacJsx("div", {}, [__jacJsx("h2", {}, ["My Todos"])])', bundle.code
+            )
+            self.assertIn("root.render(/* @__PURE__ */ React.c", bundle.code)
             # Cleanup
             builder.cleanup_temp_dir()
