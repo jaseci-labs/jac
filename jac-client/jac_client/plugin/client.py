@@ -1,5 +1,6 @@
 import hashlib
 import html
+import mimetypes
 import types
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
@@ -113,20 +114,37 @@ class JacClient:
 
     @staticmethod
     @hookimpl
-    def _add_cors_headers(handler: BaseHTTPRequestHandler) -> None:
-        """Add CORS headers to response."""
-        # Custom add cors handlers can be implemented here. and remove the implementation below
-        from jaclang.runtimelib.server import ResponseBuilder
-
-        ResponseBuilder._add_cors_headers(handler)
-
-    @staticmethod
-    @hookimpl
     def send_static_file(
         handler: BaseHTTPRequestHandler,
         file_path: Path,
         content_type: str | None = None,
     ) -> None:
-        """Send static file response (images, fonts, etc.)."""
-        # Raise not implemented error
-        raise NotImplementedError("send_static_file method is not implemented")
+        """Send static file response (images, fonts, etc.).
+
+        Args:
+            handler: HTTP request handler
+            file_path: Path to the file to serve
+            content_type: MIME type (auto-detected if None)
+        """
+        from jaclang.runtimelib.server import ResponseBuilder
+
+        if not file_path.exists() or not file_path.is_file():
+            ResponseBuilder.send_json(handler, 404, {"error": "File not found"})
+            return
+
+        try:
+            file_content = file_path.read_bytes()
+            if content_type is None:
+                content_type, _ = mimetypes.guess_type(str(file_path))
+                if content_type is None:
+                    content_type = "application/octet-stream"
+
+            handler.send_response(200)
+            handler.send_header("Content-Type", content_type)
+            handler.send_header("Content-Length", str(len(file_content)))
+            handler.send_header("Cache-Control", "public, max-age=3600")
+            ResponseBuilder._add_cors_headers(handler)
+            handler.end_headers()
+            handler.wfile.write(file_content)
+        except Exception as exc:
+            ResponseBuilder.send_json(handler, 500, {"error": str(exc)})

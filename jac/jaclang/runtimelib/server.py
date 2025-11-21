@@ -11,6 +11,7 @@ import secrets
 from contextlib import suppress
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
 from typing import Any, Callable, Literal, TypeAlias, get_type_hints
 from urllib.parse import parse_qs, urlparse
 
@@ -858,23 +859,107 @@ class JacAPIServer:
                         ResponseBuilder.send_json(self, 503, {"error": str(exc)})
                     return
 
-                # CSS files from dist directory
-                if path.startswith("/static/") and path.endswith(".css"):
-                    try:
-                        from pathlib import Path
+                # Static files (CSS, images, fonts, etc.) from dist or assets directories
+                # Handle both /static/ paths and direct asset paths (from Vite bundles)
+                is_static_path = path.startswith("/static/")
+                is_asset_file = (
+                    not is_static_path
+                    and path != "/"
+                    and not path.startswith("/page/")
+                    and not path.startswith("/function/")
+                    and not path.startswith("/walker/")
+                    and not path.startswith("/user/")
+                    and not path.startswith("/functions")
+                    and not path.startswith("/walkers")
+                    and not path.startswith("/protected")
+                    and Path(path).suffix
+                    in {
+                        ".png",
+                        ".jpg",
+                        ".jpeg",
+                        ".gif",
+                        ".webp",
+                        ".svg",
+                        ".ico",
+                        ".woff",
+                        ".woff2",
+                        ".ttf",
+                        ".otf",
+                        ".eot",
+                        ".mp4",
+                        ".webm",
+                        ".mp3",
+                        ".wav",
+                        ".css",
+                    }
+                )
 
+                if is_static_path or is_asset_file:
+                    try:
                         base_path = (
                             Path(Jac.base_path_dir) if Jac.base_path_dir else Path.cwd()
                         )
-                        css_file = base_path / "dist" / Path(path).name
 
-                        if css_file.exists():
-                            css_content = css_file.read_text(encoding="utf-8")
-                            ResponseBuilder.send_css(self, css_content)
+                        if is_static_path:
+                            # Remove /static/ prefix to get the relative file path
+                            relative_path = path[8:]  # Remove "/static/"
                         else:
-                            ResponseBuilder.send_json(
-                                self, 404, {"error": "CSS file not found"}
-                            )
+                            # Direct asset path (e.g., /burger.png from Vite)
+                            relative_path = path[1:]  # Remove leading "/"
+
+                        file_name = Path(relative_path).name
+
+                        # Try dist directory first (for Vite-bundled assets)
+                        dist_file = base_path / "dist" / relative_path
+                        # Also try just the filename in dist (for CSS files and direct assets)
+                        dist_file_simple = base_path / "dist" / file_name
+                        # Try assets directory (for user-provided static assets)
+                        assets_file = base_path / "assets" / relative_path
+                        # Also try just the filename in assets
+                        assets_file_simple = base_path / "assets" / file_name
+
+                        # CSS files - try to read as text first
+                        if path.endswith(".css"):
+                            if dist_file.exists():
+                                css_content = dist_file.read_text(encoding="utf-8")
+                                ResponseBuilder.send_css(self, css_content)
+                                return
+                            elif dist_file_simple.exists():
+                                css_content = dist_file_simple.read_text(
+                                    encoding="utf-8"
+                                )
+                                ResponseBuilder.send_css(self, css_content)
+                                return
+                            elif assets_file.exists():
+                                css_content = assets_file.read_text(encoding="utf-8")
+                                ResponseBuilder.send_css(self, css_content)
+                                return
+                            elif assets_file_simple.exists():
+                                css_content = assets_file_simple.read_text(
+                                    encoding="utf-8"
+                                )
+                                ResponseBuilder.send_css(self, css_content)
+                                return
+                            else:
+                                ResponseBuilder.send_json(
+                                    self, 404, {"error": "CSS file not found"}
+                                )
+                                return
+
+                        # Other static files (images, fonts, etc.) - serve as binary
+                        for candidate_file in [
+                            dist_file,
+                            dist_file_simple,
+                            assets_file,
+                            assets_file_simple,
+                        ]:
+                            if candidate_file.exists() and candidate_file.is_file():
+                                ResponseBuilder.send_static_file(self, candidate_file)
+                                return
+
+                        ResponseBuilder.send_json(
+                            self, 404, {"error": "Static file not found"}
+                        )
                     except Exception as exc:
                         ResponseBuilder.send_json(self, 500, {"error": str(exc)})
                     return

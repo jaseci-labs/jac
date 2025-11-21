@@ -170,19 +170,18 @@ def convert_to_js_import_path(path: str) -> str:
         # Skip adding .js for special paths like "." or ".."
         if js_path in (".", ".."):
             return js_path
-
         # Check if the path already ends with a file extension
         # Common JavaScript module extensions
         common_extensions = (
             ".js",
             ".mjs",
             ".cjs",
-            ".json",
             ".css",
             ".scss",
             ".sass",
             ".less",
             ".wasm",
+            ".json",
         )
         if not js_path.endswith(common_extensions):
             # No recognized extension found, add .js

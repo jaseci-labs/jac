@@ -225,6 +225,13 @@ class ViteClientBundleBuilder(ClientBundleBuilder):
             collected_globals=collected_globals,
         )
 
+        # Copy assets from root assets/ folder to src/assets/ for @jac-client/assets alias
+        project_dir = self.vite_package_json.parent
+        root_assets_dir = project_dir / "assets"
+        src_assets_dir = project_dir / "src" / "assets"
+        if root_assets_dir.exists() and root_assets_dir.is_dir():
+            self._copy_asset_files(root_assets_dir, src_assets_dir)
+
         client_exports = sorted(collected_exports)
         client_globals_map = collected_globals
 
@@ -344,10 +351,12 @@ root.render(<App />);
         """
 
     def _copy_asset_files(self, src_dir: Path, build_dir: Path) -> None:
-        """Copy CSS and other asset files from src/ to build/ directory.
+        """Copy CSS and other asset files from src/ to build/ directory recursively.
 
         Babel only transpiles JavaScript files, so CSS and other assets need to be
         manually copied to the build directory for Vite to resolve them.
+        This method recursively copies assets from subdirectories (e.g., src/assets/)
+        while preserving the directory structure.
         """
         if not src_dir.exists():
             return
@@ -367,13 +376,48 @@ root.render(<App />);
             ".jpeg",
             ".gif",
             ".webp",
+            ".ico",
+            ".woff",
+            ".woff2",
+            ".ttf",
+            ".eot",
+            ".otf",
+            ".mp4",
+            ".webm",
+            ".mp3",
+            ".wav",
         }
 
-        for src_file in src_dir.iterdir():
-            if src_file.is_file() and src_file.suffix in asset_extensions:
-                dest_file = build_dir / src_file.name
-                with contextlib.suppress(OSError, shutil.Error):
-                    shutil.copy2(src_file, dest_file)
+        def copy_recursive(
+            source: Path, destination: Path, base: Path | None = None
+        ) -> None:
+            """Recursively copy asset files from source to destination.
+
+            Args:
+                source: Source directory to copy from
+                destination: Destination directory to copy to
+                base: Base directory for calculating relative paths (defaults to source)
+            """
+            if not source.exists():
+                return
+
+            if base is None:
+                base = source
+
+            for item in source.iterdir():
+                if item.is_file() and item.suffix.lower() in asset_extensions:
+                    # Preserve relative path structure from base
+                    relative_path = item.relative_to(base)
+                    dest_file = destination / relative_path
+                    dest_file.parent.mkdir(parents=True, exist_ok=True)
+                    with contextlib.suppress(OSError, shutil.Error):
+                        shutil.copy2(item, dest_file)
+                elif item.is_dir():
+                    # Recursively process subdirectories
+                    copy_recursive(item, destination, base)
+
+        # Copy files from src_dir root and recursively from subdirectories
+        copy_recursive(src_dir, build_dir)
 
     def _find_vite_bundle(self, output_dir: Path) -> Path | None:
         """Find the generated Vite bundle file."""
