@@ -1,12 +1,12 @@
 # Step 11: Final Integration - Complete App
 
-> **💡 Quick Tip:** Each step has two parts. **Part 1** shows you what to build. **Part 2** explains why it works. Want to just build? Skip all Part 2 sections!
+> ** Quick Tip:** Each step has two parts. **Part 1** shows you what to build. **Part 2** explains why it works. Want to just build? Skip all Part 2 sections!
 
-Congratulations! 🎉 In this final step, you'll see the complete, production-ready todo application with all features integrated!
+Congratulations!  In this final step, you'll see the complete, production-ready todo application with all features integrated!
 
 ---
 
-## 🏗️ Part 1: The Complete App
+##  Part 1: The Complete App
 
 ### Complete `app.jac` File
 
@@ -712,22 +712,22 @@ cl {
 
 ---
 
-**🎉 You did it!** You've built a complete full-stack app. The rest of this page explains what you built and what to do next.
+** You did it!** You've built a complete full-stack app. The rest of this page explains what you built and what to do next.
 
 ---
 
-## 💡 Part 2: What You Built
+##  Part 2: What You Built
 
 ### Features Checklist
 
-✅ **Authentication:**
+ **Authentication:**
 - User signup
 - User login
 - Logout
 - Session persistence
 - Protected routes
 
-✅ **Todo Management:**
+ **Todo Management:**
 - Create todos
 - Mark as complete/incomplete
 - Delete todos
@@ -735,7 +735,7 @@ cl {
 - Item counter
 - Empty state handling
 
-✅ **UI/UX:**
+ **UI/UX:**
 - Responsive design
 - Modern styling
 - Form validation
@@ -743,7 +743,7 @@ cl {
 - Loading states
 - Smooth navigation
 
-✅ **Backend:**
+ **Backend:**
 - Data persistence with walkers
 - User isolation (each user sees only their data)
 - Graph-based data structure
@@ -773,34 +773,34 @@ cl {
 
 ```
 Your entire app:
-├── app.jac (735 lines)
-    ├── Backend (nodes + walkers)
-    ├── Frontend (React components)
-    └── Routes (navigation)
+ app.jac (735 lines)
+     Backend (nodes + walkers)
+     Frontend (React components)
+     Routes (navigation)
 ```
 
-That's it! Just one file! 🚀
+That's it! Just one file! 
 
 ### Code Organization
 
 ```
 app.jac
-├── Backend Section
-│   ├── node Todo (data model)
-│   └── Walkers (create, read, toggle, delete)
-│
-└── Frontend Section (cl block)
-    ├── Navigation component
-    ├── LoginPage component
-    ├── SignupPage component
-    ├── TodosPage component
-    ├── HomePage component (redirects)
-    └── app function (router setup)
+ Backend Section
+    node Todo (data model)
+    Walkers (create, read, toggle, delete)
+
+ Frontend Section (cl block)
+     Navigation component
+     LoginPage component
+     SignupPage component
+     TodosPage component
+     HomePage component (redirects)
+     app function (router setup)
 ```
 
 ---
 
-## 🚀 What's Next?
+##  What's Next?
 
 You've completed the tutorial! Here are some ideas to continue learning:
 
@@ -885,7 +885,7 @@ Apply what you learned:
 
 ---
 
-## 📚 Resources
+##  Resources
 
 **Official Documentation:**
 - [Jac Documentation](https://www.jac-lang.org)
@@ -905,21 +905,21 @@ Apply what you learned:
 
 ---
 
-## 🎓 What You Learned
+##  What You Learned
 
 Looking back at all 11 steps:
 
-1. ✅ Project setup and structure
-2. ✅ Components and props
-3. ✅ Styling with inline CSS
-4. ✅ Building complex UIs
-5. ✅ State management with useState
-6. ✅ Event handlers
-7. ✅ Side effects with useEffect
-8. ✅ Backend with walkers and nodes
-9. ✅ User authentication
-10. ✅ Client-side routing
-11. ✅ Complete full-stack integration
+1.  Project setup and structure
+2.  Components and props
+3.  Styling with inline CSS
+4.  Building complex UIs
+5.  State management with useState
+6.  Event handlers
+7.  Side effects with useEffect
+8.  Backend with walkers and nodes
+9.  User authentication
+10.  Client-side routing
+11.  Complete full-stack integration
 
 **Key concepts mastered:**
 - Full-stack development in one language
@@ -934,23 +934,23 @@ Looking back at all 11 steps:
 
 ---
 
-## 🎉 Congratulations!
+##  Congratulations!
 
 You built a **complete, production-ready full-stack application** from scratch!
 
 **What makes this special:**
-- ✅ **735 lines** of code (compared to 2000+ in traditional stacks)
-- ✅ **One language** (compared to 3-4: JavaScript, Python, SQL, HTML/CSS)
-- ✅ **One file** (compared to dozens of files)
-- ✅ **Zero configuration** (no webpack, babel, etc.)
-- ✅ **Built-in auth** (no OAuth setup needed)
-- ✅ **Automatic backend** (no Express/Flask setup)
+-  **735 lines** of code (compared to 2000+ in traditional stacks)
+-  **One language** (compared to 3-4: JavaScript, Python, SQL, HTML/CSS)
+-  **One file** (compared to dozens of files)
+-  **Zero configuration** (no webpack, babel, etc.)
+-  **Built-in auth** (no OAuth setup needed)
+-  **Automatic backend** (no Express/Flask setup)
 
-You're now ready to build amazing full-stack applications with Jac! 🚀
+You're now ready to build amazing full-stack applications with Jac! 
 
 ---
 
-## 💬 Share Your Success!
+##  Share Your Success!
 
 Built something cool? Share it:
 - Tag #JacLang on social media
@@ -960,5 +960,5 @@ Built something cool? Share it:
 
 **Thank you for completing this tutorial!**
 
-Happy coding with Jac! 🎊
+Happy coding with Jac! 
 

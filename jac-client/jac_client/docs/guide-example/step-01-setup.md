@@ -1,12 +1,12 @@
 # Step 1: Project Setup
 
-> **💡 Quick Tip:** Each step has two parts. **Part 1** shows you what to build. **Part 2** explains why it works. Want to just build? Skip all Part 2 sections!
+> ** Quick Tip:** Each step has two parts. **Part 1** shows you what to build. **Part 2** explains why it works. Want to just build? Skip all Part 2 sections!
 
 In this first step, you'll create your Jac project and understand the basic file structure.
 
 ---
 
-## 🏗️ Part 1: Building the App
+##  Part 1: Building the App
 
 ### Step 1.1: Create Your Project
 
@@ -30,10 +30,10 @@ Your project now has these files:
 
 ```
 todo-app/
-├── app.jac           # Your main application file (we'll work here!)
-├── package.json      # Node.js dependencies (auto-managed)
-├── vite.config.js    # Build configuration (you can ignore this)
-└── README.md         # Basic instructions
+ app.jac           # Your main application file (we'll work here!)
+ package.json      # Node.js dependencies (auto-managed)
+ vite.config.js    # Build configuration (you can ignore this)
+ README.md         # Basic instructions
 ```
 
 **Important**: We'll write ALL our code in `app.jac` - that's it!
@@ -78,15 +78,15 @@ Open your browser and go to:
 http://localhost:8000/page/app
 ```
 
-You should see "Hello, Jac!" and "My first full-stack app" 🎉
+You should see "Hello, Jac!" and "My first full-stack app" 
 
 ---
 
-**⏭️ Want to skip the theory?** Jump to [Step 2: First Component](./step-02-components.md)
+**⏭ Want to skip the theory?** Jump to [Step 2: First Component](./step-02-components.md)
 
 ---
 
-## 💡 Part 2: Understanding the Concepts
+##  Part 2: Understanding the Concepts
 
 ### What is `cl { ... }`?
 
@@ -144,17 +144,17 @@ return <div>
 **Key rules:**
 1. Must have **one root element**
    ```jac
-   # ✅ Correct
+   #  Correct
    return <div><h1>Title</h1><p>Text</p></div>;
 
-   # ❌ Wrong (two root elements)
+   #  Wrong (two root elements)
    return <h1>Title</h1><p>Text</p>;
    ```
 
 2. Self-closing tags need `/`
    ```jac
-   <img src="photo.jpg" />    # ✅ Correct
-   <img src="photo.jpg">       # ❌ Wrong
+   <img src="photo.jpg" />    #  Correct
+   <img src="photo.jpg">       #  Wrong
    ```
 
 3. Use `{}` to insert Jac code
@@ -181,27 +181,27 @@ For now, everything goes in `app.jac`. As your app grows, you can split into mul
 
 ```
 todo-app/
-├── app.jac           # Main app
-├── components.jac    # Reusable components
-└── walkers.jac       # Backend logic
+ app.jac           # Main app
+ components.jac    # Reusable components
+ walkers.jac       # Backend logic
 ```
 
 But for this tutorial, we'll keep everything in one file for simplicity.
 
 ---
 
-## ✅ What You've Learned
+##  What You've Learned
 
-- ✅ How to create a Jac project
-- ✅ Project structure basics
-- ✅ What `cl { }` means (client-side code)
-- ✅ The `def app()` entry point
-- ✅ JSX basics (HTML in code)
-- ✅ Running your app with `jac serve`
+-  How to create a Jac project
+-  Project structure basics
+-  What `cl { }` means (client-side code)
+-  The `def app()` entry point
+-  JSX basics (HTML in code)
+-  Running your app with `jac serve`
 
 ---
 
-## 🐛 Common Issues
+##  Common Issues
 
 ### Issue: `jac: command not found`
 
@@ -234,7 +234,7 @@ Then visit `http://localhost:8080/page/app`
 
 ---
 
-## 🎯 Quick Exercise
+##  Quick Exercise
 
 Before moving on, try changing the text:
 
@@ -253,8 +253,8 @@ Save, refresh your browser, and see the changes!
 
 ---
 
-## ➡️ Next Step
+##  Next Step
 
 Great! You have a running Jac app. Now let's learn about **components** - the building blocks of any UI.
 
-👉 **[Continue to Step 2: First Component](./step-02-components.md)**
+ **[Continue to Step 2: First Component](./step-02-components.md)**

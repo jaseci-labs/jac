@@ -1,12 +1,12 @@
 # Step 4: Building the Complete Todo UI
 
-> **💡 Quick Tip:** Each step has two parts. **Part 1** shows you what to build. **Part 2** explains why it works. Want to just build? Skip all Part 2 sections!
+> ** Quick Tip:** Each step has two parts. **Part 1** shows you what to build. **Part 2** explains why it works. Want to just build? Skip all Part 2 sections!
 
 In this step, you'll put all your components together to create the full todo application interface!
 
 ---
 
-## 🏗️ Part 1: Building the App
+##  Part 1: Building the App
 
 ### Step 4.1: Complete App with All Components
 
@@ -205,11 +205,11 @@ cl {
 
 ---
 
-**⏭️ Want to skip the theory?** Jump to [Step 5: Local State](./step-05-local-state.md)
+**⏭ Want to skip the theory?** Jump to [Step 5: Local State](./step-05-local-state.md)
 
 ---
 
-## 💡 Part 2: Understanding the Concepts
+##  Part 2: Understanding the Concepts
 
 ### Component Hierarchy
 
@@ -217,14 +217,14 @@ Your app now has a clear structure:
 
 ```
 app (main container)
-├── h1 (title)
-├── TodoInput (input field + button)
-├── TodoFilters (All/Active/Completed buttons)
-├── TodoList (container)
-│   ├── TodoItem (Learn Jac)
-│   ├── TodoItem (Build app)
-│   └── TodoItem (Deploy)
-└── div (stats footer)
+ h1 (title)
+ TodoInput (input field + button)
+ TodoFilters (All/Active/Completed buttons)
+ TodoList (container)
+    TodoItem (Learn Jac)
+    TodoItem (Build app)
+    TodoItem (Deploy)
+ div (stats footer)
 ```
 
 ### Container Component Pattern
@@ -252,8 +252,8 @@ Data flows **down** from parent to child through props:
 
 ```
 app
-  └─> passes nothing to TodoList
-        └─> passes {text, done} to each TodoItem
+  > passes nothing to TodoList
+        > passes {text, done} to each TodoItem
 ```
 
 Right now, data is hard-coded. Later, we'll use **state** to make it dynamic.
@@ -365,19 +365,19 @@ Using consistent colors makes your app look polished!
 
 ---
 
-## ✅ What You've Learned
+##  What You've Learned
 
-- ✅ Building a complete UI by composing components
-- ✅ Component hierarchy and organization
-- ✅ Container components that render lists
-- ✅ Conditional rendering for empty states
-- ✅ Centered card layout pattern
-- ✅ Consistent spacing and colors
-- ✅ Props flow from parent to child
+-  Building a complete UI by composing components
+-  Component hierarchy and organization
+-  Container components that render lists
+-  Conditional rendering for empty states
+-  Centered card layout pattern
+-  Consistent spacing and colors
+-  Props flow from parent to child
 
 ---
 
-## 🐛 Common Issues
+##  Common Issues
 
 ### Issue: Components overlapping
 
@@ -410,7 +410,7 @@ return <div>Show todos</div>;  # This only runs if hasTodos is true
 
 ---
 
-## 🎯 Quick Exercise
+##  Quick Exercise
 
 Try customizing your app:
 
@@ -448,7 +448,7 @@ def app() -> any {
             "color": "white",
             "marginBottom": "20px"
         }}>
-            <h1 style={{"margin": "0"}}>📝 Todo App</h1>
+            <h1 style={{"margin": "0"}}> Todo App</h1>
             <p style={{"margin": "5px 0 0 0"}}>Stay organized!</p>
         </div>
 
@@ -468,10 +468,10 @@ def app() -> any {
 
 ---
 
-## ➡️ Next Step
+##  Next Step
 
 Excellent! Your UI is complete and looks great. But it's all static - clicking buttons does nothing!
 
 In the next step, we'll add **state** to make your app interactive!
 
-👉 **[Continue to Step 5: Local State](./step-05-local-state.md)**
+ **[Continue to Step 5: Local State](./step-05-local-state.md)**

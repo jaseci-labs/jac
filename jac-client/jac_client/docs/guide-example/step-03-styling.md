@@ -1,12 +1,12 @@
 # Step 3: Styling Components
 
-> **💡 Quick Tip:** Each step has two parts. **Part 1** shows you what to build. **Part 2** explains why it works. Want to just build? Skip all Part 2 sections!
+> ** Quick Tip:** Each step has two parts. **Part 1** shows you what to build. **Part 2** explains why it works. Want to just build? Skip all Part 2 sections!
 
 In this step, you'll learn how to style your components using inline CSS to make them look great!
 
 ---
 
-## 🏗️ Part 1: Building the App
+##  Part 1: Building the App
 
 ### Step 3.1: Style the TodoItem Component
 
@@ -162,11 +162,11 @@ cl {
 
 ---
 
-**⏭️ Want to skip the theory?** Jump to [Step 4: Todo UI](./step-04-todo-ui.md)
+**⏭ Want to skip the theory?** Jump to [Step 4: Todo UI](./step-04-todo-ui.md)
 
 ---
 
-## 💡 Part 2: Understanding the Concepts
+##  Part 2: Understanding the Concepts
 
 ### What are Inline Styles?
 
@@ -189,8 +189,8 @@ In Jac (using JSX), styles are **dictionaries** (JavaScript objects):
 <div style={{ "color": "blue" }}>
       ^  ^
       |  |
-      |  └─ Dictionary: {"color": "blue"}
-      └──── JSX expression: insert Jac code here
+      |   Dictionary: {"color": "blue"}
+       JSX expression: insert Jac code here
 ```
 
 - **Outer `{ }`** = "I'm inserting Jac code into JSX"
@@ -223,14 +223,14 @@ text-align       → "textAlign"
 **Examples:**
 
 ```jac
-# ✅ Correct (camelCase)
+#  Correct (camelCase)
 {
     "backgroundColor": "#ffffff",
     "fontSize": "16px",
     "borderRadius": "8px"
 }
 
-# ❌ Wrong (kebab-case won't work)
+#  Wrong (kebab-case won't work)
 {
     "background-color": "#ffffff",  # Error!
     "font-size": "16px"              # Error!
@@ -289,14 +289,14 @@ text-align       → "textAlign"
 All CSS values must be **strings** (in quotes):
 
 ```jac
-# ✅ Correct
+#  Correct
 {
     "padding": "20px",
     "color": "#3b82f6",
     "fontSize": "16px"
 }
 
-# ❌ Wrong (missing quotes)
+#  Wrong (missing quotes)
 {
     "padding": 20px,      # Error!
     "color": #3b82f6,     # Error!
@@ -395,19 +395,19 @@ def app() -> any {
 
 ---
 
-## ✅ What You've Learned
+##  What You've Learned
 
-- ✅ How to write inline styles in Jac
-- ✅ Double curly braces `{{ }}` syntax
-- ✅ camelCase property names
-- ✅ Common CSS properties
-- ✅ Conditional styling with ternary operator
-- ✅ Flexbox basics for layout
-- ✅ Reusing styles with variables
+-  How to write inline styles in Jac
+-  Double curly braces `{{ }}` syntax
+-  camelCase property names
+-  Common CSS properties
+-  Conditional styling with ternary operator
+-  Flexbox basics for layout
+-  Reusing styles with variables
 
 ---
 
-## 🐛 Common Issues
+##  Common Issues
 
 ### Issue: Styles not applying
 
@@ -422,10 +422,10 @@ def app() -> any {
 **Cause**: Missing quotes around property names or values
 
 ```jac
-# ❌ Wrong
+#  Wrong
 {padding: 20px}
 
-# ✅ Correct
+#  Correct
 {"padding": "20px"}
 ```
 
@@ -434,16 +434,16 @@ def app() -> any {
 **Solution**: Convert kebab-case to camelCase
 
 ```jac
-# ❌ Wrong
+#  Wrong
 {"background-color": "#fff"}
 
-# ✅ Correct
+#  Correct
 {"backgroundColor": "#fff"}
 ```
 
 ---
 
-## 🎯 Quick Exercise
+##  Quick Exercise
 
 Try adding a container with centered content:
 
@@ -471,8 +471,8 @@ This creates:
 
 ---
 
-## ➡️ Next Step
+##  Next Step
 
 Great! Your components now look professional. Next, let's build the **complete Todo UI** with all the components working together!
 
-👉 **[Continue to Step 4: Todo UI](./step-04-todo-ui.md)**
+ **[Continue to Step 4: Todo UI](./step-04-todo-ui.md)**

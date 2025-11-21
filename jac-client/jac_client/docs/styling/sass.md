@@ -235,10 +235,10 @@ Split large files into smaller modules:
 
 ```
 styles/
-├── _variables.scss
-├── _mixins.scss
-├── _components.scss
-└── main.scss
+ _variables.scss
+ _mixins.scss
+ _components.scss
+ main.scss
 ```
 
 ### 4. Use Nesting Wisely
@@ -346,21 +346,21 @@ $colors: (
 
 ## Advantages
 
-- ✅ **Variables** for maintainable theming
-- ✅ **Nesting** for better organization
-- ✅ **Mixins** for reusable code
-- ✅ **Functions** for dynamic values
-- ✅ **Partials** for modular CSS
-- ✅ **Compiles to standard CSS**
-- ✅ **Large ecosystem** and community
+-  **Variables** for maintainable theming
+-  **Nesting** for better organization
+-  **Mixins** for reusable code
+-  **Functions** for dynamic values
+-  **Partials** for modular CSS
+-  **Compiles to standard CSS**
+-  **Large ecosystem** and community
 
 ## Limitations
 
-- ❌ **Requires build step**
-- ❌ **Learning curve** for Sass syntax
-- ❌ **Can get complex** with deep nesting
-- ❌ **Additional dependency**
-- ❌ **Debugging** can be harder (source maps help)
+-  **Requires build step**
+-  **Learning curve** for Sass syntax
+-  **Can get complex** with deep nesting
+-  **Additional dependency**
+-  **Debugging** can be harder (source maps help)
 
 ## When to Use
 
