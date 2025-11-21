@@ -656,4 +656,4 @@ Check out the `examples/` directory for working applications:
 5. **Type Safety**: Jac provides type checking across frontend and backend
 6. **Graph Database**: Built-in graph data model eliminates need for SQL/NoSQL
 
-Happy coding with Jac! 
+Happy coding with Jac!

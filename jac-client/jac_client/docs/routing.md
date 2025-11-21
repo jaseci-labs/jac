@@ -656,5 +656,5 @@ def Navigation() -> any {
 - **No Configuration**: Just wrap your app in `<Router>` and start routing!
 - **Production-ready**: Battle-tested routing for real applications
 
-Routing in Jac is simple, powerful, and production-ready! 
+Routing in Jac is simple, powerful, and production-ready!
 

@@ -231,7 +231,7 @@ When rendering todos, use `_jac_id` instead of custom id:
 1. Add some todos
 2. Check/uncheck them
 3. Delete some
-4. **Refresh the page** - your todos persist!  
+4. **Refresh the page** - your todos persist!
 
 ---
 

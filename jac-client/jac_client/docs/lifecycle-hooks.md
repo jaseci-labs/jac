@@ -690,7 +690,7 @@ useEffect(lambda -> any {
 - **Cleanup**: Return a cleanup function for subscriptions, timers, and listeners
 - **Best Practices**: Handle errors, use loading states, keep effects focused
 
-React hooks provide a powerful and standard way to manage component lifecycle! 
+React hooks provide a powerful and standard way to manage component lifecycle!
 
 ---
 

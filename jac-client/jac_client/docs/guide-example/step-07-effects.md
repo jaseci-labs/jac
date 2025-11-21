@@ -91,7 +91,7 @@ cl {
 }
 ```
 
-**Try it!** Add some todos, then refresh the page - your todos persist! 
+**Try it!** Add some todos, then refresh the page - your todos persist!
 
 ### Step 7.5: Add Loading State
 

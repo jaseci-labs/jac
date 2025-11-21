@@ -779,7 +779,7 @@ Your entire app:
      Routes (navigation)
 ```
 
-That's it! Just one file! 
+That's it! Just one file!
 
 ### Code Organization
 
@@ -946,7 +946,7 @@ You built a **complete, production-ready full-stack application** from scratch!
 -  **Built-in auth** (no OAuth setup needed)
 -  **Automatic backend** (no Express/Flask setup)
 
-You're now ready to build amazing full-stack applications with Jac! 
+You're now ready to build amazing full-stack applications with Jac!
 
 ---
 
@@ -960,5 +960,5 @@ Built something cool? Share it:
 
 **Thank you for completing this tutorial!**
 
-Happy coding with Jac! 
+Happy coding with Jac!
 

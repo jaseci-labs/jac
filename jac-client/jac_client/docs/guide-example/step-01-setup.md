@@ -78,7 +78,7 @@ Open your browser and go to:
 http://localhost:8000/page/app
 ```
 
-You should see "Hello, Jac!" and "My first full-stack app" 
+You should see "Hello, Jac!" and "My first full-stack app"
 
 ---
 

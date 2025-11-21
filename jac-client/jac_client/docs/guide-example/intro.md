@@ -15,7 +15,7 @@ Traditionally, you'd need:
 - **SQL** for database
 - **REST APIs** to connect them
 
-With **Jac**, you write **everything in one language**, in **one file**! 
+With **Jac**, you write **everything in one language**, in **one file**!
 
 ## What You'll Build
 
