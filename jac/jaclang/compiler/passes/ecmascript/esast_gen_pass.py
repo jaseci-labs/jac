@@ -567,7 +567,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
         # Generate JavaScript code from ES AST
         node.gen.js = es_to_js(node.gen.es_ast)
 
-        # populate the client manifest from cl mods to the main module
+        # Populate the client manifest from cl mods to the main module
         self.populate_client_manifest(node)
 
         # Sort and assign client manifest
