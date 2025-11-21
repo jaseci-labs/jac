@@ -8,12 +8,12 @@ cl {
             "users": [],
             "currentUser": None,
             "isLoggedIn": False,
-            
+
             # Form submissions
             "registrations": [],
             "contactMessages": [],
             "profiles": [],
-            
+
             # Actions
             "registerUser": lambda userData: dict -> None {
                 setState(lambda state: any -> dict {
@@ -31,13 +31,13 @@ cl {
                     };
                 });
             },
-            
+
             "loginUser": lambda credentials: dict -> None {
                 setState(lambda state: any -> dict {
                     let user = state.users.find(lambda u: any -> bool {
                         return u.email == credentials.email;
                     });
-                    
+
                     if user {
                         return {
                             **state,
@@ -48,7 +48,7 @@ cl {
                     return {**state};
                 });
             },
-            
+
             "logoutUser": lambda -> None {
                 setState(lambda state: any -> dict {
                     return {
@@ -58,7 +58,7 @@ cl {
                     };
                 });
             },
-            
+
             "updateProfile": lambda profileData: dict -> None {
                 setState(lambda state: any -> dict {
                     if state.currentUser {
@@ -69,7 +69,7 @@ cl {
                             "website": profileData.website or "",
                             "notifications": profileData.notifications
                         };
-                        
+
                         return {
                             **state,
                             "currentUser": updatedUser,
@@ -79,7 +79,7 @@ cl {
                     return {**state};
                 });
             },
-            
+
             "submitContactMessage": lambda messageData: dict -> None {
                 setState(lambda state: any -> dict {
                     let message = {
@@ -93,7 +93,7 @@ cl {
                     };
                 });
             },
-            
+
             "clearAllData": lambda -> None {
                 setState(lambda state: any -> dict {
                     return {
@@ -109,7 +109,7 @@ cl {
             }
         };
     });
-    
+
     def useFormStore(selector: any = None) -> any {
         if selector {
             return formStore(selector);

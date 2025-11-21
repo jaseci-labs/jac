@@ -7,10 +7,10 @@ cl {
         "username": z.string()
       .min(3, "Username must be at least 3 characters")
       .max(20, "Username must be less than 20 characters"),
-  
+
         "email": z.string().email("Invalid email address"),
         "password": z.string().min(6, "Password must be at least 6 characters long"),
-        "confirmPassword": z.string().min(6, "Password must be at least 6 characters long"),    
+        "confirmPassword": z.string().min(6, "Password must be at least 6 characters long"),
         "age": z.number().min(18, "You must be at least 18 years old"),
         "agreeToTerms": z.boolean("You must agree to the terms and conditions")
         # .refine(lambda val: bool -> bool {
@@ -19,7 +19,7 @@ cl {
         # }, {
         #     "error": "You must agree to the terms and conditions"
         # })
-       
+
     });
     # .refine(lambda data: dict -> bool {
     #         console.log("Refining with data:", data);
@@ -64,7 +64,7 @@ cl {
         "category": z.enum(["general", "support", "feedback", "bug"], {
             "message": "Category is required"
         })
-    }); 
+    });
 
     def registrationSchema()-> any{
         return _registrationSchema;
@@ -77,6 +77,6 @@ cl {
         return _profileSchema;
     }
     def contactSchema()-> any{
-        return _contactSchema;  
+        return _contactSchema;
     }
 }

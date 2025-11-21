@@ -25,7 +25,7 @@ cl {
                 let index = state.items.findIndex(lambda t: any -> bool {
                     return t.id == action.payload;
                 });
-               
+
 
                 if todo && index != -1 {
                     new_todo = {**todo, "completed":not todo.completed};
@@ -46,12 +46,12 @@ cl {
                     #  Only array mutation only works here, immutable methods like map or filter do not work
                     state.items.splice(index, 1);
                 }
-                
+
             },
             "setFilter": lambda state: any, action: any -> None {
                 # state.filter=action.payload;
 
-                
+
             },
             "clearCompleted": lambda state: any -> None {
                 let new_items = state.items.filter(lambda t: any -> bool {
