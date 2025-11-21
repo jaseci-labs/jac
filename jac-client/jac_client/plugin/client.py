@@ -1,8 +1,9 @@
 import hashlib
 import html
 import types
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, TypeAlias
 
 from jaclang.runtimelib.client_bundle import ClientBundle
 from jaclang.runtimelib.machine import (
@@ -12,6 +13,11 @@ from jaclang.runtimelib.machine import (
 from jaclang.runtimelib.server import ModuleIntrospector
 
 from .vite_client_bundle import ViteClientBundleBuilder
+
+JsonValue: TypeAlias = (
+    None | str | int | float | bool | list["JsonValue"] | dict[str, "JsonValue"]
+)
+StatusCode: TypeAlias = Literal[200, 201, 400, 401, 404, 503]
 
 
 class JacClientModuleIntrospector(ModuleIntrospector):
@@ -104,3 +110,23 @@ class JacClient:
     ) -> ModuleIntrospector:
         """Get a module introspector for the supplied module."""
         return JacClientModuleIntrospector(module_name, base_path)
+
+    @staticmethod
+    @hookimpl
+    def _add_cors_headers(handler: BaseHTTPRequestHandler) -> None:
+        """Add CORS headers to response."""
+        # Custom add cors handlers can be implemented here. and remove the implementation below
+        from jaclang.runtimelib.server import ResponseBuilder
+
+        ResponseBuilder._add_cors_headers(handler)
+
+    @staticmethod
+    @hookimpl
+    def send_static_file(
+        handler: BaseHTTPRequestHandler,
+        file_path: Path,
+        content_type: str | None = None,
+    ) -> None:
+        """Send static file response (images, fonts, etc.)."""
+        # Raise not implemented error
+        raise NotImplementedError("send_static_file method is not implemented")

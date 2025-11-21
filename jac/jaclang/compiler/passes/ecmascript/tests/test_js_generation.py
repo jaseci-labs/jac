@@ -300,6 +300,17 @@ cl def check_types() {
             self.assertNotIn(pattern, js_code)
         self.assert_balanced_syntax(js_code, fixture_path)
 
+    def test_assignment_inside_globvar_js(self) -> None:
+        """Test Category 4 namespace imports from proposal document."""
+        fixture_path = self.get_fixture_path("js_gen_bug.jac")
+        js_code = self.compile_fixture_to_js(fixture_path)
+        expected_generated_code = [
+            "const setB = item => {",
+            "item.b = 90;",
+        ]
+        for pattern in expected_generated_code:
+            self.assertIn(pattern, js_code)
+
     def test_hyphenated_package_imports_generate_correct_js(self) -> None:
         """Test string literal imports for hyphenated package names."""
         fixture_path = self.get_fixture_path("hyphenated_imports.jac")

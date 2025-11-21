@@ -548,12 +548,12 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
         fallback_items: list[Union[es.Statement, list[es.Statement]]] = []
         for stmt in merged_body:
             if stmt.gen.es_ast:
-                target_list = (
-                    client_items
-                    if getattr(stmt, "is_client_decl", False)
-                    else fallback_items
-                )
-                target_list.append(stmt.gen.es_ast)
+                if getattr(stmt, "is_client_decl", True):
+                    client_items.append(stmt.gen.es_ast)
+                else:
+                    # FIXME: handle the fallback case properly
+                    pass
+
         target_body = client_items if client_items else fallback_items
         body.extend(self._flatten_ast_list(target_body))
 
@@ -564,14 +564,34 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
             es.Program(body=body, sourceType="module"), jac_node=node
         )
         node.gen.es_ast = program
-
         # Generate JavaScript code from ES AST
         node.gen.js = es_to_js(node.gen.es_ast)
+
+        # Populate the client manifest from cl mods to the main module
+        self.populate_client_manifest(node)
 
         # Sort and assign client manifest
         self.client_manifest.exports.sort()
         self.client_manifest.globals.sort()
         node.gen.client_manifest = self.client_manifest
+
+    def populate_client_manifest(self, node: uni.Module) -> None:
+        """Populate client manifest from module declarations."""
+        for mod in node.impl_mod:
+            self._populate_client_manifest(mod)
+
+    def _populate_client_manifest(self, node: uni.Module) -> None:
+        """Recursively populate client manifest from module declarations."""
+        for item in node.gen.client_manifest.exports:
+            self.client_manifest.exports.append(item)
+        for item in node.gen.client_manifest.globals:
+            self.client_manifest.globals.append(item)
+        for import_key, resolved_path in node.gen.client_manifest.imports.items():
+            self.client_manifest.imports[import_key] = resolved_path
+        for sub_mod in node.gen.client_manifest.params:
+            self.client_manifest.params[sub_mod] = node.gen.client_manifest.params[
+                sub_mod
+            ]
 
     def exit_sub_tag(self, node: uni.SubTag[uni.T]) -> None:
         """Process SubTag node."""
