@@ -137,6 +137,7 @@ Jac automatically serves and detects MIME types for:
 ## Project Structure
 
 ```
+project/
 ├── assets/              # Static assets (served via /static/)
 │   ├── images/
 │   ├── fonts/
