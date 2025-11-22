@@ -235,10 +235,10 @@ Split large files into smaller modules:
 
 ```
 styles/
- _variables.scss
- _mixins.scss
- _components.scss
- main.scss
+├── _variables.scss
+├── _mixins.scss
+├── _components.scss
+└── main.scss
 ```
 
 ### 4. Use Nesting Wisely

@@ -6,7 +6,7 @@ In this first step, you'll create your Jac project and understand the basic file
 
 ---
 
-##  Part 1: Building the App
+## Part 1: Building the App
 
 ### Step 1.1: Create Your Project
 
@@ -30,10 +30,10 @@ Your project now has these files:
 
 ```
 todo-app/
- app.jac           # Your main application file (we'll work here!)
- package.json      # Node.js dependencies (auto-managed)
- vite.config.js    # Build configuration (you can ignore this)
- README.md         # Basic instructions
+├── app.jac           # Your main application file (we'll work here!)
+├── package.json      # Node.js dependencies (auto-managed)
+├── vite.config.js    # Build configuration (you can ignore this)
+└── README.md         # Basic instructions
 ```
 
 **Important**: We'll write ALL our code in `app.jac` - that's it!
@@ -86,7 +86,7 @@ You should see "Hello, Jac!" and "My first full-stack app"
 
 ---
 
-##  Part 2: Understanding the Concepts
+## Part 2: Understanding the Concepts
 
 ### What is `cl { ... }`?
 
@@ -99,6 +99,7 @@ cl {
 ```
 
 Think of it like this:
+
 - Code **inside** `cl { }` → Runs in the browser (frontend)
 - Code **outside** `cl { }` → Runs on the server (backend)
 
@@ -113,6 +114,7 @@ def app() -> any {
 ```
 
 **Requirements:**
+
 - Must be named `app` (by convention)
 - Must return JSX (HTML-like syntax)
 - Located inside `cl { }` block
@@ -142,7 +144,9 @@ return <div>
 ```
 
 **Key rules:**
+
 1. Must have **one root element**
+
    ```jac
    #  Correct
    return <div><h1>Title</h1><p>Text</p></div>;
@@ -152,6 +156,7 @@ return <div>
    ```
 
 2. Self-closing tags need `/`
+
    ```jac
    <img src="photo.jpg" />    #  Correct
    <img src="photo.jpg">       #  Wrong
@@ -181,31 +186,32 @@ For now, everything goes in `app.jac`. As your app grows, you can split into mul
 
 ```
 todo-app/
- app.jac           # Main app
- components.jac    # Reusable components
- walkers.jac       # Backend logic
+├── app.jac           # Main app
+├── components.jac    # Reusable components
+└── walkers.jac       # Backend logic
 ```
 
 But for this tutorial, we'll keep everything in one file for simplicity.
 
 ---
 
-##  What You've Learned
+## What You've Learned
 
--  How to create a Jac project
--  Project structure basics
--  What `cl { }` means (client-side code)
--  The `def app()` entry point
--  JSX basics (HTML in code)
--  Running your app with `jac serve`
+- How to create a Jac project
+- Project structure basics
+- What `cl { }` means (client-side code)
+- The `def app()` entry point
+- JSX basics (HTML in code)
+- Running your app with `jac serve`
 
 ---
 
-##  Common Issues
+## Common Issues
 
 ### Issue: `jac: command not found`
 
 **Solution**: Install jac-client:
+
 ```bash
 pip install jac-client
 ```
@@ -213,14 +219,17 @@ pip install jac-client
 ### Issue: Port 8000 already in use
 
 **Solution**: Use a different port:
+
 ```bash
 jac serve app.jac --port 8080
 ```
+
 Then visit `http://localhost:8080/page/app`
 
 ### Issue: Blank page in browser
 
 **Check:**
+
 - Did you visit `/page/app` (not just `/`)?
 - Check terminal for errors
 - Make sure `app()` has a `return` statement
@@ -228,13 +237,14 @@ Then visit `http://localhost:8080/page/app`
 ### Issue: Changes not showing
 
 **Solution**:
+
 - Stop the server (Ctrl+C)
 - Restart: `jac serve app.jac`
 - Refresh browser
 
 ---
 
-##  Quick Exercise
+## Quick Exercise
 
 Before moving on, try changing the text:
 
@@ -253,8 +263,8 @@ Save, refresh your browser, and see the changes!
 
 ---
 
-##  Next Step
+## Next Step
 
 Great! You have a running Jac app. Now let's learn about **components** - the building blocks of any UI.
 
- **[Continue to Step 2: First Component](./step-02-components.md)**
+**[Continue to Step 2: First Component](./step-02-components.md)**

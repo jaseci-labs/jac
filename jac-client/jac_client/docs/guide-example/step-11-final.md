@@ -773,10 +773,10 @@ cl {
 
 ```
 Your entire app:
- app.jac (735 lines)
-     Backend (nodes + walkers)
-     Frontend (React components)
-     Routes (navigation)
+├── app.jac (735 lines)
+    ├── Backend (nodes + walkers)
+    ├── Frontend (React components)
+    └── Routes (navigation)
 ```
 
 That's it! Just one file!
@@ -785,17 +785,17 @@ That's it! Just one file!
 
 ```
 app.jac
- Backend Section
-    node Todo (data model)
-    Walkers (create, read, toggle, delete)
-
- Frontend Section (cl block)
-     Navigation component
-     LoginPage component
-     SignupPage component
-     TodosPage component
-     HomePage component (redirects)
-     app function (router setup)
+├── Backend Section
+│   ├── node Todo (data model)
+│   └── Walkers (create, read, toggle, delete)
+│
+└── Frontend Section (cl block)
+    ├── Navigation component
+    ├── LoginPage component
+    ├── SignupPage component
+    ├── TodosPage component
+    ├── HomePage component (redirects)
+    └── app function (router setup)
 ```
 
 ---

@@ -217,14 +217,14 @@ Your app now has a clear structure:
 
 ```
 app (main container)
- h1 (title)
- TodoInput (input field + button)
- TodoFilters (All/Active/Completed buttons)
- TodoList (container)
-    TodoItem (Learn Jac)
-    TodoItem (Build app)
-    TodoItem (Deploy)
- div (stats footer)
+├── h1 (title)
+├── TodoInput (input field + button)
+├── TodoFilters (All/Active/Completed buttons)
+├── TodoList (container)
+│   ├── TodoItem (Learn Jac)
+│   ├── TodoItem (Build app)
+│   └── TodoItem (Deploy)
+└── div (stats footer)
 ```
 
 ### Container Component Pattern
@@ -252,8 +252,8 @@ Data flows **down** from parent to child through props:
 
 ```
 app
-  > passes nothing to TodoList
-        > passes {text, done} to each TodoItem
+  └─> passes nothing to TodoList
+        └─> passes {text, done} to each TodoItem
 ```
 
 Right now, data is hard-coded. Later, we'll use **state** to make it dynamic.

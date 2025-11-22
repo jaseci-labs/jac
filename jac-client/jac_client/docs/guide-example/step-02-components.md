@@ -165,12 +165,12 @@ def TodoItem(props: any) -> any {
 
 ```jac
 app
- TodoInput
- TodoFilters
- TodoList
-     TodoItem
-     TodoItem
-     TodoItem
+├── TodoInput
+├── TodoFilters
+└── TodoList
+    ├── TodoItem
+    ├── TodoItem
+    └── TodoItem
 ```
 
 **3. Maintainability** - Easy to find and fix bugs
@@ -299,9 +299,9 @@ This creates a hierarchy:
 
 ```
 app
- TodoList
-     TodoItem
-     TodoItem
+└── TodoList
+    ├── TodoItem
+    └── TodoItem
 ```
 
 ### Using JSX in Props

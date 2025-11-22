@@ -137,14 +137,13 @@ Jac automatically serves and detects MIME types for:
 ## Project Structure
 
 ```
-project/
- assets/              # Static assets (served via /static/)
-    images/
-    fonts/
-    videos/
- src/
-    assets/         # Assets for import alias (@jac-client/assets)
- dist/               # Vite output (auto-generated)
+├── assets/              # Static assets (served via /static/)
+│   ├── images/
+│   ├── fonts/
+│   └── videos/
+├── src/
+│   └── assets/         # Assets for import alias (@jac-client/assets)
+└── dist/               # Vite output (auto-generated)
 ```
 
 ## Examples

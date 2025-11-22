@@ -189,8 +189,8 @@ In Jac (using JSX), styles are **dictionaries** (JavaScript objects):
 <div style={{ "color": "blue" }}>
       ^  ^
       |  |
-      |   Dictionary: {"color": "blue"}
-       JSX expression: insert Jac code here
+      |  └─ Dictionary: {"color": "blue"}
+      └──── JSX expression: insert Jac code here
 ```
 
 - **Outer `{ }`** = "I'm inserting Jac code into JSX"

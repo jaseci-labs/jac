@@ -31,9 +31,9 @@ This command will:
 **What gets created:**
 ```
 my-app/
- app.jac          # Your main application file
- package.json      # Node.js dependencies
- node_modules/    # Dependencies (after npm install)
+├── app.jac          # Your main application file
+├── package.json      # Node.js dependencies
+└── node_modules/    # Dependencies (after npm install)
 ```
 
 ### Running Your App
