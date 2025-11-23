@@ -166,7 +166,8 @@ class LiteLLMConnector(LLMConnector):
         params = self.make_model_params(mtir)
 
         # Call the LiteLLM API
-        self.log_info(f"Calling LLM: {self.model_name} with params:\n{params}")
+        log_params = {**params, "api_key": "*" * len(params["api_key"])} if params.get("api_key") else params
+        self.log_info(f"Calling LLM: {self.model_name} with params:\n{log_params}")
         if self.proxy:
             client = OpenAI(
                 base_url=params.pop("api_base", "htpp://localhost:4000"),
@@ -212,7 +213,8 @@ class LiteLLMConnector(LLMConnector):
         params = self.make_model_params(mtir)
 
         # Call the LiteLLM API
-        self.log_info(f"Calling LLM: {self.model_name} with params:\n{params}")
+        log_params = {**params, "api_key": "*" * len(params["api_key"])} if params.get("api_key") else params
+        self.log_info(f"Calling LLM: {self.model_name} with params:\n{log_params}")
         if self.proxy:
             client = OpenAI(
                 base_url=params.pop("api_base"),
