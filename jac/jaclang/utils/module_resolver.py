@@ -152,10 +152,36 @@ def convert_to_js_import_path(path: str) -> str:
         else:
             break
 
+    # Common JavaScript module extensions
+    common_extensions = (
+        ".js",
+        ".mjs",
+        ".cjs",
+        ".css",
+        ".scss",
+        ".sass",
+        ".less",
+        ".wasm",
+        ".json",
+    )
+
     # If path starts with dots (relative import)
     if dot_count > 0:
         # Extract the path after the dots
         rest_of_path = path[dot_count:]
+
+        # Split by dots, but preserve file extensions
+        if "." in rest_of_path:
+            last_dot_idx = rest_of_path.rfind(".")
+            before_last_dot = rest_of_path[:last_dot_idx]
+            after_last_dot = rest_of_path[last_dot_idx:]
+
+            if after_last_dot in common_extensions:
+                rest_of_path = before_last_dot.replace(".", "/") + after_last_dot
+            else:
+                rest_of_path = rest_of_path.replace(".", "/")
+        else:
+            rest_of_path = rest_of_path if rest_of_path else ""
 
         # For single dot, we need ./
         # For multiple dots, convert to ../ patterns
@@ -170,20 +196,7 @@ def convert_to_js_import_path(path: str) -> str:
         # Skip adding .js for special paths like "." or ".."
         if js_path in (".", ".."):
             return js_path
-
         # Check if the path already ends with a file extension
-        # Common JavaScript module extensions
-        common_extensions = (
-            ".js",
-            ".mjs",
-            ".cjs",
-            ".json",
-            ".css",
-            ".scss",
-            ".sass",
-            ".less",
-            ".wasm",
-        )
         if not js_path.endswith(common_extensions):
             # No recognized extension found, add .js
             js_path += ".js"
