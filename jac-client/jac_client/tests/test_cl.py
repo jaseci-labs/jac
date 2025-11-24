@@ -536,7 +536,6 @@ export default defineConfig({
 
             # Build the bundle
             bundle = builder.build(module, force=True)
-
             # Verify bundle structure
             self.assertIsNotNone(bundle)
             self.assertEqual(bundle.module_name, "app")
@@ -544,8 +543,12 @@ export default defineConfig({
 
             self.assertIn("function app()", bundle.code)
             self.assertIn(
-                '__jacJsx("div", {}, [__jacJsx("h2", {}, ["My Todos"])])', bundle.code
+                '__jacJsx("div", {}, [__jacJsx("h2", {}, ["My Todos"])', bundle.code
             )
             self.assertIn("root.render(/* @__PURE__ */ React.c", bundle.code)
+            self.assertIn(
+                "ar _useState = reactExports.useState([]), _useStat", bundle.code
+            )
+            self.assertIn('turn __jacSpawn("create_todo", ', bundle.code)
             # Cleanup
             builder.cleanup_temp_dir()
