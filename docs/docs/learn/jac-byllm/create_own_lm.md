@@ -1,6 +1,6 @@
-# Create Your Own Language Model
+# Creating a Custom Model Class
 
-This guide will help you to bring your own language model to be used with byLLM. This is helpful if you have a self-hosted Language Model or you are using a different service that is not currently supported by LiteLLM. This example explores this feature, taking OpenAI SDK as an example.
+This guide shows how to create a custom Model class for byLLM that bypasses the default LiteLLM integration. This is useful when you want to use a self-hosted language model, a custom API, or any service not supported by LiteLLM. The example demonstrates this by implementing a custom class using the OpenAI SDK.
 
 > **IMPORTANT**
 >
@@ -12,49 +12,49 @@ This guide will help you to bring your own language model to be used with byLLM.
 
 === "Python"
     ```python linenums="1"
-from byllm.llm import BaseLLM
-from openai import OpenAI
+    from byllm.llm import BaseLLM
+    from openai import OpenAI
 
-class MyOpenAIModel(BaseLLM):
-    def __init__(self, model_name: str, **kwargs: object) -> None:
-        """Initialize the MockLLM connector."""
-        super().__init__(model_name, **kwargs)
+    class MyOpenAIModel(BaseLLM):
+        def __init__(self, model_name: str, **kwargs: object) -> None:
+            """Initialize the MockLLM connector."""
+            super().__init__(model_name, **kwargs)
 
-    def model_call_no_stream(self, params):
-        client = OpenAI(api_key=self.api_key)
-        response = client.chat.completions.create(**params)
-        return response
+        def model_call_no_stream(self, params):
+            client = OpenAI(api_key=self.api_key)
+            response = client.chat.completions.create(**params)
+            return response
 
-    def model_call_with_stream(self, params):
-        client = OpenAI(api_key=self.api_key)
-        response = client.chat.completions.create(stream=True, **params)
-        return response
+        def model_call_with_stream(self, params):
+            client = OpenAI(api_key=self.api_key)
+            response = client.chat.completions.create(stream=True, **params)
+            return response
     ```
 === "Jac"
     ```jac linenums="1"
-import from byllm.llm { BaseLLM }
-import from openai { OpenAI }
+    import from byllm.llm { BaseLLM }
+    import from openai { OpenAI }
 
-obj  MyOpenAIModel(BaseLLM){
-    has model_name: str;
-    has config: dict = {};
+    obj  MyOpenAIModel(BaseLLM){
+        has model_name: str;
+        has config: dict = {};
 
-    def post_init() {
-        super().__init__(model_name=self.model_name, **kwargs);
+        def post_init() {
+            super().__init__(model_name=self.model_name, **kwargs);
+        }
+
+        def model_call_no_stream(params: dict) {
+            client = OpenAI(api_key=self.api_key);
+            response = client.chat.completions.create(**params);
+            return response;
+        }
+
+        def model_call_with_stream(params: dict) {
+            client = OpenAI(api_key=self.api_key);
+            response = client.chat.completions.create(stream=True, **params);
+            return response;
+        }
     }
-
-    def model_call_no_stream(params: dict) {
-        client = OpenAI(api_key=self.api_key);
-        response = client.chat.completions.create(**params);
-        return response;
-    }
-
-    def model_call_with_stream(params: dict) {
-        client = OpenAI(api_key=self.api_key);
-        response = client.chat.completions.create(stream=True, **params);
-        return response;
-    }
-}
     ```
 
 - Initialize your model with the required parameters.
