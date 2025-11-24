@@ -22,11 +22,7 @@ from jaclang.runtimelib.constructs import (
     Root,
     WalkerArchetype,
 )
-from jaclang.runtimelib.machine import (
-    ExecutionContext,
-    JacMachine as Jac,
-    JacResponseBuilder,
-)
+from jaclang.runtimelib.machine import ExecutionContext, JacMachine as Jac
 
 # Type Aliases
 JsonValue: TypeAlias = (
@@ -597,7 +593,7 @@ class ModuleIntrospector:
 
 
 # HTTP Response Builder
-class ResponseBuilder(JacResponseBuilder):
+class ResponseBuilder:
     """Build and send HTTP responses."""
 
     @staticmethod
@@ -834,7 +830,7 @@ class JacAPIServer:
 
             def _send_response(self, response: Response) -> None:
                 """Send response to client."""
-                ResponseBuilder.send_json(self, response.status, response.body)  # type: ignore[arg-type]
+                Jac.send_json(self, response.status, response.body)  # type: ignore[arg-type]
 
             def do_OPTIONS(self) -> None:  # noqa: N802
                 """Handle OPTIONS requests (CORS preflight)."""
@@ -852,11 +848,9 @@ class JacAPIServer:
                     try:
                         server.introspector.load()
                         server.introspector.ensure_bundle()
-                        ResponseBuilder.send_javascript(
-                            self, server.introspector._bundle.code
-                        )
+                        Jac.send_javascript(self, server.introspector._bundle.code)
                     except RuntimeError as exc:
-                        ResponseBuilder.send_json(self, 503, {"error": str(exc)})
+                        Jac.send_json(self, 503, {"error": str(exc)})
                     return
 
                 # Static files (CSS, images, fonts, etc.) from dist or assets directories
@@ -922,26 +916,26 @@ class JacAPIServer:
                         if path.endswith(".css"):
                             if dist_file.exists():
                                 css_content = dist_file.read_text(encoding="utf-8")
-                                ResponseBuilder.send_css(self, css_content)
+                                Jac.send_css(self, css_content)
                                 return
                             elif dist_file_simple.exists():
                                 css_content = dist_file_simple.read_text(
                                     encoding="utf-8"
                                 )
-                                ResponseBuilder.send_css(self, css_content)
+                                Jac.send_css(self, css_content)
                                 return
                             elif assets_file.exists():
                                 css_content = assets_file.read_text(encoding="utf-8")
-                                ResponseBuilder.send_css(self, css_content)
+                                Jac.send_css(self, css_content)
                                 return
                             elif assets_file_simple.exists():
                                 css_content = assets_file_simple.read_text(
                                     encoding="utf-8"
                                 )
-                                ResponseBuilder.send_css(self, css_content)
+                                Jac.send_css(self, css_content)
                                 return
                             else:
-                                ResponseBuilder.send_json(
+                                Jac.send_json(
                                     self, 404, {"error": "CSS file not found"}
                                 )
                                 return
@@ -954,19 +948,17 @@ class JacAPIServer:
                             assets_file_simple,
                         ]:
                             if candidate_file.exists() and candidate_file.is_file():
-                                ResponseBuilder.send_static_file(self, candidate_file)
+                                Jac.send_static_file(self, candidate_file)
                                 return
 
-                        ResponseBuilder.send_json(
-                            self, 404, {"error": "Static file not found"}
-                        )
+                        Jac.send_json(self, 404, {"error": "Static file not found"})
                     except Exception as exc:
-                        ResponseBuilder.send_json(self, 500, {"error": str(exc)})
+                        Jac.send_json(self, 500, {"error": str(exc)})
                     return
 
                 # Root endpoint
                 if path == "/":
-                    ResponseBuilder.send_json(
+                    Jac.send_json(
                         self,
                         200,
                         {
@@ -1006,11 +998,11 @@ class JacAPIServer:
                         render_payload = server.introspector.render_page(
                             func_name, args, username
                         )
-                        ResponseBuilder.send_html(self, 200, render_payload["html"])
+                        Jac.send_html(self, 200, render_payload["html"])
                     except ValueError as exc:
-                        ResponseBuilder.send_json(self, 404, {"error": str(exc)})
+                        Jac.send_json(self, 404, {"error": str(exc)})
                     except RuntimeError as exc:
-                        ResponseBuilder.send_json(self, 503, {"error": str(exc)})
+                        Jac.send_json(self, 503, {"error": str(exc)})
                     return
 
                 # Route to introspection handlers
@@ -1021,7 +1013,7 @@ class JacAPIServer:
                     # # List walkers - always require auth for introspection
                     # username = self._authenticate()
                     # if not username:
-                    #     ResponseBuilder.send_json(self, 401, {"error": "Unauthorized"})
+                    #     Jac.send_json(self, 401, {"error": "Unauthorized"})
                     #     return
                     self._send_response(server.introspection_handler.list_walkers())
                     return
@@ -1032,9 +1024,7 @@ class JacAPIServer:
                     if server.introspector.is_auth_required_for_function(name):
                         username = self._authenticate()
                         if not username:
-                            ResponseBuilder.send_json(
-                                self, 401, {"error": "Unauthorized"}
-                            )
+                            Jac.send_json(self, 401, {"error": "Unauthorized"})
                             return
                     self._send_response(
                         server.introspection_handler.get_function_info(name)
@@ -1047,9 +1037,7 @@ class JacAPIServer:
                     if server.introspector.is_auth_required_for_walker(name):
                         username = self._authenticate()
                         if not username:
-                            ResponseBuilder.send_json(
-                                self, 401, {"error": "Unauthorized"}
-                            )
+                            Jac.send_json(self, 401, {"error": "Unauthorized"})
                             return
                     self._send_response(
                         server.introspection_handler.get_walker_info(name)
@@ -1058,11 +1046,11 @@ class JacAPIServer:
                 elif path == "/protected":
                     username = self._authenticate()
                     if not username:
-                        ResponseBuilder.send_json(self, 401, {"error": "Unauthorized"})
+                        Jac.send_json(self, 401, {"error": "Unauthorized"})
                         return
                     self._send_response(Response(200, {"message": "sucessful"}))
                 else:
-                    ResponseBuilder.send_json(self, 404, {"error": "Not found"})
+                    Jac.send_json(self, 404, {"error": "Not found"})
                 # # Protected endpoints
 
             def do_POST(self) -> None:  # noqa: N802
@@ -1073,7 +1061,7 @@ class JacAPIServer:
                 try:
                     data = self._read_json()
                 except json.JSONDecodeError:
-                    ResponseBuilder.send_json(self, 400, {"error": "Invalid JSON"})
+                    Jac.send_json(self, 400, {"error": "Invalid JSON"})
                     return
 
                 # Public auth endpoints
@@ -1100,9 +1088,7 @@ class JacAPIServer:
                         # Protected/Private function - require authentication
                         username = self._authenticate()
                         if not username:
-                            ResponseBuilder.send_json(
-                                self, 401, {"error": "Unauthorized"}
-                            )
+                            Jac.send_json(self, 401, {"error": "Unauthorized"})
                             return
                     else:
                         # Public function - allow guest access
@@ -1128,9 +1114,7 @@ class JacAPIServer:
                         # Protected/Private walker - require authentication
                         username = self._authenticate()
                         if not username:
-                            ResponseBuilder.send_json(
-                                self, 401, {"error": "Unauthorized"}
-                            )
+                            Jac.send_json(self, 401, {"error": "Unauthorized"})
                             return
                     else:
                         # Public walker - allow guest access
@@ -1148,7 +1132,7 @@ class JacAPIServer:
                     )
                     self._send_response(response)
                 else:
-                    ResponseBuilder.send_json(self, 404, {"error": "Not found"})
+                    Jac.send_json(self, 404, {"error": "Not found"})
 
             def log_message(self, format: str, *args: object) -> None:
                 """Log HTTP requests."""
