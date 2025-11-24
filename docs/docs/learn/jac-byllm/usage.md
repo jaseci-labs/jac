@@ -39,7 +39,7 @@ byLLM uses [LiteLLM](https://docs.litellm.ai/docs) to provide integration with a
 
 ??? Note
     Additional supported models and model serving platforms are available with LiteLLM. Refer to their [documentation](https://docs.litellm.ai/docs/providers) for model names.
-    
+
 ### Allowed Arguments for the Model Object.
 
 | Argument   | Description |
