@@ -6,9 +6,39 @@ Welcome to the Todo App example! This guide will walk you through building a ful
 
 ## 📦 1. Creating the Application
 
+### Prerequisites
+
+Before installing Jac client, you need to have **Node.js** installed on your system.
+
+#### Installing Node.js
+
+**For Linux users:**
+
+Visit [https://nodejs.org/en/download](https://nodejs.org/en/download) and follow the instructions to install Node.js using **nvm** (Node Version Manager) with **npm**.
+
+Select:
+- **Platform**: Linux
+- **Package Manager**: nvm
+- **Package**: npm
+
+Then follow the installation commands provided on that page.
+
+**For macOS users:**
+
+Download and install Node.js from [https://nodejs.org/en/download](https://nodejs.org/en/download) by selecting your operating system.
+
+**Verify Installation:**
+
+After installation, verify Node.js and npm are installed correctly:
+
+```bash
+node -v
+npm -v
+```
+
 ### Installation
 
-First, install the Jac client package:
+Once Node.js is installed, install the Jac client package:
 
 ```bash
 pip install jac-client

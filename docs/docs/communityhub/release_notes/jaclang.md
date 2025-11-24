@@ -9,6 +9,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Improvements to Runtime Error reporting**: Made various improvements to runtime error CLI reporting.
 - **Node Spawn Walker supported**: Spawning walker on a node with `jac serve` is supported.
 -**Side effect imports supported**: side effect imports supported which will help to inject css.
+- **Plugin for sending static files**: Added extensible plugin system for sending static files, enabling custom static file serving strategies and integration with various storage backends.
 
 ## jaclang 0.8.10 (Latest Release)
 
