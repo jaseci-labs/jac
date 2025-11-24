@@ -398,6 +398,21 @@ def test_usage() {
         finally:
             os.unlink(temp_path)
 
+    def test_side_effect_imports_generate_correct_js(self) -> None:
+        """Test that side effect imports generate correct JavaScript import statements."""
+        fixture_path = self.get_fixture_path("side_effect_imports.jac")
+        js_code = self.compile_fixture_to_js(fixture_path)
+
+        imports = [
+            'import "mytest/side_effects";',
+            'import "./styles/side_effects.css";',
+            'import "bootstrap/dist/css/bootstrap.min.css";',
+        ]
+        for pattern in imports:
+            self.assertIn(pattern, js_code)
+
+        self.assert_balanced_syntax(js_code, fixture_path)
+
     def test_fstring_simple_variable_interpolation(self) -> None:
         """Test that f-strings with simple variable interpolation generate correct template literals."""
         jac_code = '''"""Test f-string with simple variables."""

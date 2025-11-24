@@ -5,11 +5,11 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## jaclang 0.9.0 (Unreleased)
 
 - **Generics TypeChecking**: Type checking for generics in vscode extension has implemented, i.e. `dict[int, str]` can be now checked by the lsp.
-
 - **Plugin Architecture for Server Rendering**: Added extensible plugin system for server-side page rendering, allowing custom rendering engines and third-party templating integration with transform, cache, and customization capabilities.
 - **Improvements to Runtime Error reporting**: Made various improvements to runtime error CLI reporting.
 - **Node Spawn Walker supported**: Spawning walker on a node with `jac serve` is supported.
--
+-**Side effect imports supported**: side effect imports supported which will help to inject css.
+
 ## jaclang 0.8.10 (Latest Release)
 
 - **Frontend + Backend with `cl` Keyword (Experimental)**: Introduced a major experimental feature enabling unified frontend and backend development in a single Jac codebase. The new `cl` (client) keyword marks declarations for client-side compilation, creating a dual compilation pipeline that generates both Python (server) and pure JavaScript (client) code. Includes full JSX language integration for building modern web UIs, allowing developers to write React-style components directly in Jac with seamless interoperability between server and client code.
