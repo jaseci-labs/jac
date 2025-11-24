@@ -1,22 +1,24 @@
-# Building Agentic AI Applications with byLLM and Object Spatial Programming
+# Agentic AI with byLLM and OSP
 
-Agentic AI applications represent the next evolution in software systems. This guide explains how such applications can be built using the **Jaseci Stack**, with a focus on the **byLLM** plugin.
+<!-- Agentic AI applications represent the next evolution in software systems. This guide explains how such applications can be built using the **Jaseci Stack**, with a focus on the **byLLM** plugin.
 
-Before diving into the development process, it’s important to understand what Agentic AI is and what building such systems entails.
+Before diving into the development process, it’s important to understand what Agentic AI is and what building such systems entails. -->
 
 An **AI agent** is a software entity capable of autonomously performing actions using available resources to achieve defined goals.
 In traditional systems, all tools and actions are explicitly defined by humans.
 
-**Agentic AI**, in contrast, refers to AI systems that can **independently plan, decide, and act** toward a goal using available tools and contextual information—**without** relying on a fixed, human-defined sequence of steps.
+**Agentic AI**, in contrast, refers to AI systems that can **independently plan, decide, and act** toward a goal using available tools and contextual information, **without** relying on a fixed, human-defined sequence of steps.
 
 An agentic application can be visualized as a **graph or network**, where:
+
 - **Each node** represents an **agent** with specific capabilities and responsibilities.
 - An **orchestrator** traverses this graph, managing how agents collaborate to achieve a shared goal.
 
 To build such applications, we need to:
-1. **Represent agents as nodes in a graph** — Each agent becomes a node with data (attributes) and behaviors (abilities).
-2. **Implement an orchestrator agent** — Typically a walker that coordinates task decomposition, routing, and execution across agents.
-3. **Integrate LLMs to guide decisions** — Use LLM-annotated methods to enable dynamic planning, routing, and tool execution.
+
+1. **Represent agents as nodes in a graph**: Each agent becomes a node with data (attributes) and behaviors (abilities).
+2. **Implement an orchestrator agent**: Typically a "walking peice of code" that coordinates task decomposition, routing, and execution across agents.
+3. **Integrate LLMs to guide decisions**: Use LLM-annotated methods to enable dynamic planning, routing, and tool execution.
 
 > These capabilities are **natively supported** through **Object Spatial Programming (OSP)** in **Jaclang**, combined with **byLLM** for seamless AI integration. This combination allows you to declaratively define agents and their interactions without boilerplate orchestration code.
 
