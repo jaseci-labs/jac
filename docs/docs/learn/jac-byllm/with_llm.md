@@ -166,6 +166,8 @@ Even if we are elimination prompt engineering entirely, we allow specific ways t
 
 Docstrings naturally enhance the semantics of their associated code constructs, while the `sem` keyword provides an elegant way to enrich the meaning of class attributes and function arguments. Our research shows these concise semantic strings are more effective than traditional multi-line prompts.
 
+<hr />
+
 **📚 Full Documentation**: [Jac byLLM Documentation](https://www.jac-lang.org/learn/jac-byllm/with_llm/)
 
 **🎮 Code Examples**: [Jac byLLM Examples](https://www.jac-lang.org/learn/jac-byllm/examples/)
@@ -176,11 +178,14 @@ Docstrings naturally enhance the semantics of their associated code constructs, 
 
 **🔬 Research**: The research paper of byLLM is available on [Arxiv](https://arxiv.org/abs/2405.08965) and accepted for OOPSLA 2025.
 
+<hr />
+
 **Quick Links**
 
 - [Getting Started Guide](https://www.jac-lang.org/learn/jac-byllm/quickstart/)
 - [Jac Language Documentation](https://www.jac-lang.org/)
 - [GitHub Repository](https://github.com/jaseci-labs/jaseci)
+<hr />
 
 **Contributing**
 
@@ -195,19 +200,26 @@ Areas we actively seek contributions:
 
 Please see our [Contributing Guide](https://www.jac-lang.org/internals/contrib/) for detailed instructions. If you find a bug or have a feature request, please [open an issue](https://github.com/jaseci-labs/jaseci/issues/new/choose).
 
+<hr />
 **Community**
 
 Join our vibrant community:
 
 [:simple-discord:  Discord Server](https://discord.gg/6j3QNdtcN6){ .md-button .md-icon--discord }
 
+<hr />
+
 **License**
 
 This project is licensed under the MIT License.
 
+<hr />
+
 **Third-Party Dependencies**
 
 byLLM integrates with various LLM providers (OpenAI, Anthropic, Google, etc.) through [LiteLLM](https://litellm.ai/).
+
+<hr />
 
 ### Cite our research
 
