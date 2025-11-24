@@ -1,10 +1,16 @@
-<div align="left">
-    <img src="/assets/byLLM_name_logo.png" height="150" width="400">
+<div align="center">
+    <img src="/assets/byLLM_name_logo.png" height="150" width="300" alt="byLLM logo">
+    
 </div>
 
-# **Coding, Less Prompting**
+<!-- <div align="center">
+    <h1 style="font-size:18px; font-style:italic; margin:0.2em 0 0 0;">Prompt Less, Smile More</h1>
+</div> -->
 
-<!-- [![PyPI version](https://img.shields.io/pypi/v/byllm.svg)](https://pypi.org/project/byllm/) [![tests](https://github.com/jaseci-labs/jaseci/actions/workflows/test-jaseci.yml/badge.svg?branch=main)](https://github.com/jaseci-labs/jaseci/actions/workflows/test-jaseci.yml) -->
+<hr />
+
+[![PyPI version](https://img.shields.io/pypi/v/byllm.svg)](https://pypi.org/project/byllm/) [![tests](https://github.com/jaseci-labs/jaseci/actions/workflows/test-jaseci.yml/badge.svg?branch=main)](https://github.com/jaseci-labs/jaseci/actions/workflows/test-jaseci.yml) [![Discord](https://img.shields.io/badge/Discord-Join%20Server-blue?logo=discord)](https://discord.gg/6j3QNdtcN6)
+
 
 byLLM is an innovative AI integration framework built for the Jaseci ecosystem, implementing the cutting-edge Meaning Typed Programming (MTP) paradigm. MTP revolutionizes AI integration by embedding prompt engineering directly into code semantics, making AI interactions more natural and maintainable. While primarily designed to complement the Jac programming language, byLLM also provides a powerful Python library interface.
 
@@ -38,7 +44,7 @@ Installation is simple via PyPI:
 pip install byllm
 ```
 
-## Basic Example
+### Basic Example
 
 Consider building an application that translates english to other languages using an LLM. This can be simply built as follows:
 === "Jac"
@@ -69,7 +75,7 @@ Consider building an application that translates english to other languages usin
 
 This simple piece of code replaces traditional prompt engineering without introducing additional complexity.
 
-## Power of Types with LLMs
+### Power of Types with LLMs
 
 Consider a program that detects the personality type of a historical figure from their name. This can eb built in a way that LLM picks from an enum and the output strictly adhere this type.
 
@@ -113,7 +119,7 @@ Consider a program that detects the personality type of a historical figure from
 
 Similarly, custom types can be used as output types which force the LLM to adhere to the specified type and produce a valid result.
 
-## Control! Control! Control!
+### Control! Control! Control!
 
 Even if we are elimination prompt engineering entirely, we allow specific ways to enrich code semantics through **docstrings** and **semstrings**.
 
@@ -170,40 +176,40 @@ Docstrings naturally enhance the semantics of their associated code constructs, 
 
 **🔬 Research**: The research paper of byLLM is available on [Arxiv](https://arxiv.org/abs/2405.08965) and accepted for OOPSLA 2025.
 
-## Quick Links
+**Quick Links**
 
 - [Getting Started Guide](https://www.jac-lang.org/learn/jac-byllm/quickstart/)
 - [Jac Language Documentation](https://www.jac-lang.org/)
 - [GitHub Repository](https://github.com/jaseci-labs/jaseci)
 
-## Contributing
+**Contributing**
 
 We welcome contributions to byLLM! Whether you're fixing bugs, improving documentation, or adding new features, your help is appreciated.
 
 Areas we actively seek contributions:
+
 - 🐛 Bug fixes and improvements
 - 📚 Documentation enhancements
 - ✨ New examples and tutorials
 - 🧪 Test cases and benchmarks
 
-Please see our [Contributing Guide](https://www.jac-lang.org/internals/contrib/) for detailed instructions.
+Please see our [Contributing Guide](https://www.jac-lang.org/internals/contrib/) for detailed instructions. If you find a bug or have a feature request, please [open an issue](https://github.com/jaseci-labs/jaseci/issues/new/choose).
 
-If you find a bug or have a feature request, please [open an issue](https://github.com/jaseci-labs/jaseci/issues/new/choose).
-
-## Community
+**Community**
 
 Join our vibrant community:
-- [Discord Server](https://discord.gg/6j3QNdtcN6) - Chat with the team and community
 
-## License
+[:simple-discord:  Discord Server](https://discord.gg/6j3QNdtcN6){ .md-button .md-icon--discord }
+
+**License**
 
 This project is licensed under the MIT License.
 
-### Third-Party Dependencies
+**Third-Party Dependencies**
 
 byLLM integrates with various LLM providers (OpenAI, Anthropic, Google, etc.) through [LiteLLM](https://litellm.ai/).
 
-## Cite our research
+### Cite our research
 
 
 > Jayanaka L. Dantanarayana, Yiping Kang, Kugesan Sivasothynathan, Christopher Clarke, Baichuan Li, Savini Kashmira, Krisztian Flautner, Lingjia Tang, and Jason Mars. 2025. MTP: A Meaning-Typed Language Abstraction for AI-Integrated Programming. Proc. ACM Program. Lang. 9, OOPSLA2, Article 314 (October 2025), 29 pages. https://doi.org/10.1145/3763092
