@@ -102,11 +102,16 @@ class TypeCheckPass(UniPass):
         """Handle the atom trailer node."""
         self.evaluator.get_type_of_expression(node)
 
+    def exit_binary_expr(self, node: uni.BinaryExpr) -> None:
+        """Handle the binary expression node."""
+        self.evaluator.get_type_of_expression(node)
+
     def exit_func_call(self, node: uni.FuncCall) -> None:
         """Handle the function call node."""
-        # TODO:
-        # 1. Function Existence & Callable Validation
-        # 2. Argument Matching(count, types, names)
+        self.evaluator.get_type_of_expression(node)
+
+    def exit_filter_compr(self, node: uni.FilterCompr) -> None:
+        """Handle the edge operation reference node."""
         self.evaluator.get_type_of_expression(node)
 
     def exit_return_stmt(self, node: uni.ReturnStmt) -> None:
@@ -134,14 +139,9 @@ class TypeCheckPass(UniPass):
     def exit_edge_ref_trailer(self, node: uni.EdgeRefTrailer) -> None:
         """Handle the edge reference trailer node."""
         for chain in node.chain:
-            if isinstance(chain, uni.FilterCompr) and chain.f_type:
-                filter_type = self.evaluator.get_type_of_expression(chain.f_type)
-                if not isinstance(filter_type, jtypes.ClassType):
-                    continue
+            if isinstance(chain, uni.FilterCompr):
+                self.evaluator.get_type_of_expression(chain)
 
-                # For each compare in the filter comprehension, set symbol to the right name.
-                for cmp in chain.compares:
-                    if isinstance(cmp.left, uni.Name) and (
-                        sym := filter_type.lookup_member_symbol(cmp.left.value)
-                    ):
-                        self.evaluator._set_symbol_to_expr(cmp.left, sym)
+    def exit_special_var_ref(self, node: uni.SpecialVarRef) -> None:
+        """Handle the special variable reference node."""
+        self.evaluator.get_type_of_expression(node)

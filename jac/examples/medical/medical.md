@@ -1,6 +1,6 @@
 # Medical Software Startup
 
-Welcome to our brand new medical software startup! Our first task is to model the relationship between a `Doctor` and a `Patient`. 
+Welcome to our brand new medical software startup! Our first task is to model the relationship between a `Doctor` and a `Patient`.
 
 A patient has a doctor. A doctor has a name. Let's code it up!
 

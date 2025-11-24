@@ -54,7 +54,7 @@ class JacLanguageTests(TestCase):
         jac_import("with_llm_function", base_path=self.fixture_abs_path("./"))
         sys.stdout = sys.__stdout__
         stdout_value = captured_output.getvalue()
-        self.assertIn('👤➡️🗼', stdout_value)
+        self.assertIn("👤➡️🗼", stdout_value)
 
     def test_method_tool_call(self) -> None:
         """Parse micro jac file."""
@@ -63,8 +63,8 @@ class JacLanguageTests(TestCase):
         jac_import("method_tool", base_path=self.fixture_abs_path("./"))
         sys.stdout = sys.__stdout__
         stdout_value = captured_output.getvalue()
-        self.assertIn('Calculator.add called with 12, 34', stdout_value)
-        self.assertIn('Result: 46', stdout_value)
+        self.assertIn("Calculator.add called with 12, 34", stdout_value)
+        self.assertIn("Result: 46", stdout_value)
 
     def test_image_input(self) -> None:
         """Parse micro jac file."""
@@ -73,7 +73,9 @@ class JacLanguageTests(TestCase):
         jac_import("image_test", base_path=self.fixture_abs_path("./"))
         sys.stdout = sys.__stdout__
         stdout_value = captured_output.getvalue()
-        self.assertIn('The image shows a hot air balloon shaped like a heart', stdout_value)
+        self.assertIn(
+            "The image shows a hot air balloon shaped like a heart", stdout_value
+        )
 
     def test_streaming_output(self) -> None:
         """Parse micro jac file."""
@@ -82,7 +84,10 @@ class JacLanguageTests(TestCase):
         jac_import("streaming_output", base_path=self.fixture_abs_path("./"))
         sys.stdout = sys.__stdout__
         stdout_value = captured_output.getvalue()
-        self.assertIn('The orca whale, or killer whale, is one of the most intelligent and adaptable marine predators', stdout_value)
+        self.assertIn(
+            "The orca whale, or killer whale, is one of the most intelligent and adaptable marine predators",
+            stdout_value,
+        )
 
     def test_by_expr(self) -> None:
         """Test by llm['as'].expression instead of llm() call."""
@@ -98,7 +103,7 @@ class JacLanguageTests(TestCase):
             "Hello, Alice! Welcome to the Python world!",
             "[run_and_test_python_code] Code executed successfully.",
             "Generated greeting code: name = 'Alice'",
-            "print(f'Hello, {name}! Welcome to the Python world!')"
+            "print(f'Hello, {name}! Welcome to the Python world!')",
         )
         for line in expected_lines:
             self.assertIn(line, stdout_value)
@@ -113,7 +118,7 @@ class JacLanguageTests(TestCase):
         # TODO: Reasoning is not passed as an output, however this needs to be
         # sent to some callbacks (or other means) to the user.
         # self.assertIn("[Reasoning] <Reason>", stdout_value)
-        self.assertIn('Personality.INTROVERT', stdout_value)
+        self.assertIn("Personality.INTROVERT", stdout_value)
 
     def test_with_llm_lower(self) -> None:
         """Parse micro jac file."""
@@ -126,7 +131,7 @@ class JacLanguageTests(TestCase):
         # sent to some callbacks (or other means) to the user.
         # self.assertIn("[Reasoning] <Reason>", stdout_value)
         self.assertIn(
-            'J. Robert Oppenheimer was a Introvert person who died in 1967',
+            "J. Robert Oppenheimer was a Introvert person who died in 1967",
             stdout_value,
         )
 
@@ -174,10 +179,8 @@ class JacLanguageTests(TestCase):
         jac_import("webp_support_test", base_path=self.fixture_abs_path("./"))
         sys.stdout = sys.__stdout__
         stdout_value = captured_output.getvalue()
-        self.assertIn( "full_name='Albert Einstein'", stdout_value)
-        self.assertIn( "year_of_death='1955'", stdout_value)
-
-
+        self.assertIn("full_name='Albert Einstein'", stdout_value)
+        self.assertIn("year_of_death='1955'", stdout_value)
 
     def test_with_llm_video(self) -> None:
         """Test MTLLLM Video Implementation."""
@@ -188,9 +191,9 @@ class JacLanguageTests(TestCase):
             sys.stdout = sys.__stdout__
             stdout_value = captured_output.getvalue()
             video_explanation = (
-                'The video features a large rabbit emerging from a burrow in a lush, green environment. '
-                'The rabbit stretches and yawns, seemingly enjoying the morning. The scene is set in a '
-                'vibrant, natural setting with bright skies and trees, creating a peaceful and cheerful atmosphere.'
+                "The video features a large rabbit emerging from a burrow in a lush, green environment. "
+                "The rabbit stretches and yawns, seemingly enjoying the morning. The scene is set in a "
+                "vibrant, natural setting with bright skies and trees, creating a peaceful and cheerful atmosphere."
             )
             self.assertIn(video_explanation, stdout_value)
         except Exception:
@@ -237,7 +240,9 @@ class JacLanguageTests(TestCase):
         # Check if the output contains the expected person information
         self.assertIn("Alan Turing", person.name)
         self.assertIn("1912", str(person.birth_year))
-        self.assertIn("A pioneering mathematician and computer scientist", person.description)
+        self.assertIn(
+            "A pioneering mathematician and computer scientist", person.description
+        )
         self.assertIn("breaking the Enigma code", person.description)
 
     def test_enum_without_value(self) -> None:

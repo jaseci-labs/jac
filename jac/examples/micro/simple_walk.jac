@@ -10,7 +10,7 @@ edge Checking {}
 
 walker Creator {
     has count: int = 0;
-    
+
     can create with `root | Item entry {
         here ++> Item();
         self.count += 1;
@@ -23,11 +23,11 @@ walker Creator {
 
 walker Walk {
     has count: int = 0;
-    
+
     can skip_root with `root entry {
         visit [-->];
     }
-    
+
     can step with Item entry {
         here.value = self.count;
         self.count += 1;

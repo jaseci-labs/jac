@@ -32,7 +32,7 @@ from jaclang.compiler.passes.ast_gen import BaseAstGenPass
 from jaclang.compiler.passes.ast_gen.jsx_processor import EsJsxProcessor
 from jaclang.compiler.passes.ecmascript.es_unparse import es_to_js
 from jaclang.compiler.type_system import types as jtypes
-from jaclang.utils import convert_to_js_import_path
+from jaclang.utils import convert_to_js_import_path, resolve_relative_path
 
 ES_LOGICAL_OPS: dict[Tok, str] = {Tok.KW_AND: "&&", Tok.KW_OR: "||"}
 
@@ -548,12 +548,12 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
         fallback_items: list[Union[es.Statement, list[es.Statement]]] = []
         for stmt in merged_body:
             if stmt.gen.es_ast:
-                target_list = (
-                    client_items
-                    if getattr(stmt, "is_client_decl", False)
-                    else fallback_items
-                )
-                target_list.append(stmt.gen.es_ast)
+                if getattr(stmt, "is_client_decl", True):
+                    client_items.append(stmt.gen.es_ast)
+                else:
+                    # FIXME: handle the fallback case properly
+                    pass
+
         target_body = client_items if client_items else fallback_items
         body.extend(self._flatten_ast_list(target_body))
 
@@ -564,14 +564,34 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
             es.Program(body=body, sourceType="module"), jac_node=node
         )
         node.gen.es_ast = program
-
         # Generate JavaScript code from ES AST
         node.gen.js = es_to_js(node.gen.es_ast)
+
+        # Populate the client manifest from cl mods to the main module
+        self.populate_client_manifest(node)
 
         # Sort and assign client manifest
         self.client_manifest.exports.sort()
         self.client_manifest.globals.sort()
         node.gen.client_manifest = self.client_manifest
+
+    def populate_client_manifest(self, node: uni.Module) -> None:
+        """Populate client manifest from module declarations."""
+        for mod in node.impl_mod:
+            self._populate_client_manifest(mod)
+
+    def _populate_client_manifest(self, node: uni.Module) -> None:
+        """Recursively populate client manifest from module declarations."""
+        for item in node.gen.client_manifest.exports:
+            self.client_manifest.exports.append(item)
+        for item in node.gen.client_manifest.globals:
+            self.client_manifest.globals.append(item)
+        for import_key, resolved_path in node.gen.client_manifest.imports.items():
+            self.client_manifest.imports[import_key] = resolved_path
+        for sub_mod in node.gen.client_manifest.params:
+            self.client_manifest.params[sub_mod] = node.gen.client_manifest.params[
+                sub_mod
+            ]
 
     def exit_sub_tag(self, node: uni.SubTag[uni.T]) -> None:
         """Process SubTag node."""
@@ -583,92 +603,95 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
 
     def exit_import(self, node: uni.Import) -> None:
         """Process import statement."""
-        if node.from_loc and node.items:
+        if node.from_loc and node.items and node.is_client_decl:
             # Track client imports (both with prefix like jac:client_runtime and relative imports like .module)
-            if node.is_client_decl:
-                resolved_path = node.from_loc.resolve_relative_path()
-                import_key = node.from_loc.dot_path_str
-                self.client_manifest.imports[import_key] = resolved_path
-                self.client_manifest.has_client = True
+            resolved_path = node.from_loc.resolve_relative_path()
+            import_key = node.from_loc.dot_path_str
+            self.client_manifest.imports[import_key] = resolved_path
+            self.client_manifest.has_client = True
 
             # Convert Jac-style path to JavaScript-style path
             js_import_path = convert_to_js_import_path(node.from_loc.dot_path_str)
+        elif not node.from_loc and node.items and node.is_client_decl:
+            self.client_manifest.has_client = True
+            import_key = node.items[0].path[0].lit_value
+            resolved_path = resolve_relative_path(import_key, node.loc.mod_path)
+            self.client_manifest.imports[import_key] = resolved_path
+            js_import_path = convert_to_js_import_path(import_key)
 
-            source = self.sync_loc(
-                es.Literal(value=js_import_path), jac_node=node.from_loc
-            )
-            specifiers: list[
-                Union[
-                    es.ImportSpecifier,
-                    es.ImportDefaultSpecifier,
-                    es.ImportNamespaceSpecifier,
-                ]
-            ] = []
+        source = self.sync_loc(es.Literal(value=js_import_path), jac_node=node.from_loc)
+        specifiers: list[
+            Union[
+                es.ImportSpecifier,
+                es.ImportDefaultSpecifier,
+                es.ImportNamespaceSpecifier,
+            ]
+        ] = []
 
-            for item in node.items:
-                if isinstance(item, uni.ModuleItem):
-                    # Check Name first (since Name is a subclass of Token)
-                    if isinstance(item.name, uni.Name):
-                        # Regular named import (Category 1)
-                        imported = self.sync_loc(
-                            es.Identifier(name=item.name.sym_name), jac_node=item.name
+        for item in node.items:
+            if isinstance(item, uni.ModuleItem):
+                # Check Name first (since Name is a subclass of Token)
+                if isinstance(item.name, uni.Name):
+                    # Regular named import (Category 1)
+                    imported = self.sync_loc(
+                        es.Identifier(name=item.name.sym_name), jac_node=item.name
+                    )
+                    local = self.sync_loc(
+                        es.Identifier(
+                            name=(
+                                item.alias.sym_name
+                                if item.alias
+                                else item.name.sym_name
+                            )
+                        ),
+                        jac_node=item.alias if item.alias else item.name,
+                    )
+                    specifiers.append(
+                        self.sync_loc(
+                            es.ImportSpecifier(imported=imported, local=local),
+                            jac_node=item,
                         )
+                    )
+                elif isinstance(item.name, uni.Token):
+                    # Category 2: Handle default imports
+                    # Pattern: cl import from react { default as React }
+                    if item.name.value == "default":
+                        if not item.alias:
+                            # default must have an alias
+                            continue
                         local = self.sync_loc(
-                            es.Identifier(
-                                name=(
-                                    item.alias.sym_name
-                                    if item.alias
-                                    else item.name.sym_name
-                                )
-                            ),
-                            jac_node=item.alias if item.alias else item.name,
+                            es.Identifier(name=item.alias.sym_name),
+                            jac_node=item.alias,
                         )
                         specifiers.append(
                             self.sync_loc(
-                                es.ImportSpecifier(imported=imported, local=local),
+                                es.ImportDefaultSpecifier(local=local),
                                 jac_node=item,
                             )
                         )
-                    elif isinstance(item.name, uni.Token):
-                        # Category 2: Handle default imports
-                        # Pattern: cl import from react { default as React }
-                        if item.name.value == "default":
-                            if not item.alias:
-                                # default must have an alias
-                                continue
-                            local = self.sync_loc(
-                                es.Identifier(name=item.alias.sym_name),
-                                jac_node=item.alias,
+                    # Category 4: Handle namespace imports
+                    # Pattern: cl import from lodash { * as _ }
+                    elif item.name.value == "*":
+                        if not item.alias:
+                            # namespace import must have an alias
+                            continue
+                        local = self.sync_loc(
+                            es.Identifier(name=item.alias.sym_name),
+                            jac_node=item.alias,
+                        )
+                        specifiers.append(
+                            self.sync_loc(
+                                es.ImportNamespaceSpecifier(local=local),
+                                jac_node=item,
                             )
-                            specifiers.append(
-                                self.sync_loc(
-                                    es.ImportDefaultSpecifier(local=local),
-                                    jac_node=item,
-                                )
-                            )
-                        # Category 4: Handle namespace imports
-                        # Pattern: cl import from lodash { * as _ }
-                        elif item.name.value == "*":
-                            if not item.alias:
-                                # namespace import must have an alias
-                                continue
-                            local = self.sync_loc(
-                                es.Identifier(name=item.alias.sym_name),
-                                jac_node=item.alias,
-                            )
-                            specifiers.append(
-                                self.sync_loc(
-                                    es.ImportNamespaceSpecifier(local=local),
-                                    jac_node=item,
-                                )
-                            )
+                        )
 
-            import_decl = self.sync_loc(
-                es.ImportDeclaration(specifiers=specifiers, source=source),
-                jac_node=node,
-            )
-            self.imports.append(import_decl)
-            node.gen.es_ast = []  # Imports are added to module level
+        import_decl = self.sync_loc(
+            es.ImportDeclaration(specifiers=specifiers, source=source),
+            jac_node=node,
+        )
+        self.imports.append(import_decl)
+        node.gen.es_ast = []  # Imports are added to module level
 
     def exit_module_path(self, node: uni.ModulePath) -> None:
         """Process module path."""

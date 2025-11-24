@@ -54,6 +54,7 @@ class HotReloadTest(TestCase):
                 self.assertNotEqual(safe_load(file), safe_load(res.text))
         finally:
             server.kill()
+            server.wait()
             unlink(f"{self.directory}/test.jac")
             run(["fuser", "-k", "8001/tcp"])
 
@@ -107,6 +108,7 @@ class HotReloadTest(TestCase):
                 self.assertNotEqual(safe_load(file), safe_load(res.text))
         finally:
             server.kill()
+            server.wait()
             unlink(f"{self.directory}/test.jac")
             unlink(f"{self.directory}/dir/test.jac")
             rmdir(f"{self.directory}/dir")

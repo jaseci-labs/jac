@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 print(5 | 3)
 print(12 | 7)
 print(5 ^ 3)

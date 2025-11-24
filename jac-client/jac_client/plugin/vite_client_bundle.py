@@ -125,7 +125,7 @@ class ViteClientBundleBuilder(ClientBundleBuilder):
         )
 
         # inport jacJsx from client_runtime_utils.jac
-        jac_jsx_path = 'import {__jacJsx} from "@jac-client/utils";'
+        jac_jsx_path = 'import {__jacJsx, __jacSpawn} from "@jac-client/utils";'
 
         combined_js = f"{jac_jsx_path}\n{module_js}\n{export_block}"
         if self.vite_package_json is not None:
@@ -160,6 +160,10 @@ class ViteClientBundleBuilder(ClientBundleBuilder):
                     pass
             else:
                 # Bare specifiers or other assets handled by Vite
+                if self.vite_package_json is not None and path_obj.is_file():
+                    (self.vite_package_json.parent / "src" / path_obj.name).write_text(
+                        path_obj.read_text(encoding="utf-8"), encoding="utf-8"
+                    )
                 continue
 
     def _compile_bundle(
@@ -220,6 +224,13 @@ class ViteClientBundleBuilder(ClientBundleBuilder):
             collected_exports=collected_exports,
             collected_globals=collected_globals,
         )
+
+        # Copy assets from root assets/ folder to src/assets/ for @jac-client/assets alias
+        project_dir = self.vite_package_json.parent
+        root_assets_dir = project_dir / "assets"
+        src_assets_dir = project_dir / "src" / "assets"
+        if root_assets_dir.exists() and root_assets_dir.is_dir():
+            self._copy_asset_files(root_assets_dir, src_assets_dir)
 
         client_exports = sorted(collected_exports)
         client_globals_map = collected_globals
@@ -283,6 +294,9 @@ root.render(<App />);
             subprocess.run(
                 command, cwd=project_dir, check=True, capture_output=True, text=True
             )
+            # Copy CSS and other asset files from src/ to build/ after Babel compilation
+            # Babel only transpiles JS, so we need to manually copy assets
+            self._copy_asset_files(project_dir / "src", project_dir / "build")
             # then build the code
             command = ["npm", "run", "build"]
             subprocess.run(
@@ -336,9 +350,90 @@ root.render(<App />);
             }});
         """
 
+    def _copy_asset_files(self, src_dir: Path, build_dir: Path) -> None:
+        """Copy CSS and other asset files from src/ to build/ directory recursively.
+
+        Babel only transpiles JavaScript files, so CSS and other assets need to be
+        manually copied to the build directory for Vite to resolve them.
+        This method recursively copies assets from subdirectories (e.g., src/assets/)
+        while preserving the directory structure.
+        """
+        if not src_dir.exists():
+            return
+
+        # Ensure build directory exists
+        build_dir.mkdir(parents=True, exist_ok=True)
+
+        # Asset file extensions to copy
+        asset_extensions = {
+            ".css",
+            ".scss",
+            ".sass",
+            ".less",
+            ".svg",
+            ".png",
+            ".jpg",
+            ".jpeg",
+            ".gif",
+            ".webp",
+            ".ico",
+            ".woff",
+            ".woff2",
+            ".ttf",
+            ".eot",
+            ".otf",
+            ".mp4",
+            ".webm",
+            ".mp3",
+            ".wav",
+        }
+
+        def copy_recursive(
+            source: Path, destination: Path, base: Path | None = None
+        ) -> None:
+            """Recursively copy asset files from source to destination.
+
+            Args:
+                source: Source directory to copy from
+                destination: Destination directory to copy to
+                base: Base directory for calculating relative paths (defaults to source)
+            """
+            if not source.exists():
+                return
+
+            if base is None:
+                base = source
+
+            for item in source.iterdir():
+                if item.is_file() and item.suffix.lower() in asset_extensions:
+                    # Preserve relative path structure from base
+                    relative_path = item.relative_to(base)
+                    dest_file = destination / relative_path
+                    dest_file.parent.mkdir(parents=True, exist_ok=True)
+                    with contextlib.suppress(OSError, shutil.Error):
+                        shutil.copy2(item, dest_file)
+                elif item.is_dir():
+                    # Recursively process subdirectories
+                    copy_recursive(item, destination, base)
+
+        # Copy files from src_dir root and recursively from subdirectories
+        copy_recursive(src_dir, build_dir)
+
     def _find_vite_bundle(self, output_dir: Path) -> Path | None:
         """Find the generated Vite bundle file."""
         for file in output_dir.glob("client.*.js"):
+            return file
+        return None
+
+    def _find_vite_css(self, output_dir: Path) -> Path | None:
+        """Find the generated Vite CSS file."""
+        # Vite typically outputs CSS as main.css or with a hash
+        # Try main.css first (most common), then any .css file
+        css_file = output_dir / "main.css"
+        if css_file.exists():
+            return css_file
+        # Fallback: find any CSS file
+        for file in output_dir.glob("*.css"):
             return file
         return None
 
@@ -351,5 +446,5 @@ root.render(<App />);
         temp_dir = project_dir / "src"
 
         if temp_dir.exists():
-            with contextlib.suppress(OSError):
+            with contextlib.suppress(OSError, shutil.Error):
                 shutil.rmtree(temp_dir)

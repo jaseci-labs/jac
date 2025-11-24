@@ -1,4 +1,4 @@
-import from jaclang.runtimelib.machine { JacMachine as Jac } 
+import from jaclang.runtimelib.machine { JacMachine as Jac }
 
 
 node A {
@@ -31,22 +31,22 @@ walker populate {
         for i in range(2) { here ++> A(id=i); }
         visit [-->];
     }
-    
+
     can setup2 with A entry {
         for i in range(2) { here ++> B(id=i); }
         visit [-->];
     }
-    
+
     can setup3 with B entry {
         for i in range(2) { here ++> C(id=i); }
         visit [-->];
     }
-    
+
     can setup4 with C entry {
         for i in range(2) { here ++> D(id=i); }
         visit [-->];
     }
-    
+
     can setup5 with D entry {
         for i in range(2) { here ++> E(id=i); }
         visit [-->];
@@ -59,27 +59,27 @@ walker traverse {
         print(here);
         visit [-->];
     }
-    
+
     can enter2 with A entry {
         print(here);
         visit [-->];
     }
-    
+
     can enter3 with B entry {
         print(here);
         visit [-->];
     }
-    
+
     can enter4 with C entry {
         print(here);
         visit [-->];
     }
-    
+
     can enter5 with D entry {
         print(here);
         visit [-->];
     }
-    
+
     can enter6 with E entry {
         print(here);
         visit [-->];

@@ -168,12 +168,12 @@ class JacParser(Transform[uni.Source, uni.Module]):
             return True
 
         if isinstance(e, jl.UnexpectedToken):
-            # If last token is DOT and we expect a NAME, insert a NAME token
             last_tok: jl.Token | None = (
                 e.token_history[-1]
                 if e.token_history and len(e.token_history) >= 1
                 else None
             )
+            # If last token is DOT and we expect a NAME, insert a NAME token
             if (
                 last_tok
                 and last_tok.type == Tok.DOT.name

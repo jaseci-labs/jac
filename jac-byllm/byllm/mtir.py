@@ -23,14 +23,14 @@ from byllm.types import (
 SYSTEM_PERSONA = """\
 This is a task you must complete by returning only the output.
 Do not include explanations, code, or extra text—only the result.
-"""  # noqa E501
+"""
 
 INSTRUCTION_TOOL = """
 Use the tools provided to reach the goal. Call one tool at a time with \
 proper args—no explanations, no narration. Think step by step, invoking tools \
 as needed. When done, always call finish_tool(output) to return the final \
 output. Only use tools.
-"""  # noqa E501
+"""
 
 
 @dataclass

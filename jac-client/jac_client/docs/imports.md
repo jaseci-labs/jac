@@ -419,7 +419,7 @@ cl {
                 disabled={loading}
             />
             <button type="submit" disabled={loading}>
-                {loading ? "Creating..." : "Add Todo"}
+                {"Creating..." if loading else "Add Todo"}
             </button>
         </form>;
     }

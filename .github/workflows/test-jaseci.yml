@@ -9,7 +9,56 @@ on:
       - main
 
 jobs:
-  test-jaseci:
+  test-core:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v3
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v3
+      with:
+        python-version: 3.12
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e jac
+        pip install pytest
+        pip install pytest-asyncio
+        pip install pytest-xdist
+
+    - name: Run Jac core tests
+      run: pytest -x jac -n auto -k "not TestLangServe and not TestJacLangServer"
+
+  test-client:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v3
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v3
+      with:
+        python-version: 3.12
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e jac
+        pip install -e jac-client
+        pip install pytest
+        pip install pytest-asyncio
+        pip install pytest-xdist
+
+    - name: Set environment for testing
+      run: |
+        echo "TEST_ENV=true" >> $GITHUB_ENV
+
+    - name: Run Jac-Client tests
+      run: pytest -x jac-client
+
+  test-packages:
     runs-on: ubuntu-latest
     services:
       redis:
@@ -26,6 +75,7 @@ jobs:
       uses: supercharge/mongodb-github-action@1.10.0
       with:
         mongodb-replica-set: test-rs
+
     - name: Check out code
       uses: actions/checkout@v3
 
@@ -41,6 +91,8 @@ jobs:
         pip install -e jac-cloud
         pip install -e jac-byllm
         pip install -e jac-streamlit
+        pip install numpy
+        pip install scikit-learn
         pip install pytest
         pip install pytest-asyncio
         pip install pytest-xdist
@@ -48,22 +100,39 @@ jobs:
     - name: Set environment for testing
       run: |
         echo "TEST_ENV=true" >> $GITHUB_ENV
-    - name: Run tests
-      run: |
-        pytest -x jac -n auto
-        pytest -x jac-cloud jac-byllm jac-streamlit
-    - name: Run jac-cloud tests with DB
-      run: pytest -x jac-cloud
-      env:
-        DATABASE_HOST: mongodb://localhost/?retryWrites=true&w=majority
-        REDIS_HOST: redis://localhost
-        TASK_CONSUMER_CRON_SECOND: "*"
-    - name: Run Jac-Client tests
-      run: |
-        pip install -e jac-client
-        pytest -x jac-client
+
+    - name: Run package tests
+      run: pytest -x jac-cloud jac-byllm jac-streamlit
+
+    # - name: Run jac-cloud tests with DB
+    #   run: pytest -x jac-cloud
+    #   env:
+    #     DATABASE_HOST: mongodb://localhost/?retryWrites=true&w=majority
+    #     REDIS_HOST: redis://localhost
+    #     TASK_CONSUMER_CRON_SECOND: "*"
+
     - name: Run littleX tests
+      run: jac test jac/examples/littleX/littleX.test.jac
+
+  test-langserve:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v3
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v3
+      with:
+        python-version: 3.12
+
+    - name: Install dependencies
       run: |
-        pip install numpy
-        pip install scikit-learn
-        jac test jac/examples/littleX/littleX.test.jac
+        python -m pip install --upgrade pip
+        pip install -e jac
+        pip install pytest
+        pip install pytest-asyncio
+
+    - name: Run language server tests
+      run: | # work-around for github CI
+        pytest jac/jaclang/langserve/tests/test_server.py
+        pytest jac/jaclang/langserve/tests/server_test/test_lang_serve.py

@@ -60,7 +60,7 @@ walker ClaimProcessing{
         visit [here --> (`?Person) ->:has_role:->];
     }
 
-    can traverse with Claim entry { 
+    can traverse with Claim entry {
         patient = [here <-:files_claim:<-][0];
         insurance = [patient ->:has_insurance:->];
         doctor = [patient->:treated_by:->][0];
@@ -69,7 +69,7 @@ walker ClaimProcessing{
             if is_connected(doctor, in_network_with, insurance[0]){
                 self.fraction = insurance[0].fraction;
                 here.status = "Approved";
-            }   
+            }
         }
 
         self.insurance_pays = int(self.claim.cost * self.fraction);

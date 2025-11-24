@@ -50,13 +50,6 @@ walker toggle_todo {
     }
 }
 
-walker delete_todo {
-    can delete with Todo entry {
-        here.destroy();
-        report {"success": True} ;
-    }
-}
-
 # Frontend Components
 cl {
     # Navigation
@@ -396,6 +389,184 @@ cl {
         </div>;
     }
 
+    # TodoInput Component
+    def TodoInput(props: any)  -> any {
+        let input = props.input;
+        let setInput = props.setInput;
+        let addTodo = props.addTodo;
+
+        return <div
+            style={{"display": "flex", "gap": "8px", "marginBottom": "16px"}}
+        >
+            <input
+                type="text"
+                value={input}
+                onChange={lambda  e: any  -> None{ setInput(e.target.value);} }
+                onKeyPress={lambda  e: any  -> None{ if e.key == "Enter" {
+                    addTodo();
+                }} }
+                placeholder="What needs to be done?"
+                style={{
+                    "flex": "1",
+                    "padding": "8px",
+                    "border": "1px solid #ddd",
+                    "borderRadius": "4px"
+                }}
+            />
+            <button
+                onClick={addTodo}
+                style={{
+                    "padding": "8px 16px",
+                    "background": "#3b82f6",
+                    "color": "#ffffff",
+                    "border": "none",
+                    "borderRadius": "4px",
+                    "cursor": "pointer",
+                    "fontWeight": "600"
+                }}
+            >
+                Add
+            </button>
+        </div>;
+    }
+
+    # TodoFilters Component
+    def TodoFilters(props: any)  -> any {
+        let filter = props.filter;
+        let setFilter = props.setFilter;
+
+        return <div
+            style={{"display": "flex", "gap": "8px", "marginBottom": "16px"}}
+        >
+            <button
+                onClick={lambda   -> None{ setFilter("all");} }
+                style={{
+                    "padding": "6px 12px",
+                    "background": ("#3b82f6" if filter == "all" else "#e5e7eb"),
+                    "color": ("#ffffff" if filter == "all" else "#000000"),
+                    "border": "none",
+                    "borderRadius": "4px",
+                    "cursor": "pointer",
+                    "fontSize": "14px"
+                }}
+            >
+                All
+            </button>
+            <button
+                onClick={lambda   -> None{ setFilter("active");} }
+                style={{
+                    "padding": "6px 12px",
+                    "background": ("#3b82f6" if filter == "active" else "#e5e7eb"),
+                    "color": ("#ffffff" if filter == "active" else "#000000"),
+                    "border": "none",
+                    "borderRadius": "4px",
+                    "cursor": "pointer",
+                    "fontSize": "14px"
+                }}
+            >
+                Active
+            </button>
+            <button
+                onClick={lambda   -> None{ setFilter("completed");} }
+                style={{
+                    "padding": "6px 12px",
+                    "background": (
+                        "#3b82f6" if filter == "completed" else "#e5e7eb"
+                    ),
+                    "color": ("#ffffff" if filter == "completed" else "#000000"),
+                    "border": "none",
+                    "borderRadius": "4px",
+                    "cursor": "pointer",
+                    "fontSize": "14px"
+                }}
+            >
+                Completed
+            </button>
+        </div>;
+    }
+
+    # TodoItem Component
+    def TodoItem(props: any)  -> any {
+        let todo = props.todo;
+        let toggleTodo = props.toggleTodo;
+        let deleteTodo = props.deleteTodo;
+
+        return <div
+            key={todo._jac_id}
+            style={{
+                "display": "flex",
+                "alignItems": "center",
+                "gap": "10px",
+                "padding": "10px",
+                "borderBottom": "1px solid #e5e7eb"
+            }}
+        >
+            <input
+                type="checkbox"
+                checked={todo.done}
+                onChange={lambda   -> None{ toggleTodo(todo._jac_id);} }
+                style={{"cursor": "pointer"}}
+            />
+            <span
+                style={{
+                    "flex": "1",
+                    "textDecoration": (
+                        "line-through" if todo.done else "none"
+                    ),
+                    "color": ("#999" if todo.done else "#000")
+                }}
+            >
+                {todo.text}
+            </span>
+            <button
+                onClick={lambda   -> None{ deleteTodo(todo._jac_id);} }
+                style={{
+                    "padding": "4px 8px",
+                    "background": "#ef4444",
+                    "color": "#ffffff",
+                    "border": "none",
+                    "borderRadius": "4px",
+                    "cursor": "pointer",
+                    "fontSize": "12px"
+                }}
+            >
+                Delete
+            </button>
+        </div>;
+    }
+
+    # TodoList Component
+    def TodoList(props: any)  -> any {
+        let filteredTodos = props.filteredTodos;
+        let toggleTodo = props.toggleTodo;
+        let deleteTodo = props.deleteTodo;
+
+        if filteredTodos.length == 0 {
+            return <div
+                style={{
+                    "padding": "20px",
+                    "textAlign": "center",
+                    "color": "#999"
+                }}
+            >
+                No todos yet. Add one above!
+            </div>;
+        }
+
+        return <div>
+            {filteredTodos.map(
+                lambda  todo: any  -> any{
+                    return <TodoItem
+                        key={todo._jac_id}
+                        todo={todo}
+                        toggleTodo={toggleTodo}
+                        deleteTodo={deleteTodo}
+                    />;
+                }
+            )}
+        </div>;
+    }
+
     # Todos Page (Protected)
     def TodosPage()  -> any {
         # Check if user is logged in, redirect if not
@@ -431,20 +602,23 @@ cl {
             id spawn toggle_todo();
             setTodos(
                 todos.map(
-                    lambda  todo: any  -> any{ if todo._jac_id == id {
-                        return {
-                            "_jac_id": todo._jac_id,
-                            "text": todo.text,
-                            "done": not todo.done
-                        };
-                    }return todo; }
+                    lambda  todo: any  -> any{
+                        if todo._jac_id == id {
+                            return {
+                                "_jac_id": todo._jac_id,
+                                "text": todo.text,
+                                "done": not todo.done
+                            };
+                        }
+                        return todo;
+                    }
                 )
             );
         }
 
         # Delete todo
         async def deleteTodo(id: any) -> None {
-            id spawn delete_todo();
+            #id spawn delete_todo();
             setTodos(
                 todos.filter(lambda  todo: any  -> bool{ return todo._jac_id != id; } )
             );
@@ -482,147 +656,20 @@ cl {
             >
                 My Todos
             </h1>
-            <div
-                style={{"display": "flex", "gap": "8px", "marginBottom": "16px"}}
-            >
-                <input
-                    type="text"
-                    value={input}
-                    onChange={lambda  e: any  -> None{ setInput(e.target.value);} }
-                    onKeyPress={lambda  e: any  -> None{ if e.key == "Enter" {
-                        addTodo();
-                    }} }
-                    placeholder="What needs to be done?"
-                    style={{
-                        "flex": "1",
-                        "padding": "8px",
-                        "border": "1px solid #ddd",
-                        "borderRadius": "4px"
-                    }}
-                />
-                <button
-                    onClick={addTodo}
-                    style={{
-                        "padding": "8px 16px",
-                        "background": "#3b82f6",
-                        "color": "#ffffff",
-                        "border": "none",
-                        "borderRadius": "4px",
-                        "cursor": "pointer",
-                        "fontWeight": "600"
-                    }}
-                >
-                    Add
-                </button>
-            </div>
-            <div
-                style={{"display": "flex", "gap": "8px", "marginBottom": "16px"}}
-            >
-                <button
-                    onClick={lambda   -> None{ setFilter("all");} }
-                    style={{
-                        "padding": "6px 12px",
-                        "background": ("#3b82f6" if filter == "all" else "#e5e7eb"),
-                        "color": ("#ffffff" if filter == "all" else "#000000"),
-                        "border": "none",
-                        "borderRadius": "4px",
-                        "cursor": "pointer",
-                        "fontSize": "14px"
-                    }}
-                >
-                    All
-                </button>
-                <button
-                    onClick={lambda   -> None{ setFilter("active");} }
-                    style={{
-                        "padding": "6px 12px",
-                        "background": ("#3b82f6" if filter == "active" else "#e5e7eb"),
-                        "color": ("#ffffff" if filter == "active" else "#000000"),
-                        "border": "none",
-                        "borderRadius": "4px",
-                        "cursor": "pointer",
-                        "fontSize": "14px"
-                    }}
-                >
-                    Active
-                </button>
-                <button
-                    onClick={lambda   -> None{ setFilter("completed");} }
-                    style={{
-                        "padding": "6px 12px",
-                        "background": (
-                            "#3b82f6" if filter == "completed" else "#e5e7eb"
-                        ),
-                        "color": ("#ffffff" if filter == "completed" else "#000000"),
-                        "border": "none",
-                        "borderRadius": "4px",
-                        "cursor": "pointer",
-                        "fontSize": "14px"
-                    }}
-                >
-                    Completed
-                </button>
-            </div>
-            <div>
-                {(
-                    <div
-                        style={{
-                            "padding": "20px",
-                            "textAlign": "center",
-                            "color": "#999"
-                        }}
-                    >
-                        No todos yet. Add one above!
-                    </div>
-                )
-                if filteredTodos.length == 0
-                else (
-                    filteredTodos.map(
-                        lambda  todo: any  -> any{ return <div
-                            key={todo._jac_id}
-                            style={{
-                                "display": "flex",
-                                "alignItems": "center",
-                                "gap": "10px",
-                                "padding": "10px",
-                                "borderBottom": "1px solid #e5e7eb"
-                            }}
-                        >
-                            <input
-                                type="checkbox"
-                                checked={todo.done}
-                                onChange={lambda   -> None{ toggleTodo(todo._jac_id);} }
-                                style={{"cursor": "pointer"}}
-                            />
-                            <span
-                                style={{
-                                    "flex": "1",
-                                    "textDecoration": (
-                                        "line-through" if todo.done else "none"
-                                    ),
-                                    "color": ("#999" if todo.done else "#000")
-                                }}
-                            >
-                                {todo.text}
-                            </span>
-                            <button
-                                onClick={lambda   -> None{ deleteTodo(todo._jac_id);} }
-                                style={{
-                                    "padding": "4px 8px",
-                                    "background": "#ef4444",
-                                    "color": "#ffffff",
-                                    "border": "none",
-                                    "borderRadius": "4px",
-                                    "cursor": "pointer",
-                                    "fontSize": "12px"
-                                }}
-                            >
-                                Delete
-                            </button>
-                        </div>; }
-                    )
-                )}
-            </div>
+            <TodoInput
+                input={input}
+                setInput={setInput}
+                addTodo={addTodo}
+            />
+            <TodoFilters
+                filter={filter}
+                setFilter={setFilter}
+            />
+            <TodoList
+                filteredTodos={filteredTodos}
+                toggleTodo={toggleTodo}
+                deleteTodo={deleteTodo}
+            />
             {(
                 <div
                     style={{

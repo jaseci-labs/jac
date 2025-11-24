@@ -246,6 +246,12 @@ class ClassType(TypeBase):
         new_private = ClassType.ClassDetailsPrivate(type_args=type_args)
         return ClassType(self.shared, private=new_private, flags=self.flags)
 
+    def get_class_symbol(self) -> Symbol:
+        """Return the symbol representing the class."""
+        # assert isinstance(self.shared.symbol_table, Archetype)
+        # assert self.shared.symbol_table.name.sym is not None
+        return self.shared.symbol_table.name.sym  # type: ignore
+
     def lookup_member_symbol(self, member: str) -> Symbol | None:
         """Lookup a member in the class type."""
         # FIXME: We have to have a lookup_member for archetype.
@@ -266,6 +272,24 @@ class ClassType(TypeBase):
     def is_data_class(self) -> bool:
         """Return true if this class is a data class."""
         return self.shared.is_data_class
+
+    def is_edge_type(self) -> bool:
+        """Return true if this class is the built-in Edge type."""
+        from jaclang.compiler.constant import SymbolType
+        import jaclang.compiler.unitree as uni
+
+        arch = self.shared.symbol_table
+        assert isinstance(arch, uni.Archetype)
+        return arch.sym_category == SymbolType.EDGE_ARCH
+
+    def is_node_type(self) -> bool:
+        """Return true if this class is the built-in Node type."""
+        from jaclang.compiler.constant import SymbolType
+        import jaclang.compiler.unitree as uni
+
+        arch = self.shared.symbol_table
+        assert isinstance(arch, uni.Archetype)
+        return arch.sym_category == SymbolType.NODE_ARCH
 
 
 class ParamKind(IntEnum):

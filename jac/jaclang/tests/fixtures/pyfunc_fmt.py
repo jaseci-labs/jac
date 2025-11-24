@@ -1,12 +1,9 @@
-
-
-
-
 if __name__ == "__main__":
 
     def foo():
         print("One")
         return "foo"
+
     foo()
 
 condition = True
@@ -14,18 +11,20 @@ condition = True
 if condition:
 
     print("Two")
-    
+
     def bar():
-        return 
-    
+        return
+
     main_mod = None
     bar()
+
 
 def baz():
     print("Three")
     return "baz"
 
-print(baz())    
+
+print(baz())
 
 
 try:
@@ -43,18 +42,21 @@ while condition:
     while condition:
         print("Four")
         condition -= 10
-        break 
+        break
 
 if condition:
 
     def foo():
-        return 
+        return
+
     foo()
     print("Exiting the loop.")
 
 if condition:
     print("still +")
+
     def foo():
-        return 
+        return
+
 
 print("The End.")

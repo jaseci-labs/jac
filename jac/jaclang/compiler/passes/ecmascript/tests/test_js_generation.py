@@ -300,6 +300,17 @@ cl def check_types() {
             self.assertNotIn(pattern, js_code)
         self.assert_balanced_syntax(js_code, fixture_path)
 
+    def test_assignment_inside_globvar_js(self) -> None:
+        """Test Category 4 namespace imports from proposal document."""
+        fixture_path = self.get_fixture_path("js_gen_bug.jac")
+        js_code = self.compile_fixture_to_js(fixture_path)
+        expected_generated_code = [
+            "const setB = item => {",
+            "item.b = 90;",
+        ]
+        for pattern in expected_generated_code:
+            self.assertIn(pattern, js_code)
+
     def test_hyphenated_package_imports_generate_correct_js(self) -> None:
         """Test string literal imports for hyphenated package names."""
         fixture_path = self.get_fixture_path("hyphenated_imports.jac")
@@ -386,6 +397,21 @@ def test_usage() {
             self.assert_balanced_syntax(js_code, temp_path)
         finally:
             os.unlink(temp_path)
+
+    def test_side_effect_imports_generate_correct_js(self) -> None:
+        """Test that side effect imports generate correct JavaScript import statements."""
+        fixture_path = self.get_fixture_path("side_effect_imports.jac")
+        js_code = self.compile_fixture_to_js(fixture_path)
+
+        imports = [
+            'import "mytest/side_effects";',
+            'import "./styles/side_effects.css";',
+            'import "bootstrap/dist/css/bootstrap.min.css";',
+        ]
+        for pattern in imports:
+            self.assertIn(pattern, js_code)
+
+        self.assert_balanced_syntax(js_code, fixture_path)
 
     def test_fstring_simple_variable_interpolation(self) -> None:
         """Test that f-strings with simple variable interpolation generate correct template literals."""

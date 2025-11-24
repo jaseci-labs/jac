@@ -1,19 +1,18 @@
 import bdb
 import json
-import time
+from types import FrameType
 from typing import Callable
 
 
 class DebuggerTerminated(Exception):
     """Custom exception for clean debugger termination"""
-    pass
 
 
 def fix_duplicate_graph_json(graph_json_str):
     graph_json_str = graph_json_str.strip()
     if not graph_json_str:
         graph_json_str = '{"nodes": [], "edges": []}'
-    
+
     try:
         graph = json.loads(graph_json_str)
     except json.JSONDecodeError as e:
@@ -41,14 +40,15 @@ def fix_duplicate_graph_json(graph_json_str):
     graph["edges"] = unique_edges
     return json.dumps(graph)
 
+
 class Debugger(bdb.Bdb):
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self.filepath: str = ""
         self.code: str = ""
-        self.curframe = None
-        self.breakpoint_buff = []
+        self.curframe: FrameType | None = None
+        self.breakpoint_buff: list[int] = []
         self._terminated = False  # Add termination flag
         self.total_lines = 0
 
@@ -71,7 +71,7 @@ class Debugger(bdb.Bdb):
         if self._terminated:
             # Raise exception to break out of execution cleanly
             raise DebuggerTerminated("Execution terminated by user")
-            
+
         if self.curframe is None:
             self.curframe = frame
             self.set_continue()
@@ -106,7 +106,7 @@ class Debugger(bdb.Bdb):
 
     def _send_graph(self) -> None:
         try:
-            graph_str = self.runeval("printgraph(format='json')")
+            graph_str = self.runeval("printgraph(format='json')")  # type: ignore[func-returns-value]  # typeshed#15049
             self.cb_graph(graph_str)
         except Exception as e:
             print(f"[Debugger] Error sending graph: {e}")
@@ -135,18 +135,20 @@ class Debugger(bdb.Bdb):
         self.set_continue()
 
     def do_step_over(self) -> None:
+        assert self.curframe is not None
         self.set_next(self.curframe)
 
     def do_step_into(self) -> None:
         self.set_step()
 
     def do_step_out(self) -> None:
+        assert self.curframe is not None
         self.set_return(self.curframe)
 
     def do_terminate(self) -> None:
         # Set termination flag first
         self._terminated = True
-        
+
         # Instead of calling set_quit() which fails in Pyodide,
         # we'll use a more direct approach to stop execution
         try:
@@ -159,6 +161,6 @@ class Debugger(bdb.Bdb):
         except Exception as e:
             # If even basic operations fail, just set the flag and return
             print(f"Debug termination handled: {e}")
-        
+
         # Always raise our custom exception to signal clean termination
         raise DebuggerTerminated("Debugger terminated by user")

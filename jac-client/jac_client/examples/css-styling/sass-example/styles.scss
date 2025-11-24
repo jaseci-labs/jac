@@ -1,0 +1,158 @@
+// Sass Variables
+$primary-gradient-start: #dbeafe;
+$primary-gradient-end: #e0e7ff;
+$white: #ffffff;
+$gray-800: #1f2937;
+$gray-600: #4b5563;
+$gray-500: #6b7280;
+$green-600: #16a34a;
+$red-500: #ef4444;
+$red-600: #dc2626;
+
+// Mixins
+@mixin flex-center {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+@mixin button-base {
+    color: $white;
+    font-weight: bold;
+    padding: 0.75rem 1.5rem;
+    border-radius: 0.5rem;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    transition: all 0.2s ease;
+    font-size: 1.25rem;
+    border: none;
+    cursor: pointer;
+
+    &:hover {
+        transform: scale(1.05);
+    }
+
+    &:active {
+        transform: scale(0.95);
+    }
+}
+
+@mixin gradient-divider {
+    height: 1px;
+    background: linear-gradient(to right, transparent, $gray-500, transparent);
+    margin-bottom: 1.5rem;
+}
+
+// Container
+.container {
+    min-height: 100vh;
+    background: linear-gradient(to bottom right, $primary-gradient-start, $primary-gradient-end);
+    @include flex-center;
+    padding: 1rem;
+}
+
+// Card
+.card {
+    background-color: $white;
+    border-radius: 1rem;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+    padding: 2rem;
+    max-width: 28rem;
+    width: 100%;
+}
+
+// Title
+.title {
+    font-size: 1.875rem;
+    font-weight: bold;
+    color: $gray-800;
+    text-align: center;
+    margin-bottom: 1.5rem;
+}
+
+// Divider
+.divider {
+    @include gradient-divider;
+}
+
+// Counter Section
+.counterSection {
+    text-align: center;
+    margin-bottom: 2rem;
+}
+
+.label {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: $gray-600;
+    margin-bottom: 0.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+// Count Display with dynamic colors
+.countDisplay {
+    font-size: 3.75rem;
+    font-weight: bold;
+    transition: color 0.3s ease;
+
+    &.zero {
+        color: $gray-800;
+    }
+
+    &.positive {
+        color: $green-600;
+    }
+
+    &.negative {
+        color: $red-600;
+    }
+}
+
+// Button Group
+.buttonGroup {
+    @include flex-center;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+// Buttons
+.btn {
+    @include button-base;
+
+    &Decrement {
+        background-color: $red-500;
+
+        &:hover {
+            background-color: darken($red-500, 10%);
+        }
+    }
+
+    &Reset {
+        background-color: $gray-500;
+
+        &:hover {
+            background-color: darken($gray-500, 10%);
+        }
+    }
+
+    &Increment {
+        background-color: $green-600;
+
+        &:hover {
+            background-color: darken($green-600, 10%);
+        }
+    }
+}
+
+// Hint
+.hint {
+    text-align: center;
+    font-size: 0.875rem;
+    color: $gray-500;
+    font-style: italic;
+}
+
+
+
+
+

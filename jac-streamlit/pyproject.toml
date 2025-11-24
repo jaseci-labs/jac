@@ -13,7 +13,7 @@ packages = [{include = "jaclang_streamlit"}]
 
 [tool.poetry.dependencies]
 python = "^3.12.0"
-jaclang = "^0.8.3"
+jaclang = "^0.9.0"
 streamlit = "^1.38.0"
 pydot = "^3.0.1"
 streamlit-agraph = "^0.0.45"

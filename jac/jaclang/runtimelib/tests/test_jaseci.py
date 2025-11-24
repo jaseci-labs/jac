@@ -1088,9 +1088,7 @@ class TestJaseciPlugin(TestCase):
             1,
             "First run should persist nodes to session file",
         )
-        self.assertEqual(
-            first_run_edges, 2, "Root should have 2 edges after first run"
-        )
+        self.assertEqual(first_run_edges, 2, "Root should have 2 edges after first run")
 
         ##############################################
         #    SECOND RUN - SHOULD REUSE, NOT          #

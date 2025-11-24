@@ -122,7 +122,7 @@ walker GraphBuilder {
 
 # ===== Edge Traversal Demonstration =====
 walker EdgeTraverser {
-    can traverse with `root entry {
+    can traverse_root with `root entry {
         print("\n=== Edge Traversal with Visit ===");
 
         # Build a small graph demonstrating typed edges
@@ -140,7 +140,7 @@ walker EdgeTraverser {
         visit [-->];
     }
 
-    can traverse with Person entry {
+    can traverse_person with Person entry {
         print(f"  Visited: {here.name}, age={here.age}");
     }
 }

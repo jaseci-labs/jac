@@ -84,6 +84,10 @@ class JacCmd:
                 build_folder = os.path.join(project_path, "build")
                 os.makedirs(build_folder, exist_ok=True)
 
+                # create assets folder for static assets (images, fonts, etc.)
+                assets_folder = os.path.join(project_path, "assets")
+                os.makedirs(assets_folder, exist_ok=True)
+
                 # Update package.json with Jac-specific configuration
                 package_data.update(
                     {
@@ -186,6 +190,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@jac-client/utils": path.resolve(__dirname, "src/client_runtime.js"),
+      "@jac-client/assets": path.resolve(__dirname, "src/assets"),
     },
   },
 });

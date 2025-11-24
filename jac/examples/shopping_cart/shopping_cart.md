@@ -21,23 +21,23 @@ Consider a typical shopping cart implementation with multiple item types requiri
 class Item:
     def calculate_shipping(self):
         raise NotImplementedError
-    
+
     def calculate_tax(self):
         raise NotImplementedError
-    
+
     def calculate_final_price(self):
         raise NotImplementedError
-    
+
     def apply_discount(self):
         raise NotImplementedError
 
 class Book(Item):
     def calculate_shipping(self):
         return 5.0
-    
+
     def calculate_tax(self):
         return self.price * 0.08
-    
+
     # ... more methods for each operation
 
 # Adding a new operation requires modifying ALL classes
@@ -225,7 +225,7 @@ impl apply_bulk_discount.apply {
 impl calculate_shipping.calculate {
     base_shipping = 5.0;  # Base shipping cost
     weight_cost = here.shipping.weight * 0.5;  # $0.5 per unit weight
-    
+
     if here.shipping.shipping_class == "express" {
         shipping_cost = (base_shipping + weight_cost) * 2;
     } elif here.shipping.shipping_class == "overnight" {
@@ -233,11 +233,11 @@ impl calculate_shipping.calculate {
     } else {
         shipping_cost = base_shipping + weight_cost;
     }
-    
+
     if here.shipping.is_fragile {
         shipping_cost += 10.0;  # Fragile handling fee
     }
-    
+
     report shipping_cost;
 }
 
@@ -316,7 +316,7 @@ with entry {
         quantity=2,
         tags=["wireless", "bluetooth", "audio"]
     );
-    
+
     shipping_info = Shipping(
         weight=0.8,
         dimensions=(8, 6, 3),
@@ -324,26 +324,26 @@ with entry {
         shipping_class="standard",
         origin_location="warehouse_a"
     );
-    
+
     discount_info = Discounts(
         discount_rate=0.10,
         eligible_coupons=["SAVE15", "WELCOME"],
         bulk_discount_threshold=5,
         bulk_discount_amount=25.0
     );
-    
+
     inventory_info = Inventory(
         stock_level=15,
         backorder_allowed=True,
         estimated_restock_date="2024-02-15"
     );
-    
+
     gift_info = Gift(
         is_gift_eligible=True,
         gift_wrap_price=5.99,
         gift_message_allowed=True
     );
-    
+
     metadata_info = Metadata(
         brand="AudioTech",
         model_number="AT-WH100",
@@ -351,38 +351,38 @@ with entry {
         echo_friendly=True,
         digital_download=False
     );
-    
+
     # Create item
     item_creator = create_item(
-        core_info, shipping_info, discount_info, 
+        core_info, shipping_info, discount_info,
         inventory_info, gift_info, metadata_info, 0.08
     );
     item_creator.visit(root);
-    
+
     # Get the created item
     item = [root -->][0];
-    
+
     # Use various operations
     price_walker = get_base_price();
     base_price = price_walker.visit(item);
-    
+
     shipping_walker = calculate_shipping();
     shipping_cost = shipping_walker.visit(item);
-    
+
     tax_walker = calculate_tax();
     tax_amount = tax_walker.visit(item);
-    
+
     final_price_walker = calculate_final_price();
     final_price = final_price_walker.visit(item);
-    
+
     # Check gift eligibility
     gift_walker = is_gift_eligible();
     is_gift = gift_walker.visit(item);
-    
+
     # Apply coupon
     coupon_walker = apply_coupon(coupon_code="SAVE15");
     coupon_discount = coupon_walker.visit(item);
-    
+
     # Display results
     print(f"Base Price: ${base_price:.2f}");
     print(f"Shipping Cost: ${shipping_cost:.2f}");

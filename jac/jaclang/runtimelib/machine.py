@@ -14,12 +14,15 @@ from collections.abc import Mapping, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import MISSING, dataclass, field
 from functools import wraps
+from http.server import BaseHTTPRequestHandler
 from inspect import getfile
 from logging import getLogger
+from pathlib import Path
 from typing import (
     Any,
     Callable,
     Coroutine,
+    Literal,
     Optional,
     ParamSpec,
     TYPE_CHECKING,
@@ -78,6 +81,10 @@ logger = getLogger(__name__)
 
 T = TypeVar("T")
 P = ParamSpec("P")
+JsonValue: TypeAlias = (
+    None | str | int | float | bool | list["JsonValue"] | dict[str, "JsonValue"]
+)
+StatusCode: TypeAlias = Literal[200, 201, 400, 401, 404, 503]
 
 
 class ExecutionContext:
@@ -684,7 +691,6 @@ class JacClassReferences:
     """Default Classes References."""
 
     TYPE_CHECKING: bool = TYPE_CHECKING
-    EdgeDir: TypeAlias = EdgeDir
     DSFunc: TypeAlias = ObjectSpatialFunction
 
     Obj: TypeAlias = Archetype
@@ -1482,6 +1488,48 @@ class JacAPIServer:
         return ModuleIntrospector(module_name, base_path)
 
 
+class JacResponseBuilder:
+    """Jac Response Builder."""
+
+    @staticmethod
+    def send_json(
+        handler: BaseHTTPRequestHandler, status: StatusCode, data: dict[str, JsonValue]
+    ) -> None:
+        """Send JSON response."""
+        # Raise not implemented error
+        raise NotImplementedError("send_json method is not implemented")
+
+    @staticmethod
+    def send_html(
+        handler: BaseHTTPRequestHandler, status: StatusCode, body: str
+    ) -> None:
+        """Send HTML response with CORS headers."""
+        # Raise not implemented error
+        raise NotImplementedError("send_html method is not implemented")
+
+    @staticmethod
+    def send_javascript(handler: BaseHTTPRequestHandler, code: str) -> None:
+        """Send JavaScript response."""
+        # Raise not implemented error
+        raise NotImplementedError("send_javascript method is not implemented")
+
+    @staticmethod
+    def _add_cors_headers(handler: BaseHTTPRequestHandler) -> None:
+        """Add CORS headers to response."""
+        # Raise not implemented error
+        raise NotImplementedError("_add_cors_headers method is not implemented")
+
+    @staticmethod
+    def send_static_file(
+        handler: BaseHTTPRequestHandler,
+        file_path: Path,
+        content_type: str | None = None,
+    ) -> None:
+        """Send static file response (images, fonts, etc.)."""
+        # Raise not implemented error
+        raise NotImplementedError("send_static_file method is not implemented")
+
+
 class JacByLLM:
     """Jac byLLM integration."""
 
@@ -1771,6 +1819,7 @@ class JacMachineInterface(
     JacClientBundle,
     JacAPIServer,
     JacByLLM,
+    JacResponseBuilder,
     JacUtils,
 ):
     """Jac Feature."""

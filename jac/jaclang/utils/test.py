@@ -76,6 +76,20 @@ class TestCase(_TestCase):
         )
         return os.path.abspath(file_path)
 
+    def passes_main_fixture_abs_path(self, file: str) -> str:
+        """Get absolute path of a fixture from compiler passes main fixtures directory."""
+        fixture_src = jaclang.__file__
+        file_path = os.path.join(
+            os.path.dirname(fixture_src),
+            "compiler",
+            "passes",
+            "main",
+            "tests",
+            "fixtures",
+            file,
+        )
+        return os.path.abspath(file_path)
+
 
 class TestCaseMicroSuite(TestCase):
     """Base test case for Jaseci."""

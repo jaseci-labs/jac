@@ -28,7 +28,9 @@ class TestClientCodegen(TestCase):
         prog = JacProgram()
         module = prog.compile(str(fixture))
 
-        self.assertTrue(module.gen.js.strip(), "Expected JavaScript output for client declarations")
+        self.assertTrue(
+            module.gen.js.strip(), "Expected JavaScript output for client declarations"
+        )
         self.assertIn("function component", module.gen.js)
         self.assertIn("__jacJsx(", module.gen.js)
 
@@ -51,7 +53,9 @@ class TestClientCodegen(TestCase):
         self.assertNotIn("ButtonProps", module.gen.client_manifest.params)
 
         # Bug fixes
-        self.assertIn('let component = new MyComponent({title: "Custom Title"});', module.gen.js)
+        self.assertIn(
+            'let component = new MyComponent({title: "Custom Title"});', module.gen.js
+        )
 
     def test_compilation_skips_python_stubs(self) -> None:
         """Test that client Python definitions are intentionally omitted."""
@@ -59,7 +63,9 @@ class TestClientCodegen(TestCase):
         prog = JacProgram()
         module = prog.compile(str(fixture))
 
-        self.assertTrue(module.gen.js.strip(), "Expected JavaScript output when emitting both")
+        self.assertTrue(
+            module.gen.js.strip(), "Expected JavaScript output when emitting both"
+        )
         self.assertIn("function component", module.gen.js)
         self.assertIn("__jacJsx(", module.gen.js)
 
@@ -108,14 +114,22 @@ cl def check_types() {
             prog = JacProgram()
             module = prog.compile(f.name)
 
-            self.assertTrue(module.gen.js.strip(), "Expected JavaScript output for client code")
+            self.assertTrue(
+                module.gen.js.strip(), "Expected JavaScript output for client code"
+            )
 
             # Verify type() was converted to typeof
-            self.assertIn("typeof", module.gen.js, "type() should be converted to typeof")
-            self.assertEqual(module.gen.js.count("typeof"), 4, "Should have 4 typeof expressions")
+            self.assertIn(
+                "typeof", module.gen.js, "type() should be converted to typeof"
+            )
+            self.assertEqual(
+                module.gen.js.count("typeof"), 4, "Should have 4 typeof expressions"
+            )
 
             # Verify no type() calls remain
-            self.assertNotIn("type(", module.gen.js, "No type() calls should remain in JavaScript")
+            self.assertNotIn(
+                "type(", module.gen.js, "No type() calls should remain in JavaScript"
+            )
 
             # Verify the typeof expressions are correctly formed
             self.assertIn("typeof x", module.gen.js)
@@ -128,7 +142,7 @@ cl def check_types() {
 
     def test_spawn_operator_supports_positional_and_spread(self) -> None:
         """Ensure spawn lowering handles positional args and **kwargs."""
-        test_code = '''walker MixedWalker {
+        test_code = """walker MixedWalker {
     has label: str;
     has count: int;
     has meta: dict = {};
@@ -142,7 +156,7 @@ cl def spawn_client() {
     let spread = MixedWalker("Second", 1, **extra) spawn root;
     return {"positional": positional, "spread": spread};
 }
-'''
+"""
 
         with NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as f:
             f.write(test_code)
