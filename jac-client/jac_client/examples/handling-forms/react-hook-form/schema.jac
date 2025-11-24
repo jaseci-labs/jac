@@ -12,22 +12,22 @@ cl {
         "password": z.string().min(6, "Password must be at least 6 characters long"),
         "confirmPassword": z.string().min(6, "Password must be at least 6 characters long"),
         "age": z.number().min(18, "You must be at least 18 years old"),
-        "agreeToTerms": z.boolean("You must agree to the terms and conditions")
-        # .refine(lambda val: bool -> bool {
-        #     console.log("Agree to terms value:", val);
-        #     return val == true;
-        # }, {
-        #     "error": "You must agree to the terms and conditions"
-        # })
+        "agreeToTerms": z.boolean({
+        "required_error": "You must agree to the terms and conditions",
+        "invalid_type_error": "You must agree to the terms and conditions",
+      }).refine(lambda val: bool -> bool {
+            console.log("Agree to terms value:", val);
+            return val == true;
+        }, {
+            "message": "You must agree to the terms and conditions"
+        })
 
-    });
-    # .refine(lambda data: dict -> bool {
-    #         console.log("Refining with data:", data);
-    #         return data.password == data.confirmPassword;
-    #     }, {
-    #         "error": "Passwords do not match",
-    #         "path": ["confirmPassword"]
-    #     });
+    }).refine(lambda data: dict -> bool {
+            return data.password == data.confirmPassword;
+        }, {
+            "message": "Passwords do not match",
+            "path": ["confirmPassword"]
+        });
 
     # Login Schema
     let _loginSchema = z.object({
