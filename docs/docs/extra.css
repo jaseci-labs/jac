@@ -923,14 +923,3 @@ body[data-domain="https://www.jac-lang.org/"] .feedback-container {
 .youtube-video-link:hover::before {
     transform: translate(-40%, -50%) scale(1.1);
 }
-
-@media (max-width: 768px) {
-    .youtube-video-link::after {
-        width: 60px;
-        height: 60px;
-    }
-
-    .youtube-video-link::before {
-        border-width: 12px 0 12px 20px;
-    }
-}
