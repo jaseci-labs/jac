@@ -103,6 +103,7 @@ nav:
       - Lifecycle Hooks: "jac-client/lifecycle-hooks.md"
       - Advanced State: "jac-client/advanced-state.md"
       - Imports: "jac-client/imports.md"
+      - File System: "jac-client/file-system/intro.md"
       - Handling Assets: "jac-client/asset-serving/intro.md"
     - Tooling:
       - Jac Debugger: "learn/debugger.md"

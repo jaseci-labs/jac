@@ -2,16 +2,26 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking_changes.md) page.
 
-## jaclang 0.9.0 (Unreleased)
+## jaclang 0.9.2 (Unreleased)
+
+## jaclang 0.9.1 (Latest Release)
+
+-**Side effect imports supported**: side effect imports supported which will help to inject css.
+- **Plugin for sending static files**: Added extensible plugin system for sending static files, enabling custom static file serving strategies and integration with various storage backends.
+- **Type Checking Enhancements**:
+  - Added type checking support for object spatial codes including the connect operator
+  - Added type checking support for assign comprehensions and filter comprehensions
+  - Improved type inference from return statements
+- **LSP Improvements**: Added "Go to Definition" support for `here` and `visitor` keywords in the language server
+
+## jaclang 0.9.0
 
 - **Generics TypeChecking**: Type checking for generics in vscode extension has implemented, i.e. `dict[int, str]` can be now checked by the lsp.
 - **Plugin Architecture for Server Rendering**: Added extensible plugin system for server-side page rendering, allowing custom rendering engines and third-party templating integration with transform, cache, and customization capabilities.
 - **Improvements to Runtime Error reporting**: Made various improvements to runtime error CLI reporting.
 - **Node Spawn Walker supported**: Spawning walker on a node with `jac serve` is supported.
--**Side effect imports supported**: side effect imports supported which will help to inject css.
-- **Plugin for sending static files**: Added extensible plugin system for sending static files, enabling custom static file serving strategies and integration with various storage backends.
 
-## jaclang 0.8.10 (Latest Release)
+## jaclang 0.8.10
 
 - **Frontend + Backend with `cl` Keyword (Experimental)**: Introduced a major experimental feature enabling unified frontend and backend development in a single Jac codebase. The new `cl` (client) keyword marks declarations for client-side compilation, creating a dual compilation pipeline that generates both Python (server) and pure JavaScript (client) code. Includes full JSX language integration for building modern web UIs, allowing developers to write React-style components directly in Jac with seamless interoperability between server and client code.
 - **Optional Ability Names**: Ability declarations now support optional names, enabling anonymous abilities with event clauses (e.g., `can with entry { ... }`). When a name is not provided, the compiler automatically generates a unique internal name based on the event type and source location. This feature simplifies walker definitions by reducing boilerplate for simple entry/exit abilities.
