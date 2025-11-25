@@ -7,10 +7,13 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.2.1 (Latest Release)
 
-<!-- css support: css doc link -->
+- **CSS File Support**: Added full support for CSS in separate files, enabling cleaner styling structure. Expanded styling options with documented approaches for flexible UI customization. [Documentation](https://docs.jaseci.org/jac-client/styling/intro/)
+
+- **Static Asset Serving**: Introduced static asset serving, allowing images, fonts, and other files to be hosted easily. Updated documentation with step-by-step guides for implementation. [Documentation](https://docs.jaseci.org/jac-client/asset-serving/intro/)
+
+- **Architecture Documentation**: Added comprehensive architecture documentation explaining jac-client's internal design and structure. [View Architecture](https://github.com/jaseci-labs/jaseci/blob/main/jac-client/architecture.md)
 
 - **.cl File Support**: Added support for `.cl` files to separate client code from Jac code. Files with the `.cl.jac` extension can now be used to define client-side logic, improving organization and maintainability of Jac projects.
-<!-- link to the cl file docs -->
 
 ## jac-client 0.2.0
 
