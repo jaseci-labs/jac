@@ -83,7 +83,7 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         if fullname == "byllm" or fullname.startswith("byllm."):
             # Check if byllm is actually installed by looking for it in sys.path
             # We use importlib.util.find_spec with a custom path to avoid recursion
-
+            spec = None
             for finder in sys.meta_path:
                 if finder is self:
                     continue
@@ -93,7 +93,7 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
                         spec = finder.find_spec(fullname, path, target)
                         if spec is not None:
                             JacMetaImporter.byllm_found = True
-                            break
+                            return spec
                     except (ImportError, AttributeError):
                         continue
 
