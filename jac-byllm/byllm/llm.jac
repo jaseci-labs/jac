@@ -28,11 +28,11 @@ with entry {
     os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True";
 }
 
-import from byllm.types { 
-    CompletionResult, 
-    LiteLLMMessage, 
-    MockToolCall, 
-    ToolCall 
+import from byllm.types {
+    CompletionResult,
+    LiteLLMMessage,
+    MockToolCall,
+    ToolCall
 }
 
 glob DEFAULT_BASE_URL = "http://localhost:4000";
