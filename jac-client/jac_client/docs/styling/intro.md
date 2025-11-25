@@ -4,7 +4,7 @@ This guide covers all styling approaches available in Jac web applications. Each
 
 ## Quick Navigation
 
-### ✅ Available Examples
+###  Available Examples
 
 | Styling Approach | Documentation | Example Location |
 |------------------|---------------|------------------|
@@ -182,7 +182,7 @@ jac serve app.jac
 - [Lifecycle Hooks](../lifecycle-hooks.md)
 - [Complete Example Guide](../guide-example/intro.md)
 
-> 💡 **Upcoming Styling Patterns**
+>  **Upcoming Styling Patterns**
 
 <div style="border: 1.5px solid #ffa500; background: #fff4cc; color: #333; padding: 1.2em 1.4em; border-radius: 8px; margin: 2em 0;">
 

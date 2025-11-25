@@ -1,12 +1,12 @@
 # Step 9: Adding Authentication
 
-> **💡 Quick Tip:** Each step has two parts. **Part 1** shows you what to build. **Part 2** explains why it works. Want to just build? Skip all Part 2 sections!
+> ** Quick Tip:** Each step has two parts. **Part 1** shows you what to build. **Part 2** explains why it works. Want to just build? Skip all Part 2 sections!
 
 In this step, you'll add user authentication so each person has their own private todos!
 
 ---
 
-## 🏗️ Part 1: Building the App
+##  Part 1: Building the App
 
 ### Step 9.1: Import Authentication Functions
 
@@ -313,11 +313,11 @@ def TodosPage() -> any {
 
 ---
 
-**⏭️ Want to skip the theory?** Jump to [Step 10: Routing](./step-10-routing.md)
+**⏭ Want to skip the theory?** Jump to [Step 10: Routing](./step-10-routing.md)
 
 ---
 
-## 💡 Part 2: Understanding the Concepts
+##  Part 2: Understanding the Concepts
 
 ### What is Authentication?
 
@@ -506,21 +506,21 @@ await jacLogin("alice", "password123");
 
 ---
 
-## ✅ What You've Learned
+##  What You've Learned
 
-- ✅ What authentication is and why it's important
-- ✅ Using `jacSignup` to create accounts
-- ✅ Using `jacLogin` to log users in
-- ✅ Using `jacLogout` to log users out
-- ✅ Using `jacIsLoggedIn` to check auth status
-- ✅ Creating login and signup forms
-- ✅ Handling form submission
-- ✅ Protecting pages with auth checks
-- ✅ User isolation (each user sees only their data)
+-  What authentication is and why it's important
+-  Using `jacSignup` to create accounts
+-  Using `jacLogin` to log users in
+-  Using `jacLogout` to log users out
+-  Using `jacIsLoggedIn` to check auth status
+-  Creating login and signup forms
+-  Handling form submission
+-  Protecting pages with auth checks
+-  User isolation (each user sees only their data)
 
 ---
 
-## 🐛 Common Issues
+##  Common Issues
 
 ### Issue: "Signup failed"
 
@@ -552,7 +552,7 @@ await jacLogin("alice", "password123");
 
 ---
 
-## 🎯 Quick Exercise
+##  Quick Exercise
 
 Try adding a "Remember me" message:
 
@@ -577,10 +577,10 @@ def LoginPage() -> any {
 
 ---
 
-## ➡️ Next Step
+##  Next Step
 
 Great! You now have authentication, but you're still showing only one page at a time.
 
 In the next step, we'll add **routing** so users can navigate between login, signup, and todos pages!
 
-👉 **[Continue to Step 10: Routing](./step-10-routing.md)**
+ **[Continue to Step 10: Routing](./step-10-routing.md)**

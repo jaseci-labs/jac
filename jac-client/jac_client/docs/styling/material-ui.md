@@ -252,21 +252,21 @@ cl import from "@mui/icons-material/Edit" { default as EditIcon }
 
 ## Advantages
 
-- ✅ **Pre-built, accessible components**
-- ✅ **Consistent Material Design**
-- ✅ **Comprehensive component library**
-- ✅ **Built-in theming system**
-- ✅ **TypeScript support**
-- ✅ **Active community** and documentation
-- ✅ **Production-ready** components
+-  **Pre-built, accessible components**
+-  **Consistent Material Design**
+-  **Comprehensive component library**
+-  **Built-in theming system**
+-  **TypeScript support**
+-  **Active community** and documentation
+-  **Production-ready** components
 
 ## Limitations
 
-- ❌ **Larger bundle size**
-- ❌ **Material Design aesthetic** (may not fit all brands)
-- ❌ **Learning curve** for component API
-- ❌ **Less flexibility** than custom CSS
-- ❌ **Requires JavaScript** for styling
+-  **Larger bundle size**
+-  **Material Design aesthetic** (may not fit all brands)
+-  **Learning curve** for component API
+-  **Less flexibility** than custom CSS
+-  **Requires JavaScript** for styling
 
 ## When to Use
 
