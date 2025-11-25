@@ -5,6 +5,7 @@ Uses Starlette + Uvicorn to serve files with security headers,
 and watchdog to watch file changes and rebuild MkDocs site.
 """
 
+import asyncio
 import os
 import subprocess
 import threading
@@ -13,13 +14,28 @@ from typing import Awaitable, Callable, Optional
 from starlette.applications import Starlette
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import Response, StreamingResponse
 from starlette.staticfiles import StaticFiles
 
 import uvicorn
 
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
+
+# Global queue for live reload events
+reload_queue = asyncio.Queue()
+
+# Script to inject into HTML pages for live reload
+LIVE_RELOAD_SCRIPT = """
+<script>
+const evtSource = new EventSource('/events');
+evtSource.onmessage = function(event) {
+    if (event.data === 'reload') {
+        location.reload();
+    }
+};
+</script>
+"""
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -32,6 +48,28 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response: Response = await call_next(request)
         response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
         response.headers["Cross-Origin-Embedder-Policy"] = "require-corp"
+        return response
+
+
+class LiveReloadMiddleware(BaseHTTPMiddleware):
+    """Middleware to inject live reload script into HTML pages."""
+
+    async def dispatch(
+        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        """Inject live reload script into HTML responses."""
+        response = await call_next(request)
+        if response.media_type == "text/html":
+            body = b""
+            async for chunk in response.body_iterator:
+                body += chunk
+            html = body.decode("utf-8")
+            # Inject the script before </body>
+            if "</body>" in html:
+                html = html.replace("</body>", LIVE_RELOAD_SCRIPT + "</body>")
+            else:
+                html += LIVE_RELOAD_SCRIPT
+            response = Response(html, media_type="text/html")
         return response
 
 
@@ -106,6 +144,7 @@ class DebouncedRebuildHandler(FileSystemEventHandler):
             print("\nRebuilding MkDocs site...")
             subprocess.run(["mkdocs", "build"], check=True, cwd=self.root_dir)
             print("Rebuild complete.")
+            reload_queue.put_nowait("reload")
         except subprocess.CalledProcessError as e:
             print(f"Rebuild failed: {e}")
         except FileNotFoundError:
@@ -140,10 +179,11 @@ def serve_with_watch() -> None:
 
     print("Initial build of MkDocs site...")
     subprocess.run(["mkdocs", "build"], check=True, cwd=root_dir)
+    reload_queue.put_nowait("reload")
 
     # Set up file watcher
     event_handler = DebouncedRebuildHandler(
-        root_dir=root_dir, debounce_seconds=3600, ignore_paths=ignore_paths
+        root_dir=root_dir, debounce_seconds=1, ignore_paths=ignore_paths
     )
     observer = Observer()
     observer.schedule(event_handler, root_dir, recursive=True)
@@ -162,11 +202,26 @@ def serve_with_watch() -> None:
     # Create Starlette app and add middleware + static files
     app = Starlette()
     app.add_middleware(SecurityHeadersMiddleware)
+    app.add_middleware(LiveReloadMiddleware)
 
     # Add health check endpoint
     @app.route("/health")
     async def health_check(request: Request) -> Response:
         return Response("healthy\n", media_type="text/plain")
+
+    # Add Server-Sent Events endpoint for live reload
+    @app.route("/events")
+    async def events(request: Request) -> StreamingResponse:
+        async def event_generator():
+            yield "data: connected\n\n"
+            while True:
+                try:
+                    message = await asyncio.wait_for(reload_queue.get(), timeout=30)
+                    yield f"data: {message}\n\n"
+                except asyncio.TimeoutError:
+                    yield "data: ping\n\n"
+
+        return StreamingResponse(event_generator(), media_type="text/event-stream")
 
     app.mount("/", StaticFiles(directory=site_dir, html=True), name="static")
 
