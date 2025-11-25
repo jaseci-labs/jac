@@ -8,9 +8,11 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 -**Side effect imports supported**: side effect imports supported which will help to inject css.
 - **Plugin for sending static files**: Added extensible plugin system for sending static files, enabling custom static file serving strategies and integration with various storage backends.
-<!-- typecechking support : now type checkiing is supported in object spatial codes - connect operator  -->
-<!-- typecechking support : now type checkiing is supported for , assign compr, filter compr, infer the types from return statement  -->
-<!-- lsp : go to defitniion support for here, visitor keywords -->
+- **Type Checking Enhancements**:
+  - Added type checking support for object spatial codes including the connect operator
+  - Added type checking support for assign comprehensions and filter comprehensions
+  - Improved type inference from return statements
+- **LSP Improvements**: Added "Go to Definition" support for `here` and `visitor` keywords in the language server
 
 ## jaclang 0.9.0
 
