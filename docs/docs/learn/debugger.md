@@ -60,13 +60,9 @@ Steps:
 3. Search for **"breakpoints"**
 4. Enable **Debug: Allow Breakpoints Everywhere**
 
-<iframe width="640" height="360"
-    src="https://www.youtube.com/embed/2V02bv7k1UA"
-    title="YouTube video player"
-    frameborder="0"
-    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-    allowfullscreen>
-</iframe>
+<a href="https://www.youtube.com/watch?v=2V02bv7k1UA" target="_blank" class="youtube-video-link">
+  <img src="https://img.youtube.com/vi/2V02bv7k1UA/maxresdefault.jpg" alt="YouTube Tutorial: Enable Debug Breakpoints Everywhere">
+</a>
 
 ### Jac Extension setup
 
@@ -100,13 +96,9 @@ This ensures you have the minimum tools needed for debugging.
 3. Select **Jac Debug**
 4. VS Code generates the file automatically
 
-<iframe width="640" height="360"
-    src="https://www.youtube.com//embed/5zaR_HQzNU4"
-    title="YouTube video player"
-    frameborder="0"
-    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-    allowfullscreen>
-</iframe>
+<a href="https://www.youtube.com/watch?v=5zaR_HQzNU4" target="_blank" class="youtube-video-link">
+  <img src="https://img.youtube.com/vi/5zaR_HQzNU4/maxresdefault.jpg" alt="YouTube Tutorial: Create launch.json for Jac Debugging">
+</a>
 
 
 ## Debugger Tutorial
@@ -210,13 +202,9 @@ You will see a side panel like this:
 3. Click Run and Debug
 3. Step through the program each created node/edge appears in real time
 
-<iframe width="560" height="315"
-    src="https://www.youtube.com/embed/9bdZn4Zvf9M?si=da8VXiIYaKK1hxMo"
-    title="YouTube video player"
-    frameborder="0"
-    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin"
-    allowfullscreen>
-</iframe>
+<a href="https://www.youtube.com/watch?v=9bdZn4Zvf9M" target="_blank" class="youtube-video-link">
+  <img src="https://img.youtube.com/vi/9bdZn4Zvf9M/maxresdefault.jpg" alt="YouTube Tutorial: Watch Graph Build in Real Time">
+</a>
 
 As shown in the video, these nodes will show their values and can be dragged around to better visualize the data.
 
