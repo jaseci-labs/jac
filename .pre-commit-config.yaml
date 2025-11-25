@@ -20,9 +20,19 @@ repos:
     rev: 7.3.0
     hooks:
       - id: flake8
+        additional_dependencies:
+          [
+            pep8-naming,
+            # flake8_import_order,
+            # flake8_comprehensions,
+            # flake8_bugbear,
+            # flake8_annotations,
+            # flake8_simplify,
+          ]
         exclude: |
             (?x)(
-                # TODO
+                ^jac/jaclang/vendor/|
+                ^jac/jaclang/compiler/larkparse/jac_parser\.py$|
                 ^jac/examples/|
                 /fixtures/|
                 ^$

@@ -61,22 +61,23 @@ nav:
         # - Build your own byllm plugin: "learn/jac-byllm/creating_byllm_plugins.md". # Needs review and update
         - LiteLLM Proxy Server: "learn/jac-byllm/litellm_proxy.md"
     - Scale-Native Programming:
-      - "learn/jac-cloud/introduction.md"
-      - "learn/jac-cloud/quickstart.md"
-      - Core Features:
-        - "learn/jac-cloud/permission.md"
-        - "learn/jac-cloud/logging.md"
-        - "learn/jac-cloud/env_vars.md"
-        - "learn/jac-cloud/sso_implementation.md"
-      - Real-time & Async:
-        - "learn/jac-cloud/websocket.md"
-        - "learn/jac-cloud/scheduler.md"
-        - "learn/jac-cloud/async_walker.md"
-        - "learn/jac-cloud/webhook.md"
-      - Operations:
-        - "learn/jac-cloud/deployment.md"
-        - "learn/jac-cloud/utilities.md"
       - Jac Lens: "learn/jac-lens.md"
+      - (Deprecated) Jac-Cloud:
+        - "learn/jac-cloud/introduction.md"
+        - "learn/jac-cloud/quickstart.md"
+        - Core Features:
+          - "learn/jac-cloud/permission.md"
+          - "learn/jac-cloud/logging.md"
+          - "learn/jac-cloud/env_vars.md"
+          - "learn/jac-cloud/sso_implementation.md"
+        - Real-time & Async:
+          - "learn/jac-cloud/websocket.md"
+          - "learn/jac-cloud/scheduler.md"
+          - "learn/jac-cloud/async_walker.md"
+          - "learn/jac-cloud/webhook.md"
+        - Operations:
+          - "learn/jac-cloud/deployment.md"
+          - "learn/jac-cloud/utilities.md"
     - Jac Client:
       - Getting Started: "jac-client/README.md"
       - Step-by-Step Tutorial:
@@ -186,7 +187,8 @@ nav:
     - Contributing: "internals/contrib.md"
     - Release Notes:
       - Jaclang: "communityhub/release_notes/jaclang.md"
-      - Jac-Cloud: "communityhub/release_notes/jac-cloud.md"
+      - Jac-Scale: "communityhub/release_notes/jac-scale.md"
+      - (Deprecated) Jac-Cloud: "communityhub/release_notes/jac-cloud.md"
       - byLLM: "communityhub/release_notes/byllm.md"
       - Jac-Client: "communityhub/release_notes/jac-client.md"
     - Breaking Changes: "communityhub/breaking_changes.md"
