@@ -1,5 +1,9 @@
 # Quick Start Guide
 
+> This guide provides a quick introduction to installing and using byLLM. For detailed usage instructions, click the button below.
+
+[Full byLLM Usage Guide](https://www.jac-lang.org/learn/jac-byllm/usage/){: .md-button }
+
 ## Installation
 
 To get started with byLLM, install the base package:
@@ -94,5 +98,7 @@ name = "Albert Einstein"
 result = get_personality(name)
 print(f"{result} personality detected for {name}")
 ```
+
+[Full byLLM Usage Guide](https://www.jac-lang.org/learn/jac-byllm/usage/){: .md-button }
 
 To learn more about usage of `by` in python, please refer to [byLLM python Interface](./python_integration.md).

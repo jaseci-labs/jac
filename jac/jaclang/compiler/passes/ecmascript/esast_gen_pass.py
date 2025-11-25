@@ -281,13 +281,29 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
 
     def _resolve_expr_symbol(self, expr: uni.Expr) -> Optional[uni.Symbol]:
         """Resolve a symbol from an expression (handles dotted access)."""
-        if isinstance(expr, uni.AstSymbolNode):
+        if isinstance(expr, uni.AstSymbolNode) and expr.sym:
             return expr.sym
         if isinstance(expr, uni.AtomTrailer):
             attrs = expr.as_attr_list
             if attrs:
                 return attrs[-1].sym
+        # Fallback: try searching in main module
+        # if not found in .cl file
+        # TODO: improve cross-module symbol resolution
+        # (.impl, .cl files)
+        if sym := self.search_sym_in_main_mod(expr):
+            return sym
         return None
+
+    def search_sym_in_main_mod(self, expr: uni.Expr) -> Optional[uni.Symbol]:
+        """Search for a symbol in the main module."""
+        if not isinstance(expr, uni.Name):
+            return None
+        return self.get_main_mod().lookup(expr.sym_name)
+
+    def get_main_mod(self) -> uni.Module:
+        """Get the main module of the program."""
+        return self.prog.mod.main
 
     def _collect_walker_field_names(
         self, walker_symbol: Optional[uni.Symbol]
@@ -534,6 +550,13 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
         # Add imports
         body.extend(self.imports)
 
+        # add imports from the annex modules
+        for mod in node.impl_mod:
+            if mod.gen.es_ast and isinstance(mod.gen.es_ast, es.Program):
+                for import_decl in mod.gen.es_ast.body:
+                    if isinstance(import_decl, es.ImportDeclaration):
+                        body.append(import_decl)
+
         # Insert hoisted declarations (e.g., walrus-introduced identifiers)
         scope = self.scope_map.get(node)
         if scope and scope.hoisted:
@@ -609,7 +632,6 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
             import_key = node.from_loc.dot_path_str
             self.client_manifest.imports[import_key] = resolved_path
             self.client_manifest.has_client = True
-
             # Convert Jac-style path to JavaScript-style path
             js_import_path = convert_to_js_import_path(node.from_loc.dot_path_str)
         elif not node.from_loc and node.items and node.is_client_decl:
@@ -692,14 +714,6 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
         )
         self.imports.append(import_decl)
         node.gen.es_ast = []  # Imports are added to module level
-
-    def exit_module_path(self, node: uni.ModulePath) -> None:
-        """Process module path."""
-        node.gen.es_ast = None
-
-    def exit_module_item(self, node: uni.ModuleItem) -> None:
-        """Process module item."""
-        node.gen.es_ast = None
 
     # Declarations
     # ============

@@ -5,7 +5,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## byllm 0.4.6 (Unreleased)
 
 - **byLLM In-Memory Images**: byLLM Image class now accepts in-memory and path-like inputs (bytes/bytearray/memoryview, BytesIO/file-like, PIL.Image, Path), plus data/gs/http(s) URLs; auto-detects MIME (incl. WEBP), preserves URLs, and reads streams.
-
+- **Custom Model Declaration**: Custom model interfaces can be defined by using the `BaseLLM` class that can be imported form `byllm.lib`. A guide for using this feature is added to [documentation](https://docs.jaseci.org/learn/jac-byllm/create_own_lm/).
 
 ## byllm 0.4.5 (Latest Release)
 

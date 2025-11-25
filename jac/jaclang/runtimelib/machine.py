@@ -1496,28 +1496,32 @@ class JacResponseBuilder:
         handler: BaseHTTPRequestHandler, status: StatusCode, data: dict[str, JsonValue]
     ) -> None:
         """Send JSON response."""
-        # Raise not implemented error
-        raise NotImplementedError("send_json method is not implemented")
+        from jaclang.runtimelib.server import ResponseBuilder
+
+        ResponseBuilder.send_json(handler, status, data)
 
     @staticmethod
     def send_html(
         handler: BaseHTTPRequestHandler, status: StatusCode, body: str
     ) -> None:
         """Send HTML response with CORS headers."""
-        # Raise not implemented error
-        raise NotImplementedError("send_html method is not implemented")
+        from jaclang.runtimelib.server import ResponseBuilder
+
+        ResponseBuilder.send_html(handler, status, body)
 
     @staticmethod
     def send_javascript(handler: BaseHTTPRequestHandler, code: str) -> None:
         """Send JavaScript response."""
-        # Raise not implemented error
-        raise NotImplementedError("send_javascript method is not implemented")
+        from jaclang.runtimelib.server import ResponseBuilder
+
+        ResponseBuilder.send_javascript(handler, code)
 
     @staticmethod
-    def _add_cors_headers(handler: BaseHTTPRequestHandler) -> None:
-        """Add CORS headers to response."""
-        # Raise not implemented error
-        raise NotImplementedError("_add_cors_headers method is not implemented")
+    def send_css(handler: BaseHTTPRequestHandler, css_code: str) -> None:
+        """Send CSS response."""
+        from jaclang.runtimelib.server import ResponseBuilder
+
+        ResponseBuilder.send_css(handler, css_code)
 
     @staticmethod
     def send_static_file(
