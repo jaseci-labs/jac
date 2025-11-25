@@ -24,8 +24,9 @@ The MTP concept is implemented in Jac-lang through the **byLLM** plugin, which i
 
 <div align="left" style="margin-top: 1em;">
     <a href="https://arxiv.org/abs/2405.08965" class="md-button" style="display: inline-block; margin-right: 10px;">MTP Research</a>
-    <a href="https://www.jac-lang.org/learn/jac-byllm/quickstart/" class="md-button" style="display: inline-block; margin-right: 10px;">Get Started with MTP</a>
-    <a href="https://github.com/jaseci-labs/jaseci/tree/main/jac-byllm" class="md-button" style="display: inline-block;">GitHub</a>
+    <a href="https://www.jac-lang.org/learn/jac-byllm/quickstart/" class="md-button" style="display: inline-block; margin-right: 10px;">Get Started with byLLM</a>
+    <a href="https://github.com/jaseci-labs/jaseci/tree/main/jac-byllm" class="md-button" style="display: inline-block; margin-right: 10px;">GitHub</a>
+    <a href="https://discord.gg/6j3QNdtcN6" class="md-button" style="display: inline-block; margin-right: 10px;">Discord</a>
 </div>
 
 <!-- ![](./assets/byLLM_name_logo.png) -->
@@ -205,7 +206,7 @@ Please see our [Contributing Guide](https://www.jac-lang.org/internals/contrib/)
 
 Join our vibrant community:
 
-[:simple-discord:  Discord Server](https://discord.gg/6j3QNdtcN6){ .md-button .md-icon--discord }
+[Discord Server](https://discord.gg/6j3QNdtcN6){ .md-button .md-icon--discord }
 
 <hr />
 
