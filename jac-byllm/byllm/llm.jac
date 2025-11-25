@@ -18,7 +18,6 @@ import from byllm.mtir { MTIR }
 import litellm;
 import from litellm._logging { _disable_debugging }
 import from openai { OpenAI }
-import from byllm.types { CompletionResult, LiteLLMMessage, MockToolCall, ToolCall }
 
 # This will prevent LiteLLM from fetching pricing information from
 # the bellow URL every time we import the litellm and use a cached
@@ -27,6 +26,13 @@ import from byllm.types { CompletionResult, LiteLLMMessage, MockToolCall, ToolCa
 
 with entry {
     os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True";
+}
+
+import from byllm.types { 
+    CompletionResult, 
+    LiteLLMMessage, 
+    MockToolCall, 
+    ToolCall 
 }
 
 glob DEFAULT_BASE_URL = "http://localhost:4000";
@@ -250,7 +256,7 @@ obj Model(BaseLLM) {
 """LLM Connector for a mock LLM service that simulates responses."""
 obj MockLLM(BaseLLM) {
     """Initialize the MockLLM connector."""
-    def init(model_name: str, **kwargs: object) -> str {
+    def init(model_name: str, **kwargs: object) -> None {
         super.init(model_name, **kwargs);
     }
 
