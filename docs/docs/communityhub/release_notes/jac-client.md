@@ -2,7 +2,21 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Client**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking_changes.md) page.
 
-## jac-client 0.1.0 (Unreleased)
+
+## jac-client 0.2.2 (Unreleased)
+
+## jac-client 0.2.1 (Latest Release)
+
+<!-- css support: css doc link -->
+
+- **.cl File Support**: Added support for `.cl` files to separate client code from Jac code. Files with the `.cl.jac` extension can now be used to define client-side logic, improving organization and maintainability of Jac projects.
+<!-- link to the cl file docs -->
+
+## jac-client 0.2.0
+
+- **Constructor Calls Supported**: Constructor calls properly supported by automatically generating `new` keyword.
+
+## jac-client 0.1.0
 
 - **Client Bundler Plugin Support**: Extended the existing `pluggy`-based plugin architecture to support custom client bundling implementations. Two static methods were added to `JacMachineInterface` to enable client bundler plugins:
   - `get_client_bundle_builder()`: Returns the client bundle builder instance, allowing plugins to provide custom bundler implementations
@@ -14,9 +28,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 - **PYPI Package Release**: First stable release (v0.1.0) now available on PyPI. Install via `pip install jac-client` to get started with Vite-powered client bundling for your Jac projects.
 
-- **Constructor Calls Supported**: Constructor calls properly supported by automatically generating `new` keyword.
 
-## jaclang 0.8.10 / jac-cloud 0.2.10 / byllm 0.4.5 (Latest Release)
+## jaclang 0.8.10 / jac-cloud 0.2.10 / byllm 0.4.5
 
 ## jaclang 0.8.9 / jac-cloud 0.2.9 / byllm 0.4.4
 
