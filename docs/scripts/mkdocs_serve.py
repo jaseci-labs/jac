@@ -23,7 +23,11 @@ from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
 # Global queue for live reload events
-reload_queue = asyncio.Queue()
+reload_queue: asyncio.Queue[str] = asyncio.Queue()
+
+# Global flag to indicate if rebuild is in progress
+rebuild_in_progress = False
+rebuild_lock = threading.Lock()
 
 # Script to inject into HTML pages for live reload
 LIVE_RELOAD_SCRIPT = """
@@ -36,6 +40,72 @@ evtSource.onmessage = function(event) {
 };
 </script>
 """
+
+
+class RebuildCheckMiddleware(BaseHTTPMiddleware):
+    """Middleware to check if rebuild is in progress and show a loading page."""
+
+    async def dispatch(
+        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        """Show loading page if rebuild is in progress."""
+        # Skip check for events and health endpoints
+        if request.url.path in ["/events", "/health"]:
+            return await call_next(request)
+
+        if rebuild_in_progress:
+            return Response(
+                """
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Rebuilding...</title>
+                    <meta http-equiv="refresh" content="2">
+                    <style>
+                        body {
+                            font-family: system-ui, -apple-system, sans-serif;
+                            display: flex;
+                            justify-content: center;
+                            align-items: center;
+                            height: 100vh;
+                            margin: 0;
+                            background: #f5f5f5;
+                        }
+                        .message {
+                            text-align: center;
+                            padding: 2rem;
+                            background: white;
+                            border-radius: 8px;
+                            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+                        }
+                        .spinner {
+                            border: 4px solid #f3f3f3;
+                            border-top: 4px solid #3498db;
+                            border-radius: 50%;
+                            width: 40px;
+                            height: 40px;
+                            animation: spin 1s linear infinite;
+                            margin: 0 auto 1rem;
+                        }
+                        @keyframes spin {
+                            0% { transform: rotate(0deg); }
+                            100% { transform: rotate(360deg); }
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="message">
+                        <div class="spinner"></div>
+                        <h2>Rebuilding site...</h2>
+                        <p>This page will automatically refresh when ready.</p>
+                    </div>
+                </body>
+                </html>
+                """,
+                media_type="text/html",
+            )
+
+        return await call_next(request)
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -136,11 +206,14 @@ class DebouncedRebuildHandler(FileSystemEventHandler):
 
     def rebuild(self) -> None:
         """Rebuild the MkDocs site."""
+        global rebuild_in_progress
+
         if not self._rebuild_lock.acquire(blocking=False):
             print("Rebuild already in progress. Skipping.")
             return
 
         try:
+            rebuild_in_progress = True
             print("\nRebuilding MkDocs site...")
             subprocess.run(["mkdocs", "build"], check=True, cwd=self.root_dir)
             print("Rebuild complete.")
@@ -152,6 +225,7 @@ class DebouncedRebuildHandler(FileSystemEventHandler):
                 "Error: mkdocs not found. Please install it via `pip install mkdocs`."
             )
         finally:
+            rebuild_in_progress = False
             self._rebuild_lock.release()
 
 
@@ -201,6 +275,7 @@ def serve_with_watch() -> None:
 
     # Create Starlette app and add middleware + static files
     app = Starlette()
+    app.add_middleware(RebuildCheckMiddleware)
     app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(LiveReloadMiddleware)
 
