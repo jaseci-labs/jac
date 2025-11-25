@@ -102,18 +102,46 @@ class TypeCheckPass(UniPass):
         """Handle the atom trailer node."""
         self.evaluator.get_type_of_expression(node)
 
+    def exit_binary_expr(self, node: uni.BinaryExpr) -> None:
+        """Handle the binary expression node."""
+        self.evaluator.get_type_of_expression(node)
+
     def exit_func_call(self, node: uni.FuncCall) -> None:
         """Handle the function call node."""
-        # TODO:
-        # 1. Function Existence & Callable Validation
-        # 2. Argument Matching(count, types, names)
+        self.evaluator.get_type_of_expression(node)
+
+    def exit_filter_compr(self, node: uni.FilterCompr) -> None:
+        """Handle the edge operation reference node."""
         self.evaluator.get_type_of_expression(node)
 
     def exit_return_stmt(self, node: uni.ReturnStmt) -> None:
         """Handle the return statement node."""
+
+        returning_type = self.evaluator._convert_to_instance(
+            self.evaluator.get_none_type()
+        )
         if node.expr:
-            self.evaluator.get_type_of_expression(node.expr)
+            returning_type = self.evaluator.get_type_of_expression(node.expr)
+
+        if fn := self.evaluator._get_enclosing_function(node):
+            fn_type = self.evaluator.get_type_of_ability(fn)
+            return_type = self.evaluator._convert_to_instance(fn_type.return_type)
+            if not self.evaluator.assign_type(returning_type, return_type):
+                self.log_error(
+                    f"Cannot return {returning_type}, expected {fn_type.return_type}",
+                    node,
+                )
 
     def exit_formatted_value(self, node: uni.FormattedValue) -> None:
         """Handle the formatted value node."""
         self.evaluator.get_type_of_expression(node.format_part)
+
+    def exit_edge_ref_trailer(self, node: uni.EdgeRefTrailer) -> None:
+        """Handle the edge reference trailer node."""
+        for chain in node.chain:
+            if isinstance(chain, uni.FilterCompr):
+                self.evaluator.get_type_of_expression(chain)
+
+    def exit_special_var_ref(self, node: uni.SpecialVarRef) -> None:
+        """Handle the special variable reference node."""
+        self.evaluator.get_type_of_expression(node)

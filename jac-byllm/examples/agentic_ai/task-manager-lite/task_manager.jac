@@ -28,10 +28,10 @@ node TaskHandling {
     );
     can execute with task_manager entry {
         print("[TaskHandling Node Activated]");
-        response = self.route_and_run(visitor.utterance);
+        response = self.route_and_run(visitor.cur_task.task);
         print("→", response);
         report {
-            "utterance": visitor.utterance,
+            "utterance": visitor.cur_task.task,
             "response": response,
             "node_type": self.__class__.__name__
         };
@@ -46,10 +46,10 @@ node EmailHandling {
     );
     can execute with task_manager entry {
         print("[EmailHandling Node Activated]");
-        response = self.route_and_run(visitor.utterance);
+        response = self.route_and_run(visitor.cur_task.task);
         print("→", response);
         report {
-            "utterance": visitor.utterance,
+            "utterance": visitor.cur_task.task,
             "response": response,
             "node_type": self.__class__.__name__
         };
@@ -60,10 +60,10 @@ node GeneralChat {
     def chat(utterance: str) -> str by llm();
     can execute with task_manager entry {
         print("[GeneralChat Node Activated]");
-        response = self.chat(visitor.utterance);
+        response = self.chat(visitor.cur_task.task);
         print("→", response);
         report {
-            "utterance": visitor.utterance,
+            "utterance": visitor.cur_task.task,
             "response": response,
             "node_type": self.__class__.__name__
         };
@@ -76,23 +76,47 @@ enum RoutingNodes{
     GENERAL_CHAT
 }
 
+sem RoutingNodes.TASK_HANDLING = "Creating/deleting/updating/summarizing tasks to TODO";
+sem RoutingNodes.EMAIL_HANDLING = "EmailHandling node for composing and managing emails";
+sem RoutingNodes.GENERAL_CHAT = "Get intelligent answers, productivity advice, and general AI assistance across various topics.";
+
+obj TaskPartition {
+    has task: str;
+    has agent_type: RoutingNodes;
+}
+
+sem TaskPartition = "Distinct Tasks within Main Task (Can be the main task itself)";
+sem TaskPartition.task = "Description of the Task to be performed";
+sem TaskPartition.agent_type = "Type of the agent that should handle this Task";
+
 walker task_manager {
     has utterance: str = "";
+    has cur_task: TaskPartition = None;
 
     def route_to_node(utterance: str) -> RoutingNodes by llm();
+
+
+    def plan_tasks(main_task: str) -> list[TaskPartition] by llm();
+
     can execute with `root entry {
-        routed_node_name = self.route_to_node(self.utterance);
+        # routed_node_name = self.route_to_node(self.utterance);
+        subtasks = self.plan_tasks(self.utterance);
+
+        print("[Planned Subtasks]:", subtasks);
 
         node_map = {
             RoutingNodes.TASK_HANDLING: TaskHandling,
             RoutingNodes.EMAIL_HANDLING: EmailHandling,
             RoutingNodes.GENERAL_CHAT: GeneralChat
         };
-        node_type = node_map[routed_node_name];
-        routed_node = [-->(`?node_type)];
-        if not routed_node {
-            routed_node = here ++> node_type();
+        for subtask in subtasks {
+            node_type = node_map[subtask.agent_type];
+            routed_node = [-->(`?node_type)];
+            if not routed_node {
+                routed_node = here ++> node_type();
+            }
+            self.cur_task = subtask;
+            visit routed_node;
         }
-        visit routed_node[0];
     }
 }

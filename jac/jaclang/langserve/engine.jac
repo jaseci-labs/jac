@@ -66,6 +66,7 @@ class JacLangServer(JacProgram , LanguageServer) {
             task: Task | None = self.queue.get();
 
             if task is None {
+                self.queue.task_done();
                 self.debug("Task was None, exiting dispatcher.");
                 break;
             }
@@ -292,6 +293,7 @@ class JacLangServer(JacProgram , LanguageServer) {
             self.log_py(f"'Error during completion: '{e}");
             return lspt.CompletionList(is_incomplete=False, items=[]);
         }
+
         self.debug("returning empty list");
     }
 
@@ -490,9 +492,9 @@ class JacLangServer(JacProgram , LanguageServer) {
         }
         node_type = node_selected.type;
         ####################################################################
-         ##          Handle go to def for types and variables               ##
-         ####################################################################
-         if node_type {
+        ##          Handle go to def for types and variables              ##
+        ####################################################################
+        if node_type {
             if isinstance(node_type, ModuleType) {
                 return make_location(node_selected, is_module=True);
             } elif isinstance(node_type, ClassType) {
@@ -593,8 +595,10 @@ class JacLangServer(JacProgram , LanguageServer) {
 
     def shutdown(self: JacLangServer) -> None {
         try {
-            self.queue.put(None);  # Signal the worker thread to exit
-            self.worker_thread.join(timeout=1.0);  # Wait for the worker thread to finish
+            if hasattr(self, 'worker_thread') and self.worker_thread.is_alive() {
+                self.queue.put(None);  # Signal the worker thread to exit
+                self.worker_thread.join();  # Wait for the worker thread to finish
+            }
         } finally {
             super.shutdown();
         }

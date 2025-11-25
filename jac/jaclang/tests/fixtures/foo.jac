@@ -1,5 +1,5 @@
-import from jaclang.runtimelib.machine { JacMachine } 
-import from bar { bar_walk } 
+import from jaclang.runtimelib.machine { JacMachine }
+import from bar { bar_walk }
 # Test runner to initialize the walker
  def test_run {
     # Print the loaded modules

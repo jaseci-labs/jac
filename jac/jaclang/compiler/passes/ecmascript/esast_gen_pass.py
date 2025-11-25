@@ -23,15 +23,16 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from typing import Any, Callable, Optional, Sequence, Union
+from typing import Any, Callable, Optional, Sequence, Union, cast
 
 import jaclang.compiler.passes.ecmascript.estree as es
 import jaclang.compiler.unitree as uni
-from jaclang.compiler.constant import Tokens as Tok
+from jaclang.compiler.constant import SymbolType, Tokens as Tok
 from jaclang.compiler.passes.ast_gen import BaseAstGenPass
 from jaclang.compiler.passes.ast_gen.jsx_processor import EsJsxProcessor
 from jaclang.compiler.passes.ecmascript.es_unparse import es_to_js
-from jaclang.utils import convert_to_js_import_path
+from jaclang.compiler.type_system import types as jtypes
+from jaclang.utils import convert_to_js_import_path, resolve_relative_path
 
 ES_LOGICAL_OPS: dict[Tok, str] = {Tok.KW_AND: "&&", Tok.KW_OR: "||"}
 
@@ -86,6 +87,8 @@ ES_AUG_ASSIGN_OPS: dict[Tok, str] = {
     Tok.STAR_POW_EQ: "**=",
 }
 
+LiteralValue = Union[str, bool, int, float, None]
+
 
 @dataclass
 class ScopeInfo:
@@ -106,6 +109,31 @@ class AssignmentTargetInfo:
     decl_name: Optional[str]
     pattern_names: list[tuple[str, uni.Name]]
     is_first: bool
+
+
+@dataclass
+class SpawnWalkerInfo:
+    """Describes the walker-side of a spawn expression."""
+
+    call_node: uni.FuncCall
+    walker_name: str
+    fields_object: es.ObjectExpression
+
+
+@dataclass
+class SpawnTargetInfo:
+    """Describes the target-side of a spawn expression."""
+
+    node: uni.Expr
+    expression: es.Expression
+
+
+@dataclass
+class SpawnCallParts:
+    """Deconstructed spawn expression ready for runtime lowering."""
+
+    walker: SpawnWalkerInfo
+    target: SpawnTargetInfo
 
 
 class EsastGenPass(BaseAstGenPass[es.Statement]):
@@ -237,6 +265,237 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
         """Check if we're currently in a client-side function."""
         return any(self.client_scope_stack)
 
+    def _strip_spawn_await(
+        self, node_expr: uni.Expr, es_expr: es.Expression
+    ) -> tuple[uni.Expr, es.Expression]:
+        """Remove Jac/ES await wrappers for spawn analysis."""
+        cur_node = node_expr
+        cur_es = es_expr
+        while isinstance(cur_node, uni.AwaitExpr) and cur_node.target:
+            cur_node = cur_node.target
+            if isinstance(cur_es, es.AwaitExpression):
+                cur_es = cur_es.argument  # type: ignore[assignment]
+            else:
+                break
+        return cur_node, cur_es
+
+    def _resolve_expr_symbol(self, expr: uni.Expr) -> Optional[uni.Symbol]:
+        """Resolve a symbol from an expression (handles dotted access)."""
+        if isinstance(expr, uni.AstSymbolNode) and expr.sym:
+            return expr.sym
+        if isinstance(expr, uni.AtomTrailer):
+            attrs = expr.as_attr_list
+            if attrs:
+                return attrs[-1].sym
+        # Fallback: try searching in main module
+        # if not found in .cl file
+        # TODO: improve cross-module symbol resolution
+        # (.impl, .cl files)
+        if sym := self.search_sym_in_main_mod(expr):
+            return sym
+        return None
+
+    def search_sym_in_main_mod(self, expr: uni.Expr) -> Optional[uni.Symbol]:
+        """Search for a symbol in the main module."""
+        if not isinstance(expr, uni.Name):
+            return None
+        return self.get_main_mod().lookup(expr.sym_name)
+
+    def get_main_mod(self) -> uni.Module:
+        """Get the main module of the program."""
+        return self.prog.mod.main
+
+    def _collect_walker_field_names(
+        self, walker_symbol: Optional[uni.Symbol]
+    ) -> list[str]:
+        """Collect walker has-var field names for positional argument mapping."""
+        if not walker_symbol:
+            return []
+        decl_owner = walker_symbol.decl.name_of
+        if (
+            isinstance(decl_owner, uni.Archetype)
+            and decl_owner.arch_type.name == Tok.KW_WALKER
+        ):
+            return [field.sym_name for field in decl_owner.get_has_vars()]
+        return []
+
+    def _expr_from_node(
+        self, node: Optional[uni.UniNode], default: LiteralValue = None
+    ) -> es.Expression:
+        """Return an expression ESTree node, synthesizing a literal if needed."""
+        generated = self._get_ast_or_default(
+            node,
+            default_factory=lambda src: es.Literal(value=default),
+        )
+        if isinstance(generated, es.Expression):
+            return generated
+        self.log_error("Expected expression in spawn argument.", node_override=node)
+        return self.sync_loc(es.Literal(value=default), jac_node=node or self.cur_node)
+
+    def _build_spawn_arg_object(
+        self, call_node: uni.FuncCall, walker_symbol: Optional[uni.Symbol]
+    ) -> es.ObjectExpression:
+        """Convert walker constructor arguments into a JSON payload."""
+        ordered_fields = self._collect_walker_field_names(walker_symbol)
+        properties: list[Union[es.Property, es.SpreadElement]] = []
+        positional_index = 0
+
+        for param in call_node.params:
+            if isinstance(param, uni.KWPair):
+                if param.key:
+                    key_expr = self.sync_loc(
+                        es.Literal(value=param.key.sym_name), jac_node=param.key
+                    )
+                    value_expr = self._expr_from_node(param.value)
+                    properties.append(
+                        self.sync_loc(
+                            es.Property(
+                                key=key_expr,
+                                value=value_expr,
+                                kind="init",
+                                method=False,
+                                shorthand=False,
+                                computed=False,
+                            ),
+                            jac_node=param,
+                        )
+                    )
+                else:
+                    spread_arg = self._expr_from_node(param.value)
+                    properties.append(
+                        self.sync_loc(
+                            es.SpreadElement(argument=spread_arg), jac_node=param
+                        )
+                    )
+                continue
+
+            key_name = (
+                ordered_fields[positional_index]
+                if positional_index < len(ordered_fields)
+                else f"arg{positional_index}"
+            )
+            if positional_index >= len(ordered_fields):
+                self.log_warning(
+                    "Walker spawn has more positional arguments than fields.",
+                    node_override=param,
+                )
+            positional_index += 1
+            key_expr = self.sync_loc(es.Literal(value=key_name), jac_node=param)
+            value_expr = self._expr_from_node(param)
+            properties.append(
+                self.sync_loc(
+                    es.Property(
+                        key=key_expr,
+                        value=value_expr,
+                        kind="init",
+                        method=False,
+                        shorthand=False,
+                        computed=False,
+                    ),
+                    jac_node=param,
+                )
+            )
+
+        return self.sync_loc(
+            es.ObjectExpression(properties=properties), jac_node=call_node
+        )
+
+    def _resolve_spawn_walker(
+        self, expr: uni.Expr, es_expr: es.Expression
+    ) -> Optional[SpawnWalkerInfo]:
+        """Return walker call info if the expression instantiates a walker."""
+        stripped_node, _ = self._strip_spawn_await(expr, es_expr)
+        if not isinstance(stripped_node, uni.FuncCall):
+            return None
+
+        target_symbol = self._resolve_expr_symbol(stripped_node.target)
+        if not target_symbol or target_symbol.sym_type != SymbolType.WALKER_ARCH:
+            return None
+
+        walker_name = target_symbol.sym_name
+        fields_obj = self._build_spawn_arg_object(stripped_node, target_symbol)
+        return SpawnWalkerInfo(
+            call_node=stripped_node,
+            walker_name=walker_name,
+            fields_object=fields_obj,
+        )
+
+    def _is_root_reference(self, expr: uni.Expr) -> bool:
+        """Check if an expression refers to the root node."""
+        if isinstance(expr, uni.Name) and expr.sym_name == "root":
+            return True
+        if isinstance(expr, uni.SpecialVarRef) and expr.sym_name == "root":
+            return True
+        return False
+
+    def _resolve_spawn_target(
+        self, expr: uni.Expr, es_expr: es.Expression
+    ) -> SpawnTargetInfo:
+        """Convert a spawn target expression into a runtime-ready reference."""
+        stripped_node, stripped_es = self._strip_spawn_await(expr, es_expr)
+        if self._is_root_reference(stripped_node):
+            literal = self.sync_loc(es.Literal(value=""), jac_node=stripped_node)
+            return SpawnTargetInfo(node=stripped_node, expression=literal)
+        return SpawnTargetInfo(node=stripped_node, expression=stripped_es)
+
+    def _prepare_spawn_call(
+        self,
+        node: uni.BinaryExpr,
+        left_expr: es.Expression,
+        right_expr: es.Expression,
+    ) -> Optional[SpawnCallParts]:
+        """Split a spawn expression into walker and target parts."""
+        left_walker = self._resolve_spawn_walker(node.left, left_expr)
+        right_walker = self._resolve_spawn_walker(node.right, right_expr)
+
+        if left_walker and right_walker:
+            self.log_warning(
+                "Both sides of spawn look like walker instantiations; "
+                "defaulting to the right-hand expression.",
+                node_override=node,
+            )
+            target = self._resolve_spawn_target(node.left, left_expr)
+            return SpawnCallParts(walker=right_walker, target=target)
+
+        if left_walker:
+            target = self._resolve_spawn_target(node.right, right_expr)
+            return SpawnCallParts(walker=left_walker, target=target)
+
+        if right_walker:
+            target = self._resolve_spawn_target(node.left, left_expr)
+            return SpawnCallParts(walker=right_walker, target=target)
+
+        self.log_error(
+            "Spawn expressions must include a walker constructor on one side.",
+            node_override=node,
+        )
+        return None
+
+    def _build_spawn_runtime_call(
+        self, node: uni.BinaryExpr, parts: SpawnCallParts
+    ) -> es.AwaitExpression:
+        """Emit the await __jacSpawn(...) expression for a spawn call."""
+        walker_literal = self.sync_loc(
+            es.Literal(value=parts.walker.walker_name),
+            jac_node=parts.walker.call_node,
+        )
+
+        spawn_call = self.sync_loc(
+            es.CallExpression(
+                callee=self.sync_loc(es.Identifier(name="__jacSpawn"), jac_node=node),
+                arguments=[
+                    walker_literal,
+                    parts.target.expression,
+                    parts.walker.fields_object,
+                ],
+            ),
+            jac_node=node,
+        )
+        return self.sync_loc(
+            es.AwaitExpression(argument=spawn_call),
+            jac_node=node,
+        )
+
     def _collect_stmt_body(
         self, body: Optional[Sequence[uni.UniNode]]
     ) -> list[es.Statement]:
@@ -291,6 +550,13 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
         # Add imports
         body.extend(self.imports)
 
+        # add imports from the annex modules
+        for mod in node.impl_mod:
+            if mod.gen.es_ast and isinstance(mod.gen.es_ast, es.Program):
+                for import_decl in mod.gen.es_ast.body:
+                    if isinstance(import_decl, es.ImportDeclaration):
+                        body.append(import_decl)
+
         # Insert hoisted declarations (e.g., walrus-introduced identifiers)
         scope = self.scope_map.get(node)
         if scope and scope.hoisted:
@@ -305,12 +571,12 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
         fallback_items: list[Union[es.Statement, list[es.Statement]]] = []
         for stmt in merged_body:
             if stmt.gen.es_ast:
-                target_list = (
-                    client_items
-                    if getattr(stmt, "is_client_decl", False)
-                    else fallback_items
-                )
-                target_list.append(stmt.gen.es_ast)
+                if getattr(stmt, "is_client_decl", True):
+                    client_items.append(stmt.gen.es_ast)
+                else:
+                    # FIXME: handle the fallback case properly
+                    pass
+
         target_body = client_items if client_items else fallback_items
         body.extend(self._flatten_ast_list(target_body))
 
@@ -321,14 +587,34 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
             es.Program(body=body, sourceType="module"), jac_node=node
         )
         node.gen.es_ast = program
-
         # Generate JavaScript code from ES AST
         node.gen.js = es_to_js(node.gen.es_ast)
+
+        # Populate the client manifest from cl mods to the main module
+        self.populate_client_manifest(node)
 
         # Sort and assign client manifest
         self.client_manifest.exports.sort()
         self.client_manifest.globals.sort()
         node.gen.client_manifest = self.client_manifest
+
+    def populate_client_manifest(self, node: uni.Module) -> None:
+        """Populate client manifest from module declarations."""
+        for mod in node.impl_mod:
+            self._populate_client_manifest(mod)
+
+    def _populate_client_manifest(self, node: uni.Module) -> None:
+        """Recursively populate client manifest from module declarations."""
+        for item in node.gen.client_manifest.exports:
+            self.client_manifest.exports.append(item)
+        for item in node.gen.client_manifest.globals:
+            self.client_manifest.globals.append(item)
+        for import_key, resolved_path in node.gen.client_manifest.imports.items():
+            self.client_manifest.imports[import_key] = resolved_path
+        for sub_mod in node.gen.client_manifest.params:
+            self.client_manifest.params[sub_mod] = node.gen.client_manifest.params[
+                sub_mod
+            ]
 
     def exit_sub_tag(self, node: uni.SubTag[uni.T]) -> None:
         """Process SubTag node."""
@@ -340,100 +626,94 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
 
     def exit_import(self, node: uni.Import) -> None:
         """Process import statement."""
-        if node.from_loc and node.items:
+        if node.from_loc and node.items and node.is_client_decl:
             # Track client imports (both with prefix like jac:client_runtime and relative imports like .module)
-            if node.is_client_decl:
-                resolved_path = node.from_loc.resolve_relative_path()
-                import_key = node.from_loc.dot_path_str
-                self.client_manifest.imports[import_key] = resolved_path
-                self.client_manifest.has_client = True
-
+            resolved_path = node.from_loc.resolve_relative_path()
+            import_key = node.from_loc.dot_path_str
+            self.client_manifest.imports[import_key] = resolved_path
+            self.client_manifest.has_client = True
             # Convert Jac-style path to JavaScript-style path
             js_import_path = convert_to_js_import_path(node.from_loc.dot_path_str)
+        elif not node.from_loc and node.items and node.is_client_decl:
+            self.client_manifest.has_client = True
+            import_key = node.items[0].path[0].lit_value
+            resolved_path = resolve_relative_path(import_key, node.loc.mod_path)
+            self.client_manifest.imports[import_key] = resolved_path
+            js_import_path = convert_to_js_import_path(import_key)
 
-            source = self.sync_loc(
-                es.Literal(value=js_import_path), jac_node=node.from_loc
-            )
-            specifiers: list[
-                Union[
-                    es.ImportSpecifier,
-                    es.ImportDefaultSpecifier,
-                    es.ImportNamespaceSpecifier,
-                ]
-            ] = []
+        source = self.sync_loc(es.Literal(value=js_import_path), jac_node=node.from_loc)
+        specifiers: list[
+            Union[
+                es.ImportSpecifier,
+                es.ImportDefaultSpecifier,
+                es.ImportNamespaceSpecifier,
+            ]
+        ] = []
 
-            for item in node.items:
-                if isinstance(item, uni.ModuleItem):
-                    # Check Name first (since Name is a subclass of Token)
-                    if isinstance(item.name, uni.Name):
-                        # Regular named import (Category 1)
-                        imported = self.sync_loc(
-                            es.Identifier(name=item.name.sym_name), jac_node=item.name
+        for item in node.items:
+            if isinstance(item, uni.ModuleItem):
+                # Check Name first (since Name is a subclass of Token)
+                if isinstance(item.name, uni.Name):
+                    # Regular named import (Category 1)
+                    imported = self.sync_loc(
+                        es.Identifier(name=item.name.sym_name), jac_node=item.name
+                    )
+                    local = self.sync_loc(
+                        es.Identifier(
+                            name=(
+                                item.alias.sym_name
+                                if item.alias
+                                else item.name.sym_name
+                            )
+                        ),
+                        jac_node=item.alias if item.alias else item.name,
+                    )
+                    specifiers.append(
+                        self.sync_loc(
+                            es.ImportSpecifier(imported=imported, local=local),
+                            jac_node=item,
                         )
+                    )
+                elif isinstance(item.name, uni.Token):
+                    # Category 2: Handle default imports
+                    # Pattern: cl import from react { default as React }
+                    if item.name.value == "default":
+                        if not item.alias:
+                            # default must have an alias
+                            continue
                         local = self.sync_loc(
-                            es.Identifier(
-                                name=(
-                                    item.alias.sym_name
-                                    if item.alias
-                                    else item.name.sym_name
-                                )
-                            ),
-                            jac_node=item.alias if item.alias else item.name,
+                            es.Identifier(name=item.alias.sym_name),
+                            jac_node=item.alias,
                         )
                         specifiers.append(
                             self.sync_loc(
-                                es.ImportSpecifier(imported=imported, local=local),
+                                es.ImportDefaultSpecifier(local=local),
                                 jac_node=item,
                             )
                         )
-                    elif isinstance(item.name, uni.Token):
-                        # Category 2: Handle default imports
-                        # Pattern: cl import from react { default as React }
-                        if item.name.value == "default":
-                            if not item.alias:
-                                # default must have an alias
-                                continue
-                            local = self.sync_loc(
-                                es.Identifier(name=item.alias.sym_name),
-                                jac_node=item.alias,
+                    # Category 4: Handle namespace imports
+                    # Pattern: cl import from lodash { * as _ }
+                    elif item.name.value == "*":
+                        if not item.alias:
+                            # namespace import must have an alias
+                            continue
+                        local = self.sync_loc(
+                            es.Identifier(name=item.alias.sym_name),
+                            jac_node=item.alias,
+                        )
+                        specifiers.append(
+                            self.sync_loc(
+                                es.ImportNamespaceSpecifier(local=local),
+                                jac_node=item,
                             )
-                            specifiers.append(
-                                self.sync_loc(
-                                    es.ImportDefaultSpecifier(local=local),
-                                    jac_node=item,
-                                )
-                            )
-                        # Category 4: Handle namespace imports
-                        # Pattern: cl import from lodash { * as _ }
-                        elif item.name.value == "*":
-                            if not item.alias:
-                                # namespace import must have an alias
-                                continue
-                            local = self.sync_loc(
-                                es.Identifier(name=item.alias.sym_name),
-                                jac_node=item.alias,
-                            )
-                            specifiers.append(
-                                self.sync_loc(
-                                    es.ImportNamespaceSpecifier(local=local),
-                                    jac_node=item,
-                                )
-                            )
+                        )
 
-            import_decl = self.sync_loc(
-                es.ImportDeclaration(specifiers=specifiers, source=source),
-                jac_node=node,
-            )
-            self.imports.append(import_decl)
-            node.gen.es_ast = []  # Imports are added to module level
-
-    def exit_module_path(self, node: uni.ModulePath) -> None:
-        """Process module path."""
-        node.gen.es_ast = None
-
-    def exit_module_item(self, node: uni.ModuleItem) -> None:
-        """Process module item."""
-        node.gen.es_ast = None
+        import_decl = self.sync_loc(
+            es.ImportDeclaration(specifiers=specifiers, source=source),
+            jac_node=node,
+        )
+        self.imports.append(import_decl)
+        node.gen.es_ast = []  # Imports are added to module level
 
     # Declarations
     # ============
@@ -683,7 +963,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
             name = node.name_ref.sym_name
             self.client_manifest.exports.append(name)
             self.client_manifest.params[name] = (
-                [p.name.sym_name for p in node.signature.params if hasattr(p, "name")]
+                [p.name.sym_name for p in node.signature.params]
                 if isinstance(node.signature, uni.FuncSignature)
                 else []
             )
@@ -1044,36 +1324,45 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
 
     def exit_binary_expr(self, node: uni.BinaryExpr) -> None:
         """Process binary expression."""
-        left = self._get_ast_or_default(
-            node.left,
-            default_factory=lambda src: (
-                es.Identifier(name=src.sym_name)
-                if isinstance(src, uni.Name)
-                else es.Literal(value=0)
+        left = cast(
+            es.Expression,
+            self._get_ast_or_default(
+                node.left,
+                default_factory=lambda src: (
+                    es.Identifier(name=src.sym_name)
+                    if isinstance(src, uni.Name)
+                    else es.Literal(value=0)
+                ),
             ),
         )
-        right = self._get_ast_or_default(
-            node.right,
-            default_factory=lambda src: (
-                es.Identifier(name=src.sym_name)
-                if isinstance(src, uni.Name)
-                else es.Literal(value=0)
+        right = cast(
+            es.Expression,
+            self._get_ast_or_default(
+                node.right,
+                default_factory=lambda src: (
+                    es.Identifier(name=src.sym_name)
+                    if isinstance(src, uni.Name)
+                    else es.Literal(value=0)
+                ),
             ),
         )
 
         op_name = getattr(node.op, "name", None)
 
         if op_name == Tok.KW_SPAWN:
-            spawn_call = self.sync_loc(
-                es.CallExpression(
-                    callee=self.sync_loc(
-                        es.Identifier(name="__jacSpawn"), jac_node=node
-                    ),
-                    arguments=[left, right],
-                ),
-                jac_node=node,
-            )
-            node.gen.es_ast = spawn_call
+            # Spawn operator can work in two ways:
+            # 1. node spawn walker() - standard order (most common)
+            # 2. walker() spawn node - reverse order
+            #
+            # Both generate: await __jacSpawn(walker_name, node_ref, fields_obj)
+            # Where:
+            #   - walker_name: string name of the walker to spawn
+            #   - node_ref: node reference (empty string "" for root, or node identifier/expression)
+            #   - fields_obj: object containing walker parameters as key-value pairs
+
+            spawn_parts = self._prepare_spawn_call(node, left, right)
+            if spawn_parts:
+                node.gen.es_ast = self._build_spawn_runtime_call(node, spawn_parts)
             return
 
         if op_name == Tok.WALRUS_EQ and isinstance(left, es.Identifier):
@@ -1215,7 +1504,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
 
         if isinstance(target, (uni.TupleVal, uni.ListVal)):
             elements: list[Optional[es.Pattern]] = []
-            for value in getattr(target, "values", []):
+            for value in target.values:
                 if value is None:
                     elements.append(None)
                     continue
@@ -1270,7 +1559,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
         if isinstance(target, uni.Name):
             names.append((target.sym_name, target))
         elif isinstance(target, (uni.TupleVal, uni.ListVal)):
-            for value in getattr(target, "values", []):
+            for value in target.values:
                 names.extend(self._collect_pattern_names(value))
         elif isinstance(target, uni.DictVal):
             for kv in target.kv_pairs:
@@ -1418,6 +1707,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
 
     def exit_func_call(self, node: uni.FuncCall) -> None:
         """Process function call."""
+
         # Special case: type(x) -> typeof x in JavaScript
         # Check the target directly before processing it into an es_ast
         target_is_type = False
@@ -1427,7 +1717,33 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
                 target_is_type = True
 
         args: list[Union[es.Expression, es.SpreadElement]] = []
+        props: list[Union[es.Property, es.SpreadElement]] = []
         for param in node.params:
+            if isinstance(param, uni.KWPair):
+                key_expr = (
+                    param.key.gen.es_ast
+                    if param.key and param.key.gen.es_ast
+                    else self.sync_loc(es.Identifier(name="key"), jac_node=param)
+                )
+                value_expr = (
+                    param.value.gen.es_ast
+                    if param.value and param.value.gen.es_ast
+                    else self.sync_loc(es.Literal(value=None), jac_node=param)
+                )
+                prop = self.sync_loc(
+                    es.Property(
+                        key=key_expr,
+                        value=value_expr,
+                        kind="init",
+                        method=False,
+                        shorthand=False,
+                        computed=False,
+                    ),
+                    jac_node=param,
+                )
+                props.append(prop)
+                continue
+
             if param.gen.es_ast:
                 args.append(param.gen.es_ast)
 
@@ -1459,13 +1775,11 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
                         param_names: list[str] = []
                         if isinstance(ability_node.signature, uni.FuncSignature):
                             param_names = [
-                                p.name.sym_name
-                                for p in ability_node.signature.params
-                                if hasattr(p, "name")
+                                p.name.sym_name for p in ability_node.signature.params
                             ]
 
                         # Build args object {param1: arg1, param2: arg2, ...}
-                        props: list[Union[es.Property, es.SpreadElement]] = []
+                        props = []
                         for i, arg in enumerate(args):
                             if isinstance(arg, es.SpreadElement):
                                 # Handle spread arguments
@@ -1545,11 +1859,26 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
                     ),
                     jac_node=node,
                 )
-
-        call_expr = self.sync_loc(
-            es.CallExpression(callee=callee, arguments=args), jac_node=node
-        )
-        node.gen.es_ast = call_expr
+        if isinstance(node.target, uni.Name):
+            callee_type = self.prog.get_type_evaluator().get_type_of_expression(
+                node.target
+            )
+        else:
+            callee_type = None
+        args_obj = self.sync_loc(es.ObjectExpression(properties=props), jac_node=node)
+        if isinstance(callee_type, jtypes.ClassType) and isinstance(
+            callee, es.Expression
+        ):
+            # Ensure callee is an Expression for NewExpression
+            node.gen.es_ast = self.sync_loc(
+                es.NewExpression(callee=callee, arguments=args_obj if props else args),
+                jac_node=node,
+            )
+        else:
+            node.gen.es_ast = self.sync_loc(
+                es.CallExpression(callee=callee, arguments=args_obj if props else args),
+                jac_node=node,
+            )
 
     def exit_index_slice(self, node: uni.IndexSlice) -> None:
         """Process index/slice - just store the slice info, actual member access is handled by AtomTrailer."""
@@ -2182,14 +2511,14 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
         """Extract literal value from an expression."""
         if expr is None:
             return None
-        literal_attr = "lit_value"
-        if hasattr(expr, literal_attr):
-            return getattr(expr, literal_attr)
+        # Check for literal values on common literal types
+        if isinstance(expr, (uni.String, uni.Int, uni.Float, uni.Bool)):
+            return expr.lit_value
         if isinstance(expr, uni.MultiString):
             parts: list[str] = []
             for segment in expr.strings:
-                if hasattr(segment, literal_attr):
-                    parts.append(getattr(segment, literal_attr))
+                if isinstance(segment, uni.String):
+                    parts.append(segment.lit_value)
                 else:
                     return None
             return "".join(parts)

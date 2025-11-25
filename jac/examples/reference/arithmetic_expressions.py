@@ -1,12 +1,13 @@
 from __future__ import annotations
+
 print(10 + 5)
 print(10 - 5)
 print(10 * 5)
 print(10 / 5)
 print(10 // 3)
 print(10 % 3)
-print(2 ** 3)
-print((2 ** 3) ** 2)
+print(2**3)
+print((2**3) ** 2)
 x = 5
 print(+x)
 print(-x)
@@ -15,12 +16,12 @@ print(2 + 3 * 4)
 print((2 + 3) * 4)
 print(10 - 3 + 2)
 print(10 / 2 * 3)
-result = 2 + 3 * 4 ** 2 - 10 / 2
+result = 2 + 3 * 4**2 - 10 / 2
 print(result)
 print(100 - 50 + 25 - 10)
 print(2 * 3 * 4 / 2)
 print(17 // 5)
 print(17 % 5)
 print(2 + 3 * 4)
-print(2 ** 3 * 4)
+print(2**3 * 4)
 print(10 / 2 + 5)

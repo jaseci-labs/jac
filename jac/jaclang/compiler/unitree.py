@@ -326,12 +326,37 @@ class UniScopeNode(UniNode):
         """Get parent."""
         return self.parent_scope
 
-    def lookup(self, name: str, deep: bool = True) -> Optional[Symbol]:
+    def lookup(
+        self,
+        name: str,
+        deep: bool = True,
+        incl_inner_scope: bool = False,
+    ) -> Optional[Symbol]:
         """Lookup a variable in the symbol table."""
         if name in self.names_in_scope:
             return self.names_in_scope[name]
+
         if deep and self.parent_scope:
             return self.parent_scope.lookup(name, deep)
+
+        if incl_inner_scope:
+            for kid in self.kid_scope:
+                if isinstance(
+                    kid,
+                    (
+                        Module,
+                        Enum,
+                        Archetype,
+                        Ability,
+                        ImplDef,
+                        AstImplNeedingNode,
+                        Test,
+                    ),
+                ):
+                    continue
+                if (sym := kid.lookup(name, False, True)) is not None:
+                    return sym
+
         return None
 
     def insert(
@@ -1616,7 +1641,14 @@ class Archetype(
         return res
 
 
-class ImplDef(CodeBlockStmt, ElementStmt, ArchBlockStmt, AstSymbolNode, UniScopeNode):
+class ImplDef(
+    ClientFacingNode,
+    CodeBlockStmt,
+    ElementStmt,
+    ArchBlockStmt,
+    AstSymbolNode,
+    UniScopeNode,
+):
     """AstImplOnlyNode node type for Jac Ast."""
 
     def __init__(
@@ -1644,6 +1676,7 @@ class ImplDef(CodeBlockStmt, ElementStmt, ArchBlockStmt, AstSymbolNode, UniScope
         )
         CodeBlockStmt.__init__(self)
         UniScopeNode.__init__(self, name=self.sym_name)
+        ClientFacingNode.__init__(self)
 
     def create_impl_name_node(self) -> Name:
         ret = Name(

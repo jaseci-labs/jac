@@ -7,7 +7,7 @@ walker Tourist {
         x = lambda a: int, b: int : b + a;
         y = lambda : 567;
         sorted_users = sorted(
-            users, 
+            users,
             key=lambda x: dict: x["email"], reverse=True
         );
 

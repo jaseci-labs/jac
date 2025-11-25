@@ -1,7 +1,7 @@
 # Basic f-string examples
 name = "John"
 print(f"Hello {name}")
-print(F'Hello {name}')
+print(f"Hello {name}")
 print(f"{{It is myname}}, name is: {name}")
 
 # Numeric operations and formatting
@@ -40,12 +40,12 @@ multiline_msg = f"""Hello {name},
     Sum of {x} + {y} = {x + y}"""
 print(multiline_msg)
 
-another_multiline = f'''Welcome {name}!
+another_multiline = f"""Welcome {name}!
     Here's your data:
     - X: {x}
     - Y: {y}
     - Z: {z}
-    Binary of {x}: {x:b}'''
+    Binary of {x}: {x:b}"""
 print(another_multiline)
 
 # Nested triple quote f-strings
@@ -70,7 +70,7 @@ file = "test.txt"
 
 # Basic raw f-strings
 raw_path = rf"C:\Users\{name}\{path}\{file}"
-raw_path2 = fr'D:\Projects\{name}\{file}'
+raw_path2 = rf"D:\Projects\{name}\{file}"
 print(raw_path)
 print(raw_path2)
 
@@ -80,9 +80,9 @@ raw_multiline = rf"""Path: C:\Users\{name}\Documents\
     Full: C:\Users\{name}\Documents\{file}"""
 print(raw_multiline)
 
-raw_multiline2 = fr'''Regex pattern: \d+\.\d+
+raw_multiline2 = rf"""Regex pattern: \d+\.\d+
     Name: {name}
-    Pattern for {name}: \b{name}\b'''
+    Pattern for {name}: \b{name}\b"""
 print(raw_multiline2)
 
 # Raw f-strings with special patterns

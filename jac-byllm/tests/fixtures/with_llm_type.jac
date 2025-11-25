@@ -1,4 +1,4 @@
-import from byllm.lib { Model }
+import from byllm.lib { MockLLM }
 
 
 obj Person {
@@ -20,13 +20,13 @@ obj University {
 }
 
 
-glob llm1 = Model(
+glob llm1 = MockLLM(
     model_name="mockllm",
     outputs=[Person(name='Albert Einstein', dob='14/03/1879', age=76)],
 );
 
 
-glob llm2 = Model(
+glob llm2 = MockLLM(
     model_name="mockllm",
     outputs=[
         University.Department(name='Computer Science', head=Person(name='Jason Mars', dob='1994-01-01', age=30)),

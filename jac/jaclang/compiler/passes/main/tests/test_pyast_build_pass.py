@@ -19,7 +19,8 @@ class PyastBuildPassTests(TestCase):
 
     def test_synced_to_latest_py_ast(self) -> None:
         """Basic test for pass."""
-        unparser_cls = py_ast._Unparser
+        # TODO: maybe instead iterate `ast.AST.__subclasses__`?
+        unparser_cls = py_ast._Unparser  # type: ignore[attr-defined]
         visit_methods = (
             [
                 method

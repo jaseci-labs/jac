@@ -1,6 +1,6 @@
-import from byllm.lib { Model }
+import from byllm.lib { MockLLM }
 
-glob llm = Model(
+glob llm = MockLLM(
     model_name="mockllm",
     outputs=["👤➡️🗼"],
 );

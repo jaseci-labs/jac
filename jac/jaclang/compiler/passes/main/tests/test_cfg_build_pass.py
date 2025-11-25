@@ -1,8 +1,6 @@
 """Test pass module."""
 
-from jaclang.compiler.program import JacProgram
 from jaclang.utils.test import TestCase
-import unittest
 
 
 class TestCFGBuildPass(TestCase):

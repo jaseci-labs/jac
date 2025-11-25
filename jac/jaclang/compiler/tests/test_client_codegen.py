@@ -1,76 +1,97 @@
+"""Tests for client-side code generation."""
+
 from __future__ import annotations
 
+import os
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 
 from jaclang.compiler.program import JacProgram
+from jaclang.utils.test import TestCase
 
 
-FIXTURE_DIR = Path(__file__).resolve().parent.parent / "passes" / "ecmascript" / "tests" / "fixtures"
+FIXTURE_DIR = (
+    Path(__file__).resolve().parent.parent
+    / "passes"
+    / "ecmascript"
+    / "tests"
+    / "fixtures"
+)
 
 
-def test_js_codegen_generates_js_and_manifest() -> None:
-    fixture = FIXTURE_DIR / "client_jsx.jac"
-    prog = JacProgram()
-    module = prog.compile(str(fixture))
+class TestClientCodegen(TestCase):
+    """Test client-side code generation and JavaScript transpilation."""
 
-    assert module.gen.js.strip(), "Expected JavaScript output for client declarations"
-    assert "function component" in module.gen.js
-    assert "__jacJsx(" in module.gen.js
+    def test_js_codegen_generates_js_and_manifest(self) -> None:
+        """Test JavaScript code generation produces valid output and manifest."""
+        fixture = FIXTURE_DIR / "client_jsx.jac"
+        prog = JacProgram()
+        module = prog.compile(str(fixture))
 
-    # Client Python code should be omitted in js_only mode
-    assert "def component" not in module.gen.py
+        self.assertTrue(
+            module.gen.js.strip(), "Expected JavaScript output for client declarations"
+        )
+        self.assertIn("function component", module.gen.js)
+        self.assertIn("__jacJsx(", module.gen.js)
 
-    # Metadata should be stored in module.gen.client_manifest
-    assert "__jac_client_manifest__" not in module.gen.py
-    manifest = module.gen.client_manifest
-    assert manifest, "Client manifest should be available in module.gen"
-    assert "component" in manifest.exports
-    assert "ButtonProps" in manifest.exports
-    assert "API_URL" in manifest.globals
+        # Client Python code should be omitted in js_only mode
+        self.assertNotIn("def component", module.gen.py)
 
-    # Module.gen.client_manifest should have the metadata
-    assert "component" in module.gen.client_manifest.exports
-    assert "ButtonProps" in module.gen.client_manifest.exports
-    assert "API_URL" in module.gen.client_manifest.globals
-    assert module.gen.client_manifest.params.get("component", []) == []
-    assert "ButtonProps" not in module.gen.client_manifest.params
+        # Metadata should be stored in module.gen.client_manifest
+        self.assertNotIn("__jac_client_manifest__", module.gen.py)
+        manifest = module.gen.client_manifest
+        self.assertTrue(manifest, "Client manifest should be available in module.gen")
+        self.assertIn("component", manifest.exports)
+        self.assertIn("ButtonProps", manifest.exports)
+        self.assertIn("API_URL", manifest.globals)
 
+        # Module.gen.client_manifest should have the metadata
+        self.assertIn("component", module.gen.client_manifest.exports)
+        self.assertIn("ButtonProps", module.gen.client_manifest.exports)
+        self.assertIn("API_URL", module.gen.client_manifest.globals)
+        self.assertEqual(module.gen.client_manifest.params.get("component", []), [])
+        self.assertNotIn("ButtonProps", module.gen.client_manifest.params)
 
-def test_compilation_skips_python_stubs() -> None:
-    fixture = FIXTURE_DIR / "client_jsx.jac"
-    prog = JacProgram()
-    module = prog.compile(str(fixture))
+        # Bug fixes
+        self.assertIn(
+            'let component = new MyComponent({title: "Custom Title"});', module.gen.js
+        )
 
-    assert module.gen.js.strip(), "Expected JavaScript output when emitting both"
-    assert "function component" in module.gen.js
-    assert "__jacJsx(" in module.gen.js
+    def test_compilation_skips_python_stubs(self) -> None:
+        """Test that client Python definitions are intentionally omitted."""
+        fixture = FIXTURE_DIR / "client_jsx.jac"
+        prog = JacProgram()
+        module = prog.compile(str(fixture))
 
-    # Client Python definitions are intentionally omitted
-    assert "def component" not in module.gen.py
-    assert "__jac_client__" not in module.gen.py
-    assert "class ButtonProps" not in module.gen.py
+        self.assertTrue(
+            module.gen.js.strip(), "Expected JavaScript output when emitting both"
+        )
+        self.assertIn("function component", module.gen.js)
+        self.assertIn("__jacJsx(", module.gen.js)
 
-    # Manifest data should be in module.gen.client_manifest
-    assert "__jac_client_manifest__" not in module.gen.py
-    manifest = module.gen.client_manifest
-    assert manifest, "Client manifest should be available in module.gen"
-    assert "component" in manifest.exports
-    assert "ButtonProps" in manifest.exports
-    assert "API_URL" in manifest.globals
+        # Client Python definitions are intentionally omitted
+        self.assertNotIn("def component", module.gen.py)
+        self.assertNotIn("__jac_client__", module.gen.py)
+        self.assertNotIn("class ButtonProps", module.gen.py)
 
-    # Module.gen.client_manifest should have the metadata
-    assert "component" in module.gen.client_manifest.exports
-    assert "ButtonProps" in module.gen.client_manifest.exports
-    assert "API_URL" in module.gen.client_manifest.globals
-    assert module.gen.client_manifest.params.get("component", []) == []
+        # Manifest data should be in module.gen.client_manifest
+        self.assertNotIn("__jac_client_manifest__", module.gen.py)
+        manifest = module.gen.client_manifest
+        self.assertTrue(manifest, "Client manifest should be available in module.gen")
+        self.assertIn("component", manifest.exports)
+        self.assertIn("ButtonProps", manifest.exports)
+        self.assertIn("API_URL", manifest.globals)
 
+        # Module.gen.client_manifest should have the metadata
+        self.assertIn("component", module.gen.client_manifest.exports)
+        self.assertIn("ButtonProps", module.gen.client_manifest.exports)
+        self.assertIn("API_URL", module.gen.client_manifest.globals)
+        self.assertEqual(module.gen.client_manifest.params.get("component", []), [])
 
-def test_type_to_typeof_conversion() -> None:
-    """Test that type() calls are converted to typeof in JavaScript."""
-    from tempfile import NamedTemporaryFile
-
-    # Create a temporary test file
-    test_code = '''"""Test type() to typeof conversion."""
+    def test_type_to_typeof_conversion(self) -> None:
+        """Test that type() calls are converted to typeof in JavaScript."""
+        # Create a temporary test file
+        test_code = '''"""Test type() to typeof conversion."""
 
 cl def check_types() {
     let x = 42;
@@ -86,28 +107,72 @@ cl def check_types() {
 }
 '''
 
-    with NamedTemporaryFile(mode='w', suffix='.jac', delete=False) as f:
-        f.write(test_code)
-        f.flush()
+        with NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as f:
+            f.write(test_code)
+            f.flush()
 
-        prog = JacProgram()
-        module = prog.compile(f.name)
+            prog = JacProgram()
+            module = prog.compile(f.name)
 
-        assert module.gen.js.strip(), "Expected JavaScript output for client code"
+            self.assertTrue(
+                module.gen.js.strip(), "Expected JavaScript output for client code"
+            )
 
-        # Verify type() was converted to typeof
-        assert "typeof" in module.gen.js, "type() should be converted to typeof"
-        assert module.gen.js.count("typeof") == 4, "Should have 4 typeof expressions"
+            # Verify type() was converted to typeof
+            self.assertIn(
+                "typeof", module.gen.js, "type() should be converted to typeof"
+            )
+            self.assertEqual(
+                module.gen.js.count("typeof"), 4, "Should have 4 typeof expressions"
+            )
 
-        # Verify no type() calls remain
-        assert "type(" not in module.gen.js, "No type() calls should remain in JavaScript"
+            # Verify no type() calls remain
+            self.assertNotIn(
+                "type(", module.gen.js, "No type() calls should remain in JavaScript"
+            )
 
-        # Verify the typeof expressions are correctly formed
-        assert "typeof x" in module.gen.js
-        assert "typeof y" in module.gen.js
-        assert "typeof z" in module.gen.js
-        assert 'typeof "world"' in module.gen.js
+            # Verify the typeof expressions are correctly formed
+            self.assertIn("typeof x", module.gen.js)
+            self.assertIn("typeof y", module.gen.js)
+            self.assertIn("typeof z", module.gen.js)
+            self.assertIn('typeof "world"', module.gen.js)
 
-        # Clean up
-        import os
-        os.unlink(f.name)
+            # Clean up
+            os.unlink(f.name)
+
+    def test_spawn_operator_supports_positional_and_spread(self) -> None:
+        """Ensure spawn lowering handles positional args and **kwargs."""
+        test_code = """walker MixedWalker {
+    has label: str;
+    has count: int;
+    has meta: dict = {};
+    can execute with `root entry;
+}
+
+cl def spawn_client() {
+    let node_id = "abcd";
+    let extra = {"meta": {"source": "client"}};
+    let positional = node_id spawn MixedWalker("First", 3);
+    let spread = MixedWalker("Second", 1, **extra) spawn root;
+    return {"positional": positional, "spread": spread};
+}
+"""
+
+        with NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as f:
+            f.write(test_code)
+            f.flush()
+
+            prog = JacProgram()
+            module = prog.compile(f.name)
+            js = module.gen.js
+
+            self.assertIn(
+                '__jacSpawn("MixedWalker", node_id, {"label": "First", "count": 3})',
+                js,
+            )
+            self.assertIn(
+                '__jacSpawn("MixedWalker", "", {"label": "Second", "count": 1, ...extra})',
+                js,
+            )
+
+            os.unlink(f.name)

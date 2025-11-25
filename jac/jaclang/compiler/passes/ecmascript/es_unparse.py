@@ -401,7 +401,10 @@ class JSCodeGenerator:
         """Generate call expression."""
         callee = self.generate(node.callee)
         optional = "?." if node.optional else ""
-        args = ", ".join(self.generate(arg) for arg in node.arguments)
+        if isinstance(node.arguments, es.ObjectExpression):
+            args = self.generate(node.arguments)
+        else:
+            args = ", ".join(self.generate(arg) for arg in node.arguments)
         return f"{callee}{optional}({args})"
 
     def gen_chain_expression(self, node: es.ChainExpression) -> str:
@@ -411,7 +414,10 @@ class JSCodeGenerator:
     def gen_new_expression(self, node: es.NewExpression) -> str:
         """Generate new expression."""
         callee = self.generate(node.callee)
-        args = ", ".join(self.generate(arg) for arg in node.arguments)
+        if isinstance(node.arguments, es.ObjectExpression):
+            args = self.generate(node.arguments)
+        else:
+            args = ", ".join(self.generate(arg) for arg in node.arguments)
         return f"new {callee}({args})"
 
     def gen_import_expression(self, node: es.ImportExpression) -> str:

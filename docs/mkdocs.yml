@@ -7,13 +7,14 @@ nav:
   - Learn:
     # - Getting Started: "learn/getting_started.md"
     - Getting Started:
+      - Introduction: "learn/tour.md"
       - Installation: "learn/installation.md"
-      - Jac as Your First Programming Language: "learn/beginners_guide_to_jac.md"
+      # - Jac as Your First Programming Language: "learn/beginners_guide_to_jac.md"
       - Syntax Quick Reference: "learn/syntax_quick_reference.md"
       - Native Superset of Python: "learn/superset_python.md"
       - Jac Library in Pure Python: "learn/library_mode.md"
-      - Tour of Jac/Jaseci: "learn/tour.md"
       - Learn Jac in 5 Minutes: "learn/jac_in_a_flash.md"
+      - Examples for Key Features: "learn/example.md"
       - Jac Tool Suite: "learn/tool_suite.md"
     - The Jac Book:
       - Introduction: "jac_book/index.md"
@@ -51,35 +52,67 @@ nav:
         - byLLM: "learn/jac-byllm/with_llm.md"
         - Quick-start: "learn/jac-byllm/quickstart.md"
         - How to use byLLM: "learn/jac-byllm/usage.md"
+        - byLLM for Agentic AI: "learn/jac-byllm/agentic_ai.md"
         - Examples: "learn/jac-byllm/examples.md"
         - Python byllm Interface: "learn/jac-byllm/python_integration.md"
         - Using Multimodal models: "learn/jac-byllm/multimodality.md"
-        - Create Your Own Language Model: "learn/jac-byllm/create_own_lm.md"
+        - Creating a Custom Model Class: "learn/jac-byllm/create_own_lm.md"
         # - Build your own byllm plugin: "learn/jac-byllm/creating_byllm_plugins.md". # Needs review and update
         - LiteLLM Proxy Server: "learn/jac-byllm/litellm_proxy.md"
     - Scale-Native Programming:
-      - "learn/jac-cloud/introduction.md"
-      - "learn/jac-cloud/quickstart.md"
-      - Core Features:
-        - "learn/jac-cloud/permission.md"
-        - "learn/jac-cloud/logging.md"
-        - "learn/jac-cloud/env_vars.md"
-        - "learn/jac-cloud/sso_implementation.md"
-      - Real-time & Async:
-        - "learn/jac-cloud/websocket.md"
-        - "learn/jac-cloud/scheduler.md"
-        - "learn/jac-cloud/async_walker.md"
-        - "learn/jac-cloud/webhook.md"
-      - Operations:
-        - "learn/jac-cloud/deployment.md"
-        - "learn/jac-cloud/utilities.md"
       - Jac Lens: "learn/jac-lens.md"
+      - (Deprecated) Jac-Cloud:
+        - "learn/jac-cloud/introduction.md"
+        - "learn/jac-cloud/quickstart.md"
+        - Core Features:
+          - "learn/jac-cloud/permission.md"
+          - "learn/jac-cloud/logging.md"
+          - "learn/jac-cloud/env_vars.md"
+          - "learn/jac-cloud/sso_implementation.md"
+        - Real-time & Async:
+          - "learn/jac-cloud/websocket.md"
+          - "learn/jac-cloud/scheduler.md"
+          - "learn/jac-cloud/async_walker.md"
+          - "learn/jac-cloud/webhook.md"
+        - Operations:
+          - "learn/jac-cloud/deployment.md"
+          - "learn/jac-cloud/utilities.md"
+    - Jac Client:
+      - Getting Started: "jac-client/README.md"
+      - Step-by-Step Tutorial:
+        - Introduction: "jac-client/guide-example/intro.md"
+        - "Step 1: Project Setup": "jac-client/guide-example/step-01-setup.md"
+        - "Step 2: First Component": "jac-client/guide-example/step-02-components.md"
+        - "Step 3: Styling": "jac-client/guide-example/step-03-styling.md"
+        - "Step 4: Todo UI": "jac-client/guide-example/step-04-todo-ui.md"
+        - "Step 5: Local State": "jac-client/guide-example/step-05-local-state.md"
+        - "Step 6: Event Handlers": "jac-client/guide-example/step-06-events.md"
+        - "Step 7: Effects": "jac-client/guide-example/step-07-effects.md"
+        - "Step 8: Backend with Walkers": "jac-client/guide-example/step-08-walkers.md"
+        - "Step 9: Authentication": "jac-client/guide-example/step-09-authentication.md"
+        - "Step 10: Routing": "jac-client/guide-example/step-10-routing.md"
+        - "Step 11: Final Integration": "jac-client/guide-example/step-11-final.md"
+      - Styling:
+        - Introduction: "jac-client/styling/intro.md"
+        - Pure CSS: "jac-client/styling/pure-css.md"
+        - Tailwind CSS: "jac-client/styling/tailwind.md"
+        - Sass/SCSS: "jac-client/styling/sass.md"
+        - Styled Components: "jac-client/styling/styled-components.md"
+        - JavaScript Styling: "jac-client/styling/js-styling.md"
+        - Material-UI: "jac-client/styling/material-ui.md"
+      - Routing: "jac-client/routing.md"
+      - Lifecycle Hooks: "jac-client/lifecycle-hooks.md"
+      - Advanced State: "jac-client/advanced-state.md"
+      - Imports: "jac-client/imports.md"
+      - File System: "jac-client/file-system/intro.md"
+      - Handling Assets: "jac-client/asset-serving/intro.md"
     - Tooling:
       - Jac Debugger: "learn/debugger.md"
       - Run Jac In Browser: "learn/jac_playground.md"
       - "learn/tools/cli.md"
       - "learn/tools/jac_serve.md"
       - "learn/tools/streamlit.md"
+      - LLMDocs: "learn/tools/llmdocs.md"
     - Examples:
       - LittleX (your own twitter): "learn/examples/littleX/tutorial.md"
       - Jac MCP Conversational Chatbot: "learn/examples/rag_chatbot/Overview.md"
@@ -153,7 +186,8 @@ nav:
     - Contributing: "internals/contrib.md"
     - Release Notes:
       - Jaclang: "communityhub/release_notes/jaclang.md"
-      - Jac-Cloud: "communityhub/release_notes/jac-cloud.md"
+      - Jac-Scale: "communityhub/release_notes/jac-scale.md"
+      - (Deprecated) Jac-Cloud: "communityhub/release_notes/jac-cloud.md"
       - byLLM: "communityhub/release_notes/byllm.md"
       - Jac-Client: "communityhub/release_notes/jac-client.md"
     - Breaking Changes: "communityhub/breaking_changes.md"
@@ -229,7 +263,10 @@ markdown_extensions:
   - pymdownx.tasklist:
       custom_checkbox: true
   - pymdownx.arithmatex:
-      generic: true
+  # - pymdownx.emoji:
+  #     emoji_index: !!python/name:materialx.emoji.twemoji
+  #     emoji_generator: !!python/name:materialx.emoji.to_svg
+
   - pymdownx.blocks.caption
   - attr_list
   - md_in_html
@@ -266,10 +303,13 @@ extra_javascript:
   - js/jac.monarch.js
   - js/run-code.js
   - js/feedback.js
+  - js/logo.js
 
 plugins:
   - search
-  - open-in-new-tab
+  - open-in-new-tab:
+      excluded_selectors:
+        - .md-logo
   - mkdocs-video:
       is_video: True
       video_autoplay: True

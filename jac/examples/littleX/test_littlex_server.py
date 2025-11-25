@@ -5,6 +5,7 @@ import os
 import socket
 import threading
 import time
+from typing import TypedDict
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -22,25 +23,31 @@ def get_free_port() -> int:
     return port
 
 
+class _User(TypedDict):
+    password: str
+    token: str
+    root_id: str
+
+
 class TestLittleXServer:
     """Test littleX social media API functionality."""
 
     def setUp(self) -> None:
         """Set up test."""
         self.server = None
-        self.server_thread = None
+        self.server_thread: threading.Thread | None = None
         self.httpd = None
         # Use dynamically allocated free port for each test
         self.port = get_free_port()
         self.base_url = f"http://localhost:{self.port}"
         # Use unique session file for each test
         self.session_file = f"/tmp/test_littlex_{self.port}.session"
-        self.users = {}  # Store user credentials and tokens
+        self.users: dict[str, _User] = {}  # Store user credentials and tokens
 
     def tearDown(self) -> None:
         """Tear down test."""
         # Close user manager if it exists
-        if self.server and hasattr(self.server, 'user_manager'):
+        if self.server and hasattr(self.server, "user_manager"):
             try:
                 self.server.user_manager.close()
             except Exception:
@@ -79,9 +86,7 @@ class TestLittleXServer:
         from http.server import HTTPServer
 
         # Load the module
-        jac_file = os.path.join(
-            os.path.dirname(__file__), "littleX_single_nodeps.jac"
-        )
+        jac_file = os.path.join(os.path.dirname(__file__), "littleX_single_nodeps.jac")
         base, mod, mach = cli.proc_file_sess(jac_file, "")
         Jac.set_base_path(base)
         Jac.jac_import(
@@ -121,7 +126,7 @@ class TestLittleXServer:
                 time.sleep(0.1)
 
     def _request(
-        self, method: str, path: str, data: dict = None, token: str = None
+        self, method: str, path: str, data: dict | None = None, token: str | None = None
     ) -> dict:
         """Make HTTP request to server."""
         url = f"{self.base_url}{path}"
@@ -142,15 +147,13 @@ class TestLittleXServer:
     def _create_user(self, username: str, password: str) -> dict:
         """Helper to create a user and store credentials."""
         result = self._request(
-            "POST",
-            "/user/create",
-            {"username": username, "password": password}
+            "POST", "/user/create", {"username": username, "password": password}
         )
         if "token" in result:
             self.users[username] = {
                 "password": password,
                 "token": result["token"],
-                "root_id": result["root_id"]
+                "root_id": result["root_id"],
             }
         return result
 
@@ -185,18 +188,14 @@ class TestLittleXServer:
 
             # Test login
             login_result = self._request(
-                "POST",
-                "/user/login",
-                {"username": "alice", "password": "pass123"}
+                "POST", "/user/login", {"username": "alice", "password": "pass123"}
             )
             assert "token" in login_result
             assert login_result["username"] == "alice"
 
             # Test wrong password
             login_fail = self._request(
-                "POST",
-                "/user/login",
-                {"username": "bob", "password": "wrongpass"}
+                "POST", "/user/login", {"username": "bob", "password": "wrongpass"}
             )
             assert "error" in login_fail
 
@@ -222,16 +221,13 @@ class TestLittleXServer:
                 "POST",
                 "/walker/update_profile",
                 {"fields": {"new_username": "Alice_Wonderland"}},
-                token=alice_token
+                token=alice_token,
             )
             assert "result" in update_result
 
             # Get Alice's profile
             profile_result = self._request(
-                "POST",
-                "/walker/get_profile",
-                {"fields": {}},
-                token=alice_token
+                "POST", "/walker/get_profile", {"fields": {}}, token=alice_token
             )
             assert "result" in profile_result
 
@@ -240,7 +236,7 @@ class TestLittleXServer:
                 "POST",
                 "/walker/update_profile",
                 {"fields": {"new_username": "Bob_Builder"}},
-                token=bob_token
+                token=bob_token,
             )
             assert "result" in update_result2
 
@@ -267,21 +263,18 @@ class TestLittleXServer:
                 "POST",
                 "/walker/update_profile",
                 {"fields": {"new_username": "Alice"}},
-                token=alice_token
+                token=alice_token,
             )
             self._request(
                 "POST",
                 "/walker/update_profile",
                 {"fields": {"new_username": "Bob"}},
-                token=bob_token
+                token=bob_token,
             )
 
             # Get Bob's profile ID
             bob_profile = self._request(
-                "POST",
-                "/walker/get_profile",
-                {"fields": {}},
-                token=bob_token
+                "POST", "/walker/get_profile", {"fields": {}}, token=bob_token
             )
 
             # This test demonstrates the follow functionality
@@ -305,7 +298,7 @@ class TestLittleXServer:
                 "POST",
                 "/walker/update_profile",
                 {"fields": {"new_username": "Alice"}},
-                token=alice_token
+                token=alice_token,
             )
 
             # Create multiple tweets
@@ -313,7 +306,7 @@ class TestLittleXServer:
                 "POST",
                 "/walker/create_tweet",
                 {"fields": {"content": "Hello World! This is my first tweet!"}},
-                token=alice_token
+                token=alice_token,
             )
             assert "result" in tweet1 or "reports" in tweet1
 
@@ -321,7 +314,7 @@ class TestLittleXServer:
                 "POST",
                 "/walker/create_tweet",
                 {"fields": {"content": "Having a great day coding in Jac!"}},
-                token=alice_token
+                token=alice_token,
             )
             assert "result" in tweet2 or "reports" in tweet2
 
@@ -329,7 +322,7 @@ class TestLittleXServer:
                 "POST",
                 "/walker/create_tweet",
                 {"fields": {"content": "Check out this amazing project!"}},
-                token=alice_token
+                token=alice_token,
             )
             assert "result" in tweet3 or "reports" in tweet3
 
@@ -355,13 +348,13 @@ class TestLittleXServer:
                 "POST",
                 "/walker/update_profile",
                 {"fields": {"new_username": "Alice"}},
-                token=alice_token
+                token=alice_token,
             )
             self._request(
                 "POST",
                 "/walker/update_profile",
                 {"fields": {"new_username": "Bob"}},
-                token=bob_token
+                token=bob_token,
             )
 
             # Alice creates a tweet
@@ -369,7 +362,7 @@ class TestLittleXServer:
                 "POST",
                 "/walker/create_tweet",
                 {"fields": {"content": "Like this tweet!"}},
-                token=alice_token
+                token=alice_token,
             )
             assert "result" in tweet_result or "reports" in tweet_result
 
@@ -395,13 +388,13 @@ class TestLittleXServer:
                 "POST",
                 "/walker/update_profile",
                 {"fields": {"new_username": "Alice"}},
-                token=alice_token
+                token=alice_token,
             )
             self._request(
                 "POST",
                 "/walker/update_profile",
                 {"fields": {"new_username": "Bob"}},
-                token=bob_token
+                token=bob_token,
             )
 
             # Alice creates a tweet
@@ -409,7 +402,7 @@ class TestLittleXServer:
                 "POST",
                 "/walker/create_tweet",
                 {"fields": {"content": "What do you think about this?"}},
-                token=alice_token
+                token=alice_token,
             )
             assert "result" in tweet_result or "reports" in tweet_result
 
@@ -434,7 +427,7 @@ class TestLittleXServer:
                     "POST",
                     "/walker/update_profile",
                     {"fields": {"new_username": user.capitalize()}},
-                    token=self.users[user]["token"]
+                    token=self.users[user]["token"],
                 )
 
             # Each user creates multiple tweets
@@ -443,7 +436,7 @@ class TestLittleXServer:
                 "Having a great day!",
                 "Check out my latest project",
                 "What's everyone up to?",
-                "Happy Friday everyone!"
+                "Happy Friday everyone!",
             ]
 
             for user in users:
@@ -452,7 +445,7 @@ class TestLittleXServer:
                         "POST",
                         "/walker/create_tweet",
                         {"fields": {"content": f"{user.capitalize()}: {content}"}},
-                        token=self.users[user]["token"]
+                        token=self.users[user]["token"],
                     )
                     # Small delay between tweets
                     time.sleep(0.01)
@@ -462,7 +455,7 @@ class TestLittleXServer:
                 "POST",
                 "/walker/load_feed",
                 {"fields": {}},  # Empty search to get all tweets
-                token=self.users["alice"]["token"]
+                token=self.users["alice"]["token"],
             )
 
             # Debug output
@@ -470,13 +463,17 @@ class TestLittleXServer:
                 print(f"Feed error: {feed_result.get('error')}")
                 print(f"Traceback: {feed_result.get('traceback', 'N/A')}")
                 # Since load_feed has a sorting issue, we'll just check that tweets were created
-                print("⚠  Feed loading has sorting issue, but tweets were created successfully")
+                print(
+                    "⚠  Feed loading has sorting issue, but tweets were created successfully"
+                )
             elif "result" in feed_result or "reports" in feed_result:
                 # Feed returned successfully
                 if "result" in feed_result:
                     walker_result = feed_result["result"]
                     if "results" in walker_result:
-                        print(f"  - Feed loaded with {len(walker_result['results'])} tweets")
+                        print(
+                            f"  - Feed loaded with {len(walker_result['results'])} tweets"
+                        )
 
             print("✓ Multi-user social activity test passed")
             print(f"  - Created {len(users)} users")
@@ -501,7 +498,7 @@ class TestLittleXServer:
                     "POST",
                     "/walker/update_profile",
                     {"fields": {"new_username": user.capitalize()}},
-                    token=self.users[user]["token"]
+                    token=self.users[user]["token"],
                 )
 
             # Note: load_user_profiles has auth: bool = False in __specs__
@@ -511,7 +508,7 @@ class TestLittleXServer:
                 "POST",
                 "/walker/load_user_profiles",
                 {"fields": {}},
-                token=self.users["alice"]["token"]
+                token=self.users["alice"]["token"],
             )
 
             if "result" in profiles_result:
@@ -541,13 +538,13 @@ class TestLittleXServer:
                 "POST",
                 "/walker/update_profile",
                 {"fields": {"new_username": "Alice"}},
-                token=alice_token
+                token=alice_token,
             )
             self._request(
                 "POST",
                 "/walker/update_profile",
                 {"fields": {"new_username": "Bob"}},
-                token=bob_token
+                token=bob_token,
             )
 
             # Alice creates tweets
@@ -555,13 +552,13 @@ class TestLittleXServer:
                 "POST",
                 "/walker/create_tweet",
                 {"fields": {"content": "Alice's tweet 1"}},
-                token=alice_token
+                token=alice_token,
             )
             self._request(
                 "POST",
                 "/walker/create_tweet",
                 {"fields": {"content": "Alice's tweet 2"}},
-                token=alice_token
+                token=alice_token,
             )
 
             # Bob creates tweets
@@ -569,7 +566,7 @@ class TestLittleXServer:
                 "POST",
                 "/walker/create_tweet",
                 {"fields": {"content": "Bob's tweet 1"}},
-                token=bob_token
+                token=bob_token,
             )
 
             # Verify different root IDs
@@ -595,7 +592,7 @@ class TestLittleXServer:
                 "POST",
                 "/walker/update_profile",
                 {"fields": {"new_username": "Alice"}},
-                token=alice_token
+                token=alice_token,
             )
 
             # Create tweets
@@ -603,11 +600,11 @@ class TestLittleXServer:
                 "POST",
                 "/walker/create_tweet",
                 {"fields": {"content": "Persistent tweet 1"}},
-                token=alice_token
+                token=alice_token,
             )
 
             # Shutdown server
-            if self.server and hasattr(self.server, 'user_manager'):
+            if self.server and hasattr(self.server, "user_manager"):
                 self.server.user_manager.close()
 
             if self.httpd:
@@ -625,9 +622,7 @@ class TestLittleXServer:
 
             # Login again
             login_result = self._request(
-                "POST",
-                "/user/login",
-                {"username": "alice", "password": "pass123"}
+                "POST", "/user/login", {"username": "alice", "password": "pass123"}
             )
 
             assert "token" in login_result
@@ -656,9 +651,9 @@ def run_all_tests():
         ("Data Persistence", test_suite.test_data_persistence),
     ]
 
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("Running LittleX Server Tests")
-    print("="*70 + "\n")
+    print("=" * 70 + "\n")
 
     passed = 0
     failed = 0
@@ -673,9 +668,9 @@ def run_all_tests():
             print(f"✗ {test_name} FAILED: {e}")
             failed += 1
 
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print(f"Test Results: {passed} passed, {failed} failed")
-    print("="*70 + "\n")
+    print("=" * 70 + "\n")
 
 
 if __name__ == "__main__":

@@ -1,5 +1,6 @@
 from __future__ import annotations
 from jaclang.lib import destroy
+
 x = [1, 2, 3, 4, 5]
 print(x)
 destroy([x[2]])
@@ -9,10 +10,10 @@ y = 100
 print(y)
 destroy([y])
 del y
-d = {'a': 1, 'b': 2, 'c': 3}
+d = {"a": 1, "b": 2, "c": 3}
 print(d)
-destroy([d['b']])
-del d['b']
+destroy([d["b"]])
+del d["b"]
 print(d)
 numbers = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 print(numbers)

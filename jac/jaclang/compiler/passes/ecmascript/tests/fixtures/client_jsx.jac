@@ -7,6 +7,10 @@ cl obj ButtonProps {
     has count: int = 0;
 }
 
+cl walker MyComponent {
+    has title: str = "My Component";
+}
+
 cl def component() {
     return <div class="box">
         <h1>Hello</h1>
@@ -16,6 +20,11 @@ cl def component() {
 
 def server_only() {
     return "not included";
+}
+
+cl def jsx_bug_tests() {
+    # Constructor calls in JSX
+    component = MyComponent(title="Custom Title");
 }
 
 with entry {
