@@ -31,8 +31,7 @@ repos:
           ]
         exclude: |
             (?x)(
-                ^jac/jaclang/vendor/|
-                ^jac/jaclang/compiler/larkparse/jac_parser\.py$|
+                # TODO
                 ^jac/examples/|
                 /fixtures/|
                 ^$
