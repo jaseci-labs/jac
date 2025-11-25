@@ -1,9 +1,5 @@
 # Agentic AI with byLLM and OSP
 
-<!-- Agentic AI applications represent the next evolution in software systems. This guide explains how such applications can be built using the **Jaseci Stack**, with a focus on the **byLLM** plugin.
-
-Before diving into the development process, it’s important to understand what Agentic AI is and what building such systems entails. -->
-
 An **AI agent** is a software entity capable of autonomously performing actions using available resources to achieve defined goals.
 In traditional systems, all tools and actions are explicitly defined by humans.
 
@@ -25,6 +21,7 @@ To build such applications, we need to:
 ## Example: Task Manager
 
 To demonstrate these capabilities, we built an agentic task manager application in Jac. This example features three main agents:
+
 - **Task Handler**: Manages task creation, updates, and scheduling
 - **Email Handler**: Composes and manages emails
 - **General Chat**: Provides general conversational assistance
@@ -73,6 +70,7 @@ Let's understand the three main constructs in Object Spatial Programming (OSP) a
 **Why OSP for Agentic AI?**
 
 OSP provides a **declarative way to express agent interactions** without writing explicit orchestration logic. The graph structure naturally represents multi-agent systems, and walkers provide a clean mechanism for routing and coordination. Combined with byLLM's LLM capabilities, you get a powerful framework where:
+
 - Agents are defined as Jac nodes with clear responsibilities
 - LLMs make intelligent routing and planning decisions
 - The object graph maintains consistency across distributed agent interactions
@@ -106,11 +104,13 @@ node Task {
 This is the first agent in our system. It demonstrates how to build a **specialized agent with tools and LLM reasoning**.
 
 The node exposes the following tools (member methods) that the LLM can invoke:
+
 - `get_current_time()` — Returns a formatted timestamp (utility function for planning)
 - `add_task(task, date, time)` — Creates a Task node and links it to the handler (state modification)
 - `summarize_tasks()` — Queries linked task nodes and returns a summary (knowledge retrieval)
 
 The key LLM-powered method:
+
 - `route_and_run(utterance)` — Uses `by llm(method="ReAct", tools=(...))` to enable the LLM to reason and plan. Given a user utterance, the LLM can chain tool calls to accomplish the goal (e.g., get current time → add task → summarize tasks).
 
 The agent's entry point is the `can execute with task_manager entry` ability. This = ability triggers **automatically** when the `task_manager` walker visits this node, making it easy to define agent behavior without explicit callbacks.
@@ -212,6 +212,7 @@ The orchestrator demonstrates how **walkers coordinate multi-agent systems**. Be
 The walker uses `plan_tasks(main_task: str) -> list[TaskPartition]` to ask the LLM to decompose the main task into subtasks. This is a key pattern: **let the LLM make strategic decisions** about task decomposition.
 
 Each subtask is represented as a `TaskPartition` object with:
+
 - `task`: The subtask description
 - `agent_type`: Which agent should handle it (from `RoutingNodes` enum)
 
