@@ -1,6 +1,6 @@
 <div align="center">
     <img src="/assets/byLLM_name_logo.png" height="150" width="300" alt="byLLM logo">
-    
+
 </div>
 
 <!-- <div align="center">
