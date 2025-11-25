@@ -188,6 +188,15 @@ obj BaseLLM {
             "Subclasses must implement this method for LLM call with streaming."
         );
     }
+
+    """Make a direct model call with the given parameters.
+    Get api_key from self.api_key if needed.
+    """
+    def model_call_with_stream(params: dict) -> Generator[str, None, None] {
+        raise NotImplementedError(
+            "Subclasses must implement this method for LLM call with streaming."
+        );
+    }
 }
 
 """A wrapper class that abstracts LiteLLM functionality.
