@@ -138,8 +138,6 @@ class BaseLLM:
 
         tool_calls: list[ToolCall] = []
         for tool_call in message.tool_calls or []:  # type: ignore
-            print(tool_call)
-            print(type(tool_call))
             if tool := mtir.get_tool(tool_call.function.name):
                 args_json = json.loads(tool_call.function.arguments)
                 args = tool.parse_arguments(args_json)
