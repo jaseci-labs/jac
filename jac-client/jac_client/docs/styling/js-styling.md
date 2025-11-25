@@ -300,22 +300,22 @@ export const getContainerStyle = (width, height) => ({
 
 ## Advantages
 
-- ✅ **Dynamic styling** based on props/state
-- ✅ **No CSS file needed**
-- ✅ **Type-safe** with TypeScript
-- ✅ **Component-scoped** by default
-- ✅ **Programmatic style generation**
-- ✅ **Easy to debug** (JavaScript objects)
-- ✅ **No build step** for styles
+-  **Dynamic styling** based on props/state
+-  **No CSS file needed**
+-  **Type-safe** with TypeScript
+-  **Component-scoped** by default
+-  **Programmatic style generation**
+-  **Easy to debug** (JavaScript objects)
+-  **No build step** for styles
 
 ## Limitations
 
-- ❌ **No pseudo-classes** (hover, focus, etc.)
-- ❌ **No media queries**
-- ❌ **No CSS animations** (use JavaScript)
-- ❌ **Verbose** for complex styles
-- ❌ **No CSS preprocessor features**
-- ❌ **Performance** can be slower for many elements
+-  **No pseudo-classes** (hover, focus, etc.)
+-  **No media queries**
+-  **No CSS animations** (use JavaScript)
+-  **Verbose** for complex styles
+-  **No CSS preprocessor features**
+-  **Performance** can be slower for many elements
 
 ## When to Use
 

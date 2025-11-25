@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "byllm"
-version = "0.4.6"
+version = "0.4.7"
 description = "byLLM Provides Easy to use APIs for different LLM Providers to be used with Jaseci's Jaclang Programming Language."
 authors = ["Jason Mars <jason@mars.ninja>"]
 maintainers = ["Jason Mars <jason@mars.ninja>"]
