@@ -202,54 +202,6 @@ obj BaseLLM {
     }
 }
 
-"""A wrapper class that abstracts LiteLLM functionality.
-
-This class provides a simplified and enhanced interface for interacting
-with various language models through LiteLLM.
-"""
-obj Model(BaseLLM) {
-
-    """Initialize the JacLLM instance.
-    Args:
-        model: The model name to use (e.g., "gpt-3.5-turbo", "claude-3-sonnet-20240229")
-        api_key: API key for the model provider
-        **kwargs: Additional configuration options
-    """
-    def init(model_name: str, **kwargs: object) -> None {
-        super.init(model_name, **kwargs);
-        self.proxy = kwargs.get("proxy", False);
-        logging.getLogger("httpx").setLevel(logging.WARNING);
-        _disable_debugging();
-        litellm.drop_params = True;
-    }
-
-    def model_call_no_stream(params: dict) -> dict {
-        if self.proxy {
-            client = OpenAI(
-                base_url=self.chat
-            );
-            response = client.chat.completions.create(**params);
-        } else {
-            response = litellm.completion(**params);
-        }
-        return response;
-    }
-
-    def model_call_with_stream(params: dict) {
-        if self.proxy {
-            client = OpenAI(
-                base_url=self.api_base,
-                api_key=self.api_key,
-            );
-            response = client.chat.completions.create(stream=True, **params);
-        } else {
-            response = litellm.completion(stream=True, **params);
-        }
-        return response;
-    }
-}
-
-
 """LLM Connector for a mock LLM service that simulates responses."""
 obj MockLLM(BaseLLM) {
     """Initialize the MockLLM connector."""
@@ -288,6 +240,65 @@ obj MockLLM(BaseLLM) {
                 output = output[chunk_len:];
             }
         }
+    }
+}
+
+"""A wrapper class that abstracts LiteLLM functionality.
+
+This class provides a simplified and enhanced interface for interacting
+with various language models through LiteLLM.
+"""
+obj Model(BaseLLM) {
+
+    """Initialize the JacLLM instance.
+    Args:
+        model: The model name to use (e.g., "gpt-3.5-turbo", "claude-3-sonnet-20240229")
+        api_key: API key for the model provider
+        **kwargs: Additional configuration options
+    """
+    def init(model_name: str, **kwargs: object) -> None {
+        super.init(model_name, **kwargs);
+        self.proxy = kwargs.get("proxy", False);
+        # When model_name is 'mockllm', delegate to MockLLM behavior
+        self._mock_delegate = MockLLM(model_name=model_name, **kwargs) if model_name == MODEL_MOCK else None;
+        if not self._mock_delegate {
+            logging.getLogger("httpx").setLevel(logging.WARNING);
+            _disable_debugging();
+            litellm.drop_params = True;
+        }
+    }
+
+    """Invoke the LLM, delegating to MockLLM if applicable."""
+    override def invoke(mtir: MTIR) -> object {
+        if self._mock_delegate {
+            return self._mock_delegate.invoke(mtir);
+        }
+        return super.invoke(mtir);
+    }
+
+    def model_call_no_stream(params: dict) -> dict {
+        if self.proxy {
+            client = OpenAI(
+                base_url=self.chat
+            );
+            response = client.chat.completions.create(**params);
+        } else {
+            response = litellm.completion(**params);
+        }
+        return response;
+    }
+
+    def model_call_with_stream(params: dict) {
+        if self.proxy {
+            client = OpenAI(
+                base_url=self.api_base,
+                api_key=self.api_key,
+            );
+            response = client.chat.completions.create(stream=True, **params);
+        } else {
+            response = litellm.completion(stream=True, **params);
+        }
+        return response;
     }
 }
 
