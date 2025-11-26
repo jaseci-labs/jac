@@ -124,20 +124,20 @@ class JacCliTests(TestCase):
 
     def test_jac_cli_alert_based_runtime_err(self) -> None:
         """Test runtime errors with internal calls collapsed (default behavior)."""
-        captured_output = io.StringIO()
-        sys.stdout = captured_output
-        sys.stderr = captured_output
 
-        with self.assertRaises(SystemExit) as cm:
-            cli.run(self.fixture_abs_path("err_runtime.jac"))
-
-        sys.stdout = sys.__stdout__
-        sys.stderr = sys.__stderr__
+        # Use subprocess to isolate execution and avoid parallel test interference
+        process = subprocess.Popen(
+            ["jac", "run", self.fixture_abs_path("err_runtime.jac")],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        stdout, stderr = process.communicate()
 
         # Verify exit code is 1
-        self.assertEqual(cm.exception.code, 1)
+        self.assertEqual(process.returncode, 1)
 
-        output = captured_output.getvalue()
+        output = stdout + stderr
 
         expected_stderr_values = (
             "Error: list index out of range",
@@ -165,54 +165,44 @@ class JacCliTests(TestCase):
 
     def test_jac_cli_runtime_err_with_internal_stack(self) -> None:
         """Test runtime errors with internal calls shown when setting enabled."""
-        from jaclang.settings import settings
+        # Use subprocess with environment variable to enable internal stack traces
+        env = os.environ.copy()
+        env["JAC_SHOW_INTERNAL_STACK_ERRS"] = "true"
 
-        # Save original setting
-        original_setting = settings.show_internal_stack_errs
+        process = subprocess.Popen(
+            ["jac", "run", self.fixture_abs_path("err_runtime.jac")],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=env,
+        )
+        stdout, stderr = process.communicate()
 
-        try:
-            # Enable internal stack traces
-            settings.show_internal_stack_errs = True
+        # Verify exit code is 1
+        self.assertEqual(process.returncode, 1)
 
-            captured_output = io.StringIO()
-            sys.stdout = captured_output
-            sys.stderr = captured_output
+        output = stdout + stderr
 
-            with self.assertRaises(SystemExit) as cm:
-                cli.run(self.fixture_abs_path("err_runtime.jac"))
+        # User frames should still be present
+        expected_values = (
+            "Error: list index out of range",
+            "  at bar() ",
+            "  at foo() ",
+            "  at <module> ",
+        )
+        for exp in expected_values:
+            self.assertIn(exp, output)
 
-            sys.stdout = sys.__stdout__
-            sys.stderr = sys.__stderr__
+        # Internal runtime calls should be shown (not collapsed)
+        internal_call_patterns = (
+            "meta_importer.py",
+            "machine.py",
+        )
+        for pattern in internal_call_patterns:
+            self.assertIn(pattern, output)
 
-            # Verify exit code is 1
-            self.assertEqual(cm.exception.code, 1)
-
-            output = captured_output.getvalue()
-
-            # User frames should still be present
-            expected_values = (
-                "Error: list index out of range",
-                "  at bar() ",
-                "  at foo() ",
-                "  at <module> ",
-            )
-            for exp in expected_values:
-                self.assertIn(exp, output)
-
-            # Internal runtime calls should be shown (not collapsed)
-            internal_call_patterns = (
-                "meta_importer.py",
-                "machine.py",
-            )
-            for pattern in internal_call_patterns:
-                self.assertIn(pattern, output)
-
-            # The collapse marker should NOT appear
-            self.assertNotIn("... [internal runtime calls]", output)
-
-        finally:
-            # Restore original setting
-            settings.show_internal_stack_errs = original_setting
+        # The collapse marker should NOT appear
+        self.assertNotIn("... [internal runtime calls]", output)
 
     def test_jac_impl_err(self) -> None:
         """Basic test for pass."""
