@@ -151,4 +151,3 @@ It is recomended to implement the AI features purely in jaclang and just import 
 
     def get_person_info(img: Image) -> Person by llm();
     ```
-

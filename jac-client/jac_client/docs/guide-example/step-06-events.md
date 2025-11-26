@@ -747,4 +747,3 @@ Excellent! Your app is now fully interactive with local state. But when you refr
 In the next step, we'll use **useEffect** to load data when the app starts!
 
  **[Continue to Step 7: Effects](./step-07-effects.md)**
-

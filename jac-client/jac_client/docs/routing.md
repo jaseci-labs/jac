@@ -657,4 +657,3 @@ def Navigation() -> any {
 - **Production-ready**: Battle-tested routing for real applications
 
 Routing in Jac is simple, powerful, and production-ready!
-

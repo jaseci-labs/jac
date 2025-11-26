@@ -179,4 +179,3 @@ This alias is critical because:
 - `runtime_path`: Path to client runtime file
 - `vite_output_dir`: Build output (defaults to `src/dist/assets`)
 - `vite_minify`: Enable/disable minification
-

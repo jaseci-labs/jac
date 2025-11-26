@@ -122,6 +122,7 @@ nav:
       - Friendzone Lite: "learn/examples/agentic_ai/friendzone-lite/friendzone-lite.md"
       - Aider Genius Lite: "learn/examples/agentic_ai/aider-genius-lite/aider-genius-lite.md"
       - Task Manager Lite: "learn/examples/agentic_ai/task-manager-lite/task-manager-lite.md"
+      - EmailBuddy: "learn/examples/EmailBuddy/tutorial.md"
   - Full Jac Specification:
     - Introduction: "learn/jac_ref.md"
     - Base Module structure: "learn/jac_ref/base_module_structure.md"

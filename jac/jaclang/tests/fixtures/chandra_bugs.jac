@@ -8,4 +8,3 @@ with entry {
     print(f"<link href='{mydict}' rel='stylesheet'>");
     print(1!=2);
 }
-

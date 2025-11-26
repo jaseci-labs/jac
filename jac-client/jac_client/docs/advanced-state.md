@@ -1263,4 +1263,3 @@ def DeeplyNestedComponent() -> any {
 - **Best Practices**: Separate concerns, avoid derived state, handle errors
 
 React hooks provide a powerful and flexible way to manage state in Jac applications!
-

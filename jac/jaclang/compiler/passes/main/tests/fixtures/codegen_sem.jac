@@ -50,4 +50,3 @@ impl Enum2 {
 sem Enum2 = "An enumeration that defines two values: Bar and Baz.";
 sem Enum2.Bar = "The Bar value of the Enum2 enumeration.";
 sem Enum2.Baz = "The Baz value of the Enum2 enumeration.";
-

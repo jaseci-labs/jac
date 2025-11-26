@@ -19,4 +19,3 @@ export class MessageFormatter {
         return `${this.prefix}: ${text}`;
     }
 }
-

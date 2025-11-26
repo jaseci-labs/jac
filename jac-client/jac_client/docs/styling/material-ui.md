@@ -339,8 +339,3 @@ export const theme = createTheme({
 - [Material-UI Documentation](https://mui.com/)
 - [Material-UI Components](https://mui.com/material-ui/getting-started/)
 - [Material Design Guidelines](https://m3.material.io/)
-
-
-
-
-

@@ -1139,4 +1139,3 @@ Type errors with imported functions
 - **Best Practices**: Organize imports, import only what you need, document exports
 
 Imports in Jac make it easy to use third-party libraries and organize your code!
-
