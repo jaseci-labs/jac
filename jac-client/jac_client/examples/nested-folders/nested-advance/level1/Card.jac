@@ -29,4 +29,3 @@ cl def Card() -> any {
         </div>
     </div>;
 }
-
