@@ -34,7 +34,6 @@ jac = "jaclang.cli.cli:start_cli"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.2.1"
-pytest-asyncio = "^0.22.0"
 pytest-xdist = "^3.6.1"
 pytest-cov = "^5.0.0"
 pre-commit = "^3.7.1"
