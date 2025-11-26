@@ -4,7 +4,7 @@ Learn how to manage complex state in Jac using React hooks, combining multiple s
 
 ---
 
-## 📚 Table of Contents
+##  Table of Contents
 
 - [React Hooks Overview](#react-hooks-overview)
 - [Multiple State Variables](#multiple-state-variables)
@@ -1091,7 +1091,7 @@ cl {
 ```jac
 cl import from react { useState }
 
-# ✅ Good: Separate state variables
+#  Good: Separate state variables
 def App() -> any {
     let [user, setUser] = useState(None);
     let [todos, setTodos] = useState([]);
@@ -1099,7 +1099,7 @@ def App() -> any {
     let [theme, setTheme] = useState("light");
 }
 
-# ❌ Avoid: One giant state object for unrelated data
+#  Avoid: One giant state object for unrelated data
 def App() -> any {
     let [appState, setAppState] = useState({
         "user": None,
@@ -1115,7 +1115,7 @@ def App() -> any {
 ```jac
 cl import from react { useState, useMemo }
 
-# ✅ Good: Memoize expensive calculations
+#  Good: Memoize expensive calculations
 def TodoApp() -> any {
     let [todos, setTodos] = useState([]);
 
@@ -1124,7 +1124,7 @@ def TodoApp() -> any {
     }, [todos]);
 }
 
-# ❌ Avoid: Computing on every render
+#  Avoid: Computing on every render
 def TodoApp() -> any {
     let [todos, setTodos] = useState([]);
 
@@ -1138,13 +1138,13 @@ def TodoApp() -> any {
 ```jac
 cl import from react { useState }
 
-# ✅ Good: Calculate derived values
+#  Good: Calculate derived values
 def TodoApp() -> any {
     let [todos, setTodos] = useState([]);
     activeCount = todos.filter(lambda t: any -> bool { return not t.done; }).length;
 }
 
-# ❌ Avoid: Storing derived values in state
+#  Avoid: Storing derived values in state
 def TodoApp() -> any {
     let [todos, setTodos] = useState([]);
     let [activeCount, setActiveCount] = useState(0);  # Redundant!
@@ -1156,7 +1156,7 @@ def TodoApp() -> any {
 ```jac
 cl import from react { useReducer }
 
-# ✅ Good: useReducer for complex interdependent state
+#  Good: useReducer for complex interdependent state
 def TodoApp() -> any {
     def reducer(state: dict, action: dict) -> dict {
         if action.type == "ADD" {
@@ -1168,7 +1168,7 @@ def TodoApp() -> any {
     let [state, dispatch] = useReducer(reducer, {"todos": [], "count": 0});
 }
 
-# ❌ Avoid: Multiple useState for interdependent state
+#  Avoid: Multiple useState for interdependent state
 def TodoApp() -> any {
     let [todos, setTodos] = useState([]);
     let [count, setCount] = useState(0);
@@ -1181,7 +1181,7 @@ def TodoApp() -> any {
 ```jac
 cl import from react { useState, useEffect }
 
-# ✅ Good: Comprehensive state management
+#  Good: Comprehensive state management
 def TodoApp() -> any {
     let [todos, setTodos] = useState([]);
     let [loading, setLoading] = useState(False);
@@ -1214,7 +1214,7 @@ def TodoApp() -> any {
 ```jac
 cl import from react { useState, useCallback }
 
-# ✅ Good: Memoized callbacks prevent unnecessary re-renders
+#  Good: Memoized callbacks prevent unnecessary re-renders
 def TodoApp() -> any {
     let [todos, setTodos] = useState([]);
 
@@ -1234,7 +1234,7 @@ def TodoApp() -> any {
 ```jac
 cl import from react { useState, useContext, createContext }
 
-# ✅ Good: Context avoids prop drilling
+#  Good: Context avoids prop drilling
 ThemeContext = createContext("light");
 
 def App() -> any {
@@ -1262,5 +1262,4 @@ def DeeplyNestedComponent() -> any {
 - **Custom Hooks**: Create reusable state logic
 - **Best Practices**: Separate concerns, avoid derived state, handle errors
 
-React hooks provide a powerful and flexible way to manage state in Jac applications! 🚀
-
+React hooks provide a powerful and flexible way to manage state in Jac applications!

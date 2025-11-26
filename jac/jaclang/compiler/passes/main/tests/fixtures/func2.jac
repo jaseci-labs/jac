@@ -5,4 +5,3 @@ def factorial(n: int) -> str {
         return n * factorial(n - 1);
     }
 }
-

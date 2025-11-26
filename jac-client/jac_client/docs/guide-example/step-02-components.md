@@ -1,12 +1,12 @@
 # Step 2: First Component
 
-> **💡 Quick Tip:** Each step has two parts. **Part 1** shows you what to build. **Part 2** explains why it works. Want to just build? Skip all Part 2 sections!
+> ** Quick Tip:** Each step has two parts. **Part 1** shows you what to build. **Part 2** explains why it works. Want to just build? Skip all Part 2 sections!
 
 In this step, you'll create your first reusable component - a **TodoItem** that displays a single todo.
 
 ---
 
-## 🏗️ Part 1: Building the App
+##  Part 1: Building the App
 
 ### Step 2.1: Create a TodoItem Component
 
@@ -119,11 +119,11 @@ cl {
 
 ---
 
-**⏭️ Want to skip the theory?** Jump to [Step 3: Styling](./step-03-styling.md)
+**⏭ Want to skip the theory?** Jump to [Step 3: Styling](./step-03-styling.md)
 
 ---
 
-## 💡 Part 2: Understanding the Concepts
+##  Part 2: Understanding the Concepts
 
 ### What is a Component?
 
@@ -182,12 +182,12 @@ If there's a bug in how todos display, you know to check `TodoItem`.
 **1. Use PascalCase** (first letter capitalized)
 
 ```jac
-# ✅ Correct
+#  Correct
 def TodoItem() -> any { ... }
 def UserProfile() -> any { ... }
 def NavigationBar() -> any { ... }
 
-# ❌ Wrong
+#  Wrong
 def todoItem() -> any { ... }      # camelCase
 def user_profile() -> any { ... }  # snake_case
 def navigation-bar() -> any { ... } # kebab-case
@@ -196,12 +196,12 @@ def navigation-bar() -> any { ... } # kebab-case
 **2. Name describes what it does**
 
 ```jac
-# ✅ Good names
+#  Good names
 def TodoItem() -> any { ... }
 def LoginForm() -> any { ... }
 def ProductCard() -> any { ... }
 
-# ❌ Bad names
+#  Bad names
 def Component1() -> any { ... }
 def Thing() -> any { ... }
 def X() -> any { ... }
@@ -226,14 +226,14 @@ def TodoItem(props: any) -> any {
 **Important**: In React (which Jac uses), components receive props as a **single object**, not individual parameters.
 
 ```jac
-# ✅ Correct way
+#  Correct way
 def TodoItem(props: any) -> any {
     let text = props.text;
     let done = props.done;
     # ...
 }
 
-# ❌ Wrong way (won't work)
+#  Wrong way (won't work)
 def TodoItem(text: str, done: bool) -> any {
     # This doesn't work in React!
 }
@@ -328,19 +328,19 @@ let myText = "Learn Jac";
 
 ---
 
-## ✅ What You've Learned
+##  What You've Learned
 
-- ✅ Components are functions that return UI
-- ✅ How to create a component
-- ✅ PascalCase naming convention
-- ✅ Passing data to components with props
-- ✅ Receiving props as a single object
-- ✅ Composing components (nesting)
-- ✅ Organizing app into multiple components
+-  Components are functions that return UI
+-  How to create a component
+-  PascalCase naming convention
+-  Passing data to components with props
+-  Receiving props as a single object
+-  Composing components (nesting)
+-  Organizing app into multiple components
 
 ---
 
-## 🐛 Common Issues
+##  Common Issues
 
 ### Issue: Component not showing up
 
@@ -354,12 +354,12 @@ let myText = "Learn Jac";
 **Cause**: Using individual parameters instead of props object
 
 ```jac
-# ❌ Wrong
+#  Wrong
 def TodoItem(text: str, done: bool) -> any {
     # ...
 }
 
-# ✅ Correct
+#  Correct
 def TodoItem(props: any) -> any {
     let text = props.text;
     # ...
@@ -385,7 +385,7 @@ def TodoItem(props: any) -> any {
 
 ---
 
-## 🎯 Quick Exercise
+##  Quick Exercise
 
 Try adding a new component:
 
@@ -409,8 +409,8 @@ def app() -> any {
 
 ---
 
-## ➡️ Next Step
+##  Next Step
 
 Great! You can now create and organize components. But they look plain. Let's make them beautiful with **styling**!
 
-👉 **[Continue to Step 3: Styling](./step-03-styling.md)**
+ **[Continue to Step 3: Styling](./step-03-styling.md)**

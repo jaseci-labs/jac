@@ -30,13 +30,6 @@ byllm = "^0.4.6"
 jac-client = "^0.2.0"
 jac-streamlit = "^0.0.4"
 
-# [tool.poetry.extras]
-# # All packages are included by default in jaseci v2.0
-# # These extras are kept for backward compatibility
-# llm = ["byllm"]
-# cloud = ["jac-cloud"]
-# streamlit = ["jac-streamlit"]
-# all = ["jaclang", "byllm", "jac-cloud", "jac-streamlit"]
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

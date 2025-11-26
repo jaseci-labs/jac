@@ -9,7 +9,7 @@ When you install `jaseci`, you automatically get:
 
 - **jaclang** - The Jac programming language
 - **byllm** - LLM integration for AI-native programming
-- **jac-cloud** - Cloud deployment and scaling capabilities
+- **jac-scale** - Cloud adaptive deployment and scaling capabilities
 - **jac-streamlit** - Streamlit integration for visualization
 
 ## Installation

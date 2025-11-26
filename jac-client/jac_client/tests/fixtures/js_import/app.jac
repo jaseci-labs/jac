@@ -27,4 +27,3 @@ cl def JsImportTest() -> any {
 cl def app() -> any {
     return <JsImportTest />;
 }
-
