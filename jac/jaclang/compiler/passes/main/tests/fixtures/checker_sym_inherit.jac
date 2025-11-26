@@ -13,4 +13,3 @@ with entry {
     c.val = 42;     # <-- Ok
     c.val = "str";  # <-- Error
 }
-
