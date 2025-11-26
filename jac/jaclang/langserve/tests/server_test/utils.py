@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import tempfile
 from typing import Optional
@@ -89,7 +90,7 @@ class LanguageServerTestHelper:
         self.ls = ls
         self.test_file = test_file
 
-    async def open_document(self) -> None:
+    def open_document(self) -> None:
         """Open a document in the language server."""
         from jaclang.langserve.server import did_open
 
@@ -101,10 +102,10 @@ class LanguageServerTestHelper:
                 text=self.test_file.code,
             )
         )
-        await did_open(self.ls, params)
-        await self.ls.wait_till_idle()
+        asyncio.run(did_open(self.ls, params))
+        self.ls.wait_till_idle_sync()
 
-    async def save_document(self, code: Optional[str] = None) -> None:
+    def save_document(self, code: Optional[str] = None) -> None:
         """Save a document in the language server."""
         from jaclang.langserve.server import did_save
 
@@ -119,10 +120,10 @@ class LanguageServerTestHelper:
         params = DidSaveTextDocumentParams(
             text_document=TextDocumentIdentifier(uri=self.test_file.uri), text=content
         )
-        await did_save(self.ls, params)
-        await self.ls.wait_till_idle()
+        asyncio.run(did_save(self.ls, params))
+        self.ls.wait_till_idle_sync()
 
-    async def change_document(self, code: str) -> None:
+    def change_document(self, code: str) -> None:
         """Change document content in the language server."""
         from jaclang.langserve.server import did_change
 
@@ -135,8 +136,8 @@ class LanguageServerTestHelper:
             ),
             content_changes=[{"text": code}],  # type: ignore
         )
-        await did_change(self.ls, params)
-        await self.ls.wait_till_idle()
+        asyncio.run(did_change(self.ls, params))
+        self.ls.wait_till_idle_sync()
 
     def _update_workspace(self, code: str, version: int) -> None:
         """Update workspace with new document content."""
