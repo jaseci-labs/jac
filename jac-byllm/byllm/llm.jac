@@ -3,9 +3,6 @@
 This module provides a LLM class that abstracts LiteLLM and offers
 enhanced functionality and interface for language model operations.
 """
-import from __future__ { annotations }
-
-# flake8: noqa: E402
 
 import logging;
 import os;

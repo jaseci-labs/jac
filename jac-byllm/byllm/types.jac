@@ -4,9 +4,6 @@ This module defines the types used in the LLM interactions, including messages,
 tools, and tool calls. It provides a structured way to represent messages,
 tool calls, and tools that can be used in LLM requests and responses.
 """
-
-import from __future__ { annotations }
-
 import base64;
 import mimetypes;
 import os;

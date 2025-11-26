@@ -1,5 +1,4 @@
 """MTIR (Meaning Typed Intermediate Representation) module for JacLang runtime library."""
-import from __future__ { annotations }
 import inspect;
 import json;
 import from types { MethodType }
