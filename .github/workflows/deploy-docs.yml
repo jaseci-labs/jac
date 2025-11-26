@@ -155,9 +155,6 @@ jobs:
           echo "Cloning jac_playground repository..."
           git clone https://github.com/jaseci-labs/jac_playground.git ./tmp/jac_playground
           
-          echo "Removing jaclang.zip if it exists..."
-          rm -f ./tmp/jac_playground/jaclang.zip
-          
           echo "Updating PLAYGROUND_PATH in src and public folders..."
           sed -i 's|const PLAYGROUND_PATH = .*;|const PLAYGROUND_PATH = "/playground";|' ./tmp/jac_playground/src/lib/assetPaths.ts
           sed -i 's|const PLAYGROUND_PATH = .*;|const PLAYGROUND_PATH = "/playground";|' ./tmp/jac_playground/public/python/python.js
@@ -173,6 +170,9 @@ jobs:
           
           echo "Copying build files to the playground directory..."
           cp -r ./tmp/jac_playground/dist/* ./docs/docs/playground/
+
+          echo "Removing jaclang.zip from playground directory if it exists..."
+          rm -f ./docs/docs/playground/jaclang.zip
 
           echo "Removing temporary jac_playground directory..."
           rm -rf ./tmp/
