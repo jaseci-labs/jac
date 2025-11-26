@@ -136,4 +136,3 @@ See `jac_client/docs/` for detailed guides:
 - advanced-state.md - Complex state patterns
 
 ---
-

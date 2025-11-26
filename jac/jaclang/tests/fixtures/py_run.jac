@@ -5,4 +5,3 @@ with entry {
     sum_ab = (a + b);
     print('Sum:', sum_ab);
 }
-

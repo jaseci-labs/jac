@@ -49,4 +49,3 @@ In addition to setting up JacLang itself, you may also want to take advantage of
 - [Jac in a Flash](jac_in_a_flash.md) - See Jac's Syntax with a Toy
 - [A Robust Example](examples/littleX/tutorial.md) - See something real in Jac
 - [Jac Playground](../playground/index.html) - Experience Jac in Browser
-

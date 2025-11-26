@@ -401,9 +401,3 @@ Vite automatically processes SCSS imports and compiles them to CSS.
 - [Sass Documentation](https://sass-lang.com/documentation)
 - [Sass Guidelines](https://sass-guidelin.es/)
 - [Sass Playground](https://www.sassmeister.com/)
-
-
-
-
-
-

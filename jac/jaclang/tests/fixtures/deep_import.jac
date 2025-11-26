@@ -4,4 +4,3 @@ import from deep.one_lev { olprint }
 with entry  {
     print(olprint());
 }
-

@@ -620,4 +620,3 @@ In this chapter, we looked at higher order functions, decorators, and async func
 
 
 *Ready to explore advanced AI operations? Continue to [Chapter 5: Advanced AI Operations](chapter_5.md)!*
-

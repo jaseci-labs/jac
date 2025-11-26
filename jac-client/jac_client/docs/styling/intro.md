@@ -247,4 +247,3 @@ When adding new styling examples:
 4. Create a documentation file in `docs/styling/`
 5. Update this intro.md file
 6. Follow the existing example structure
-

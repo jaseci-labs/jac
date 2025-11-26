@@ -113,5 +113,3 @@ We'll build the app in 11 progressive steps:
 Let's build your first full-stack app!
 
  **[Continue to Step 1: Project Setup](./step-01-setup.md)**
-
-

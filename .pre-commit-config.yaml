@@ -12,6 +12,9 @@ repos:
         args: [--allow-multiple-documents]
       - id: check-json
       - id: trailing-whitespace
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: end-of-file-fixer
   - repo: https://github.com/psf/black-pre-commit-mirror
     rev: 25.11.0
     hooks:

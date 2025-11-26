@@ -824,4 +824,3 @@ cl def littlex_app() {
 - [test_reactive_signals.jac](../jaclang/runtimelib/tests/fixtures/test_reactive_signals.jac) - Reactive signals and effects examples
 - [test_router.jac](../jaclang/runtimelib/tests/fixtures/test_router.jac) - Routing and navigation examples
 - [littleX_single_nodeps.jac](../examples/littleX/littleX_single_nodeps.jac) - Full SPA with reactive state and routing
-
