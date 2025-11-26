@@ -1,0 +1,55 @@
+name: Test Jaseci Deploy on K8
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'jac-scale/**'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'jac-scale/**'
+
+jobs:
+  test-deploy-k8:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.12
+
+      - name: Install Jaseci scale package
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e jac-scale
+          pip install pytest
+
+      # - name: Install Docker (needed for Kind)
+      #   uses: docker/setup-docker@v2
+
+      - name: Install Kind (Kubernetes in Docker)
+        run: |
+          curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.25.0/kind-linux-amd64
+          chmod +x ./kind
+          sudo mv ./kind /usr/local/bin/kind
+          kind version
+
+      - name: Create Kubernetes cluster with Kind
+        run: |
+          kind create cluster --name jaseci-test --wait 60s
+          kubectl cluster-info
+          kubectl get nodes
+
+      - name: Run K8 tests
+        run: |
+          pytest -v jac-scale/jac_scale/kubernetes/tests/test_deploy_k8.py
+
+      - name: Delete Kind cluster
+        if: always()
+        run: kind delete cluster --name jaseci-test

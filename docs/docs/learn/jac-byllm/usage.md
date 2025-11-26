@@ -40,6 +40,19 @@ byLLM uses [LiteLLM](https://docs.litellm.ai/docs) to provide integration with a
 ??? Note
     Additional supported models and model serving platforms are available with LiteLLM. Refer to their [documentation](https://docs.litellm.ai/docs/providers) for model names.
 
+### Allowed Arguments for the Model Object.
+
+| Argument   | Description |
+|------------|-------------|
+| `model_name` | (Required) The model name to use (e.g., "gpt-4o", "claude-3-5-sonnet-20240620") |
+| `api_key` | (Optional) API key for the model provider |
+| `base_url` | (Optional) Base URL for the API endpoint (same as `host`, `api_base`)|
+| `proxy_url` | (Optional) Proxy URL, automatically sets `base_url` |
+| `verbose` | (Optional) Boolean to enable verbose logging for debugging |
+| `method` | (Optional) Specifies the LLM method ('Reason' enables step-by-step reasoning, default is standard generation) |
+| `tools` | (Optional) List of tool functions to enable agentic behavior with ReAct tool-calling |
+| `hyperparams` | (Optional) Additional model-specific parameters supported by LiteLLM (e.g., `temperature`, `max_tokens`, `top_p`, etc.) |
+
 ## byLLM for Functions
 
 ### Basic Functions

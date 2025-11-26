@@ -337,21 +337,21 @@ const FadeIn = styled.div`
 
 ## Advantages
 
-- ✅ **Component-scoped styles** (no CSS conflicts)
-- ✅ **Dynamic styling** based on props
-- ✅ **Full CSS features** (pseudo-classes, media queries)
-- ✅ **Type-safe** with TypeScript
-- ✅ **Automatic vendor prefixing**
-- ✅ **Dead code elimination**
-- ✅ **No class name collisions**
+-  **Component-scoped styles** (no CSS conflicts)
+-  **Dynamic styling** based on props
+-  **Full CSS features** (pseudo-classes, media queries)
+-  **Type-safe** with TypeScript
+-  **Automatic vendor prefixing**
+-  **Dead code elimination**
+-  **No class name collisions**
 
 ## Limitations
 
-- ❌ **Runtime overhead** (styles generated at runtime)
-- ❌ **Learning curve** for CSS-in-JS
-- ❌ **Larger bundle size** than CSS
-- ❌ **Requires JavaScript** for styling
-- ❌ **Debugging** can be harder
+-  **Runtime overhead** (styles generated at runtime)
+-  **Learning curve** for CSS-in-JS
+-  **Larger bundle size** than CSS
+-  **Requires JavaScript** for styling
+-  **Debugging** can be harder
 
 ## When to Use
 

@@ -90,12 +90,6 @@ class JacAnnexPass(Transform[uni.Module, uni.Module]):
 
     def _mark_client_declarations(self, module: uni.Module) -> None:
         """Recursively mark client-facing nodes in the module as client declarations."""
-
-        def _mark(node: uni.UniNode) -> None:
-            if isinstance(node, uni.ClientFacingNode):
-                node.is_client_decl = True
-            for child in getattr(node, "kid", []):
-                if child:
-                    _mark(child)
-
-        _mark(module)
+        for child in module.kid:
+            if isinstance(child, uni.ClientFacingNode):
+                child.is_client_decl = True

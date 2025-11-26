@@ -185,29 +185,29 @@ Design for mobile, then enhance for desktop:
 Keep styles in the CSS file for maintainability:
 
 ```jac
-// ❌ Avoid
+//  Avoid
 <div style={{"padding": "1rem", "color": "blue"}}>
 
-// ✅ Prefer
+//  Prefer
 <div className="container">
 ```
 
 ## Advantages
 
-- ✅ **No build step required** for CSS
-- ✅ **Easy to understand** and maintain
-- ✅ **Works with any CSS framework**
-- ✅ **Minimal dependencies**
-- ✅ **Great browser support**
-- ✅ **Familiar syntax** for developers
+-  **No build step required** for CSS
+-  **Easy to understand** and maintain
+-  **Works with any CSS framework**
+-  **Minimal dependencies**
+-  **Great browser support**
+-  **Familiar syntax** for developers
 
 ## Limitations
 
-- ❌ **No variables or nesting** (use CSS variables for theming)
-- ❌ **No preprocessing features**
-- ❌ **Global scope** (use BEM or similar for scoping)
-- ❌ **No dynamic styling** based on props
-- ❌ **Manual organization** required
+-  **No variables or nesting** (use CSS variables for theming)
+-  **No preprocessing features**
+-  **Global scope** (use BEM or similar for scoping)
+-  **No dynamic styling** based on props
+-  **Manual organization** required
 
 ## When to Use
 

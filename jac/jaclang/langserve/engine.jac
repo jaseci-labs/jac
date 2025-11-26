@@ -66,6 +66,7 @@ class JacLangServer(JacProgram , LanguageServer) {
             task: Task | None = self.queue.get();
 
             if task is None {
+                self.queue.task_done();
                 self.debug("Task was None, exiting dispatcher.");
                 break;
             }
@@ -594,8 +595,10 @@ class JacLangServer(JacProgram , LanguageServer) {
 
     def shutdown(self: JacLangServer) -> None {
         try {
-            self.queue.put(None);  # Signal the worker thread to exit
-            self.worker_thread.join(timeout=1.0);  # Wait for the worker thread to finish
+            if hasattr(self, 'worker_thread') and self.worker_thread.is_alive() {
+                self.queue.put(None);  # Signal the worker thread to exit
+                self.worker_thread.join();  # Wait for the worker thread to finish
+            }
         } finally {
             super.shutdown();
         }

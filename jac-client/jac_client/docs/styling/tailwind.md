@@ -223,20 +223,20 @@ export default {
 
 ## Advantages
 
-- ✅ **Rapid development** with utility classes
-- ✅ **Consistent design system**
-- ✅ **Responsive by default**
-- ✅ **Small bundle size** (unused classes are purged)
-- ✅ **Great documentation** and ecosystem
-- ✅ **Highly customizable**
+-  **Rapid development** with utility classes
+-  **Consistent design system**
+-  **Responsive by default**
+-  **Small bundle size** (unused classes are purged)
+-  **Great documentation** and ecosystem
+-  **Highly customizable**
 
 ## Limitations
 
-- ❌ **Can get verbose** with many classes
-- ❌ **Learning curve** for utility-first approach
-- ❌ **Less semantic** than component-based CSS
-- ❌ **Requires build step**
-- ❌ **HTML can get cluttered**
+-  **Can get verbose** with many classes
+-  **Learning curve** for utility-first approach
+-  **Less semantic** than component-based CSS
+-  **Requires build step**
+-  **HTML can get cluttered**
 
 ## When to Use
 

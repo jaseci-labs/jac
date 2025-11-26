@@ -7,14 +7,15 @@ nav:
   - Learn:
     # - Getting Started: "learn/getting_started.md"
     - Getting Started:
+      - Introduction: "learn/tour.md"
       - Installation: "learn/installation.md"
       - Quickstart: "learn/quickstart.md"
       # - Jac as Your First Programming Language: "learn/beginners_guide_to_jac.md"
       - Syntax Quick Reference: "learn/quick_reference.md"
       - Native Superset of Python: "learn/superset_python.md"
       - Jac Library in Pure Python: "learn/library_mode.md"
-      - Tour of Jac/Jaseci: "learn/tour.md"
       - Learn Jac in 5 Minutes: "learn/jac_in_a_flash.md"
+      - Examples for Key Features: "learn/example.md"
       - Jac Tool Suite: "learn/tool_suite.md"
     - The Jac Book:
       - Introduction: "jac_book/index.md"
@@ -60,22 +61,23 @@ nav:
         # - Build your own byllm plugin: "learn/jac-byllm/creating_byllm_plugins.md". # Needs review and update
         - LiteLLM Proxy Server: "learn/jac-byllm/litellm_proxy.md"
     - Scale-Native Programming:
-      - "learn/jac-cloud/introduction.md"
-      - "learn/jac-cloud/quickstart.md"
-      - Core Features:
-        - "learn/jac-cloud/permission.md"
-        - "learn/jac-cloud/logging.md"
-        - "learn/jac-cloud/env_vars.md"
-        - "learn/jac-cloud/sso_implementation.md"
-      - Real-time & Async:
-        - "learn/jac-cloud/websocket.md"
-        - "learn/jac-cloud/scheduler.md"
-        - "learn/jac-cloud/async_walker.md"
-        - "learn/jac-cloud/webhook.md"
-      - Operations:
-        - "learn/jac-cloud/deployment.md"
-        - "learn/jac-cloud/utilities.md"
       - Jac Lens: "learn/jac-lens.md"
+      - (Deprecated) Jac-Cloud:
+        - "learn/jac-cloud/introduction.md"
+        - "learn/jac-cloud/quickstart.md"
+        - Core Features:
+          - "learn/jac-cloud/permission.md"
+          - "learn/jac-cloud/logging.md"
+          - "learn/jac-cloud/env_vars.md"
+          - "learn/jac-cloud/sso_implementation.md"
+        - Real-time & Async:
+          - "learn/jac-cloud/websocket.md"
+          - "learn/jac-cloud/scheduler.md"
+          - "learn/jac-cloud/async_walker.md"
+          - "learn/jac-cloud/webhook.md"
+        - Operations:
+          - "learn/jac-cloud/deployment.md"
+          - "learn/jac-cloud/utilities.md"
     - Jac Client:
       - Getting Started: "jac-client/README.md"
       - Step-by-Step Tutorial:
@@ -103,6 +105,8 @@ nav:
       - Lifecycle Hooks: "jac-client/lifecycle-hooks.md"
       - Advanced State: "jac-client/advanced-state.md"
       - Imports: "jac-client/imports.md"
+      - File System: "jac-client/file-system/intro.md"
+      - Handling Assets: "jac-client/asset-serving/intro.md"
     - Tooling:
       - Jac Debugger: "learn/debugger.md"
       - Run Jac In Browser: "learn/jac_playground.md"
@@ -183,7 +187,8 @@ nav:
     - Contributing: "internals/contrib.md"
     - Release Notes:
       - Jaclang: "communityhub/release_notes/jaclang.md"
-      - Jac-Cloud: "communityhub/release_notes/jac-cloud.md"
+      - Jac-Scale: "communityhub/release_notes/jac-scale.md"
+      - (Deprecated) Jac-Cloud: "communityhub/release_notes/jac-cloud.md"
       - byLLM: "communityhub/release_notes/byllm.md"
       - Jac-Client: "communityhub/release_notes/jac-client.md"
     - Breaking Changes: "communityhub/breaking_changes.md"
