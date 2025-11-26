@@ -42,6 +42,15 @@ class SymTabBuildPass(UniPass):
         """Pop scope."""
         return self.cur_sym_tab.pop()
 
+    def find_python_scope_node_of(self, node: uni.UniNode) -> UniScopeNode | None:
+        """Find scope node of a given node."""
+        scope_types = uni.UniScopeNode.get_python_scoping_nodes()
+        while node.parent:
+            if isinstance(node.parent, scope_types):
+                return node.parent
+            node = node.parent
+        return None
+
     @property
     def cur_scope(self) -> UniScopeNode:
         """Return current scope."""
@@ -80,6 +89,39 @@ class SymTabBuildPass(UniPass):
 
     def exit_test(self, node: uni.Test) -> None:
         self.pop_scope()
+
+    def _exit_import_absorb(self, node: uni.Import) -> None:
+        sym_table_to_update = self.find_python_scope_node_of(node)
+        if sym_table_to_update is None:
+            return
+
+        # Get the module from module path
+        import_all_module_path_node: uni.ModulePath = node.items[0]  # type: ignore
+        import_all_module_path = import_all_module_path_node.resolve_relative_path()
+        module: uni.Module | None = None
+        if import_all_module_path in self.prog.mod.hub:
+            module = self.prog.mod.hub[import_all_module_path]
+        else:
+            try:
+                module = self.prog.compile(
+                    import_all_module_path, no_cgen=False, type_check=False
+                )
+            except Exception:
+                return
+
+        # 1. TODO: Check if the module has __all__ defined.
+        # 2. Import all public symbols from the module
+        if module:
+            for sym in module.names_in_scope.values():
+                if sym.access != SymbolAccess.PRIVATE:
+                    sym_table_to_update.def_insert(
+                        sym.defn[0],
+                        single_decl="import absorb",
+                    )
+
+    def exit_import(self, node: uni.Import) -> None:
+        if node.is_absorb:
+            return self._exit_import_absorb(node)
 
     def exit_module_path(self, node: uni.ModulePath) -> None:
         if node.alias:

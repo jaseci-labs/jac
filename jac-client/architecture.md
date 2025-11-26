@@ -19,6 +19,7 @@ Extends the base `ClientBundleBuilder` to provide Vite integration. Key responsi
    - Processes both `.jac` and `.js` imports
    - Accumulates exports and globals across all modules
    - Writes compiled artifacts to `src/` directory
+   - **Preserves nested folder structure** (see Nested Folder Handling below)
 
 3. **Import Handling** (`_process_imports`)
    - **`.jac` imports**: Compiled and inlined
@@ -51,7 +52,7 @@ Extends the base `ClientBundleBuilder` to provide Vite integration. Key responsi
 
 2. Recursive dependency resolution
    ├── Traverse all .jac/.js imports
-   ├── Compile/copy each to src/ directory
+   ├── Compile/copy each to src/ directory (preserving folder structure)
    ├── Accumulate exports & globals
    └── Skip bare specifiers (handled by Vite)
 
@@ -74,6 +75,56 @@ Extends the base `ClientBundleBuilder` to provide Vite integration. Key responsi
 6. Cleanup
    └── Remove src/ directory
 ```
+
+### Nested Folder Handling
+
+The compilation system preserves the folder structure of source files when writing to the `src/` directory, similar to TypeScript transpilation. This ensures that relative imports work correctly and prevents file name conflicts.
+
+#### How It Works
+
+1. **Source Root Detection**: The root module's parent directory is identified as the `source_root`
+2. **Relative Path Calculation**: For each dependency file, the relative path from `source_root` is calculated
+3. **Structure Preservation**: Files are written to `src/` maintaining the same relative folder structure
+
+#### Example
+
+Given the following source structure:
+```
+nested-basic/
+├── app.jac                    (root module)
+├── buttonroot.jac
+└── components/
+    └── button.jac
+```
+
+The compiled output in `src/` will be:
+```
+src/
+├── app.js                     (from app.jac)
+├── buttonroot.js              (from buttonroot.jac)
+└── components/
+    └── button.js              (from components/button.jac)
+```
+
+#### Benefits
+
+- **Relative imports work correctly**: `import { CustomButton } from "./components/button.js"` resolves properly
+- **No file name conflicts**: Files with the same name in different folders don't overwrite each other
+- **Familiar structure**: Developers can organize code in nested folders just like in TypeScript/JavaScript projects
+- **Consistent with modern tooling**: Matches the behavior of TypeScript, Babel, and other transpilers
+
+#### Implementation Details
+
+The `_compile_dependencies_recursively` method:
+- Tracks `source_root` as the parent directory of the root module
+- Calculates `relative_path = file_path.relative_to(source_root)` for each file
+- Creates parent directories as needed with `mkdir(parents=True, exist_ok=True)`
+- Handles edge cases where files might be outside `source_root` by falling back to filename-only
+
+This ensures that the folder structure is preserved for:
+- `.jac` files (compiled to `.js`)
+- `.js` files (copied as-is)
+- Other asset files (CSS, images, etc.)
 
 ### CSS Serving
 
@@ -154,6 +205,7 @@ Server: Serves from dist/main.css
 - **React-based**: Entry point uses React 18's `createRoot` API
 - **Hash-based caching**: Bundle hash enables browser cache invalidation
 - **Temp directory isolation**: Builds in `vite_package_json.parent/src/` to avoid conflicts
+- **Folder structure preservation**: Nested folder structures are preserved in `src/` directory, similar to TypeScript transpilation, ensuring relative imports work correctly
 - **CSS asset handling**: CSS files are copied after Babel compilation to ensure Vite can resolve imports, then extracted to separate files for optimal loading
 
 ### Vite Configuration
@@ -179,4 +231,3 @@ This alias is critical because:
 - `runtime_path`: Path to client runtime file
 - `vite_output_dir`: Build output (defaults to `src/dist/assets`)
 - `vite_minify`: Enable/disable minification
-

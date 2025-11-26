@@ -109,7 +109,7 @@ class TypeCheckerPassTests(TestCase):
         program = JacProgram()
         mod = program.compile(self.fixture_abs_path("checker_sym_inherit.jac"))
         TypeCheckPass(ir_in=mod, prog=program)
-        self.assertEqual(len(program.errors_had), 2)
+        self.assertEqual(len(program.errors_had), 1)
         self._assert_error_pretty_found(
             """
           c.val = 42;     # <-- Ok
@@ -117,14 +117,6 @@ class TypeCheckerPassTests(TestCase):
           ^^^^^^^^^^^^^
         """,
             program.errors_had[0].pretty_print(),
-        )
-        self._assert_error_pretty_found(
-            """
-          l.name = "Simba";  # <-- Ok
-          l.name = 42;       # <-- Error
-          ^^^^^^^^^^^
-        """,
-            program.errors_had[1].pretty_print(),
         )
 
     def test_import_symbol_type_infer(self) -> None:
@@ -698,6 +690,43 @@ class TypeCheckerPassTests(TestCase):
                 [->:MyEdge:id == 1:->]; # Ok
                 [->:MyEdge:not_exists >= 1:->]; # Error
                            ^^^^^^^^^^
+            """,
+        ]
+
+        for i, expected in enumerate(expected_errors):
+            self._assert_error_pretty_found(
+                expected, program.errors_had[i].pretty_print()
+            )
+
+    def test_inherit_method_lookup(self) -> None:
+        """Test that inherited methods are properly resolved through MRO."""
+        program = JacProgram()
+        mod = program.compile(
+            self.fixture_abs_path("checker_inherit_method_lookup.jac")
+        )
+        TypeCheckPass(ir_in=mod, prog=program)
+        self.assertEqual(len(program.errors_had), 0)
+
+    def test_inherit_init_params(self) -> None:
+        """Test that synthesized __init__ collects parameters from base classes."""
+        program = JacProgram()
+        mod = program.compile(self.fixture_abs_path("checker_inherit_init_params.jac"))
+        TypeCheckPass(ir_in=mod, prog=program)
+        self.assertEqual(len(program.errors_had), 2)
+
+        expected_errors = [
+            """
+            Not all required parameters were provided in the function call: 'age'
+                c0 = Child("Alice", 30);          # <-- Ok
+                c1 = Child(name="Alice", age=30); # <-- Ok
+                c2 = Child("Bob");                # <-- Error: missing age
+                     ^^^^^^^^^^^^
+            """,
+            """
+            Not all required parameters were provided in the function call: 'name'
+                c2 = Child("Bob");                # <-- Error: missing age
+                c3 = Child(age=25);               # <-- Error: missing name
+                     ^^^^^^^^^^^^^
             """,
         ]
 

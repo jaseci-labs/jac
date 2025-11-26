@@ -90,4 +90,3 @@ Jac is particularly well-suited when:
 - **You want LLMs and other AI models deeply integrated** into your application logic, such as Agentic AI systems where you may need   prompt engineering and aritculating agent workflows.
 - **You need to move from prototype to scalable service seamlessly**, without rewriting your system for microservices, orchestration, or extensive dev-ops.
 - **You already rely heavily on Python code or libraries** and want a smooth path to something more structured, graph-aware, and AI-centric.
-

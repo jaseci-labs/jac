@@ -144,4 +144,3 @@ In this chapter, we covered the basics of working with variables and types in Ja
     Remember: As you build, focus on using the correct types for your variables. This is a key habit for writing good Jac code!
 
 ---
-

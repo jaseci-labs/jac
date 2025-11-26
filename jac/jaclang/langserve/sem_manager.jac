@@ -1,7 +1,4 @@
 """Semantic Token Manager module."""
-
-import from __future__ { annotations }
-
 import from typing { List, Optional, Tuple }
 
 import jaclang.compiler.unitree as uni;

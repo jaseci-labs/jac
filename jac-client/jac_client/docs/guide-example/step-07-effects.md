@@ -466,4 +466,3 @@ Great! Your app now persists data with localStorage. But localStorage is only lo
 In the next step, we'll add **real backend** using **walkers** so your data is stored on a server!
 
  **[Continue to Step 8: Walkers](./step-08-walkers.md)**
-

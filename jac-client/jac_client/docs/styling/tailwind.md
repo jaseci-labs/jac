@@ -296,8 +296,3 @@ theme: {
 - [Tailwind CSS Documentation](https://tailwindcss.com/docs)
 - [Tailwind UI Components](https://tailwindui.com/)
 - [Tailwind Play](https://play.tailwindcss.com/) - Online playground
-
-
-
-
-
