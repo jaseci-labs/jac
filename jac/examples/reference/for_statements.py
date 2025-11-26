@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 for x in [1, 2, 3]:
     print(x)
 for i in range(5):
@@ -18,27 +19,27 @@ while i < 10:
 for x in [1, 2, 3]:
     print(x)
 else:
-    print('completed')
+    print("completed")
 for x in range(10):
     if x == 3:
         break
     print(x)
 else:
-    print('not reached')
+    print("not reached")
 for x in range(5):
     if x % 2 == 0:
         continue
     print(x)
 for i in range(3):
     for j in range(2):
-        print(f'{i},{j}')
-for char in 'abc':
+        print(f"{i},{j}")
+for char in "abc":
     print(char)
-d = {'a': 1, 'b': 2}
+d = {"a": 1, "b": 2}
 for key in d:
     print(key)
-for i in ['a', 'b']:
+for s in ["a", "b"]:
     j = 0
     while j < 2:
-        print(f'{i}{j}')
+        print(f"{s}{j}")
         j += 1

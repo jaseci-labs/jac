@@ -1,5 +1,5 @@
-import from byllm.lib { Model }
-glob llm = Model(
+import from byllm.lib { MockLLM }
+glob llm = MockLLM(
     model_name="mockllm",
     outputs=["120597", "R8@jL3pQ"],
 );

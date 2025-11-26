@@ -1,6 +1,5 @@
 """Test pass module."""
 
-import jaclang.compiler.unitree as uni
 from jaclang.compiler.program import JacProgram
 from jaclang.utils.test import TestCase
 
@@ -35,4 +34,3 @@ class SemDefMatchPassTests(TestCase):
         self.assertEqual(outer_scope.lookup("InnerClass").decl.name_of.semstr, "An inner class within OuterClass.")  # type: ignore
         inner_scope = outer_scope.lookup("InnerClass").symbol_table  # type: ignore
         self.assertEqual(inner_scope.lookup("inner_value").decl.name_of.semstr, "A value specific to the inner class.")  # type: ignore
-

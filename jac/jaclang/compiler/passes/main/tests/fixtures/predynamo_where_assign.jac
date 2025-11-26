@@ -8,6 +8,6 @@ def with_breaks(a: Any, b: Any) {
     } else{
             b = (b * -2);
     }
-    
+
     return (x * b);
 }

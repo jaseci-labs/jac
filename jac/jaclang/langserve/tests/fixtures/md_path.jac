@@ -14,7 +14,7 @@ import from jaclang.compiler.type_system.type_utils { get_completion_items }
 import from jaclang.compiler.type_system.types { ClassType, FunctionType, ModuleType, TypeBase }
 import from jaclang.compiler.unitree { UniScopeNode }
 import from missing_mod { SemTokManager }
-import from circle {RAD} 
+import from circle {RAD}
 import from jaclang.vendor.pygls { uris }
 import from jaclang.vendor.pygls.server { LanguageServer }
 

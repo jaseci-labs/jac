@@ -63,4 +63,3 @@ with entry {
     hv2: int = ht.get(1);  # <-- Error
 
 }
-

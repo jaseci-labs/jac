@@ -30,7 +30,7 @@ class TestServeCommand(TestCase):
         """Set up test."""
         super().setUp()
         self.server = None
-        self.server_thread = None
+        self.server_thread: threading.Thread | None = None
         self.httpd = None
         # Use dynamically allocated free port for each test
         try:
@@ -46,7 +46,7 @@ class TestServeCommand(TestCase):
     def tearDown(self) -> None:
         """Tear down test."""
         # Close user manager if it exists
-        if self.server and hasattr(self.server, 'user_manager'):
+        if self.server and hasattr(self.server, "user_manager"):
             try:
                 self.server.user_manager.close()
             except Exception:
@@ -86,9 +86,7 @@ class TestServeCommand(TestCase):
         from http.server import HTTPServer
 
         # Load the module
-        base, mod, mach = cli.proc_file_sess(
-            self.fixture_abs_path("serve_api.jac"), ""
-        )
+        base, mod, mach = cli.proc_file_sess(self.fixture_abs_path("serve_api.jac"), "")
         Jac.set_base_path(base)
         Jac.jac_import(
             target=mod,
@@ -127,17 +125,29 @@ class TestServeCommand(TestCase):
                 time.sleep(0.1)
 
     def _request(
-        self, method: str, path: str, data: dict = None, token: str = None, timeout: int = 5
+        self,
+        method: str,
+        path: str,
+        data: dict | None = None,
+        token: str | None = None,
+        timeout: int = 5,
     ) -> dict:
         """Make HTTP request to server."""
-        status, payload, _ = self._request_raw(method, path, data=data, token=token, timeout=timeout)
+        status, payload, _ = self._request_raw(
+            method, path, data=data, token=token, timeout=timeout
+        )
         try:
             return json.loads(payload)
         except json.JSONDecodeError as exc:  # pragma: no cover - sanity guard
             raise AssertionError(f"Expected JSON response, got: {payload}") from exc
 
     def _request_raw(
-        self, method: str, path: str, data: dict = None, token: str = None, timeout: int = 5
+        self,
+        method: str,
+        path: str,
+        data: dict | None = None,
+        token: str | None = None,
+        timeout: int = 5,
     ) -> tuple[int, str, dict[str, str]]:
         """Make an HTTP request and return status, body, and headers."""
         url = f"{self.base_url}{path}"
@@ -223,9 +233,7 @@ class TestServeCommand(TestCase):
 
         # Create user
         result = self._request(
-            "POST",
-            "/user/create",
-            {"username": "alice", "password": "secret123"}
+            "POST", "/user/create", {"username": "alice", "password": "secret123"}
         )
 
         self.assertIn("username", result)
@@ -239,16 +247,12 @@ class TestServeCommand(TestCase):
 
         # Create user
         create_result = self._request(
-            "POST",
-            "/user/create",
-            {"username": "bob", "password": "pass456"}
+            "POST", "/user/create", {"username": "bob", "password": "pass456"}
         )
 
         # Login with correct credentials
         login_result = self._request(
-            "POST",
-            "/user/login",
-            {"username": "bob", "password": "pass456"}
+            "POST", "/user/login", {"username": "bob", "password": "pass456"}
         )
 
         self.assertIn("token", login_result)
@@ -257,9 +261,7 @@ class TestServeCommand(TestCase):
 
         # Login with wrong password
         login_fail = self._request(
-            "POST",
-            "/user/login",
-            {"username": "bob", "password": "wrongpass"}
+            "POST", "/user/login", {"username": "bob", "password": "wrongpass"}
         )
 
         self.assertIn("error", login_fail)
@@ -279,9 +281,7 @@ class TestServeCommand(TestCase):
 
         # Create user and get token
         create_result = self._request(
-            "POST",
-            "/user/create",
-            {"username": "funcuser", "password": "pass"}
+            "POST", "/user/create", {"username": "funcuser", "password": "pass"}
         )
         token = create_result["token"]
 
@@ -298,9 +298,7 @@ class TestServeCommand(TestCase):
 
         # Create user
         create_result = self._request(
-            "POST",
-            "/user/create",
-            {"username": "siguser", "password": "pass"}
+            "POST", "/user/create", {"username": "siguser", "password": "pass"}
         )
         token = create_result["token"]
 
@@ -321,18 +319,13 @@ class TestServeCommand(TestCase):
 
         # Create user
         create_result = self._request(
-            "POST",
-            "/user/create",
-            {"username": "calluser", "password": "pass"}
+            "POST", "/user/create", {"username": "calluser", "password": "pass"}
         )
         token = create_result["token"]
 
         # Call add_numbers
         result = self._request(
-            "POST",
-            "/function/add_numbers",
-            {"args": {"a": 10, "b": 25}},
-            token=token
+            "POST", "/function/add_numbers", {"args": {"a": 10, "b": 25}}, token=token
         )
 
         self.assertIn("result", result)
@@ -340,10 +333,7 @@ class TestServeCommand(TestCase):
 
         # Call greet
         result2 = self._request(
-            "POST",
-            "/function/greet",
-            {"args": {"name": "World"}},
-            token=token
+            "POST", "/function/greet", {"args": {"name": "World"}}, token=token
         )
 
         self.assertIn("result", result2)
@@ -355,19 +345,12 @@ class TestServeCommand(TestCase):
 
         # Create user
         create_result = self._request(
-            "POST",
-            "/user/create",
-            {"username": "defuser", "password": "pass"}
+            "POST", "/user/create", {"username": "defuser", "password": "pass"}
         )
         token = create_result["token"]
 
         # Call greet without name (should use default)
-        result = self._request(
-            "POST",
-            "/function/greet",
-            {"args": {}},
-            token=token
-        )
+        result = self._request("POST", "/function/greet", {"args": {}}, token=token)
 
         self.assertIn("result", result)
         self.assertEqual(result["result"], "Hello, World!")
@@ -378,9 +361,7 @@ class TestServeCommand(TestCase):
 
         # Create user
         create_result = self._request(
-            "POST",
-            "/user/create",
-            {"username": "walkuser", "password": "pass"}
+            "POST", "/user/create", {"username": "walkuser", "password": "pass"}
         )
         token = create_result["token"]
 
@@ -398,9 +379,7 @@ class TestServeCommand(TestCase):
 
         # Create user
         create_result = self._request(
-            "POST",
-            "/user/create",
-            {"username": "infouser", "password": "pass"}
+            "POST", "/user/create", {"username": "infouser", "password": "pass"}
         )
         token = create_result["token"]
 
@@ -424,9 +403,7 @@ class TestServeCommand(TestCase):
 
         # Create user
         create_result = self._request(
-            "POST",
-            "/user/create",
-            {"username": "spawnuser", "password": "pass"}
+            "POST", "/user/create", {"username": "spawnuser", "password": "pass"}
         )
         token = create_result["token"]
         # Spawn CreateTask walker
@@ -434,9 +411,9 @@ class TestServeCommand(TestCase):
             "POST",
             "/walker/CreateTask",
             {"fields": {"title": "Test Task", "priority": 2}},
-            token=token
+            token=token,
         )
-        jid = result["reports"][0]['_jac_id']
+        jid = result["reports"][0]["_jac_id"]
 
         # If error, print for debugging
         if "error" in result:
@@ -449,20 +426,14 @@ class TestServeCommand(TestCase):
 
         # Spawn ListTasks walker to verify task was created
         result2 = self._request(
-            "POST",
-            "/walker/ListTasks",
-            {"fields": {}},
-            token=token
+            "POST", "/walker/ListTasks", {"fields": {}}, token=token
         )
 
         self.assertIn("result", result2)
 
         # Get Task node using new GetTask walker
         result3 = self._request(
-            "POST",
-            "/walker/GetTask/" + str(jid),
-            {"fields": {}},
-            token=token
+            "POST", "/walker/GetTask/" + str(jid), {"fields": {}}, token=token
         )
         self.assertIn("result", result3)
 
@@ -472,14 +443,10 @@ class TestServeCommand(TestCase):
 
         # Create two users
         user1 = self._request(
-            "POST",
-            "/user/create",
-            {"username": "user1", "password": "pass1"}
+            "POST", "/user/create", {"username": "user1", "password": "pass1"}
         )
         user2 = self._request(
-            "POST",
-            "/user/create",
-            {"username": "user2", "password": "pass2"}
+            "POST", "/user/create", {"username": "user2", "password": "pass2"}
         )
 
         token1 = user1["token"]
@@ -490,7 +457,7 @@ class TestServeCommand(TestCase):
             "POST",
             "/walker/CreateTask",
             {"fields": {"title": "User1 Task", "priority": 1}},
-            token=token1
+            token=token1,
         )
 
         # User2 creates a different task
@@ -498,7 +465,7 @@ class TestServeCommand(TestCase):
             "POST",
             "/walker/CreateTask",
             {"fields": {"title": "User2 Task", "priority": 2}},
-            token=token2
+            token=token2,
         )
 
         # Both users should have different root IDs
@@ -510,18 +477,13 @@ class TestServeCommand(TestCase):
 
         # Create user
         create_result = self._request(
-            "POST",
-            "/user/create",
-            {"username": "invaliduser", "password": "pass"}
+            "POST", "/user/create", {"username": "invaliduser", "password": "pass"}
         )
         token = create_result["token"]
 
         # Try to call nonexistent function
         result = self._request(
-            "POST",
-            "/function/nonexistent",
-            {"args": {}},
-            token=token
+            "POST", "/function/nonexistent", {"args": {}}, token=token
         )
 
         self.assertIn("error", result)
@@ -532,18 +494,13 @@ class TestServeCommand(TestCase):
 
         # Create user
         create_result = self._request(
-            "POST",
-            "/user/create",
-            {"username": "invalidwalk", "password": "pass"}
+            "POST", "/user/create", {"username": "invalidwalk", "password": "pass"}
         )
         token = create_result["token"]
 
         # Try to spawn nonexistent walker
         result = self._request(
-            "POST",
-            "/walker/NonExistentWalker",
-            {"fields": {}},
-            token=token
+            "POST", "/walker/NonExistentWalker", {"fields": {}}, token=token
         )
 
         self.assertIn("error", result)
@@ -553,28 +510,25 @@ class TestServeCommand(TestCase):
         self._start_server()
 
         create_result = self._request(
-            "POST",
-            "/user/create",
-            {"username": "pageuser", "password": "pass"}
+            "POST", "/user/create", {"username": "pageuser", "password": "pass"}
         )
         token = create_result["token"]
 
         # Use longer timeout for page requests (they trigger bundle building)
         status, html_body, headers = self._request_raw(
-            "GET",
-            "/page/client_page",
-            token=token,
-            timeout=15
+            "GET", "/page/client_page", token=token, timeout=15
         )
 
         self.assertEqual(status, 200)
         self.assertIn("text/html", headers.get("Content-Type", ""))
-        self.assertIn("<div id=\"__jac_root\">", html_body)
+        self.assertIn('<div id="__jac_root">', html_body)
         self.assertIn("Runtime Test", html_body)
         self.assertIn("/static/client.js?hash=", html_body)
 
         # Bundle should be cached from page request, but use longer timeout for CI safety
-        status_js, js_body, js_headers = self._request_raw("GET", "/static/client.js", timeout=15)
+        status_js, js_body, js_headers = self._request_raw(
+            "GET", "/static/client.js", timeout=15
+        )
         self.assertEqual(status_js, 200)
         self.assertIn("application/javascript", js_headers.get("Content-Type", ""))
         self.assertIn("function __jacJsx", js_body)
@@ -594,9 +548,7 @@ class TestServeCommand(TestCase):
     def test_module_loading_and_introspection(self) -> None:
         """Test that module loads correctly and introspection works."""
         # Load module
-        base, mod, mach = cli.proc_file_sess(
-            self.fixture_abs_path("serve_api.jac"), ""
-        )
+        base, mod, mach = cli.proc_file_sess(self.fixture_abs_path("serve_api.jac"), "")
         Jac.set_base_path(base)
         Jac.jac_import(
             target=mod,
@@ -647,18 +599,13 @@ class TestServeCommand(TestCase):
 
         # Create user
         create_result = self._request(
-            "POST",
-            "/user/create",
-            {"username": "csruser", "password": "pass"}
+            "POST", "/user/create", {"username": "csruser", "password": "pass"}
         )
         token = create_result["token"]
 
         # Request page in CSR mode using query parameter (longer timeout for bundle building)
         status, html_body, headers = self._request_raw(
-            "GET",
-            "/page/client_page?mode=csr",
-            token=token,
-            timeout=15
+            "GET", "/page/client_page?mode=csr", token=token, timeout=15
         )
 
         self.assertEqual(status, 200)
@@ -674,42 +621,10 @@ class TestServeCommand(TestCase):
         # __jac_init__ should still contain the function name and args
         self.assertIn('"function": "client_page"', html_body)
 
-    def test_default_page_is_csr(self) -> None:
-        """Requesting a page without mode parameter returns empty CSR shell."""
-        self._start_server()
-
-        # Create user
-        create_result = self._request(
-            "POST",
-            "/user/create",
-            {"username": "ssruser", "password": "pass"}
-        )
-        token = create_result["token"]
-
-        # Request page without specifying mode (CSR-only, longer timeout for bundle building)
-        status, html_body, headers = self._request_raw(
-            "GET",
-            "/page/client_page",
-            token=token,
-            timeout=15
-        )
-
-        self.assertEqual(status, 200)
-        self.assertIn("text/html", headers.get("Content-Type", ""))
-
-        # CSR shell should be empty; client renders later
-        self.assertIn('<div id="__jac_root"></div>', html_body)
-
-        # __jac_init__ and client.js should still be present for hydration
-        self.assertIn('<script id="__jac_init__" type="application/json">', html_body)
-        self.assertIn("/static/client.js?hash=", html_body)
-
     def test_csr_mode_with_server_default(self) -> None:
         """render_client_page returns an empty shell when called directly."""
         # Load module
-        base, mod, mach = cli.proc_file_sess(
-            self.fixture_abs_path("serve_api.jac"), ""
-        )
+        base, mod, mach = cli.proc_file_sess(self.fixture_abs_path("serve_api.jac"), "")
         Jac.set_base_path(base)
         Jac.jac_import(
             target=mod,
@@ -757,7 +672,7 @@ class TestServeCommand(TestCase):
         create_result = self._request(
             "POST",
             "/user/create",
-            {"username": "persistuser", "password": "testpass123"}
+            {"username": "persistuser", "password": "testpass123"},
         )
         token = create_result["token"]
         root_id = create_result["root_id"]
@@ -767,7 +682,7 @@ class TestServeCommand(TestCase):
             "POST",
             "/walker/CreateTask",
             {"fields": {"title": "Persistent Task 1", "priority": 1}},
-            token=token
+            token=token,
         )
         self.assertIn("result", task1_result)
 
@@ -775,7 +690,7 @@ class TestServeCommand(TestCase):
             "POST",
             "/walker/CreateTask",
             {"fields": {"title": "Persistent Task 2", "priority": 2}},
-            token=token
+            token=token,
         )
         self.assertIn("result", task2_result)
 
@@ -783,22 +698,19 @@ class TestServeCommand(TestCase):
             "POST",
             "/walker/CreateTask",
             {"fields": {"title": "Persistent Task 3", "priority": 3}},
-            token=token
+            token=token,
         )
         self.assertIn("result", task3_result)
 
         # List tasks to verify they were created
         list_before = self._request(
-            "POST",
-            "/walker/ListTasks",
-            {"fields": {}},
-            token=token
+            "POST", "/walker/ListTasks", {"fields": {}}, token=token
         )
         self.assertIn("result", list_before)
 
         # Shutdown first server instance
         # Close user manager first to release the shelf lock
-        if self.server and hasattr(self.server, 'user_manager'):
+        if self.server and hasattr(self.server, "user_manager"):
             self.server.user_manager.close()
 
         if self.httpd:
@@ -819,7 +731,7 @@ class TestServeCommand(TestCase):
         login_result = self._request(
             "POST",
             "/user/login",
-            {"username": "persistuser", "password": "testpass123"}
+            {"username": "persistuser", "password": "testpass123"},
         )
 
         # User should be able to log in successfully
@@ -837,10 +749,7 @@ class TestServeCommand(TestCase):
 
         # List tasks again to verify they persisted
         list_after = self._request(
-            "POST",
-            "/walker/ListTasks",
-            {"fields": {}},
-            token=new_token
+            "POST", "/walker/ListTasks", {"fields": {}}, token=new_token
         )
 
         # The ListTasks walker should successfully run
@@ -851,7 +760,7 @@ class TestServeCommand(TestCase):
             "POST",
             "/walker/CompleteTask",
             {"fields": {"title": "Persistent Task 2"}},
-            token=new_token
+            token=new_token,
         )
         self.assertIn("result", complete_result)
 
@@ -868,11 +777,12 @@ class TestServeCommand(TestCase):
 
         # Fetch the client bundle with longer timeout for CI environments
         # Bundle building can be slow on CI runners with limited resources
-        status, js_body, headers = self._request_raw("GET", "/static/client.js", timeout=15)
+        status, js_body, headers = self._request_raw(
+            "GET", "/static/client.js", timeout=15
+        )
 
         self.assertEqual(status, 200)
         self.assertIn("application/javascript", headers.get("Content-Type", ""))
-
 
         # Verify core runtime functions are present
         self.assertIn("__jacJsx", js_body)
@@ -884,18 +794,13 @@ class TestServeCommand(TestCase):
 
         # Create user
         create_result = self._request(
-            "POST",
-            "/user/create",
-            {"username": "formuser", "password": "pass"}
+            "POST", "/user/create", {"username": "formuser", "password": "pass"}
         )
         token = create_result["token"]
 
         # Request the client_page endpoint (longer timeout for bundle building)
         status, html_body, headers = self._request_raw(
-            "GET",
-            "/page/client_page",
-            token=token,
-            timeout=15
+            "GET", "/page/client_page", token=token, timeout=15
         )
 
         self.assertEqual(status, 200)
@@ -912,7 +817,9 @@ class TestServeCommand(TestCase):
         self.assertIn('"WELCOME_TITLE": "Runtime Test"', html_body)  # Global variable
 
         # Fetch and verify the bundle (should be cached from page request, but use longer timeout for CI)
-        status_js, js_body, _ = self._request_raw("GET", "/static/client.js", timeout=15)
+        status_js, js_body, _ = self._request_raw(
+            "GET", "/static/client.js", timeout=15
+        )
         self.assertEqual(status_js, 200)
 
         # Verify the bundle has the polyfill setup function (now part of client_runtime.jac)
@@ -927,18 +834,13 @@ class TestServeCommand(TestCase):
 
         # Create user
         create_result = self._request(
-            "POST",
-            "/user/create",
-            {"username": "csrdefaultuser", "password": "pass"}
+            "POST", "/user/create", {"username": "csrdefaultuser", "password": "pass"}
         )
         token = create_result["token"]
 
         # Request page WITHOUT specifying mode (should use default, longer timeout for bundle building)
         status, html_body, headers = self._request_raw(
-            "GET",
-            "/page/client_page",
-            token=token,
-            timeout=15
+            "GET", "/page/client_page", token=token, timeout=15
         )
 
         self.assertEqual(status, 200)
@@ -951,17 +853,19 @@ class TestServeCommand(TestCase):
         # (The content will be rendered on the client side)
         # Note: We check that the root div is completely empty
         import re
+
         root_match = re.search(r'<div id="__jac_root">(.*?)</div>', html_body)
-        self.assertIsNotNone(root_match)
+        assert root_match is not None
         root_content = root_match.group(1)
         self.assertEqual(root_content, "")  # Should be empty string
 
+        # __jac_init__ and client.js should still be present for hydration
+        self.assertIn('<script id="__jac_init__" type="application/json">', html_body)
+        self.assertIn("/static/client.js?hash=", html_body)
+
         # Verify that explicitly requesting SSR mode is ignored (still CSR, longer timeout for bundle building)
         status_ssr, html_ssr, _ = self._request_raw(
-            "GET",
-            "/page/client_page?mode=ssr",
-            token=token,
-            timeout=15
+            "GET", "/page/client_page?mode=ssr", token=token, timeout=15
         )
         self.assertEqual(status_ssr, 200)
 
@@ -970,7 +874,6 @@ class TestServeCommand(TestCase):
     def test_faux_flag_prints_endpoint_docs(self) -> None:
         """Test that --faux flag prints endpoint documentation without starting server."""
         import io
-        import sys
         from contextlib import redirect_stdout
 
         # Capture stdout
@@ -984,7 +887,7 @@ class TestServeCommand(TestCase):
                     session=self.session_file,
                     port=self.port,
                     main=True,
-                    faux=True
+                    faux=True,
                 )
         except SystemExit:
             pass  # serve() may call exit() in some error cases
@@ -1024,10 +927,11 @@ class TestServeCommand(TestCase):
 
         # Get the absolute path to littleX file
         import os
+
         littlex_path = os.path.abspath(
             os.path.join(
                 os.path.dirname(__file__),
-                "../../../examples/littleX/littleX_single_nodeps.jac"
+                "../../../examples/littleX/littleX_single_nodeps.jac",
             )
         )
 
@@ -1046,13 +950,12 @@ class TestServeCommand(TestCase):
                     session=self.session_file,
                     port=self.port,
                     main=True,
-                    faux=True
+                    faux=True,
                 )
         except SystemExit:
             pass  # serve() may call exit() in some error cases
 
         output = captured_output.getvalue()
-
 
         self.assertIn("littleX_single_nodeps", output)
         self.assertIn("0 functions", output)
@@ -1081,7 +984,7 @@ class TestAccessLevelAuthentication(TestCase):
         """Set up test."""
         super().setUp()
         self.server = None
-        self.server_thread = None
+        self.server_thread: threading.Thread | None = None
         self.httpd = None
         # Use dynamically allocated free port for each test
         try:
@@ -1092,12 +995,14 @@ class TestAccessLevelAuthentication(TestCase):
         self.base_url = f"http://localhost:{self.port}"
         # Use unique session file for each test
         test_name = self._testMethodName
-        self.session_file = self.fixture_abs_path(f"test_serve_access_{test_name}.session")
+        self.session_file = self.fixture_abs_path(
+            f"test_serve_access_{test_name}.session"
+        )
 
     def tearDown(self) -> None:
         """Tear down test."""
         # Close user manager if it exists
-        if self.server and hasattr(self.server, 'user_manager'):
+        if self.server and hasattr(self.server, "user_manager"):
             try:
                 self.server.user_manager.close()
             except Exception:
@@ -1178,17 +1083,29 @@ class TestAccessLevelAuthentication(TestCase):
                 time.sleep(0.1)
 
     def _request(
-        self, method: str, path: str, data: dict = None, token: str = None, timeout: int = 5
+        self,
+        method: str,
+        path: str,
+        data: dict | None = None,
+        token: str | None = None,
+        timeout: int = 5,
     ) -> dict:
         """Make HTTP request to server."""
-        status, payload, _ = self._request_raw(method, path, data=data, token=token, timeout=timeout)
+        status, payload, _ = self._request_raw(
+            method, path, data=data, token=token, timeout=timeout
+        )
         try:
             return json.loads(payload)
         except json.JSONDecodeError as exc:  # pragma: no cover - sanity guard
             raise AssertionError(f"Expected JSON response, got: {payload}") from exc
 
     def _request_raw(
-        self, method: str, path: str, data: dict = None, token: str = None, timeout: int = 5
+        self,
+        method: str,
+        path: str,
+        data: dict | None = None,
+        token: str | None = None,
+        timeout: int = 5,
     ) -> tuple[int, str, dict[str, str]]:
         """Make an HTTP request and return status, body, and headers."""
         url = f"{self.base_url}{path}"
@@ -1214,9 +1131,7 @@ class TestAccessLevelAuthentication(TestCase):
 
         # Call public function without authentication
         result = self._request(
-            "POST",
-            "/function/public_function",
-            {"args": {"name": "Test"}}
+            "POST", "/function/public_function", {"args": {"name": "Test"}}
         )
 
         self.assertIn("result", result)
@@ -1238,9 +1153,7 @@ class TestAccessLevelAuthentication(TestCase):
 
         # Try to call protected function without authentication - should fail
         result = self._request(
-            "POST",
-            "/function/protected_function",
-            {"args": {"message": "test"}}
+            "POST", "/function/protected_function", {"args": {"message": "test"}}
         )
 
         self.assertIn("error", result)
@@ -1252,9 +1165,7 @@ class TestAccessLevelAuthentication(TestCase):
 
         # Create user and get token
         create_result = self._request(
-            "POST",
-            "/user/create",
-            {"username": "authuser", "password": "pass123"}
+            "POST", "/user/create", {"username": "authuser", "password": "pass123"}
         )
         token = create_result["token"]
 
@@ -1263,7 +1174,7 @@ class TestAccessLevelAuthentication(TestCase):
             "POST",
             "/function/protected_function",
             {"args": {"message": "secret"}},
-            token=token
+            token=token,
         )
 
         self.assertIn("result", result)
@@ -1275,9 +1186,7 @@ class TestAccessLevelAuthentication(TestCase):
 
         # Try to call private function without authentication - should fail
         result = self._request(
-            "POST",
-            "/function/private_function",
-            {"args": {"secret": "test"}}
+            "POST", "/function/private_function", {"args": {"secret": "test"}}
         )
 
         self.assertIn("error", result)
@@ -1289,9 +1198,7 @@ class TestAccessLevelAuthentication(TestCase):
 
         # Create user and get token
         create_result = self._request(
-            "POST",
-            "/user/create",
-            {"username": "privuser", "password": "pass456"}
+            "POST", "/user/create", {"username": "privuser", "password": "pass456"}
         )
         token = create_result["token"]
 
@@ -1300,7 +1207,7 @@ class TestAccessLevelAuthentication(TestCase):
             "POST",
             "/function/private_function",
             {"args": {"secret": "topsecret"}},
-            token=token
+            token=token,
         )
 
         self.assertIn("result", result)
@@ -1312,9 +1219,7 @@ class TestAccessLevelAuthentication(TestCase):
 
         # Spawn public walker without authentication
         result = self._request(
-            "POST",
-            "/walker/PublicWalker",
-            {"fields": {"message": "hello"}}
+            "POST", "/walker/PublicWalker", {"fields": {"message": "hello"}}
         )
 
         self.assertIn("result", result)
@@ -1326,9 +1231,7 @@ class TestAccessLevelAuthentication(TestCase):
 
         # Try to spawn protected walker without authentication - should fail
         result = self._request(
-            "POST",
-            "/walker/ProtectedWalker",
-            {"fields": {"data": "test"}}
+            "POST", "/walker/ProtectedWalker", {"fields": {"data": "test"}}
         )
 
         self.assertIn("error", result)
@@ -1340,9 +1243,7 @@ class TestAccessLevelAuthentication(TestCase):
 
         # Create user and get token
         create_result = self._request(
-            "POST",
-            "/user/create",
-            {"username": "walkuser", "password": "pass789"}
+            "POST", "/user/create", {"username": "walkuser", "password": "pass789"}
         )
         token = create_result["token"]
 
@@ -1351,7 +1252,7 @@ class TestAccessLevelAuthentication(TestCase):
             "POST",
             "/walker/ProtectedWalker",
             {"fields": {"data": "mydata"}},
-            token=token
+            token=token,
         )
 
         self.assertIn("result", result)
@@ -1363,9 +1264,7 @@ class TestAccessLevelAuthentication(TestCase):
 
         # Try to spawn private walker without authentication - should fail
         result = self._request(
-            "POST",
-            "/walker/PrivateWalker",
-            {"fields": {"secret": "test"}}
+            "POST", "/walker/PrivateWalker", {"fields": {"secret": "test"}}
         )
 
         self.assertIn("error", result)
@@ -1377,9 +1276,7 @@ class TestAccessLevelAuthentication(TestCase):
 
         # Create user and get token
         create_result = self._request(
-            "POST",
-            "/user/create",
-            {"username": "privwalk", "password": "pass000"}
+            "POST", "/user/create", {"username": "privwalk", "password": "pass000"}
         )
         token = create_result["token"]
 
@@ -1388,7 +1285,7 @@ class TestAccessLevelAuthentication(TestCase):
             "POST",
             "/walker/PrivateWalker",
             {"fields": {"secret": "verysecret"}},
-            token=token
+            token=token,
         )
 
         self.assertIn("result", result)
@@ -1409,26 +1306,20 @@ class TestAccessLevelAuthentication(TestCase):
 
         # Create authenticated user
         create_result = self._request(
-            "POST",
-            "/user/create",
-            {"username": "mixeduser", "password": "mixedpass"}
+            "POST", "/user/create", {"username": "mixeduser", "password": "mixedpass"}
         )
         token = create_result["token"]
 
         # Public function without auth - should work
         result1 = self._request(
-            "POST",
-            "/function/public_add",
-            {"args": {"a": 5, "b": 10}}
+            "POST", "/function/public_add", {"args": {"a": 5, "b": 10}}
         )
         self.assertIn("result", result1)
         self.assertEqual(result1["result"], 15)
 
         # Protected function without auth - should fail
         result2 = self._request(
-            "POST",
-            "/function/protected_function",
-            {"args": {"message": "test"}}
+            "POST", "/function/protected_function", {"args": {"message": "test"}}
         )
         self.assertIn("error", result2)
 
@@ -1437,7 +1328,7 @@ class TestAccessLevelAuthentication(TestCase):
             "POST",
             "/function/protected_function",
             {"args": {"message": "test"}},
-            token=token
+            token=token,
         )
         self.assertIn("result", result3)
 
@@ -1446,6 +1337,6 @@ class TestAccessLevelAuthentication(TestCase):
             "POST",
             "/function/private_function",
             {"args": {"secret": "test"}},
-            token=token
+            token=token,
         )
         self.assertIn("result", result4)

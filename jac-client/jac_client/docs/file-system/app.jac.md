@@ -1,0 +1,121 @@
+# The `app.jac` Entry Point
+
+Every Jac client project **must** have an `app.jac` file. This file serves as the entry point for your application and is required for the build system to work correctly.
+
+## Why `app.jac` is Required
+
+### Entry Point for the Build System
+
+When you run `jac serve app.jac`, the build system:
+1. Compiles `app.jac` to JavaScript
+2. Generates an entry file (`src/main.js`) that imports your `app` function:
+   ```javascript
+   import { app as App } from "./app.js";
+   ```
+3. Renders your app component in the browser
+
+**Without `app.jac`, the build system cannot find your application entry point.**
+
+## The `app()` Function
+
+The `app.jac` file **must** export an `app()` function. This function is:
+- The root component of your application
+- Automatically imported and rendered by the build system
+- The starting point for all your UI components
+
+### Required Structure
+
+Every `app.jac` file must contain:
+
+```jac
+cl {
+    def app() -> any {
+        return <div>
+            {/* Your application UI */}
+        </div>;
+    }
+}
+```
+
+### Minimal Example
+
+```jac
+cl {
+    def app() -> any {
+        return <div>
+            <h1>Hello, World!</h1>
+        </div>;
+    }
+}
+```
+
+## Key Requirements
+
+1. **File must be named `app.jac`**
+   - The build system specifically looks for this filename
+   - Located at the root of your project
+
+2. **Must contain `app()` function**
+   - Function name must be exactly `app`
+   - Must be defined inside a `cl { }` block
+   - Must return JSX (HTML-like syntax)
+
+3. **Must be a client function**
+   - Defined inside `cl { }` block
+   - This ensures it runs in the browser
+
+## Common Mistakes
+
+**Missing `app()` function:**
+```jac
+# ❌ WRONG - No app() function
+cl {
+    def HomePage() -> any {
+        return <div>Home</div>;
+    }
+}
+```
+
+**Wrong function name:**
+```jac
+# ❌ WRONG - Function named 'main' instead of 'app'
+cl {
+    def main() -> any {
+        return <div>App</div>;
+    }
+}
+```
+
+**Not in `cl` block:**
+```jac
+# ❌ WRONG - app() not in cl block
+def app() -> any {
+    return <div>App</div>;
+}
+```
+
+## Project Structure
+
+Your project structure should look like this:
+
+```
+my-app/
+├── app.jac              # ✅ Required entry point
+├── package.json
+├── vite.config.js
+└── ...
+```
+
+## Running Your App
+
+To start your application:
+
+```bash
+jac serve app.jac
+```
+
+This command compiles `app.jac`, creates the build entry point, and serves your app at `http://localhost:8000/page/app`.
+
+---
+
+**Remember**: `app.jac` with `app()` function is **required** for every Jac client project. Without it, your application cannot start!

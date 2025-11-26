@@ -647,10 +647,7 @@ class JacLanguageTests(TestCase):
                 ),
                 prog=None,
             ).ir_out
-        self.assertIsInstance(
-            converted_ast,
-            ast.Module
-        )
+        self.assertIsInstance(converted_ast, ast.Module)
 
     def test_refs_target(self) -> None:
         """Test py ast to Jac ast conversion output."""
@@ -789,7 +786,7 @@ class JacLanguageTests(TestCase):
                         table = j
                         break
                 break
-        self.assertIsNotNone(table)
+        assert table is not None
         self.assertIsNotNone(table.lookup("attempts"))
 
     def test_edge_expr_not_type(self) -> None:
@@ -1304,7 +1301,10 @@ class JacLanguageTests(TestCase):
         """Parse micro jac file."""
         captured_output = io.StringIO()
         sys.stdout = captured_output
+
         from .fixtures import jac_from_py
+
+        jac_from_py.main()
 
         sys.stdout = sys.__stdout__
         stdout_value = captured_output.getvalue()
@@ -1604,11 +1604,13 @@ class JacLanguageTests(TestCase):
         sys.stdout = captured_output
         Jac.jac_import("funccall_genexpr", base_path=self.fixture_abs_path("./"))
         sys.stdout = sys.__stdout__
-        stdout_value = captured_output.getvalue().split("\n")
-        self.assertIn("Result: 30", stdout_value[0])
-        
+        stdout_value = captured_output.getvalue().split("\n")[0]
+        self.assertIn("Result: 30", stdout_value)
+
         # Test py2jac conversion
-        py_file_path = f"{self.fixture_abs_path('../../tests/fixtures/funccall_genexpr.py')}"
+        py_file_path = (
+            f"{self.fixture_abs_path('../../tests/fixtures/funccall_genexpr.py')}"
+        )
         captured_output = io.StringIO()
         sys.stdout = captured_output
         cli.py2jac(py_file_path)

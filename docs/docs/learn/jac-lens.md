@@ -244,4 +244,3 @@ If you encounter issues not covered here:
 2. **Verify your Jac server logs** for backend errors
 3. **Ensure you're using a compatible browser** (Chrome recommended)
 4. **Contact the Jac community** for additional support
-

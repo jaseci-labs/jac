@@ -24,7 +24,7 @@ impl calculate_final_price.calculate {
 impl calculate_shipping.calculate {
     base_shipping = 5.0;  # Base shipping cost
     weight_cost = here.shipping.weight * 0.5;  # $0.5 per unit weight
-    
+
     if here.shipping.shipping_class == "express" {
         shipping_cost = (base_shipping + weight_cost) * 2;
     } elif here.shipping.shipping_class == "overnight" {
@@ -32,11 +32,11 @@ impl calculate_shipping.calculate {
     } else {
         shipping_cost = base_shipping + weight_cost;
     }
-    
+
     if here.shipping.is_fragile {
         shipping_cost += 10.0;  # Fragile handling fee
     }
-    
+
     report shipping_cost;
 }
 

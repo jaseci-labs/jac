@@ -68,4 +68,3 @@ The `::py:: ... ::py::` block embeds pure Python code. This allows seamless Pyth
 **9. Tests (Lines 50-53)**
 
 `test basic_test` defines a unit test that verifies `add(2, 3)` returns 5. Tests can be run with `jac test` command and use assertions to validate behavior.
-

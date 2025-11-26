@@ -11,7 +11,7 @@ with entry {
     print("PIL Image");
     pil_image = PILImage.open(img_file_path);
     image = Image(pil_image);
-    
+
     print("Image from file path");
     image2 = Image(img_file_path);
     print("Image from URL");

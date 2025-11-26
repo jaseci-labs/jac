@@ -1,10 +1,12 @@
 from byllm.lib import Model, by
 from dataclasses import dataclass
 
+
 @dataclass
 class Position:
     x: int
     y: int
+
 
 @dataclass
 class MapTiles:
@@ -29,17 +31,13 @@ def gen_tilemap() -> MapTiles:  # type: ignore
 
 
 def _serialize_maptile(maptile: MapTiles) -> list[str]:
-    ret = [
-        ['.'] * maptile.width for _ in range(maptile.height)
-    ]
+    ret = [["."] * maptile.width for _ in range(maptile.height)]
     for wall in maptile.walls:
-        ret[wall.y][wall.x] = 'B'
+        ret[wall.y][wall.x] = "B"
     for enemy in maptile.enemies:
-        ret[enemy.y][enemy.x] = 'E'
-    ret[maptile.player_pos.y][maptile.player_pos.x] = 'P'
-    return [
-        ''.join(row) for row in ret
-    ]
+        ret[enemy.y][enemy.x] = "E"
+    ret[maptile.player_pos.y][maptile.player_pos.x] = "P"
+    return ["".join(row) for row in ret]
 
 
 tilemap = [

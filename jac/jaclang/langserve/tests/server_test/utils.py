@@ -69,9 +69,7 @@ class JacTestFile:
     @staticmethod
     def _get_template_path(file_name: str) -> str:
         """Get absolute path to test template file."""
-        return os.path.abspath(
-            os.path.join(os.path.dirname(__file__), file_name)
-        )
+        return os.path.abspath(os.path.join(os.path.dirname(__file__), file_name))
 
     def cleanup(self):
         """Remove temporary test file."""
@@ -119,8 +117,7 @@ class LanguageServerTestHelper:
         from lsprotocol.types import TextDocumentIdentifier
 
         params = DidSaveTextDocumentParams(
-            text_document=TextDocumentIdentifier(uri=self.test_file.uri),
-            text=content
+            text_document=TextDocumentIdentifier(uri=self.test_file.uri), text=content
         )
         await did_save(self.ls, params)
         await self.ls.wait_till_idle()
@@ -134,8 +131,7 @@ class LanguageServerTestHelper:
 
         params = DidChangeTextDocumentParams(
             text_document=VersionedTextDocumentIdentifier(
-                uri=self.test_file.uri,
-                version=version
+                uri=self.test_file.uri, version=version
             ),
             content_changes=[{"text": code}],  # type: ignore
         )
@@ -165,22 +161,30 @@ class LanguageServerTestHelper:
         """Assert that there are no diagnostics."""
         diagnostics = self.get_diagnostics()
         assert isinstance(diagnostics, list)
-        assert len(diagnostics) == 0, f"Expected no diagnostics, found {len(diagnostics)}"
+        assert (
+            len(diagnostics) == 0
+        ), f"Expected no diagnostics, found {len(diagnostics)}"
 
-    def assert_has_diagnostics(self, count: int = 1, message_contains: Optional[str] = None) -> None:
+    def assert_has_diagnostics(
+        self, count: int = 1, message_contains: Optional[str] = None
+    ) -> None:
         """Assert that diagnostics exist with optional message validation."""
         diagnostics = self.get_diagnostics()
         assert isinstance(diagnostics, list)
-        assert len(diagnostics) == count, f"Expected {count} diagnostic(s), found {len(diagnostics)}"
+        assert (
+            len(diagnostics) == count
+        ), f"Expected {count} diagnostic(s), found {len(diagnostics)}"
 
         if message_contains:
-            assert message_contains in diagnostics[0].message, \
-                f"Expected '{message_contains}' in diagnostic message"
+            assert (
+                message_contains in diagnostics[0].message
+            ), f"Expected '{message_contains}' in diagnostic message"
 
     def assert_semantic_tokens_count(self, expected_count: int) -> None:
         """Assert semantic tokens data has expected count."""
         tokens = self.get_semantic_tokens()
         assert hasattr(tokens, "data")
         assert isinstance(tokens.data, list)
-        assert len(tokens.data) == expected_count, \
-            f"Expected {expected_count} tokens, found {len(tokens.data)}"
+        assert (
+            len(tokens.data) == expected_count
+        ), f"Expected {expected_count} tokens, found {len(tokens.data)}"

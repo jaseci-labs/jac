@@ -4,7 +4,7 @@ Learn how to use React's `useEffect` and `useState` hooks to manage component st
 
 ---
 
-## 📚 Table of Contents
+##  Table of Contents
 
 - [What are Lifecycle Hooks?](#what-are-lifecycle-hooks)
 - [React Hooks (Recommended)](#react-hooks-recommended)
@@ -424,7 +424,7 @@ cl {
             "padding": "24px",
             "fontFamily": "system-ui, -apple-system, sans-serif"
         }}>
-            <h1 style={{"textAlign": "center"}}>📝 My Todo App</h1>
+            <h1 style={{"textAlign": "center"}}> My Todo App</h1>
 
             # Add todo form
             <div style={{"display": "flex", "gap": "8px", "marginBottom": "24px"}}>
@@ -546,17 +546,17 @@ cl {
 Be explicit about what your effect depends on:
 
 ```jac
-# ✅ Good: Empty array for mount-only effects
+#  Good: Empty array for mount-only effects
 useEffect(lambda -> None {
     loadInitialData();
 }, []);
 
-# ✅ Good: Specify dependencies
+#  Good: Specify dependencies
 useEffect(lambda -> None {
     console.log("Count changed:", count);
 }, [count]);
 
-# ⚠️ Warning: No dependency array runs on every render
+#  Warning: No dependency array runs on every render
 useEffect(lambda -> None {
     console.log("Runs on every render!");
 });
@@ -567,7 +567,7 @@ useEffect(lambda -> None {
 Always handle async operations with proper error handling:
 
 ```jac
-# ✅ Good: Proper async handling
+#  Good: Proper async handling
 useEffect(lambda -> None {
     async def loadData() -> None {
         try {
@@ -587,7 +587,7 @@ useEffect(lambda -> None {
 Always clean up event listeners, timers, and subscriptions:
 
 ```jac
-# ✅ Good: Cleanup function removes event listener
+#  Good: Cleanup function removes event listener
 useEffect(lambda -> any {
     def handleResize() -> None {
         setWidth(window.innerWidth);
@@ -606,7 +606,7 @@ useEffect(lambda -> any {
 Show loading indicators while data is being fetched:
 
 ```jac
-# ✅ Good: Clear loading states
+#  Good: Clear loading states
 def Component() -> any {
     let [data, setData] = useState(None);
     let [loading, setLoading] = useState(True);
@@ -638,7 +638,7 @@ def Component() -> any {
 Each effect should have a single responsibility:
 
 ```jac
-# ✅ Good: Separate effects for separate concerns
+#  Good: Separate effects for separate concerns
 def Component() -> any {
     useEffect(lambda -> None {
         loadData();  # Data loading
@@ -661,14 +661,14 @@ def Component() -> any {
 Be careful with closures capturing old state values:
 
 ```jac
-# ❌ Avoid: Stale closure problem
+#  Avoid: Stale closure problem
 useEffect(lambda -> None {
     setInterval(lambda -> None {
         setCount(count + 1);  # count is stale!
     }, 1000);
 }, []);
 
-# ✅ Good: Use functional update
+#  Good: Use functional update
 useEffect(lambda -> any {
     intervalId = setInterval(lambda -> None {
         setCount(lambda prev: int -> int { return prev + 1; });
@@ -690,7 +690,7 @@ useEffect(lambda -> any {
 - **Cleanup**: Return a cleanup function for subscriptions, timers, and listeners
 - **Best Practices**: Handle errors, use loading states, keep effects focused
 
-React hooks provide a powerful and standard way to manage component lifecycle! 🎯
+React hooks provide a powerful and standard way to manage component lifecycle!
 
 ---
 
@@ -771,4 +771,3 @@ useEffect(lambda -> None {
     console.log("Count:", count);
 }, [count]);
 ```
-

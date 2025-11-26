@@ -76,7 +76,7 @@ class ImportPassPassTests(TestCase):
         cl_mod = next(
             (mod for mod in main_mod.impl_mod if mod.name.endswith(".cl")), None
         )
-        self.assertIsNotNone(cl_mod, "Expected .cl annex module to be loaded")
+        assert cl_mod is not None, "Expected .cl annex module to be loaded"
         abilities = cl_mod.get_all_sub_nodes(uni.Ability)
         self.assertTrue(abilities, "Expected abilities in .cl annex module")
         for ability in abilities:

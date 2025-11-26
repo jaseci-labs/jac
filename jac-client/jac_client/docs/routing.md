@@ -4,7 +4,7 @@ Learn how to create multi-page applications with client-side routing using Jac's
 
 ---
 
-## 📚 Table of Contents
+##  Table of Contents
 
 - [What is Routing?](#what-is-routing)
 - [Getting Started](#getting-started)
@@ -77,21 +77,21 @@ cl {
     # Page Components
     def Home() -> any {
         return <div>
-            <h1>🏠 Home Page</h1>
+            <h1> Home Page</h1>
             <p>Welcome to the home page!</p>
         </div>;
     }
 
     def About() -> any {
         return <div>
-            <h1>ℹ️ About Page</h1>
+            <h1>ℹ About Page</h1>
             <p>Learn more about our application.</p>
         </div>;
     }
 
     def Contact() -> any {
         return <div>
-            <h1>📧 Contact Page</h1>
+            <h1> Contact Page</h1>
             <p>Email: contact@example.com</p>
         </div>;
     }
@@ -126,9 +126,9 @@ cl {
 5. URLs will be hash-based: `#/`, `#/about`, `#/contact`
 
 **Key Points:**
-- ✅ Use `element={<Home />}` to render components
-- ✅ No configuration needed - just wrap and go
-- ✅ Hash-based URLs work everywhere
+-  Use `element={<Home />}` to render components
+-  No configuration needed - just wrap and go
+-  Hash-based URLs work everywhere
 
 ---
 
@@ -397,7 +397,7 @@ cl {
         }
 
         return <div>
-            <h1>🎉 Dashboard</h1>
+            <h1> Dashboard</h1>
             <p>Welcome! You are logged in.</p>
             <p>This is protected content only visible to authenticated users.</p>
         </div>;
@@ -475,21 +475,21 @@ cl {
 
     def Home() -> any {
         return <div>
-            <h1>🏠 Home Page</h1>
+            <h1> Home Page</h1>
             <p>Welcome to the home page!</p>
         </div>;
     }
 
     def About() -> any {
         return <div>
-            <h1>ℹ️ About Page</h1>
+            <h1>ℹ About Page</h1>
             <p>Learn more about our application.</p>
         </div>;
     }
 
     def Contact() -> any {
         return <div>
-            <h1>📧 Contact Page</h1>
+            <h1> Contact Page</h1>
             <p>Email: contact@example.com</p>
         </div>;
     }
@@ -521,7 +521,7 @@ cl {
         users = ["Alice", "Bob", "Charlie"];
 
         return <div>
-            <h1>👥 User List</h1>
+            <h1> User List</h1>
             {users.map(lambda user: any -> any {
                 return <div key={user}>
                     <Link to={"/user/" + user}>{user}</Link>
@@ -535,7 +535,7 @@ cl {
         let username = params.id;
 
         return <div>
-            <h1>👤 Profile: {username}</h1>
+            <h1> Profile: {username}</h1>
             <p>Viewing profile for {username}</p>
             <Link to="/">← Back to User List</Link>
         </div>;
@@ -558,10 +558,10 @@ cl {
 
 ### 1. **Use Correct Route Syntax**
 ```jac
-# ✅ CORRECT - Use element prop with JSX
+#  CORRECT - Use element prop with JSX
 <Route path="/" element={<Home />} />
 
-# ❌ WRONG - Don't pass component without JSX
+#  WRONG - Don't pass component without JSX
 <Route path="/" component={Home} />
 ```
 
@@ -581,19 +581,19 @@ cl import from "@jac-client/utils" {
 
 ### 3. **Use Hooks for Navigation**
 ```jac
-# ✅ CORRECT - Use useNavigate hook
+#  CORRECT - Use useNavigate hook
 def MyComponent() -> any {
     let navigate = useNavigate();
     navigate("/dashboard");
 }
 
-# ⚠️ OLD - Global navigate() function (still works for backward compatibility)
+#  OLD - Global navigate() function (still works for backward compatibility)
 navigate("/dashboard");
 ```
 
 ### 4. **Protected Routes Pattern**
 ```jac
-# ✅ CORRECT - Check auth in component
+#  CORRECT - Check auth in component
 def ProtectedPage() -> any {
     if not jacIsLoggedIn() {
         return <Navigate to="/login" />;
@@ -604,10 +604,10 @@ def ProtectedPage() -> any {
 
 ### 5. **Use Link for Navigation**
 ```jac
-# ✅ CORRECT - Use Link component
+#  CORRECT - Use Link component
 <Link to="/about">About</Link>
 
-# ❌ WRONG - Regular anchor tags cause page reload
+#  WRONG - Regular anchor tags cause page reload
 <a href="#/about">About</a>
 ```
 
@@ -656,5 +656,4 @@ def Navigation() -> any {
 - **No Configuration**: Just wrap your app in `<Router>` and start routing!
 - **Production-ready**: Battle-tested routing for real applications
 
-Routing in Jac is simple, powerful, and production-ready! 🚀
-
+Routing in Jac is simple, powerful, and production-ready!

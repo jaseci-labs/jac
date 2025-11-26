@@ -13,7 +13,7 @@ obj User{
         return "Hello, " + self.name.value;
     }
 }
- 
+
 with entry{
     user = User(Name("Alice"));
     ghost = None;

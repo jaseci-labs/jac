@@ -1,6 +1,6 @@
 
 with entry{
-    
+
     obj A{
         has i: int = 0;
 

@@ -32,7 +32,7 @@ cl {
                 <strong>
                     HashRouter
                 </strong>
-                 for client-side routing.
+                #  for client-side routing.
             </p>
             <p>
                 Current path:

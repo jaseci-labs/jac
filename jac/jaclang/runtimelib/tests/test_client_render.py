@@ -26,7 +26,8 @@ class ClientRenderTests(TestCase):
         fixtures_dir = Path(__file__).parent / "fixtures"
         Jac.jac_import("client_app", str(fixtures_dir))
         server = JacAPIServer(
-            module_name="client_app", session_path=str(self.fixture_abs_path("client.session"))
+            module_name="client_app",
+            session_path=str(self.fixture_abs_path("client.session")),
         )
         server.load_module()
         return server

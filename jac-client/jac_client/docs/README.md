@@ -4,11 +4,41 @@ Welcome to the Todo App example! This guide will walk you through building a ful
 
 ---
 
-## 📦 1. Creating the Application
+##  1. Creating the Application
+
+### Prerequisites
+
+Before installing Jac client, you need to have **Node.js** installed on your system.
+
+#### Installing Node.js
+
+**For Linux users:**
+
+Visit [https://nodejs.org/en/download](https://nodejs.org/en/download) and follow the instructions to install Node.js using **nvm** (Node Version Manager) with **npm**.
+
+Select:
+- **Platform**: Linux
+- **Package Manager**: nvm
+- **Package**: npm
+
+Then follow the installation commands provided on that page.
+
+**For macOS users:**
+
+Download and install Node.js from [https://nodejs.org/en/download](https://nodejs.org/en/download) by selecting your operating system.
+
+**Verify Installation:**
+
+After installation, verify Node.js and npm are installed correctly:
+
+```bash
+node -v
+npm -v
+```
 
 ### Installation
 
-First, install the Jac client package:
+Once Node.js is installed, install the Jac client package:
 
 ```bash
 pip install jac-client
@@ -53,7 +83,7 @@ You can access your app at `http://localhost:8000`
 
 ---
 
-## 🚪 2. Entry Point of the App
+##  2. Entry Point of the App
 
 Every Jac client application needs an entry point function. This is where your app starts rendering.
 
@@ -119,7 +149,7 @@ cl {
 
 ---
 
-## 🧩 3. Creating Components
+##  3. Creating Components
 
 Components in Jac are functions that return JSX (JavaScript XML). They're similar to React components but written in pure Jac syntax.
 
@@ -194,7 +224,7 @@ def TodoItem(item: dict) -> any {
 
 ---
 
-## 🗄️ 4. Adding State with React Hooks
+##  4. Adding State with React Hooks
 
 Jac uses React hooks for state management. You can use all standard React hooks by importing them:
 
@@ -297,7 +327,7 @@ cl {
 
 ---
 
-## 🎯 5. Event Handling
+##  5. Event Handling
 
 Event handling in Jac works just like React, but with Jac's lambda syntax.
 
@@ -385,7 +415,7 @@ def FilterButton(filterType: str, currentFilter: str, onFilterChange: any) -> an
 
 ---
 
-## ✨ 6. Magic: No More Axios/Fetch!
+##  6. Magic: No More Axios/Fetch!
 
 One of Jac's most powerful features is **seamless backend communication** without writing HTTP requests, fetch calls, or axios code.
 
@@ -510,13 +540,13 @@ walker create_todo {
 
 ### Benefits of `spawn`
 
-✅ **No HTTP Configuration**: No need to set up API endpoints, CORS, or request/response formats
-✅ **Type Safety**: Jac handles serialization automatically
-✅ **Authentication**: Built-in token management via `jacLogin()` / `jacLogout()`
-✅ **Error Handling**: Exceptions are properly propagated
-✅ **Graph Operations**: Direct access to graph-based data operations
-✅ **Less Code**: Eliminates boilerplate HTTP client code
-✅ **Natural Syntax**: Call walkers on nodes using intuitive syntax
+ **No HTTP Configuration**: No need to set up API endpoints, CORS, or request/response formats
+ **Type Safety**: Jac handles serialization automatically
+ **Authentication**: Built-in token management via `jacLogin()` / `jacLogout()`
+ **Error Handling**: Exceptions are properly propagated
+ **Graph Operations**: Direct access to graph-based data operations
+ **Less Code**: Eliminates boilerplate HTTP client code
+ **Natural Syntax**: Call walkers on nodes using intuitive syntax
 
 ### Authentication Helpers
 
@@ -547,7 +577,7 @@ if jacIsLoggedIn() {
 
 ---
 
-## 🎨 Complete Example: Todo App Structure
+##  Complete Example: Todo App Structure
 
 Here's how all the pieces fit together:
 
@@ -612,7 +642,7 @@ cl {
 
 ---
 
-## 🚀 Running the Todo App
+##  Running the Todo App
 
 To run this example:
 
@@ -625,7 +655,7 @@ Then visit `http://localhost:8000` in your browser.
 
 ---
 
-## 📚 Next Steps
+##  Next Steps
 
 Ready to dive deeper? Explore these advanced topics:
 
@@ -635,7 +665,7 @@ Ready to dive deeper? Explore these advanced topics:
 - **[Imports](imports.md)**: Import third-party libraries (React, Ant Design, Lodash), other Jac files, and JavaScript modules
 - **[Learn JAC](https://www.jac-lang.org)**: Explore Jac's graph-based data modeling
 
-## 🎓 Examples
+##  Examples
 
 Check out the `examples/` directory for working applications:
 
@@ -647,7 +677,7 @@ Check out the `examples/` directory for working applications:
 
 ---
 
-## 💡 Key Takeaways
+##  Key Takeaways
 
 1. **Single Language**: Write frontend and backend in Jac
 2. **No HTTP Client**: Use `spawn` syntax instead of fetch/axios
@@ -656,4 +686,4 @@ Check out the `examples/` directory for working applications:
 5. **Type Safety**: Jac provides type checking across frontend and backend
 6. **Graph Database**: Built-in graph data model eliminates need for SQL/NoSQL
 
-Happy coding with Jac! 🎉
+Happy coding with Jac!

@@ -130,9 +130,7 @@ class EsastGenPassTests(TestCase):
 
     def test_class_separate_impl_file(self) -> None:
         """Test that separate impl files work correctly for class archetypes."""
-        es_ast = self.compile_to_esast(
-            self.get_fixture_path("class_separate_impl.jac")
-        )
+        es_ast = self.compile_to_esast(self.get_fixture_path("class_separate_impl.jac"))
         js_code = es_to_js(es_ast)
 
         # Check that the Calculator class exists
@@ -153,7 +151,8 @@ class EsastGenPassTests(TestCase):
             method_names = {
                 m.key.name
                 for m in calculator_class.body.body
-                if isinstance(m, es.MethodDefinition) and isinstance(m.key, es.Identifier)
+                if isinstance(m, es.MethodDefinition)
+                and isinstance(m.key, es.Identifier)
             }
             self.assertIn("add", method_names)
             self.assertIn("multiply", method_names)
@@ -168,9 +167,7 @@ class EsastGenPassTests(TestCase):
 
     def test_fstring_generates_template_literal(self) -> None:
         """Test that f-strings are converted to JavaScript template literals."""
-        es_ast = self.compile_to_esast(
-            self.get_fixture_path(self.ADVANCED_FIXTURE)
-        )
+        es_ast = self.compile_to_esast(self.get_fixture_path(self.ADVANCED_FIXTURE))
         js_code = es_to_js(es_ast)
 
         # Check that template_literal_examples function exists
