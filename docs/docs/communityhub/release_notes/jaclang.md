@@ -4,7 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.9.2 (Unreleased)
 
--**Support iter for statement**: Iter for statement is supported in order to utilize traditional for loop in javascript.
+- **Support iter for statement**: Iter for statement is supported in order to utilize traditional for loop in javascript.
+- **JavaScript Export Semantics for Public Declarations**: Declarations explicitly annotated with `:pub` now generate JavaScript `export` statements. This applies to classes (`obj :pub`), functions (`def :pub`), enums (`enum :pub`), and global variables (`glob :pub`), enabling proper ES module exports in generated JavaScript code.
 
 ## jaclang 0.9.1 (Latest Release)
 
