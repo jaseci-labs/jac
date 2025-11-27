@@ -294,6 +294,9 @@ extra:
   social:
     - icon: fontawesome/brands/mastodon
       link: https://fosstodon.org/@squidfunk
+  analytics:
+    provider: google
+    property: G-PLSMBEBC20
 copyright: Copyright &copy; 2025 Jac Hackers Everwhere
 
 extra_javascript:
