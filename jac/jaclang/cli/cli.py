@@ -16,7 +16,7 @@ from jaclang.compiler.passes.main import PyastBuildPass
 from jaclang.compiler.program import JacProgram
 from jaclang.runtimelib.builtin import printgraph
 from jaclang.runtimelib.constructs import WalkerArchetype
-from jaclang.runtimelib.machine import ExecutionContext, JacMachine as Jac
+from jaclang.runtimelib.machine import ExecutionContext, JacMachine as Jac, JacUtils
 from jaclang.runtimelib.utils import read_file_with_encoding
 from jaclang.settings import settings
 from jaclang.utils.helpers import debugger as db
@@ -103,7 +103,7 @@ def proc_file_sess(
             file=sys.stderr,
         )
         exit(1)
-    mach = ExecutionContext(session=session, root=root)
+    mach = JacUtils.create_j_context(session=session, root=root)
     Jac.set_context(mach)
     return base, mod, mach
 
@@ -575,9 +575,9 @@ def dot(
     if filename.endswith(".jac"):
         Jac.jac_import(target=mod, base_path=base, override_name="__main__")
         module = Jac.loaded_modules.get("__main__")
-        globals().update(vars(module))
+        mod_ns = vars(module) if module else {}
         try:
-            node = globals().get(initial, eval(initial)) if initial else None
+            node = mod_ns.get(initial, eval(initial, mod_ns)) if initial else None
             graph = printgraph(
                 node=node,
                 depth=depth,

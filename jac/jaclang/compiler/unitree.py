@@ -326,6 +326,17 @@ class UniScopeNode(UniNode):
         """Get parent."""
         return self.parent_scope
 
+    @staticmethod
+    def get_python_scoping_nodes() -> tuple[Type[UniScopeNode], ...]:
+        return (
+            Module,
+            Enum,
+            Archetype,
+            Ability,
+            ImplDef,
+            Test,
+        )
+
     def lookup(
         self,
         name: str,
@@ -343,15 +354,7 @@ class UniScopeNode(UniNode):
             for kid in self.kid_scope:
                 if isinstance(
                     kid,
-                    (
-                        Module,
-                        Enum,
-                        Archetype,
-                        Ability,
-                        ImplDef,
-                        AstImplNeedingNode,
-                        Test,
-                    ),
+                    UniScopeNode.get_python_scoping_nodes(),
                 ):
                     continue
                 if (sym := kid.lookup(name, False, True)) is not None:

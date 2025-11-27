@@ -88,4 +88,3 @@ export const Hint = styled.div`
     color: #6b7280;
     font-style: italic;
 `;
-

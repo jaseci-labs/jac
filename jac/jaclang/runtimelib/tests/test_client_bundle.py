@@ -183,11 +183,11 @@ class ClientBundleBuilderTests(TestCase):
         self.assertIn("function navigate(", bundle.code)
 
         # Verify that createState is actually callable (definition before usage)
-        createState_def_pos = bundle.code.find("function createState(")
-        createState_usage_pos = bundle.code.find("createState(")
+        create_state_def_pos = bundle.code.find("function createState(")
+        create_state_usage_pos = bundle.code.find("createState(")
         self.assertLess(
-            createState_def_pos,
-            createState_usage_pos,
+            create_state_def_pos,
+            create_state_usage_pos,
             "createState must be defined before it's used",
         )
 

@@ -12,4 +12,3 @@ walker SomeWalker {
         visit [-->(`?SomeNode:some_attr==10)];
     }
 }
-

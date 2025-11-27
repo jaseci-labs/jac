@@ -15,6 +15,7 @@ After forking, clone your fork and set up the upstream remote:
 ```bash
 # Clone your fork (replace YOUR_USERNAME with your GitHub username)
 git clone https://github.com/YOUR_USERNAME/jaseci.git
+git submodule update --init --recursive # Pulls in typeshed
 cd jaseci
 
 # Add the original repository as upstream (may already exist)

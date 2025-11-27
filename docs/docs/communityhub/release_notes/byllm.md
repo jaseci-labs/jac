@@ -2,12 +2,17 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **byLLM** (formerly MTLLM). For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking_changes.md) page.
 
-## byllm 0.4.6 (Unreleased)
+## byllm 0.4.8 (Unreleased)
+
+## byllm 0.4.7 (Latest Release)
+
+- **Custom Model Declaration**: Custom model interfaces can be defined by using the `BaseLLM` class that can be imported form `byllm.lib`. A guide for using this feature is added to [documentation](https://docs.jaseci.org/learn/jac-byllm/create_own_lm/).
+
+## byllm 0.4.6
 
 - **byLLM In-Memory Images**: byLLM Image class now accepts in-memory and path-like inputs (bytes/bytearray/memoryview, BytesIO/file-like, PIL.Image, Path), plus data/gs/http(s) URLs; auto-detects MIME (incl. WEBP), preserves URLs, and reads streams.
 
-
-## byllm 0.4.5 (Latest Release)
+## byllm 0.4.5
 
 - **byLLM Lazy Loading**: Refactored byLLM to support lazy loading by moving all exports to `byllm.lib` module. Users should now import from `byllm.lib` in Python (e.g., `from byllm.lib import Model, by`) and use `import from byllm.lib { Model }` in Jac code. This improves startup performance and reduces unnecessary module loading.
 - **NonGPT Fallback for byLLM**: Implemented automatic fallback when byLLM is not installed. When code attempts to import `byllm`, the system will provide mock implementations that return random using the `NonGPT.random_value_for_type()` utility.

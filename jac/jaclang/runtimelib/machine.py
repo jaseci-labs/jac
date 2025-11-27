@@ -103,7 +103,7 @@ class ExecutionContext:
         if not isinstance(self.system_root, NodeAnchor):
             self.system_root = cast(NodeAnchor, Root().__jac__)
             self.system_root.id = UUID(Con.SUPER_ROOT_UUID)
-            self.mem.set(self.system_root.id, self.system_root)
+            self.mem.set(self.system_root)
         self.entry_node = self.root_state = (
             self._get_anchor(root) if root else self.system_root
         )
@@ -825,6 +825,8 @@ class JacBasics:
     @staticmethod
     def get_context() -> ExecutionContext:
         """Get current execution context."""
+        if JacMachine.exec_ctx is None:
+            JacMachine.exec_ctx = JacMachineInterface.create_j_context()
         return JacMachine.exec_ctx
 
     @staticmethod
@@ -1407,7 +1409,7 @@ class JacBasics:
             anchor.persistent = True
             anchor.root = jctx.root_state.id
 
-        jctx.mem.set(anchor.id, anchor)
+        jctx.mem.set(anchor)
 
         match anchor:
             case NodeAnchor():
@@ -1496,28 +1498,32 @@ class JacResponseBuilder:
         handler: BaseHTTPRequestHandler, status: StatusCode, data: dict[str, JsonValue]
     ) -> None:
         """Send JSON response."""
-        # Raise not implemented error
-        raise NotImplementedError("send_json method is not implemented")
+        from jaclang.runtimelib.server import ResponseBuilder
+
+        ResponseBuilder.send_json(handler, status, data)
 
     @staticmethod
     def send_html(
         handler: BaseHTTPRequestHandler, status: StatusCode, body: str
     ) -> None:
         """Send HTML response with CORS headers."""
-        # Raise not implemented error
-        raise NotImplementedError("send_html method is not implemented")
+        from jaclang.runtimelib.server import ResponseBuilder
+
+        ResponseBuilder.send_html(handler, status, body)
 
     @staticmethod
     def send_javascript(handler: BaseHTTPRequestHandler, code: str) -> None:
         """Send JavaScript response."""
-        # Raise not implemented error
-        raise NotImplementedError("send_javascript method is not implemented")
+        from jaclang.runtimelib.server import ResponseBuilder
+
+        ResponseBuilder.send_javascript(handler, code)
 
     @staticmethod
-    def _add_cors_headers(handler: BaseHTTPRequestHandler) -> None:
-        """Add CORS headers to response."""
-        # Raise not implemented error
-        raise NotImplementedError("_add_cors_headers method is not implemented")
+    def send_css(handler: BaseHTTPRequestHandler, css_code: str) -> None:
+        """Send CSS response."""
+        from jaclang.runtimelib.server import ResponseBuilder
+
+        ResponseBuilder.send_css(handler, css_code)
 
     @staticmethod
     def send_static_file(
@@ -1597,6 +1603,13 @@ class JacByLLM:
 
 class JacUtils:
     """Jac Machine Utilities."""
+
+    @staticmethod
+    def create_j_context(
+        session: Optional[str] = None, root: Optional[str] = None
+    ) -> ExecutionContext:
+        """Hook for initialization or custom greeting logic."""
+        return ExecutionContext(session=session, root=root)
 
     @staticmethod
     def attach_program(jac_program: JacProgram) -> None:
@@ -1939,7 +1952,7 @@ class JacMachine(JacMachineInterface):
     base_path_dir: str = os.getcwd()
     program: JacProgram = JacProgram()
     pool: ThreadPoolExecutor = ThreadPoolExecutor()
-    exec_ctx: ExecutionContext = ExecutionContext()
+    exec_ctx: ExecutionContext | None = None
 
     @staticmethod
     def set_base_path(base_path: str) -> None:
@@ -1966,5 +1979,6 @@ class JacMachine(JacMachineInterface):
         JacMachine.base_path_dir = os.getcwd()
         JacMachine.program = JacProgram()
         JacMachine.pool = ThreadPoolExecutor()
-        JacMachine.exec_ctx.mem.close()
-        JacMachine.exec_ctx = ExecutionContext()
+        if JacMachine.exec_ctx is not None:
+            JacMachine.exec_ctx.mem.close()
+        JacMachine.exec_ctx = JacMachineInterface.create_j_context()

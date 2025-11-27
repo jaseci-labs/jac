@@ -1,4 +1,4 @@
-import from byllm.lib { Model }
+import from byllm.lib { MockLLM }
 
 enum Personality {
     INTROVERT = "Introvert",
@@ -17,7 +17,7 @@ glob personality_examples: dict[str, Personality] = {
 };
 
 
-glob llm = Model(
+glob llm = MockLLM(
     model_name="mockllm",
     verbose=True,
     outputs=[

@@ -130,9 +130,9 @@ class TestJacLangServer(TestCase):
             (11, 47, "compiler/constant.py:5:0-34:9"),
             (13, 47, "compiler/type_system/type_utils.py:0:0-0:0"),
             (14, 34, "compiler/type_system/__init__.py:0:0-0:0"),
-            (14, 55, "compiler/type_system/types.py:154:0-291:8"),
+            (14, 55, "compiler/type_system/types.py:154:0-294:8"),
             (15, 34, "compiler/unitree.py:0:0-0:0"),
-            (15, 48, "compiler/unitree.py:304:0-529:11"),
+            (15, 48, "compiler/unitree.py:304:0-532:11"),
             (17, 22, "langserve/tests/fixtures/circle.jac:8:5-8:8"),
             (18, 38, "vendor/pygls/uris.py:0:0-0:0"),
             (19, 52, "vendor/pygls/server.py:351:0-615:13"),
@@ -274,3 +274,31 @@ class TestJacLangServer(TestCase):
             references = str(lsp.get_references(circle_file, lspt.Position(line, char)))
             for expected in expected_refs:
                 self.assertIn(expected, references)
+
+    def test_go_to_def_import_star(self) -> None:
+        """Test that the go to reference is correct."""
+        lsp = self.create_server()
+        import_star_file = uris.from_fs_path(
+            self.passes_main_fixture_abs_path("checker_import_star/main.jac")
+        )
+
+        lsp.type_check_file(import_star_file)
+        # fmt: off
+        positions = [
+            (4, 16, "import_star_mod_py.py:0:0-3:2"),
+            (4, 21, "import_star_mod_py.py:2:3-3:6"),
+            (5, 16, "import_star_mod_jac.jac:0:4-0:7"),
+            (5, 22, "import_star_mod_jac.jac:1:8-1:11"),
+        ]
+        # fmt: on
+
+        for line, char, expected in positions:
+            with self.subTest(line=line, char=char):
+                self.assertIn(
+                    expected,
+                    str(
+                        lsp.get_definition(
+                            import_star_file, lspt.Position(line - 1, char - 1)
+                        )
+                    ),
+                )

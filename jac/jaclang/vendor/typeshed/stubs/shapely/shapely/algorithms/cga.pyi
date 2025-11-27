@@ -1,3 +1,0 @@
-from ..geometry import LinearRing
-
-def signed_area(ring: LinearRing) -> float: ...

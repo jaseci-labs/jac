@@ -1,12 +1,12 @@
 # Step 7: Component Lifecycle with `useEffect`
 
-> **💡 Quick Tip:** Each step has two parts. **Part 1** shows you what to build. **Part 2** explains why it works. Want to just build? Skip all Part 2 sections!
+> ** Quick Tip:** Each step has two parts. **Part 1** shows you what to build. **Part 2** explains why it works. Want to just build? Skip all Part 2 sections!
 
 In this step, you'll learn about **useEffect** - a way to run code when your component loads or when data changes!
 
 ---
 
-## 🏗️ Part 1: Building the App
+##  Part 1: Building the App
 
 ### Step 7.1: Understanding the Problem
 
@@ -91,7 +91,7 @@ cl {
 }
 ```
 
-**Try it!** Add some todos, then refresh the page - your todos persist! 🎉
+**Try it!** Add some todos, then refresh the page - your todos persist!
 
 ### Step 7.5: Add Loading State
 
@@ -154,22 +154,22 @@ cl {
 
 ---
 
-**⏭️ Want to skip the theory?** Jump to [Step 8: Walkers](./step-08-walkers.md)
+**⏭ Want to skip the theory?** Jump to [Step 8: Walkers](./step-08-walkers.md)
 
 ---
 
-## 💡 Part 2: Understanding the Concepts
+##  Part 2: Understanding the Concepts
 
 ### What is `useEffect`?
 
 `useEffect` lets you run **side effects** - code that affects things outside your component.
 
 **Common side effects:**
-- 📡 Fetching data from a server
-- 💾 Saving data to localStorage
+-  Fetching data from a server
+-  Saving data to localStorage
 - ⏰ Setting up timers
-- 📊 Logging analytics
-- 🔔 Subscribing to events
+-  Logging analytics
+-  Subscribing to events
 
 **Python analogy:**
 
@@ -368,31 +368,31 @@ useEffect(lambda -> None {
 
 ---
 
-## ✅ What You've Learned
+##  What You've Learned
 
-- ✅ What useEffect is and why we need it
-- ✅ How to run code when component mounts
-- ✅ Dependency arrays control when effects run
-- ✅ Multiple useEffect hooks for organization
-- ✅ Using localStorage to persist data
-- ✅ Adding loading states
-- ✅ Preventing unnecessary saves
+-  What useEffect is and why we need it
+-  How to run code when component mounts
+-  Dependency arrays control when effects run
+-  Multiple useEffect hooks for organization
+-  Using localStorage to persist data
+-  Adding loading states
+-  Preventing unnecessary saves
 
 ---
 
-## 🐛 Common Issues
+##  Common Issues
 
 ### Issue: Effect runs too many times
 
 **Check:** Is your dependency array correct?
 
 ```jac
-# ❌ Wrong - runs on every render
+#  Wrong - runs on every render
 useEffect(lambda -> None {
     console.log(todos);
 });
 
-# ✅ Correct - runs only when todos change
+#  Correct - runs only when todos change
 useEffect(lambda -> None {
     console.log(todos);
 }, [todos]);
@@ -403,12 +403,12 @@ useEffect(lambda -> None {
 **Check:** Did you include all dependencies?
 
 ```jac
-# ❌ Wrong - missing todos dependency
+#  Wrong - missing todos dependency
 useEffect(lambda -> None {
     console.log(todos.length);
 }, []);
 
-# ✅ Correct - includes todos
+#  Correct - includes todos
 useEffect(lambda -> None {
     console.log(todos.length);
 }, [todos]);
@@ -426,12 +426,12 @@ useEffect(lambda -> None {
 **Cause:** Effect updates state, which triggers effect again
 
 ```jac
-# ❌ Wrong - infinite loop!
+#  Wrong - infinite loop!
 useEffect(lambda -> None {
     setTodos([...]);  # This triggers effect again!
 }, [todos]);
 
-# ✅ Correct - run only once
+#  Correct - run only once
 useEffect(lambda -> None {
     setTodos([...]);
 }, []);
@@ -439,7 +439,7 @@ useEffect(lambda -> None {
 
 ---
 
-## 🎯 Quick Exercise
+##  Quick Exercise
 
 Try adding a "last saved" timestamp:
 
@@ -459,11 +459,10 @@ useEffect(lambda -> None {
 
 ---
 
-## ➡️ Next Step
+##  Next Step
 
 Great! Your app now persists data with localStorage. But localStorage is only local to your browser!
 
 In the next step, we'll add **real backend** using **walkers** so your data is stored on a server!
 
-👉 **[Continue to Step 8: Walkers](./step-08-walkers.md)**
-
+ **[Continue to Step 8: Walkers](./step-08-walkers.md)**

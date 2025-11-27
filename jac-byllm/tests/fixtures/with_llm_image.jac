@@ -1,7 +1,7 @@
-import from byllm.lib { Model, Image }
+import from byllm.lib { MockLLM, Image }
 import os;
 
-glob llm = Model(
+glob llm = MockLLM(
     model_name="gpt-4o",
 );
 

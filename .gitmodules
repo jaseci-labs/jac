@@ -1,0 +1,3 @@
+[submodule "jac/jaclang/vendor/typeshed"]
+	path = jac/jaclang/vendor/typeshed
+	url = https://github.com/python/typeshed

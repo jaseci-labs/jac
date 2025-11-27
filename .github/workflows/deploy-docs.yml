@@ -35,9 +35,10 @@ jobs:
     steps:
       # Checkout the repository
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0  # Full git history for changelog generation
+          submodules: true
 
       # Set up QEMU for multi-architecture builds
       - name: Set up QEMU
@@ -141,6 +142,43 @@ jobs:
           echo "Trigger: ${{ github.event_name }}" >> docs/build-info.txt
 
           echo "Documentation prepared for serving"
+
+      # Set up Node.js for playground build
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Clone, build and deploy playground
+      - name: Build and deploy playground
+        working-directory: .
+        run: |
+          echo "Cloning jac_playground repository..."
+          git clone https://github.com/jaseci-labs/jac_playground.git ./tmp/jac_playground
+
+          echo "Updating PLAYGROUND_PATH in src and public folders..."
+          sed -i 's|const PLAYGROUND_PATH = .*;|const PLAYGROUND_PATH = "/playground";|' ./tmp/jac_playground/src/lib/assetPaths.ts
+          sed -i 's|const PLAYGROUND_PATH = .*;|const PLAYGROUND_PATH = "/playground";|' ./tmp/jac_playground/public/python/python.js
+
+          echo "Installing dependencies..."
+          npm install --prefix ./tmp/jac_playground
+
+          echo "Building the React project..."
+          npm run build --prefix ./tmp/jac_playground
+
+          echo "Creating playground directory if it doesn't exist..."
+          mkdir -p ./docs/docs/playground/
+
+          echo "Copying build files to the playground directory..."
+          cp -r ./tmp/jac_playground/dist/* ./docs/docs/playground/
+
+          echo "Removing jaclang.zip from playground directory if it exists..."
+          rm -f ./docs/docs/playground/jaclang.zip
+
+          echo "Removing temporary jac_playground directory..."
+          rm -rf ./tmp/
+
+          echo "Playground build and deployment completed."
 
       # Build and push Docker image
       - name: Build and push Docker image

@@ -40,4 +40,3 @@ class ToyModel(torch.nn.Module) {
         return self.inv_freq;
     }
 }
-
