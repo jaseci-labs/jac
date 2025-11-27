@@ -32,34 +32,6 @@ jobs:
     - name: Run Jac core tests
       run: pytest -x jac -n auto
 
-  test-client:
-    runs-on: ubuntu-latest
-    steps:
-    - name: Check out code
-      uses: actions/checkout@v5
-      with:
-        submodules: true
-
-    - name: Set up Python 3.12
-      uses: actions/setup-python@v3
-      with:
-        python-version: 3.12
-
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e jac
-        pip install -e jac-client
-        pip install pytest
-        pip install pytest-xdist
-
-    - name: Set environment for testing
-      run: |
-        echo "TEST_ENV=true" >> $GITHUB_ENV
-
-    - name: Run Jac-Client tests
-      run: pytest -x jac-client
-
   test-packages:
     runs-on: ubuntu-latest
     services:
@@ -92,6 +64,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -e jac
+        pip install -e jac-client
         pip install -e jac-byllm
         pip install -e jac-streamlit
         pip install numpy
@@ -104,7 +77,7 @@ jobs:
         echo "TEST_ENV=true" >> $GITHUB_ENV
 
     - name: Run package tests
-      run: pytest -x  jac-byllm jac-streamlit
+      run: pytest -x  jac-byllm jac-streamlit jac-client
 
     - name: Run littleX tests
       run: jac test jac/examples/littleX/littleX.test.jac
