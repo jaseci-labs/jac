@@ -9,6 +9,8 @@ from typing import Any, Literal, TypeAlias
 from jaclang.runtimelib.client_bundle import ClientBundle
 from jaclang.runtimelib.machine import (
     JacMachine as Jac,
+)
+from jaclang.runtimelib.machine import (
     hookimpl,
 )
 from jaclang.runtimelib.server import ModuleIntrospector

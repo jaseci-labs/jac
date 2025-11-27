@@ -39,7 +39,7 @@ class JacCmd:
             except Exception as e:
                 print(f"An error occurred: {e}")
 
-            with open(filename, "r") as file:
+            with open(filename) as file:
                 content = file.read()
 
             formatter = TerminalFormatter()

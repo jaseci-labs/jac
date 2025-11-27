@@ -1,20 +1,16 @@
 import base64
 import os
-import requests
-from requests.exceptions import RequestException
 import tarfile
 import time
-from typing import Callable
+from collections.abc import Callable
 
-
+import requests
+import urllib3
 from dotenv import dotenv_values
-
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
 from kubernetes.config.config_exception import ConfigException
-
-
-import urllib3
+from requests.exceptions import RequestException
 
 
 def debug_print(statement: str, debug_only: bool = False) -> None:
@@ -57,7 +53,7 @@ def check_k8_status() -> None:
             # Try in-cluster config
             config.load_incluster_config()
         except ConfigException:
-            raise Exception("Kubernetes is not configured on this machine.")
+            raise Exception("Kubernetes is not configured on this machine.") from None
 
     # Try pinging the Kubernetes API server
     try:
@@ -66,7 +62,7 @@ def check_k8_status() -> None:
     except (ApiException, urllib3.exceptions.HTTPError, OSError):
         raise Exception(
             "Unable to connect to kubernetes APi.Check whether kubernetes cluster is up"
-        )
+        ) from None
 
 
 def delete_if_exists(

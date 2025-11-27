@@ -24,7 +24,6 @@ from jaclang.compiler.passes import Transform, UniPass
 from jaclang.runtimelib.utils import read_file_with_encoding
 from jaclang.utils.log import logging
 
-
 logger = logging.getLogger(__name__)
 
 

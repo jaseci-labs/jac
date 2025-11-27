@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import unittest
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Optional
 
 
 class JacTestResult(unittest.TextTestResult):
@@ -15,7 +15,7 @@ class JacTestResult(unittest.TextTestResult):
         stream,  # noqa
         descriptions,  # noqa
         verbosity: int,
-        max_failures: Optional[int] = None,
+        max_failures: int | None = None,
     ) -> None:
         """Initialize FailFastTestResult object."""
         super().__init__(stream, descriptions, verbosity)  # noqa
@@ -37,7 +37,7 @@ class JacTestResult(unittest.TextTestResult):
 class JacTextTestRunner(unittest.TextTestRunner):
     """Jac test runner class."""
 
-    def __init__(self, max_failures: Optional[int] = None, **kwargs) -> None:  # noqa
+    def __init__(self, max_failures: int | None = None, **kwargs) -> None:  # noqa
         """Initialize JacTextTestRunner object."""
         self.max_failures = max_failures
         super().__init__(**kwargs)

@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast as ast3
 import builtins
 import os
+from collections.abc import Callable, Sequence
 from copy import copy
 from dataclasses import dataclass
 from enum import IntEnum
@@ -12,27 +13,29 @@ from hashlib import md5
 from types import EllipsisType
 from typing import (
     Any,
-    Callable,
     Generic,
-    Optional,
-    Sequence,
-    Type,
     TypeVar,
-    Union,
     cast,
 )
-
 
 from jaclang.compiler import TOKEN_MAP
 from jaclang.compiler.codeinfo import CodeGenTarget, CodeLocInfo
 from jaclang.compiler.constant import (
-    Constants as Con,
+    DELIM_MAP,
     EdgeDir,
-    JacSemTokenModifier as SemTokMod,
-    JacSemTokenType as SemTokType,
+    SymbolAccess,
     SymbolType,
 )
-from jaclang.compiler.constant import DELIM_MAP, SymbolAccess, Tokens as Tok
+from jaclang.compiler.constant import (
+    Constants as Con,
+)
+from jaclang.compiler.constant import (
+    JacSemTokenModifier as SemTokMod,
+)
+from jaclang.compiler.constant import (
+    JacSemTokenType as SemTokType,
+)
+from jaclang.compiler.constant import Tokens as Tok
 from jaclang.compiler.type_system.types import TypeBase
 from jaclang.utils import resolve_relative_path
 from jaclang.utils.treeprinter import (
@@ -48,7 +51,7 @@ class UniNode:
 
     def __init__(self, kid: Sequence[UniNode]) -> None:
         """Initialize ast."""
-        self.parent: Optional[UniNode] = None
+        self.parent: UniNode | None = None
         self.kid: list[UniNode] = [x.set_parent(self) for x in kid]
         self._sub_node_tab: dict[type, list[UniNode]] = {}
         self.construct_sub_node_tab()
@@ -149,14 +152,14 @@ class UniNode:
         else:
             raise ValueError(f"Empty kid for Token {type(self).__name__}")
 
-    def gen_token(self, name: Tok, value: Optional[str] = None) -> Token:
+    def gen_token(self, name: Tok, value: str | None = None) -> Token:
         value = (
             value
             if value
             else (
                 DELIM_MAP[name]
                 if name in DELIM_MAP
-                else TOKEN_MAP[name.value] if name.value in TOKEN_MAP else name.value
+                else TOKEN_MAP.get(name.value, name.value)
             )
         )
         return Token(
@@ -171,19 +174,19 @@ class UniNode:
             pos_end=0,
         )
 
-    def get_all_sub_nodes(self, typ: Type[T], brute_force: bool = True) -> list[T]:
+    def get_all_sub_nodes(self, typ: type[T], brute_force: bool = True) -> list[T]:
         """Get all sub nodes of type."""
         from jaclang.compiler.passes import UniPass
 
         return UniPass.get_all_sub_nodes(node=self, typ=typ, brute_force=brute_force)
 
-    def find_parent_of_type(self, typ: Type[T]) -> Optional[T]:
+    def find_parent_of_type(self, typ: type[T]) -> T | None:
         """Get parent of type."""
         from jaclang.compiler.passes import UniPass
 
         return UniPass.find_parent_of_type(node=self, typ=typ)
 
-    def parent_of_type(self, typ: Type[T]) -> T:
+    def parent_of_type(self, typ: type[T]) -> T:
         ret = self.find_parent_of_type(typ)
         if isinstance(ret, typ):
             return ret
@@ -203,7 +206,7 @@ class UniNode:
             ret["value"] = self.value
         return ret
 
-    def pp(self, depth: Optional[int] = None) -> str:
+    def pp(self, depth: int | None = None) -> str:
         """Print ast."""
         return print_ast_tree(self, max_depth=depth)
 
@@ -242,7 +245,7 @@ class Symbol:
         self,
         defn: NameAtom,
         access: SymbolAccess,
-        parent_tab: Optional[UniScopeNode] = None,
+        parent_tab: UniScopeNode | None = None,
         imported: bool = False,
     ) -> None:
         """Initialize."""
@@ -281,7 +284,7 @@ class Symbol:
         return ".".join(out)
 
     @property
-    def symbol_table(self) -> Optional[UniScopeNode]:
+    def symbol_table(self) -> UniScopeNode | None:
         """Get symbol table."""
         if self.parent_tab:
             return self.parent_tab.find_scope(self.sym_name)
@@ -308,7 +311,7 @@ class UniScopeNode(UniNode):
     def __init__(
         self,
         name: str,
-        parent_scope: Optional[UniScopeNode] = None,
+        parent_scope: UniScopeNode | None = None,
     ) -> None:
         """Initialize."""
         self.scope_name = name
@@ -322,12 +325,12 @@ class UniScopeNode(UniNode):
             return self.sym_category
         return SymbolType.VAR
 
-    def get_parent(self) -> Optional[UniScopeNode]:
+    def get_parent(self) -> UniScopeNode | None:
         """Get parent."""
         return self.parent_scope
 
     @staticmethod
-    def get_python_scoping_nodes() -> tuple[Type[UniScopeNode], ...]:
+    def get_python_scoping_nodes() -> tuple[type[UniScopeNode], ...]:
         return (
             Module,
             Enum,
@@ -342,7 +345,7 @@ class UniScopeNode(UniNode):
         name: str,
         deep: bool = True,
         incl_inner_scope: bool = False,
-    ) -> Optional[Symbol]:
+    ) -> Symbol | None:
         """Lookup a variable in the symbol table."""
         if name in self.names_in_scope:
             return self.names_in_scope[name]
@@ -365,11 +368,11 @@ class UniScopeNode(UniNode):
     def insert(
         self,
         node: AstSymbolNode,
-        access_spec: Optional[AstAccessNode] | SymbolAccess = None,
+        access_spec: AstAccessNode | None | SymbolAccess = None,
         single: bool = False,
         force_overwrite: bool = False,
         imported: bool = False,
-    ) -> Optional[UniNode]:
+    ) -> UniNode | None:
         """Set a variable in the symbol table.
 
         Returns original symbol as collision if single check fails, none otherwise.
@@ -385,7 +388,9 @@ class UniScopeNode(UniNode):
                 access=(
                     access_spec
                     if isinstance(access_spec, SymbolAccess)
-                    else access_spec.access_type if access_spec else SymbolAccess.PUBLIC
+                    else access_spec.access_type
+                    if access_spec
+                    else SymbolAccess.PUBLIC
                 ),
                 parent_tab=self,
                 imported=imported,
@@ -395,7 +400,7 @@ class UniScopeNode(UniNode):
         node.name_spec.sym = self.names_in_scope[node.sym_name]
         return collision
 
-    def find_scope(self, name: str) -> Optional[UniScopeNode]:
+    def find_scope(self, name: str) -> UniScopeNode | None:
         """Find a scope in the symbol table."""
         for k in self.kid_scope:
             if k.scope_name == name:
@@ -416,11 +421,11 @@ class UniScopeNode(UniNode):
     def def_insert(
         self,
         node: AstSymbolNode,
-        access_spec: Optional[AstAccessNode] | SymbolAccess = None,
-        single_decl: Optional[str] = None,
+        access_spec: AstAccessNode | None | SymbolAccess = None,
+        single_decl: str | None = None,
         force_overwrite: bool = False,
         imported: bool = False,
-    ) -> Optional[Symbol]:
+    ) -> Symbol | None:
         """Insert into symbol table."""
         if node.sym and self == node.sym.parent_tab:
             return node.sym
@@ -459,8 +464,8 @@ class UniScopeNode(UniNode):
     def use_lookup(
         self,
         node: AstSymbolNode,
-        sym_table: Optional[UniScopeNode] = None,
-    ) -> Optional[Symbol]:
+        sym_table: UniScopeNode | None = None,
+    ) -> Symbol | None:
         """Link to symbol."""
         if node.sym:
             return node.sym
@@ -517,7 +522,7 @@ class UniScopeNode(UniNode):
 
             fix(node)
 
-    def sym_pp(self, depth: Optional[int] = None) -> str:
+    def sym_pp(self, depth: int | None = None) -> str:
         """Pretty print."""
         return print_symtab_tree(root=self, depth=depth)
 
@@ -546,7 +551,7 @@ class AstSymbolNode(UniNode):
         self.semstr = ""
 
     @property
-    def sym(self) -> Optional[Symbol]:
+    def sym(self) -> Symbol | None:
         return self.name_spec.sym
 
     @property
@@ -558,7 +563,7 @@ class AstSymbolNode(UniNode):
         return self.name_spec.sym_category
 
     @property
-    def py_ctx_func(self) -> Type[ast3.AST]:
+    def py_ctx_func(self) -> type[ast3.AST]:
         return self.name_spec.py_ctx_func
 
     @property
@@ -566,7 +571,7 @@ class AstSymbolNode(UniNode):
         return self.name_spec.expr_type
 
     @property
-    def type_sym_tab(self) -> Optional[UniScopeNode]:
+    def type_sym_tab(self) -> UniScopeNode | None:
         """Get type symbol table."""
         return self.name_spec.type_sym_tab
 
@@ -586,8 +591,8 @@ class AstSymbolStubNode(AstSymbolNode):
 class AstAccessNode(UniNode):
     """Nodes that have access."""
 
-    def __init__(self, access: Optional[SubTag[Token]]) -> None:
-        self.access: Optional[SubTag[Token]] = access
+    def __init__(self, access: SubTag[Token] | None) -> None:
+        self.access: SubTag[Token] | None = access
 
     @property
     def access_type(self) -> SymbolAccess:
@@ -620,7 +625,7 @@ class ClientFacingNode(UniNode):
         """Return True when this node is nested inside a client block."""
         return self.find_parent_of_type(ClientBlock) is not None
 
-    def _source_client_token(self) -> Optional[Token]:
+    def _source_client_token(self) -> Token | None:
         """Return the original client token if present on this node."""
         for kid in self.kid:
             if isinstance(kid, Token) and kid.name == Tok.KW_CLIENT:
@@ -631,8 +636,8 @@ class ClientFacingNode(UniNode):
 class AstDocNode(UniNode):
     """Nodes that have access."""
 
-    def __init__(self, doc: Optional[String]) -> None:
-        self.doc: Optional[String] = doc
+    def __init__(self, doc: String | None) -> None:
+        self.doc: String | None = doc
 
 
 class AstAsyncNode(UniNode):
@@ -645,15 +650,15 @@ class AstAsyncNode(UniNode):
 class AstElseBodyNode(UniNode):
     """Nodes that have access."""
 
-    def __init__(self, else_body: Optional[ElseStmt | ElseIf]) -> None:
-        self.else_body: Optional[ElseStmt | ElseIf] = else_body
+    def __init__(self, else_body: ElseStmt | ElseIf | None) -> None:
+        self.else_body: ElseStmt | ElseIf | None = else_body
 
 
 class AstTypedVarNode(UniNode):
     """Nodes that have access."""
 
-    def __init__(self, type_tag: Optional[SubTag[Expr]]) -> None:
-        self.type_tag: Optional[SubTag[Expr]] = type_tag
+    def __init__(self, type_tag: SubTag[Expr] | None) -> None:
+        self.type_tag: SubTag[Expr] | None = type_tag
 
 
 class WalkerStmtOnlyNode(UniNode):
@@ -730,7 +735,7 @@ class Expr(UniNode):
 
     def __init__(self) -> None:
         self._sym_type: str = "NoType"
-        self._type_sym_tab: Optional[UniScopeNode] = None
+        self._type_sym_tab: UniScopeNode | None = None
 
         # When the type of an expression is resolved, we'll be caching
         # the type here.
@@ -749,7 +754,7 @@ class Expr(UniNode):
         self._sym_type = sym_type
 
     @property
-    def type_sym_tab(self) -> Optional[UniScopeNode]:
+    def type_sym_tab(self) -> UniScopeNode | None:
         """Get type symbol table."""
         return self._type_sym_tab
 
@@ -789,7 +794,7 @@ class CodeBlockStmt(UniCFGNode):
 class AstImplNeedingNode(AstSymbolNode, Generic[T]):
     """AstImplNeedingNode node type for Jac Ast."""
 
-    def __init__(self, body: Optional[T]) -> None:
+    def __init__(self, body: T | None) -> None:
         self.body = body
 
     @property
@@ -802,15 +807,15 @@ class NameAtom(AtomExpr, EnumBlockStmt):
 
     def __init__(self, is_enum_stmt: bool) -> None:
         self.name_of: AstSymbolNode = self
-        self._sym: Optional[Symbol] = None
+        self._sym: Symbol | None = None
         self._sym_name: str = ""
         self._sym_category: SymbolType = SymbolType.UNKNOWN
-        self._py_ctx_func: Type[ast3.expr_context] = ast3.Load
+        self._py_ctx_func: type[ast3.expr_context] = ast3.Load
         AtomExpr.__init__(self)
         EnumBlockStmt.__init__(self, is_enum_stmt=is_enum_stmt)
 
     @property
-    def sym(self) -> Optional[Symbol]:
+    def sym(self) -> Symbol | None:
         return self._sym
 
     @sym.setter
@@ -828,7 +833,7 @@ class NameAtom(AtomExpr, EnumBlockStmt):
     def create_symbol(
         self,
         access: SymbolAccess,
-        parent_tab: Optional[UniScopeNode] = None,
+        parent_tab: UniScopeNode | None = None,
         imported: bool = False,
     ) -> Symbol:
         """Create symbol."""
@@ -841,17 +846,17 @@ class NameAtom(AtomExpr, EnumBlockStmt):
         return ret_type
 
     @property
-    def py_ctx_func(self) -> Type[ast3.expr_context]:
+    def py_ctx_func(self) -> type[ast3.expr_context]:
         """Get python context function."""
         return self._py_ctx_func
 
     @py_ctx_func.setter
-    def py_ctx_func(self, py_ctx_func: Type[ast3.expr_context]) -> None:
+    def py_ctx_func(self, py_ctx_func: type[ast3.expr_context]) -> None:
         """Set python context function."""
         self._py_ctx_func = py_ctx_func
 
     @property
-    def sem_token(self) -> Optional[tuple[SemTokType, SemTokMod]]:
+    def sem_token(self) -> tuple[SemTokType, SemTokMod] | None:
         """Resolve semantic token."""
         if isinstance(self.name_of, BuiltinType):
             return SemTokType.CLASS, SemTokMod.DECLARATION
@@ -927,7 +932,7 @@ class Module(AstDocNode, UniScopeNode):
         self,
         name: str,
         source: Source,
-        doc: Optional[String],
+        doc: String | None,
         body: Sequence[ElementStmt | String | EmptyToken],
         terminals: list[Token],
         kid: Sequence[UniNode],
@@ -953,7 +958,7 @@ class Module(AstDocNode, UniScopeNode):
         UniScopeNode.__init__(self, name=self.name)
 
     @property
-    def annexable_by(self) -> Optional[str]:
+    def annexable_by(self) -> str | None:
         """Get annexable by."""
         if not self.stub_only and (
             self.loc.mod_path.endswith(".impl.jac")
@@ -1021,7 +1026,7 @@ class Module(AstDocNode, UniScopeNode):
 
     @staticmethod
     def make_stub(
-        inject_name: Optional[str] = None, inject_src: Optional[Source] = None
+        inject_name: str | None = None, inject_src: Source | None = None
     ) -> Module:
         """Create a stub module."""
         return Module(
@@ -1053,7 +1058,7 @@ class Module(AstDocNode, UniScopeNode):
 class ProgramModule(UniNode):
     """Whole Program node type for Jac Ast."""
 
-    def __init__(self, main_mod: Optional[Module] = None) -> None:
+    def __init__(self, main_mod: Module | None = None) -> None:
         """Initialize whole program node."""
         self.main = main_mod if main_mod else Module.make_stub()
         UniNode.__init__(self, kid=[self.main])
@@ -1065,11 +1070,11 @@ class GlobalVars(ClientFacingNode, ElementStmt, AstAccessNode):
 
     def __init__(
         self,
-        access: Optional[SubTag[Token]],
+        access: SubTag[Token] | None,
         assignments: Sequence[Assignment],
         is_frozen: bool,
         kid: Sequence[UniNode],
-        doc: Optional[String] = None,
+        doc: String | None = None,
     ) -> None:
         self.assignments = assignments
         self.is_frozen = is_frozen
@@ -1115,7 +1120,7 @@ class Test(ClientFacingNode, AstSymbolNode, ElementStmt, UniScopeNode):
         name: Name | Token,
         body: Sequence[CodeBlockStmt],
         kid: Sequence[UniNode],
-        doc: Optional[String] = None,
+        doc: String | None = None,
     ) -> None:
         Test.TEST_COUNT += 1 if isinstance(name, Token) else 0
         self.name: Name = (  # for auto generated test names
@@ -1181,11 +1186,11 @@ class ModuleCode(ClientFacingNode, ElementStmt, ArchBlockStmt, EnumBlockStmt):
 
     def __init__(
         self,
-        name: Optional[Name],
+        name: Name | None,
         body: Sequence[CodeBlockStmt],
         kid: Sequence[UniNode],
         is_enum_stmt: bool = False,
-        doc: Optional[String] = None,
+        doc: String | None = None,
     ) -> None:
         self.name = name
         self.body = body
@@ -1254,7 +1259,7 @@ class PyInlineCode(ElementStmt, ArchBlockStmt, EnumBlockStmt, CodeBlockStmt):
         code: Token,
         kid: Sequence[UniNode],
         is_enum_stmt: bool = False,
-        doc: Optional[String] = None,
+        doc: String | None = None,
     ) -> None:
         self.code = code
         UniNode.__init__(self, kid=kid)
@@ -1280,11 +1285,11 @@ class Import(ClientFacingNode, ElementStmt, CodeBlockStmt):
 
     def __init__(
         self,
-        from_loc: Optional[ModulePath],
+        from_loc: ModulePath | None,
         items: Sequence[ModuleItem] | Sequence[ModulePath],
         is_absorb: bool,  # For includes
         kid: Sequence[UniNode],
-        doc: Optional[String] = None,
+        doc: String | None = None,
     ) -> None:
         self.hint = None
         self.from_loc = from_loc
@@ -1375,17 +1380,17 @@ class ModulePath(UniNode):
 
     def __init__(
         self,
-        path: Optional[Sequence[Name | String]],
+        path: Sequence[Name | String] | None,
         level: int,
-        alias: Optional[Name],
+        alias: Name | None,
         kid: Sequence[UniNode],
-        prefix: Optional[Name] = None,
+        prefix: Name | None = None,
     ) -> None:
         self.path = path
         self.level = level
         self.alias = alias
         self.prefix = prefix
-        self.abs_path: Optional[str] = None
+        self.abs_path: str | None = None
         UniNode.__init__(self, kid=kid)
 
     @property
@@ -1405,7 +1410,7 @@ class ModulePath(UniNode):
             [p.value for p in self.path] if self.path else []
         )
 
-    def resolve_relative_path(self, target_item: Optional[str] = None) -> str:
+    def resolve_relative_path(self, target_item: str | None = None) -> str:
         """Convert an import target string into a relative file path."""
         target = self.dot_path_str + (f".{target_item}" if target_item else "")
 
@@ -1478,13 +1483,13 @@ class ModuleItem(UniNode):
     def __init__(
         self,
         name: Name | Token,
-        alias: Optional[Name],
+        alias: Name | None,
         kid: Sequence[UniNode],
     ) -> None:
         self.name = name
         self.alias = alias
         UniNode.__init__(self, kid=kid)
-        self.abs_path: Optional[str] = None
+        self.abs_path: str | None = None
 
     @property
     def from_parent(self) -> Import:
@@ -1528,11 +1533,11 @@ class Archetype(
         self,
         name: Name,
         arch_type: Token,
-        access: Optional[SubTag[Token]],
+        access: SubTag[Token] | None,
         base_classes: Sequence[Expr] | None,
         body: Sequence[ArchBlockStmt] | ImplDef | None,
         kid: Sequence[UniNode],
-        doc: Optional[String] = None,
+        doc: String | None = None,
         decorators: Sequence[Expr] | None = None,
     ) -> None:
         self.name = name
@@ -1656,13 +1661,13 @@ class ImplDef(
 
     def __init__(
         self,
-        decorators: Optional[Sequence[Expr]],
+        decorators: Sequence[Expr] | None,
         target: Sequence[NameAtom],
         spec: Sequence[Expr] | FuncSignature | EventSignature | None,
         body: Sequence[CodeBlockStmt] | Sequence[EnumBlockStmt] | Expr,
         kid: Sequence[UniNode],
-        doc: Optional[String] = None,
-        decl_link: Optional[UniNode] = None,
+        doc: String | None = None,
+        decl_link: UniNode | None = None,
     ) -> None:
         self.decorators = decorators
         self.target = target
@@ -1822,11 +1827,11 @@ class Enum(
     def __init__(
         self,
         name: Name,
-        access: Optional[SubTag[Token]],
+        access: SubTag[Token] | None,
         base_classes: Sequence[Expr] | None,
         body: Sequence[EnumBlockStmt] | ImplDef | None,
         kid: Sequence[UniNode],
-        doc: Optional[String] = None,
+        doc: String | None = None,
         decorators: Sequence[Expr] | None = None,
     ) -> None:
         self.name = name
@@ -1917,16 +1922,16 @@ class Ability(
 
     def __init__(
         self,
-        name_ref: Optional[NameAtom],
+        name_ref: NameAtom | None,
         is_async: bool,
         is_override: bool,
         is_static: bool,
         is_abstract: bool,
-        access: Optional[SubTag[Token]],
+        access: SubTag[Token] | None,
         signature: FuncSignature | EventSignature | None,
         body: Sequence[CodeBlockStmt] | ImplDef | Expr | None,
         kid: Sequence[UniNode],
-        doc: Optional[String] = None,
+        doc: String | None = None,
         decorators: Sequence[Expr] | None = None,
     ) -> None:
         self.is_override = is_override
@@ -2005,7 +2010,7 @@ class Ability(
         return not self.signature or isinstance(self.signature, FuncSignature)
 
     @property
-    def method_owner(self) -> Optional[Archetype | Enum]:
+    def method_owner(self) -> Archetype | Enum | None:
         found = (
             self.parent
             if self.parent and isinstance(self.parent, (Archetype, Enum))
@@ -2133,10 +2138,10 @@ class FuncSignature(UniNode):
         self,
         posonly_params: Sequence[ParamVar],
         params: Sequence[ParamVar] | None,
-        varargs: Optional[ParamVar],
+        varargs: ParamVar | None,
         kwonlyargs: Sequence[ParamVar],
-        kwargs: Optional[ParamVar],
-        return_type: Optional[Expr],
+        kwargs: ParamVar | None,
+        return_type: Expr | None,
         kid: Sequence[UniNode],
     ) -> None:
         self.posonly_params: list[ParamVar] = list(posonly_params)
@@ -2232,7 +2237,7 @@ class EventSignature(WalkerStmtOnlyNode):
     def __init__(
         self,
         event: Token,
-        arch_tag_info: Optional[Expr],
+        arch_tag_info: Expr | None,
         kid: Sequence[UniNode],
     ) -> None:
         self.event = event
@@ -2273,9 +2278,9 @@ class ParamVar(AstSymbolNode, AstTypedVarNode):
     def __init__(
         self,
         name: Name,
-        unpack: Optional[Token],
+        unpack: Token | None,
         type_tag: SubTag[Expr],
-        value: Optional[Expr],
+        value: Expr | None,
         kid: Sequence[UniNode],
     ) -> None:
         self.name = name
@@ -2328,11 +2333,11 @@ class ArchHas(AstAccessNode, AstDocNode, ArchBlockStmt, CodeBlockStmt):
     def __init__(
         self,
         is_static: bool,
-        access: Optional[SubTag[Token]],
+        access: SubTag[Token] | None,
         vars: Sequence[HasVar],
         is_frozen: bool,
         kid: Sequence[UniNode],
-        doc: Optional[String] = None,
+        doc: String | None = None,
     ) -> None:
         self.is_static = is_static
         self.vars: list[HasVar] = list(vars)
@@ -2377,7 +2382,7 @@ class HasVar(AstSymbolNode, AstTypedVarNode):
         self,
         name: Name,
         type_tag: SubTag[Expr],
-        value: Optional[Expr],
+        value: Expr | None,
         defer: bool,
         kid: Sequence[UniNode],
     ) -> None:
@@ -2453,7 +2458,7 @@ class IfStmt(CodeBlockStmt, AstElseBodyNode, UniScopeNode):
         self,
         condition: Expr,
         body: Sequence[CodeBlockStmt],
-        else_body: Optional[ElseStmt | ElseIf],
+        else_body: ElseStmt | ElseIf | None,
         kid: Sequence[UniNode],
     ) -> None:
         self.condition = condition
@@ -2569,8 +2574,8 @@ class TryStmt(AstElseBodyNode, CodeBlockStmt, UniScopeNode):
         self,
         body: Sequence[CodeBlockStmt],
         excepts: Sequence[Except],
-        else_body: Optional[ElseStmt],
-        finally_body: Optional[FinallyStmt],
+        else_body: ElseStmt | None,
+        finally_body: FinallyStmt | None,
         kid: Sequence[UniNode],
     ) -> None:
         self.body: list[CodeBlockStmt] = list(body)
@@ -2615,7 +2620,7 @@ class Except(CodeBlockStmt, UniScopeNode):
     def __init__(
         self,
         ex_type: Expr,
-        name: Optional[Name],
+        name: Name | None,
         body: Sequence[CodeBlockStmt],
         kid: Sequence[UniNode],
     ) -> None:
@@ -2687,7 +2692,7 @@ class IterForStmt(AstAsyncNode, AstElseBodyNode, CodeBlockStmt, UniScopeNode):
         condition: Expr,
         count_by: Assignment,
         body: Sequence[CodeBlockStmt],
-        else_body: Optional[ElseStmt],
+        else_body: ElseStmt | None,
         kid: Sequence[UniNode],
     ) -> None:
         self.iter = iter
@@ -2737,7 +2742,7 @@ class InForStmt(AstAsyncNode, AstElseBodyNode, CodeBlockStmt, UniScopeNode):
         is_async: bool,
         collection: Expr,
         body: Sequence[CodeBlockStmt],
-        else_body: Optional[ElseStmt],
+        else_body: ElseStmt | None,
         kid: Sequence[UniNode],
     ) -> None:
         self.target = target
@@ -2782,7 +2787,7 @@ class WhileStmt(AstElseBodyNode, CodeBlockStmt, UniScopeNode):
         self,
         condition: Expr,
         body: Sequence[CodeBlockStmt],
-        else_body: Optional[ElseStmt],
+        else_body: ElseStmt | None,
         kid: Sequence[UniNode],
     ) -> None:
         self.condition = condition
@@ -2858,7 +2863,7 @@ class ExprAsItem(UniNode):
     def __init__(
         self,
         expr: Expr,
-        alias: Optional[Expr],
+        alias: Expr | None,
         kid: Sequence[UniNode],
     ) -> None:
         self.expr = expr
@@ -2883,8 +2888,8 @@ class RaiseStmt(CodeBlockStmt):
 
     def __init__(
         self,
-        cause: Optional[Expr],
-        from_target: Optional[Expr],
+        cause: Expr | None,
+        from_target: Expr | None,
         kid: Sequence[UniNode],
     ) -> None:
         self.cause = cause
@@ -2914,7 +2919,7 @@ class AssertStmt(CodeBlockStmt):
     def __init__(
         self,
         condition: Expr,
-        error_msg: Optional[Expr],
+        error_msg: Expr | None,
         kid: Sequence[UniNode],
     ) -> None:
         self.condition = condition
@@ -3024,7 +3029,7 @@ class ReturnStmt(CodeBlockStmt):
 
     def __init__(
         self,
-        expr: Optional[Expr],
+        expr: Expr | None,
         kid: Sequence[UniNode],
     ) -> None:
         self.expr = expr
@@ -3050,9 +3055,9 @@ class VisitStmt(WalkerStmtOnlyNode, AstElseBodyNode, CodeBlockStmt):
 
     def __init__(
         self,
-        insert_loc: Optional[Expr],
+        insert_loc: Expr | None,
         target: Expr,
-        else_body: Optional[ElseStmt],
+        else_body: ElseStmt | None,
         kid: Sequence[UniNode],
     ) -> None:
         self.insert_loc = insert_loc
@@ -3180,11 +3185,11 @@ class Assignment(AstTypedVarNode, EnumBlockStmt, CodeBlockStmt):
     def __init__(
         self,
         target: Sequence[Expr],
-        value: Optional[Expr | YieldExpr],
-        type_tag: Optional[SubTag[Expr]],
+        value: Expr | YieldExpr | None,
+        type_tag: SubTag[Expr] | None,
         kid: Sequence[UniNode],
         mutable: bool = True,
-        aug_op: Optional[Token] = None,
+        aug_op: Token | None = None,
         is_enum_stmt: bool = False,
     ) -> None:
         self.target: list[Expr] = list(target)
@@ -3236,7 +3241,7 @@ class ConcurrentExpr(Expr):
 
     def __init__(
         self,
-        tok: Optional[Token],
+        tok: Token | None,
         target: Expr,
         kid: Sequence[UniNode],
     ) -> None:
@@ -3353,9 +3358,9 @@ class LambdaExpr(Expr, UniScopeNode):
 
     def __init__(
         self,
-        body: Union[Expr, Sequence[CodeBlockStmt]],
+        body: Expr | Sequence[CodeBlockStmt],
         kid: Sequence[UniNode],
-        signature: Optional[FuncSignature] = None,
+        signature: FuncSignature | None = None,
     ) -> None:
         self.signature = signature
         if isinstance(body, Sequence) and not isinstance(body, Expr):
@@ -3476,9 +3481,9 @@ class FString(AtomExpr):
 
     def __init__(
         self,
-        start: Optional[Token],
+        start: Token | None,
         parts: Sequence[String | FormattedValue],
-        end: Optional[Token],
+        end: Token | None,
         kid: Sequence[UniNode],
     ) -> None:
         self.start = start
@@ -3680,7 +3685,7 @@ class KVPair(UniNode):
 
     def __init__(
         self,
-        key: Optional[Expr],  # is **key if blank
+        key: Expr | None,  # is **key if blank
         value: Expr,
         kid: Sequence[UniNode],
     ) -> None:
@@ -3709,7 +3714,7 @@ class KWPair(UniNode):
 
     def __init__(
         self,
-        key: Optional[NameAtom],  # is **value if blank
+        key: NameAtom | None,  # is **value if blank
         value: Expr,
         kid: Sequence[UniNode],
     ) -> None:
@@ -3741,7 +3746,7 @@ class InnerCompr(AstAsyncNode, UniScopeNode):
         is_async: bool,
         target: Expr,
         collection: Expr,
-        conditional: Optional[list[Expr]],
+        conditional: list[Expr] | None,
         kid: Sequence[UniNode],
     ) -> None:
         self.target = target
@@ -3957,7 +3962,7 @@ class YieldExpr(Expr):
 
     def __init__(
         self,
-        expr: Optional[Expr],
+        expr: Expr | None,
         with_from: bool,
         kid: Sequence[UniNode],
     ) -> None:
@@ -3987,7 +3992,7 @@ class FuncCall(Expr):
         self,
         target: Expr,
         params: Sequence[Expr | KWPair] | None,
-        genai_call: Optional[Expr],
+        genai_call: Expr | None,
         kid: Sequence[UniNode],
     ) -> None:
         self.target = target
@@ -4026,9 +4031,9 @@ class IndexSlice(AtomExpr):
     class Slice:
         """Slice node type for Jac Ast."""
 
-        start: Optional[Expr]
-        stop: Optional[Expr]
-        step: Optional[Expr]
+        start: Expr | None
+        stop: Expr | None
+        step: Expr | None
 
     def __init__(
         self,
@@ -4136,7 +4141,7 @@ class EdgeOpRef(WalkerStmtOnlyNode, AtomExpr):
 
     def __init__(
         self,
-        filter_cond: Optional[FilterCompr],
+        filter_cond: FilterCompr | None,
         edge_dir: EdgeDir,
         kid: Sequence[UniNode],
     ) -> None:
@@ -4203,8 +4208,8 @@ class ConnectOp(UniNode):
 
     def __init__(
         self,
-        conn_type: Optional[Expr],
-        conn_assign: Optional[AssignCompr],
+        conn_type: Expr | None,
+        conn_assign: AssignCompr | None,
         edge_dir: EdgeDir,
         kid: Sequence[UniNode],
     ) -> None:
@@ -4261,7 +4266,7 @@ class FilterCompr(AtomExpr):
 
     def __init__(
         self,
-        f_type: Optional[Expr],
+        f_type: Expr | None,
         compares: Sequence[CompareExpr],
         kid: Sequence[UniNode],
     ) -> None:
@@ -4343,9 +4348,9 @@ class JsxElement(AtomExpr):
 
     def __init__(
         self,
-        name: Optional["JsxElementName"],
-        attributes: Optional[Sequence["JsxAttribute"]],
-        children: Optional[Sequence["JsxChild"]],
+        name: JsxElementName | None,
+        attributes: Sequence[JsxAttribute] | None,
+        children: Sequence[JsxChild] | None,
         is_self_closing: bool,
         is_fragment: bool,
         kid: Sequence[UniNode],
@@ -4447,7 +4452,7 @@ class JsxNormalAttribute(JsxAttribute):
     def __init__(
         self,
         name: Name,
-        value: Optional[Union[String, Expr]],
+        value: String | Expr | None,
         kid: Sequence[UniNode],
     ) -> None:
         self.name = name
@@ -4577,7 +4582,7 @@ class MatchCase(UniScopeNode):
     def __init__(
         self,
         pattern: MatchPattern,
-        guard: Optional[Expr],
+        guard: Expr | None,
         body: list[CodeBlockStmt],
         kid: Sequence[UniNode],
     ) -> None:
@@ -4643,7 +4648,7 @@ class SwitchCase(UniScopeNode):
 
     def __init__(
         self,
-        pattern: Optional[MatchPattern],
+        pattern: MatchPattern | None,
         body: list[CodeBlockStmt],
         kid: Sequence[UniNode],
     ) -> None:
@@ -4702,7 +4707,7 @@ class MatchAs(MatchPattern):
     def __init__(
         self,
         name: NameAtom,
-        pattern: Optional[MatchPattern],
+        pattern: MatchPattern | None,
         kid: Sequence[UniNode],
     ) -> None:
         self.name = name
@@ -5012,7 +5017,7 @@ class Name(Token, NameAtom):
 
     @staticmethod
     def gen_stub_from_node(
-        node: AstSymbolNode, name_str: str, set_name_of: Optional[AstSymbolNode] = None
+        node: AstSymbolNode, name_str: str, set_name_of: AstSymbolNode | None = None
     ) -> Name:
         """Generate name from node."""
         ret = Name(
@@ -5201,7 +5206,7 @@ class String(Literal):
             return self.value
 
     def normalize(self, deep: bool = True) -> bool:
-        self.value = r"%s" % self.value
+        self.value = rf"{self.value}"
         return True
 
     def unparse(self) -> str:
@@ -5327,13 +5332,13 @@ class CommentToken(Token):
         UniNode.__init__(self, kid=kid)
 
     @property
-    def left_node(self) -> Optional[UniNode]:
+    def left_node(self) -> UniNode | None:
         if self.parent and (idx := self.parent.kid.index(self)) > 0:
             return self.parent.kid[idx - 1]
         return None
 
     @property
-    def right_node(self) -> Optional[UniNode]:
+    def right_node(self) -> UniNode | None:
         if (
             self.parent
             and (idx := self.parent.kid.index(self)) < len(self.parent.kid) - 1

@@ -85,9 +85,7 @@ class Game:
         text = self.font.render("GaMe OvEr", True, RED)
         text_rect = text.get_rect(center=(WIN_WIDTH / 2, WIN_HEIGHT / 2))
 
-        restart_button = Button(
-            10, WIN_HEIGHT - 135, 120, 125, WHITE, BLACK, "Restart", 32
-        )
+        restart_button = Button(10, WIN_HEIGHT - 135, 120, 125, WHITE, BLACK, "Restart", 32)
 
         for sprite in self.all_sprites:
             sprite.kill()
@@ -118,9 +116,7 @@ class Game:
         title = self.font.render("Spud-nik : SOLO", True, BLUE)
         title_rect = title.get_rect(x=WIN_WIDTH / 2 - 100, y=100)
 
-        play_button = Button(
-            WIN_WIDTH / 2 - 50, 200, 100, 100, WHITE, BLACK, "Play", 32
-        )
+        play_button = Button(WIN_WIDTH / 2 - 50, 200, 100, 100, WHITE, BLACK, "Play", 32)
 
         while intro:
             for event in pygame.event.get():
@@ -144,9 +140,7 @@ class Game:
         text = self.font.render("YOU WON!", True, BLUE)
         text_rect = text.get_rect(center=(WIN_WIDTH / 2, WIN_HEIGHT / 2))
 
-        restart_button = Button(
-            10, WIN_HEIGHT - 135, 120, 125, WHITE, BLACK, "Restart", 32
-        )
+        restart_button = Button(10, WIN_HEIGHT - 135, 120, 125, WHITE, BLACK, "Restart", 32)
 
         for sprite in self.all_sprites:
             sprite.kill()

@@ -73,7 +73,7 @@ class JacCmd:
 
                 # Read the generated package.json
                 package_json_path = os.path.join(project_path, "package.json")
-                with open(package_json_path, "r") as f:
+                with open(package_json_path) as f:
                     package_data = json.load(f)
 
                 # create temp folder

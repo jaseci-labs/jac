@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import json
 import shutil
-import tempfile
 import subprocess
+import tempfile
+from pathlib import Path
 
+from jac_client.plugin.vite_client_bundle import ViteClientBundleBuilder
 from jaclang.runtimelib.machine import JacMachine as Jac
 from jaclang.utils.test import TestCase
-from jac_client.plugin.vite_client_bundle import ViteClientBundleBuilder
 
 
 class AssetServingExampleTests(TestCase):

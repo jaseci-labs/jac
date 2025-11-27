@@ -19,12 +19,12 @@ class JacFormatPassTests(TestCaseMicroSuite):
         """Compare the original file with a provided formatted file or a new formatted version."""
         try:
             original_path = self.fixture_abs_path(original_file)
-            with open(original_path, "r") as file:
+            with open(original_path) as file:
                 original_file_content = file.read()
             if formatted_file is None:
                 formatted_content = JacProgram.jac_file_formatter(original_path)
             else:
-                with open(self.fixture_abs_path(formatted_file), "r") as file:
+                with open(self.fixture_abs_path(formatted_file)) as file:
                     formatted_content = file.read()
             diff = "\n".join(
                 unified_diff(

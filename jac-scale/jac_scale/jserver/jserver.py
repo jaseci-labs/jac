@@ -1,10 +1,10 @@
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, Generic, List, Optional, Type, TypeVar
+from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel
-
 
 T = TypeVar("T")
 
@@ -56,11 +56,11 @@ class JEndPoint:
     method: HTTPMethod
     path: str
     callback: Callable[..., Any]
-    parameters: Optional[List[APIParameter]] = None
-    response_model: Optional[Type[BaseModel]] = None
-    tags: Optional[List[str]] = None
-    summary: Optional[str] = None
-    description: Optional[str] = None
+    parameters: list[APIParameter] | None = None
+    response_model: type[BaseModel] | None = None
+    tags: list[str] | None = None
+    summary: str | None = None
+    description: str | None = None
 
 
 class JServer(ABC, Generic[T]):
@@ -68,11 +68,11 @@ class JServer(ABC, Generic[T]):
     Abstract base class for server implementations.
     """
 
-    def __init__(self, end_points: List[JEndPoint]) -> None:
+    def __init__(self, end_points: list[JEndPoint]) -> None:
         super().__init__()
         self._endpoints = end_points
 
-    def get_endpoints(self) -> List[JEndPoint]:
+    def get_endpoints(self) -> list[JEndPoint]:
         """
         Return the list of registered endpoints.
 

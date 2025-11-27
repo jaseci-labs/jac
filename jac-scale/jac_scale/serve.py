@@ -1,16 +1,14 @@
-from typing import Callable, Optional
+from collections.abc import Callable
 
 from fastapi.middleware.cors import CORSMiddleware
 
 from jac_scale.jserver.jfastApi import JFastApiServer
 from jac_scale.jserver.jserver import APIParameter, HTTPMethod, JEndPoint, ParameterType
-
 from jaclang.runtimelib.server import JacAPIServer as JServer
 from jaclang.runtimelib.server import JsonValue
 
 
 class JacAPIServer(JServer):
-
     def __init__(
         self,
         module_name: str,
@@ -103,9 +101,8 @@ class JacAPIServer(JServer):
     def create_walker_callback(
         self, walker_name: str, has_node_param: bool = False
     ) -> Callable[..., dict[str, JsonValue]]:
-
         def callback(
-            node: Optional[str] = None, **kwargs: JsonValue
+            node: str | None = None, **kwargs: JsonValue
         ) -> dict[str, JsonValue]:
             if node:
                 kwargs["_jac_spawn_node"] = node
@@ -135,7 +132,6 @@ class JacAPIServer(JServer):
         )["fields"]
 
         for field_name in walker_fields:
-
             if field_name == "_jac_spawn_node" and invoke_on_root:
                 continue
 
@@ -173,7 +169,6 @@ class JacAPIServer(JServer):
         return parameters
 
     def start(self) -> None:
-
         self.register_create_user_endpoint()
         self.register_login_endpoint()
 

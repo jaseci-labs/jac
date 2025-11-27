@@ -125,9 +125,7 @@ class TestLittleXServer:
             except Exception:
                 time.sleep(0.1)
 
-    def _request(
-        self, method: str, path: str, data: dict | None = None, token: str | None = None
-    ) -> dict:
+    def _request(self, method: str, path: str, data: dict | None = None, token: str | None = None) -> dict:
         """Make HTTP request to server."""
         url = f"{self.base_url}{path}"
         headers = {"Content-Type": "application/json"}
@@ -146,9 +144,7 @@ class TestLittleXServer:
 
     def _create_user(self, username: str, password: str) -> dict:
         """Helper to create a user and store credentials."""
-        result = self._request(
-            "POST", "/user/create", {"username": username, "password": password}
-        )
+        result = self._request("POST", "/user/create", {"username": username, "password": password})
         if "token" in result:
             self.users[username] = {
                 "password": password,
@@ -187,16 +183,12 @@ class TestLittleXServer:
             assert user2["root_id"] != user3["root_id"]
 
             # Test login
-            login_result = self._request(
-                "POST", "/user/login", {"username": "alice", "password": "pass123"}
-            )
+            login_result = self._request("POST", "/user/login", {"username": "alice", "password": "pass123"})
             assert "token" in login_result
             assert login_result["username"] == "alice"
 
             # Test wrong password
-            login_fail = self._request(
-                "POST", "/user/login", {"username": "bob", "password": "wrongpass"}
-            )
+            login_fail = self._request("POST", "/user/login", {"username": "bob", "password": "wrongpass"})
             assert "error" in login_fail
 
             print("✓ User creation and login test passed")
@@ -226,9 +218,7 @@ class TestLittleXServer:
             assert "result" in update_result
 
             # Get Alice's profile
-            profile_result = self._request(
-                "POST", "/walker/get_profile", {"fields": {}}, token=alice_token
-            )
+            profile_result = self._request("POST", "/walker/get_profile", {"fields": {}}, token=alice_token)
             assert "result" in profile_result
 
             # Update Bob's profile
@@ -273,9 +263,7 @@ class TestLittleXServer:
             )
 
             # Get Bob's profile ID
-            bob_profile = self._request(
-                "POST", "/walker/get_profile", {"fields": {}}, token=bob_token
-            )
+            bob_profile = self._request("POST", "/walker/get_profile", {"fields": {}}, token=bob_token)
 
             # This test demonstrates the follow functionality
             # In a real implementation, we would need to pass the target profile ID
@@ -463,17 +451,13 @@ class TestLittleXServer:
                 print(f"Feed error: {feed_result.get('error')}")
                 print(f"Traceback: {feed_result.get('traceback', 'N/A')}")
                 # Since load_feed has a sorting issue, we'll just check that tweets were created
-                print(
-                    "⚠  Feed loading has sorting issue, but tweets were created successfully"
-                )
+                print("⚠  Feed loading has sorting issue, but tweets were created successfully")
             elif "result" in feed_result or "reports" in feed_result:
                 # Feed returned successfully
                 if "result" in feed_result:
                     walker_result = feed_result["result"]
                     if "results" in walker_result:
-                        print(
-                            f"  - Feed loaded with {len(walker_result['results'])} tweets"
-                        )
+                        print(f"  - Feed loaded with {len(walker_result['results'])} tweets")
 
             print("✓ Multi-user social activity test passed")
             print(f"  - Created {len(users)} users")
@@ -621,9 +605,7 @@ class TestLittleXServer:
             self._start_server()
 
             # Login again
-            login_result = self._request(
-                "POST", "/user/login", {"username": "alice", "password": "pass123"}
-            )
+            login_result = self._request("POST", "/user/login", {"username": "alice", "password": "pass123"})
 
             assert "token" in login_result
             assert login_result["root_id"] == alice_root

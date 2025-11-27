@@ -7,9 +7,7 @@ def Button(text: str, onclick: str) -> dict:
 
 
 def Card(title: str, content: str, className: str) -> dict:
-    return jsx(
-        "div", {"class": className}, [jsx("h2", {}, [title]), jsx("p", {}, [content])]
-    )
+    return jsx("div", {"class": className}, [jsx("h2", {}, [title]), jsx("p", {}, [content])])
 
 
 basic_element = jsx("div", {}, ["Hello World"])
@@ -97,8 +95,6 @@ list_element = jsx("ul", {}, [list_items])
 print("Dynamic list:", list_element)
 is_logged_in = True
 user_name = "Alice"
-greeting = jsx(
-    "div", {}, [f"Welcome, {user_name}!" if is_logged_in else "Please log in"]
-)
+greeting = jsx("div", {}, [f"Welcome, {user_name}!" if is_logged_in else "Please log in"])
 print("Conditional:", greeting)
 print("\nAll JSX examples completed successfully!")

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import ast as ast3
 from dataclasses import dataclass, field
-from typing import Any, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from jaclang.compiler.passes.ecmascript.estree import Node as EsNode
@@ -38,8 +38,8 @@ class CodeGenTarget:
         self.js: str = ""
         self.client_manifest: ClientManifest = ClientManifest()
         self.py_ast: list[ast3.AST] = []
-        self.py_bytecode: Optional[bytes] = None
-        self.es_ast: Optional[EsNode] = None
+        self.py_bytecode: bytes | None = None
+        self.es_ast: EsNode | None = None
 
 
 class CodeLocInfo:

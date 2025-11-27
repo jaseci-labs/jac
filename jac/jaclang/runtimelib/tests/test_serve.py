@@ -1,5 +1,6 @@
 """Test for jac serve command and REST API server."""
 
+import contextlib
 import json
 import os
 import socket
@@ -47,10 +48,8 @@ class TestServeCommand(TestCase):
         """Tear down test."""
         # Close user manager if it exists
         if self.server and hasattr(self.server, "user_manager"):
-            try:
+            with contextlib.suppress(Exception):
                 self.server.user_manager.close()
-            except Exception:
-                pass
 
         # Stop server if running
         if self.httpd:
@@ -76,10 +75,8 @@ class TestServeCommand(TestCase):
             for file in os.listdir(path):
                 # Clean up session files and user database files (.users)
                 if file.startswith(prefix):
-                    try:
+                    with contextlib.suppress(Exception):
                         os.remove(f"{path}/{file}")
-                    except Exception:
-                        pass
 
     def _start_server(self) -> None:
         """Start the API server in a background thread."""
@@ -923,10 +920,10 @@ class TestServeCommand(TestCase):
     def test_faux_flag_with_littlex_example(self) -> None:
         """Test that --faux flag correctly identifies functions, walkers, and endpoints in littleX example."""
         import io
-        from contextlib import redirect_stdout
 
         # Get the absolute path to littleX file
         import os
+        from contextlib import redirect_stdout
 
         littlex_path = os.path.abspath(
             os.path.join(
@@ -1003,10 +1000,8 @@ class TestAccessLevelAuthentication(TestCase):
         """Tear down test."""
         # Close user manager if it exists
         if self.server and hasattr(self.server, "user_manager"):
-            try:
+            with contextlib.suppress(Exception):
                 self.server.user_manager.close()
-            except Exception:
-                pass
 
         # Stop server if running
         if self.httpd:
@@ -1032,10 +1027,8 @@ class TestAccessLevelAuthentication(TestCase):
             for file in os.listdir(path):
                 # Clean up session files and user database files (.users)
                 if file.startswith(prefix):
-                    try:
+                    with contextlib.suppress(Exception):
                         os.remove(f"{path}/{file}")
-                    except Exception:
-                        pass
 
     def _start_server(self) -> None:
         """Start the API server in a background thread."""

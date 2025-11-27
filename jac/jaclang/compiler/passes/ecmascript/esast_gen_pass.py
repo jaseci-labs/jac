@@ -22,12 +22,14 @@ serialized to JavaScript source code or used by JavaScript tooling.
 from __future__ import annotations
 
 import json
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Callable, Optional, Sequence, Union, cast
+from typing import Any, cast
 
 import jaclang.compiler.passes.ecmascript.estree as es
 import jaclang.compiler.unitree as uni
-from jaclang.compiler.constant import SymbolType, Tokens as Tok
+from jaclang.compiler.constant import SymbolType
+from jaclang.compiler.constant import Tokens as Tok
 from jaclang.compiler.passes.ast_gen import BaseAstGenPass
 from jaclang.compiler.passes.ast_gen.jsx_processor import EsJsxProcessor
 from jaclang.compiler.passes.ecmascript.es_unparse import es_to_js
@@ -87,7 +89,7 @@ ES_AUG_ASSIGN_OPS: dict[Tok, str] = {
     Tok.STAR_POW_EQ: "**=",
 }
 
-LiteralValue = Union[str, bool, int, float, None]
+LiteralValue = str | bool | int | float | None
 
 
 @dataclass
@@ -104,9 +106,9 @@ class AssignmentTargetInfo:
     """Container for processed assignment targets."""
 
     node: uni.UniNode
-    left: Union[es.Pattern, es.Expression]
-    reference: Optional[es.Expression]
-    decl_name: Optional[str]
+    left: es.Pattern | es.Expression
+    reference: es.Expression | None
+    decl_name: str | None
     pattern_names: list[tuple[str, uni.Name]]
     is_first: bool
 
@@ -183,7 +185,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
             self._pop_scope(node)
 
     def sync_loc(
-        self, es_node: es.Node, jac_node: Optional[uni.UniNode] = None
+        self, es_node: es.Node, jac_node: uni.UniNode | None = None
     ) -> es.Node:
         """Sync source locations from Jac node to ES node."""
         if not jac_node:
@@ -211,7 +213,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
             self.scope_stack.pop()
         self.scope_map.pop(node, None)
 
-    def _current_scope(self) -> Optional[ScopeInfo]:
+    def _current_scope(self) -> ScopeInfo | None:
         """Get the scope currently being populated."""
         return self.scope_stack[-1] if self.scope_stack else None
 
@@ -279,7 +281,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
                 break
         return cur_node, cur_es
 
-    def _resolve_expr_symbol(self, expr: uni.Expr) -> Optional[uni.Symbol]:
+    def _resolve_expr_symbol(self, expr: uni.Expr) -> uni.Symbol | None:
         """Resolve a symbol from an expression (handles dotted access)."""
         if isinstance(expr, uni.AstSymbolNode) and expr.sym:
             return expr.sym
@@ -295,7 +297,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
             return sym
         return None
 
-    def search_sym_in_main_mod(self, expr: uni.Expr) -> Optional[uni.Symbol]:
+    def search_sym_in_main_mod(self, expr: uni.Expr) -> uni.Symbol | None:
         """Search for a symbol in the main module."""
         if not isinstance(expr, uni.Name):
             return None
@@ -306,7 +308,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
         return self.prog.mod.main
 
     def _collect_walker_field_names(
-        self, walker_symbol: Optional[uni.Symbol]
+        self, walker_symbol: uni.Symbol | None
     ) -> list[str]:
         """Collect walker has-var field names for positional argument mapping."""
         if not walker_symbol:
@@ -320,7 +322,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
         return []
 
     def _expr_from_node(
-        self, node: Optional[uni.UniNode], default: LiteralValue = None
+        self, node: uni.UniNode | None, default: LiteralValue = None
     ) -> es.Expression:
         """Return an expression ESTree node, synthesizing a literal if needed."""
         generated = self._get_ast_or_default(
@@ -333,11 +335,11 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
         return self.sync_loc(es.Literal(value=default), jac_node=node or self.cur_node)
 
     def _build_spawn_arg_object(
-        self, call_node: uni.FuncCall, walker_symbol: Optional[uni.Symbol]
+        self, call_node: uni.FuncCall, walker_symbol: uni.Symbol | None
     ) -> es.ObjectExpression:
         """Convert walker constructor arguments into a JSON payload."""
         ordered_fields = self._collect_walker_field_names(walker_symbol)
-        properties: list[Union[es.Property, es.SpreadElement]] = []
+        properties: list[es.Property | es.SpreadElement] = []
         positional_index = 0
 
         for param in call_node.params:
@@ -402,7 +404,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
 
     def _resolve_spawn_walker(
         self, expr: uni.Expr, es_expr: es.Expression
-    ) -> Optional[SpawnWalkerInfo]:
+    ) -> SpawnWalkerInfo | None:
         """Return walker call info if the expression instantiates a walker."""
         stripped_node, _ = self._strip_spawn_await(expr, es_expr)
         if not isinstance(stripped_node, uni.FuncCall):
@@ -424,9 +426,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
         """Check if an expression refers to the root node."""
         if isinstance(expr, uni.Name) and expr.sym_name == "root":
             return True
-        if isinstance(expr, uni.SpecialVarRef) and expr.sym_name == "root":
-            return True
-        return False
+        return bool(isinstance(expr, uni.SpecialVarRef) and expr.sym_name == "root")
 
     def _resolve_spawn_target(
         self, expr: uni.Expr, es_expr: es.Expression
@@ -443,15 +443,14 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
         node: uni.BinaryExpr,
         left_expr: es.Expression,
         right_expr: es.Expression,
-    ) -> Optional[SpawnCallParts]:
+    ) -> SpawnCallParts | None:
         """Split a spawn expression into walker and target parts."""
         left_walker = self._resolve_spawn_walker(node.left, left_expr)
         right_walker = self._resolve_spawn_walker(node.right, right_expr)
 
         if left_walker and right_walker:
             self.log_warning(
-                "Both sides of spawn look like walker instantiations; "
-                "defaulting to the right-hand expression.",
+                "Both sides of spawn look like walker instantiations; defaulting to the right-hand expression.",
                 node_override=node,
             )
             target = self._resolve_spawn_target(node.left, left_expr)
@@ -497,7 +496,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
         )
 
     def _collect_stmt_body(
-        self, body: Optional[Sequence[uni.UniNode]]
+        self, body: Sequence[uni.UniNode] | None
     ) -> list[es.Statement]:
         """Convert a sequence of Jac statements into ESTree statements."""
         if not body:
@@ -518,8 +517,8 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
 
     def _get_ast_or_default(
         self,
-        node: Optional[uni.UniNode],
-        default_factory: Callable[[Optional[uni.UniNode]], es.Node],
+        node: uni.UniNode | None,
+        default_factory: Callable[[uni.UniNode | None], es.Node],
     ) -> es.Node:
         """Return an existing ESTree node or synthesize a fallback."""
         if node and getattr(node.gen, "es_ast", None):
@@ -533,7 +532,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
     def _build_block_statement(
         self,
         scope_node: uni.UniScopeNode,
-        body_nodes: Optional[Sequence[uni.UniNode]],
+        body_nodes: Sequence[uni.UniNode] | None,
     ) -> es.BlockStatement:
         """Construct a block statement from a Jac scope node."""
         statements = self._collect_stmt_body(body_nodes)
@@ -545,7 +544,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
 
     def exit_module(self, node: uni.Module) -> None:
         """Process module node."""
-        body: list[Union[es.Statement, es.ModuleDeclaration]] = []
+        body: list[es.Statement | es.ModuleDeclaration] = []
 
         # Add imports
         body.extend(self.imports)
@@ -567,8 +566,8 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
         merged_body = self._merge_module_bodies(node)
 
         # Process module body
-        client_items: list[Union[es.Statement, list[es.Statement]]] = []
-        fallback_items: list[Union[es.Statement, list[es.Statement]]] = []
+        client_items: list[es.Statement | list[es.Statement]] = []
+        fallback_items: list[es.Statement | list[es.Statement]] = []
         for stmt in merged_body:
             if stmt.gen.es_ast:
                 if getattr(stmt, "is_client_decl", True):
@@ -643,11 +642,11 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
 
         source = self.sync_loc(es.Literal(value=js_import_path), jac_node=node.from_loc)
         specifiers: list[
-            Union[
-                es.ImportSpecifier,
-                es.ImportDefaultSpecifier,
-                es.ImportNamespaceSpecifier,
-            ]
+            (
+                es.ImportSpecifier
+                | es.ImportDefaultSpecifier
+                | es.ImportNamespaceSpecifier
+            )
         ] = []
 
         for item in node.items:
@@ -725,7 +724,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
             self.client_manifest.exports.append(node.name.sym_name)
 
         body_stmts: list[
-            Union[es.MethodDefinition, es.PropertyDefinition, es.StaticBlock]
+            es.MethodDefinition | es.PropertyDefinition | es.StaticBlock
         ] = []
         has_members: list[uni.ArchHas] = []
 
@@ -884,7 +883,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
         class_body = self.sync_loc(es.ClassBody(body=body_stmts), jac_node=node)
 
         # Handle base classes
-        super_class: Optional[es.Expression] = None
+        super_class: es.Expression | None = None
         if node.base_classes:
             base = node.base_classes[0]
             if base.gen.es_ast:
@@ -1073,7 +1072,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
         )
         consequent = self._build_block_statement(node, node.body)
 
-        alternate: Optional[es.Statement] = None
+        alternate: es.Statement | None = None
         if node.else_body and node.else_body.gen.es_ast:
             alternate = node.else_body.gen.es_ast
 
@@ -1090,7 +1089,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
         )
         consequent = self._build_block_statement(node, node.body)
 
-        alternate: Optional[es.Statement] = None
+        alternate: es.Statement | None = None
         if node.else_body and node.else_body.gen.es_ast:
             alternate = node.else_body.gen.es_ast
 
@@ -1174,14 +1173,14 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
         """Process try statement."""
         block = self._build_block_statement(node, node.body)
 
-        handler: Optional[es.CatchClause] = None
+        handler: es.CatchClause | None = None
         if node.excepts:
             # Take first except clause
             except_node = node.excepts[0]
             if except_node.gen.es_ast:
                 handler = except_node.gen.es_ast
 
-        finalizer: Optional[es.BlockStatement] = None
+        finalizer: es.BlockStatement | None = None
         if (
             node.finally_body
             and node.finally_body.gen.es_ast
@@ -1197,7 +1196,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
 
     def exit_except(self, node: uni.Except) -> None:
         """Process except clause."""
-        param: Optional[es.Pattern] = None
+        param: es.Pattern | None = None
         if node.name:
             param = self.sync_loc(
                 es.Identifier(name=node.name.sym_name), jac_node=node.name
@@ -1293,7 +1292,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
 
     def exit_return_stmt(self, node: uni.ReturnStmt) -> None:
         """Process return statement."""
-        argument: Optional[es.Expression] = None
+        argument: es.Expression | None = None
         if node.expr and node.expr.gen.es_ast:
             argument = node.expr.gen.es_ast
 
@@ -1435,7 +1434,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
             ),
         )
 
-        for op_token, right_node in zip(node.ops, node.rights):
+        for op_token, right_node in zip(node.ops, node.rights, strict=False):
             right = self._get_ast_or_default(
                 right_node,
                 default_factory=lambda src: (
@@ -1492,9 +1491,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
 
     def _convert_assignment_target(
         self, target: uni.UniNode
-    ) -> tuple[
-        Union[es.Pattern, es.Expression], Optional[es.Expression], Optional[str]
-    ]:
+    ) -> tuple[es.Pattern | es.Expression, es.Expression | None, str | None]:
         """Convert a Jac assignment target into an ESTree pattern/expression."""
         if isinstance(target, uni.Name):
             identifier = self.sync_loc(
@@ -1503,7 +1500,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
             return identifier, identifier, target.sym_name
 
         if isinstance(target, (uni.TupleVal, uni.ListVal)):
-            elements: list[Optional[es.Pattern]] = []
+            elements: list[es.Pattern | None] = []
             for value in target.values:
                 if value is None:
                     elements.append(None)
@@ -1716,8 +1713,8 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
             if target_name == "type":
                 target_is_type = True
 
-        args: list[Union[es.Expression, es.SpreadElement]] = []
-        props: list[Union[es.Property, es.SpreadElement]] = []
+        args: list[es.Expression | es.SpreadElement] = []
+        props: list[es.Property | es.SpreadElement] = []
         for param in node.params:
             if isinstance(param, uni.KWPair):
                 key_expr = (
@@ -2062,7 +2059,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
 
     def exit_list_val(self, node: uni.ListVal) -> None:
         """Process list literal."""
-        elements: list[Optional[Union[es.Expression, es.SpreadElement]]] = []
+        elements: list[es.Expression | es.SpreadElement | None] = []
         for item in node.values:
             if item.gen.es_ast:
                 elements.append(item.gen.es_ast)
@@ -2072,7 +2069,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
 
     def exit_set_val(self, node: uni.SetVal) -> None:
         """Process set literal as new Set()."""
-        elements: list[Union[es.Expression, es.SpreadElement]] = []
+        elements: list[es.Expression | es.SpreadElement] = []
         for item in node.values:
             if item.gen.es_ast:
                 elements.append(item.gen.es_ast)
@@ -2091,7 +2088,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
 
     def exit_tuple_val(self, node: uni.TupleVal) -> None:
         """Process tuple as array."""
-        elements: list[Optional[Union[es.Expression, es.SpreadElement]]] = []
+        elements: list[es.Expression | es.SpreadElement | None] = []
         for item in node.values:
             if item.gen.es_ast:
                 elements.append(item.gen.es_ast)
@@ -2101,7 +2098,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
 
     def exit_dict_val(self, node: uni.DictVal) -> None:
         """Process dictionary literal."""
-        properties: list[Union[es.Property, es.SpreadElement]] = []
+        properties: list[es.Property | es.SpreadElement] = []
         for kv_pair in node.kv_pairs:
             if not isinstance(kv_pair, uni.KVPair) or kv_pair.value is None:
                 continue

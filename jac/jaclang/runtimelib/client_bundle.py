@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Iterable, NamedTuple, Sequence, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 from jaclang.compiler.program import JacProgram
 from jaclang.utils import convert_to_js_import_path
@@ -110,7 +111,7 @@ class ClientBundleBuilder:
                 if import_path_obj.suffix == ".js":
                     # For .js files, read and include as-is
                     try:
-                        with open(import_path_obj, "r", encoding="utf-8") as f:
+                        with open(import_path_obj, encoding="utf-8") as f:
                             js_code = f.read()
                             import_pieces.append(
                                 f"// Imported .js module: {import_name}"

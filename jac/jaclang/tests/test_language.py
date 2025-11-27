@@ -2,18 +2,19 @@
 
 import io
 import os
-import sys
-import pytest
-import tempfile
 import subprocess
+import sys
+import tempfile
 from pathlib import Path
 from unittest.mock import patch
+
+import pytest
 
 from jaclang import JacMachine as Jac
 from jaclang.cli import cli
 from jaclang.compiler.program import JacProgram
-from jaclang.utils.test import TestCase
 from jaclang.runtimelib.utils import read_file_with_encoding
+from jaclang.utils.test import TestCase
 
 
 class JacLanguageTests(TestCase):
@@ -46,7 +47,7 @@ class JacLanguageTests(TestCase):
 
         # Assertions or verifications
         self.assertEqual(
-            "Hello, world!\n" "I'm a ninja Myca!\n",
+            "Hello, world!\nI'm a ninja Myca!\n",
             stdout_value,
         )
 
@@ -63,7 +64,7 @@ class JacLanguageTests(TestCase):
 
         # Assertions or verifications
         self.assertEqual(
-            "Hello, world!\n" "I'm a ninja Myca!\n",
+            "Hello, world!\nI'm a ninja Myca!\n",
             stdout_value,
         )
 
@@ -482,8 +483,7 @@ class JacLanguageTests(TestCase):
         sys.stdout = sys.__stdout__
         stdout_value = captured_output.getvalue()
         self.assertIn(
-            "[MyObj(a=0), MyObj2(a=2), MyObj(a=1), "
-            "MyObj2(a=3), MyObj(a=2), MyObj(a=3)]\n",
+            "[MyObj(a=0), MyObj2(a=2), MyObj(a=1), MyObj2(a=3), MyObj(a=2), MyObj(a=3)]\n",
             stdout_value,
         )
         self.assertIn("[MyObj(a=0), MyObj(a=1), MyObj(a=2)]\n", stdout_value)
@@ -518,9 +518,10 @@ class JacLanguageTests(TestCase):
 
     def test_pyfunc_1(self) -> None:
         """Test py ast to Jac ast conversion."""
-        from jaclang.compiler.passes.main import PyastBuildPass
-        import jaclang.compiler.unitree as uni
         import ast as py_ast
+
+        import jaclang.compiler.unitree as uni
+        from jaclang.compiler.passes.main import PyastBuildPass
 
         py_out_path = os.path.join(self.fixture_abs_path("./"), "pyfunc_1.py")
         with open(py_out_path) as f:
@@ -543,9 +544,10 @@ class JacLanguageTests(TestCase):
 
     def test_pyfunc_2(self) -> None:
         """Test py ast to Jac ast conversion."""
-        from jaclang.compiler.passes.main import PyastBuildPass
-        import jaclang.compiler.unitree as uni
         import ast as py_ast
+
+        import jaclang.compiler.unitree as uni
+        from jaclang.compiler.passes.main import PyastBuildPass
 
         py_out_path = os.path.join(self.fixture_abs_path("./"), "pyfunc_2.py")
         with open(py_out_path) as f:
@@ -566,9 +568,10 @@ class JacLanguageTests(TestCase):
 
     def test_pyfunc_3(self) -> None:
         """Test py ast to Jac ast conversion."""
-        from jaclang.compiler.passes.main import PyastBuildPass
-        import jaclang.compiler.unitree as uni
         import ast as py_ast
+
+        import jaclang.compiler.unitree as uni
+        from jaclang.compiler.passes.main import PyastBuildPass
 
         py_out_path = os.path.join(self.fixture_abs_path("./"), "pyfunc_3.py")
         with open(py_out_path) as f:
@@ -587,9 +590,10 @@ class JacLanguageTests(TestCase):
 
     def test_py2jac(self) -> None:
         """Test py ast to Jac ast conversion."""
-        from jaclang.compiler.passes.main import PyastBuildPass
-        import jaclang.compiler.unitree as ast
         import ast as py_ast
+
+        import jaclang.compiler.unitree as ast
+        from jaclang.compiler.passes.main import PyastBuildPass
 
         py_out_path = os.path.join(self.fixture_abs_path("./"), "py2jac.py")
         with open(py_out_path) as f:
@@ -608,9 +612,10 @@ class JacLanguageTests(TestCase):
 
     def test_py2jac_params(self) -> None:
         """Test py ast to Jac ast conversion."""
-        from jaclang.compiler.passes.main import PyastBuildPass
-        import jaclang.compiler.unitree as ast
         import ast as py_ast
+
+        import jaclang.compiler.unitree as ast
+        from jaclang.compiler.passes.main import PyastBuildPass
 
         py_out_path = os.path.join(self.fixture_abs_path("./"), "py2jac_params.py")
         with open(py_out_path) as f:
@@ -633,9 +638,10 @@ class JacLanguageTests(TestCase):
 
     def test_py2jac_empty_file(self) -> None:
         """Test py ast to Jac ast conversion."""
-        from jaclang.compiler.passes.main import PyastBuildPass
-        import jaclang.compiler.unitree as ast
         import ast as py_ast
+
+        import jaclang.compiler.unitree as ast
+        from jaclang.compiler.passes.main import PyastBuildPass
 
         py_out_path = os.path.join(self.fixture_abs_path("./"), "py2jac_empty.py")
         with open(py_out_path) as f:
@@ -938,7 +944,7 @@ class JacLanguageTests(TestCase):
         """
 
         # Backup the original file content
-        with open(bar_file_path, "r") as bar_file:
+        with open(bar_file_path) as bar_file:
             original_content = bar_file.read()
 
         # Update the bar.jac file with new behavior
@@ -1316,9 +1322,10 @@ class JacLanguageTests(TestCase):
 
     def test_py_namedexpr(self) -> None:
         """Ensure NamedExpr nodes are converted to AtomUnit."""
-        from jaclang.compiler.passes.main import PyastBuildPass
-        import jaclang.compiler.unitree as uni
         import ast as py_ast
+
+        import jaclang.compiler.unitree as uni
+        from jaclang.compiler.passes.main import PyastBuildPass
 
         py_out_path = os.path.join(self.fixture_abs_path("./"), "py_namedexpr.py")
         with open(py_out_path) as f:
@@ -1334,9 +1341,10 @@ class JacLanguageTests(TestCase):
 
     def test_py_bool_parentheses(self) -> None:
         """Ensure boolean expressions preserve parentheses during conversion."""
-        from jaclang.compiler.passes.main import PyastBuildPass
-        import jaclang.compiler.unitree as uni
         import ast as py_ast
+
+        import jaclang.compiler.unitree as uni
+        from jaclang.compiler.passes.main import PyastBuildPass
 
         py_out_path = os.path.join(self.fixture_abs_path("./"), "py_bool_expr.py")
         with open(py_out_path) as f:
@@ -1575,13 +1583,7 @@ class JacLanguageTests(TestCase):
     def test_read_file_with_encoding_special_characters(self) -> None:
         """Test reading file with various special characters."""
         with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", delete=False) as f:
-            test_content = (
-                "Special chars: åäö ñ ü ç é\n"
-                "Symbols: ©®™ §¶†‡•\n"
-                "Math: ∑∏∫√±≤≥≠\n"
-                "Arrows: ←→↑↓↔\n"
-                "Emoji: 😀😍🎉🔥💯\n"
-            )
+            test_content = "Special chars: åäö ñ ü ç é\nSymbols: ©®™ §¶†‡•\nMath: ∑∏∫√±≤≥≠\nArrows: ←→↑↓↔\nEmoji: 😀😍🎉🔥💯\n"
             f.write(test_content)
             f.flush()
             temp_path = f.name

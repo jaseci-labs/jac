@@ -1,16 +1,15 @@
 """Tests for Jac parser."""
 
 import inspect
-from typing import List, Type
+
+import pluggy
 
 from jaclang.runtimelib.machine import (
-    JacMachineInterface,
     JacMachineImpl,
+    JacMachineInterface,
     JacMachineSpec,
 )
 from jaclang.utils.test import TestCase
-
-import pluggy
 
 
 class TestFeatures(TestCase):
@@ -20,7 +19,7 @@ class TestFeatures(TestCase):
         """Set up test."""
         return super().setUp()
 
-    def get_methods(self, cls: Type) -> List[str]:
+    def get_methods(self, cls: type) -> list[str]:
         """Get a list of method names with their signatures for a given class."""
         methods = []
         for name, value in inspect.getmembers(cls, predicate=inspect.isfunction):

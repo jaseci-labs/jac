@@ -156,10 +156,11 @@ class JSCodeGenerator:
 
     def gen_switch_case(self, node: es.SwitchCase) -> str:
         """Generate switch case."""
-        if node.test:
-            result = f"{self.indent()}case {self.generate(node.test)}:\n"
-        else:
-            result = f"{self.indent()}default:\n"
+        result = (
+            f"{self.indent()}case {self.generate(node.test)}:\n"
+            if node.test
+            else f"{self.indent()}default:\n"
+        )
         self.indent_level += 1
         for stmt in node.consequent:
             result += f"{self.generate(stmt)}\n"
@@ -325,10 +326,9 @@ class JSCodeGenerator:
         """Generate arrow function expression."""
         async_str = "async " if node.async_ else ""
         params = ", ".join(self.generate(p) for p in node.params)
-        if len(node.params) == 1:
-            params = self.generate(node.params[0])
-        else:
-            params = f"({params})"
+        params = (
+            self.generate(node.params[0]) if len(node.params) == 1 else f"({params})"
+        )
 
         if node.expression:
             body = self.generate(node.body)

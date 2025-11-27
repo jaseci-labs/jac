@@ -10,8 +10,9 @@ This pass injects comments into the DocIR structure by:
 from __future__ import annotations
 
 from bisect import bisect_left
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Dict, List, NamedTuple, Optional, Sequence
+from typing import NamedTuple
 
 import jaclang.compiler.passes.tool.doc_ir as doc
 import jaclang.compiler.unitree as uni
@@ -57,12 +58,12 @@ class CommentStore:
 
     def __init__(
         self,
-        inline: Dict[int, List[CommentInfo]],
-        standalone: List[CommentInfo],
+        inline: dict[int, list[CommentInfo]],
+        standalone: list[CommentInfo],
     ) -> None:
-        self._inline: Dict[int, List[CommentInfo]] = inline
-        self._standalone: List[CommentInfo] = standalone
-        self._standalone_lines: List[int] = [c.first_line for c in standalone]
+        self._inline: dict[int, list[CommentInfo]] = inline
+        self._standalone: list[CommentInfo] = standalone
+        self._standalone_lines: list[int] = [c.first_line for c in standalone]
         self._used: set[int] = set()
 
     @classmethod
@@ -79,7 +80,7 @@ class CommentStore:
 
         items.sort(key=lambda entry: (entry[2].loc.first_line, entry[2].loc.col_start))
 
-        inline: Dict[int, List[CommentInfo]] = {}
+        inline: dict[int, list[CommentInfo]] = {}
         standalone: list[CommentInfo] = []
 
         for offset, entry in enumerate(items):
@@ -254,15 +255,15 @@ class CommentInjectionPass(Transform[uni.Module, uni.Module]):
 
     def _find_delimiters(
         self, parts: list[doc.DocType], open_tok: Tok, close_tok: Tok
-    ) -> Optional[DelimiterInfo]:
+    ) -> DelimiterInfo | None:
         """Find opening and closing delimiter tokens and their line numbers.
 
         Returns: DelimiterInfo if both delimiters found, None otherwise
         """
-        open_idx: Optional[int] = None
-        open_line: Optional[int] = None
-        close_idx: Optional[int] = None
-        close_line: Optional[int] = None
+        open_idx: int | None = None
+        open_line: int | None = None
+        close_idx: int | None = None
+        close_line: int | None = None
 
         for i, part in enumerate(parts):
             if not isinstance(part, doc.Text):
@@ -400,7 +401,7 @@ class CommentInjectionPass(Transform[uni.Module, uni.Module]):
             return indent
 
         # Find body boundaries
-        body_start: Optional[int] = next(
+        body_start: int | None = next(
             (
                 k.loc.last_line + 1
                 for k in node.kid
@@ -408,7 +409,7 @@ class CommentInjectionPass(Transform[uni.Module, uni.Module]):
             ),
             None,
         )
-        body_end: Optional[int] = next(
+        body_end: int | None = next(
             (
                 k.loc.first_line
                 for k in node.kid
@@ -432,7 +433,7 @@ class CommentInjectionPass(Transform[uni.Module, uni.Module]):
                 continue
 
             # Get the line number of this part
-            part_line: Optional[int] = None
+            part_line: int | None = None
             tokens = self._get_tokens(part)
             if tokens:
                 part_line = min(t.loc.first_line for t in tokens if t.loc)

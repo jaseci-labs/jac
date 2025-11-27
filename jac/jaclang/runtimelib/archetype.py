@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field, fields, is_dataclass
 from enum import IntEnum
 from functools import cached_property
@@ -9,11 +10,10 @@ from inspect import _empty, signature
 from logging import getLogger
 from pickle import dumps
 from types import UnionType
-from typing import Any, Callable, ClassVar, Optional, TypeAlias, TypeVar
+from typing import Any, ClassVar, TypeAlias, TypeVar
 from uuid import UUID, uuid4
 
 from ..compiler.constant import EdgeDir
-
 
 logger = getLogger(__name__)
 
@@ -79,8 +79,8 @@ class ObjectSpatialDestination:
     """Object-Spatial Destination."""
 
     direction: EdgeDir
-    edge: Callable[["Archetype"], bool] | None = None
-    node: Callable[["Archetype"], bool] | None = None
+    edge: Callable[[Archetype], bool] | None = None
+    node: Callable[[Archetype], bool] | None = None
 
     def edge_filter(self, arch: Archetype) -> bool:
         """Filter edge."""
@@ -116,7 +116,7 @@ class ObjectSpatialPath:
     def convert(
         self,
         filter: ObjectSpatialFilter,
-    ) -> Callable[["Archetype"], bool] | None:
+    ) -> Callable[[Archetype], bool] | None:
         """Convert filter."""
         if not filter:
             return None
@@ -169,9 +169,9 @@ class ObjectSpatialPath:
     def repr_builder(self, repr: str, dest: ObjectSpatialDestination, mark: str) -> str:
         """Repr builder."""
         repr += mark
-        repr += f' (edge{" filter" if dest.edge else ""}) '
+        repr += f" (edge{' filter' if dest.edge else ''}) "
         repr += mark
-        repr += f' (node{" filter" if dest.node else ""}) '
+        repr += f" (node{' filter' if dest.node else ''}) "
         return repr
 
     def __repr__(self) -> str:
@@ -194,7 +194,7 @@ class Anchor:
 
     archetype: Archetype
     id: UUID = field(default_factory=uuid4)
-    root: Optional[UUID] = None
+    root: UUID | None = None
     access: Permission = field(default_factory=Permission)
     persistent: bool = False
     hash: int = 0

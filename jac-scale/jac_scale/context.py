@@ -1,12 +1,11 @@
-from typing import Optional, Any
-
-from jaclang.runtimelib.machine import ExecutionContext
-from jac_scale.memory_hierarchy import MultiHierarchyMemory
-
 from dataclasses import MISSING
+from typing import Any
 from uuid import UUID
+
+from jac_scale.memory_hierarchy import MultiHierarchyMemory
 from jaclang.compiler.constant import Constants as Con
 from jaclang.runtimelib.constructs import NodeAnchor, Root
+from jaclang.runtimelib.machine import ExecutionContext
 
 
 class JScaleExecutionContext(ExecutionContext):
@@ -14,8 +13,8 @@ class JScaleExecutionContext(ExecutionContext):
 
     def __init__(
         self,
-        session: Optional[str] = None,
-        root: Optional[str] = None,
+        session: str | None = None,
+        root: str | None = None,
     ) -> None:
         """Initialize JScaleExecutionContext."""
         self.mem: MultiHierarchyMemory = MultiHierarchyMemory()

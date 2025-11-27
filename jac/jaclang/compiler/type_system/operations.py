@@ -7,7 +7,7 @@ PyrightReference: packages/pyright-internal/src/analyzer/operations.ts
 from typing import TYPE_CHECKING
 
 import jaclang.compiler.unitree as uni
-from jaclang.compiler.constant import SymbolType, Tokens as Tok
+from jaclang.compiler.constant import Tokens as Tok
 
 from . import types as jtypes
 

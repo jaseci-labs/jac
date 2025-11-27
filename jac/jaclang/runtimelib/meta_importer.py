@@ -12,8 +12,8 @@ import importlib.machinery
 import importlib.util
 import os
 import sys
+from collections.abc import Sequence
 from types import ModuleType
-from typing import Optional, Sequence
 
 from jaclang.runtimelib.machine import JacMachine as Jac
 from jaclang.runtimelib.machine import JacMachineInterface
@@ -44,9 +44,7 @@ class _ByllmFallbackClass:
 class ByllmFallbackLoader(importlib.abc.Loader):
     """Fallback loader for byllm when it's not installed."""
 
-    def create_module(
-        self, spec: importlib.machinery.ModuleSpec
-    ) -> Optional[ModuleType]:
+    def create_module(self, spec: importlib.machinery.ModuleSpec) -> ModuleType | None:
         """Create a placeholder module."""
         return None  # use default machinery
 
@@ -75,9 +73,9 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
     def find_spec(
         self,
         fullname: str,
-        path: Optional[Sequence[str]] = None,
-        target: Optional[ModuleType] = None,
-    ) -> Optional[importlib.machinery.ModuleSpec]:
+        path: Sequence[str] | None = None,
+        target: ModuleType | None = None,
+    ) -> importlib.machinery.ModuleSpec | None:
         """Find the spec for the module."""
         # Handle case where no byllm plugin is installed
         if fullname == "byllm" or fullname.startswith("byllm."):
@@ -137,10 +135,11 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
 
         # TODO: We can remove it once python modules are fully supported in jac
         if path is None and settings.pyfile_raise:
-            if settings.pyfile_raise_full:
-                paths_to_search = get_jac_search_paths()
-            else:
-                paths_to_search = get_py_search_paths()
+            paths_to_search = (
+                get_jac_search_paths()
+                if settings.pyfile_raise_full
+                else get_py_search_paths()
+            )
             for search_path in paths_to_search:
                 candidate_path = os.path.join(search_path, *module_path_parts)
                 # Check for directory package
@@ -160,9 +159,7 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
                     )
         return None
 
-    def create_module(
-        self, spec: importlib.machinery.ModuleSpec
-    ) -> Optional[ModuleType]:
+    def create_module(self, spec: importlib.machinery.ModuleSpec) -> ModuleType | None:
         """Create the module."""
         return None  # use default machinery
 

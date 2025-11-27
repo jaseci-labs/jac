@@ -11,7 +11,6 @@ class SemanticAnalysisPass(UniPass):
     """Jac Semantic Analysis Pass."""
 
     def enter_archetype(self, node: uni.Archetype) -> None:
-
         def inform_from_walker(node: uni.UniNode) -> None:
             for i in (
                 node.get_all_sub_nodes(uni.VisitStmt)

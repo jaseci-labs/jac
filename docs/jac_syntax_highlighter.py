@@ -1,5 +1,6 @@
 # flake8: noqa
 """Pygments Syntax highlighter for Jac code."""
+
 """
     pygments.lexers.python
     ~~~~~~~~~~~~~~~~~~~~~~
@@ -56,7 +57,7 @@ class JacLexer(RegexLexer):
         "text/x-jac3",
     ]
 
-    uni_name = "[%s][%s]*" % (uni.xid_start, uni.xid_continue)
+    uni_name = f"[{uni.xid_start}][{uni.xid_continue}]*"
 
     def innerstring_rules(ttype):
         return [

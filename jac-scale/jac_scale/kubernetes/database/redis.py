@@ -1,7 +1,4 @@
-from typing import Tuple
-
-
-def redis_db(app_name: str, env_vars: list) -> Tuple[dict, dict]:
+def redis_db(app_name: str, env_vars: list) -> tuple[dict, dict]:
     redis_name = f"{app_name}-redis"
     redis_port = 6379
     redis_service_name = f"{redis_name}-service"

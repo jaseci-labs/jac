@@ -10,7 +10,6 @@ from jaclang.runtimelib.machine import (
 )
 from jaclang.runtimelib.meta_importer import JacMetaImporter
 
-
 plugin_manager.register(JacMachineImpl)
 plugin_manager.load_setuptools_entrypoints("jac")
 

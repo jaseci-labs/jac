@@ -132,85 +132,85 @@ class PyastGenPassTests(TestCaseMicroSuite, AstSyncTestMixin):
 
             # Function (full).
             self.assertEqual(
-                getattr(module.fn1, "_jac_semstr"),
+                module.fn1._jac_semstr,
                 "A function that takes two integers and returns nothing.",
             )
             self.assertEqual(
-                getattr(module.fn1, "_jac_semstr_inner")["bar"],
+                module.fn1._jac_semstr_inner["bar"],
                 "The first integer parameter.",
             )
             self.assertEqual(
-                getattr(module.fn1, "_jac_semstr_inner")["baz"],
+                module.fn1._jac_semstr_inner["baz"],
                 "The second integer parameter.",
             )
 
             # Function (Missing baz)
             self.assertEqual(
-                getattr(module.fn2, "_jac_semstr"),
+                module.fn2._jac_semstr,
                 "A function that takes one integer and returns nothing.",
             )
             self.assertEqual(
-                getattr(module.fn2, "_jac_semstr_inner")["bar"],
+                module.fn2._jac_semstr_inner["bar"],
                 "The first integer parameter.",
             )
-            self.assertNotIn("baz", getattr(module.fn2, "_jac_semstr_inner"))
+            self.assertNotIn("baz", module.fn2._jac_semstr_inner)
 
             # Function (Without sem at all)
             self.assertFalse(hasattr(module.fn3, "_jac_semstr"))
 
             # Architype (with body).
             self.assertEqual(
-                getattr(module.Arch1, "_jac_semstr"),
+                module.Arch1._jac_semstr,
                 "An object that contains two integer properties.",
             )
             self.assertEqual(
-                getattr(module.Arch1, "_jac_semstr_inner")["bar"],
+                module.Arch1._jac_semstr_inner["bar"],
                 "The first integer property.",
             )
             self.assertEqual(
-                getattr(module.Arch1, "_jac_semstr_inner")["baz"],
+                module.Arch1._jac_semstr_inner["baz"],
                 "The second integer property.",
             )
 
             # Architype (without body).
             self.assertEqual(
-                getattr(module.Arch2, "_jac_semstr"),
+                module.Arch2._jac_semstr,
                 "An object that contains two integer properties.",
             )
             self.assertEqual(
-                getattr(module.Arch2, "_jac_semstr_inner")["bar"],
+                module.Arch2._jac_semstr_inner["bar"],
                 "The first integer property.",
             )
             self.assertEqual(
-                getattr(module.Arch2, "_jac_semstr_inner")["baz"],
+                module.Arch2._jac_semstr_inner["baz"],
                 "The second integer property.",
             )
 
             # Enum (with body).
             self.assertEqual(
-                getattr(module.Enum1, "_jac_semstr"),
+                module.Enum1._jac_semstr,
                 "An enumeration that defines two values: Bar and Baz.",
             )
             self.assertEqual(
-                getattr(module.Enum1, "_jac_semstr_inner")["Bar"],
+                module.Enum1._jac_semstr_inner["Bar"],
                 "The Bar value of the Enum1 enumeration.",
             )
             self.assertEqual(
-                getattr(module.Enum1, "_jac_semstr_inner")["Baz"],
+                module.Enum1._jac_semstr_inner["Baz"],
                 "The Baz value of the Enum1 enumeration.",
             )
 
             # Enum (without body).
             self.assertEqual(
-                getattr(module.Enum2, "_jac_semstr"),
+                module.Enum2._jac_semstr,
                 "An enumeration that defines two values: Bar and Baz.",
             )
             self.assertEqual(
-                getattr(module.Enum2, "_jac_semstr_inner")["Bar"],
+                module.Enum2._jac_semstr_inner["Bar"],
                 "The Bar value of the Enum2 enumeration.",
             )
             self.assertEqual(
-                getattr(module.Enum2, "_jac_semstr_inner")["Baz"],
+                module.Enum2._jac_semstr_inner["Baz"],
                 "The Baz value of the Enum2 enumeration.",
             )
 

@@ -15,30 +15,12 @@ repos:
       - id: mixed-line-ending
         args: [--fix=lf]
       - id: end-of-file-fixer
-  - repo: https://github.com/psf/black-pre-commit-mirror
-    rev: 25.11.0
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.6
     hooks:
-      - id: black
-  - repo: https://github.com/PyCQA/flake8
-    rev: 7.3.0
-    hooks:
-      - id: flake8
-        additional_dependencies:
-          [
-            pep8-naming,
-            # flake8_import_order,
-            # flake8_comprehensions,
-            # flake8_bugbear,
-            # flake8_annotations,
-            # flake8_simplify,
-          ]
-        exclude: |
-            (?x)(
-                # TODO
-                ^jac/examples/|
-                /fixtures/|
-                ^$
-            )
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.18.2
     hooks:

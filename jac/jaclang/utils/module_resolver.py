@@ -5,10 +5,9 @@ from __future__ import annotations
 import os
 import site
 import sys
-from typing import Optional, Tuple
 
 
-def get_jac_search_paths(base_path: Optional[str] = None) -> list[str]:
+def get_jac_search_paths(base_path: str | None = None) -> list[str]:
     """Construct a list of paths to search for Jac modules."""
     paths = []
     if base_path:
@@ -31,7 +30,7 @@ def get_jac_search_paths(base_path: Optional[str] = None) -> list[str]:
 
 
 # TODO: need to be removed once python modules are fully supported in jac
-def get_py_search_paths(base_path: Optional[str] = None) -> list[str]:
+def get_py_search_paths(base_path: str | None = None) -> list[str]:
     """Construct a list of paths to search for Python modules."""
     paths = []
     if base_path:
@@ -40,7 +39,7 @@ def get_py_search_paths(base_path: Optional[str] = None) -> list[str]:
     return list(dict.fromkeys(filter(None, paths)))
 
 
-def _candidate_from(base: str, parts: list[str]) -> Optional[Tuple[str, str]]:
+def _candidate_from(base: str, parts: list[str]) -> tuple[str, str] | None:
     candidate = os.path.join(base, *parts)
     if os.path.isdir(candidate):
         if os.path.isfile(os.path.join(candidate, "__init__.jac")):
@@ -56,7 +55,7 @@ def _candidate_from(base: str, parts: list[str]) -> Optional[Tuple[str, str]]:
     return None
 
 
-def resolve_module(target: str, base_path: str) -> Tuple[str, str]:
+def resolve_module(target: str, base_path: str) -> tuple[str, str]:
     """Resolve module path and infer language."""
     base_dir = os.path.dirname(base_path)
     if target.startswith("."):
@@ -227,7 +226,7 @@ def get_typeshed_paths() -> list[str]:
     return paths
 
 
-def _candidate_from_typeshed(base: str, parts: list[str]) -> Optional[Tuple[str, str]]:
+def _candidate_from_typeshed(base: str, parts: list[str]) -> tuple[str, str] | None:
     """Find .pyi files in typeshed, trying module.pyi then package/__init__.pyi."""
     if not parts:  #
         return None

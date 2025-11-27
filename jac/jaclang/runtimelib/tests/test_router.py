@@ -1,6 +1,7 @@
 """Test declarative routing system."""
 
 from __future__ import annotations
+
 from pathlib import Path
 
 from jaclang.runtimelib.machine import JacMachine as Jac

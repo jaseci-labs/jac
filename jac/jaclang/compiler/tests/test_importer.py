@@ -8,8 +8,8 @@ from jaclang import JacMachine as Jac
 from jaclang.cli import cli
 from jaclang.compiler.program import JacProgram
 from jaclang.runtimelib.machine import JacMachineInterface
-from jaclang.utils.test import TestCase
 from jaclang.settings import settings
+from jaclang.utils.test import TestCase
 
 
 class TestLoader(TestCase):

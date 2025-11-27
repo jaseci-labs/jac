@@ -8,11 +8,12 @@ import inspect
 import json
 import os
 import secrets
+from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
-from typing import Any, Callable, Literal, TypeAlias, get_type_hints
+from typing import Any, Literal, TypeAlias, get_type_hints
 from urllib.parse import parse_qs, urlparse
 
 from jaclang.runtimelib.client_bundle import ClientBundleError
@@ -86,7 +87,9 @@ class JacSerializer:
             "_jac_archetype": (
                 "node"
                 if isinstance(arch, NodeArchetype)
-                else "walker" if isinstance(arch, WalkerArchetype) else "archetype"
+                else "walker"
+                if isinstance(arch, WalkerArchetype)
+                else "archetype"
             ),
         }
 
@@ -894,7 +897,7 @@ class JacAPIServer:
                             Path(Jac.base_path_dir) if Jac.base_path_dir else Path.cwd()
                         )
 
-                        if is_static_path:
+                        if is_static_path:  # noqa: SIM108
                             # Remove /static/ prefix to get the relative file path
                             relative_path = path[8:]  # Remove "/static/"
                         else:
@@ -1229,7 +1232,7 @@ def print_endpoint_docs(server: JacAPIServer) -> None:
         """Format parameter info."""
         req = "required" if info["required"] else "optional"
         default = f", default: {info['default']}" if info.get("default") else ""
-        return f'{name}: {info["type"]} ({req}{default})'
+        return f"{name}: {info['type']} ({req}{default})"
 
     # Header
     print("\n" + "=" * 80)

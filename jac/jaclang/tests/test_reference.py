@@ -2,9 +2,9 @@
 
 import io
 import os
-from contextlib import redirect_stdout
 import sys
-from typing import Callable, Optional
+from collections.abc import Callable
+from contextlib import redirect_stdout
 from types import CodeType
 
 import jaclang
@@ -16,7 +16,7 @@ from jaclang.utils.test import TestCase
 class JacReferenceTests(TestCase):
     """Test Reference examples."""
 
-    test_ref_jac_files_fully_tested: Optional[Callable[[TestCase], None]] = None
+    test_ref_jac_files_fully_tested: Callable[[TestCase], None] | None = None
     methods: list[str] = []
 
     @classmethod
@@ -94,7 +94,7 @@ class JacReferenceTests(TestCase):
             sys.modules.pop("byllm", None)
             sys.modules.pop("byllm.lib", None)
             filename = filename.replace(".jac", ".py")
-            with open(filename, "r") as file:
+            with open(filename) as file:
                 code_content = file.read()
             output_py = execute_and_capture_output(code_content, filename=filename)
 

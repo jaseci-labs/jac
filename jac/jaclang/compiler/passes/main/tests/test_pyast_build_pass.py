@@ -46,7 +46,7 @@ class PyastBuildPassTests(TestCase):
 
     def test_str2doc(self) -> None:
         """Test str2doc."""
-        with open(self.fixture_abs_path("str2doc.py"), "r") as f:
+        with open(self.fixture_abs_path("str2doc.py")) as f:
             file_source = f.read()
         code = PyastBuildPass(
             ir_in=PythonModuleAst(

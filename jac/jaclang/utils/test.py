@@ -2,17 +2,16 @@
 
 import inspect
 import os
-from typing import Callable, Optional
+from collections.abc import Callable
 from unittest import TestCase as _TestCase
 
+import pytest
 from _pytest.logging import LogCaptureFixture
 
 import jaclang
 from jaclang.compiler.passes import UniPass
 from jaclang.runtimelib.utils import read_file_with_encoding
 from jaclang.utils.helpers import get_uni_nodes_as_snake_case as ast_snakes
-
-import pytest
 
 
 class TestCase(_TestCase):
@@ -94,7 +93,7 @@ class TestCase(_TestCase):
 class TestCaseMicroSuite(TestCase):
     """Base test case for Jaseci."""
 
-    test_micro_jac_files_fully_tested: Optional[Callable[[TestCase], None]] = None
+    test_micro_jac_files_fully_tested: Callable[[TestCase], None] | None = None
     methods: list[str] = []
 
     @classmethod
@@ -131,7 +130,7 @@ class TestCaseMicroSuite(TestCase):
 class AstSyncTestMixin:
     """Mixin for testing AST sync."""
 
-    TargetPass: Optional[UniPass] = None
+    TargetPass: UniPass | None = None
 
     def test_pass_ast_complete(self) -> None:
         """Test for enter/exit name diffs with parser."""

@@ -119,9 +119,10 @@ class TestLarkParser(TestCaseMicroSuite):
 
     def test_all_ast_has_normalize(self) -> None:
         """Test for enter/exit name diffs with parser."""
-        import jaclang.compiler.unitree as uni
         import inspect
         import sys
+
+        import jaclang.compiler.unitree as uni
 
         exclude = [
             "UniNode",

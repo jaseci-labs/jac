@@ -3,7 +3,6 @@ from jaclang.lib import Root, Walker, disengage, on_entry, log_report, root, spa
 
 
 class Reporter(Walker):
-
     @on_entry
     def process(self, here: Root) -> None:
         log_report(42)

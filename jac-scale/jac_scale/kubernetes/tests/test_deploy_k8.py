@@ -1,10 +1,12 @@
 import os
 import time
+
+import pytest
 from kubernetes import client, config
 from kubernetes.client.exceptions import ApiException
+
 from ..k8 import deploy_k8
 from ..utils import cleanup_k8_resources
-import pytest
 
 
 def test_deploy_k8_only_littlex():

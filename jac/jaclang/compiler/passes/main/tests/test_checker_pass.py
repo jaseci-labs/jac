@@ -1,8 +1,8 @@
 """Tests for typechecker pass (the pyright implementation)."""
 
-from jaclang.utils.test import TestCase
 from jaclang.compiler.passes.main import TypeCheckPass
 from jaclang.compiler.program import JacProgram
+from jaclang.utils.test import TestCase
 
 
 class TypeCheckerPassTests(TestCase):

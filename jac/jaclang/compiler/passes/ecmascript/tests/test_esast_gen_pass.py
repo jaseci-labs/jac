@@ -1,8 +1,8 @@
 """Test ECMAScript AST generation using consolidated Jac fixtures."""
 
 import json
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 from jaclang.compiler.passes.ecmascript import EsastGenPass, es_node_to_dict
 from jaclang.compiler.passes.ecmascript import estree as es

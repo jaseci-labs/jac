@@ -1,6 +1,13 @@
 """Test suite for Jac language server features."""
 
 # Import jaclang first to set up vendor path for lsprotocol
+from lsprotocol.types import (
+    DocumentFormattingParams,
+    TextDocumentIdentifier,
+    TextEdit,
+)
+
+from jaclang.langserve.server import formatting
 from jaclang.langserve.tests.server_test.utils import (
     JacTestFile,
     LanguageServerTestHelper,
@@ -8,14 +15,6 @@ from jaclang.langserve.tests.server_test.utils import (
     load_jac_template,
 )
 from jaclang.vendor.pygls.uris import from_fs_path
-from jaclang.langserve.server import formatting
-
-from lsprotocol.types import (
-    DocumentFormattingParams,
-    TextEdit,
-    TextDocumentIdentifier,
-)
-
 
 # NOTE: circle.jac emits a spurious type error at the call to super.init:
 # obj Circle(Shape) {

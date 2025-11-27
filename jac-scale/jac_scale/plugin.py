@@ -4,16 +4,12 @@ import os
 import pathlib
 import pickle
 import sys
-from typing import Optional
 
 from dotenv import load_dotenv
 
-
 from jaclang.cli.cmdreg import CommandPriority, cmd_registry
-from jaclang.runtimelib.machine import ExecutionContext
+from jaclang.runtimelib.machine import ExecutionContext, hookimpl, plugin_manager
 from jaclang.runtimelib.machine import JacMachine as Jac
-from jaclang.runtimelib.machine import hookimpl, plugin_manager
-
 
 from .context import JScaleExecutionContext
 from .kubernetes.docker_impl import build_and_push_docker
@@ -167,7 +163,7 @@ class JacScalePlugin:
     @staticmethod
     @hookimpl
     def create_j_context(
-        session: Optional[str] = None, root: Optional[str] = None
+        session: str | None = None, root: str | None = None
     ) -> ExecutionContext:
         return JScaleExecutionContext(session=session, root=root)
 

@@ -3,10 +3,10 @@
 import io
 import sys
 
+from fixtures import python_lib_mode
+
 from jaclang import JacMachineInterface as Jac
 from jaclang.utils.test import TestCase
-
-from fixtures import python_lib_mode
 
 # Import the jac_import function from JacMachineInterface
 jac_import = Jac.jac_import

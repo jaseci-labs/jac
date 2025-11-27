@@ -2,28 +2,26 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from pickle import dumps, loads
 import os
 import shelve
+from collections.abc import Iterable
+from dataclasses import dataclass, field
+from pickle import dumps, loads
 from threading import RLock
-from typing import Any, Optional, Iterable, TypeVar
+from typing import Any, TypeVar
 from uuid import UUID
 
+import redis
 from pymongo import MongoClient, UpdateOne
 
-from jaclang.runtimelib.archetype import Anchor, TANCH
+from jaclang.runtimelib.archetype import TANCH, Anchor
 from jaclang.runtimelib.memory import Memory
-
-import redis
-
 
 ID = TypeVar("ID")
 
 
 @dataclass
 class MultiHierarchyMemory:
-
     def __init__(self):
         self.mem = Memory()
         self.redis = RedisDB()
@@ -141,8 +139,8 @@ class MongoDB:  # Memory[UUID, Anchor]):
         - Update NodeAnchor edges
         - Respect write and connect access
         """
-        from jaclang.runtimelib.machine import JacMachineInterface as Jac
         from jaclang.runtimelib.archetype import NodeAnchor
+        from jaclang.runtimelib.machine import JacMachineInterface as Jac
 
         _id = self._to_uuid(anchor.id)
         try:
@@ -217,8 +215,8 @@ class MongoDB:  # Memory[UUID, Anchor]):
         - Saves only updated anchors
         - Uses MongoDB bulk_write for speed
         """
-        from jaclang.runtimelib.machine import JacMachineInterface as Jac
         from jaclang.runtimelib.archetype import NodeAnchor
+        from jaclang.runtimelib.machine import JacMachineInterface as Jac
 
         ops: list = []
 
@@ -226,7 +224,6 @@ class MongoDB:  # Memory[UUID, Anchor]):
             _id = self._to_uuid(anc.id)
 
             try:
-
                 current_hash = hash(dumps(anc))
             except Exception:
                 continue
@@ -366,7 +363,7 @@ class ShelfDB:
 
     shelf_path: str = field(default=os.environ.get("SHELF_DB_PATH", "anchor_store.db"))
     # _shelf: shelve.Shelf = field(init=False, default=None)
-    _shelf: Optional[shelve.Shelf] = field(init=False, default=None)
+    _shelf: shelve.Shelf | None = field(init=False, default=None)
     _lock: RLock = field(default_factory=RLock, init=False)
 
     def __post_init__(self):
@@ -399,7 +396,7 @@ class ShelfDB:
             return UUID(str(id))
         return id
 
-    def _load_anchor_from_shelf(self, id: UUID) -> Optional[Anchor]:
+    def _load_anchor_from_shelf(self, id: UUID) -> Anchor | None:
         key = self._redis_key(id)
         self._shelf = self._ensure_shelf()
         with self._lock:
@@ -424,13 +421,11 @@ class ShelfDB:
                 del self._shelf[key]
                 self._shelf.sync()
 
-    def find_by_id(self, id: UUID) -> Optional[Anchor]:
+    def find_by_id(self, id: UUID) -> Anchor | None:
         _id = self._to_uuid(id)
         return self._load_anchor_from_shelf(_id)
 
-    def commit(
-        self, anchor: Optional[Anchor] = None, keys: Iterable[Anchor] = []
-    ) -> None:
+    def commit(self, anchor: Anchor | None = None, keys: Iterable[Anchor] = []) -> None:
         """Commit behaves like Redis version — supports single or batch writes."""
         if anchor:
             self.set(anchor)

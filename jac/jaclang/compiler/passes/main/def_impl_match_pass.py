@@ -17,7 +17,7 @@ developers to define archetype and ability interfaces in one file while implemen
 their behavior in separate files.
 """
 
-from typing import Sequence
+from collections.abc import Sequence
 
 import jaclang.compiler.unitree as uni
 from jaclang.compiler.constant import Tokens as Tok
@@ -81,7 +81,9 @@ class DeclImplMatchPass(Transform[uni.Module, uni.Module]):
             decl_node = (
                 self.defn_lookup(lookup)
                 if len(arch_refs) == 1 and lookup
-                else lookup.defn[-1] if lookup else None
+                else lookup.defn[-1]
+                if lookup
+                else None
             )
             name_of_links.append(decl_node) if decl_node else None
 
@@ -95,7 +97,9 @@ class DeclImplMatchPass(Transform[uni.Module, uni.Module]):
                     decl_node = (
                         self.defn_lookup(lookup)
                         if len(arch_refs) == 1 and lookup
-                        else lookup.defn[-1] if lookup else None
+                        else lookup.defn[-1]
+                        if lookup
+                        else None
                     )
                     name_of_links.append(decl_node) if decl_node else None
                 else:
@@ -155,7 +159,6 @@ class DeclImplMatchPass(Transform[uni.Module, uni.Module]):
             and isinstance(valid_decl.signature, uni.FuncSignature)
             and isinstance(sym.decl.name_of.spec, uni.FuncSignature)
         ):
-
             params_decl = valid_decl.signature.params
             params_defn = sym.decl.name_of.spec.params
 
@@ -206,7 +209,6 @@ class DeclImplMatchPass(Transform[uni.Module, uni.Module]):
             postinit_method: uni.Ability | None = None
 
             for item in node.body:
-
                 if isinstance(item, uni.ArchHas):
                     for var in item.vars:
                         if var.defer:

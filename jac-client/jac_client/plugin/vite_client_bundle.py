@@ -8,7 +8,7 @@ import shutil
 import subprocess
 from pathlib import Path
 from types import ModuleType
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from jaclang.runtimelib.client_bundle import (
     ClientBundle,
@@ -60,7 +60,6 @@ class ViteClientBundleBuilder(ClientBundleBuilder):
                 if import_path_obj.suffix == ".js":
                     # Inline local JS files and mark as bundled
                     try:
-
                         imported_js_modules.append(import_path_obj)
                     except FileNotFoundError:
                         imported_js_modules.append(None)
@@ -361,7 +360,7 @@ root.render(<App />);
         except FileNotFoundError:
             raise ClientBundleError(
                 "npx or vite command not found. Ensure Node.js and npm are installed."
-            )
+            ) from None
         # Find the generated bundle file
         bundle_file = self._find_vite_bundle(output_dir)
         if not bundle_file:

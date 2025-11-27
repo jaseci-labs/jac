@@ -1,7 +1,4 @@
-from typing import Tuple
-
-
-def mongo_db(app_name: str, env_vars: list) -> Tuple[dict, dict]:
+def mongo_db(app_name: str, env_vars: list) -> tuple[dict, dict]:
     mongodb_name = f"{app_name}-mongodb"
     mongodb_port = 27017
     mongodb_service_name = f"{mongodb_name}-service"

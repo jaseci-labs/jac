@@ -1,14 +1,14 @@
 from dataclasses import dataclass
+
+import lsprotocol.types as lspt
+
+from jaclang.langserve.engine import JacLangServer
 from jaclang.utils.test import TestCase
 from jaclang.vendor.pygls import uris
 from jaclang.vendor.pygls.workspace import Workspace
 
-import lsprotocol.types as lspt
-from jaclang.langserve.engine import JacLangServer
-
 
 class TestJacLangServer(TestCase):
-
     def create_server(self, workspace_path: str | None = None) -> JacLangServer:
         """Create a JacLangServer wired to the given workspace and auto-cleanup."""
         lsp = JacLangServer()

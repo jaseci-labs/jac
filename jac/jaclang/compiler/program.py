@@ -6,7 +6,7 @@ import ast as py_ast
 import marshal
 import types
 from threading import Event
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 import jaclang.compiler.unitree as uni
 from jaclang.compiler.parser import JacParser
@@ -18,12 +18,12 @@ from jaclang.compiler.passes.main import (
     JacAnnexPass,
     JacImportDepsPass,
     PreDynamoPass,
-    PyBytecodeGenPass,
-    PyJacAstLinkPass,
     PyastBuildPass,
     PyastGenPass,
-    SemDefMatchPass,
+    PyBytecodeGenPass,
+    PyJacAstLinkPass,
     SemanticAnalysisPass,
+    SemDefMatchPass,
     SymTabBuildPass,
     Transform,
     TypeCheckPass,
@@ -63,7 +63,7 @@ class JacProgram:
 
     def __init__(
         self,
-        main_mod: Optional[uni.ProgramModule] = None,
+        main_mod: uni.ProgramModule | None = None,
     ) -> None:
         """Initialize the JacProgram object."""
         self.mod: uni.ProgramModule = main_mod if main_mod else uni.ProgramModule()
@@ -80,7 +80,7 @@ class JacProgram:
             self.type_evaluator = TypeEvaluator(program=self)
         return self.type_evaluator
 
-    def get_bytecode(self, full_target: str) -> Optional[types.CodeType]:
+    def get_bytecode(self, full_target: str) -> types.CodeType | None:
         """Get the bytecode for a specific module."""
         if full_target in self.mod.hub and self.mod.hub[full_target].gen.py_bytecode:
             codeobj = self.mod.hub[full_target].gen.py_bytecode

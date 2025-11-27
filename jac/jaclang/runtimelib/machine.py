@@ -10,7 +10,7 @@ import sys
 import tempfile
 import types
 from collections import OrderedDict
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Coroutine, Mapping, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import MISSING, dataclass, field
 from functools import wraps
@@ -19,30 +19,31 @@ from inspect import getfile
 from logging import getLogger
 from pathlib import Path
 from typing import (
-    Any,
-    Callable,
-    Coroutine,
-    Literal,
-    Optional,
-    ParamSpec,
     TYPE_CHECKING,
-    Type,
+    Any,
+    Literal,
+    ParamSpec,
     TypeAlias,
     TypeVar,
-    Union,
     cast,
     get_type_hints,
 )
 from uuid import UUID
 
+import pluggy
 
-from jaclang.compiler.constant import Constants as Con, EdgeDir, colors
+from jaclang.compiler.constant import Constants as Con
+from jaclang.compiler.constant import EdgeDir, colors
 from jaclang.compiler.program import JacProgram
 from jaclang.runtimelib.archetype import (
     GenericEdge as _GenericEdge,
+)
+from jaclang.runtimelib.archetype import (
     ObjectSpatialDestination,
     ObjectSpatialFunction,
     ObjectSpatialPath,
+)
+from jaclang.runtimelib.archetype import (
     Root as _Root,
 )
 from jaclang.runtimelib.client_bundle import ClientBundle, ClientBundleBuilder
@@ -68,8 +69,6 @@ from jaclang.runtimelib.utils import (
 )
 from jaclang.utils import infer_language
 
-import pluggy
-
 if TYPE_CHECKING:
     from jaclang.runtimelib.server import ModuleIntrospector
 
@@ -92,8 +91,8 @@ class ExecutionContext:
 
     def __init__(
         self,
-        session: Optional[str] = None,
-        root: Optional[str] = None,
+        session: str | None = None,
+        root: str | None = None,
     ) -> None:
         """Initialize JacMachine."""
         self.mem: Memory = ShelfStorage(session)
@@ -308,9 +307,9 @@ class JacNode:
         from_visit: bool = False,
     ) -> list[EdgeArchetype | NodeArchetype]:
         """Get edges connected to this node and the node."""
-        loc: OrderedDict[
-            Union[NodeAnchor, EdgeAnchor], Union[NodeArchetype, EdgeArchetype]
-        ] = OrderedDict()
+        loc: OrderedDict[NodeAnchor | EdgeAnchor, NodeArchetype | EdgeArchetype] = (
+            OrderedDict()
+        )
         for node in origin:
             nanch = node.__jac__
             for anchor in nanch.edges:
@@ -631,7 +630,7 @@ class JacWalker:
     @staticmethod
     def spawn(
         op1: Archetype | list[Archetype], op2: Archetype | list[Archetype]
-    ) -> Union[WalkerArchetype, Coroutine]:
+    ) -> WalkerArchetype | Coroutine:
         """Jac's spawn operator feature."""
 
         def collect_targets(
@@ -712,11 +711,11 @@ class JacBuiltin:
         node: NodeArchetype,
         depth: int,
         traverse: bool,
-        edge_type: Optional[list[str]],
+        edge_type: list[str] | None,
         bfs: bool,
         edge_limit: int,
         node_limit: int,
-        file: Optional[str],
+        file: str | None,
         format: str,
     ) -> str:
         """Generate graph for visualizing nodes and edges."""
@@ -769,10 +768,7 @@ class JacBuiltin:
                     )
         else:
             dfs(node, cur_depth=0)
-        dot_content = (
-            'digraph {\nnode [style="filled", shape="ellipse", '
-            'fillcolor="invis", fontcolor="black"];\n'
-        )
+        dot_content = 'digraph {\nnode [style="filled", shape="ellipse", fillcolor="invis", fontcolor="black"];\n'
         mermaid_content = "flowchart LR\n"
         for source, target, edge in connections:
             edge_label = html.escape(str(edge.__jac__.archetype))
@@ -782,22 +778,17 @@ class JacBuiltin:
             )
             if "GenericEdge" in edge_label or not edge_label.strip():
                 mermaid_content += (
-                    f"{visited_nodes.index(source)} -->"
-                    f"{visited_nodes.index(target)}\n"
+                    f"{visited_nodes.index(source)} -->{visited_nodes.index(target)}\n"
                 )
             else:
-                mermaid_content += (
-                    f"{visited_nodes.index(source)} -->"
-                    f'|"{edge_label}"| {visited_nodes.index(target)}\n'
-                )
+                mermaid_content += f'{visited_nodes.index(source)} -->|"{edge_label}"| {visited_nodes.index(target)}\n'
         for node_ in visited_nodes:
             color = (
                 colors[node_depths[node_]] if node_depths[node_] < 25 else colors[24]
             )
             label = html.escape(str(node_.__jac__.archetype))
             dot_content += (
-                f'{visited_nodes.index(node_)} [label="{label}"'
-                f'fillcolor="{color}"];\n'
+                f'{visited_nodes.index(node_)} [label="{label}"fillcolor="{color}"];\n'
             )
             mermaid_content += f'{visited_nodes.index(node_)}["{label}"]\n'
         output = dot_content + "}" if format == "dot" else mermaid_content
@@ -839,7 +830,7 @@ class JacBasics:
         mem.commit(anchor)
 
     @staticmethod
-    def reset_graph(root: Optional[Root] = None) -> int:
+    def reset_graph(root: Root | None = None) -> int:
         """Purge current or target graph."""
         ctx = JacMachineInterface.get_context()
         mem = cast(ShelfStorage, ctx.mem)
@@ -876,7 +867,7 @@ class JacBasics:
         return obj.__jac__.id.hex
 
     @staticmethod
-    def make_archetype(cls: Type[Archetype]) -> Type[Archetype]:
+    def make_archetype(cls: type[Archetype]) -> type[Archetype]:
         """Create a obj archetype."""
         entries: OrderedDict[str, JacMachineInterface.DSFunc] = OrderedDict(
             (fn.name, fn) for fn in cls._jac_entry_funcs_
@@ -942,10 +933,10 @@ class JacBasics:
         target: str,
         base_path: str,
         absorb: bool = False,
-        override_name: Optional[str] = None,
-        items: Optional[dict[str, Union[str, Optional[str]]]] = None,
-        reload_module: Optional[bool] = False,
-        lng: Optional[str] = None,
+        override_name: str | None = None,
+        items: dict[str, str | str | None] | None = None,
+        reload_module: bool | None = False,
+        lng: str | None = None,
     ) -> tuple[types.ModuleType, ...]:
         """Import a Jac or Python module using Python's standard import machinery.
 
@@ -1141,11 +1132,11 @@ class JacBasics:
     @staticmethod
     def run_test(
         filepath: str,
-        func_name: Optional[str] = None,
-        filter: Optional[str] = None,
+        func_name: str | None = None,
+        filter: str | None = None,
         xit: bool = False,
-        maxfail: Optional[int] = None,
-        directory: Optional[str] = None,
+        maxfail: int | None = None,
+        directory: str | None = None,
         verbose: bool = False,
     ) -> int:
         """Run the test suite in the specified .jac file."""
@@ -1234,10 +1225,7 @@ class JacBasics:
 
         origin = path.origin
 
-        if path.edge_only:
-            destinations = path.destinations[:-1]
-        else:
-            destinations = path.destinations
+        destinations = path.destinations[:-1] if path.edge_only else path.destinations
         while destinations:
             dest = path.destinations.pop(0)
             origin = JacMachineInterface.edges_to_nodes(origin, dest)
@@ -1269,7 +1257,7 @@ class JacBasics:
     def connect(
         left: NodeArchetype | list[NodeArchetype],
         right: NodeArchetype | list[NodeArchetype],
-        edge: Type[EdgeArchetype] | EdgeArchetype | None = None,
+        edge: type[EdgeArchetype] | EdgeArchetype | None = None,
         undir: bool = False,
         conn_assign: tuple[tuple, tuple] | None = None,
         edges_only: bool = False,
@@ -1348,7 +1336,7 @@ class JacBasics:
         """Jac's assign comprehension feature."""
         for obj in target:
             attrs, values = attr_val
-            for attr, value in zip(attrs, values):
+            for attr, value in zip(attrs, values, strict=False):
                 setattr(obj, attr, value)
         return target
 
@@ -1366,8 +1354,8 @@ class JacBasics:
     @staticmethod
     def build_edge(
         is_undirected: bool,
-        conn_type: Optional[Type[EdgeArchetype] | EdgeArchetype],
-        conn_assign: Optional[tuple[tuple, tuple]],
+        conn_type: type[EdgeArchetype] | EdgeArchetype | None,
+        conn_assign: tuple[tuple, tuple] | None,
     ) -> Callable[[NodeAnchor, NodeAnchor], EdgeArchetype]:
         """Jac's root getter."""
         ct = conn_type if conn_type else GenericEdge
@@ -1385,7 +1373,7 @@ class JacBasics:
             target.edges.append(eanch)
 
             if conn_assign:
-                for fld, val in zip(conn_assign[0], conn_assign[1]):
+                for fld, val in zip(conn_assign[0], conn_assign[1], strict=False):
                     if hasattr(edge, fld):
                         setattr(edge, fld, val)
                     else:
@@ -1483,7 +1471,7 @@ class JacAPIServer:
     def get_module_introspector(
         module_name: str,
         base_path: str | None = None,
-    ) -> "ModuleIntrospector":
+    ) -> ModuleIntrospector:
         from jaclang.runtimelib.server import ModuleIntrospector
 
         """Get the module introspector instance."""
@@ -1606,7 +1594,7 @@ class JacUtils:
 
     @staticmethod
     def create_j_context(
-        session: Optional[str] = None, root: Optional[str] = None
+        session: str | None = None, root: str | None = None
     ) -> ExecutionContext:
         """Hook for initialization or custom greeting logic."""
         return ExecutionContext(session=session, root=root)
@@ -1681,11 +1669,11 @@ class JacUtils:
     @staticmethod
     def create_archetype_from_source(
         source_code: str,
-        module_name: Optional[str] = None,
-        base_path: Optional[str] = None,
+        module_name: str | None = None,
+        base_path: str | None = None,
         cachable: bool = False,
         keep_temporary_files: bool = False,
-    ) -> Optional[types.ModuleType]:
+    ) -> types.ModuleType | None:
         """Dynamically creates archetypes (nodes, walkers, etc.) from Jac source code.
 
         This leverages Python's standard import machinery via jac_import(),
@@ -1735,7 +1723,7 @@ class JacUtils:
     @staticmethod
     def update_walker(
         module_name: str,
-        items: Optional[dict[str, Union[str, Optional[str]]]],
+        items: dict[str, str | str | None] | None,
     ) -> tuple[types.ModuleType, ...]:
         """Reimport the module using Python's reload mechanism."""
         if module_name in JacMachine.loaded_modules:
@@ -1771,7 +1759,7 @@ class JacUtils:
     @staticmethod
     def spawn_node(
         node_name: str,
-        attributes: Optional[dict] = None,
+        attributes: dict | None = None,
         module_name: str = "__main__",
     ) -> NodeArchetype:
         """Spawn a node instance of the given node_name with attributes."""
@@ -1787,7 +1775,7 @@ class JacUtils:
     @staticmethod
     def spawn_walker(
         walker_name: str,
-        attributes: Optional[dict] = None,
+        attributes: dict | None = None,
         module_name: str = "__main__",
     ) -> WalkerArchetype:
         """Spawn a walker instance of the given walker_name."""
@@ -1801,7 +1789,7 @@ class JacUtils:
             raise ValueError(f"Walker {walker_name} not found.")
 
     @staticmethod
-    def get_archetype(module_name: str, archetype_name: str) -> Optional[Archetype]:
+    def get_archetype(module_name: str, archetype_name: str) -> Archetype | None:
         """Retrieve an archetype class from a module."""
         module = JacMachine.loaded_modules.get(module_name)
         if module:
@@ -1839,8 +1827,8 @@ class JacMachineInterface(
 
 
 def generate_plugin_helpers(
-    plugin_class: Type[Any],
-) -> tuple[Type[Any], Type[Any], Type[Any]]:
+    plugin_class: type[Any],
+) -> tuple[type[Any], type[Any], type[Any]]:
     """Generate three helper classes based on a plugin class.
 
     - Spec class: contains @hookspec placeholder methods.
@@ -1941,7 +1929,9 @@ def generate_plugin_helpers(
     return spec_cls, impl_cls, proxy_cls
 
 
-JacMachineSpec, JacMachineImpl, JacMachineInterface = generate_plugin_helpers(JacMachineInterface)  # type: ignore[misc]
+JacMachineSpec, JacMachineImpl, JacMachineInterface = generate_plugin_helpers(  # type: ignore[misc]
+    JacMachineInterface
+)
 plugin_manager.add_hookspecs(JacMachineSpec)
 
 
