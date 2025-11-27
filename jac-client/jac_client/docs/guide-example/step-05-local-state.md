@@ -1,12 +1,12 @@
 # Step 5: Local State
 
-> **💡 Quick Tip:** Each step has two parts. **Part 1** shows you what to build. **Part 2** explains why it works. Want to just build? Skip all Part 2 sections!
+> ** Quick Tip:** Each step has two parts. **Part 1** shows you what to build. **Part 2** explains why it works. Want to just build? Skip all Part 2 sections!
 
 In this step, you'll learn about **state** - the data that makes your app interactive and dynamic!
 
 ---
 
-## 🏗️ Part 1: Building the App
+##  Part 1: Building the App
 
 ### Step 5.1: First, Let's See Why Normal Variables Don't Work
 
@@ -267,11 +267,11 @@ cl {
 
 ---
 
-**⏭️ Want to skip the theory?** Jump to [Step 6: Event Handlers](./step-06-events.md)
+**⏭ Want to skip the theory?** Jump to [Step 6: Event Handlers](./step-06-events.md)
 
 ---
 
-## 💡 Part 2: Understanding the Concepts
+##  Part 2: Understanding the Concepts
 
 ### What is State?
 
@@ -380,7 +380,7 @@ let [name, setName] = useState("");
 let [isOpen, setIsOpen] = useState(false);
 let [todos, setTodos] = useState([]);
 
-# ❌ Bad names
+#  Bad names
 let [count, updateCount] = useState(0);  # Inconsistent
 let [x, y] = useState(0);                 # Not descriptive
 ```
@@ -413,11 +413,11 @@ items = [TodoItem(text=todo["text"]) for todo in todos]
 **Never modify state directly:**
 
 ```jac
-# ❌ WRONG - Never do this!
+#  WRONG - Never do this!
 let [todos, setTodos] = useState([]);
 todos.push(newTodo);  # DON'T modify directly!
 
-# ✅ CORRECT - Create new array
+#  CORRECT - Create new array
 let [todos, setTodos] = useState([]);
 setTodos(todos.concat([newTodo]));  # Create new array
 ```
@@ -446,29 +446,29 @@ The child receives state but **cannot modify** the parent's state directly (we'l
 
 ---
 
-## ✅ What You've Learned
+##  What You've Learned
 
-- ✅ What state is and why we need it
-- ✅ How to use the `useState` hook
-- ✅ Creating multiple state variables
-- ✅ State naming conventions
-- ✅ Using `.map()` to render lists
-- ✅ State is immutable (don't modify directly)
-- ✅ Passing state to child components via props
+-  What state is and why we need it
+-  How to use the `useState` hook
+-  Creating multiple state variables
+-  State naming conventions
+-  Using `.map()` to render lists
+-  State is immutable (don't modify directly)
+-  Passing state to child components via props
 
 ---
 
-## 🐛 Common Issues
+##  Common Issues
 
 ### Issue: UI not updating when state changes
 
 **Check:** Are you modifying state directly?
 
 ```jac
-# ❌ Wrong
+#  Wrong
 todos.push(newTodo);
 
-# ✅ Correct
+#  Correct
 setTodos(todos.concat([newTodo]));
 ```
 
@@ -477,10 +477,10 @@ setTodos(todos.concat([newTodo]));
 **Check:** Did you initialize state as an array?
 
 ```jac
-# ❌ Wrong
+#  Wrong
 let [todos, setTodos] = useState();  # undefined
 
-# ✅ Correct
+#  Correct
 let [todos, setTodos] = useState([]);  # empty array
 ```
 
@@ -494,7 +494,7 @@ cl import from react {useState}
 
 ---
 
-## 🎯 Quick Exercise
+##  Quick Exercise
 
 Try adding more initial todos:
 
@@ -521,10 +521,10 @@ return <div>
 
 ---
 
-## ➡️ Next Step
+##  Next Step
 
 Great! You now have state in your app, but you can't change it yet. Clicking buttons does nothing!
 
 In the next step, we'll add **event handlers** to make your app fully interactive!
 
-👉 **[Continue to Step 6: Event Handlers](./step-06-events.md)**
+ **[Continue to Step 6: Event Handlers](./step-06-events.md)**

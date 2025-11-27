@@ -104,4 +104,3 @@ The examples demonstrate several best practices:
 **Common Patterns**
 
 Try-except patterns for different scenarios:
-

@@ -17,7 +17,7 @@ ID = TypeVar("ID")
 class Memory(Generic[ID, TANCH]):
     """Generic Memory Handler."""
 
-    __mem__: dict[ID, TANCH] = field(default_factory=dict)
+    __mem__: dict[ID | UUID, TANCH] = field(default_factory=dict)
     __gc__: set[TANCH] = field(default_factory=set)
 
     def close(self) -> None:
@@ -69,9 +69,9 @@ class Memory(Generic[ID, TANCH]):
         """Find one by id."""
         return self.__mem__.get(id)
 
-    def set(self, id: ID, data: TANCH) -> None:
+    def set(self, data: TANCH) -> None:
         """Save anchor to memory."""
-        self.__mem__[id] = data
+        self.__mem__[data.id] = data
 
     def remove(self, ids: ID | Iterable[ID]) -> None:
         """Remove anchor/s from memory."""
@@ -84,6 +84,22 @@ class Memory(Generic[ID, TANCH]):
 
     def commit(self, anchor: TANCH | None = None) -> None:
         """Commit all data from memory to datasource."""
+
+    def get_gc(self) -> list:
+        """Commit all data from memory to datasource."""
+        return list(self.__gc__)
+
+    def remove_from_gc(self, anchor) -> None:
+        """Commit all data from memory to datasource."""
+        self.__gc__.remove(anchor)
+
+    def get_mem(self) -> dict:
+        """Commit all data from memory to datasource."""
+        return self.__mem__
+
+    def remove_from_mem(self, anchor) -> None:
+        """Commit all data from memory to datasource."""
+        self.__mem__.pop(anchor)
 
 
 @dataclass

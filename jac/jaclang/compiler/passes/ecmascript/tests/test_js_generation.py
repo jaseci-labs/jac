@@ -86,7 +86,8 @@ class JavaScriptGenerationTests(TestCase):
             "function add",
             "function greet",
             "function fibonacci",
-            "for (const i of range(limit))",
+            "for (const i of array)",
+            "for (let i = 0; i < limit; i += 1;)",
             "while (counter > 0)",
         ]:
             self.assertIn(pattern, js_code)
@@ -269,8 +270,8 @@ cl def check_types() {
             'import React from "react";',
             'import axios from "axios";',
             'import Vue from "vue";',
-            'import Button from "./components.Button.js";',
-            'import utils from "../lib.utils.js";',
+            'import Button from "./components/Button.js";',
+            'import utils from "../lib/utils.js";',
         ]
         for pattern in imports:
             self.assertIn(pattern, js_code)
@@ -290,7 +291,7 @@ cl def check_types() {
             'import * as _ from "lodash";',
             'import * as DateUtils from "dateutils";',
             'import * as utils from "./utils.js";',
-            'import * as helpers from "../lib.helpers.js";',
+            'import * as helpers from "../lib/helpers.js";',
         ]
         for pattern in imports:
             self.assertIn(pattern, js_code)
@@ -299,6 +300,14 @@ cl def check_types() {
         for pattern in ["import { * }", "import { * as"]:
             self.assertNotIn(pattern, js_code)
         self.assert_balanced_syntax(js_code, fixture_path)
+
+    def test_atom_trailer_starts_with_specialvaref_js(self) -> None:
+        """Test that atom trailers starting with SpecialVarRef generate correct JS."""
+        fixture_path = self.get_fixture_path("root_render.jac")
+        js_code = self.compile_fixture_to_js(fixture_path)
+
+        self.assertIn("root.render();", js_code)
+        self.assertNotIn("obj", js_code)
 
     def test_assignment_inside_globvar_js(self) -> None:
         """Test Category 4 namespace imports from proposal document."""
@@ -372,7 +381,7 @@ def test_usage() {
                 'import { MessageFormatter } from "./utils.js";',
                 'import { formatter } from "../lib.js";',
                 'import { settings } from "../../config.js";',
-                'import { Button } from "./components.Button.js";',
+                'import { Button } from "./components/Button.js";',
             ]
             for pattern in imports:
                 self.assertIn(pattern, js_code)

@@ -1,7 +1,7 @@
 from os import path
 from dataclasses import dataclass
 
-from byllm.lib import by, Model, Image
+from byllm.lib import by, MockLLM, Image
 
 
 @dataclass
@@ -11,7 +11,7 @@ class Person:
     description: str
 
 
-llm = Model(
+llm = MockLLM(
     # model_name="gpt-4o",
     model_name="mockllm",
     outputs=[

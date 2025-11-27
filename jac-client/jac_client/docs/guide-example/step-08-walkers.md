@@ -1,12 +1,12 @@
 # Step 8: Backend with Walkers
 
-> **💡 Quick Tip:** Each step has two parts. **Part 1** shows you what to build. **Part 2** explains why it works. Want to just build? Skip all Part 2 sections!
+> ** Quick Tip:** Each step has two parts. **Part 1** shows you what to build. **Part 2** explains why it works. Want to just build? Skip all Part 2 sections!
 
 In this step, you'll add a **real backend** to your app using walkers - so your todos are stored on a server!
 
 ---
 
-## 🏗️ Part 1: Building the App
+##  Part 1: Building the App
 
 ### Step 8.1: Define the Todo Node
 
@@ -231,15 +231,15 @@ When rendering todos, use `_jac_id` instead of custom id:
 1. Add some todos
 2. Check/uncheck them
 3. Delete some
-4. **Refresh the page** - your todos persist!  🎉
+4. **Refresh the page** - your todos persist!
 
 ---
 
-**⏭️ Want to skip the theory?** Jump to [Step 9: Authentication](./step-09-authentication.md)
+**⏭ Want to skip the theory?** Jump to [Step 9: Authentication](./step-09-authentication.md)
 
 ---
 
-## 💡 Part 2: Understanding the Concepts
+##  Part 2: Understanding the Concepts
 
 ### What Are Walkers?
 
@@ -422,28 +422,28 @@ useEffect(lambda -> None {
 
 ---
 
-## ✅ What You've Learned
+##  What You've Learned
 
-- ✅ What walkers are (backend functions)
-- ✅ How to define data models with nodes
-- ✅ Creating walkers for CRUD operations
-- ✅ Calling walkers from frontend with `spawn`
-- ✅ Graph traversal (`-->`, `` `?Node ``)
-- ✅ Creating node connections (`++>`)
-- ✅ Reporting data to frontend
-- ✅ Using `_jac_id` for node references
-- ✅ Data persistence on the server
+-  What walkers are (backend functions)
+-  How to define data models with nodes
+-  Creating walkers for CRUD operations
+-  Calling walkers from frontend with `spawn`
+-  Graph traversal (`-->`, `` `?Node ``)
+-  Creating node connections (`++>`)
+-  Reporting data to frontend
+-  Using `_jac_id` for node references
+-  Data persistence on the server
 
 ---
 
-## 🐛 Common Issues
+##  Common Issues
 
 ### Issue: Walker not found
 
 **Check:** Is the walker defined OUTSIDE the `cl { }` block?
 
 ```jac
-# ✅ Correct
+#  Correct
 walker read_todos {
     # ...
 }
@@ -452,7 +452,7 @@ cl {
     # frontend code
 }
 
-# ❌ Wrong
+#  Wrong
 cl {
     walker read_todos {  # Can't define walkers in frontend!
         # ...
@@ -465,12 +465,12 @@ cl {
 **Check:** Did you call `report` in your walker?
 
 ```jac
-# ❌ Wrong - no report
+#  Wrong - no report
 can read with `root entry {
     visit [-->(`?Todo)];
 }
 
-# ✅ Correct - report in Todo entry
+#  Correct - report in Todo entry
 can report_todos with Todo entry {
     report here;
 }
@@ -497,7 +497,7 @@ if result.reports and result.reports.length > 0 {
 
 ---
 
-## 🎯 Quick Exercise
+##  Quick Exercise
 
 Try adding a walker to clear all completed todos:
 
@@ -525,10 +525,10 @@ async def clearCompleted() -> None {
 
 ---
 
-## ➡️ Next Step
+##  Next Step
 
 Excellent! Your app now has a real backend. But there's a problem: **everyone can see everyone's todos!**
 
 In the next step, we'll add **authentication** to make your app secure and private!
 
-👉 **[Continue to Step 9: Authentication](./step-09-authentication.md)**
+ **[Continue to Step 9: Authentication](./step-09-authentication.md)**

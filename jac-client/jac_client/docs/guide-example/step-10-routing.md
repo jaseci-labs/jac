@@ -1,12 +1,12 @@
 # Step 10: Adding Routing
 
-> **💡 Quick Tip:** Each step has two parts. **Part 1** shows you what to build. **Part 2** explains why it works. Want to just build? Skip all Part 2 sections!
+> ** Quick Tip:** Each step has two parts. **Part 1** shows you what to build. **Part 2** explains why it works. Want to just build? Skip all Part 2 sections!
 
 In this step, you'll add multiple pages to your app so users can navigate between login, signup, and todos!
 
 ---
 
-## 🏗️ Part 1: Building the App
+##  Part 1: Building the App
 
 ### Step 10.1: Import Routing Components
 
@@ -237,11 +237,11 @@ def app() -> any {
 
 ---
 
-**⏭️ Want to skip the theory?** Jump to [Step 11: Final Integration](./step-11-final.md)
+**⏭ Want to skip the theory?** Jump to [Step 11: Final Integration](./step-11-final.md)
 
 ---
 
-## 💡 Part 2: Understanding the Concepts
+##  Part 2: Understanding the Concepts
 
 ### What is Routing?
 
@@ -319,10 +319,10 @@ def login():
 **vs regular anchor tag:**
 
 ```jac
-# ❌ Wrong - causes page reload
+#  Wrong - causes page reload
 <a href="/login">Go to Login</a>
 
-# ✅ Correct - no page reload
+#  Correct - no page reload
 <Link to="/login">Go to Login</Link>
 ```
 
@@ -463,19 +463,19 @@ def handleLogout() -> None {
 
 ---
 
-## ✅ What You've Learned
+##  What You've Learned
 
-- ✅ What client-side routing is
-- ✅ Setting up Router, Routes, and Route
-- ✅ Creating navigation with Link
-- ✅ Programmatic navigation with Navigate
-- ✅ Protected routes with authentication checks
-- ✅ Conditional navigation based on auth status
-- ✅ Common routing patterns
+-  What client-side routing is
+-  Setting up Router, Routes, and Route
+-  Creating navigation with Link
+-  Programmatic navigation with Navigate
+-  Protected routes with authentication checks
+-  Conditional navigation based on auth status
+-  Common routing patterns
 
 ---
 
-## 🐛 Common Issues
+##  Common Issues
 
 ### Issue: Links don't work
 
@@ -489,10 +489,10 @@ def handleLogout() -> None {
 **Cause:** Using `<a href="">` instead of `<Link to="">`
 
 ```jac
-# ❌ Wrong
+#  Wrong
 <a href="/login">Login</a>
 
-# ✅ Correct
+#  Correct
 <Link to="/login">Login</Link>
 ```
 
@@ -511,7 +511,7 @@ def handleLogout() -> None {
 
 ---
 
-## 🎯 Quick Exercise
+##  Quick Exercise
 
 Try adding a 404 page for unknown routes:
 
@@ -532,9 +532,8 @@ def NotFoundPage() -> any {
 
 ---
 
-## ➡️ Next Step
+##  Next Step
 
 Congratulations! You've learned all the key concepts. Now let's put everything together into the **complete, final app**!
 
-👉 **[Continue to Step 11: Final Integration](./step-11-final.md)**
-
+ **[Continue to Step 11: Final Integration](./step-11-final.md)**

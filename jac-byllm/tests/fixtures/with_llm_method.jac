@@ -1,4 +1,4 @@
-import from byllm.lib { Model }
+import from byllm.lib { MockLLM }
 
 class PersonalityIndex {
     has index: int;
@@ -9,7 +9,7 @@ enum Personality {
     EXTROVERT
 }
 
-glob llm = Model(
+glob llm = MockLLM(
     model_name="mockllm",
     outputs=[Personality.INTROVERT],
 );

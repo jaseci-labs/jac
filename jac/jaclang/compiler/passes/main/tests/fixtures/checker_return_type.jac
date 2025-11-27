@@ -11,4 +11,3 @@ def bar() -> int {
     return 1;   # <-- Ok
     return 1.1; # <-- Error
 }
-

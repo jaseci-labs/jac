@@ -233,6 +233,13 @@ class JacLangServer(JacProgram , LanguageServer) {
         self.debug("Queue is now empty");
     }
 
+    """Synchronous version of wait_till_idle for testing."""
+    def wait_till_idle_sync(self: JacLangServer) -> None {
+        self.debug("Waiting for queue to empty (sync)...");
+        self.queue.join();
+        self.debug("Queue is now empty");
+    }
+
     """Return completion for a file."""
     async def get_completion(
         self: JacLangServer,

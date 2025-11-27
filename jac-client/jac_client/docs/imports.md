@@ -4,7 +4,7 @@ Learn how to import third-party libraries, other Jac files, and JavaScript modul
 
 ---
 
-## 📚 Table of Contents
+##  Table of Contents
 
 - [Importing Jac-Client Utilities](#importing-jac-client-utilities)
 - [Working with Third-Party Node Modules](#working-with-third-party-node-modules)
@@ -677,7 +677,7 @@ cl {
         return <div>
             <h1>{count} {pluralWord}</h1>
             <Rotate>
-                <span style={{"fontSize": "48px"}}>😂</span>
+                <span style={{"fontSize": "48px"}}></span>
             </Rotate>
         </div>;
     }
@@ -983,7 +983,7 @@ cl def ValidationForm() -> any {
 ### 1. Organize Imports
 
 ```jac
-# ✅ Good: Group imports logically
+#  Good: Group imports logically
 # Third-party libraries
 cl import from antd {
     Button,
@@ -1138,5 +1138,4 @@ Type errors with imported functions
 - **JavaScript Files**: Import with `cl import from .filename`
 - **Best Practices**: Organize imports, import only what you need, document exports
 
-Imports in Jac make it easy to use third-party libraries and organize your code! 🚀
-
+Imports in Jac make it easy to use third-party libraries and organize your code!

@@ -25,4 +25,3 @@ cl def app() {
         <CardTest />
     </div>;
 }
-

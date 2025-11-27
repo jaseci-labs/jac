@@ -16,4 +16,3 @@ impl SomeObj.foo(param1: str) -> str {
 impl SomeObj.bar(param1: str, praam2:int) -> str {
     return "bar";
 }
-

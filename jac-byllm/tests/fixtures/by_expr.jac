@@ -1,4 +1,4 @@
-import from byllm.lib { Model, MockToolCall }
+import from byllm.lib { MockLLM, MockToolCall }
 
 
 """Run Python code and return the output, if any error exists, return the error message."""
@@ -17,13 +17,13 @@ def run_and_test_python_code(code: str) -> str {
 
 
 glob models = {
-    "text-gen": Model(
+    "text-gen": MockLLM(
         # model_name="gpt-4o-mini",
         model_name="mockllm",
         outputs=["Hello, Alice! It's great to see you!"]
     ),
 
-    "code-gen": Model(
+    "code-gen": MockLLM(
         # model_name="gpt-4o-mini",
         model_name="mockllm",
         outputs=[
