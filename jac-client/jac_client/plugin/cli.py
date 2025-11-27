@@ -7,7 +7,7 @@ import subprocess
 import sys
 
 from jaclang.cli.cmdreg import cmd_registry
-from jaclang.runtimelib.machine import hookimpl
+from jaclang.runtimelib.runtime import hookimpl
 
 
 class JacCmd:

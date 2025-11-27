@@ -23,7 +23,7 @@ from jaclang.runtimelib.constructs import (
     Root,
     WalkerArchetype,
 )
-from jaclang.runtimelib.machine import JacMachine as Jac
+from jaclang.runtimelib.runtime import JacRuntime as Jac
 
 # Type Aliases
 JsonValue: TypeAlias = (

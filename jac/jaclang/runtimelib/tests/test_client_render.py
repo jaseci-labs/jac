@@ -6,7 +6,7 @@ import json
 import re
 from pathlib import Path
 
-from jaclang.runtimelib.machine import JacMachine as Jac
+from jaclang.runtimelib.runtime import JacRuntime as Jac
 from jaclang.runtimelib.server import JacAPIServer
 from jaclang.utils.test import TestCase
 

@@ -4,10 +4,10 @@ import io
 import os
 import sys
 
-from jaclang import JacMachine as Jac
+from jaclang import JacRuntime as Jac
 from jaclang.cli import cli
 from jaclang.compiler.program import JacProgram
-from jaclang.runtimelib.machine import JacMachineInterface
+from jaclang.runtimelib.runtime import JacRuntimeInterface
 from jaclang.settings import settings
 from jaclang.utils.test import TestCase
 
@@ -21,7 +21,7 @@ class TestLoader(TestCase):
         sys.modules.pop("fixtures", None)
         sys.modules.pop("fixtures.hello_world", None)
         Jac.set_base_path(self.fixture_abs_path(__file__))
-        JacMachineInterface.attach_program(
+        JacRuntimeInterface.attach_program(
             JacProgram(),
         )
         (h,) = Jac.jac_import("fixtures.hello_world", base_path=__file__)
@@ -33,7 +33,7 @@ class TestLoader(TestCase):
         sys.modules.pop("fixtures", None)
         sys.modules.pop("fixtures.hello_world", None)
         Jac.set_base_path(self.fixture_abs_path(__file__))
-        JacMachineInterface.attach_program(
+        JacRuntimeInterface.attach_program(
             JacProgram(),
         )
         Jac.jac_import("fixtures.hello_world", base_path=__file__)
@@ -99,7 +99,7 @@ class TestLoader(TestCase):
 
         try:
             Jac.set_base_path(self.fixture_abs_path(__file__))
-            JacMachineInterface.attach_program(
+            JacRuntimeInterface.attach_program(
                 JacProgram(),
             )
             Jac.jac_import(module_name, base_path=__file__)
@@ -147,7 +147,7 @@ class TestLoader(TestCase):
         try:
             os.chdir(os.path.dirname(self.fixture_abs_path("jac_import_py_files.py")))
             Jac.set_base_path(self.fixture_abs_path("jac_import_py_files.py"))
-            JacMachineInterface.attach_program(JacProgram())
+            JacRuntimeInterface.attach_program(JacProgram())
             Jac.jac_import(
                 "jac_import_py_files",
                 base_path=self.fixture_abs_path("jac_import_py_files.py"),
@@ -172,7 +172,7 @@ class TestLoader(TestCase):
             os.chdir(os.path.dirname(self.fixture_abs_path("jac_import_py_files.py")))
             Jac.reset_machine()
             Jac.set_base_path(self.fixture_abs_path("jac_import_py_files.py"))
-            JacMachineInterface.attach_program(JacProgram())
+            JacRuntimeInterface.attach_program(JacProgram())
             Jac.jac_import(
                 "jac_import_py_files",
                 base_path=self.fixture_abs_path("jac_import_py_files.py"),

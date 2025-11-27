@@ -94,7 +94,7 @@ class ExecutionContext:
         session: str | None = None,
         root: str | None = None,
     ) -> None:
-        """Initialize JacMachine."""
+        """Initialize JacRuntime."""
         self.mem: Memory = ShelfStorage(session)
         self.reports: list[Any] = []
         self.custom: Any = MISSING
@@ -135,7 +135,7 @@ class JacAccessValidation:
     @staticmethod
     def elevate_root() -> None:
         """Elevate context root to system_root."""
-        jctx = JacMachineInterface.get_context()
+        jctx = JacRuntimeInterface.get_context()
         jctx.root_state = jctx.system_root
 
     @staticmethod
@@ -185,7 +185,7 @@ class JacAccessValidation:
     def check_read_access(to: Anchor) -> bool:
         """Read Access Validation."""
         if not (
-            access_level := JacMachineInterface.check_access_level(to)
+            access_level := JacRuntimeInterface.check_access_level(to)
             > AccessLevel.NO_ACCESS
         ):
             logger.info(
@@ -198,7 +198,7 @@ class JacAccessValidation:
     def check_connect_access(to: Anchor) -> bool:
         """Write Access Validation."""
         if not (
-            access_level := JacMachineInterface.check_access_level(to)
+            access_level := JacRuntimeInterface.check_access_level(to)
             > AccessLevel.READ
         ):
             logger.info(
@@ -211,7 +211,7 @@ class JacAccessValidation:
     def check_write_access(to: Anchor) -> bool:
         """Write Access Validation."""
         if not (
-            access_level := JacMachineInterface.check_access_level(to)
+            access_level := JacRuntimeInterface.check_access_level(to)
             > AccessLevel.CONNECT
         ):
             logger.info(
@@ -226,7 +226,7 @@ class JacAccessValidation:
         if not to.persistent or to.hash == 0:
             return AccessLevel.WRITE
 
-        jctx = JacMachineInterface.get_context()
+        jctx = JacRuntimeInterface.get_context()
 
         jroot = jctx.root_state
 
@@ -288,14 +288,14 @@ class JacNode:
                         destination.direction in [EdgeDir.OUT, EdgeDir.ANY]
                         and nanch == source
                         and destination.node_filter(target.archetype)
-                        and JacMachineInterface.check_read_access(target)
+                        and JacRuntimeInterface.check_read_access(target)
                     ):
                         edges[anchor] = anchor.archetype
                     if (
                         destination.direction in [EdgeDir.IN, EdgeDir.ANY]
                         and nanch == target
                         and destination.node_filter(source.archetype)
-                        and JacMachineInterface.check_read_access(source)
+                        and JacRuntimeInterface.check_read_access(source)
                     ):
                         edges[anchor] = anchor.archetype
         return list(edges.values())
@@ -324,7 +324,7 @@ class JacNode:
                         destination.direction in [EdgeDir.OUT, EdgeDir.ANY]
                         and nanch == source
                         and destination.node_filter(target.archetype)
-                        and JacMachineInterface.check_read_access(target)
+                        and JacRuntimeInterface.check_read_access(target)
                     ):
                         loc[anchor] = anchor.archetype
                         loc[target] = target.archetype
@@ -332,7 +332,7 @@ class JacNode:
                         destination.direction in [EdgeDir.IN, EdgeDir.ANY]
                         and nanch == target
                         and destination.node_filter(source.archetype)
-                        and JacMachineInterface.check_read_access(source)
+                        and JacRuntimeInterface.check_read_access(source)
                     ):
                         loc[anchor] = anchor.archetype
                         loc[source] = source.archetype
@@ -358,14 +358,14 @@ class JacNode:
                         destination.direction in [EdgeDir.OUT, EdgeDir.ANY]
                         and nanch == source
                         and destination.node_filter(target.archetype)
-                        and JacMachineInterface.check_read_access(target)
+                        and JacRuntimeInterface.check_read_access(target)
                     ):
                         nodes[target] = target.archetype
                     if (
                         destination.direction in [EdgeDir.IN, EdgeDir.ANY]
                         and nanch == target
                         and destination.node_filter(source.archetype)
-                        and JacMachineInterface.check_read_access(source)
+                        and JacRuntimeInterface.check_read_access(source)
                     ):
                         nodes[source] = source.archetype
         return list(nodes.values())
@@ -385,8 +385,8 @@ class JacEdge:
     @staticmethod
     def detach(edge: EdgeAnchor) -> None:
         """Detach edge from nodes."""
-        JacMachineInterface.remove_edge(node=edge.source, edge=edge)
-        JacMachineInterface.remove_edge(node=edge.target, edge=edge)
+        JacRuntimeInterface.remove_edge(node=edge.source, edge=edge)
+        JacRuntimeInterface.remove_edge(node=edge.target, edge=edge)
 
 
 class JacWalker:
@@ -676,8 +676,8 @@ class JacWalker:
         loc: NodeAnchor | EdgeAnchor = assign(walker, targ)
 
         if warch.__jac_async__:
-            return JacMachineInterface.async_spawn_call(walker=walker, node=loc)
-        return JacMachineInterface.spawn_call(walker=walker, node=loc)
+            return JacRuntimeInterface.async_spawn_call(walker=walker, node=loc)
+        return JacRuntimeInterface.spawn_call(walker=walker, node=loc)
 
     @staticmethod
     def disengage(walker: WalkerArchetype) -> bool:
@@ -816,9 +816,9 @@ class JacBasics:
     @staticmethod
     def get_context() -> ExecutionContext:
         """Get current execution context."""
-        if JacMachine.exec_ctx is None:
-            JacMachine.exec_ctx = JacMachineInterface.create_j_context()
-        return JacMachine.exec_ctx
+        if JacRuntime.exec_ctx is None:
+            JacRuntime.exec_ctx = JacRuntimeInterface.create_j_context()
+        return JacRuntime.exec_ctx
 
     @staticmethod
     def commit(anchor: Anchor | Archetype | None = None) -> None:
@@ -826,13 +826,13 @@ class JacBasics:
         if isinstance(anchor, Archetype):
             anchor = anchor.__jac__
 
-        mem = JacMachineInterface.get_context().mem
+        mem = JacRuntimeInterface.get_context().mem
         mem.commit(anchor)
 
     @staticmethod
     def reset_graph(root: Root | None = None) -> int:
         """Purge current or target graph."""
-        ctx = JacMachineInterface.get_context()
+        ctx = JacRuntimeInterface.get_context()
         mem = cast(ShelfStorage, ctx.mem)
         ranchor = root.__jac__ if root else ctx.root_state
 
@@ -847,7 +847,7 @@ class JacBasics:
 
             if loaded_anchor := mem.find_by_id(anchor.id):
                 deleted_count += 1
-                JacMachineInterface.destroy([loaded_anchor])
+                JacRuntimeInterface.destroy([loaded_anchor])
 
         return deleted_count
 
@@ -855,8 +855,8 @@ class JacBasics:
     def get_object(id: str) -> Archetype | None:
         """Get object given id."""
         if id == "root":
-            return JacMachineInterface.get_context().root_state.archetype
-        elif obj := JacMachineInterface.get_context().mem.find_by_id(UUID(id)):
+            return JacRuntimeInterface.get_context().root_state.archetype
+        elif obj := JacRuntimeInterface.get_context().mem.find_by_id(UUID(id)):
             return obj.archetype
 
         return None
@@ -869,20 +869,20 @@ class JacBasics:
     @staticmethod
     def make_archetype(cls: type[Archetype]) -> type[Archetype]:
         """Create a obj archetype."""
-        entries: OrderedDict[str, JacMachineInterface.DSFunc] = OrderedDict(
+        entries: OrderedDict[str, JacRuntimeInterface.DSFunc] = OrderedDict(
             (fn.name, fn) for fn in cls._jac_entry_funcs_
         )
-        exits: OrderedDict[str, JacMachineInterface.DSFunc] = OrderedDict(
+        exits: OrderedDict[str, JacRuntimeInterface.DSFunc] = OrderedDict(
             (fn.name, fn) for fn in cls._jac_exit_funcs_
         )
         for func in cls.__dict__.values():
             if callable(func):
                 if hasattr(func, "__jac_entry"):
-                    entries[func.__name__] = JacMachineInterface.DSFunc(
+                    entries[func.__name__] = JacRuntimeInterface.DSFunc(
                         func.__name__, func
                     )
                 if hasattr(func, "__jac_exit"):
-                    exits[func.__name__] = JacMachineInterface.DSFunc(
+                    exits[func.__name__] = JacRuntimeInterface.DSFunc(
                         func.__name__, func
                     )
 
@@ -972,8 +972,8 @@ class JacBasics:
         if lng is None:
             lng = infer_language(target, base_path)
 
-        if not JacMachine.program:
-            JacMachineInterface.attach_program(JacProgram())
+        if not JacRuntime.program:
+            JacRuntimeInterface.attach_program(JacProgram())
 
         # Compute the module name
         # Convert relative imports (e.g., ".foo") to absolute
@@ -1057,8 +1057,8 @@ class JacBasics:
                 if spec.submodule_search_locations:
                     module.__path__ = spec.submodule_search_locations
 
-                # Register in JacMachine
-                JacMachineInterface.load_module("__main__", module)
+                # Register in JacRuntime
+                JacRuntimeInterface.load_module("__main__", module)
 
                 # Execute the module
                 if spec.loader:
@@ -1150,7 +1150,7 @@ class JacBasics:
                 if mod_name.endswith(".test"):
                     mod_name = mod_name[:-5]
                 JacTestCheck.reset()
-                JacMachineInterface.jac_import(target=mod_name, base_path=base)
+                JacRuntimeInterface.jac_import(target=mod_name, base_path=base)
                 JacTestCheck.run_test(
                     xit, maxfail, verbose, os.path.abspath(filepath), func_name
                 )
@@ -1178,7 +1178,7 @@ class JacBasics:
                         test_file = True
                         print(f"\n\n\t\t* Inside {root_dir}" + "/" + f"{file} *")
                         JacTestCheck.reset()
-                        JacMachineInterface.jac_import(
+                        JacRuntimeInterface.jac_import(
                             target=file[:-4], base_path=root_dir
                         )
                         JacTestCheck.run_test(
@@ -1206,7 +1206,7 @@ class JacBasics:
     @staticmethod
     def log_report(expr: Any, custom: bool = False) -> None:  # noqa: ANN401
         """Jac's report stmt feature."""
-        ctx = JacMachineInterface.get_context()
+        ctx = JacRuntimeInterface.get_context()
         if custom:
             ctx.custom = expr
         else:
@@ -1228,14 +1228,14 @@ class JacBasics:
         destinations = path.destinations[:-1] if path.edge_only else path.destinations
         while destinations:
             dest = path.destinations.pop(0)
-            origin = JacMachineInterface.edges_to_nodes(origin, dest)
+            origin = JacRuntimeInterface.edges_to_nodes(origin, dest)
 
         if path.edge_only:
             if path.from_visit:
-                return JacMachineInterface.get_edges_with_node(
+                return JacRuntimeInterface.get_edges_with_node(
                     origin, path.destinations[-1]
                 )
-            return JacMachineInterface.get_edges(origin, path.destinations[-1])
+            return JacRuntimeInterface.get_edges(origin, path.destinations[-1])
         return origin
 
     @staticmethod
@@ -1269,12 +1269,12 @@ class JacBasics:
 
         for i in left:
             _left = i.__jac__
-            if JacMachineInterface.check_connect_access(_left):
+            if JacRuntimeInterface.check_connect_access(_left):
                 for j in right:
                     _right = j.__jac__
-                    if JacMachineInterface.check_connect_access(_right):
+                    if JacRuntimeInterface.check_connect_access(_right):
                         edges.append(
-                            JacMachineInterface.build_edge(
+                            JacRuntimeInterface.build_edge(
                                 is_undirected=undir,
                                 conn_type=edge,
                                 conn_assign=conn_assign,
@@ -1308,24 +1308,24 @@ class JacBasics:
                         dir in [EdgeDir.OUT, EdgeDir.ANY]
                         and node == source
                         and target.archetype in right
-                        and JacMachineInterface.check_connect_access(target)
+                        and JacRuntimeInterface.check_connect_access(target)
                     ):
                         (
-                            JacMachineInterface.destroy([anchor])
+                            JacRuntimeInterface.destroy([anchor])
                             if anchor.persistent
-                            else JacMachineInterface.detach(anchor)
+                            else JacRuntimeInterface.detach(anchor)
                         )
                         disconnect_occurred = True
                     if (
                         dir in [EdgeDir.IN, EdgeDir.ANY]
                         and node == target
                         and source.archetype in right
-                        and JacMachineInterface.check_connect_access(source)
+                        and JacRuntimeInterface.check_connect_access(source)
                     ):
                         (
-                            JacMachineInterface.destroy([anchor])
+                            JacRuntimeInterface.destroy([anchor])
                             if anchor.persistent
-                            else JacMachineInterface.detach(anchor)
+                            else JacRuntimeInterface.detach(anchor)
                         )
                         disconnect_occurred = True
 
@@ -1343,12 +1343,12 @@ class JacBasics:
     @staticmethod
     def root() -> Root:
         """Jac's root getter."""
-        return JacMachine.get_context().get_root()
+        return JacRuntime.get_context().get_root()
 
     @staticmethod
     def get_all_root() -> list[Root]:
         """Get all the roots."""
-        jmem = JacMachineInterface.get_context().mem
+        jmem = JacRuntimeInterface.get_context().mem
         return list(jmem.all_root())
 
     @staticmethod
@@ -1379,7 +1379,7 @@ class JacBasics:
                     else:
                         raise ValueError(f"Invalid attribute: {fld}")
             if source.persistent or target.persistent:
-                JacMachineInterface.save(eanch)
+                JacRuntimeInterface.save(eanch)
             return edge
 
         return builder
@@ -1391,7 +1391,7 @@ class JacBasics:
         """Destroy object."""
         anchor = obj.__jac__ if isinstance(obj, Archetype) else obj
 
-        jctx = JacMachineInterface.get_context()
+        jctx = JacRuntimeInterface.get_context()
 
         if not anchor.persistent and not anchor.root:
             anchor.persistent = True
@@ -1403,12 +1403,12 @@ class JacBasics:
             case NodeAnchor():
                 for ed in anchor.edges:
                     if ed.is_populated() and not ed.persistent:
-                        JacMachineInterface.save(ed)
+                        JacRuntimeInterface.save(ed)
             case EdgeAnchor():
                 if (src := anchor.source) and src.is_populated() and not src.persistent:
-                    JacMachineInterface.save(src)
+                    JacRuntimeInterface.save(src)
                 if (trg := anchor.target) and trg.is_populated() and not trg.persistent:
-                    JacMachineInterface.save(trg)
+                    JacRuntimeInterface.save(trg)
             case _:
                 pass
 
@@ -1421,17 +1421,17 @@ class JacBasics:
                 return
             anchor = obj.__jac__ if isinstance(obj, Archetype) else obj
 
-            if JacMachineInterface.check_write_access(anchor):
+            if JacRuntimeInterface.check_write_access(anchor):
                 match anchor:
                     case NodeAnchor():
                         for edge in anchor.edges[:]:
-                            JacMachineInterface.destroy([edge])
+                            JacRuntimeInterface.destroy([edge])
                     case EdgeAnchor():
-                        JacMachineInterface.detach(anchor)
+                        JacRuntimeInterface.detach(anchor)
                     case _:
                         pass
 
-                JacMachineInterface.get_context().mem.remove(anchor.id)
+                JacRuntimeInterface.get_context().mem.remove(anchor.id)
 
     @staticmethod
     def on_entry(func: Callable) -> Callable:
@@ -1460,7 +1460,7 @@ class JacClientBundle:
         force: bool = False,
     ) -> ClientBundle:
         """Build a client bundle for the supplied module."""
-        builder = JacMachineInterface.get_client_bundle_builder()
+        builder = JacRuntimeInterface.get_client_bundle_builder()
         return builder.build(module, force=force)
 
 
@@ -1575,14 +1575,14 @@ class JacByLLM:
                     invoke_args[i] = arg
                 for key, value in kwargs.items():
                     invoke_args[key] = value
-                mtir = JacMachine.get_mtir(
+                mtir = JacRuntime.get_mtir(
                     caller=caller,
                     args=invoke_args,
                     call_params=(
                         model.call_params if hasattr(model, "call_params") else {}
                     ),
                 )
-                return JacMachine.call_llm(model, mtir)
+                return JacRuntime.call_llm(model, mtir)
 
             return _wrapped_caller
 
@@ -1602,26 +1602,26 @@ class JacUtils:
     @staticmethod
     def attach_program(jac_program: JacProgram) -> None:
         """Attach a JacProgram to the machine."""
-        JacMachine.program = jac_program
+        JacRuntime.program = jac_program
 
     @staticmethod
     def load_module(
         module_name: str, module: types.ModuleType, force: bool = False
     ) -> None:
         """Load a module into the machine."""
-        if module_name not in JacMachine.loaded_modules or force:
-            JacMachine.loaded_modules[module_name] = module
+        if module_name not in JacRuntime.loaded_modules or force:
+            JacRuntime.loaded_modules[module_name] = module
             sys.modules[module_name] = module  # TODO: May want to nuke this one day
 
     @staticmethod
     def list_modules() -> list[str]:
         """List all loaded modules."""
-        return list(JacMachine.loaded_modules.keys())
+        return list(JacRuntime.loaded_modules.keys())
 
     @staticmethod
     def list_walkers(module_name: str) -> list[str]:
         """List all walkers in a specific module."""
-        module = JacMachine.loaded_modules.get(module_name)
+        module = JacRuntime.loaded_modules.get(module_name)
         if module:
             walkers = []
             for name, obj in inspect.getmembers(module):
@@ -1637,7 +1637,7 @@ class JacUtils:
     @staticmethod
     def list_nodes(module_name: str) -> list[str]:
         """List all nodes in a specific module."""
-        module = JacMachine.loaded_modules.get(module_name)
+        module = JacRuntime.loaded_modules.get(module_name)
         if module:
             nodes = []
             for name, obj in inspect.getmembers(module):
@@ -1653,7 +1653,7 @@ class JacUtils:
     @staticmethod
     def list_edges(module_name: str) -> list[str]:
         """List all edges in a specific module."""
-        module = JacMachine.loaded_modules.get(module_name)
+        module = JacRuntime.loaded_modules.get(module_name)
         if module:
             edges = []
             for name, obj in inspect.getmembers(module):
@@ -1680,12 +1680,12 @@ class JacUtils:
         which will automatically invoke JacMetaImporter.
         """
         if not base_path:
-            base_path = JacMachine.base_path_dir or os.getcwd()
+            base_path = JacRuntime.base_path_dir or os.getcwd()
 
         if base_path and not os.path.exists(base_path):
             os.makedirs(base_path)
         if not module_name:
-            module_name = f"_dynamic_module_{len(JacMachine.loaded_modules)}"
+            module_name = f"_dynamic_module_{len(JacRuntime.loaded_modules)}"
 
         with tempfile.NamedTemporaryFile(
             mode="w",
@@ -1702,7 +1702,7 @@ class JacUtils:
             tmp_module_name, _ = os.path.splitext(tmp_file_basename)
 
             # Use simplified jac_import which delegates to importlib
-            result = JacMachineInterface.jac_import(
+            result = JacRuntimeInterface.jac_import(
                 target=tmp_module_name,
                 base_path=base_path,
                 override_name=module_name,
@@ -1711,7 +1711,7 @@ class JacUtils:
             module = result[0] if result else None
 
             if module:
-                JacMachine.loaded_modules[module_name] = module
+                JacRuntime.loaded_modules[module_name] = module
             return module
         except Exception as e:
             logger.error(f"Error importing dynamic module '{module_name}': {e}")
@@ -1726,14 +1726,14 @@ class JacUtils:
         items: dict[str, str | str | None] | None,
     ) -> tuple[types.ModuleType, ...]:
         """Reimport the module using Python's reload mechanism."""
-        if module_name in JacMachine.loaded_modules:
+        if module_name in JacRuntime.loaded_modules:
             try:
-                old_module = JacMachine.loaded_modules[module_name]
+                old_module = JacRuntime.loaded_modules[module_name]
 
                 # Use jac_import with reload flag
-                result = JacMachineInterface.jac_import(
+                result = JacRuntimeInterface.jac_import(
                     target=module_name,
-                    base_path=JacMachine.base_path_dir,
+                    base_path=JacRuntime.base_path_dir,
                     items=items,
                     reload_module=True,
                     lng="jac",
@@ -1763,7 +1763,7 @@ class JacUtils:
         module_name: str = "__main__",
     ) -> NodeArchetype:
         """Spawn a node instance of the given node_name with attributes."""
-        node_class = JacMachineInterface.get_archetype(module_name, node_name)
+        node_class = JacRuntimeInterface.get_archetype(module_name, node_name)
         if isinstance(node_class, type) and issubclass(node_class, NodeArchetype):
             if attributes is None:
                 attributes = {}
@@ -1779,7 +1779,7 @@ class JacUtils:
         module_name: str = "__main__",
     ) -> WalkerArchetype:
         """Spawn a walker instance of the given walker_name."""
-        walker_class = JacMachineInterface.get_archetype(module_name, walker_name)
+        walker_class = JacRuntimeInterface.get_archetype(module_name, walker_name)
         if isinstance(walker_class, type) and issubclass(walker_class, WalkerArchetype):
             if attributes is None:
                 attributes = {}
@@ -1791,7 +1791,7 @@ class JacUtils:
     @staticmethod
     def get_archetype(module_name: str, archetype_name: str) -> Archetype | None:
         """Retrieve an archetype class from a module."""
-        module = JacMachine.loaded_modules.get(module_name)
+        module = JacRuntime.loaded_modules.get(module_name)
         if module:
             return getattr(module, archetype_name, None)
         return None
@@ -1799,7 +1799,7 @@ class JacUtils:
     @staticmethod
     def thread_run(func: Callable, *args: object) -> Future:  # noqa: ANN401
         """Run a function in a thread."""
-        _executor = JacMachine.pool
+        _executor = JacRuntime.pool
         return _executor.submit(func, *args)
 
     @staticmethod
@@ -1808,7 +1808,7 @@ class JacUtils:
         return future.result()
 
 
-class JacMachineInterface(
+class JacRuntimeInterface(
     JacClassReferences,
     JacAccessValidation,
     JacNode,
@@ -1929,13 +1929,13 @@ def generate_plugin_helpers(
     return spec_cls, impl_cls, proxy_cls
 
 
-JacMachineSpec, JacMachineImpl, JacMachineInterface = generate_plugin_helpers(  # type: ignore[misc]
-    JacMachineInterface
+JacRuntimeSpec, JacRuntimeImpl, JacRuntimeInterface = generate_plugin_helpers(  # type: ignore[misc]
+    JacRuntimeInterface
 )
-plugin_manager.add_hookspecs(JacMachineSpec)
+plugin_manager.add_hookspecs(JacRuntimeSpec)
 
 
-class JacMachine(JacMachineInterface):
+class JacRuntime(JacRuntimeInterface):
     """Jac Machine State."""
 
     loaded_modules: dict[str, types.ModuleType] = {}
@@ -1947,14 +1947,14 @@ class JacMachine(JacMachineInterface):
     @staticmethod
     def set_base_path(base_path: str) -> None:
         """Set the base path for the machine."""
-        JacMachine.base_path_dir = (
+        JacRuntime.base_path_dir = (
             base_path if os.path.isdir(base_path) else os.path.dirname(base_path)
         )
 
     @staticmethod
     def set_context(context: ExecutionContext) -> None:
         """Set the context for the machine."""
-        JacMachine.exec_ctx = context
+        JacRuntime.exec_ctx = context
 
     @staticmethod
     def reset_machine() -> None:
@@ -1962,13 +1962,13 @@ class JacMachine(JacMachineInterface):
         # Remove Jac modules from sys.modules, but skip special module names
         # that Python relies on (like __main__, __mp_main__, etc.)
         special_modules = {"__main__", "__mp_main__", "builtins"}
-        for i in JacMachine.loaded_modules.values():
+        for i in JacRuntime.loaded_modules.values():
             if i.__name__ not in special_modules:
                 sys.modules.pop(i.__name__, None)
-        JacMachine.loaded_modules.clear()
-        JacMachine.base_path_dir = os.getcwd()
-        JacMachine.program = JacProgram()
-        JacMachine.pool = ThreadPoolExecutor()
-        if JacMachine.exec_ctx is not None:
-            JacMachine.exec_ctx.mem.close()
-        JacMachine.exec_ctx = JacMachineInterface.create_j_context()
+        JacRuntime.loaded_modules.clear()
+        JacRuntime.base_path_dir = os.getcwd()
+        JacRuntime.program = JacProgram()
+        JacRuntime.pool = ThreadPoolExecutor()
+        if JacRuntime.exec_ctx is not None:
+            JacRuntime.exec_ctx.mem.close()
+        JacRuntime.exec_ctx = JacRuntimeInterface.create_j_context()

@@ -1,4 +1,4 @@
-import from jaclang.runtimelib.machine { JacMachine }
+import from jaclang.runtimelib.runtime { JacRuntime }
 import from bar { Item }
 
 
@@ -23,13 +23,13 @@ walker child_walker ( test_walker ) {}
 
 with entry {
     for value in range(1, 4) { root ++> test_node(value=value); root ++> Item(value=value); }
-    node_obj = JacMachine.spawn_node(
+    node_obj = JacRuntime.spawn_node(
         node_name='test_node', attributes={'value' : 0 }, module_name='__main__'
     );
-    walker_obj = JacMachine.spawn_walker(
+    walker_obj = JacRuntime.spawn_walker(
         walker_name='child_walker', module_name='__main__'
     );
-    external_node = JacMachine.spawn_node(
+    external_node = JacRuntime.spawn_node(
         node_name='Item', attributes={'value' : 0 }, module_name='bar'
     );
     root ++> external_node;

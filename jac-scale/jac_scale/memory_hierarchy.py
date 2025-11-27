@@ -140,7 +140,7 @@ class MongoDB:  # Memory[UUID, Anchor]):
         - Respect write and connect access
         """
         from jaclang.runtimelib.archetype import NodeAnchor
-        from jaclang.runtimelib.machine import JacMachineInterface as Jac
+        from jaclang.runtimelib.runtime import JacRuntimeInterface as Jac
 
         _id = self._to_uuid(anchor.id)
         try:
@@ -216,7 +216,7 @@ class MongoDB:  # Memory[UUID, Anchor]):
         - Uses MongoDB bulk_write for speed
         """
         from jaclang.runtimelib.archetype import NodeAnchor
-        from jaclang.runtimelib.machine import JacMachineInterface as Jac
+        from jaclang.runtimelib.runtime import JacRuntimeInterface as Jac
 
         ops: list = []
 

@@ -11,7 +11,7 @@ from types import CodeType
 
 import jaclang
 from jaclang.compiler.program import JacProgram
-from jaclang.runtimelib.machine import JacMachine as Jac
+from jaclang.runtimelib.runtime import JacRuntime as Jac
 from jaclang.utils.test import TestCase
 
 

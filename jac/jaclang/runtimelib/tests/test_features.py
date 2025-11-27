@@ -4,10 +4,10 @@ import inspect
 
 import pluggy
 
-from jaclang.runtimelib.machine import (
-    JacMachineImpl,
-    JacMachineInterface,
-    JacMachineSpec,
+from jaclang.runtimelib.runtime import (
+    JacRuntimeImpl,
+    JacRuntimeInterface,
+    JacRuntimeSpec,
 )
 from jaclang.utils.test import TestCase
 
@@ -38,11 +38,11 @@ class TestFeatures(TestCase):
         return methods
 
     def test_feature_funcs_synced(self) -> None:
-        """Test if JacMachine, JacMachineDefaults, and JacMachineSpec have synced methods."""
+        """Test if JacRuntime, JacRuntimeDefaults, and JacRuntimeSpec have synced methods."""
         # Get methods of each class
-        jac_feature_methods = self.get_methods(JacMachineInterface)
-        jac_feature_defaults_methods = self.get_methods(JacMachineImpl)
-        jac_feature_spec_methods = self.get_methods(JacMachineSpec)
+        jac_feature_methods = self.get_methods(JacRuntimeInterface)
+        jac_feature_defaults_methods = self.get_methods(JacRuntimeImpl)
+        jac_feature_spec_methods = self.get_methods(JacRuntimeSpec)
 
         # Check if all methods are the same in all classes
         self.assertGreater(len(jac_feature_methods), 5)

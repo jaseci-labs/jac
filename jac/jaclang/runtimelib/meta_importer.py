@@ -15,8 +15,8 @@ import sys
 from collections.abc import Sequence
 from types import ModuleType
 
-from jaclang.runtimelib.machine import JacMachine as Jac
-from jaclang.runtimelib.machine import JacMachineInterface
+from jaclang.runtimelib.runtime import JacRuntime as Jac
+from jaclang.runtimelib.runtime import JacRuntimeInterface
 from jaclang.settings import settings
 from jaclang.utils.log import logging
 from jaclang.utils.module_resolver import get_jac_search_paths, get_py_search_paths
@@ -178,8 +178,8 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         file_path = module.__spec__.origin
         is_pkg = module.__spec__.submodule_search_locations is not None
 
-        # Register module in JacMachine's tracking
-        JacMachineInterface.load_module(module.__name__, module)
+        # Register module in JacRuntime's tracking
+        JacRuntimeInterface.load_module(module.__name__, module)
 
         # Get and execute bytecode
         codeobj = Jac.program.get_bytecode(full_target=file_path)

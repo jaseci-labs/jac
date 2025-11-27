@@ -9,7 +9,7 @@ import tempfile
 from pathlib import Path
 
 from jac_client.plugin.vite_client_bundle import ViteClientBundleBuilder
-from jaclang.runtimelib.machine import JacMachine as Jac
+from jaclang.runtimelib.runtime import JacRuntime as Jac
 from jaclang.utils.test import TestCase
 
 

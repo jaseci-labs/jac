@@ -68,7 +68,7 @@ class ClientBundleBuilder:
         source_path = Path(module_path).resolve()
 
         # Get the manifest to determine which files will be included
-        from jaclang.runtimelib.machine import JacMachine as Jac
+        from jaclang.runtimelib.runtime import JacRuntime as Jac
 
         mod = Jac.program.mod.hub.get(str(source_path))
         manifest = mod.gen.client_manifest if mod else None
@@ -212,7 +212,7 @@ class ClientBundleBuilder:
     ) -> ClientBundle:
         """Compile bundle pieces and stitch them together."""
         # Get manifest from JacProgram first to check for imports
-        from jaclang.runtimelib.machine import JacMachine as Jac
+        from jaclang.runtimelib.runtime import JacRuntime as Jac
 
         mod = Jac.program.mod.hub.get(str(module_path))
         manifest = mod.gen.client_manifest if mod else None

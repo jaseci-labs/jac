@@ -11,7 +11,7 @@ import from queue { Queue, Empty }
 import from typing { Callable, Optional }
 
 import jaclang.compiler.unitree as uni;
-import from jaclang { JacMachineInterface as Jac }
+import from jaclang { JacRuntimeInterface as Jac }
 import from jaclang.compiler.constant { SymbolType }
 import from jaclang.compiler.program { JacProgram }
 import from jaclang.compiler.type_system.type_utils { get_completion_items }

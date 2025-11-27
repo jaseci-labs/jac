@@ -15,8 +15,8 @@ from jaclang.compiler.passes.main import PyastBuildPass
 from jaclang.compiler.program import JacProgram
 from jaclang.runtimelib.builtin import printgraph
 from jaclang.runtimelib.constructs import WalkerArchetype
-from jaclang.runtimelib.machine import ExecutionContext, JacUtils
-from jaclang.runtimelib.machine import JacMachine as Jac
+from jaclang.runtimelib.runtime import ExecutionContext, JacUtils
+from jaclang.runtimelib.runtime import JacRuntime as Jac
 from jaclang.runtimelib.utils import read_file_with_encoding
 from jaclang.settings import settings
 from jaclang.utils.helpers import debugger as db
@@ -82,7 +82,7 @@ def format(path: str, outfile: str = "", to_screen: bool = False) -> None:
 def proc_file_sess(
     filename: str, session: str, root: str | None = None
 ) -> tuple[str, str, ExecutionContext]:
-    """Create JacMachine and return the base path, module name, and machine state."""
+    """Create JacRuntime and return the base path, module name, and runtime state."""
     if session == "":
         session = (
             cmd_registry.args.session

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from jaclang.runtimelib.machine import JacMachine as Jac
+from jaclang.runtimelib.runtime import JacRuntime as Jac
 from jaclang.utils.test import TestCase
 
 

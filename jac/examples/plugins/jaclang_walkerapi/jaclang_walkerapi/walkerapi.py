@@ -1,5 +1,5 @@
 from jaclang.runtimelib.default import hookimpl
-from jaclang.runtimelib.machine import Archetype, WalkerArchetype, ObjectSpatialFunction
+from jaclang.runtimelib.runtime import Archetype, WalkerArchetype, ObjectSpatialFunction
 
 from dataclasses import dataclass
 from functools import wraps
@@ -7,7 +7,7 @@ from typing import Type
 from collections.abc import Callable
 
 
-class JacMachine:
+class JacRuntime:
     @staticmethod
     @hookimpl
     def make_walker(

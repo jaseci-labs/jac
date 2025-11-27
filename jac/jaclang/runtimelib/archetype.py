@@ -213,7 +213,7 @@ class Anchor:
 
     def populate(self) -> None:
         """Retrieve the Archetype from db and return."""
-        from jaclang.runtimelib.machine import JacMachineInterface as Jac
+        from jaclang.runtimelib.runtime import JacRuntimeInterface as Jac
 
         jsrc = Jac.get_context().mem
 
@@ -372,7 +372,7 @@ class Archetype:
     def __init_subclass__(cls) -> None:
         """Configure subclasses."""
         if not cls.__dict__.get("__jac_base__", False):
-            from jaclang import JacMachineInterface as _
+            from jaclang import JacRuntimeInterface as _
 
             _.make_archetype(cls)
 

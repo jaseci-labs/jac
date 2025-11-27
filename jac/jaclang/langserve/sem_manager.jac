@@ -2,7 +2,7 @@
 import from typing { List, Optional, Tuple }
 
 import jaclang.compiler.unitree as uni;
-import from jaclang { JacMachineInterface as Jac }
+import from jaclang { JacRuntimeInterface as Jac }
 import from jaclang.langserve.utils {
     find_surrounding_tokens,
     get_token_start,

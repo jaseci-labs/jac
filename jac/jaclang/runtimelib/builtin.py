@@ -8,7 +8,7 @@ from enum import Enum
 from typing import ClassVar, override
 
 from jaclang.runtimelib.constructs import NodeArchetype
-from jaclang.runtimelib.machine import JacMachineInterface as Jac
+from jaclang.runtimelib.runtime import JacRuntimeInterface as Jac
 from jaclang.runtimelib.utils import collect_node_connections
 
 
@@ -40,7 +40,7 @@ def printgraph(
     format: str = "dot",
 ) -> str:
     """Print the graph in different formats."""
-    from jaclang.runtimelib.machine import JacMachineInterface as Jac
+    from jaclang.runtimelib.runtime import JacRuntimeInterface as Jac
 
     fmt = format.lower()
     if fmt == "json":

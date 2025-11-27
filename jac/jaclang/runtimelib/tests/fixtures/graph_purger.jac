@@ -1,4 +1,4 @@
-import from jaclang.runtimelib.machine { JacMachine as Jac }
+import from jaclang.runtimelib.runtime { JacRuntime as Jac }
 
 
 node A {

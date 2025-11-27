@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 import pytest
 
-from jaclang import JacMachine as Jac
+from jaclang import JacRuntime as Jac
 from jaclang.cli import cli
 from jaclang.compiler.program import JacProgram
 from jaclang.runtimelib.utils import read_file_with_encoding

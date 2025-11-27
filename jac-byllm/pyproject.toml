@@ -22,7 +22,7 @@ tools = ["wikipedia"]
 video = ["opencv-python-headless"]
 
 [tool.poetry.plugins."jac"]
-byllm = "byllm.plugin:JacMachine"
+byllm = "byllm.plugin:JacRuntime"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

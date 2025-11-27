@@ -4,7 +4,7 @@ import io
 import sys
 
 import jaclang.compiler.unitree as uni
-from jaclang import JacMachine as Jac
+from jaclang import JacRuntime as Jac
 from jaclang.cli import cli
 from jaclang.compiler.program import JacProgram
 from jaclang.utils.test import TestCase

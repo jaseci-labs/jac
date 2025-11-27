@@ -7,10 +7,10 @@ from pathlib import Path
 from typing import Any, Literal, TypeAlias
 
 from jaclang.runtimelib.client_bundle import ClientBundle
-from jaclang.runtimelib.machine import (
-    JacMachine as Jac,
+from jaclang.runtimelib.runtime import (
+    JacRuntime as Jac,
 )
-from jaclang.runtimelib.machine import (
+from jaclang.runtimelib.runtime import (
     hookimpl,
 )
 from jaclang.runtimelib.server import ModuleIntrospector

@@ -7,7 +7,7 @@ import from concurrent.futures { ThreadPoolExecutor } # TODO: go_to_def is not w
 import from typing { Callable, Optional }
 
 import jaclang.compiler.unitree as uni;
-import from jaclang { JacMachineInterface }
+import from jaclang { JacRuntimeInterface }
 import from jaclang.compiler.constant { SymbolType }
 import from jaclang.compiler.program { JacProgram }
 import from jaclang.compiler.type_system.type_utils { get_completion_items }
