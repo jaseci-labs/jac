@@ -213,7 +213,22 @@ class EsastGenPassTests(TestCase):
             node for node in es_ast.body if isinstance(node, es.ExportNamedDeclaration)
         ]
         self.assertEqual(
-            len(export_decls), 3, "Expected 3 exports (class, function, enum)"
+            len(export_decls), 4, "Expected 4 exports (global, class, function, enum)"
+        )
+
+        # Check that public global is exported
+        self.assertIn(
+            "export let PUBLIC_API_URL",
+            js_code,
+            "Public global should have export keyword",
+        )
+
+        # Check that private global is NOT exported
+        self.assertIn("let PRIVATE_SECRET", js_code)
+        self.assertNotIn(
+            "export let PRIVATE_SECRET",
+            js_code,
+            "Private global should NOT have export keyword",
         )
 
         # Check that public class is exported

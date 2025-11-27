@@ -2,6 +2,12 @@
 
 cl {
 
+# Public global - should generate: export const PUBLIC_API_URL = ...
+glob :pub PUBLIC_API_URL: str = "https://api.example.com";
+
+# Private global (no :pub) - should NOT generate export
+glob PRIVATE_SECRET: str = "secret123";
+
 # Public class - should generate: export class PublicClass { }
 obj :pub PublicClass {
     has value: int = 0;
