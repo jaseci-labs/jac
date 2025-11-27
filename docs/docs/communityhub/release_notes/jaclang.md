@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.9.2 (Unreleased)
 
+-**Support iter for statement**: Iter for statement is supported in order to utilize traditional for loop in javascript.
+
 ## jaclang 0.9.1 (Latest Release)
 
 -**Side effect imports supported**: side effect imports supported which will help to inject css.

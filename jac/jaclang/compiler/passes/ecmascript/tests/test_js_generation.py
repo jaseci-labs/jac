@@ -86,7 +86,8 @@ class JavaScriptGenerationTests(TestCase):
             "function add",
             "function greet",
             "function fibonacci",
-            "for (const i of range(limit))",
+            "for (const i of array)",
+            "for (let i = 0; i < limit; i += 1;)",
             "while (counter > 0)",
         ]:
             self.assertIn(pattern, js_code)
