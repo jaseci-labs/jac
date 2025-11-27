@@ -1120,15 +1120,15 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
 
     def exit_iter_for_stmt(self, node: uni.IterForStmt) -> None:
         """Process traditional for statement."""
-        init: Optional[es.VariableDeclaration | es.Expression] = None
+        init: es.VariableDeclaration | es.Expression | None = None
         if node.iter and node.iter.gen.es_ast:
             init = node.iter.gen.es_ast
 
-        test: Optional[es.Expression] = None
+        test: es.Expression | None = None
         if node.condition and node.condition.gen.es_ast:
             test = node.condition.gen.es_ast
 
-        update: Optional[es.Expression] = None
+        update: es.Expression | None = None
         if node.count_by and node.count_by.gen.es_ast:
             update = node.count_by.gen.es_ast
 
