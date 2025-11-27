@@ -1,0 +1,31 @@
+name: Release jac-scale to PYPI
+
+on: workflow_dispatch
+
+jobs:
+  release-scale:
+    name: Release
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: jac-scale
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.12'
+      - name: Install Poetry
+        run: |
+          pip install poetry
+      - name: Build and publish package
+        run: |
+          poetry config pypi-token.pypi ${{ secrets.PYPI_TOKEN }}
+          poetry build
+          poetry publish
+      # - run: pip install githubrelease
+      # - run: python scripts/gh_release.py
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}

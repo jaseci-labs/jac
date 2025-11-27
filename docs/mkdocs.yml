@@ -7,14 +7,14 @@ nav:
   - Learn:
     # - Getting Started: "learn/getting_started.md"
     - Getting Started:
+      - Introduction: "learn/tour.md"
       - Installation: "learn/installation.md"
-      - Quickstart: "learn/quickstart.md"
       # - Jac as Your First Programming Language: "learn/beginners_guide_to_jac.md"
-      - Syntax Quick Reference: "learn/quick_reference.md"
+      - Syntax Quick Reference: "learn/syntax_quick_reference.md"
       - Native Superset of Python: "learn/superset_python.md"
       - Jac Library in Pure Python: "learn/library_mode.md"
-      - Tour of Jac/Jaseci: "learn/tour.md"
       - Learn Jac in 5 Minutes: "learn/jac_in_a_flash.md"
+      - Examples for Key Features: "learn/example.md"
       - Jac Tool Suite: "learn/tool_suite.md"
     - The Jac Book:
       - Introduction: "jac_book/index.md"
@@ -56,26 +56,27 @@ nav:
         - Examples: "learn/jac-byllm/examples.md"
         - Python byllm Interface: "learn/jac-byllm/python_integration.md"
         - Using Multimodal models: "learn/jac-byllm/multimodality.md"
-        - Create Your Own Language Model: "learn/jac-byllm/create_own_lm.md"
+        - Creating a Custom Model Class: "learn/jac-byllm/create_own_lm.md"
         # - Build your own byllm plugin: "learn/jac-byllm/creating_byllm_plugins.md". # Needs review and update
         - LiteLLM Proxy Server: "learn/jac-byllm/litellm_proxy.md"
     - Scale-Native Programming:
-      - "learn/jac-cloud/introduction.md"
-      - "learn/jac-cloud/quickstart.md"
-      - Core Features:
-        - "learn/jac-cloud/permission.md"
-        - "learn/jac-cloud/logging.md"
-        - "learn/jac-cloud/env_vars.md"
-        - "learn/jac-cloud/sso_implementation.md"
-      - Real-time & Async:
-        - "learn/jac-cloud/websocket.md"
-        - "learn/jac-cloud/scheduler.md"
-        - "learn/jac-cloud/async_walker.md"
-        - "learn/jac-cloud/webhook.md"
-      - Operations:
-        - "learn/jac-cloud/deployment.md"
-        - "learn/jac-cloud/utilities.md"
       - Jac Lens: "learn/jac-lens.md"
+      - (Deprecated) Jac-Cloud:
+        - "learn/jac-cloud/introduction.md"
+        - "learn/jac-cloud/quickstart.md"
+        - Core Features:
+          - "learn/jac-cloud/permission.md"
+          - "learn/jac-cloud/logging.md"
+          - "learn/jac-cloud/env_vars.md"
+          - "learn/jac-cloud/sso_implementation.md"
+        - Real-time & Async:
+          - "learn/jac-cloud/websocket.md"
+          - "learn/jac-cloud/scheduler.md"
+          - "learn/jac-cloud/async_walker.md"
+          - "learn/jac-cloud/webhook.md"
+        - Operations:
+          - "learn/jac-cloud/deployment.md"
+          - "learn/jac-cloud/utilities.md"
     - Jac Client:
       - Getting Started: "jac-client/README.md"
       - Step-by-Step Tutorial:
@@ -103,6 +104,11 @@ nav:
       - Lifecycle Hooks: "jac-client/lifecycle-hooks.md"
       - Advanced State: "jac-client/advanced-state.md"
       - Imports: "jac-client/imports.md"
+      - File System:
+        - Introduction: "jac-client/file-system/intro.md"
+        - Backend/Frontend Separation: "jac-client/file-system/backend-frontend.md"
+        - Nested Folder Imports: "jac-client/file-system/nested-imports.md"
+        - The app.jac Entry Point: "jac-client/file-system/app.jac.md"
       - Handling Assets: "jac-client/asset-serving/intro.md"
     - Tooling:
       - Jac Debugger: "learn/debugger.md"
@@ -119,6 +125,7 @@ nav:
       - Friendzone Lite: "learn/examples/agentic_ai/friendzone-lite/friendzone-lite.md"
       - Aider Genius Lite: "learn/examples/agentic_ai/aider-genius-lite/aider-genius-lite.md"
       - Task Manager Lite: "learn/examples/agentic_ai/task-manager-lite/task-manager-lite.md"
+      - EmailBuddy: "learn/examples/EmailBuddy/tutorial.md"
   - Full Jac Specification:
     - Introduction: "learn/jac_ref.md"
     - Base Module structure: "learn/jac_ref/base_module_structure.md"
@@ -184,7 +191,8 @@ nav:
     - Contributing: "internals/contrib.md"
     - Release Notes:
       - Jaclang: "communityhub/release_notes/jaclang.md"
-      - Jac-Cloud: "communityhub/release_notes/jac-cloud.md"
+      - Jac-Scale: "communityhub/release_notes/jac-scale.md"
+      - (Deprecated) Jac-Cloud: "communityhub/release_notes/jac-cloud.md"
       - byLLM: "communityhub/release_notes/byllm.md"
       - Jac-Client: "communityhub/release_notes/jac-client.md"
     - Breaking Changes: "communityhub/breaking_changes.md"
@@ -260,7 +268,10 @@ markdown_extensions:
   - pymdownx.tasklist:
       custom_checkbox: true
   - pymdownx.arithmatex:
-      generic: true
+  # - pymdownx.emoji:
+  #     emoji_index: !!python/name:materialx.emoji.twemoji
+  #     emoji_generator: !!python/name:materialx.emoji.to_svg
+
   - pymdownx.blocks.caption
   - attr_list
   - md_in_html

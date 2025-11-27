@@ -103,7 +103,7 @@ class ExecutionContext:
         if not isinstance(self.system_root, NodeAnchor):
             self.system_root = cast(NodeAnchor, Root().__jac__)
             self.system_root.id = UUID(Con.SUPER_ROOT_UUID)
-            self.mem.set(self.system_root.id, self.system_root)
+            self.mem.set(self.system_root)
         self.entry_node = self.root_state = (
             self._get_anchor(root) if root else self.system_root
         )
@@ -825,6 +825,8 @@ class JacBasics:
     @staticmethod
     def get_context() -> ExecutionContext:
         """Get current execution context."""
+        if JacMachine.exec_ctx is None:
+            JacMachine.exec_ctx = JacMachineInterface.create_j_context()
         return JacMachine.exec_ctx
 
     @staticmethod
@@ -1407,7 +1409,7 @@ class JacBasics:
             anchor.persistent = True
             anchor.root = jctx.root_state.id
 
-        jctx.mem.set(anchor.id, anchor)
+        jctx.mem.set(anchor)
 
         match anchor:
             case NodeAnchor():
@@ -1601,6 +1603,13 @@ class JacByLLM:
 
 class JacUtils:
     """Jac Machine Utilities."""
+
+    @staticmethod
+    def create_j_context(
+        session: Optional[str] = None, root: Optional[str] = None
+    ) -> ExecutionContext:
+        """Hook for initialization or custom greeting logic."""
+        return ExecutionContext(session=session, root=root)
 
     @staticmethod
     def attach_program(jac_program: JacProgram) -> None:
@@ -1943,7 +1952,7 @@ class JacMachine(JacMachineInterface):
     base_path_dir: str = os.getcwd()
     program: JacProgram = JacProgram()
     pool: ThreadPoolExecutor = ThreadPoolExecutor()
-    exec_ctx: ExecutionContext = ExecutionContext()
+    exec_ctx: ExecutionContext | None = None
 
     @staticmethod
     def set_base_path(base_path: str) -> None:
@@ -1970,5 +1979,6 @@ class JacMachine(JacMachineInterface):
         JacMachine.base_path_dir = os.getcwd()
         JacMachine.program = JacProgram()
         JacMachine.pool = ThreadPoolExecutor()
-        JacMachine.exec_ctx.mem.close()
-        JacMachine.exec_ctx = ExecutionContext()
+        if JacMachine.exec_ctx is not None:
+            JacMachine.exec_ctx.mem.close()
+        JacMachine.exec_ctx = JacMachineInterface.create_j_context()

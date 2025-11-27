@@ -50,4 +50,3 @@ cl def app() {
         <NestedFragments />
     </div>;
 }
-

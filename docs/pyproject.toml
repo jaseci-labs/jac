@@ -17,7 +17,8 @@ dependencies = [
     "starlette",
     "uvicorn",
     "watchdog",
-    "mkdocs-graphviz"
+    "mkdocs-graphviz",
+    "mkdocs-material-extensions"
 ]
 authors = [
     { name = "Jason Mars", email = "jason@mars.ninja" }

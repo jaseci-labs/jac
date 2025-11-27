@@ -1,12 +1,12 @@
 # Step 6: Event Handlers
 
-> **💡 Quick Tip:** Each step has two parts. **Part 1** shows you what to build. **Part 2** explains why it works. Want to just build? Skip all Part 2 sections!
+> ** Quick Tip:** Each step has two parts. **Part 1** shows you what to build. **Part 2** explains why it works. Want to just build? Skip all Part 2 sections!
 
 In this step, you'll learn how to handle user interactions like clicks, typing, and key presses to make your app fully interactive!
 
 ---
 
-## 🏗️ Part 1: Building the App
+##  Part 1: Building the App
 
 ### Step 6.1: Handle Input Changes (onChange)
 
@@ -458,11 +458,11 @@ cl {
 
 ---
 
-**⏭️ Want to skip the theory?** Jump to [Step 7: Effects](./step-07-effects.md)
+**⏭ Want to skip the theory?** Jump to [Step 7: Effects](./step-07-effects.md)
 
 ---
 
-## 💡 Part 2: Understanding the Concepts
+##  Part 2: Understanding the Concepts
 
 ### What are Event Handlers?
 
@@ -555,10 +555,10 @@ When state updates, React re-renders the component with the new value!
 **`.concat()` - Add items**
 
 ```jac
-# ✅ Correct way to add
+#  Correct way to add
 setTodos(todos.concat([newTodo]));
 
-# ❌ Wrong (modifies original)
+#  Wrong (modifies original)
 todos.push(newTodo);
 setTodos(todos);
 ```
@@ -659,20 +659,20 @@ def removeItem(id: any) -> None {
 
 ---
 
-## ✅ What You've Learned
+##  What You've Learned
 
-- ✅ What event handlers are
-- ✅ Common events (onClick, onChange, onKeyPress)
-- ✅ Event handler syntax with lambda functions
-- ✅ The event object (`e`)
-- ✅ Passing functions as props
-- ✅ Updating state in event handlers
-- ✅ Array methods (concat, map, filter)
-- ✅ Inline vs named functions
+-  What event handlers are
+-  Common events (onClick, onChange, onKeyPress)
+-  Event handler syntax with lambda functions
+-  The event object (`e`)
+-  Passing functions as props
+-  Updating state in event handlers
+-  Array methods (concat, map, filter)
+-  Inline vs named functions
 
 ---
 
-## 🐛 Common Issues
+##  Common Issues
 
 ### Issue: Event handler not firing
 
@@ -687,7 +687,7 @@ def removeItem(id: any) -> None {
 - Is `onChange` calling the state setter?
 
 ```jac
-# ✅ Correct
+#  Correct
 <input
     value={text}
     onChange={lambda e: any -> None {
@@ -695,7 +695,7 @@ def removeItem(id: any) -> None {
     }}
 />
 
-# ❌ Missing onChange
+#  Missing onChange
 <input value={text} />
 ```
 
@@ -704,17 +704,17 @@ def removeItem(id: any) -> None {
 **Check:** Are you creating a new array/object?
 
 ```jac
-# ❌ Wrong (modifying original)
+#  Wrong (modifying original)
 todos.push(newTodo);
 setTodos(todos);
 
-# ✅ Correct (creating new array)
+#  Correct (creating new array)
 setTodos(todos.concat([newTodo]));
 ```
 
 ---
 
-## 🎯 Quick Exercise
+##  Quick Exercise
 
 Try adding a "Clear All" button:
 
@@ -740,11 +740,10 @@ def clearCompleted() -> None {
 
 ---
 
-## ➡️ Next Step
+##  Next Step
 
 Excellent! Your app is now fully interactive with local state. But when you refresh the page, all your todos disappear!
 
 In the next step, we'll use **useEffect** to load data when the app starts!
 
-👉 **[Continue to Step 7: Effects](./step-07-effects.md)**
-
+ **[Continue to Step 7: Effects](./step-07-effects.md)**

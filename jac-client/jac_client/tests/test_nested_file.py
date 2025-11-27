@@ -1,0 +1,419 @@
+"""Tests for nested folder structure examples."""
+
+from __future__ import annotations
+
+from pathlib import Path
+import json
+import subprocess
+import tempfile
+
+from jaclang.runtimelib.machine import JacMachine as Jac
+from jaclang.utils.test import TestCase
+from jac_client.plugin.vite_client_bundle import ViteClientBundleBuilder
+
+
+class NestedFolderExampleTests(TestCase):
+    """Test nested folder structure examples."""
+
+    def setUp(self) -> None:
+        Jac.reset_machine()
+        return super().setUp()
+
+    def tearDown(self) -> None:
+        Jac.reset_machine()
+        return super().tearDown()
+
+    def _create_test_project_with_vite(self, temp_path: Path) -> tuple[Path, Path]:
+        """Create a minimal test project with Vite installed.
+
+        Args:
+            temp_path: Path to the temporary directory
+        """
+        # Create package.json with base dependencies
+        package_data = {
+            "name": "test-client",
+            "version": "0.0.1",
+            "type": "module",
+            "scripts": {
+                "build": "npm run compile && vite build",
+                "dev": "vite dev",
+                "preview": "vite preview",
+                "compile": 'babel src --out-dir build --extensions ".jsx,.js" --out-file-extension .js',
+            },
+            "dependencies": {
+                "react": "^19.2.0",
+                "react-dom": "^19.2.0",
+                "react-router-dom": "^7.3.0",
+                "antd": "^6.0.0",
+            },
+            "devDependencies": {
+                "vite": "^6.4.1",
+                "@babel/cli": "^7.28.3",
+                "@babel/core": "^7.28.5",
+                "@babel/preset-env": "^7.28.5",
+                "@babel/preset-react": "^7.28.5",
+            },
+        }
+
+        package_json = temp_path / "package.json"
+        with package_json.open("w", encoding="utf-8") as f:
+            json.dump(package_data, f, indent=2)
+
+        # Create .babelrc file
+        babelrc = temp_path / ".babelrc"
+        babelrc.write_text(
+            """{
+    "presets": [[
+        "@babel/preset-env",
+        {
+            "modules": false
+        }
+    ], "@babel/preset-react"]
+}
+""",
+            encoding="utf-8",
+        )
+
+        # Create vite.config.js file
+        vite_config = temp_path / "vite.config.js"
+        vite_config.write_text(
+            """import { defineConfig } from "vite";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+export default defineConfig({
+  root: ".",
+  build: {
+    rollupOptions: {
+      input: "build/main.js",
+      output: {
+        entryFileNames: "client.[hash].js",
+        assetFileNames: "[name].[ext]",
+      },
+    },
+    outDir: "dist",
+    emptyOutDir: true,
+    minify: false,
+  },
+  publicDir: false,
+  resolve: {
+    alias: {
+      "@jac-client/utils": path.resolve(__dirname, "src/client_runtime.js"),
+    },
+  },
+});
+""",
+            encoding="utf-8",
+        )
+
+        # Install dependencies
+        result = subprocess.run(
+            ["npm", "install"],
+            cwd=temp_path,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            error_msg = f"npm install failed with exit code {result.returncode}\n"
+            error_msg += f"stdout: {result.stdout}\n"
+            error_msg += f"stderr: {result.stderr}\n"
+            raise RuntimeError(error_msg)
+
+        # Create output directory
+        output_dir = temp_path / "dist"
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        src_dir = temp_path / "src"
+        src_dir.mkdir(parents=True, exist_ok=True)
+
+        build_dir = temp_path / "build"
+        build_dir.mkdir(parents=True, exist_ok=True)
+
+        return package_json, output_dir
+
+    def test_nested_advance_example(self) -> None:
+        """Test nested-advance example with multiple folder levels."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+
+            package_json, output_dir = self._create_test_project_with_vite(temp_path)
+            runtime_path = (
+                Path(__file__).parent.parent / "plugin" / "client_runtime.jac"
+            )
+
+            # Initialize the Vite builder
+            builder = ViteClientBundleBuilder(
+                runtime_path=runtime_path,
+                vite_package_json=package_json,
+                vite_output_dir=output_dir,
+                vite_minify=False,
+            )
+
+            # Import the nested-advance example
+            examples_dir = (
+                Path(__file__).parent.parent
+                / "examples"
+                / "nested-folders"
+                / "nested-advance"
+            )
+            (module,) = Jac.jac_import("app", str(examples_dir))
+
+            # Build the bundle
+            bundle = builder.build(module, force=True)
+
+            # Verify bundle structure
+            self.assertIsNotNone(bundle)
+            self.assertEqual(bundle.module_name, "app")
+            self.assertIn("app", bundle.client_functions)
+
+            # Verify all expected components are in client_functions
+            expected_exports = {
+                "app",
+                "ButtonRoot",
+                "ButtonSecondL",
+                "ButtonThirdL",
+                "Card",
+            }
+            for export_name in expected_exports:
+                self.assertIn(
+                    export_name,
+                    bundle.client_functions,
+                    f"Expected {export_name} to be in client_functions",
+                )
+
+            # Verify bundle was written to output directory
+            bundle_files = list(output_dir.glob("client.*.js"))
+            self.assertGreater(
+                len(bundle_files), 0, "Expected at least one bundle file"
+            )
+
+            # Cleanup
+            builder.cleanup_temp_dir()
+
+    def test_nested_folder_structure_preserved(self) -> None:
+        """Test that nested folder structure is preserved in src/ directory."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+
+            package_json, output_dir = self._create_test_project_with_vite(temp_path)
+            runtime_path = (
+                Path(__file__).parent.parent / "plugin" / "client_runtime.jac"
+            )
+
+            # Initialize the Vite builder
+            builder = ViteClientBundleBuilder(
+                runtime_path=runtime_path,
+                vite_package_json=package_json,
+                vite_output_dir=output_dir,
+                vite_minify=False,
+            )
+
+            # Import the nested-advance example
+            examples_dir = (
+                Path(__file__).parent.parent
+                / "examples"
+                / "nested-folders"
+                / "nested-advance"
+            )
+            (module,) = Jac.jac_import("app", str(examples_dir))
+
+            # Build the bundle (this creates files in src/)
+            bundle = builder.build(module, force=True)
+
+            # Verify bundle was created
+            self.assertIsNotNone(bundle)
+
+            src_dir = temp_path / "src"
+
+            # Verify root level file exists
+            app_js = src_dir / "app.js"
+            self.assertTrue(
+                app_js.exists(),
+                f"Expected {app_js} to exist in src/ directory",
+            )
+
+            button_root_js = src_dir / "ButtonRoot.js"
+            self.assertTrue(
+                button_root_js.exists(),
+                f"Expected {button_root_js} to exist in src/ directory",
+            )
+
+            # Verify level1 files exist
+            level1_dir = src_dir / "level1"
+            self.assertTrue(
+                level1_dir.exists(),
+                f"Expected {level1_dir} directory to exist",
+            )
+
+            button_second_js = level1_dir / "ButtonSecondL.js"
+            self.assertTrue(
+                button_second_js.exists(),
+                f"Expected {button_second_js} to exist in src/level1/ directory",
+            )
+
+            card_js = level1_dir / "Card.js"
+            self.assertTrue(
+                card_js.exists(),
+                f"Expected {card_js} to exist in src/level1/ directory",
+            )
+
+            # Verify level2 files exist
+            level2_dir = level1_dir / "level2"
+            self.assertTrue(
+                level2_dir.exists(),
+                f"Expected {level2_dir} directory to exist",
+            )
+
+            button_third_js = level2_dir / "ButtonThirdL.js"
+            self.assertTrue(
+                button_third_js.exists(),
+                f"Expected {button_third_js} to exist in src/level1/level2/ directory",
+            )
+
+            # Cleanup
+            builder.cleanup_temp_dir()
+
+    def test_relative_imports_in_compiled_files(self) -> None:
+        """Test that relative imports are preserved correctly in compiled files."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+
+            package_json, output_dir = self._create_test_project_with_vite(temp_path)
+            runtime_path = (
+                Path(__file__).parent.parent / "plugin" / "client_runtime.jac"
+            )
+
+            # Initialize the Vite builder
+            builder = ViteClientBundleBuilder(
+                runtime_path=runtime_path,
+                vite_package_json=package_json,
+                vite_output_dir=output_dir,
+                vite_minify=False,
+            )
+
+            # Import the nested-advance example
+            examples_dir = (
+                Path(__file__).parent.parent
+                / "examples"
+                / "nested-folders"
+                / "nested-advance"
+            )
+            (module,) = Jac.jac_import("app", str(examples_dir))
+
+            # Build the bundle
+            bundle = builder.build(module, force=True)
+
+            # Verify bundle was created
+            self.assertIsNotNone(bundle)
+
+            src_dir = temp_path / "src"
+
+            # Check that app.js imports from level1
+            app_js_content = (src_dir / "app.js").read_text(encoding="utf-8")
+            self.assertIn(
+                "level1/ButtonSecondL",
+                app_js_content,
+                "Expected app.js to import from level1/ButtonSecondL",
+            )
+            self.assertIn(
+                "level1/level2/ButtonThirdL",
+                app_js_content,
+                "Expected app.js to import from level1/level2/ButtonThirdL",
+            )
+
+            # Check that ButtonSecondL.js imports from root (using ..)
+            button_second_content = (src_dir / "level1" / "ButtonSecondL.js").read_text(
+                encoding="utf-8"
+            )
+            self.assertIn(
+                "../ButtonRoot",
+                button_second_content,
+                "Expected ButtonSecondL.js to import from ../ButtonRoot",
+            )
+
+            # Check that Card.js imports from both root and level2
+            card_content = (src_dir / "level1" / "Card.js").read_text(encoding="utf-8")
+            self.assertIn(
+                "../ButtonRoot",
+                card_content,
+                "Expected Card.js to import from ../ButtonRoot (above)",
+            )
+            self.assertIn(
+                "level2/ButtonThirdL",
+                card_content,
+                "Expected Card.js to import from level2/ButtonThirdL (below)",
+            )
+
+            # Check that ButtonThirdL.js imports from root and second level
+            button_third_content = (
+                src_dir / "level1" / "level2" / "ButtonThirdL.js"
+            ).read_text(encoding="utf-8")
+            self.assertIn(
+                "../../ButtonRoot",
+                button_third_content,
+                "Expected ButtonThirdL.js to import from ../../ButtonRoot",
+            )
+            self.assertIn(
+                "../ButtonSecondL",
+                button_third_content,
+                "Expected ButtonThirdL.js to import from ../ButtonSecondL",
+            )
+
+            # Cleanup
+            builder.cleanup_temp_dir()
+
+    def test_nested_basic_example(self) -> None:
+        """Test nested-basic example with simpler nested structure."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+
+            package_json, output_dir = self._create_test_project_with_vite(temp_path)
+            runtime_path = (
+                Path(__file__).parent.parent / "plugin" / "client_runtime.jac"
+            )
+
+            # Initialize the Vite builder
+            builder = ViteClientBundleBuilder(
+                runtime_path=runtime_path,
+                vite_package_json=package_json,
+                vite_output_dir=output_dir,
+                vite_minify=False,
+            )
+
+            # Import the nested-basic example
+            examples_dir = (
+                Path(__file__).parent.parent
+                / "examples"
+                / "nested-folders"
+                / "nested-basic"
+            )
+            (module,) = Jac.jac_import("app", str(examples_dir))
+
+            # Build the bundle
+            bundle = builder.build(module, force=True)
+
+            # Verify bundle structure
+            self.assertIsNotNone(bundle)
+            self.assertEqual(bundle.module_name, "app")
+            self.assertIn("app", bundle.client_functions)
+
+            src_dir = temp_path / "src"
+
+            # Verify nested structure is preserved
+            components_dir = src_dir / "components"
+            self.assertTrue(
+                components_dir.exists(),
+                "Expected components directory to exist in src/",
+            )
+
+            button_js = components_dir / "button.js"
+            self.assertTrue(
+                button_js.exists(),
+                "Expected button.js to exist in src/components/",
+            )
+
+            # Cleanup
+            builder.cleanup_temp_dir()
