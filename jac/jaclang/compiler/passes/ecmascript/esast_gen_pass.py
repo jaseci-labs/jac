@@ -1119,6 +1119,27 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
         )
         node.gen.es_ast = while_stmt
 
+    def exit_iter_for_stmt(self, node: uni.IterForStmt) -> None:
+        """Process traditional for statement."""
+        init: Optional[es.VariableDeclaration | es.Expression] = None
+        if node.iter and node.iter.gen.es_ast:
+            init = node.iter.gen.es_ast
+
+        test: Optional[es.Expression] = None
+        if node.condition and node.condition.gen.es_ast:
+            test = node.condition.gen.es_ast
+
+        update: Optional[es.Expression] = None
+        if node.count_by and node.count_by.gen.es_ast:
+            update = node.count_by.gen.es_ast
+
+        body = self._build_block_statement(node, node.body)
+
+        node.gen.es_ast = self.sync_loc(
+            es.ForStatement(init=init, test=test, update=update, body=body),
+            jac_node=node,
+        )
+
     def exit_in_for_stmt(self, node: uni.InForStmt) -> None:
         """Process for-in statement."""
         left = (
@@ -1913,6 +1934,10 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
                 }
         else:
             node.gen.es_ast = None
+
+    def exit_special_var_ref(self, node: uni.SpecialVarRef) -> None:
+        """Process special variable reference."""
+        self.exit_name(node)
 
     def exit_atom_trailer(self, node: uni.AtomTrailer) -> None:
         """Process attribute access."""

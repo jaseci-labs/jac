@@ -575,9 +575,9 @@ def dot(
     if filename.endswith(".jac"):
         Jac.jac_import(target=mod, base_path=base, override_name="__main__")
         module = Jac.loaded_modules.get("__main__")
-        globals().update(vars(module))
+        mod_ns = vars(module) if module else {}
         try:
-            node = globals().get(initial, eval(initial)) if initial else None
+            node = mod_ns.get(initial, eval(initial, mod_ns)) if initial else None
             graph = printgraph(
                 node=node,
                 depth=depth,

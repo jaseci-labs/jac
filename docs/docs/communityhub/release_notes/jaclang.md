@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.9.2 (Unreleased)
 
+-**Support iter for statement**: Iter for statement is supported in order to utilize traditional for loop in javascript.
+
 ## jaclang 0.9.1 (Latest Release)
 
 -**Side effect imports supported**: side effect imports supported which will help to inject css.
@@ -12,6 +14,8 @@ This document provides a summary of new features, improvements, and bug fixes in
   - Added type checking support for object spatial codes including the connect operator
   - Added type checking support for assign comprehensions and filter comprehensions
   - Improved type inference from return statements
+  - Fixed inheritance-based member lookup in type system by properly iterating through MRO (Method Resolution Order) chain
+  - Improved synthesized `__init__` method generation for dataclasses to correctly collect parameters from all base classes in inheritance hierarchy
 - **LSP Improvements**: Added "Go to Definition" support for `here` and `visitor` keywords in the language server
 
 ## jaclang 0.9.0
