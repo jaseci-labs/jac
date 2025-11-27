@@ -1,5 +1,4 @@
 # Ruff configuration
-# Replaces: black, flake8 (+ plugins), pyupgrade
 
 target-version = "py311"
 line-length = 88

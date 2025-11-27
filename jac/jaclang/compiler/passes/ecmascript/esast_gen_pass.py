@@ -899,7 +899,15 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
             jac_node=node,
         )
 
-        node.gen.es_ast = class_decl
+        # Wrap in export if explicitly annotated with :pub
+        if node.access and node.access.tag.name == Tok.KW_PUB:
+            export_decl = self.sync_loc(
+                es.ExportNamedDeclaration(declaration=class_decl),
+                jac_node=node,
+            )
+            node.gen.es_ast = export_decl
+        else:
+            node.gen.es_ast = class_decl
 
     def exit_enum(self, node: uni.Enum) -> None:
         """Process enum declaration as an object."""
@@ -947,7 +955,15 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
             jac_node=node,
         )
 
-        node.gen.es_ast = var_decl
+        # Wrap in export if explicitly annotated with :pub
+        if node.access and node.access.tag.name == Tok.KW_PUB:
+            export_decl = self.sync_loc(
+                es.ExportNamedDeclaration(declaration=var_decl),
+                jac_node=node,
+            )
+            node.gen.es_ast = export_decl
+        else:
+            node.gen.es_ast = var_decl
 
     def enter_ability(self, node: uni.Ability) -> None:
         """Track entry into ability to manage client scope."""
@@ -1007,7 +1023,15 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
                 ),
                 jac_node=node,
             )
-            node.gen.es_ast = func_decl
+            # Wrap in export if explicitly annotated with :pub
+            if node.access and node.access.tag.name == Tok.KW_PUB:
+                export_decl = self.sync_loc(
+                    es.ExportNamedDeclaration(declaration=func_decl),
+                    jac_node=node,
+                )
+                node.gen.es_ast = export_decl
+            else:
+                node.gen.es_ast = func_decl
 
         # Pop the client scope stack
         if self.client_scope_stack:

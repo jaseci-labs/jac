@@ -202,3 +202,61 @@ class EsastGenPassTests(TestCase):
         # f"{user} scored {score} which is a {status}"
         # Should become something like: `${user} scored ${score} which is a ${status}`
         self.assertIn("${", js_code, "Template literal should contain ${} syntax")
+
+    def test_export_semantics_for_pub_declarations(self) -> None:
+        """Test that :pub annotated declarations generate JavaScript exports."""
+        es_ast = self.compile_to_esast(self.get_fixture_path("export_semantics.jac"))
+        js_code = es_to_js(es_ast)
+
+        # Verify ExportNamedDeclaration nodes exist in AST
+        export_decls = [
+            node for node in es_ast.body if isinstance(node, es.ExportNamedDeclaration)
+        ]
+        self.assertEqual(
+            len(export_decls), 3, "Expected 3 exports (class, function, enum)"
+        )
+
+        # Check that public class is exported
+        self.assertIn(
+            "export class PublicClass",
+            js_code,
+            "Public class should have export keyword",
+        )
+
+        # Check that private class is NOT exported
+        self.assertIn("class PrivateClass", js_code)
+        self.assertNotIn(
+            "export class PrivateClass",
+            js_code,
+            "Private class should NOT have export keyword",
+        )
+
+        # Check that public function is exported
+        self.assertIn(
+            "export function public_function",
+            js_code,
+            "Public function should have export keyword",
+        )
+
+        # Check that private function is NOT exported
+        self.assertIn("function private_function", js_code)
+        self.assertNotIn(
+            "export function private_function",
+            js_code,
+            "Private function should NOT have export keyword",
+        )
+
+        # Check that public enum is exported
+        self.assertIn(
+            "export const PublicStatus",
+            js_code,
+            "Public enum should have export keyword",
+        )
+
+        # Check that private enum is NOT exported
+        self.assertIn("const PrivateStatus", js_code)
+        self.assertNotIn(
+            "export const PrivateStatus",
+            js_code,
+            "Private enum should NOT have export keyword",
+        )
