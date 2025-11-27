@@ -1,5 +1,7 @@
 """Test Jac reference examples."""
 
+from __future__ import annotations
+
 import io
 import os
 import sys

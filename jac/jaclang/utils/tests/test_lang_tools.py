@@ -22,7 +22,7 @@ class JacAstToolTests(TestCase):
         self.assertIn("target: Expr,", out)
         self.assertIn("self, node: ast.ReturnStmt", out)
         self.assertIn("exprs: Sequence[ExprAsItem],", out)
-        self.assertIn("path: Optional[Sequence[Name | String]],", out)
+        self.assertIn("path: Sequence[Name | String] | None,", out)
         self.assertIn("value: str,", out)
         self.assertIn("def exit_module(self, node: ast.Module)", out)
         self.assertGreater(out.count("def exit_"), 20)
@@ -136,6 +136,6 @@ class JacAstToolTests(TestCase):
         """Testing for Autodoc for Uninodes."""
         auto_uni = self.tool.autodoc_uninode()
         self.assertIn(
-            "## LambdaExpr\n```mermaid\nflowchart LR\nLambdaExpr -->|Expr, CodeBlockStmt| body",
+            "## LambdaExpr\n```mermaid\nflowchart LR\nLambdaExpr -->|Expr , CodeBlockStmt| body",
             auto_uni,
         )

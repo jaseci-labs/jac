@@ -70,7 +70,7 @@ class AnchorReport:
 
 
 ObjectSpatialFilter: TypeAlias = (
-    Callable[["Archetype"], bool] | "Archetype" | list["Archetype"] | None
+    "Callable[[Archetype], bool] | Archetype | list[Archetype] | None"
 )
 
 

@@ -130,9 +130,9 @@ class TestJacLangServer(TestCase):
             (11, 47, "compiler/constant.py:5:0-34:9"),
             (13, 47, "compiler/type_system/type_utils.py:0:0-0:0"),
             (14, 34, "compiler/type_system/__init__.py:0:0-0:0"),
-            (14, 55, "compiler/type_system/types.py:154:0-294:8"),
+            (14, 55, "compiler/type_system/types.py:155:0-295:8"),
             (15, 34, "compiler/unitree.py:0:0-0:0"),
-            (15, 48, "compiler/unitree.py:304:0-532:11"),
+            (15, 48, "compiler/unitree.py:307:0-537:11"),
             (17, 22, "langserve/tests/fixtures/circle.jac:8:5-8:8"),
             (18, 38, "vendor/pygls/uris.py:0:0-0:0"),
             (19, 52, "vendor/pygls/server.py:351:0-615:13"),
@@ -193,8 +193,8 @@ class TestJacLangServer(TestCase):
         lsp.type_check_file(import_file)
         # fmt: off
         positions = [
-            (14, 16, "fixtures/greet.py:8:3-9:15"),
-            (14, 28, "fixtures/greet.py:2:3-3:15"),
+            (14, 16, "fixtures/greet.py:6:3-7:15"),
+            (14, 28, "fixtures/greet.py:1:3-2:15"),
         ]
         # fmt: on
 
@@ -285,8 +285,8 @@ class TestJacLangServer(TestCase):
         lsp.type_check_file(import_star_file)
         # fmt: off
         positions = [
-            (4, 16, "import_star_mod_py.py:0:0-3:2"),
-            (4, 21, "import_star_mod_py.py:2:3-3:6"),
+            (4, 16, "import_star_mod_py.py:0:0-2:2"),
+            (4, 21, "import_star_mod_py.py:1:3-2:6"),
             (5, 16, "import_star_mod_jac.jac:0:4-0:7"),
             (5, 22, "import_star_mod_jac.jac:1:8-1:11"),
         ]

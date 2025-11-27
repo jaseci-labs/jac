@@ -1,5 +1,7 @@
 """Test case utils for Jaseci."""
 
+from __future__ import annotations
+
 import inspect
 import os
 from collections.abc import Callable
