@@ -291,7 +291,7 @@ def serve_with_watch() -> None:
                 try:
                     message = await asyncio.wait_for(reload_queue.get(), timeout=30)
                     yield f"data: {message}\n\n"
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     yield "data: ping\n\n"
 
         return StreamingResponse(event_generator(), media_type="text/event-stream")
