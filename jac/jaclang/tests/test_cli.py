@@ -155,7 +155,7 @@ class JacCliTests(TestCase):
         # Ensure internal runtime calls are collapsed and NOT shown individually
         internal_call_patterns = (
             "meta_importer.py",
-            "machine.py",
+            "runtime.py",
             "/jaclang/vendor/",
             "pluggy",
             "_multicall",
@@ -203,7 +203,7 @@ class JacCliTests(TestCase):
             # Internal runtime calls should be shown (not collapsed)
             internal_call_patterns = (
                 "meta_importer.py",
-                "machine.py",
+                "runtime.py",
             )
             for pattern in internal_call_patterns:
                 self.assertIn(pattern, output)

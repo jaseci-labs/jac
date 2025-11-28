@@ -125,7 +125,7 @@ class TestJacLangServer(TestCase):
             # (7, 27, "typing.py:2636:0-2636:7"),
             (9, 18, "compiler/__init__.py:0:0-0:0"),
             (9, 38, "compiler/unitree.py:0:0-0:0"),
-            (10, 34, "jac/jaclang/__init__.py:7:3-7:22"),
+            (10, 34, "jac/jaclang/__init__.py:8:3-8:22"),
             (11, 35, "compiler/constant.py:0:0-0:0"),
             (11, 47, "compiler/constant.py:5:0-34:9"),
             (13, 47, "compiler/type_system/type_utils.py:0:0-0:0"),
