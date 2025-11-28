@@ -10,8 +10,8 @@ from threading import Event
 from typing import TYPE_CHECKING, TypeAlias, TypeVar
 
 import jaclang.compiler.unitree as uni
+from jaclang.compiler.constant import TsTokens as Tok
 from jaclang.compiler.passes.main import Transform
-from jaclang.compiler.ts_constant import TsTokens as Tok
 from jaclang.utils.helpers import ANSIColors
 
 if TYPE_CHECKING:
