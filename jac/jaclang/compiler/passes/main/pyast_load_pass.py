@@ -1390,7 +1390,7 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
         if match:
             prefix, quote = match.groups()
             start = match.group(0)
-            end = quote * (3 if len(quote) == 3 else 1)
+            end = quote
         else:
             start = "f'"
             end = "'"
