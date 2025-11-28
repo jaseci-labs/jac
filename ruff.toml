@@ -7,6 +7,7 @@ line-length = 88
 exclude = [
     "jac/jaclang/vendor/",
     "jac/jaclang/compiler/larkparse/jac_parser.py",
+    "jac/jaclang/compiler/larkparse/ts_parser.py",
     # Examples may contain Python 3.12+ syntax for demonstration
     "jac/examples/",
 ]
@@ -37,6 +38,8 @@ fixable = ["ALL"]
 "**/tests/*" = ["E501", "ANN", "SIM105", "SIM108", "SIM115"]
 # TODO: jac-scale should fall in line
 "jac-scale/**" = ["UP007", "UP045", "N999", "ANN", "SIM115"]
+# TypeScript parser has Lark transformer callbacks with dynamic signatures
+"jac/jaclang/compiler/ts_parser.py" = ["ANN"]
 
 [lint.isort]
 known-first-party = ["jaclang", "jac_client", "jac_scale", "byllm"]

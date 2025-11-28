@@ -363,7 +363,7 @@ class TypeEvaluator {
             if is_dir {
                 mod_dir = from_path.parent if not from_path.is_dir() else from_path;
                 # FIXME: Implement module resolution properly.
-                for ext in (".jac", ".py", ".pyi") {
+                for ext in (".jac", ".py", ".pyi", ".js", ".ts", ".jsx", ".tsx") {
                     # Try resolving both "__init__" module and direct module file.
                     candidate_paths = [
                         (mod_dir / f"__init__{ext}").resolve(),

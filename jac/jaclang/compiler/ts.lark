@@ -1,0 +1,349 @@
+// TypeScript Grammar - Single Skip Rule Design
+// Uses one unified token rule to avoid reduce/reduce conflicts
+
+start: elem*
+
+elem: import_stmt
+    | export_stmt
+    | var_stmt
+    | func_stmt
+    | class_stmt
+    | iface_stmt
+    | type_stmt
+    | enum_stmt
+    | ns_stmt
+    | block_elem
+    | other_stmt
+
+// =====================================================================
+// Import
+// =====================================================================
+
+import_stmt: IMPORT_KW NAME COMMA STAR AS_KW NAME FROM_KW STRING SEMI
+           | IMPORT_KW NAME COMMA LBRACE import_items RBRACE FROM_KW STRING SEMI
+           | IMPORT_KW NAME FROM_KW STRING SEMI
+           | IMPORT_KW STAR AS_KW NAME FROM_KW STRING SEMI
+           | IMPORT_KW LBRACE import_items RBRACE FROM_KW STRING SEMI
+           | IMPORT_KW STRING SEMI
+           | IMPORT_KW TYPE_KW NAME COMMA STAR AS_KW NAME FROM_KW STRING SEMI
+           | IMPORT_KW TYPE_KW NAME COMMA LBRACE import_items RBRACE FROM_KW STRING SEMI
+           | IMPORT_KW TYPE_KW NAME FROM_KW STRING SEMI
+           | IMPORT_KW TYPE_KW STAR AS_KW NAME FROM_KW STRING SEMI
+           | IMPORT_KW TYPE_KW LBRACE import_items RBRACE FROM_KW STRING SEMI
+           | IMPORT_KW TYPE_KW STRING SEMI
+
+IMPORT_KW.10: "import"
+TYPE_KW.10: "type"
+FROM_KW.10: "from"
+AS_KW.10: "as"
+
+import_items: import_item (COMMA import_item)* COMMA?
+            |
+
+import_item: TYPE_KW NAME AS_KW NAME
+           | TYPE_KW NAME
+           | NAME AS_KW NAME
+           | NAME
+
+// =====================================================================
+// Export
+// =====================================================================
+
+export_stmt: EXPORT_KW STAR AS_KW NAME FROM_KW STRING SEMI
+           | EXPORT_KW STAR FROM_KW STRING SEMI
+           | EXPORT_KW LBRACE export_items RBRACE FROM_KW STRING SEMI
+           | EXPORT_KW LBRACE export_items RBRACE SEMI
+           | EXPORT_KW DEFAULT_KW tok* SEMI
+           | EXPORT_KW VAR_KW NAME tok* SEMI
+           | EXPORT_KW VAR_KW LBRACE tok* SEMI
+           | EXPORT_KW VAR_KW LBRACKET tok* SEMI
+           | EXPORT_KW ASYNC FUNCTION_KW STAR? NAME? tok* block
+           | EXPORT_KW FUNCTION_KW STAR? NAME? tok* block
+           | EXPORT_KW deco_list ABSTRACT CLASS_KW NAME? tok* class_block
+           | EXPORT_KW deco_list CLASS_KW NAME? tok* class_block
+           | EXPORT_KW INTERFACE_KW NAME tok* iface_block
+           | EXPORT_KW TYPE_KW NAME tok* SEMI
+           | EXPORT_KW VAR_KW ENUM_KW NAME LBRACE enum_body RBRACE
+           | EXPORT_KW ENUM_KW NAME LBRACE enum_body RBRACE
+           | EXPORT_KW NS_KW NAME LBRACE elem* RBRACE
+
+EXPORT_KW.10: "export"
+DEFAULT_KW.10: "default"
+
+export_items: export_item (COMMA export_item)* COMMA?
+            |
+
+export_item: NAME AS_KW NAME
+           | NAME
+
+// =====================================================================
+// Variable
+// =====================================================================
+
+var_stmt: VAR_KW NAME tok* SEMI
+        | VAR_KW LBRACE tok* SEMI
+        | VAR_KW LBRACKET tok* SEMI
+
+VAR_KW.10: "var" | "let" | "const"
+
+// =====================================================================
+// Function
+// =====================================================================
+
+func_stmt: ASYNC FUNCTION_KW STAR? NAME? tok* block
+         | FUNCTION_KW STAR? NAME? tok* block
+
+ASYNC.10: "async"
+FUNCTION_KW.10: "function"
+
+// =====================================================================
+// Class
+// =====================================================================
+
+class_stmt: deco_list ABSTRACT CLASS_KW NAME? tok* class_block
+          | deco_list CLASS_KW NAME? tok* class_block
+
+ABSTRACT.10: "abstract"
+CLASS_KW.10: "class"
+
+deco_list: deco*
+
+deco: AT NAME deco_part*
+
+deco_part: DOT NAME
+         | LPAREN bal_paren* RPAREN
+
+AT: "@"
+
+class_block: LBRACE class_item* RBRACE
+
+class_item: deco_list mod_list class_body_item
+          | SEMI
+
+mod_list: mod*
+
+mod: STATIC_KW | ABSTRACT | READONLY_KW | OVERRIDE_KW | ACCESS
+
+STATIC_KW.10: "static"
+READONLY_KW.10: "readonly"
+OVERRIDE_KW.10: "override"
+ACCESS.10: "public" | "private" | "protected"
+
+class_body_item: ASYNC STAR? class_name tok* LBRACE elem* RBRACE
+               | ASYNC STAR? class_name tok* SEMI
+               | STAR? class_name tok* LBRACE elem* RBRACE
+               | STAR? class_name tok* SEMI
+               | ACCESSOR class_name tok* LBRACE elem* RBRACE
+               | ACCESSOR class_name tok* SEMI
+               | STATIC_KW LBRACE elem* RBRACE
+
+ACCESSOR.10: "get" | "set"
+
+class_name: NAME
+          | STRING
+          | NUMBER
+          | LBRACKET bal_bracket* RBRACKET
+
+// =====================================================================
+// Interface
+// =====================================================================
+
+iface_stmt: INTERFACE_KW NAME tok* iface_block
+
+INTERFACE_KW.10: "interface"
+
+iface_block: LBRACE iface_item* RBRACE
+
+iface_item: mod_list iface_body_item
+
+iface_body_item: class_name tok* SEMI
+               | class_name tok* COMMA
+               | class_name tok*
+               | LT bal_angle* GT LPAREN bal_paren* RPAREN tok* SEMI
+               | LT bal_angle* GT LPAREN bal_paren* RPAREN tok* COMMA
+               | LT bal_angle* GT LPAREN bal_paren* RPAREN tok*
+               | LPAREN bal_paren* RPAREN tok* SEMI
+               | LPAREN bal_paren* RPAREN tok* COMMA
+               | LPAREN bal_paren* RPAREN tok*
+               | NEW_KW LPAREN bal_paren* RPAREN tok* SEMI
+               | NEW_KW LPAREN bal_paren* RPAREN tok* COMMA
+               | NEW_KW LPAREN bal_paren* RPAREN tok*
+
+NEW_KW.10: "new"
+
+// =====================================================================
+// Type Alias
+// =====================================================================
+
+type_stmt: TYPE_KW NAME tok* SEMI
+
+// =====================================================================
+// Enum
+// =====================================================================
+
+enum_stmt: VAR_KW ENUM_KW NAME LBRACE enum_body RBRACE
+         | ENUM_KW NAME LBRACE enum_body RBRACE
+
+ENUM_KW.10: "enum"
+
+enum_body: enum_mem (COMMA enum_mem)* COMMA?
+         |
+
+enum_mem: class_name ASSIGN tok*
+        | class_name
+
+// =====================================================================
+// Namespace
+// =====================================================================
+
+ns_stmt: NS_KW NAME LBRACE elem* RBRACE
+
+NS_KW.10: "namespace" | "module"
+
+// =====================================================================
+// Block
+// =====================================================================
+
+block: LBRACE elem* RBRACE
+
+block_elem: LBRACE elem* RBRACE
+
+// =====================================================================
+// Other (catch-all)
+// =====================================================================
+
+other_stmt: other_kw tok* block
+          | other_kw tok* SEMI
+          | other_start tok* block
+          | other_start tok* SEMI
+
+other_kw: KW_STMT
+
+other_start: NAME
+           | NUMBER
+           | STRING
+           | LPAREN
+           | LBRACKET
+           | PLUSPLUS
+           | MINUSMINUS
+           | EXCLAIM
+           | BW_NOT
+           | KW_EXPR
+           | TRUE
+           | FALSE
+           | NULL
+
+KW_STMT.5: "if" | "for" | "while" | "do" | "switch" | "try" | "return" | "throw"
+         | "break" | "continue" | "debugger" | "with" | "else" | "case" | "catch" | "finally"
+
+// =====================================================================
+// Unified Token Rule (the key to avoiding conflicts!)
+// =====================================================================
+
+// Single tok rule that captures all tokens EXCEPT delimiters
+// Delimiters (SEMI, LBRACE, COMMA) are NOT in tok directly
+tok: NAME | NUMBER | STRING | TRUE | FALSE | NULL
+   | DOT | QUESTION | EXCLAIM | COLON
+   | PLUS | MINUS | STAR | SLASH | PERCENT | STARSTAR
+   | LT | GT | LTE | GTE | EQEQ | NEQ | EQEQEQ | NEQEQ
+   | ANDAND | OROR | NULLISH
+   | BW_AND | BW_OR | BW_XOR | BW_NOT | PIPE | AMP
+   | LSHIFT | RSHIFT | URSHIFT
+   | PLUSPLUS | MINUSMINUS
+   | ARROW | ASSIGN | ASSIGN_OP
+   | KW_EXPR | BUILTIN
+   | TEMPLATE_STR | TEMPLATE_HEAD | TEMPLATE_MID | TEMPLATE_TAIL
+   | REST
+   | LPAREN bal_paren* RPAREN
+   | LBRACKET bal_bracket* RBRACKET
+   | AT
+
+// Balanced groups (these can include COMMA)
+bal_paren: tok | SEMI | COMMA | LBRACE bal_brace* RBRACE
+bal_bracket: tok | SEMI | COMMA | LBRACE bal_brace* RBRACE
+bal_brace: tok | SEMI | COMMA | LBRACE bal_brace* RBRACE
+
+bal_angle: tok | SEMI | COMMA | LBRACE | RBRACE
+
+// =====================================================================
+// Keywords
+// =====================================================================
+
+KW_EXPR.5: "new" | "this" | "super" | "typeof" | "void" | "delete" | "in" | "of" | "instanceof"
+         | "await" | "yield" | "as" | "extends" | "implements" | "keyof" | "infer" | "readonly"
+
+BUILTIN.5: "any" | "unknown" | "never" | "void" | "string" | "number" | "boolean"
+         | "symbol" | "bigint" | "object" | "undefined"
+
+// =====================================================================
+// Terminals
+// =====================================================================
+
+TRUE.1: "true"
+FALSE.1: "false"
+NULL.1: "null"
+
+NAME: /[a-zA-Z_$][a-zA-Z0-9_$]*/
+NUMBER: /0[xX][0-9a-fA-F_]+n?/ | /0[bB][01_]+n?/ | /0[oO][0-7_]+n?/ | /(\d[\d_]*\.?[\d_]*|\.[\d_]+)([eE][+-]?[\d_]+)?n?/
+STRING: /"([^"\\]|\\.)*"/ | /'([^'\\]|\\.)*'/
+TEMPLATE_STR: /`([^`\\$]|\\.|\$(?!\{))*`/
+TEMPLATE_HEAD: /`([^`\\$]|\\.|\$(?!\{))*\$\{/
+TEMPLATE_MID: /\}([^`\\$]|\\.|\$(?!\{))*\$\{/
+TEMPLATE_TAIL: /\}([^`\\$]|\\.|\$(?!\{))*`/
+
+PLUSPLUS: "++"
+MINUSMINUS: "--"
+STARSTAR: "**"
+EQEQEQ: "==="
+NEQEQ: "!=="
+EQEQ: "=="
+NEQ: "!="
+LTE: "<="
+GTE: ">="
+LSHIFT: "<<"
+RSHIFT: ">>"
+URSHIFT: ">>>"
+NULLISH: "??"
+ANDAND: "&&"
+OROR: "||"
+ARROW: "=>"
+REST: "..."
+ASSIGN_OP: "+=" | "-=" | "*=" | "/=" | "%=" | "**="
+         | "&=" | "|=" | "^=" | "<<=" | ">>=" | ">>>="
+         | "&&=" | "||=" | "??="
+
+PLUS: "+"
+MINUS: "-"
+STAR: "*"
+SLASH: "/"
+PERCENT: "%"
+LT: "<"
+GT: ">"
+ASSIGN: "="
+BW_XOR: "^"
+BW_NOT: "~"
+PIPE: "|"
+AMP: "&"
+BW_AND: "&"
+BW_OR: "|"
+
+DOT: "."
+COLON: ":"
+SEMI: ";"
+COMMA: ","
+QUESTION: "?"
+EXCLAIM: "!"
+LBRACE: "{"
+RBRACE: "}"
+LPAREN: "("
+RPAREN: ")"
+LBRACKET: "["
+RBRACKET: "]"
+
+COMMENT: /\/\/[^\n]*/
+ML_COMMENT: /\/\*(.|\n)*?\*\//
+WS: /[ \t\f\r\n]+/
+
+%ignore COMMENT
+%ignore ML_COMMENT
+%ignore WS

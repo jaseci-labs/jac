@@ -528,6 +528,32 @@ If you encounter issues:
 2. View pod logs: `kubectl logs <pod-name> -n <namespace>`
 3. Describe resources: `kubectl describe <resource-type> <resource-name> -n <namespace>`
 
+## Tested Examples
+
+You can find more working examples in the examples directory:
+
+<!-- - [basic](../jac-client/jac_client/examples/basic/) - Minimal JAC application -->
+<!-- - [basic-full-stack](../jac-client/jac_client/examples/basic-full-stack/) - Basic full-stack application -->
+- [all-in-one](../jac-client/jac_client/examples/all-in-one/) - Complete example with all features
+- [with-router](../jac-client/jac_client/examples/with-router/) - Application with routing
+<!-- - [nested-folders/nested-basic](../jac-client/jac_client/examples/nested-folders/nested-basic/) - Basic nested folder structure -->
+- [nested-folders/nested-advance](../jac-client/jac_client/examples/nested-folders/nested-advance/) - Advanced nested folder structure
+<!-- - [basic-auth](../jac-client/jac_client/examples/basic-auth/) - Basic authentication -->
+<!-- - [basic-auth-with-router](../jac-client/jac_client/examples/basic-auth-with-router/) - Authentication with routing -->
+<!-- - [full-stack-with-auth](../jac-client/jac_client/examples/full-stack-with-auth/) - Full-stack app with authentication -->
+- [css-styling/js-styling](../jac-client/jac_client/examples/css-styling/js-styling/) - JavaScript styling example
+- [css-styling/material-ui](../jac-client/jac_client/examples/css-styling/material-ui/) - Material-UI styling example
+- [css-styling/pure-css](../jac-client/jac_client/examples/css-styling/pure-css/) - Pure CSS styling example
+- [css-styling/sass-example](../jac-client/jac_client/examples/css-styling/sass-example/) - SASS styling example
+- [css-styling/styled-components](../jac-client/jac_client/examples/css-styling/styled-components/) - Styled Components example
+- [css-styling/tailwind-example](../jac-client/jac_client/examples/css-styling/tailwind-example/) - Tailwind CSS example
+- [asset-serving/css-with-image](../jac-client/jac_client/examples/asset-serving/css-with-image/) - CSS with image assets
+- [asset-serving/image-asset](../jac-client/jac_client/examples/asset-serving/image-asset/) - Image asset serving
+- [asset-serving/import-alias](../jac-client/jac_client/examples/asset-serving/import-alias/) - Import alias example
+<!-- - [little-x](../jac-client/jac_client/examples/little-x/) - Little X application example -->
+
+Each example includes complete source code and can be run `jac serve`.
+
 ## Next Steps
 
 After successfully running the demo:

@@ -2,6 +2,7 @@ exclude: |
     (?x)(
         ^jac/jaclang/vendor/|
         ^jac/jaclang/compiler/larkparse/jac_parser\.py$|
+        ^jac/jaclang/compiler/larkparse/ts_parser\.py$|
         ^$
     )
 repos:
@@ -32,7 +33,7 @@ repos:
           - --explicit-package-bases
           - --exclude=jac-byllm/scripts
         additional_dependencies: [types-PyYAML, types-requests]
-        exclude: /fixtures/
+        exclude: (/fixtures/|jac/jaclang/compiler/ts_parser\.py)
   - repo: local
     hooks:
       - id: check-no-binary-files
