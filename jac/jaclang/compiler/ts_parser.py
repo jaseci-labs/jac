@@ -7,6 +7,7 @@ import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from threading import Event
+from types import ModuleType
 from typing import TYPE_CHECKING, TypeAlias, TypeVar
 
 import jaclang.compiler.unitree as uni
@@ -25,7 +26,7 @@ T = TypeVar("T", bound=uni.UniNode)
 TL = TypeVar("TL", bound=(uni.UniNode | list))
 
 
-def get_ts_lark():
+def get_ts_lark() -> ModuleType:
     """Get the TypeScript Lark module (for Token class etc.)."""
     global _ts_lark_module
     if _ts_lark_module is None:
@@ -43,7 +44,7 @@ def get_ts_lark():
     return _ts_lark_module
 
 
-def get_ts_parser():
+def get_ts_parser() -> object:
     """Get the TypeScript standalone LALR parser instance."""
     global _ts_parser
     if _ts_parser is None:
@@ -184,20 +185,20 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
         if iparser is None:
             return False
 
-        Token = lark_module.Token
+        lark_token = lark_module.Token
 
-        def try_feed_missing_token(iparser) -> Tok | None:
+        def try_feed_missing_token(iparser: object) -> Tok | None:
             """Try to feed a missing token to recover."""
             accepts = iparser.accepts()
             for tok in TypeScriptParser._MISSING_TOKENS:
                 if tok.name in accepts:
                     iparser.feed_token(
-                        Token(tok.name, tok.value if hasattr(tok, "value") else "")
+                        lark_token(tok.name, tok.value if hasattr(tok, "value") else "")
                     )
                     return tok
             return None
 
-        def feed_current_token(iparser, tok) -> bool:
+        def feed_current_token(iparser: object, tok: object) -> bool:
             """Feed current token after recovery."""
             max_attempts = 100
             attempts = 0
@@ -261,29 +262,30 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
     class TreeToAST:
         """Transform TypeScript parse tree to AST."""
 
-        def __init__(self, parser: TypeScriptParser, *args, **kwargs) -> None:
+        def __init__(self, parser: TypeScriptParser) -> None:
             """Initialize transformer."""
             self.parse_ref = parser
             self.terminals: list[uni.Token] = []
             self.node_idx = 0
             self.cur_nodes: list[uni.UniNode] = []
 
-        def transform(self, tree) -> uni.Module:
+        def transform(self, tree: object) -> uni.Module:
             """Transform the parse tree to AST."""
             lark_module = get_ts_lark()
-            Transformer = lark_module.Transformer
+            transformer_base = lark_module.Transformer
+            outer_ref = self
 
-            class _InnerTransformer(Transformer):
+            class _InnerTransformer(transformer_base):  # type: ignore[misc]
                 """Inner Lark transformer."""
 
-                def __init__(inner_self, outer):
+                def __init__(self) -> None:
                     super().__init__()
-                    inner_self.outer = outer
+                    self.outer = outer_ref
 
-                def _get_token(inner_self, token) -> uni.Token:
+                def _get_token(self, token: object) -> uni.Token:
                     """Convert Lark token to uni.Token."""
                     return uni.Token(
-                        orig_src=inner_self.outer.parse_ref.ir_in,
+                        orig_src=self.outer.parse_ref.ir_in,
                         name=token.type,
                         value=token.value,
                         line=token.line or 1,
@@ -296,10 +298,10 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                         or (token.start_pos or 0) + len(token.value),
                     )
 
-                def _make_name(inner_self, token) -> uni.Name:
+                def _make_name(self, token) -> uni.Name:
                     """Create a Name node from token."""
                     return uni.Name(
-                        orig_src=inner_self.outer.parse_ref.ir_in,
+                        orig_src=self.outer.parse_ref.ir_in,
                         name=Tok.NAME.name,
                         value=token.value if hasattr(token, "value") else str(token),
                         line=getattr(token, "line", 1) or 1,
@@ -310,32 +312,32 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                         pos_end=getattr(token, "end_pos", 0) or 0,
                     )
 
-                def __default_token__(inner_self, token):
+                def __default_token__(self, token):
                     """Default token handler."""
-                    return inner_self._get_token(token)
+                    return self._get_token(token)
 
-                def start(inner_self, items):
+                def start(self, items):
                     """start: source_file"""
                     if items and isinstance(items[0], uni.Module):
-                        items[0]._in_mod_nodes = inner_self.outer.parse_ref.node_list
+                        items[0]._in_mod_nodes = self.outer.parse_ref.node_list
                         return items[0]
-                    return inner_self.outer._make_module([])
+                    return self.outer._make_module([])
 
-                def source_file(inner_self, items):
+                def source_file(self, items):
                     """source_file: statement*"""
                     stmts = [i for i in items if isinstance(i, uni.UniNode)]
-                    return inner_self.outer._make_module(stmts)
+                    return self.outer._make_module(stmts)
 
-                def statement(inner_self, items):
+                def statement(self, items):
                     """statement: declaration | ..."""
                     return items[0] if items else None
 
-                def declaration(inner_self, items):
+                def declaration(self, items):
                     """declaration: var_decl | func_decl | ..."""
                     return items[0] if items else None
 
                 # Variable Declarations
-                def var_decl(inner_self, items):
+                def var_decl(self, items):
                     """var_decl: (KW_VAR | KW_LET | KW_CONST) binding_list semi"""
                     kids = [i for i in items if i is not None]
                     keyword = kids[0] if kids else None
@@ -357,11 +359,11 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                         kid=kids,
                     )
 
-                def binding_list(inner_self, items):
+                def binding_list(self, items):
                     """binding_list: binding (COMMA binding)*"""
                     return [i for i in items if isinstance(i, uni.Assignment)]
 
-                def binding(inner_self, items):
+                def binding(self, items):
                     """binding: binding_pattern type_annotation? initializer?"""
                     kids = [i for i in items if i is not None]
                     name = None
@@ -408,16 +410,16 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                         kid=kids,
                     )
 
-                def binding_pattern(inner_self, items):
+                def binding_pattern(self, items):
                     """binding_pattern: NAME | array_binding | object_binding"""
                     if items:
                         item = items[0]
                         if hasattr(item, "value"):
-                            return inner_self._make_name(item)
+                            return self._make_name(item)
                         return item
                     return None
 
-                def type_annotation(inner_self, items):
+                def type_annotation(self, items):
                     """type_annotation: COLON type"""
                     kids = [i for i in items if i is not None]
                     if len(kids) >= 2:
@@ -426,18 +428,17 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                             return uni.SubTag[uni.Expr](tag=type_expr, kid=kids)
                     return None
 
-                def initializer(inner_self, items):
+                def initializer(self, items):
                     """initializer: EQ assignment_expr"""
                     if len(items) >= 2:
                         return items[1]
                     return items[0] if items else None
 
                 # Function Declarations
-                def func_decl(inner_self, items):
+                def func_decl(self, items):
                     """func_decl: KW_ASYNC? KW_FUNCTION STAR? NAME? ..."""
                     kids = [i for i in items if i is not None]
                     is_async = False
-                    is_generator = False
                     name = None
                     params = []
                     return_type = None
@@ -447,10 +448,8 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                         if isinstance(item, uni.Token):
                             if item.name in (Tok.KW_ASYNC.name, "KW_ASYNC"):
                                 is_async = True
-                            elif item.name in (Tok.STAR.name, "STAR"):
-                                is_generator = True
                             elif item.name in (Tok.NAME.name, "NAME") and name is None:
-                                name = inner_self._make_name(item)
+                                name = self._make_name(item)
                         elif isinstance(item, uni.Name) and name is None:
                             name = item
                         elif isinstance(item, list):
@@ -467,7 +466,7 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
 
                     if name is None:
                         name = uni.Name.gen_stub_from_node(
-                            inner_self.outer.parse_ref.ir_in, "[anonymous]"
+                            self.outer.parse_ref.ir_in, "[anonymous]"
                         )
 
                     sig = uni.FuncSignature(
@@ -491,26 +490,24 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                         kid=kids,
                     )
 
-                def param_list(inner_self, items):
+                def param_list(self, items):
                     """param_list: param (COMMA param)*"""
                     return [i for i in items if isinstance(i, uni.ParamVar)]
 
-                def param(inner_self, items):
+                def param(self, items):
                     """param: binding_pattern QUESTION? type_annotation? initializer?"""
                     kids = [i for i in items if i is not None]
                     name = None
                     type_tag = None
                     default_val = None
-                    is_optional = False
 
                     for item in kids:
                         if isinstance(item, uni.Name) and name is None:
                             name = item
                         elif isinstance(item, uni.Token):
                             if item.name in (Tok.NAME.name, "NAME") and name is None:
-                                name = inner_self._make_name(item)
-                            elif item.name in (Tok.QUESTION.name, "QUESTION"):
-                                is_optional = True
+                                name = self._make_name(item)
+                            # QUESTION token indicates optional param (currently unused)
                         elif isinstance(item, uni.SubTag):
                             type_tag = item
                         elif isinstance(item, uni.Expr) and default_val is None:
@@ -527,26 +524,24 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                         kid=kids,
                     )
 
-                def func_body(inner_self, items):
+                def func_body(self, items):
                     """func_body: block_stmt"""
                     return items[0] if items else []
 
                 # Class Declarations
-                def class_decl(inner_self, items):
+                def class_decl(self, items):
                     """class_decl: decorators? KW_ABSTRACT? KW_CLASS NAME? ..."""
                     kids = [i for i in items if i is not None]
                     name = None
-                    is_abstract = False
                     base_classes = []
                     body = []
                     decorators = []
 
                     for item in kids:
                         if isinstance(item, uni.Token):
-                            if item.name in (Tok.KW_ABSTRACT.name, "KW_ABSTRACT"):
-                                is_abstract = True
-                            elif item.name in (Tok.NAME.name, "NAME") and name is None:
-                                name = inner_self._make_name(item)
+                            # KW_ABSTRACT token indicates abstract class (currently unused)
+                            if item.name in (Tok.NAME.name, "NAME") and name is None:
+                                name = self._make_name(item)
                         elif isinstance(item, uni.Name) and name is None:
                             name = item
                         elif isinstance(item, list):
@@ -561,13 +556,13 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
 
                     if name is None:
                         name = uni.Name.gen_stub_from_node(
-                            inner_self.outer.parse_ref.ir_in, "[anonymous]"
+                            self.outer.parse_ref.ir_in, "[anonymous]"
                         )
 
                     return uni.Archetype(
                         name=name,
                         arch_type=uni.Token(
-                            orig_src=inner_self.outer.parse_ref.ir_in,
+                            orig_src=self.outer.parse_ref.ir_in,
                             name="KW_CLASS",
                             value="class",
                             line=1,
@@ -585,11 +580,11 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                         kid=kids,
                     )
 
-                def class_body(inner_self, items):
+                def class_body(self, items):
                     """class_body: LBRACE class_element* RBRACE"""
                     return [i for i in items if isinstance(i, uni.ArchBlockStmt)]
 
-                def class_element(inner_self, items):
+                def class_element(self, items):
                     """class_element: decorators? class_element_modifiers? class_member"""
                     if items:
                         for item in items:
@@ -597,11 +592,11 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                                 return item
                     return None
 
-                def class_member(inner_self, items):
+                def class_member(self, items):
                     """class_member: property_definition | method_definition | ..."""
                     return items[0] if items else None
 
-                def property_definition(inner_self, items):
+                def property_definition(self, items):
                     """property_definition: property_name ...? type_annotation? initializer?"""
                     kids = [i for i in items if i is not None]
                     name = None
@@ -613,7 +608,7 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                             name = item
                         elif isinstance(item, uni.Token) and name is None:
                             if item.name in (Tok.NAME.name, "NAME"):
-                                name = inner_self._make_name(item)
+                                name = self._make_name(item)
                         elif isinstance(item, uni.SubTag):
                             type_tag = item
                         elif isinstance(item, uni.Expr):
@@ -633,11 +628,10 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                         kid=kids,
                     )
 
-                def method_definition(inner_self, items):
+                def method_definition(self, items):
                     """method_definition: KW_ASYNC? STAR? property_name ..."""
                     kids = [i for i in items if i is not None]
                     is_async = False
-                    is_generator = False
                     name = None
                     params = []
                     return_type = None
@@ -647,10 +641,9 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                         if isinstance(item, uni.Token):
                             if item.name in (Tok.KW_ASYNC.name, "KW_ASYNC"):
                                 is_async = True
-                            elif item.name in (Tok.STAR.name, "STAR"):
-                                is_generator = True
+                            # STAR token indicates generator (currently unused)
                             elif item.name in (Tok.NAME.name, "NAME") and name is None:
-                                name = inner_self._make_name(item)
+                                name = self._make_name(item)
                         elif isinstance(item, uni.Name) and name is None:
                             name = item
                         elif isinstance(item, list):
@@ -690,7 +683,7 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                     )
 
                 # Interface Declarations
-                def interface_decl(inner_self, items):
+                def interface_decl(self, items):
                     """interface_decl: KW_INTERFACE NAME type_params? ..."""
                     kids = [i for i in items if i is not None]
                     name = None
@@ -699,7 +692,7 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                     for item in kids:
                         if isinstance(item, uni.Token):
                             if item.name in (Tok.NAME.name, "NAME") and name is None:
-                                name = inner_self._make_name(item)
+                                name = self._make_name(item)
                         elif isinstance(item, uni.Name) and name is None:
                             name = item
                         elif isinstance(item, list):
@@ -707,13 +700,13 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
 
                     if name is None:
                         name = uni.Name.gen_stub_from_node(
-                            inner_self.outer.parse_ref.ir_in, "[anonymous]"
+                            self.outer.parse_ref.ir_in, "[anonymous]"
                         )
 
                     return uni.Archetype(
                         name=name,
                         arch_type=uni.Token(
-                            orig_src=inner_self.outer.parse_ref.ir_in,
+                            orig_src=self.outer.parse_ref.ir_in,
                             name="KW_INTERFACE",
                             value="interface",
                             line=1,
@@ -732,7 +725,7 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                     )
 
                 # Type Alias
-                def type_alias_decl(inner_self, items):
+                def type_alias_decl(self, items):
                     """type_alias_decl: KW_TYPE NAME type_params? EQ type semi"""
                     kids = [i for i in items if i is not None]
                     name = None
@@ -741,7 +734,7 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                     for item in kids:
                         if isinstance(item, uni.Token):
                             if item.name in (Tok.NAME.name, "NAME") and name is None:
-                                name = inner_self._make_name(item)
+                                name = self._make_name(item)
                         elif isinstance(item, uni.Name) and name is None:
                             name = item
                         elif isinstance(item, uni.Expr):
@@ -765,7 +758,7 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                     )
 
                 # Enum Declarations
-                def enum_decl(inner_self, items):
+                def enum_decl(self, items):
                     """enum_decl: KW_CONST? KW_ENUM NAME LBRACE enum_member_list? RBRACE"""
                     kids = [i for i in items if i is not None]
                     name = None
@@ -774,7 +767,7 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                     for item in kids:
                         if isinstance(item, uni.Token):
                             if item.name in (Tok.NAME.name, "NAME") and name is None:
-                                name = inner_self._make_name(item)
+                                name = self._make_name(item)
                         elif isinstance(item, uni.Name) and name is None:
                             name = item
                         elif isinstance(item, list):
@@ -782,7 +775,7 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
 
                     if name is None:
                         name = uni.Name.gen_stub_from_node(
-                            inner_self.outer.parse_ref.ir_in, "[anonymous]"
+                            self.outer.parse_ref.ir_in, "[anonymous]"
                         )
 
                     return uni.Enum(
@@ -795,11 +788,11 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                         kid=kids,
                     )
 
-                def enum_member_list(inner_self, items):
+                def enum_member_list(self, items):
                     """enum_member_list: enum_member (COMMA enum_member)*"""
                     return [i for i in items if isinstance(i, uni.Assignment)]
 
-                def enum_member(inner_self, items):
+                def enum_member(self, items):
                     """enum_member: property_name (EQ assignment_expr)?"""
                     kids = [i for i in items if i is not None]
                     name = None
@@ -810,7 +803,7 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                             name = item
                         elif isinstance(item, uni.Token):
                             if item.name in (Tok.NAME.name, "NAME") and name is None:
-                                name = inner_self._make_name(item)
+                                name = self._make_name(item)
                         elif isinstance(item, uni.Expr):
                             value = item
 
@@ -831,17 +824,15 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                     )
 
                 # Import/Export
-                def import_decl(inner_self, items):
+                def import_decl(self, items):
                     """import_decl: KW_IMPORT ..."""
                     kids = [i for i in items if i is not None]
-                    is_type_only = False
                     from_loc = None
                     import_items = []
 
                     for item in kids:
                         if isinstance(item, uni.Token):
-                            if item.name in (Tok.KW_TYPE.name, "KW_TYPE"):
-                                is_type_only = True
+                            pass  # KW_TYPE token indicates type-only import (currently unused)
                         elif isinstance(item, uni.ModulePath):
                             from_loc = item
                         elif isinstance(item, list):
@@ -862,7 +853,7 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                         kid=kids,
                     )
 
-                def from_clause(inner_self, items):
+                def from_clause(self, items):
                     """from_clause: KW_FROM module_specifier"""
                     for item in items:
                         if isinstance(item, uni.ModulePath):
@@ -892,7 +883,7 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                             )
                     return None
 
-                def module_specifier(inner_self, items):
+                def module_specifier(self, items):
                     """module_specifier: STRING"""
                     if items:
                         item = items[0]
@@ -918,7 +909,7 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                             )
                     return None
 
-                def named_imports(inner_self, items):
+                def named_imports(self, items):
                     """named_imports: LBRACE import_specifier_list? RBRACE"""
                     result = []
                     for item in items:
@@ -930,23 +921,25 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                             result.append(item)
                     return result
 
-                def import_specifier_list(inner_self, items):
+                def import_specifier_list(self, items):
                     """import_specifier_list: import_specifier (COMMA import_specifier)*"""
                     return [i for i in items if isinstance(i, uni.ModuleItem)]
 
-                def import_specifier(inner_self, items):
+                def import_specifier(self, items):
                     """import_specifier: NAME (KW_AS NAME)?"""
                     kids = [i for i in items if i is not None]
                     name = None
                     alias = None
 
-                    for i, item in enumerate(kids):
-                        if isinstance(item, uni.Token):
-                            if item.name in (Tok.NAME.name, "NAME"):
-                                if name is None:
-                                    name = inner_self._make_name(item)
-                                else:
-                                    alias = inner_self._make_name(item)
+                    for item in kids:
+                        if isinstance(item, uni.Token) and item.name in (
+                            Tok.NAME.name,
+                            "NAME",
+                        ):
+                            if name is None:
+                                name = self._make_name(item)
+                            else:
+                                alias = self._make_name(item)
 
                     if name is None:
                         return None
@@ -957,7 +950,7 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                         kid=kids,
                     )
 
-                def export_decl(inner_self, items):
+                def export_decl(self, items):
                     """export_decl: KW_EXPORT ..."""
                     # For simplicity, return the inner declaration
                     for item in items:
@@ -968,18 +961,17 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                     return None
 
                 # Control Flow
-                def block_stmt(inner_self, items):
+                def block_stmt(self, items):
                     """block_stmt: LBRACE statement* RBRACE"""
                     return [i for i in items if isinstance(i, uni.CodeBlockStmt)]
 
-                def if_stmt(inner_self, items):
+                def if_stmt(self, items):
                     """if_stmt: KW_IF LPAREN expression RPAREN statement (KW_ELSE statement)?"""
                     kids = [i for i in items if i is not None]
                     condition = None
                     body = []
                     else_body = None
 
-                    idx = 0
                     for item in kids:
                         if isinstance(item, uni.Expr) and condition is None:
                             condition = item
@@ -1009,7 +1001,7 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                         kid=kids,
                     )
 
-                def while_stmt(inner_self, items):
+                def while_stmt(self, items):
                     """while_stmt: KW_WHILE LPAREN expression RPAREN statement"""
                     kids = [i for i in items if i is not None]
                     condition = None
@@ -1029,7 +1021,7 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                         kid=kids,
                     )
 
-                def for_stmt(inner_self, items):
+                def for_stmt(self, items):
                     """for_stmt: KW_FOR LPAREN for_init? SEMI expression? SEMI expression? RPAREN statement"""
                     kids = [i for i in items if i is not None]
                     body = []
@@ -1051,15 +1043,15 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                         kid=kids,
                     )
 
-                def for_in_stmt(inner_self, items):
+                def for_in_stmt(self, items):
                     """for_in_stmt: KW_FOR ..."""
-                    return inner_self.for_stmt(items)
+                    return self.for_stmt(items)
 
-                def for_of_stmt(inner_self, items):
+                def for_of_stmt(self, items):
                     """for_of_stmt: KW_FOR ..."""
-                    return inner_self.for_stmt(items)
+                    return self.for_stmt(items)
 
-                def return_stmt(inner_self, items):
+                def return_stmt(self, items):
                     """return_stmt: KW_RETURN expression? semi"""
                     kids = [i for i in items if i is not None]
                     expr = None
@@ -1070,7 +1062,7 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
 
                     return uni.ReturnStmt(expr=expr, kid=kids)
 
-                def try_stmt(inner_self, items):
+                def try_stmt(self, items):
                     """try_stmt: KW_TRY block_stmt catch_clause? finally_clause?"""
                     kids = [i for i in items if i is not None]
                     body = []
@@ -1095,7 +1087,7 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                         kid=kids,
                     )
 
-                def catch_clause(inner_self, items):
+                def catch_clause(self, items):
                     """catch_clause: KW_CATCH (LPAREN binding_pattern type_annotation? RPAREN)? block_stmt"""
                     kids = [i for i in items if i is not None]
                     name = None
@@ -1106,7 +1098,7 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                             name = item
                         elif isinstance(item, uni.Token) and name is None:
                             if item.name in (Tok.NAME.name, "NAME"):
-                                name = inner_self._make_name(item)
+                                name = self._make_name(item)
                         elif isinstance(item, list):
                             body = [i for i in item if isinstance(i, uni.CodeBlockStmt)]
 
@@ -1117,7 +1109,7 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                         kid=kids,
                     )
 
-                def finally_clause(inner_self, items):
+                def finally_clause(self, items):
                     """finally_clause: KW_FINALLY block_stmt"""
                     kids = [i for i in items if i is not None]
                     body = []
@@ -1127,7 +1119,7 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
 
                     return uni.FinallyStmt(body=body, kid=kids)
 
-                def throw_stmt(inner_self, items):
+                def throw_stmt(self, items):
                     """throw_stmt: KW_THROW expression semi"""
                     kids = [i for i in items if i is not None]
                     expr = None
@@ -1138,11 +1130,11 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
 
                     return uni.RaiseStmt(cause=expr, from_target=None, kid=kids)
 
-                def break_stmt(inner_self, items):
+                def break_stmt(self, items):
                     """break_stmt: KW_BREAK NAME? semi"""
                     return uni.CtrlStmt(
                         ctrl=uni.Token(
-                            orig_src=inner_self.outer.parse_ref.ir_in,
+                            orig_src=self.outer.parse_ref.ir_in,
                             name="KW_BREAK",
                             value="break",
                             line=1,
@@ -1155,11 +1147,11 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                         kid=[i for i in items if i is not None],
                     )
 
-                def continue_stmt(inner_self, items):
+                def continue_stmt(self, items):
                     """continue_stmt: KW_CONTINUE NAME? semi"""
                     return uni.CtrlStmt(
                         ctrl=uni.Token(
-                            orig_src=inner_self.outer.parse_ref.ir_in,
+                            orig_src=self.outer.parse_ref.ir_in,
                             name="KW_CONTINUE",
                             value="continue",
                             line=1,
@@ -1172,11 +1164,11 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                         kid=[i for i in items if i is not None],
                     )
 
-                def empty_stmt(inner_self, items):
+                def empty_stmt(self, items):
                     """empty_stmt: SEMI"""
                     return None
 
-                def expr_stmt(inner_self, items):
+                def expr_stmt(self, items):
                     """expr_stmt: expression semi"""
                     kids = [i for i in items if i is not None]
                     for item in kids:
@@ -1185,7 +1177,7 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                     return None
 
                 # Expressions
-                def expression(inner_self, items):
+                def expression(self, items):
                     """expression: assignment_expr (COMMA assignment_expr)*"""
                     exprs = [i for i in items if isinstance(i, uni.Expr)]
                     if len(exprs) == 1:
@@ -1194,7 +1186,7 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                         return uni.TupleVal(values=exprs, kid=list(items))
                     return None
 
-                def assignment_expr(inner_self, items):
+                def assignment_expr(self, items):
                     """assignment_expr: conditional_expr | left_hand_side_expr assignment_op assignment_expr"""
                     kids = [i for i in items if i is not None]
                     if len(kids) == 1:
@@ -1203,7 +1195,7 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                     # Assignment case
                     if len(kids) >= 3:
                         target = kids[0]
-                        op = kids[1]
+                        # kids[1] is the assignment operator (unused)
                         value = kids[2]
                         if isinstance(target, uni.Expr) and isinstance(value, uni.Expr):
                             return uni.Assignment(
@@ -1214,7 +1206,7 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                             )
                     return kids[0] if kids and isinstance(kids[0], uni.Expr) else None
 
-                def conditional_expr(inner_self, items):
+                def conditional_expr(self, items):
                     """conditional_expr: nullish_coalescing_expr (QUESTION assignment_expr COLON assignment_expr)?"""
                     kids = [i for i in items if i is not None]
                     exprs = [i for i in kids if isinstance(i, uni.Expr)]
@@ -1230,7 +1222,7 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                         )
                     return exprs[0] if exprs else None
 
-                def _binary_expr(inner_self, items, op_name: str = "OP"):
+                def _binary_expr(self, items, op_name: str = "OP"):
                     """Helper for binary expressions."""
                     kids = [i for i in items if i is not None]
                     exprs = [i for i in kids if isinstance(i, uni.Expr)]
@@ -1247,43 +1239,43 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                         )
                     return exprs[0] if exprs else None
 
-                def nullish_coalescing_expr(inner_self, items):
-                    return inner_self._binary_expr(items, "NULLISH_COALESCE")
+                def nullish_coalescing_expr(self, items):
+                    return self._binary_expr(items, "NULLISH_COALESCE")
 
-                def logical_or_expr(inner_self, items):
-                    return inner_self._binary_expr(items, "OR")
+                def logical_or_expr(self, items):
+                    return self._binary_expr(items, "OR")
 
-                def logical_and_expr(inner_self, items):
-                    return inner_self._binary_expr(items, "AND")
+                def logical_and_expr(self, items):
+                    return self._binary_expr(items, "AND")
 
-                def bitwise_or_expr(inner_self, items):
-                    return inner_self._binary_expr(items, "BW_OR")
+                def bitwise_or_expr(self, items):
+                    return self._binary_expr(items, "BW_OR")
 
-                def bitwise_xor_expr(inner_self, items):
-                    return inner_self._binary_expr(items, "BW_XOR")
+                def bitwise_xor_expr(self, items):
+                    return self._binary_expr(items, "BW_XOR")
 
-                def bitwise_and_expr(inner_self, items):
-                    return inner_self._binary_expr(items, "BW_AND")
+                def bitwise_and_expr(self, items):
+                    return self._binary_expr(items, "BW_AND")
 
-                def equality_expr(inner_self, items):
-                    return inner_self._binary_expr(items, "EQ")
+                def equality_expr(self, items):
+                    return self._binary_expr(items, "EQ")
 
-                def relational_expr(inner_self, items):
-                    return inner_self._binary_expr(items, "CMP")
+                def relational_expr(self, items):
+                    return self._binary_expr(items, "CMP")
 
-                def shift_expr(inner_self, items):
-                    return inner_self._binary_expr(items, "SHIFT")
+                def shift_expr(self, items):
+                    return self._binary_expr(items, "SHIFT")
 
-                def additive_expr(inner_self, items):
-                    return inner_self._binary_expr(items, "ADD")
+                def additive_expr(self, items):
+                    return self._binary_expr(items, "ADD")
 
-                def multiplicative_expr(inner_self, items):
-                    return inner_self._binary_expr(items, "MUL")
+                def multiplicative_expr(self, items):
+                    return self._binary_expr(items, "MUL")
 
-                def exponentiation_expr(inner_self, items):
-                    return inner_self._binary_expr(items, "EXP")
+                def exponentiation_expr(self, items):
+                    return self._binary_expr(items, "EXP")
 
-                def unary_expr(inner_self, items):
+                def unary_expr(self, items):
                     """unary_expr: postfix_expr | (op) unary_expr"""
                     kids = [i for i in items if i is not None]
                     if len(kids) == 1:
@@ -1302,7 +1294,7 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                         return uni.UnaryExpr(op=op, operand=operand, kid=kids)
                     return operand
 
-                def postfix_expr(inner_self, items):
+                def postfix_expr(self, items):
                     """postfix_expr: left_hand_side_expr (PLUS_PLUS | MINUS_MINUS)?"""
                     kids = [i for i in items if i is not None]
                     expr = None
@@ -1317,15 +1309,15 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                         return uni.UnaryExpr(op=op, operand=expr, kid=kids)
                     return expr
 
-                def left_hand_side_expr(inner_self, items):
+                def left_hand_side_expr(self, items):
                     """left_hand_side_expr: call_expr | new_expr"""
                     return items[0] if items else None
 
-                def new_expr(inner_self, items):
+                def new_expr(self, items):
                     """new_expr: member_expr | KW_NEW new_expr"""
                     return items[-1] if items else None
 
-                def call_expr(inner_self, items):
+                def call_expr(self, items):
                     """call_expr: member_expr arguments | ..."""
                     kids = [i for i in items if i is not None]
                     target = None
@@ -1347,7 +1339,7 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                         return target
                     return None
 
-                def member_expr(inner_self, items):
+                def member_expr(self, items):
                     """member_expr: primary_expr | member_expr DOT NAME | member_expr LSQUARE expression RSQUARE"""
                     kids = [i for i in items if i is not None]
                     if len(kids) == 1:
@@ -1364,7 +1356,7 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                                 Tok.NAME.name,
                                 "NAME",
                             ):
-                                accessor = inner_self._make_name(item)
+                                accessor = self._make_name(item)
                             elif isinstance(item, uni.Name):
                                 accessor = item
                         elif isinstance(item, uni.Expr) and target is not None:
@@ -1380,31 +1372,31 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                         )
                     return target
 
-                def arguments(inner_self, items):
+                def arguments(self, items):
                     """arguments: type_args? LPAREN argument_list? RPAREN"""
                     for item in items:
                         if isinstance(item, list):
                             return item
                     return []
 
-                def argument_list(inner_self, items):
+                def argument_list(self, items):
                     """argument_list: argument (COMMA argument)*"""
                     return [i for i in items if isinstance(i, uni.Expr)]
 
-                def argument(inner_self, items):
+                def argument(self, items):
                     """argument: ELLIPSIS? assignment_expr"""
                     for item in items:
                         if isinstance(item, uni.Expr):
                             return item
                     return None
 
-                def primary_expr(inner_self, items):
+                def primary_expr(self, items):
                     """primary_expr: KW_THIS | NAME | literal | ..."""
                     if items:
                         item = items[0]
                         if isinstance(item, uni.Token):
                             if item.name in (Tok.NAME.name, "NAME"):
-                                return inner_self._make_name(item)
+                                return self._make_name(item)
                             elif item.name in (
                                 Tok.KW_THIS.name,
                                 "KW_THIS",
@@ -1416,7 +1408,7 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                         return item if isinstance(item, uni.Expr) else None
                     return None
 
-                def paren_expr(inner_self, items):
+                def paren_expr(self, items):
                     """paren_expr: LPAREN expression RPAREN"""
                     for item in items:
                         if isinstance(item, uni.Expr):
@@ -1424,7 +1416,7 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                     return None
 
                 # Literals
-                def literal(inner_self, items):
+                def literal(self, items):
                     """literal: NULL | TRUE | FALSE | NUMBER | STRING | REGEX"""
                     if items:
                         item = items[0]
@@ -1463,7 +1455,7 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                         return item if isinstance(item, uni.Expr) else None
                     return None
 
-                def array_literal(inner_self, items):
+                def array_literal(self, items):
                     """array_literal: LSQUARE element_list? RSQUARE"""
                     elements = []
                     for item in items:
@@ -1473,18 +1465,18 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                             elements.append(item)
                     return uni.ListVal(values=elements, kid=list(items))
 
-                def element_list(inner_self, items):
+                def element_list(self, items):
                     """element_list: array_element (COMMA array_element)*"""
                     return [i for i in items if isinstance(i, uni.Expr)]
 
-                def array_element(inner_self, items):
+                def array_element(self, items):
                     """array_element: ELLIPSIS? assignment_expr | COMMA"""
                     for item in items:
                         if isinstance(item, uni.Expr):
                             return item
                     return None
 
-                def object_literal(inner_self, items):
+                def object_literal(self, items):
                     """object_literal: LBRACE property_list? RBRACE"""
                     props = []
                     for item in items:
@@ -1492,11 +1484,11 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                             props = [p for p in item if isinstance(p, uni.KVPair)]
                     return uni.DictVal(kv_pairs=props, kid=list(items))
 
-                def property_list(inner_self, items):
+                def property_list(self, items):
                     """property_list: property_definition_expr (COMMA property_definition_expr)*"""
                     return [i for i in items if isinstance(i, uni.KVPair)]
 
-                def property_definition_expr(inner_self, items):
+                def property_definition_expr(self, items):
                     """property_definition_expr: property_name COLON assignment_expr | ..."""
                     kids = [i for i in items if i is not None]
                     key = None
@@ -1507,7 +1499,7 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                             key = item
                         elif isinstance(item, uni.Token) and key is None:
                             if item.name in (Tok.NAME.name, "NAME"):
-                                key = inner_self._make_name(item)
+                                key = self._make_name(item)
                         elif isinstance(item, uni.Expr):
                             if key is None:
                                 key = item
@@ -1520,13 +1512,13 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                         return uni.KVPair(key=key, value=value, kid=kids)
                     return None
 
-                def property_name(inner_self, items):
+                def property_name(self, items):
                     """property_name: NAME | STRING | NUMBER | computed_property_name"""
                     if items:
                         item = items[0]
                         if isinstance(item, uni.Token):
                             if item.name in (Tok.NAME.name, "NAME"):
-                                return inner_self._make_name(item)
+                                return self._make_name(item)
                             elif item.name in (Tok.STRING.name, "STRING"):
                                 return uni.String(value=item.value, kid=[item])
                             elif item.name in (Tok.NUMBER.name, "NUMBER"):
@@ -1535,7 +1527,7 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                     return None
 
                 # Arrow Functions
-                def arrow_func(inner_self, items):
+                def arrow_func(self, items):
                     """arrow_func: KW_ASYNC? type_params? arrow_params type_annotation? ARROW arrow_body"""
                     kids = [i for i in items if i is not None]
                     is_async = False
@@ -1551,7 +1543,7 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                                 # Single parameter shorthand
                                 params = [
                                     uni.ParamVar(
-                                        name=inner_self._make_name(item),
+                                        name=self._make_name(item),
                                         unpack=None,
                                         type_tag=None,
                                         value=None,
@@ -1574,7 +1566,7 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                             body = [uni.ReturnStmt(expr=item, kid=[item])]
 
                     name = uni.Name.gen_stub_from_node(
-                        inner_self.outer.parse_ref.ir_in, "[arrow]"
+                        self.outer.parse_ref.ir_in, "[arrow]"
                     )
 
                     sig = uni.FuncSignature(
@@ -1598,7 +1590,7 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                         kid=kids,
                     )
 
-                def arrow_params(inner_self, items):
+                def arrow_params(self, items):
                     """arrow_params: NAME | LPAREN param_list? RPAREN"""
                     if items:
                         item = items[0]
@@ -1608,7 +1600,7 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                         ):
                             return [
                                 uni.ParamVar(
-                                    name=inner_self._make_name(item),
+                                    name=self._make_name(item),
                                     unpack=None,
                                     type_tag=None,
                                     value=None,
@@ -1619,7 +1611,7 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                             return [p for p in item if isinstance(p, uni.ParamVar)]
                     return []
 
-                def arrow_body(inner_self, items):
+                def arrow_body(self, items):
                     """arrow_body: assignment_expr | block_stmt"""
                     if items:
                         item = items[0]
@@ -1630,7 +1622,7 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                     return []
 
                 # Template Literals
-                def template_literal(inner_self, items):
+                def template_literal(self, items):
                     """template_literal: TEMPLATE_STRING | template_head template_spans"""
                     if items:
                         item = items[0]
@@ -1640,13 +1632,13 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                     return None
 
                 # Types
-                def type(inner_self, items):
+                def type(self, items):
                     """type: union_type | intersection_type | primary_type | ..."""
                     return (
                         items[0] if items and isinstance(items[0], uni.Expr) else None
                     )
 
-                def union_type(inner_self, items):
+                def union_type(self, items):
                     """union_type: type (BW_OR type)+"""
                     types = [i for i in items if isinstance(i, uni.Expr)]
                     if len(types) == 1:
@@ -1654,20 +1646,20 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                     # Return as tuple for union representation
                     return uni.TupleVal(values=types, kid=list(items))
 
-                def intersection_type(inner_self, items):
+                def intersection_type(self, items):
                     """intersection_type: type (BW_AND type)+"""
                     types = [i for i in items if isinstance(i, uni.Expr)]
                     if len(types) == 1:
                         return types[0]
                     return uni.TupleVal(values=types, kid=list(items))
 
-                def primary_type(inner_self, items):
+                def primary_type(self, items):
                     """primary_type: predefined_type | type_reference | ..."""
                     return (
                         items[0] if items and isinstance(items[0], uni.Expr) else None
                     )
 
-                def predefined_type(inner_self, items):
+                def predefined_type(self, items):
                     """predefined_type: KW_ANY | KW_STRING_TYPE | ..."""
                     if items:
                         item = items[0]
@@ -1678,7 +1670,7 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                             )
                     return None
 
-                def type_reference(inner_self, items):
+                def type_reference(self, items):
                     """type_reference: type_name type_args?"""
                     if items:
                         item = items[0]
@@ -1688,10 +1680,10 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                             Tok.NAME.name,
                             "NAME",
                         ):
-                            return inner_self._make_name(item)
+                            return self._make_name(item)
                     return None
 
-                def type_name(inner_self, items):
+                def type_name(self, items):
                     """type_name: NAME (DOT NAME)*"""
                     names = []
                     for item in items:
@@ -1699,17 +1691,17 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                             Tok.NAME.name,
                             "NAME",
                         ):
-                            names.append(inner_self._make_name(item))
+                            names.append(self._make_name(item))
                         elif isinstance(item, uni.Name):
                             names.append(item)
                     return names[0] if names else None
 
                 # JSX
-                def jsx_element(inner_self, items):
+                def jsx_element(self, items):
                     """jsx_element: jsx_self_closing | jsx_opening_closing | jsx_fragment"""
                     return items[0] if items else None
 
-                def jsx_self_closing(inner_self, items):
+                def jsx_self_closing(self, items):
                     """jsx_self_closing: JSX_OPEN_START jsx_element_name jsx_attributes? JSX_SELF_CLOSE"""
                     return uni.JsxElement(
                         tag=items[1] if len(items) > 1 else None,
@@ -1718,7 +1710,7 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                         kid=list(items),
                     )
 
-                def jsx_opening_closing(inner_self, items):
+                def jsx_opening_closing(self, items):
                     """jsx_opening_closing: jsx_opening_element jsx_children? jsx_closing_element"""
                     return uni.JsxElement(
                         tag=items[0] if items else None,
@@ -1727,7 +1719,7 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                         kid=list(items),
                     )
 
-                def jsx_fragment(inner_self, items):
+                def jsx_fragment(self, items):
                     """jsx_fragment: JSX_FRAG_OPEN jsx_children? JSX_FRAG_CLOSE"""
                     return uni.JsxElement(
                         tag=None,
@@ -1736,28 +1728,28 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                         kid=list(items),
                     )
 
-                def jsx_element_name(inner_self, items):
+                def jsx_element_name(self, items):
                     """jsx_element_name: NAME (DOT NAME)*"""
                     if items:
                         item = items[0]
                         if isinstance(item, uni.Token):
-                            return inner_self._make_name(item)
+                            return self._make_name(item)
                         return item
                     return None
 
                 # Decorators
-                def decorators(inner_self, items):
+                def decorators(self, items):
                     """decorators: decorator+"""
                     return [i for i in items if isinstance(i, uni.Expr)]
 
-                def decorator(inner_self, items):
+                def decorator(self, items):
                     """decorator: AT decorator_expr"""
                     for item in items:
                         if isinstance(item, uni.Expr):
                             return item
                     return None
 
-                def decorator_expr(inner_self, items):
+                def decorator_expr(self, items):
                     """decorator_expr: NAME | decorator_expr DOT NAME | decorator_expr arguments"""
                     if items:
                         item = items[0]
@@ -1765,12 +1757,12 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                             Tok.NAME.name,
                             "NAME",
                         ):
-                            return inner_self._make_name(item)
+                            return self._make_name(item)
                         return item if isinstance(item, uni.Expr) else None
                     return None
 
                 # Default handler
-                def __default__(inner_self, data, children, meta):
+                def __default__(self, data, children, meta):
                     """Default handler for unhandled rules."""
                     if children:
                         # Return first non-None child
@@ -1779,7 +1771,7 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                                 return child
                     return None
 
-            transformer = _InnerTransformer(self)
+            transformer = _InnerTransformer()
             return transformer.transform(tree)
 
         def _make_module(self, body: list[uni.UniNode]) -> uni.Module:
