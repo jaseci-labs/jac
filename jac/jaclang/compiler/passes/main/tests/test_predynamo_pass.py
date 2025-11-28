@@ -3,10 +3,10 @@
 import io
 import sys
 
-from jaclang.compiler.program import JacProgram, py_code_gen
-from jaclang.utils.test import TestCase
-from jaclang.settings import settings
 from jaclang.compiler.passes.main import PreDynamoPass
+from jaclang.compiler.program import JacProgram, py_code_gen
+from jaclang.settings import settings
+from jaclang.utils.test import TestCase
 
 
 class PreDynamoPassTests(TestCase):

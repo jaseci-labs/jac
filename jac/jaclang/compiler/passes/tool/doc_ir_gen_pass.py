@@ -3,7 +3,7 @@
 This is a pass for generating DocIr for Jac code.
 """
 
-from typing import List, Optional, Sequence
+from collections.abc import Sequence
 
 import jaclang.compiler.passes.tool.doc_ir as doc
 import jaclang.compiler.unitree as uni
@@ -14,7 +14,7 @@ from jaclang.compiler.passes import UniPass
 class DocIRGenPass(UniPass):
     """DocIrGenPass generate DocIr for Jac code."""
 
-    def text(self, text: str, source_token: Optional[uni.Token] = None) -> doc.Text:
+    def text(self, text: str, source_token: uni.Token | None = None) -> doc.Text:
         """Create a Text node."""
         return doc.Text(text, source_token=source_token)
 
@@ -42,7 +42,7 @@ class DocIRGenPass(UniPass):
         self,
         contents: doc.DocType,
         break_contiguous: bool = False,
-        ast_node: Optional[uni.UniNode] = None,
+        ast_node: uni.UniNode | None = None,
     ) -> doc.Group:
         """
         Create a Group node.
@@ -55,13 +55,13 @@ class DocIRGenPass(UniPass):
         return doc.Group(contents, break_contiguous, ast_node=ast_node)
 
     def indent(
-        self, contents: doc.DocType, ast_node: Optional[uni.UniNode] = None
+        self, contents: doc.DocType, ast_node: uni.UniNode | None = None
     ) -> doc.Indent:
         """Create an Indent node."""
         return doc.Indent(contents, ast_node=ast_node)
 
     def concat(
-        self, parts: List[doc.DocType], ast_node: Optional[uni.UniNode] = None
+        self, parts: list[doc.DocType], ast_node: uni.UniNode | None = None
     ) -> doc.Concat:
         """Create a Concat node."""
         return doc.Concat(parts, ast_node=ast_node)
@@ -74,11 +74,11 @@ class DocIRGenPass(UniPass):
         """Create an IfBreak node."""
         return doc.IfBreak(break_contents, flat_contents)
 
-    def align(self, contents: doc.DocType, n: Optional[int] = None) -> doc.Align:
+    def align(self, contents: doc.DocType, n: int | None = None) -> doc.Align:
         """Create an Align node."""
         return doc.Align(contents, n)
 
-    def join(self, separator: doc.DocType, parts: List[doc.DocType]) -> doc.DocType:
+    def join(self, separator: doc.DocType, parts: list[doc.DocType]) -> doc.DocType:
         """Join parts with separator."""
         if not parts:
             return self.concat([])
@@ -90,11 +90,11 @@ class DocIRGenPass(UniPass):
 
         return self.concat(result)
 
-    def join_with_space(self, parts: List[doc.DocType]) -> doc.DocType:
+    def join_with_space(self, parts: list[doc.DocType]) -> doc.DocType:
         """Join parts with space separator."""
         return self.join(self.space(), parts)
 
-    def join_with_line(self, parts: List[doc.DocType]) -> doc.DocType:
+    def join_with_line(self, parts: list[doc.DocType]) -> doc.DocType:
         """Join parts with line separator."""
         return self.join(self.line(), parts)
 
@@ -126,8 +126,8 @@ class DocIRGenPass(UniPass):
         node.gen.doc_ir = self.group(self.join_with_space(self._child_docs(node)))
 
     def intersperse(
-        self, items: List[doc.DocType], separator: doc.DocType
-    ) -> List[doc.DocType]:
+        self, items: list[doc.DocType], separator: doc.DocType
+    ) -> list[doc.DocType]:
         """Intersperse separator between items (returns flat list)."""
         if not items:
             return []
@@ -153,7 +153,7 @@ class DocIRGenPass(UniPass):
         """
         parts: list[doc.DocType] = []
         body_parts: list[doc.DocType] = [self.hard_line()]
-        prev_body_item: Optional[uni.UniNode] = None
+        prev_body_item: uni.UniNode | None = None
 
         for i in node.kid:
             if isinstance(body, Sequence) and self.is_within(i, body):
@@ -175,7 +175,7 @@ class DocIRGenPass(UniPass):
 
         return self.group(self.concat(parts), ast_node=node)
 
-    def format_comprehension(self, parts: List[doc.DocType]) -> doc.DocType:
+    def format_comprehension(self, parts: list[doc.DocType]) -> doc.DocType:
         """
         Format comprehension with defensive checks.
 
@@ -228,7 +228,7 @@ class DocIRGenPass(UniPass):
         self,
         body_parts: list[doc.DocType],
         current: uni.UniNode,
-        previous: Optional[uni.UniNode],
+        previous: uni.UniNode | None,
     ) -> None:
         """Add a body statement preserving single blank lines from source."""
         if previous and self.has_gap(previous, current):
@@ -253,7 +253,7 @@ class DocIRGenPass(UniPass):
 
         return first and last
 
-    def trim_trailing_line(self, parts: List[doc.DocType]) -> None:
+    def trim_trailing_line(self, parts: list[doc.DocType]) -> None:
         """Recursively trim trailing Line (soft or hard) nodes from parts."""
         if not parts:
             return
@@ -480,7 +480,7 @@ class DocIRGenPass(UniPass):
         parts: list[doc.DocType] = []
         body_parts: list[doc.DocType] = []
         in_body = False
-        prev_body_item: Optional[uni.UniNode] = None
+        prev_body_item: uni.UniNode | None = None
         for i in node.kid:
             if i == node.doc or (node.decorators and i in node.decorators):
                 parts.append(i.gen.doc_ir)
@@ -590,7 +590,7 @@ class DocIRGenPass(UniPass):
         """Generate DocIR for assignments."""
         lhs_parts: list[doc.DocType] = []
         rhs_parts: list[doc.DocType] = []
-        eq_tok: Optional[doc.DocType] = None
+        eq_tok: doc.DocType | None = None
         seen_eq = False
 
         for i in node.kid:
@@ -1266,7 +1266,7 @@ class DocIRGenPass(UniPass):
         parts: list[doc.DocType] = []
         body_parts: list[doc.DocType] = []
         in_body = False
-        prev_body_item: Optional[uni.UniNode] = None
+        prev_body_item: uni.UniNode | None = None
         for i in node.kid:
             if isinstance(i, uni.Token) and i.name == Tok.KW_CLIENT:
                 parts.append(i.gen.doc_ir)
@@ -1298,7 +1298,7 @@ class DocIRGenPass(UniPass):
         parts: list[doc.DocType] = []
         body_parts: list[doc.DocType] = []
         in_body = False
-        prev_body_item: Optional[uni.UniNode] = None
+        prev_body_item: uni.UniNode | None = None
         for i in node.kid:
             if node.doc and i is node.doc:
                 parts.append(i.gen.doc_ir)
@@ -1372,7 +1372,7 @@ class DocIRGenPass(UniPass):
     def exit_atom_unit(self, node: uni.AtomUnit) -> None:
         """Generate DocIR for atom units (parenthesized expressions)."""
         parts: list[doc.DocType] = []
-        prev_item: Optional[uni.UniNode] = None
+        prev_item: uni.UniNode | None = None
         for i in node.kid:
             if isinstance(i, uni.Token) and i.name == Tok.LPAREN:
                 parts.append(i.gen.doc_ir)
@@ -1489,7 +1489,7 @@ class DocIRGenPass(UniPass):
         """Generate DocIR for match cases."""
         parts: list[doc.DocType] = []
         indent_parts: list[doc.DocType] = []
-        prev_body_item: Optional[uni.UniNode] = None
+        prev_body_item: uni.UniNode | None = None
         for i in node.kid:
             if isinstance(i, uni.Token) and i.name == Tok.COLON:
                 parts.pop()
@@ -1527,7 +1527,7 @@ class DocIRGenPass(UniPass):
         """Generate DocIR for switch cases."""
         parts: list[doc.DocType] = []
         indent_parts: list[doc.DocType] = []
-        prev_body_item: Optional[uni.UniNode] = None
+        prev_body_item: uni.UniNode | None = None
         for i in node.kid:
             if isinstance(i, uni.Token) and i.name == Tok.COLON:
                 parts.pop()

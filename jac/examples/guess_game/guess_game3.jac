@@ -10,9 +10,9 @@ obj Game {
 
 
 obj GuessTheNumberGame (Game) {
+    has attempts: int = 10;
     has correct_number: int = random.randint(1, 10);
 
-    def init;
     override def play;
     def process_guess(guess: int);
 }

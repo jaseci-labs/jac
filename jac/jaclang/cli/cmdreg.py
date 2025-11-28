@@ -7,9 +7,9 @@ import inspect
 import os
 import re
 import sys
+from collections.abc import Callable
 from dataclasses import fields as dataclass_fields
 from enum import IntEnum
-from typing import Callable, Dict, Optional
 
 from jaclang.settings import Settings as JacSettings
 
@@ -51,7 +51,7 @@ class Command:
         return self.func(*args, **kwargs)
 
 
-def extract_param_descriptions(docstring: str) -> Dict[str, str]:
+def extract_param_descriptions(docstring: str) -> dict[str, str]:
     """Extract parameter descriptions from a function's docstring.
 
     Args:
@@ -309,7 +309,7 @@ class CommandRegistry:
                 )
             else:
                 arg_msg += f", default: {param.default}"
-                if param.annotation == bool:
+                if param.annotation is bool:
                     cmd_parser.add_argument(
                         f"-{shorthand}",
                         f"--{param_name}",
@@ -382,7 +382,7 @@ class CommandRegistry:
         self._finalized = True
         self.pending_commands.clear()
 
-    def get(self, name: str) -> Optional[Command]:
+    def get(self, name: str) -> Command | None:
         """Get the Command instance for a given command name."""
         return self.registry.get(name)
 

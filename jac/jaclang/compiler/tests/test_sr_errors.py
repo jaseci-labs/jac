@@ -22,7 +22,7 @@ class TestJacGrammar(TestCase):
             self.fail("lark library not available")
 
         lark_path = os.path.join(os.path.dirname(jaclang.__file__), "compiler/jac.lark")
-        with open(lark_path, "r", encoding="utf-8") as f:
+        with open(lark_path, encoding="utf-8") as f:
             grammar = f.read()
 
         # Lark's strict mode raises GrammarError on conflicts

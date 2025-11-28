@@ -3,6 +3,6 @@
 from __future__ import annotations
 
 print("Hello")
-print(type("Test"))
+print(str)
 result = (lambda x: x + 10)((lambda x: x * 2)(5))
 print(result)

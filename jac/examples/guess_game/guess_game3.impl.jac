@@ -3,12 +3,6 @@ impl Game.play{
 }
 
 
-impl GuessTheNumberGame.init{
-    self.attempts = 10;
-    self.correct_number = random.randint(1, 10);
-}
-
-
 impl GuessTheNumberGame.play{
     while self.attempts > 0 {
         guess = input("Guess a number between 1 and 10: ");

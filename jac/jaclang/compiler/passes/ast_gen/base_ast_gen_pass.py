@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Generic, Optional, Sequence, TypeVar
+from collections.abc import Sequence
+from typing import Any, Generic, TypeVar
 
 import jaclang.compiler.unitree as uni
 from jaclang.compiler.passes.uni_pass import UniPass
@@ -16,7 +17,7 @@ class BaseAstGenPass(UniPass, Generic[T]):
 
     def _get_body_inner(
         self, node: uni.Archetype | uni.Enum | uni.Ability
-    ) -> Optional[Sequence[uni.UniNode]]:
+    ) -> Sequence[uni.UniNode] | None:
         """Return the list of body statements regardless of ImplDef wrapping."""
         body = getattr(node, "body", None)
         if isinstance(body, uni.ImplDef) and isinstance(body.body, list):

@@ -6,10 +6,11 @@ from __future__ import annotations
 from abc import ABC
 from enum import IntEnum, auto
 from pathlib import Path
-from typing import ClassVar, TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 if TYPE_CHECKING:
-    from jaclang.compiler.unitree import Expr, Symbol, UniScopeNode as SymbolTable
+    from jaclang.compiler.unitree import Expr, Symbol
+    from jaclang.compiler.unitree import UniScopeNode as SymbolTable
 
 
 class TypeCategory(IntEnum):
@@ -254,8 +255,11 @@ class ClassType(TypeBase):
 
     def lookup_member_symbol(self, member: str) -> Symbol | None:
         """Lookup a member in the class type."""
-        # FIXME: We have to have a lookup_member for archetype.
-        return self.shared.symbol_table.lookup(member, deep=True)
+        for cls in self.shared.mro:
+            members = cls.shared.symbol_table.names_in_scope
+            if member in members:
+                return members[member]
+        return None
 
     def is_builtin(self, class_name: str | None = None) -> bool:
         """
@@ -275,8 +279,8 @@ class ClassType(TypeBase):
 
     def is_edge_type(self) -> bool:
         """Return true if this class is the built-in Edge type."""
-        from jaclang.compiler.constant import SymbolType
         import jaclang.compiler.unitree as uni
+        from jaclang.compiler.constant import SymbolType
 
         arch = self.shared.symbol_table
         assert isinstance(arch, uni.Archetype)
@@ -284,8 +288,8 @@ class ClassType(TypeBase):
 
     def is_node_type(self) -> bool:
         """Return true if this class is the built-in Node type."""
-        from jaclang.compiler.constant import SymbolType
         import jaclang.compiler.unitree as uni
+        from jaclang.compiler.constant import SymbolType
 
         arch = self.shared.symbol_table
         assert isinstance(arch, uni.Archetype)
@@ -349,7 +353,7 @@ class FunctionType(TypeBase):
         self.return_type = return_type
         self.parameters = parameters or []
 
-    def specialize(self, class_type: ClassType) -> "FunctionType":
+    def specialize(self, class_type: ClassType) -> FunctionType:
         """Specialize the function type based on the given class type."""
         clone = FunctionType(
             func_name=self.func_name,

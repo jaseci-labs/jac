@@ -8,11 +8,12 @@ import inspect
 import json
 import os
 import secrets
+from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
-from typing import Any, Callable, Literal, TypeAlias, get_type_hints
+from typing import Any, Literal, TypeAlias, get_type_hints
 from urllib.parse import parse_qs, urlparse
 
 from jaclang.runtimelib.client_bundle import ClientBundleError
@@ -22,7 +23,7 @@ from jaclang.runtimelib.constructs import (
     Root,
     WalkerArchetype,
 )
-from jaclang.runtimelib.machine import JacMachine as Jac
+from jaclang.runtimelib.runtime import JacRuntime as Jac
 
 # Type Aliases
 JsonValue: TypeAlias = (
@@ -86,7 +87,9 @@ class JacSerializer:
             "_jac_archetype": (
                 "node"
                 if isinstance(arch, NodeArchetype)
-                else "walker" if isinstance(arch, WalkerArchetype) else "archetype"
+                else "walker"
+                if isinstance(arch, WalkerArchetype)
+                else "archetype"
             ),
         }
 
@@ -441,7 +444,11 @@ class ModuleIntrospector:
 
         params = {
             name: {
-                "type": str(type_hints.get(name, Any)),
+                "type": getattr(
+                    type_hints.get(name, Any),
+                    "__name__",
+                    str(type_hints.get(name, Any)),
+                ),
                 "required": param.default == inspect.Parameter.empty,
                 "default": (
                     None
@@ -452,7 +459,11 @@ class ModuleIntrospector:
             for name, param in sig.parameters.items()
         }
 
-        return {"parameters": params, "return_type": str(type_hints.get("return", Any))}
+        return_type = type_hints.get("return", Any)
+        return {
+            "parameters": params,
+            "return_type": getattr(return_type, "__name__", str(return_type)),
+        }
 
     def introspect_walker(self, walker_cls: type[WalkerArchetype]) -> dict[str, Any]:
         """Get walker field information."""
@@ -464,7 +475,11 @@ class ModuleIntrospector:
 
         fields = {
             name: {
-                "type": str(type_hints.get(name, Any)),
+                "type": getattr(
+                    type_hints.get(name, Any),
+                    "__name__",
+                    str(type_hints.get(name, Any)),
+                ),
                 "required": param.default == inspect.Parameter.empty,
                 "default": (
                     None
@@ -894,7 +909,7 @@ class JacAPIServer:
                             Path(Jac.base_path_dir) if Jac.base_path_dir else Path.cwd()
                         )
 
-                        if is_static_path:
+                        if is_static_path:  # noqa: SIM108
                             # Remove /static/ prefix to get the relative file path
                             relative_path = path[8:]  # Remove "/static/"
                         else:
@@ -1126,7 +1141,7 @@ class JacAPIServer:
                                     username, "__no_password__"
                                 )
                     # add two dict to fields to include _jac_spawn_node
-                    fields = data.get("fields", {}) | {"_jac_spawn_node": node_id}
+                    fields = data | {"_jac_spawn_node": node_id}
                     response = server.execution_handler.spawn_walker(
                         name, fields, username
                     )
@@ -1229,7 +1244,7 @@ def print_endpoint_docs(server: JacAPIServer) -> None:
         """Format parameter info."""
         req = "required" if info["required"] else "optional"
         default = f", default: {info['default']}" if info.get("default") else ""
-        return f'{name}: {info["type"]} ({req}{default})'
+        return f"{name}: {info['type']} ({req}{default})"
 
     # Header
     print("\n" + "=" * 80)

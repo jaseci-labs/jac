@@ -3,12 +3,13 @@
 import io
 import sys
 
-from jaclang import JacMachineInterface as Jac
-from jaclang.utils.test import TestCase
-
+import yaml
 from fixtures import python_lib_mode
 
-# Import the jac_import function from JacMachineInterface
+from jaclang import JacRuntimeInterface as Jac
+from jaclang.utils.test import TestCase
+
+# Import the jac_import function from JacRuntimeInterface
 jac_import = Jac.jac_import
 
 
@@ -66,6 +67,37 @@ class JacLanguageTests(TestCase):
         self.assertIn("Calculator.add called with 12, 34", stdout_value)
         self.assertIn("Result: 46", stdout_value)
 
+    def test_params_format(self) -> None:
+        """Parse micro jac file."""
+        captured_output = io.StringIO()
+        sys.stdout = captured_output
+        jac_import("llm_params", base_path=self.fixture_abs_path("./"))
+        sys.stdout = sys.__stdout__
+        stdout_value = captured_output.getvalue()
+        dict_str = stdout_value[stdout_value.find("{") : stdout_value.rfind("}") + 1]
+        extracted_dict = yaml.safe_load(dict_str)
+
+        required_keys = [
+            "model",
+            "api_base",
+            "messages",
+            "tools",
+            "response_format",
+            "temperature",
+            "max_tokens",
+        ]
+        for key in required_keys:
+            assert key in extracted_dict, f"Missing key: {key}"
+
+        add_tool = extracted_dict["tools"][0]
+        assert add_tool["type"] == "function", "First tool should be of type 'function'"
+        assert add_tool["function"]["name"] == "get_live_wind_speed", (
+            "First tool function should be 'get_live_wind_speed'"
+        )
+        assert "city" in add_tool["function"]["parameters"]["properties"], (
+            "get_live_wind_speed function should have 'city' parameter"
+        )
+
     def test_image_input(self) -> None:
         """Parse micro jac file."""
         captured_output = io.StringIO()
@@ -88,6 +120,17 @@ class JacLanguageTests(TestCase):
             "The orca whale, or killer whale, is one of the most intelligent and adaptable marine predators",
             stdout_value,
         )
+
+    def test_streaming_with_react(self) -> None:
+        """Test streaming output with ReAct method (tool calling)."""
+        captured_output = io.StringIO()
+        sys.stdout = captured_output
+        jac_import("streaming_with_react", base_path=self.fixture_abs_path("./"))
+        sys.stdout = sys.__stdout__
+        stdout_value = captured_output.getvalue()
+        self.assertIn("29-10-2025", stdout_value)
+        self.assertIn("100", stdout_value)
+        self.assertIn("Test passed!", stdout_value)
 
     def test_by_expr(self) -> None:
         """Test by llm['as'].expression instead of llm() call."""

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Generator
+from collections.abc import Generator
 
 
 def simple_generator() -> Generator[int]:
@@ -20,8 +20,7 @@ def yield_none() -> Generator[None]:
 
 
 def yield_in_loop(n: int) -> Generator[int]:
-    for i in range(n):
-        yield i
+    yield from range(n)
 
 
 def yield_from_generator() -> Generator[int]:

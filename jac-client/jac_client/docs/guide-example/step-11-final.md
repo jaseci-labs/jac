@@ -961,4 +961,3 @@ Built something cool? Share it:
 **Thank you for completing this tutorial!**
 
 Happy coding with Jac!
-

@@ -393,9 +393,3 @@ cl import from "styled-components" { default as styled }
 
 - [Styled Components Documentation](https://styled-components.com/docs)
 - [Styled Components Best Practices](https://styled-components.com/docs/basics#styling-any-component)
-
-
-
-
-
-

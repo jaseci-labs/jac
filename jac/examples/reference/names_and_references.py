@@ -24,13 +24,11 @@ class Counter(Obj):
 
 
 class Animal(Obj):
-
     def speak(self) -> None:
         print("animal sound")
 
 
 class Dog(Animal, Obj):
-
     def speak(self) -> None:
         super().speak()
         print("woof")
@@ -41,7 +39,6 @@ class Task(Node):
 
 
 class TaskWalker(Walker):
-
     @on_entry
     def process(self, here: Task) -> None:
         print(f"at {here.name}")
@@ -58,7 +55,6 @@ class Interactive(Node):
 
 
 class RootWalker(Walker):
-
     @on_entry
     def start(self, here: Root) -> None:
         print(f"at root: {root()}")

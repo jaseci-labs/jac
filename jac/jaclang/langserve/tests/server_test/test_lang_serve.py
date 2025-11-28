@@ -1,12 +1,13 @@
 """Test suite for Jac language server features."""
 
-import pytest
-
+# Import jaclang first to set up vendor path for lsprotocol
 from lsprotocol.types import (
     DocumentFormattingParams,
-    TextEdit,
     TextDocumentIdentifier,
+    TextEdit,
 )
+
+from jaclang.langserve.server import formatting
 from jaclang.langserve.tests.server_test.utils import (
     JacTestFile,
     LanguageServerTestHelper,
@@ -14,8 +15,6 @@ from jaclang.langserve.tests.server_test.utils import (
     load_jac_template,
 )
 from jaclang.vendor.pygls.uris import from_fs_path
-from jaclang.langserve.server import formatting
-
 
 # NOTE: circle.jac emits a spurious type error at the call to super.init:
 # obj Circle(Shape) {
@@ -35,8 +34,7 @@ class TestLangServe:
     EXPECTED_CIRCLE_TOKEN_COUNT = 345
     EXPECTED_GLOB_TOKEN_COUNT = 15
 
-    @pytest.mark.asyncio
-    async def test_open_valid_file_no_diagnostics(self):
+    def test_open_valid_file_no_diagnostics(self):
         """Test opening a valid Jac file produces no diagnostics."""
         test_file = JacTestFile.from_template(self.CIRCLE_TEMPLATE)
         uri, ls = create_ls_with_workspace(test_file.path)
@@ -44,7 +42,7 @@ class TestLangServe:
         helper = LanguageServerTestHelper(ls, test_file)
 
         try:
-            await helper.open_document()
+            helper.open_document()
             # helper.assert_no_diagnostics()
             helper.assert_has_diagnostics(
                 count=1,
@@ -54,8 +52,7 @@ class TestLangServe:
             ls.shutdown()
             test_file.cleanup()
 
-    @pytest.mark.asyncio
-    async def test_open_with_syntax_error(self):
+    def test_open_with_syntax_error(self):
         """Test opening a Jac file with syntax error produces diagnostics."""
         test_file = JacTestFile.from_template(self.CIRCLE_TEMPLATE, "error")
         uri, ls = create_ls_with_workspace(test_file.path)
@@ -64,7 +61,7 @@ class TestLangServe:
         helper = LanguageServerTestHelper(ls, test_file)
 
         try:
-            await helper.open_document()
+            helper.open_document()
             helper.assert_has_diagnostics(
                 count=2, message_contains="Unexpected token 'error'"
             )
@@ -75,8 +72,7 @@ class TestLangServe:
             ls.shutdown()
             test_file.cleanup()
 
-    @pytest.mark.asyncio
-    async def test_did_open_and_simple_syntax_error(self):
+    def test_did_open_and_simple_syntax_error(self):
         """Test diagnostics evolution from valid to invalid code."""
         test_file = JacTestFile.from_template(self.CIRCLE_TEMPLATE)
         uri, ls = create_ls_with_workspace(test_file.path)
@@ -86,7 +82,7 @@ class TestLangServe:
         try:
             # Open valid file
             print("Opening valid file...")
-            await helper.open_document()
+            helper.open_document()
             # helper.assert_no_diagnostics()
             helper.assert_has_diagnostics(
                 count=1,
@@ -97,15 +93,14 @@ class TestLangServe:
             broken_code = load_jac_template(
                 test_file._get_template_path(self.CIRCLE_TEMPLATE), "error"
             )
-            await helper.change_document(broken_code)
+            helper.change_document(broken_code)
             helper.assert_has_diagnostics(count=2)
             helper.assert_semantic_tokens_count(self.EXPECTED_CIRCLE_TOKEN_COUNT)
         finally:
             ls.shutdown()
             test_file.cleanup()
 
-    @pytest.mark.asyncio
-    async def test_did_save(self):
+    def test_did_save(self):
         """Test saving a Jac file triggers appropriate diagnostics."""
         test_file = JacTestFile.from_template(self.CIRCLE_TEMPLATE)
         uri, ls = create_ls_with_workspace(test_file.path)
@@ -114,8 +109,8 @@ class TestLangServe:
         helper = LanguageServerTestHelper(ls, test_file)
 
         try:
-            await helper.open_document()
-            await helper.save_document()
+            helper.open_document()
+            helper.save_document()
             # helper.assert_no_diagnostics()
             helper.assert_has_diagnostics(
                 count=1,
@@ -126,7 +121,7 @@ class TestLangServe:
             broken_code = load_jac_template(
                 test_file._get_template_path(self.CIRCLE_TEMPLATE), "error"
             )
-            await helper.save_document(broken_code)
+            helper.save_document(broken_code)
             helper.assert_semantic_tokens_count(self.EXPECTED_CIRCLE_TOKEN_COUNT)
             helper.assert_has_diagnostics(
                 count=2, message_contains="Unexpected token 'error'"
@@ -135,8 +130,7 @@ class TestLangServe:
             ls.shutdown()
             test_file.cleanup()
 
-    @pytest.mark.asyncio
-    async def test_did_change(self):
+    def test_did_change(self):
         """Test changing a Jac file triggers diagnostics."""
         test_file = JacTestFile.from_template(self.CIRCLE_TEMPLATE)
         uri, ls = create_ls_with_workspace(test_file.path)
@@ -145,10 +139,10 @@ class TestLangServe:
         helper = LanguageServerTestHelper(ls, test_file)
 
         try:
-            await helper.open_document()
+            helper.open_document()
 
             # Change without error
-            await helper.change_document("\n" + test_file.code)
+            helper.change_document("\n" + test_file.code)
             # helper.assert_no_diagnostics()
             helper.assert_has_diagnostics(
                 count=1,
@@ -156,14 +150,13 @@ class TestLangServe:
             )
 
             # Change with syntax error
-            await helper.change_document("\nerror" + test_file.code)
+            helper.change_document("\nerror" + test_file.code)
             helper.assert_semantic_tokens_count(self.EXPECTED_CIRCLE_TOKEN_COUNT)
             helper.assert_has_diagnostics(count=2, message_contains="Unexpected token")
         finally:
             ls.shutdown()
             test_file.cleanup()
 
-    @pytest.mark.filterwarnings("ignore::ResourceWarning")
     def test_vsce_formatting(self):
         """Test formatting a Jac file returns valid edits."""
         test_file = JacTestFile.from_template(self.CIRCLE_TEMPLATE)
@@ -186,9 +179,7 @@ class TestLangServe:
             ls.shutdown()
             test_file.cleanup()
 
-    @pytest.mark.filterwarnings("ignore::ResourceWarning")
-    @pytest.mark.asyncio
-    async def test_multifile_workspace(self):
+    def test_multifile_workspace(self):
         """Test opening multiple Jac files in a workspace."""
         file1 = JacTestFile.from_template(self.GLOB_TEMPLATE)
         file2 = JacTestFile.from_template(self.GLOB_TEMPLATE, "error")
@@ -205,8 +196,8 @@ class TestLangServe:
 
         try:
             # Open both files
-            await helper1.open_document()
-            await helper2.open_document()
+            helper1.open_document()
+            helper2.open_document()
 
             # Verify initial state
             helper1.assert_no_diagnostics()
@@ -220,7 +211,7 @@ class TestLangServe:
             changed_code = load_jac_template(
                 file1._get_template_path(self.GLOB_TEMPLATE), "glob x = 90;"
             )
-            await helper1.change_document(changed_code)
+            helper1.change_document(changed_code)
 
             # Verify semantic tokens after change
             helper1.assert_semantic_tokens_count(20)

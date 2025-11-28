@@ -443,7 +443,7 @@ async def __jacSpawn(left: str, right: str = "", fields: dict = {}) -> any {
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {token}" if token else ""
             },
-            "body": JSON.stringify({"fields": fields})
+            "body": JSON.stringify(fields)
         }
     );
 

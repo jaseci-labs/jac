@@ -2,7 +2,7 @@
 
 import os
 import time
-from typing import Any, Dict, List
+from typing import Any
 
 from kubernetes import client, config
 from kubernetes.client.exceptions import ApiException
@@ -51,7 +51,7 @@ def deploy_k8(
     # -------------------
     # Define MongoDB deployment/service (if needed)
     # -------------------
-    init_containers: List[Dict[str, Any]] = []
+    init_containers: list[dict[str, Any]] = []
     if mongodb_enabled:
         mongodb_name = f"{app_name}-mongodb"
         mongodb_service_name = f"{mongodb_name}-service"
@@ -132,14 +132,13 @@ def deploy_k8(
             "-c",
             "export DEBIAN_FRONTEND=noninteractive && "
             "apt-get update && apt-get install -y git && "
-            "git clone --branch release-fix-3066 --single-branch --depth 1 "
-            "https://github.com/juzailmlwork/jaseci.git && "
-            "cd jaseci/jac && "
-            "pip install -e . && "
-            "cd ../.. && "
-            "cd jaseci/jac-scale && "
-            "pip install -e . && "
-            "cd ../.. && "
+            "git clone --depth 1 https://github.com/juzailmlwork/jaseci.git && "
+            "cd jaseci && "
+            "pip install pluggy &&"
+            "pip install -e ./jac && "
+            "pip install -e ./jac-scale && "
+            "pip install -e ./jac-client && "
+            "cd ../ && "
             f"{install_part}",
         ]
 
@@ -256,7 +255,6 @@ def deploy_k8(
             )
         except ApiException as e:
             if e.status == 404:
-
                 core_v1.create_namespaced_service(
                     namespace=namespace, body=redis_service
                 )
@@ -267,10 +265,7 @@ def deploy_k8(
     apps_v1.create_namespaced_deployment(namespace=namespace, body=deployment)
     core_v1.create_namespaced_service(namespace=namespace, body=service)
 
-    if testing:
-        path = "/walkers"
-    else:
-        path = "/docs"
+    path = "/walkers" if testing else "/docs"
     if check_deployment_status(node_port, path):
         print(f"Deployment complete! Access Jaseci-app at http://localhost:{node_port}")
     else:

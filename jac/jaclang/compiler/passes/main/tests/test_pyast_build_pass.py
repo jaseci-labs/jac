@@ -46,7 +46,7 @@ class PyastBuildPassTests(TestCase):
 
     def test_str2doc(self) -> None:
         """Test str2doc."""
-        with open(self.fixture_abs_path("str2doc.py"), "r") as f:
+        with open(self.fixture_abs_path("str2doc.py")) as f:
             file_source = f.read()
         code = PyastBuildPass(
             ir_in=PythonModuleAst(
@@ -56,3 +56,18 @@ class PyastBuildPassTests(TestCase):
             prog=JacProgram(),
         ).ir_out.unparse()
         self.assertIn('"""This is a test function."""\ndef foo()', code)
+
+    def test_fstring_triple_quotes(self) -> None:
+        """Test that triple-quoted f-strings are converted correctly."""
+        with open(self.fixture_abs_path("py2jac_fstrings.py")) as f:
+            file_source = f.read()
+        code = PyastBuildPass(
+            ir_in=PythonModuleAst(
+                py_ast.parse(file_source),
+                orig_src=Source(file_source, "py2jac_fstrings.py"),
+            ),
+            prog=JacProgram(),
+        ).ir_out.unparse()
+        self.assertIn('f"""Hello\n{name}"""', code)
+        self.assertNotIn("f'''Hello\n{name}'''''''", code)
+        self.assertNotIn('f"""Hello\n{name}"""""""', code)

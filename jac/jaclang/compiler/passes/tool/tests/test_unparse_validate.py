@@ -3,7 +3,6 @@
 import ast as ast3
 from difflib import unified_diff
 
-
 from jaclang.compiler.passes.tool import JacFormatPass
 from jaclang.compiler.program import JacProgram
 from jaclang.utils.test import TestCaseMicroSuite

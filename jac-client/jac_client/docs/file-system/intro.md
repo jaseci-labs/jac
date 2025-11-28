@@ -1,90 +1,72 @@
 # File System Organization
 
-Jac client supports a clean separation of concerns by allowing you to organize your code into separate files based on execution environment. This makes it easier to maintain and understand your application architecture.
+Jac client supports flexible file organization patterns that allow you to structure your code for maintainability and scalability.
 
-## File Extensions
+## Overview
 
-### `.jac` Files - Server-side Code
-Standard Jac files (`.jac`) contain your backend logic:
-- Node definitions
-- Walker implementations
-- Business logic
-- Data processing
+This guide covers two main aspects of file organization:
 
-**Example: `app.jac`**
+1. **Separating Backend and Frontend Code** - Organizing server-side and client-side logic
+2. **Nested Folder Imports** - Managing imports across multiple directory levels
+
+## Quick Start
+
+### Backend/Frontend Separation
+
+Jac allows you to organize code by execution environment:
+- Use `.jac` files for backend logic (nodes, walkers)
+- Use `.cl.jac` files for frontend-only code
+- Or mix both in the same file using `cl` blocks
+
+**Example:**
 ```jac
-walker add {
-    has x: int;
-    has y: int;
-    can compute with `root entry {
-        result = self.x + self.y;
-        report result;
+# Backend
+node Todo { has text: str; }
+
+# Frontend
+cl {
+    def app() -> any {
+        return <div>Hello</div>;
     }
 }
 ```
 
-### `.cl.jac` Files - Client-side Code
-Client files (`.cl.jac`) contain your frontend components and logic. All code in these files is automatically treated as client-side code without requiring the `cl` keyword.
+### Nested Folder Imports
 
-**Example: `app.cl.jac`**
+Jac preserves folder structure during compilation, allowing you to organize code in nested folders:
+
+**Example:**
 ```jac
-import from react {
-    useState
-}
+# From level1/Button.jac importing from root
+cl import from ..ButtonRoot { ButtonRoot }
 
-def app -> Any {
-    let [answer, setAnswer] = useState(0);
-
-    async def computeAnswer() -> None {
-        response = root spawn add(x=40, y=2);
-        result = response.reports;
-        setAnswer(result);
-    }
-
-    return <div>
-        <button onClick={computeAnswer}>
-            Click Me
-        </button>
-        <div>
-            <h1>
-                Answer:
-                <span>{answer}</span>
-            </h1>
-        </div>
-    </div>;
-}
+# From root importing from level1
+cl import from .level1.Button { Button }
 ```
 
-## Key Benefits
+## Guides
 
-### 1. **No `cl` Keyword Required**
-In `.cl.jac` files, you don't need to prefix declarations with `cl`:
-- All code is compiled for the client environment
+- **[The `app.jac` Entry Point](app.jac.md)** - Required entry point file and `app()` function
+- **[Backend/Frontend Separation](backend-frontend.md)** - Complete guide to organizing server and client code
+- **[Nested Folder Imports](nested-imports.md)** - Guide to managing imports across directory levels
 
-### 2. **Clear Separation of Concerns**
-```
-my-app/
-├── app.jac       # Server-side: walkers, nodes, business logic
-└── app.cl.jac    # Client-side: components, UI, event handlers
-```
+## Examples
 
-### 3. **Seamless Integration**
-Client code can invoke server walkers using `root spawn`:
+Working examples demonstrating file organization:
 
-```jac
-# In app.cl.jac
-async def computeAnswer() -> None {
-    response = root spawn add(x=40, y=2);  # Calls walker from app.jac
-    result = response.reports;
-    setAnswer(result);
-}
+- [`nested-basic/`](../../examples/nested-folders/nested-basic/) - Simple nested folder structure
+- [`nested-advance/`](../../examples/nested-folders/nested-advance/) - Advanced multi-level nesting
+
+Run any example:
+
+```bash
+cd jac-client/jac_client/examples/nested-folders/<example-name>
+npm install
+jac serve app.jac
 ```
 
-## Best Practices
+## Related Documentation
 
-1. **Keep backend logic in `.jac` files**: Data models, business rules, and walker implementations
-2. **Keep frontend logic in `.cl.jac` files**: React components, UI state, event handlers
-3. **Use `root spawn` for client-server communication**: Clean API between frontend and backend
-4. **Organize by feature**: Group related `.jac` and `.cl.jac` files together
-
-This organization keeps your codebase maintainable and makes it immediately clear which code runs where.
+- [Import System](../imports.md)
+- [Styling](../styling/intro.md)
+- [Asset Serving](../asset-serving/intro.md)

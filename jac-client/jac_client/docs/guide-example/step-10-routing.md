@@ -537,4 +537,3 @@ def NotFoundPage() -> any {
 Congratulations! You've learned all the key concepts. Now let's put everything together into the **complete, final app**!
 
  **[Continue to Step 11: Final Integration](./step-11-final.md)**
-

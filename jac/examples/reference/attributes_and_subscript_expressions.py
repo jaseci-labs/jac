@@ -27,11 +27,7 @@ null_safe2 = __jac_tmp.items if (__jac_tmp := optional_obj) else None
 obj_with_data = Sample()
 nested_val = __jac_tmp.data if (__jac_tmp := obj_with_data) else None
 another_none = None
-safe_chain = (
-    __jac_tmp.items
-    if (__jac_tmp := (__jac_tmp.value if (__jac_tmp := another_none) else None))
-    else None
-)
+safe_chain = __jac_tmp.items if (__jac_tmp := (__jac_tmp.value if (__jac_tmp := another_none) else None)) else None
 valid_obj = Sample()
 safe_on_valid = __jac_tmp.items if (__jac_tmp := valid_obj) else None
 print(val, item1, item2, name, slice1, slice2, slice3, first_char, safe_val)

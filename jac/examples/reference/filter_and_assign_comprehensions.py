@@ -49,7 +49,6 @@ class Collaborates(Edge):
 
 
 class ComprehensionDemo(Walker):
-
     @on_entry
     def demo_basic(self, here: Root) -> None:
         print("=== 1. Basic Filter Comprehension ===")
@@ -65,9 +64,7 @@ class ComprehensionDemo(Walker):
         high_x = filter_on(items=items, func=lambda i: i.x > 15)
         print(f"Items with x > 15: {len(high_x)}")
         print("\n=== 3. Filter with Multiple Conditions ===")
-        complex_filter = filter_on(
-            items=items, func=lambda i: i.x >= 5 and i.x <= 15 and (i.y > 10)
-        )
+        complex_filter = filter_on(items=items, func=lambda i: i.x >= 5 and i.x <= 15 and (i.y > 10))
         print(f"Items with 5 <= x <= 15 and y > 10: {len(complex_filter)}")
         print("\n=== 4. Basic Assign Comprehension ===")
         objs = [TestObj(x=i) for i in range(3)]
@@ -80,9 +77,7 @@ class ComprehensionDemo(Walker):
             Person(name="Bob", age=30, score=90),
             Person(name="Charlie", age=35, score=70),
         ]
-        assign_all(
-            filter_on(items=people, func=lambda i: i.age >= 30), (("score",), (95,))
-        )
+        assign_all(filter_on(items=people, func=lambda i: i.age >= 30), (("score",), (95,)))
         print("People after filter(age>=30) + assign(score=95):")
         for p in people:
             print(f"  {p.name}: age={p.age}, score={p.score}")
@@ -105,9 +100,7 @@ class ComprehensionDemo(Walker):
         connect(left=mgr, right=dev1, edge=ReportsTo(years=5))
         connect(left=mgr, right=dev2, edge=ReportsTo(years=2))
         connect(left=mgr, right=dev3, edge=ReportsTo(years=1))
-        connect(
-            left=dev1, right=dev2, edge=Collaborates(project="ProjectX"), undir=True
-        )
+        connect(left=dev1, right=dev2, edge=Collaborates(project="ProjectX"), undir=True)
         print("Graph built: Manager -> 3 Devs")
         visit(self, refs(OPath(here).edge_out().visit()))
 
@@ -119,15 +112,9 @@ class ComprehensionDemo(Walker):
         high_paid = filter_on(items=all_reports, func=lambda i: i.salary > 75000)
         print(f"Direct reports: {len(all_reports)}, high paid (>75k): {len(high_paid)}")
         print("\n=== 8. Typed Edge with Node Filter ===")
-        reports_via_edge = refs(
-            OPath(here).edge_out(edge=lambda i: isinstance(i, ReportsTo))
-        )
-        engineering = filter_on(
-            items=reports_via_edge, func=lambda i: i.department == "Engineering"
-        )
-        print(
-            f"ReportsTo edges: {len(reports_via_edge)}, in Engineering: {len(engineering)}"
-        )
+        reports_via_edge = refs(OPath(here).edge_out(edge=lambda i: isinstance(i, ReportsTo)))
+        engineering = filter_on(items=reports_via_edge, func=lambda i: i.department == "Engineering")
+        print(f"ReportsTo edges: {len(reports_via_edge)}, in Engineering: {len(engineering)}")
         print("\n=== 9. Assign Comprehension on Edge Results ===")
         if len(all_reports) > 0:
             assign_all(all_reports, (("department",), ("Updated",)))

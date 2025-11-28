@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from abc import ABC, abstractmethod
 from threading import Event
-from typing import Generic, Optional, TYPE_CHECKING, Type, TypeVar
+from typing import TYPE_CHECKING, Generic, TypeVar
 
 from jaclang.compiler.codeinfo import CodeLocInfo
 from jaclang.compiler.unitree import UniNode
@@ -23,18 +23,15 @@ R = TypeVar("R", bound=UniNode)
 class Alert:
     """Alert interface."""
 
-    def __init__(self, msg: str, loc: CodeLocInfo, from_pass: Type[Transform]) -> None:
+    def __init__(self, msg: str, loc: CodeLocInfo, from_pass: type[Transform]) -> None:
         """Initialize alert."""
         self.msg = msg
         self.loc: CodeLocInfo = loc
-        self.from_pass: Type[Transform] = from_pass
+        self.from_pass: type[Transform] = from_pass
 
     def __str__(self) -> str:
         """Return string representation of alert."""
-        return (
-            f" {self.loc.mod_path}, line {self.loc.first_line},"
-            f" col {self.loc.col_start}: {self.msg}"
-        )
+        return f" {self.loc.mod_path}, line {self.loc.first_line}, col {self.loc.col_start}: {self.msg}"
 
     def __repr__(self) -> str:
         """Return string representation of alert."""
@@ -114,7 +111,7 @@ class Transform(ABC, Generic[T, R]):
         """Transform interface."""
         pass
 
-    def log_error(self, msg: str, node_override: Optional[UniNode] = None) -> None:
+    def log_error(self, msg: str, node_override: UniNode | None = None) -> None:
         """Pass Error."""
         alrt = Alert(
             msg,
@@ -125,7 +122,7 @@ class Transform(ABC, Generic[T, R]):
         self.prog.errors_had.append(alrt)
         # self.logger.error(alrt.as_log())
 
-    def log_warning(self, msg: str, node_override: Optional[UniNode] = None) -> None:
+    def log_warning(self, msg: str, node_override: UniNode | None = None) -> None:
         """Pass Error."""
         alrt = Alert(
             msg,

@@ -9,9 +9,8 @@ nav:
     - Getting Started:
       - Introduction: "learn/tour.md"
       - Installation: "learn/installation.md"
-      - Quickstart: "learn/quickstart.md"
       # - Jac as Your First Programming Language: "learn/beginners_guide_to_jac.md"
-      - Syntax Quick Reference: "learn/quick_reference.md"
+      - Syntax Quick Reference: "learn/syntax_quick_reference.md"
       - Native Superset of Python: "learn/superset_python.md"
       - Jac Library in Pure Python: "learn/library_mode.md"
       - Learn Jac in 5 Minutes: "learn/jac_in_a_flash.md"
@@ -105,7 +104,11 @@ nav:
       - Lifecycle Hooks: "jac-client/lifecycle-hooks.md"
       - Advanced State: "jac-client/advanced-state.md"
       - Imports: "jac-client/imports.md"
-      - File System: "jac-client/file-system/intro.md"
+      - File System:
+        - Introduction: "jac-client/file-system/intro.md"
+        - Backend/Frontend Separation: "jac-client/file-system/backend-frontend.md"
+        - Nested Folder Imports: "jac-client/file-system/nested-imports.md"
+        - The app.jac Entry Point: "jac-client/file-system/app.jac.md"
       - Handling Assets: "jac-client/asset-serving/intro.md"
     - Tooling:
       - Jac Debugger: "learn/debugger.md"
@@ -122,6 +125,7 @@ nav:
       - Friendzone Lite: "learn/examples/agentic_ai/friendzone-lite/friendzone-lite.md"
       - Aider Genius Lite: "learn/examples/agentic_ai/aider-genius-lite/aider-genius-lite.md"
       - Task Manager Lite: "learn/examples/agentic_ai/task-manager-lite/task-manager-lite.md"
+      - EmailBuddy: "learn/examples/EmailBuddy/tutorial.md"
   - Full Jac Specification:
     - Introduction: "learn/jac_ref.md"
     - Base Module structure: "learn/jac_ref/base_module_structure.md"
@@ -290,6 +294,9 @@ extra:
   social:
     - icon: fontawesome/brands/mastodon
       link: https://fosstodon.org/@squidfunk
+  analytics:
+    provider: google
+    property: G-PLSMBEBC20
 copyright: Copyright &copy; 2025 Jac Hackers Everwhere
 
 extra_javascript:

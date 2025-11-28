@@ -858,3 +858,68 @@ body[data-domain="https://www.jac-lang.org/"] .feedback-container {
     overflow: auto;
   }
 }
+
+/* YouTube Video Thumbnail with Play Button Overlay */
+.youtube-video-link {
+    position: relative;
+    display: inline-block;
+    overflow: hidden;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    max-width: 100%;
+}
+
+.youtube-video-link:hover {
+    box-shadow: 0 8px 24px rgba(255, 107, 53, 0.4);
+}
+
+.youtube-video-link img {
+    display: block;
+    width: 100%;
+    height: auto;
+    transition: filter 0.3s ease;
+}
+
+.youtube-video-link:hover img {
+    filter: brightness(0.8);
+}
+
+.youtube-video-link::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 80px;
+    height: 80px;
+    background: rgba(255, 0, 0, 0.85);
+    border-radius: 50%;
+    transition: all 0.3s ease;
+    pointer-events: none;
+}
+
+.youtube-video-link::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-40%, -50%);
+    width: 0;
+    height: 0;
+    border-style: solid;
+    border-width: 16px 0 16px 28px;
+    border-color: transparent transparent transparent white;
+    z-index: 1;
+    transition: all 0.3s ease;
+    pointer-events: none;
+}
+
+.youtube-video-link:hover::after {
+    background: rgba(255, 0, 0, 1);
+    transform: translate(-50%, -50%) scale(1.1);
+}
+
+.youtube-video-link:hover::before {
+    transform: translate(-40%, -50%) scale(1.1);
+}

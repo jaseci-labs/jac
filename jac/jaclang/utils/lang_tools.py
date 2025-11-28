@@ -4,7 +4,6 @@ import ast as py_ast
 import inspect
 import os
 import sys
-from typing import List, Optional, Type
 
 import jaclang.compiler.unitree as uni
 from jaclang.compiler.passes.main import PyastBuildPass
@@ -19,7 +18,7 @@ from jaclang.utils.helpers import auto_generate_refs, pascal_to_snake
 class AstKidInfo:
     """Information about a kid."""
 
-    def __init__(self, name: str, typ: str, default: Optional[str] = None) -> None:
+    def __init__(self, name: str, typ: str, default: str | None = None) -> None:
         """Initialize."""
         self.name = name
         self.typ = typ
@@ -36,7 +35,7 @@ class UniNodeInfo:
         self.cls = cls
         self.process(cls)
 
-    def process(self, cls: Type[uni.UniNode]) -> None:
+    def process(self, cls: type[uni.UniNode]) -> None:
         """Process UniNode class."""
         self.name = cls.__name__
         self.doc = cls.__doc__
@@ -156,7 +155,9 @@ class AstTool:
         from jaclang.compiler.passes.main import PyastBuildPass
 
         visit_methods = [
-            method for method in dir(py_ast._Unparser) if method.startswith("visit_")  # type: ignore
+            method
+            for method in dir(py_ast._Unparser)  # type: ignore[attr-defined]
+            if method.startswith("visit_")
         ]
         node_names = [method.replace("visit_", "") for method in visit_methods]
         pass_func_names = []
@@ -178,7 +179,7 @@ class AstTool:
             output += f"# missing: \n{i}\n"
         return output
 
-    def ir(self, args: List[str]) -> str:
+    def ir(self, args: list[str]) -> str:
         """Generate a AST, SymbolTable tree for .jac file, or Python AST for .py file."""
         error = (
             "Usage: ir <choose one of (sym / sym. / ast / ast. / docir / "
@@ -265,11 +266,12 @@ class AstTool:
                         else "Compile failed."
                     )
                 case "esast":
+                    import json
+
                     from jaclang.compiler.passes.ecmascript import (
                         EsastGenPass,
                         es_node_to_dict,
                     )
-                    import json
 
                     esast_pass = EsastGenPass(ir, prog)
                     es_ir = esast_pass.ir_out

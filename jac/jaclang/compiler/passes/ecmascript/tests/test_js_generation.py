@@ -86,7 +86,8 @@ class JavaScriptGenerationTests(TestCase):
             "function add",
             "function greet",
             "function fibonacci",
-            "for (const i of range(limit))",
+            "for (const i of array)",
+            "for (let i = 0; i < limit; i += 1;)",
             "while (counter > 0)",
         ]:
             self.assertIn(pattern, js_code)
@@ -299,6 +300,14 @@ cl def check_types() {
         for pattern in ["import { * }", "import { * as"]:
             self.assertNotIn(pattern, js_code)
         self.assert_balanced_syntax(js_code, fixture_path)
+
+    def test_atom_trailer_starts_with_specialvaref_js(self) -> None:
+        """Test that atom trailers starting with SpecialVarRef generate correct JS."""
+        fixture_path = self.get_fixture_path("root_render.jac")
+        js_code = self.compile_fixture_to_js(fixture_path)
+
+        self.assertIn("root.render();", js_code)
+        self.assertNotIn("obj", js_code)
 
     def test_assignment_inside_globvar_js(self) -> None:
         """Test Category 4 namespace imports from proposal document."""

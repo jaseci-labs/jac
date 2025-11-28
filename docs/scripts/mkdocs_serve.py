@@ -9,16 +9,14 @@ import asyncio
 import os
 import subprocess
 import threading
-from typing import Awaitable, Callable, Optional
+from collections.abc import Awaitable, Callable
 
+import uvicorn
 from starlette.applications import Starlette
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response, StreamingResponse
 from starlette.staticfiles import StaticFiles
-
-import uvicorn
-
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
@@ -150,13 +148,13 @@ class DebouncedRebuildHandler(FileSystemEventHandler):
         self,
         root_dir: str,
         debounce_seconds: int = 10,
-        ignore_paths: Optional[list] = None,
+        ignore_paths: list | None = None,
     ) -> None:
         """Initialize the handler with root directory, debounce time, and ignore paths."""
         self.root_dir = root_dir
         self.debounce_seconds = debounce_seconds
         self.ignore_paths = ignore_paths or []
-        self._timer: Optional[threading.Timer] = None
+        self._timer: threading.Timer | None = None
         self._debounce_lock = threading.Lock()
         self._rebuild_lock = threading.Lock()
 

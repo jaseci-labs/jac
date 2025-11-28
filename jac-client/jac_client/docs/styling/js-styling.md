@@ -365,9 +365,3 @@ return <button style={combinedStyle}>Click Me</button>;
 
 - [React Inline Styles](https://react.dev/learn/javascript-in-jsx-with-curly-braces#using-double-curlies-css-and-other-objects-in-jsx)
 - [CSS-in-JS Comparison](https://github.com/MicheleBertoli/css-in-js)
-
-
-
-
-
-

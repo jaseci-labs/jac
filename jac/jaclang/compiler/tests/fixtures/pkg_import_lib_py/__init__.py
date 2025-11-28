@@ -1,4 +1,4 @@
-from jaclang import JacMachineInterface as _
+from jaclang import JacRuntimeInterface as _
 
 from .tools import tool_func
 

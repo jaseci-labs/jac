@@ -48,11 +48,11 @@ Create the plugin implementation in `my_byllm_plugin/plugin.py`:
 
 from typing import Callable
 
-from jaclang.runtimelib.machine import hookimpl
+from jaclang.runtimelib.runtime import hookimpl
 from byllm.llm import Model
 
 
-class MybyllmMachine:
+class MybyllmRuntime:
     """Custom byLLM Plugin Implementation."""
 
     @staticmethod
@@ -92,7 +92,7 @@ byllm = "*"
 jaclang = "*"
 
 [tool.poetry.plugins."jac"]
-my-byllm-plugin = "my_byllm_plugin.plugin:MybyllmMachine"
+my-byllm-plugin = "my_byllm_plugin.plugin:MybyllmRuntime"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
@@ -140,11 +140,11 @@ import hashlib
 import json
 from typing import Callable, Any
 
-from jaclang.runtimelib.machine import hookimpl
+from jaclang.runtimelib.runtime import hookimpl
 from byllm.llm import Model
 
 
-class CachingbyllmMachine:
+class CachingbyllmRuntime:
     """Plugin that caches LLM responses."""
 
     _cache: dict[str, Any] = {}
@@ -165,15 +165,15 @@ class CachingbyllmMachine:
         ).hexdigest()
 
         # Check cache first
-        if cache_key in CachingbyllmMachine._cache:
+        if cache_key in CachingbyllmRuntime._cache:
             print(f"Cache hit for {caller.__name__}")
-            return CachingbyllmMachine._cache[cache_key]
+            return CachingbyllmRuntime._cache[cache_key]
 
         # Call original implementation
         result = model.invoke(caller, args)
 
         # Store in cache
-        CachingbyllmMachine._cache[cache_key] = result
+        CachingbyllmRuntime._cache[cache_key] = result
         print(f"Cached result for {caller.__name__}")
 
         return result
@@ -187,11 +187,11 @@ class CachingbyllmMachine:
 import time
 from typing import Callable
 
-from jaclang.runtimelib.machine import hookimpl
+from jaclang.runtimelib.runtime import hookimpl
 from byllm.llm import Model
 
 
-class LoggingbyllmMachine:
+class LoggingbyllmRuntime:
     """Plugin that logs all LLM calls."""
 
     @staticmethod
@@ -229,11 +229,11 @@ class LoggingbyllmMachine:
 
 from typing import Callable
 
-from jaclang.runtimelib.machine import hookimpl
+from jaclang.runtimelib.runtime import hookimpl
 from byllm.llm import Model
 
 
-class CustomProviderMachine:
+class CustomProviderRuntime:
     """Plugin that implements a custom model provider."""
 
     @staticmethod
@@ -245,7 +245,7 @@ class CustomProviderMachine:
 
         # Check if this is a custom model
         if model.model_name.startswith("custom://"):
-            return CustomProviderMachine._handle_custom_model(
+            return CustomProviderRuntime._handle_custom_model(
                 model, caller, args
             )
 
@@ -330,7 +330,7 @@ def call_llm(model: Model, caller: Callable, args: dict[str | int, object]) -> o
 Configure plugin behavior:
 
 ```python
-class ConfigurableMachine:
+class ConfigurableRuntime:
     def __init__(self):
         self.config = self._load_config()
 
@@ -353,17 +353,17 @@ Create comprehensive tests:
 ```python
 import pytest
 from byllm.llm import Model
-from my_byllm_plugin.plugin import MybyllmMachine
+from my_byllm_plugin.plugin import MybyllmRuntime
 
 def test_plugin():
-    machine = MybyllmMachine()
+    runtime = MybyllmRuntime()
     model = Model("mockllm", outputs=["test response"])
 
     def test_function(x: str) -> str:
         """Test function."""
         pass
 
-    result = machine.call_llm(model, test_function, {"x": "test input"})
+    result = runtime.call_llm(model, test_function, {"x": "test input"})
     assert result == "test response"
 ```
 
@@ -397,7 +397,7 @@ jac run your_script.jac
 Check if the plugin is loaded:
 
 ```python
-from jaclang.runtimelib.machine import plugin_manager
+from jaclang.runtimelib.runtime import plugin_manager
 
 # List all registered plugins
 for plugin in plugin_manager.get_plugins():

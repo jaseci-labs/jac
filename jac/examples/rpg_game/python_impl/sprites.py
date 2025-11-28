@@ -35,9 +35,7 @@ class Player(pygame.sprite.Sprite):
         self.facing = "down"
         self.animation_loop = 1
 
-        self.image = self.game.character_spritesheet.get_sprite(
-            3, 2, self.width, self.height
-        )
+        self.image = self.game.character_spritesheet.get_sprite(3, 2, self.width, self.height)
 
         self.rect = self.image.get_rect()
         self.rect.x = self.x
@@ -136,9 +134,7 @@ class Player(pygame.sprite.Sprite):
 
         if self.facing == "down":
             if self.y_change == 0:
-                self.image = self.game.character_spritesheet.get_sprite(
-                    3, 2, self.width, self.height
-                )
+                self.image = self.game.character_spritesheet.get_sprite(3, 2, self.width, self.height)
             else:
                 self.image = down_animations[math.floor(self.animation_loop)]
                 self.animation_loop += 0.1
@@ -146,9 +142,7 @@ class Player(pygame.sprite.Sprite):
                     self.animation_loop = 1
         if self.facing == "up":
             if self.y_change == 0:
-                self.image = self.game.character_spritesheet.get_sprite(
-                    3, 34, self.width, self.height
-                )
+                self.image = self.game.character_spritesheet.get_sprite(3, 34, self.width, self.height)
             else:
                 self.image = up_animations[math.floor(self.animation_loop)]
                 self.animation_loop += 0.1
@@ -156,9 +150,7 @@ class Player(pygame.sprite.Sprite):
                     self.animation_loop = 1
         if self.facing == "right":
             if self.x_change == 0:
-                self.image = self.game.character_spritesheet.get_sprite(
-                    3, 66, self.width, self.height
-                )
+                self.image = self.game.character_spritesheet.get_sprite(3, 66, self.width, self.height)
             else:
                 self.image = right_animations[math.floor(self.animation_loop)]
                 self.animation_loop += 0.1
@@ -166,9 +158,7 @@ class Player(pygame.sprite.Sprite):
                     self.animation_loop = 1
         if self.facing == "left":
             if self.x_change == 0:
-                self.image = self.game.character_spritesheet.get_sprite(
-                    3, 98, self.width, self.height
-                )
+                self.image = self.game.character_spritesheet.get_sprite(3, 98, self.width, self.height)
             else:
                 self.image = left_animations[math.floor(self.animation_loop)]
                 self.animation_loop += 0.1
@@ -196,9 +186,7 @@ class Enemy(pygame.sprite.Sprite):
         self.movement_loop = 0
         self.max_travel = random.randint(7, 30)
 
-        self.image = self.game.enemy_spritesheet.get_sprite(
-            3, 2, self.width, self.height
-        )
+        self.image = self.game.enemy_spritesheet.get_sprite(3, 2, self.width, self.height)
 
         self.rect = self.image.get_rect()
         self.rect.x = self.x
@@ -316,9 +304,7 @@ class Block(pygame.sprite.Sprite):
         self.width = TILESIZE
         self.height = TILESIZE
 
-        self.image = self.game.terrain_spritesheet.get_sprite(
-            960, 448, self.width, self.height
-        )
+        self.image = self.game.terrain_spritesheet.get_sprite(960, 448, self.width, self.height)
 
         self.rect = self.image.get_rect()
         self.rect.x = self.x
@@ -337,9 +323,7 @@ class Ground(pygame.sprite.Sprite):
         self.width = TILESIZE
         self.height = TILESIZE
 
-        self.image = self.game.terrain_spritesheet.get_sprite(
-            64, 352, self.width, self.height
-        )
+        self.image = self.game.terrain_spritesheet.get_sprite(64, 352, self.width, self.height)
 
         self.rect = self.image.get_rect()
         self.rect.x = self.x
@@ -392,9 +376,7 @@ class Attack(pygame.sprite.Sprite):
 
         self.animation_loop = 0
 
-        self.image = self.game.attack_spritesheet.get_sprite(
-            0, 0, self.width, self.height
-        )
+        self.image = self.game.attack_spritesheet.get_sprite(0, 0, self.width, self.height)
 
         self.rect = self.image.get_rect()
         self.rect.x = self.x

@@ -1,16 +1,15 @@
 """Tests for Jac parser."""
 
 import inspect
-from typing import List, Type
-
-from jaclang.runtimelib.machine import (
-    JacMachineInterface,
-    JacMachineImpl,
-    JacMachineSpec,
-)
-from jaclang.utils.test import TestCase
 
 import pluggy
+
+from jaclang.runtimelib.runtime import (
+    JacRuntimeImpl,
+    JacRuntimeInterface,
+    JacRuntimeSpec,
+)
+from jaclang.utils.test import TestCase
 
 
 class TestFeatures(TestCase):
@@ -20,7 +19,7 @@ class TestFeatures(TestCase):
         """Set up test."""
         return super().setUp()
 
-    def get_methods(self, cls: Type) -> List[str]:
+    def get_methods(self, cls: type) -> list[str]:
         """Get a list of method names with their signatures for a given class."""
         methods = []
         for name, value in inspect.getmembers(cls, predicate=inspect.isfunction):
@@ -39,11 +38,11 @@ class TestFeatures(TestCase):
         return methods
 
     def test_feature_funcs_synced(self) -> None:
-        """Test if JacMachine, JacMachineDefaults, and JacMachineSpec have synced methods."""
+        """Test if JacRuntime, JacRuntimeDefaults, and JacRuntimeSpec have synced methods."""
         # Get methods of each class
-        jac_feature_methods = self.get_methods(JacMachineInterface)
-        jac_feature_defaults_methods = self.get_methods(JacMachineImpl)
-        jac_feature_spec_methods = self.get_methods(JacMachineSpec)
+        jac_feature_methods = self.get_methods(JacRuntimeInterface)
+        jac_feature_defaults_methods = self.get_methods(JacRuntimeImpl)
+        jac_feature_spec_methods = self.get_methods(JacRuntimeSpec)
 
         # Check if all methods are the same in all classes
         self.assertGreater(len(jac_feature_methods), 5)

@@ -40,6 +40,14 @@ self.onmessage = async (event) => {
 
         importScripts("https://cdn.jsdelivr.net/pyodide/v0.27.0/full/pyodide.js");
         pyodide = await loadPyodide();
+
+        // install required packages via micropip
+        await pyodide.loadPackage("micropip");
+        await pyodide.runPythonAsync(`
+import micropip
+await micropip.install('pluggy')
+        `);
+
         await loadPythonResources(pyodide);
         await pyodide.runPythonAsync(`
 from jaclang.cli.cli import run, serve, dot

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from threading import Event
-from typing import Optional, TYPE_CHECKING, Type, TypeVar
+from typing import TYPE_CHECKING, TypeVar
 
 import jaclang.compiler.unitree as uni
 from jaclang.compiler.passes.transform import Transform
@@ -51,7 +51,7 @@ class UniPass(Transform[uni.Module, uni.Module]):
 
     @staticmethod
     def get_all_sub_nodes(
-        node: uni.UniNode, typ: Type[T], brute_force: bool = False
+        node: uni.UniNode, typ: type[T], brute_force: bool = False
     ) -> list[T]:
         """Get all sub nodes of type."""
         result: list[T] = []
@@ -75,7 +75,7 @@ class UniPass(Transform[uni.Module, uni.Module]):
         return result
 
     @staticmethod
-    def find_parent_of_type(node: uni.UniNode, typ: Type[T]) -> Optional[T]:
+    def find_parent_of_type(node: uni.UniNode, typ: type[T]) -> T | None:
         """Check if node has parent of type."""
         while node.parent:
             if isinstance(node.parent, typ):

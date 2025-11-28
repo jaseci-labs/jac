@@ -88,9 +88,14 @@ class JSCodeGenerator:
 
     def gen_for_statement(self, node: es.ForStatement) -> str:
         """Generate for statement."""
-        init = self.generate(node.init) if node.init else ""
+        if node.init:
+            init = self.generate(node.init).lstrip()
+            if init.endswith(";"):
+                init = init.rstrip(";")
+        else:
+            init = ""
         test = self.generate(node.test) if node.test else ""
-        update = self.generate(node.update) if node.update else ""
+        update = self.generate(node.update).lstrip() if node.update else ""
         body = self.generate(node.body)
         return f"{self.indent()}for ({init}; {test}; {update}) {body}"
 
@@ -156,10 +161,11 @@ class JSCodeGenerator:
 
     def gen_switch_case(self, node: es.SwitchCase) -> str:
         """Generate switch case."""
-        if node.test:
-            result = f"{self.indent()}case {self.generate(node.test)}:\n"
-        else:
-            result = f"{self.indent()}default:\n"
+        result = (
+            f"{self.indent()}case {self.generate(node.test)}:\n"
+            if node.test
+            else f"{self.indent()}default:\n"
+        )
         self.indent_level += 1
         for stmt in node.consequent:
             result += f"{self.generate(stmt)}\n"
@@ -325,10 +331,9 @@ class JSCodeGenerator:
         """Generate arrow function expression."""
         async_str = "async " if node.async_ else ""
         params = ", ".join(self.generate(p) for p in node.params)
-        if len(node.params) == 1:
-            params = self.generate(node.params[0])
-        else:
-            params = f"({params})"
+        params = (
+            self.generate(node.params[0]) if len(node.params) == 1 else f"({params})"
+        )
 
         if node.expression:
             body = self.generate(node.body)

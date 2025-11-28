@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import ast as ast3
-from typing import Optional, TYPE_CHECKING, Union, cast
+from typing import TYPE_CHECKING, cast
 
 import jaclang.compiler.unitree as uni
 
@@ -104,7 +104,7 @@ class EsJsxProcessor:
                 es.ObjectExpression(properties=properties), jac_node=node
             )
 
-        children_elements: list[Optional[Union[Expression, SpreadElement]]] = []
+        children_elements: list[Expression | SpreadElement | None] = []
         for child in node.children or []:
             child_expr = getattr(child.gen, "es_ast", None)
             if child_expr is None:

@@ -2,17 +2,17 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 
-from typing import Callable, TYPE_CHECKING
-
-from jaclang.runtimelib.machine import hookimpl
+from jaclang.runtimelib.runtime import hookimpl
 
 if TYPE_CHECKING:
     from byllm.llm import Model
     from byllm.mtir import MTIR
 
 
-class JacMachine:
+class JacRuntime:
     """Jac's with_llm feature."""
 
     @staticmethod

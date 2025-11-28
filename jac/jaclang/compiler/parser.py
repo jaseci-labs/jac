@@ -5,13 +5,16 @@ from __future__ import annotations
 import keyword
 import os
 import sys
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from threading import Event
-from typing import Callable, Optional, Sequence, TYPE_CHECKING, TypeAlias, TypeVar, cast
+from typing import TYPE_CHECKING, TypeAlias, TypeVar, cast
 
 import jaclang.compiler.unitree as uni
-from jaclang.compiler import TOKEN_MAP, jac_lark as jl
-from jaclang.compiler.constant import EdgeDir, Tokens as Tok
+from jaclang.compiler import TOKEN_MAP
+from jaclang.compiler import jac_lark as jl
+from jaclang.compiler.constant import EdgeDir
+from jaclang.compiler.constant import Tokens as Tok
 from jaclang.compiler.passes.main import Transform
 from jaclang.utils.helpers import ANSIColors
 
@@ -43,7 +46,9 @@ class LarkParseTransform(Transform[LarkParseInput, LarkParseOutput]):
 
     comment_cache: list[jl.Token] = []
     parser = jl.Lark_StandAlone(
-        lexer_callbacks={"COMMENT": lambda comment: LarkParseTransform.comment_cache.append(comment)}  # type: ignore
+        lexer_callbacks={
+            "COMMENT": lambda comment: LarkParseTransform.comment_cache.append(comment)
+        }  # type: ignore
     )
 
     def __init__(self, ir_in: LarkParseInput, prog: JacProgram) -> None:
@@ -1120,7 +1125,9 @@ class JacParser(Transform[uni.Source, uni.Module]):
                     kid=kid_list,
                 )
 
-        def _parse_parameter_categories(self, all_params: list[uni.UniNode]) -> tuple[
+        def _parse_parameter_categories(
+            self, all_params: list[uni.UniNode]
+        ) -> tuple[
             list[uni.ParamVar],
             list[uni.ParamVar],
             uni.ParamVar | None,
@@ -2419,7 +2426,7 @@ class JacParser(Transform[uni.Source, uni.Module]):
 
         def _process_fstring(
             self, start_tok: list[Tok], end_tok: Tok
-        ) -> Optional[uni.FString]:
+        ) -> uni.FString | None:
             """Process fstring nodes."""
             tok_start = self.match_token(start_tok[0]) or self.match_token(start_tok[1])
             if not tok_start:

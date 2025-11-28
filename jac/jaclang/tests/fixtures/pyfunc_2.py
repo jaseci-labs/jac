@@ -223,8 +223,10 @@ print("This is \t tabbed.")
 print("Line 1\x0cLine 2")
 words = ["Hello", "World!", "I", "am", "a", "Jactastic!"]
 print(
-    f'''{"""
-""".join(words)}'''
+    f"""{
+        '''
+'''.join(words)
+    }"""
 )
 for i in "ban":
     for j in range(1, 3):

@@ -1,7 +1,5 @@
 """Symbol table testing helpers for Jaseci."""
 
-from typing import Optional
-
 from jaclang.compiler.unitree import Symbol, UniScopeNode
 from jaclang.utils.test import TestCase
 
@@ -13,7 +11,7 @@ class SymTableTestMixin(TestCase):
         self,
         sym_table: UniScopeNode,
         symbol_name: str,
-        symbol_type: Optional[str] = None,
+        symbol_type: str | None = None,
     ) -> Symbol:
         """Assert that a symbol exists in the symbol table."""
         symbol = look_down(sym_table, symbol_name)
@@ -70,8 +68,8 @@ class SymTableTestMixin(TestCase):
         symbol_name: str,
         symbol_type: str,
         decl: tuple[int, int],
-        defns: Optional[list[tuple[int, int]]] = None,
-        uses: Optional[list[tuple[int, int]]] = None,
+        defns: list[tuple[int, int]] | None = None,
+        uses: list[tuple[int, int]] | None = None,
     ) -> None:
         """Assert complete symbol information (declaration, definitions, uses)."""
         symbol = self.assert_symbol_exists(sym_table, symbol_name, symbol_type)
@@ -105,7 +103,7 @@ class SymTableTestMixin(TestCase):
         return sub_tables[table_names.index(matching_tables[0])]
 
 
-def look_down(tab: UniScopeNode, name: str, deep: bool = True) -> Optional[Symbol]:
+def look_down(tab: UniScopeNode, name: str, deep: bool = True) -> Symbol | None:
     """Lookup a variable in the symbol table."""
     if name in tab.names_in_scope:
         if not tab.names_in_scope[name].imported:

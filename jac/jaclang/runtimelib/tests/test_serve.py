@@ -1,5 +1,6 @@
 """Test for jac serve command and REST API server."""
 
+import contextlib
 import json
 import os
 import socket
@@ -9,7 +10,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from jaclang.cli import cli
-from jaclang.runtimelib.machine import JacMachine as Jac
+from jaclang.runtimelib.runtime import JacRuntime as Jac
 from jaclang.runtimelib.server import JacAPIServer, UserManager
 from jaclang.utils.test import TestCase
 
@@ -47,10 +48,8 @@ class TestServeCommand(TestCase):
         """Tear down test."""
         # Close user manager if it exists
         if self.server and hasattr(self.server, "user_manager"):
-            try:
+            with contextlib.suppress(Exception):
                 self.server.user_manager.close()
-            except Exception:
-                pass
 
         # Stop server if running
         if self.httpd:
@@ -76,10 +75,8 @@ class TestServeCommand(TestCase):
             for file in os.listdir(path):
                 # Clean up session files and user database files (.users)
                 if file.startswith(prefix):
-                    try:
+                    with contextlib.suppress(Exception):
                         os.remove(f"{path}/{file}")
-                    except Exception:
-                        pass
 
     def _start_server(self) -> None:
         """Start the API server in a background thread."""
@@ -410,7 +407,7 @@ class TestServeCommand(TestCase):
         result = self._request(
             "POST",
             "/walker/CreateTask",
-            {"fields": {"title": "Test Task", "priority": 2}},
+            {"title": "Test Task", "priority": 2},
             token=token,
         )
         jid = result["reports"][0]["_jac_id"]
@@ -425,16 +422,12 @@ class TestServeCommand(TestCase):
         self.assertIn("reports", result)
 
         # Spawn ListTasks walker to verify task was created
-        result2 = self._request(
-            "POST", "/walker/ListTasks", {"fields": {}}, token=token
-        )
+        result2 = self._request("POST", "/walker/ListTasks", {}, token=token)
 
         self.assertIn("result", result2)
 
         # Get Task node using new GetTask walker
-        result3 = self._request(
-            "POST", "/walker/GetTask/" + str(jid), {"fields": {}}, token=token
-        )
+        result3 = self._request("POST", "/walker/GetTask/" + str(jid), {}, token=token)
         self.assertIn("result", result3)
 
     def test_server_user_isolation(self) -> None:
@@ -681,7 +674,7 @@ class TestServeCommand(TestCase):
         task1_result = self._request(
             "POST",
             "/walker/CreateTask",
-            {"fields": {"title": "Persistent Task 1", "priority": 1}},
+            {"title": "Persistent Task 1", "priority": 1},
             token=token,
         )
         self.assertIn("result", task1_result)
@@ -689,7 +682,7 @@ class TestServeCommand(TestCase):
         task2_result = self._request(
             "POST",
             "/walker/CreateTask",
-            {"fields": {"title": "Persistent Task 2", "priority": 2}},
+            {"title": "Persistent Task 2", "priority": 2},
             token=token,
         )
         self.assertIn("result", task2_result)
@@ -697,15 +690,13 @@ class TestServeCommand(TestCase):
         task3_result = self._request(
             "POST",
             "/walker/CreateTask",
-            {"fields": {"title": "Persistent Task 3", "priority": 3}},
+            {"title": "Persistent Task 3", "priority": 3},
             token=token,
         )
         self.assertIn("result", task3_result)
 
         # List tasks to verify they were created
-        list_before = self._request(
-            "POST", "/walker/ListTasks", {"fields": {}}, token=token
-        )
+        list_before = self._request("POST", "/walker/ListTasks", {}, token=token)
         self.assertIn("result", list_before)
 
         # Shutdown first server instance
@@ -748,9 +739,7 @@ class TestServeCommand(TestCase):
         self.assertEqual(new_token, token)
 
         # List tasks again to verify they persisted
-        list_after = self._request(
-            "POST", "/walker/ListTasks", {"fields": {}}, token=new_token
-        )
+        list_after = self._request("POST", "/walker/ListTasks", {}, token=new_token)
 
         # The ListTasks walker should successfully run
         self.assertIn("result", list_after)
@@ -759,7 +748,7 @@ class TestServeCommand(TestCase):
         complete_result = self._request(
             "POST",
             "/walker/CompleteTask",
-            {"fields": {"title": "Persistent Task 2"}},
+            {"title": "Persistent Task 2"},
             token=new_token,
         )
         self.assertIn("result", complete_result)
@@ -923,10 +912,10 @@ class TestServeCommand(TestCase):
     def test_faux_flag_with_littlex_example(self) -> None:
         """Test that --faux flag correctly identifies functions, walkers, and endpoints in littleX example."""
         import io
-        from contextlib import redirect_stdout
 
         # Get the absolute path to littleX file
         import os
+        from contextlib import redirect_stdout
 
         littlex_path = os.path.abspath(
             os.path.join(
@@ -1003,10 +992,8 @@ class TestAccessLevelAuthentication(TestCase):
         """Tear down test."""
         # Close user manager if it exists
         if self.server and hasattr(self.server, "user_manager"):
-            try:
+            with contextlib.suppress(Exception):
                 self.server.user_manager.close()
-            except Exception:
-                pass
 
         # Stop server if running
         if self.httpd:
@@ -1032,10 +1019,8 @@ class TestAccessLevelAuthentication(TestCase):
             for file in os.listdir(path):
                 # Clean up session files and user database files (.users)
                 if file.startswith(prefix):
-                    try:
+                    with contextlib.suppress(Exception):
                         os.remove(f"{path}/{file}")
-                    except Exception:
-                        pass
 
     def _start_server(self) -> None:
         """Start the API server in a background thread."""
@@ -1218,9 +1203,7 @@ class TestAccessLevelAuthentication(TestCase):
         self._start_server()
 
         # Spawn public walker without authentication
-        result = self._request(
-            "POST", "/walker/PublicWalker", {"fields": {"message": "hello"}}
-        )
+        result = self._request("POST", "/walker/PublicWalker", {"message": "hello"})
 
         self.assertIn("result", result)
         self.assertIn("reports", result)
@@ -1230,9 +1213,7 @@ class TestAccessLevelAuthentication(TestCase):
         self._start_server()
 
         # Try to spawn protected walker without authentication - should fail
-        result = self._request(
-            "POST", "/walker/ProtectedWalker", {"fields": {"data": "test"}}
-        )
+        result = self._request("POST", "/walker/ProtectedWalker", {"data": "test"})
 
         self.assertIn("error", result)
         self.assertIn("Unauthorized", result["error"])
@@ -1251,7 +1232,7 @@ class TestAccessLevelAuthentication(TestCase):
         result = self._request(
             "POST",
             "/walker/ProtectedWalker",
-            {"fields": {"data": "mydata"}},
+            {"data": "mydata"},
             token=token,
         )
 
@@ -1263,9 +1244,7 @@ class TestAccessLevelAuthentication(TestCase):
         self._start_server()
 
         # Try to spawn private walker without authentication - should fail
-        result = self._request(
-            "POST", "/walker/PrivateWalker", {"fields": {"secret": "test"}}
-        )
+        result = self._request("POST", "/walker/PrivateWalker", {"secret": "test"})
 
         self.assertIn("error", result)
         self.assertIn("Unauthorized", result["error"])
@@ -1284,7 +1263,7 @@ class TestAccessLevelAuthentication(TestCase):
         result = self._request(
             "POST",
             "/walker/PrivateWalker",
-            {"fields": {"secret": "verysecret"}},
+            {"secret": "verysecret"},
             token=token,
         )
 

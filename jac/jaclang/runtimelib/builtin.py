@@ -5,10 +5,10 @@ from __future__ import annotations
 import json
 from abc import abstractmethod
 from enum import Enum
-from typing import ClassVar, Optional, override
+from typing import ClassVar, override
 
 from jaclang.runtimelib.constructs import NodeArchetype
-from jaclang.runtimelib.machine import JacMachineInterface as Jac
+from jaclang.runtimelib.runtime import JacRuntimeInterface as Jac
 from jaclang.runtimelib.utils import collect_node_connections
 
 
@@ -29,18 +29,18 @@ WritePerm = AccessLevelEnum.WRITE
 
 
 def printgraph(
-    node: Optional[NodeArchetype] = None,
+    node: NodeArchetype | None = None,
     depth: int = -1,
     traverse: bool = False,
-    edge_type: Optional[list[str]] = None,
+    edge_type: list[str] | None = None,
     bfs: bool = True,
     edge_limit: int = 512,
     node_limit: int = 512,
-    file: Optional[str] = None,
+    file: str | None = None,
     format: str = "dot",
 ) -> str:
     """Print the graph in different formats."""
-    from jaclang.runtimelib.machine import JacMachineInterface as Jac
+    from jaclang.runtimelib.runtime import JacRuntimeInterface as Jac
 
     fmt = format.lower()
     if fmt == "json":
@@ -68,7 +68,7 @@ save = Jac.save
 commit = Jac.commit
 
 
-def _jac_graph_json(file: Optional[str] = None) -> str:
+def _jac_graph_json(file: str | None = None) -> str:
     """Get the graph in json string."""
     visited_nodes: set = set()
     connections: set = set()

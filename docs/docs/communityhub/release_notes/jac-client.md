@@ -5,6 +5,10 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.2.2 (Unreleased)
 
+- **Nested Folder Structure Preservation**: Implemented folder structure preservation during compilation, similar to TypeScript transpilation. Files in nested directories now maintain their relative paths in the compiled output, enabling proper relative imports across multiple directory levels and preventing file name conflicts. This allows developers to organize code in nested folders just like in modern JavaScript/TypeScript projects.
+
+- **File System Organization Documentation**: Added comprehensive documentation for organizing Jac client projects, including guides for the `app.jac` entry point requirement, backend/frontend code separation patterns, and nested folder import syntax. [Documentation](https://docs.jaseci.org/jac-client/file-system/intro/)
+
 ## jac-client 0.2.1 (Latest Release)
 
 - **CSS File Support**: Added full support for CSS in separate files, enabling cleaner styling structure. Expanded styling options with documented approaches for flexible UI customization. [Documentation](https://docs.jaseci.org/jac-client/styling/intro/)

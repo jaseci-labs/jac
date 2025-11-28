@@ -45,7 +45,7 @@ class TestCreateJacApp(TestCase):
                 package_json_path = os.path.join(project_path, "package.json")
                 self.assertTrue(os.path.exists(package_json_path))
 
-                with open(package_json_path, "r") as f:
+                with open(package_json_path) as f:
                     package_data = json.load(f)
 
                 self.assertEqual(package_data["name"], test_project_name)
@@ -59,7 +59,7 @@ class TestCreateJacApp(TestCase):
                 app_jac_path = os.path.join(project_path, "app.jac")
                 self.assertTrue(os.path.exists(app_jac_path))
 
-                with open(app_jac_path, "r") as f:
+                with open(app_jac_path) as f:
                     app_jac_content = f.read()
 
                 self.assertIn("app()", app_jac_content)
@@ -68,7 +68,7 @@ class TestCreateJacApp(TestCase):
                 readme_path = os.path.join(project_path, "README.md")
                 self.assertTrue(os.path.exists(readme_path))
 
-                with open(readme_path, "r") as f:
+                with open(readme_path) as f:
                     readme_content = f.read()
 
                 self.assertIn(f"# {test_project_name}", readme_content)

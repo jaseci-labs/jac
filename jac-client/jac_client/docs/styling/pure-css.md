@@ -297,9 +297,3 @@ Use media queries for responsive layouts:
 - [MDN CSS Documentation](https://developer.mozilla.org/en-US/docs/Web/CSS)
 - [CSS Tricks](https://css-tricks.com/)
 - [Can I Use](https://caniuse.com/) - Browser compatibility
-
-
-
-
-
-

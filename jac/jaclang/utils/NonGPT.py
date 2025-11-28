@@ -14,7 +14,6 @@ from functools import wraps
 from typing import (
     Any,
     Annotated,
-    Callable,
     Literal,
     Union,
     get_args,
@@ -23,6 +22,7 @@ from typing import (
     TypeVar,
     NewType,
 )
+from collections.abc import Callable
 from uuid import UUID, uuid4
 
 # -------------------------------

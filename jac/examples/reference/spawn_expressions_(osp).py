@@ -18,7 +18,6 @@ from jaclang.lib import (
 
 
 class Counter(Walker):
-
     @on_entry
     @impl_patch_filename("spawn_expressions_(osp).jac")
     def count(self, here: Root) -> None:

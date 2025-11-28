@@ -17,7 +17,7 @@ except SystemExit as e:
 def get_nodes_edges(dot_file: str) -> tuple[dict, list]:
     """Parse DOT file and return nodes and edges as a tuple of dict and list respectively."""
     import pydot
-    from streamlit_agraph import Node, Edge
+    from streamlit_agraph import Edge, Node
 
     graphs = pydot.graph_from_dot_file(dot_file)
     graph: pydot.Graph = graphs[0]
@@ -54,7 +54,7 @@ if selected_dot_file:
         with open(selected_dot_file) as f:
             st.graphviz_chart(f.read())
     elif vis_opt == "Use streamlit-agraph (Interactive)":
-        from streamlit_agraph import agraph, ConfigBuilder
+        from streamlit_agraph import ConfigBuilder, agraph
 
         nodes, edges = get_nodes_edges(selected_dot_file)
         config_builder = ConfigBuilder(nodes)
