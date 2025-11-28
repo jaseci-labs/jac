@@ -4,13 +4,12 @@ from __future__ import annotations
 
 import os
 import sys
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from dataclasses import dataclass
 from threading import Event
-from typing import TYPE_CHECKING, TypeAlias, TypeVar, cast
+from typing import TYPE_CHECKING, TypeAlias, TypeVar
 
 import jaclang.compiler.unitree as uni
-from jaclang.compiler.constant import SymbolAccess, SymbolType
 from jaclang.compiler.passes.main import Transform
 from jaclang.compiler.ts_constant import TsTokens as Tok
 from jaclang.utils.helpers import ANSIColors
@@ -192,7 +191,9 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
             accepts = iparser.accepts()
             for tok in TypeScriptParser._MISSING_TOKENS:
                 if tok.name in accepts:
-                    iparser.feed_token(Token(tok.name, tok.value if hasattr(tok, 'value') else ''))
+                    iparser.feed_token(
+                        Token(tok.name, tok.value if hasattr(tok, "value") else "")
+                    )
                     return tok
             return None
 
@@ -238,9 +239,7 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
         catch_error.pos_start = getattr(e, "pos_in_stream", 0) or 0
         if hasattr(e, "token") and e.token:
             catch_error.c_end = getattr(e.token, "end_column", catch_error.c_start + 1)
-            catch_error.pos_end = getattr(
-                e.token, "end_pos", catch_error.pos_start + 1
-            )
+            catch_error.pos_end = getattr(e.token, "end_pos", catch_error.pos_start + 1)
         else:
             catch_error.c_end = catch_error.c_start + 1
             catch_error.pos_end = catch_error.pos_start + 1
@@ -290,9 +289,11 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                         line=token.line or 1,
                         end_line=token.end_line or token.line or 1,
                         col_start=token.column or 0,
-                        col_end=token.end_column or (token.column or 0) + len(token.value),
+                        col_end=token.end_column
+                        or (token.column or 0) + len(token.value),
                         pos_start=token.start_pos or 0,
-                        pos_end=token.end_pos or (token.start_pos or 0) + len(token.value),
+                        pos_end=token.end_pos
+                        or (token.start_pos or 0) + len(token.value),
                     )
 
                 def _make_name(inner_self, token) -> uni.Name:
@@ -369,7 +370,10 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
 
                     for item in kids:
                         if isinstance(item, (uni.Name, uni.Token)) and name is None:
-                            if isinstance(item, uni.Token) and item.name == Tok.NAME.name:
+                            if (
+                                isinstance(item, uni.Token)
+                                and item.name == Tok.NAME.name
+                            ):
                                 name = uni.Name(
                                     orig_src=item.orig_src,
                                     name=item.name,
@@ -451,9 +455,13 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                             name = item
                         elif isinstance(item, list):
                             if not params:
-                                params = [p for p in item if isinstance(p, uni.ParamVar)]
+                                params = [
+                                    p for p in item if isinstance(p, uni.ParamVar)
+                                ]
                             else:
-                                body = [s for s in item if isinstance(s, uni.CodeBlockStmt)]
+                                body = [
+                                    s for s in item if isinstance(s, uni.CodeBlockStmt)
+                                ]
                         elif isinstance(item, uni.SubTag):
                             return_type = item
 
@@ -547,7 +555,9 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                             elif all(isinstance(i, uni.ArchBlockStmt) for i in item):
                                 body = item
                             else:
-                                body = [i for i in item if isinstance(i, uni.ArchBlockStmt)]
+                                body = [
+                                    i for i in item if isinstance(i, uni.ArchBlockStmt)
+                                ]
 
                     if name is None:
                         name = uni.Name.gen_stub_from_node(
@@ -645,9 +655,13 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                             name = item
                         elif isinstance(item, list):
                             if all(isinstance(p, uni.ParamVar) for p in item if p):
-                                params = [p for p in item if isinstance(p, uni.ParamVar)]
+                                params = [
+                                    p for p in item if isinstance(p, uni.ParamVar)
+                                ]
                             else:
-                                body = [s for s in item if isinstance(s, uni.CodeBlockStmt)]
+                                body = [
+                                    s for s in item if isinstance(s, uni.CodeBlockStmt)
+                                ]
                         elif isinstance(item, uni.SubTag):
                             return_type = item
 
@@ -839,7 +853,11 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
 
                     return uni.Import(
                         from_loc=from_loc,
-                        items=import_items if import_items else [from_loc] if from_loc else [],
+                        items=import_items
+                        if import_items
+                        else [from_loc]
+                        if from_loc
+                        else [],
                         is_absorb=False,
                         kid=kids,
                     )
@@ -849,7 +867,10 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                     for item in items:
                         if isinstance(item, uni.ModulePath):
                             return item
-                        if isinstance(item, uni.Token) and item.name in ("STRING", Tok.STRING.name):
+                        if isinstance(item, uni.Token) and item.name in (
+                            "STRING",
+                            Tok.STRING.name,
+                        ):
                             path_val = item.value.strip("'\"")
                             return uni.ModulePath(
                                 path=[
@@ -902,7 +923,9 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                     result = []
                     for item in items:
                         if isinstance(item, list):
-                            result.extend([i for i in item if isinstance(i, uni.ModuleItem)])
+                            result.extend(
+                                [i for i in item if isinstance(i, uni.ModuleItem)]
+                            )
                         elif isinstance(item, uni.ModuleItem):
                             result.append(item)
                     return result
@@ -938,7 +961,9 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                     """export_decl: KW_EXPORT ..."""
                     # For simplicity, return the inner declaration
                     for item in items:
-                        if isinstance(item, uni.UniNode) and not isinstance(item, uni.Token):
+                        if isinstance(item, uni.UniNode) and not isinstance(
+                            item, uni.Token
+                        ):
                             return item
                     return None
 
@@ -965,11 +990,17 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                                 else_body = uni.ElseStmt(body=[item], kid=[item])
                         elif isinstance(item, list):
                             if not body:
-                                body = [i for i in item if isinstance(i, uni.CodeBlockStmt)]
+                                body = [
+                                    i for i in item if isinstance(i, uni.CodeBlockStmt)
+                                ]
                             else:
-                                else_stmts = [i for i in item if isinstance(i, uni.CodeBlockStmt)]
+                                else_stmts = [
+                                    i for i in item if isinstance(i, uni.CodeBlockStmt)
+                                ]
                                 if else_stmts:
-                                    else_body = uni.ElseStmt(body=else_stmts, kid=else_stmts)
+                                    else_body = uni.ElseStmt(
+                                        body=else_stmts, kid=else_stmts
+                                    )
 
                     return uni.IfStmt(
                         condition=condition,
@@ -1049,7 +1080,9 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                     for item in kids:
                         if isinstance(item, list):
                             if not body:
-                                body = [i for i in item if isinstance(i, uni.CodeBlockStmt)]
+                                body = [
+                                    i for i in item if isinstance(i, uni.CodeBlockStmt)
+                                ]
                         elif isinstance(item, uni.Except):
                             excepts.append(item)
                         elif isinstance(item, uni.FinallyStmt):
@@ -1327,7 +1360,10 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                         if isinstance(item, uni.Expr) and target is None:
                             target = item
                         elif isinstance(item, (uni.Name, uni.Token)):
-                            if isinstance(item, uni.Token) and item.name in (Tok.NAME.name, "NAME"):
+                            if isinstance(item, uni.Token) and item.name in (
+                                Tok.NAME.name,
+                                "NAME",
+                            ):
                                 accessor = inner_self._make_name(item)
                             elif isinstance(item, uni.Name):
                                 accessor = item
@@ -1369,12 +1405,10 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                         if isinstance(item, uni.Token):
                             if item.name in (Tok.NAME.name, "NAME"):
                                 return inner_self._make_name(item)
-                            elif item.name in (Tok.KW_THIS.name, "KW_THIS"):
-                                return uni.SpecialVarRef(
-                                    var=item,
-                                    kid=[item],
-                                )
-                            elif item.name in (Tok.KW_SUPER.name, "KW_SUPER"):
+                            elif item.name in (
+                                Tok.KW_THIS.name,
+                                "KW_THIS",
+                            ) or item.name in (Tok.KW_SUPER.name, "KW_SUPER"):
                                 return uni.SpecialVarRef(
                                     var=item,
                                     kid=[item],
@@ -1397,7 +1431,12 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                         if isinstance(item, uni.Token):
                             if item.name in ("NULL", Tok.NULL.name):
                                 return uni.Null(kid=[item])
-                            elif item.name in ("TRUE", "FALSE", Tok.TRUE.name, Tok.FALSE.name):
+                            elif item.name in (
+                                "TRUE",
+                                "FALSE",
+                                Tok.TRUE.name,
+                                Tok.FALSE.name,
+                            ):
                                 return uni.Bool(
                                     value=item.value.lower() == "true",
                                     kid=[item],
@@ -1413,12 +1452,10 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                                         value=item.value,
                                         kid=[item],
                                     )
-                            elif item.name in ("STRING", Tok.STRING.name):
-                                return uni.String(
-                                    value=item.value,
-                                    kid=[item],
-                                )
-                            elif item.name in ("REGEX", Tok.REGEX.name):
+                            elif item.name in (
+                                "STRING",
+                                Tok.STRING.name,
+                            ) or item.name in ("REGEX", Tok.REGEX.name):
                                 return uni.String(
                                     value=item.value,
                                     kid=[item],
@@ -1523,9 +1560,13 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                                 ]
                         elif isinstance(item, list):
                             if all(isinstance(p, uni.ParamVar) for p in item if p):
-                                params = [p for p in item if isinstance(p, uni.ParamVar)]
+                                params = [
+                                    p for p in item if isinstance(p, uni.ParamVar)
+                                ]
                             else:
-                                body = [s for s in item if isinstance(s, uni.CodeBlockStmt)]
+                                body = [
+                                    s for s in item if isinstance(s, uni.CodeBlockStmt)
+                                ]
                         elif isinstance(item, uni.SubTag):
                             return_type = item
                         elif isinstance(item, uni.Expr):
@@ -1561,7 +1602,10 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                     """arrow_params: NAME | LPAREN param_list? RPAREN"""
                     if items:
                         item = items[0]
-                        if isinstance(item, uni.Token) and item.name in (Tok.NAME.name, "NAME"):
+                        if isinstance(item, uni.Token) and item.name in (
+                            Tok.NAME.name,
+                            "NAME",
+                        ):
                             return [
                                 uni.ParamVar(
                                     name=inner_self._make_name(item),
@@ -1598,7 +1642,9 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                 # Types
                 def type(inner_self, items):
                     """type: union_type | intersection_type | primary_type | ..."""
-                    return items[0] if items and isinstance(items[0], uni.Expr) else None
+                    return (
+                        items[0] if items and isinstance(items[0], uni.Expr) else None
+                    )
 
                 def union_type(inner_self, items):
                     """union_type: type (BW_OR type)+"""
@@ -1617,7 +1663,9 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
 
                 def primary_type(inner_self, items):
                     """primary_type: predefined_type | type_reference | ..."""
-                    return items[0] if items and isinstance(items[0], uni.Expr) else None
+                    return (
+                        items[0] if items and isinstance(items[0], uni.Expr) else None
+                    )
 
                 def predefined_type(inner_self, items):
                     """predefined_type: KW_ANY | KW_STRING_TYPE | ..."""
@@ -1636,7 +1684,10 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                         item = items[0]
                         if isinstance(item, uni.Name):
                             return item
-                        elif isinstance(item, uni.Token) and item.name in (Tok.NAME.name, "NAME"):
+                        elif isinstance(item, uni.Token) and item.name in (
+                            Tok.NAME.name,
+                            "NAME",
+                        ):
                             return inner_self._make_name(item)
                     return None
 
@@ -1644,7 +1695,10 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                     """type_name: NAME (DOT NAME)*"""
                     names = []
                     for item in items:
-                        if isinstance(item, uni.Token) and item.name in (Tok.NAME.name, "NAME"):
+                        if isinstance(item, uni.Token) and item.name in (
+                            Tok.NAME.name,
+                            "NAME",
+                        ):
                             names.append(inner_self._make_name(item))
                         elif isinstance(item, uni.Name):
                             names.append(item)
@@ -1707,7 +1761,10 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                     """decorator_expr: NAME | decorator_expr DOT NAME | decorator_expr arguments"""
                     if items:
                         item = items[0]
-                        if isinstance(item, uni.Token) and item.name in (Tok.NAME.name, "NAME"):
+                        if isinstance(item, uni.Token) and item.name in (
+                            Tok.NAME.name,
+                            "NAME",
+                        ):
                             return inner_self._make_name(item)
                         return item if isinstance(item, uni.Expr) else None
                     return None
@@ -1728,8 +1785,7 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
         def _make_module(self, body: list[uni.UniNode]) -> uni.Module:
             """Create a Module node."""
             stmts = [
-                s for s in body
-                if isinstance(s, (uni.ElementStmt, uni.CodeBlockStmt))
+                s for s in body if isinstance(s, (uni.ElementStmt, uni.CodeBlockStmt))
             ]
             mod_name = os.path.basename(self.parse_ref.mod_path)
             if mod_name.endswith(".ts"):

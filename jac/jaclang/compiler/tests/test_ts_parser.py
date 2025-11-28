@@ -1,6 +1,5 @@
 """Tests for TypeScript parser."""
 
-import os
 from pathlib import Path
 
 from jaclang.compiler import unitree as uni
@@ -22,14 +21,12 @@ class TestTypeScriptParser(TestCase):
 
     def ts_fixture_abs_path(self, filename: str) -> str:
         """Get absolute path to TypeScript fixture file."""
-        return str(
-            Path(__file__).parent / "fixtures" / "typescript" / filename
-        )
+        return str(Path(__file__).parent / "fixtures" / "typescript" / filename)
 
     def load_ts_fixture(self, filename: str) -> str:
         """Load TypeScript fixture file contents."""
         path = self.ts_fixture_abs_path(filename)
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             return f.read()
 
     def parse_ts(self, source_code: str, mod_path: str = "") -> TypeScriptParser:
