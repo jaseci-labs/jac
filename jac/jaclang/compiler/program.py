@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 import jaclang.compiler.unitree as uni
 from jaclang.compiler.parser import JacParser
 from jaclang.compiler.passes.ecmascript import EsastGenPass
+from jaclang.compiler.ts_parser import TypeScriptParser
 from jaclang.compiler.passes.main import (
     Alert,
     CFGBuildPass,
@@ -105,6 +106,14 @@ class JacProgram:
             )
             had_error = len(py_ast_ret.errors_had) > 0
             mod = py_ast_ret.ir_out
+        elif file_path.endswith((".js", ".ts", ".jsx", ".tsx")):
+            # Parse TypeScript/JavaScript files
+            source = uni.Source(source_str, mod_path=file_path)
+            ts_ast_ret = TypeScriptParser(
+                root_ir=source, prog=self, cancel_token=cancel_token
+            )
+            had_error = len(ts_ast_ret.errors_had) > 0
+            mod = ts_ast_ret.ir_out
         else:
             source = uni.Source(source_str, mod_path=file_path)
             jac_ast_ret: Transform[uni.Source, uni.Module] = JacParser(

@@ -147,3 +147,39 @@ class ImportPassPassTests(TestCase):
         (state := JacProgram()).compile(self.fixture_abs_path("circular_import.jac"))
         self.assertFalse(state.errors_had)
         self.assertEqual(len(state.errors_had), 0)
+
+    def test_ts_module_import(self) -> None:
+        """Test importing TypeScript modules in cl imports."""
+        (prog := JacProgram()).build(
+            self.fixture_abs_path("ts_imports/main.jac"), type_check=True
+        )
+        # Verify TS/JS modules are loaded into the module hub
+        ts_module_path = self.fixture_abs_path("ts_imports/utils.ts")
+        js_module_path = self.fixture_abs_path("ts_imports/component.js")
+        self.assertIn(ts_module_path, prog.mod.hub)
+        self.assertIn(js_module_path, prog.mod.hub)
+        # Verify modules parsed without syntax errors
+        ts_mod = prog.mod.hub[ts_module_path]
+        js_mod = prog.mod.hub[js_module_path]
+        self.assertFalse(ts_mod.has_syntax_errors)
+        self.assertFalse(js_mod.has_syntax_errors)
+
+    def test_ts_module_compilation_no_cgen(self) -> None:
+        """Test TypeScript modules compile with no_cgen=True."""
+        (prog := JacProgram()).compile(
+            self.fixture_abs_path("ts_imports/utils.ts"), no_cgen=True
+        )
+        self.assertFalse(prog.errors_had)
+        ts_mod = list(prog.mod.hub.values())[0]
+        self.assertEqual(ts_mod.name, "utils")
+        self.assertFalse(ts_mod.has_syntax_errors)
+
+    def test_js_module_compilation_no_cgen(self) -> None:
+        """Test JavaScript modules compile with no_cgen=True."""
+        (prog := JacProgram()).compile(
+            self.fixture_abs_path("ts_imports/component.js"), no_cgen=True
+        )
+        self.assertFalse(prog.errors_had)
+        js_mod = list(prog.mod.hub.values())[0]
+        self.assertEqual(js_mod.name, "component")
+        self.assertFalse(js_mod.has_syntax_errors)
