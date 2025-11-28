@@ -37,7 +37,6 @@ from typing import (
     Any,
     ClassVar,
     Generic,
-    Optional,
     TypeVar,
     Union,
     overload,
@@ -79,7 +78,7 @@ class UnexpectedInput(LarkError):
     pos_in_stream = None
     state: Any
     _terminals_by_name = None
-    interactive_parser: "InteractiveParser"
+    interactive_parser: InteractiveParser
 
     def get_context(self, text: str, span: int = 40) -> str:
         # --
@@ -100,7 +99,7 @@ class UnexpectedInput(LarkError):
 
     def match_examples(
         self,
-        parse_fn: "Callable[[str], Tree]",
+        parse_fn: Callable[[str], Tree],
         examples: Mapping[T, Iterable[str]] | Iterable[tuple[T, Iterable[str]]],
         token_type_match_fallback: bool = False,
         use_accepts: bool = True,
@@ -169,7 +168,7 @@ class UnexpectedInput(LarkError):
 
 class UnexpectedEOF(ParseError, UnexpectedInput):
     # --
-    expected: "list[Token]"
+    expected: list[Token]
 
     def __init__(self, expected, state=None, terminals_by_name=None):
         super(UnexpectedEOF, self).__init__()
@@ -304,7 +303,7 @@ class UnexpectedToken(ParseError, UnexpectedInput):
 class VisitError(LarkError):
     # --
 
-    obj: "Tree | Token"
+    obj: Tree | Token
     orig_exc: Exception
 
     def __init__(self, rule, obj, orig_exc):
@@ -500,7 +499,7 @@ class Meta:
     end_line: int
     end_column: int
     end_pos: int
-    orig_expansion: "list[TerminalDef]"
+    orig_expansion: list[TerminalDef]
     match_tree: bool
 
     def __init__(self):
@@ -515,10 +514,10 @@ class Tree(Generic[_Leaf_T]):
     # --
 
     data: str
-    children: "list[Branch[_Leaf_T]]"
+    children: list[Branch[_Leaf_T]]
 
     def __init__(
-        self, data: str, children: "list[Branch[_Leaf_T]]", meta: Meta | None = None
+        self, data: str, children: list[Branch[_Leaf_T]], meta: Meta | None = None
     ) -> None:
         self.data = data
         self.children = children
@@ -552,7 +551,7 @@ class Tree(Generic[_Leaf_T]):
         # --
         return "".join(self._pretty(0, indent_str))
 
-    def __rich__(self, parent: Optional["rich.tree.Tree"] = None) -> "rich.tree.Tree":
+    def __rich__(self, parent: rich.tree.Tree | None = None) -> rich.tree.Tree:
         # --
         return self._rich(parent)
 
@@ -584,7 +583,7 @@ class Tree(Generic[_Leaf_T]):
     def __hash__(self) -> int:
         return hash((self.data, tuple(self.children)))
 
-    def iter_subtrees(self) -> "Iterator[Tree[_Leaf_T]]":
+    def iter_subtrees(self) -> Iterator[Tree[_Leaf_T]]:
         # --
         queue = [self]
         subtrees = dict()
@@ -613,12 +612,12 @@ class Tree(Generic[_Leaf_T]):
                 stack_append(child)
 
     def find_pred(
-        self, pred: "Callable[[Tree[_Leaf_T]], bool]"
-    ) -> "Iterator[Tree[_Leaf_T]]":
+        self, pred: Callable[[Tree[_Leaf_T]], bool]
+    ) -> Iterator[Tree[_Leaf_T]]:
         # --
         return filter(pred, self.iter_subtrees())
 
-    def find_data(self, data: str) -> "Iterator[Tree[_Leaf_T]]":
+    def find_data(self, data: str) -> Iterator[Tree[_Leaf_T]]:
         # --
         return self.find_pred(lambda t: t.data == data)
 
@@ -743,9 +742,9 @@ class Transformer(_Decoratable, ABC, Generic[_Leaf_T, _Return_T]):
         return res[0]
 
     def __mul__(
-        self: "Transformer[_Leaf_T, Tree[_Leaf_U]]",
-        other: "Transformer[_Leaf_U, _Return_V] | TransformerChain[_Leaf_U, _Return_V]",
-    ) -> "TransformerChain[_Leaf_T, _Return_V]":
+        self: Transformer[_Leaf_T, Tree[_Leaf_U]],
+        other: Transformer[_Leaf_U, _Return_V] | TransformerChain[_Leaf_U, _Return_V],
+    ) -> TransformerChain[_Leaf_T, _Return_V]:
         # --
         return TransformerChain(self, other)
 
@@ -794,9 +793,9 @@ class InlineTransformer(Transformer):  ##
 
 
 class TransformerChain(Generic[_Leaf_T, _Return_T]):
-    transformers: "tuple[Transformer | TransformerChain, ...]"
+    transformers: tuple[Transformer | TransformerChain, ...]
 
-    def __init__(self, *transformers: "Transformer | TransformerChain") -> None:
+    def __init__(self, *transformers: Transformer | TransformerChain) -> None:
         self.transformers = transformers
 
     def transform(self, tree: Tree[_Leaf_T]) -> _Return_T:
@@ -805,9 +804,9 @@ class TransformerChain(Generic[_Leaf_T, _Return_T]):
         return cast(_Return_T, tree)
 
     def __mul__(
-        self: "TransformerChain[_Leaf_T, Tree[_Leaf_U]]",
-        other: "Transformer[_Leaf_U, _Return_V] | TransformerChain[_Leaf_U, _Return_V]",
-    ) -> "TransformerChain[_Leaf_T, _Return_V]":
+        self: TransformerChain[_Leaf_T, Tree[_Leaf_U]],
+        other: Transformer[_Leaf_U, _Return_V] | TransformerChain[_Leaf_U, _Return_V],
+    ) -> TransformerChain[_Leaf_T, _Return_V]:
         return TransformerChain(*self.transformers + (other,))
 
 
@@ -1390,7 +1389,7 @@ class Token(str):
         end_line: int | None = None,
         end_column: int | None = None,
         end_pos: int | None = None,
-    ) -> "Token": ...
+    ) -> Token: ...
 
     @overload
     def __new__(
@@ -1403,7 +1402,7 @@ class Token(str):
         end_line: int | None = None,
         end_column: int | None = None,
         end_pos: int | None = None,
-    ) -> "Token": ...
+    ) -> Token: ...
 
     def __new__(cls, *args, **kwargs):
         if "type_" in kwargs:
@@ -1444,10 +1443,10 @@ class Token(str):
         return inst
 
     @overload
-    def update(self, type: str | None = None, value: Any | None = None) -> "Token": ...
+    def update(self, type: str | None = None, value: Any | None = None) -> Token: ...
 
     @overload
-    def update(self, type_: str | None = None, value: Any | None = None) -> "Token": ...
+    def update(self, type_: str | None = None, value: Any | None = None) -> Token: ...
 
     def update(self, *args, **kwargs):
         if "type_" in kwargs:
@@ -1465,7 +1464,7 @@ class Token(str):
 
     def _future_update(
         self, type: str | None = None, value: Any | None = None
-    ) -> "Token":
+    ) -> Token:
         return Token.new_borrow_pos(
             type if type is not None else self.type,
             value if value is not None else self.value,
@@ -1473,7 +1472,7 @@ class Token(str):
         )
 
     @classmethod
-    def new_borrow_pos(cls: type[_T], type_: str, value: Any, borrow_t: "Token") -> _T:
+    def new_borrow_pos(cls: type[_T], type_: str, value: Any, borrow_t: Token) -> _T:
         return cls(
             type_,
             value,
@@ -1683,12 +1682,12 @@ class LexerState:
 class LexerThread:
     # --
 
-    def __init__(self, lexer: "Lexer", lexer_state: LexerState):
+    def __init__(self, lexer: Lexer, lexer_state: LexerState):
         self.lexer = lexer
         self.state = lexer_state
 
     @classmethod
-    def from_text(cls, lexer: "Lexer", text: str) -> "LexerThread":
+    def from_text(cls, lexer: Lexer, text: str) -> LexerThread:
         return cls(lexer, LexerState(text))
 
     def lex(self, parser_state):
@@ -1767,7 +1766,7 @@ class AbstractBasicLexer(Lexer):
     terminals_by_name: dict[str, TerminalDef]
 
     @abstractmethod
-    def __init__(self, conf: "LexerConf", comparator=None) -> None: ...
+    def __init__(self, conf: LexerConf, comparator=None) -> None: ...
 
     @abstractmethod
     def next_token(self, lex_state: LexerState, parser_state: Any = None) -> Token: ...
@@ -1786,7 +1785,7 @@ class BasicLexer(AbstractBasicLexer):
     callback: dict[str, _Callback]
     re: ModuleType
 
-    def __init__(self, conf: "LexerConf", comparator=None) -> None:
+    def __init__(self, conf: LexerConf, comparator=None) -> None:
         terminals = list(conf.terminals)
         assert all(isinstance(t, TerminalDef) for t in terminals), terminals
 
@@ -1929,7 +1928,7 @@ class ContextualLexer(Lexer):
 
     def __init__(
         self,
-        conf: "LexerConf",
+        conf: LexerConf,
         states: dict[int, Collection[str]],
         always_accept: Collection[str] = (),
     ) -> None:
@@ -1968,7 +1967,7 @@ class ContextualLexer(Lexer):
         self.root_lexer = self.BasicLexer(trad_conf, comparator)
 
     def lex(
-        self, lexer_state: LexerState, parser_state: "ParserState"
+        self, lexer_state: LexerState, parser_state: ParserState
     ) -> Iterator[Token]:
         try:
             while True:
@@ -1996,8 +1995,8 @@ class ContextualLexer(Lexer):
                 raise e  ##
 
 
-_ParserArgType: "TypeAlias" = 'Literal["earley", "lalr", "cyk", "auto"]'
-_LexerArgType: "TypeAlias" = 'Union[Literal["auto", "basic", "contextual", "dynamic", "dynamic_complete"], Type[Lexer]]'
+_ParserArgType: TypeAlias = 'Literal["earley", "lalr", "cyk", "auto"]'
+_LexerArgType: TypeAlias = 'Union[Literal["auto", "basic", "contextual", "dynamic", "dynamic_complete"], Type[Lexer]]'
 _LexerCallback = Callable[[Token], Token]
 ParserCallbacks = dict[str, Callable]
 
@@ -2015,7 +2014,7 @@ class LexerConf(Serialize):
     terminals: Collection[TerminalDef]
     re_module: ModuleType
     ignore: Collection[str]
-    postlex: "PostLex | None"
+    postlex: PostLex | None
     callbacks: dict[str, _LexerCallback]
     g_regex_flags: int
     skip_validation: bool
@@ -2028,7 +2027,7 @@ class LexerConf(Serialize):
         terminals: Collection[TerminalDef],
         re_module: ModuleType,
         ignore: Collection[str] = (),
-        postlex: "PostLex | None" = None,
+        postlex: PostLex | None = None,
         callbacks: dict[str, _LexerCallback] | None = None,
         g_regex_flags: int = 0,
         skip_validation: bool = False,
@@ -2067,14 +2066,12 @@ class LexerConf(Serialize):
 class ParserConf(Serialize):
     __serialize_fields__ = "rules", "start", "parser_type"
 
-    rules: list["Rule"]
+    rules: list[Rule]
     callbacks: ParserCallbacks
     start: list[str]
     parser_type: _ParserArgType
 
-    def __init__(
-        self, rules: list["Rule"], callbacks: ParserCallbacks, start: list[str]
-    ):
+    def __init__(self, rules: list[Rule], callbacks: ParserCallbacks, start: list[str]):
         assert isinstance(start, list)
         self.rules = rules
         self.callbacks = callbacks
@@ -2662,7 +2659,7 @@ class ParserState(Generic[StateT]):
     def __copy__(self):
         return self.copy()
 
-    def copy(self, deepcopy_values=True) -> "ParserState[StateT]":
+    def copy(self, deepcopy_values=True) -> ParserState[StateT]:
         return type(self)(
             self.parse_conf,
             self.lexer,  ##
@@ -3001,7 +2998,7 @@ def _deserialize_parsing_frontend(data, memo, lexer_conf, callbacks, options):
     return ParsingFrontend(lexer_conf, parser_conf, options, parser=parser)
 
 
-_parser_creators: "dict[str, Callable[[LexerConf, Any, Any], Any]]" = {}
+_parser_creators: dict[str, Callable[[LexerConf, Any, Any], Any]] = {}
 
 
 class ParsingFrontend(Serialize):
@@ -3173,7 +3170,7 @@ class LarkOptions(Serialize):
     start: list[str]
     debug: bool
     strict: bool
-    transformer: "Transformer | None"
+    transformer: Transformer | None
     propagate_positions: bool | str
     maybe_placeholders: bool
     cache: bool | str
@@ -3183,16 +3180,16 @@ class LarkOptions(Serialize):
     tree_class: Callable[[str, list], Any] | None
     parser: _ParserArgType
     lexer: _LexerArgType
-    ambiguity: 'Literal["auto", "resolve", "explicit", "forest"]'
+    ambiguity: Literal[auto, resolve, explicit, forest]
     postlex: PostLex | None
-    priority: 'Literal["auto", "normal", "invert"] | None'
+    priority: Literal[auto, normal, invert] | None
     lexer_callbacks: dict[str, Callable[[Token], Token]]
     use_bytes: bool
     ordered_sets: bool
     edit_terminals: Callable[[TerminalDef], TerminalDef] | None
-    import_paths: (
-        "list[str | Callable[[None | str | PackageResource, str], tuple[str, str]]]"
-    )
+    import_paths: list[
+        str | Callable[[None | str | PackageResource, str], tuple[str, str]]
+    ]
     source_path: str | None
 
     OPTIONS_DOC = r"""
@@ -3365,7 +3362,7 @@ class LarkOptions(Serialize):
     @classmethod
     def deserialize(
         cls, data: dict[str, Any], memo: dict[int, TerminalDef | Rule]
-    ) -> "LarkOptions":
+    ) -> LarkOptions:
         return cls(data)
 
 
@@ -3398,13 +3395,13 @@ class Lark(Serialize):
 
     source_path: str
     source_grammar: str
-    grammar: "Grammar"
+    grammar: Grammar
     options: LarkOptions
     lexer: Lexer
-    parser: "ParsingFrontend"
+    parser: ParsingFrontend
     terminals: Collection[TerminalDef]
 
-    def __init__(self, grammar: "Grammar | str | IO[str]", **options) -> None:
+    def __init__(self, grammar: Grammar | str | IO[str], **options) -> None:
         self.options = LarkOptions(options)
         re_module: types.ModuleType
 
@@ -3693,7 +3690,7 @@ class Lark(Serialize):
             _get_lexer_callbacks(self.options.transformer, self.terminals)
         )
 
-    def _build_parser(self) -> "ParsingFrontend":
+    def _build_parser(self) -> ParsingFrontend:
         self._prepare_callbacks()
         _validate_frontend_args(self.options.parser, self.options.lexer)
         parser_conf = ParserConf(self.rules, self._callbacks, self.options.start)
@@ -3797,7 +3794,7 @@ class Lark(Serialize):
         cls: type[_T],
         package: str,
         grammar_path: str,
-        search_paths: "Sequence[str]" = [""],
+        search_paths: Sequence[str] = [""],
         **options,
     ) -> _T:
         # --
@@ -3834,7 +3831,7 @@ class Lark(Serialize):
 
     def parse_interactive(
         self, text: str | None = None, start: str | None = None
-    ) -> "InteractiveParser":
+    ) -> InteractiveParser:
         # --
         return self.parser.parse_interactive(text, start=start)
 
@@ -3842,8 +3839,8 @@ class Lark(Serialize):
         self,
         text: str,
         start: str | None = None,
-        on_error: "Callable[[UnexpectedInput], bool] | None" = None,
-    ) -> "ParseTree":
+        on_error: Callable[[UnexpectedInput], bool] | None = None,
+    ) -> ParseTree:
         # --
         return self.parser.parse(text, start=start, on_error=on_error)
 
