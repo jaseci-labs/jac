@@ -96,34 +96,20 @@ obj MTIR {
                         )
                     ),
                     *media_inputs,
+
                 ],
             ),
+
         ];
 
         # Prepare return type.
         return_type = get_type_hints(caller).get("return");
         is_streaming = bool(call_params.get("stream", False));
 
-        if is_streaming {
-            if return_type is not str {
-                raise RuntimeError(
-                    "Streaming responses are only supported for str return types."
-                );
-            }
-            if tools {
-                raise RuntimeError(
-                    "Streaming responses are not supported with tool calls yet."
-                );
-            }
-        }
-
-        # TODO: Support mockllm for mocktesting.
-        # Invoke streaming request, this will result in a generator that the caller
-        # should either do .next() or .__iter__() by calling `for tok in resp: ...`
-        if is_streaming and tools {
+        if is_streaming and return_type is not str {
             raise RuntimeError(
-                "Streaming responses are not supported with tool calls yet."
-            );
+                "Streaming responses are only supported for str return types."
+            ) ;
         }
 
         if len(tools) > 0 {
@@ -203,6 +189,7 @@ obj MTIR {
         if len(self.tools) == 0 and self.resp_type {
             if self.resp_type is str {
                 return None;  # Strings are default and not using a schema.
+
             }
             return type_to_schema(self.resp_type);
         }

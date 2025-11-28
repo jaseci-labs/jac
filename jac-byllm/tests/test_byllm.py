@@ -121,6 +121,17 @@ class JacLanguageTests(TestCase):
             stdout_value,
         )
 
+    def test_streaming_with_react(self) -> None:
+        """Test streaming output with ReAct method (tool calling)."""
+        captured_output = io.StringIO()
+        sys.stdout = captured_output
+        jac_import("streaming_with_react", base_path=self.fixture_abs_path("./"))
+        sys.stdout = sys.__stdout__
+        stdout_value = captured_output.getvalue()
+        self.assertIn("29-10-2025", stdout_value)
+        self.assertIn("100", stdout_value)
+        self.assertIn("Test passed!", stdout_value)
+
     def test_by_expr(self) -> None:
         """Test by llm['as'].expression instead of llm() call."""
         captured_output = io.StringIO()

@@ -15,8 +15,14 @@ import from byllm.mtir { MTIR }
 import litellm;
 import from litellm._logging { _disable_debugging }
 import from openai { OpenAI }
-import from byllm.types { CompletionResult, LiteLLMMessage, MockToolCall, ToolCall }
-
+import from byllm.types {
+    CompletionResult,
+    LiteLLMMessage,
+    MockToolCall,
+    ToolCall,
+    Message,
+    MessageRole
+}
 # This will prevent LiteLLM from fetching pricing information from
 # the bellow URL every time we import the litellm and use a cached
 # local json file. Maybe we we should conditionally enable this.
@@ -65,16 +71,23 @@ obj BaseLLM {
     #     raise NotImplementedError("Subclasses must implement this method.");
     # }
     def invoke(mtir: MTIR) -> object {
-        if mtir.stream {
+        # If streaming without tools, stream immediately
+        if mtir.stream and len(mtir.tools) == 0 {
             return self.dispatch_streaming(mtir);
         }
 
-        # Invoke the LLM and handle tool calls.
+        # Invoke the LLM and handle tool calls (ReAct loop).
         while True {
             resp = self.dispatch_no_streaming(mtir);
             if resp.tool_calls {
                 for tool_call in resp.tool_calls {
                     if tool_call.is_finish_call() {
+                        # If streaming is enabled, make a new streaming call
+                        mtir.add_message(tool_call());
+                        # to generate the final answer based on all context
+                        if mtir.stream {
+                            return self._stream_final_answer(mtir);
+                        }
                         return tool_call.get_output();
                     } else {
                         mtir.add_message(tool_call());
@@ -101,6 +114,7 @@ obj BaseLLM {
             "response_format": mtir.get_output_schema(),
             "temperature": self.call_params.get("temperature", 0.7),
             "max_tokens": self.call_params.get("max_tokens"),
+
         };
         return params;
     }
@@ -151,7 +165,7 @@ obj BaseLLM {
             } else {
                 raise RuntimeError(
                     f"Attempted to call tool: '{tool_call.function.name}' which was not present."
-                );
+                ) ;
             }
         }
 
@@ -199,7 +213,39 @@ obj BaseLLM {
     def model_call_with_stream(params: dict) -> Generator[str, None, None] {
         raise NotImplementedError(
             "Subclasses must implement this method for LLM call with streaming."
+        ) ;
+    }
+
+    """Stream the final answer after ReAct tool calls complete.
+
+    This creates a new streaming LLM call with all the context from tool calls
+    to generate the final answer in real-time streaming mode.
+
+    The difference from _stream_finish_output:
+    - This makes a REAL streaming API call to the LLM
+    - _stream_finish_output just splits an already-complete string
+    """
+    def _stream_final_answer(mtir: MTIR) -> Generator[str, None, None] {
+        # Add a message instructing the LLM to provide the final answer
+        # based on all the tool call results gathered so far
+        final_instruction = Message(
+            role=MessageRole.USER,
+            content="Based on the tool calls and their results above, provide your final answer. ""Be comprehensive and synthesize all the information gathered.",
         );
+        mtir.add_message(final_instruction);
+
+        # Remove tools and make a streaming call to get the real-time answer
+        # We temporarily clear tools so the LLM just responds with text
+        original_tools = mtir.tools;
+        mtir.tools = [];
+
+        try {
+            # Make the actual streaming call - this is REAL streaming from the LLM!
+            yield from self.dispatch_streaming(mtir);
+        } finally {
+            # Restore tools (though we're done at this point)
+            mtir.tools = original_tools;
+        }
     }
 }
 
@@ -257,7 +303,9 @@ obj Model(BaseLLM) {
         super.init(model_name, **kwargs);
         self.proxy = kwargs.get("proxy", False);
         # When model_name is 'mockllm', delegate to MockLLM behavior
-        self._mock_delegate = MockLLM(model_name=model_name, **kwargs) if model_name == MODEL_MOCK else None;
+        self._mock_delegate = MockLLM(model_name=model_name, **kwargs)
+        if model_name == MODEL_MOCK
+        else None;
         if not self._mock_delegate {
             logging.getLogger("httpx").setLevel(logging.WARNING);
             _disable_debugging();
@@ -293,7 +341,6 @@ obj Model(BaseLLM) {
         return response;
     }
 }
-
 # obj MyOpenAIModel(BaseLLM) {
 #     """Initialize the MockLLM connector."""
 #     def init(model_name: str, **kwargs: object) -> str {
