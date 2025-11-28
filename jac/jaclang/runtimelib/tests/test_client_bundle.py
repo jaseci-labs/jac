@@ -11,13 +11,17 @@ from jaclang.utils.test import TestCase
 class ClientBundleBuilderTests(TestCase):
     """Validate client bundle compilation."""
 
-    def setUp(self) -> None:
+    @classmethod
+    def setUpClass(cls) -> None:
+        """Reset machine once for all tests in this class."""
         Jac.reset_machine()
-        return super().setUp()
+        super().setUpClass()
 
-    def tearDown(self) -> None:
+    @classmethod
+    def tearDownClass(cls) -> None:
+        """Clean up after all tests in this class."""
         Jac.reset_machine()
-        return super().tearDown()
+        super().tearDownClass()
 
     def test_build_bundle_for_module(self) -> None:
         """Compile a Jac module and ensure client bundle metadata is emitted."""
