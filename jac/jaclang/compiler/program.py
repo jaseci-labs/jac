@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING
 import jaclang.compiler.unitree as uni
 from jaclang.compiler.parser import JacParser
 from jaclang.compiler.passes.ecmascript import EsastGenPass
-from jaclang.compiler.ts_parser import TypeScriptParser
 from jaclang.compiler.passes.main import (
     Alert,
     CFGBuildPass,
@@ -34,6 +33,7 @@ from jaclang.compiler.passes.tool import (
     DocIRGenPass,
     JacFormatPass,
 )
+from jaclang.compiler.ts_parser import TypeScriptParser
 from jaclang.runtimelib.utils import read_file_with_encoding
 from jaclang.settings import settings
 
