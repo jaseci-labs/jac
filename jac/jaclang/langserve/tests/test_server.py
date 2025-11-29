@@ -196,7 +196,7 @@ def test_go_to_definition_md_path(fixture_path) -> None:
             (14, 34, "compiler/type_system/__init__.py:0:0-0:0"),
             (14, 55, "compiler/type_system/types.py:155:0-295:8"),
             (15, 34, "compiler/unitree.py:0:0-0:0"),
-            (15, 48, "compiler/unitree.py:307:0-537:11"),
+            (15, 48, "compiler/unitree.py:316:0-547:11"),
             (17, 22, "langserve/tests/fixtures/circle.jac:8:5-8:8"),
             (18, 38, "vendor/pygls/uris.py:0:0-0:0"),
             (19, 52, "vendor/pygls/server.py:351:0-615:13"),
