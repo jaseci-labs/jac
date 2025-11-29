@@ -87,7 +87,11 @@ class CommentStore:
             if entry[0] != "comment":
                 continue
 
-            comment_idx, comment = entry[1], entry[2]
+            comment_idx = entry[1]
+            comment_raw = entry[2]
+            if not isinstance(comment_raw, uni.CommentToken):
+                continue
+            comment = comment_raw
 
             left_token = None
             for i in range(offset - 1, -1, -1):
@@ -395,7 +399,10 @@ class CommentInjectionPass(Transform[uni.Module, uni.Module]):
         self, node: uni.UniNode, indent: doc.Indent
     ) -> doc.Indent:
         """Handle comment injection within bodies (functions, classes, etc)."""
-        if not isinstance(node.body, Sequence) or not isinstance(
+        if not hasattr(node, "body"):
+            return indent
+        body = node.body  # type: ignore[attr-defined]
+        if not isinstance(body, Sequence) or not isinstance(
             indent.contents, doc.Concat
         ):
             return indent
@@ -439,9 +446,9 @@ class CommentInjectionPass(Transform[uni.Module, uni.Module]):
                 part_line = min(t.loc.first_line for t in tokens if t.loc)
 
             # Inject comments before matching body items
-            if part_line and body_idx < len(node.body):
-                while body_idx < len(node.body):
-                    body_item = node.body[body_idx]
+            if part_line and body_idx < len(body):
+                while body_idx < len(body):
+                    body_item = body[body_idx]
                     if not body_item.loc:
                         body_idx += 1
                         continue
@@ -450,8 +457,8 @@ class CommentInjectionPass(Transform[uni.Module, uni.Module]):
                         break
 
                     prev_item_line = (
-                        node.body[body_idx - 1].loc.last_line
-                        if body_idx > 0 and node.body[body_idx - 1].loc
+                        body[body_idx - 1].loc.last_line
+                        if body_idx > 0 and body[body_idx - 1].loc
                         else current_line - 1
                     )
 
@@ -484,12 +491,10 @@ class CommentInjectionPass(Transform[uni.Module, uni.Module]):
 
         # Handle trailing comments and empty bodies
         if body_end is not None:
-            if node.body:
+            if body:
                 # Non-empty body: add comments after last item
                 last_body_line = (
-                    node.body[-1].loc.last_line
-                    if node.body[-1].loc
-                    else current_line - 1
+                    body[-1].loc.last_line if body[-1].loc else current_line - 1
                 )
                 comments = []
                 if self._comments:
@@ -849,11 +854,11 @@ class CommentInjectionPass(Transform[uni.Module, uni.Module]):
                     continue
 
                 # Check for inline comment + hard line pattern
+                next_line = node.parts[i + 1] if i + 1 < len(node.parts) else None
                 if (
                     self._ends_with_inline_comment_line(processed_part)
-                    and i + 1 < len(node.parts)
-                    and isinstance(node.parts[i + 1], doc.Line)
-                    and node.parts[i + 1].hard
+                    and isinstance(next_line, doc.Line)
+                    and next_line.hard
                 ):
                     processed_part = self._remove_trailing_line_from_inline_comment(
                         processed_part
@@ -872,9 +877,8 @@ class CommentInjectionPass(Transform[uni.Module, uni.Module]):
                             )
                         )
                     )
-                    and i + 1 < len(node.parts)
-                    and isinstance(node.parts[i + 1], doc.Line)
-                    and not node.parts[i + 1].hard
+                    and isinstance(next_line, doc.Line)
+                    and not next_line.hard
                 ):
                     if self._ends_with_inline_comment_line(processed_part):
                         processed_part = self._remove_trailing_line_from_inline_comment(
@@ -889,6 +893,8 @@ class CommentInjectionPass(Transform[uni.Module, uni.Module]):
                     ):
                         indent_parts = list(processed_part.contents.parts)
                         last_comment = indent_parts[-1]
+                        # _is_standalone_comment guarantees this is a Concat
+                        assert isinstance(last_comment, doc.Concat)
                         indent_parts[-1] = doc.Concat(
                             [last_comment.parts[0]], ast_node=last_comment.ast_node
                         )

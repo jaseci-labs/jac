@@ -54,11 +54,11 @@ class EsJsxProcessor:
             segments: list[Expression] = []
             for attr in attributes:
                 if isinstance(attr, uni.JsxSpreadAttribute):
-                    exp = getattr(attr.gen, "es_ast", None)
+                    exp = attr.gen.es_ast
                     if isinstance(exp, es.Expression):
                         segments.append(exp)
                 elif isinstance(attr, uni.JsxNormalAttribute):
-                    prop = getattr(attr.gen, "es_ast", None)
+                    prop = attr.gen.es_ast
                     if isinstance(prop, es.Property):
                         segments.append(
                             self.pass_ref.sync_loc(
@@ -98,7 +98,7 @@ class EsJsxProcessor:
         else:
             properties: list[Property] = []
             for attr in attributes:
-                prop = getattr(attr.gen, "es_ast", None)
+                prop = attr.gen.es_ast
                 if isinstance(prop, es.Property):
                     properties.append(prop)
             props_expr = self.pass_ref.sync_loc(
@@ -107,7 +107,7 @@ class EsJsxProcessor:
 
         children_elements: list[Expression | SpreadElement | None] = []
         for child in node.children or []:
-            child_expr = getattr(child.gen, "es_ast", None)
+            child_expr = child.gen.es_ast
             if child_expr is None:
                 continue
             if isinstance(child_expr, list):
@@ -209,7 +209,9 @@ class EsJsxProcessor:
     def text(self, node: uni.JsxText) -> Expression:
         """Process JSX text node."""
         es = self.es
-        raw_value = node.value.value if hasattr(node.value, "value") else node.value
+        raw_value = (
+            node.value.value if isinstance(node.value, uni.Token) else node.value
+        )
         expr = self.pass_ref.sync_loc(es.Literal(value=str(raw_value)), jac_node=node)
         node.gen.es_ast = expr
         return expr
@@ -333,7 +335,9 @@ class PyJsxProcessor:
 
     def text(self, node: uni.JsxText) -> list[ast3.AST]:
         """Generate Python AST for JSX text nodes."""
-        raw_value = node.value.value if hasattr(node.value, "value") else node.value
+        raw_value = (
+            node.value.value if isinstance(node.value, uni.Token) else node.value
+        )
         expr = self.pass_ref.sync(ast3.Constant(value=str(raw_value)), node)
         node.gen.py_ast = [expr]
         return node.gen.py_ast

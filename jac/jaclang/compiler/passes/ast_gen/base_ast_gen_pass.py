@@ -19,7 +19,7 @@ class BaseAstGenPass(UniPass, Generic[T]):
         self, node: uni.Archetype | uni.Enum | uni.Ability
     ) -> Sequence[uni.UniNode] | None:
         """Return the list of body statements regardless of ImplDef wrapping."""
-        body = getattr(node, "body", None)
+        body = node.body
         if isinstance(body, uni.ImplDef) and isinstance(body.body, list):
             return body.body
         if isinstance(body, list):

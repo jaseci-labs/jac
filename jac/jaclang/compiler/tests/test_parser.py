@@ -363,7 +363,9 @@ cl {
         "GlobalVars",
         "ClientBlock",
     ]
-    assert [getattr(stmt, "is_client_decl", False) for stmt in body] == [
+    assert [
+        isinstance(stmt, uni.ClientFacingNode) and stmt.is_client_decl for stmt in body
+    ] == [
         True,
         False,
         False,
@@ -374,9 +376,9 @@ cl {
     assert len(client_block.body) == 2
     assert [type(stmt).__name__ for stmt in client_block.body] == ["GlobalVars", "Test"]
     assert all(
-        getattr(stmt, "is_client_decl", False)
+        stmt.is_client_decl
         for stmt in client_block.body
-        if hasattr(stmt, "is_client_decl")
+        if isinstance(stmt, uni.ClientFacingNode)
     )
 
     # Test 2: Block with different statement types
@@ -397,9 +399,9 @@ cl {
     # Check the ClientBlock's body has 4 statements
     assert len(body[0].body) == 4
     assert all(
-        getattr(stmt, "is_client_decl", False)
+        stmt.is_client_decl
         for stmt in body[0].body
-        if hasattr(stmt, "is_client_decl")
+        if isinstance(stmt, uni.ClientFacingNode)
     )
 
     # Test 3: Multiple cl blocks at top level
@@ -420,7 +422,9 @@ cl {
     assert isinstance(body[0], uni.ClientBlock)
     assert isinstance(body[1], uni.GlobalVars)
     assert isinstance(body[2], uni.ClientBlock)
-    assert not getattr(body[1], "is_client_decl", False)  # let b is not client
+    assert not (
+        isinstance(body[1], uni.ClientFacingNode) and body[1].is_client_decl
+    )  # let b is not client
 
     # Test 4: Empty client block
     source = """
@@ -435,7 +439,7 @@ let x = 1;
     assert isinstance(body[0], uni.ClientBlock)
     assert len(body[0].body) == 0  # Empty
     assert isinstance(body[1], uni.GlobalVars)
-    assert not getattr(body[1], "is_client_decl", False)
+    assert not (isinstance(body[1], uni.ClientFacingNode) and body[1].is_client_decl)
 
     # Test 5: Various statement types with single cl marker
     source = """
@@ -448,9 +452,7 @@ cl test my_test {}
 
     assert len(body) == 3
     assert all(
-        getattr(stmt, "is_client_decl", False)
-        for stmt in body
-        if hasattr(stmt, "is_client_decl")
+        stmt.is_client_decl for stmt in body if isinstance(stmt, uni.ClientFacingNode)
     )
 
 
@@ -477,10 +479,13 @@ walker MyWalker {
 
     # Find the walker and its ability
     walker = module.body[0]
+    assert isinstance(walker, uni.Archetype)
+    assert walker.body is not None
     abilities = [stmt for stmt in walker.body if type(stmt).__name__ == "Ability"]
     assert len(abilities) == 1
 
     ability = abilities[0]
+    assert isinstance(ability, uni.Ability)
     assert ability.name_ref is not None
     # Check that py_resolve_name generates a name
     resolved_name = ability.py_resolve_name()
@@ -500,8 +505,11 @@ walker MyWalker {
     assert not prog.errors_had
 
     walker = module.body[0]
+    assert isinstance(walker, uni.Archetype)
+    assert walker.body is not None
     abilities = [stmt for stmt in walker.body if type(stmt).__name__ == "Ability"]
     ability = abilities[0]
+    assert isinstance(ability, uni.Ability)
     resolved_name = ability.py_resolve_name()
     assert resolved_name.startswith("__ability_exit_")
 
@@ -518,8 +526,11 @@ walker MyWalker {
     assert not prog.errors_had
 
     walker = module.body[0]
+    assert isinstance(walker, uni.Archetype)
+    assert walker.body is not None
     abilities = [stmt for stmt in walker.body if type(stmt).__name__ == "Ability"]
     ability = abilities[0]
+    assert isinstance(ability, uni.Ability)
     assert ability.name_ref is not None
     assert ability.py_resolve_name() == "my_ability"
 
@@ -539,11 +550,17 @@ walker MyWalker {
     assert not prog.errors_had
 
     walker = module.body[0]
+    assert isinstance(walker, uni.Archetype)
+    assert walker.body is not None
     abilities = [stmt for stmt in walker.body if type(stmt).__name__ == "Ability"]
     assert len(abilities) == 2
 
-    name1 = abilities[0].py_resolve_name()
-    name2 = abilities[1].py_resolve_name()
+    ability0 = abilities[0]
+    ability1 = abilities[1]
+    assert isinstance(ability0, uni.Ability)
+    assert isinstance(ability1, uni.Ability)
+    name1 = ability0.py_resolve_name()
+    name2 = ability1.py_resolve_name()
     # Names should be different due to different locations
     assert name1 != name2
 
@@ -572,11 +589,10 @@ cl import from jac:client_runtime {
     assert len(imports) == 1, "Should have one import statement"
 
     import_stmt = imports[0]
+    assert isinstance(import_stmt, uni.Import)
 
     # Check that it's a client import
-    assert getattr(import_stmt, "is_client_decl", False), (
-        "Import should be marked as client-side"
-    )
+    assert import_stmt.is_client_decl, "Import should be marked as client-side"
 
     # Check the from_loc has the prefix
     assert import_stmt.from_loc is not None, "Import should have from_loc"
@@ -590,7 +606,11 @@ cl import from jac:client_runtime {
 
     # Check the imported items
     assert len(import_stmt.items) == 3, "Should have 3 imported items"
-    item_names = [item.name.value for item in import_stmt.items]
+    item_names = [
+        item.name.value
+        for item in import_stmt.items
+        if isinstance(item, uni.ModuleItem)
+    ]
     assert "jacLogin" in item_names
     assert "jacLogout" in item_names
     assert "renderJsxTree" in item_names

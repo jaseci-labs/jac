@@ -4,7 +4,7 @@ from uuid import UUID
 
 from jac_scale.memory_hierarchy import MultiHierarchyMemory
 from jaclang.compiler.constant import Constants as Con
-from jaclang.runtimelib.constructs import NodeAnchor, Root
+from jaclang.runtimelib.constructs import Anchor, NodeAnchor, Root
 from jaclang.runtimelib.runtime import ExecutionContext
 
 
@@ -20,11 +20,14 @@ class JScaleExecutionContext(ExecutionContext):
         self.mem: MultiHierarchyMemory = MultiHierarchyMemory()
         self.reports: list[Any] = []
         self.custom: Any = MISSING
-        self.system_root = self.mem.find_by_id(UUID(Con.SUPER_ROOT_UUID))
-        if not isinstance(self.system_root, NodeAnchor):
-            self.system_root = Root().__jac__
-            self.system_root.id = UUID(Con.SUPER_ROOT_UUID)
-            self.mem.set(self.system_root)
+        system_root_anchor: Anchor | None = self.mem.find_by_id(
+            UUID(Con.SUPER_ROOT_UUID)
+        )
+        if not isinstance(system_root_anchor, NodeAnchor):
+            system_root_anchor = Root().__jac__
+            system_root_anchor.id = UUID(Con.SUPER_ROOT_UUID)
+            self.mem.set(system_root_anchor)
+        self.system_root = system_root_anchor
         self.entry_node = self.root_state = (
             self._get_anchor(root) if root else self.system_root
         )
