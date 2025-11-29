@@ -3,6 +3,10 @@ import os;
 
 glob llm = MockLLM(
     model_name="gpt-4o",
+    verbose = True,
+    outputs = [
+        "The answer to the math question is 42."
+    ]
 );
 
 

@@ -221,12 +221,12 @@ def test_with_llm_image(fixture_path) -> None:
     jac_import("with_llm_image", base_path=fixture_path("./"))
     sys.stdout = sys.__stdout__
     stdout_value = captured_output.getvalue()
-    assert "{'type': 'text', 'text': '\\n[System Prompt]\\n" in stdout_value[:500]
-    assert (
-        " {'type': 'text', 'text': 'Image of the Question (question_img) (Image) = '}, "
-        "{'type': 'image_url', 'image_url': {'url': 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQAB"
-        not in stdout_value[:500]
-    )
+    # Verify the system message is present in the output
+    assert "'role': 'system'" in stdout_value
+    # Verify the user content with text type is present
+    assert "{'type': 'text', 'text': 'solve_math_question" in stdout_value
+    # Verify base64 image data is NOT in the first 500 chars (images should come later)
+    assert "data:image/jpeg;base64," not in stdout_value[:500]
 
 
 def test_webp_image_support(fixture_path):
