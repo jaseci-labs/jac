@@ -41,7 +41,7 @@ class LarkParseOutput:
     comments: list[jl.Token]
 
 
-class LarkParseTransform(Transform[LarkParseInput, LarkParseOutput]):
+class LarkParseTransform(Transform[LarkParseInput, LarkParseOutput]):  # type: ignore[type-var]
     """Transform for Lark parsing step."""
 
     comment_cache: list[jl.Token] = []
@@ -53,7 +53,7 @@ class LarkParseTransform(Transform[LarkParseInput, LarkParseOutput]):
 
     def __init__(self, ir_in: LarkParseInput, prog: JacProgram) -> None:
         """Initialize Lark parser transform."""
-        Transform.__init__(self, ir_in=ir_in, prog=prog)
+        Transform.__init__(self, ir_in=ir_in, prog=prog)  # type: ignore[type-var]
 
     def transform(self, ir_in: LarkParseInput) -> LarkParseOutput:
         """Transform input IR by parsing with Lark."""
