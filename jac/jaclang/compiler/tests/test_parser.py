@@ -20,6 +20,7 @@ from jaclang.runtimelib.utils import read_file_with_encoding
 @pytest.fixture
 def fixture_path():
     """Get absolute path to fixture file."""
+
     def _fixture_path(fixture: str) -> str:
         frame = inspect.currentframe()
         if frame is None or frame.f_back is None:
@@ -30,12 +31,14 @@ def fixture_path():
         fixture_src = module.__file__
         file_path = os.path.join(os.path.dirname(fixture_src), "fixtures", fixture)
         return os.path.abspath(file_path)
+
     return _fixture_path
 
 
 @pytest.fixture
 def load_fixture():
     """Load fixture from fixtures directory."""
+
     def _load_fixture(fixture: str) -> str:
         frame = inspect.currentframe()
         if frame is None or frame.f_back is None:
@@ -46,14 +49,17 @@ def load_fixture():
         fixture_src = module.__file__
         fixture_path = os.path.join(os.path.dirname(fixture_src), "fixtures", fixture)
         return read_file_with_encoding(fixture_path)
+
     return _load_fixture
 
 
 @pytest.fixture
 def file_to_str():
     """Load file to string."""
+
     def _file_to_str(file_path: str) -> str:
         return read_file_with_encoding(file_path)
+
     return _file_to_str
 
 
@@ -61,12 +67,14 @@ def file_to_str():
 def lang_fixture_abs_path():
     """Get language fixture absolute path."""
     import jaclang
+
     def _lang_fixture_abs_path(file: str) -> str:
         fixture_src = jaclang.__file__
         file_path = os.path.join(
             os.path.dirname(fixture_src), "tests", "fixtures", file
         )
         return os.path.abspath(file_path)
+
     return _lang_fixture_abs_path
 
 
@@ -293,7 +301,9 @@ def _load_combined_jsx_fixture() -> tuple[str, JacParser]:
         root_ir=Source(source_text, mod_path=str(fixture_path)),
         prog=JacProgram(),
     )
-    assert not prse.errors_had, f"Parser reported errors for JSX fixture: {[str(e) for e in prse.errors_had]}"
+    assert not prse.errors_had, (
+        f"Parser reported errors for JSX fixture: {[str(e) for e in prse.errors_had]}"
+    )
     return source_text, prse
 
 
@@ -346,8 +356,16 @@ cl {
     body = module.body
 
     # With ClientBlock, cl {} creates a single ClientBlock node
-    assert [type(stmt).__name__ for stmt in body] == ["GlobalVars", "GlobalVars", "ClientBlock"]
-    assert [getattr(stmt, "is_client_decl", False) for stmt in body] == [True, False, False]  # cl let, let, ClientBlock (not ClientFacingNode)
+    assert [type(stmt).__name__ for stmt in body] == [
+        "GlobalVars",
+        "GlobalVars",
+        "ClientBlock",
+    ]
+    assert [getattr(stmt, "is_client_decl", False) for stmt in body] == [
+        True,
+        False,
+        False,
+    ]  # cl let, let, ClientBlock (not ClientFacingNode)
     # Check the ClientBlock's body
     client_block = body[2]
     assert isinstance(client_block, uni.ClientBlock)
@@ -554,7 +572,9 @@ cl import from jac:client_runtime {
     import_stmt = imports[0]
 
     # Check that it's a client import
-    assert getattr(import_stmt, "is_client_decl", False), "Import should be marked as client-side"
+    assert getattr(import_stmt, "is_client_decl", False), (
+        "Import should be marked as client-side"
+    )
 
     # Check the from_loc has the prefix
     assert import_stmt.from_loc is not None, "Import should have from_loc"
@@ -562,7 +582,9 @@ cl import from jac:client_runtime {
     assert import_stmt.from_loc.prefix.value == "jac", "Prefix should be 'jac'"
 
     # Check the module path
-    assert import_stmt.from_loc.dot_path_str == "client_runtime", "Module path should be 'client_runtime'"
+    assert import_stmt.from_loc.dot_path_str == "client_runtime", (
+        "Module path should be 'client_runtime'"
+    )
 
     # Check the imported items
     assert len(import_stmt.items) == 3, "Should have 3 imported items"
@@ -588,9 +610,9 @@ def _micro_suite_test(filename: str, file_to_str) -> None:
 
 
 # Dynamically generate micro suite tests
-import jaclang
-
 import re
+
+import jaclang
 
 
 def _sanitize_test_name(name: str) -> str:
@@ -609,9 +631,7 @@ def _sanitize_test_name(name: str) -> str:
 
 for filename in [
     os.path.normpath(os.path.join(root, name))
-    for root, _, files in os.walk(
-        os.path.dirname(os.path.dirname(jaclang.__file__))
-    )
+    for root, _, files in os.walk(os.path.dirname(os.path.dirname(jaclang.__file__)))
     for name in files
     if name.endswith(".jac") and "err" not in name
 ]:

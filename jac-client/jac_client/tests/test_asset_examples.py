@@ -9,6 +9,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
+
 from jac_client.plugin.vite_client_bundle import ViteClientBundleBuilder
 from jaclang.runtimelib.runtime import JacRuntime as Jac
 
@@ -177,9 +178,7 @@ def test_image_asset_example() -> None:
         package_json, output_dir = _create_test_project_with_vite(
             temp_path, include_assets=True
         )
-        runtime_path = (
-            Path(__file__).parent.parent / "plugin" / "client_runtime.jac"
-        )
+        runtime_path = Path(__file__).parent.parent / "plugin" / "client_runtime.jac"
 
         # Initialize the Vite builder
         builder = ViteClientBundleBuilder(
@@ -191,10 +190,7 @@ def test_image_asset_example() -> None:
 
         # Import the image-asset example
         examples_dir = (
-            Path(__file__).parent.parent
-            / "examples"
-            / "asset-serving"
-            / "image-asset"
+            Path(__file__).parent.parent / "examples" / "asset-serving" / "image-asset"
         )
         (module,) = Jac.jac_import("app", str(examples_dir))
 
@@ -225,9 +221,7 @@ def test_css_with_image_example() -> None:
         package_json, output_dir = _create_test_project_with_vite(
             temp_path, include_assets=True
         )
-        runtime_path = (
-            Path(__file__).parent.parent / "plugin" / "client_runtime.jac"
-        )
+        runtime_path = Path(__file__).parent.parent / "plugin" / "client_runtime.jac"
 
         # Initialize the Vite builder
         builder = ViteClientBundleBuilder(
@@ -280,9 +274,7 @@ def test_import_alias_example() -> None:
         package_json, output_dir = _create_test_project_with_vite(
             temp_path, include_assets=True
         )
-        runtime_path = (
-            Path(__file__).parent.parent / "plugin" / "client_runtime.jac"
-        )
+        runtime_path = Path(__file__).parent.parent / "plugin" / "client_runtime.jac"
 
         # Initialize the Vite builder
         builder = ViteClientBundleBuilder(
@@ -294,10 +286,7 @@ def test_import_alias_example() -> None:
 
         # Import the import-alias example
         examples_dir = (
-            Path(__file__).parent.parent
-            / "examples"
-            / "asset-serving"
-            / "import-alias"
+            Path(__file__).parent.parent / "examples" / "asset-serving" / "import-alias"
         )
         (module,) = Jac.jac_import("app", str(examples_dir))
 

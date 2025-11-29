@@ -1,8 +1,6 @@
 """Test pass module."""
 
-import io
 import re
-import sys
 
 import pytest
 
@@ -37,8 +35,8 @@ def test_import_include_auto_impl(fixture_path: callable) -> None:
     num_modules = len(list(prog.mod.hub.values())[1].impl_mod) + 1
     mod_names = [i.name for i in list(prog.mod.hub.values())[1].impl_mod]
     assert num_modules == 6
-    assert "incautoimpl" == list(prog.mod.hub.values())[0].name
-    assert "autoimpl" == list(prog.mod.hub.values())[1].name
+    assert list(prog.mod.hub.values())[0].name == "incautoimpl"
+    assert list(prog.mod.hub.values())[1].name == "autoimpl"
     assert "getme.impl" in mod_names
     assert "autoimpl.impl" in mod_names
     assert "autoimpl.something.else.impl" in mod_names
@@ -68,16 +66,14 @@ def test_cl_annex_marked_client(fixture_path: callable) -> None:
 
     (prog := JacProgram()).compile(fixture_path("autoimpl.jac"))
     main_mod = list(prog.mod.hub.values())[0]
-    cl_mod = next(
-        (mod for mod in main_mod.impl_mod if mod.name.endswith(".cl")), None
-    )
+    cl_mod = next((mod for mod in main_mod.impl_mod if mod.name.endswith(".cl")), None)
     assert cl_mod is not None, "Expected .cl annex module to be loaded"
     abilities = cl_mod.get_all_sub_nodes(uni.Ability)
     assert abilities, "Expected abilities in .cl annex module"
     for ability in abilities:
-        assert (
-            ability.is_client_decl
-        ), "All client annex abilities should be marked as client declarations"
+        assert ability.is_client_decl, (
+            "All client annex abilities should be marked as client declarations"
+        )
 
 
 @pytest.mark.skip(reason="TODO: Fix when we have the type checker")
@@ -147,9 +143,7 @@ def test_circular_import(fixture_path: callable) -> None:
 
 def test_ts_module_import(fixture_path: callable) -> None:
     """Test importing TypeScript modules in cl imports."""
-    (prog := JacProgram()).build(
-        fixture_path("ts_imports/main.jac"), type_check=True
-    )
+    (prog := JacProgram()).build(fixture_path("ts_imports/main.jac"), type_check=True)
     # Verify TS/JS modules are loaded into the module hub
     ts_module_path = fixture_path("ts_imports/utils.ts")
     js_module_path = fixture_path("ts_imports/component.js")
@@ -164,9 +158,7 @@ def test_ts_module_import(fixture_path: callable) -> None:
 
 def test_ts_module_compilation_no_cgen(fixture_path: callable) -> None:
     """Test TypeScript modules compile with no_cgen=True."""
-    (prog := JacProgram()).compile(
-        fixture_path("ts_imports/utils.ts"), no_cgen=True
-    )
+    (prog := JacProgram()).compile(fixture_path("ts_imports/utils.ts"), no_cgen=True)
     assert not prog.errors_had
     ts_mod = list(prog.mod.hub.values())[0]
     assert ts_mod.name == "utils"

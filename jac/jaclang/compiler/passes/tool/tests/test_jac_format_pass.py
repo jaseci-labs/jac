@@ -5,10 +5,9 @@ import os
 from difflib import unified_diff
 
 import jaclang.compiler.unitree as uni
+from conftest import get_micro_jac_files
 from jaclang.compiler.program import JacProgram
 from jaclang.utils.helpers import add_line_numbers
-
-from conftest import get_micro_jac_files
 
 
 def compare_files(
@@ -172,7 +171,9 @@ def pytest_generate_tests(metafunc):
     """Generate test cases for all micro jac files."""
     if "micro_jac_file" in metafunc.fixturenames:
         files = get_micro_jac_files()
-        metafunc.parametrize("micro_jac_file", files, ids=lambda f: f.replace(os.sep, "_"))
+        metafunc.parametrize(
+            "micro_jac_file", files, ids=lambda f: f.replace(os.sep, "_")
+        )
 
 
 def test_micro_suite(micro_jac_file):

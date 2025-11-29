@@ -117,9 +117,7 @@ def test_automated() -> None:
     lark_path = os.path.join(os.path.dirname(jaclang.__file__), "compiler/jac.lark")
     headings_ = extract_headings(lark_path)
     snake_case_headings = [heading_to_snake(key) for key in headings_]
-    refr_path = os.path.join(
-        os.path.dirname(jaclang.__file__), "../examples/reference"
-    )
+    refr_path = os.path.join(os.path.dirname(jaclang.__file__), "../examples/reference")
     file_extensions = [".py", ".jac", ".md"]
     created_files = [f"{os.path.join(refr_path, 'introduction.md')}"]
     for heading_name in snake_case_headings:

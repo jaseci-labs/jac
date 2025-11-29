@@ -6,8 +6,6 @@ import os
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
-import pytest
-
 from jaclang.compiler.program import JacProgram
 
 FIXTURE_DIR = (
@@ -114,7 +112,9 @@ cl def check_types() {
         assert module.gen.js.count("typeof") == 4, "Should have 4 typeof expressions"
 
         # Verify no type() calls remain
-        assert "type(" not in module.gen.js, "No type() calls should remain in JavaScript"
+        assert "type(" not in module.gen.js, (
+            "No type() calls should remain in JavaScript"
+        )
 
         # Verify the typeof expressions are correctly formed
         assert "typeof x" in module.gen.js
@@ -152,7 +152,12 @@ cl def spawn_client() {
         module = prog.compile(f.name)
         js = module.gen.js
 
-        assert '__jacSpawn("MixedWalker", node_id, {"label": "First", "count": 3})' in js
-        assert '__jacSpawn("MixedWalker", "", {"label": "Second", "count": 1, ...extra})' in js
+        assert (
+            '__jacSpawn("MixedWalker", node_id, {"label": "First", "count": 3})' in js
+        )
+        assert (
+            '__jacSpawn("MixedWalker", "", {"label": "Second", "count": 1, ...extra})'
+            in js
+        )
 
         os.unlink(f.name)

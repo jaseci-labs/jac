@@ -59,9 +59,7 @@ def assert_symbol_defns_at(
         )
 
 
-def assert_symbol_uses_at(
-    symbol: Symbol, expected_uses: list[tuple[int, int]]
-) -> None:
+def assert_symbol_uses_at(symbol: Symbol, expected_uses: list[tuple[int, int]]) -> None:
     """Assert that a symbol has uses at specific locations."""
     symbol_uses_str = str(symbol.uses)
     for line, col in expected_uses:

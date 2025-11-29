@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import inspect
 import os
+from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -13,7 +14,7 @@ import jaclang
 from jaclang.runtimelib.utils import read_file_with_encoding
 
 if TYPE_CHECKING:
-    from _pytest.logging import LogCaptureFixture
+    pass
 
 
 # ============================================================================

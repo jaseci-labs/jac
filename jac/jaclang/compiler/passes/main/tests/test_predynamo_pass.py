@@ -54,4 +54,7 @@ def test_predynamo_fix3(fixture_path: callable) -> None:
     sys.stdout = sys.__stdout__
     unparsed_code = code_gen.unparse()
     assert "__inv_freq = torch.where(" in unparsed_code
-    assert "self.register_buffer('inv_freq', __inv_freq, persistent=False);" in unparsed_code
+    assert (
+        "self.register_buffer('inv_freq', __inv_freq, persistent=False);"
+        in unparsed_code
+    )

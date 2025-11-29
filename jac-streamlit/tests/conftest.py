@@ -1,6 +1,5 @@
 """Pytest configuration for jac-streamlit tests."""
 
-import os
 from pathlib import Path
 
 import pytest
@@ -13,6 +12,7 @@ def fixture_path():
     Usage:
         fixture_path("sample.jac") returns absolute path to tests/fixtures/sample.jac
     """
+
     def _fixture_path(fixture: str) -> str:
         """Get absolute path for a fixture file."""
         tests_dir = Path(__file__).parent

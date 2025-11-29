@@ -444,9 +444,7 @@ def test_py_to_jac(fixture_path, capture_stdout) -> None:
 def test_lambda_arg_annotation(fixture_path, capture_stdout) -> None:
     """Test for lambda argument annotation."""
     with capture_stdout() as output:
-        cli.jac2py(
-            f"{fixture_path('../../tests/fixtures/lambda_arg_annotation.jac')}"
-        )
+        cli.jac2py(f"{fixture_path('../../tests/fixtures/lambda_arg_annotation.jac')}")
 
     stdout_value = output.getvalue()
     assert "x = lambda a, b: b + a" in stdout_value
@@ -464,18 +462,14 @@ def test_lambda_self(fixture_path, capture_stdout) -> None:
     assert "def foo(a: int) -> None:" in stdout_value
     assert "x = lambda a, b: b + a" in stdout_value
     assert "def visit_city(self, c: City) -> None:" in stdout_value
-    assert (
-        "sorted(users, key=lambda x: x['email'], reverse=True)" in stdout_value
-    )
+    assert "sorted(users, key=lambda x: x['email'], reverse=True)" in stdout_value
 
 
 def test_param_arg(fixture_path, capture_stdout) -> None:
     """Test for lambda argument annotation."""
     from jaclang.compiler.program import JacProgram
 
-    filename = fixture_path(
-        "../../tests/fixtures/params/test_complex_params.jac"
-    )
+    filename = fixture_path("../../tests/fixtures/params/test_complex_params.jac")
     with capture_stdout() as output:
         cli.jac2py(
             f"{fixture_path('../../tests/fixtures/params/test_complex_params.jac')}"
@@ -503,12 +497,12 @@ def test_param_arg(fixture_path, capture_stdout) -> None:
             os.remove(jac_file_path)
 
     stdout_value = output.getvalue().split("\n")
-    assert "ULTIMATE_MIN: 1|def|2.5|0|test|100|0" == stdout_value[-7]
-    assert "ULTIMATE_FULL: 1|custom|3.14|3|req|200|1" == stdout_value[-6]
-    assert "SEPARATORS: 42" == stdout_value[-5]
-    assert "EDGE_MIX: 1-test-2-True-1" == stdout_value[-4]
-    assert "RECURSIVE: 7 11" == stdout_value[-3]
-    assert "VALIDATION: x:1,y:2.5,z:10,args:1,w:True,kwargs:1" == stdout_value[-2]
+    assert stdout_value[-7] == "ULTIMATE_MIN: 1|def|2.5|0|test|100|0"
+    assert stdout_value[-6] == "ULTIMATE_FULL: 1|custom|3.14|3|req|200|1"
+    assert stdout_value[-5] == "SEPARATORS: 42"
+    assert stdout_value[-4] == "EDGE_MIX: 1-test-2-True-1"
+    assert stdout_value[-3] == "RECURSIVE: 7 11"
+    assert stdout_value[-2] == "VALIDATION: x:1,y:2.5,z:10,args:1,w:True,kwargs:1"
 
 
 def test_caching_issue(fixture_path) -> None:
@@ -672,7 +666,9 @@ def test_cli_error_exit_codes(fixture_path) -> None:
         text=True,
     )
     stdout, stderr = process.communicate()
-    assert process.returncode == 1, "run command should exit with code 1 on syntax error"
+    assert process.returncode == 1, (
+        "run command should exit with code 1 on syntax error"
+    )
     assert "Error" in stderr
 
     # Test build command with syntax error
@@ -683,9 +679,9 @@ def test_cli_error_exit_codes(fixture_path) -> None:
         text=True,
     )
     stdout, stderr = process.communicate()
-    assert (
-        process.returncode == 1
-    ), "build command should exit with code 1 on compilation error"
+    assert process.returncode == 1, (
+        "build command should exit with code 1 on compilation error"
+    )
 
     # Test check command with syntax error
     process = subprocess.Popen(
@@ -695,9 +691,9 @@ def test_cli_error_exit_codes(fixture_path) -> None:
         text=True,
     )
     stdout, stderr = process.communicate()
-    assert (
-        process.returncode == 1
-    ), "check command should exit with code 1 on type check error"
+    assert process.returncode == 1, (
+        "check command should exit with code 1 on type check error"
+    )
 
     # Test format command with non-existent file
     process = subprocess.Popen(
@@ -707,9 +703,9 @@ def test_cli_error_exit_codes(fixture_path) -> None:
         text=True,
     )
     stdout, stderr = process.communicate()
-    assert (
-        process.returncode == 1
-    ), "format command should exit with code 1 on missing file"
+    assert process.returncode == 1, (
+        "format command should exit with code 1 on missing file"
+    )
     assert "does not exist" in stderr
 
     # Test check command with invalid file type
@@ -720,9 +716,9 @@ def test_cli_error_exit_codes(fixture_path) -> None:
         text=True,
     )
     stdout, stderr = process.communicate()
-    assert (
-        process.returncode == 1
-    ), "check command should exit with code 1 on invalid file type"
+    assert process.returncode == 1, (
+        "check command should exit with code 1 on invalid file type"
+    )
     assert "Not a .jac file" in stderr
 
     # Test tool command with non-existent tool
@@ -733,9 +729,9 @@ def test_cli_error_exit_codes(fixture_path) -> None:
         text=True,
     )
     stdout, stderr = process.communicate()
-    assert (
-        process.returncode == 1
-    ), "tool command should exit with code 1 on non-existent tool"
+    assert process.returncode == 1, (
+        "tool command should exit with code 1 on non-existent tool"
+    )
     assert "not found" in stderr
 
     # Test successful run returns exit code 0

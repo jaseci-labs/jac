@@ -15,9 +15,11 @@ from jaclang.compiler.program import JacProgram
 @pytest.fixture
 def fixture_path():
     """Return a function that returns absolute path to a fixture file."""
+
     def _get_fixture_path(filename: str) -> str:
         fixtures_dir = Path(__file__).parent / "fixtures"
         return str(fixtures_dir / filename)
+
     return _get_fixture_path
 
 
@@ -75,7 +77,9 @@ def test_core_fixture_ast_shape(fixture_path) -> None:
 
     ast_json = json.dumps(es_node_to_dict(es_ast))
     assert "TryStatement" in ast_json, "Expected try/except in core fixture"
-    assert "BinaryExpression" in ast_json, "Binary expressions should appear in core fixture"
+    assert "BinaryExpression" in ast_json, (
+        "Binary expressions should appear in core fixture"
+    )
 
 
 def test_advanced_fixture_contains_async_and_spread_nodes(fixture_path) -> None:
@@ -149,8 +153,7 @@ def test_class_separate_impl_file(fixture_path) -> None:
         method_names = {
             m.key.name
             for m in calculator_class.body.body
-            if isinstance(m, es.MethodDefinition)
-            and isinstance(m.key, es.Identifier)
+            if isinstance(m, es.MethodDefinition) and isinstance(m.key, es.Identifier)
         }
         assert "add" in method_names
         assert "multiply" in method_names
@@ -188,7 +191,9 @@ def test_fstring_generates_template_literal(fixture_path) -> None:
     )
 
     # Check that the JavaScript output contains template literal syntax
-    assert "`" in js_code, "JavaScript output should contain backtick for template literals"
+    assert "`" in js_code, (
+        "JavaScript output should contain backtick for template literals"
+    )
 
     # Verify that the f-string variables are interpolated correctly
     # f"{user} scored {score} which is a {status}"

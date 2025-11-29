@@ -1,8 +1,5 @@
 """Test pass module."""
 
-import io
-import sys
-
 import pytest
 
 import jaclang.compiler.unitree as uni
@@ -57,16 +54,12 @@ def test_ability_connected_to_decl(fixture_path: callable) -> None:
     assert not out.errors_had
     assert "impl.Test.say_hi" in state.impl_mod[0].sym_tab.names_in_scope
     assert (
-        state.impl_mod[0]
-        .sym_tab.names_in_scope["impl.Test.say_hi"]
-        .decl.name_of.body
+        state.impl_mod[0].sym_tab.names_in_scope["impl.Test.say_hi"].decl.name_of.body
         is not None
     )
     assert "impl.Test.__init__" in state.impl_mod[0].sym_tab.names_in_scope
     assert (
-        state.impl_mod[0]
-        .sym_tab.names_in_scope["impl.Test.__init__"]
-        .decl.name_of.body
+        state.impl_mod[0].sym_tab.names_in_scope["impl.Test.__init__"].decl.name_of.body
         is not None
     )
 
@@ -77,16 +70,12 @@ def test_ability_connected_to_decl_post(fixture_path: callable) -> None:
     assert not out.errors_had
     assert "impl.Test.say_hi" in state.sym_tab.impl_mod[0].names_in_scope
     assert (
-        state.sym_tab.impl_mod[0]
-        .names_in_scope["impl.Test.say_hi"]
-        .decl.name_of.body
+        state.sym_tab.impl_mod[0].names_in_scope["impl.Test.say_hi"].decl.name_of.body
         is not None
     )
     assert "impl.Test.__init__" in state.impl_mod[0].sym_tab.names_in_scope
     assert (
-        state.impl_mod[0]
-        .sym_tab.names_in_scope["impl.Test.__init__"]
-        .decl.name_of.body
+        state.impl_mod[0].sym_tab.names_in_scope["impl.Test.__init__"].decl.name_of.body
         is not None
     )
 
@@ -112,7 +101,9 @@ def test_single_impl_annex(examples_path: callable) -> None:
     assert mypass.impl_mod[0].pp().count("ImplDef - impl.Circle.area") == 1
 
 
-def test_impl_decl_resolution_fix(fixture_path: callable, capture_stdout: callable) -> None:
+def test_impl_decl_resolution_fix(
+    fixture_path: callable, capture_stdout: callable
+) -> None:
     """Test walking through edges and nodes."""
     with capture_stdout() as captured_output:
         Jac.jac_import("mtest", base_path=fixture_path("./"))

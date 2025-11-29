@@ -47,16 +47,12 @@ def test_sem_decorator(fixture_path: callable) -> None:
     # Function (full).
     sym_fn1 = code_gen.lookup("fn1")
     assert sym_fn1.semstr == "A function that takes two integers and returns nothing."
-    assert (
-        sym_fn1.symbol_table.lookup("bar").semstr == "The first integer parameter."
-    )
+    assert sym_fn1.symbol_table.lookup("bar").semstr == "The first integer parameter."
 
     # Function (Missing baz)
     sym_fn2 = code_gen.lookup("fn2")
     assert sym_fn2.semstr == "A function that takes one integer and returns nothing."
-    assert (
-        sym_fn2.symbol_table.lookup("bar").semstr == "The first integer parameter."
-    )
+    assert sym_fn2.symbol_table.lookup("bar").semstr == "The first integer parameter."
     assert sym_fn2.symbol_table.lookup("baz").semstr == ""
 
     # Function (Without sem at all)
@@ -68,22 +64,14 @@ def test_sem_decorator(fixture_path: callable) -> None:
     # Architype (with body).
     sym_arch1 = code_gen.lookup("Arch1")
     assert sym_arch1.semstr == "An object that contains two integer properties."
-    assert (
-        sym_arch1.symbol_table.lookup("bar").semstr == "The first integer property."
-    )
-    assert (
-        sym_arch1.symbol_table.lookup("baz").semstr == "The second integer property."
-    )
+    assert sym_arch1.symbol_table.lookup("bar").semstr == "The first integer property."
+    assert sym_arch1.symbol_table.lookup("baz").semstr == "The second integer property."
 
     # Architype (without body).
     sym_arch2 = code_gen.lookup("Arch2")
     assert sym_arch2.semstr == "An object that contains two integer properties."
-    assert (
-        sym_arch2.symbol_table.lookup("bar").semstr == "The first integer property."
-    )
-    assert (
-        sym_arch2.symbol_table.lookup("baz").semstr == "The second integer property."
-    )
+    assert sym_arch2.symbol_table.lookup("bar").semstr == "The first integer property."
+    assert sym_arch2.symbol_table.lookup("baz").semstr == "The second integer property."
 
     # Enum (with body).
     sym_enum1 = code_gen.lookup("Enum1")
@@ -120,21 +108,15 @@ def test_sem_decorator(fixture_path: callable) -> None:
             module.fn1._jac_semstr
             == "A function that takes two integers and returns nothing."
         )
-        assert (
-            module.fn1._jac_semstr_inner["bar"] == "The first integer parameter."
-        )
-        assert (
-            module.fn1._jac_semstr_inner["baz"] == "The second integer parameter."
-        )
+        assert module.fn1._jac_semstr_inner["bar"] == "The first integer parameter."
+        assert module.fn1._jac_semstr_inner["baz"] == "The second integer parameter."
 
         # Function (Missing baz)
         assert (
             module.fn2._jac_semstr
             == "A function that takes one integer and returns nothing."
         )
-        assert (
-            module.fn2._jac_semstr_inner["bar"] == "The first integer parameter."
-        )
+        assert module.fn2._jac_semstr_inner["bar"] == "The first integer parameter."
         assert "baz" not in module.fn2._jac_semstr_inner
 
         # Function (Without sem at all)
@@ -145,24 +127,16 @@ def test_sem_decorator(fixture_path: callable) -> None:
             module.Arch1._jac_semstr
             == "An object that contains two integer properties."
         )
-        assert (
-            module.Arch1._jac_semstr_inner["bar"] == "The first integer property."
-        )
-        assert (
-            module.Arch1._jac_semstr_inner["baz"] == "The second integer property."
-        )
+        assert module.Arch1._jac_semstr_inner["bar"] == "The first integer property."
+        assert module.Arch1._jac_semstr_inner["baz"] == "The second integer property."
 
         # Architype (without body).
         assert (
             module.Arch2._jac_semstr
             == "An object that contains two integer properties."
         )
-        assert (
-            module.Arch2._jac_semstr_inner["bar"] == "The first integer property."
-        )
-        assert (
-            module.Arch2._jac_semstr_inner["baz"] == "The second integer property."
-        )
+        assert module.Arch2._jac_semstr_inner["bar"] == "The first integer property."
+        assert module.Arch2._jac_semstr_inner["baz"] == "The second integer property."
 
         # Enum (with body).
         assert (
@@ -249,7 +223,9 @@ def test_string_literal_import_requires_cl() -> None:
     assert any(
         "String literal imports" in msg and "client (cl) imports" in msg
         for msg in error_messages
-    ), f"Expected error about string literal imports requiring cl, got: {error_messages}"
+    ), (
+        f"Expected error about string literal imports requiring cl, got: {error_messages}"
+    )
 
 
 def test_string_literal_import_works_with_cl() -> None:
@@ -262,7 +238,9 @@ def test_string_literal_import_works_with_cl() -> None:
     prog.compile(file_path="test.jac", use_str=code)
 
     # Should not have errors
-    assert not prog.errors_had, f"Unexpected errors: {[str(e) for e in prog.errors_had]}"
+    assert not prog.errors_had, (
+        f"Unexpected errors: {[str(e) for e in prog.errors_had]}"
+    )
 
 
 def parent_scrub(node: uni.UniNode) -> bool:

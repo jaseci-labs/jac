@@ -19,42 +19,51 @@ def ensure_ts_parser():
 @pytest.fixture
 def ts_fixture_abs_path():
     """Get absolute path to TypeScript fixture file."""
+
     def _ts_fixture_abs_path(filename: str) -> str:
         return str(Path(__file__).parent / "fixtures" / "typescript" / filename)
+
     return _ts_fixture_abs_path
 
 
 @pytest.fixture
 def load_ts_fixture(ts_fixture_abs_path):
     """Load TypeScript fixture file contents."""
+
     def _load_ts_fixture(filename: str) -> str:
         path = ts_fixture_abs_path(filename)
         with open(path, encoding="utf-8") as f:
             return f.read()
+
     return _load_ts_fixture
 
 
 @pytest.fixture
 def parse_ts():
     """Parse TypeScript source code and return parser."""
+
     def _parse_ts(source_code: str, mod_path: str = "") -> TypeScriptParser:
         source = Source(source_code, mod_path=mod_path)
         return TypeScriptParser(root_ir=source, prog=JacProgram())
+
     return _parse_ts
 
 
 @pytest.fixture
 def parse_ts_file(load_ts_fixture, ts_fixture_abs_path, parse_ts):
     """Parse TypeScript fixture file and return parser."""
+
     def _parse_ts_file(filename: str) -> TypeScriptParser:
         source_code = load_ts_fixture(filename)
         return parse_ts(source_code, mod_path=ts_fixture_abs_path(filename))
+
     return _parse_ts_file
 
 
 # ==========================================================================
 # Basic Parsing Tests
 # ==========================================================================
+
 
 def test_parser_loads(ensure_ts_parser) -> None:
     """Test that the TypeScript parser loads successfully."""
@@ -128,6 +137,7 @@ def test_decorators_fixture(parse_ts_file) -> None:
 # ==========================================================================
 # Inline Source Tests
 # ==========================================================================
+
 
 def test_empty_source(parse_ts) -> None:
     """Parse empty source."""
@@ -370,6 +380,7 @@ interface Box<T> {
 # AST Structure Tests
 # ==========================================================================
 
+
 def test_module_has_body(parse_ts) -> None:
     """Test that parsed module has body."""
     source = """
@@ -408,6 +419,7 @@ def test_module_name_strips_extensions(parse_ts) -> None:
 # ==========================================================================
 # Error Handling Tests
 # ==========================================================================
+
 
 def test_recovers_from_missing_semicolon(parse_ts) -> None:
     """Test parser can recover from missing semicolons."""

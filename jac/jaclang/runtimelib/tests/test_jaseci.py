@@ -347,7 +347,11 @@ def test_walker_purger(output_capturer):
 
 
 def trigger_access_validation_test(
-    output_capturer, roots, nodes, give_access_to_full_graph: bool, via_all: bool = False
+    output_capturer,
+    roots,
+    nodes,
+    give_access_to_full_graph: bool,
+    via_all: bool = False,
 ) -> None:
     """Test different access validation."""
     global session
@@ -742,8 +746,12 @@ def test_other_root_access(output_capturer):
 
     roots = [root1, root2]
 
-    trigger_access_validation_test(output_capturer, roots, nodes, give_access_to_full_graph=False)
-    trigger_access_validation_test(output_capturer, roots, nodes, give_access_to_full_graph=True)
+    trigger_access_validation_test(
+        output_capturer, roots, nodes, give_access_to_full_graph=False
+    )
+    trigger_access_validation_test(
+        output_capturer, roots, nodes, give_access_to_full_graph=True
+    )
 
     trigger_access_validation_test(
         output_capturer, roots, nodes, give_access_to_full_graph=False, via_all=True
@@ -772,11 +780,11 @@ def test_savable_object(output_capturer):
     prints = output_capturer["get"]().strip().split("\n")
     id = prints[0]
 
-    assert (
+    assert prints[1] == (
         "SavableObject(val=0, arr=[], json={}, parent=Parent(val=1, arr=[1], json"
         "={'a': 1}, enum_field=<Enum.B: 'b'>, child=Child(val=2, arr=[1, 2], json"
         "={'a': 1, 'b': 2}, enum_field=<Enum.C: 'c'>)), enum_field=<Enum.A: 'a'>)"
-    ) == prints[1]
+    )
 
     output_capturer["start"]()
 
@@ -786,11 +794,11 @@ def test_savable_object(output_capturer):
         args=[id],
         session=session,
     )
-    assert (
+    assert output_capturer["get"]().strip() == (
         "SavableObject(val=0, arr=[], json={}, parent=Parent(val=1, arr=[1], json"
         "={'a': 1}, enum_field=<Enum.B: 'b'>, child=Child(val=2, arr=[1, 2], json"
         "={'a': 1, 'b': 2}, enum_field=<Enum.C: 'c'>)), enum_field=<Enum.A: 'a'>)"
-    ) == output_capturer["get"]().strip()
+    )
 
     output_capturer["start"]()
 
@@ -801,11 +809,11 @@ def test_savable_object(output_capturer):
         session=session,
     )
 
-    assert (
+    assert output_capturer["get"]().strip() == (
         "SavableObject(val=1, arr=[1], json={'a': 1}, parent=Parent(val=2, arr=[1, 2], json"
         "={'a': 1, 'b': 2}, enum_field=<Enum.C: 'c'>, child=Child(val=3, arr=[1, 2, 3], json"
         "={'a': 1, 'b': 2, 'c': 3}, enum_field=<Enum.A: 'a'>)), enum_field=<Enum.B: 'b'>)"
-    ) == output_capturer["get"]().strip()
+    )
 
     output_capturer["start"]()
 
@@ -822,7 +830,7 @@ def test_savable_object(output_capturer):
         args=[id],
         session=session,
     )
-    assert "None" == output_capturer["get"]().strip()
+    assert output_capturer["get"]().strip() == "None"
 
     del_session(session)
 
@@ -847,7 +855,7 @@ def test_traversing_save(output_capturer):
         session=session,
     )
 
-    assert (
+    assert output_capturer["get"]().strip() == (
         "digraph {\n"
         'node [style="filled", shape="ellipse", fillcolor="invis", fontcolor="black"];\n'
         '0 -> 1  [label=""];\n'
@@ -855,7 +863,7 @@ def test_traversing_save(output_capturer):
         '0 [label="Root()"fillcolor="#FFE9E9"];\n'
         '1 [label="A()"fillcolor="#F0FFF0"];\n'
         '2 [label="B()"fillcolor="#F5E5FF"];\n}'
-    ) == output_capturer["get"]().strip()
+    )
 
     del_session(session)
 
@@ -906,7 +914,7 @@ def test_custom_access_validation(output_capturer):
         node=node,
     )
 
-    assert "A(val1='NO_ACCESS', val2=0)" == output_capturer["get"]().strip()
+    assert output_capturer["get"]().strip() == "A(val1='NO_ACCESS', val2=0)"
 
     # BY OTHER
     output_capturer["start"]()
@@ -919,7 +927,7 @@ def test_custom_access_validation(output_capturer):
         node=node,
     )
 
-    assert "" == output_capturer["get"]().strip()
+    assert output_capturer["get"]().strip() == ""
 
     ##############################################
     #       UPDATE NODE (GIVE READ ACCESS)       #
@@ -945,7 +953,7 @@ def test_custom_access_validation(output_capturer):
         node=node,
     )
 
-    assert "A(val1='READ', val2=0)" == output_capturer["get"]().strip()
+    assert output_capturer["get"]().strip() == "A(val1='READ', val2=0)"
 
     ##############################################
     #     UPDATE NODE (BUT STILL READ ACCESS)    #
@@ -972,7 +980,7 @@ def test_custom_access_validation(output_capturer):
         node=node,
     )
 
-    assert "A(val1='READ', val2=0)" == output_capturer["get"]().strip()
+    assert output_capturer["get"]().strip() == "A(val1='READ', val2=0)"
 
     ##############################################
     #       UPDATE NODE (GIVE WRITE ACCESS)      #
@@ -1008,7 +1016,7 @@ def test_custom_access_validation(output_capturer):
         node=node,
     )
 
-    assert "A(val1='WRITE', val2=2)" == output_capturer["get"]().strip()
+    assert output_capturer["get"]().strip() == "A(val1='WRITE', val2=2)"
 
     ##############################################
     #         UPDATE NODE (REMOVE ACCESS)        #
@@ -1044,7 +1052,7 @@ def test_custom_access_validation(output_capturer):
         node=node,
     )
 
-    assert "" == output_capturer["get"]().strip()
+    assert output_capturer["get"]().strip() == ""
 
     # CHECK BY OWNER
     output_capturer["start"]()
@@ -1056,7 +1064,7 @@ def test_custom_access_validation(output_capturer):
         node=node,
     )
 
-    assert "A(val1='NO_ACCESS', val2=2)" == output_capturer["get"]().strip()
+    assert output_capturer["get"]().strip() == "A(val1='NO_ACCESS', val2=2)"
 
 
 def test_run_persistent_reuse():
@@ -1101,9 +1109,9 @@ def test_run_persistent_reuse():
         second_run_keys = len(shelf.keys())
 
     # Should have same number of keys (not doubled)
-    assert (
-        second_run_keys == first_run_keys
-    ), "Second run should reuse persisted nodes, not create duplicates"
+    assert second_run_keys == first_run_keys, (
+        "Second run should reuse persisted nodes, not create duplicates"
+    )
     assert second_run_edges == 2, "Root should still have only 2 edges (not 4)"
 
     del_session(session)

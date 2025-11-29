@@ -30,9 +30,7 @@ def get_reference_jac_files() -> list[str]:
     return files
 
 
-def execute_and_capture_output(
-    code: str | bytes | CodeType, filename: str = ""
-) -> str:
+def execute_and_capture_output(code: str | bytes | CodeType, filename: str = "") -> str:
     """Execute code and capture stdout."""
     f = io.StringIO()
     with redirect_stdout(f):
@@ -48,9 +46,7 @@ def execute_and_capture_output(
 
 def normalize_function_addresses(text: str) -> str:
     """Normalize function memory addresses in output for consistent comparison."""
-    return re.sub(
-        r"<function (\w+) at 0x[0-9a-f]+>", r"<function \1 at 0x...>", text
-    )
+    return re.sub(r"<function (\w+) at 0x[0-9a-f]+>", r"<function \1 at 0x...>", text)
 
 
 @pytest.fixture(autouse=True)

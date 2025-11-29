@@ -146,16 +146,18 @@ def test_no_import_statements_in_bundle():
     ]
 
     # Should be exactly 0 import statements
-    assert len(import_lines) == 0, \
+    assert len(import_lines) == 0, (
         f"Found {len(import_lines)} import statement(s) in bundle: {import_lines[:3]}"
+    )
 
     # Also verify using regex pattern
     import re
 
     import_pattern = r'^\s*import\s+.*\s+from\s+["\'].*["\'];?\s*$'
     import_matches = [line for line in lines if re.match(import_pattern, line)]
-    assert len(import_matches) == 0, \
+    assert len(import_matches) == 0, (
         f"Found import statements matching pattern: {import_matches[:3]}"
+    )
 
 
 def test_transitive_imports_included():
@@ -181,8 +183,9 @@ def test_transitive_imports_included():
     # Verify that createState is actually callable (definition before usage)
     create_state_def_pos = bundle.code.find("function createState(")
     create_state_usage_pos = bundle.code.find("createState(")
-    assert create_state_def_pos < create_state_usage_pos, \
+    assert create_state_def_pos < create_state_usage_pos, (
         "createState must be defined before it's used"
+    )
 
 
 def test_bundle_size_reasonable():
@@ -201,12 +204,14 @@ def test_bundle_size_reasonable():
     import_bundle = builder.build(import_module)
 
     # Bundle with imports should be larger (includes additional modules)
-    assert len(import_bundle.code) > len(simple_bundle.code), \
+    assert len(import_bundle.code) > len(simple_bundle.code), (
         "Bundle with imports should be larger than simple bundle"
+    )
 
     # But not unreasonably large (should be less than 10x)
-    assert len(import_bundle.code) < len(simple_bundle.code) * 10, \
+    assert len(import_bundle.code) < len(simple_bundle.code) * 10, (
         "Bundle should not be unreasonably large"
+    )
 
 
 def test_import_path_conversion():

@@ -17,12 +17,14 @@ jac_import = Jac.jac_import
 @pytest.fixture
 def fixture_path():
     """Fixture to get the absolute path of fixtures directory."""
+
     def _fixture_abs_path(fixture: str) -> str:
         """Get absolute path of a fixture from fixtures directory."""
         # Get the directory of the current test file
         test_dir = os.path.dirname(os.path.abspath(__file__))
         file_path = os.path.join(test_dir, "fixtures", fixture)
         return os.path.abspath(file_path)
+
     return _fixture_abs_path
 
 
@@ -188,8 +190,7 @@ def test_with_llm_lower(fixture_path) -> None:
     # sent to some callbacks (or other means) to the user.
     # assert "[Reasoning] <Reason>" in stdout_value
     assert (
-        "J. Robert Oppenheimer was a Introvert person who died in 1967"
-        in stdout_value
+        "J. Robert Oppenheimer was a Introvert person who died in 1967" in stdout_value
     )
 
 
@@ -274,9 +275,15 @@ def test_semstrings(fixture_path) -> None:
     password = stdout_value[i:].split("\n")[0]
 
     assert len(password) >= 8, "Password should be at least 8 characters long."
-    assert any(c.isdigit() for c in password), "Password should contain at least one digit."
-    assert any(c.isupper() for c in password), "Password should contain at least one uppercase letter."
-    assert any(c.islower() for c in password), "Password should contain at least one lowercase letter."
+    assert any(c.isdigit() for c in password), (
+        "Password should contain at least one digit."
+    )
+    assert any(c.isupper() for c in password), (
+        "Password should contain at least one uppercase letter."
+    )
+    assert any(c.islower() for c in password), (
+        "Password should contain at least one lowercase letter."
+    )
 
 
 def test_python_lib_mode() -> None:

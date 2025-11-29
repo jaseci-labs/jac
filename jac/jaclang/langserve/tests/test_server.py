@@ -13,6 +13,7 @@ from jaclang.vendor.pygls.workspace import Workspace
 @pytest.fixture
 def fixture_path():
     """Get absolute path to fixture file."""
+
     def _fixture_path(fixture: str) -> str:
         frame = inspect.currentframe()
         if frame is None or frame.f_back is None:
@@ -23,6 +24,7 @@ def fixture_path():
         fixture_src = module.__file__
         file_path = os.path.join(os.path.dirname(fixture_src), "fixtures", fixture)
         return os.path.abspath(file_path)
+
     return _fixture_path
 
 
@@ -30,12 +32,14 @@ def fixture_path():
 def examples_abs_path():
     """Get absolute path of a example from examples directory."""
     import jaclang
+
     def _examples_abs_path(example: str) -> str:
         fixture_src = jaclang.__file__
         file_path = os.path.join(
             os.path.dirname(os.path.dirname(fixture_src)), "examples", example
         )
         return os.path.abspath(file_path)
+
     return _examples_abs_path
 
 
@@ -43,6 +47,7 @@ def examples_abs_path():
 def passes_main_fixture_abs_path():
     """Get absolute path of a fixture from compiler passes main fixtures directory."""
     import jaclang
+
     def _passes_main_fixture_abs_path(file: str) -> str:
         fixture_src = jaclang.__file__
         file_path = os.path.join(
@@ -55,6 +60,7 @@ def passes_main_fixture_abs_path():
             file,
         )
         return os.path.abspath(file_path)
+
     return _passes_main_fixture_abs_path
 
 
@@ -72,15 +78,19 @@ def test_impl_stay_connected(fixture_path) -> None:
     lsp = create_server(None, fixture_path)
     try:
         circle_file = uris.from_fs_path(fixture_path("circle_pure.jac"))
-        circle_impl_file = uris.from_fs_path(
-            fixture_path("circle_pure.impl.jac")
-        )
+        circle_impl_file = uris.from_fs_path(fixture_path("circle_pure.impl.jac"))
         lsp.type_check_file(circle_file)
         pos = lspt.Position(20, 8)
-        assert "Circle class inherits from Shape." in lsp.get_hover_info(circle_file, pos).contents.value
+        assert (
+            "Circle class inherits from Shape."
+            in lsp.get_hover_info(circle_file, pos).contents.value
+        )
         lsp.type_check_file(circle_impl_file)
         pos = lspt.Position(8, 11)
-        assert "ability) calculate_area\\n( radius : float ) -> float" in lsp.get_hover_info(circle_impl_file, pos).contents.value.replace("'", "")
+        assert (
+            "ability) calculate_area\\n( radius : float ) -> float"
+            in lsp.get_hover_info(circle_impl_file, pos).contents.value.replace("'", "")
+        )
     finally:
         lsp.shutdown()
 
@@ -89,12 +99,13 @@ def test_impl_auto_discover(fixture_path) -> None:
     """Test that the server doesn't run if there is a syntax error."""
     lsp = create_server(None, fixture_path)
     try:
-        circle_impl_file = uris.from_fs_path(
-            fixture_path("circle_pure.impl.jac")
-        )
+        circle_impl_file = uris.from_fs_path(fixture_path("circle_pure.impl.jac"))
         lsp.type_check_file(circle_impl_file)
         pos = lspt.Position(8, 11)
-        assert "(public ability) calculate_area\\n( radius : float ) -> float" in lsp.get_hover_info(circle_impl_file, pos).contents.value.replace("'", "")
+        assert (
+            "(public ability) calculate_area\\n( radius : float ) -> float"
+            in lsp.get_hover_info(circle_impl_file, pos).contents.value.replace("'", "")
+        )
     finally:
         lsp.shutdown()
 
@@ -116,18 +127,28 @@ def test_go_to_definition(fixture_path) -> None:
     try:
         circle_file = uris.from_fs_path(fixture_path("circle_pure.jac"))
         lsp.type_check_file(circle_file)
-        assert "fixtures/circle_pure.impl.jac:8:5-8:19" in str(lsp.get_definition(circle_file, lspt.Position(9, 16)))
-        assert "fixtures/circle_pure.jac:13:11-13:16" in str(lsp.get_definition(circle_file, lspt.Position(20, 16)))
+        assert "fixtures/circle_pure.impl.jac:8:5-8:19" in str(
+            lsp.get_definition(circle_file, lspt.Position(9, 16))
+        )
+        assert "fixtures/circle_pure.jac:13:11-13:16" in str(
+            lsp.get_definition(circle_file, lspt.Position(20, 16))
+        )
 
         goto_defs_file = uris.from_fs_path(fixture_path("goto_def_tests.jac"))
         lsp.type_check_file(goto_defs_file)
 
         # Test if the visistor keyword goes to the walker definition
-        assert "fixtures/goto_def_tests.jac:8:7-8:17" in str(lsp.get_definition(goto_defs_file, lspt.Position(4, 14)))
+        assert "fixtures/goto_def_tests.jac:8:7-8:17" in str(
+            lsp.get_definition(goto_defs_file, lspt.Position(4, 14))
+        )
         # Test if the here keywrod goes to the node definition
-        assert "fixtures/goto_def_tests.jac:0:5-0:13" in str(lsp.get_definition(goto_defs_file, lspt.Position(10, 14)))
+        assert "fixtures/goto_def_tests.jac:0:5-0:13" in str(
+            lsp.get_definition(goto_defs_file, lspt.Position(10, 14))
+        )
         # Test the SomeNode node inside the visit statement goes to its definition
-        assert "fixtures/goto_def_tests.jac:0:5-0:13" in str(lsp.get_definition(goto_defs_file, lspt.Position(11, 21)))
+        assert "fixtures/goto_def_tests.jac:0:5-0:13" in str(
+            lsp.get_definition(goto_defs_file, lspt.Position(11, 21))
+        )
     finally:
         lsp.shutdown()
 
@@ -145,7 +166,9 @@ def test_go_to_definition_method_manual_impl(examples_abs_path) -> None:
         )
         lsp.type_check_file(decldef_main_file)
         lsp.type_check_file(decldef_file)
-        assert "decl_defs_main.jac:7:8-7:17" in str(lsp.get_definition(decldef_file, lspt.Position(2, 20)))
+        assert "decl_defs_main.jac:7:8-7:17" in str(
+            lsp.get_definition(decldef_file, lspt.Position(2, 20))
+        )
     finally:
         lsp.shutdown()
 
@@ -183,9 +206,7 @@ def test_go_to_definition_md_path(fixture_path) -> None:
 
         for line, char, expected in positions:
             assert expected in str(
-                lsp.get_definition(
-                    import_file, lspt.Position(line - 1, char - 1)
-                )
+                lsp.get_definition(import_file, lspt.Position(line - 1, char - 1))
             )
     finally:
         lsp.shutdown()
@@ -218,9 +239,7 @@ def test_go_to_definition_connect_filter(passes_main_fixture_abs_path) -> None:
 
         for line, char, expected in positions:
             assert expected in str(
-                lsp.get_definition(
-                    import_file, lspt.Position(line - 1, char - 1)
-                )
+                lsp.get_definition(import_file, lspt.Position(line - 1, char - 1))
             )
     finally:
         lsp.shutdown()
@@ -241,9 +260,7 @@ def test_go_to_definition_atom_trailer(fixture_path) -> None:
 
         for line, char, expected in positions:
             assert expected in str(
-                lsp.get_definition(
-                    import_file, lspt.Position(line - 1, char - 1)
-                )
+                lsp.get_definition(import_file, lspt.Position(line - 1, char - 1))
             )
     finally:
         lsp.shutdown()
@@ -272,9 +289,7 @@ def test_completion(fixture_path) -> None:
 
     lsp = create_server(None, fixture_path)
     try:
-        base_module_file = uris.from_fs_path(
-            fixture_path("completion_test_err.jac")
-        )
+        base_module_file = uris.from_fs_path(fixture_path("completion_test_err.jac"))
         lsp.type_check_file(base_module_file)
 
         @dataclass
@@ -343,9 +358,7 @@ def test_go_to_def_import_star(passes_main_fixture_abs_path) -> None:
 
         for line, char, expected in positions:
             assert expected in str(
-                lsp.get_definition(
-                    import_star_file, lspt.Position(line - 1, char - 1)
-                )
+                lsp.get_definition(import_star_file, lspt.Position(line - 1, char - 1))
             )
     finally:
         lsp.shutdown()

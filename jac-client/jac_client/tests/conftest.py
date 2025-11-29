@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 
 import pytest
+
 from jaclang.runtimelib.utils import read_file_with_encoding
 
 
@@ -16,6 +17,7 @@ def fixture_path() -> callable:
 
     Returns a function that takes a fixture name and returns its absolute path.
     """
+
     def _get_fixture_path(fixture: str) -> str:
         frame = inspect.currentframe()
         if frame is None or frame.f_back is None or frame.f_back.f_back is None:
@@ -36,6 +38,7 @@ def examples_path() -> callable:
 
     Returns a function that takes an example name and returns its absolute path.
     """
+
     def _get_examples_path(example: str) -> str:
         # Get the jac_client module path
         tests_dir = Path(__file__).parent
@@ -52,6 +55,7 @@ def load_fixture() -> callable:
 
     Returns a function that takes a fixture name and returns its content.
     """
+
     def _load_fixture(fixture: str) -> str:
         frame = inspect.currentframe()
         if frame is None or frame.f_back is None or frame.f_back.f_back is None:

@@ -2,8 +2,6 @@
 
 import subprocess
 
-import pytest
-
 from jaclang_streamlit import AppTest
 
 

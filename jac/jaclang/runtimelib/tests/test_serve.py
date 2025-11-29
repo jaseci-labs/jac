@@ -366,7 +366,9 @@ def test_server_call_function_with_defaults(server_fixture):
     token = create_result["token"]
 
     # Call greet without name (should use default)
-    result = server_fixture.request("POST", "/function/greet", {"args": {}}, token=token)
+    result = server_fixture.request(
+        "POST", "/function/greet", {"args": {}}, token=token
+    )
 
     assert "result" in result
     assert result["result"] == "Hello, World!"
@@ -449,7 +451,9 @@ def test_server_spawn_walker(server_fixture):
     assert "result" in result2
 
     # Get Task node using new GetTask walker
-    result3 = server_fixture.request("POST", "/walker/GetTask/" + str(jid), {}, token=token)
+    result3 = server_fixture.request(
+        "POST", "/walker/GetTask/" + str(jid), {}, token=token
+    )
     assert "result" in result3
 
 
@@ -770,7 +774,9 @@ def test_root_data_persistence_across_server_restarts(server_fixture):
     assert new_token == token
 
     # List tasks again to verify they persisted
-    list_after = server_fixture.request("POST", "/walker/ListTasks", {}, token=new_token)
+    list_after = server_fixture.request(
+        "POST", "/walker/ListTasks", {}, token=new_token
+    )
 
     # The ListTasks walker should successfully run
     assert "result" in list_after
@@ -1112,7 +1118,9 @@ def test_public_walker_without_auth(access_server_fixture):
     access_server_fixture.start_server("serve_api_access.jac")
 
     # Spawn public walker without authentication
-    result = access_server_fixture.request("POST", "/walker/PublicWalker", {"message": "hello"})
+    result = access_server_fixture.request(
+        "POST", "/walker/PublicWalker", {"message": "hello"}
+    )
 
     assert "result" in result
     assert "reports" in result
@@ -1123,7 +1131,9 @@ def test_protected_walker_requires_auth(access_server_fixture):
     access_server_fixture.start_server("serve_api_access.jac")
 
     # Try to spawn protected walker without authentication - should fail
-    result = access_server_fixture.request("POST", "/walker/ProtectedWalker", {"data": "test"})
+    result = access_server_fixture.request(
+        "POST", "/walker/ProtectedWalker", {"data": "test"}
+    )
 
     assert "error" in result
     assert "Unauthorized" in result["error"]
@@ -1156,7 +1166,9 @@ def test_private_walker_requires_auth(access_server_fixture):
     access_server_fixture.start_server("serve_api_access.jac")
 
     # Try to spawn private walker without authentication - should fail
-    result = access_server_fixture.request("POST", "/walker/PrivateWalker", {"secret": "test"})
+    result = access_server_fixture.request(
+        "POST", "/walker/PrivateWalker", {"secret": "test"}
+    )
 
     assert "error" in result
     assert "Unauthorized" in result["error"]

@@ -58,8 +58,7 @@ def test_simple_jac_red(examples_path, capture_stdout):
         )
     stdout_value = captured_output.getvalue()
     assert (
-        stdout_value
-        == "Value: -1\nValue: 0\nValue: 1\nValue: 2\nValue: 3\nValue: 4"
+        stdout_value == "Value: -1\nValue: 0\nValue: 1\nValue: 2\nValue: 3\nValue: 4"
         "\nValue: 5\nValue: 6\nValue: 7\nFinal Value: 8\nDone walking.\n"
     )
 
@@ -142,8 +141,7 @@ def test_chandra_bugs2(fixture_path, capture_stdout):
         Jac.jac_import("chandra_bugs2", base_path=fixture_path("./"))
     stdout_value = captured_output.getvalue()
     assert (
-        stdout_value
-        == "{'apple': None, 'pineapple': None}\n"
+        stdout_value == "{'apple': None, 'pineapple': None}\n"
         "This is a long\n"
         "        line of code.\n"
         "{'a': 'apple', 'b': 'ball', 'c': 'cat', 'd': 'dog', 'e': 'elephant'}\n"
@@ -215,9 +213,7 @@ def test_assign_operation(fixture_path, capture_stdout):
     with capture_stdout() as captured_output:
         Jac.jac_import("assign_compr_dup", base_path=fixture_path("./"))
     stdout_value = captured_output.getvalue()
-    assert (
-        stdout_value == "[MyObj(apple=5, banana=7), MyObj(apple=5, banana=7)]\n"
-    )
+    assert stdout_value == "[MyObj(apple=5, banana=7), MyObj(apple=5, banana=7)]\n"
 
 
 def test_raw_bytestr(fixture_path, capture_stdout):
@@ -374,7 +370,10 @@ def test_tuple_of_tuple_assign(fixture_path, capture_stdout):
     with capture_stdout() as captured_output:
         Jac.jac_import("tuplytuples", base_path=fixture_path("./"))
     stdout_value = captured_output.getvalue()
-    assert "a apple b banana a apple b banana a apple b banana a apple b banana" in stdout_value
+    assert (
+        "a apple b banana a apple b banana a apple b banana a apple b banana"
+        in stdout_value
+    )
 
 
 def test_deferred_field(fixture_path, capture_stdout):
@@ -401,7 +400,9 @@ def test_with_contexts(fixture_path, capture_stdout):
     assert "im in" in stdout_value
     assert "in the middle" in stdout_value
     assert "im out" in stdout_value
-    assert "{'apple': [1, 2, 3], 'banana': [1, 2, 3], 'cherry': [1, 2, 3]}" in stdout_value
+    assert (
+        "{'apple': [1, 2, 3], 'banana': [1, 2, 3], 'cherry': [1, 2, 3]}" in stdout_value
+    )
 
 
 def test_typed_filter_compr(examples_path, capture_stdout):
@@ -678,7 +679,9 @@ def test_override_walker_inherit(fixture_path, capture_stdout):
     assert stdout_value == "baz\nbar\n"
 
 
-def test_self_with_no_sig(fixture_path, capture_stdout):  # we can get rid of this, isn't?
+def test_self_with_no_sig(
+    fixture_path, capture_stdout
+):  # we can get rid of this, isn't?
     """Test py ast to Jac ast conversion output."""
     with capture_stdout() as captured_output:
         Jac.jac_import("nosigself", base_path=fixture_path("./"))
@@ -686,7 +689,9 @@ def test_self_with_no_sig(fixture_path, capture_stdout):  # we can get rid of th
     assert stdout_value.count("5") == 2
 
 
-def test_hash_init_check(fixture_path, capture_stdout):  # we can get rid of this, isn't?
+def test_hash_init_check(
+    fixture_path, capture_stdout
+):  # we can get rid of this, isn't?
     """Test py ast to Jac ast conversion output."""
     with capture_stdout() as captured_output:
         Jac.jac_import("hash_init_check", base_path=fixture_path("./"))
@@ -735,9 +740,7 @@ def test_blank_with_entry(fixture_path, capture_stdout):
 def test_kwonly_params(fixture_path, capture_stdout):
     """Test importing python."""
     with capture_stdout() as captured_output:
-        Jac.jac_import(
-            "test_kwonly_params", base_path=fixture_path("./params")
-        )
+        Jac.jac_import("test_kwonly_params", base_path=fixture_path("./params"))
     stdout_value = captured_output.getvalue().split("\n")
     assert stdout_value[0] == "KW_SIMPLE: 42"
     assert stdout_value[1] == "KW_DEF: 10-def 20-def"
@@ -749,18 +752,14 @@ def test_kwonly_params(fixture_path, capture_stdout):
 def test_complex_params(fixture_path, capture_stdout):
     """Test importing python."""
     with capture_stdout() as captured_output:
-        Jac.jac_import(
-            "test_complex_params", base_path=fixture_path("./params")
-        )
+        Jac.jac_import("test_complex_params", base_path=fixture_path("./params"))
     stdout_value = captured_output.getvalue().split("\n")
     assert stdout_value[0] == "ULTIMATE_MIN: 1|def|2.5|0|test|100|0"
     assert stdout_value[1] == "ULTIMATE_FULL: 1|custom|3.14|3|req|200|1"
     assert stdout_value[2] == "SEPARATORS: 42"
     assert stdout_value[3] == "EDGE_MIX: 1-test-2-True-1"
     assert stdout_value[4] == "RECURSIVE: 7 11"
-    assert (
-        stdout_value[5] == "VALIDATION: x:1,y:2.5,z:10,args:1,w:True,kwargs:1"
-    )
+    assert stdout_value[5] == "VALIDATION: x:1,y:2.5,z:10,args:1,w:True,kwargs:1"
 
 
 def test_param_failing(fixture_path, capture_stdout):
@@ -887,15 +886,15 @@ def test_dynamic_spawn_archetype(fixture_path, capture_stdout):
     expected_spawned_external_node = "Spawned External node:"
 
     # Check for the spawned messages
-    assert any(
-        expected_spawned_node in line for line in output_lines
-    ), f"Expected '{expected_spawned_node}' in output."
-    assert any(
-        expected_spawned_walker in line for line in output_lines
-    ), f"Expected '{expected_spawned_walker}' in output."
-    assert any(
-        expected_spawned_external_node in line for line in output_lines
-    ), f"Expected '{expected_spawned_external_node}' in output."
+    assert any(expected_spawned_node in line for line in output_lines), (
+        f"Expected '{expected_spawned_node}' in output."
+    )
+    assert any(expected_spawned_walker in line for line in output_lines), (
+        f"Expected '{expected_spawned_walker}' in output."
+    )
+    assert any(expected_spawned_external_node in line for line in output_lines), (
+        f"Expected '{expected_spawned_external_node}' in output."
+    )
 
     # Expected values from the walker traversal
     expected_values = ["Value: 0", "Value: 1", "Value: 2", "Value: 3"]
@@ -903,9 +902,9 @@ def test_dynamic_spawn_archetype(fixture_path, capture_stdout):
     # Each expected value should appear twice (once for test_node, once for Item)
     for val in expected_values:
         occurrences = [line for line in output_lines if line.strip() == val]
-        assert (
-            len(occurrences) == 2
-        ), f"Expected '{val}' to appear 2 times, but found {len(occurrences)}."
+        assert len(occurrences) == 2, (
+            f"Expected '{val}' to appear 2 times, but found {len(occurrences)}."
+        )
 
 
 def test_dynamic_archetype_creation(fixture_path, capture_stdout):
@@ -918,9 +917,9 @@ def test_dynamic_archetype_creation(fixture_path, capture_stdout):
     expected_spawned_walker = "Dynamic Node Value: 99"
 
     # Check for the spawned messages
-    assert (
-        expected_spawned_walker in output
-    ), f"Expected '{expected_spawned_walker}' in output."
+    assert expected_spawned_walker in output, (
+        f"Expected '{expected_spawned_walker}' in output."
+    )
 
 
 def test_dynamic_archetype_creation_rel_import(fixture_path, capture_stdout):
@@ -996,8 +995,7 @@ def test_visit_sequence(fixture_path, capture_stdout):
     with capture_stdout() as captured_output:
         Jac.jac_import("visit_sequence", base_path=fixture_path("./"))
     assert (
-        captured_output.getvalue()
-        == "walker entry\nwalker enter to root\n"
+        captured_output.getvalue() == "walker entry\nwalker enter to root\n"
         "a-1\na-2\na-3\na-4\na-5\na-6\n"
         "b-1\nb-2\nb-3\nb-4\nb-5\nb-6\n"
         "c-1\nc-2\nc-3\nc-4\nc-5\nc-6\n"
@@ -1032,7 +1030,9 @@ def test_node_del(fixture_path, capture_stdout):
 
 
 # Helper method to create files within tests
-def create_temp_jac_file(content: str, dir_path: str, filename: str = "test_mod.jac") -> str:
+def create_temp_jac_file(
+    content: str, dir_path: str, filename: str = "test_mod.jac"
+) -> str:
     """Create a temporary Jac file in a specific directory."""
     full_path = os.path.join(dir_path, filename)
     os.makedirs(os.path.dirname(full_path), exist_ok=True)
@@ -1180,8 +1180,7 @@ def test_import_jac_from_py(capture_stdout):
 
     stdout_value = captured_output.getvalue()
     assert (
-        stdout_value
-        == "Value: -1\nValue: 0\nValue: 1\nValue: 2\nValue: 3\nValue: 4"
+        stdout_value == "Value: -1\nValue: 0\nValue: 1\nValue: 2\nValue: 3\nValue: 4"
         "\nValue: 5\nValue: 6\nValue: 7\nFinal Value: 8\nDone walking.\n"
     )
 

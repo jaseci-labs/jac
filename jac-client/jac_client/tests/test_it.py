@@ -250,9 +250,9 @@ def test_all_in_one_app_endpoints() -> None:
                         )
                         assert resp_png.status == 200
                         assert len(png_bytes) > 0
-                        assert png_bytes.startswith(
-                            b"\x89PNG"
-                        ), "Expected PNG signature at start of burger.png"
+                        assert png_bytes.startswith(b"\x89PNG"), (
+                            "Expected PNG signature at start of burger.png"
+                        )
                 except (URLError, HTTPError) as exc:
                     print(
                         f"[DEBUG] Error while requesting /static/assets/burger.png: {exc}"
@@ -284,7 +284,9 @@ def test_all_in_one_app_endpoints() -> None:
 
                 # POST /walker/create_todo – create a Todo via walker HTTP API
                 try:
-                    print("[DEBUG] Sending POST request to /walker/create_todo endpoint")
+                    print(
+                        "[DEBUG] Sending POST request to /walker/create_todo endpoint"
+                    )
                     payload = {
                         "text": "Sample todo from all-in-one app",
                     }
@@ -318,7 +320,9 @@ def test_all_in_one_app_endpoints() -> None:
                         server.wait(timeout=15)
                         print("[DEBUG] Server process terminated cleanly")
                     except Exception:
-                        print("[DEBUG] Server did not terminate cleanly, killing process")
+                        print(
+                            "[DEBUG] Server did not terminate cleanly, killing process"
+                        )
                         server.kill()
         finally:
             print(f"[DEBUG] Restoring original working directory to {original_cwd}")

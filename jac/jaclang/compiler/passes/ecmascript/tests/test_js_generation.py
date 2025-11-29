@@ -15,22 +15,27 @@ from jaclang.compiler.program import JacProgram
 @pytest.fixture
 def fixture_path():
     """Return a function that returns absolute path to a fixture file."""
+
     def _get_fixture_path(filename: str) -> str:
         fixtures_dir = Path(__file__).parent / "fixtures"
         return str(fixtures_dir / filename)
+
     return _get_fixture_path
 
 
 @pytest.fixture
 def lang_fixture_path():
     """Return a function that returns absolute path to a language fixture file."""
+
     def _get_lang_fixture_path(file: str) -> str:
         import jaclang
+
         fixture_src = jaclang.__file__
         file_path = os.path.join(
             os.path.dirname(fixture_src), "tests", "fixtures", file
         )
         return os.path.abspath(file_path)
+
     return _get_lang_fixture_path
 
 
@@ -414,15 +419,15 @@ def test_usage() {
 
         # Verify all relative imports have .js extension
         import_lines = [
-            line
-            for line in js_code.split("\n")
-            if "import" in line and "from" in line
+            line for line in js_code.split("\n") if "import" in line and "from" in line
         ]
         relative_imports = [
             line for line in import_lines if "./" in line or "../" in line
         ]
         for line in relative_imports:
-            assert '.js"' in line or ".js'" in line, f"Relative import missing .js: {line}"
+            assert '.js"' in line or ".js'" in line, (
+                f"Relative import missing .js: {line}"
+            )
 
         assert_balanced_syntax(js_code, temp_path)
     finally:
@@ -602,12 +607,12 @@ cl def format_message(user: str, count: int) -> str {
             assert pattern in js_code
 
         # Verify return uses template literal, not concatenation
-        return_statements = [
-            line for line in js_code.split("\n") if "return" in line
-        ]
+        return_statements = [line for line in js_code.split("\n") if "return" in line]
         fstring_returns = [line for line in return_statements if "${" in line]
         for ret_line in fstring_returns:
-            assert ret_line.count("`") == 2, f"Expected single template literal: {ret_line}"
+            assert ret_line.count("`") == 2, (
+                f"Expected single template literal: {ret_line}"
+            )
 
         assert_balanced_syntax(js_code, temp_path)
     finally:

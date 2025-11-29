@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import inspect
 import os
-from pathlib import Path
 
 import pytest
 
@@ -32,15 +31,14 @@ def fixture_path():
 def examples_path():
     """Get the path to the examples directory."""
     fixture_src = jaclang.__file__
-    file_path = os.path.join(
-        os.path.dirname(os.path.dirname(fixture_src)), "examples"
-    )
+    file_path = os.path.join(os.path.dirname(os.path.dirname(fixture_src)), "examples")
     return os.path.abspath(file_path)
 
 
 @pytest.fixture
 def load_fixture():
     """Return a function that loads fixture content from the fixtures directory."""
+
     def _load_fixture(fixture: str) -> str:
         """Load fixture from fixtures directory."""
         frame = inspect.currentframe()

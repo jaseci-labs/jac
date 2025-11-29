@@ -4,10 +4,9 @@ import ast as ast3
 import os
 from difflib import unified_diff
 
+from conftest import check_pass_ast_complete, get_micro_jac_files
 from jaclang.compiler.passes.tool import JacFormatPass
 from jaclang.compiler.program import JacProgram
-
-from conftest import check_pass_ast_complete, get_micro_jac_files
 
 
 def test_pass_ast_complete() -> None:
@@ -18,9 +17,7 @@ def test_pass_ast_complete() -> None:
 def test_double_unparse(examples_path) -> None:
     """Parse micro jac file."""
     try:
-        code_gen_pure = JacProgram().compile(
-            examples_path("manual_code/circle.jac")
-        )
+        code_gen_pure = JacProgram().compile(examples_path("manual_code/circle.jac"))
         x = code_gen_pure.unparse()
         y = code_gen_pure.unparse()
         assert x == y
@@ -46,9 +43,7 @@ def micro_suite_test(filename: str) -> None:
             len(
                 [
                     i
-                    for i in unified_diff(
-                        before.splitlines(), after.splitlines(), n=0
-                    )
+                    for i in unified_diff(before.splitlines(), after.splitlines(), n=0)
                     if "test" not in i
                 ]
             )
@@ -57,16 +52,12 @@ def micro_suite_test(filename: str) -> None:
     else:
         try:
             assert (
-                len(
-                    "\n".join(unified_diff(before.splitlines(), after.splitlines()))
-                )
+                len("\n".join(unified_diff(before.splitlines(), after.splitlines())))
                 == 0
             )
         except Exception as e:
             print(
-                "\n".join(
-                    unified_diff(before.splitlines(), after.splitlines(), n=10)
-                )
+                "\n".join(unified_diff(before.splitlines(), after.splitlines(), n=10))
             )
             raise e
 
@@ -76,7 +67,9 @@ def pytest_generate_tests(metafunc):
     """Generate test cases for all micro jac files."""
     if "micro_jac_file" in metafunc.fixturenames:
         files = get_micro_jac_files()
-        metafunc.parametrize("micro_jac_file", files, ids=lambda f: f.replace(os.sep, "_"))
+        metafunc.parametrize(
+            "micro_jac_file", files, ids=lambda f: f.replace(os.sep, "_")
+        )
 
 
 def test_micro_suite(micro_jac_file):

@@ -71,7 +71,9 @@ def test_multiline_before_first_token(initial_sem_tokens, document_lines) -> Non
         "Multiline before first token (Basic)",
     )
     document_lines.insert(1, "")
-    check_semantic_token_update(case, "2, 10, 4, 0, 2, 3, 4, 14,", initial_sem_tokens, document_lines)
+    check_semantic_token_update(
+        case, "2, 10, 4, 0, 2, 3, 4, 14,", initial_sem_tokens, document_lines
+    )
 
 
 def test_multiline_between_tokens(initial_sem_tokens, document_lines) -> None:
@@ -85,7 +87,9 @@ def test_multiline_between_tokens(initial_sem_tokens, document_lines) -> None:
     )
     document_lines[5] = "    return math.pi "
     document_lines.insert(6, "    * radius * radius;")
-    check_semantic_token_update(case, "2, 1, 6, 6, 7, 1, ", initial_sem_tokens, document_lines)
+    check_semantic_token_update(
+        case, "2, 1, 6, 6, 7, 1, ", initial_sem_tokens, document_lines
+    )
 
 
 def test_multiline_at_end_of_line(initial_sem_tokens, document_lines) -> None:
@@ -99,7 +103,9 @@ def test_multiline_at_end_of_line(initial_sem_tokens, document_lines) -> None:
     )
     document_lines[4] = "can calculate_area(radius: float) -> "
     document_lines.insert(5, "float {")
-    check_semantic_token_update(case, " 2, 1, 1, 0, 5, 2, 1, ", initial_sem_tokens, document_lines)
+    check_semantic_token_update(
+        case, " 2, 1, 1, 0, 5, 2, 1, ", initial_sem_tokens, document_lines
+    )
 
 
 def test_sameline_space_between_tokens(initial_sem_tokens, document_lines) -> None:
@@ -111,7 +117,9 @@ def test_sameline_space_between_tokens(initial_sem_tokens, document_lines) -> No
         0,
         "Sameline space between tokens (Basic)",
     )
-    check_semantic_token_update(case, "0, 11, 6, 7, 1,", initial_sem_tokens, document_lines)
+    check_semantic_token_update(
+        case, "0, 11, 6, 7, 1,", initial_sem_tokens, document_lines
+    )
 
 
 def test_sameline_tab_between_tokens(initial_sem_tokens, document_lines) -> None:
@@ -123,7 +131,9 @@ def test_sameline_tab_between_tokens(initial_sem_tokens, document_lines) -> None
         0,
         "Sameline tab between tokens (Basic)",
     )
-    check_semantic_token_update(case, "0, 14, 6, 7, 1", initial_sem_tokens, document_lines)
+    check_semantic_token_update(
+        case, "0, 14, 6, 7, 1", initial_sem_tokens, document_lines
+    )
 
 
 def test_tab_at_start_of_token(initial_sem_tokens, document_lines) -> None:
@@ -135,7 +145,9 @@ def test_tab_at_start_of_token(initial_sem_tokens, document_lines) -> None:
         0,
         "Tab at start of a token",
     )
-    check_semantic_token_update(case, "0, 13, 6, 7, 1,", initial_sem_tokens, document_lines)
+    check_semantic_token_update(
+        case, "0, 13, 6, 7, 1,", initial_sem_tokens, document_lines
+    )
 
 
 def test_insert_inside_token(initial_sem_tokens, document_lines) -> None:
@@ -147,7 +159,9 @@ def test_insert_inside_token(initial_sem_tokens, document_lines) -> None:
         0,
         "insert inside a token",
     )
-    check_semantic_token_update(case, "1, 11, 13, 0, 2, 0, 19, 6, 7, 1", initial_sem_tokens, document_lines)
+    check_semantic_token_update(
+        case, "1, 11, 13, 0, 2, 0, 19, 6, 7, 1", initial_sem_tokens, document_lines
+    )
 
 
 def test_insert_inside_token_selected_range(initial_sem_tokens, document_lines) -> None:
@@ -159,7 +173,9 @@ def test_insert_inside_token_selected_range(initial_sem_tokens, document_lines) 
         2,
         "insert inside a token in a selected range",
     )
-    check_semantic_token_update(case, "1, 11, 11, 0, 2, 0, 17, 6, 7, 1,", initial_sem_tokens, document_lines)
+    check_semantic_token_update(
+        case, "1, 11, 11, 0, 2, 0, 17, 6, 7, 1,", initial_sem_tokens, document_lines
+    )
 
 
 def test_newline_at_start_of_token(initial_sem_tokens, document_lines) -> None:
@@ -173,7 +189,9 @@ def test_newline_at_start_of_token(initial_sem_tokens, document_lines) -> None:
     )
     document_lines[5] = "    return math.pi * "
     document_lines.insert(6, "    radius * radius;")
-    check_semantic_token_update(case, "0, 2, 1, 4, 6, 7, 1, 0", initial_sem_tokens, document_lines)
+    check_semantic_token_update(
+        case, "0, 2, 1, 4, 6, 7, 1, 0", initial_sem_tokens, document_lines
+    )
 
 
 def test_newline_after_parenthesis(initial_sem_tokens, document_lines) -> None:
@@ -187,7 +205,9 @@ def test_newline_after_parenthesis(initial_sem_tokens, document_lines) -> None:
     )
     document_lines[4] = "can calculate_area("
     document_lines.insert(5, "    radius: float) -> float {")
-    check_semantic_token_update(case, "12, 1, 1, 4, 6, 7, 1, 0, 8", initial_sem_tokens, document_lines)
+    check_semantic_token_update(
+        case, "12, 1, 1, 4, 6, 7, 1, 0, 8", initial_sem_tokens, document_lines
+    )
 
 
 def test_insert_newline_at_end_of_token(initial_sem_tokens, document_lines) -> None:
@@ -201,7 +221,9 @@ def test_insert_newline_at_end_of_token(initial_sem_tokens, document_lines) -> N
     )
     document_lines[5] = "    return math.pi * radius"
     document_lines.insert(6, "     * radius;")
-    check_semantic_token_update(case, "7, 1, 1, 7, 6, 7", initial_sem_tokens, document_lines)
+    check_semantic_token_update(
+        case, "7, 1, 1, 7, 6, 7", initial_sem_tokens, document_lines
+    )
 
 
 def test_deletion_basic(initial_sem_tokens, document_lines) -> None:
@@ -213,7 +235,9 @@ def test_deletion_basic(initial_sem_tokens, document_lines) -> None:
         4,
         "Deletion Basic",
     )
-    check_semantic_token_update(case, "0, 10, 5, 2, 1, 1, 7, 4, 0, 2, 0", initial_sem_tokens, document_lines)
+    check_semantic_token_update(
+        case, "0, 10, 5, 2, 1, 1, 7, 4, 0, 2, 0", initial_sem_tokens, document_lines
+    )
 
 
 def test_multiline_deletion(initial_sem_tokens, document_lines) -> None:
@@ -229,7 +253,9 @@ def test_multiline_deletion(initial_sem_tokens, document_lines) -> None:
         '"""Function to calculate the area of a circle."""can calculate_area(radius: float) -> float {'
     )
     del document_lines[4]
-    check_semantic_token_update(case, "2, 2, 53, 14, 12, 1, 0", initial_sem_tokens, document_lines)
+    check_semantic_token_update(
+        case, "2, 2, 53, 14, 12, 1, 0", initial_sem_tokens, document_lines
+    )
 
 
 def test_single_deletion_inside_token(initial_sem_tokens, document_lines) -> None:
@@ -241,10 +267,14 @@ def test_single_deletion_inside_token(initial_sem_tokens, document_lines) -> Non
         1,
         "single Deletion inside token",
     )
-    check_semantic_token_update(case, "1, 1, 11, 3, 0, 2, 0, 9, 6", initial_sem_tokens, document_lines)
+    check_semantic_token_update(
+        case, "1, 1, 11, 3, 0, 2, 0, 9, 6", initial_sem_tokens, document_lines
+    )
 
 
-def test_deletion_inside_token_selected_range(initial_sem_tokens, document_lines) -> None:
+def test_deletion_inside_token_selected_range(
+    initial_sem_tokens, document_lines
+) -> None:
     """Test deletion inside token selected range."""
     case = (
         lspt.Position(line=4, character=10),
@@ -253,7 +283,9 @@ def test_deletion_inside_token_selected_range(initial_sem_tokens, document_lines
         5,
         "Deletion inside token- selected range",
     )
-    check_semantic_token_update(case, "4, 9, 12, 1, 0, 10, 6", initial_sem_tokens, document_lines)
+    check_semantic_token_update(
+        case, "4, 9, 12, 1, 0, 10, 6", initial_sem_tokens, document_lines
+    )
 
 
 def test_selected_multiline_deletion(initial_sem_tokens, document_lines) -> None:
@@ -269,10 +301,14 @@ def test_selected_multiline_deletion(initial_sem_tokens, document_lines) -> None
         "can calculate_area(radius: float) -> float {return math.pi * radius * radius;"
     )
     del document_lines[4]
-    check_semantic_token_update(case, "4, 0, 2, 3, 4, 14, 12, 1, 0, 15", initial_sem_tokens, document_lines)
+    check_semantic_token_update(
+        case, "4, 0, 2, 3, 4, 14, 12, 1, 0, 15", initial_sem_tokens, document_lines
+    )
 
 
-def test_multi_line_insert_on_selected_region(initial_sem_tokens, document_lines) -> None:
+def test_multi_line_insert_on_selected_region(
+    initial_sem_tokens, document_lines
+) -> None:
     """Test multi line insert on selected region."""
     case = (
         lspt.Position(line=4, character=26),
@@ -293,4 +329,6 @@ def test_multi_line_insert_on_selected_region(initial_sem_tokens, document_lines
         "}",
         " ",
     ]
-    check_semantic_token_update(case, " 2, 1, 2, 14, 5, 2, 1, 1, ", initial_sem_tokens, document_lines)
+    check_semantic_token_update(
+        case, " 2, 1, 2, 14, 5, 2, 1, 1, ", initial_sem_tokens, document_lines
+    )

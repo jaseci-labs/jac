@@ -8,6 +8,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
+
 from jac_client.plugin.vite_client_bundle import ViteClientBundleBuilder
 from jaclang.runtimelib.runtime import JacRuntime as Jac
 
@@ -138,9 +139,7 @@ def test_nested_advance_example() -> None:
         temp_path = Path(temp_dir)
 
         package_json, output_dir = _create_test_project_with_vite(temp_path)
-        runtime_path = (
-            Path(__file__).parent.parent / "plugin" / "client_runtime.jac"
-        )
+        runtime_path = Path(__file__).parent.parent / "plugin" / "client_runtime.jac"
 
         # Initialize the Vite builder
         builder = ViteClientBundleBuilder(
@@ -194,9 +193,7 @@ def test_nested_folder_structure_preserved() -> None:
         temp_path = Path(temp_dir)
 
         package_json, output_dir = _create_test_project_with_vite(temp_path)
-        runtime_path = (
-            Path(__file__).parent.parent / "plugin" / "client_runtime.jac"
-        )
+        runtime_path = Path(__file__).parent.parent / "plugin" / "client_runtime.jac"
 
         # Initialize the Vite builder
         builder = ViteClientBundleBuilder(
@@ -242,9 +239,7 @@ def test_nested_folder_structure_preserved() -> None:
         )
 
         card_js = level1_dir / "Card.js"
-        assert card_js.exists(), (
-            f"Expected {card_js} to exist in src/level1/ directory"
-        )
+        assert card_js.exists(), f"Expected {card_js} to exist in src/level1/ directory"
 
         # Verify level2 files exist
         level2_dir = level1_dir / "level2"
@@ -265,9 +260,7 @@ def test_relative_imports_in_compiled_files() -> None:
         temp_path = Path(temp_dir)
 
         package_json, output_dir = _create_test_project_with_vite(temp_path)
-        runtime_path = (
-            Path(__file__).parent.parent / "plugin" / "client_runtime.jac"
-        )
+        runtime_path = Path(__file__).parent.parent / "plugin" / "client_runtime.jac"
 
         # Initialize the Vite builder
         builder = ViteClientBundleBuilder(
@@ -341,9 +334,7 @@ def test_nested_basic_example() -> None:
         temp_path = Path(temp_dir)
 
         package_json, output_dir = _create_test_project_with_vite(temp_path)
-        runtime_path = (
-            Path(__file__).parent.parent / "plugin" / "client_runtime.jac"
-        )
+        runtime_path = Path(__file__).parent.parent / "plugin" / "client_runtime.jac"
 
         # Initialize the Vite builder
         builder = ViteClientBundleBuilder(
@@ -374,14 +365,10 @@ def test_nested_basic_example() -> None:
 
         # Verify nested structure is preserved
         components_dir = src_dir / "components"
-        assert components_dir.exists(), (
-            "Expected components directory to exist in src/"
-        )
+        assert components_dir.exists(), "Expected components directory to exist in src/"
 
         button_js = components_dir / "button.js"
-        assert button_js.exists(), (
-            "Expected button.js to exist in src/components/"
-        )
+        assert button_js.exists(), "Expected button.js to exist in src/components/"
 
         # Cleanup
         builder.cleanup_temp_dir()
