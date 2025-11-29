@@ -3010,9 +3010,10 @@ class JacParser(Transform[uni.Source, uni.Module]):
             if self.match_token(Tok.EQ):
                 value = self.consume(uni.Expr)
             kids = [*self.cur_nodes]
-            if hasattr(value, "attached_tokens"):  # <-- TEMP WORKAROUND
-                kids.insert(kids.index(value) + 1, value.attached_tokens[1])  # type: ignore
-                kids.insert(kids.index(value), value.attached_tokens[0])  # type: ignore
+            # Insert attached tokens (braces) around expressions if present
+            if isinstance(value, uni.Expr) and value.attached_tokens is not None:
+                kids.insert(kids.index(value) + 1, value.attached_tokens[1])
+                kids.insert(kids.index(value), value.attached_tokens[0])
             return uni.JsxNormalAttribute(
                 name=name,
                 value=value,
@@ -3032,31 +3033,30 @@ class JacParser(Transform[uni.Source, uni.Module]):
             expr.attached_tokens = [lbrace, rbrace]  # <-- TEMP WORKAROUND
             return expr
 
-        def jsx_children(self, _: None) -> list[uni.JsxChild]:
+        def jsx_children(self, _: None) -> list[uni.JsxChild | uni.JsxElement]:
             """Grammar rule.
 
             jsx_children: jsx_child+
             """
             # The grammar already produces a list of children
             # Just collect all JsxChild nodes from cur_nodes
-            children = []
+            children: list[uni.JsxChild | uni.JsxElement] = []
             while self.node_idx < len(self.cur_nodes):
-                if isinstance(
-                    self.cur_nodes[self.node_idx], (uni.JsxChild, uni.JsxElement)
-                ):
-                    children.append(self.cur_nodes[self.node_idx])  # type: ignore[arg-type]
+                cur = self.cur_nodes[self.node_idx]
+                if isinstance(cur, (uni.JsxChild, uni.JsxElement)):
+                    children.append(cur)
                     self.node_idx += 1
                 else:
                     break
             return children
 
-        def jsx_child(self, _: None) -> uni.JsxChild:
+        def jsx_child(self, _: None) -> uni.JsxChild | uni.JsxElement:
             """Grammar rule.
 
             jsx_child: jsx_element | jsx_expression
             """
             if jsx_elem := self.match(uni.JsxElement):
-                return jsx_elem  # type: ignore[return-value]
+                return jsx_elem
             return self.consume(uni.JsxChild)
 
         def jsx_expression(self, _: None) -> uni.JsxExpression:

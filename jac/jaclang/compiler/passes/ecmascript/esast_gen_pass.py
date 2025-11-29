@@ -107,7 +107,7 @@ class ScopeInfo:
 class AssignmentTargetInfo:
     """Container for processed assignment targets."""
 
-    node: uni.UniNode
+    node: uni.Expr
     left: es.Pattern | es.Expression
     reference: es.Expression | None
     decl_name: str | None
@@ -1526,6 +1526,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
             operator = ES_COMPARISON_OPS.get(op_tok) if op_tok else None
             operator = operator or "==="
 
+            comparison: es.UnaryExpression | es.BinaryExpression
             if op_tok == Tok.KW_NIN:
                 in_expr = self.sync_loc(
                     es.BinaryExpression(operator="in", left=left, right=right),
@@ -1592,29 +1593,26 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
                     elements.append(None)
                     continue
                 pattern, _, _ = self._convert_assignment_target(value)
-                elements.append(pattern if isinstance(pattern, es.Pattern) else pattern)
+                elements.append(cast(es.Pattern, pattern))
             pattern = self.sync_loc(es.ArrayPattern(elements=elements), jac_node=target)
             return pattern, None, None
 
         if isinstance(target, uni.DictVal):
-            properties: list[es.AssignmentProperty] = []
+            properties: list[es.AssignmentProperty | es.RestElement] = []
             for kv in target.kv_pairs:
                 if not isinstance(kv, uni.KVPair) or kv.key is None:
                     continue
-                key_expr = (
+                key_expr = cast(
+                    es.Expression,
                     kv.key.gen.es_ast
                     if kv.key.gen.es_ast
-                    else self.sync_loc(es.Identifier(name="key"), jac_node=kv.key)
+                    else self.sync_loc(es.Identifier(name="key"), jac_node=kv.key),
                 )
                 value_pattern, _, _ = self._convert_assignment_target(kv.value)
                 assignment = self.sync_loc(
                     es.AssignmentProperty(
                         key=key_expr,
-                        value=(
-                            value_pattern
-                            if isinstance(value_pattern, es.Pattern)
-                            else value_pattern
-                        ),
+                        value=cast(es.Pattern, value_pattern),
                         shorthand=False,
                     ),
                     jac_node=kv,
@@ -1628,12 +1626,13 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
         if isinstance(target, uni.SubTag):
             return self._convert_assignment_target(target.tag)
 
-        left = (
+        left = cast(
+            es.Pattern | es.Expression,
             target.gen.es_ast
             if target.gen.es_ast
-            else self.sync_loc(es.Identifier(name="temp"), jac_node=target)
+            else self.sync_loc(es.Identifier(name="temp"), jac_node=target),
         )
-        reference = left if isinstance(left, es.Expression) else None
+        reference = cast(es.Expression, left) if isinstance(left, es.Node) else None
         return left, reference, None
 
     def _collect_pattern_names(self, target: uni.UniNode) -> list[tuple[str, uni.Name]]:
@@ -1676,8 +1675,13 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
             )
             operator = ES_AUG_ASSIGN_OPS.get(aug_tok) if aug_tok else None
             operator = operator or "="
-            right = value_expr or self._get_ast_or_default(
-                node.value, default_factory=lambda _src: es.Identifier(name="undefined")
+            right = cast(
+                es.Expression,
+                value_expr
+                or self._get_ast_or_default(
+                    node.value,
+                    default_factory=lambda _src: es.Identifier(name="undefined"),
+                ),
             )
             assign_expr = self.sync_loc(
                 es.AssignmentExpression(operator=operator, left=left, right=right),
@@ -1714,8 +1718,12 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
             )
 
         statements: list[es.Statement] = []
-        current_value = value_expr or self._get_ast_or_default(
-            node.value, default_factory=lambda _src: es.Identifier(name="undefined")
+        current_value: es.Expression = cast(
+            es.Expression,
+            value_expr
+            or self._get_ast_or_default(
+                node.value, default_factory=lambda _src: es.Identifier(name="undefined")
+            ),
         )
 
         for info in reversed(targets_info):
@@ -1742,7 +1750,8 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
             if should_declare:
                 declarator = self.sync_loc(
                     es.VariableDeclarator(
-                        id=left, init=current_value if value_expr is not None else None
+                        id=cast(es.Pattern, left),
+                        init=current_value if value_expr is not None else None,
                     ),
                     jac_node=target_node,
                 )
@@ -1790,7 +1799,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
         if len(statements) == 1:
             node.gen.es_ast = statements[0]
         else:
-            node.gen.es_ast = statements
+            node.gen.es_ast = statements  # type: ignore[assignment]
 
     def exit_func_call(self, node: uni.FuncCall) -> None:
         """Process function call."""
@@ -1807,15 +1816,17 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
         props: list[es.Property | es.SpreadElement] = []
         for param in node.params:
             if isinstance(param, uni.KWPair):
-                key_expr = (
+                key_expr = cast(
+                    es.Expression,
                     param.key.gen.es_ast
                     if param.key and param.key.gen.es_ast
-                    else self.sync_loc(es.Identifier(name="key"), jac_node=param)
+                    else self.sync_loc(es.Identifier(name="key"), jac_node=param),
                 )
-                value_expr = (
+                value_expr = cast(
+                    es.Expression,
                     param.value.gen.es_ast
                     if param.value and param.value.gen.es_ast
-                    else self.sync_loc(es.Literal(value=None), jac_node=param)
+                    else self.sync_loc(es.Literal(value=None), jac_node=param),
                 )
                 prop = self.sync_loc(
                     es.Property(
@@ -1832,7 +1843,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
                 continue
 
             if param.gen.es_ast:
-                args.append(param.gen.es_ast)
+                args.append(cast(es.Expression, param.gen.es_ast))
 
         if target_is_type and len(args) == 1 and isinstance(args[0], es.Expression):
             typeof_expr = self.sync_loc(
@@ -1953,17 +1964,21 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
         else:
             callee_type = None
         args_obj = self.sync_loc(es.ObjectExpression(properties=props), jac_node=node)
+        callee_expr = cast(es.Expression, callee)
+        call_args: list[es.Expression | es.SpreadElement] = (
+            [args_obj] if props else args
+        )
         if isinstance(callee_type, jtypes.ClassType) and isinstance(
             callee, es.Expression
         ):
             # Ensure callee is an Expression for NewExpression
             node.gen.es_ast = self.sync_loc(
-                es.NewExpression(callee=callee, arguments=args_obj if props else args),
+                es.NewExpression(callee=callee_expr, arguments=call_args),
                 jac_node=node,
             )
         else:
             node.gen.es_ast = self.sync_loc(
-                es.CallExpression(callee=callee, arguments=args_obj if props else args),
+                es.CallExpression(callee=callee_expr, arguments=call_args),
                 jac_node=node,
             )
 
@@ -1975,7 +1990,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
             first_slice = node.slices[0]
             if node.is_range:
                 # Store slice info - will be used by AtomTrailer
-                node.gen.es_ast = {
+                node.gen.es_ast = {  # type: ignore[assignment]
                     "type": "slice",
                     "start": (
                         first_slice.start.gen.es_ast
@@ -1990,7 +2005,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
                 }
             else:
                 # Store index info - will be used by AtomTrailer
-                node.gen.es_ast = {
+                node.gen.es_ast = {  # type: ignore[assignment]
                     "type": "index",
                     "value": (
                         first_slice.start.gen.es_ast
@@ -2007,10 +2022,11 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
 
     def exit_atom_trailer(self, node: uni.AtomTrailer) -> None:
         """Process attribute access."""
-        obj = (
+        obj = cast(
+            es.Expression,
             node.target.gen.es_ast
             if node.target.gen.es_ast
-            else self.sync_loc(es.Identifier(name="obj"), jac_node=node.target)
+            else self.sync_loc(es.Identifier(name="obj"), jac_node=node.target),
         )
 
         if node.right and node.right.gen.es_ast:
@@ -2031,13 +2047,15 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
                 if isinstance(slice_info, dict):
                     if slice_info.get("type") == "slice":
                         # Slice operation - convert to .slice() call
-                        start = slice_info.get("start") or self.sync_loc(
-                            es.Literal(value=0), jac_node=node
+                        start = cast(
+                            es.Expression,
+                            slice_info.get("start")
+                            or self.sync_loc(es.Literal(value=0), jac_node=node),
                         )
                         stop = slice_info.get("stop")
-                        args: list[es.Expression] = [start]
+                        slice_args: list[es.Expression | es.SpreadElement] = [start]
                         if stop is not None:
-                            args.append(stop)
+                            slice_args.append(cast(es.Expression, stop))
                         slice_call = self.sync_loc(
                             es.CallExpression(
                                 callee=self.sync_loc(
@@ -2050,15 +2068,17 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
                                     ),
                                     jac_node=node,
                                 ),
-                                arguments=args,
+                                arguments=slice_args,
                             ),
                             jac_node=node,
                         )
                         node.gen.es_ast = slice_call
                     elif slice_info.get("type") == "index":
                         # Index operation
-                        idx = slice_info.get("value") or self.sync_loc(
-                            es.Literal(value=0), jac_node=node
+                        idx = cast(
+                            es.Expression,
+                            slice_info.get("value")
+                            or self.sync_loc(es.Literal(value=0), jac_node=node),
                         )
                         member_expr = self.sync_loc(
                             es.MemberExpression(
@@ -2082,7 +2102,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
         if isinstance(node.signature, uni.FuncSignature):
             for param in node.signature.params:
                 if param.gen.es_ast:
-                    params.append(param.gen.es_ast)
+                    params.append(cast(es.Pattern, param.gen.es_ast))
 
         # Check if body is a code block or single expression
         if isinstance(node.body, list):
@@ -2107,12 +2127,13 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
                 jac_node=node,
             )
             node.gen.es_ast = arrow_func
-        else:
+        elif isinstance(node.body, uni.Expr):
             # Single expression lambda: use arrow function with expression body
-            body_expr = (
+            body_expr = cast(
+                es.Expression,
                 node.body.gen.es_ast
                 if node.body.gen.es_ast
-                else self.sync_loc(es.Literal(value=None), jac_node=node.body)
+                else self.sync_loc(es.Literal(value=None), jac_node=node.body),
             )
 
             arrow_func = self.sync_loc(
@@ -2152,17 +2173,17 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
         elements: list[es.Expression | es.SpreadElement | None] = []
         for item in node.values:
             if item.gen.es_ast:
-                elements.append(item.gen.es_ast)
+                elements.append(cast(es.Expression, item.gen.es_ast))
 
         array_expr = self.sync_loc(es.ArrayExpression(elements=elements), jac_node=node)
         node.gen.es_ast = array_expr
 
     def exit_set_val(self, node: uni.SetVal) -> None:
         """Process set literal as new Set()."""
-        elements: list[es.Expression | es.SpreadElement] = []
+        elements: list[es.Expression | es.SpreadElement | None] = []
         for item in node.values:
             if item.gen.es_ast:
-                elements.append(item.gen.es_ast)
+                elements.append(cast(es.Expression, item.gen.es_ast))
 
         # Create new Set([...])
         set_expr = self.sync_loc(
@@ -2181,7 +2202,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
         elements: list[es.Expression | es.SpreadElement | None] = []
         for item in node.values:
             if item.gen.es_ast:
-                elements.append(item.gen.es_ast)
+                elements.append(cast(es.Expression, item.gen.es_ast))
 
         array_expr = self.sync_loc(es.ArrayExpression(elements=elements), jac_node=node)
         node.gen.es_ast = array_expr
@@ -2197,21 +2218,25 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
                 if kv_pair.value.gen.es_ast:
                     properties.append(
                         self.sync_loc(
-                            es.SpreadElement(argument=kv_pair.value.gen.es_ast),
+                            es.SpreadElement(
+                                argument=cast(es.Expression, kv_pair.value.gen.es_ast)
+                            ),
                             jac_node=kv_pair.value,
                         )
                     )
                 continue
 
-            key = (
+            key = cast(
+                es.Expression,
                 kv_pair.key.gen.es_ast
                 if kv_pair.key.gen.es_ast
-                else self.sync_loc(es.Literal(value="key"), jac_node=kv_pair.key)
+                else self.sync_loc(es.Literal(value="key"), jac_node=kv_pair.key),
             )
-            value = (
+            value = cast(
+                es.Expression,
                 kv_pair.value.gen.es_ast
                 if kv_pair.value.gen.es_ast
-                else self.sync_loc(es.Literal(value=None), jac_node=kv_pair.value)
+                else self.sync_loc(es.Literal(value=None), jac_node=kv_pair.value),
             )
 
             prop = self.sync_loc(
@@ -2319,10 +2344,12 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
             return
 
         # Create binary expression for concatenation
-        result = parts[0]
+        result: es.Expression = cast(es.Expression, parts[0])
         for part in parts[1:]:
             result = self.sync_loc(
-                es.BinaryExpression(operator="+", left=result, right=part),
+                es.BinaryExpression(
+                    operator="+", left=result, right=cast(es.Expression, part)
+                ),
                 jac_node=node,
             )
         node.gen.es_ast = result
@@ -2396,10 +2423,11 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
                     quasis.append(empty_elem)
 
                 # Add the expression
-                expr = (
+                expr = cast(
+                    es.Expression,
                     part.gen.es_ast
                     if part.gen.es_ast
-                    else self.sync_loc(es.Literal(value=""), jac_node=part)
+                    else self.sync_loc(es.Literal(value=""), jac_node=part),
                 )
                 expressions.append(expr)
 
@@ -2438,22 +2466,27 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
 
     def exit_if_else_expr(self, node: uni.IfElseExpr) -> None:
         """Process ternary expression."""
-        test = (
+        test = cast(
+            es.Expression,
             node.condition.gen.es_ast
             if node.condition.gen.es_ast
-            else self.sync_loc(es.Identifier(name="condition"), jac_node=node.condition)
+            else self.sync_loc(
+                es.Identifier(name="condition"), jac_node=node.condition
+            ),
         )
-        consequent = (
+        consequent = cast(
+            es.Expression,
             node.value.gen.es_ast
             if node.value.gen.es_ast
-            else self.sync_loc(es.Identifier(name="value"), jac_node=node.value)
+            else self.sync_loc(es.Identifier(name="value"), jac_node=node.value),
         )
-        alternate = (
+        alternate = cast(
+            es.Expression,
             node.else_value.gen.es_ast
             if node.else_value.gen.es_ast
             else self.sync_loc(
                 es.Identifier(name="alternate"), jac_node=node.else_value
-            )
+            ),
         )
         cond_expr = self.sync_loc(
             es.ConditionalExpression(
@@ -2465,10 +2498,11 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
 
     def exit_await_expr(self, node: uni.AwaitExpr) -> None:
         """Process await expression."""
-        argument = (
+        argument = cast(
+            es.Expression,
             node.target.gen.es_ast
             if node.target.gen.es_ast
-            else self.sync_loc(es.Identifier(name="undefined"), jac_node=node.target)
+            else self.sync_loc(es.Identifier(name="undefined"), jac_node=node.target),
         )
         await_expr = self.sync_loc(es.AwaitExpression(argument=argument), jac_node=node)
         node.gen.es_ast = await_expr
@@ -2510,7 +2544,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
                         ):
                             self.client_manifest.globals_values[sym_name] = lit_val
 
-        statements: list[es.Statement] = []
+        statements: list[es.Statement | es.ModuleDeclaration] = []
         # Check if explicitly annotated with :pub
         is_pub = node.access and node.access.tag.name == Tok.KW_PUB
         for assignment in node.assignments:
@@ -2530,13 +2564,13 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
                     )
                     statements.append(export_decl)
                 else:
-                    statements.append(stmt)
-        node.gen.es_ast = statements
+                    statements.append(cast(es.Statement, stmt))
+        node.gen.es_ast = statements  # type: ignore[assignment]
 
     def exit_non_local_stmt(self, node: uni.NonLocalStmt) -> None:
         """Process non-local statement."""
         # Non-local doesn't have direct equivalent in ES
-        node.gen.es_ast = []
+        node.gen.es_ast = []  # type: ignore[assignment]
 
     def exit_module_code(self, node: uni.ModuleCode) -> None:
         """Process module code (with entry block)."""
@@ -2546,12 +2580,14 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
             for stmt in node.body:
                 if stmt.gen.es_ast:
                     if isinstance(stmt.gen.es_ast, list):
-                        body_stmts.extend(stmt.gen.es_ast)
+                        body_stmts.extend(
+                            cast(es.Statement, s) for s in stmt.gen.es_ast
+                        )
                     else:
-                        body_stmts.append(stmt.gen.es_ast)
+                        body_stmts.append(cast(es.Statement, stmt.gen.es_ast))
 
         # Module code is executed at module level, so just output the statements
-        node.gen.es_ast = body_stmts
+        node.gen.es_ast = body_stmts  # type: ignore[assignment]
 
     def exit_client_block(self, node: uni.ClientBlock) -> None:
         """Process client block (cl { ... })."""
@@ -2561,12 +2597,14 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
             for stmt in node.body:
                 if stmt.gen.es_ast:
                     if isinstance(stmt.gen.es_ast, list):
-                        body_stmts.extend(stmt.gen.es_ast)
+                        body_stmts.extend(
+                            cast(es.Statement, s) for s in stmt.gen.es_ast
+                        )
                     else:
-                        body_stmts.append(stmt.gen.es_ast)
+                        body_stmts.append(cast(es.Statement, stmt.gen.es_ast))
 
         # ClientBlock is just a grouping construct, output the statements directly
-        node.gen.es_ast = body_stmts
+        node.gen.es_ast = body_stmts  # type: ignore[assignment]
 
     def exit_test(self, node: uni.Test) -> None:
         """Process test as a function."""
@@ -2578,9 +2616,11 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
             for stmt in node.body:
                 if stmt.gen.es_ast:
                     if isinstance(stmt.gen.es_ast, list):
-                        body_stmts.extend(stmt.gen.es_ast)
+                        body_stmts.extend(
+                            cast(es.Statement, s) for s in stmt.gen.es_ast
+                        )
                     else:
-                        body_stmts.append(stmt.gen.es_ast)
+                        body_stmts.append(cast(es.Statement, stmt.gen.es_ast))
 
         body_stmts = self._prepend_hoisted(node, body_stmts)
         block = self.sync_loc(es.BlockStatement(body=body_stmts), jac_node=node)

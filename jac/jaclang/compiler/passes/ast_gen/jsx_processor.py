@@ -113,7 +113,8 @@ class EsJsxProcessor:
             if isinstance(child_expr, list):
                 children_elements.extend(child_expr)  # type: ignore[arg-type]
             else:
-                children_elements.append(child_expr)
+                # Child expressions are always Expression types
+                children_elements.append(cast("Expression", child_expr))
         children_expr = self.pass_ref.sync_loc(
             es.ArrayExpression(elements=children_elements), jac_node=node
         )

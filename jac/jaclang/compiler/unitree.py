@@ -755,6 +755,10 @@ class Expr(UniNode):
         # 2. Migrate this to expr_type property
         self.type: TypeBase | None = None
 
+        # Temporary storage for attached tokens (e.g., braces in JSX attributes)
+        # TODO: Refactor to eliminate this workaround
+        self.attached_tokens: list[Token] | None = None
+
     @property
     def expr_type(self) -> str:
         return self._sym_type
@@ -4358,14 +4362,14 @@ class JsxElement(AtomExpr):
         self,
         name: JsxElementName | None,
         attributes: Sequence[JsxAttribute] | None,
-        children: Sequence[JsxChild] | None,
+        children: Sequence[JsxChild | JsxElement] | None,
         is_self_closing: bool,
         is_fragment: bool,
         kid: Sequence[UniNode],
     ) -> None:
         self.name = name
         self.attributes = list(attributes) if attributes else []
-        self.children = list(children) if children else []
+        self.children: list[JsxChild | JsxElement] = list(children) if children else []
         self.is_self_closing = is_self_closing
         self.is_fragment = is_fragment
         UniNode.__init__(self, kid=kid)
@@ -4397,7 +4401,7 @@ class JsxElementName(UniNode):
 
     def __init__(
         self,
-        parts: Sequence[Name],
+        parts: Sequence[Name | Token],
         kid: Sequence[UniNode],
     ) -> None:
         self.parts = list(parts)
@@ -4459,7 +4463,7 @@ class JsxNormalAttribute(JsxAttribute):
 
     def __init__(
         self,
-        name: Name,
+        name: Name | Token,
         value: String | Expr | None,
         kid: Sequence[UniNode],
     ) -> None:
@@ -4507,7 +4511,7 @@ class JsxText(JsxChild):
 
     def __init__(
         self,
-        value: str,
+        value: str | Token,
         kid: Sequence[UniNode],
     ) -> None:
         self.value = value
