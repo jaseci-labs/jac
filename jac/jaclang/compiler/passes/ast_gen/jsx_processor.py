@@ -35,10 +35,11 @@ class EsJsxProcessor:
                 es.Literal(value=None), jac_node=node
             )
         else:
-            tag_expr = (
+            tag_expr = cast(
+                "Expression",
                 node.name.gen.es_ast
                 if node.name.gen.es_ast
-                else self.pass_ref.sync_loc(es.Literal(value=None), jac_node=node.name)
+                else self.pass_ref.sync_loc(es.Literal(value=None), jac_node=node.name),
             )
 
         attributes = node.attributes or []

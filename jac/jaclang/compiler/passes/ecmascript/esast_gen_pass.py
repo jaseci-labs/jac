@@ -1391,7 +1391,8 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
             ),
         )
 
-        op_name = getattr(node.op, "name", None)
+        op_name_str = getattr(node.op, "name", None)
+        op_name = Tok(op_name_str) if op_name_str in Tok.__members__ else None
 
         if op_name == Tok.KW_SPAWN:
             # Spawn operator can work in two ways:
@@ -1418,14 +1419,15 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
             node.gen.es_ast = assign_expr
             return
 
-        logical_op = ES_LOGICAL_OPS.get(op_name)
+        logical_op = ES_LOGICAL_OPS.get(op_name) if op_name else None
         if logical_op:
             bin_expr = self.sync_loc(
                 es.LogicalExpression(operator=logical_op, left=left, right=right),
                 jac_node=node,
             )
         else:
-            operator = ES_BINARY_OPS.get(op_name, "+")
+            operator = ES_BINARY_OPS.get(op_name) if op_name else "+"
+            operator = operator or "+"
             bin_expr = self.sync_loc(
                 es.BinaryExpression(operator=operator, left=left, right=right),
                 jac_node=node,
@@ -1440,7 +1442,9 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
             node.gen.es_ast = self.sync_loc(es.Literal(value=None), jac_node=node)
             return
 
-        logical_op = ES_LOGICAL_OPS.get(node.op.name, "&&")
+        op_tok = Tok(node.op.name) if node.op.name in Tok.__members__ else None
+        logical_op = ES_LOGICAL_OPS.get(op_tok) if op_tok else None
+        logical_op = logical_op or "&&"
 
         # Build the logical expression from left to right
         result = self._get_ast_or_default(
@@ -1488,9 +1492,11 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
                     else es.Identifier(name="right")
                 ),
             )
-            operator = ES_COMPARISON_OPS.get(op_token.name, "===")
+            op_tok = Tok(op_token.name) if op_token.name in Tok.__members__ else None
+            operator = ES_COMPARISON_OPS.get(op_tok) if op_tok else None
+            operator = operator or "==="
 
-            if op_token.name == Tok.KW_NIN:
+            if op_tok == Tok.KW_NIN:
                 in_expr = self.sync_loc(
                     es.BinaryExpression(operator="in", left=left, right=right),
                     jac_node=node,
@@ -1526,7 +1532,9 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
             node.operand, default_factory=lambda _src: es.Literal(value=0)
         )
 
-        operator = ES_UNARY_OPS.get(node.op.name, "!")
+        op_tok = Tok(node.op.name) if node.op.name in Tok.__members__ else None
+        operator = ES_UNARY_OPS.get(op_tok) if op_tok else None
+        operator = operator or "!"
 
         unary_expr = self.sync_loc(
             es.UnaryExpression(operator=operator, prefix=True, argument=operand),
@@ -1630,7 +1638,11 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
 
         if node.aug_op:
             left, _, _ = self._convert_assignment_target(node.target[0])
-            operator = ES_AUG_ASSIGN_OPS.get(node.aug_op.name, "=")
+            aug_tok = (
+                Tok(node.aug_op.name) if node.aug_op.name in Tok.__members__ else None
+            )
+            operator = ES_AUG_ASSIGN_OPS.get(aug_tok) if aug_tok else None
+            operator = operator or "="
             right = value_expr or self._get_ast_or_default(
                 node.value, default_factory=lambda _src: es.Identifier(name="undefined")
             )

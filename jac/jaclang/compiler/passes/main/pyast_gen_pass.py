@@ -574,7 +574,7 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
         node.gen.py_ast = [
             self.sync(
                 ast3.Module(
-                    body=new_body,
+                    body=[cast(ast3.stmt, s) for s in new_body],
                     type_ignores=[],
                 )
             )
@@ -1160,14 +1160,14 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
         )
         if posonlyargs:
             posonlyargs = params + posonlyargs
-            params = [i.gen.py_ast[0] for i in node.params]
+            params = [cast(ast3.arg, i.gen.py_ast[0]) for i in node.params]
         else:
-            params = params + [i.gen.py_ast[0] for i in node.params]
+            params = params + [cast(ast3.arg, i.gen.py_ast[0]) for i in node.params]
         defaults = []
         for i in [*node.posonly_params, *node.params]:
             if i.value:
                 defaults.append(cast(ast3.expr, i.value.gen.py_ast[0]))
-        kwonly_args = [i.gen.py_ast[0] for i in node.kwonlyargs]
+        kwonly_args = [cast(ast3.arg, i.gen.py_ast[0]) for i in node.kwonlyargs]
         # kw_defaults must be the same length as kwonlyargs
         # it will have None for args that don't have defaults
         kw_defaults: list[ast3.expr | None] = []
@@ -2419,7 +2419,8 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
                 param.gen.py_ast[0].annotation = None
 
     def exit_unary_expr(self, node: uni.UnaryExpr) -> None:
-        op_cls = UNARY_OP_MAP.get(node.op.name)
+        op_tok = Tok(node.op.name) if node.op.name in Tok.__members__ else None
+        op_cls = UNARY_OP_MAP.get(op_tok) if op_tok else None
         if op_cls:
             node.gen.py_ast = [
                 self.sync(
@@ -2813,7 +2814,7 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
                         )
                     )
                 elif isinstance(x, uni.Expr):
-                    args.append(x.gen.py_ast[0])
+                    args.append(cast(ast3.expr, x.gen.py_ast[0]))
                 elif isinstance(x, uni.KWPair) and isinstance(
                     x.gen.py_ast[0], ast3.keyword
                 ):
@@ -3312,7 +3313,8 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
         ]
 
     def exit_token(self, node: uni.Token) -> None:
-        op_cls = TOKEN_AST_MAP.get(node.name)
+        tok = Tok(node.name) if node.name in Tok.__members__ else None
+        op_cls = TOKEN_AST_MAP.get(tok) if tok else None
         if op_cls:
             node.gen.py_ast = [self.sync(op_cls())]
 
