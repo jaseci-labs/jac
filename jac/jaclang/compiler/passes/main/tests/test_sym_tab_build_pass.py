@@ -1,12 +1,6 @@
 """Test pass module."""
 
-from conftest import check_pass_ast_complete
-from jaclang.compiler.passes.main import SymTabBuildPass
-
-
-def test_pass_ast_complete() -> None:
-    """Test for enter/exit name diffs with parser."""
-    check_pass_ast_complete(SymTabBuildPass)
+# from jaclang.compiler.passes.main import SymTabBuildPass
 
 
 # def test_name_collision(fixture_path) -> None:

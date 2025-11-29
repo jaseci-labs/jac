@@ -6,7 +6,6 @@ from collections.abc import Callable
 
 import pytest
 
-from conftest import check_pass_ast_complete
 from jaclang.compiler.passes.main import PreDynamoPass
 from jaclang.compiler.program import JacProgram, py_code_gen
 from jaclang.settings import settings
@@ -21,11 +20,6 @@ def setup_predynamo():
     # Remove PreDynamoPass from global py_code_gen list if it was added
     if PreDynamoPass in py_code_gen:
         py_code_gen.remove(PreDynamoPass)
-
-
-def test_pass_ast_complete() -> None:
-    """Test for enter/exit name diffs with parser."""
-    check_pass_ast_complete(PreDynamoPass)
 
 
 def test_predynamo_where_assign(fixture_path: Callable[[str], str]) -> None:

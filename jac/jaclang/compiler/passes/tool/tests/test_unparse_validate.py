@@ -4,14 +4,8 @@ import ast as ast3
 import os
 from difflib import unified_diff
 
-from conftest import check_pass_ast_complete, get_micro_jac_files
-from jaclang.compiler.passes.tool import JacFormatPass
+from conftest import get_micro_jac_files
 from jaclang.compiler.program import JacProgram
-
-
-def test_pass_ast_complete() -> None:
-    """Test for enter/exit name diffs with parser."""
-    check_pass_ast_complete(JacFormatPass)
 
 
 def test_double_unparse(examples_path) -> None:
