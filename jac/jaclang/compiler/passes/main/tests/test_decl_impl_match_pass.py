@@ -57,31 +57,31 @@ def test_ability_connected_to_decl(fixture_path: Callable[[str], str]) -> None:
     state = (out := JacProgram()).compile(fixture_path("base.jac"))
     assert not out.errors_had
     assert "impl.Test.say_hi" in state.impl_mod[0].sym_tab.names_in_scope
-    assert (
-        state.impl_mod[0].sym_tab.names_in_scope["impl.Test.say_hi"].decl.name_of.body
-        is not None
+    say_hi_node = (
+        state.impl_mod[0].sym_tab.names_in_scope["impl.Test.say_hi"].decl.name_of
     )
+    assert isinstance(say_hi_node, uni.Ability) and say_hi_node.body is not None
     assert "impl.Test.__init__" in state.impl_mod[0].sym_tab.names_in_scope
-    assert (
-        state.impl_mod[0].sym_tab.names_in_scope["impl.Test.__init__"].decl.name_of.body
-        is not None
+    init_node = (
+        state.impl_mod[0].sym_tab.names_in_scope["impl.Test.__init__"].decl.name_of
     )
+    assert isinstance(init_node, uni.Ability) and init_node.body is not None
 
 
 def test_ability_connected_to_decl_post(fixture_path: Callable[[str], str]) -> None:
     """Basic test for pass."""
     state = (out := JacProgram()).compile(fixture_path("base2.jac"))
     assert not out.errors_had
-    assert "impl.Test.say_hi" in state.sym_tab.impl_mod[0].names_in_scope
-    assert (
-        state.sym_tab.impl_mod[0].names_in_scope["impl.Test.say_hi"].decl.name_of.body
-        is not None
+    assert "impl.Test.say_hi" in state.impl_mod[0].sym_tab.names_in_scope
+    say_hi_node = (
+        state.impl_mod[0].sym_tab.names_in_scope["impl.Test.say_hi"].decl.name_of
     )
+    assert isinstance(say_hi_node, uni.Ability) and say_hi_node.body is not None
     assert "impl.Test.__init__" in state.impl_mod[0].sym_tab.names_in_scope
-    assert (
-        state.impl_mod[0].sym_tab.names_in_scope["impl.Test.__init__"].decl.name_of.body
-        is not None
+    init_node = (
+        state.impl_mod[0].sym_tab.names_in_scope["impl.Test.__init__"].decl.name_of
     )
+    assert isinstance(init_node, uni.Ability) and init_node.body is not None
 
 
 def test_run_base2(

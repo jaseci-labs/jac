@@ -21,9 +21,10 @@ ID = TypeVar("ID")
 
 
 @dataclass
-class MultiHierarchyMemory:
-    def __init__(self):
-        self.mem = Memory()
+class MultiHierarchyMemory(Memory[UUID, Anchor]):
+    def __init__(self) -> None:
+        super().__init__()
+        self.mem = Memory[UUID, Anchor]()
         self.redis = RedisDB()
         self.mongo = MongoDB()
         if not self.redis.redis_is_available():

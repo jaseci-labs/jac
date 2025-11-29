@@ -234,7 +234,12 @@ def print_ast_tree(
         ):
             return f"{node.__class__.__name__} - PythonModuleRaised: {node.name}"
         elif isinstance(node, uni.ModuleItem):
-            out = f"{node.__class__.__name__} - {node.name.sym_name} - abs_path: {node.abs_path}"
+            name_str = (
+                node.name.sym_name
+                if isinstance(node.name, uni.Name)
+                else node.name.value
+            )
+            out = f"{node.__class__.__name__} - {name_str} - abs_path: {node.abs_path}"
             return out
         elif isinstance(node, uni.ModulePath):
             out = (

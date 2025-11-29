@@ -272,7 +272,7 @@ def bind(filename: str, typecheck: bool = False) -> None:
         jac bind myprogram.jac -t
     """
     if filename.endswith((".jac", ".py")):
-        (out := JacProgram()).bind(file_path=filename)
+        (out := JacProgram()).build(file_path=filename)
         errs = len(out.errors_had)
         warnings = len(out.warnings_had)
         if typecheck:

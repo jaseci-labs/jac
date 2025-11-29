@@ -3498,13 +3498,11 @@ class FString(AtomExpr):
         if deep:
             for part in self.parts:
                 res = res and part.normalize(deep)
-        new_kid: list[UniNode] = (
-            [self.gen_token(self.start)] if self.start is not None else []
-        )
+        new_kid: list[UniNode] = [self.start] if self.start is not None else []
         for part in self.parts:
             new_kid.append(part)
         if self.end is not None:
-            new_kid.append(self.gen_token(self.end))
+            new_kid.append(self.end)
         self.set_kids(nodes=new_kid)
         return res
 

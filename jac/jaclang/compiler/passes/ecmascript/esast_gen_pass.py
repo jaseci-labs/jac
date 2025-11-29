@@ -24,7 +24,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from typing import Any, cast
+from typing import Any, TypeVar, cast
 
 import jaclang.compiler.passes.ecmascript.estree as es
 import jaclang.compiler.unitree as uni
@@ -35,6 +35,8 @@ from jaclang.compiler.passes.ast_gen.jsx_processor import EsJsxProcessor
 from jaclang.compiler.passes.ecmascript.es_unparse import es_to_js
 from jaclang.compiler.type_system import types as jtypes
 from jaclang.utils import convert_to_js_import_path, resolve_relative_path
+
+_T = TypeVar("_T", bound=es.Node)
 
 ES_LOGICAL_OPS: dict[Tok, str] = {Tok.KW_AND: "&&", Tok.KW_OR: "||"}
 
@@ -184,9 +186,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
         if isinstance(node, uni.UniScopeNode):
             self._pop_scope(node)
 
-    def sync_loc(
-        self, es_node: es.Node, jac_node: uni.UniNode | None = None
-    ) -> es.Node:
+    def sync_loc(self, es_node: _T, jac_node: uni.UniNode | None = None) -> _T:
         """Sync source locations from Jac node to ES node."""
         if not jac_node:
             jac_node = self.cur_node

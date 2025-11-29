@@ -22,8 +22,10 @@ class JSCodeGenerator:
         """Get current indentation."""
         return self.indent_str * self.indent_level
 
-    def generate(self, node: es.Node) -> str:
+    def generate(self, node: es.Node | None) -> str:
         """Generate JavaScript code for a node."""
+        if node is None:
+            return ""
         method_name = f"gen_{pascal_to_snake(node.type)}"
         method = getattr(self, method_name, None)
         if method:
@@ -581,7 +583,7 @@ class JSCodeGenerator:
         return f"{self.indent()}export * from {source};"
 
 
-def es_to_js(node: es.Node, indent: str = "  ") -> str:
+def es_to_js(node: es.Node | None, indent: str = "  ") -> str:
     """Convert an ESTree node to JavaScript code."""
     generator = JSCodeGenerator(indent=indent)
     return generator.generate(node)

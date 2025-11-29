@@ -47,56 +47,91 @@ def test_sem_decorator(fixture_path: Callable[[str], str]) -> None:
 
     # Function (full).
     sym_fn1 = code_gen.lookup("fn1")
+    assert sym_fn1 is not None
     assert sym_fn1.semstr == "A function that takes two integers and returns nothing."
-    assert sym_fn1.symbol_table.lookup("bar").semstr == "The first integer parameter."
+    sym_fn1_table = sym_fn1.symbol_table
+    assert sym_fn1_table is not None
+    sym_fn1_bar = sym_fn1_table.lookup("bar")
+    assert sym_fn1_bar is not None
+    assert sym_fn1_bar.semstr == "The first integer parameter."
 
     # Function (Missing baz)
     sym_fn2 = code_gen.lookup("fn2")
+    assert sym_fn2 is not None
     assert sym_fn2.semstr == "A function that takes one integer and returns nothing."
-    assert sym_fn2.symbol_table.lookup("bar").semstr == "The first integer parameter."
-    assert sym_fn2.symbol_table.lookup("baz").semstr == ""
+    sym_fn2_table = sym_fn2.symbol_table
+    assert sym_fn2_table is not None
+    sym_fn2_bar = sym_fn2_table.lookup("bar")
+    assert sym_fn2_bar is not None
+    assert sym_fn2_bar.semstr == "The first integer parameter."
+    sym_fn2_baz = sym_fn2_table.lookup("baz")
+    assert sym_fn2_baz is not None
+    assert sym_fn2_baz.semstr == ""
 
     # Function (Without sem at all)
     sym_fn3 = code_gen.lookup("fn3")
+    assert sym_fn3 is not None
     assert sym_fn3.semstr == ""
-    assert sym_fn3.symbol_table.lookup("bar").semstr == ""
-    assert sym_fn3.symbol_table.lookup("baz").semstr == ""
+    sym_fn3_table = sym_fn3.symbol_table
+    assert sym_fn3_table is not None
+    sym_fn3_bar = sym_fn3_table.lookup("bar")
+    assert sym_fn3_bar is not None
+    assert sym_fn3_bar.semstr == ""
+    sym_fn3_baz = sym_fn3_table.lookup("baz")
+    assert sym_fn3_baz is not None
+    assert sym_fn3_baz.semstr == ""
 
     # Architype (with body).
     sym_arch1 = code_gen.lookup("Arch1")
+    assert sym_arch1 is not None
     assert sym_arch1.semstr == "An object that contains two integer properties."
-    assert sym_arch1.symbol_table.lookup("bar").semstr == "The first integer property."
-    assert sym_arch1.symbol_table.lookup("baz").semstr == "The second integer property."
+    sym_arch1_table = sym_arch1.symbol_table
+    assert sym_arch1_table is not None
+    sym_arch1_bar = sym_arch1_table.lookup("bar")
+    assert sym_arch1_bar is not None
+    assert sym_arch1_bar.semstr == "The first integer property."
+    sym_arch1_baz = sym_arch1_table.lookup("baz")
+    assert sym_arch1_baz is not None
+    assert sym_arch1_baz.semstr == "The second integer property."
 
     # Architype (without body).
     sym_arch2 = code_gen.lookup("Arch2")
+    assert sym_arch2 is not None
     assert sym_arch2.semstr == "An object that contains two integer properties."
-    assert sym_arch2.symbol_table.lookup("bar").semstr == "The first integer property."
-    assert sym_arch2.symbol_table.lookup("baz").semstr == "The second integer property."
+    sym_arch2_table = sym_arch2.symbol_table
+    assert sym_arch2_table is not None
+    sym_arch2_bar = sym_arch2_table.lookup("bar")
+    assert sym_arch2_bar is not None
+    assert sym_arch2_bar.semstr == "The first integer property."
+    sym_arch2_baz = sym_arch2_table.lookup("baz")
+    assert sym_arch2_baz is not None
+    assert sym_arch2_baz.semstr == "The second integer property."
 
     # Enum (with body).
     sym_enum1 = code_gen.lookup("Enum1")
+    assert sym_enum1 is not None
     assert sym_enum1.semstr == "An enumeration that defines two values: Bar and Baz."
-    assert (
-        sym_enum1.symbol_table.lookup("Bar").semstr
-        == "The Bar value of the Enum1 enumeration."
-    )
-    assert (
-        sym_enum1.symbol_table.lookup("Baz").semstr
-        == "The Baz value of the Enum1 enumeration."
-    )
+    sym_enum1_table = sym_enum1.symbol_table
+    assert sym_enum1_table is not None
+    sym_enum1_bar = sym_enum1_table.lookup("Bar")
+    assert sym_enum1_bar is not None
+    assert sym_enum1_bar.semstr == "The Bar value of the Enum1 enumeration."
+    sym_enum1_baz = sym_enum1_table.lookup("Baz")
+    assert sym_enum1_baz is not None
+    assert sym_enum1_baz.semstr == "The Baz value of the Enum1 enumeration."
 
     # Enum (without body).
     sym_enum2 = code_gen.lookup("Enum2")
+    assert sym_enum2 is not None
     assert sym_enum2.semstr == "An enumeration that defines two values: Bar and Baz."
-    assert (
-        sym_enum2.symbol_table.lookup("Bar").semstr
-        == "The Bar value of the Enum2 enumeration."
-    )
-    assert (
-        sym_enum2.symbol_table.lookup("Baz").semstr
-        == "The Baz value of the Enum2 enumeration."
-    )
+    sym_enum2_table = sym_enum2.symbol_table
+    assert sym_enum2_table is not None
+    sym_enum2_bar = sym_enum2_table.lookup("Bar")
+    assert sym_enum2_bar is not None
+    assert sym_enum2_bar.semstr == "The Bar value of the Enum2 enumeration."
+    sym_enum2_baz = sym_enum2_table.lookup("Baz")
+    assert sym_enum2_baz is not None
+    assert sym_enum2_baz.semstr == "The Baz value of the Enum2 enumeration."
 
     if code_gen.gen.py_ast and isinstance(code_gen.gen.py_ast[0], ast3.Module):
         prog = compile(code_gen.gen.py_ast[0], filename="<ast>", mode="exec")

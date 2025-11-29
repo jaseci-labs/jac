@@ -107,7 +107,7 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
             type_ignores: list[TypeIgnore]
         """
         if not node.body:
-            return uni.Module.make_stub(inject_src=self.ir_in)
+            return uni.Module.make_stub(inject_src=self.ir_in.orig_src)
         elements: list[uni.UniNode] = [self.convert(i) for i in node.body]
         elements[0] = (
             elements[0].expr
@@ -193,7 +193,15 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
         ret_sig = self.convert(node.returns) if node.returns else None
         if isinstance(ret_sig, uni.Expr):
             if not sig:
-                sig = uni.FuncSignature(params=[], return_type=ret_sig, kid=[ret_sig])
+                sig = uni.FuncSignature(
+                    posonly_params=[],
+                    params=[],
+                    varargs=None,
+                    kwonlyargs=[],
+                    kwargs=None,
+                    return_type=ret_sig,
+                    kid=[ret_sig],
+                )
             else:
                 sig.return_type = ret_sig
                 sig.add_kids_right([sig.return_type])
@@ -297,7 +305,11 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
                 and body_stmt.signature.params
             ):
                 for param in body_stmt.signature.params:
-                    if param.name.value == "self" and param.type_tag:
+                    if (
+                        param.name.value == "self"
+                        and param.type_tag
+                        and isinstance(param.type_tag.tag, uni.Name)
+                    ):
                         param.type_tag.tag.value = name.value
         doc = (
             body[0].expr
@@ -1365,7 +1377,7 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
         )
         return ret
 
-    def proc_joined_str(self, node: py_ast.JoinedStr) -> uni.FString:
+    def proc_joined_str(self, node: py_ast.JoinedStr) -> uni.MultiString:
         """Process python node.
 
         class JoinedStr(expr):
@@ -1373,10 +1385,22 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
             __match_args__ = ("values",)
         values: list[expr]
         """
-        valid: list[uni.Token | uni.FormattedValue] = []
+        valid: list[uni.String | uni.FormattedValue] = []
         for i in node.values:
             if isinstance(i, py_ast.Constant) and isinstance(i.value, str):
-                valid.append(self.operator(Tok.STRING, i.value))
+                valid.append(
+                    uni.String(
+                        orig_src=self.orig_src,
+                        name="STRING",
+                        value=i.value,
+                        line=i.lineno,
+                        end_line=i.end_lineno if i.end_lineno else i.lineno,
+                        col_start=i.col_offset,
+                        col_end=i.col_offset + len(i.value),
+                        pos_start=0,
+                        pos_end=0,
+                    )
+                )
             elif isinstance(i, py_ast.FormattedValue):
                 converted = self.convert(i)
                 if isinstance(converted, uni.FormattedValue):
@@ -2138,9 +2162,11 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
             [self.convert(arg) for arg in node.args], uni.ParamKind.NORMAL
         )
 
-        vararg = self.convert(node.vararg) if node.vararg else None
+        vararg_node = self.convert(node.vararg) if node.vararg else None
+        vararg: uni.ParamVar | None = None
 
-        if vararg and isinstance(vararg, uni.ParamVar):
+        if vararg_node and isinstance(vararg_node, uni.ParamVar):
+            vararg = vararg_node
             vararg.param_kind = uni.ParamKind.VARARG
             vararg.unpack = uni.Token(
                 orig_src=self.orig_src,
@@ -2169,8 +2195,10 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
             ):
                 kwa.value = kwdefault
                 kwa.add_kids_right([kwa.value])
-        kwarg = self.convert(node.kwarg) if node.kwarg else None
-        if kwarg and isinstance(kwarg, uni.ParamVar):
+        kwarg_node = self.convert(node.kwarg) if node.kwarg else None
+        kwarg: uni.ParamVar | None = None
+        if kwarg_node and isinstance(kwarg_node, uni.ParamVar):
+            kwarg = kwarg_node
             kwarg.param_kind = uni.ParamKind.KWARG
             kwarg.unpack = uni.Token(
                 orig_src=self.orig_src,
