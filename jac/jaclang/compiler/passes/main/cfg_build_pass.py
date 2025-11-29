@@ -68,11 +68,15 @@ class CFGBuildPass(UniPass):
                 target.bb_in = [source]
 
     def get_code_block_sequence(
-        self, node: uni.CodeBlockStmt
+        self, node: uni.UniNode | None
     ) -> list[uni.UniCFGNode] | None:
         """Get code block sequence."""
         sequence: list[uni.UniCFGNode] = []
-        if hasattr(node, "body") and isinstance(node.body, Sequence):
+        if (
+            node is not None
+            and hasattr(node, "body")
+            and isinstance(node.body, Sequence)
+        ):
             for bbs in node.body:
                 if isinstance(bbs, uni.UniCFGNode):
                     sequence.append(bbs)

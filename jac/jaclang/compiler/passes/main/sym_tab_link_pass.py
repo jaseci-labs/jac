@@ -83,10 +83,11 @@ class SymTabLinkPass(Transform[uni.Module, uni.Module]):
             return rel_path
         else:
             # Python import
-            if node.sym_name in self.prog.py_raise_map:
-                return self.prog.py_raise_map[node.sym_name]
+            path_str = node.dot_path_str
+            if path_str in self.prog.py_raise_map:
+                return self.prog.py_raise_map[path_str]
 
-            full_path = f"{mod.get_href_path(node)}.{node.sym_name}"
+            full_path = f"{mod.get_href_path(node)}.{path_str}"
             if full_path in self.prog.py_raise_map:
                 return self.prog.py_raise_map[full_path]
 

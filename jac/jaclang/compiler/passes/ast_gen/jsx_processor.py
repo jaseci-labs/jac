@@ -163,8 +163,8 @@ class EsJsxProcessor:
     def spread_attribute(self, node: uni.JsxSpreadAttribute) -> Expression:
         """Process JSX spread attribute."""
         es = self.es
-        expr = (
-            node.expr.gen.es_ast
+        expr: Expression = (
+            cast("Expression", node.expr.gen.es_ast)
             if node.expr and node.expr.gen.es_ast
             else self.pass_ref.sync_loc(
                 es.ObjectExpression(properties=[]), jac_node=node
@@ -217,8 +217,8 @@ class EsJsxProcessor:
     def expression(self, node: uni.JsxExpression) -> Expression:
         """Process JSX expression child."""
         es = self.es
-        expr = (
-            node.expr.gen.es_ast
+        expr: Expression = (
+            cast("Expression", node.expr.gen.es_ast)
             if node.expr and node.expr.gen.es_ast
             else self.pass_ref.sync_loc(es.Literal(value=None), jac_node=node.expr)
         )
@@ -264,8 +264,8 @@ class PyJsxProcessor:
             values: list[ast3.expr] = []
             for attr in node.attributes:
                 if isinstance(attr, uni.JsxNormalAttribute):
-                    attr_ast = attr.gen.py_ast[0]
-                    key_ast, value_ast = attr_ast.elts  # type: ignore[attr-defined]
+                    attr_ast = cast(ast3.Tuple, attr.gen.py_ast[0])
+                    key_ast, value_ast = attr_ast.elts
                     keys.append(cast(ast3.expr, key_ast))
                     values.append(cast(ast3.expr, value_ast))
             attrs_expr = self.pass_ref.sync(ast3.Dict(keys=keys, values=values), node)
@@ -295,6 +295,7 @@ class PyJsxProcessor:
     def element_name(self, node: uni.JsxElementName) -> list[ast3.AST]:
         """Generate Python AST for JSX element names."""
         name_str = ".".join(part.value for part in node.parts)
+        expr: ast3.expr
         if node.parts and node.parts[0].value[0].isupper():
             expr = self.pass_ref.sync(
                 ast3.Name(id=name_str, ctx=ast3.Load()),
@@ -332,7 +333,8 @@ class PyJsxProcessor:
 
     def text(self, node: uni.JsxText) -> list[ast3.AST]:
         """Generate Python AST for JSX text nodes."""
-        expr = self.pass_ref.sync(ast3.Constant(value=node.value.value), node)
+        raw_value = node.value.value if hasattr(node.value, "value") else node.value
+        expr = self.pass_ref.sync(ast3.Constant(value=str(raw_value)), node)
         node.gen.py_ast = [expr]
         return node.gen.py_ast
 

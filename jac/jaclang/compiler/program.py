@@ -40,23 +40,27 @@ from jaclang.settings import settings
 if TYPE_CHECKING:
     from jaclang.compiler.type_system.type_evaluator import TypeEvaluator
 
-ir_gen_sched = [
+ir_gen_sched: list[type[Transform[uni.Module, uni.Module]]] = [
     SymTabBuildPass,
     DeclImplMatchPass,
     SemanticAnalysisPass,
     SemDefMatchPass,
     CFGBuildPass,
 ]
-type_check_sched: list = [
+type_check_sched: list[type[Transform[uni.Module, uni.Module]]] = [
     TypeCheckPass,
 ]
-py_code_gen = [
+py_code_gen: list[type[Transform[uni.Module, uni.Module]]] = [
     EsastGenPass,
     PyastGenPass,
     PyJacAstLinkPass,
     PyBytecodeGenPass,
 ]
-format_sched = [DocIRGenPass, CommentInjectionPass, JacFormatPass]
+format_sched: list[type[Transform[uni.Module, uni.Module]]] = [
+    DocIRGenPass,
+    CommentInjectionPass,
+    JacFormatPass,
+]
 
 
 class JacProgram:
@@ -181,21 +185,23 @@ class JacProgram:
         prog = JacProgram()
         source_str = read_file_with_encoding(file_path)
         source = uni.Source(source_str, mod_path=file_path)
-        prse: Transform = JacParser(root_ir=source, prog=prog)
-        for i in format_sched:
-            prse = i(ir_in=prse.ir_out, prog=prog)
-        prse.errors_had = prog.errors_had
-        prse.warnings_had = prog.warnings_had
-        return prse.ir_out.gen.jac
+        parser_pass = JacParser(root_ir=source, prog=prog)
+        current_mod = parser_pass.ir_out
+        for pass_cls in format_sched:
+            current_mod = pass_cls(ir_in=current_mod, prog=prog).ir_out
+        parser_pass.errors_had = prog.errors_had
+        parser_pass.warnings_had = prog.warnings_had
+        return current_mod.gen.jac
 
     @staticmethod
     def jac_str_formatter(source_str: str, file_path: str) -> str:
         """Convert a Jac file to an AST."""
         prog = JacProgram()
         source = uni.Source(source_str, mod_path=file_path)
-        prse: Transform = JacParser(root_ir=source, prog=prog)
-        for i in format_sched:
-            prse = i(ir_in=prse.ir_out, prog=prog)
-        prse.errors_had = prog.errors_had
-        prse.warnings_had = prog.warnings_had
-        return prse.ir_out.gen.jac if not prse.errors_had else source_str
+        parser_pass = JacParser(root_ir=source, prog=prog)
+        current_mod = parser_pass.ir_out
+        for pass_cls in format_sched:
+            current_mod = pass_cls(ir_in=current_mod, prog=prog).ir_out
+        parser_pass.errors_had = prog.errors_had
+        parser_pass.warnings_had = prog.warnings_had
+        return current_mod.gen.jac if not parser_pass.errors_had else source_str

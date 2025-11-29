@@ -12,7 +12,7 @@ def look_down(tab: UniScopeNode, name: str, deep: bool = True) -> Symbol | None:
             sym = tab.names_in_scope[name]
             return sym
     for i in tab.inherited_scope:
-        found = i.lookup(name, deep=False)
+        found = i.base_symbol_table.lookup(name, deep=False)
         if found:
             return found
     if deep and tab.kid_scope:

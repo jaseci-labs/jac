@@ -43,6 +43,8 @@ class PreDynamoPass(UniPass):
     ) -> None:
         """Replace old node with new nodes in parent's body and kid lists."""
         parent = old_node.parent
+        if parent is None:
+            return
         if isinstance(new_nodes, uni.UniNode):
             new_nodes.parent = parent
             if hasattr(parent, attr):
@@ -101,7 +103,7 @@ class PreDynamoPass(UniPass):
                     {
                         kw.key._sym_name: kw.value
                         for kw in call.params[2:]
-                        if isinstance(kw, uni.KWPair)
+                        if isinstance(kw, uni.KWPair) and kw.key is not None
                     }
                     if len(call.params) > 2
                     else {}
@@ -112,7 +114,7 @@ class PreDynamoPass(UniPass):
     def exit_if_stmt(self, node: uni.IfStmt) -> None:
         """Exit if statement."""
         a0 = node.body[0]
-        new_node = None
+        new_node: uni.UniNode | None = None
         if node.else_body:
             b0 = node.else_body.body[0]
         else:

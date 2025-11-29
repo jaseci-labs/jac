@@ -149,15 +149,15 @@ def test_class_separate_impl_file(fixture_path) -> None:
         None,
     )
     assert calculator_class is not None
-    if calculator_class:
-        method_names = {
-            m.key.name
-            for m in calculator_class.body.body
-            if isinstance(m, es.MethodDefinition) and isinstance(m.key, es.Identifier)
-        }
-        assert "add" in method_names
-        assert "multiply" in method_names
-        assert "get_value" in method_names
+    assert calculator_class.body is not None
+    method_names = {
+        m.key.name
+        for m in calculator_class.body.body
+        if isinstance(m, es.MethodDefinition) and isinstance(m.key, es.Identifier)
+    }
+    assert "add" in method_names
+    assert "multiply" in method_names
+    assert "get_value" in method_names
 
     # Check JavaScript output contains the methods
     assert "class Calculator" in js_code

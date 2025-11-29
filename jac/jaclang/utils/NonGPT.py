@@ -1,4 +1,3 @@
-# type: ignore
 # flake8: noqa
 from __future__ import annotations
 import inspect
@@ -226,8 +225,8 @@ def random_value_for_type(tp: Any, *, _depth: int = 0, _max_depth: int = 10) -> 
     # TypedDict
     if _is_typed_dict(tp):
         # Required and optional keys are tracked by __required_keys__/__optional_keys__
-        req = getattr(tp, "__required_keys__", set())
-        opt = getattr(tp, "__optional_keys__", set())
+        req: set[str] = getattr(tp, "__required_keys__", set())
+        opt: set[str] = getattr(tp, "__optional_keys__", set())
         anns = tp.__annotations__
         out = {}
         # required
@@ -277,9 +276,11 @@ def random_value_for_type(tp: Any, *, _depth: int = 0, _max_depth: int = 10) -> 
                     field_type, _depth=_depth + 1, _max_depth=_max_depth
                 )
         try:
+            assert isinstance(tp, type)  # tp is a dataclass type, not instance
             return tp(**kwargs)
         except TypeError:
             # Fall back to constructing with defaults only
+            assert isinstance(tp, type)
             return tp(**{k: v for k, v in kwargs.items() if v is not MISSING})
 
     # Annotated already unwrapped; NewType already unwrapped

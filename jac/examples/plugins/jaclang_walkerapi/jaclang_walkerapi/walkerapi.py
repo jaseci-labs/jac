@@ -18,8 +18,6 @@ class JacRuntime:
         def decorator(cls: type[Archetype]) -> type[Archetype]:
             """Decorate class."""
             cls = dataclass(eq=False)(cls)
-            for i in on_entry + on_exit:
-                i.resolve(cls)
             arch_cls = WalkerArchetype
             if not issubclass(cls, arch_cls):
                 cls = type(cls.__name__, (cls, arch_cls), {})

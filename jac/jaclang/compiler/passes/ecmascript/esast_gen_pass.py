@@ -518,13 +518,17 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
     def _get_ast_or_default(
         self,
         node: uni.UniNode | None,
-        default_factory: Callable[[uni.UniNode | None], es.Node],
-    ) -> es.Node:
-        """Return an existing ESTree node or synthesize a fallback."""
+        default_factory: Callable[[uni.UniNode | None], _T],
+    ) -> _T:
+        """Return an existing ESTree node or synthesize a fallback.
+
+        The return type matches the default_factory's return type. This assumes
+        that if node.gen.es_ast exists, it will be compatible with the expected type.
+        """
         if node and getattr(node.gen, "es_ast", None):
             generated = node.gen.es_ast
             if isinstance(generated, es.Node):
-                return generated
+                return generated  # type: ignore[return-value]
         fallback = default_factory(node)
         jac_ref = node if node is not None else self.cur_node
         return self.sync_loc(fallback, jac_node=jac_ref)
@@ -566,12 +570,12 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
         merged_body = self._merge_module_bodies(node)
 
         # Process module body
-        client_items: list[es.Statement | list[es.Statement]] = []
-        fallback_items: list[es.Statement | list[es.Statement]] = []
+        client_items: list[es.Statement | list[es.Statement] | None] = []
+        fallback_items: list[es.Statement | list[es.Statement] | None] = []
         for stmt in merged_body:
             if stmt.gen.es_ast:
                 if getattr(stmt, "is_client_decl", True):
-                    client_items.append(stmt.gen.es_ast)
+                    client_items.append(cast(es.Statement, stmt.gen.es_ast))
                 else:
                     # FIXME: handle the fallback case properly
                     pass
@@ -635,7 +639,16 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
             js_import_path = convert_to_js_import_path(node.from_loc.dot_path_str)
         elif not node.from_loc and node.items and node.is_client_decl:
             self.client_manifest.has_client = True
-            import_key = node.items[0].path[0].lit_value
+            first_item = node.items[0]
+            if isinstance(first_item, uni.ModulePath) and first_item.path:
+                path_elem = first_item.path[0]
+                import_key = (
+                    path_elem.lit_value
+                    if isinstance(path_elem, uni.String)
+                    else path_elem.value
+                )
+            else:
+                import_key = ""
             resolved_path = resolve_relative_path(import_key, node.loc.mod_path)
             self.client_manifest.imports[import_key] = resolved_path
             js_import_path = convert_to_js_import_path(import_key)
@@ -712,7 +725,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
             jac_node=node,
         )
         self.imports.append(import_decl)
-        node.gen.es_ast = []  # Imports are added to module level
+        node.gen.es_ast = None  # Imports are added to module level
 
     # Declarations
     # ============
@@ -760,8 +773,8 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
             for arch_has in has_members:
                 if arch_has.is_static:
                     for var in arch_has.vars:
-                        default_expr = (
-                            var.value.gen.es_ast
+                        default_expr: es.Expression = (
+                            cast(es.Expression, var.value.gen.es_ast)
                             if var.value
                             and var.value.gen.es_ast
                             and var.value.gen.es_ast
@@ -829,8 +842,8 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
                         ),
                         jac_node=var,
                     )
-                    default_expr = (
-                        var.value.gen.es_ast
+                    default_val: es.Expression = (
+                        cast(es.Expression, var.value.gen.es_ast)
                         if var.value and var.value.gen.es_ast and var.value.gen.es_ast
                         else self.sync_loc(es.Literal(value=None), jac_node=var)
                     )
@@ -838,7 +851,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
                         es.ConditionalExpression(
                             test=has_call,
                             consequent=props_access,
-                            alternate=default_expr,
+                            alternate=default_val,
                         ),
                         jac_node=var,
                     )
@@ -887,7 +900,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
         if node.base_classes:
             base = node.base_classes[0]
             if base.gen.es_ast:
-                super_class = base.gen.es_ast
+                super_class = cast(es.Expression, base.gen.es_ast)
 
         # Create class declaration
         class_id = self.sync_loc(
@@ -911,7 +924,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
 
     def exit_enum(self, node: uni.Enum) -> None:
         """Process enum declaration as an object."""
-        properties: list[es.Property] = []
+        properties: list[es.Property | es.SpreadElement] = []
 
         inner = self._get_body_inner(node)
 
@@ -923,15 +936,15 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
                             key = self.sync_loc(
                                 es.Identifier(name=target.sym_name), jac_node=target
                             )
-                            value: es.Expression
+                            enum_value: es.Expression
                             if stmt.value and stmt.value.gen.es_ast:
-                                value = stmt.value.gen.es_ast
+                                enum_value = cast(es.Expression, stmt.value.gen.es_ast)
                             else:
-                                value = self.sync_loc(
+                                enum_value = self.sync_loc(
                                     es.Literal(value=None), jac_node=stmt
                                 )
                             prop = self.sync_loc(
-                                es.Property(key=key, value=value, kind="init"),
+                                es.Property(key=key, value=enum_value, kind="init"),
                                 jac_node=stmt,
                             )
                             properties.append(prop)
@@ -987,7 +1000,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
         if isinstance(node.signature, uni.FuncSignature):
             for param in node.signature.params:
                 if param.gen.es_ast:
-                    params.append(param.gen.es_ast)
+                    params.append(cast(es.Pattern, param.gen.es_ast))
 
         # Process body
         inner = self._get_body_inner(node)
@@ -1098,7 +1111,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
 
         alternate: es.Statement | None = None
         if node.else_body and node.else_body.gen.es_ast:
-            alternate = node.else_body.gen.es_ast
+            alternate = cast(es.Statement, node.else_body.gen.es_ast)
 
         if_stmt = self.sync_loc(
             es.IfStatement(test=test, consequent=consequent, alternate=alternate),
@@ -1115,7 +1128,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
 
         alternate: es.Statement | None = None
         if node.else_body and node.else_body.gen.es_ast:
-            alternate = node.else_body.gen.es_ast
+            alternate = cast(es.Statement, node.else_body.gen.es_ast)
 
         if_stmt = self.sync_loc(
             es.IfStatement(test=test, consequent=consequent, alternate=alternate),
@@ -1146,15 +1159,15 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
         """Process traditional for statement."""
         init: es.VariableDeclaration | es.Expression | None = None
         if node.iter and node.iter.gen.es_ast:
-            init = node.iter.gen.es_ast
+            init = cast("es.VariableDeclaration | es.Expression", node.iter.gen.es_ast)
 
         test: es.Expression | None = None
         if node.condition and node.condition.gen.es_ast:
-            test = node.condition.gen.es_ast
+            test = cast(es.Expression, node.condition.gen.es_ast)
 
         update: es.Expression | None = None
         if node.count_by and node.count_by.gen.es_ast:
-            update = node.count_by.gen.es_ast
+            update = cast(es.Expression, node.count_by.gen.es_ast)
 
         body = self._build_block_statement(node, node.body)
 
@@ -1165,13 +1178,13 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
 
     def exit_in_for_stmt(self, node: uni.InForStmt) -> None:
         """Process for-in statement."""
-        left = (
+        left: es.Node = (
             node.target.gen.es_ast
             if node.target.gen.es_ast
             else self.sync_loc(es.Identifier(name="item"), jac_node=node.target)
         )
-        right = (
-            node.collection.gen.es_ast
+        right: es.Expression = (
+            cast(es.Expression, node.collection.gen.es_ast)
             if node.collection.gen.es_ast
             else self.sync_loc(
                 es.Identifier(name="collection"), jac_node=node.collection
@@ -1223,7 +1236,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
             # Take first except clause
             except_node = node.excepts[0]
             if except_node.gen.es_ast:
-                handler = except_node.gen.es_ast
+                handler = cast(es.CatchClause, except_node.gen.es_ast)
 
         finalizer: es.BlockStatement | None = None
         if (
@@ -1260,8 +1273,8 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
 
     def exit_raise_stmt(self, node: uni.RaiseStmt) -> None:
         """Process raise statement."""
-        argument = (
-            node.cause.gen.es_ast
+        argument: es.Expression = (
+            cast(es.Expression, node.cause.gen.es_ast)
             if node.cause and node.cause.gen.es_ast
             else self.sync_loc(es.Identifier(name="Error"), jac_node=node)
         )
@@ -1288,8 +1301,8 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
 
     def exit_assert_stmt(self, node: uni.AssertStmt) -> None:
         """Process assert statement as if-throw."""
-        test = (
-            node.condition.gen.es_ast
+        test: es.Expression = (
+            cast(es.Expression, node.condition.gen.es_ast)
             if node.condition.gen.es_ast
             else self.sync_loc(es.Literal(value=True), jac_node=node.condition)
         )
@@ -1339,13 +1352,14 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
         """Process return statement."""
         argument: es.Expression | None = None
         if node.expr and node.expr.gen.es_ast:
-            argument = node.expr.gen.es_ast
+            argument = cast(es.Expression, node.expr.gen.es_ast)
 
         ret_stmt = self.sync_loc(es.ReturnStatement(argument=argument), jac_node=node)
         node.gen.es_ast = ret_stmt
 
     def exit_ctrl_stmt(self, node: uni.CtrlStmt) -> None:
         """Process control statement (break/continue)."""
+        stmt: es.BreakStatement | es.ContinueStatement
         if node.ctrl.name == Tok.KW_BREAK:
             stmt = self.sync_loc(es.BreakStatement(), jac_node=node)
         else:  # continue
@@ -1354,8 +1368,11 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
 
     def exit_expr_stmt(self, node: uni.ExprStmt) -> None:
         """Process expression statement."""
-        expr = self._get_ast_or_default(
-            node.expr, default_factory=lambda _src: es.Literal(value=None)
+        expr = cast(
+            es.Expression,
+            self._get_ast_or_default(
+                node.expr, default_factory=lambda _src: es.Literal(value=None)
+            ),
         )
 
         expr_stmt = self.sync_loc(
@@ -1420,6 +1437,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
             return
 
         logical_op = ES_LOGICAL_OPS.get(op_name) if op_name else None
+        bin_expr: es.LogicalExpression | es.BinaryExpression
         if logical_op:
             bin_expr = self.sync_loc(
                 es.LogicalExpression(operator=logical_op, left=left, right=right),
@@ -1447,13 +1465,19 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
         logical_op = logical_op or "&&"
 
         # Build the logical expression from left to right
-        result = self._get_ast_or_default(
-            node.values[0], default_factory=lambda _src: es.Literal(value=None)
+        result: es.Expression = cast(
+            es.Expression,
+            self._get_ast_or_default(
+                node.values[0], default_factory=lambda _src: es.Literal(value=None)
+            ),
         )
 
         for val in node.values[1:]:
-            right = self._get_ast_or_default(
-                val, default_factory=lambda _src: es.Literal(value=None)
+            right = cast(
+                es.Expression,
+                self._get_ast_or_default(
+                    val, default_factory=lambda _src: es.Literal(value=None)
+                ),
             )
             result = self.sync_loc(
                 es.LogicalExpression(operator=logical_op, left=result, right=right),
@@ -1474,22 +1498,28 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
 
         # Build comparisons
         comparisons: list[es.Expression] = []
-        left = self._get_ast_or_default(
-            node.left,
-            default_factory=lambda src: (
-                es.Identifier(name=src.sym_name)
-                if isinstance(src, uni.Name)
-                else es.Identifier(name="left")
+        left: es.Expression = cast(
+            es.Expression,
+            self._get_ast_or_default(
+                node.left,
+                default_factory=lambda src: (
+                    es.Identifier(name=src.sym_name)
+                    if isinstance(src, uni.Name)
+                    else es.Identifier(name="left")
+                ),
             ),
         )
 
         for op_token, right_node in zip(node.ops, node.rights, strict=False):
-            right = self._get_ast_or_default(
-                right_node,
-                default_factory=lambda src: (
-                    es.Identifier(name=src.sym_name)
-                    if isinstance(src, uni.Name)
-                    else es.Identifier(name="right")
+            right: es.Expression = cast(
+                es.Expression,
+                self._get_ast_or_default(
+                    right_node,
+                    default_factory=lambda src: (
+                        es.Identifier(name=src.sym_name)
+                        if isinstance(src, uni.Name)
+                        else es.Identifier(name="right")
+                    ),
                 ),
             )
             op_tok = Tok(op_token.name) if op_token.name in Tok.__members__ else None
@@ -1528,8 +1558,11 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
 
     def exit_unary_expr(self, node: uni.UnaryExpr) -> None:
         """Process unary expression."""
-        operand = self._get_ast_or_default(
-            node.operand, default_factory=lambda _src: es.Literal(value=0)
+        operand = cast(
+            es.Expression,
+            self._get_ast_or_default(
+                node.operand, default_factory=lambda _src: es.Literal(value=0)
+            ),
         )
 
         op_tok = Tok(node.op.name) if node.op.name in Tok.__members__ else None
@@ -2500,8 +2533,8 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
                     statements.append(stmt)
         node.gen.es_ast = statements
 
-    def exit_non_local_vars(self, node: uni.NonLocalVars) -> None:
-        """Process non-local variables."""
+    def exit_non_local_stmt(self, node: uni.NonLocalStmt) -> None:
+        """Process non-local statement."""
         # Non-local doesn't have direct equivalent in ES
         node.gen.es_ast = []
 

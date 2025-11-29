@@ -43,9 +43,9 @@ class ViteClientBundleBuilder(ClientBundleBuilder):
         self.vite_package_json = vite_package_json
         self.vite_minify = vite_minify
 
-    def _process_imports(
+    def _process_vite_imports(
         self, manifest: ClientManifest | None, module_path: Path
-    ) -> list[Path | None]:  # type: ignore[override]
+    ) -> list[Path | None]:
         """Process client imports for Vite bundling.
 
         Only mark modules as bundled when we actually inline their code (.jac files we compile

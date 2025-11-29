@@ -7,7 +7,7 @@ import builtins
 import os
 from collections.abc import Callable, Sequence
 from copy import copy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import IntEnum
 from hashlib import md5
 from types import EllipsisType
@@ -305,6 +305,15 @@ class Symbol:
         return f"Symbol({self.sym_name}, {self.sym_type}, {self.access}, {self.defn})"
 
 
+@dataclass
+class InheritedSymbolTable:
+    """Represents an inherited symbol table for selective imports."""
+
+    base_symbol_table: UniScopeNode
+    load_all_symbols: bool = False
+    symbols: list[str] = field(default_factory=list)
+
+
 class UniScopeNode(UniNode):
     """Symbol Table."""
 
@@ -318,6 +327,7 @@ class UniScopeNode(UniNode):
         self.parent_scope = parent_scope
         self.kid_scope: list[UniScopeNode] = []
         self.names_in_scope: dict[str, Symbol] = {}
+        self.inherited_scope: list[InheritedSymbolTable] = []
 
     def get_type(self) -> SymbolType:
         """Get type."""

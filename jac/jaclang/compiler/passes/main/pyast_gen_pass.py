@@ -2402,7 +2402,9 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
                 ),
                 jac_node=node,
             )
-        body_expr = cast(ast3.expr, node.body.gen.py_ast[0])
+        # At this point node.body is guaranteed to be an Expr (list case returned above)
+        body_node = cast(uni.Expr, node.body)
+        body_expr = cast(ast3.expr, body_node.gen.py_ast[0])
         node.gen.py_ast = [
             self.sync(
                 ast3.Lambda(

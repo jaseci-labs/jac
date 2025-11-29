@@ -304,6 +304,7 @@ def test_micro_suite(micro_jac_file: str) -> None:
     code_gen = JacProgram().compile(micro_jac_file)
     from_jac_str = ast3.dump(code_gen.gen.py_ast[0], indent=2)
     from_jac = code_gen.gen.py_ast[0]
+    assert isinstance(from_jac, ast3.Module)
     try:
         compile(from_jac, filename="<ast>", mode="exec")
     except Exception as e:
