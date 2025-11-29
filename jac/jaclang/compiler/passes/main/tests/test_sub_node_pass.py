@@ -1,10 +1,12 @@
 """Test sub node pass module."""
 
+from collections.abc import Callable
+
 from jaclang.compiler.passes import UniPass
 from jaclang.compiler.program import JacProgram
 
 
-def test_sub_node_pass(examples_path: callable) -> None:
+def test_sub_node_pass(examples_path: Callable[[str], str]) -> None:
     """Basic test for pass."""
     code_gen = (out := JacProgram()).compile(
         file_path=examples_path("manual_code/circle.jac")

@@ -2,6 +2,7 @@
 
 import io
 import sys
+from collections.abc import Callable
 
 import pytest
 
@@ -27,7 +28,7 @@ def test_pass_ast_complete() -> None:
     check_pass_ast_complete(PreDynamoPass)
 
 
-def test_predynamo_where_assign(fixture_path: callable) -> None:
+def test_predynamo_where_assign(fixture_path: Callable[[str], str]) -> None:
     """Test torch.where transformation."""
     captured_output = io.StringIO()
     sys.stdout = captured_output
@@ -37,7 +38,7 @@ def test_predynamo_where_assign(fixture_path: callable) -> None:
     assert "torch.where" in code_gen.unparse()
 
 
-def test_predynamo_where_return(fixture_path: callable) -> None:
+def test_predynamo_where_return(fixture_path: Callable[[str], str]) -> None:
     """Test torch.where transformation."""
     captured_output = io.StringIO()
     sys.stdout = captured_output
@@ -46,7 +47,7 @@ def test_predynamo_where_return(fixture_path: callable) -> None:
     assert "torch.where" in code_gen.unparse()
 
 
-def test_predynamo_fix3(fixture_path: callable) -> None:
+def test_predynamo_fix3(fixture_path: Callable[[str], str]) -> None:
     """Test torch.where transformation."""
     captured_output = io.StringIO()
     sys.stdout = captured_output

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import inspect
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Generator
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -14,7 +14,10 @@ import jaclang
 from jaclang.runtimelib.utils import read_file_with_encoding
 
 if TYPE_CHECKING:
-    pass
+    import io
+    from contextlib import AbstractContextManager
+
+    from jaclang.compiler.program import JacProgram
 
 
 # ============================================================================
@@ -156,7 +159,7 @@ def jac_runtime():
 
 
 @pytest.fixture
-def jac_program():
+def jac_program() -> JacProgram:
     """Create a fresh JacProgram instance.
 
     Usage:
@@ -174,7 +177,7 @@ def jac_program():
 
 
 @pytest.fixture
-def capture_stdout():
+def capture_stdout() -> Callable[[], AbstractContextManager[io.StringIO]]:
     """Capture stdout during test execution.
 
     Usage:
@@ -188,7 +191,7 @@ def capture_stdout():
     from contextlib import contextmanager
 
     @contextmanager
-    def _capture_stdout():
+    def _capture_stdout() -> Generator[io.StringIO, None, None]:
         captured = io.StringIO()
         old_stdout = sys.stdout
         sys.stdout = captured

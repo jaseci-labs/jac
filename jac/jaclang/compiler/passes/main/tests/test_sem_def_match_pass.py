@@ -1,9 +1,11 @@
 """Test pass module."""
 
+from collections.abc import Callable
+
 from jaclang.compiler.program import JacProgram
 
 
-def test_sem_def_match(fixture_path: callable) -> None:
+def test_sem_def_match(fixture_path: Callable[[str], str]) -> None:
     """Basic test for pass."""
     (out := JacProgram()).compile(fixture_path("sem_def_match.jac"))
     assert not out.errors_had

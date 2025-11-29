@@ -54,8 +54,8 @@ def compile_to_esast(filename: str) -> es.Program:
 
 def test_core_fixture_ast_shape(fixture_path) -> None:
     """Core fixture should expose fundamental declarations in the ESTree."""
-    CORE_FIXTURE = "core_language_features.jac"
-    es_ast = compile_to_esast(fixture_path(CORE_FIXTURE))
+    core_fixture = "core_language_features.jac"
+    es_ast = compile_to_esast(fixture_path(core_fixture))
 
     func_decls = [
         node for node in es_ast.body if isinstance(node, es.FunctionDeclaration)
@@ -84,8 +84,8 @@ def test_core_fixture_ast_shape(fixture_path) -> None:
 
 def test_advanced_fixture_contains_async_and_spread_nodes(fixture_path) -> None:
     """Advanced fixture should surface async, await, and spread constructs."""
-    ADVANCED_FIXTURE = "advanced_language_features.jac"
-    es_ast = compile_to_esast(fixture_path(ADVANCED_FIXTURE))
+    advanced_fixture = "advanced_language_features.jac"
+    es_ast = compile_to_esast(fixture_path(advanced_fixture))
 
     func_names = {
         node.id.name
@@ -107,8 +107,8 @@ def test_advanced_fixture_contains_async_and_spread_nodes(fixture_path) -> None:
 
 def test_client_fixture_generates_client_bundle(fixture_path) -> None:
     """Client fixture should retain JSX lowering behaviour."""
-    CLIENT_FIXTURE = "client_jsx.jac"
-    es_ast = compile_to_esast(fixture_path(CLIENT_FIXTURE))
+    client_fixture = "client_jsx.jac"
+    es_ast = compile_to_esast(fixture_path(client_fixture))
     js_code = es_to_js(es_ast)
 
     assert 'const API_URL = "https://api.example.com";' in js_code, (
@@ -121,8 +121,8 @@ def test_client_fixture_generates_client_bundle(fixture_path) -> None:
 
 def test_es_ast_serializes_to_json(fixture_path) -> None:
     """ESTree should serialize cleanly to JSON for downstream tooling."""
-    CORE_FIXTURE = "core_language_features.jac"
-    es_ast = compile_to_esast(fixture_path(CORE_FIXTURE))
+    core_fixture = "core_language_features.jac"
+    es_ast = compile_to_esast(fixture_path(core_fixture))
     ast_dict = es_node_to_dict(es_ast)
 
     serialized = json.dumps(ast_dict)
@@ -169,8 +169,8 @@ def test_class_separate_impl_file(fixture_path) -> None:
 
 def test_fstring_generates_template_literal(fixture_path) -> None:
     """Test that f-strings are converted to JavaScript template literals."""
-    ADVANCED_FIXTURE = "advanced_language_features.jac"
-    es_ast = compile_to_esast(fixture_path(ADVANCED_FIXTURE))
+    advanced_fixture = "advanced_language_features.jac"
+    es_ast = compile_to_esast(fixture_path(advanced_fixture))
     js_code = es_to_js(es_ast)
 
     # Check that template_literal_examples function exists

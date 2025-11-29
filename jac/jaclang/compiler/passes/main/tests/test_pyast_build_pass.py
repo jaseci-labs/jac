@@ -2,6 +2,7 @@
 
 import ast as py_ast
 import inspect
+from collections.abc import Callable
 
 from jaclang.compiler.passes.main import PyastBuildPass
 from jaclang.compiler.program import JacProgram
@@ -37,7 +38,7 @@ def test_synced_to_latest_py_ast() -> None:
         assert name in pass_func_names
 
 
-def test_str2doc(fixture_path: callable) -> None:
+def test_str2doc(fixture_path: Callable[[str], str]) -> None:
     """Test str2doc."""
     with open(fixture_path("str2doc.py")) as f:
         file_source = f.read()
@@ -51,7 +52,7 @@ def test_str2doc(fixture_path: callable) -> None:
     assert '"""This is a test function."""\ndef foo()' in code
 
 
-def test_fstring_triple_quotes(fixture_path: callable) -> None:
+def test_fstring_triple_quotes(fixture_path: Callable[[str], str]) -> None:
     """Test that triple-quoted f-strings are converted correctly."""
     with open(fixture_path("py2jac_fstrings.py")) as f:
         file_source = f.read()

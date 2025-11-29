@@ -93,8 +93,8 @@ def assert_no_jac_keywords(js_code: str, fixture_name: str) -> None:
 
 def test_core_fixture_emits_expected_constructs(fixture_path) -> None:
     """Core fixture should cover fundamental language constructs."""
-    CORE_FIXTURE = "core_language_features.jac"
-    js_code = compile_fixture_to_js(CORE_FIXTURE, fixture_path)
+    core_fixture = "core_language_features.jac"
+    js_code = compile_fixture_to_js(core_fixture, fixture_path)
 
     # Functions and control flow
     for pattern in [
@@ -126,15 +126,15 @@ def test_core_fixture_emits_expected_constructs(fixture_path) -> None:
     for pattern in ["try", "catch (err)", "finally"]:
         assert pattern in js_code
 
-    assert_balanced_syntax(js_code, CORE_FIXTURE)
-    assert_no_jac_keywords(js_code, CORE_FIXTURE)
+    assert_balanced_syntax(js_code, core_fixture)
+    assert_no_jac_keywords(js_code, core_fixture)
     assert len(js_code) > 200
 
 
 def test_advanced_fixture_emits_expected_constructs(fixture_path) -> None:
     """Advanced fixture should exercise higher-level Jac features."""
-    ADVANCED_FIXTURE = "advanced_language_features.jac"
-    js_code = compile_fixture_to_js(ADVANCED_FIXTURE, fixture_path)
+    advanced_fixture = "advanced_language_features.jac"
+    js_code = compile_fixture_to_js(advanced_fixture, fixture_path)
 
     patterns = [
         "function lambda_examples",
@@ -153,15 +153,15 @@ def test_advanced_fixture_emits_expected_constructs(fixture_path) -> None:
     for pattern in patterns:
         assert pattern in js_code
 
-    assert_balanced_syntax(js_code, ADVANCED_FIXTURE)
-    assert_no_jac_keywords(js_code, ADVANCED_FIXTURE)
+    assert_balanced_syntax(js_code, advanced_fixture)
+    assert_no_jac_keywords(js_code, advanced_fixture)
     assert len(js_code) > 150
 
 
 def test_client_fixture_generates_client_bundle(fixture_path) -> None:
     """Client-focused fixture should emit JSX-flavoured JavaScript."""
-    CLIENT_FIXTURE = "client_jsx.jac"
-    js_code = compile_fixture_to_js(CLIENT_FIXTURE, fixture_path)
+    client_fixture = "client_jsx.jac"
+    js_code = compile_fixture_to_js(client_fixture, fixture_path)
 
     for pattern in [
         'const API_URL = "https://api.example.com";',
@@ -172,7 +172,7 @@ def test_client_fixture_generates_client_bundle(fixture_path) -> None:
     ]:
         assert pattern in js_code
     assert "server_only" not in js_code
-    assert_balanced_syntax(js_code, CLIENT_FIXTURE)
+    assert_balanced_syntax(js_code, client_fixture)
 
 
 def test_iife_fixture_generates_function_expressions(lang_fixture_path) -> None:
@@ -193,8 +193,8 @@ def test_iife_fixture_generates_function_expressions(lang_fixture_path) -> None:
 
 def test_cli_js_command_outputs_js(fixture_path) -> None:
     """jac js CLI should emit JavaScript for the core fixture."""
-    CORE_FIXTURE = "core_language_features.jac"
-    fixture_file_path = fixture_path(CORE_FIXTURE)
+    core_fixture = "core_language_features.jac"
+    fixture_file_path = fixture_path(core_fixture)
     env = os.environ.copy()
     project_root = str(Path(__file__).resolve().parents[4])
     existing = env.get("PYTHONPATH", "")
@@ -524,8 +524,8 @@ cl def conditional_message(score: int) -> str {
 
 def test_fstring_advanced_fixture_template_literals(fixture_path) -> None:
     """Test that the advanced fixture's f-strings generate proper template literals."""
-    ADVANCED_FIXTURE = "advanced_language_features.jac"
-    js_code = compile_fixture_to_js(ADVANCED_FIXTURE, fixture_path)
+    advanced_fixture = "advanced_language_features.jac"
+    js_code = compile_fixture_to_js(advanced_fixture, fixture_path)
 
     assert "function template_literal_examples" in js_code
     assert js_code.count("`") >= 2

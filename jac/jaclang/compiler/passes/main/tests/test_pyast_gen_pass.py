@@ -4,6 +4,7 @@ import ast as ast3
 import io
 import sys
 import types
+from collections.abc import Callable
 
 import jaclang.compiler.unitree as uni
 from conftest import check_pass_ast_complete, get_micro_jac_files
@@ -29,7 +30,7 @@ def test_pass_ast_complete() -> None:
     check_pass_ast_complete(PyastGenPass)
 
 
-def test_hodge_podge(examples_path: callable) -> None:
+def test_hodge_podge(examples_path: Callable[[str], str]) -> None:
     """Basic test for pass."""
     (out := JacProgram()).compile(
         examples_path("micro/hodge_podge.jac"),
@@ -38,7 +39,7 @@ def test_hodge_podge(examples_path: callable) -> None:
     assert not out.errors_had
 
 
-def test_sem_decorator(fixture_path: callable) -> None:
+def test_sem_decorator(fixture_path: Callable[[str], str]) -> None:
     """Test for @_.sem(...) decorator."""
     code_gen = JacProgram().compile(
         fixture_path("codegen_sem.jac"),
@@ -167,7 +168,7 @@ def test_sem_decorator(fixture_path: callable) -> None:
         )
 
 
-def test_circle_py_ast(examples_path: callable) -> None:
+def test_circle_py_ast(examples_path: Callable[[str], str]) -> None:
     """Basic test for pass."""
     code_gen = (out := JacProgram()).compile(
         examples_path("manual_code/circle.jac"),
@@ -187,7 +188,7 @@ def test_circle_py_ast(examples_path: callable) -> None:
     assert not out.errors_had
 
 
-def test_iife_fixture_executes(lang_fixture_path: callable) -> None:
+def test_iife_fixture_executes(lang_fixture_path: Callable[[str], str]) -> None:
     """Ensure IIFE and block lambdas lower to executable Python."""
     fixture_path = lang_fixture_path("iife_functions.jac")
     code_gen = (prog := JacProgram()).compile(fixture_path)

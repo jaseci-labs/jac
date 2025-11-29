@@ -1,6 +1,9 @@
 """Test pass module."""
 
 import re
+from collections.abc import Callable
+from contextlib import AbstractContextManager
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -8,8 +11,11 @@ import jaclang.compiler.unitree as uni
 from jaclang.cli import cli
 from jaclang.compiler.program import JacProgram
 
+if TYPE_CHECKING:
+    import io
 
-def test_pygen_jac_cli(fixture_path: callable) -> None:
+
+def test_pygen_jac_cli(fixture_path: Callable[[str], str]) -> None:
     """Basic test for pass."""
     (out := JacProgram()).build(fixture_path("base.jac"))
     assert not out.errors_had
@@ -17,7 +23,7 @@ def test_pygen_jac_cli(fixture_path: callable) -> None:
     assert "56" in str(mod.to_dict())
 
 
-def test_import_auto_impl(fixture_path: callable) -> None:
+def test_import_auto_impl(fixture_path: Callable[[str], str]) -> None:
     """Basic test for pass."""
     (prog := JacProgram()).compile(fixture_path("autoimpl.jac"))
     num_modules = len(list(prog.mod.hub.values())[0].impl_mod)
@@ -29,7 +35,7 @@ def test_import_auto_impl(fixture_path: callable) -> None:
     assert "autoimpl.cl" in mod_names
 
 
-def test_import_include_auto_impl(fixture_path: callable) -> None:
+def test_import_include_auto_impl(fixture_path: Callable[[str], str]) -> None:
     """Basic test for pass."""
     (prog := JacProgram()).build(fixture_path("incautoimpl.jac"))
     num_modules = len(list(prog.mod.hub.values())[1].impl_mod) + 1
@@ -43,7 +49,7 @@ def test_import_include_auto_impl(fixture_path: callable) -> None:
     assert "autoimpl.cl" in mod_names
 
 
-def test_annexalbe_by_discovery(fixture_path: callable) -> None:
+def test_annexalbe_by_discovery(fixture_path: Callable[[str], str]) -> None:
     """Basic test for pass."""
     (prog := JacProgram()).build(fixture_path("incautoimpl.jac"))
     count = 0
@@ -61,7 +67,7 @@ def test_annexalbe_by_discovery(fixture_path: callable) -> None:
     assert count == 5
 
 
-def test_cl_annex_marked_client(fixture_path: callable) -> None:
+def test_cl_annex_marked_client(fixture_path: Callable[[str], str]) -> None:
     """Ensure .cl.jac annex files are autoloaded and marked client."""
 
     (prog := JacProgram()).compile(fixture_path("autoimpl.jac"))
@@ -77,7 +83,7 @@ def test_cl_annex_marked_client(fixture_path: callable) -> None:
 
 
 @pytest.mark.skip(reason="TODO: Fix when we have the type checker")
-def test_py_raise_map(fixture_path: callable) -> None:
+def test_py_raise_map(fixture_path: Callable[[str], str]) -> None:
     """Basic test for pass."""
     (build := JacProgram()).build(fixture_path("py_imp_test.jac"))
     p = {
@@ -100,7 +106,7 @@ def test_py_raise_map(fixture_path: callable) -> None:
 
 
 @pytest.mark.skip(reason="TODO: Fix when we have the type checker")
-def test_py_raised_mods(fixture_path: callable) -> None:
+def test_py_raised_mods(fixture_path: Callable[[str], str]) -> None:
     """Basic test for pass."""
     (prog := JacProgram()).build(fixture_path("py_imp_test.jac"))
     for i in list(
@@ -123,7 +129,10 @@ def test_py_raised_mods(fixture_path: callable) -> None:
     assert module_count == 8
 
 
-def test_double_empty_anx(fixture_path: callable, capture_stdout: callable) -> None:
+def test_double_empty_anx(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test importing python."""
     with capture_stdout() as captured_output:
         cli.run(fixture_path("autoimpl.jac"))
@@ -134,14 +143,14 @@ def test_double_empty_anx(fixture_path: callable, capture_stdout: callable) -> N
     assert "baz" in stdout_value
 
 
-def test_circular_import(fixture_path: callable) -> None:
+def test_circular_import(fixture_path: Callable[[str], str]) -> None:
     """Test circular import."""
     (state := JacProgram()).compile(fixture_path("circular_import.jac"))
     assert not state.errors_had
     assert len(state.errors_had) == 0
 
 
-def test_ts_module_import(fixture_path: callable) -> None:
+def test_ts_module_import(fixture_path: Callable[[str], str]) -> None:
     """Test importing TypeScript modules in cl imports."""
     (prog := JacProgram()).build(fixture_path("ts_imports/main.jac"), type_check=True)
     # Verify TS/JS modules are loaded into the module hub
@@ -156,7 +165,7 @@ def test_ts_module_import(fixture_path: callable) -> None:
     assert not js_mod.has_syntax_errors
 
 
-def test_ts_module_compilation_no_cgen(fixture_path: callable) -> None:
+def test_ts_module_compilation_no_cgen(fixture_path: Callable[[str], str]) -> None:
     """Test TypeScript modules compile with no_cgen=True."""
     (prog := JacProgram()).compile(fixture_path("ts_imports/utils.ts"), no_cgen=True)
     assert not prog.errors_had
@@ -165,7 +174,7 @@ def test_ts_module_compilation_no_cgen(fixture_path: callable) -> None:
     assert not ts_mod.has_syntax_errors
 
 
-def test_js_module_compilation_no_cgen(fixture_path: callable) -> None:
+def test_js_module_compilation_no_cgen(fixture_path: Callable[[str], str]) -> None:
     """Test JavaScript modules compile with no_cgen=True."""
     (prog := JacProgram()).compile(
         fixture_path("ts_imports/component.js"), no_cgen=True

@@ -1,5 +1,7 @@
 """Tests for typechecker pass (the pyright implementation)."""
 
+from collections.abc import Callable
+
 from jaclang.compiler.passes.main import TypeCheckPass
 from jaclang.compiler.program import JacProgram
 
@@ -9,7 +11,9 @@ def _assert_error_pretty_found(needle: str, haystack: str) -> None:
         assert line in haystack, f"Expected line '{line}' not found in:\n{haystack}"
 
 
-def test_explicit_type_annotation_in_assignment(fixture_path: callable) -> None:
+def test_explicit_type_annotation_in_assignment(
+    fixture_path: Callable[[str], str],
+) -> None:
     """Test explicit type annotation in assignment."""
     program = JacProgram()
     program.build(fixture_path("type_annotation_assignment.jac"), type_check=True)
@@ -31,7 +35,7 @@ def test_explicit_type_annotation_in_assignment(fixture_path: callable) -> None:
     )
 
 
-def test_float_types(fixture_path: callable) -> None:
+def test_float_types(fixture_path: Callable[[str], str]) -> None:
     program = JacProgram()
     mod = program.compile(fixture_path("checker_float.jac"))
     TypeCheckPass(ir_in=mod, prog=program)
@@ -46,7 +50,7 @@ def test_float_types(fixture_path: callable) -> None:
     )
 
 
-def test_infer_type_of_assignment(fixture_path: callable) -> None:
+def test_infer_type_of_assignment(fixture_path: Callable[[str], str]) -> None:
     program = JacProgram()
     mod = program.compile(fixture_path("infer_type_assignment.jac"))
     TypeCheckPass(ir_in=mod, prog=program)
@@ -61,7 +65,7 @@ def test_infer_type_of_assignment(fixture_path: callable) -> None:
     )
 
 
-def test_member_access_type_resolve(fixture_path: callable) -> None:
+def test_member_access_type_resolve(fixture_path: Callable[[str], str]) -> None:
     program = JacProgram()
     mod = program.compile(fixture_path("member_access_type_resolve.jac"))
     TypeCheckPass(ir_in=mod, prog=program)
@@ -75,7 +79,7 @@ def test_member_access_type_resolve(fixture_path: callable) -> None:
     )
 
 
-def test_imported_sym(fixture_path: callable) -> None:
+def test_imported_sym(fixture_path: Callable[[str], str]) -> None:
     program = JacProgram()
     mod = program.compile(fixture_path("checker/import_sym_test.jac"))
     TypeCheckPass(ir_in=mod, prog=program)
@@ -90,7 +94,7 @@ def test_imported_sym(fixture_path: callable) -> None:
     )
 
 
-def test_member_access_type_infered(fixture_path: callable) -> None:
+def test_member_access_type_infered(fixture_path: Callable[[str], str]) -> None:
     program = JacProgram()
     mod = program.compile(fixture_path("member_access_type_inferred.jac"))
     TypeCheckPass(ir_in=mod, prog=program)
@@ -104,7 +108,7 @@ def test_member_access_type_infered(fixture_path: callable) -> None:
     )
 
 
-def test_inherited_symbol(fixture_path: callable) -> None:
+def test_inherited_symbol(fixture_path: Callable[[str], str]) -> None:
     program = JacProgram()
     mod = program.compile(fixture_path("checker_sym_inherit.jac"))
     TypeCheckPass(ir_in=mod, prog=program)
@@ -119,7 +123,7 @@ def test_inherited_symbol(fixture_path: callable) -> None:
     )
 
 
-def test_import_symbol_type_infer(fixture_path: callable) -> None:
+def test_import_symbol_type_infer(fixture_path: Callable[[str], str]) -> None:
     program = JacProgram()
     mod = program.compile(fixture_path("import_symbol_type_infer.jac"))
     TypeCheckPass(ir_in=mod, prog=program)
@@ -133,7 +137,7 @@ def test_import_symbol_type_infer(fixture_path: callable) -> None:
     )
 
 
-def test_from_import(fixture_path: callable) -> None:
+def test_from_import(fixture_path: Callable[[str], str]) -> None:
     path = fixture_path("checker_importer.jac")
 
     program = JacProgram()
@@ -149,7 +153,7 @@ def test_from_import(fixture_path: callable) -> None:
     )
 
 
-def test_call_expr(fixture_path: callable) -> None:
+def test_call_expr(fixture_path: Callable[[str], str]) -> None:
     path = fixture_path("checker_expr_call.jac")
     program = JacProgram()
     mod = program.compile(path)
@@ -164,7 +168,7 @@ def test_call_expr(fixture_path: callable) -> None:
     )
 
 
-def test_call_expr_magic(fixture_path: callable) -> None:
+def test_call_expr_magic(fixture_path: Callable[[str], str]) -> None:
     path = fixture_path("checker_magic_call.jac")
     program = JacProgram()
     mod = program.compile(path)
@@ -180,7 +184,7 @@ def test_call_expr_magic(fixture_path: callable) -> None:
     )
 
 
-def test_arity(fixture_path: callable) -> None:
+def test_arity(fixture_path: Callable[[str], str]) -> None:
     path = fixture_path("checker_arity.jac")
     program = JacProgram()
     mod = program.compile(path)
@@ -209,7 +213,7 @@ def test_arity(fixture_path: callable) -> None:
     )
 
 
-def test_param_types(fixture_path: callable) -> None:
+def test_param_types(fixture_path: Callable[[str], str]) -> None:
     path = fixture_path("checker_param_types.jac")
     program = JacProgram()
     mod = program.compile(path)
@@ -225,7 +229,7 @@ def test_param_types(fixture_path: callable) -> None:
     )
 
 
-def test_param_arg_match(fixture_path: callable) -> None:
+def test_param_arg_match(fixture_path: Callable[[str], str]) -> None:
     program = JacProgram()
     path = fixture_path("checker_arg_param_match.jac")
     mod = program.compile(path)
@@ -322,7 +326,7 @@ def test_param_arg_match(fixture_path: callable) -> None:
         _assert_error_pretty_found(expected, program.errors_had[i].pretty_print())
 
 
-def test_class_construct(fixture_path: callable) -> None:
+def test_class_construct(fixture_path: Callable[[str], str]) -> None:
     program = JacProgram()
     path = fixture_path("checker_class_construct.jac")
     mod = program.compile(path)
@@ -354,7 +358,7 @@ def test_class_construct(fixture_path: callable) -> None:
         _assert_error_pretty_found(expected, program.errors_had[i].pretty_print())
 
 
-def test_self_type_inference(fixture_path: callable) -> None:
+def test_self_type_inference(fixture_path: Callable[[str], str]) -> None:
     path = fixture_path("checker_self_type.jac")
     program = JacProgram()
     mod = program.compile(path)
@@ -369,7 +373,7 @@ def test_self_type_inference(fixture_path: callable) -> None:
     )
 
 
-def test_binary_op(fixture_path: callable) -> None:
+def test_binary_op(fixture_path: Callable[[str], str]) -> None:
     program = JacProgram()
     mod = program.compile(fixture_path("checker_binary_op.jac"))
     TypeCheckPass(ir_in=mod, prog=program)
@@ -390,7 +394,7 @@ def test_binary_op(fixture_path: callable) -> None:
     )
 
 
-def test_checker_call_expr_class(fixture_path: callable) -> None:
+def test_checker_call_expr_class(fixture_path: Callable[[str], str]) -> None:
     path = fixture_path("checker_call_expr_class.jac")
     program = JacProgram()
     mod = program.compile(path)
@@ -405,7 +409,7 @@ def test_checker_call_expr_class(fixture_path: callable) -> None:
     )
 
 
-def test_checker_mod_path(fixture_path: callable) -> None:
+def test_checker_mod_path(fixture_path: Callable[[str], str]) -> None:
     path = fixture_path("checker_mod_path.jac")
     program = JacProgram()
     mod = program.compile(path)
@@ -420,7 +424,7 @@ def test_checker_mod_path(fixture_path: callable) -> None:
     )
 
 
-def test_checker_cat_is_animal(fixture_path: callable) -> None:
+def test_checker_cat_is_animal(fixture_path: Callable[[str], str]) -> None:
     path = fixture_path("checker_cat_is_animal.jac")
     program = JacProgram()
     mod = program.compile(path)
@@ -437,7 +441,7 @@ def test_checker_cat_is_animal(fixture_path: callable) -> None:
     )
 
 
-def test_checker_member_access(fixture_path: callable) -> None:
+def test_checker_member_access(fixture_path: Callable[[str], str]) -> None:
     path = fixture_path("symtab_build.jac")
     program = JacProgram()
     mod = program.compile(path)
@@ -469,7 +473,7 @@ def test_checker_member_access(fixture_path: callable) -> None:
     )
 
 
-def test_checker_import_missing_module(fixture_path: callable) -> None:
+def test_checker_import_missing_module(fixture_path: Callable[[str], str]) -> None:
     path = fixture_path("checker_import_missing_module.jac")
     program = JacProgram()
     mod = program.compile(path)
@@ -477,7 +481,7 @@ def test_checker_import_missing_module(fixture_path: callable) -> None:
     assert len(program.errors_had) == 0
 
 
-def test_cyclic_symbol(fixture_path: callable) -> None:
+def test_cyclic_symbol(fixture_path: Callable[[str], str]) -> None:
     path = fixture_path("checker_cyclic_symbol.jac")
     program = JacProgram()
     mod = program.compile(path)
@@ -487,7 +491,7 @@ def test_cyclic_symbol(fixture_path: callable) -> None:
     assert len(program.errors_had) == 0
 
 
-def test_get_type_of_iife_expression(fixture_path: callable) -> None:
+def test_get_type_of_iife_expression(fixture_path: Callable[[str], str]) -> None:
     path = fixture_path("checker_iife_expression.jac")
     program = JacProgram()
     mod = program.compile(path)
@@ -495,7 +499,7 @@ def test_get_type_of_iife_expression(fixture_path: callable) -> None:
     assert len(program.errors_had) == 0
 
 
-def test_generics(fixture_path: callable) -> None:
+def test_generics(fixture_path: Callable[[str], str]) -> None:
     program = JacProgram()
     path = fixture_path("checker_generics.jac")
     mod = program.compile(path)
@@ -590,7 +594,7 @@ def test_generics(fixture_path: callable) -> None:
         _assert_error_pretty_found(expected, program.errors_had[i].pretty_print())
 
 
-def test_return_type(fixture_path: callable) -> None:
+def test_return_type(fixture_path: Callable[[str], str]) -> None:
     program = JacProgram()
     path = fixture_path("checker_return_type.jac")
     mod = program.compile(path)
@@ -638,7 +642,7 @@ def test_return_type(fixture_path: callable) -> None:
         _assert_error_pretty_found(expected, program.errors_had[i].pretty_print())
 
 
-def test_connect_typed(fixture_path: callable) -> None:
+def test_connect_typed(fixture_path: Callable[[str], str]) -> None:
     program = JacProgram()
     path = fixture_path("checker_connect_typed.jac")
     mod = program.compile(path)
@@ -647,7 +651,7 @@ def test_connect_typed(fixture_path: callable) -> None:
     assert len(program.errors_had) == 3
 
 
-def test_connect_filter(fixture_path: callable) -> None:
+def test_connect_filter(fixture_path: Callable[[str], str]) -> None:
     program = JacProgram()
     path = fixture_path("checker_connect_filter.jac")
     mod = program.compile(path)
@@ -703,7 +707,7 @@ def test_connect_filter(fixture_path: callable) -> None:
         _assert_error_pretty_found(expected, program.errors_had[i].pretty_print())
 
 
-def test_inherit_method_lookup(fixture_path: callable) -> None:
+def test_inherit_method_lookup(fixture_path: Callable[[str], str]) -> None:
     """Test that inherited methods are properly resolved through MRO."""
     program = JacProgram()
     mod = program.compile(fixture_path("checker_inherit_method_lookup.jac"))
@@ -711,7 +715,7 @@ def test_inherit_method_lookup(fixture_path: callable) -> None:
     assert len(program.errors_had) == 0
 
 
-def test_inherit_init_params(fixture_path: callable) -> None:
+def test_inherit_init_params(fixture_path: Callable[[str], str]) -> None:
     """Test that synthesized __init__ collects parameters from base classes."""
     program = JacProgram()
     mod = program.compile(fixture_path("checker_inherit_init_params.jac"))
@@ -738,7 +742,7 @@ def test_inherit_init_params(fixture_path: callable) -> None:
         _assert_error_pretty_found(expected, program.errors_had[i].pretty_print())
 
 
-def test_ts_file_parsing(fixture_path: callable) -> None:
+def test_ts_file_parsing(fixture_path: Callable[[str], str]) -> None:
     """Test parsing TypeScript modules."""
     path = fixture_path("ts_imports/utils.ts")
     program = JacProgram()
@@ -748,7 +752,7 @@ def test_ts_file_parsing(fixture_path: callable) -> None:
     assert not mod.has_syntax_errors
 
 
-def test_js_file_parsing(fixture_path: callable) -> None:
+def test_js_file_parsing(fixture_path: Callable[[str], str]) -> None:
     """Test parsing JavaScript modules."""
     path = fixture_path("ts_imports/component.js")
     program = JacProgram()
@@ -758,7 +762,7 @@ def test_js_file_parsing(fixture_path: callable) -> None:
     assert not mod.has_syntax_errors
 
 
-def test_jac_importing_ts(fixture_path: callable) -> None:
+def test_jac_importing_ts(fixture_path: Callable[[str], str]) -> None:
     """Test Jac module importing from TypeScript."""
     path = fixture_path("ts_imports/main.jac")
     program = JacProgram()
@@ -767,7 +771,7 @@ def test_jac_importing_ts(fixture_path: callable) -> None:
     assert mod is not None
 
 
-def test_cl_jac_importing_ts(fixture_path: callable) -> None:
+def test_cl_jac_importing_ts(fixture_path: Callable[[str], str]) -> None:
     """Test .cl.jac module importing from TypeScript for type checking."""
     path = fixture_path("ts_imports/client.cl.jac")
     program = JacProgram()

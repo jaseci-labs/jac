@@ -1,7 +1,9 @@
 """Test pass module."""
 
+from collections.abc import Callable
 
-def test_cfg_branches_and_loops(fixture_path: callable) -> None:
+
+def test_cfg_branches_and_loops(fixture_path: Callable[[str], str]) -> None:
     """Test basic blocks."""
     file_name = fixture_path("cfg_gen.jac")
 
@@ -38,7 +40,7 @@ def test_cfg_branches_and_loops(fixture_path: callable) -> None:
     assert dot == expected_dot
 
 
-def test_cfg_abilities_and_objects(fixture_path: callable) -> None:
+def test_cfg_abilities_and_objects(fixture_path: Callable[[str], str]) -> None:
     """Test basic blocks."""
     file_name = fixture_path("cfg_ability_test.jac")
 
@@ -65,7 +67,7 @@ def test_cfg_abilities_and_objects(fixture_path: callable) -> None:
     assert dot == expected_dot
 
 
-def test_cfg_ability_with_has(fixture_path: callable) -> None:
+def test_cfg_ability_with_has(fixture_path: Callable[[str], str]) -> None:
     """Test basic blocks with ability and has."""
     file_name = fixture_path("cfg_has_var.jac")
 
@@ -87,7 +89,7 @@ def test_cfg_ability_with_has(fixture_path: callable) -> None:
     assert dot == expected_dot
 
 
-def test_cfg_if_no_else(fixture_path: callable) -> None:
+def test_cfg_if_no_else(fixture_path: Callable[[str], str]) -> None:
     """Test basic blocks with if without else."""
     file_name = fixture_path("cfg_if_no_else.jac")
 
@@ -109,7 +111,7 @@ def test_cfg_if_no_else(fixture_path: callable) -> None:
     assert dot == expected_dot
 
 
-def test_cfg_return_stmt(fixture_path: callable) -> None:
+def test_cfg_return_stmt(fixture_path: Callable[[str], str]) -> None:
     """Test basic blocks with return statement."""
     file_name = fixture_path("cfg_return.jac")
 

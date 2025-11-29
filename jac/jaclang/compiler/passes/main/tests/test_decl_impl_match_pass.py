@@ -1,5 +1,9 @@
 """Test pass module."""
 
+from collections.abc import Callable
+from contextlib import AbstractContextManager
+from typing import TYPE_CHECKING
+
 import pytest
 
 import jaclang.compiler.unitree as uni
@@ -7,9 +11,12 @@ from jaclang import JacRuntime as Jac
 from jaclang.cli import cli
 from jaclang.compiler.program import JacProgram
 
+if TYPE_CHECKING:
+    import io
+
 
 @pytest.fixture(autouse=True)
-def setup_jac_runtime(fixture_path: callable):
+def setup_jac_runtime(fixture_path: Callable[[str], str]):
     """Set up and tear down Jac runtime for each test."""
     Jac.reset_machine()
     Jac.set_base_path(fixture_path("./"))
@@ -18,7 +25,7 @@ def setup_jac_runtime(fixture_path: callable):
     Jac.reset_machine()
 
 
-def test_parameter_count_mismatch(fixture_path: callable) -> None:
+def test_parameter_count_mismatch(fixture_path: Callable[[str], str]) -> None:
     """Basic test for pass."""
     (out := JacProgram()).compile(fixture_path("defn_decl_mismatch.jac"))
 
@@ -48,7 +55,7 @@ def test_parameter_count_mismatch(fixture_path: callable) -> None:
         assert exp in errors_output
 
 
-def test_ability_connected_to_decl(fixture_path: callable) -> None:
+def test_ability_connected_to_decl(fixture_path: Callable[[str], str]) -> None:
     """Basic test for pass."""
     state = (out := JacProgram()).compile(fixture_path("base.jac"))
     assert not out.errors_had
@@ -64,7 +71,7 @@ def test_ability_connected_to_decl(fixture_path: callable) -> None:
     )
 
 
-def test_ability_connected_to_decl_post(fixture_path: callable) -> None:
+def test_ability_connected_to_decl_post(fixture_path: Callable[[str], str]) -> None:
     """Basic test for pass."""
     state = (out := JacProgram()).compile(fixture_path("base2.jac"))
     assert not out.errors_had
@@ -80,7 +87,10 @@ def test_ability_connected_to_decl_post(fixture_path: callable) -> None:
     )
 
 
-def test_run_base2(fixture_path: callable, capture_stdout: callable) -> None:
+def test_run_base2(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test that the walker and node can be created dynamically."""
     with capture_stdout() as captured_output:
         cli.run(fixture_path("base2.jac"))
@@ -88,21 +98,22 @@ def test_run_base2(fixture_path: callable, capture_stdout: callable) -> None:
     assert "56" in output
 
 
-def test_arch_ref_has_sym(fixture_path: callable) -> None:
+def test_arch_ref_has_sym(fixture_path: Callable[[str], str]) -> None:
     """Basic test for pass."""
     state = JacProgram().compile(fixture_path("defs_and_uses.jac"))
     for i in state.get_all_sub_nodes(uni.ImplDef):
         assert i.sym is not None
 
 
-def test_single_impl_annex(examples_path: callable) -> None:
+def test_single_impl_annex(examples_path: Callable[[str], str]) -> None:
     """Basic test for pass."""
     mypass = JacProgram().compile(examples_path("manual_code/circle_pure.jac"))
     assert mypass.impl_mod[0].pp().count("ImplDef - impl.Circle.area") == 1
 
 
 def test_impl_decl_resolution_fix(
-    fixture_path: callable, capture_stdout: callable
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
 ) -> None:
     """Test walking through edges and nodes."""
     with capture_stdout() as captured_output:
@@ -111,7 +122,10 @@ def test_impl_decl_resolution_fix(
     assert "2.0\n" in stdout_value
 
 
-def test_impl_grab(fixture_path: callable, capture_stdout: callable) -> None:
+def test_impl_grab(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test walking through edges."""
     with capture_stdout() as captured_output:
         Jac.jac_import("impl_grab", base_path=fixture_path("./"))
@@ -119,7 +133,10 @@ def test_impl_grab(fixture_path: callable, capture_stdout: callable) -> None:
     assert "1.414" in stdout_value
 
 
-def test_nested_impls(fixture_path: callable, capture_stdout: callable) -> None:
+def test_nested_impls(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test complex nested impls."""
     with capture_stdout() as captured_output:
         Jac.jac_import("nested_impls", base_path=fixture_path("./"))
@@ -132,7 +149,10 @@ def test_nested_impls(fixture_path: callable, capture_stdout: callable) -> None:
     assert "Final message:!" in stdout_value[5]
 
 
-def test_abstraction_bug(fixture_path: callable, capture_stdout: callable) -> None:
+def test_abstraction_bug(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Parse micro jac file."""
     with capture_stdout() as captured_output:
         Jac.jac_import("atest", base_path=fixture_path("./"))
@@ -140,7 +160,10 @@ def test_abstraction_bug(fixture_path: callable, capture_stdout: callable) -> No
     assert stdout_value == "42\n"
 
 
-def test_inner_mod_impl(fixture_path: callable, capture_stdout: callable) -> None:
+def test_inner_mod_impl(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Parse micro jac file."""
     with capture_stdout() as captured_output:
         Jac.jac_import("enumerations", base_path=fixture_path("./"))

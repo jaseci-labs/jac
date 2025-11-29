@@ -3,11 +3,13 @@
 import inspect
 import io
 import os
+import re
 import sys
 from pathlib import Path
 
 import pytest
 
+import jaclang
 from jaclang.compiler import jac_lark as jl
 from jaclang.compiler import unitree as uni
 from jaclang.compiler.constant import Tokens
@@ -610,9 +612,6 @@ def _micro_suite_test(filename: str, file_to_str) -> None:
 
 
 # Dynamically generate micro suite tests
-import re
-
-import jaclang
 
 
 def _sanitize_test_name(name: str) -> str:
