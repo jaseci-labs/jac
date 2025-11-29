@@ -27,13 +27,11 @@ repos:
     hooks:
       - id: mypy
         args:
-          - --follow-imports=silent
           - --ignore-missing-imports
           - --config-file=mypy.ini
           - --explicit-package-bases
-          - --exclude=jac-byllm/scripts
         additional_dependencies: [types-PyYAML, types-requests]
-        exclude: (/fixtures/|jac/jaclang/compiler/ts_parser\.py)
+        exclude: (/fixtures/|/larkparse/|/vendor/|/scripts/|jac/examples/reference)
   - repo: local
     hooks:
       - id: check-no-binary-files
