@@ -1,8 +1,8 @@
 """Test pass module."""
 
+import io
 from collections.abc import Callable
 from contextlib import AbstractContextManager
-from typing import TYPE_CHECKING
 
 import pytest
 
@@ -10,9 +10,6 @@ import jaclang.compiler.unitree as uni
 from jaclang import JacRuntime as Jac
 from jaclang.cli import cli
 from jaclang.compiler.program import JacProgram
-
-if TYPE_CHECKING:
-    import io
 
 
 @pytest.fixture(autouse=True)

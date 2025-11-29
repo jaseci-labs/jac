@@ -1,18 +1,15 @@
 """Test pass module."""
 
+import io
 import re
 from collections.abc import Callable
 from contextlib import AbstractContextManager
-from typing import TYPE_CHECKING
 
 import pytest
 
 import jaclang.compiler.unitree as uni
 from jaclang.cli import cli
 from jaclang.compiler.program import JacProgram
-
-if TYPE_CHECKING:
-    import io
 
 
 def test_pygen_jac_cli(fixture_path: Callable[[str], str]) -> None:
