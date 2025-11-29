@@ -15,7 +15,7 @@ from jaclang.compiler import TOKEN_MAP
 from jaclang.compiler import jac_lark as jl
 from jaclang.compiler.constant import EdgeDir
 from jaclang.compiler.constant import Tokens as Tok
-from jaclang.compiler.passes.main import Transform
+from jaclang.compiler.passes.main import BaseTransform, Transform
 from jaclang.utils.helpers import ANSIColors
 
 if TYPE_CHECKING:
@@ -41,7 +41,7 @@ class LarkParseOutput:
     comments: list[jl.Token]
 
 
-class LarkParseTransform(Transform[LarkParseInput, LarkParseOutput]):  # type: ignore[type-var]
+class LarkParseTransform(BaseTransform[LarkParseInput, LarkParseOutput]):
     """Transform for Lark parsing step."""
 
     comment_cache: list[jl.Token] = []
@@ -53,7 +53,7 @@ class LarkParseTransform(Transform[LarkParseInput, LarkParseOutput]):  # type: i
 
     def __init__(self, ir_in: LarkParseInput, prog: JacProgram) -> None:
         """Initialize Lark parser transform."""
-        Transform.__init__(self, ir_in=ir_in, prog=prog)  # type: ignore[type-var]
+        super().__init__(ir_in=ir_in, prog=prog)
 
     def transform(self, ir_in: LarkParseInput) -> LarkParseOutput:
         """Transform input IR by parsing with Lark."""

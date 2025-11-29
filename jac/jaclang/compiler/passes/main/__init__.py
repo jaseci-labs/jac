@@ -1,6 +1,6 @@
 """Collection of passes for Jac IR."""
 
-from ..transform import Alert, Transform  # noqa: I100
+from ..transform import Alert, BaseTransform, Transform  # noqa: I100
 from .annex_pass import JacAnnexPass  # noqa: I100
 from .cfg_build_pass import CFGBuildPass  # noqa: I100
 from .def_impl_match_pass import DeclImplMatchPass  # noqa: I100
@@ -17,6 +17,7 @@ from .type_checker_pass import TypeCheckPass  # noqa: I100
 
 __all__ = [
     "Alert",
+    "BaseTransform",
     "Transform",
     "UniPass",
     "JacAnnexPass",

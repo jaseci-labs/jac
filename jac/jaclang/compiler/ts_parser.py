@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any, TypeAlias, TypeVar, cast
 
 import jaclang.compiler.unitree as uni
 from jaclang.compiler.constant import TsTokens as Tok
-from jaclang.compiler.passes.main import Transform
+from jaclang.compiler.passes.main import BaseTransform, Transform
 from jaclang.utils.helpers import ANSIColors
 
 if TYPE_CHECKING:
@@ -78,21 +78,21 @@ class TsLarkParseOutput:
     comments: list[object]  # Lark Tokens
 
 
-class TsLarkParseTransform(Transform[TsLarkParseInput, TsLarkParseOutput]):  # type: ignore[type-var]
+class TsLarkParseTransform(BaseTransform[TsLarkParseInput, TsLarkParseOutput]):
     """Transform for TypeScript Lark parsing step."""
 
     comment_cache: list[object] = []
 
     def __init__(self, ir_in: TsLarkParseInput, prog: JacProgram) -> None:
         """Initialize TypeScript Lark parser transform."""
-        Transform.__init__(self, ir_in=ir_in, prog=prog)  # type: ignore[type-var]
+        super().__init__(ir_in=ir_in, prog=prog)
 
     def transform(self, ir_in: TsLarkParseInput) -> TsLarkParseOutput:
         """Transform input IR by parsing with LALR parser."""
         TsLarkParseTransform.comment_cache = []
-        parser = get_ts_parser()
+        parser: Any = get_ts_parser()
         try:
-            tree = parser.parse(ir_in.ir_value, on_error=ir_in.on_error)  # type: ignore[attr-defined]
+            tree = parser.parse(ir_in.ir_value, on_error=ir_in.on_error)
         except Exception as e:
             # Call error handler if provided
             if ir_in.on_error is not None:
@@ -187,28 +187,28 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
 
         lark_token = lark_module.Token
 
-        def try_feed_missing_token(iparser: object) -> Tok | None:
+        def try_feed_missing_token(iparser: Any) -> Tok | None:
             """Try to feed a missing token to recover."""
-            accepts = iparser.accepts()  # type: ignore[attr-defined]
+            accepts = iparser.accepts()
             for tok in TypeScriptParser._MISSING_TOKENS:
                 if tok.name in accepts:
-                    iparser.feed_token(  # type: ignore[attr-defined]
+                    iparser.feed_token(
                         lark_token(tok.name, tok.value if hasattr(tok, "value") else "")
                     )
                     return tok
             return None
 
-        def feed_current_token(iparser: object, tok: object) -> bool:
+        def feed_current_token(iparser: Any, tok: Any) -> bool:
             """Feed current token after recovery."""
             max_attempts = 100
             attempts = 0
-            while getattr(tok, "type", "") not in iparser.accepts():  # type: ignore[attr-defined]
+            while getattr(tok, "type", "") not in iparser.accepts():
                 if attempts >= max_attempts:
                     return False
                 if not try_feed_missing_token(iparser):
                     return False
                 attempts += 1
-            iparser.feed_token(tok)  # type: ignore[attr-defined]
+            iparser.feed_token(tok)
             return True
 
         if hasattr(e, "token"):
@@ -275,6 +275,8 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
             transformer_base = lark_module.Transformer
             outer_ref = self
 
+            # Dynamic class inheritance from Lark Transformer requires type: ignore
+            # since Python's type system doesn't support runtime base classes
             class _InnerTransformer(transformer_base):  # type: ignore[misc, valid-type]
                 """Inner Lark transformer."""
 
@@ -282,20 +284,19 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
                     super().__init__()
                     self.outer = outer_ref
 
-                def _get_token(self, token: object) -> uni.Token:
+                def _get_token(self, token: Any) -> uni.Token:
                     """Convert Lark token to uni.Token."""
-                    # Lark Token attributes accessed dynamically
-                    tok_type: str = token.type  # type: ignore[attr-defined]
-                    tok_value: str = token.value  # type: ignore[attr-defined]
-                    tok_line: int = token.line or 1  # type: ignore[attr-defined]
-                    tok_end_line: int = token.end_line or tok_line  # type: ignore[attr-defined]
-                    tok_column: int = token.column or 0  # type: ignore[attr-defined]
-                    tok_end_column: int = (
-                        token.end_column  # type: ignore[attr-defined]
-                        or (tok_column + len(tok_value))
+                    # Lark Token attributes - using Any since Lark is dynamically loaded
+                    tok_type: str = token.type
+                    tok_value: str = token.value
+                    tok_line: int = token.line or 1
+                    tok_end_line: int = token.end_line or tok_line
+                    tok_column: int = token.column or 0
+                    tok_end_column: int = token.end_column or (
+                        tok_column + len(tok_value)
                     )
-                    tok_start_pos: int = token.start_pos or 0  # type: ignore[attr-defined]
-                    tok_end_pos: int = token.end_pos or (tok_start_pos + len(tok_value))  # type: ignore[attr-defined]
+                    tok_start_pos: int = token.start_pos or 0
+                    tok_end_pos: int = token.end_pos or (tok_start_pos + len(tok_value))
                     return uni.Token(
                         orig_src=self.outer.parse_ref.ir_in,
                         name=tok_type,
