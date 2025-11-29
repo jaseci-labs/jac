@@ -1,23 +1,19 @@
 """Test pass module."""
 
-# from jaclang.compiler.program import JacProgram
+from conftest import check_pass_ast_complete
 from jaclang.compiler.passes.main import SymTabBuildPass
-from jaclang.utils.test import TestCase
 
 
-class SymTabBuildPassTests(TestCase):
-    """Test pass module."""
+def test_pass_ast_complete() -> None:
+    """Test for enter/exit name diffs with parser."""
+    check_pass_ast_complete(SymTabBuildPass)
 
-    TargetPass = SymTabBuildPass
 
-    def setUp(self) -> None:
-        """Set up test."""
-        return super().setUp()
-
-    # def test_name_collision(self) -> None:
-    #     """Basic test for pass."""
-    #     state = JacProgram().jac_file_to_pass(
-    #         self.fixture_abs_path("multi_def_err.jac"), SymTabBuildPass
-    #     )
-    #     self.assertGreater(len(state.warnings_had), 0)
-    #     self.assertIn("MyObject", str(state.warnings_had[0]))
+# def test_name_collision(fixture_path) -> None:
+#     """Basic test for pass."""
+#     from jaclang.compiler.program import JacProgram
+#     state = JacProgram().jac_file_to_pass(
+#         fixture_path("multi_def_err.jac"), SymTabBuildPass
+#     )
+#     assert len(state.warnings_had) > 0
+#     assert "MyObject" in str(state.warnings_had[0])

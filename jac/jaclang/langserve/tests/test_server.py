@@ -1,119 +1,160 @@
+import inspect
+import os
 from dataclasses import dataclass
 
 import lsprotocol.types as lspt
+import pytest
 
 from jaclang.langserve.engine import JacLangServer
-from jaclang.utils.test import TestCase
 from jaclang.vendor.pygls import uris
 from jaclang.vendor.pygls.workspace import Workspace
 
 
-class TestJacLangServer(TestCase):
-    def create_server(self, workspace_path: str | None = None) -> JacLangServer:
-        """Create a JacLangServer wired to the given workspace and auto-cleanup."""
-        lsp = JacLangServer()
-        self.addCleanup(lsp.shutdown)
-        workspace_root = workspace_path or self.fixture_abs_path("")
-        workspace = Workspace(workspace_root, lsp)
-        lsp.lsp._workspace = workspace
-        return lsp
+@pytest.fixture
+def fixture_path():
+    """Get absolute path to fixture file."""
+    def _fixture_path(fixture: str) -> str:
+        frame = inspect.currentframe()
+        if frame is None or frame.f_back is None:
+            raise ValueError("Unable to get the previous stack frame.")
+        module = inspect.getmodule(frame.f_back)
+        if module is None or module.__file__ is None:
+            raise ValueError("Unable to determine the file of the module.")
+        fixture_src = module.__file__
+        file_path = os.path.join(os.path.dirname(fixture_src), "fixtures", fixture)
+        return os.path.abspath(file_path)
+    return _fixture_path
 
-    def test_impl_stay_connected(self) -> None:
-        """Test that the server doesn't run if there is a syntax error."""
-        lsp = self.create_server()
-        circle_file = uris.from_fs_path(self.fixture_abs_path("circle_pure.jac"))
+
+@pytest.fixture
+def examples_abs_path():
+    """Get absolute path of a example from examples directory."""
+    import jaclang
+    def _examples_abs_path(example: str) -> str:
+        fixture_src = jaclang.__file__
+        file_path = os.path.join(
+            os.path.dirname(os.path.dirname(fixture_src)), "examples", example
+        )
+        return os.path.abspath(file_path)
+    return _examples_abs_path
+
+
+@pytest.fixture
+def passes_main_fixture_abs_path():
+    """Get absolute path of a fixture from compiler passes main fixtures directory."""
+    import jaclang
+    def _passes_main_fixture_abs_path(file: str) -> str:
+        fixture_src = jaclang.__file__
+        file_path = os.path.join(
+            os.path.dirname(fixture_src),
+            "compiler",
+            "passes",
+            "main",
+            "tests",
+            "fixtures",
+            file,
+        )
+        return os.path.abspath(file_path)
+    return _passes_main_fixture_abs_path
+
+
+def create_server(workspace_path: str | None, fixture_path_func) -> JacLangServer:
+    """Create a JacLangServer wired to the given workspace."""
+    lsp = JacLangServer()
+    workspace_root = workspace_path or fixture_path_func("")
+    workspace = Workspace(workspace_root, lsp)
+    lsp.lsp._workspace = workspace
+    return lsp
+
+
+def test_impl_stay_connected(fixture_path) -> None:
+    """Test that the server doesn't run if there is a syntax error."""
+    lsp = create_server(None, fixture_path)
+    try:
+        circle_file = uris.from_fs_path(fixture_path("circle_pure.jac"))
         circle_impl_file = uris.from_fs_path(
-            self.fixture_abs_path("circle_pure.impl.jac")
+            fixture_path("circle_pure.impl.jac")
         )
         lsp.type_check_file(circle_file)
         pos = lspt.Position(20, 8)
-        self.assertIn(
-            "Circle class inherits from Shape.",
-            lsp.get_hover_info(circle_file, pos).contents.value,
-        )
+        assert "Circle class inherits from Shape." in lsp.get_hover_info(circle_file, pos).contents.value
         lsp.type_check_file(circle_impl_file)
         pos = lspt.Position(8, 11)
-        self.assertIn(
-            # "ability) calculate_area: float",
-            "ability) calculate_area\\n( radius : float ) -> float",
-            lsp.get_hover_info(circle_impl_file, pos).contents.value.replace("'", ""),
-        )
+        assert "ability) calculate_area\\n( radius : float ) -> float" in lsp.get_hover_info(circle_impl_file, pos).contents.value.replace("'", "")
+    finally:
+        lsp.shutdown()
 
-    def test_impl_auto_discover(self) -> None:
-        """Test that the server doesn't run if there is a syntax error."""
-        lsp = self.create_server()
+
+def test_impl_auto_discover(fixture_path) -> None:
+    """Test that the server doesn't run if there is a syntax error."""
+    lsp = create_server(None, fixture_path)
+    try:
         circle_impl_file = uris.from_fs_path(
-            self.fixture_abs_path("circle_pure.impl.jac")
+            fixture_path("circle_pure.impl.jac")
         )
         lsp.type_check_file(circle_impl_file)
         pos = lspt.Position(8, 11)
-        self.assertIn(
-            # "ability) calculate_area: float",
-            "(public ability) calculate_area\\n( radius : float ) -> float",
-            lsp.get_hover_info(circle_impl_file, pos).contents.value.replace("'", ""),
-        )
+        assert "(public ability) calculate_area\\n( radius : float ) -> float" in lsp.get_hover_info(circle_impl_file, pos).contents.value.replace("'", "")
+    finally:
+        lsp.shutdown()
 
-    def test_outline_symbols(self) -> None:
-        """Test that the outline symbols are correct."""
-        lsp = self.create_server()
-        circle_file = uris.from_fs_path(self.fixture_abs_path("circle_pure.jac"))
+
+def test_outline_symbols(fixture_path) -> None:
+    """Test that the outline symbols are correct."""
+    lsp = create_server(None, fixture_path)
+    try:
+        circle_file = uris.from_fs_path(fixture_path("circle_pure.jac"))
         lsp.type_check_file(circle_file)
-        self.assertEqual(8, len(lsp.get_outline(circle_file)))
+        assert len(lsp.get_outline(circle_file)) == 8
+    finally:
+        lsp.shutdown()
 
-    def test_go_to_definition(self) -> None:
-        """Test that the go to definition is correct."""
-        lsp = self.create_server()
-        circle_file = uris.from_fs_path(self.fixture_abs_path("circle_pure.jac"))
+
+def test_go_to_definition(fixture_path) -> None:
+    """Test that the go to definition is correct."""
+    lsp = create_server(None, fixture_path)
+    try:
+        circle_file = uris.from_fs_path(fixture_path("circle_pure.jac"))
         lsp.type_check_file(circle_file)
-        self.assertIn(
-            "fixtures/circle_pure.impl.jac:8:5-8:19",
-            str(lsp.get_definition(circle_file, lspt.Position(9, 16))),
-        )
-        self.assertIn(
-            "fixtures/circle_pure.jac:13:11-13:16",
-            str(lsp.get_definition(circle_file, lspt.Position(20, 16))),
-        )
+        assert "fixtures/circle_pure.impl.jac:8:5-8:19" in str(lsp.get_definition(circle_file, lspt.Position(9, 16)))
+        assert "fixtures/circle_pure.jac:13:11-13:16" in str(lsp.get_definition(circle_file, lspt.Position(20, 16)))
 
-        goto_defs_file = uris.from_fs_path(self.fixture_abs_path("goto_def_tests.jac"))
+        goto_defs_file = uris.from_fs_path(fixture_path("goto_def_tests.jac"))
         lsp.type_check_file(goto_defs_file)
 
         # Test if the visistor keyword goes to the walker definition
-        self.assertIn(
-            "fixtures/goto_def_tests.jac:8:7-8:17",
-            str(lsp.get_definition(goto_defs_file, lspt.Position(4, 14))),
-        )
+        assert "fixtures/goto_def_tests.jac:8:7-8:17" in str(lsp.get_definition(goto_defs_file, lspt.Position(4, 14)))
         # Test if the here keywrod goes to the node definition
-        self.assertIn(
-            "fixtures/goto_def_tests.jac:0:5-0:13",
-            str(lsp.get_definition(goto_defs_file, lspt.Position(10, 14))),
-        )
+        assert "fixtures/goto_def_tests.jac:0:5-0:13" in str(lsp.get_definition(goto_defs_file, lspt.Position(10, 14)))
         # Test the SomeNode node inside the visit statement goes to its definition
-        self.assertIn(
-            "fixtures/goto_def_tests.jac:0:5-0:13",
-            str(lsp.get_definition(goto_defs_file, lspt.Position(11, 21))),
-        )
+        assert "fixtures/goto_def_tests.jac:0:5-0:13" in str(lsp.get_definition(goto_defs_file, lspt.Position(11, 21)))
+    finally:
+        lsp.shutdown()
 
-    def test_go_to_definition_method_manual_impl(self) -> None:
-        """Test that the go to definition is correct."""
-        lsp = self.create_server()
+
+def test_go_to_definition_method_manual_impl(examples_abs_path) -> None:
+    """Test that the go to definition is correct."""
+    lsp = create_server(None, lambda x: "")
+    try:
         decldef_file = uris.from_fs_path(
-            self.examples_abs_path("micro/decl_defs_main.impl.jac")
+            examples_abs_path("micro/decl_defs_main.impl.jac")
         )
         lsp.type_check_file(decldef_file)
         decldef_main_file = uris.from_fs_path(
-            self.examples_abs_path("micro/decl_defs_main.jac")
+            examples_abs_path("micro/decl_defs_main.jac")
         )
         lsp.type_check_file(decldef_main_file)
         lsp.type_check_file(decldef_file)
-        self.assertIn(
-            "decl_defs_main.jac:7:8-7:17",
-            str(lsp.get_definition(decldef_file, lspt.Position(2, 20))),
-        )
+        assert "decl_defs_main.jac:7:8-7:17" in str(lsp.get_definition(decldef_file, lspt.Position(2, 20)))
+    finally:
+        lsp.shutdown()
 
-    def test_go_to_definition_md_path(self) -> None:
-        """Test that the go to definition is correct."""
-        lsp = self.create_server()
-        import_file = uris.from_fs_path(self.fixture_abs_path("md_path.jac"))
+
+def test_go_to_definition_md_path(fixture_path) -> None:
+    """Test that the go to definition is correct."""
+    lsp = create_server(None, fixture_path)
+    try:
+        import_file = uris.from_fs_path(fixture_path("md_path.jac"))
         lsp.type_check_file(import_file)
         # fmt: off
         positions = [
@@ -141,21 +182,21 @@ class TestJacLangServer(TestCase):
         # fmt: on
 
         for line, char, expected in positions:
-            with self.subTest(line=line, char=char):
-                self.assertIn(
-                    expected,
-                    str(
-                        lsp.get_definition(
-                            import_file, lspt.Position(line - 1, char - 1)
-                        )
-                    ),
+            assert expected in str(
+                lsp.get_definition(
+                    import_file, lspt.Position(line - 1, char - 1)
                 )
+            )
+    finally:
+        lsp.shutdown()
 
-    def test_go_to_definition_connect_filter(self: JacLangServer) -> None:
-        """Test that the go to definition is correct."""
-        lsp = self.create_server()
+
+def test_go_to_definition_connect_filter(passes_main_fixture_abs_path) -> None:
+    """Test that the go to definition is correct."""
+    lsp = create_server(None, lambda x: "")
+    try:
         import_file = uris.from_fs_path(
-            self.passes_main_fixture_abs_path("checker_connect_filter.jac")
+            passes_main_fixture_abs_path("checker_connect_filter.jac")
         )
         lsp.type_check_file(import_file)
         # fmt: off
@@ -176,20 +217,20 @@ class TestJacLangServer(TestCase):
         # fmt: on
 
         for line, char, expected in positions:
-            with self.subTest(line=line, char=char):
-                self.assertIn(
-                    expected,
-                    str(
-                        lsp.get_definition(
-                            import_file, lspt.Position(line - 1, char - 1)
-                        )
-                    ),
+            assert expected in str(
+                lsp.get_definition(
+                    import_file, lspt.Position(line - 1, char - 1)
                 )
+            )
+    finally:
+        lsp.shutdown()
 
-    def test_go_to_definition_atom_trailer(self: JacLangServer) -> None:
-        """Test that the go to definition is correct."""
-        lsp = self.create_server()
-        import_file = uris.from_fs_path(self.fixture_abs_path("user.jac"))
+
+def test_go_to_definition_atom_trailer(fixture_path) -> None:
+    """Test that the go to definition is correct."""
+    lsp = create_server(None, fixture_path)
+    try:
+        import_file = uris.from_fs_path(fixture_path("user.jac"))
         lsp.type_check_file(import_file)
         # fmt: off
         positions = [
@@ -199,20 +240,20 @@ class TestJacLangServer(TestCase):
         # fmt: on
 
         for line, char, expected in positions:
-            with self.subTest(line=line, char=char):
-                self.assertIn(
-                    expected,
-                    str(
-                        lsp.get_definition(
-                            import_file, lspt.Position(line - 1, char - 1)
-                        )
-                    ),
+            assert expected in str(
+                lsp.get_definition(
+                    import_file, lspt.Position(line - 1, char - 1)
                 )
+            )
+    finally:
+        lsp.shutdown()
 
-    def test_missing_mod_warning(self: JacLangServer) -> None:
-        """Test that the missing module warning is correct."""
-        lsp = self.create_server()
-        import_file = uris.from_fs_path(self.fixture_abs_path("md_path.jac"))
+
+def test_missing_mod_warning(fixture_path) -> None:
+    """Test that the missing module warning is correct."""
+    lsp = create_server(None, fixture_path)
+    try:
+        import_file = uris.from_fs_path(fixture_path("md_path.jac"))
         lsp.type_check_file(import_file)
 
         positions = [
@@ -220,18 +261,19 @@ class TestJacLangServer(TestCase):
             "fixtures/md_path.jac, line 22, col 8: Module not found",
         ]
         for idx, expected in enumerate(positions):
-            self.assertIn(
-                expected,
-                str(lsp.warnings_had[idx]),
-            )
+            assert expected in str(lsp.warnings_had[idx])
+    finally:
+        lsp.shutdown()
 
-    def test_completion(self) -> None:
-        """Test that the completions are correct."""
-        import asyncio
 
-        lsp = self.create_server()
+def test_completion(fixture_path) -> None:
+    """Test that the completions are correct."""
+    import asyncio
+
+    lsp = create_server(None, fixture_path)
+    try:
         base_module_file = uris.from_fs_path(
-            self.fixture_abs_path("completion_test_err.jac")
+            fixture_path("completion_test_err.jac")
         )
         lsp.type_check_file(base_module_file)
 
@@ -255,13 +297,16 @@ class TestJacLangServer(TestCase):
             )
             completions = results.items
             for completion in case.expected:
-                self.assertIn(completion, str(completions))
+                assert completion in str(completions)
+    finally:
+        lsp.shutdown()
 
-    def test_go_to_reference(self) -> None:
-        """Test that the go to reference is correct."""
-        lsp = self.create_server()
 
-        circle_file = uris.from_fs_path(self.fixture_abs_path("circle.jac"))
+def test_go_to_reference(fixture_path) -> None:
+    """Test that the go to reference is correct."""
+    lsp = create_server(None, fixture_path)
+    try:
+        circle_file = uris.from_fs_path(fixture_path("circle.jac"))
         lsp.type_check_file(circle_file)
         test_cases = [
             (47, 12, ["circle.jac:47:8-47:14", "69:8-69:14", "74:8-74:14"]),
@@ -273,13 +318,17 @@ class TestJacLangServer(TestCase):
         for line, char, expected_refs in test_cases:
             references = str(lsp.get_references(circle_file, lspt.Position(line, char)))
             for expected in expected_refs:
-                self.assertIn(expected, references)
+                assert expected in references
+    finally:
+        lsp.shutdown()
 
-    def test_go_to_def_import_star(self) -> None:
-        """Test that the go to reference is correct."""
-        lsp = self.create_server()
+
+def test_go_to_def_import_star(passes_main_fixture_abs_path) -> None:
+    """Test that the go to reference is correct."""
+    lsp = create_server(None, lambda x: "")
+    try:
         import_star_file = uris.from_fs_path(
-            self.passes_main_fixture_abs_path("checker_import_star/main.jac")
+            passes_main_fixture_abs_path("checker_import_star/main.jac")
         )
 
         lsp.type_check_file(import_star_file)
@@ -293,12 +342,10 @@ class TestJacLangServer(TestCase):
         # fmt: on
 
         for line, char, expected in positions:
-            with self.subTest(line=line, char=char):
-                self.assertIn(
-                    expected,
-                    str(
-                        lsp.get_definition(
-                            import_star_file, lspt.Position(line - 1, char - 1)
-                        )
-                    ),
+            assert expected in str(
+                lsp.get_definition(
+                    import_star_file, lspt.Position(line - 1, char - 1)
                 )
+            )
+    finally:
+        lsp.shutdown()

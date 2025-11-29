@@ -9,6 +9,8 @@ from typing import TypedDict
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
+import pytest
+
 from jaclang.cli import cli
 from jaclang.runtimelib.runtime import JacRuntime as Jac
 from jaclang.runtimelib.server import JacAPIServer
@@ -29,46 +31,20 @@ class _User(TypedDict):
     root_id: str
 
 
-class TestLittleXServer:
-    """Test littleX social media API functionality."""
+@pytest.fixture
+def littlex_server():
+    """Fixture to set up and tear down the LittleX server for each test."""
+    server_data = {
+        "server": None,
+        "server_thread": None,
+        "httpd": None,
+        "port": get_free_port(),
+        "users": {},
+    }
+    server_data["base_url"] = f"http://localhost:{server_data['port']}"
+    server_data["session_file"] = f"/tmp/test_littlex_{server_data['port']}.session"
 
-    def setUp(self) -> None:
-        """Set up test."""
-        self.server = None
-        self.server_thread: threading.Thread | None = None
-        self.httpd = None
-        # Use dynamically allocated free port for each test
-        self.port = get_free_port()
-        self.base_url = f"http://localhost:{self.port}"
-        # Use unique session file for each test
-        self.session_file = f"/tmp/test_littlex_{self.port}.session"
-        self.users: dict[str, _User] = {}  # Store user credentials and tokens
-
-    def tearDown(self) -> None:
-        """Tear down test."""
-        # Close user manager if it exists
-        if self.server and hasattr(self.server, "user_manager"):
-            try:
-                self.server.user_manager.close()
-            except Exception:
-                pass
-
-        # Stop server if running
-        if self.httpd:
-            try:
-                self.httpd.shutdown()
-                self.httpd.server_close()
-            except Exception:
-                pass
-
-        # Wait for thread to finish
-        if self.server_thread and self.server_thread.is_alive():
-            self.server_thread.join(timeout=2)
-
-        # Clean up session files
-        self._del_session(self.session_file)
-
-    def _del_session(self, session: str) -> None:
+    def _del_session(session: str) -> None:
         """Delete session files including user database files."""
         path = os.path.dirname(session)
         prefix = os.path.basename(session)
@@ -81,7 +57,7 @@ class TestLittleXServer:
                     except Exception:
                         pass
 
-    def _start_server(self) -> None:
+    def _start_server() -> None:
         """Start the API server in a background thread."""
         from http.server import HTTPServer
 
@@ -96,38 +72,38 @@ class TestLittleXServer:
         )
 
         # Create server
-        self.server = JacAPIServer(
+        server_data["server"] = JacAPIServer(
             module_name=mod,
-            session_path=self.session_file,
-            port=self.port,
+            session_path=server_data["session_file"],
+            port=server_data["port"],
             base_path=base,
         )
 
         # Start server in thread
         def run_server():
             try:
-                self.server.load_module()
-                handler_class = self.server.create_handler()
-                self.httpd = HTTPServer(("127.0.0.1", self.port), handler_class)
-                self.httpd.serve_forever()
+                server_data["server"].load_module()
+                handler_class = server_data["server"].create_handler()
+                server_data["httpd"] = HTTPServer(("127.0.0.1", server_data["port"]), handler_class)
+                server_data["httpd"].serve_forever()
             except Exception:
                 pass
 
-        self.server_thread = threading.Thread(target=run_server, daemon=True)
-        self.server_thread.start()
+        server_data["server_thread"] = threading.Thread(target=run_server, daemon=True)
+        server_data["server_thread"].start()
 
         # Wait for server to be ready
         max_attempts = 50
         for _ in range(max_attempts):
             try:
-                self._request("GET", "/")
+                _request("GET", "/")
                 break
             except Exception:
                 time.sleep(0.1)
 
-    def _request(self, method: str, path: str, data: dict | None = None, token: str | None = None) -> dict:
+    def _request(method: str, path: str, data: dict | None = None, token: str | None = None) -> dict:
         """Make HTTP request to server."""
-        url = f"{self.base_url}{path}"
+        url = f"{server_data['base_url']}{path}"
         headers = {"Content-Type": "application/json"}
 
         if token:
@@ -142,517 +118,481 @@ class TestLittleXServer:
         except HTTPError as e:
             return json.loads(e.read().decode())
 
-    def _create_user(self, username: str, password: str) -> dict:
+    def _create_user(username: str, password: str) -> dict:
         """Helper to create a user and store credentials."""
-        result = self._request("POST", "/user/create", {"username": username, "password": password})
+        result = _request("POST", "/user/create", {"username": username, "password": password})
         if "token" in result:
-            self.users[username] = {
+            server_data["users"][username] = {
                 "password": password,
                 "token": result["token"],
                 "root_id": result["root_id"],
             }
         return result
 
-    def test_server_startup(self) -> None:
-        """Test that server starts successfully."""
-        self.setUp()
+    # Attach helper methods to server_data
+    server_data["start_server"] = _start_server
+    server_data["request"] = _request
+    server_data["create_user"] = _create_user
+
+    yield server_data
+
+    # Teardown
+    # Close user manager if it exists
+    if server_data["server"] and hasattr(server_data["server"], "user_manager"):
         try:
-            self._start_server()
-            result = self._request("GET", "/")
-            assert "message" in result
-            assert "endpoints" in result
-            print("✓ Server startup test passed")
-        finally:
-            self.tearDown()
+            server_data["server"].user_manager.close()
+        except Exception:
+            pass
 
-    def test_user_creation_and_login(self) -> None:
-        """Test creating multiple users and logging in."""
-        self.setUp()
+    # Stop server if running
+    if server_data["httpd"]:
         try:
-            self._start_server()
+            server_data["httpd"].shutdown()
+            server_data["httpd"].server_close()
+        except Exception:
+            pass
 
-            # Create three users
-            user1 = self._create_user("alice", "pass123")
-            user2 = self._create_user("bob", "pass456")
-            user3 = self._create_user("charlie", "pass789")
+    # Wait for thread to finish
+    if server_data["server_thread"] and server_data["server_thread"].is_alive():
+        server_data["server_thread"].join(timeout=2)
 
-            assert "token" in user1
-            assert "token" in user2
-            assert "token" in user3
-            assert user1["root_id"] != user2["root_id"]
-            assert user2["root_id"] != user3["root_id"]
+    # Clean up session files
+    _del_session(server_data["session_file"])
 
-            # Test login
-            login_result = self._request("POST", "/user/login", {"username": "alice", "password": "pass123"})
-            assert "token" in login_result
-            assert login_result["username"] == "alice"
 
-            # Test wrong password
-            login_fail = self._request("POST", "/user/login", {"username": "bob", "password": "wrongpass"})
-            assert "error" in login_fail
+def test_server_startup(littlex_server) -> None:
+    """Test that server starts successfully."""
+    littlex_server["start_server"]()
+    result = littlex_server["request"]("GET", "/")
+    assert "message" in result
+    assert "endpoints" in result
+    print("✓ Server startup test passed")
 
-            print("✓ User creation and login test passed")
-        finally:
-            self.tearDown()
 
-    def test_profile_creation_and_update(self) -> None:
-        """Test creating and updating user profiles."""
-        self.setUp()
-        try:
-            self._start_server()
+def test_user_creation_and_login(littlex_server) -> None:
+    """Test creating multiple users and logging in."""
+    littlex_server["start_server"]()
 
-            # Create users
-            self._create_user("alice", "pass123")
-            self._create_user("bob", "pass456")
+    # Create three users
+    user1 = littlex_server["create_user"]("alice", "pass123")
+    user2 = littlex_server["create_user"]("bob", "pass456")
+    user3 = littlex_server["create_user"]("charlie", "pass789")
 
-            alice_token = self.users["alice"]["token"]
-            bob_token = self.users["bob"]["token"]
+    assert "token" in user1
+    assert "token" in user2
+    assert "token" in user3
+    assert user1["root_id"] != user2["root_id"]
+    assert user2["root_id"] != user3["root_id"]
 
-            # Update Alice's profile
-            update_result = self._request(
-                "POST",
-                "/walker/update_profile",
-                {"new_username": "Alice_Wonderland"},
-                token=alice_token,
-            )
-            assert "result" in update_result
+    # Test login
+    login_result = littlex_server["request"]("POST", "/user/login", {"username": "alice", "password": "pass123"})
+    assert "token" in login_result
+    assert login_result["username"] == "alice"
 
-            # Get Alice's profile
-            profile_result = self._request("POST", "/walker/get_profile",{}, token=alice_token)
-            assert "result" in profile_result
+    # Test wrong password
+    login_fail = littlex_server["request"]("POST", "/user/login", {"username": "bob", "password": "wrongpass"})
+    assert "error" in login_fail
 
-            # Update Bob's profile
-            update_result2 = self._request(
-                "POST",
-                "/walker/update_profile",
-                {"new_username": "Bob_Builder"},
-                token=bob_token,
-            )
-            assert "result" in update_result2
+    print("✓ User creation and login test passed")
 
-            print("✓ Profile creation and update test passed")
-        finally:
-            self.tearDown()
 
-    def test_follow_unfollow_users(self) -> None:
-        """Test following and unfollowing users."""
-        self.setUp()
-        try:
-            self._start_server()
+def test_profile_creation_and_update(littlex_server) -> None:
+    """Test creating and updating user profiles."""
+    littlex_server["start_server"]()
 
-            # Create users
-            self._create_user("alice", "pass123")
-            self._create_user("bob", "pass456")
-            self._create_user("charlie", "pass789")
+    # Create users
+    littlex_server["create_user"]("alice", "pass123")
+    littlex_server["create_user"]("bob", "pass456")
 
-            alice_token = self.users["alice"]["token"]
-            bob_token = self.users["bob"]["token"]
+    alice_token = littlex_server["users"]["alice"]["token"]
+    bob_token = littlex_server["users"]["bob"]["token"]
 
-            # Update usernames first
-            self._request(
-                "POST",
-                "/walker/update_profile",
-                {"new_username": "Alice"},
-                token=alice_token,
-            )
-            self._request(
-                "POST",
-                "/walker/update_profile",
-                {"new_username": "Bob"},
-                token=bob_token,
-            )
+    # Update Alice's profile
+    update_result = littlex_server["request"](
+        "POST",
+        "/walker/update_profile",
+        {"new_username": "Alice_Wonderland"},
+        token=alice_token,
+    )
+    assert "result" in update_result
 
-            # Get Bob's profile ID
-            bob_profile = self._request("POST", "/walker/get_profile", {}, token=bob_token)
+    # Get Alice's profile
+    profile_result = littlex_server["request"]("POST", "/walker/get_profile", {}, token=alice_token)
+    assert "result" in profile_result
 
-            # This test demonstrates the follow functionality
-            # In a real implementation, we would need to pass the target profile ID
-            print("✓ Follow/unfollow test structure created")
-        finally:
-            self.tearDown()
+    # Update Bob's profile
+    update_result2 = littlex_server["request"](
+        "POST",
+        "/walker/update_profile",
+        {"new_username": "Bob_Builder"},
+        token=bob_token,
+    )
+    assert "result" in update_result2
 
-    def test_create_and_list_tweets(self) -> None:
-        """Test creating tweets."""
-        self.setUp()
-        try:
-            self._start_server()
+    print("✓ Profile creation and update test passed")
 
-            # Create user
-            self._create_user("alice", "pass123")
-            alice_token = self.users["alice"]["token"]
 
-            # Update profile first
-            self._request(
-                "POST",
-                "/walker/update_profile",
-                {"new_username": "Alice"},
-                token=alice_token,
-            )
+def test_follow_unfollow_users(littlex_server) -> None:
+    """Test following and unfollowing users."""
+    littlex_server["start_server"]()
 
-            # Create multiple tweets
-            tweet1 = self._request(
+    # Create users
+    littlex_server["create_user"]("alice", "pass123")
+    littlex_server["create_user"]("bob", "pass456")
+    littlex_server["create_user"]("charlie", "pass789")
+
+    alice_token = littlex_server["users"]["alice"]["token"]
+    bob_token = littlex_server["users"]["bob"]["token"]
+
+    # Update usernames first
+    littlex_server["request"](
+        "POST",
+        "/walker/update_profile",
+        {"new_username": "Alice"},
+        token=alice_token,
+    )
+    littlex_server["request"](
+        "POST",
+        "/walker/update_profile",
+        {"new_username": "Bob"},
+        token=bob_token,
+    )
+
+    # Get Bob's profile ID
+    bob_profile = littlex_server["request"]("POST", "/walker/get_profile", {}, token=bob_token)
+
+    # This test demonstrates the follow functionality
+    # In a real implementation, we would need to pass the target profile ID
+    print("✓ Follow/unfollow test structure created")
+
+
+def test_create_and_list_tweets(littlex_server) -> None:
+    """Test creating tweets."""
+    littlex_server["start_server"]()
+
+    # Create user
+    littlex_server["create_user"]("alice", "pass123")
+    alice_token = littlex_server["users"]["alice"]["token"]
+
+    # Update profile first
+    littlex_server["request"](
+        "POST",
+        "/walker/update_profile",
+        {"new_username": "Alice"},
+        token=alice_token,
+    )
+
+    # Create multiple tweets
+    tweet1 = littlex_server["request"](
+        "POST",
+        "/walker/create_tweet",
+        {"content": "Hello World! This is my first tweet!"},
+        token=alice_token,
+    )
+    assert "result" in tweet1 or "reports" in tweet1
+
+    tweet2 = littlex_server["request"](
+        "POST",
+        "/walker/create_tweet",
+        {"content": "Having a great day coding in Jac!"},
+        token=alice_token,
+    )
+    assert "result" in tweet2 or "reports" in tweet2
+
+    tweet3 = littlex_server["request"](
+        "POST",
+        "/walker/create_tweet",
+        {"content": "Check out this amazing project!"},
+        token=alice_token,
+    )
+    assert "result" in tweet3 or "reports" in tweet3
+
+    print("✓ Tweet creation test passed")
+
+
+def test_like_and_unlike_tweets(littlex_server) -> None:
+    """Test liking and unliking tweets."""
+    littlex_server["start_server"]()
+
+    # Create users
+    littlex_server["create_user"]("alice", "pass123")
+    littlex_server["create_user"]("bob", "pass456")
+
+    alice_token = littlex_server["users"]["alice"]["token"]
+    bob_token = littlex_server["users"]["bob"]["token"]
+
+    # Update profiles
+    littlex_server["request"](
+        "POST",
+        "/walker/update_profile",
+        {"new_username": "Alice"},
+        token=alice_token,
+    )
+    littlex_server["request"](
+        "POST",
+        "/walker/update_profile",
+        {"new_username": "Bob"},
+        token=bob_token,
+    )
+
+    # Alice creates a tweet
+    tweet_result = littlex_server["request"](
+        "POST",
+        "/walker/create_tweet",
+        {"content": "Like this tweet!"},
+        token=alice_token,
+    )
+    assert "result" in tweet_result or "reports" in tweet_result
+
+    print("✓ Like/unlike tweet test structure created")
+
+
+def test_comment_on_tweets(littlex_server) -> None:
+    """Test commenting on tweets."""
+    littlex_server["start_server"]()
+
+    # Create users
+    littlex_server["create_user"]("alice", "pass123")
+    littlex_server["create_user"]("bob", "pass456")
+
+    alice_token = littlex_server["users"]["alice"]["token"]
+    bob_token = littlex_server["users"]["bob"]["token"]
+
+    # Update profiles
+    littlex_server["request"](
+        "POST",
+        "/walker/update_profile",
+        {"new_username": "Alice"},
+        token=alice_token,
+    )
+    littlex_server["request"](
+        "POST",
+        "/walker/update_profile",
+        {"new_username": "Bob"},
+        token=bob_token,
+    )
+
+    # Alice creates a tweet
+    tweet_result = littlex_server["request"](
+        "POST",
+        "/walker/create_tweet",
+        {"content": "What do you think about this?"},
+        token=alice_token,
+    )
+    assert "result" in tweet_result or "reports" in tweet_result
+
+    print("✓ Comment on tweet test structure created")
+
+
+def test_multi_user_social_activity(littlex_server) -> None:
+    """Test complex multi-user social media interactions."""
+    littlex_server["start_server"]()
+
+    # Create 5 users
+    users = ["alice", "bob", "charlie", "diana", "eve"]
+    for user in users:
+        littlex_server["create_user"](user, f"pass_{user}")
+
+    # Update all profiles
+    for user in users:
+        littlex_server["request"](
+            "POST",
+            "/walker/update_profile",
+            {"new_username": user.capitalize()},
+            token=littlex_server["users"][user]["token"],
+        )
+
+    # Each user creates multiple tweets
+    tweet_contents = [
+        "Just joined this platform!",
+        "Having a great day!",
+        "Check out my latest project",
+        "What's everyone up to?",
+        "Happy Friday everyone!",
+    ]
+
+    for user in users:
+        for i, content in enumerate(tweet_contents):
+            tweet = littlex_server["request"](
                 "POST",
                 "/walker/create_tweet",
-                {"content": "Hello World! This is my first tweet!"},
-                token=alice_token,
+                {"content": f"{user.capitalize()}: {content}"},
+                token=littlex_server["users"][user]["token"],
             )
-            assert "result" in tweet1 or "reports" in tweet1
+            # Small delay between tweets
+            time.sleep(0.01)
 
-            tweet2 = self._request(
-                "POST",
-                "/walker/create_tweet",
-                {"content": "Having a great day coding in Jac!"},
-                token=alice_token,
-            )
-            assert "result" in tweet2 or "reports" in tweet2
+    # Test load_feed for Alice (without search - just load all tweets)
+    feed_result = littlex_server["request"](
+        "POST",
+        "/walker/load_feed",
+        {},  # Empty search to get all tweets
+        token=littlex_server["users"]["alice"]["token"],
+    )
 
-            tweet3 = self._request(
-                "POST",
-                "/walker/create_tweet",
-                {"content": "Check out this amazing project!"},
-                token=alice_token,
-            )
-            assert "result" in tweet3 or "reports" in tweet3
+    # Debug output
+    if "error" in feed_result:
+        print(f"Feed error: {feed_result.get('error')}")
+        print(f"Traceback: {feed_result.get('traceback', 'N/A')}")
+        # Since load_feed has a sorting issue, we'll just check that tweets were created
+        print("⚠  Feed loading has sorting issue, but tweets were created successfully")
+    elif "result" in feed_result or "reports" in feed_result:
+        # Feed returned successfully
+        if "result" in feed_result:
+            walker_result = feed_result["result"]
+            if "results" in walker_result:
+                print(f"  - Feed loaded with {len(walker_result['results'])} tweets")
 
-            print("✓ Tweet creation test passed")
-        finally:
-            self.tearDown()
+    print("✓ Multi-user social activity test passed")
+    print(f"  - Created {len(users)} users")
+    print(f"  - Posted {len(users) * len(tweet_contents)} tweets")
 
-    def test_like_and_unlike_tweets(self) -> None:
-        """Test liking and unliking tweets."""
-        self.setUp()
-        try:
-            self._start_server()
 
-            # Create users
-            self._create_user("alice", "pass123")
-            self._create_user("bob", "pass456")
+def test_load_all_user_profiles(littlex_server) -> None:
+    """Test loading all user profiles."""
+    littlex_server["start_server"]()
 
-            alice_token = self.users["alice"]["token"]
-            bob_token = self.users["bob"]["token"]
+    # Create multiple users
+    users = ["alice", "bob", "charlie"]
+    for user in users:
+        littlex_server["create_user"](user, f"pass_{user}")
 
-            # Update profiles
-            self._request(
-                "POST",
-                "/walker/update_profile",
-                {"new_username": "Alice"},
-                token=alice_token,
-            )
-            self._request(
-                "POST",
-                "/walker/update_profile",
-                {"new_username": "Bob"},
-                token=bob_token,
-            )
+    # Update all profiles
+    for user in users:
+        littlex_server["request"](
+            "POST",
+            "/walker/update_profile",
+            {"new_username": user.capitalize()},
+            token=littlex_server["users"][user]["token"],
+        )
 
-            # Alice creates a tweet
-            tweet_result = self._request(
-                "POST",
-                "/walker/create_tweet",
-                {"content": "Like this tweet!"},
-                token=alice_token,
-            )
-            assert "result" in tweet_result or "reports" in tweet_result
+    # Note: load_user_profiles has auth: bool = False in __specs__
+    # So it should work without authentication
+    # However, we still need a valid token context
+    profiles_result = littlex_server["request"](
+        "POST",
+        "/walker/load_user_profiles",
+        {},
+        token=littlex_server["users"]["alice"]["token"],
+    )
 
-            print("✓ Like/unlike tweet test structure created")
-        finally:
-            self.tearDown()
+    if "result" in profiles_result:
+        print("✓ Load all user profiles test passed")
+        print("  - Found profiles result")
+    else:
+        print("⚠ Load all user profiles test completed with warnings")
 
-    def test_comment_on_tweets(self) -> None:
-        """Test commenting on tweets."""
-        self.setUp()
-        try:
-            self._start_server()
 
-            # Create users
-            self._create_user("alice", "pass123")
-            self._create_user("bob", "pass456")
+def test_user_isolation(littlex_server) -> None:
+    """Test that users have isolated data spaces."""
+    littlex_server["start_server"]()
 
-            alice_token = self.users["alice"]["token"]
-            bob_token = self.users["bob"]["token"]
+    # Create two users
+    littlex_server["create_user"]("alice", "pass123")
+    littlex_server["create_user"]("bob", "pass456")
 
-            # Update profiles
-            self._request(
-                "POST",
-                "/walker/update_profile",
-                {"new_username": "Alice"},
-                token=alice_token,
-            )
-            self._request(
-                "POST",
-                "/walker/update_profile",
-                {"new_username": "Bob"},
-                token=bob_token,
-            )
+    alice_token = littlex_server["users"]["alice"]["token"]
+    bob_token = littlex_server["users"]["bob"]["token"]
 
-            # Alice creates a tweet
-            tweet_result = self._request(
-                "POST",
-                "/walker/create_tweet",
-                {"content": "What do you think about this?"},
-                token=alice_token,
-            )
-            assert "result" in tweet_result or "reports" in tweet_result
+    # Update profiles
+    littlex_server["request"](
+        "POST",
+        "/walker/update_profile",
+        {"new_username": "Alice"},
+        token=alice_token,
+    )
+    littlex_server["request"](
+        "POST",
+        "/walker/update_profile",
+        {"new_username": "Bob"},
+        token=bob_token,
+    )
 
-            print("✓ Comment on tweet test structure created")
-        finally:
-            self.tearDown()
+    # Alice creates tweets
+    littlex_server["request"](
+        "POST",
+        "/walker/create_tweet",
+        {"content": "Alice's tweet 1"},
+        token=alice_token,
+    )
+    littlex_server["request"](
+        "POST",
+        "/walker/create_tweet",
+        {"content": "Alice's tweet 2"},
+        token=alice_token,
+    )
 
-    def test_multi_user_social_activity(self) -> None:
-        """Test complex multi-user social media interactions."""
-        self.setUp()
-        try:
-            self._start_server()
+    # Bob creates tweets
+    littlex_server["request"](
+        "POST",
+        "/walker/create_tweet",
+        {"content": "Bob's tweet 1"},
+        token=bob_token,
+    )
 
-            # Create 5 users
-            users = ["alice", "bob", "charlie", "diana", "eve"]
-            for user in users:
-                self._create_user(user, f"pass_{user}")
+    # Verify different root IDs
+    assert littlex_server["users"]["alice"]["root_id"] != littlex_server["users"]["bob"]["root_id"]
 
-            # Update all profiles
-            for user in users:
-                self._request(
-                    "POST",
-                    "/walker/update_profile",
-                    {"new_username": user.capitalize()},
-                    token=self.users[user]["token"],
-                )
+    print("✓ User isolation test passed")
 
-            # Each user creates multiple tweets
-            tweet_contents = [
-                "Just joined this platform!",
-                "Having a great day!",
-                "Check out my latest project",
-                "What's everyone up to?",
-                "Happy Friday everyone!",
-            ]
 
-            for user in users:
-                for i, content in enumerate(tweet_contents):
-                    tweet = self._request(
-                        "POST",
-                        "/walker/create_tweet",
-                        {"content": f"{user.capitalize()}: {content}"},
-                        token=self.users[user]["token"],
-                    )
-                    # Small delay between tweets
-                    time.sleep(0.01)
+def test_data_persistence(littlex_server) -> None:
+    """Test that data persists across server restarts."""
+    littlex_server["start_server"]()
 
-            # Test load_feed for Alice (without search - just load all tweets)
-            feed_result = self._request(
-                "POST",
-                "/walker/load_feed",
-                {},  # Empty search to get all tweets
-                token=self.users["alice"]["token"],
-            )
+    # Create user and tweets
+    littlex_server["create_user"]("alice", "pass123")
+    alice_token = littlex_server["users"]["alice"]["token"]
+    alice_root = littlex_server["users"]["alice"]["root_id"]
 
-            # Debug output
-            if "error" in feed_result:
-                print(f"Feed error: {feed_result.get('error')}")
-                print(f"Traceback: {feed_result.get('traceback', 'N/A')}")
-                # Since load_feed has a sorting issue, we'll just check that tweets were created
-                print("⚠  Feed loading has sorting issue, but tweets were created successfully")
-            elif "result" in feed_result or "reports" in feed_result:
-                # Feed returned successfully
-                if "result" in feed_result:
-                    walker_result = feed_result["result"]
-                    if "results" in walker_result:
-                        print(f"  - Feed loaded with {len(walker_result['results'])} tweets")
+    # Update profile
+    littlex_server["request"](
+        "POST",
+        "/walker/update_profile",
+        {"new_username": "Alice"},
+        token=alice_token,
+    )
 
-            print("✓ Multi-user social activity test passed")
-            print(f"  - Created {len(users)} users")
-            print(f"  - Posted {len(users) * len(tweet_contents)} tweets")
-        finally:
-            self.tearDown()
+    # Create tweets
+    littlex_server["request"](
+        "POST",
+        "/walker/create_tweet",
+        {"content": "Persistent tweet 1"},
+        token=alice_token,
+    )
 
-    def test_load_all_user_profiles(self) -> None:
-        """Test loading all user profiles."""
-        self.setUp()
-        try:
-            self._start_server()
+    # Shutdown server
+    if littlex_server["server"] and hasattr(littlex_server["server"], "user_manager"):
+        littlex_server["server"].user_manager.close()
 
-            # Create multiple users
-            users = ["alice", "bob", "charlie"]
-            for user in users:
-                self._create_user(user, f"pass_{user}")
+    if littlex_server["httpd"]:
+        littlex_server["httpd"].shutdown()
+        littlex_server["httpd"].server_close()
+        littlex_server["httpd"] = None
 
-            # Update all profiles
-            for user in users:
-                self._request(
-                    "POST",
-                    "/walker/update_profile",
-                    {"new_username": user.capitalize()},
-                    token=self.users[user]["token"],
-                )
+    if littlex_server["server_thread"] and littlex_server["server_thread"].is_alive():
+        littlex_server["server_thread"].join(timeout=2)
 
-            # Note: load_user_profiles has auth: bool = False in __specs__
-            # So it should work without authentication
-            # However, we still need a valid token context
-            profiles_result = self._request(
-                "POST",
-                "/walker/load_user_profiles",
-                {},
-                token=self.users["alice"]["token"],
-            )
+    time.sleep(0.5)
 
-            if "result" in profiles_result:
-                print(f"✓ Load all user profiles test passed")
-                print(f"  - Found profiles result")
-            else:
-                print(f"⚠ Load all user profiles test completed with warnings")
+    # Restart server
+    littlex_server["start_server"]()
 
-        finally:
-            self.tearDown()
+    # Login again
+    login_result = littlex_server["request"]("POST", "/user/login", {"username": "alice", "password": "pass123"})
 
-    def test_user_isolation(self) -> None:
-        """Test that users have isolated data spaces."""
-        self.setUp()
-        try:
-            self._start_server()
+    assert "token" in login_result
+    assert login_result["root_id"] == alice_root
 
-            # Create two users
-            self._create_user("alice", "pass123")
-            self._create_user("bob", "pass456")
-
-            alice_token = self.users["alice"]["token"]
-            bob_token = self.users["bob"]["token"]
-
-            # Update profiles
-            self._request(
-                "POST",
-                "/walker/update_profile",
-                {"new_username": "Alice"},
-                token=alice_token,
-            )
-            self._request(
-                "POST",
-                "/walker/update_profile",
-                {"new_username": "Bob"},
-                token=bob_token,
-            )
-
-            # Alice creates tweets
-            self._request(
-                "POST",
-                "/walker/create_tweet",
-                {"content": "Alice's tweet 1"},
-                token=alice_token,
-            )
-            self._request(
-                "POST",
-                "/walker/create_tweet",
-                {"content": "Alice's tweet 2"},
-                token=alice_token,
-            )
-
-            # Bob creates tweets
-            self._request(
-                "POST",
-                "/walker/create_tweet",
-                {"content": "Bob's tweet 1"},
-                token=bob_token,
-            )
-
-            # Verify different root IDs
-            assert self.users["alice"]["root_id"] != self.users["bob"]["root_id"]
-
-            print("✓ User isolation test passed")
-        finally:
-            self.tearDown()
-
-    def test_data_persistence(self) -> None:
-        """Test that data persists across server restarts."""
-        self.setUp()
-        try:
-            self._start_server()
-
-            # Create user and tweets
-            self._create_user("alice", "pass123")
-            alice_token = self.users["alice"]["token"]
-            alice_root = self.users["alice"]["root_id"]
-
-            # Update profile
-            self._request(
-                "POST",
-                "/walker/update_profile",
-                {"new_username": "Alice"},
-                token=alice_token,
-            )
-
-            # Create tweets
-            self._request(
-                "POST",
-                "/walker/create_tweet",
-                {"content": "Persistent tweet 1"},
-                token=alice_token,
-            )
-
-            # Shutdown server
-            if self.server and hasattr(self.server, "user_manager"):
-                self.server.user_manager.close()
-
-            if self.httpd:
-                self.httpd.shutdown()
-                self.httpd.server_close()
-                self.httpd = None
-
-            if self.server_thread and self.server_thread.is_alive():
-                self.server_thread.join(timeout=2)
-
-            time.sleep(0.5)
-
-            # Restart server
-            self._start_server()
-
-            # Login again
-            login_result = self._request("POST", "/user/login", {"username": "alice", "password": "pass123"})
-
-            assert "token" in login_result
-            assert login_result["root_id"] == alice_root
-
-            print("✓ Data persistence test passed")
-        finally:
-            self.tearDown()
+    print("✓ Data persistence test passed")
 
 
 def run_all_tests():
     """Run all tests."""
-    test_suite = TestLittleXServer()
-
-    tests = [
-        ("Server Startup", test_suite.test_server_startup),
-        ("User Creation and Login", test_suite.test_user_creation_and_login),
-        ("Profile Creation and Update", test_suite.test_profile_creation_and_update),
-        ("Follow/Unfollow Users", test_suite.test_follow_unfollow_users),
-        ("Create and List Tweets", test_suite.test_create_and_list_tweets),
-        ("Like and Unlike Tweets", test_suite.test_like_and_unlike_tweets),
-        ("Comment on Tweets", test_suite.test_comment_on_tweets),
-        ("Multi-User Social Activity", test_suite.test_multi_user_social_activity),
-        ("Load All User Profiles", test_suite.test_load_all_user_profiles),
-        ("User Isolation", test_suite.test_user_isolation),
-        ("Data Persistence", test_suite.test_data_persistence),
-    ]
-
-    print("\n" + "=" * 70)
-    print("Running LittleX Server Tests")
-    print("=" * 70 + "\n")
-
-    passed = 0
-    failed = 0
-
-    for test_name, test_func in tests:
-        print(f"\nRunning: {test_name}")
-        print("-" * 70)
-        try:
-            test_func()
-            passed += 1
-        except Exception as e:
-            print(f"✗ {test_name} FAILED: {e}")
-            failed += 1
-
-    print("\n" + "=" * 70)
-    print(f"Test Results: {passed} passed, {failed} failed")
-    print("=" * 70 + "\n")
+    # This function is now deprecated since pytest will discover and run tests automatically
+    # But keeping it for backwards compatibility
+    import sys
+    pytest.main([__file__, "-v"] + sys.argv[1:])
 
 
 if __name__ == "__main__":

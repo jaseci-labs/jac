@@ -2,151 +2,178 @@
 
 from pathlib import Path
 
+import pytest
+
 from jaclang.compiler import unitree as uni
 from jaclang.compiler.program import JacProgram
 from jaclang.compiler.ts_parser import TypeScriptParser, get_ts_parser
 from jaclang.compiler.unitree import Source
-from jaclang.utils.test import TestCase
 
 
-class TestTypeScriptParser(TestCase):
-    """Test TypeScript parser."""
+@pytest.fixture(scope="session")
+def ensure_ts_parser():
+    """Ensure the TypeScript parser is generated (session scope)."""
+    get_ts_parser()
 
-    @classmethod
-    def setUpClass(cls) -> None:
-        """Set up test class - ensure parser is generated."""
-        super().setUpClass()
-        # Ensure the TypeScript parser is generated
-        get_ts_parser()
 
-    def ts_fixture_abs_path(self, filename: str) -> str:
-        """Get absolute path to TypeScript fixture file."""
+@pytest.fixture
+def ts_fixture_abs_path():
+    """Get absolute path to TypeScript fixture file."""
+    def _ts_fixture_abs_path(filename: str) -> str:
         return str(Path(__file__).parent / "fixtures" / "typescript" / filename)
+    return _ts_fixture_abs_path
 
-    def load_ts_fixture(self, filename: str) -> str:
-        """Load TypeScript fixture file contents."""
-        path = self.ts_fixture_abs_path(filename)
+
+@pytest.fixture
+def load_ts_fixture(ts_fixture_abs_path):
+    """Load TypeScript fixture file contents."""
+    def _load_ts_fixture(filename: str) -> str:
+        path = ts_fixture_abs_path(filename)
         with open(path, encoding="utf-8") as f:
             return f.read()
+    return _load_ts_fixture
 
-    def parse_ts(self, source_code: str, mod_path: str = "") -> TypeScriptParser:
-        """Parse TypeScript source code and return parser."""
+
+@pytest.fixture
+def parse_ts():
+    """Parse TypeScript source code and return parser."""
+    def _parse_ts(source_code: str, mod_path: str = "") -> TypeScriptParser:
         source = Source(source_code, mod_path=mod_path)
         return TypeScriptParser(root_ir=source, prog=JacProgram())
+    return _parse_ts
 
-    def parse_ts_file(self, filename: str) -> TypeScriptParser:
-        """Parse TypeScript fixture file and return parser."""
-        source_code = self.load_ts_fixture(filename)
-        return self.parse_ts(source_code, mod_path=self.ts_fixture_abs_path(filename))
 
-    # ==========================================================================
-    # Basic Parsing Tests
-    # ==========================================================================
+@pytest.fixture
+def parse_ts_file(load_ts_fixture, ts_fixture_abs_path, parse_ts):
+    """Parse TypeScript fixture file and return parser."""
+    def _parse_ts_file(filename: str) -> TypeScriptParser:
+        source_code = load_ts_fixture(filename)
+        return parse_ts(source_code, mod_path=ts_fixture_abs_path(filename))
+    return _parse_ts_file
 
-    def test_parser_loads(self) -> None:
-        """Test that the TypeScript parser loads successfully."""
-        parser = get_ts_parser()
-        self.assertIsNotNone(parser)
 
-    def test_simple_fixture(self) -> None:
-        """Parse simple TypeScript fixture."""
-        prse = self.parse_ts_file("simple.ts")
-        self.assertFalse(prse.errors_had)
-        self.assertIsInstance(prse.ir_out, uni.Module)
+# ==========================================================================
+# Basic Parsing Tests
+# ==========================================================================
 
-    def test_basic_fixture(self) -> None:
-        """Parse basic TypeScript fixture with variables and functions."""
-        prse = self.parse_ts_file("basic.ts")
-        self.assertFalse(prse.errors_had, f"Errors: {prse.errors_had}")
-        self.assertIsInstance(prse.ir_out, uni.Module)
+def test_parser_loads(ensure_ts_parser) -> None:
+    """Test that the TypeScript parser loads successfully."""
+    parser = get_ts_parser()
+    assert parser is not None
 
-    def test_classes_fixture(self) -> None:
-        """Parse classes TypeScript fixture."""
-        prse = self.parse_ts_file("classes.ts")
-        self.assertFalse(prse.errors_had, f"Errors: {prse.errors_had}")
-        self.assertIsInstance(prse.ir_out, uni.Module)
 
-    def test_imports_exports_fixture(self) -> None:
-        """Parse imports/exports TypeScript fixture."""
-        prse = self.parse_ts_file("imports_exports.ts")
-        self.assertFalse(prse.errors_had, f"Errors: {prse.errors_had}")
-        self.assertIsInstance(prse.ir_out, uni.Module)
+def test_simple_fixture(parse_ts_file) -> None:
+    """Parse simple TypeScript fixture."""
+    prse = parse_ts_file("simple.ts")
+    assert not prse.errors_had
+    assert isinstance(prse.ir_out, uni.Module)
 
-    def test_interfaces_types_fixture(self) -> None:
-        """Parse interfaces and types TypeScript fixture."""
-        prse = self.parse_ts_file("interfaces_types.ts")
-        self.assertFalse(prse.errors_had, f"Errors: {prse.errors_had}")
-        self.assertIsInstance(prse.ir_out, uni.Module)
 
-    def test_enum_fixture(self) -> None:
-        """Parse enum TypeScript fixture."""
-        prse = self.parse_ts_file("enum.ts")
-        self.assertFalse(prse.errors_had, f"Errors: {prse.errors_had}")
-        self.assertIsInstance(prse.ir_out, uni.Module)
+def test_basic_fixture(parse_ts_file) -> None:
+    """Parse basic TypeScript fixture with variables and functions."""
+    prse = parse_ts_file("basic.ts")
+    assert not prse.errors_had, f"Errors: {prse.errors_had}"
+    assert isinstance(prse.ir_out, uni.Module)
 
-    def test_control_flow_fixture(self) -> None:
-        """Parse control flow TypeScript fixture."""
-        prse = self.parse_ts_file("control_flow.ts")
-        self.assertFalse(prse.errors_had, f"Errors: {prse.errors_had}")
-        self.assertIsInstance(prse.ir_out, uni.Module)
 
-    def test_namespace_fixture(self) -> None:
-        """Parse namespace TypeScript fixture."""
-        prse = self.parse_ts_file("namespace.ts")
-        self.assertFalse(prse.errors_had, f"Errors: {prse.errors_had}")
-        self.assertIsInstance(prse.ir_out, uni.Module)
+def test_classes_fixture(parse_ts_file) -> None:
+    """Parse classes TypeScript fixture."""
+    prse = parse_ts_file("classes.ts")
+    assert not prse.errors_had, f"Errors: {prse.errors_had}"
+    assert isinstance(prse.ir_out, uni.Module)
 
-    def test_decorators_fixture(self) -> None:
-        """Parse decorators TypeScript fixture."""
-        prse = self.parse_ts_file("decorators.ts")
-        self.assertFalse(prse.errors_had, f"Errors: {prse.errors_had}")
-        self.assertIsInstance(prse.ir_out, uni.Module)
 
-    # ==========================================================================
-    # Inline Source Tests
-    # ==========================================================================
+def test_imports_exports_fixture(parse_ts_file) -> None:
+    """Parse imports/exports TypeScript fixture."""
+    prse = parse_ts_file("imports_exports.ts")
+    assert not prse.errors_had, f"Errors: {prse.errors_had}"
+    assert isinstance(prse.ir_out, uni.Module)
 
-    def test_empty_source(self) -> None:
-        """Parse empty source."""
-        prse = self.parse_ts("")
-        self.assertFalse(prse.errors_had)
-        self.assertIsInstance(prse.ir_out, uni.Module)
 
-    def test_variable_declarations(self) -> None:
-        """Parse variable declarations."""
-        source = """
+def test_interfaces_types_fixture(parse_ts_file) -> None:
+    """Parse interfaces and types TypeScript fixture."""
+    prse = parse_ts_file("interfaces_types.ts")
+    assert not prse.errors_had, f"Errors: {prse.errors_had}"
+    assert isinstance(prse.ir_out, uni.Module)
+
+
+def test_enum_fixture(parse_ts_file) -> None:
+    """Parse enum TypeScript fixture."""
+    prse = parse_ts_file("enum.ts")
+    assert not prse.errors_had, f"Errors: {prse.errors_had}"
+    assert isinstance(prse.ir_out, uni.Module)
+
+
+def test_control_flow_fixture(parse_ts_file) -> None:
+    """Parse control flow TypeScript fixture."""
+    prse = parse_ts_file("control_flow.ts")
+    assert not prse.errors_had, f"Errors: {prse.errors_had}"
+    assert isinstance(prse.ir_out, uni.Module)
+
+
+def test_namespace_fixture(parse_ts_file) -> None:
+    """Parse namespace TypeScript fixture."""
+    prse = parse_ts_file("namespace.ts")
+    assert not prse.errors_had, f"Errors: {prse.errors_had}"
+    assert isinstance(prse.ir_out, uni.Module)
+
+
+def test_decorators_fixture(parse_ts_file) -> None:
+    """Parse decorators TypeScript fixture."""
+    prse = parse_ts_file("decorators.ts")
+    assert not prse.errors_had, f"Errors: {prse.errors_had}"
+    assert isinstance(prse.ir_out, uni.Module)
+
+
+# ==========================================================================
+# Inline Source Tests
+# ==========================================================================
+
+def test_empty_source(parse_ts) -> None:
+    """Parse empty source."""
+    prse = parse_ts("")
+    assert not prse.errors_had
+    assert isinstance(prse.ir_out, uni.Module)
+
+
+def test_variable_declarations(parse_ts) -> None:
+    """Parse variable declarations."""
+    source = """
 const x = 1;
 let y = "hello";
 var z = true;
 """
-        prse = self.parse_ts(source)
-        self.assertFalse(prse.errors_had, f"Errors: {prse.errors_had}")
-        self.assertIsInstance(prse.ir_out, uni.Module)
+    prse = parse_ts(source)
+    assert not prse.errors_had, f"Errors: {prse.errors_had}"
+    assert isinstance(prse.ir_out, uni.Module)
 
-    def test_function_declaration(self) -> None:
-        """Parse function declaration."""
-        source = """
+
+def test_function_declaration(parse_ts) -> None:
+    """Parse function declaration."""
+    source = """
 function greet(name: string): string {
     return "Hello, " + name;
 }
 """
-        prse = self.parse_ts(source)
-        self.assertFalse(prse.errors_had, f"Errors: {prse.errors_had}")
-        self.assertIsInstance(prse.ir_out, uni.Module)
+    prse = parse_ts(source)
+    assert not prse.errors_had, f"Errors: {prse.errors_had}"
+    assert isinstance(prse.ir_out, uni.Module)
 
-    def test_async_function(self) -> None:
-        """Parse async function."""
-        source = """
+
+def test_async_function(parse_ts) -> None:
+    """Parse async function."""
+    source = """
 async function fetchData(): Promise<string> {
     return "data";
 }
 """
-        prse = self.parse_ts(source)
-        self.assertFalse(prse.errors_had, f"Errors: {prse.errors_had}")
+    prse = parse_ts(source)
+    assert not prse.errors_had, f"Errors: {prse.errors_had}"
 
-    def test_class_declaration(self) -> None:
-        """Parse class declaration."""
-        source = """
+
+def test_class_declaration(parse_ts) -> None:
+    """Parse class declaration."""
+    source = """
 class Person {
     name: string;
 
@@ -159,37 +186,40 @@ class Person {
     }
 }
 """
-        prse = self.parse_ts(source)
-        self.assertFalse(prse.errors_had, f"Errors: {prse.errors_had}")
-        self.assertIsInstance(prse.ir_out, uni.Module)
+    prse = parse_ts(source)
+    assert not prse.errors_had, f"Errors: {prse.errors_had}"
+    assert isinstance(prse.ir_out, uni.Module)
 
-    def test_interface_declaration(self) -> None:
-        """Parse interface declaration."""
-        source = """
+
+def test_interface_declaration(parse_ts) -> None:
+    """Parse interface declaration."""
+    source = """
 interface Person {
     name: string;
     age: number;
     greet(): string;
 }
 """
-        prse = self.parse_ts(source)
-        self.assertFalse(prse.errors_had, f"Errors: {prse.errors_had}")
-        self.assertIsInstance(prse.ir_out, uni.Module)
+    prse = parse_ts(source)
+    assert not prse.errors_had, f"Errors: {prse.errors_had}"
+    assert isinstance(prse.ir_out, uni.Module)
 
-    def test_type_alias(self) -> None:
-        """Parse type alias."""
-        source = """
+
+def test_type_alias(parse_ts) -> None:
+    """Parse type alias."""
+    source = """
 type StringOrNumber = string | number;
 type ID = string;
 type Callback = (x: number) => void;
 """
-        prse = self.parse_ts(source)
-        self.assertFalse(prse.errors_had, f"Errors: {prse.errors_had}")
-        self.assertIsInstance(prse.ir_out, uni.Module)
+    prse = parse_ts(source)
+    assert not prse.errors_had, f"Errors: {prse.errors_had}"
+    assert isinstance(prse.ir_out, uni.Module)
 
-    def test_enum_declaration(self) -> None:
-        """Parse enum declaration."""
-        source = """
+
+def test_enum_declaration(parse_ts) -> None:
+    """Parse enum declaration."""
+    source = """
 enum Direction {
     Up,
     Down,
@@ -203,37 +233,40 @@ enum Color {
     Blue = "BLUE",
 }
 """
-        prse = self.parse_ts(source)
-        self.assertFalse(prse.errors_had, f"Errors: {prse.errors_had}")
-        self.assertIsInstance(prse.ir_out, uni.Module)
+    prse = parse_ts(source)
+    assert not prse.errors_had, f"Errors: {prse.errors_had}"
+    assert isinstance(prse.ir_out, uni.Module)
 
-    def test_import_statements(self) -> None:
-        """Parse import statements."""
-        source = """
+
+def test_import_statements(parse_ts) -> None:
+    """Parse import statements."""
+    source = """
 import { foo } from "./module";
 import * as ns from "./module";
 import defaultExport from "./module";
 import "./side-effect";
 """
-        prse = self.parse_ts(source)
-        self.assertFalse(prse.errors_had, f"Errors: {prse.errors_had}")
-        self.assertIsInstance(prse.ir_out, uni.Module)
+    prse = parse_ts(source)
+    assert not prse.errors_had, f"Errors: {prse.errors_had}"
+    assert isinstance(prse.ir_out, uni.Module)
 
-    def test_export_statements(self) -> None:
-        """Parse export statements."""
-        source = """
+
+def test_export_statements(parse_ts) -> None:
+    """Parse export statements."""
+    source = """
 export const x = 1;
 export function greet() {}
 export class MyClass {}
 export { x, greet };
 """
-        prse = self.parse_ts(source)
-        self.assertFalse(prse.errors_had, f"Errors: {prse.errors_had}")
-        self.assertIsInstance(prse.ir_out, uni.Module)
+    prse = parse_ts(source)
+    assert not prse.errors_had, f"Errors: {prse.errors_had}"
+    assert isinstance(prse.ir_out, uni.Module)
 
-    def test_arrow_functions(self) -> None:
-        """Parse arrow functions."""
-        source = """
+
+def test_arrow_functions(parse_ts) -> None:
+    """Parse arrow functions."""
+    source = """
 const simple = () => 1;
 const withParam = (x: number) => x * 2;
 const asyncArrow = async () => "async";
@@ -241,13 +274,14 @@ setTimeout(() => {
     console.log("test");
 }, 100);
 """
-        prse = self.parse_ts(source)
-        self.assertFalse(prse.errors_had, f"Errors: {prse.errors_had}")
-        self.assertIsInstance(prse.ir_out, uni.Module)
+    prse = parse_ts(source)
+    assert not prse.errors_had, f"Errors: {prse.errors_had}"
+    assert isinstance(prse.ir_out, uni.Module)
 
-    def test_control_flow_statements(self) -> None:
-        """Parse control flow statements."""
-        source = """
+
+def test_control_flow_statements(parse_ts) -> None:
+    """Parse control flow statements."""
+    source = """
 function test(x: number) {
     if (x > 0) {
         return "positive";
@@ -270,26 +304,28 @@ function test(x: number) {
     }
 }
 """
-        prse = self.parse_ts(source)
-        self.assertFalse(prse.errors_had, f"Errors: {prse.errors_had}")
-        self.assertIsInstance(prse.ir_out, uni.Module)
+    prse = parse_ts(source)
+    assert not prse.errors_had, f"Errors: {prse.errors_had}"
+    assert isinstance(prse.ir_out, uni.Module)
 
-    def test_namespace_declaration(self) -> None:
-        """Parse namespace declaration."""
-        source = """
+
+def test_namespace_declaration(parse_ts) -> None:
+    """Parse namespace declaration."""
+    source = """
 namespace MyNamespace {
     export const value = 42;
     export function helper() {}
     export class MyClass {}
 }
 """
-        prse = self.parse_ts(source)
-        self.assertFalse(prse.errors_had, f"Errors: {prse.errors_had}")
-        self.assertIsInstance(prse.ir_out, uni.Module)
+    prse = parse_ts(source)
+    assert not prse.errors_had, f"Errors: {prse.errors_had}"
+    assert isinstance(prse.ir_out, uni.Module)
 
-    def test_decorator_syntax(self) -> None:
-        """Parse decorator syntax."""
-        source = """
+
+def test_decorator_syntax(parse_ts) -> None:
+    """Parse decorator syntax."""
+    source = """
 @sealed
 class MyClass {
     @readonly
@@ -301,13 +337,14 @@ class MyClass {
     }
 }
 """
-        prse = self.parse_ts(source)
-        self.assertFalse(prse.errors_had, f"Errors: {prse.errors_had}")
-        self.assertIsInstance(prse.ir_out, uni.Module)
+    prse = parse_ts(source)
+    assert not prse.errors_had, f"Errors: {prse.errors_had}"
+    assert isinstance(prse.ir_out, uni.Module)
 
-    def test_generic_syntax(self) -> None:
-        """Parse generic syntax."""
-        source = """
+
+def test_generic_syntax(parse_ts) -> None:
+    """Parse generic syntax."""
+    source = """
 function identity<T>(x: T): T {
     return x;
 }
@@ -324,70 +361,74 @@ interface Box<T> {
     value: T;
 }
 """
-        prse = self.parse_ts(source)
-        self.assertFalse(prse.errors_had, f"Errors: {prse.errors_had}")
-        self.assertIsInstance(prse.ir_out, uni.Module)
+    prse = parse_ts(source)
+    assert not prse.errors_had, f"Errors: {prse.errors_had}"
+    assert isinstance(prse.ir_out, uni.Module)
 
-    # ==========================================================================
-    # AST Structure Tests
-    # ==========================================================================
 
-    def test_module_has_body(self) -> None:
-        """Test that parsed module has body."""
-        source = """
+# ==========================================================================
+# AST Structure Tests
+# ==========================================================================
+
+def test_module_has_body(parse_ts) -> None:
+    """Test that parsed module has body."""
+    source = """
 const x = 1;
 function greet() {}
 """
-        prse = self.parse_ts(source)
-        self.assertFalse(prse.errors_had, f"Errors: {prse.errors_had}")
-        self.assertIsInstance(prse.ir_out, uni.Module)
-        self.assertIsInstance(prse.ir_out.body, list)
-        # Body may be empty in simplified parsing mode
-        self.assertIsNotNone(prse.ir_out.body)
+    prse = parse_ts(source)
+    assert not prse.errors_had, f"Errors: {prse.errors_had}"
+    assert isinstance(prse.ir_out, uni.Module)
+    assert isinstance(prse.ir_out.body, list)
+    # Body may be empty in simplified parsing mode
+    assert prse.ir_out.body is not None
 
-    def test_module_name_from_path(self) -> None:
-        """Test module name is derived from file path."""
-        source = "const x = 1;"
-        prse = self.parse_ts(source, mod_path="/path/to/mymodule.ts")
-        self.assertFalse(prse.errors_had)
-        self.assertEqual(prse.ir_out.name, "mymodule")
 
-    def test_module_name_strips_extensions(self) -> None:
-        """Test various file extensions are stripped from module name."""
-        test_cases = [
-            ("/path/to/file.ts", "file"),
-            ("/path/to/file.tsx", "file"),
-            ("/path/to/file.js", "file"),
-            ("/path/to/file.jsx", "file"),
-        ]
-        for path, expected_name in test_cases:
-            with self.subTest(path=path):
-                prse = self.parse_ts("const x = 1;", mod_path=path)
-                self.assertEqual(prse.ir_out.name, expected_name)
+def test_module_name_from_path(parse_ts) -> None:
+    """Test module name is derived from file path."""
+    source = "const x = 1;"
+    prse = parse_ts(source, mod_path="/path/to/mymodule.ts")
+    assert not prse.errors_had
+    assert prse.ir_out.name == "mymodule"
 
-    # ==========================================================================
-    # Error Handling Tests
-    # ==========================================================================
 
-    def test_recovers_from_missing_semicolon(self) -> None:
-        """Test parser can recover from missing semicolons."""
-        # TypeScript usually allows missing semicolons (ASI)
-        source = """
+def test_module_name_strips_extensions(parse_ts) -> None:
+    """Test various file extensions are stripped from module name."""
+    test_cases = [
+        ("/path/to/file.ts", "file"),
+        ("/path/to/file.tsx", "file"),
+        ("/path/to/file.js", "file"),
+        ("/path/to/file.jsx", "file"),
+    ]
+    for path, expected_name in test_cases:
+        prse = parse_ts("const x = 1;", mod_path=path)
+        assert prse.ir_out.name == expected_name
+
+
+# ==========================================================================
+# Error Handling Tests
+# ==========================================================================
+
+def test_recovers_from_missing_semicolon(parse_ts) -> None:
+    """Test parser can recover from missing semicolons."""
+    # TypeScript usually allows missing semicolons (ASI)
+    source = """
 const x = 1
 const y = 2
 """
-        prse = self.parse_ts(source)
-        # Even if there are recovery errors, should produce a module
-        self.assertIsInstance(prse.ir_out, uni.Module)
+    prse = parse_ts(source)
+    # Even if there are recovery errors, should produce a module
+    assert isinstance(prse.ir_out, uni.Module)
 
-    def test_complex_expression(self) -> None:
-        """Parse complex expressions."""
-        source = """
+
+def test_complex_expression(parse_ts) -> None:
+    """Parse complex expressions."""
+    source = """
 const result = a + b * c - d / e;
 const ternary = condition ? valueIfTrue : valueIfFalse;
 const nullish = value ?? defaultValue;
 const chained = obj?.prop?.nested;
 """
-        prse = self.parse_ts(source)
-        self.assertFalse(prse.errors_had, f"Errors: {prse.errors_had}")
-        self.assertIsInstance(prse.ir_out, uni.Module)
+    prse = parse_ts(source)
+    assert not prse.errors_had, f"Errors: {prse.errors_had}"
+    assert isinstance(prse.ir_out, uni.Module)
