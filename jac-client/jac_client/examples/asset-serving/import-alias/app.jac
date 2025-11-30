@@ -26,7 +26,7 @@ cl {
                 <code>
                     @jac-client/assets
                 </code>
-                 alias to import assets
+                alias to import assets
             </p>
             <img
                 src={burgerImage}
@@ -46,7 +46,7 @@ cl {
                 <strong>
                     {count}
                 </strong>
-                 times!
+                times!
             </p>
             <button
                 onClick={lambda  e: any  -> None{ setCount(count + 1);} }
@@ -95,11 +95,11 @@ cl {
                         <code>
                             assets/
                         </code>
-                         to
+                        to
                         <code>
                             src/assets/
                         </code>
-                         during build
+                        during build
                     </li>
                     <li>
                         Automatic hash generation for cache busting
