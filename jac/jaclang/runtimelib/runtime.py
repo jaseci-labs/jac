@@ -30,8 +30,6 @@ from typing import (
 )
 from uuid import UUID
 
-from jaclang.vendor import pluggy
-
 from jaclang.compiler.constant import Constants as Con
 from jaclang.compiler.constant import EdgeDir, colors
 from jaclang.compiler.program import JacProgram
@@ -68,6 +66,7 @@ from jaclang.runtimelib.utils import (
     traverse_graph,
 )
 from jaclang.utils import infer_language
+from jaclang.vendor import pluggy
 
 if TYPE_CHECKING:
     from jaclang.runtimelib.server import ModuleIntrospector
