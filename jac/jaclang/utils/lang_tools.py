@@ -2,10 +2,14 @@
 
 import ast as py_ast
 import inspect
+import json
 import os
 import sys
 
 import jaclang.compiler.unitree as uni
+from jaclang.compiler.passes.ecmascript import EsastGenPass, es_node_to_dict
+from jaclang.compiler.passes.ecmascript.es_unparse import es_to_js
+from jaclang.compiler.passes.ecmascript.estree import Node as EsNode
 from jaclang.compiler.passes.main import PyastBuildPass
 from jaclang.compiler.passes.main.cfg_build_pass import cfg_dot_from_file
 from jaclang.compiler.passes.tool.doc_ir_gen_pass import DocIRGenPass
@@ -266,27 +270,19 @@ class AstTool:
                         else "Compile failed."
                     )
                 case "esast":
-                    import json
-
-                    from jaclang.compiler.passes.ecmascript import (
-                        EsastGenPass,
-                        es_node_to_dict,
-                    )
-
                     esast_pass = EsastGenPass(ir, prog)
                     es_ir = esast_pass.ir_out
-                    if es_ir.gen.es_ast:
-                        return f"\n{json.dumps(es_node_to_dict(es_ir.gen.es_ast), indent=2)}"
+                    es_ast = es_ir.gen.es_ast
+                    if isinstance(es_ast, EsNode):
+                        return f"\n{json.dumps(es_node_to_dict(es_ast), indent=2)}"
                     else:
                         return "ECMAScript AST generation failed."
                 case "es":
-                    from jaclang.compiler.passes.ecmascript import EsastGenPass
-                    from jaclang.compiler.passes.ecmascript.es_unparse import es_to_js
-
                     esast_pass = EsastGenPass(ir, prog)
                     es_ir = esast_pass.ir_out
-                    if es_ir.gen.es_ast:
-                        return f"\n{es_to_js(es_ir.gen.es_ast)}"
+                    es_ast = es_ir.gen.es_ast
+                    if isinstance(es_ast, EsNode):
+                        return f"\n{es_to_js(es_ast)}"
                     else:
                         return "ECMAScript code generation failed."
                 case _:

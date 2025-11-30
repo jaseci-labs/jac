@@ -9,6 +9,7 @@ import pytest
 
 from jaclang.compiler.passes.ecmascript import EsastGenPass
 from jaclang.compiler.passes.ecmascript.es_unparse import es_to_js
+from jaclang.compiler.passes.ecmascript.estree import Node as EsNode
 from jaclang.compiler.program import JacProgram
 
 
@@ -55,9 +56,10 @@ def compile_fixture_to_js(fixture_name: str, fixture_path_func=None) -> str:
     es_ir = es_pass.ir_out
 
     assert hasattr(es_ir.gen, "es_ast"), "es_ast attribute missing"
-    assert es_ir.gen.es_ast is not None, "es_ast should not be None"
+    es_ast = es_ir.gen.es_ast
+    assert isinstance(es_ast, EsNode), "es_ast should be an EsNode"
 
-    return es_to_js(es_ir.gen.es_ast)
+    return es_to_js(es_ast)
 
 
 def assert_balanced_syntax(js_code: str, fixture_name: str) -> None:
