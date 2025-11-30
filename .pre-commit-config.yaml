@@ -50,7 +50,7 @@ repos:
   #       exclude: (/fixtures/|_err\.jac$|_syntax_err\.jac$|jac-client/jac_client/examples/)
   # Remote repo for CI
   - repo: https://github.com/jaseci-labs/jac-pre-commit
-    rev: v0.9.3
+    rev: main
     hooks:
       - id: jac-format
       - id: jac-check
