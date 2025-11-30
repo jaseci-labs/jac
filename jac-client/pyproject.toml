@@ -1,14 +1,27 @@
 [tool.poetry]
 name = "jac-client"
-version = "0.2.2"
-description = ""
+version = "0.2.3"
+description = "Build full-stack web applications with Jac - one language for frontend and backend."
 authors = ["Jason Mars <jason@mars.ninja>"]
+maintainers = ["Jason Mars <jason@mars.ninja>"]
+license = "MIT"
 readme = "README.md"
+keywords = [
+    "jac",
+    "jaclang",
+    "jaseci",
+    "frontend",
+    "full-stack",
+    "web-development",
+]
+repository = "https://github.com/Jaseci-Labs/jaseci"
+homepage = "https://jaseci.org"
+documentation = "https://jac-lang.org"
 packages = [{include = "jac_client"}]
 
 [tool.poetry.dependencies]
 python = "^3.12.0"
-jaclang = "0.9.2"
+jaclang = "0.9.3"
 
 [tool.poetry.group.dev.dependencies]
 python-dotenv = "1.0.1"

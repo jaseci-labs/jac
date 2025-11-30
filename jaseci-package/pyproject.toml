@@ -26,9 +26,9 @@ packages = [{ include = "jaseci" }]
 
 [tool.poetry.dependencies]
 python = "^3.11.0"
-jaclang = "^0.9.2"
+jaclang = "^0.9.3"
 byllm = "^0.4.8"
-jac-client = "^0.2.2"
+jac-client = "^0.2.3"
 jac-streamlit = "^0.0.5"
 
 

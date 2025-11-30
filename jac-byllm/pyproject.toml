@@ -9,7 +9,7 @@ readme = "README.md"
 keywords = ["llm", "jaclang", "jaseci", "byLLM"]
 
 [tool.poetry.dependencies]
-jaclang = ">=0.9.2"
+jaclang = ">=0.9.3"
 litellm = ">=1.75.5.post1, <1.80.0"
 loguru = "~0.7.2"
 pillow = "~10.4.0"
