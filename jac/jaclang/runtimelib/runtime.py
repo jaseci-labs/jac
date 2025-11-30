@@ -30,7 +30,7 @@ from typing import (
 )
 from uuid import UUID
 
-import pluggy
+from jaclang.vendor import pluggy
 
 from jaclang.compiler.constant import Constants as Con
 from jaclang.compiler.constant import EdgeDir, colors
