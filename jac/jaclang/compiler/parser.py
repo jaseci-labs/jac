@@ -3055,13 +3055,30 @@ class JacParser(Transform[uni.Source, uni.Module]):
         def jsx_text(self, _: None) -> uni.JsxText:
             """Grammar rule.
 
-            jsx_text: JSX_TEXT
+            jsx_text: JSX_TEXT | jsx_text_keyword
             """
-            text = self.consume_token(Tok.JSX_TEXT)
+            if text := self.match_token(Tok.JSX_TEXT):
+                return uni.JsxText(
+                    value=text,
+                    kid=self.cur_nodes,
+                )
+            # Handle keywords that can appear as text in JSX content
+            text = self.consume(uni.Token)
             return uni.JsxText(
                 value=text,
                 kid=self.cur_nodes,
             )
+
+        def jsx_text_keyword(self, _: None) -> uni.Token:
+            """Grammar rule.
+
+            jsx_text_keyword: KW_TO | KW_AS | KW_FROM | ... (all keywords)
+
+            Keywords that can appear as text in JSX content.
+            """
+            # This is handled by jsx_text - the Lark parser will match
+            # keyword tokens and pass them through jsx_text_keyword rule
+            return self.consume(uni.Token)
 
         def edge_ref_chain(self, _: None) -> uni.EdgeRefTrailer:
             """Grammar rule.

@@ -4,9 +4,11 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.9.2 (Unreleased)
 
+- **Fixed JSX Text Parsing for Keywords**: Fixed a parser issue where keywords like `to`, `as`, `in`, `is`, `for`, `if`, etc. appearing as text content within JSX elements would cause parse errors. The grammar now correctly recognizes these common English words as valid JSX text content.
 - **Support iter for statement**: Iter for statement is supported in order to utilize traditional for loop in javascript.
 - **JavaScript Export Semantics for Public Declarations**: Declarations explicitly annotated with `:pub` now generate JavaScript `export` statements. This applies to classes (`obj :pub`), functions (`def :pub`), enums (`enum :pub`), and global variables (`glob :pub`), enabling proper ES module exports in generated JavaScript code.
 - **Cross-Language Type Checking for JS/TS Dependencies**: The type checker now supports loading and analyzing JavaScript (`.js`) and TypeScript (`.ts`, `.jsx`, `.tsx`) file dependencies when used with client-side (`cl`) imports. This enables type checking across language boundaries for files with client-language elements, allowing the compiler to parse and include JS/TS modules in the module hub for proper type resolution.
+- **Formatter Improvements and Standardization**: Enhanced the Jac code formatter with improved consistency and standardization across formatting rules.
 
 ## jaclang 0.9.1 (Latest Release)
 

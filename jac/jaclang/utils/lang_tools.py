@@ -325,7 +325,8 @@ class AstTool:
 
     def gen_parser(self) -> str:
         """Generate static parser."""
-        from jaclang.compiler import generate_static_parser
+        from jaclang.compiler import generate_static_parser, generate_ts_static_parser
 
         generate_static_parser(force=True)
+        generate_ts_static_parser(force=True)
         return "Parser generated."
