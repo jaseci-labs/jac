@@ -2,11 +2,13 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **byLLM** (formerly MTLLM). For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking_changes.md) page.
 
-## byllm 0.4.8 (Unreleased)
+## byllm 0.4.9 (Unreleased)
+
+## byllm 0.4.8 (Latest Release)
 
 - **Streaming with ReAct Tool Calling**: Implemented real-time streaming support for ReAct method when using tools. After tool execution completes, the LLM now streams the final synthesized answer token-by-token, providing the best of both worlds: structured tool calling with streaming responses.
 
-## byllm 0.4.7 (Latest Release)
+## byllm 0.4.7
 
 - **Custom Model Declaration**: Custom model interfaces can be defined by using the `BaseLLM` class that can be imported form `byllm.lib`. A guide for using this feature is added to [documentation](https://docs.jaseci.org/learn/jac-byllm/create_own_lm/).
 

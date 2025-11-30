@@ -9,7 +9,7 @@ When you install `jaseci`, you automatically get:
 
 - **jaclang** - The Jac programming language
 - **byllm** - LLM integration for AI-native programming
-- **jac-scale** - Cloud adaptive deployment and scaling capabilities
+- **jac-client** - Full-stack web applications with React-like components in Jac
 - **jac-streamlit** - Streamlit integration for visualization
 
 ## Installation
@@ -30,10 +30,6 @@ jac --help
 
 - **Jac Language**: [https://www.jac-lang.org](https://www.jac-lang.org)
 - **byLLM (AI Integration)**: [https://www.byllm.ai](https://www.byllm.ai)
-- **Jac Cloud**: [https://www.jac-lang.org/learn/jac-cloud/introduction/](https://www.jac-lang.org/learn/jac-cloud/introduction/)
+- **Jac Client**: [https://docs.jaseci.org/jac-client/](https://docs.jaseci.org/jac-client/)
 - **Jaseci Homepage**: [https://jaseci.org](https://jaseci.org)
 - **GitHub Repository**: [https://github.com/Jaseci-Labs/jaseci](https://github.com/Jaseci-Labs/jaseci)
-
-## Version 2.0.0
-
-This major release marks the transition to a modular ecosystem where each component is independently maintained and versioned, while this meta-package provides convenient unified installation.

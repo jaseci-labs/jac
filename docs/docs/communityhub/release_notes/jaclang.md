@@ -2,13 +2,15 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking_changes.md) page.
 
-## jaclang 0.9.2 (Unreleased)
+## jaclang 0.9.3 (Unreleased)
+
+## jaclang 0.9.2(Latest Release)
 
 - **Support iter for statement**: Iter for statement is supported in order to utilize traditional for loop in javascript.
 - **JavaScript Export Semantics for Public Declarations**: Declarations explicitly annotated with `:pub` now generate JavaScript `export` statements. This applies to classes (`obj :pub`), functions (`def :pub`), enums (`enum :pub`), and global variables (`glob :pub`), enabling proper ES module exports in generated JavaScript code.
 - **Cross-Language Type Checking for JS/TS Dependencies**: The type checker now supports loading and analyzing JavaScript (`.js`) and TypeScript (`.ts`, `.jsx`, `.tsx`) file dependencies when used with client-side (`cl`) imports. This enables type checking across language boundaries for files with client-language elements, allowing the compiler to parse and include JS/TS modules in the module hub for proper type resolution.
 
-## jaclang 0.9.1 (Latest Release)
+## jaclang 0.9.1
 
 -**Side effect imports supported**: side effect imports supported which will help to inject css.
 - **Plugin for sending static files**: Added extensible plugin system for sending static files, enabling custom static file serving strategies and integration with various storage backends.
