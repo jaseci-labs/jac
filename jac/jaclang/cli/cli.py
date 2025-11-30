@@ -61,22 +61,30 @@ def format(paths: list, outfile: str = "", to_screen: bool = False) -> None:
             with open(target_path, "w") as f:
                 f.write(code)
 
-    def format_single_file(file_path: str) -> bool:
-        """Format a single .jac file. Returns True on success."""
+    def format_single_file(file_path: str) -> tuple[bool, bool]:
+        """Format a single .jac file. Returns (success, changed)."""
         path_obj = Path(file_path)
         if not path_obj.exists():
             print(f"Error: File '{file_path}' does not exist.", file=sys.stderr)
-            return False
+            return False, False
         try:
-            formatted_code = JacProgram.jac_file_formatter(str(path_obj))
+            prog = JacProgram.jac_file_formatter(str(path_obj))
+            if prog.errors_had:
+                for error in prog.errors_had:
+                    print(f"{error}", file=sys.stderr)
+                return False, False
+            formatted_code = prog.mod.main.gen.jac
+            original_code = prog.mod.main.source.code
+            changed = formatted_code != original_code
             write_formatted_code(formatted_code, str(path_obj))
-            return True
+            return True, changed
         except Exception as e:
             print(f"Error formatting '{file_path}': {e}", file=sys.stderr)
-            return False
+            return False, False
 
     total_files = 0
     failed_files = 0
+    changed_files = 0
 
     for path in paths:
         path_obj = Path(path)
@@ -84,8 +92,11 @@ def format(paths: list, outfile: str = "", to_screen: bool = False) -> None:
         # Case 1: Single .jac file
         if path.endswith(".jac"):
             total_files += 1
-            if not format_single_file(path):
+            success, changed = format_single_file(path)
+            if not success:
                 failed_files += 1
+            elif changed:
+                changed_files += 1
             continue
 
         # Case 2: Directory with .jac files
@@ -93,8 +104,11 @@ def format(paths: list, outfile: str = "", to_screen: bool = False) -> None:
             jac_files = list(path_obj.glob("**/*.jac"))
             for jac_file in jac_files:
                 total_files += 1
-                if not format_single_file(str(jac_file)):
+                success, changed = format_single_file(str(jac_file))
+                if not success:
                     failed_files += 1
+                elif changed:
+                    changed_files += 1
             continue
 
         # Case 3: Invalid path
@@ -104,7 +118,8 @@ def format(paths: list, outfile: str = "", to_screen: bool = False) -> None:
     # Only print summary for directory processing or when there are failures
     if (len(paths) == 1 and Path(paths[0]).is_dir()) or failed_files > 0:
         print(
-            f"Formatted {total_files - failed_files}/{total_files} '.jac' files.",
+            f"Formatted {total_files - failed_files}/{total_files} '.jac' files "
+            f"({changed_files} changed).",
             file=sys.stderr,
         )
 
@@ -658,14 +673,11 @@ def py2jac(filename: str) -> None:
             ),
             prog=JacProgram(),
         ).ir_out.unparse(requires_format=False)
-        formatted_code = JacProgram().jac_str_formatter(
-            source_str=code, file_path=filename
-        )
-        if formatted_code:
-            print(formatted_code)
-        else:
+        prog = JacProgram.jac_str_formatter(source_str=code, file_path=filename)
+        if prog.errors_had:
             print("Error converting Python code to Jac.", file=sys.stderr)
             exit(1)
+        print(prog.mod.main.gen.jac)
     else:
         print("Not a .py file.")
         exit(1)

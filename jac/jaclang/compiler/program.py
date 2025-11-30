@@ -180,8 +180,8 @@ class JacProgram:
             current_pass(ir_in=mod, prog=self, cancel_token=cancel_token)  # type: ignore
 
     @staticmethod
-    def jac_file_formatter(file_path: str) -> str:
-        """Convert a Jac file to an AST."""
+    def jac_file_formatter(file_path: str) -> JacProgram:
+        """Format a Jac file and return the JacProgram."""
         prog = JacProgram()
         source_str = read_file_with_encoding(file_path)
         source = uni.Source(source_str, mod_path=file_path)
@@ -189,19 +189,17 @@ class JacProgram:
         current_mod = parser_pass.ir_out
         for pass_cls in format_sched:
             current_mod = pass_cls(ir_in=current_mod, prog=prog).ir_out
-        parser_pass.errors_had = prog.errors_had
-        parser_pass.warnings_had = prog.warnings_had
-        return current_mod.gen.jac if not parser_pass.errors_had else source_str
+        prog.mod = uni.ProgramModule(current_mod)
+        return prog
 
     @staticmethod
-    def jac_str_formatter(source_str: str, file_path: str) -> str:
-        """Convert a Jac file to an AST."""
+    def jac_str_formatter(source_str: str, file_path: str) -> JacProgram:
+        """Format a Jac string and return the JacProgram."""
         prog = JacProgram()
         source = uni.Source(source_str, mod_path=file_path)
         parser_pass = JacParser(root_ir=source, prog=prog)
         current_mod = parser_pass.ir_out
         for pass_cls in format_sched:
             current_mod = pass_cls(ir_in=current_mod, prog=prog).ir_out
-        parser_pass.errors_had = prog.errors_had
-        parser_pass.warnings_had = prog.warnings_had
-        return current_mod.gen.jac if not parser_pass.errors_had else source_str
+        prog.mod = uni.ProgramModule(current_mod)
+        return prog

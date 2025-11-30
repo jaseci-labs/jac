@@ -744,3 +744,30 @@ def test_cli_error_exit_codes(fixture_path) -> None:
     stdout, stderr = process.communicate()
     assert process.returncode == 0, "run command should exit with code 0 on success"
     assert "Hello World!" in stdout
+
+
+def test_format_tracks_changed_files() -> None:
+    """Test that format command correctly tracks and reports changed files."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Create a file that needs formatting (bad indentation/spacing)
+        needs_formatting = os.path.join(tmpdir, "needs_format.jac")
+        with open(needs_formatting, "w") as f:
+            f.write('with entry{print("hello");}')
+
+        # Create a file that is already formatted
+        already_formatted = os.path.join(tmpdir, "already_formatted.jac")
+        with open(already_formatted, "w") as f:
+            f.write('with entry {\n    print("hello");\n}\n')
+
+        # Run format on the directory
+        process = subprocess.Popen(
+            ["jac", "format", tmpdir],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        stdout, stderr = process.communicate()
+
+        assert process.returncode == 0
+        assert "2/2" in stderr
+        assert "(1 changed)" in stderr

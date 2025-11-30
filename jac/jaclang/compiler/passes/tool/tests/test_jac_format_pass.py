@@ -19,7 +19,8 @@ def compare_files(
         with open(original_path) as file:
             original_file_content = file.read()
         if formatted_file is None:
-            formatted_content = JacProgram.jac_file_formatter(original_path)
+            prog = JacProgram.jac_file_formatter(original_path)
+            formatted_content = prog.mod.main.gen.jac
         else:
             with open(fixture_path(formatted_file)) as file:
                 formatted_content = file.read()
@@ -132,7 +133,8 @@ def micro_suite_test(filename: str) -> None:
     Includes a specific token check for 'circle_clean_tests.jac'.
     """
     code_gen_pure = JacProgram().compile(filename)
-    code_gen_format = JacProgram.jac_file_formatter(filename)
+    format_prog = JacProgram.jac_file_formatter(filename)
+    code_gen_format = format_prog.mod.main.gen.jac
     code_gen_jac = JacProgram().compile(use_str=code_gen_format, file_path=filename)
     if "circle_clean_tests.jac" in filename:
         tokens = code_gen_format.split()
