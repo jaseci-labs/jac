@@ -853,6 +853,26 @@ class ExportAllDeclaration(Node):
     )
 
 
+# Slice/Index Info for ES AST Generation
+# =======================================
+# These are helper types used during ES AST generation for slice/index operations
+
+
+@dataclass
+class SliceInfo:
+    """Represents slice operation info (e.g., arr[start:stop])."""
+
+    start: Node | None = None
+    stop: Node | None = None
+
+
+@dataclass
+class IndexInfo:
+    """Represents index operation info (e.g., arr[index])."""
+
+    value: Node | None = None
+
+
 # Type Aliases for Union Types
 # ============================
 

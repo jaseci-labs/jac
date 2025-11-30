@@ -111,7 +111,10 @@ class EsJsxProcessor:
             if child_expr is None:
                 continue
             if isinstance(child_expr, list):
-                children_elements.extend(child_expr)  # type: ignore[arg-type]
+                # JSX child expressions in list form are Expression types
+                children_elements.extend(
+                    cast("Expression", expr) for expr in child_expr
+                )
             else:
                 # Child expressions are always Expression types
                 children_elements.append(cast("Expression", child_expr))
@@ -247,14 +250,15 @@ class PyJsxProcessor:
         elif any(isinstance(attr, uni.JsxSpreadAttribute) for attr in node.attributes):
             attrs_expr = self.pass_ref.sync(ast3.Dict(keys=[], values=[]), node)
             for attr in node.attributes:
-                attr_ast = cast(ast3.expr, attr.gen.py_ast[0])
                 if isinstance(attr, uni.JsxSpreadAttribute):
+                    attr_ast = cast(ast3.expr, attr.gen.py_ast[0])
                     attrs_expr = self.pass_ref.sync(
                         ast3.Dict(keys=[None, None], values=[attrs_expr, attr_ast]),
                         attr,
                     )
                 elif isinstance(attr, uni.JsxNormalAttribute):
-                    key_ast, value_ast = attr_ast.elts  # type: ignore[attr-defined]
+                    attr_tuple = cast(ast3.Tuple, attr.gen.py_ast[0])
+                    key_ast, value_ast = attr_tuple.elts
                     attrs_expr = self.pass_ref.sync(
                         ast3.Dict(
                             keys=[None, key_ast],
@@ -321,11 +325,11 @@ class PyJsxProcessor:
             return node.gen.py_ast
 
         key_ast = self.pass_ref.sync(ast3.Constant(value=node.name.value), node.name)
-        value_ast = (
-            cast(ast3.expr, node.value.gen.py_ast[0])  # type: ignore[index]
-            if node.value
-            else self.pass_ref.sync(ast3.Constant(value=True), node)
-        )
+        value_ast: ast3.expr
+        if node.value and node.value.gen.py_ast:
+            value_ast = cast(ast3.expr, node.value.gen.py_ast[0])
+        else:
+            value_ast = self.pass_ref.sync(ast3.Constant(value=True), node)
         node.gen.py_ast = [
             self.pass_ref.sync(
                 ast3.Tuple(elts=[key_ast, value_ast], ctx=ast3.Load()),

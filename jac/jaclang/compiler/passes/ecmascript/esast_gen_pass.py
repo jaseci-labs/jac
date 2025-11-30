@@ -275,8 +275,8 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
         cur_es = es_expr
         while isinstance(cur_node, uni.AwaitExpr) and cur_node.target:
             cur_node = cur_node.target
-            if isinstance(cur_es, es.AwaitExpression):
-                cur_es = cur_es.argument  # type: ignore[assignment]
+            if isinstance(cur_es, es.AwaitExpression) and cur_es.argument is not None:
+                cur_es = cur_es.argument
             else:
                 break
         return cur_node, cur_es
@@ -528,7 +528,9 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
         if node and getattr(node.gen, "es_ast", None):
             generated = node.gen.es_ast
             if isinstance(generated, es.Node):
-                return generated  # type: ignore[return-value]
+                # The caller expects _T which is a subtype of es.Node.
+                # Runtime check passed, so cast is safe.
+                return cast(_T, generated)
         fallback = default_factory(node)
         jac_ref = node if node is not None else self.cur_node
         return self.sync_loc(fallback, jac_node=jac_ref)
@@ -1178,9 +1180,10 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
 
     def exit_in_for_stmt(self, node: uni.InForStmt) -> None:
         """Process for-in statement."""
+        target_ast = node.target.gen.es_ast
         left: es.Node = (
-            node.target.gen.es_ast
-            if node.target.gen.es_ast
+            target_ast
+            if isinstance(target_ast, es.Node)
             else self.sync_loc(es.Identifier(name="item"), jac_node=node.target)
         )
         right: es.Expression = (
@@ -1799,7 +1802,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
         if len(statements) == 1:
             node.gen.es_ast = statements[0]
         else:
-            node.gen.es_ast = statements  # type: ignore[assignment]
+            node.gen.es_ast = statements
 
     def exit_func_call(self, node: uni.FuncCall) -> None:
         """Process function call."""
@@ -1990,29 +1993,31 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
             first_slice = node.slices[0]
             if node.is_range:
                 # Store slice info - will be used by AtomTrailer
-                node.gen.es_ast = {  # type: ignore[assignment]
-                    "type": "slice",
-                    "start": (
-                        first_slice.start.gen.es_ast
-                        if first_slice.start and first_slice.start.gen.es_ast
-                        else None
-                    ),
-                    "stop": (
-                        first_slice.stop.gen.es_ast
-                        if first_slice.stop and first_slice.stop.gen.es_ast
-                        else None
-                    ),
-                }
+                start_ast = (
+                    first_slice.start.gen.es_ast
+                    if first_slice.start
+                    and first_slice.start.gen.es_ast
+                    and isinstance(first_slice.start.gen.es_ast, es.Node)
+                    else None
+                )
+                stop_ast = (
+                    first_slice.stop.gen.es_ast
+                    if first_slice.stop
+                    and first_slice.stop.gen.es_ast
+                    and isinstance(first_slice.stop.gen.es_ast, es.Node)
+                    else None
+                )
+                node.gen.es_ast = es.SliceInfo(start=start_ast, stop=stop_ast)
             else:
                 # Store index info - will be used by AtomTrailer
-                node.gen.es_ast = {  # type: ignore[assignment]
-                    "type": "index",
-                    "value": (
-                        first_slice.start.gen.es_ast
-                        if first_slice.start and first_slice.start.gen.es_ast
-                        else self.sync_loc(es.Literal(value=0), jac_node=node)
-                    ),
-                }
+                value_ast = (
+                    first_slice.start.gen.es_ast
+                    if first_slice.start
+                    and first_slice.start.gen.es_ast
+                    and isinstance(first_slice.start.gen.es_ast, es.Node)
+                    else self.sync_loc(es.Literal(value=0), jac_node=node)
+                )
+                node.gen.es_ast = es.IndexInfo(value=value_ast)
         else:
             node.gen.es_ast = None
 
@@ -2044,51 +2049,46 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
             elif isinstance(node.right, uni.IndexSlice):
                 # Handle index/slice operations
                 slice_info = node.right.gen.es_ast
-                if isinstance(slice_info, dict):
-                    if slice_info.get("type") == "slice":
-                        # Slice operation - convert to .slice() call
-                        start = cast(
-                            es.Expression,
-                            slice_info.get("start")
-                            or self.sync_loc(es.Literal(value=0), jac_node=node),
-                        )
-                        stop = slice_info.get("stop")
-                        slice_args: list[es.Expression | es.SpreadElement] = [start]
-                        if stop is not None:
-                            slice_args.append(cast(es.Expression, stop))
-                        slice_call = self.sync_loc(
-                            es.CallExpression(
-                                callee=self.sync_loc(
-                                    es.MemberExpression(
-                                        object=obj,
-                                        property=self.sync_loc(
-                                            es.Identifier(name="slice"), jac_node=node
-                                        ),
-                                        computed=False,
+                if isinstance(slice_info, es.SliceInfo):
+                    # Slice operation - convert to .slice() call
+                    start = cast(
+                        es.Expression,
+                        slice_info.start
+                        or self.sync_loc(es.Literal(value=0), jac_node=node),
+                    )
+                    stop = slice_info.stop
+                    slice_args: list[es.Expression | es.SpreadElement] = [start]
+                    if stop is not None:
+                        slice_args.append(cast(es.Expression, stop))
+                    slice_call = self.sync_loc(
+                        es.CallExpression(
+                            callee=self.sync_loc(
+                                es.MemberExpression(
+                                    object=obj,
+                                    property=self.sync_loc(
+                                        es.Identifier(name="slice"), jac_node=node
                                     ),
-                                    jac_node=node,
+                                    computed=False,
                                 ),
-                                arguments=slice_args,
+                                jac_node=node,
                             ),
-                            jac_node=node,
-                        )
-                        node.gen.es_ast = slice_call
-                    elif slice_info.get("type") == "index":
-                        # Index operation
-                        idx = cast(
-                            es.Expression,
-                            slice_info.get("value")
-                            or self.sync_loc(es.Literal(value=0), jac_node=node),
-                        )
-                        member_expr = self.sync_loc(
-                            es.MemberExpression(
-                                object=obj, property=idx, computed=True
-                            ),
-                            jac_node=node,
-                        )
-                        node.gen.es_ast = member_expr
-                    else:
-                        node.gen.es_ast = obj
+                            arguments=slice_args,
+                        ),
+                        jac_node=node,
+                    )
+                    node.gen.es_ast = slice_call
+                elif isinstance(slice_info, es.IndexInfo):
+                    # Index operation
+                    idx = cast(
+                        es.Expression,
+                        slice_info.value
+                        or self.sync_loc(es.Literal(value=0), jac_node=node),
+                    )
+                    member_expr = self.sync_loc(
+                        es.MemberExpression(object=obj, property=idx, computed=True),
+                        jac_node=node,
+                    )
+                    node.gen.es_ast = member_expr
                 else:
                     node.gen.es_ast = obj
             else:
@@ -2565,12 +2565,12 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
                     statements.append(export_decl)
                 else:
                     statements.append(cast(es.Statement, stmt))
-        node.gen.es_ast = statements  # type: ignore[assignment]
+        node.gen.es_ast = statements
 
     def exit_non_local_stmt(self, node: uni.NonLocalStmt) -> None:
         """Process non-local statement."""
         # Non-local doesn't have direct equivalent in ES
-        node.gen.es_ast = []  # type: ignore[assignment]
+        node.gen.es_ast = []
 
     def exit_module_code(self, node: uni.ModuleCode) -> None:
         """Process module code (with entry block)."""
@@ -2587,7 +2587,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
                         body_stmts.append(cast(es.Statement, stmt.gen.es_ast))
 
         # Module code is executed at module level, so just output the statements
-        node.gen.es_ast = body_stmts  # type: ignore[assignment]
+        node.gen.es_ast = body_stmts
 
     def exit_client_block(self, node: uni.ClientBlock) -> None:
         """Process client block (cl { ... })."""
@@ -2604,7 +2604,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
                         body_stmts.append(cast(es.Statement, stmt.gen.es_ast))
 
         # ClientBlock is just a grouping construct, output the statements directly
-        node.gen.es_ast = body_stmts  # type: ignore[assignment]
+        node.gen.es_ast = body_stmts
 
     def exit_test(self, node: uni.Test) -> None:
         """Process test as a function."""

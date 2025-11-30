@@ -3,11 +3,18 @@
 from __future__ import annotations
 
 import ast as ast3
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from jaclang.compiler.passes.ecmascript.estree import Node as EsNode
+    from jaclang.compiler.passes.ecmascript.estree import (
+        IndexInfo,
+        SliceInfo,
+    )
+    from jaclang.compiler.passes.ecmascript.estree import (
+        Node as EsNode,
+    )
     from jaclang.compiler.unitree import Source, Token
 
 
@@ -39,7 +46,7 @@ class CodeGenTarget:
         self.client_manifest: ClientManifest = ClientManifest()
         self.py_ast: list[ast3.AST] = []
         self.py_bytecode: bytes | None = None
-        self.es_ast: EsNode | None = None
+        self.es_ast: EsNode | Sequence[EsNode] | SliceInfo | IndexInfo | None = None
 
 
 class CodeLocInfo:
