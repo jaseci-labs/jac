@@ -2,7 +2,6 @@
 
 import random;
 
-
 class Game {
     def init(self: Game, attempts: int = 10) {
         self.attempts = attempts;
@@ -13,7 +12,6 @@ class Game {
         raise NotImplementedError("Subclasses must implement this method.") ;
     }
 }
-
 
 class GuessTheNumberGame(Game) {
     def init(self: GuessTheNumberGame, attempts: int = 10) {
@@ -52,7 +50,6 @@ class GuessTheNumberGame(Game) {
         print(f"You have {self.attempts} attempts left.");
     }
 }
-
 
 with entry {
     game = GuessTheNumberGame();

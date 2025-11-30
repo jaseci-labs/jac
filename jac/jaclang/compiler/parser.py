@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import keyword
 import os
-import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from threading import Event
@@ -16,7 +15,6 @@ from jaclang.compiler import jac_lark as jl
 from jaclang.compiler.constant import EdgeDir
 from jaclang.compiler.constant import Tokens as Tok
 from jaclang.compiler.passes.main import BaseTransform, Transform
-from jaclang.utils.helpers import ANSIColors
 
 if TYPE_CHECKING:
     from jaclang.compiler.program import JacProgram
@@ -98,7 +96,6 @@ class JacParser(Transform[uni.Source, uni.Module]):
                 raise self.ice()
             if len(self.errors_had) != 0:
                 mod.has_syntax_errors = True
-                self.report_errors()
             self.ir_out = mod
             return mod
         except jl.UnexpectedInput as e:
@@ -114,7 +111,6 @@ class JacParser(Transform[uni.Source, uni.Module]):
 
         # If we reach here, there was a syntax error, mark the module as such
         # and report errors.
-        self.report_errors()
         mod = uni.Module.make_stub(inject_src=ir_in)
         mod.has_syntax_errors = True
         return mod
@@ -226,22 +222,6 @@ class JacParser(Transform[uni.Source, uni.Module]):
             catch_error.c_end = e.column + 1
             catch_error.pos_end = catch_error.pos_start + 1
         return catch_error
-
-    def report_errors(self, *, colors: bool = True) -> None:
-        """Report errors to the user."""
-        # TODO: Write a better IO system.
-        # NOTE: Currently it writes all the errors to stderr cause LSP JsonRPC uses stdout for IPC.
-        if not sys.stderr.isatty():
-            # FIXME: If we're outputting to a file (pipe, redirection, etc) other
-            # than a terminal we disable colors however we should be able to force
-            # colors with a configuration.
-            colors = False
-        for alrt in self.errors_had:
-            error_label = (
-                "Error:" if not colors else f"{ANSIColors.RED}Error:{ANSIColors.END}"
-            )
-            print(error_label, end=" ", file=sys.stderr)
-            print(alrt.pretty_print(colors=colors), file=sys.stderr)
 
     JacTransformer: TypeAlias = jl.Transformer[jl.Tree[str], uni.UniNode]
 
@@ -3075,13 +3055,30 @@ class JacParser(Transform[uni.Source, uni.Module]):
         def jsx_text(self, _: None) -> uni.JsxText:
             """Grammar rule.
 
-            jsx_text: JSX_TEXT
+            jsx_text: JSX_TEXT | jsx_text_keyword
             """
-            text = self.consume_token(Tok.JSX_TEXT)
+            if text := self.match_token(Tok.JSX_TEXT):
+                return uni.JsxText(
+                    value=text,
+                    kid=self.cur_nodes,
+                )
+            # Handle keywords that can appear as text in JSX content
+            text = self.consume(uni.Token)
             return uni.JsxText(
                 value=text,
                 kid=self.cur_nodes,
             )
+
+        def jsx_text_keyword(self, _: None) -> uni.Token:
+            """Grammar rule.
+
+            jsx_text_keyword: KW_TO | KW_AS | KW_FROM | ... (all keywords)
+
+            Keywords that can appear as text in JSX content.
+            """
+            # This is handled by jsx_text - the Lark parser will match
+            # keyword tokens and pass them through jsx_text_keyword rule
+            return self.consume(uni.Token)
 
         def edge_ref_chain(self, _: None) -> uni.EdgeRefTrailer:
             """Grammar rule.

@@ -2,18 +2,18 @@
 
 import random;
 
-
 obj Game {
-    has attempts: int, won: bool = False;
+    has attempts: int,
+        won: bool = False;
 
     def play {
-        raise NotImplementedError("Subclasses must implement this method.");
+        raise NotImplementedError("Subclasses must implement this method.") ;
     }
 }
 
-
-obj GuessTheNumberGame (Game) {
-    has attempts: int = 10, correct_number: int = random.randint(1, 10);
+obj GuessTheNumberGame(Game) {
+    has attempts: int = 10,
+        correct_number: int = random.randint(1, 10);
 
     def play {
         while self.attempts > 0 {
@@ -46,7 +46,6 @@ obj GuessTheNumberGame (Game) {
         print(f"You have {self.attempts} attempts left.");
     }
 }
-
 
 # Run the game
 with entry {

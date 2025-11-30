@@ -8,25 +8,30 @@ node Todo {
 
 walker create_todo {
     has text: str;
+
     can create with `root entry {
         new_todo = here ++> Todo(text=self.text);
-        report new_todo;
+        report new_todo ;
     }
 }
 
 # ============================================================================
 # FRONTEND: Components, State, and Events
 # ============================================================================
-cl import from react {useState}
+cl import from react {
+    useState
+}
 
 cl {
-    def app() -> any {
+    def app()  -> any {
         let [todos, setTodos] = useState([]);
         let [input, setInput] = useState("");
 
         # Event Handler
-        async def addTodo() -> None {
-            if not input.trim() { return; }
+        async def addTodo()  -> None {
+            if not input.trim() {
+                return;
+            }
             response = root spawn create_todo(text=input.trim());
             new_todo = response.reports[0][0];
             setTodos(todos.concat([new_todo]));
@@ -34,22 +39,31 @@ cl {
         }
 
         return <div>
-            <h2>My Todos</h2>
+            <h2>
+                My Todos
+            </h2>
             <input
                 value={input}
-                onChange={lambda e: any -> None { setInput(e.target.value); }}
-                onKeyPress={lambda e: any -> None {
-                    if e.key == "Enter" { addTodo(); }
-                }}
+                onChange={lambda  e: any  -> None{ setInput(e.target.value);} }
+                onKeyPress={lambda  e: any  -> None{ if e.key == "Enter" {
+                    addTodo();
+                }} }
             />
-            <button onClick={addTodo}>Add Todo</button>
-
+            <button
+                onClick={addTodo}
+            >
+                Add Todo
+            </button>
             <div>
-                {todos.map(lambda todo: any -> any {
-                    return <div key={todo._jac_id}>
-                        <span>{todo.text}</span>
-                    </div>;
-                })}
+                {todos.map(
+                    lambda  todo: any  -> any{ return <div
+                        key={todo._jac_id}
+                    >
+                        <span>
+                            {todo.text}
+                        </span>
+                    </div>; }
+                )}
             </div>
         </div>;
     }

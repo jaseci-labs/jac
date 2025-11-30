@@ -1,10 +1,10 @@
-import streamlit as st ;
+import streamlit as st;
 
 with entry {
-    st.title("Simple Streamlit App") ;
+    st.title("Simple Streamlit App");
     name = st.text_input("Enter your name");
     age = st.number_input("Enter your age", min_value=0);
-    if st.button("Greet me") and name and age{
+    if st.button("Greet me") and name and age {
         st.success(f"Hello, {name}! You are {age} years old.");
     } else {
         st.error("Please enter your name and age.");

@@ -1477,7 +1477,13 @@ class DocIRGenPass(UniPass):
                 match_parts.append(i.gen.doc_ir)
                 match_parts.append(self.hard_line())
             elif isinstance(i, uni.Token) and i.name == Tok.RBRACE:
-                parts.append(self.indent(self.concat(match_parts)))
+                # Remove trailing hard_line before creating indent
+                if match_parts and isinstance(match_parts[-1], doc.Line):
+                    match_parts.pop()
+                parts.append(
+                    self.indent(self.concat(match_parts, ast_node=node), ast_node=node)
+                )
+                parts.append(self.hard_line())
                 parts.append(i.gen.doc_ir)
                 parts.append(self.space())
             else:
@@ -1500,7 +1506,9 @@ class DocIRGenPass(UniPass):
             else:
                 parts.append(i.gen.doc_ir)
                 parts.append(self.space())
-        parts.append(self.indent(self.concat([self.hard_line()] + indent_parts)))
+        parts.append(
+            self.indent(self.concat([self.hard_line()] + indent_parts), ast_node=node)
+        )
         node.gen.doc_ir = self.group(self.concat(parts))
 
     def exit_switch_stmt(self, node: uni.SwitchStmt) -> None:
@@ -1515,7 +1523,13 @@ class DocIRGenPass(UniPass):
                 switch_parts.append(i.gen.doc_ir)
                 switch_parts.append(self.hard_line())
             elif isinstance(i, uni.Token) and i.name == Tok.RBRACE:
-                parts.append(self.indent(self.concat(switch_parts)))
+                # Remove trailing hard_line before creating indent
+                if switch_parts and isinstance(switch_parts[-1], doc.Line):
+                    switch_parts.pop()
+                parts.append(
+                    self.indent(self.concat(switch_parts, ast_node=node), ast_node=node)
+                )
+                parts.append(self.hard_line())
                 parts.append(i.gen.doc_ir)
                 parts.append(self.space())
             else:
@@ -1538,7 +1552,9 @@ class DocIRGenPass(UniPass):
             else:
                 parts.append(i.gen.doc_ir)
                 parts.append(self.space())
-        parts.append(self.indent(self.concat([self.hard_line()] + indent_parts)))
+        parts.append(
+            self.indent(self.concat([self.hard_line()] + indent_parts), ast_node=node)
+        )
         node.gen.doc_ir = self.group(self.concat(parts))
 
     def exit_match_value(self, node: uni.MatchValue) -> None:

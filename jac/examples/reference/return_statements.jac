@@ -1,5 +1,4 @@
 # Return Statements
-
 def return_value -> int {
     return 42;
 }

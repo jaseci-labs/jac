@@ -1,9 +1,8 @@
-
-def foo() -> int {
+def foo()  -> int {
     return 42;
 }
 
 with entry {
-    i: int = foo(); # <-- Ok
-    s: str = foo(); # <-- Error
+    i: int = foo();  # <-- Ok
+    s: str = foo();  # <-- Error
 }

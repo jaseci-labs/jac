@@ -17,14 +17,13 @@ with entry {
     node_4 = a(value=20);
     node_5 = c(value=25);
     print(type(root ++> node_1));
-    node_1 +>:edge_1 := b(value=5):+> node_2;
-    node_1 +>:edge_2 := b(value=10):+> node_3;
-    node_1 +>:edge_3 := b(value=15):+> node_4;
-    node_1 +>:edge_4 := b():+> node_5;
-    node_1 del--> node_2;
-    del node_3;
+    node_1 +>: edge_1 := b(value=5) :+> node_2;
+    node_1 +>: edge_2 := b(value=10) :+> node_3;
+    node_1 +>: edge_3 := b(value=15) :+> node_4;
+    node_1 +>: edge_4 := b() :+> node_5;
+    node_1 del --> node_2;
+    del node_3 ;
 }
-
 
 node A {
     has val: int = 0;
@@ -36,11 +35,11 @@ walker W {
     can create with `root entry;
 }
 
-impl W.create {
+impl W.create{
     Start = A(5);
-    here +>:a:+> Start;
-    Start +>:a:+> A(10) +>:a:+> A(15);
-    Start +>:a:+> A(20) +>:a:+> A(25);
+    here +>: a :+> Start;
+    Start +>: a :+> A(10) +>: a :+> A(15);
+    Start +>: a :+> A(20) +>: a :+> A(25);
 }
 
 with entry {
@@ -65,9 +64,9 @@ walker walker1 {
     can create_main_node with `root entry;
 }
 
-impl walker1.create_main_node {
+impl walker1.create_main_node{
     end = here;
-    for i=0 to i<len(list1)+1 by i+=1  {
+    for i = 0 to i < len(list1) + 1 by i += 1 {
         end ++> (end := main_node(no=i + 1));
         visit [-->];
     }
@@ -81,9 +80,8 @@ walker walker2 {
     can process with main_node entry;
 }
 
-impl walker2.process {
-    global list1 ;
-
+impl walker2.process{
+    global list1;
     for j in range(0, len(list1) - (here.no)) {
         here ++> inner_node(main=here.no, sub=j + 1);
     }
@@ -98,17 +96,18 @@ walker walker3 {
     can adjust with main_node entry;
 }
 
-impl walker3.adjust {
+impl walker3.adjust{
     here spawn walker4();
 }
 
 walker walker4 {
     can skipmain with main_node entry {
-        visit [-->];#  print(f"iteration {here.no} started  {list1}");
+        visit [-->];  #  print(f"iteration {here.no} started  {list1}");
+
     }
 
     can skipin with inner_node entry {
-        global list1 ;
+        global list1;
 
         j = here.sub - 1;
         if list1[j] > list1[j + 1] {
@@ -118,7 +117,6 @@ walker walker4 {
         }
         #uncomment below to see the swap in each inner nodes
         # print(list1);
-
     }
 }
 

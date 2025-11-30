@@ -457,3 +457,18 @@ def x(
 with entry {
     visit [-->(`?Year:year==self.target_day.year)];
 }
+
+# Match statement comment preservation
+def test_match_comments(x: int) {
+    match x {
+        # comment before first case
+        case 1:
+            # comment in case body
+            print("one");
+
+        # comment between cases
+        case _:
+            print("other");
+
+    }
+}

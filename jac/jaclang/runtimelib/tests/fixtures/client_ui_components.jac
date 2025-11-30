@@ -1,9 +1,6 @@
 """Client UI components module for testing cl imports."""
 
-cl import from jac:client_runtime {
-    createState,
-    navigate,
-}
+cl import from jac:client_runtime { createState, navigate, }
 
 cl {
     # Shared state
@@ -11,20 +8,26 @@ cl {
 
     # UI Component
     def Button(label: str) -> any {
-        return <button onclick={handleClick}>
+        return <button
+            onclick={handleClick}
+        >
             {label}
         </button>;
     }
 
-    def handleClick() -> None {
+    def handleClick()  -> None {
         navigate("/clicked");
     }
 
     # Another component
     def Card(title: str) -> any {
         return <div class="card">
-            <h2>{title}</h2>
-            <p>Current theme: {uiState["theme"]}</p>
+            <h2>
+                {title}
+            </h2>
+            <p>
+                Current theme: {uiState["theme"]}
+            </p>
         </div>;
     }
 }

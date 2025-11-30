@@ -11,13 +11,15 @@ import datetime as dt;
 import from math { sqrt, pi, log as logarithm }
 
 # Import from with aliases and trailing comma
-import from collections { defaultdict as ddict, Counter, }
+import from collections {
+    defaultdict as ddict,
+    Counter,
+}
 
 # Relative imports (when in a package)
 # import from . { sibling_module };
 # import from .. { parent_module };
 # import from ... { grandparent_module };
-
 with entry {
     print(f"CWD: {os.getcwd()}");
     print(f"Sqrt(16): {sqrt(16)}");

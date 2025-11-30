@@ -262,6 +262,14 @@ class CommandRegistry:
                 shorthand = param_name[:2]
             if param_name == "args":
                 cmd_parser.add_argument("args", nargs=argparse.REMAINDER, help=arg_msg)
+            elif param_name == "paths":
+                # Special handling for multi-file commands (format, check)
+                cmd_parser.add_argument(
+                    "paths",
+                    nargs="+",
+                    help=arg_msg,
+                )
+                first = False
             elif param_name == "filepath":
                 first = False
                 cmd_parser.add_argument(

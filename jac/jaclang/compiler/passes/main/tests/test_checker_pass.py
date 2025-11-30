@@ -42,9 +42,9 @@ def test_float_types(fixture_path: Callable[[str], str]) -> None:
     assert len(program.errors_had) == 1
     _assert_error_pretty_found(
         """
-        f: float = pi; # <-- OK
-        s: str = pi;   # <-- Error
-        ^^^^^^^^^^^
+        f: float = pi;  # <-- OK
+        s: str = pi;  # <-- Error
+        ^^^^^^^^^^^^
     """,
         program.errors_had[0].pretty_print(),
     )
@@ -115,9 +115,9 @@ def test_inherited_symbol(fixture_path: Callable[[str], str]) -> None:
     assert len(program.errors_had) == 1
     _assert_error_pretty_found(
         """
-      c.val = 42;     # <-- Ok
+      c.val = 42;  # <-- Ok
       c.val = "str";  # <-- Error
-      ^^^^^^^^^^^^^
+      ^^^^^^^^^^^^^^
     """,
         program.errors_had[0].pretty_print(),
     )
@@ -176,8 +176,8 @@ def test_call_expr_magic(fixture_path: Callable[[str], str]) -> None:
     assert len(program.errors_had) == 1
     _assert_error_pretty_found(
         """
-        b: Bar = fn()(); # <-- Ok
-        f: Foo = fn()(); # <-- Error
+        b: Bar = fn()();  # <-- Ok
+        f: Foo = fn()();  # <-- Error
         ^^^^^^^^^^^^^^^^
     """,
         program.errors_had[0].pretty_print(),
@@ -192,21 +192,21 @@ def test_arity(fixture_path: Callable[[str], str]) -> None:
     assert len(program.errors_had) == 3
     _assert_error_pretty_found(
         """
-        f.first_is_self(f); # <-- Error
+        f.first_is_self(f);  # <-- Error
                         ^
     """,
         program.errors_had[0].pretty_print(),
     )
     _assert_error_pretty_found(
         """
-        f.with_default_args(1, 2, 3); # <-- Error
+        f.with_default_args(1, 2, 3);  # <-- Error
                                   ^
     """,
         program.errors_had[1].pretty_print(),
     )
     _assert_error_pretty_found(
         """
-        f.with_default_args();        # <-- Error
+        f.with_default_args();  # <-- Error
         ^^^^^^^^^^^^^^^^^^^^^
     """,
         program.errors_had[2].pretty_print(),
@@ -221,8 +221,8 @@ def test_param_types(fixture_path: Callable[[str], str]) -> None:
     assert len(program.errors_had) == 1
     _assert_error_pretty_found(
         """
-        foo(A()); # <-- Ok
-        foo(B()); # <-- Error
+        foo(A());  # <-- Ok
+        foo(B());  # <-- Error
             ^^^
     """,
         program.errors_had[0].pretty_print(),
@@ -265,58 +265,58 @@ def test_param_arg_match(fixture_path: Callable[[str], str]) -> None:
         """
         Not all required parameters were provided in the function call: 'f'
                  foo(1, 2, d=3, e=4, f=5, c=4);  # order does not matter for named
-                 foo(1, 2, 3, d=4, e=5, g=7, h=8); # missing argument 'f'
+                 foo(1, 2, 3, d=4, e=5, g=7, h=8);  # missing argument 'f'
                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
         """,
         """
         Positional only parameter 'b' cannot be matched with a named argument
-                 foo(1, 2, 3, d=4, e=5, g=7, h=8); # missing argument 'f'
-                 foo(1, b=2, c=3, d=4, e=5, f=6); # b is positional only
+                 foo(1, 2, 3, d=4, e=5, g=7, h=8);  # missing argument 'f'
+                 foo(1, b=2, c=3, d=4, e=5, f=6);  # b is positional only
                         ^^^
         """,
         """
         Too many positional arguments
                  bar(1, 2, 3, 4, 5, f=6);
-                 bar(1, 2, 3, 4, 5, 6, 7, 8, 9); # too many args
+                 bar(1, 2, 3, 4, 5, 6, 7, 8, 9);  # too many args
                                        ^
         """,
         """
         Too many positional arguments
                  bar(1, 2, 3, 4, 5, f=6);
-                 bar(1, 2, 3, 4, 5, 6, 7, 8, 9); # too many args
+                 bar(1, 2, 3, 4, 5, 6, 7, 8, 9);  # too many args
                                           ^
         """,
         """
         Too many positional arguments
                  bar(1, 2, 3, 4, 5, f=6);
-                 bar(1, 2, 3, 4, 5, 6, 7, 8, 9); # too many args
+                 bar(1, 2, 3, 4, 5, 6, 7, 8, 9);  # too many args
                                              ^
         """,
         """
         Parameter 'c' already matched
                  bar(1, 2, 3, 4, 5, f=6);
-                 bar(1, 2, 3, 4, 5, 6, 7, 8, 9); # too many args
-                 bar(1, 2, 3, 4, 5, 6, c=3); # already matched
+                 bar(1, 2, 3, 4, 5, 6, 7, 8, 9);  # too many args
+                 bar(1, 2, 3, 4, 5, 6, c=3);  # already matched
                                        ^^^
         """,
         """
         Named argument 'h' does not match any parameter
-                 bar(1, 2, 3, 4, 5, 6, 7, 8, 9); # too many args
-                 bar(1, 2, 3, 4, 5, 6, c=3); # already matched
-                 bar(1, 2, 3, 4, 5, 6, h=1); # h is not matched
+                 bar(1, 2, 3, 4, 5, 6, 7, 8, 9);  # too many args
+                 bar(1, 2, 3, 4, 5, 6, c=3);  # already matched
+                 bar(1, 2, 3, 4, 5, 6, h=1);  # h is not matched
                                        ^^^
         """,
         """
         Too many positional arguments
                  baz(a=1, b=2);
-                 baz(1, b=2); # a can be both positional and keyword
+                 baz(1, b=2);  # a can be both positional and keyword
                  baz(1, 2);  # 'b' can only be keyword arg
                         ^
         """,
         """
         Not all required parameters were provided in the function call: 'b'
                  baz(a=1, b=2);
-                 baz(1, b=2); # a can be both positional and keyword
+                 baz(1, b=2);  # a can be both positional and keyword
                  baz(1, 2);  # 'b' can only be keyword arg
                  ^^^^^^^^^
         """,
@@ -366,8 +366,8 @@ def test_self_type_inference(fixture_path: Callable[[str], str]) -> None:
     assert len(program.errors_had) == 1
     _assert_error_pretty_found(
         """
-      x: str = self.i; # <-- Error
-      ^^^^^^^^^^^^^^^
+      x: str = self.i;  # <-- Error
+      ^^^^^^^^^^^^^^^^
     """,
         program.errors_had[0].pretty_print(),
     )
@@ -381,14 +381,14 @@ def test_binary_op(fixture_path: Callable[[str], str]) -> None:
     _assert_error_pretty_found(
         """
         r2: A = a + a;  # <-- Error
-        ^^^^^^^^^^^^^
+        ^^^^^^^^^^^^^^
     """,
         program.errors_had[0].pretty_print(),
     )
     _assert_error_pretty_found(
         """
-        r4: str = (a+a) * B(); # <-- Error
-        ^^^^^^^^^^^^^^^^^^^^^
+        r4: str = (a + a) * B();  # <-- Error
+        ^^^^^^^^^^^^^^^^^^^^^^^^
     """,
         program.errors_had[1].pretty_print(),
     )
@@ -402,8 +402,8 @@ def test_checker_call_expr_class(fixture_path: Callable[[str], str]) -> None:
     assert len(program.errors_had) == 1
     _assert_error_pretty_found(
         """
-        inst.i = 'str'; # <-- Error
-        ^^^^^^^^^^^^^^
+        inst.i = 'str';  # <-- Error
+        ^^^^^^^^^^^^^^^
     """,
         program.errors_had[0].pretty_print(),
     )
@@ -417,8 +417,8 @@ def test_checker_mod_path(fixture_path: Callable[[str], str]) -> None:
     assert len(program.errors_had) == 1
     _assert_error_pretty_found(
         """
-        a:int = uni.Module; # <-- Error
-        ^^^^^^^^^^^^^^
+        a: int = uni.Module;  # <-- Error
+        ^^^^^^^^^^^^^^^^^^^^
     """,
         program.errors_had[0].pretty_print(),
     )
@@ -432,9 +432,9 @@ def test_checker_cat_is_animal(fixture_path: Callable[[str], str]) -> None:
     assert len(program.errors_had) == 1
     _assert_error_pretty_found(
         """
-        animal_func(cat);        # <-- Ok
-        animal_func(lion);       # <-- Ok
-        animal_func(not_animal); # <-- Error
+        animal_func(cat);  # <-- Ok
+        animal_func(lion);  # <-- Ok
+        animal_func(not_animal);  # <-- Error
                     ^^^^^^^^^^
     """,
         program.errors_had[0].pretty_print(),
@@ -462,11 +462,11 @@ def test_checker_member_access(fixture_path: Callable[[str], str]) -> None:
         assert sym in str(mod.sym_tab.kid_scope[0].names_in_scope.values())
     age_sym = mod.sym_tab.kid_scope[0].lookup("age")
     assert age_sym is not None
-    assert "(NAME, age, 23:11 - 23:14)" in str(age_sym.uses)
+    assert "(NAME, age, 22:11 - 22:14)" in str(age_sym.uses)
     assert len(program.errors_had) == 1
     _assert_error_pretty_found(
         """
-        alice.age = '909'; # <-- Error
+        alice.age = '909';  # <-- Error
         ^^^^^^^^^^^^^^^^^^
     """,
         program.errors_had[0].pretty_print(),
@@ -511,7 +511,7 @@ def test_generics(fixture_path: Callable[[str], str]) -> None:
         Cannot assign <class Foo> to <class str>
             for it in tl {
                 tifoo: Foo = it;
-                tistr: str = it; # <-- Error
+                tistr: str = it;  # <-- Error
                 ^^^^^^^^^^^^^^^^
             }
         }
@@ -528,8 +528,8 @@ def test_generics(fixture_path: Callable[[str], str]) -> None:
         """
         Cannot assign <class Foo> to <class str>
             for it in lst {
-                tifoo: Foo = it; # <-- Ok
-                tistr: str = it; # <-- Error
+                tifoo: Foo = it;  # <-- Ok
+                tistr: str = it;  # <-- Error
                 ^^^^^^^^^^^^^^^^
             }
 
@@ -556,7 +556,7 @@ def test_generics(fixture_path: Callable[[str], str]) -> None:
         Cannot assign <class str> to <class int>
             d: dict[int, str] = {1: "one", 2: "two"};
             s: str = d[1];
-            i: int = d[1]; # <-- Error
+            i: int = d[1];  # <-- Error
             ^^^^^^^^^^^^^^
 
             ht = HashTable[int, str]();
@@ -567,14 +567,14 @@ def test_generics(fixture_path: Callable[[str], str]) -> None:
             ht.insert(1, "one");
             ht.insert("one", "one");  # <-- Error
                     ^^^^^
-            ht.insert(1, 1);          # <-- Error
+            ht.insert(1, 1);  # <-- Error
 
         """,
         """
         Cannot assign <class int> to parameter 'value' of type <class str>
             ht.insert(1, "one");
             ht.insert("one", "one");  # <-- Error
-            ht.insert(1, 1);          # <-- Error
+            ht.insert(1, 1);  # <-- Error
                         ^
 
             hv1: str = ht.get(1);
@@ -605,36 +605,25 @@ def test_return_type(fixture_path: Callable[[str], str]) -> None:
         """
         Cannot return <class int>, expected <class NoneType>
         def foo() {
-            return 1;    # <-- Error
+            return 1;  # <-- Error
             ^^^^^^^^^
-            return;      # <-- Ok
-            return "";   # <-- Error
         """,
         """
         Cannot return <class str>, expected <class NoneType>
-            return 1;    # <-- Error
-            return;      # <-- Ok
-            return "";   # <-- Error
+            return "";  # <-- Error
             ^^^^^^^^^^
-            return None; # <-- Ok
-        }
         """,
         """
         Cannot return <class str>, expected <class int>
 
-        def bar() -> int {
+        def bar()  -> int {
             return "";  # <-- Error
             ^^^^^^^^^^
-            return 1;   # <-- Ok
-            return 1.1; # <-- Error
-            """,
+        """,
         """
         Cannot return <class float>, expected <class int>
-            return "";  # <-- Error
-            return 1;   # <-- Ok
-            return 1.1; # <-- Error
-            ^^^^^^^^^^^
-        }
+            return 1.1;  # <-- Error
+            ^^^^^^^^^^
         """,
     ]
 
@@ -661,44 +650,44 @@ def test_connect_filter(fixture_path: Callable[[str], str]) -> None:
     expected_errors = [
         """
         Connection type must be an edge instance
-            a_inst +>:edge_inst:+> b_inst; # Ok
-            a_inst +>:NodeA:+> b_inst;     # Error
-                      ^^^^^
+            a_inst +>: edge_inst :+> b_inst;  # Ok
+            a_inst +>: NodeA :+> b_inst;  # Error
+                       ^^^^^
         """,
         """
         Connection left operand must be a node instance
-            a_inst +>:NodeA:+> b_inst;     # Error
-            NodeA +>:MyEdge:+> b_inst;     # Error
+            a_inst +>: NodeA :+> b_inst;  # Error
+            NodeA +>: MyEdge :+> b_inst;  # Error
             ^^^^^
         """,
         """
         Connection right operand must be a node instance
-            NodeA +>:MyEdge:+> b_inst;     # Error
-            a_inst +>:MyEdge:+> NodeB;     # Error
-                                ^^^^^
+            NodeA +>: MyEdge :+> b_inst;  # Error
+            a_inst +>: MyEdge :+> NodeB;  # Error
+                                  ^^^^^
         """,
         """
         Edge type "<class MyEdge>" has no member named "not_mem"
             # Assign compr in edges
-            a_inst +>:MyEdge:id=1, not_mem="some":+> b_inst; # Error
-                                   ^^^^^^^
+            a_inst +>: MyEdge : id=1,not_mem="some" :+> b_inst;  # Error
+                                     ^^^^^^^
         """,
         """
         Member "not_exist not found on type <class Book>"
-            lst(=title="Parry Potter", author="K.J. Bowling", year=1997); # Ok
+            lst(=title="Parry Potter",author="K.J. Bowling",year=1997);  # Ok
             lst(=not_exist="some");  # Error
                  ^^^^^^^^^
         """,
         """
         Type "<class str> is not assignable to type <class int>"
             lst(=not_exist="some");  # Error
-            lst(=year="Type Error"); # Error
+            lst(=year="Type Error");  # Error
                       ^^^^^^^^^^^^
         """,
         """
         Member "not_exists not found on type <class MyEdge>"
-            [->:MyEdge:id == 1:->]; # Ok
-            [->:MyEdge:not_exists >= 1:->]; # Error
+            [->:MyEdge:id==1:->];  # Ok
+            [->:MyEdge:not_exists>=1:->];  # Error
                        ^^^^^^^^^^
         """,
     ]
@@ -725,15 +714,15 @@ def test_inherit_init_params(fixture_path: Callable[[str], str]) -> None:
     expected_errors = [
         """
         Not all required parameters were provided in the function call: 'age'
-            c0 = Child("Alice", 30);          # <-- Ok
-            c1 = Child(name="Alice", age=30); # <-- Ok
-            c2 = Child("Bob");                # <-- Error: missing age
+            c0 = Child("Alice", 30);  # <-- Ok
+            c1 = Child(name="Alice", age=30);  # <-- Ok
+            c2 = Child("Bob");  # <-- Error: missing age
                  ^^^^^^^^^^^^
         """,
         """
         Not all required parameters were provided in the function call: 'name'
-            c2 = Child("Bob");                # <-- Error: missing age
-            c3 = Child(age=25);               # <-- Error: missing name
+            c2 = Child("Bob");  # <-- Error: missing age
+            c3 = Child(age=25);  # <-- Error: missing name
                  ^^^^^^^^^^^^^
         """,
     ]

@@ -1,5 +1,4 @@
 # While Statements
-
 with entry {
     # Basic while loop
     x = 0;

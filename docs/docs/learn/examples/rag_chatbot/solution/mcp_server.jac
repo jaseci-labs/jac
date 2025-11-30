@@ -1,12 +1,11 @@
 import os;
-import from tools {RagEngine, WebSearch}
-import from mcp.server.fastmcp.tools {Tool}
-import from mcp.server.fastmcp {FastMCP}
+import from tools { RagEngine, WebSearch }
+import from mcp.server.fastmcp.tools { Tool }
+import from mcp.server.fastmcp { FastMCP }
 import typing;
 
 glob rag_engine: RagEngine = RagEngine();
 glob web_search: WebSearch = WebSearch();
-
 
 with entry {
     mcp = FastMCP(name="RAG-MCP", port=8899);
@@ -25,14 +24,13 @@ async def tool_search_docs(query: str) -> str {
 
 @mcp.tool(name="search_web")
 @resolve_hints
-async def tool_search_web(query: str) -> str{
+async def tool_search_web(query: str) -> str {
     web_search_results = web_search.search(query);
     if not web_search_results {
         return "Mention No results found for the web search";
     }
     return web_search_results;
 }
-
 
 with entry {
     mcp.run("streamable-http");

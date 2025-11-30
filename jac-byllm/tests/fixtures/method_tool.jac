@@ -1,4 +1,3 @@
-
 import from byllm.lib { MockLLM, MockToolCall }
 
 node Calculator {
@@ -10,15 +9,11 @@ node Calculator {
     # Defining the model here cause we need the reference to self.
     def eval_expr(expression: str) -> str by MockLLM(
         model_name="mockllm",
-        outputs=[
-            MockToolCall(
-                tool=self.add,
-                args={"num1": 12, "num2": 34}
-            ),
-            "46"
-        ],
+        outputs=[MockToolCall(tool=self.add, args={"num1": 12, "num2": 34}), "46"],
         verbose=False,
-    )(tools=[self.add]);
+    )(
+        tools=[self.add]
+    );
 }
 
 with entry {

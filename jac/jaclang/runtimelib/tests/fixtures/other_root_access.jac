@@ -2,11 +2,9 @@ import from jaclang.runtimelib.runtime { JacRuntime as Jac }
 import from jaclang.runtimelib.archetype { Anchor }
 import from uuid { UUID }
 
-
 node A {
     has val: int;
 }
-
 
 walker check_node {
     can enter with `root entry {
@@ -18,7 +16,6 @@ walker check_node {
     }
 }
 
-
 walker update_node {
     has val: int;
 
@@ -26,7 +23,6 @@ walker update_node {
         here.val = self.val;
     }
 }
-
 
 walker update_target_node {
     has val: int;
@@ -38,7 +34,6 @@ walker update_target_node {
     }
 }
 
-
 walker update_node_forced {
     has val: int;
 
@@ -47,7 +42,6 @@ walker update_node_forced {
         here.val = self.val;
     }
 }
-
 
 walker create_node {
     has val: int;
@@ -59,7 +53,6 @@ walker create_node {
     }
 }
 
-
 walker create_other_root {
     can enter with `root entry {
         other_root = `root().__jac__;
@@ -68,9 +61,10 @@ walker create_other_root {
     }
 }
 
-
 walker allow_other_root_access {
-    has root_id: str , level: int | str = 1 , via_all: bool = False;
+    has root_id: str,
+        level: int | str = 1,
+        via_all: bool = False;
 
     can enter_root with `root entry {
         if self.via_all {
@@ -89,9 +83,9 @@ walker allow_other_root_access {
     }
 }
 
-
 walker disallow_other_root_access {
-    has root_id: str , via_all: bool = False;
+    has root_id: str,
+        via_all: bool = False;
 
     can enter_root with `root entry {
         if self.via_all {

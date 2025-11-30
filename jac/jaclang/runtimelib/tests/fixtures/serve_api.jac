@@ -1,8 +1,6 @@
 """Example Jac program for REST API server."""
 
-cl import from jac:client_runtime {
-    renderJsxTree,
-}
+cl import from jac:client_runtime { renderJsxTree, }
 
 # Define some nodes
 node Task {
@@ -26,7 +24,7 @@ walker CreateTask {
         task = task_list[0] if task_list else None;
         if task {
             print("Created task: " + task.title);
-            report task;
+            report task ;
         }
     }
 }
@@ -45,7 +43,6 @@ walker ListTasks {
 }
 
 walker GetTask {
-
     can fetch with Task entry {
         return here;
     }
@@ -81,7 +78,11 @@ cl let WELCOME_TITLE: str = "Runtime Test";
 
 cl def client_page() {
     return <section class="welcome">
-        <h1>{WELCOME_TITLE}</h1>
-        <p>{greet()}</p>
+        <h1>
+            {WELCOME_TITLE}
+        </h1>
+        <p>
+            {greet()}
+        </p>
     </section>;
 }

@@ -4,48 +4,50 @@ impl mainObject{
     def greet;
     obj subObject;
 }
-def foo{
-     obj ObjInsideFunction;
-     return ObjInsideFunction();
+
+def foo {
+    obj ObjInsideFunction;
+    return ObjInsideFunction();
 }
+
 impl foo.ObjInsideFunction{
-    def bar{
+    def bar {
         print("Hello,from bar in kk");
     }
 }
 
-with entry{
+with entry {
     foo().bar();
 }
+
 impl mainObject.greet{
     print("Greeting: Hello, World!");
 }
 
 impl mainObject.subObject{
     def displayMessage;
-    def shortMessage{
+    def shortMessage {
         print("Hello, World!");
     }
     obj nestedObject;
 }
+
 impl mainObject.subObject.displayMessage{
     print("Repeated: Hello!");
 }
 
 impl mainObject.subObject.nestedObject{
     def lastMessage;
-    def finalMessage{
+    def finalMessage {
         print("Final message:!");
     }
 }
 
 impl mainObject.subObject.nestedObject.lastMessage{
-        print("Last message:!");
-
+    print("Last message:!");
 }
 
-
-with entry{
+with entry {
     mainObject().greet();
     mainObject().subObject().displayMessage();
     mainObject().subObject().shortMessage();

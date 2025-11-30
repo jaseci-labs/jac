@@ -240,7 +240,7 @@ def test_jac_test_err(fixture_path) -> None:
     sys.stderr = sys.__stderr__
     stdout_value = captured_output.getvalue()
     path_to_file = fixture_path("baddy.test.jac")
-    assert f'"{path_to_file}", line 2,' in stdout_value
+    assert f'"{path_to_file}", line 1,' in stdout_value
 
 
 def test_jac_ast_tool_pass_template(capture_stdout) -> None:
@@ -719,7 +719,7 @@ def test_cli_error_exit_codes(fixture_path) -> None:
     assert process.returncode == 1, (
         "check command should exit with code 1 on invalid file type"
     )
-    assert "Not a .jac file" in stderr
+    assert "is not a .jac file" in stderr
 
     # Test tool command with non-existent tool
     process = subprocess.Popen(

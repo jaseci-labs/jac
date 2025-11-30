@@ -195,9 +195,21 @@ class CommentInjectionPass(Transform[uni.Module, uni.Module]):
         # Process the document IR
         processed = self._process(ir_in, ir_in.gen.doc_ir)
 
-        # Append any leftover comments (safety net)
+        # Check for any leftover comments that couldn't be placed
         leftovers = self._comments.drain_unattached()
         if leftovers:
+            # Emit errors for each unplaced comment
+            for info in leftovers:
+                comment_preview = info.token.value[:50]
+                if len(info.token.value) > 50:
+                    comment_preview += "..."
+                self.log_error(
+                    f"Comment could not be placed and would float to bottom: "
+                    f"{comment_preview!r} at line {info.first_line}",
+                    node_override=ir_in,
+                )
+
+            # Still append comments to output (so they're not lost)
             sink: list[doc.DocType] = [processed]
             self._emit_standalone_comments(
                 sink,
@@ -217,6 +229,8 @@ class CommentInjectionPass(Transform[uni.Module, uni.Module]):
             ctx = node.ast_node if node.ast_node else ctx
             if isinstance(ctx, uni.Module):
                 return self._handle_module(ctx, node)
+            if isinstance(ctx, (uni.MatchStmt, uni.SwitchStmt)):
+                return self._handle_match_stmt_comments(ctx, node)
 
             processed_parts = self._inject_into_parts(node.parts, ctx)
 
@@ -395,6 +409,69 @@ class CommentInjectionPass(Transform[uni.Module, uni.Module]):
 
         return doc.Concat(result, ast_node=module)
 
+    def _handle_match_stmt_comments(
+        self, match_node: uni.UniNode, concat: doc.Concat
+    ) -> doc.Concat:
+        """Handle comment injection between cases in match/switch statements."""
+        if not self._comments:
+            return doc.Concat(
+                [self._process(match_node, part) for part in concat.parts],
+                ast_node=match_node,
+            )
+
+        # Get cases from the match statement
+        cases: list[uni.UniNode] = []
+        if isinstance(match_node, uni.MatchStmt | uni.SwitchStmt):
+            cases = list(match_node.cases)
+
+        # Find the opening brace line
+        brace_line: int | None = next(
+            (
+                k.loc.last_line
+                for k in match_node.kid
+                if isinstance(k, uni.Token) and k.name == Tok.LBRACE and k.loc
+            ),
+            None,
+        )
+
+        result: list[doc.DocType] = []
+        case_idx = 0
+        prev_item_line: int | None = brace_line
+
+        for part in concat.parts:
+            if isinstance(part, doc.Line):
+                result.append(part)
+                continue
+
+            # Check if this part corresponds to a case
+            tokens = self._get_tokens(part)
+            part_line = min((t.loc.first_line for t in tokens if t.loc), default=None)
+
+            if case_idx < len(cases) and part_line:
+                case = cases[case_idx]
+                if case.loc and part_line >= case.loc.first_line:
+                    # Inject comments before this case
+                    start_line = (prev_item_line + 1) if prev_item_line else 1
+                    comments = self._comments.take_standalone_between(
+                        start_line, case.loc.first_line
+                    )
+                    if comments:
+                        prev_item_line = self._emit_standalone_comments(
+                            result,
+                            comments,
+                            prev_item_line=prev_item_line,
+                        )
+
+                    result.append(self._process(case, part))
+                    if case.loc:
+                        prev_item_line = case.loc.last_line
+                    case_idx += 1
+                    continue
+
+            result.append(self._process(match_node, part))
+
+        return doc.Concat(result, ast_node=match_node)
+
     def _handle_body_comments(
         self, node: uni.UniNode, indent: doc.Indent
     ) -> doc.Indent:
@@ -424,6 +501,22 @@ class CommentInjectionPass(Transform[uni.Module, uni.Module]):
             ),
             None,
         )
+
+        # For match/switch cases that use COLON instead of braces
+        if body_start is None and isinstance(node, (uni.MatchCase, uni.SwitchCase)):
+            body_start = next(
+                (
+                    k.loc.last_line + 1
+                    for k in node.kid
+                    if isinstance(k, uni.Token) and k.name == Tok.COLON and k.loc
+                ),
+                None,
+            )
+            # For cases without closing brace, use last body item's line or node's end
+            if body and body[-1].loc:
+                body_end = body[-1].loc.last_line + 1
+            elif node.loc:
+                body_end = node.loc.last_line + 1
 
         if body_start is None:
             return indent
@@ -509,6 +602,9 @@ class CommentInjectionPass(Transform[uni.Module, uni.Module]):
                         comments,
                         prev_item_line=last_body_line,
                     )
+                    # Remove trailing line (will be added outside Indent)
+                    if result and self._is_comment_with_line(result[-1]):
+                        result[-1] = self._strip_trailing_line_from_comment(result[-1])
             else:
                 # Empty body: inject comments between braces
                 comments = []
@@ -669,10 +765,15 @@ class CommentInjectionPass(Transform[uni.Module, uni.Module]):
             ) or (last_line is not None and comment_line > last_line + 1)
 
             if should_add_line:
-                if not self._ends_with_hard_line(sink):
+                # Blank line gap in source - add line if sink doesn't end with explicit Line
+                # (Concat's trailing hard line is not a blank line, just line break)
+                if not sink or not isinstance(sink[-1], doc.Line):
                     sink.append(doc.Line(hard=True))
             else:
                 self._collapse_duplicate_hard_lines(sink)
+                # Ensure at least one hard line before comment (but not at start of file)
+                if sink and not self._ends_with_hard_line(sink):
+                    sink.append(doc.Line(hard=True))
 
             sink.append(self._make_standalone_comment(info.token))
             last_line = info.last_line
@@ -746,7 +847,17 @@ class CommentInjectionPass(Transform[uni.Module, uni.Module]):
 
     def _ends_with_hard_line(self, sink: Sequence[doc.DocType]) -> bool:
         """Return True when the sink already ends with a hard line break."""
-        return bool(sink) and isinstance(sink[-1], doc.Line) and sink[-1].hard
+        if not sink:
+            return False
+        last = sink[-1]
+        if isinstance(last, doc.Line) and last.hard:
+            return True
+        # Check inside Concat (e.g., standalone comments end with hard line)
+        if isinstance(last, doc.Concat) and last.parts:
+            last_part = last.parts[-1]
+            if isinstance(last_part, doc.Line) and last_part.hard:
+                return True
+        return False
 
     def _collapse_duplicate_hard_lines(self, sink: list[doc.DocType]) -> None:
         """Ensure we never end up with consecutive hard lines from injection."""

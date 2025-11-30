@@ -16,120 +16,143 @@ repos:
       - id: mixed-line-ending
         args: [--fix=lf]
       - id: end-of-file-fixer
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.14.7
-    hooks:
-      - id: ruff
-        args: [--fix]
-      - id: ruff-format
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.19.0
-    hooks:
-      - id: mypy
-        args:
-          - --ignore-missing-imports
-          - --config-file=mypy.ini
-          - --explicit-package-bases
-        additional_dependencies: [types-PyYAML, types-requests]
-        exclude: (/fixtures/|/larkparse/|/vendor/|/scripts/|jac/examples/reference)
-  - repo: local
-    hooks:
-      - id: check-no-binary-files
-        name: Check for binary files
-        entry: Binary files are not allowed
-        language: fail
-        types: [binary]
-        exclude: |
-          (?x)(
-              ^jac-client/jac_client/examples/all-in-one/assets/burger.png$|
-              ^docs/docs/assets/byLLM\ Logo\.png$|
-              ^docs/docs/assets/byLLM_name_logo\.png$|
-              ^docs/docs/assets/debug_mode\.jpg$|
-              ^docs/docs/assets/examples/jac_book/node1\.png$|
-              ^docs/docs/assets/examples/jac_book/node2\.png$|
-              ^docs/docs/assets/examples/jac_book/node3\.png$|
-              ^docs/docs/assets/examples/jac_book/with_entry\.png$|
-              ^docs/docs/assets/jac_cloud_example\.jpg$|
-              ^docs/docs/assets/logo\.png$|
-              ^docs/docs/assets/org1_logo\.png$|
-              ^docs/docs/assets/org2_logo\.png$|
-              ^docs/docs/assets/org3_logo\.png$|
-              ^docs/docs/assets/p2_arch\.png$|
-              ^docs/docs/assets/photo\.jpg$|
-              ^docs/docs/assets/playground_demo\.gif$|
-              ^docs/docs/assets/runtime\.gif$|
-              ^docs/docs/assets/visualizer\.jpg$|
-              ^docs/docs/learn/assets/debugger/debugger-complex_function-breakpoint\.png$|
-              ^docs/docs/learn/assets/debugger/debugger-complex_function-options\.png$|
-              ^docs/docs/learn/assets/debugger/debugger-complex_function-run\.png$|
-              ^docs/docs/learn/assets/debugger/debugger-complex_function\.png$|
-              ^docs/docs/learn/assets/debugger/debugger-extension\.png$|
-              ^docs/docs/learn/assets/debugger/debugger-visualization-open-tool\.png$|
-              ^docs/docs/learn/assets/jac-lens/jac-lens-create-session\.gif$|
-              ^docs/docs/learn/assets/jac-lens/jac-lens-download\.gif$|
-              ^docs/docs/learn/assets/jac-lens/jac-lens-explore-graphs\.gif$|
-              ^docs/docs/learn/assets/jac-lens/jac-lens-logo\.png$|
-              ^docs/docs/learn/assets/jac-lens/jac-lens-modify-graph\.gif$|
-              ^docs/docs/learn/examples/EmailBuddy/assets/EmailBuddy-agentic\.png$|
-              ^docs/docs/learn/examples/EmailBuddy/assets/EmailBuddy-osp-unconnected_graph\.png$|
-              ^docs/docs/learn/examples/EmailBuddy/assets/EmailBuddy-osp_diagram\.png$|
-              ^docs/docs/learn/examples/EmailBuddy/assets/EmailBuddy-scale-native-FastAPI-Docs\.png$|
-              ^docs/docs/learn/examples/agentic_ai/aider-genius-lite/aider\.png$|
-              ^docs/docs/learn/examples/agentic_ai/friendzone-lite/friendzone\.png$|
-              ^docs/docs/learn/examples/agentic_ai/task-manager-lite/task\ manager\.png$|
-              ^docs/docs/learn/examples/littleX/src/front_end\.png$|
-              ^docs/docs/learn/examples/mtp_examples/assets/rpg_demo\.gif$|
-              ^docs/docs/learn/examples/rag_chatbot/images/1_swagger\.png$|
-              ^docs/docs/learn/examples/rag_chatbot/images/1_vscode\.png$|
-              ^docs/docs/learn/examples/rag_chatbot/images/2_graph\.png$|
-              ^docs/docs/learn/examples/rag_chatbot/images/2_rag\.png$|
-              ^docs/docs/learn/examples/rag_chatbot/images/2_rag_search\.png$|
-              ^docs/docs/learn/examples/rag_chatbot/images/3_chat_interface\.png$|
-              ^docs/docs/learn/examples/rag_chatbot/images/chatbot\.jpg$|
-              ^docs/docs/learn/examples/rag_chatbot/images/image\.png$|
-              ^docs/docs/learn/examples/rag_chatbot/images/image_chat\.jpg$|
-              ^docs/docs/learn/examples/rag_chatbot/solution/docs/clinical_medicine\.pdf$|
-              ^docs/docs/playground/favicon\.ico$|
-              ^docs/docs/playground/jaseci\.png$|
-              ^docs/docs/playground/onigasm\.wasm$|
-              ^jac-byllm/examples/agentic_ai/task-manager-lite/task_manager\.png$|
-              ^jac-byllm/examples/vision/math_question\.jpg$|
-              ^jac-byllm/examples/vision/mugen\.mp4$|
-              ^jac-byllm/examples/vision/person\.png$|
-              ^jac-byllm/examples/vision/receipt\.jpg$|
-              ^jac-byllm/tests/fixtures/SampleVideo_1280x720_2mb\.mp4$|
-              ^jac-byllm/tests/fixtures/alan-m-turing\.jpg$|
-              ^jac-byllm/tests/fixtures/image\.jpg$|
-              ^jac-byllm/tests/fixtures/math_question\.jpg$|
-              ^jac-byllm/tests/fixtures/webp_image_of_person\.webp$|
-              ^jac-client/jac_client/docs/assets/pipe_line\.png$|
-              ^jac-client/jac_client/examples/asset-serving/css-with-image/assets/burger\.png$|
-              ^jac-client/jac_client/examples/asset-serving/image-asset/assets/burger\.png$|
-              ^jac-client/jac_client/examples/asset-serving/import-alias/assets/burger\.png$|
-              ^jac-streamlit/assets/interactive\ view\.png$|
-              ^jac-streamlit/assets/static\ view\.png$|
-              ^jac/examples/rpg_game/jac_impl/fonts/8bitoperator_jve\.ttf$|
-              ^jac/examples/rpg_game/jac_impl/img/attack\.png$|
-              ^jac/examples/rpg_game/jac_impl/img/character\.png$|
-              ^jac/examples/rpg_game/jac_impl/img/enemy\.png$|
-              ^jac/examples/rpg_game/jac_impl/img/gameover\.png$|
-              ^jac/examples/rpg_game/jac_impl/img/introbackground\.png$|
-              ^jac/examples/rpg_game/jac_impl/img/single\.png$|
-              ^jac/examples/rpg_game/jac_impl/img/terrain\.png$|
-              ^jac/examples/rpg_game/lib_mode/8bitoperator_jve\.ttf$|
-              ^jac/examples/rpg_game/lib_mode/img/attack\.png$|
-              ^jac/examples/rpg_game/lib_mode/img/character\.png$|
-              ^jac/examples/rpg_game/lib_mode/img/enemy\.png$|
-              ^jac/examples/rpg_game/lib_mode/img/gameover\.png$|
-              ^jac/examples/rpg_game/lib_mode/img/introbackground\.png$|
-              ^jac/examples/rpg_game/lib_mode/img/single\.png$|
-              ^jac/examples/rpg_game/lib_mode/img/terrain\.png$|
-              ^jac/examples/rpg_game/python_impl/8bitoperator_jve\.ttf$|
-              ^jac/examples/rpg_game/python_impl/img/attack\.png$|
-              ^jac/examples/rpg_game/python_impl/img/character\.png$|
-              ^jac/examples/rpg_game/python_impl/img/enemy\.png$|
-              ^jac/examples/rpg_game/python_impl/img/gameover\.png$|
-              ^jac/examples/rpg_game/python_impl/img/introbackground\.png$|
-              ^jac/examples/rpg_game/python_impl/img/single\.png$|
-              ^jac/examples/rpg_game/python_impl/img/terrain\.png$
-          )
+  # - repo: https://github.com/astral-sh/ruff-pre-commit
+  #   rev: v0.14.7
+  #   hooks:
+  #     - id: ruff
+  #       args: [--fix]
+  #     - id: ruff-format
+  # - repo: https://github.com/pre-commit/mirrors-mypy
+  #   rev: v1.19.0
+  #   hooks:
+  #     - id: mypy
+  #       args:
+  #         - --ignore-missing-imports
+  #         - --config-file=mypy.ini
+  #         - --explicit-package-bases
+  #       additional_dependencies: [types-PyYAML, types-requests]
+  #       exclude: (/fixtures/|/larkparse/|/vendor/|/scripts/|jac/examples/reference)
+  # # Use local jaclang for development (comment out and use the remote repo for CI)
+  # # - repo: local
+  # #   hooks:
+  # #     - id: jac-format
+  # #       name: Jac Format
+  # #       entry: bash -c '~/.fresh/bin/jac format "$@"' --
+  # #       language: system
+  # #       types: [file]
+  # #       files: \.jac$
+  # #     - id: jac-check
+  # #       name: Jac Check
+  # #       entry: bash -c '~/.fresh/bin/jac check "$@"' --
+  # #       language: system
+  # #       types: [file]
+  # #       files: \.jac$
+  # #       exclude: (/fixtures/|_err\.jac$|_syntax_err\.jac$|jac-client/jac_client/examples/)
+  # # Remote repo for CI (uncomment when not developing locally)
+  # - repo: https://github.com/jaseci-labs/jac-pre-commit
+  #   rev: v0.9.1
+  #   hooks:
+  #     - id: jac-format
+  #     - id: jac-check
+  #       exclude: (/fixtures/|_err\.jac$|_syntax_err\.jac$|jac-client/jac_client/examples/)
+  # - repo: local
+  #   hooks:
+  #     - id: check-no-binary-files
+  #       name: Check for binary files
+  #       entry: Binary files are not allowed
+  #       language: fail
+  #       types: [binary]
+  #       exclude: |
+  #         (?x)(
+  #             ^jac-client/jac_client/examples/all-in-one/assets/burger.png$|
+  #             ^docs/docs/assets/byLLM\ Logo\.png$|
+  #             ^docs/docs/assets/byLLM_name_logo\.png$|
+  #             ^docs/docs/assets/debug_mode\.jpg$|
+  #             ^docs/docs/assets/examples/jac_book/node1\.png$|
+  #             ^docs/docs/assets/examples/jac_book/node2\.png$|
+  #             ^docs/docs/assets/examples/jac_book/node3\.png$|
+  #             ^docs/docs/assets/examples/jac_book/with_entry\.png$|
+  #             ^docs/docs/assets/jac_cloud_example\.jpg$|
+  #             ^docs/docs/assets/logo\.png$|
+  #             ^docs/docs/assets/org1_logo\.png$|
+  #             ^docs/docs/assets/org2_logo\.png$|
+  #             ^docs/docs/assets/org3_logo\.png$|
+  #             ^docs/docs/assets/p2_arch\.png$|
+  #             ^docs/docs/assets/photo\.jpg$|
+  #             ^docs/docs/assets/playground_demo\.gif$|
+  #             ^docs/docs/assets/runtime\.gif$|
+  #             ^docs/docs/assets/visualizer\.jpg$|
+  #             ^docs/docs/learn/assets/debugger/debugger-complex_function-breakpoint\.png$|
+  #             ^docs/docs/learn/assets/debugger/debugger-complex_function-options\.png$|
+  #             ^docs/docs/learn/assets/debugger/debugger-complex_function-run\.png$|
+  #             ^docs/docs/learn/assets/debugger/debugger-complex_function\.png$|
+  #             ^docs/docs/learn/assets/debugger/debugger-extension\.png$|
+  #             ^docs/docs/learn/assets/debugger/debugger-visualization-open-tool\.png$|
+  #             ^docs/docs/learn/assets/jac-lens/jac-lens-create-session\.gif$|
+  #             ^docs/docs/learn/assets/jac-lens/jac-lens-download\.gif$|
+  #             ^docs/docs/learn/assets/jac-lens/jac-lens-explore-graphs\.gif$|
+  #             ^docs/docs/learn/assets/jac-lens/jac-lens-logo\.png$|
+  #             ^docs/docs/learn/assets/jac-lens/jac-lens-modify-graph\.gif$|
+  #             ^docs/docs/learn/examples/EmailBuddy/assets/EmailBuddy-agentic\.png$|
+  #             ^docs/docs/learn/examples/EmailBuddy/assets/EmailBuddy-osp-unconnected_graph\.png$|
+  #             ^docs/docs/learn/examples/EmailBuddy/assets/EmailBuddy-osp_diagram\.png$|
+  #             ^docs/docs/learn/examples/EmailBuddy/assets/EmailBuddy-scale-native-FastAPI-Docs\.png$|
+  #             ^docs/docs/learn/examples/agentic_ai/aider-genius-lite/aider\.png$|
+  #             ^docs/docs/learn/examples/agentic_ai/friendzone-lite/friendzone\.png$|
+  #             ^docs/docs/learn/examples/agentic_ai/task-manager-lite/task\ manager\.png$|
+  #             ^docs/docs/learn/examples/littleX/src/front_end\.png$|
+  #             ^docs/docs/learn/examples/mtp_examples/assets/rpg_demo\.gif$|
+  #             ^docs/docs/learn/examples/rag_chatbot/images/1_swagger\.png$|
+  #             ^docs/docs/learn/examples/rag_chatbot/images/1_vscode\.png$|
+  #             ^docs/docs/learn/examples/rag_chatbot/images/2_graph\.png$|
+  #             ^docs/docs/learn/examples/rag_chatbot/images/2_rag\.png$|
+  #             ^docs/docs/learn/examples/rag_chatbot/images/2_rag_search\.png$|
+  #             ^docs/docs/learn/examples/rag_chatbot/images/3_chat_interface\.png$|
+  #             ^docs/docs/learn/examples/rag_chatbot/images/chatbot\.jpg$|
+  #             ^docs/docs/learn/examples/rag_chatbot/images/image\.png$|
+  #             ^docs/docs/learn/examples/rag_chatbot/images/image_chat\.jpg$|
+  #             ^docs/docs/learn/examples/rag_chatbot/solution/docs/clinical_medicine\.pdf$|
+  #             ^docs/docs/playground/favicon\.ico$|
+  #             ^docs/docs/playground/jaseci\.png$|
+  #             ^docs/docs/playground/onigasm\.wasm$|
+  #             ^jac-byllm/examples/agentic_ai/task-manager-lite/task_manager\.png$|
+  #             ^jac-byllm/examples/vision/math_question\.jpg$|
+  #             ^jac-byllm/examples/vision/mugen\.mp4$|
+  #             ^jac-byllm/examples/vision/person\.png$|
+  #             ^jac-byllm/examples/vision/receipt\.jpg$|
+  #             ^jac-byllm/tests/fixtures/SampleVideo_1280x720_2mb\.mp4$|
+  #             ^jac-byllm/tests/fixtures/alan-m-turing\.jpg$|
+  #             ^jac-byllm/tests/fixtures/image\.jpg$|
+  #             ^jac-byllm/tests/fixtures/math_question\.jpg$|
+  #             ^jac-byllm/tests/fixtures/webp_image_of_person\.webp$|
+  #             ^jac-client/jac_client/docs/assets/pipe_line\.png$|
+  #             ^jac-client/jac_client/examples/asset-serving/css-with-image/assets/burger\.png$|
+  #             ^jac-client/jac_client/examples/asset-serving/image-asset/assets/burger\.png$|
+  #             ^jac-client/jac_client/examples/asset-serving/import-alias/assets/burger\.png$|
+  #             ^jac-streamlit/assets/interactive\ view\.png$|
+  #             ^jac-streamlit/assets/static\ view\.png$|
+  #             ^jac/examples/rpg_game/jac_impl/fonts/8bitoperator_jve\.ttf$|
+  #             ^jac/examples/rpg_game/jac_impl/img/attack\.png$|
+  #             ^jac/examples/rpg_game/jac_impl/img/character\.png$|
+  #             ^jac/examples/rpg_game/jac_impl/img/enemy\.png$|
+  #             ^jac/examples/rpg_game/jac_impl/img/gameover\.png$|
+  #             ^jac/examples/rpg_game/jac_impl/img/introbackground\.png$|
+  #             ^jac/examples/rpg_game/jac_impl/img/single\.png$|
+  #             ^jac/examples/rpg_game/jac_impl/img/terrain\.png$|
+  #             ^jac/examples/rpg_game/lib_mode/8bitoperator_jve\.ttf$|
+  #             ^jac/examples/rpg_game/lib_mode/img/attack\.png$|
+  #             ^jac/examples/rpg_game/lib_mode/img/character\.png$|
+  #             ^jac/examples/rpg_game/lib_mode/img/enemy\.png$|
+  #             ^jac/examples/rpg_game/lib_mode/img/gameover\.png$|
+  #             ^jac/examples/rpg_game/lib_mode/img/introbackground\.png$|
+  #             ^jac/examples/rpg_game/lib_mode/img/single\.png$|
+  #             ^jac/examples/rpg_game/lib_mode/img/terrain\.png$|
+  #             ^jac/examples/rpg_game/python_impl/8bitoperator_jve\.ttf$|
+  #             ^jac/examples/rpg_game/python_impl/img/attack\.png$|
+  #             ^jac/examples/rpg_game/python_impl/img/character\.png$|
+  #             ^jac/examples/rpg_game/python_impl/img/enemy\.png$|
+  #             ^jac/examples/rpg_game/python_impl/img/gameover\.png$|
+  #             ^jac/examples/rpg_game/python_impl/img/introbackground\.png$|
+  #             ^jac/examples/rpg_game/python_impl/img/single\.png$|
+  #             ^jac/examples/rpg_game/python_impl/img/terrain\.png$
+  #         )

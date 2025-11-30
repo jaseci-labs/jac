@@ -66,7 +66,7 @@ def test_open_with_syntax_error():
         )
 
         diagnostics = helper.get_diagnostics()
-        assert str(diagnostics[0].range) == "65:0-65:5"
+        assert str(diagnostics[0].range) == "59:0-59:5"
     finally:
         ls.shutdown()
         test_file.cleanup()

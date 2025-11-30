@@ -16,14 +16,14 @@ obj MyObject {
 }
 
 # 4. Implementation
-impl MyObject {
+impl MyObject{
     def get_value -> int {
         return self.value;
     }
 }
 
 # 5. Semstring
-sem MyObject.value = "A value stored in MyObject";
+sem MyObject. value= "A value stored in MyObject";
 
 # 6. Ability (function)
 def add(a: int, b: int) -> int {
@@ -46,8 +46,6 @@ def python_multiply(x, y):
     return x * y
 ::py::
 
+
 # 10. Test
-test basic_test {
-    result = add(2, 3);
-    assert result == 5;
-}
+test basic_test { result = add(2, 3); assert result == 5; }

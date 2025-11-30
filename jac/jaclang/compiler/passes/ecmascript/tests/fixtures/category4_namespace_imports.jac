@@ -12,24 +12,24 @@ Based on the table in jac_import_patterns_proposal.md:
 """
 
 cl {
-# Namespace import examples
-import from react { * as React }
-import from lodash { * as _ }
-import from dateutils { * as DateUtils }
+    # Namespace import examples
+    import from react { * as React }
+    import from lodash { * as _ }
+    import from dateutils { * as DateUtils }
 
-# Namespace import with relative paths
-import from .utils { * as utils }
-import from ..lib.helpers { * as helpers }
+    # Namespace import with relative paths
+    import from .utils { * as utils }
+    import from ..lib.helpers { * as helpers }
 
-# Using imported namespaces
-def example_usage() {
-    let component = React.createElement("div", {}, "Hello");
-    let numbers = [1, 2, 3];
-    let now = DateUtils.formatDate();
+    # Using imported namespaces
+    def example_usage() {
+        let component = React.createElement("div", {}, "Hello");
+        let numbers = [1, 2, 3];
+        let now = DateUtils.formatDate();
 
-    let result = utils.processData({});
-    helpers.logMessage("Processing complete");
+        let result = utils.processData({});
+        helpers.logMessage("Processing complete");
 
-    return component;
-}
+        return component;
+    }
 }

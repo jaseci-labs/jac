@@ -1,10 +1,10 @@
 # Test failing variable arguments cases (*args, **kwargs)
-
-def simple_args_only(*args: int) -> int {
+def simple_args_only( *args:
+    int)  -> int {
     return sum(args);
 }
 
-def simple_kwargs_only(**kwargs: str) -> int {
+def simple_kwargs_only( **kwargs: str)  -> int {
     return len(kwargs);
 }
 
@@ -27,8 +27,13 @@ def full_varargs_signature(
     **kwargs: any
 ) -> dict {
     return {
-        "pos": pos, "reg": reg, "def_param": def_param,
-        "args": list(args), "kw_req": kw_req, "kw_opt": kw_opt, "kwargs": kwargs
+        "pos": pos,
+        "reg": reg,
+        "def_param": def_param,
+        "args": list(args),
+        "kw_req": kw_req,
+        "kw_opt": kw_opt,
+        "kwargs": kwargs
     };
 }
 
@@ -36,7 +41,7 @@ def conflicting_names(name: str, *args: str, name_kw: str, **kwargs: str) -> dic
     return {"name": name, "args": list(args), "name_kw": name_kw, "kwargs": kwargs};
 }
 
-def type_sensitive_varargs(*args: int, **kwargs: int) -> dict {
+def type_sensitive_varargs( *args: int , **kwargs: int)  -> dict {
     return {"args_sum": sum(args), "kwargs_sum": sum(kwargs.values())};
 }
 
@@ -44,7 +49,7 @@ def edge_case_empty_varargs(required: str, *args: float, **kwargs: bool) -> str 
     return f"{required}: args={len(args)}, kwargs={len(kwargs)}";
 }
 
-def double_star_issues(**kwargs: dict) -> int {
+def double_star_issues( **kwargs: dict)  -> int {
     total = 0;
     for (k, v) in kwargs.items() {
         if isinstance(v, dict) {
@@ -56,11 +61,11 @@ def double_star_issues(**kwargs: dict) -> int {
     return total;
 }
 
-def additional_varargs_edge_cases() -> None {
+def additional_varargs_edge_cases()  -> None {
     print("\n=== ADDITIONAL VARARGS EDGE CASES ===");
 
     # Test 16: Empty containers passed to varargs
-    def test_empty_containers(*args: list, **kwargs: dict) -> dict {
+    def test_empty_containers( *args: list , **kwargs: dict)  -> dict {
         return {"args_count": len(args), "kwargs_count": len(kwargs)};
     }
 
@@ -72,24 +77,19 @@ def additional_varargs_edge_cases() -> None {
     }
 
     # Test 17: Nested data structures
-    def complex_data_varargs(*args: dict, **kwargs: list) -> dict {
+    def complex_data_varargs( *args: dict , **kwargs: list)  -> dict {
         return {"total_keys": sum(args), "total_items": len(kwargs)};
     }
 
     try {
-        result = complex_data_varargs(
-            12,
-            16,
-            list1=[1, 2, 3],
-            list2=[4, 5]
-        );
+        result = complex_data_varargs(12, 16, list1=[1, 2, 3], list2=[4, 5]);
         print("✅ PASS: Complex data structures:", result);
     } except Exception as e {
         print("❌ FAIL: Complex data structures failed");
     }
 
     # Test 18: Special character handling in kwargs keys
-    def special_chars_kwargs(**kwargs: str) -> dict {
+    def special_chars_kwargs( **kwargs: str)  -> dict {
         return {"keys": list(kwargs.keys()), "count": len(kwargs)};
     }
 
@@ -102,14 +102,20 @@ def additional_varargs_edge_cases() -> None {
     }
 
     # Test 19: Very large argument counts
-    def stress_test_args(*args: int) -> dict {
-        return {"count": len(args), "sum": sum(args), "avg": sum(args)/len(args) if args else 0};
+    def stress_test_args( *args: int)  -> dict {
+        return {
+            "count": len(args),
+            "sum": sum(args),
+            "avg": sum(args) / len(args) if args else 0
+        };
     }
 
     try {
         large_args = list(range(100));  # 100 arguments
         result = stress_test_args(*large_args);
-        print("✅ PASS: Large arg count:", f"count={result['count']}, avg={result['avg']}");
+        print(
+            "✅ PASS: Large arg count:", f"count={result['count']}, avg={result['avg']}"
+        );
     } except Exception as e {
         print("❌ FAIL: Large arg count failed");
     }
@@ -147,9 +153,9 @@ def additional_varargs_edge_cases() -> None {
         }
 
         new_args = args[1:];  # Remove first arg
-        new_kwargs = {k: v+1 for (k, v) in kwargs.items()};  # Increment all values
+        new_kwargs = {k: v + 1 for (k, v) in kwargs.items()};  # Increment all values
 
-        return recursive_varargs(depth-1, *new_args, **new_kwargs);
+        return recursive_varargs(depth - 1, *new_args, **new_kwargs);
     }
 
     try {
@@ -173,7 +179,7 @@ with entry {
 
     # Test 2: Wrong types in **kwargs (if type checking enabled)
     try {
-        result = simple_kwargs_only(12,a="string", b=123, c="string");
+        result = simple_kwargs_only(12, a="string", b=123, c="string");
         print("❌ FAIL: Should catch mixed types in **kwargs");
     } except Exception as e {
         print("✅ PASS: Caught **kwargs type error");
@@ -196,9 +202,7 @@ with entry {
 
     # Test 5: Complex signature - pos-only passed as keyword
     try {
-        result = full_varargs_signature(
-            pos=1, reg="test", kw_req=True
-        );
+        result = full_varargs_signature(pos=1, reg="test", kw_req=True);
         print("❌ FAIL: Should reject pos-only as keyword in varargs");
     } except Exception as e {
         print("✅ PASS: Caught pos-only in varargs error");
@@ -228,7 +232,6 @@ with entry {
         print("✅ PASS: Caught varargs type sensitivity error");
     }
 
-
     # Test 9: Double unpacking issues
     try {
         data = {"a": {"nested": "dict"}, "b": "simple"};
@@ -245,7 +248,6 @@ with entry {
     } except Exception as e {
         print("✅ PASS: Caught missing required in empty varargs");
     }
-
 
     # Test 11: Keyword argument conflicts with *args collection
     try {
@@ -282,13 +284,15 @@ with entry {
 
     try {
         result = full_varargs_signature(
-            1,                    # pos (pos-only)
-            "regular",           # reg
-            2.5,                 # def_param
-            10, 20, 30,          # *args
-            kw_req=True,         # kw_req (required kw-only)
-            kw_opt="custom",     # kw_opt (optional kw-only)
-            extra="data",        # **kwargs
+            1,  # pos (pos-only)
+            "regular",  # reg
+            2.5,  # def_param
+            10,
+            20,
+            30,  # *args
+            kw_req=True,  # kw_req (required kw-only)
+            kw_opt="custom",  # kw_opt (optional kw-only)
+            extra="data",  # **kwargs
             more="info"
         );
         print("✅ PASS: Valid complex varargs call keys:", list(result.keys()));

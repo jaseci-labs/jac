@@ -8,7 +8,6 @@ with entry {
 # with entry{
 #     print(tf.__version__);
 # }
-
 import random;
 
 def entry() {
@@ -25,14 +24,14 @@ def entry() {
     # Sequence operations
     random.seed(42);
     colors = ['red', 'green', 'blue', 'yellow', 'orange'];
-    print(random.choice(colors)); # Random color from the list
-    print(random.sample(colors, 3)); # Random sample of 3 colors from the list
+    print(random.choice(colors));  # Random color from the list
+    print(random.sample(colors, 3));  # Random sample of 3 colors from the list
     random.shuffle(colors);
-    print(colors); # Colors shuffled in-place
+    print(colors);  # Colors shuffled in-place
 
     # Distributions
-    print(random.normalvariate(0, 1)); # Random sample from a normal distribution with mean 0 and stddev 1
-    print(random.lognormvariate(0, 1)); # Random sample from a log-normal distribution with mean 0 and stddev 1
+    print(random.normalvariate(0, 1));  # Random sample from a normal distribution with mean 0 and stddev 1
+    print(random.lognormvariate(0, 1));  # Random sample from a log-normal distribution with mean 0 and stddev 1
 
     # Seed and state
     print(random.random());
@@ -46,17 +45,13 @@ with entry {
     entry();
 }
 # tkinter
-
 import tkinter as tk;
 
 with entry {
     __root__ = tk.Tk();
     __root__.title("Random Module Example");
     __root__.geometry("300x300");
-    __label__ = tk.Label(
-        __root__,
-        text="Click the button to generate a random number"
-    );
+    __label__ = tk.Label(__root__, text="Click the button to generate a random number");
     __label__.pack(pady=10);
     print(tk.Button);
 }

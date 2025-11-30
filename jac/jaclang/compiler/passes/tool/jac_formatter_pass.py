@@ -98,7 +98,13 @@ class JacFormatPass(Transform[uni.Module, uni.Module]):
 
     def transform(self, ir_in: uni.Module) -> uni.Module:
         """After pass."""
-        ir_in.gen.jac = self.format_doc_ir()
+        formatted = self.format_doc_ir()
+        # Strip trailing whitespace from each line
+        lines = [line.rstrip() for line in formatted.split("\n")]
+        # Remove trailing empty lines and ensure single newline at end
+        while lines and lines[-1] == "":
+            lines.pop()
+        ir_in.gen.jac = "\n".join(lines) + "\n" if lines else ""
         return ir_in
 
     def format_doc_ir(

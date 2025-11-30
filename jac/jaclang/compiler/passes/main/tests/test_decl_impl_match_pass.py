@@ -28,19 +28,18 @@ def test_parameter_count_mismatch(fixture_path: Callable[[str], str]) -> None:
 
     expected_stdout_values = (
         "Parameter count mismatch for ability impl.SomeObj.foo.",
-        "    8 |",
-        "    9 | # Miss match parameter count.",
-        "   10 | impl SomeObj.foo(param1: str) -> str {",
+        "    5 |",
+        "    6 | # Miss match parameter count.",
+        "    7 | impl SomeObj.foo(param1: str) -> str {",
         "      |      ^^^^^^^^^^^",
-        '   11 |     return "foo";',
-        "   12 | }",
+        '    8 |     return "foo";',
+        "    9 | }",
         "From the declaration of foo.",
-        "    2 |",
-        "    3 | obj SomeObj {",
-        "    4 |     def foo(param1: str, param2:int) -> str;",
+        "    1 | obj SomeObj {",
+        "    2 |     def foo(param1: str, param2: int) -> str;",
         "      |         ^^^",
-        "    5 |     def bar(param1: str, param2:int) -> str;",
-        "    6 | }",
+        "    3 |     def bar(param1: str, param2: int) -> str;",
+        "    4 | }",
     )
 
     errors_output = ""

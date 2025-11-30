@@ -1,3 +1,3 @@
-impl W.enter {
-    visit [here-->] else {}
+impl W.enter{
+    visit [here-->] else { }
 }

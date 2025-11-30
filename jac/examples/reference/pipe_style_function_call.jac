@@ -185,7 +185,6 @@ with entry {
     # Task2  Task3 (p=3)
     #  (p=5)   |
     #          Task4 (p=8)
-
     task1 = Task(name="Task1", priority=10);
     task2 = Task(name="Task2", priority=5);
     task3 = Task(name="Task3", priority=3);
@@ -235,7 +234,9 @@ with entry {
     analyzer = root spawn Analyzer();
 
     print(f"  Counter: {counter.total} tasks");
-    print(f"  Analyzer: {analyzer.high_priority} high, {analyzer.low_priority} low priority");
+    print(
+        f"  Analyzer: {analyzer.high_priority} high, {analyzer.low_priority} low priority"
+    );
 
     print("\n=== 9. Spawn Syntax Variations ===");
     # Variation 1: Basic spawn

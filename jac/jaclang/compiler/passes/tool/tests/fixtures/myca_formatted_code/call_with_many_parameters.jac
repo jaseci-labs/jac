@@ -6,7 +6,7 @@ walker create_user {
     def spawn_user_root;
 }
 
-impl create_user.spawn_user_root {
+impl create_user.spawn_user_root{
     if self.user_info == {} {
         self.user_info = {
             "jid": "xxxx",
@@ -14,7 +14,7 @@ impl create_user.spawn_user_root {
             "name": "Yiping Kang"
         };
     }
-    visit [-->(`?user_root)](?jid == self.user_info["jid"]) else {
+    visit [-->(`?user_root)](?jid==self.user_info["jid"]) else {
         n = here ++> user_root(
             jid=self.user_info["jid"],
             email=self.user_info["user"],

@@ -2,7 +2,6 @@ impl Game.play{
     raise NotImplementedError("Subclasses must implement this method.") ;
 }
 
-
 impl GuessTheNumberGame.play{
     while self.attempts > 0 {
         guess = input("Guess a number between 1 and 10: ");
@@ -16,7 +15,6 @@ impl GuessTheNumberGame.play{
         print("Sorry, you didn't guess the number. Better luck next time!");
     }
 }
-
 
 impl GuessTheNumberGame.process_guess(guess: int) {
     if guess > self.correct_number {

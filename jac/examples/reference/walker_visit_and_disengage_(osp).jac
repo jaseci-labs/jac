@@ -89,7 +89,7 @@ walker TypedVisit {
 walker FilteredVisit {
     can start with Person entry {
         print(f"FilteredVisit: visiting strong colleagues from {here.name}");
-        visit [->:Colleague:strength > 5:->];
+        visit [->:Colleague:strength>5:->];
     }
 
     can visit_colleague with Person entry {
@@ -244,7 +244,6 @@ walker ComplexTraversal {
 # ========================================
 # GRAPH SETUP AND WALKER EXECUTION
 # ========================================
-
 with entry {
     # Build graph structure
     alice = Person(name="Alice");
@@ -261,9 +260,9 @@ with entry {
     charlie ++> eve;
 
     # Add typed edges
-    alice +>:Friend:+> bob;
-    alice +>:Colleague(strength=7):+> charlie;
-    alice +>:Colleague(strength=3):+> diana;
+    alice +>: Friend :+> bob;
+    alice +>: Colleague(strength=7) :+> charlie;
+    alice +>: Colleague(strength=3) :+> diana;
 
     print("=== Basic Visit ===");
     root spawn BasicVisitor();

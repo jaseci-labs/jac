@@ -1,11 +1,10 @@
-enum Enum {
-    A = "a",
-    B = "b",
-    C = "c"
-}
+enum Enum { A = "a", B = "b", C = "c" }
 
 obj Child {
-    has val: int, arr: list[int], json: dict[str, int], enum_field: Enum;
+    has val: int,
+        arr: list[int],
+        json: dict[str, int],
+        enum_field: Enum;
 }
 
 obj Parent(Child) {
@@ -13,7 +12,11 @@ obj Parent(Child) {
 }
 
 obj SavableObject {
-    has val: int, arr: list[int], json: dict[str, int], parent: Parent, enum_field: Enum;
+    has val: int,
+        arr: list[int],
+        json: dict[str, int],
+        parent: Parent,
+        enum_field: Enum;
 }
 
 walker create_custom_object {
@@ -27,14 +30,11 @@ walker create_custom_object {
                 arr=[1],
                 json={"a": 1},
                 child=Child(
-                    val=2,
-                    arr=[1, 2],
-                    json={"a": 1, "b": 2},
-                    enum_field = Enum.C
+                    val=2, arr=[1, 2], json={"a": 1, "b": 2}, enum_field=Enum.C
                 ),
-                enum_field = Enum.B
+                enum_field=Enum.B
             ),
-            enum_field = Enum.A
+            enum_field=Enum.A
         );
         save(self.obj);
 
@@ -53,7 +53,7 @@ walker get_custom_object {
 
     can enter1 with `root entry {
         try {
-            print(&(self.object_id));
+            print(& (self.object_id));
         } except Exception as e {
             print(None);
         }
@@ -64,7 +64,7 @@ walker update_custom_object {
     has object_id: str;
 
     can enter1 with `root entry {
-        savable_object = &(self.object_id);
+        savable_object = & (self.object_id);
         savable_object.parent.child.json["c"] = 3;
         savable_object.parent.child.arr.append(3);
         savable_object.parent.child.val = 3;
@@ -85,7 +85,7 @@ walker delete_custom_object {
     has object_id: str;
 
     can enter1 with `root entry {
-        savable_object = &(self.object_id);
-        del savable_object;
+        savable_object = & (self.object_id);
+        del savable_object ;
     }
 }

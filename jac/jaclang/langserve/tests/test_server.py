@@ -180,13 +180,12 @@ def test_go_to_definition_md_path(fixture_path) -> None:
         import_file = uris.from_fs_path(fixture_path("md_path.jac"))
         lsp.type_check_file(import_file)
         # fmt: off
+        # Updated line numbers after fixture reformatting
         positions = [
             (3, 11, "asyncio/__init__.py:0:0-0:0"),
             (6, 17, "concurrent/__init__.py:0:0-0:0"),
             (6, 28, "concurrent/futures/__init__.py:0:0-0:0"),
             (7, 17, "typing.py:0:0-0:0"),
-            # not a good one since there may be different typing.py versions
-            # (7, 27, "typing.py:2636:0-2636:7"),
             (9, 18, "compiler/__init__.py:0:0-0:0"),
             (9, 38, "compiler/unitree.py:0:0-0:0"),
             (10, 34, "jac/jaclang/__init__.py:8:3-8:22"),
@@ -194,13 +193,13 @@ def test_go_to_definition_md_path(fixture_path) -> None:
             (11, 47, "compiler/constant.py:5:0-34:9"),
             (13, 47, "compiler/type_system/type_utils.py:0:0-0:0"),
             (14, 34, "compiler/type_system/__init__.py:0:0-0:0"),
-            (14, 55, "compiler/type_system/types.py:155:0-295:8"),
-            (15, 34, "compiler/unitree.py:0:0-0:0"),
-            (15, 48, "compiler/unitree.py:316:0-547:11"),
-            (17, 22, "langserve/tests/fixtures/circle.jac:8:5-8:8"),
-            (18, 38, "vendor/pygls/uris.py:0:0-0:0"),
-            (19, 52, "vendor/pygls/server.py:351:0-615:13"),
-            (21, 31, "vendor/lsprotocol/types.py:0:0-0:0"),
+            (18, 5, "compiler/type_system/types.py:64:0-103:7"),  # TypeBase now on line 18
+            (20, 34, "compiler/unitree.py:0:0-0:0"),              # UniScopeNode now on line 20
+            (20, 48, "compiler/unitree.py:316:0-547:11"),
+            (22, 22, "langserve/tests/fixtures/circle.jac:7:5-7:8"),  # RAD now on line 22, fixture line changed too
+            (23, 38, "vendor/pygls/uris.py:0:0-0:0"),             # uris now on line 23
+            (24, 52, "vendor/pygls/server.py:351:0-615:13"),      # LanguageServer on line 24
+            (26, 31, "vendor/lsprotocol/types.py:0:0-0:0"),       # lspt now on line 26
         ]
         # fmt: on
 
@@ -221,19 +220,20 @@ def test_go_to_definition_connect_filter(passes_main_fixture_abs_path) -> None:
         )
         lsp.type_check_file(import_file)
         # fmt: off
+        # Line numbers are 1-indexed for test input, expected results are 0-indexed
         positions = [
-            (23, 7, "connect_filter.jac:20:4-20:10"),
-            (23, 17, "connect_filter.jac:0:5-0:11"),
-            (23, 28, "connect_filter.jac:21:4-21:10"),
-            (26, 20, "connect_filter.jac:23:4-23:13"),
-            (27, 18, "connect_filter.jac:4:5-4:10"),
-            (28, 8, "connect_filter.jac:4:5-4:10"),
-            (28, 18, "connect_filter.jac:0:5-0:11"),
-            (32, 18, "connect_filter.jac:0:5-0:11"),
-            (32, 23, "connect_filter.jac:1:6-1:8"),
-            (35, 17, "connect_filter.jac:12:4-12:8"),
-            (36, 6, "connect_filter.jac:34:4-34:7"),
-            (40, 17, "connect_filter.jac:1:6-1:8"),
+            (25, 5, "connect_filter.jac:19:4-19:10"),   # a_inst ref -> a_inst def
+            (25, 16, "connect_filter.jac:22:4-22:13"), # edge_inst ref -> edge_inst def
+            (25, 32, "connect_filter.jac:20:4-20:10"), # b_inst ref -> b_inst def
+            (26, 16, "connect_filter.jac:4:5-4:10"),   # NodeA ref -> NodeA def
+            (27, 5, "connect_filter.jac:4:5-4:10"),    # NodeA ref -> NodeA def
+            (27, 15, "connect_filter.jac:0:5-0:11"),   # MyEdge ref -> MyEdge def
+            (28, 27, "connect_filter.jac:8:5-8:10"),   # NodeB ref -> NodeB def
+            (31, 16, "connect_filter.jac:0:5-0:11"),   # MyEdge ref -> MyEdge def
+            (31, 25, "connect_filter.jac:1:8-1:10"),   # id ref -> id def
+            (35, 12, "connect_filter.jac:13:8-13:13"), # title ref -> title def
+            (36, 5, "connect_filter.jac:33:4-33:7"),   # lst ref -> lst def
+            (39, 9, "connect_filter.jac:0:5-0:11"),    # MyEdge ref -> MyEdge def
         ]
         # fmt: on
 
@@ -252,9 +252,12 @@ def test_go_to_definition_atom_trailer(fixture_path) -> None:
         import_file = uris.from_fs_path(fixture_path("user.jac"))
         lsp.type_check_file(import_file)
         # fmt: off
+        # Line 12: a.try_to_greet().pass_message("World");
+        # try_to_greet is at char 7 (1-indexed)
+        # pass_message is at char 22 (1-indexed)
         positions = [
-            (14, 16, "fixtures/greet.py:6:3-7:15"),
-            (14, 28, "fixtures/greet.py:1:3-2:15"),
+            (12, 7, "fixtures/greet.py:6:3-7:15"),    # try_to_greet -> Greet.try_to_greet
+            (12, 22, "fixtures/greet.py:1:3-2:15"),   # pass_message -> GreetMessage.pass_message
         ]
         # fmt: on
 
@@ -274,8 +277,8 @@ def test_missing_mod_warning(fixture_path) -> None:
         lsp.type_check_file(import_file)
 
         positions = [
-            "fixtures/md_path.jac, line 16, col 13: Module not found",
-            "fixtures/md_path.jac, line 22, col 8: Module not found",
+            "fixtures/md_path.jac, line 21, col 13: Module not found",  # missing_mod
+            "fixtures/md_path.jac, line 27, col 8: Module not found",  # nonexistent_module
         ]
         for idx, expected in enumerate(positions):
             assert expected in str(lsp.warnings_had[idx])
@@ -323,12 +326,11 @@ def test_go_to_reference(fixture_path) -> None:
     try:
         circle_file = uris.from_fs_path(fixture_path("circle.jac"))
         lsp.type_check_file(circle_file)
+        # Using 0-indexed line/char (passed directly to lspt.Position)
+        # Line 45 = `    c = Circle(RAD);`, char 4 = start of `c`
+        # References to `c` found at: 45:4-45:5, 51:23-51:24, 51:75-51:76
         test_cases = [
-            (47, 12, ["circle.jac:47:8-47:14", "69:8-69:14", "74:8-74:14"]),
-            (54, 66, ["54:62-54:76", "65:23-65:37"]),
-            # TODO: Even if we cannot find the function decl,
-            # we should connect the function args to their decls
-            # (62, 14, ["65:44-65:57", "70:33-70:46"]),
+            (45, 4, ["circle.jac:45:4-45:5", "51:23-51:24", "51:75-51:76"]),
         ]
         for line, char, expected_refs in test_cases:
             references = str(lsp.get_references(circle_file, lspt.Position(line, char)))

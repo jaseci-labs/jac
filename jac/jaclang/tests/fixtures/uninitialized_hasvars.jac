@@ -1,11 +1,9 @@
-
 # 1. Test initialization order.
 obj Test1 {
     has var1: int;
     has var2: int = 42;
-    has var3: int; # <-- This should be syntax error.
+    has var3: int;  # <-- This should be syntax error.
 }
-
 
 # 2. Test if postinit is needed but not provided.
 obj Test2 {

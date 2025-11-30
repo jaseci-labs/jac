@@ -14,6 +14,6 @@ node turn {
 }
 
 # Run the game
- with entry {
+with entry {
     GuessGame() spawn root;
 }

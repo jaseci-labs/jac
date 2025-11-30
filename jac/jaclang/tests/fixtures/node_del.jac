@@ -2,7 +2,6 @@ node person {
     has age: int;
 }
 
-
 with entry {
     p1 = person(10);
     p5 = person(50);
@@ -16,24 +15,24 @@ with entry {
     root ++> p5 ++> p6 ++> p7 ++> p8;
     p4 ++> p8;
     # # before deletion
-     a = printgraph(root);
-    assert a.count('label=""]') == 9 ;
-    assert a.count('[label="person(') == 8 ;
+    a = printgraph(root);
+    assert a.count('label=""]') == 9;
+    assert a.count('[label="person(') == 8;
     # # delete p2
-     del p2 ;
+    del p2 ;
     b = printgraph(root);
-    assert b.count('label="person') == 7 ;
-    assert 'age=20' not in b ;
+    assert b.count('label="person') == 7;
+    assert 'age=20' not in b;
     # doublecheck p3 also doesnot attach to it
-     c = printgraph(p3);
-    assert c.count('label="person') == 7 ;
-    assert 'age=20' not in c ;
+    c = printgraph(p3);
+    assert c.count('label="person') == 7;
+    assert 'age=20' not in c;
     # # del multiple nodes
-     del [p1, p4] ;
+    del [p1, p4] ;
     d = printgraph(root);
-    assert d.count('label="person') == 4 ;
+    assert d.count('label="person') == 4;
     for i in [10, 20, 30, 40] {
-        assert f'age={i}' not in d ;
+        assert f'age={i}' not in d;
     }
     apple_list = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
     del apple_list[0] ;

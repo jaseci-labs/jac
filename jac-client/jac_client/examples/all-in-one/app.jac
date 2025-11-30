@@ -1,15 +1,8 @@
 #
 # Combined example: routing + CSS styling + asset serving + nested folder imports
 #
-
 cl import from react { useState, useEffect }
-cl import from "@jac-client/utils" {
-    Router,
-    Routes,
-    Route,
-    Link,
-    useLocation
-}
+cl import from "@jac-client/utils" { Router, Routes, Route, Link, useLocation }
 
 # Pure CSS + asset-in-CSS example
 cl import ".styles.css";
@@ -18,14 +11,11 @@ cl import ".styles.css";
 cl import from .components.button {
     CustomButton
 }
-cl import from .button {
-    CustomButtonRoot
-}
+cl import from .button { CustomButtonRoot }
 
 #
 # Basic backend walkers
 #
-
 node Todo {
     has text: str;
     has done: bool = False;
@@ -33,45 +23,46 @@ node Todo {
 
 walker create_todo {
     has text: str;
+
     can create with `root entry {
-        new_todo = here ++> Todo(text= self.text);
-        report new_todo;
+        new_todo = here ++> Todo(text=self.text);
+        report new_todo ;
     }
 }
 
 walker ping_server {
     can ping with `root entry {
-        report "pong from backend!";
+        report "pong from backend!" ;
     }
 }
 
 walker get_server_message {
     can info with `root entry {
-        report "hello from a basic walker!";
+        report "hello from a basic walker!" ;
     }
 }
 
 cl {
     # Home page demonstrating CSS styling + direct asset usage + basic walkers
-    def Home() -> any {
+    def Home()  -> any {
         let [count, setCount] = useState(0);
         let [pingResult, setPingResult] = useState("");
         let [serverMessage, setServerMessage] = useState("");
         let [lastTodoMessage, setLastTodoMessage] = useState("");
 
-        useEffect(lambda -> None {
-            console.log("Home count changed: ", count);
-        }, [count]);
+        useEffect(
+            lambda   -> None{ console.log("Home count changed: ", count);} , [count]
+        );
 
         # Call simple backend walkers
-        async def handlePing() -> None {
+        async def handlePing()  -> None {
             result = root spawn ping_server();
             if result.reports and result.reports.length > 0 {
                 setPingResult(result.reports[0][0]);
             }
         }
 
-        async def loadServerMessage() -> None {
+        async def loadServerMessage()  -> None {
             result = root spawn get_server_message();
             if result.reports and result.reports.length > 0 {
                 setServerMessage(result.reports[0][0]);
@@ -79,7 +70,7 @@ cl {
         }
 
         # Create a sample Todo node in the graph with a hardcoded payload
-        async def handleCreateSampleTodo() -> None {
+        async def handleCreateSampleTodo()  -> None {
             result = root spawn create_todo(text="Sample todo from all-in-one app");
             if result.reports and result.reports.length > 0 {
                 todo = result.reports[0][0];
@@ -88,41 +79,63 @@ cl {
             }
         }
 
-        useEffect(lambda -> None {
-            loadServerMessage();
-        }, []);
+        useEffect(lambda   -> None{ loadServerMessage();} , []);
 
-        return <div style={{"padding": "2rem", "fontFamily": "system-ui, -apple-system, sans-serif"}}>
+        return <div
+            style={{
+                "padding": "2rem",
+                "fontFamily": "system-ui, -apple-system, sans-serif"
+            }}
+        >
             <h1>
                 🍔 Router + Styling + Assets Demo
             </h1>
             <p>
                 This home page combines
                 {" "}
-                <strong>React Router,</strong>
+                <strong>
+                    React Router,
+                </strong>
                 {" "}
-                <strong>pure CSS styling,</strong>
+                <strong>
+                    pure CSS styling,
+                </strong>
                 {" "}
-                <strong>static assets</strong>
+                <strong>
+                    static assets
+                </strong>
                 {" "}
                 and
                 {" "}
-                <strong>nested folder imports</strong>
+                <strong>
+                    nested folder imports
+                </strong>
             </p>
-
             <div className="container">
-                <h2 style={{"color": "white", "textShadow": "2px 2px 4px rgba(0,0,0,0.6)"}}>
+                <h2
+                    style={{
+                        "color": "white",
+                        "textShadow": "2px 2px 4px rgba(0,0,0,0.6)"
+                    }}
+                >
                     CSS Background Image
                 </h2>
-                <p style={{"color": "white", "maxWidth": "480px", "textShadow": "1px 1px 3px rgba(0,0,0,0.7)"}}>
+                <p
+                    style={{
+                        "color": "white",
+                        "maxWidth": "480px",
+                        "textShadow": "1px 1px 3px rgba(0,0,0,0.7)"
+                    }}
+                >
                     This section uses the burger image as a background via CSS, just like the
                     {" "}
-                    <code>asset-serving/css-with-image</code>
+                    <code>
+                        asset-serving/css-with-image
+                    </code>
                     {" "}
                     example.
                 </p>
             </div>
-
             <div className="card">
                 <h3>
                     Direct &lt;img&gt; asset
@@ -132,32 +145,41 @@ cl {
                     alt="Burger asset served by Jac"
                     className="burgerImage"
                 />
-                <p style={{"marginTop": "0.75rem", "color": "#555"}}>
+                <p
+                    style={{"marginTop": "0.75rem", "color": "#555"}}
+                >
                     This image is served from the project
                     {" "}
-                    <code>assets/</code>
+                    <code>
+                        assets/
+                    </code>
                     {" "}
                     folder using the
                     {" "}
-                    <code>/static/assets/</code>
+                    <code>
+                        /static/assets/
+                    </code>
                     {" "}
                     path.
                 </p>
             </div>
-
-            <div style={{"marginTop": "2rem"}}>
+            <div
+                style={{"marginTop": "2rem"}}
+            >
                 <h3>
                     Counter with pure CSS classes
                 </h3>
                 <p>
                     You've clicked the burger
                     {" "}
-                    <strong>{count}</strong>
+                    <strong>
+                        {count}
+                    </strong>
                     {" "}
                     times.
                 </p>
                 <button
-                    onClick={lambda e: any -> None { setCount(count + 1); }}
+                    onClick={lambda  e: any  -> None{ setCount(count + 1);} }
                     style={{
                         "padding": "0.6rem 1.4rem",
                         "fontSize": "1rem",
@@ -172,22 +194,27 @@ cl {
                     Click the Burger! 🍔
                 </button>
             </div>
-
-            <div style={{"marginTop": "2rem"}}>
+            <div
+                style={{"marginTop": "2rem"}}
+            >
                 <h3>
                     Backend Walkers
                 </h3>
                 <p>
                     Basic example walkers:
                     {" "}
-                    <code>ping_server</code>
+                    <code>
+                        ping_server
+                    </code>
                     {" "}
                     and
                     {" "}
-                    <code>get_server_message</code>
+                    <code>
+                        get_server_message
+                    </code>
                 </p>
                 <button
-                    onClick={lambda e: any -> None { handlePing(); }}
+                    onClick={lambda  e: any  -> None{ handlePing();} }
                     style={{
                         "padding": "0.5rem 1.2rem",
                         "marginRight": "0.75rem",
@@ -201,7 +228,7 @@ cl {
                     Ping Backend
                 </button>
                 <button
-                    onClick={lambda e: any -> None { handleCreateSampleTodo(); }}
+                    onClick={lambda  e: any  -> None{ handleCreateSampleTodo();} }
                     style={{
                         "padding": "0.5rem 1.2rem",
                         "backgroundColor": "#10b981",
@@ -213,23 +240,35 @@ cl {
                 >
                     Create Sample Todo
                 </button>
-                {pingResult and (
-                    <span style={{"marginLeft": "0.5rem", "color": "#374151"}}>
+                {pingResult
+                and (
+                    <span
+                        style={{"marginLeft": "0.5rem", "color": "#374151"}}
+                    >
                         Result:
                         {" "}
-                        <code>{pingResult}</code>
+                        <code>
+                            {pingResult}
+                        </code>
                     </span>
                 )}
-
-                {serverMessage and (
-                    <p style={{"marginTop": "0.75rem", "color": "#374151"}}>
+                {serverMessage
+                and (
+                    <p
+                        style={{"marginTop": "0.75rem", "color": "#374151"}}
+                    >
                         Message:
                         {" "}
-                        <code>{serverMessage}</code>
+                        <code>
+                            {serverMessage}
+                        </code>
                     </p>
                 )}
-                {lastTodoMessage and (
-                    <p style={{"marginTop": "0.5rem", "color": "#111827"}}>
+                {lastTodoMessage
+                and (
+                    <p
+                        style={{"marginTop": "0.5rem", "color": "#111827"}}
+                    >
                         {lastTodoMessage}
                     </p>
                 )}
@@ -238,29 +277,43 @@ cl {
     }
 
     # Page showing nested imports from different folders
-    def NestedImportsDemo() -> any {
-        return <div style={{"padding": "2rem", "fontFamily": "system-ui, -apple-system, sans-serif"}}>
+    def NestedImportsDemo()  -> any {
+        return <div
+            style={{
+                "padding": "2rem",
+                "fontFamily": "system-ui, -apple-system, sans-serif"
+            }}
+        >
             <h1>
                 📁 Nested Folder Imports
             </h1>
             <p>
                 This page mirrors the
                 {" "}
-                <code>nested-folders/nested-basic</code>
+                <code>
+                    nested-folders/nested-basic
+                </code>
                 {" "}
                 example by importing components from both
                 {" "}
-                <code>components.button</code>
+                <code>
+                    components.button
+                </code>
                 {" "}
                 and
                 {" "}
-                <code>button</code>
+                <code>
+                    button
+                </code>
             </p>
-            <p style={{"marginTop": "0.75rem"}}>
+            <p
+                style={{"marginTop": "0.75rem"}}
+            >
                 Both buttons below are rendered via relative imports:
             </p>
-
-            <div style={{"display": "flex", "gap": "1rem", "marginTop": "1.5rem"}}>
+            <div
+                style={{"display": "flex", "gap": "1rem", "marginTop": "1.5rem"}}
+            >
                 <CustomButton />
                 <CustomButtonRoot />
             </div>
@@ -268,8 +321,14 @@ cl {
     }
 
     # Simple 404 page
-    def NotFound() -> any {
-        return <div style={{"padding": "2rem", "textAlign": "center", "fontFamily": "system-ui, -apple-system, sans-serif"}}>
+    def NotFound()  -> any {
+        return <div
+            style={{
+                "padding": "2rem",
+                "textAlign": "center",
+                "fontFamily": "system-ui, -apple-system, sans-serif"
+            }}
+        >
             <h1>
                 🔍 404 - Page Not Found
             </h1>
@@ -283,7 +342,7 @@ cl {
     }
 
     # Navigation component with active link styling (same pattern as routing docs)
-    def Navigation() -> any {
+    def Navigation()  -> any {
         let location = useLocation();
 
         def linkStyle(path: str) -> dict {
@@ -316,10 +375,16 @@ cl {
                     "alignItems": "center"
                 }}
             >
-                <Link to="/" style={linkStyle("/")}>
+                <Link
+                    to="/"
+                    style={linkStyle("/")}
+                >
                     Home
                 </Link>
-                <Link to="/nested" style={linkStyle("/nested")}>
+                <Link
+                    to="/nested"
+                    style={linkStyle("/nested")}
+                >
                     Nested Imports
                 </Link>
             </div>
@@ -327,9 +392,11 @@ cl {
     }
 
     # Main app wrapped in Router (same API as with-router/ example)
-    def app() -> any {
+    def app()  -> any {
         return <Router>
-            <div style={{"fontFamily": "system-ui, -apple-system, sans-serif"}}>
+            <div
+                style={{"fontFamily": "system-ui, -apple-system, sans-serif"}}
+            >
                 <Navigation />
                 <div
                     style={{
@@ -339,9 +406,18 @@ cl {
                     }}
                 >
                     <Routes>
-                        <Route path="/" element={<Home />} />
-                        <Route path="/nested" element={<NestedImportsDemo />} />
-                        <Route path="*" element={<NotFound />} />
+                        <Route
+                            path="/"
+                            element={<Home />}
+                        />
+                        <Route
+                            path="/nested"
+                            element={<NestedImportsDemo />}
+                        />
+                        <Route
+                            path="*"
+                            element={<NotFound />}
+                        />
                     </Routes>
                 </div>
             </div>

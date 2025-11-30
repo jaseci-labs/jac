@@ -79,17 +79,13 @@ walker StudentAnalyzer {
 
             # Categorize students
             if grade in ["A", "A-", "B+"] and attendance >= 90.0 {
-                self.high_performers.append({
-                    "name": here.name,
-                    "grade": grade,
-                    "attendance": attendance
-                });
+                self.high_performers.append(
+                    {"name": here.name, "grade": grade, "attendance": attendance}
+                );
             } elif attendance < 85.0 or grade in ["D", "F"] {
-                self.needs_help.append({
-                    "name": here.name,
-                    "grade": grade,
-                    "attendance": attendance
-                });
+                self.needs_help.append(
+                    {"name": here.name, "grade": grade, "attendance": attendance}
+                );
             }
         }
     }
@@ -97,36 +93,38 @@ walker StudentAnalyzer {
     can report with Student exit {
         # Only report once at the end
         if len([-->]) == 0 {  # At the last student
-            print("=== Student Analysis Report ===");
 
+            print("=== Student Analysis Report ===");
             print(f"High Performers ({len(self.high_performers)}):");
             for student in self.high_performers {
-                print(f"  {student['name']}: {student['grade']} grade, {student['attendance']}% attendance");
+                print(
+                    f"  {student['name']}: {student['grade']} grade, {student[
+                        'attendance'
+                    ]}% attendance"
+                );
             }
-
             print(f"Needs Support ({len(self.needs_help)}):");
             for student in self.needs_help {
-                print(f"  {student['name']}: {student['grade']} grade, {student['attendance']}% attendance");
+                print(
+                    f"  {student['name']}: {student['grade']} grade, {student[
+                        'attendance'
+                    ]}% attendance"
+                );
             }
         }
     }
 }
 
-
-
 with entry {
     # Create the main classroom
     science_lab = root ++> Classroom(
-        room_number="Lab-A",
-        capacity=24,
-        has_projector=True
+        room_number="Lab-A", capacity=24, has_projector=True
     );
 
     # Create teacher and connect to classroom
-    dr_smith = science_lab +>:Teaches(
-        start_date="2024-08-01",
-        schedule="TR 10:00-11:30"
-    ):+> Teacher(
+    dr_smith = science_lab +>: Teaches(
+        start_date="2024-08-01", schedule="TR 10:00-11:30"
+    ) :+> Teacher(
         name="Dr. Smith",
         subject="Chemistry",
         years_experience=12,
@@ -141,15 +139,9 @@ with entry {
     ];
 
     for (name, age, grade, id) in students {
-        student = science_lab +>:EnrolledIn(
-            enrollment_date="2024-08-15",
-            attendance_rate=92.0
-        ):+> Student(
-            name=name,
-            age=age,
-            grade_level=grade,
-            student_id=id
-        );
+        student = science_lab +>: EnrolledIn(
+            enrollment_date="2024-08-15", attendance_rate=92.0
+        ) :+> Student(name=name, age=age, grade_level=grade, student_id=id);
 
         print(f"Enrolled {student[0].name} in {science_lab[0].room_number}");
     }
@@ -167,7 +159,7 @@ with entry {
 
 with entry {
     # Analyze all students
-    students = [root --> -->(`?Student)];  # Find all students in the graph
+    students = [root-->-->(`?Student)];  # Find all students in the graph
     if students {
         analyzer = StudentAnalyzer();
         for student in students {

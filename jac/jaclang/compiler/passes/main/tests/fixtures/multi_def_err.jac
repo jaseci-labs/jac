@@ -1,7 +1,7 @@
 """Test for base classes."""
 
-obj MyObject { }
+obj MyObject {}
 
-obj AnotherObject { }
+obj AnotherObject {}
 
-obj MyObject { }
+obj MyObject {}

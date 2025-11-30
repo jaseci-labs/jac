@@ -1,5 +1,4 @@
 # Try Statements
-
 with entry {
     # Basic try-except
     try {
@@ -52,7 +51,7 @@ with entry {
         print(f"index error: {ie}");
     } else {
         print("access successful");
-    } finally {
+    }  finally {
         print("done");
     }
 

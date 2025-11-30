@@ -1,8 +1,8 @@
-glob a: str, b: str;
+glob a: str , b: str;
 glob c: str;
 
 def do() {
-    global a, b, c ;
+    global a,b,c;
 
     (a, b, c) = ("Welcome", "to", "Jaseci!");
 }

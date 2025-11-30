@@ -1,5 +1,4 @@
 # Codeblocks and statements - Basic code organization
-
 with entry {
     # Expression statement
     print("Welcome to the world of Jaseci!");
@@ -15,6 +14,7 @@ with entry {
     # Various statement types can appear in code blocks
     x = 42;  # Assignment statement
     if x > 0 {  # If statement
+
         print("Positive");
     }
 }

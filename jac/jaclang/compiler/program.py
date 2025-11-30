@@ -191,7 +191,7 @@ class JacProgram:
             current_mod = pass_cls(ir_in=current_mod, prog=prog).ir_out
         parser_pass.errors_had = prog.errors_had
         parser_pass.warnings_had = prog.warnings_had
-        return current_mod.gen.jac
+        return current_mod.gen.jac if not parser_pass.errors_had else source_str
 
     @staticmethod
     def jac_str_formatter(source_str: str, file_path: str) -> str:

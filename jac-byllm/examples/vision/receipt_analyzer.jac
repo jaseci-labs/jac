@@ -14,7 +14,7 @@ obj Receipt {
         items: list[PurchasedItem],
         total: float;
 
-    def pp() -> None {
+    def pp()  -> None {
         print(f"Store: {self.store}");
         print(f"Date: {self.date}");
         for item in self.items {

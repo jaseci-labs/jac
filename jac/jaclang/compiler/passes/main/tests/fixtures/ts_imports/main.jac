@@ -1,7 +1,12 @@
 """Test module that imports TypeScript/JavaScript modules (for client code)."""
 
 # Use 'cl import' for string literal imports (JS/TS files)
-cl import from ".utils.ts" { greet, add, Calculator, VERSION }
+cl import from ".utils.ts" {
+    greet,
+    add,
+    Calculator,
+    VERSION
+}
 cl import from ".component.js" { Component, theme, render }
 
 # Test importing constants

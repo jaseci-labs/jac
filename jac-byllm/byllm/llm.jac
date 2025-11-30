@@ -135,7 +135,7 @@ obj BaseLLM {
 
         # Call the LiteLLM API
         log_params = (
-            {**params, "api_key": "*" * len(params["api_key"])}
+            {** params, "api_key": "*" * len(params["api_key"])}
             if params.get("api_key")
             else params
         );
@@ -179,7 +179,7 @@ obj BaseLLM {
 
         # Call the LiteLLM API
         log_params = (
-            {**params, "api_key": "*" * len(params["api_key"])}
+            {** params, "api_key": "*" * len(params["api_key"])}
             if params.get("api_key")
             else params
         );
@@ -204,7 +204,7 @@ obj BaseLLM {
     def model_call_no_stream(params: dict) -> dict {
         raise NotImplementedError(
             "Subclasses must implement this method for LLM call with streaming."
-        );
+        ) ;
     }
 
     """Make a direct model call with the given parameters.
@@ -259,7 +259,7 @@ obj MockLLM(BaseLLM) {
     """Dispatch the mock LLM call with the given request."""
     override def dispatch_no_streaming(mtir: MTIR) -> CompletionResult {
         params = self.make_model_params(mtir);
-        output = self.config["outputs"].pop(0); # type: ignore
+        output = self.config["outputs"].pop(0);  # type: ignore
 
         if isinstance(output, MockToolCall) {
             self.log_info(
@@ -275,7 +275,7 @@ obj MockLLM(BaseLLM) {
 
     """Dispatch the mock LLM call with the given request."""
     override def dispatch_streaming(mtir: MTIR) -> Generator[str, None, None] {
-        output = self.config["outputs"].pop(0); # type: ignore
+        output = self.config["outputs"].pop(0);  # type: ignore
         if mtir.stream {
             while output {
                 chunk_len = random.randint(3, 10);

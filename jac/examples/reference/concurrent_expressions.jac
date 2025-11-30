@@ -17,16 +17,16 @@ def slow_task(n: int) -> int {
 
 with entry {
     # Flow - start concurrent execution (returns future/task)
-    task1 = flow compute(5, 10);
-    task2 = flow compute(3, 7);
-    task3 = flow slow_task(42);
+    task1 = flow compute(5, 10) ;
+    task2 = flow compute(3, 7) ;
+    task3 = flow slow_task(42) ;
 
     print("All tasks started concurrently");
 
     # Wait - wait for task completion and get result
-    result1 = wait task1;
-    result2 = wait task2;
-    result3 = wait task3;
+    result1 = wait task1 ;
+    result2 = wait task2 ;
+    result3 = wait task3 ;
 
     print(f"Results: {result1}, {result2}, {result3}");
 }

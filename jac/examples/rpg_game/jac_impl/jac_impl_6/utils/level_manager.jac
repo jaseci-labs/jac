@@ -16,6 +16,7 @@ obj Map_tiles {
     has level: Level;
     has walls: list[Wall],
         small_obstacles: list[Position];
+
     has enemies: list[Position];
     has player_pos: Position;
 }
@@ -24,6 +25,7 @@ obj Level {
     has name: int,
         difficulty: int,
         time: int;
+
     has width: int,
         height: int,
         num_wall: int,
@@ -36,15 +38,14 @@ obj LevelManager {
         prev_levels: list[Level] = [],
         prev_level_maps: list[Map_tiles] = [];
 
-    def create_next_level(last_levels: list[Level], difficulty: int)
-    -> Level by llm(temperature=0.8);
+    def create_next_level(last_levels: list[Level], difficulty: int) -> Level by llm(
+        temperature=0.8
+    );
 
     def create_next_map(level: Level) -> Map_tiles by llm(temperature=0.8);
-
     '''Get the Next Level'''
-    def get_next_level (current_level: int) -> tuple(Level, Map_tiles);
+    def get_next_level(current_level: int) -> tuple(Level, Map_tiles);
 
     '''Get the map of the level'''
     def get_map(map: Map_tiles) -> str;
-
 }

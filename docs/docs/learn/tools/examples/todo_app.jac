@@ -12,7 +12,6 @@ def todo_app() {
     # Add new todo
     with st.form("add_todo") {
         new_todo = st.text_input("Add a new todo:");
-
         if st.form_submit_button("Add Todo") and new_todo {
             st.session_state.todos.append(new_todo);
             st.success("Todo added!");
@@ -22,9 +21,7 @@ def todo_app() {
     # Display todos
     if st.session_state.todos {
         st.subheader("📝 Your Todos");
-
         todos_to_remove = [];
-
         for todo in st.session_state.todos {
             columns = st.columns([4, 1]);
 
@@ -38,16 +35,13 @@ def todo_app() {
                 }
             }
         }
-
         # Remove completed todos
         for todo in todos_to_remove {
             st.session_state.todos.remove(todo);
         }
-
         if todos_to_remove {
             st.rerun();
         }
-
         # Clear all button
         if st.button("Clear All") {
             st.session_state.todos = [];

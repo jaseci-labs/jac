@@ -4,24 +4,14 @@ class PersonalityIndex {
     has index: int;
 }
 
-enum Personality {
-    INTROVERT,
-    EXTROVERT
-}
+enum Personality { INTROVERT, EXTROVERT }
 
-glob llm = MockLLM(
-    model_name="mockllm",
-    outputs=[Personality.INTROVERT],
-);
+glob llm = MockLLM(model_name="mockllm", outputs=[Personality.INTROVERT],);
 
-
-glob personality_examples: dict[str, Personality | None] = {
-    Personality.INTROVERT,
-    Personality.EXTROVERT
-};
+glob personality_examples: dict[str, Personality | None] = {Personality.INTROVERT,Personality.EXTROVERT};
 
 obj Person {
-    has name:  str,
+    has name: str,
         age: int;
 }
 
@@ -34,6 +24,7 @@ obj outer {
             incl_info={
                 "personality_examples": personality_examples,
                 "diary_entries": self.diary_entries,
+
             }
         );
     }
@@ -44,7 +35,5 @@ with entry {
     inner_inst = outer.inner(
         ["I won noble prize in Physics", "I am popular for my theory of relativity"]
     );
-    print(
-        inner_inst.get_personality(einstein)
-    );
+    print(inner_inst.get_personality(einstein));
 }

@@ -12,12 +12,11 @@ import from os { environ }
 
 # Real LLM - change this to your preferred model
 glob llm = Model(
-    model_name="gpt-4o-mini",
-    verbose=True,
+    model_name="gpt-4o-mini", verbose=True,
 );
 
 """Get the current date and time."""
-def get_current_datetime() -> str {
+def get_current_datetime()  -> str {
     return datetime.now().strftime("%d-%m-%Y %H:%M:%S");
 }
 
