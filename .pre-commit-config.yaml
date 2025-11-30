@@ -48,9 +48,9 @@ repos:
   #       types: [file]
   #       files: \.jac$
   #       exclude: (/fixtures/|_err\.jac$|_syntax_err\.jac$|jac-client/jac_client/examples/)
-  # Remote repo for CI
-  - repo: https://github.com/jaseci-labs/jac-pre-commit
-    rev: v0.9.3.1
+  # Jac format and check hooks (from this repo)
+  - repo: https://github.com/jaseci-labs/jaseci
+    rev: e67231487905bc9a4f86d712950b0ac6a00a057e
     hooks:
       - id: jac-format
       - id: jac-check
