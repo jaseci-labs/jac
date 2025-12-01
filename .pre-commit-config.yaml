@@ -33,7 +33,7 @@ repos:
         additional_dependencies: [types-PyYAML, types-requests]
         exclude: (/fixtures/|/larkparse/|/vendor/|/scripts/|jac/examples/reference)
   - repo: https://github.com/jaseci-labs/jaseci
-    rev: 5f938944dcc5a8df2d681593fed71e09fab14c90
+    rev: bcbf0f4d50c92057107e917970c0d83010a76301
     hooks:
       - id: jac-format
       - id: jac-check
