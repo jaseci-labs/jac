@@ -1509,16 +1509,21 @@ class CommentInjectionPass(Transform[uni.Module, uni.Module]):
         return comment
 
     def _ends_with_hard_line(self, sink: Sequence[doc.DocType]) -> bool:
-        """Return True when the sink already ends with a hard line break."""
+        """Return True when the sink already ends with a line break.
+
+        This includes hard lines and tight lines, since tight lines will become
+        line breaks when the containing group breaks (e.g., in multi-line function calls).
+        """
         if not sink:
             return False
         last = sink[-1]
-        if isinstance(last, doc.Line) and last.hard:
+        # Accept any Line (hard or tight) - tight lines break when group breaks
+        if isinstance(last, doc.Line):
             return True
         # Check inside Concat (e.g., standalone comments end with hard line)
         if isinstance(last, doc.Concat) and last.parts:
             last_part = last.parts[-1]
-            if isinstance(last_part, doc.Line) and last_part.hard:
+            if isinstance(last_part, doc.Line):
                 return True
         return False
 
