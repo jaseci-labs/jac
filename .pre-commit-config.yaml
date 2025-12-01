@@ -51,6 +51,7 @@ repos:
   # Jac format and check hooks (from this repo)
   - repo: https://github.com/jaseci-labs/jaseci
     rev: ff32ebf2d9523dd211cc4e20f36996c5535869c5
+    subdirectory: jac
     hooks:
       - id: jac-format
       - id: jac-check
