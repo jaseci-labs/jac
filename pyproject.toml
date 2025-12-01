@@ -14,3 +14,6 @@ jac = "jaclang.cli.cli:start_cli"
 
 [tool.setuptools.packages.find]
 where = ["jac"]
+
+[tool.setuptools.package-data]
+"*" = ["*.jac"]
