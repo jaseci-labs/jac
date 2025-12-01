@@ -2306,6 +2306,19 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
             func_node.parent = node.parent
             self.exit_func_call(func_node)
             return func_node.gen.py_ast
+        elif node.op.name in [Tok.KW_BY]:
+            return [
+                self.sync(
+                    ast3.Call(
+                        func=self.jaclib_obj("by_operator"),
+                        args=cast(
+                            list[ast3.expr],
+                            [node.left.gen.py_ast[0], node.right.gen.py_ast[0]],
+                        ),
+                        keywords=[],
+                    )
+                )
+            ]
         elif node.op.name == Tok.PIPE_FWD and isinstance(node.right, uni.TupleVal):
             self.log_error("Invalid pipe target.")
         else:
@@ -2313,6 +2326,21 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
                 f"Binary operator {node.op.value} not supported in bootstrap Jac"
             )
         return []
+    
+    def exit_by_expr(self, node: uni.ByExpr) -> None:
+        """Handle by operator expression."""
+        node.gen.py_ast = [
+            self.sync(
+                ast3.Call(
+                    func=self.jaclib_obj("by_operator"),
+                    args=cast(
+                        list[ast3.expr],
+                        [node.left.gen.py_ast[0], node.right.gen.py_ast[0]],
+                    ),
+                    keywords=[],
+                )
+            )
+        ]
 
     def exit_compare_expr(self, node: uni.CompareExpr) -> None:
         node.gen.py_ast = [

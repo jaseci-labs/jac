@@ -279,6 +279,13 @@ class JacParser(Transform[uni.Source, uni.Module]):
                     )
                     and isinstance(kid[2], uni.Expr)
                 ):
+                    if isinstance(kid[1], uni.Token) and kid[1].name == Tok.KW_BY:
+                        return uni.ByExpr(
+                            left=kid[0],
+                            op=kid[1],
+                            right=kid[2],
+                            kid=kid,
+                        )
                     return uni.BinaryExpr(
                         left=kid[0],
                         op=kid[1],
@@ -1825,7 +1832,14 @@ class JacParser(Transform[uni.Source, uni.Module]):
         def walrus_assign(self, _: None) -> uni.Expr:
             """Grammar rule.
 
-            walrus_assign: (named_ref WALRUS_EQ)? pipe
+            walrus_assign: (named_ref WALRUS_EQ)? by_expr
+            """
+            return self._binary_expr_unwind(self.cur_nodes)
+
+        def by_expr(self, _: None) -> uni.Expr:
+            """Grammar rule.
+
+            by_expr: (by_expr KW_BY)? pipe
             """
             return self._binary_expr_unwind(self.cur_nodes)
 
