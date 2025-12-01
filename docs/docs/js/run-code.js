@@ -77,6 +77,7 @@ function executeJacCodeInWorker(code, inputHandler, commandType = "run") {
             }
         };
         pyodideWorker.addEventListener("message", handleMessage);
+        console.log("Sending code to worker:", commandType);
         pyodideWorker.postMessage({ type: commandType, code });
     });
 }
@@ -425,13 +426,15 @@ async function setupCodeBlock(div) {
             try {
                 const codeToRun = editor.getValue();
                 const inputHandler = createInputHandler();
-                if (commandType === "dot") {
-                    await executeJacCodeInWorker(codeToRun, inputHandler, "run");
-                    showOutputs = false;     // avoid duplicate outputs
-                    await executeJacCodeInWorker(codeToRun, inputHandler, "dot");
-                } else {
-                    await executeJacCodeInWorker(codeToRun, inputHandler, commandType);
-                }
+                // if (commandType === "dot") {
+                //     await executeJacCodeInWorker(codeToRun, inputHandler, "run");
+                //     showOutputs = false;     // avoid duplicate outputs
+                //     await executeJacCodeInWorker(codeToRun, inputHandler, "dot");
+                // } else {
+                //     await executeJacCodeInWorker(codeToRun, inputHandler, commandType);
+                // }
+
+                await executeJacCodeInWorker(codeToRun, inputHandler, commandType);
             } catch (error) {
                 outputBlock.textContent += `\nError: ${error}`;
             } finally {
