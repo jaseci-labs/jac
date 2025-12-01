@@ -50,7 +50,7 @@ repos:
   #       exclude: (/fixtures/|_err\.jac$|_syntax_err\.jac$|jac-client/jac_client/examples/)
   # Jac format and check hooks (from this repo)
   - repo: https://github.com/jaseci-labs/jaseci
-    rev: ff32ebf2d9523dd211cc4e20f36996c5535869c5
+    rev: ae9601db565655955a5966a4feaecb837fa15a90
     subdirectory: jac
     hooks:
       - id: jac-format
