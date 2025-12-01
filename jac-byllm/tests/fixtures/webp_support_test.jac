@@ -14,7 +14,6 @@ obj Person {
 }
 
 glob llm = MockLLM(
-
     # model_name="gpt-4o-mini",
     model_name="mockllm",
     outputs=[

@@ -473,3 +473,5 @@ def test_match_comments(x: int) {
 
     }
 }
+
+def generate_greeting_code(name: str) -> str by models["code-gen"];

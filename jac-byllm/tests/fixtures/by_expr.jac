@@ -16,12 +16,10 @@ def run_and_test_python_code(code: str) -> str {
 
 glob models = {
     "text-gen": MockLLM(
-
         # model_name="gpt-4o-mini",
         model_name="mockllm", outputs=["Hello, Alice! It's great to see you!"]
     ),
     "code-gen": MockLLM(
-
         # model_name="gpt-4o-mini",
         model_name="mockllm",
         outputs=[
@@ -40,14 +38,14 @@ glob models = {
 };
 
 """ Generate a greeting text for the given person's name.  """
-def generate_greeting_text(name: str) -> str bymodels["text-gen"];
+def generate_greeting_text(name: str) -> str by models["text-gen"];
 
 """
 Generate a python greeting code for the given person's name.
 Make sure to use the given tools run the code to verify the generated
 code is correct and return the python code.
 """
-def generate_greeting_code(name: str) -> str bymodels["code-gen"];
+def generate_greeting_code(name: str) -> str by models["code-gen"];
 
 with entry {
     greeting = generate_greeting_text("Alice");

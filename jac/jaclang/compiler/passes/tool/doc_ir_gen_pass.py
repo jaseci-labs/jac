@@ -757,7 +757,13 @@ class DocIRGenPass(UniPass):
 
     def exit_atom_trailer(self, node: uni.AtomTrailer) -> None:
         """Generate DocIR for atom trailers."""
-        self._assign_group_concat(node)
+        parts: list[doc.DocType] = []
+        for i in node.kid:
+            parts.append(i.gen.doc_ir)
+            # Add space after 'by' keyword
+            if isinstance(i, uni.Token) and i.name == Tok.KW_BY:
+                parts.append(self.space())
+        node.gen.doc_ir = self.group(self.concat(parts))
 
     def exit_list_val(self, node: uni.ListVal) -> None:
         """Generate DocIR for list values."""

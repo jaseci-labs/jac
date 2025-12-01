@@ -900,8 +900,8 @@ class TypeEvaluator {
                     }
                 } elif expr.is_null_ok {
                     # TODO:
-                  # <expr>?.member
-                 } elif isinstance(expr.right, uni.AssignCompr) {
+                    # <expr>?.member
+                } elif isinstance(expr.right, uni.AssignCompr) {
                     # base_type should be a sequence of [T].
                     if not isinstance(base_type, types.ClassType) {
                         self.add_diagnostic(
