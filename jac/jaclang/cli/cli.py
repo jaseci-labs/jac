@@ -123,7 +123,7 @@ def format(paths: list, outfile: str = "", to_screen: bool = False) -> None:
             file=sys.stderr,
         )
 
-    if failed_files > 0:
+    if changed_files > 0:
         exit(1)
 
 
