@@ -51,7 +51,7 @@ repos:
   # Jac format and check hooks (from this repo)
   - repo: https://github.com/jaseci-labs/jaseci
     # NOTE: After committing/pushing pyproject.toml, update this to the new commit hash
-    rev: HEAD
+    rev: 5f938944dcc5a8df2d681593fed71e09fab14c90
     hooks:
       - id: jac-format
       - id: jac-check
