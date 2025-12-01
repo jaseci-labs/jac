@@ -47,4 +47,8 @@ with entry {
     greet(name="Bob") spawn root;
 
     print("By operator test file compiled and executed successfully!");
+
+    for i = 0 to i < 5 by i += 1 {
+        print(i);
+    }
 }
