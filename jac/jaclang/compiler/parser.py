@@ -279,13 +279,6 @@ class JacParser(Transform[uni.Source, uni.Module]):
                     )
                     and isinstance(kid[2], uni.Expr)
                 ):
-                    if isinstance(kid[1], uni.Token) and kid[1].name == Tok.KW_BY:
-                        return uni.ByExpr(
-                            left=kid[0],
-                            op=kid[1],
-                            right=kid[2],
-                            kid=kid,
-                        )
                     return uni.BinaryExpr(
                         left=kid[0],
                         op=kid[1],

@@ -252,7 +252,8 @@ concurrent_expr: (KW_FLOW | KW_WAIT)? walrus_assign
 walrus_assign: (named_ref WALRUS_EQ)? by_expr
 
 // [Heading]: By expressions.
-by_expr: (by_expr KW_BY)? pipe
+by_expr: pipe
+       | pipe KW_BY by_expr
 
 // [Heading]: Lambda expressions.
 lambda_expr: KW_LAMBDA func_decl_params (RETURN_HINT expression)? ( COLON expression | code_block )
