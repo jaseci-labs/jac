@@ -24,7 +24,7 @@ obj PunclineJokes {
     }
 }
 
-sem PunclineJokes.joke = 'Jokes with Punchlines';
+sem PunclineJokes. joke= 'Jokes with Punchlines';
 
 with entry {
     joke_gen = PunclineJokes();

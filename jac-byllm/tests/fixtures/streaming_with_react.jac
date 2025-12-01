@@ -1,9 +1,9 @@
 """Test streaming with ReAct method using MockLLM."""
 import from byllm.lib { Model, MockToolCall }
-import from datetime {datetime}
+import from datetime { datetime }
 
 # Mock function that will be used as a tool
-def get_current_date() -> str {
+def get_current_date()  -> str {
     return "29-10-2025";
 }
 
@@ -12,7 +12,9 @@ def calculate(expression: str) -> str {
 }
 
 # Create a mock finish_tool that matches the dynamically generated one
-def finish_tool(final_output: str) -> str {
+def finish_tool(
+    final_output: str
+) -> str {
     return final_output;
 }
 
@@ -27,18 +29,19 @@ glob llm = Model(
         # Then, LLM calls finish_tool with the answer (simulating real LLM behavior)
         MockToolCall(
             tool=finish_tool,
-            args={"final_output": "Based on my calculations, today's date is 29-10-2025 and 25 multiplied by 4 equals 100."}
+            args={
+                "final_output": "Based on my calculations, today's date is 29-10-2025 and 25 multiplied by 4 equals 100."
+            }
         ),
         # Finally, the streaming response after all tool calls
         "Based on my calculations, today's date is 29-10-2025 and 25 multiplied by 4 equals 100. This demonstrates the ReAct pattern with streaming support.",
+
     ]
 );
 
 """Answer the question using available tools."""
 def answer_question(question: str) -> str by llm(
-    method="ReAct",
-    tools=[get_current_date, calculate],
-    stream=True
+    method="ReAct", tools=[get_current_date, calculate], stream=True
 );
 
 with entry {
@@ -51,7 +54,7 @@ with entry {
     result = answer_question(question);
 
     # Result should be a generator (for streaming)
-    assert result is not str, "Expected generator for streaming, got string";
+    assert result is not str , "Expected generator for streaming, got string";
 
     # Collect all chunks
     full_response = "";
@@ -63,8 +66,8 @@ with entry {
     print("\n");
 
     # Verify the response contains expected content
-    assert "29-10-2025" in full_response, "Response should mention the date";
-    assert "100" in full_response, "Response should mention the calculation result";
+    assert "29-10-2025" in full_response , "Response should mention the date";
+    assert "100" in full_response , "Response should mention the calculation result";
 
     print("\nTest passed! ✓");
 }
