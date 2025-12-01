@@ -387,11 +387,12 @@ cl {
             >
                 @{tweet.username}
             </div>
+            # Random comment
             <div
                 class="tweet-content"
                 style={{"marginBottom": "12px"}}
             >
-                {tweet.content}
+                {tweet.content} # Another andom comment
             </div>
             <div
                 class="tweet-actions"

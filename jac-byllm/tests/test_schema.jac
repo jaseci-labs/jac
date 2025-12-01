@@ -12,28 +12,20 @@ To run a specific test:
   jac test <path-to-this-file> -t <test-name>
 """
 
-
 import from byllm.lib { Model }
 
-glob llm = Model(
-    model_name="gpt-4o-mini",
-);
-
+glob llm = Model(model_name="gpt-4o-mini",);
 
 """
 Return true if the given statement meets the expectation.
 The statement is a string that describes the condition to be met.
 """
-def assert_statement_met_expectation(
-    statement: str,
-    expectation: str,
-) -> bool by llm();
+def assert_statement_met_expectation(statement: str, expectation: str,) -> bool by llm();
 
 test assert_statement_met_expectation_working {
     is_true = assert_statement_met_expectation(
         "La météo à Paris est de 22°C et venteux.",
-        "The weather in Paris *MUST* match 22 degrees Celsius and windy."
-        "And the statement *SHOULD* be in French.",
+        "The weather in Paris *MUST* match 22 degrees Celsius and windy.""And the statement *SHOULD* be in French.",
     );
     assert is_true;
 }
@@ -41,25 +33,25 @@ test assert_statement_met_expectation_working {
 # =============================================================================
 # Case: Simple object
 # =============================================================================
-
 obj Person {
     has name: str;
     has age: int;
     has description: str | None;
 }
 
-def generate_random_person() -> Person by llm();
+def generate_random_person()  -> Person by llm();
 
 test simple_object {
     person = generate_random_person();
     assert isinstance(person, Person);
-    print(f"Generated Person: {person.name}, Age: {person.age}, Description: {person.description}");
+    print(
+        f"Generated Person: {person.name}, Age: {person.age}, Description: {person.description}"
+    );
 }
 
 # =============================================================================
 # Case: Nested object
 # =============================================================================
-
 obj Address {
     has street: str;
     has city: str;
@@ -72,19 +64,20 @@ obj User {
     has address: Address;
 }
 
-def generate_random_user() -> User by llm();
+def generate_random_user()  -> User by llm();
 
 test nested_object {
     user = generate_random_user();
     assert isinstance(user, User);
     assert isinstance(user.address, Address);
-    print(f"Generated User: {user.username}, Email: {user.email}, Address: {user.address.street}, {user.address.city}, {user.address.zip_code}");
+    print(
+        f"Generated User: {user.username}, Email: {user.email}, Address: {user.address.street}, {user.address.city}, {user.address.zip_code}"
+    );
 }
 
 # =============================================================================
 # Case: Union types + inheritnace
 # =============================================================================
-
 obj Pet {
     has name: str;
     has age: int;
@@ -101,14 +94,18 @@ obj Cat(Pet) {
 obj MyPet {
     has pet: Dog | Cat;
 }
-def generate_random_pet() -> MyPet by llm();
+
+def generate_random_pet()  -> MyPet by llm();
 
 test union_types_and_inheritance {
     pet = generate_random_pet();
     assert isinstance(pet, MyPet);
     print(f"Generated Pet: {pet.pet.name}, Age: {pet.pet.age}");
-    if isinstance(pet.pet, Dog) { print(f"Breed: {pet.pet.breed}"); }
-    elif isinstance(pet.pet, Cat) { print(f"Color: {pet.pet.color}"); }
+    if isinstance(pet.pet, Dog) {
+        print(f"Breed: {pet.pet.breed}");
+    } elif isinstance(pet.pet, Cat) {
+        print(f"Color: {pet.pet.color}");
+    }
 }
 
 # =============================================================================
@@ -117,7 +114,6 @@ test union_types_and_inheritance {
 
 # Since OpenAI donesn't support primitive at the root level of the schema,
 # we'll need to wrap them in an object.
-
 def is_statement_true(statement: str) -> bool by llm();
 
 test bool_return {
@@ -139,27 +135,24 @@ test bool_return {
 # =============================================================================
 # Case: Enum (auto/int)
 # =============================================================================
-
 enum Color {
     Red,
     Green,
     Blue,
 }
 
-def get_random_color() -> Color by llm();
+def get_random_color()  -> Color by llm();
 
 test enum_case {
     color = get_random_color();
     assert isinstance(color, Color);
     print(f"Generated Color: {color}");
-    assert color in Color.__members__.values(), f"Color {color} is not a valid Color";
+    assert color in Color.__members__.values() , f"Color {color} is not a valid Color";
 }
-
 
 # =============================================================================
 # Case: Enum (string)
 # =============================================================================
-
 enum WeatherCondition {
     Sunny = "Sunny",
     Cloudy = "Cloudy",
@@ -167,20 +160,19 @@ enum WeatherCondition {
     Windy = "Windy",
 }
 
-def get_random_weather_condition() -> WeatherCondition by llm();
+def get_random_weather_condition()  -> WeatherCondition by llm();
 
 test enum_string_case {
     condition = get_random_weather_condition();
     assert isinstance(condition, WeatherCondition);
     print(f"Generated Weather Condition: {condition}");
-    assert condition in WeatherCondition.__members__.values(), f"Condition {condition} is not a valid WeatherCondition";
-    assert isinstance(condition.value, str), f"Condition value {condition.value} is not a string";
+    assert condition in WeatherCondition.__members__.values() , f"Condition {condition} is not a valid WeatherCondition";
+    assert isinstance(condition.value, str) , f"Condition value {condition.value} is not a string";
 }
 
 # =============================================================================
 # Case: Test tool schema
 # =============================================================================
-
 obj WeatherData {
     has city: str;
     has temperature: float;
@@ -189,15 +181,25 @@ obj WeatherData {
 
 def get_weather(city: str) -> WeatherData {
     print(f"Fetching weather data for {city}...");
-    if (city.lower() == "london") { return WeatherData(city="London", temperature=20.0, condition="Sunny"); }
-    if (city.lower() == "new york") { return WeatherData(city="New York", temperature=25.0, condition="Cloudy"); }
-    if (city.lower() == "tokyo") { return WeatherData(city="Tokyo", temperature=30.0, condition="Rainy"); }
-    if (city.lower() == "paris") { return WeatherData(city="Paris", temperature=22.0, condition="Windy"); }
+    if (city.lower() == "london") {
+        return WeatherData(city="London", temperature=20.0, condition="Sunny");
+    }
+    if (city.lower() == "new york") {
+        return WeatherData(city="New York", temperature=25.0, condition="Cloudy");
+    }
+    if (city.lower() == "tokyo") {
+        return WeatherData(city="Tokyo", temperature=30.0, condition="Rainy");
+    }
+    if (city.lower() == "paris") {
+        return WeatherData(city="Paris", temperature=22.0, condition="Windy");
+    }
     return WeatherData(city=city, temperature=0.0, condition="Unknown");
 }
 
 # Althought this is an llm function, we'll use it as a tool.
-def translate_from_english(to_language: str, sentence: str) -> str by llm();
+def translate_from_english(
+    to_language: str, sentence: str
+) -> str by llm();
 
 def answer_user(question: str) -> str by llm(
     tools=[get_weather, translate_from_english],
@@ -207,25 +209,22 @@ test tool_functionality {
     statement = answer_user("Tell me the weather in paris in French.");
     assert assert_statement_met_expectation(
         statement,
-        "The weather in Paris *MUST* match 22 degrees Celsius and windy."
-        "And the statement *SHOULD* be in French.",
+        "The weather in Paris *MUST* match 22 degrees Celsius and windy.""And the statement *SHOULD* be in French.",
     );
 }
-
 
 # =============================================================================
 # Case: Semstrings attached in schema
 # =============================================================================
-
 obj Client {
     has name: str;
     has major: str;
 }
 
-sem Client.name = "Should always be 'Alice'";
-sem Client.major = "Should always be 'Legal Advisor'";
+sem Client. name= "Should always be 'Alice'";
+sem Client. major= "Should always be 'Legal Advisor'";
 
-def generate_client() -> Client by llm();
+def generate_client()  -> Client by llm();
 
 test semstrings_attached_in_schema {
     client = generate_client();
@@ -238,8 +237,9 @@ test semstrings_attached_in_schema {
 # =============================================================================
 # Case: Annotated list
 # =============================================================================
-
-def get_first_n_numbers_of_fibonacci(n: int) -> list[int] by llm();
+def get_first_n_numbers_of_fibonacci(
+    n: int
+) -> list[int] by llm();
 
 test annotated_list {
     n = 10;
@@ -249,8 +249,8 @@ test annotated_list {
     assert isinstance(fibonacci_numbers, list);
     assert all([isinstance(num, int) for num in fibonacci_numbers]);
 
-    expected = [0,1,1,2,3,5,8,13,21,34];
-    assert fibonacci_numbers == expected, f"Expected {expected}, but got {fibonacci_numbers}";
+    expected = [0, 1, 1, 2, 3, 5, 8, 13, 21, 34];
+    assert fibonacci_numbers == expected , f"Expected {expected}, but got {fibonacci_numbers}";
 }
 
 # =============================================================================
@@ -262,7 +262,7 @@ obj ColorContainer {
     has colors: tuple[str, ...];
 }
 
-def generate_random_colors() -> ColorContainer by llm();
+def generate_random_colors()  -> ColorContainer by llm();
 
 test annotated_tuple {
     container = generate_random_colors();
@@ -274,15 +274,18 @@ test annotated_tuple {
 
     assert isinstance(colors, tuple);
     assert all([isinstance(color, str) for color in colors]);
-    assert len(colors) > 0, "Expected at least one color";
+    assert len(colors) > 0 , "Expected at least one color";
 }
 
 # =============================================================================
 # Case: Annotated dictionary
 # =============================================================================
+def generate_random_name_and_age()  -> dict[
+    str,
+    int
+] by llm();
 
-def generate_random_name_and_age() -> dict[str, int] by llm();
-sem generate_random_name_and_age.name = "Returns a dictionary with names as keys and ages as values";
+sem generate_random_name_and_age. name= "Returns a dictionary with names as keys and ages as values";
 
 test annotated_dictionary {
     name_age_dict = generate_random_name_and_age();
@@ -293,15 +296,18 @@ test annotated_dictionary {
     assert all([isinstance(age, int) for age in name_age_dict.values()]);
 
     # Check if the dictionary has at least one entry
-    assert len(name_age_dict) > 0, "Expected at least one entry in the dictionary";
+    assert len(name_age_dict) > 0 , "Expected at least one entry in the dictionary";
 }
 
 # =============================================================================
 # Case: Recursive dictionary
 # =============================================================================
+def generate_student_data()  -> dict[
+    str,
+    dict[str, int]
+] by llm();
 
-def generate_student_data() -> dict[str, dict[str, int]] by llm();
-sem generate_student_data = """
+sem generate_student_data= """
 Returns a dictionary where each key is the class name and value is another
 dictionary, where the key is the student's name in that class and value is
 their average score.

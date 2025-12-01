@@ -48,4 +48,7 @@ def python_multiply(x, y):
 
 
 # 10. Test
-test basic_test { result = add(2, 3); assert result == 5; }
+test basic_test {
+    result = add(2, 3);
+    assert result == 5;
+}

@@ -60,15 +60,15 @@ walker combination2 {
     obj __specs__ {
         static has path: str = "/{a}",
             methods: list = [
-            "post",
-            "get",
-            "put",
-            "patch",
-            "delete",
-            "head",
-            "trace",
-            "options"
-        ],
+                "post",
+                "get",
+                "put",
+                "patch",
+                "delete",
+                "head",
+                "trace",
+                "options"
+            ],
             as_query: list = ["b"];
     }
 }

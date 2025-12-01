@@ -1,1 +1,3 @@
-test baddy { print(5 / 0); }
+test baddy {
+    print(5 / 0);
+}

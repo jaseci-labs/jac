@@ -146,7 +146,7 @@ obj MTIR {
     }
 
     """Return the messages in a format suitable for LLM API."""
-    def get_msg_list() -> list[dict[str, object] | LiteLLMMessage] {
+    def get_msg_list()  -> list[dict[str, object] | LiteLLMMessage] {
         return [
             msg.to_dict() if isinstance(msg, Message) else msg for msg in self.messages
         ];

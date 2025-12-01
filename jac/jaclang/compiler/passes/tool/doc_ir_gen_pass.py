@@ -896,20 +896,54 @@ class DocIRGenPass(UniPass):
     def exit_arch_has(self, node: uni.ArchHas) -> None:
         """Generate DocIR for architecture has declarations."""
         parts: list[doc.DocType] = []
+        # Build main parts and a separate indented section for vars after first
+        indent_parts: list[doc.DocType] = []
+        first_comma_seen = False
+        semi_doc: doc.DocType | None = None
         for i in node.kid:
             if i == node.doc:
                 parts.append(i.gen.doc_ir)
                 parts.append(self.hard_line())
             elif isinstance(i, uni.Token) and i.name == Tok.SEMI:
-                parts.pop()
-                parts.append(i.gen.doc_ir)
+                # Remove trailing space before SEMI
+                if indent_parts:
+                    indent_parts.pop()  # Remove trailing space from indent section
+                elif parts:
+                    parts.pop()  # Remove trailing space from main parts
+                # Save the SEMI for after we add the indent section
+                semi_doc = i.gen.doc_ir
             elif isinstance(i, uni.Token) and i.name == Tok.COMMA:
-                parts.pop()
-                parts.append(i.gen.doc_ir)
-                parts.append(self.indent(self.hard_line()))
+                if first_comma_seen:
+                    # Subsequent commas go in indent section
+                    indent_parts.pop()  # Remove trailing space
+                    indent_parts.append(i.gen.doc_ir)
+                    indent_parts.append(self.hard_line())
+                else:
+                    # First comma stays in main parts
+                    parts.pop()  # Remove trailing space
+                    parts.append(i.gen.doc_ir)
+                    first_comma_seen = True
+            elif isinstance(i, uni.HasVar):
+                if first_comma_seen:
+                    indent_parts.append(i.gen.doc_ir)
+                    indent_parts.append(self.space())
+                else:
+                    parts.append(i.gen.doc_ir)
+                    parts.append(self.space())
             else:
                 parts.append(i.gen.doc_ir)
                 parts.append(self.space())
+        # Add indented vars section with ast_node for comment injection
+        if indent_parts:
+            self.trim_trailing_line(indent_parts)
+            parts.append(
+                self.indent(
+                    self.concat([self.hard_line(), *indent_parts]), ast_node=node
+                )
+            )
+        # Add the SEMI at the end
+        if semi_doc:
+            parts.append(semi_doc)
         node.gen.doc_ir = self.group(self.concat(parts))
 
     def exit_while_stmt(self, node: uni.WhileStmt) -> None:
@@ -1452,6 +1486,9 @@ class DocIRGenPass(UniPass):
     def exit_test(self, node: uni.Test) -> None:
         """Generate DocIR for test nodes."""
         parts: list[doc.DocType] = []
+        body_parts: list[doc.DocType] = []
+        in_body = False
+        prev_body_item: uni.UniNode | None = None
         for i in node.kid:
             if i == node.doc:
                 parts.append(i.gen.doc_ir)
@@ -1460,6 +1497,23 @@ class DocIRGenPass(UniPass):
                 if not i.value.startswith("_jac_gen_"):
                     parts.append(i.gen.doc_ir)
                     parts.append(self.space())
+            elif isinstance(i, uni.Token) and i.name == Tok.LBRACE:
+                parts.append(i.gen.doc_ir)
+                body_parts.append(self.hard_line())
+                in_body = True
+            elif isinstance(i, uni.Token) and i.name == Tok.RBRACE:
+                in_body = False
+                self.trim_trailing_line(body_parts)
+                parts.append(self.indent(self.concat(body_parts), ast_node=node))
+                if len(body_parts) > 0:
+                    parts.append(self.hard_line())
+                else:
+                    parts.append(self.space())
+                parts.append(i.gen.doc_ir)
+                parts.append(self.space())
+            elif in_body:
+                self.add_body_stmt_with_spacing(body_parts, i, prev_body_item)
+                prev_body_item = i
             else:
                 parts.append(i.gen.doc_ir)
                 parts.append(self.space())

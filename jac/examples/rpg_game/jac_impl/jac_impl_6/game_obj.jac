@@ -21,17 +21,17 @@ obj Game {
         score: int = 0,
         deaths: int = 0,
         character_spritesheet: pygame.surface.Surface = Spritesheet(
-        '../img/character.png'
-    ),
+            '../img/character.png'
+        ),
         terrain_spritesheet: pygame.surface.Surface = Spritesheet('../img/terrain.png'),
         enemy_spritesheet: pygame.surface.Surface = Spritesheet('../img/enemy.png'),
         attack_spritesheet: pygame.surface.Surface = Spritesheet('../img/attack.png'),
         intro_background: pygame.surface.Surface = pygame.image.load(
-        '../img/introbackground.png'
-    ),
+            '../img/introbackground.png'
+        ),
         go_background: pygame.surface.Surface = pygame.image.load(
-        '../img/gameover.png'
-    ),
+            '../img/gameover.png'
+        ),
         GameMap: Map = Map();
 
     def postinit;

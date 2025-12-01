@@ -205,8 +205,8 @@ class CommentInjectionPass(Transform[uni.Module, uni.Module]):
                     comment_preview += "..."
                 self.log_error(
                     f"Comment could not be placed and would float to bottom: "
-                    f"{comment_preview!r} at line {info.first_line}",
-                    node_override=ir_in,
+                    f"{comment_preview!r}",
+                    node_override=info.token,
                 )
 
             # Still append comments to output (so they're not lost)
@@ -231,6 +231,8 @@ class CommentInjectionPass(Transform[uni.Module, uni.Module]):
                 return self._handle_module(ctx, node)
             if isinstance(ctx, (uni.MatchStmt, uni.SwitchStmt)):
                 return self._handle_match_stmt_comments(ctx, node)
+            if isinstance(ctx, uni.TryStmt):
+                return self._handle_try_stmt_comments(ctx, node)
 
             processed_parts = self._inject_into_parts(node.parts, ctx)
 
@@ -252,7 +254,14 @@ class CommentInjectionPass(Transform[uni.Module, uni.Module]):
 
         elif isinstance(node, doc.Indent):
             ctx = node.ast_node if node.ast_node else ctx
-            if node.ast_node and getattr(ctx, "body", None) is not None:
+            # Check for body, children, vars, or kv_pairs
+            has_body = node.ast_node and (
+                getattr(ctx, "body", None) is not None
+                or (isinstance(ctx, uni.JsxElement) and ctx.children)
+                or (isinstance(ctx, uni.ArchHas) and ctx.vars)
+                or (isinstance(ctx, uni.DictVal) and ctx.kv_pairs)
+            )
+            if has_body:
                 return self._handle_body_comments(ctx, node)
             return doc.Indent(self._process(ctx, node.contents), ast_node=ctx)
 
@@ -472,15 +481,115 @@ class CommentInjectionPass(Transform[uni.Module, uni.Module]):
 
         return doc.Concat(result, ast_node=match_node)
 
+    def _handle_try_stmt_comments(
+        self, try_node: uni.TryStmt, concat: doc.Concat
+    ) -> doc.Concat:
+        """Handle comment injection between parts of try/except/else/finally."""
+        if not self._comments:
+            return doc.Concat(
+                [self._process(try_node, part) for part in concat.parts],
+                ast_node=try_node,
+            )
+
+        # Collect all sub-parts: body end, excepts, else_body, finally_body
+        parts_with_loc: list[tuple[int, int, uni.UniNode | None]] = []
+
+        # Find the closing brace of the try body
+        try_body_end: int | None = None
+        for k in try_node.kid:
+            if isinstance(k, uni.Token) and k.name == Tok.RBRACE and k.loc:
+                try_body_end = k.loc.last_line
+                break
+
+        if try_body_end:
+            parts_with_loc.append((try_body_end, try_body_end, None))
+
+        # Add excepts
+        if try_node.excepts:
+            for exc in try_node.excepts:
+                if exc.loc:
+                    parts_with_loc.append((exc.loc.first_line, exc.loc.last_line, exc))
+
+        # Add else_body
+        if try_node.else_body and try_node.else_body.loc:
+            parts_with_loc.append(
+                (
+                    try_node.else_body.loc.first_line,
+                    try_node.else_body.loc.last_line,
+                    try_node.else_body,
+                )
+            )
+
+        # Add finally_body
+        if try_node.finally_body and try_node.finally_body.loc:
+            parts_with_loc.append(
+                (
+                    try_node.finally_body.loc.first_line,
+                    try_node.finally_body.loc.last_line,
+                    try_node.finally_body,
+                )
+            )
+
+        # Sort by start line
+        parts_with_loc.sort(key=lambda x: x[0])
+
+        result: list[doc.DocType] = []
+        part_idx = 0
+        prev_item_line: int | None = try_body_end
+
+        for part in concat.parts:
+            if isinstance(part, doc.Line):
+                result.append(part)
+                continue
+
+            # Get the line of this part
+            tokens = self._get_tokens(part)
+            part_line = min((t.loc.first_line for t in tokens if t.loc), default=None)
+
+            if part_line and part_idx < len(parts_with_loc):
+                start_line, end_line, node = parts_with_loc[part_idx]
+                if part_line >= start_line:
+                    # Inject comments before this part
+                    if prev_item_line is not None:
+                        comments = self._comments.take_standalone_between(
+                            prev_item_line + 1, start_line
+                        )
+                        if comments:
+                            prev_item_line = self._emit_standalone_comments(
+                                result,
+                                comments,
+                                prev_item_line=prev_item_line,
+                            )
+
+                    result.append(self._process(try_node, part))
+                    prev_item_line = end_line
+                    part_idx += 1
+                    continue
+
+            result.append(self._process(try_node, part))
+
+        return doc.Concat(result, ast_node=try_node)
+
     def _handle_body_comments(
         self, node: uni.UniNode, indent: doc.Indent
     ) -> doc.Indent:
         """Handle comment injection within bodies (functions, classes, etc)."""
-        if not hasattr(node, "body"):
-            return indent
-        body = node.body  # type: ignore[attr-defined]
-        if not isinstance(body, Sequence) or not isinstance(
-            indent.contents, doc.Concat
+        # Support 'body' (functions, classes), 'children' (JSX), 'vars' (ArchHas),
+        # and 'kv_pairs' (DictVal)
+        body: Sequence[uni.UniNode] | None = None
+        if hasattr(node, "body"):
+            body = node.body  # type: ignore[attr-defined]
+        elif isinstance(node, uni.JsxElement) and node.children:
+            body = node.children
+        elif isinstance(node, uni.ArchHas) and node.vars:
+            body = node.vars
+        elif isinstance(node, uni.DictVal) and node.kv_pairs:
+            body = node.kv_pairs
+
+        if (
+            body is None
+            or not isinstance(body, Sequence)
+            or not isinstance(indent.contents, doc.Concat)
         ):
             return indent
 
@@ -518,6 +627,55 @@ class CommentInjectionPass(Transform[uni.Module, uni.Module]):
             elif node.loc:
                 body_end = node.loc.last_line + 1
 
+        # For JSX elements that use JSX_TAG_END (>) and JSX_CLOSE_START (</) as delimiters
+        # JSX structure: kid[0]=opening tag (contains JSX_TAG_END), kid[-1]=closing tag
+        if body_start is None and isinstance(node, uni.JsxElement) and node.kid:
+            # Find JSX_TAG_END in the opening tag (first kid)
+            opening_tag = node.kid[0]
+            if isinstance(opening_tag, uni.JsxElement):
+                body_start = next(
+                    (
+                        k.loc.last_line + 1
+                        for k in opening_tag.kid
+                        if isinstance(k, uni.Token)
+                        and k.name == Tok.JSX_TAG_END
+                        and k.loc
+                    ),
+                    None,
+                )
+            # Find JSX_CLOSE_START in the closing tag (last kid)
+            closing_tag = node.kid[-1]
+            if isinstance(closing_tag, uni.JsxElement):
+                body_end = next(
+                    (
+                        k.loc.first_line
+                        for k in closing_tag.kid
+                        if isinstance(k, uni.Token)
+                        and k.name == Tok.JSX_CLOSE_START
+                        and k.loc
+                    ),
+                    None,
+                )
+
+        # For ArchHas, body starts after first COMMA and ends before SEMI
+        if body_start is None and isinstance(node, uni.ArchHas):
+            body_start = next(
+                (
+                    k.loc.last_line + 1
+                    for k in node.kid
+                    if isinstance(k, uni.Token) and k.name == Tok.COMMA and k.loc
+                ),
+                None,
+            )
+            body_end = next(
+                (
+                    k.loc.first_line
+                    for k in node.kid
+                    if isinstance(k, uni.Token) and k.name == Tok.SEMI and k.loc
+                ),
+                None,
+            )
+
         if body_start is None:
             return indent
 
@@ -549,7 +707,7 @@ class CommentInjectionPass(Transform[uni.Module, uni.Module]):
                     if part_line < body_item.loc.first_line:
                         break
 
-                    prev_item_line = (
+                    prev_item_line: int | None = (
                         body[body_idx - 1].loc.last_line
                         if body_idx > 0 and body[body_idx - 1].loc
                         else current_line - 1
