@@ -473,7 +473,7 @@ class DocIRGenPass(UniPass):
             else:
                 parts.append(i.gen.doc_ir)
                 parts.append(self.space())
-        node.gen.doc_ir = self.group(self.concat(parts))
+        node.gen.doc_ir = self.group(self.concat(parts, ast_node=node), ast_node=node)
 
     def exit_ability(self, node: uni.Ability) -> None:
         """Generate DocIR for abilities."""
@@ -515,7 +515,7 @@ class DocIRGenPass(UniPass):
             else:
                 parts.append(i.gen.doc_ir)
                 parts.append(self.space())
-        node.gen.doc_ir = self.group(self.concat(parts))
+        node.gen.doc_ir = self.group(self.concat(parts, ast_node=node), ast_node=node)
 
     def exit_func_signature(self, node: uni.FuncSignature) -> None:
         """Generate DocIR for function signatures."""
@@ -644,7 +644,7 @@ class DocIRGenPass(UniPass):
                 parts.append(self.space())
         parts.pop()
         body_parts.pop()
-        node.gen.doc_ir = self.group(self.concat(parts), ast_node=node)
+        node.gen.doc_ir = self.group(self.concat(parts, ast_node=node), ast_node=node)
 
     def exit_else_if(self, node: uni.ElseIf) -> None:
         """Generate DocIR for else if statements."""
@@ -665,7 +665,7 @@ class DocIRGenPass(UniPass):
                 parts.append(i.gen.doc_ir)
                 parts.append(self.space())
         body_parts.pop()
-        node.gen.doc_ir = self.group(self.concat(parts), ast_node=node)
+        node.gen.doc_ir = self.group(self.concat(parts, ast_node=node), ast_node=node)
 
     def exit_else_stmt(self, node: uni.ElseStmt) -> None:
         """Generate DocIR for else statements."""
@@ -686,7 +686,7 @@ class DocIRGenPass(UniPass):
                 parts.append(i.gen.doc_ir)
                 parts.append(self.space())
         body_parts.pop()
-        node.gen.doc_ir = self.group(self.concat(parts), ast_node=node)
+        node.gen.doc_ir = self.group(self.concat(parts, ast_node=node), ast_node=node)
 
     def exit_binary_expr(self, node: uni.BinaryExpr) -> None:
         """Generate DocIR for binary expressions."""
@@ -737,7 +737,8 @@ class DocIRGenPass(UniPass):
                                 self.tight_line(),
                                 self.group(self.concat([*indent_parts])),
                             ]
-                        )
+                        ),
+                        ast_node=node,
                     )
                 )
                 parts.append(self.tight_line())
@@ -752,11 +753,17 @@ class DocIRGenPass(UniPass):
                 parts.append(i.gen.doc_ir)
                 if isinstance(i, uni.Token) and i.name == Tok.KW_BY:
                     parts.append(self.space())
-        node.gen.doc_ir = self.group(self.concat(parts))
+        node.gen.doc_ir = self.group(self.concat(parts, ast_node=node), ast_node=node)
 
     def exit_atom_trailer(self, node: uni.AtomTrailer) -> None:
         """Generate DocIR for atom trailers."""
-        self._assign_group_concat(node)
+        parts: list[doc.DocType] = []
+        for i in node.kid:
+            parts.append(i.gen.doc_ir)
+            # Add space after 'by' keyword
+            if isinstance(i, uni.Token) and i.name == Tok.KW_BY:
+                parts.append(self.space())
+        node.gen.doc_ir = self.group(self.concat(parts))
 
     def exit_list_val(self, node: uni.ListVal) -> None:
         """Generate DocIR for list values."""
@@ -767,7 +774,7 @@ class DocIRGenPass(UniPass):
                 parts.append(self.space())
             else:
                 parts.append(i.gen.doc_ir)
-        not_broke = self.concat(parts)
+        not_broke = self.concat(parts, ast_node=node)
 
         parts = []
         for i in node.kid:
@@ -782,16 +789,20 @@ class DocIRGenPass(UniPass):
             broke = self.concat(
                 [
                     parts[0],
-                    self.indent(self.concat([self.hard_line(), *parts[1:-1]])),
+                    self.indent(
+                        self.concat([self.hard_line(), *parts[1:-1]], ast_node=node),
+                        ast_node=node,
+                    ),
                     self.hard_line(),
                     parts[-1],
-                ]
+                ],
+                ast_node=node,
             )
         else:
             # Fallback for single-item or empty lists
-            broke = self.concat(parts)
+            broke = self.concat(parts, ast_node=node)
 
-        node.gen.doc_ir = self.group(self.if_break(broke, not_broke))
+        node.gen.doc_ir = self.group(self.if_break(broke, not_broke), ast_node=node)
 
     def exit_dict_val(self, node: uni.DictVal) -> None:
         """Generate DocIR for dictionary values."""
@@ -944,7 +955,7 @@ class DocIRGenPass(UniPass):
         # Add the SEMI at the end
         if semi_doc:
             parts.append(semi_doc)
-        node.gen.doc_ir = self.group(self.concat(parts))
+        node.gen.doc_ir = self.group(self.concat(parts, ast_node=node), ast_node=node)
 
     def exit_while_stmt(self, node: uni.WhileStmt) -> None:
         """Generate DocIR for while statements."""
@@ -1758,7 +1769,7 @@ class DocIRGenPass(UniPass):
                 if in_body and isinstance(node.body, Sequence) and i == node.body[-1]:
                     in_body = False
                     body_parts.pop()
-                    parts.append(self.indent(self.concat(body_parts)))
+                    parts.append(self.indent(self.concat(body_parts), ast_node=node))
                     parts.append(self.hard_line())
             elif isinstance(i, uni.Token) and i.name == Tok.SEMI:
                 parts.pop()
@@ -1767,7 +1778,7 @@ class DocIRGenPass(UniPass):
             else:
                 parts.append(i.gen.doc_ir)
                 parts.append(self.space())
-        node.gen.doc_ir = self.group(self.concat(parts))
+        node.gen.doc_ir = self.group(self.concat(parts, ast_node=node), ast_node=node)
 
     def exit_sem_def(self, node: uni.SemDef) -> None:
         """Generate DocIR for semantic definitions."""

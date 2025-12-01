@@ -36,7 +36,7 @@ class Alert:
 
     def __str__(self) -> str:
         """Return string representation of alert."""
-        return f" {self.loc.mod_path}, line {self.loc.first_line}, col {self.loc.col_start}: {self.msg}"
+        return f"{self.loc.mod_path}, line {self.loc.first_line}, col {self.loc.col_start}: {self.msg}"
 
     def __repr__(self) -> str:
         """Return string representation of alert."""
