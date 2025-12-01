@@ -3305,9 +3305,10 @@ class BinaryExpr(Expr):
         self.set_kids(nodes=new_kid)
         return res
 
+
 class ByExpr(BinaryExpr):
     """ByExpr node type for Jac Ast (by operator)."""
-    
+
     pass
 
 

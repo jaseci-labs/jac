@@ -2326,7 +2326,7 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
                 f"Binary operator {node.op.value} not supported in bootstrap Jac"
             )
         return []
-    
+
     def exit_by_expr(self, node: uni.ByExpr) -> None:
         """Handle by operator expression."""
         node.gen.py_ast = [
