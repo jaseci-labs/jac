@@ -158,7 +158,7 @@ try:
 
     else:
         run(temp_jac_path)
-        print("Execution complete.")
+
 except SystemExit:
     # The Jac compiler may call SystemExit on fatal errors (e.g., syntax errors).
     # Detailed error reports are already emitted to stderr by the parser,
