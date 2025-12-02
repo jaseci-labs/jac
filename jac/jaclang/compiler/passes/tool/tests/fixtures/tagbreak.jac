@@ -472,6 +472,9 @@ def test_match_comments(x: int) {
             print("other");
 
     }
+    return
+    # All lines and columns are 1-Based
+    True;
 }
 
 def generate_greeting_code(name: str) -> str by models["code-gen"];

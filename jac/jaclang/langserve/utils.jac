@@ -119,7 +119,7 @@ def position_within_node(n: uni.UniNode, line: int, character: int) -> bool {
     }
     return
     # All lines and columns are 1-Based
-     True;
+    True;
 }
 
 """Find index."""
