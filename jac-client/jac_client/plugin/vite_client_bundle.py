@@ -501,7 +501,7 @@ root.render(<App />);
         return None
 
     def cleanup_temp_dir(self) -> None:
-        """Clean up the src directory and its contents."""
+        """Clean up the compiled directory and its contents."""
         if not self.vite_package_json or not self.vite_package_json.exists():
             return
 
