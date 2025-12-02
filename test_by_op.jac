@@ -41,14 +41,20 @@ with entry {
     x = "input" by "output";
     print("Test 5:", x);
 
+    # Test 6: By with LLM function
     result5 = say_hello("Alice");
     print("Test 6:", result5);
 
+    # Test 7: Using walker with by operator
     greet(name="Bob") spawn root;
 
     print("By operator test file compiled and executed successfully!");
 
+
     for i = 0 to i < 5 by i += 1 {
         print(i);
     }
+
+    aaaa = 2 + 3 /2 * 5 - 1 by 5 + 6 / 12 * 24 - 3 in [2,4,6,8, 14];
+    print(aaaa);
 }
