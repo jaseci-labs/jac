@@ -385,7 +385,7 @@ def check(paths: list, print_errs: bool = True) -> None:
     print(
         f"Checked {total_files - failed_files}/{total_files} '.jac' files "
         f"({total_errors} errors, {total_warnings} warnings).",
-        file=sys.stderr,
+        file=sys.stderr if total_errors else sys.stdout,
     )
 
     if failed_files > 0 or total_errors > 0:
