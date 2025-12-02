@@ -124,8 +124,8 @@ export default defineConfig({
     output_dir = temp_path / "dist"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    src_dir = temp_path / "src"
-    src_dir.mkdir(parents=True, exist_ok=True)
+    compiled_dir = temp_path / "compiled"
+    compiled_dir.mkdir(parents=True, exist_ok=True)
 
     build_dir = temp_path / "build"
     build_dir.mkdir(parents=True, exist_ok=True)
@@ -218,19 +218,19 @@ def test_nested_folder_structure_preserved() -> None:
         # Verify bundle was created
         assert bundle is not None
 
-        src_dir = temp_path / "src"
+        compiled_dir = temp_path / "compiled"
 
         # Verify root level file exists
-        app_js = src_dir / "app.js"
-        assert app_js.exists(), f"Expected {app_js} to exist in src/ directory"
+        app_js = compiled_dir / "app.js"
+        assert app_js.exists(), f"Expected {app_js} to exist in compiled/ directory"
 
-        button_root_js = src_dir / "ButtonRoot.js"
+        button_root_js = compiled_dir / "ButtonRoot.js"
         assert button_root_js.exists(), (
-            f"Expected {button_root_js} to exist in src/ directory"
+            f"Expected {button_root_js} to exist in compiled/ directory"
         )
 
         # Verify level1 files exist
-        level1_dir = src_dir / "level1"
+        level1_dir = compiled_dir / "level1"
         assert level1_dir.exists(), f"Expected {level1_dir} directory to exist"
 
         button_second_js = level1_dir / "ButtonSecondL.js"
@@ -285,10 +285,10 @@ def test_relative_imports_in_compiled_files() -> None:
         # Verify bundle was created
         assert bundle is not None
 
-        src_dir = temp_path / "src"
+        compiled_dir = temp_path / "compiled"
 
         # Check that app.js imports from level1
-        app_js_content = (src_dir / "app.js").read_text(encoding="utf-8")
+        app_js_content = (compiled_dir / "app.js").read_text(encoding="utf-8")
         assert "level1/ButtonSecondL" in app_js_content, (
             "Expected app.js to import from level1/ButtonSecondL"
         )
@@ -297,7 +297,7 @@ def test_relative_imports_in_compiled_files() -> None:
         )
 
         # Check that ButtonSecondL.js imports from root (using ..)
-        button_second_content = (src_dir / "level1" / "ButtonSecondL.js").read_text(
+        button_second_content = (compiled_dir / "level1" / "ButtonSecondL.js").read_text(
             encoding="utf-8"
         )
         assert "../ButtonRoot" in button_second_content, (
@@ -305,7 +305,7 @@ def test_relative_imports_in_compiled_files() -> None:
         )
 
         # Check that Card.js imports from both root and level2
-        card_content = (src_dir / "level1" / "Card.js").read_text(encoding="utf-8")
+        card_content = (compiled_dir / "level1" / "Card.js").read_text(encoding="utf-8")
         assert "../ButtonRoot" in card_content, (
             "Expected Card.js to import from ../ButtonRoot (above)"
         )
@@ -315,7 +315,7 @@ def test_relative_imports_in_compiled_files() -> None:
 
         # Check that ButtonThirdL.js imports from root and second level
         button_third_content = (
-            src_dir / "level1" / "level2" / "ButtonThirdL.js"
+            compiled_dir / "level1" / "level2" / "ButtonThirdL.js"
         ).read_text(encoding="utf-8")
         assert "../../ButtonRoot" in button_third_content, (
             "Expected ButtonThirdL.js to import from ../../ButtonRoot"
@@ -361,11 +361,11 @@ def test_nested_basic_example() -> None:
         assert bundle.module_name == "app"
         assert "app" in bundle.client_functions
 
-        src_dir = temp_path / "src"
+        compiled_dir = temp_path / "compiled"
 
         # Verify nested structure is preserved
-        components_dir = src_dir / "components"
-        assert components_dir.exists(), "Expected components directory to exist in src/"
+        components_dir = compiled_dir / "components"
+        assert components_dir.exists(), "Expected components directory to exist in compiled/"
 
         button_js = components_dir / "button.js"
         assert button_js.exists(), "Expected button.js to exist in src/components/"

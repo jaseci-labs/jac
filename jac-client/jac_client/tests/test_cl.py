@@ -133,8 +133,8 @@ export default defineConfig({
     output_dir = temp_path / "dist"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    src_dir = temp_path / "src"
-    src_dir.mkdir(parents=True, exist_ok=True)
+    compiled_dir = temp_path / "compiled"
+    compiled_dir.mkdir(parents=True, exist_ok=True)
 
     build_dir = temp_path / "build"
     build_dir.mkdir(parents=True, exist_ok=True)
