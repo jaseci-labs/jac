@@ -297,9 +297,9 @@ def test_relative_imports_in_compiled_files() -> None:
         )
 
         # Check that ButtonSecondL.js imports from root (using ..)
-        button_second_content = (compiled_dir / "level1" / "ButtonSecondL.js").read_text(
-            encoding="utf-8"
-        )
+        button_second_content = (
+            compiled_dir / "level1" / "ButtonSecondL.js"
+        ).read_text(encoding="utf-8")
         assert "../ButtonRoot" in button_second_content, (
             "Expected ButtonSecondL.js to import from ../ButtonRoot"
         )
@@ -365,7 +365,9 @@ def test_nested_basic_example() -> None:
 
         # Verify nested structure is preserved
         components_dir = compiled_dir / "components"
-        assert components_dir.exists(), "Expected components directory to exist in compiled/"
+        assert components_dir.exists(), (
+            "Expected components directory to exist in compiled/"
+        )
 
         button_js = components_dir / "button.js"
         assert button_js.exists(), "Expected button.js to exist in src/components/"
