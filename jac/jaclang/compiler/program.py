@@ -40,13 +40,19 @@ from jaclang.settings import settings
 if TYPE_CHECKING:
     from jaclang.compiler.type_system.type_evaluator import TypeEvaluator
 
-ir_gen_sched: list[type[Transform[uni.Module, uni.Module]]] = [
+
+symtab_ir_sched: list[type[Transform[uni.Module, uni.Module]]] = [
     SymTabBuildPass,
     DeclImplMatchPass,
+]
+
+ir_gen_sched: list[type[Transform[uni.Module, uni.Module]]] = [
+    *symtab_ir_sched,
     SemanticAnalysisPass,
     SemDefMatchPass,
     CFGBuildPass,
 ]
+
 type_check_sched: list[type[Transform[uni.Module, uni.Module]]] = [
     TypeCheckPass,
 ]
@@ -148,8 +154,10 @@ class JacProgram:
         keep_str = use_str or read_file_with_encoding(file_path)
         mod_targ = self.parse_str(keep_str, file_path, cancel_token=cancel_token)
         if symtab_ir_only:
-            # For imported modules, only build symbol table (skip other IR passes)
-            SymTabBuildPass(ir_in=mod_targ, prog=self, cancel_token=cancel_token)
+            # only build symbol table and match decl/impl (skip semantic analysis and CFG)
+            self.run_schedule(
+                mod=mod_targ, passes=symtab_ir_sched, cancel_token=cancel_token
+            )
         else:
             self.run_schedule(
                 mod=mod_targ, passes=ir_gen_sched, cancel_token=cancel_token

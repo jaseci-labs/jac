@@ -287,8 +287,7 @@ class TypeEvaluator {
         if path in self.program.mod.hub {
             mod = self.program.mod.hub[path];
         } else {
-            # Use minimal_ir=True for imported modules - only need symbol table,
-            # not full IR passes (DeclImplMatchPass, SemanticAnalysisPass, etc.)
+            # Use symtab_ir_only=True to skip semantic analysis and CFG passes.
             mod = self.program.compile(
                 path, no_cgen=True, type_check=False, symtab_ir_only=True
             );
