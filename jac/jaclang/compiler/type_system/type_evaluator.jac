@@ -119,6 +119,8 @@ class TypeEvaluator {
         self.prefetch: PrefetchedTypes = PrefetchedTypes();
         self.diagnostic_callback: DiagnosticCallback | None = None;
         self.builtins_module: uni.Module | None = None;
+        # Cache for module types by resolved path to avoid redundant lookups.
+        self._module_type_cache: dict[str, types.ModuleType] = {};
 
         # NOTE: The initialization order here is important.
         self.typing_module = self._load_stub_module(
@@ -308,8 +310,17 @@ class TypeEvaluator {
             if node_.path[-1].type {
                 return node_.path[-1].type;
             }
+            # Compute path list once before the loop.
+            path_list = node_.resolve_relative_path_list();
             for (idx, npath) in enumerate(node_.path) {
-                mod_path = node_.resolve_relative_path_list()[idx];
+                mod_path = path_list[idx];
+
+                # Check module type cache first.
+                if mod_path in self._module_type_cache {
+                    npath.type = self._module_type_cache[mod_path];
+                    npath._sym_category = SymbolType.MODULE;
+                    continue;
+                }
 
                 # If the path doesn't exist, return unknown type.
                 # eg: import from ..mod { item }  # <-- Here ..mod might not exist.
@@ -328,6 +339,8 @@ class TypeEvaluator {
                 );
                 npath.type = mod_type;
                 npath._sym_category = SymbolType.MODULE;
+                # Cache the module type for future lookups.
+                self._module_type_cache[mod_path] = mod_type;
             }
             if node_.alias {
                 node_.alias.type = node_.path[-1].type;
