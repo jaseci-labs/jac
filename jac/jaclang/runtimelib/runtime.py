@@ -1592,14 +1592,15 @@ class JacByLLM:
 
     @staticmethod
     def by_operator(left: Any, right: Any) -> Any:  # noqa: ANN401
-        """Jac's by operator feature for LLM delegation.
+        """by operator feature for expression composition.
 
-        Currently returns the right operand as a placeholder.
-        This will be enhanced to work with the byllm system for actual LLM delegation.
+        Currently not implemented - raises NotImplementedError.
+        The exact execution behavior is not yet defined.
         """
-        # TODO: Integrate with byllm for actual LLM-driven delegation
-        print("by operator called with left:", left, "right:", right)
-        return right
+        raise NotImplementedError(
+            "The 'by' operator is not yet implemented. "
+            "This feature is reserved for future use."
+        )
 
 
 class JacUtils:

@@ -1534,3 +1534,13 @@ def test_escaped_quote_strings(fixture_path, capture_stdout):
     assert 'She said "Don\'t forget the \\backslash\\"' in stdout_value
     assert "Line 1\nLine 2\tTabbed" in stdout_value
     assert "Path: C:\\Users\\Documents\\file.txt" in stdout_value
+
+
+def test_by_operator(fixture_path):
+    """Test 'by' operator raises NotImplementedError."""
+    with pytest.raises(NotImplementedError) as exc_info:
+        Jac.jac_import("by_operator", base_path=fixture_path("./"))
+
+    assert "by" in str(exc_info.value).lower()
+    assert "not" in str(exc_info.value).lower()
+    assert "implemented" in str(exc_info.value).lower()
