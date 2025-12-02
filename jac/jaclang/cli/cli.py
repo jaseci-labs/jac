@@ -382,13 +382,11 @@ def check(paths: list, print_errs: bool = True) -> None:
         print(f"Error: '{path}' is not a .jac file or directory.", file=sys.stderr)
         failed_files += 1
 
-    # Print summary for directory processing or when there are issues
-    if (len(paths) == 1 and Path(paths[0]).is_dir()) or failed_files > 0:
-        print(
-            f"Checked {total_files - failed_files}/{total_files} '.jac' files "
-            f"({total_errors} errors, {total_warnings} warnings).",
-            file=sys.stderr,
-        )
+    print(
+        f"Checked {total_files - failed_files}/{total_files} '.jac' files "
+        f"({total_errors} errors, {total_warnings} warnings).",
+        file=sys.stderr,
+    )
 
     if failed_files > 0 or total_errors > 0:
         exit(1)
