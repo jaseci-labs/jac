@@ -50,7 +50,7 @@ def _create_test_project_with_vite(
             "build": "npm run compile && vite build",
             "dev": "vite dev",
             "preview": "vite preview",
-            "compile": 'babel src --out-dir build --extensions ".jsx,.js" --out-file-extension .js',
+            "compile": 'babel compiled --out-dir build --extensions ".jsx,.js" --out-file-extension .js',
         },
         "dependencies": dependencies,
         "devDependencies": {

@@ -36,7 +36,7 @@ def _create_test_project_with_vite(temp_path: Path) -> tuple[Path, Path]:
             "build": "npm run compile && vite build",
             "dev": "vite dev",
             "preview": "vite preview",
-            "compile": 'babel src --out-dir build --extensions ".jsx,.js" --out-file-extension .js',
+            "compile": 'babel compiled --out-dir build --extensions ".jsx,.js" --out-file-extension .js',
         },
         "dependencies": {
             "react": "^19.2.0",
