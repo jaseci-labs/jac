@@ -152,7 +152,9 @@ class ViteClientBundleBuilder(ClientBundleBuilder):
             except ValueError:
                 # If file is outside source_root, fall back to just filename
                 output_path = (
-                    self.vite_package_json.parent / "compiled" / f"{module_path.stem}.js"
+                    self.vite_package_json.parent
+                    / "compiled"
+                    / f"{module_path.stem}.js"
                 )
 
             # Ensure parent directories exist
@@ -184,12 +186,16 @@ class ViteClientBundleBuilder(ClientBundleBuilder):
                         try:
                             relative_path = path_obj.relative_to(source_root)
                             output_path = (
-                                self.vite_package_json.parent / "compiled" / relative_path
+                                self.vite_package_json.parent
+                                / "compiled"
+                                / relative_path
                             )
                         except ValueError:
                             # If file is outside source_root, fall back to just filename
                             output_path = (
-                                self.vite_package_json.parent / "compiled" / path_obj.name
+                                self.vite_package_json.parent
+                                / "compiled"
+                                / path_obj.name
                             )
 
                         # Ensure parent directories exist
