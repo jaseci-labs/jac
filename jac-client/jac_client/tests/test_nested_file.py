@@ -239,7 +239,9 @@ def test_nested_folder_structure_preserved() -> None:
         )
 
         card_js = level1_dir / "Card.js"
-        assert card_js.exists(), f"Expected {card_js} to exist in compiled/level1/ directory"
+        assert card_js.exists(), (
+            f"Expected {card_js} to exist in compiled/level1/ directory"
+        )
 
         # Verify level2 files exist
         level2_dir = level1_dir / "level2"
