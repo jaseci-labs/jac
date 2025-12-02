@@ -259,7 +259,11 @@ class ViteClientBundleBuilder(ClientBundleBuilder):
         )
 
         combined_runtime_utils_js = f"{runtimeutils_js}\n{export_block}"
-        (self.vite_package_json.parent / "src" / "client_runtime.js").write_text(
+        # Ensure src directory exists before writing
+        project_dir = self.vite_package_json.parent
+        src_dir = project_dir / "src"
+        src_dir.mkdir(parents=True, exist_ok=True)
+        (src_dir / "client_runtime.js").write_text(
             combined_runtime_utils_js, encoding="utf-8"
         )
 
