@@ -147,4 +147,3 @@ class AssetProcessor:
 
         # Copy files from src_dir root and recursively from subdirectories
         copy_recursive(src_dir, dest_dir)
-

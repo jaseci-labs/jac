@@ -15,7 +15,7 @@ from .jac_to_js import JacToJSCompiler
 from .vite_bundler import ViteBundler
 
 if TYPE_CHECKING:
-    from jaclang.compiler.codeinfo import ClientManifest
+    pass
 
 
 class ViteCompiler:
@@ -71,9 +71,7 @@ class ViteCompiler:
         self.import_processor = ImportProcessor()
         self.asset_processor = AssetProcessor()
         self.babel_processor = BabelProcessor(self.project_dir)
-        self.vite_bundler = ViteBundler(
-            self.project_dir, vite_output_dir, vite_minify
-        )
+        self.vite_bundler = ViteBundler(self.project_dir, vite_output_dir, vite_minify)
 
     def compile_runtime_utils(self) -> tuple[str, list[str]]:
         """Compile client runtime utilities.
@@ -341,4 +339,3 @@ root.render(<App />);
         client_globals = list(collected_globals.keys())
 
         return bundle_code, bundle_hash, client_exports, client_globals
-

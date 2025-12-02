@@ -66,4 +66,3 @@ class ImportProcessor:
             True if the import should be processed, False if left for Vite
         """
         return import_path.suffix in {".jac", ".js"}
-

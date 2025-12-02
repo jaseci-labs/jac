@@ -62,11 +62,11 @@ def _candidate_from(base: str, parts: list[str]) -> tuple[str, str] | None:
 def resolve_module(target: str, base_path: str) -> tuple[str, str]:
     """Resolve module path and infer language."""
     base_dir = os.path.dirname(base_path)
-    
+
     # Handle file extensions in the target (e.g., .components.Button.tsx)
     # Known file extensions that might be split incorrectly
     file_extensions = ("tsx", "ts", "jsx", "js", "jac", "py")
-    
+
     if target.startswith("."):
         # For relative imports, try converting dots to path separators
         # e.g., .components.Button.tsx -> components/Button.tsx
@@ -89,7 +89,14 @@ def resolve_module(target: str, base_path: str) -> tuple[str, str]:
             if os.path.exists(other_target) and os.path.isfile(other_target):
                 # Determine language from extension
                 ext = os.path.splitext(other_target)[1]
-                lang_map = {".tsx": "tsx", ".ts": "ts", ".jsx": "jsx", ".js": "js", ".jac": "jac", ".py": "py"}
+                lang_map = {
+                    ".tsx": "tsx",
+                    ".ts": "ts",
+                    ".jsx": "jsx",
+                    ".js": "js",
+                    ".jac": "jac",
+                    ".py": "py",
+                }
                 return other_target, lang_map.get(ext, "other")
         else:
             other_target = os.path.join(base_dir, target.lstrip("."))
@@ -105,7 +112,7 @@ def resolve_module(target: str, base_path: str) -> tuple[str, str]:
     while level < len(parts) and parts[level] == "":
         level += 1
     actual_parts = parts[level:]
-    
+
     # If the target has a file extension, combine filename and extension
     if actual_parts and len(actual_parts) >= 2 and actual_parts[-1] in file_extensions:
         # Last part is extension (e.g., "tsx"), second-to-last is filename (e.g., "Button")

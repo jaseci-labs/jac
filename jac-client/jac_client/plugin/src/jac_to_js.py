@@ -89,4 +89,3 @@ class JacToJSCompiler:
         """
         jac_jsx_import = 'import {__jacJsx, __jacSpawn} from "@jac-client/utils";'
         return f"{jac_jsx_import}\n{js_code}"
-

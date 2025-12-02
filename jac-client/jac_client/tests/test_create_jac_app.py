@@ -31,8 +31,7 @@ def test_create_jac_app() -> None:
             # Check that command succeeded
             assert result_code == 0
             assert (
-                f"Successfully created Jac application '{test_project_name}'!"
-                in stdout
+                f"Successfully created Jac application '{test_project_name}'!" in stdout
             )
 
             # Verify project directory was created
@@ -103,7 +102,10 @@ def test_create_jac_app() -> None:
             with open(vite_config_path) as f:
                 vite_config_content = f.read()
             assert "@vitejs/plugin-react" not in vite_config_content
-            assert 'extensions: [".mjs", ".js", ".mts", ".ts", ".jsx", ".tsx", ".json"]' not in vite_config_content
+            assert (
+                'extensions: [".mjs", ".js", ".mts", ".ts", ".jsx", ".tsx", ".json"]'
+                not in vite_config_content
+            )
 
             # Verify package.json does NOT have TypeScript dependencies
             assert "typescript" not in package_data["devDependencies"]
@@ -197,8 +199,7 @@ def test_create_jac_app_with_typescript() -> None:
             # Check that command succeeded
             assert result_code == 0
             assert (
-                f"Successfully created Jac application '{test_project_name}'!"
-                in stdout
+                f"Successfully created Jac application '{test_project_name}'!" in stdout
             )
 
             # Verify project directory was created
@@ -216,7 +217,7 @@ def test_create_jac_app_with_typescript() -> None:
             assert package_data["name"] == test_project_name
             assert package_data["type"] == "module"
             assert "vite" in package_data["devDependencies"]
-            
+
             # Verify TypeScript dependencies are present
             assert "typescript" in package_data["devDependencies"]
             assert "@types/react" in package_data["devDependencies"]
@@ -256,8 +257,11 @@ def test_create_jac_app_with_typescript() -> None:
 
             assert "import react from" in vite_config_content
             assert "@vitejs/plugin-react" in vite_config_content
-            assert 'plugins: [react()]' in vite_config_content
-            assert 'extensions: [".mjs", ".js", ".mts", ".ts", ".jsx", ".tsx", ".json"]' in vite_config_content
+            assert "plugins: [react()]" in vite_config_content
+            assert (
+                'extensions: [".mjs", ".js", ".mts", ".ts", ".jsx", ".tsx", ".json"]'
+                in vite_config_content
+            )
 
             # Verify app.jac includes TypeScript import
             app_jac_path = os.path.join(project_path, "app.jac")
@@ -266,7 +270,9 @@ def test_create_jac_app_with_typescript() -> None:
             with open(app_jac_path) as f:
                 app_jac_content = f.read()
 
-            assert 'cl import from ".components.Button.tsx" { Button }' in app_jac_content
+            assert (
+                'cl import from ".components.Button.tsx" { Button }' in app_jac_content
+            )
             assert "<Button" in app_jac_content
 
             # Verify README.md includes TypeScript information
