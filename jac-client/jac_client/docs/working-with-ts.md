@@ -1,6 +1,17 @@
 # Working with TypeScript in Jac
 
-This guide explains how to configure and use TypeScript components in your Jac applications.
+> **⚠️ Warning: TypeScript as Last Resort**
+> 
+> **Always prefer writing code in Jac when possible.** TypeScript support is provided for cases where you need to:
+> - Integrate existing TypeScript/React component libraries
+> - Reuse complex TypeScript components from other projects
+> - Work with teams that require TypeScript for specific components
+> 
+> For new development, Jac provides all the features you need with better integration and simpler syntax. Only use TypeScript when absolutely necessary.
+
+---
+
+This guide explains how to configure and use TypeScript components in your Jac applications when needed.
 
 ## Overview
 
