@@ -394,9 +394,10 @@ def check(paths: list, print_errs: bool = True) -> None:
         print(f"Error: '{path}' is not a .jac file or directory.", file=sys.stderr)
         failed_files += 1
 
+    passed_files = total_files - failed_files
     print(
-        f"Checked {total_files - failed_files}/{total_files} '.jac' files "
-        f"({total_errors} errors, {total_warnings} warnings).",
+        f"Checked {total_files} '.jac' files: {passed_files} passed, "
+        f"{failed_files} with errors ({total_errors} errors, {total_warnings} warnings).",
         file=sys.stderr if total_errors else sys.stdout,
     )
 
