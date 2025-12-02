@@ -323,24 +323,31 @@ def check(paths: list, print_errs: bool = True) -> None:
     if isinstance(paths, str):
         paths = [paths]
 
-    def check_single_file(file_path: str, print_errs: bool) -> tuple[bool, int, int]:
+    def check_single_file(
+        prog: JacProgram, file_path: str, print_errs: bool
+    ) -> tuple[bool, int, int]:
         """Check a single .jac file. Returns (success, errors, warnings)."""
         path_obj = Path(file_path)
         if not path_obj.exists():
             print(f"Error: File '{file_path}' does not exist.", file=sys.stderr)
             return False, 0, 0
         try:
-            (prog := JacProgram()).compile(
-                file_path=file_path, type_check=True, no_cgen=True
-            )
+            # Track error/warning counts before compilation
+            err_start = len(prog.errors_had)
+            warn_start = len(prog.warnings_had)
 
-            errs = len(prog.errors_had)
-            warnings = len(prog.warnings_had)
+            prog.compile(file_path=file_path, type_check=True, no_cgen=True)
+
+            # Get new errors/warnings from this file
+            new_errors = prog.errors_had[err_start:]
+            new_warnings = prog.warnings_had[warn_start:]
+            errs = len(new_errors)
+            warnings = len(new_warnings)
 
             if print_errs:
-                for e in prog.errors_had:
+                for e in new_errors:
                     print(f"Error: {e}", file=sys.stderr)
-                for w in prog.warnings_had:
+                for w in new_warnings:
                     print(f"Warning: {w}", file=sys.stderr)
 
             return errs == 0, errs, warnings
@@ -353,13 +360,16 @@ def check(paths: list, print_errs: bool = True) -> None:
     total_errors = 0
     total_warnings = 0
 
+    # Share a single JacProgram across all files to reuse TypeEvaluator and stubs
+    prog = JacProgram()
+
     for path in paths:
         path_obj = Path(path)
 
         # Case 1: Single .jac file
         if path.endswith(".jac"):
             total_files += 1
-            success, errs, warns = check_single_file(path, print_errs)
+            success, errs, warns = check_single_file(prog, path, print_errs)
             total_errors += errs
             total_warnings += warns
             if not success:
@@ -371,7 +381,9 @@ def check(paths: list, print_errs: bool = True) -> None:
             jac_files = list(path_obj.glob("**/*.jac"))
             for jac_file in jac_files:
                 total_files += 1
-                success, errs, warns = check_single_file(str(jac_file), print_errs)
+                success, errs, warns = check_single_file(
+                    prog, str(jac_file), print_errs
+                )
                 total_errors += errs
                 total_warnings += warns
                 if not success:
