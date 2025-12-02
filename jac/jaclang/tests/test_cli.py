@@ -321,7 +321,7 @@ def test_del_clean(fixture_path, capture_stdout) -> None:
         cli.check(f"{fixture_path('del_clean.jac')}")
 
     stdout_value = output.getvalue()
-    assert "Errors: 0, Warnings: 0" in stdout_value
+    assert "0 errors, 0 warnings" in stdout_value
 
 
 def test_build_and_run(fixture_path, capture_stdout) -> None:
