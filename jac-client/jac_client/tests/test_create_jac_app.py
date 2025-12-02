@@ -70,6 +70,19 @@ def test_create_jac_app() -> None:
             assert f"# {test_project_name}" in readme_content
             assert "jac serve app.jac" in readme_content
 
+            # Verify .gitignore was created with correct content
+            gitignore_path = os.path.join(project_path, ".gitignore")
+            assert os.path.exists(gitignore_path)
+
+            with open(gitignore_path) as f:
+                gitignore_content = f.read()
+
+            assert "node_modules" in gitignore_content
+            assert "app.session.bak" in gitignore_content
+            assert "app.session.dat" in gitignore_content
+            assert "app.session.dir" in gitignore_content
+            assert "app.session.users.json" in gitignore_content
+
             # Verify node_modules was created (npm install ran)
             node_modules_path = os.path.join(project_path, "node_modules")
             assert os.path.exists(node_modules_path)

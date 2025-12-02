@@ -221,6 +221,16 @@ Happy coding with Jac!
                 with open(os.path.join(project_path, "README.md"), "w") as f:
                     f.write(readme_content)
 
+                # Create .gitignore file
+                gitignore_content = """node_modules
+app.session.bak
+app.session.dat
+app.session.dir
+app.session.users.json
+"""
+                with open(os.path.join(project_path, ".gitignore"), "w") as f:
+                    f.write(gitignore_content)
+
                 # Return to original directory
                 os.chdir(original_cwd)
 
