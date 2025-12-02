@@ -4,11 +4,11 @@ Jac preserves folder structure during compilation, similar to TypeScript transpi
 
 ## Folder Structure Preservation
 
-When Jac compiles your files, it preserves the folder structure in the `src/` directory:
+When Jac compiles your files, it preserves the folder structure in the `compiled/` directory:
 
 ```
 Source Structure:              Compiled Structure:
-my-app/                        src/
+my-app/                        compiled/
 ├── app.jac        →          ├── app.js
 ├── ButtonRoot.jac  →          ├── ButtonRoot.js
 └── level1/                    └── level1/
