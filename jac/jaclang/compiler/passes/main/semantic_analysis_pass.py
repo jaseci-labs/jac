@@ -1,6 +1,7 @@
 """Jac Semantic Analysis Pass."""
 
 import ast as ast3
+from collections.abc import Sequence
 
 import jaclang.compiler.unitree as uni
 from jaclang.compiler.constant import Tokens as Tok
@@ -11,7 +12,6 @@ class SemanticAnalysisPass(UniPass):
     """Jac Semantic Analysis Pass."""
 
     def enter_archetype(self, node: uni.Archetype) -> None:
-
         def inform_from_walker(node: uni.UniNode) -> None:
             for i in (
                 node.get_all_sub_nodes(uni.VisitStmt)
@@ -27,6 +27,54 @@ class SemanticAnalysisPass(UniPass):
             for i in self.get_all_sub_nodes(node, uni.Ability):
                 if isinstance(i.body, uni.ImplDef):
                     inform_from_walker(i.body)
+
+        # Validate archetype structure
+        self._check_archetype(node)
+
+    def _check_archetype(self, node: uni.Archetype) -> None:
+        """Check a single archetype for issues with attributes and methods."""
+        if node.arch_type.name != Tok.KW_CLASS and isinstance(node.body, Sequence):
+            # Check for non-default attributes following default attributes
+            found_default_init = False
+            for stmnt in node.body:
+                if not isinstance(stmnt, uni.ArchHas):
+                    continue
+                for var in stmnt.vars:
+                    if (var.value is not None) or (var.defer):
+                        found_default_init = True
+                    else:
+                        if found_default_init:
+                            self.log_error(
+                                f"Non default attribute '{var.name.value}' follows default attribute",
+                                node_override=var.name,
+                            )
+                            break
+
+            # Check for postinit requirement with deferred attributes
+            post_init_vars: list[uni.HasVar] = []
+            postinit_method: uni.Ability | None = None
+
+            for item in node.body:
+                if isinstance(item, uni.ArchHas):
+                    for var in item.vars:
+                        if var.defer:
+                            post_init_vars.append(var)
+
+                elif isinstance(item, uni.Ability):
+                    if item.is_abstract:
+                        continue
+                    if (
+                        isinstance(item.name_ref, uni.SpecialVarRef)
+                        and item.name_ref.name == Tok.KW_POST_INIT
+                    ):
+                        postinit_method = item
+
+            # Check if postinit needed and not provided.
+            if len(post_init_vars) != 0 and (postinit_method is None):
+                self.log_error(
+                    'Missing "postinit" method required by un initialized attribute(s).',
+                    node_override=post_init_vars[0].name_spec,
+                )
 
     # ------------context update methods---------------------------
     def _update_ctx(self, node: uni.UniNode) -> None:

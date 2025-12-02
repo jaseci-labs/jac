@@ -1,4 +1,4 @@
-impl game.start_game {
+impl game.start_game{
     self.g = Game();
     here ++> start_screen();
     visit [-->];

@@ -13,8 +13,8 @@ Reference: https://github.com/estree/estree
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Literal as TypingLiteral, Optional, TypeAlias, Union
-
+from typing import Any, TypeAlias
+from typing import Literal as TypingLiteral
 
 # Literal type aliases for repeated enumerations
 SourceType: TypeAlias = TypingLiteral["script", "module"]  # noqa: F821
@@ -33,9 +33,9 @@ MethodDefinitionKind: TypeAlias = TypingLiteral[
 class SourceLocation:
     """Source location information for a node."""
 
-    source: Optional[str] = None
-    start: Optional["Position"] = None
-    end: Optional["Position"] = None
+    source: str | None = None
+    start: Position | None = None
+    end: Position | None = None
 
 
 @dataclass
@@ -51,7 +51,7 @@ class Node:
     """Base class for all ESTree nodes."""
 
     type: str
-    loc: Optional[SourceLocation] = field(default=None)
+    loc: SourceLocation | None = field(default=None)
 
 
 # Identifier and Literals
@@ -80,9 +80,9 @@ class PrivateIdentifier(Node):
 class Literal(Node):
     """Literal value node (supports BigInt in ES2020)."""
 
-    value: Union[str, bool, None, int, float] = None
-    raw: Optional[str] = None
-    bigint: Optional[str] = None  # ES2020: BigInt represented as string
+    value: str | bool | None | int | float = None
+    raw: str | None = None
+    bigint: str | None = None  # ES2020: BigInt represented as string
     type: TypingLiteral["Literal"] = field(default="Literal", init=False)
 
 
@@ -102,7 +102,7 @@ class RegExpLiteral(Literal):
 class Program(Node):
     """Root node of an ESTree."""
 
-    body: list[Union["Statement", "ModuleDeclaration"]] = field(default_factory=list)
+    body: list[Statement | ModuleDeclaration] = field(default_factory=list)
     sourceType: SourceType = "script"  # noqa: N815
     type: TypingLiteral["Program"] = field(default="Program", init=False)
 
@@ -111,7 +111,7 @@ class Program(Node):
 class ExpressionStatement(Node):
     """Expression statement."""
 
-    expression: Optional["Expression"] = None
+    expression: Expression | None = None
     type: TypingLiteral["ExpressionStatement"] = field(
         default="ExpressionStatement", init=False
     )
@@ -131,7 +131,7 @@ class Directive(ExpressionStatement):
 class BlockStatement(Node):
     """Block statement."""
 
-    body: list["Statement"] = field(default_factory=list)
+    body: list[Statement] = field(default_factory=list)
     type: TypingLiteral["BlockStatement"] = field(default="BlockStatement", init=False)
 
 
@@ -155,8 +155,8 @@ class DebuggerStatement(Node):
 class WithStatement(Node):
     """With statement."""
 
-    object: Optional["Expression"] = None
-    body: Optional["Statement"] = None
+    object: Expression | None = None
+    body: Statement | None = None
     type: TypingLiteral["WithStatement"] = field(default="WithStatement", init=False)
 
 
@@ -164,7 +164,7 @@ class WithStatement(Node):
 class ReturnStatement(Node):
     """Return statement."""
 
-    argument: Optional["Expression"] = None
+    argument: Expression | None = None
     type: TypingLiteral["ReturnStatement"] = field(
         default="ReturnStatement", init=False
     )
@@ -174,8 +174,8 @@ class ReturnStatement(Node):
 class LabeledStatement(Node):
     """Labeled statement."""
 
-    label: Optional[Identifier] = None
-    body: Optional["Statement"] = None
+    label: Identifier | None = None
+    body: Statement | None = None
     type: TypingLiteral["LabeledStatement"] = field(
         default="LabeledStatement", init=False
     )
@@ -185,7 +185,7 @@ class LabeledStatement(Node):
 class BreakStatement(Node):
     """Break statement."""
 
-    label: Optional[Identifier] = None
+    label: Identifier | None = None
     type: TypingLiteral["BreakStatement"] = field(default="BreakStatement", init=False)
 
 
@@ -193,7 +193,7 @@ class BreakStatement(Node):
 class ContinueStatement(Node):
     """Continue statement."""
 
-    label: Optional[Identifier] = None
+    label: Identifier | None = None
     type: TypingLiteral["ContinueStatement"] = field(
         default="ContinueStatement", init=False
     )
@@ -203,9 +203,9 @@ class ContinueStatement(Node):
 class IfStatement(Node):
     """If statement."""
 
-    test: Optional["Expression"] = None
-    consequent: Optional["Statement"] = None
-    alternate: Optional["Statement"] = None
+    test: Expression | None = None
+    consequent: Statement | None = None
+    alternate: Statement | None = None
     type: TypingLiteral["IfStatement"] = field(default="IfStatement", init=False)
 
 
@@ -213,8 +213,8 @@ class IfStatement(Node):
 class SwitchStatement(Node):
     """Switch statement."""
 
-    discriminant: Optional["Expression"] = None
-    cases: list["SwitchCase"] = field(default_factory=list)
+    discriminant: Expression | None = None
+    cases: list[SwitchCase] = field(default_factory=list)
     type: TypingLiteral["SwitchStatement"] = field(
         default="SwitchStatement", init=False
     )
@@ -224,8 +224,8 @@ class SwitchStatement(Node):
 class SwitchCase(Node):
     """Switch case clause."""
 
-    test: Optional["Expression"] = None  # null for default case
-    consequent: list["Statement"] = field(default_factory=list)
+    test: Expression | None = None  # null for default case
+    consequent: list[Statement] = field(default_factory=list)
     type: TypingLiteral["SwitchCase"] = field(default="SwitchCase", init=False)
 
 
@@ -233,7 +233,7 @@ class SwitchCase(Node):
 class ThrowStatement(Node):
     """Throw statement."""
 
-    argument: Optional["Expression"] = None
+    argument: Expression | None = None
     type: TypingLiteral["ThrowStatement"] = field(default="ThrowStatement", init=False)
 
 
@@ -241,9 +241,9 @@ class ThrowStatement(Node):
 class TryStatement(Node):
     """Try statement."""
 
-    block: Optional[BlockStatement] = None
-    handler: Optional["CatchClause"] = None
-    finalizer: Optional[BlockStatement] = None
+    block: BlockStatement | None = None
+    handler: CatchClause | None = None
+    finalizer: BlockStatement | None = None
     type: TypingLiteral["TryStatement"] = field(default="TryStatement", init=False)
 
 
@@ -251,8 +251,8 @@ class TryStatement(Node):
 class CatchClause(Node):
     """Catch clause."""
 
-    param: Optional["Pattern"] = None
-    body: Optional[BlockStatement] = None
+    param: Pattern | None = None
+    body: BlockStatement | None = None
     type: TypingLiteral["CatchClause"] = field(default="CatchClause", init=False)
 
 
@@ -260,8 +260,8 @@ class CatchClause(Node):
 class WhileStatement(Node):
     """While statement."""
 
-    test: Optional["Expression"] = None
-    body: Optional["Statement"] = None
+    test: Expression | None = None
+    body: Statement | None = None
     type: TypingLiteral["WhileStatement"] = field(default="WhileStatement", init=False)
 
 
@@ -269,8 +269,8 @@ class WhileStatement(Node):
 class DoWhileStatement(Node):
     """Do-while statement."""
 
-    body: Optional["Statement"] = None
-    test: Optional["Expression"] = None
+    body: Statement | None = None
+    test: Expression | None = None
     type: TypingLiteral["DoWhileStatement"] = field(
         default="DoWhileStatement", init=False
     )
@@ -280,10 +280,10 @@ class DoWhileStatement(Node):
 class ForStatement(Node):
     """For statement."""
 
-    init: Optional[Union["VariableDeclaration", "Expression"]] = None
-    test: Optional["Expression"] = None
-    update: Optional["Expression"] = None
-    body: Optional["Statement"] = None
+    init: VariableDeclaration | Expression | None = None
+    test: Expression | None = None
+    update: Expression | None = None
+    body: Statement | None = None
     type: TypingLiteral["ForStatement"] = field(default="ForStatement", init=False)
 
 
@@ -291,9 +291,9 @@ class ForStatement(Node):
 class ForInStatement(Node):
     """For-in statement."""
 
-    left: Optional[Union["VariableDeclaration", "Pattern"]] = None
-    right: Optional["Expression"] = None
-    body: Optional["Statement"] = None
+    left: VariableDeclaration | Pattern | None = None
+    right: Expression | None = None
+    body: Statement | None = None
     type: TypingLiteral["ForInStatement"] = field(default="ForInStatement", init=False)
 
 
@@ -301,9 +301,9 @@ class ForInStatement(Node):
 class ForOfStatement(Node):
     """For-of statement (ES6)."""
 
-    left: Optional[Union["VariableDeclaration", "Pattern"]] = None
-    right: Optional["Expression"] = None
-    body: Optional["Statement"] = None
+    left: VariableDeclaration | Pattern | None = None
+    right: Expression | None = None
+    body: Statement | None = None
     await_: bool = False
     type: TypingLiteral["ForOfStatement"] = field(default="ForOfStatement", init=False)
 
@@ -316,9 +316,9 @@ class ForOfStatement(Node):
 class FunctionDeclaration(Node):
     """Function declaration."""
 
-    id: Optional[Identifier] = None
-    params: list["Pattern"] = field(default_factory=list)
-    body: Optional[BlockStatement] = None
+    id: Identifier | None = None
+    params: list[Pattern] = field(default_factory=list)
+    body: BlockStatement | None = None
     generator: bool = False
     async_: bool = False
     type: TypingLiteral["FunctionDeclaration"] = field(
@@ -330,7 +330,7 @@ class FunctionDeclaration(Node):
 class VariableDeclaration(Node):
     """Variable declaration."""
 
-    declarations: list["VariableDeclarator"] = field(default_factory=list)
+    declarations: list[VariableDeclarator] = field(default_factory=list)
     kind: VariableDeclarationKind = "var"
     type: TypingLiteral["VariableDeclaration"] = field(
         default="VariableDeclaration", init=False
@@ -341,8 +341,8 @@ class VariableDeclaration(Node):
 class VariableDeclarator(Node):
     """Variable declarator."""
 
-    id: Optional["Pattern"] = None
-    init: Optional["Expression"] = None
+    id: Pattern | None = None
+    init: Expression | None = None
     type: TypingLiteral["VariableDeclarator"] = field(
         default="VariableDeclarator", init=False
     )
@@ -363,9 +363,7 @@ class ThisExpression(Node):
 class ArrayExpression(Node):
     """Array expression."""
 
-    elements: list[Optional[Union["Expression", "SpreadElement"]]] = field(
-        default_factory=list
-    )
+    elements: list[Expression | SpreadElement | None] = field(default_factory=list)
     type: TypingLiteral["ArrayExpression"] = field(
         default="ArrayExpression", init=False
     )
@@ -375,7 +373,7 @@ class ArrayExpression(Node):
 class ObjectExpression(Node):
     """Object expression."""
 
-    properties: list[Union["Property", "SpreadElement"]] = field(default_factory=list)
+    properties: list[Property | SpreadElement] = field(default_factory=list)
     type: TypingLiteral["ObjectExpression"] = field(
         default="ObjectExpression", init=False
     )
@@ -385,8 +383,8 @@ class ObjectExpression(Node):
 class Property(Node):
     """Object property."""
 
-    key: Optional[Union["Expression", Identifier, Literal]] = None
-    value: Optional["Expression"] = None
+    key: Expression | Identifier | Literal | None = None
+    value: Expression | None = None
     kind: PropertyKind = "init"
     method: bool = False
     shorthand: bool = False
@@ -398,9 +396,9 @@ class Property(Node):
 class FunctionExpression(Node):
     """Function expression."""
 
-    id: Optional[Identifier] = None
-    params: list["Pattern"] = field(default_factory=list)
-    body: Optional[BlockStatement] = None
+    id: Identifier | None = None
+    params: list[Pattern] = field(default_factory=list)
+    body: BlockStatement | None = None
     generator: bool = False
     async_: bool = False
     type: TypingLiteral["FunctionExpression"] = field(
@@ -412,8 +410,8 @@ class FunctionExpression(Node):
 class ArrowFunctionExpression(Node):
     """Arrow function expression (ES6)."""
 
-    params: list["Pattern"] = field(default_factory=list)
-    body: Optional[Union[BlockStatement, "Expression"]] = None
+    params: list[Pattern] = field(default_factory=list)
+    body: BlockStatement | Expression | None = None
     expression: bool = False
     async_: bool = False
     type: TypingLiteral["ArrowFunctionExpression"] = field(
@@ -427,7 +425,7 @@ class UnaryExpression(Node):
 
     operator: str = ""  # "-", "+", "!", "~", "typeof", "void", "delete"
     prefix: bool = True
-    argument: Optional["Expression"] = None
+    argument: Expression | None = None
     type: TypingLiteral["UnaryExpression"] = field(
         default="UnaryExpression", init=False
     )
@@ -439,7 +437,7 @@ class UpdateExpression(Node):
 
     # Allowed operators: ++, --
     operator: str = "++"
-    argument: Optional["Expression"] = None
+    argument: Expression | None = None
     prefix: bool = True
     type: TypingLiteral["UpdateExpression"] = field(
         default="UpdateExpression", init=False
@@ -453,8 +451,8 @@ class BinaryExpression(Node):
     # Supported operators align with ESTree spec:
     # == != === !== < <= > >= << >> >>> + - * / % | ^ & in instanceof
     operator: str = ""
-    left: Optional["Expression"] = None
-    right: Optional["Expression"] = None
+    left: Expression | None = None
+    right: Expression | None = None
     type: TypingLiteral["BinaryExpression"] = field(
         default="BinaryExpression", init=False
     )
@@ -466,8 +464,8 @@ class AssignmentExpression(Node):
 
     # Supported operators: =, +=, -=, *=, /=, %=, <<=, >>=, >>>=, |=, ^=, &=
     operator: str = "="
-    left: Optional[Union["Pattern", "Expression"]] = None
-    right: Optional["Expression"] = None
+    left: Pattern | Expression | None = None
+    right: Expression | None = None
     type: TypingLiteral["AssignmentExpression"] = field(
         default="AssignmentExpression", init=False
     )
@@ -479,8 +477,8 @@ class LogicalExpression(Node):
 
     # Supported operators: ||, &&, ??
     operator: str = "&&"
-    left: Optional["Expression"] = None
-    right: Optional["Expression"] = None
+    left: Expression | None = None
+    right: Expression | None = None
     type: TypingLiteral["LogicalExpression"] = field(
         default="LogicalExpression", init=False
     )
@@ -490,8 +488,8 @@ class LogicalExpression(Node):
 class MemberExpression(Node):
     """Member expression."""
 
-    object: Optional[Union["Expression", "Super"]] = None
-    property: Optional["Expression"] = None
+    object: Expression | Super | None = None
+    property: Expression | None = None
     computed: bool = False
     optional: bool = False
     type: TypingLiteral["MemberExpression"] = field(
@@ -503,9 +501,9 @@ class MemberExpression(Node):
 class ConditionalExpression(Node):
     """Conditional (ternary) expression."""
 
-    test: Optional["Expression"] = None
-    consequent: Optional["Expression"] = None
-    alternate: Optional["Expression"] = None
+    test: Expression | None = None
+    consequent: Expression | None = None
+    alternate: Expression | None = None
     type: TypingLiteral["ConditionalExpression"] = field(
         default="ConditionalExpression", init=False
     )
@@ -515,8 +513,8 @@ class ConditionalExpression(Node):
 class CallExpression(Node):
     """Call expression."""
 
-    callee: Optional[Union["Expression", "Super"]] = None
-    arguments: list[Union["Expression", "SpreadElement"]] = field(default_factory=list)
+    callee: Expression | Super | None = None
+    arguments: list[Expression | SpreadElement] = field(default_factory=list)
     optional: bool = False
     type: TypingLiteral["CallExpression"] = field(default="CallExpression", init=False)
 
@@ -525,7 +523,7 @@ class CallExpression(Node):
 class ChainExpression(Node):
     """Optional chaining expression (ES2020)."""
 
-    expression: Optional[Union[CallExpression, MemberExpression]] = None
+    expression: CallExpression | MemberExpression | None = None
     type: TypingLiteral["ChainExpression"] = field(
         default="ChainExpression", init=False
     )
@@ -535,8 +533,8 @@ class ChainExpression(Node):
 class NewExpression(Node):
     """New expression."""
 
-    callee: Optional["Expression"] = None
-    arguments: list[Union["Expression", "SpreadElement"]] = field(default_factory=list)
+    callee: Expression | None = None
+    arguments: list[Expression | SpreadElement] = field(default_factory=list)
     type: TypingLiteral["NewExpression"] = field(default="NewExpression", init=False)
 
 
@@ -544,7 +542,7 @@ class NewExpression(Node):
 class SequenceExpression(Node):
     """Sequence expression."""
 
-    expressions: list["Expression"] = field(default_factory=list)
+    expressions: list[Expression] = field(default_factory=list)
     type: TypingLiteral["SequenceExpression"] = field(
         default="SequenceExpression", init=False
     )
@@ -554,7 +552,7 @@ class SequenceExpression(Node):
 class YieldExpression(Node):
     """Yield expression."""
 
-    argument: Optional["Expression"] = None
+    argument: Expression | None = None
     delegate: bool = False
     type: TypingLiteral["YieldExpression"] = field(
         default="YieldExpression", init=False
@@ -565,7 +563,7 @@ class YieldExpression(Node):
 class AwaitExpression(Node):
     """Await expression (ES2017)."""
 
-    argument: Optional["Expression"] = None
+    argument: Expression | None = None
     type: TypingLiteral["AwaitExpression"] = field(
         default="AwaitExpression", init=False
     )
@@ -575,8 +573,8 @@ class AwaitExpression(Node):
 class TemplateLiteral(Node):
     """Template literal (ES6)."""
 
-    quasis: list["TemplateElement"] = field(default_factory=list)
-    expressions: list["Expression"] = field(default_factory=list)
+    quasis: list[TemplateElement] = field(default_factory=list)
+    expressions: list[Expression] = field(default_factory=list)
     type: TypingLiteral["TemplateLiteral"] = field(
         default="TemplateLiteral", init=False
     )
@@ -597,8 +595,8 @@ class TemplateElement(Node):
 class TaggedTemplateExpression(Node):
     """Tagged template expression (ES6)."""
 
-    tag: Optional["Expression"] = None
-    quasi: Optional[TemplateLiteral] = None
+    tag: Expression | None = None
+    quasi: TemplateLiteral | None = None
     type: TypingLiteral["TaggedTemplateExpression"] = field(
         default="TaggedTemplateExpression", init=False
     )
@@ -608,7 +606,7 @@ class TaggedTemplateExpression(Node):
 class SpreadElement(Node):
     """Spread element (ES6)."""
 
-    argument: Optional["Expression"] = None
+    argument: Expression | None = None
     type: TypingLiteral["SpreadElement"] = field(default="SpreadElement", init=False)
 
 
@@ -623,8 +621,8 @@ class Super(Node):
 class MetaProperty(Node):
     """Meta property (e.g., new.target)."""
 
-    meta: Optional[Identifier] = None
-    property: Optional[Identifier] = None
+    meta: Identifier | None = None
+    property: Identifier | None = None
     type: TypingLiteral["MetaProperty"] = field(default="MetaProperty", init=False)
 
 
@@ -636,8 +634,8 @@ class MetaProperty(Node):
 class AssignmentPattern(Node):
     """Assignment pattern (default parameters)."""
 
-    left: Optional["Pattern"] = None
-    right: Optional["Expression"] = None
+    left: Pattern | None = None
+    right: Expression | None = None
     type: TypingLiteral["AssignmentPattern"] = field(
         default="AssignmentPattern", init=False
     )
@@ -647,7 +645,7 @@ class AssignmentPattern(Node):
 class ArrayPattern(Node):
     """Array destructuring pattern."""
 
-    elements: list[Optional["Pattern"]] = field(default_factory=list)
+    elements: list[Pattern | None] = field(default_factory=list)
     type: TypingLiteral["ArrayPattern"] = field(default="ArrayPattern", init=False)
 
 
@@ -655,9 +653,7 @@ class ArrayPattern(Node):
 class ObjectPattern(Node):
     """Object destructuring pattern."""
 
-    properties: list[Union["AssignmentProperty", "RestElement"]] = field(
-        default_factory=list
-    )
+    properties: list[AssignmentProperty | RestElement] = field(default_factory=list)
     type: TypingLiteral["ObjectPattern"] = field(default="ObjectPattern", init=False)
 
 
@@ -665,8 +661,8 @@ class ObjectPattern(Node):
 class AssignmentProperty(Node):
     """Assignment property in object pattern."""
 
-    key: Optional[Union["Expression", Identifier, Literal]] = None
-    value: Optional["Pattern"] = None
+    key: Expression | Identifier | Literal | None = None
+    value: Pattern | None = None
     kind: PropertyKind = "init"
     method: bool = False
     shorthand: bool = False
@@ -678,7 +674,7 @@ class AssignmentProperty(Node):
 class RestElement(Node):
     """Rest element."""
 
-    argument: Optional["Pattern"] = None
+    argument: Pattern | None = None
     type: TypingLiteral["RestElement"] = field(default="RestElement", init=False)
 
 
@@ -690,9 +686,9 @@ class RestElement(Node):
 class ClassDeclaration(Node):
     """Class declaration."""
 
-    id: Optional[Identifier] = None
-    superClass: Optional["Expression"] = None  # noqa: N815
-    body: Optional["ClassBody"] = None
+    id: Identifier | None = None
+    superClass: Expression | None = None  # noqa: N815
+    body: ClassBody | None = None
     type: TypingLiteral["ClassDeclaration"] = field(
         default="ClassDeclaration", init=False
     )
@@ -702,9 +698,9 @@ class ClassDeclaration(Node):
 class ClassExpression(Node):
     """Class expression."""
 
-    id: Optional[Identifier] = None
-    superClass: Optional["Expression"] = None  # noqa: N815
-    body: Optional["ClassBody"] = None
+    id: Identifier | None = None
+    superClass: Expression | None = None  # noqa: N815
+    body: ClassBody | None = None
     type: TypingLiteral["ClassExpression"] = field(
         default="ClassExpression", init=False
     )
@@ -714,7 +710,7 @@ class ClassExpression(Node):
 class ClassBody(Node):
     """Class body (ES2022: supports methods, properties, and static blocks)."""
 
-    body: list[Union["MethodDefinition", "PropertyDefinition", "StaticBlock"]] = field(
+    body: list[MethodDefinition | PropertyDefinition | StaticBlock] = field(
         default_factory=list
     )
     type: TypingLiteral["ClassBody"] = field(default="ClassBody", init=False)
@@ -724,8 +720,8 @@ class ClassBody(Node):
 class MethodDefinition(Node):
     """Method definition (ES2022: supports private identifiers)."""
 
-    key: Optional[Union["Expression", Identifier, "PrivateIdentifier"]] = None
-    value: Optional[FunctionExpression] = None
+    key: Expression | Identifier | PrivateIdentifier | None = None
+    value: FunctionExpression | None = None
     kind: MethodDefinitionKind = "method"
     computed: bool = False
     static: bool = False
@@ -738,8 +734,8 @@ class MethodDefinition(Node):
 class PropertyDefinition(Node):
     """Class field definition (ES2022)."""
 
-    key: Optional[Union["Expression", Identifier, "PrivateIdentifier"]] = None
-    value: Optional["Expression"] = None
+    key: Expression | Identifier | PrivateIdentifier | None = None
+    value: Expression | None = None
     computed: bool = False
     static: bool = False
     type: TypingLiteral["PropertyDefinition"] = field(
@@ -751,7 +747,7 @@ class PropertyDefinition(Node):
 class StaticBlock(Node):
     """Static initialization block (ES2022)."""
 
-    body: list["Statement"] = field(default_factory=list)
+    body: list[Statement] = field(default_factory=list)
     type: TypingLiteral["StaticBlock"] = field(default="StaticBlock", init=False)
 
 
@@ -764,9 +760,9 @@ class ImportDeclaration(Node):
     """Import declaration."""
 
     specifiers: list[
-        Union["ImportSpecifier", "ImportDefaultSpecifier", "ImportNamespaceSpecifier"]
+        ImportSpecifier | ImportDefaultSpecifier | ImportNamespaceSpecifier
     ] = field(default_factory=list)
-    source: Optional[Literal] = None
+    source: Literal | None = None
     type: TypingLiteral["ImportDeclaration"] = field(
         default="ImportDeclaration", init=False
     )
@@ -776,7 +772,7 @@ class ImportDeclaration(Node):
 class ImportExpression(Node):
     """Dynamic import expression (ES2020)."""
 
-    source: Optional["Expression"] = None
+    source: Expression | None = None
     type: TypingLiteral["ImportExpression"] = field(
         default="ImportExpression", init=False
     )
@@ -786,8 +782,8 @@ class ImportExpression(Node):
 class ImportSpecifier(Node):
     """Import specifier."""
 
-    imported: Optional[Identifier] = None
-    local: Optional[Identifier] = None
+    imported: Identifier | None = None
+    local: Identifier | None = None
     type: TypingLiteral["ImportSpecifier"] = field(
         default="ImportSpecifier", init=False
     )
@@ -797,7 +793,7 @@ class ImportSpecifier(Node):
 class ImportDefaultSpecifier(Node):
     """Import default specifier."""
 
-    local: Optional[Identifier] = None
+    local: Identifier | None = None
     type: TypingLiteral["ImportDefaultSpecifier"] = field(
         default="ImportDefaultSpecifier", init=False
     )
@@ -807,7 +803,7 @@ class ImportDefaultSpecifier(Node):
 class ImportNamespaceSpecifier(Node):
     """Import namespace specifier."""
 
-    local: Optional[Identifier] = None
+    local: Identifier | None = None
     type: TypingLiteral["ImportNamespaceSpecifier"] = field(
         default="ImportNamespaceSpecifier", init=False
     )
@@ -817,9 +813,9 @@ class ImportNamespaceSpecifier(Node):
 class ExportNamedDeclaration(Node):
     """Export named declaration."""
 
-    declaration: Optional[Union["Declaration", "Expression"]] = None
-    specifiers: list["ExportSpecifier"] = field(default_factory=list)
-    source: Optional[Literal] = None
+    declaration: Declaration | Expression | None = None
+    specifiers: list[ExportSpecifier] = field(default_factory=list)
+    source: Literal | None = None
     type: TypingLiteral["ExportNamedDeclaration"] = field(
         default="ExportNamedDeclaration", init=False
     )
@@ -829,8 +825,8 @@ class ExportNamedDeclaration(Node):
 class ExportSpecifier(Node):
     """Export specifier."""
 
-    exported: Optional[Identifier] = None
-    local: Optional[Identifier] = None
+    exported: Identifier | None = None
+    local: Identifier | None = None
     type: TypingLiteral["ExportSpecifier"] = field(
         default="ExportSpecifier", init=False
     )
@@ -840,7 +836,7 @@ class ExportSpecifier(Node):
 class ExportDefaultDeclaration(Node):
     """Export default declaration."""
 
-    declaration: Optional[Union["Declaration", "Expression"]] = None
+    declaration: Declaration | Expression | None = None
     type: TypingLiteral["ExportDefaultDeclaration"] = field(
         default="ExportDefaultDeclaration", init=False
     )
@@ -850,87 +846,97 @@ class ExportDefaultDeclaration(Node):
 class ExportAllDeclaration(Node):
     """Export all declaration."""
 
-    source: Optional[Literal] = None
-    exported: Optional[Identifier] = None
+    source: Literal | None = None
+    exported: Identifier | None = None
     type: TypingLiteral["ExportAllDeclaration"] = field(
         default="ExportAllDeclaration", init=False
     )
 
 
+# Slice/Index Info for ES AST Generation
+# =======================================
+# These are helper types used during ES AST generation for slice/index operations
+
+
+@dataclass
+class SliceInfo:
+    """Represents slice operation info (e.g., arr[start:stop])."""
+
+    start: Node | None = None
+    stop: Node | None = None
+
+
+@dataclass
+class IndexInfo:
+    """Represents index operation info (e.g., arr[index])."""
+
+    value: Node | None = None
+
+
 # Type Aliases for Union Types
 # ============================
 
-Statement = Union[
-    ExpressionStatement,
-    BlockStatement,
-    EmptyStatement,
-    DebuggerStatement,
-    WithStatement,
-    ReturnStatement,
-    LabeledStatement,
-    BreakStatement,
-    ContinueStatement,
-    IfStatement,
-    SwitchStatement,
-    ThrowStatement,
-    TryStatement,
-    WhileStatement,
-    DoWhileStatement,
-    ForStatement,
-    ForInStatement,
-    ForOfStatement,
-    FunctionDeclaration,
-    VariableDeclaration,
-    ClassDeclaration,
-]
+Statement = (
+    ExpressionStatement
+    | BlockStatement
+    | EmptyStatement
+    | DebuggerStatement
+    | WithStatement
+    | ReturnStatement
+    | LabeledStatement
+    | BreakStatement
+    | ContinueStatement
+    | IfStatement
+    | SwitchStatement
+    | ThrowStatement
+    | TryStatement
+    | WhileStatement
+    | DoWhileStatement
+    | ForStatement
+    | ForInStatement
+    | ForOfStatement
+    | FunctionDeclaration
+    | VariableDeclaration
+    | ClassDeclaration
+)
 
-Expression = Union[
-    Identifier,
-    Literal,
-    ThisExpression,
-    ArrayExpression,
-    ObjectExpression,
-    FunctionExpression,
-    ArrowFunctionExpression,
-    UnaryExpression,
-    UpdateExpression,
-    BinaryExpression,
-    AssignmentExpression,
-    LogicalExpression,
-    MemberExpression,
-    ConditionalExpression,
-    CallExpression,
-    ChainExpression,  # ES2020
-    NewExpression,
-    SequenceExpression,
-    YieldExpression,
-    AwaitExpression,
-    TemplateLiteral,
-    TaggedTemplateExpression,
-    ClassExpression,
-    ImportExpression,  # ES2020
-]
+Expression = (
+    Identifier
+    | Literal
+    | ThisExpression
+    | ArrayExpression
+    | ObjectExpression
+    | FunctionExpression
+    | ArrowFunctionExpression
+    | UnaryExpression
+    | UpdateExpression
+    | BinaryExpression
+    | AssignmentExpression
+    | LogicalExpression
+    | MemberExpression
+    | ConditionalExpression
+    | CallExpression
+    | ChainExpression  # ES2020
+    | NewExpression
+    | SequenceExpression
+    | YieldExpression
+    | AwaitExpression
+    | TemplateLiteral
+    | TaggedTemplateExpression
+    | ClassExpression
+    | ImportExpression  # ES2020
+)
 
-Pattern = Union[
-    Identifier,
-    ArrayPattern,
-    ObjectPattern,
-    AssignmentPattern,
-    RestElement,
-]
+Pattern = Identifier | ArrayPattern | ObjectPattern | AssignmentPattern | RestElement
 
-Declaration = Union[
-    FunctionDeclaration,
-    VariableDeclaration,
-    ClassDeclaration,
-]
+Declaration = FunctionDeclaration | VariableDeclaration | ClassDeclaration
 
-ModuleDeclaration = Union[
-    ImportDeclaration,
-    ExportNamedDeclaration,
-    ExportDefaultDeclaration,
-    ExportAllDeclaration,
-]
+ModuleDeclaration = (
+    ImportDeclaration
+    | ExportNamedDeclaration
+    | ExportDefaultDeclaration
+    | ExportAllDeclaration
+)
 
 
 # Utility Functions

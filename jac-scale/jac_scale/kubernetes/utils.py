@@ -1,20 +1,16 @@
 import base64
 import os
-import requests
-from requests.exceptions import RequestException
 import tarfile
 import time
-from typing import Callable
+from collections.abc import Callable
 
-
+import requests
+import urllib3
 from dotenv import dotenv_values
-
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
 from kubernetes.config.config_exception import ConfigException
-
-
-import urllib3
+from requests.exceptions import RequestException
 
 
 def debug_print(statement: str, debug_only: bool = False) -> None:
@@ -57,7 +53,7 @@ def check_k8_status() -> None:
             # Try in-cluster config
             config.load_incluster_config()
         except ConfigException:
-            raise Exception("Kubernetes is not configured on this machine.")
+            raise Exception("Kubernetes is not configured on this machine.") from None
 
     # Try pinging the Kubernetes API server
     try:
@@ -66,7 +62,7 @@ def check_k8_status() -> None:
     except (ApiException, urllib3.exceptions.HTTPError, OSError):
         raise Exception(
             "Unable to connect to kubernetes APi.Check whether kubernetes cluster is up"
-        )
+        ) from None
 
 
 def delete_if_exists(
@@ -101,23 +97,37 @@ def cleanup_k8_resources() -> None:
     delete_if_exists(
         core_v1.delete_namespaced_service, service_name, namespace, "Service"
     )
+
+    # MongoDB resources
     mongodb_name = f"{app_name}-mongodb"
-    mongodb_service_name = f"{mongodb_name}-service"
     redis_name = f"{app_name}-redis"
-    redis_service_name = f"{redis_name}-service"
 
     delete_if_exists(
         apps_v1.delete_namespaced_stateful_set, mongodb_name, namespace, "StatefulSet"
     )
     delete_if_exists(
-        core_v1.delete_namespaced_service, mongodb_service_name, namespace, "Service"
+        core_v1.delete_namespaced_service,
+        f"{mongodb_name}-service",
+        namespace,
+        "Service",
     )
     delete_if_exists(
         apps_v1.delete_namespaced_deployment, redis_name, namespace, "Deployment"
     )
     delete_if_exists(
-        core_v1.delete_namespaced_service, redis_service_name, namespace, "Service"
+        core_v1.delete_namespaced_service, f"{redis_name}-service", namespace, "Service"
     )
+
+    # Delete all PVCs for this app
+    pvcs = core_v1.list_namespaced_persistent_volume_claim(namespace)
+    for pvc in pvcs.items:
+        if pvc.metadata.name.startswith(f"{app_name}-mongo-data"):
+            try:
+                core_v1.delete_namespaced_persistent_volume_claim(
+                    pvc.metadata.name, namespace
+                )
+            except client.exceptions.ApiException as e:
+                print(f"Error deleting PVC '{pvc.metadata.name}': {e}")
 
     print(f"All Kubernetes resources for '{app_name}' cleaned up successfully.")
 

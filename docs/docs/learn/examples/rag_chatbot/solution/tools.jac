@@ -1,10 +1,10 @@
 import os;
 import requests;
-import from langchain_community.document_loaders {PyPDFDirectoryLoader, PyPDFLoader}
-import from langchain_text_splitters {RecursiveCharacterTextSplitter}
-import from langchain.schema.document {Document}
-import from langchain_openai {OpenAIEmbeddings}
-import from langchain_chroma {Chroma}
+import from langchain_community.document_loaders { PyPDFDirectoryLoader, PyPDFLoader }
+import from langchain_text_splitters { RecursiveCharacterTextSplitter }
+import from langchain.schema.document { Document }
+import from langchain_openai { OpenAIEmbeddings }
+import from langchain_chroma { Chroma }
 
 glob SERPER_API_KEY: str = os.getenv('SERPER_API_KEY', '');
 
@@ -44,10 +44,12 @@ obj RagEngine {
     }
 
     def split_documents(documents: list[Document]) {
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=800,
-        chunk_overlap=80,
-        length_function=len,
-        is_separator_regex=False);
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=800,
+            chunk_overlap=80,
+            length_function=len,
+            is_separator_regex=False
+        );
         return text_splitter.split_documents(documents);
     }
 
@@ -66,7 +68,7 @@ obj RagEngine {
             current_page_id = f'{source}:{page}';
 
             if current_page_id == last_page_id {
-                current_chunk_index +=1;
+                current_chunk_index += 1;
             } else {
                 current_chunk_index = 0;
             }
@@ -81,7 +83,10 @@ obj RagEngine {
     }
 
     def add_to_chroma(chunks: list[Document]) {
-        db = Chroma(persist_directory=self.chroma_path, embedding_function=self.get_embedding_function());
+        db = Chroma(
+            persist_directory=self.chroma_path,
+            embedding_function=self.get_embedding_function()
+        );
         chunks_with_ids = self.add_chunk_id(chunks);
 
         existing_items = db.get(include=[]);
@@ -103,16 +108,16 @@ obj RagEngine {
         }
     }
 
-    def get_from_chroma(query: str,chunck_nos: int=5) {
+    def get_from_chroma(query: str, chunck_nos: int = 5) {
         db = Chroma(
             persist_directory=self.chroma_path,
             embedding_function=self.get_embedding_function()
         );
-        results = db.similarity_search_with_score(query,k=chunck_nos);
+        results = db.similarity_search_with_score(query, k=chunck_nos);
         return results;
     }
 
-    def search(query: str, chunck_nos: int=5) {
+    def search(query: str, chunck_nos: int = 5) {
         results = self.get_from_chroma(query=query, chunck_nos=chunck_nos);
         summary = "";
         for i in range(len(results)) {
@@ -120,14 +125,15 @@ obj RagEngine {
             score = results[i][1];
             page = doc.metadata.get('page');
             source = doc.metadata.get('source');
-            chunk_txt = doc.page_content[0:400] if len(doc.page_content) > 400 else doc.page_content;
+            chunk_txt = doc.page_content[0:400]
+            if len(doc.page_content) > 400
+            else doc.page_content;
             preview = chunk_txt[0:100] if len(chunk_txt) > 100 else chunk_txt;
             summary += f"{source} page {page}: {chunk_txt}\n";
         }
         return summary;
     }
 }
-
 
 obj WebSearch {
     has api_key: str = SERPER_API_KEY;

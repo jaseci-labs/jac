@@ -88,7 +88,9 @@ def _type_to_schema(ty: type, title: str = "", desc: str = "") -> dict {
             if not name.startswith("_")
         };
         properties = {
-            name: _type_to_schema(type, name, semstr_inner.get(name, ""))  # type: ignore
+            name: _type_to_schema(
+                type, name, semstr_inner.get(name, "")
+            )  # type: ignore
              for (name, type) in fields.items()
         };
         return {
@@ -121,8 +123,7 @@ def _type_to_schema(ty: type, title: str = "", desc: str = "") -> dict {
         enum_desc += " the names are [" + ", ".join([e.name for e in ty]) + "].";
         if enum_type not in (int, str) {
             raise ValueError(
-                f"Enum {ty.__name__} has unsupported type {enum_type}. "
-                "Only int and str enums are supported for schema generation."
+                f"Enum {ty.__name__} has unsupported type {enum_type}. ""Only int and str enums are supported for schema generation."
             ) ;
         }
         return {
@@ -147,13 +148,13 @@ def _type_to_schema(ty: type, title: str = "", desc: str = "") -> dict {
             "properties": params,
             "required": list(params.keys()),
             "additionalProperties": False,
+
         };
     }
 
     raise ValueError(
-        f"Unsupported type for schema generation: {ty}. "
-        "Only primitive types, dataclasses, and Union types are supported."
-    );
+        f"Unsupported type for schema generation: {ty}. ""Only primitive types, dataclasses, and Union types are supported."
+    ) ;
 }
 
 def _name_of_type(ty: type) -> str {
@@ -222,6 +223,7 @@ def _wrap_to_object(schema: dict[str, object]) -> dict[str, object] {
         "properties": {_SCHEMA_OBJECT_WRAPPER: schema,},
         "required": [_SCHEMA_OBJECT_WRAPPER],
         "additionalProperties": False,
+
     };
 }
 

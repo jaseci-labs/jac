@@ -15,9 +15,9 @@ walker Walk {
 }
 
 with entry {
-    root ++> (a:=A());
+    root ++> (a := A());
     ae = [edge root-->a][0];
 
-    Walk(id = 1) spawn ae;
+    Walk(id=1) spawn ae;
     ae spawn Walk(id=2);
 }

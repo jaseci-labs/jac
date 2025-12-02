@@ -6,10 +6,9 @@ with entry {
 
     for it in tl {
         tifoo: Foo = it;
-        tistr: str = it; # <-- Error
+        tistr: str = it;  # <-- Error
     }
 }
-
 
 glob K = TypeVar('K');
 glob V = TypeVar('V');
@@ -30,16 +29,14 @@ obj Foo {
     has bar: str = "";
 }
 
-
 with entry {
-
     lst: list[Foo] = [Foo(), Foo()];
     f: Foo = lst[0];  # <-- Ok
     s: str = lst[0];  # <-- Error
 
     for it in lst {
-        tifoo: Foo = it; # <-- Ok
-        tistr: str = it; # <-- Error
+        tifoo: Foo = it;  # <-- Ok
+        tistr: str = it;  # <-- Error
     }
 
     m: list[int] = [1, 2, 3];
@@ -52,14 +49,13 @@ with entry {
 
     d: dict[int, str] = {1: "one", 2: "two"};
     s: str = d[1];
-    i: int = d[1]; # <-- Error
+    i: int = d[1];  # <-- Error
 
     ht = HashTable[int, str]();
     ht.insert(1, "one");
     ht.insert("one", "one");  # <-- Error
-    ht.insert(1, 1);          # <-- Error
+    ht.insert(1, 1);  # <-- Error
 
     hv1: str = ht.get(1);
     hv2: int = ht.get(1);  # <-- Error
-
 }

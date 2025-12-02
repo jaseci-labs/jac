@@ -4,10 +4,12 @@ obj outer {
     obj inner {
         has i1: int = 8;
     }
+
     def foo() {
         return 'foo';
     }
-    enum  color {
+
+    enum color {
         red,
         green,
         blue,

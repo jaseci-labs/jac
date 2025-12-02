@@ -1,5 +1,4 @@
 # For Statements
-
 with entry {
     # Basic for-in loop
     for x in [1, 2, 3] {
@@ -12,17 +11,17 @@ with entry {
     }
 
     # For-to-by loop
-    for i=0 to i<5 by i+=1 {
+    for i = 0 to i < 5 by i += 1 {
         print(i);
     }
 
     # For-to-by counting down
-    for i=10 to i>0 by i-=1 {
+    for i = 10 to i > 0 by i -= 1 {
         print(i);
     }
 
     # For-to-by with different step
-    for i=0 to i<10 by i+=2 {
+    for i = 0 to i < 10 by i += 2 {
         print(i);
     }
 
@@ -71,7 +70,7 @@ with entry {
 
     # Mix for-in and for-to-by in nested loops
     for i in ["a", "b"] {
-        for j=0 to j<2 by j+=1 {
+        for j = 0 to j < 2 by j += 1 {
             print(f"{i}{j}");
         }
     }

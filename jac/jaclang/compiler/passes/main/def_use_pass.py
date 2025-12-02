@@ -30,7 +30,6 @@ class DefUsePass(UniPass):
     """Jac Ast build pass."""
 
     def enter_archetype(self, node: uni.Archetype) -> None:
-
         def inform_from_walker(node: uni.UniNode) -> None:
             for i in (
                 node.get_all_sub_nodes(uni.VisitStmt)

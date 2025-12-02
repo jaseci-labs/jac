@@ -1,3 +1,3 @@
-impl bar {
-  print("bar");
+impl bar{
+    print("bar");
 }

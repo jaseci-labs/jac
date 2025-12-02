@@ -39,7 +39,7 @@ class SemDefMatchPass(Transform[uni.Module, uni.Module]):
             target_sym_tab.lookup("Foo").lookup("bar").lookup("baz")
         """
         parts = dotted_name.lstrip("sem.").split(".")
-        current_sym_tab = target_sym_tab
+        current_sym_tab: UniScopeNode | None = target_sym_tab
         sym: uni.Symbol | None = None
         for part in parts:
             if current_sym_tab is None:

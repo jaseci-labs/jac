@@ -1,10 +1,8 @@
-from typing import Tuple
-
-
-def mongo_db(app_name: str, env_vars: list) -> Tuple[dict, dict]:
+def mongo_db(app_name: str, env_vars: list) -> tuple[dict, dict]:
     mongodb_name = f"{app_name}-mongodb"
     mongodb_port = 27017
     mongodb_service_name = f"{mongodb_name}-service"
+    mongodb_volume_name = f"{app_name}-mongo-data"
 
     mongodb_statefulset = {
         "apiVersion": "apps/v1",
@@ -33,7 +31,7 @@ def mongo_db(app_name: str, env_vars: list) -> Tuple[dict, dict]:
                                 },
                             ],
                             "volumeMounts": [
-                                {"name": "mongo-data", "mountPath": "/data/db"}
+                                {"name": mongodb_volume_name, "mountPath": "/data/db"}
                             ],
                         }
                     ],
@@ -41,7 +39,7 @@ def mongo_db(app_name: str, env_vars: list) -> Tuple[dict, dict]:
             },
             "volumeClaimTemplates": [
                 {
-                    "metadata": {"name": "mongo-data"},
+                    "metadata": {"name": mongodb_volume_name},
                     "spec": {
                         "accessModes": ["ReadWriteOnce"],
                         "resources": {"requests": {"storage": "1Gi"}},

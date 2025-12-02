@@ -42,62 +42,47 @@ walker EdgeRefWalker {
     can show_refs with Person entry {
         if here.name == "Alice" {
             print(f"\n=== 2. Edge References from {here.name} ===\n");
-
             # Outgoing [-->]
             outgoing = [-->];
             print(f"Outgoing [-->]: {len(outgoing)} nodes");
             for n in outgoing {
                 print(f"  - {n.name}");
             }
-
             # Incoming [<--]
             incoming = [<--];
             print(f"\nIncoming [<--]: {len(incoming)} nodes");
-
             # Bidirectional [<-->]
             both = [<-->];
             print(f"\nBidirectional [<-->]: {len(both)} nodes");
-
             print("\n=== 3. Typed Edge References ===\n");
-
             # Typed outgoing [->:Type:->]
             friends = [->:Friend:->];
             print(f"Friend edges [->:Friend:->]: {len(friends)} nodes");
             for n in friends {
                 print(f"  - {n.name}");
             }
-
             colleagues = [->:Colleague:->];
             print(f"Colleague edges [->:Colleague:->]: {len(colleagues)} nodes");
             for n in colleagues {
                 print(f"  - {n.name}");
             }
-
             print("\n=== 4. Filtered Edge References ===\n");
-
             # Filter on edge attributes
-            old_friends = [->:Friend:since < 2018:->];
+            old_friends = [->:Friend:since<2018:->];
             print(f"Friends since before 2018: {len(old_friends)} nodes");
-
-            experienced_colleagues = [->:Colleague:years > 2:->];
+            experienced_colleagues = [->:Colleague:years>2:->];
             print(f"Colleagues with years > 2: {len(experienced_colleagues)} nodes");
-
             # Multiple filter conditions
-            specific = [->:Colleague:years >= 1, years <= 5:->];
+            specific = [->:Colleague:years>=1,years<=5:->];
             print(f"Colleagues with 1-5 years: {len(specific)} nodes");
-
             print("\n=== 5. Edge and Node Keywords ===\n");
-
             # Get edge objects [edge -->]
             edge_objs = [edge -->];
             print(f"[edge -->]: Retrieved {len(edge_objs)} edge objects");
-
             # Get node objects [node -->] (explicit)
             node_objs = [node -->];
             print(f"[node -->]: Retrieved {len(node_objs)} node objects");
-
             print("\n=== 6. Chained Edge References ===\n");
-
             # Chained edge references - multiple hops in one expression
             # Syntax: [node ->:Type1:-> ->:Type2:->]
             # This traverses Type1 edges, then Type2 edges from those nodes
@@ -105,43 +90,38 @@ walker EdgeRefWalker {
             # Build deeper graph for chaining demo
             david = Person(name="David");
             # Get bob from outgoing Friend edges
-            bob_list = [here ->:Friend:->];
+            bob_list = [here->:Friend:->];
             if bob_list {
                 bob_list[0] +>: Friend(since=2018) :+> david;
             }
-
             # Two-hop chain: Friend -> Friend
-            two_hop = [here ->:Friend:-> ->:Friend:->];
-            print(f"[here ->:Friend:-> ->:Friend:->]: {len(two_hop)} nodes (2 hops via Friend)");
-
+            two_hop = [here->:Friend:->->:Friend:->];
+            print(
+                f"[here ->:Friend:-> ->:Friend:->]: {len(two_hop)} nodes (2 hops via Friend)"
+            );
             # Mixed type chain: Friend -> Colleague
             # This goes through Friend edges, then Colleague edges from those nodes
-            mixed = [here ->:Friend:-> ->:Colleague:->];
-            print(f"[here ->:Friend:-> ->:Colleague:->]: {len(mixed)} nodes (Friend then Colleague)");
-
+            mixed = [here->:Friend:->->:Colleague:->];
+            print(
+                f"[here ->:Friend:-> ->:Colleague:->]: {len(mixed)} nodes (Friend then Colleague)"
+            );
             # Can chain many hops
             print("Can chain multiple: [node ->:T1:-> ->:T2:-> ->:T3:->]");
-
             print("\n=== 7. Edge References in Different Contexts ===\n");
-
             # In assignment
             targets = [-->];
             print(f"Assignment: targets = [-->] → {len(targets)} nodes");
-
             # In if condition
             if [-->] {
                 print("Conditional: if [-->] → edges exist!");
             }
-
             # In for loop
             print("For loop:");
             for person in [-->] {
                 print(f"  Iterating: {person.name}");
             }
-
             # In visit statement (most common)
-            print("\nVisit statement: visit [->:Friend:->]");
-            # visit [->:Friend:->];  # Would visit friends
+            print("\nVisit statement: visit [->:Friend:->]");  # visit [->:Friend:->];  # Would visit friends
         }
 
         disengage;
@@ -151,9 +131,9 @@ walker EdgeRefWalker {
 # ===== Summary Walker =====
 walker Summary {
     can show with `root entry {
-        print("\n" + "="*50);
+        print("\n" + "=" * 50);
         print("EDGE REFERENCE SYNTAX SUMMARY");
-        print("="*50);
+        print("=" * 50);
 
         print("\n** Basic Forms **");
         print("  [-->]           All outgoing edges");
@@ -180,7 +160,7 @@ walker Summary {
         print("  if [-->] { ... }              Check if edges exist");
         print("  targets = [->:Type:->];       Store in variable");
 
-        print("\n" + "="*50);
+        print("\n" + "=" * 50);
     }
 }
 

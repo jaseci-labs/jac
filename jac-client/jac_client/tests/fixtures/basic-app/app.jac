@@ -10,8 +10,13 @@ cl obj ButtonProps {
 cl def app() {
     let props = ButtonProps(label="Tap Me", color="primary");
     return <div class="app">
-        <h1>{API_LABEL}</h1>
-        <button class={props.color} data-id="button">
+        <h1>
+            {API_LABEL}
+        </h1>
+        <button
+            class={props.color}
+            data-id="button"
+        >
             {props.label}
         </button>
     </div>;

@@ -9,7 +9,6 @@ if __name__ == "__main__":
 condition = True
 
 if condition:
-
     print("Two")
 
     def bar():

@@ -1,8 +1,16 @@
 """Pipe expressions: Forward pipe operator (|>) for function chaining."""
 
-def square(x: int) -> int { return x ** 2; }
-def double(x: int) -> int { return x * 2; }
-def add_ten(x: int) -> int { return x + 10; }
+def square(x: int) -> int {
+    return x ** 2;
+}
+
+def double(x: int) -> int {
+    return x * 2;
+}
+
+def add_ten(x: int) -> int {
+    return x + 10;
+}
 
 with entry {
     # Basic forward pipe: value |> function
@@ -15,7 +23,7 @@ with entry {
     total = [1, 2, 3, 4, 5] |> sum;
 
     # Pipe to lambda
-    result3 = 10 |> (lambda n: int : n * 3);
+    result3 = 10 |> (lambda  n: int: n * 3);
 
     print(result1, result2, total, result3);
 }

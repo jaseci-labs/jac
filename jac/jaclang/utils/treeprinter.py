@@ -5,7 +5,7 @@ from __future__ import annotations
 import ast as ast3
 import builtins
 import html
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 import jaclang.compiler.unitree as uni
 from jaclang.settings import settings
@@ -137,7 +137,7 @@ CLASS_COLOR_MAP: dict[str, str] = {
 
 def printgraph_ast_tree(
     root: UniNode,
-    dot_lines: Optional[list[str]] = None,
+    dot_lines: list[str] | None = None,
 ) -> str:
     """Recursively generate ast tree in dot format."""
     starting_call = False
@@ -192,9 +192,9 @@ def printgraph_ast_tree(
 def print_ast_tree(
     root: UniNode | ast3.AST,
     marker: str = "+-- ",
-    level_markers: Optional[list[bool]] = None,
-    output_file: Optional[str] = None,
-    max_depth: Optional[int] = None,
+    level_markers: list[bool] | None = None,
+    output_file: str | None = None,
+    max_depth: int | None = None,
 ) -> str:
     """Recursively print ast tree."""
     from jaclang.compiler.unitree import AstSymbolNode, Token
@@ -210,14 +210,13 @@ def print_ast_tree(
         sym_table_link = (
             f"SymbolTable: {node.type_sym_tab.scope_name}"
             if isinstance(node, AstSymbolNode) and node.type_sym_tab
-            else "SymbolTable: None" if isinstance(node, AstSymbolNode) else ""
+            else "SymbolTable: None"
+            if isinstance(node, AstSymbolNode)
+            else ""
         )
 
         if isinstance(node, Token) and isinstance(node, AstSymbolNode):
-            out = (
-                f"{node.__class__.__name__} - {node.value} - "
-                f"Type: {node.expr_type}, {access} {sym_table_link}"
-            )
+            out = f"{node.__class__.__name__} - {node.value} - Type: {node.expr_type}, {access} {sym_table_link}"
             if settings.ast_symbol_info_detailed:
                 symbol = (
                     node.sym.sym_dotted_name
@@ -235,10 +234,12 @@ def print_ast_tree(
         ):
             return f"{node.__class__.__name__} - PythonModuleRaised: {node.name}"
         elif isinstance(node, uni.ModuleItem):
-            out = (
-                f"{node.__class__.__name__} - {node.name.sym_name} - "
-                f"abs_path: {node.abs_path}"
+            name_str = (
+                node.name.sym_name
+                if isinstance(node.name, uni.Name)
+                else node.name.value
             )
+            out = f"{node.__class__.__name__} - {name_str} - abs_path: {node.abs_path}"
             return out
         elif isinstance(node, uni.ModulePath):
             out = (
@@ -247,10 +248,7 @@ def print_ast_tree(
             )
             return out
         elif isinstance(node, AstSymbolNode):
-            out = (
-                f"{node.__class__.__name__} - {node.sym_name} - "
-                f"Type: {node.expr_type}, {access} {sym_table_link}"
-            )
+            out = f"{node.__class__.__name__} - {node.sym_name} - Type: {node.expr_type}, {access} {sym_table_link}"
             if settings.ast_symbol_info_detailed:
                 symbol = (
                     node.sym.sym_dotted_name
@@ -364,8 +362,8 @@ class SymbolTree:
     def __init__(
         self,
         node_name: str,
-        parent: Optional[SymbolTree] = None,
-        children: Optional[list[SymbolTree]] = None,
+        parent: SymbolTree | None = None,
+        children: list[SymbolTree] | None = None,
     ) -> None:
         """Initialize Symbol Tree Node."""
         self.parent = parent
@@ -373,12 +371,12 @@ class SymbolTree:
         self.name = node_name
 
     @property
-    def parent(self) -> Optional[SymbolTree]:
+    def parent(self) -> SymbolTree | None:
         """Get parent node."""
         return self.__parent
 
     @parent.setter
-    def parent(self, parent_node: Optional[SymbolTree]) -> None:
+    def parent(self, parent_node: SymbolTree | None) -> None:
         """Set parent node."""
         if parent_node:
             self.__parent = parent_node
@@ -386,7 +384,7 @@ class SymbolTree:
 
 
 def _build_symbol_tree_common(
-    node: UniScopeNode, parent_node: Optional[SymbolTree] = None
+    node: UniScopeNode, parent_node: SymbolTree | None = None
 ) -> SymbolTree:
     root = SymbolTree(
         node_name=f"SymTable::{node.__class__.__name__}({node.scope_name})",
@@ -434,9 +432,9 @@ def _build_symbol_tree_common(
 def print_symtab_tree(
     root: UniScopeNode,
     marker: str = "+-- ",
-    level_markers: Optional[list[bool]] = None,
-    output_file: Optional[str] = None,
-    depth: Optional[int] = None,
+    level_markers: list[bool] | None = None,
+    output_file: str | None = None,
+    depth: int | None = None,
 ) -> str:
     """Recursively print symbol table tree."""
     return get_symtab_tree_str(
@@ -451,9 +449,9 @@ def print_symtab_tree(
 def get_symtab_tree_str(
     root: SymbolTree,
     marker: str = "+-- ",
-    level_markers: Optional[list[bool]] = None,
-    output_file: Optional[str] = None,
-    depth: Optional[int] = None,
+    level_markers: list[bool] | None = None,
+    output_file: str | None = None,
+    depth: int | None = None,
 ) -> str:
     """Recursively print symbol table tree."""
     if (

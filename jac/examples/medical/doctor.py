@@ -12,9 +12,7 @@ class Doctor:
     def update_receivables(self, amount):
         """Updates the doctor's receivables after a claim is processed."""
         self.receivables += amount
-        print(
-            f"Dr. {self.name}'s receivables updated by ${amount}. New total: ${self.receivables}"
-        )
+        print(f"Dr. {self.name}'s receivables updated by ${amount}. New total: ${self.receivables}")
 
 
 class Patient:

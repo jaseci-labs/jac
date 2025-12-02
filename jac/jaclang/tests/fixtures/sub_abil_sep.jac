@@ -6,10 +6,11 @@ def plan {
     print("Hello, world!");
     say_hi("I'm a ninja Myca!");
 
-    impl plan.say_hi
-    (m: str) {
+    impl plan.say_hi(m: str) {
         print(m);
     }
 }
 
-with entry { plan(); }
+with entry {
+    plan();
+}

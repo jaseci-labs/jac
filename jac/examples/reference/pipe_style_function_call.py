@@ -39,7 +39,6 @@ class SimpleWalker(Walker):
 
 
 class BasicSpawn(Walker):
-
     @on_entry
     def start(self, here: Root) -> None:
         print("BasicSpawn: started at root")
@@ -97,7 +96,6 @@ class DataCollector(Walker):
 
 
 class NodeSpawner(Walker):
-
     @on_entry
     def start(self, here: Root) -> None:
         visit(self, refs(OPath(here).edge_out().visit()))
@@ -112,7 +110,6 @@ class NodeSpawner(Walker):
 
 
 class SubWalker(Walker):
-
     @on_entry
     def start(self, here: Task) -> None:
         print(f"    SubWalker started at: {here.name}")
@@ -176,7 +173,6 @@ class Analyzer(Walker):
 
 
 class SyntaxDemo(Walker):
-
     @on_entry
     def start(self, here: Root) -> None:
         print("SyntaxDemo: Demonstrating all spawn syntaxes")
@@ -213,9 +209,7 @@ print("\n=== 8. Multiple Walkers on Same Graph ===")
 counter = spawn(root(), Counter())
 analyzer = spawn(root(), Analyzer())
 print(f"  Counter: {counter.total} tasks")
-print(
-    f"  Analyzer: {analyzer.high_priority} high, {analyzer.low_priority} low priority"
-)
+print(f"  Analyzer: {analyzer.high_priority} high, {analyzer.low_priority} low priority")
 print("\n=== 9. Spawn Syntax Variations ===")
 spawn(root(), SyntaxDemo())
 spawn(root(), SyntaxDemo())

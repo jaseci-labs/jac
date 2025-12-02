@@ -75,9 +75,7 @@ class ShoppingCart(Walker):
         if isinstance(here, Magazine):
             print(f"  -> Magazine block: '{here.title}' Issue #{here.issue}")
         if isinstance(here, Electronics):
-            print(
-                f"  -> Electronics block: {here.name}, {here.warranty_years}yr warranty"
-            )
+            print(f"  -> Electronics block: {here.name}, {here.warranty_years}yr warranty")
         self.items_count += 1
         self.total += here.price
         visit(self, refs(OPath(here).edge_out().visit()))
@@ -107,9 +105,7 @@ class Checkout(Node):
             discount = visitor.total_spent * visitor.vip_discount
             final_total = visitor.total_spent - discount
             print(f"\\nVIP customer: {visitor.name}")
-            print(
-                f"Subtotal: ${visitor.total_spent}, Discount: -${discount}, Final: ${final_total}"
-            )
+            print(f"Subtotal: ${visitor.total_spent}, Discount: -${discount}, Final: ${final_total}")
         if isinstance(visitor, Customer):
             print(f"Processing payment for {visitor.name}")
 

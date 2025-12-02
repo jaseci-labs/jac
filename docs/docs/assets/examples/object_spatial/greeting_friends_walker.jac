@@ -11,7 +11,6 @@ walker GreetFriends {
         if not here.visited {
             here.visited = True;
             print(f"Hello, {here.name}!");
-
             # Now, tell the walker to go to all connected friends
             visit [->:FriendsWith:->];
         }
@@ -25,8 +24,8 @@ with entry {
     charlie = root ++> Person(name="Charlie");
 
     # Connect friends
-    alice +>:FriendsWith:+> bob +>:FriendsWith:+> charlie;
-    alice +>:FriendsWith:+> charlie;  # Alice also friends with Charlie
+    alice +>: FriendsWith :+> bob +>: FriendsWith :+> charlie;
+    alice +>: FriendsWith :+> charlie;  # Alice also friends with Charlie
 
     # Start the walker on the 'alice' node to greet everyone
     alice[0] spawn GreetFriends();

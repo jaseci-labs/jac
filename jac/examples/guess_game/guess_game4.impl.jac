@@ -8,7 +8,6 @@ impl turn.check{
     visit [-->];
 }
 
-
 impl GuessGame.start_game{
     end: `root | turn = here;
     for i = 0 to i < 10 by i += 1 {
@@ -16,7 +15,6 @@ impl GuessGame.start_game{
     }
     visit [-->];
 }
-
 
 impl GuessGame.process_guess(guess: int) {
     if guess > self.correct_number {

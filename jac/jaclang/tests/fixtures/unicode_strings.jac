@@ -1,10 +1,13 @@
 with entry {
     # unicode characters
-    items = [{"title":"1st", "due":True, "completed":True}, {"title":"2nd", "due":False, "completed":False}];
+    items = [
+        {"title": "1st", "due": True, "completed": True},
+        {"title": "2nd", "due": False, "completed": False}
+    ];
     for (i, item) in enumerate(items) {
         status = "✓" if item["completed"] else "○";
         due = f" (due: {item['due']})" if item["due"] else "";
-        print(f"{i+1}. {status} {item['title']}{due}");
+        print(f"{i + 1}. {status} {item['title']}{due}");
     }
 
     # unicode emojis and symbols

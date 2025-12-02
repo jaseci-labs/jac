@@ -1,9 +1,9 @@
 import from enum { unique }
 
-@unique
+@ unique
 enum Color;
 
-impl Color {
+impl Color{
     RED = 1,
     GREEN = 2
 }

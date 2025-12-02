@@ -17,8 +17,9 @@ from __future__ import annotations
 import ast as py_ast
 import os
 import re
+from collections.abc import Sequence
 from threading import Event
-from typing import Optional, Sequence, TYPE_CHECKING, TypeAlias, TypeVar, cast
+from typing import TYPE_CHECKING, TypeAlias, TypeVar, cast
 
 import jaclang.compiler.unitree as uni
 from jaclang.compiler.constant import Tokens as Tok
@@ -106,7 +107,7 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
             type_ignores: list[TypeIgnore]
         """
         if not node.body:
-            return uni.Module.make_stub(inject_src=self.ir_in)
+            return uni.Module.make_stub(inject_src=self.ir_in.orig_src)
         elements: list[uni.UniNode] = [self.convert(i) for i in node.body]
         elements[0] = (
             elements[0].expr
@@ -186,13 +187,21 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
             raise self.ice("Length mismatch in decorators on function")
         valid_decorators = valid_dec if valid_dec else None
         res = self.convert(node.args)
-        sig: Optional[uni.FuncSignature] = (
+        sig: uni.FuncSignature | None = (
             res if isinstance(res, uni.FuncSignature) else None
         )
         ret_sig = self.convert(node.returns) if node.returns else None
         if isinstance(ret_sig, uni.Expr):
             if not sig:
-                sig = uni.FuncSignature(params=[], return_type=ret_sig, kid=[ret_sig])
+                sig = uni.FuncSignature(
+                    posonly_params=[],
+                    params=[],
+                    varargs=None,
+                    kwonlyargs=[],
+                    kwargs=None,
+                    return_type=ret_sig,
+                    kid=[ret_sig],
+                )
             else:
                 sig.return_type = ret_sig
                 sig.add_kids_right([sig.return_type])
@@ -296,7 +305,11 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
                 and body_stmt.signature.params
             ):
                 for param in body_stmt.signature.params:
-                    if param.name.value == "self" and param.type_tag:
+                    if (
+                        param.name.value == "self"
+                        and param.type_tag
+                        and isinstance(param.type_tag.tag, uni.Name)
+                    ):
                         param.type_tag.tag.value = name.value
         doc = (
             body[0].expr
@@ -331,7 +344,9 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
             else (
                 [name, *base_classes, *valid_body]
                 if base_classes
-                else [name, *valid_body, doc] if doc else [name, *valid_body]
+                else [name, *valid_body, doc]
+                if doc
+                else [name, *valid_body]
             )
         )
         return uni.Archetype(
@@ -494,10 +509,7 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
         val_orelse = [i for i in orelse if isinstance(i, uni.CodeBlockStmt)]
         if len(val_orelse) != len(orelse):
             raise self.ice("Length mismatch in for orelse")
-        if orelse:
-            fin_orelse = uni.ElseStmt(body=val_orelse, kid=val_orelse)
-        else:
-            fin_orelse = None
+        fin_orelse = uni.ElseStmt(body=val_orelse, kid=val_orelse) if orelse else None
         if isinstance(target, uni.Expr) and isinstance(iter, uni.Expr):
             return uni.InForStmt(
                 target=target,
@@ -536,10 +548,7 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
         val_orelse = [i for i in orelse if isinstance(i, uni.CodeBlockStmt)]
         if len(val_orelse) != len(orelse):
             raise self.ice("Length mismatch in for orelse")
-        if orelse:
-            fin_orelse = uni.ElseStmt(body=val_orelse, kid=val_orelse)
-        else:
-            fin_orelse = None
+        fin_orelse = uni.ElseStmt(body=val_orelse, kid=val_orelse) if orelse else None
         if isinstance(target, uni.Expr) and isinstance(iter, uni.Expr):
             return uni.InForStmt(
                 target=target,
@@ -574,10 +583,7 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
         val_orelse = [i for i in orelse if isinstance(i, uni.CodeBlockStmt)]
         if len(val_orelse) != len(orelse):
             raise self.ice("Length mismatch in for orelse")
-        if orelse:
-            fin_orelse = uni.ElseStmt(body=val_orelse, kid=val_orelse)
-        else:
-            fin_orelse = None
+        fin_orelse = uni.ElseStmt(body=val_orelse, kid=val_orelse) if orelse else None
 
         if isinstance(test, uni.Expr):
             return uni.WhileStmt(
@@ -612,7 +618,7 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
         if valid_orelse:
             first_elm = valid_orelse[0]
             if isinstance(first_elm, uni.IfStmt):
-                else_body: Optional[uni.ElseIf | uni.ElseStmt] = uni.ElseIf(
+                else_body: uni.ElseIf | uni.ElseStmt | None = uni.ElseIf(
                     condition=first_elm.condition,
                     body=first_elm.body,
                     else_body=first_elm.else_body,
@@ -903,10 +909,7 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
         for i in keywords:
             if isinstance(i, uni.KWPair):
                 params_in.append(i)
-        if len(params_in) != 0:
-            kids = [func, *params_in]
-        else:
-            kids = [func]
+        kids = [func, *params_in] if len(params_in) != 0 else [func]
         if isinstance(func, uni.Expr):
             return uni.FuncCall(
                 target=func,
@@ -977,12 +980,12 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
         if value_type in type_mapping:
             if value_type is None:
                 token_type = "NULL"
-            elif value_type == str:
+            elif value_type is str:
                 token_type = "STRING"
             else:
                 token_type = f"{value_type.__name__.upper()}"
 
-            if value_type == str:
+            if value_type is str:
                 raw_repr = repr(node.value)
                 quote = "'" if raw_repr.startswith("'") else '"'
                 value = f"{quote}{raw_repr[1:-1]}{quote}"
@@ -1180,10 +1183,9 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
         format_spec: expr | None
         """
         value = self.convert(node.value)
-        if node.format_spec:
-            fmt_spec = cast(uni.Expr, self.convert(node.format_spec))
-        else:
-            fmt_spec = None
+        fmt_spec = (
+            cast(uni.Expr, self.convert(node.format_spec)) if node.format_spec else None
+        )
         if isinstance(value, uni.Expr):
             ret = uni.FormattedValue(
                 format_part=value,
@@ -1375,7 +1377,7 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
         )
         return ret
 
-    def proc_joined_str(self, node: py_ast.JoinedStr) -> uni.FString:
+    def proc_joined_str(self, node: py_ast.JoinedStr) -> uni.MultiString:
         """Process python node.
 
         class JoinedStr(expr):
@@ -1383,10 +1385,22 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
             __match_args__ = ("values",)
         values: list[expr]
         """
-        valid: list[uni.Token | uni.FormattedValue] = []
+        valid: list[uni.String | uni.FormattedValue] = []
         for i in node.values:
             if isinstance(i, py_ast.Constant) and isinstance(i.value, str):
-                valid.append(self.operator(Tok.STRING, i.value))
+                valid.append(
+                    uni.String(
+                        orig_src=self.orig_src,
+                        name="STRING",
+                        value=i.value,
+                        line=i.lineno,
+                        end_line=i.end_lineno if i.end_lineno else i.lineno,
+                        col_start=i.col_offset,
+                        col_end=i.col_offset + len(i.value),
+                        pos_start=0,
+                        pos_end=0,
+                    )
+                )
             elif isinstance(i, py_ast.FormattedValue):
                 converted = self.convert(i)
                 if isinstance(converted, uni.FormattedValue):
@@ -1400,7 +1414,7 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
         if match:
             prefix, quote = match.groups()
             start = match.group(0)
-            end = quote * (3 if len(quote) == 3 else 1)
+            end = quote
         else:
             start = "f'"
             end = "'"
@@ -1896,7 +1910,6 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
             and isinstance(slice, uni.TupleVal)
             and slice.values
         ):
-
             slices: list[uni.IndexSlice.Slice] = []
             for index_slice in slice.values:
                 if not isinstance(index_slice, uni.IndexSlice):
@@ -1964,7 +1977,7 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
             ]
             if len(finalbody) != len(valid_finalbody):
                 raise self.ice("Length mismatch in try finalbody")
-            finally_stmt_obj: Optional[uni.FinallyStmt] = (
+            finally_stmt_obj: uni.FinallyStmt | None = (
                 fin_append := uni.FinallyStmt(
                     body=valid_finalbody,
                     kid=valid_finalbody,
@@ -2149,9 +2162,11 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
             [self.convert(arg) for arg in node.args], uni.ParamKind.NORMAL
         )
 
-        vararg = self.convert(node.vararg) if node.vararg else None
+        vararg_node = self.convert(node.vararg) if node.vararg else None
+        vararg: uni.ParamVar | None = None
 
-        if vararg and isinstance(vararg, uni.ParamVar):
+        if vararg_node and isinstance(vararg_node, uni.ParamVar):
+            vararg = vararg_node
             vararg.param_kind = uni.ParamKind.VARARG
             vararg.unpack = uni.Token(
                 orig_src=self.orig_src,
@@ -2180,8 +2195,10 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
             ):
                 kwa.value = kwdefault
                 kwa.add_kids_right([kwa.value])
-        kwarg = self.convert(node.kwarg) if node.kwarg else None
-        if kwarg and isinstance(kwarg, uni.ParamVar):
+        kwarg_node = self.convert(node.kwarg) if node.kwarg else None
+        kwarg: uni.ParamVar | None = None
+        if kwarg_node and isinstance(kwarg_node, uni.ParamVar):
+            kwarg = kwarg_node
             kwarg.param_kind = uni.ParamKind.KWARG
             kwarg.unpack = uni.Token(
                 orig_src=self.orig_src,

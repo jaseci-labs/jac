@@ -390,7 +390,7 @@ cl {
     }
 
     # TodoInput Component
-    def TodoInput(props: any)  -> any {
+    def TodoInput(props: any) -> any {
         let input = props.input;
         let setInput = props.setInput;
         let addTodo = props.addTodo;
@@ -431,7 +431,7 @@ cl {
     }
 
     # TodoFilters Component
-    def TodoFilters(props: any)  -> any {
+    def TodoFilters(props: any) -> any {
         let filter = props.filter;
         let setFilter = props.setFilter;
 
@@ -470,9 +470,7 @@ cl {
                 onClick={lambda   -> None{ setFilter("completed");} }
                 style={{
                     "padding": "6px 12px",
-                    "background": (
-                        "#3b82f6" if filter == "completed" else "#e5e7eb"
-                    ),
+                    "background": ("#3b82f6" if filter == "completed" else "#e5e7eb"),
                     "color": ("#ffffff" if filter == "completed" else "#000000"),
                     "border": "none",
                     "borderRadius": "4px",
@@ -486,7 +484,7 @@ cl {
     }
 
     # TodoItem Component
-    def TodoItem(props: any)  -> any {
+    def TodoItem(props: any) -> any {
         let todo = props.todo;
         let toggleTodo = props.toggleTodo;
         let deleteTodo = props.deleteTodo;
@@ -510,9 +508,7 @@ cl {
             <span
                 style={{
                     "flex": "1",
-                    "textDecoration": (
-                        "line-through" if todo.done else "none"
-                    ),
+                    "textDecoration": ("line-through" if todo.done else "none"),
                     "color": ("#999" if todo.done else "#000")
                 }}
             >
@@ -536,18 +532,14 @@ cl {
     }
 
     # TodoList Component
-    def TodoList(props: any)  -> any {
+    def TodoList(props: any) -> any {
         let filteredTodos = props.filteredTodos;
         let toggleTodo = props.toggleTodo;
         let deleteTodo = props.deleteTodo;
 
         if filteredTodos.length == 0 {
             return <div
-                style={{
-                    "padding": "20px",
-                    "textAlign": "center",
-                    "color": "#999"
-                }}
+                style={{"padding": "20px", "textAlign": "center", "color": "#999"}}
             >
                 No todos yet. Add one above!
             </div>;
@@ -555,14 +547,12 @@ cl {
 
         return <div>
             {filteredTodos.map(
-                lambda  todo: any  -> any{
-                    return <TodoItem
-                        key={todo._jac_id}
-                        todo={todo}
-                        toggleTodo={toggleTodo}
-                        deleteTodo={deleteTodo}
-                    />;
-                }
+                lambda  todo: any  -> any{ return <TodoItem
+                    key={todo._jac_id}
+                    todo={todo}
+                    toggleTodo={toggleTodo}
+                    deleteTodo={deleteTodo}
+                />; }
             )}
         </div>;
     }
@@ -602,16 +592,13 @@ cl {
             id spawn toggle_todo();
             setTodos(
                 todos.map(
-                    lambda  todo: any  -> any{
-                        if todo._jac_id == id {
-                            return {
-                                "_jac_id": todo._jac_id,
-                                "text": todo.text,
-                                "done": not todo.done
-                            };
-                        }
-                        return todo;
-                    }
+                    lambda  todo: any  -> any{ if todo._jac_id == id {
+                        return {
+                            "_jac_id": todo._jac_id,
+                            "text": todo.text,
+                            "done": not todo.done
+                        };
+                    }return todo; }
                 )
             );
         }

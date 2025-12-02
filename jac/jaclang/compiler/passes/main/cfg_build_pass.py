@@ -10,7 +10,7 @@ The CFG provides a foundation for data flow analysis, optimization, and understa
 The pass also includes functionality to coalesce basic blocks and generate visual representations of the CFG.
 """
 
-from typing import Sequence
+from collections.abc import Sequence
 
 import jaclang.compiler.unitree as uni
 from jaclang.compiler.passes import UniPass
@@ -68,11 +68,15 @@ class CFGBuildPass(UniPass):
                 target.bb_in = [source]
 
     def get_code_block_sequence(
-        self, node: uni.CodeBlockStmt
+        self, node: uni.UniNode | None
     ) -> list[uni.UniCFGNode] | None:
         """Get code block sequence."""
         sequence: list[uni.UniCFGNode] = []
-        if hasattr(node, "body") and isinstance(node.body, Sequence):
+        if (
+            node is not None
+            and hasattr(node, "body")
+            and isinstance(node.body, Sequence)
+        ):
             for bbs in node.body:
                 if isinstance(bbs, uni.UniCFGNode):
                     sequence.append(bbs)
@@ -100,8 +104,7 @@ class CFGBuildPass(UniPass):
                 #     bbs for bbs in node.parent.body if isinstance(bbs, uni.UniCFGNode)
                 # ]
                 if (
-                    node.parent
-                    and isinstance(node.parent, uni.Archetype)
+                    node.parent and isinstance(node.parent, uni.Archetype)
                     # and isinstance(node.parent.parent, uni.BasicBlockStmt)
                 ):
                     parent_obj = node.parent
@@ -241,7 +244,6 @@ class CoalesceBBPass(UniPass):
             }
 
             if bb["bb_out"]:
-
                 for out_obj in bb["bb_out"]:
                     for k, v in self.basic_blocks.items():
                         if out_obj == v["bb_stmts"][0]:
@@ -307,7 +309,7 @@ def cfg_dot_from_file(file_name: str) -> str:
     """Print the control flow graph."""
     from jaclang.compiler.program import JacProgram
 
-    with open(file_name, "r") as f:
+    with open(file_name) as f:
         file_source = f.read()
 
     ir = (prog := JacProgram()).compile(use_str=file_source, file_path=file_name)

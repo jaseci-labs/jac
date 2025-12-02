@@ -5,6 +5,6 @@ edge e {
 }
 
 with entry {
-    nodes = root +>:e(name="hello"):+> x();
+    nodes = root +>: e(name="hello") :+> x();
     print(nodes);
 }

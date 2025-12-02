@@ -10,7 +10,7 @@ from jaclang.vendor.lark.tools import standalone
 
 
 def generate_static_parser(force: bool = False) -> None:
-    """Generate static parser."""
+    """Generate static parser for Jac."""
     cur_dir = os.path.dirname(__file__)
     if force or not os.path.exists(os.path.join(cur_dir, "larkparse", "jac_parser.py")):
         if os.path.exists(os.path.join(cur_dir, "larkparse")):
@@ -24,6 +24,31 @@ def generate_static_parser(force: bool = False) -> None:
             os.path.join(cur_dir, "jac.lark"),
             "-o",
             os.path.join(cur_dir, "larkparse", "jac_parser.py"),
+            "-c",
+        ]
+        standalone.main()
+        sys.argv = save_argv
+
+
+def generate_ts_static_parser(force: bool = False) -> None:
+    """Generate static parser for TypeScript/JavaScript."""
+    cur_dir = os.path.dirname(__file__)
+    ts_parser_path = os.path.join(cur_dir, "larkparse", "ts_parser.py")
+
+    if force or not os.path.exists(ts_parser_path):
+        os.makedirs(os.path.join(cur_dir, "larkparse"), exist_ok=True)
+        # Ensure __init__.py exists
+        init_path = os.path.join(cur_dir, "larkparse", "__init__.py")
+        if not os.path.exists(init_path):
+            with open(init_path, "w"):
+                pass
+
+        save_argv = sys.argv
+        sys.argv = [
+            "lark",
+            os.path.join(cur_dir, "ts.lark"),
+            "-o",
+            ts_parser_path,
             "-c",
         ]
         standalone.main()
@@ -74,4 +99,17 @@ TOKEN_MAP.update(
 # fmt: on
 
 
-__all__ = ["jac_lark", "TOKEN_MAP"]
+def get_ts_token_map() -> dict[str, str]:
+    """Get TypeScript token map (lazy loaded)."""
+    try:
+        from jaclang.compiler.larkparse import ts_parser as ts_lark
+
+        return {
+            x.name: x.pattern.value
+            for x in ts_lark.Lark_StandAlone().parser.lexer_conf.terminals
+        }
+    except (ModuleNotFoundError, ImportError):
+        return {}
+
+
+__all__ = ["jac_lark", "TOKEN_MAP", "generate_ts_static_parser", "get_ts_token_map"]

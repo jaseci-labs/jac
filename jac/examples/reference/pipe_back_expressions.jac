@@ -1,8 +1,16 @@
 """Pipe back expressions: Backward pipe operator (<|) for right-to-left function application."""
 
-def double(x: int) -> int { return x * 2; }
-def triple(x: int) -> int { return x * 3; }
-def add_five(x: int) -> int { return x + 5; }
+def double(x: int) -> int {
+    return x * 2;
+}
+
+def triple(x: int) -> int {
+    return x * 3;
+}
+
+def add_five(x: int) -> int {
+    return x + 5;
+}
 
 with entry {
     # Basic backward pipe: function <| value
@@ -10,7 +18,7 @@ with entry {
     result2 = add_five <| 10;
 
     # Backward pipe with lambda
-    result3 = (lambda n: int : n * 3) <| 10;
+    result3 = (lambda  n: int: n * 3) <| 10;
 
     # Backward pipe with built-in functions
     total = sum <| [1, 2, 3, 4, 5];

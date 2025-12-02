@@ -1,4 +1,3 @@
-
 import from byllm.lib { Model }
 import from pathlib { Path }
 
@@ -11,11 +10,12 @@ obj Task {
     has details: str;
     has priority: int = 1;
 }
-sem Task = "A specific development task with clear implementation requirements";
-sem Task.name = "Clear, descriptive name for the task";
-sem Task.type = "Task category: code, fix, docs, or test";
-sem Task.details = "Specific implementation instructions";
-sem Task.priority = "Task priority: 1=high, 2=medium, 3=low";
+
+sem Task= "A specific development task with clear implementation requirements";
+sem Task. name= "Clear, descriptive name for the task";
+sem Task. type= "Task category: code, fix, docs, or test";
+sem Task. details= "Specific implementation instructions";
+sem Task. priority= "Task priority: 1=high, 2=medium, 3=low";
 
 obj CodeResult {
     has task_name: str = "";
@@ -23,11 +23,12 @@ obj CodeResult {
     has status: str = "";
     has feedback: str = "";
 }
-sem CodeResult = "Result of code generation task";
-sem CodeResult.task_name = "Name of the completed task";
-sem CodeResult.code = "Generated code solution";
-sem CodeResult.status = "Task completion status: success or failed";
-sem CodeResult.feedback = "Validation feedback and suggestions";
+
+sem CodeResult= "Result of code generation task";
+sem CodeResult. task_name= "Name of the completed task";
+sem CodeResult. code= "Generated code solution";
+sem CodeResult. status= "Task completion status: success or failed";
+sem CodeResult. feedback= "Validation feedback and suggestions";
 
 # Core AI functions
 def create_plan(request: str) -> list[Task] by llm(method="Reason");
@@ -103,17 +104,14 @@ walker GeniusAgent {
                 task_node.task = task;
                 task_nodes.append(task_node);
             }
-
             # Connect nodes in sequence
             for i in range(len(task_nodes) - 1) {
                 task_nodes[i] ++> task_nodes[i + 1];
             }
-
             # Connect last task node to summary
             summary_node = SummaryNode();
             summary_node.results = self.results;
             task_nodes[-1] ++> summary_node;
-
             # Start traversal from first task
             visit task_nodes[0];
         } else {
@@ -150,6 +148,6 @@ walker GeniusAgent {
                 } for result in self.results
             ],
             "total_tasks": len(self.results)
-        };
+        } ;
     }
 }

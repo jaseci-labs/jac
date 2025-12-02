@@ -5,16 +5,16 @@ from __future__ import annotations
 import asyncio
 import os
 import tempfile
-from typing import Optional
 from dataclasses import dataclass
 
 from lsprotocol.types import (
-    DidOpenTextDocumentParams,
-    TextDocumentItem,
-    DidSaveTextDocumentParams,
     DidChangeTextDocumentParams,
+    DidOpenTextDocumentParams,
+    DidSaveTextDocumentParams,
+    TextDocumentItem,
     VersionedTextDocumentIdentifier,
 )
+
 from jaclang.vendor.pygls.uris import from_fs_path
 from jaclang.vendor.pygls.workspace import Workspace
 
@@ -31,7 +31,7 @@ def create_temp_jac_file(initial_content: str = "") -> str:
 
 def load_jac_template(template_file: str, code: str = "") -> str:
     """Load a Jac template file and inject code into placeholder."""
-    with open(template_file, "r") as f:
+    with open(template_file) as f:
         jac_template = f.read()
     return jac_template.replace("#{{INJECT_CODE}}", code)
 
@@ -105,7 +105,7 @@ class LanguageServerTestHelper:
         asyncio.run(did_open(self.ls, params))
         self.ls.wait_till_idle_sync()
 
-    def save_document(self, code: Optional[str] = None) -> None:
+    def save_document(self, code: str | None = None) -> None:
         """Save a document in the language server."""
         from jaclang.langserve.server import did_save
 
@@ -162,30 +162,30 @@ class LanguageServerTestHelper:
         """Assert that there are no diagnostics."""
         diagnostics = self.get_diagnostics()
         assert isinstance(diagnostics, list)
-        assert (
-            len(diagnostics) == 0
-        ), f"Expected no diagnostics, found {len(diagnostics)}"
+        assert len(diagnostics) == 0, (
+            f"Expected no diagnostics, found {len(diagnostics)}"
+        )
 
     def assert_has_diagnostics(
-        self, count: int = 1, message_contains: Optional[str] = None
+        self, count: int = 1, message_contains: str | None = None
     ) -> None:
         """Assert that diagnostics exist with optional message validation."""
         diagnostics = self.get_diagnostics()
         assert isinstance(diagnostics, list)
-        assert (
-            len(diagnostics) == count
-        ), f"Expected {count} diagnostic(s), found {len(diagnostics)}"
+        assert len(diagnostics) == count, (
+            f"Expected {count} diagnostic(s), found {len(diagnostics)}"
+        )
 
         if message_contains:
-            assert (
-                message_contains in diagnostics[0].message
-            ), f"Expected '{message_contains}' in diagnostic message"
+            assert message_contains in diagnostics[0].message, (
+                f"Expected '{message_contains}' in diagnostic message"
+            )
 
     def assert_semantic_tokens_count(self, expected_count: int) -> None:
         """Assert semantic tokens data has expected count."""
         tokens = self.get_semantic_tokens()
         assert hasattr(tokens, "data")
         assert isinstance(tokens.data, list)
-        assert (
-            len(tokens.data) == expected_count
-        ), f"Expected {expected_count} tokens, found {len(tokens.data)}"
+        assert len(tokens.data) == expected_count, (
+            f"Expected {expected_count} tokens, found {len(tokens.data)}"
+        )

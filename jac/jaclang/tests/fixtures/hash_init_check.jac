@@ -1,6 +1,6 @@
 obj TYPE {
     def init() {
-        DICT:dict = {};
+        DICT: dict = {};
         DICT[self] = 1;
     }
 }

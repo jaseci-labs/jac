@@ -1,12 +1,8 @@
+enum E { A = 0, B = 1, }
 
-enum E {
-    A = 0,
-    B = 1,
-}
-
-sem E = "An enum representing some values.";
-sem E.A = "The first value of the enum E.";
-sem E.B = "The second value of the enum E.";
+sem E= "An enum representing some values.";
+sem E. A= "The first value of the enum E.";
+sem E. B= "The second value of the enum E.";
 
 obj Person {
     has name: str;
@@ -17,14 +13,11 @@ obj Person {
     }
 }
 
-
 obj OuterClass {
     obj InnerClass {
         has inner_value: str;
     }
 }
-
-
 
 with entry {
     print(E.A);

@@ -1,14 +1,20 @@
 # Pages
-cl import from react {useState, useEffect}
+cl import from react { useState, useEffect }
 
 cl {
-    def app() -> any {
+    def app()  -> any {
         let [count, setCount] = useState(0);
-        useEffect(lambda -> None {
-            console.log("Count: ", count);
-        }, [count]);
-        return <div style={{padding: "20px", textAlign: "center", fontFamily: "Arial, sans-serif"}}>
-            <h1>🍔 Burger Counter App</h1>
+        useEffect(lambda   -> None{ console.log("Count: ", count);} , [count]);
+        return <div
+            style={{
+                padding: "20px",
+                textAlign: "center",
+                fontFamily: "Arial, sans-serif"
+            }}
+        >
+            <h1>
+                🍔 Burger Counter App
+            </h1>
             <img
                 src="/static/assets/burger.png"
                 alt="Delicious Burger"
@@ -20,11 +26,17 @@ cl {
                     boxShadow: "0 4px 8px rgba(0,0,0,0.2)"
                 }}
             />
-            <p style={{fontSize: "18px", margin: "20px 0"}}>
-                You've clicked the burger <strong>{count}</strong> times!
+            <p
+                style={{fontSize: "18px", margin: "20px 0"}}
+            >
+                You've clicked the burger
+                <strong>
+                    {count}
+                </strong>
+                times!
             </p>
             <button
-                onClick={lambda e: any ->  None {setCount(count + 1);}}
+                onClick={lambda  e: any  -> None{ setCount(count + 1);} }
                 style={{
                     padding: "10px 20px",
                     fontSize: "16px",

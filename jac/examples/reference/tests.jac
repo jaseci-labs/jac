@@ -20,7 +20,9 @@ with entry:__main__ {
     import subprocess;
     result = subprocess.run(
         ["jac", "test", f"{__file__}"],
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True
     );
     print(result.stderr);
 }

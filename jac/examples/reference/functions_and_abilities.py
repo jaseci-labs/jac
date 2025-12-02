@@ -21,7 +21,6 @@ from typing import Any, Protocol
 
 
 class BasicMath(Obj):
-
     def add(self, x: int, y: int) -> int:
         return x + y
 
@@ -51,7 +50,6 @@ class Calculator(Obj):
 
 
 class AbstractCalculator(Obj):
-
     @abstractmethod
     def compute(self, x: int, y: int) -> int:
         raise NotImplementedError
@@ -71,13 +69,11 @@ class AbstractCalculator(Obj):
 
 
 class ConcreteCalculator(AbstractCalculator, Obj):
-
     def compute(self, x: int, y: int) -> int:
         return x - y
 
 
 class Variadic(Obj):
-
     def sum_all(self, *values: int) -> int:
         return sum(values)
 
@@ -167,9 +163,7 @@ class TypedWalker(Walker):
 
     @on_exit
     def make_report(self, here) -> None:
-        print(
-            f"TypedWalker: Visited {self.people_visited} people, {self.cities_visited} cities"
-        )
+        print(f"TypedWalker: Visited {self.people_visited} people, {self.cities_visited} cities")
 
 
 class MultiAbilityWalker(Walker):
@@ -219,7 +213,6 @@ class AsyncWalker(Walker):
 
 
 class AbstractWalker(Walker):
-
     @on_entry
     @abstractmethod
     def must_override(self, here) -> None:
@@ -227,7 +220,6 @@ class AbstractWalker(Walker):
 
 
 class ConcreteWalker(AbstractWalker, Walker):
-
     @on_entry
     def must_override(self, here) -> None:
         print("ConcreteWalker: implemented abstract ability")

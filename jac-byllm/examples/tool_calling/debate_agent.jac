@@ -8,10 +8,13 @@ def get_wikipedia_summary(title: str) -> str {
         return wikipedia.summary(title);
     } except Exception {
         options = wikipedia.search(title, results=5, suggestion=True);
-        raise Exception(f"Could not get summary for {title}. Similar titles: {options}");
+        raise Exception(
+            f"Could not get summary for {title}. Similar titles: {options}"
+        ) ;
     }
 }
-sem get_wikipedia_summary = """Get the summary of the related article from Wikipedia.""";
+
+sem get_wikipedia_summary= """Get the summary of the related article from Wikipedia.""";
 
 def ask_opponent(statement: str) -> str {
     user_input = input(f"AI -> {statement} ");
@@ -29,6 +32,7 @@ def debate_agent(topic: str) -> str by llm(
         "If you dont know about the topic or you want to verify the opponents claims use the given tools",
         "You can ask opponent counter questions",
         "You are a humorous, cunning, very arrogant debater.",
+
     ]
 );
 

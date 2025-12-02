@@ -4,10 +4,10 @@ import os
 import sys
 import tempfile
 
-from jaclang.cli.cmdreg import cmd_registry
-from jaclang.runtimelib.machine import hookimpl
-
 import streamlit.web.bootstrap as bootstrap
+
+from jaclang.cli.cmdreg import cmd_registry
+from jaclang.runtimelib.runtime import hookimpl
 
 
 class JacCmd:
@@ -28,9 +28,9 @@ class JacCmd:
                 abs_path = os.path.abspath(filename)
                 dirname, basename = os.path.split(abs_path)
                 basename = basename.replace(".jac", "")
-                assert (
-                    basename not in sys.modules
-                ), "Please use another name for the .jac file. It conflicts with a Python package."
+                assert basename not in sys.modules, (
+                    "Please use another name for the .jac file. It conflicts with a Python package."
+                )
                 py_lines = [
                     "from jaclang_streamlit import run_streamlit",
                     f'run_streamlit("{basename}", "{dirname}")',

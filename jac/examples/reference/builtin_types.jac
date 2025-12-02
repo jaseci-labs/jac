@@ -1,5 +1,4 @@
 # Builtin Types
-
 with entry {
     # str - string type
     s: str = "hello";
@@ -22,7 +21,7 @@ with entry {
     print(tup);
 
     # set - set type
-    st: set = {1, 2, 3};
+    st: set = {1,2,3};
     print(st);
 
     # dict - dictionary type

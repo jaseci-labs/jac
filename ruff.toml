@@ -1,0 +1,49 @@
+# Ruff configuration
+
+target-version = "py311"
+line-length = 88
+
+# Exclude same paths as pre-commit
+exclude = [
+    "jac/jaclang/vendor/",
+    "jac/jaclang/compiler/larkparse/jac_parser.py",
+    "jac/jaclang/compiler/larkparse/ts_parser.py",
+    # Examples may contain Python 3.12+ syntax for demonstration
+    "jac/examples/",
+]
+
+[lint]
+select = [
+    "E",      # pycodestyle errors
+    "F",      # Pyflakes
+    "N",      # pep8-naming
+    "C4",     # flake8-comprehensions
+    "I",      # isort (import sorting)
+    "B",      # flake8-bugbear
+    "ANN",    # flake8-annotations
+    "SIM",    # flake8-simplify
+    "UP",     # pyupgrade
+]
+
+# TODO: Make strict: Ignore E501 (line too long) - let formatter handle code, accept long strings/comments
+ignore = ["E501"]
+
+# Enable auto-fix for all fixable rules
+fixable = ["ALL"]
+
+# Per-file ignores (matching old flake8 excludes)
+[lint.per-file-ignores]
+"**/fixtures/*" = ["ALL"]
+# Test files: allow long lines (test data strings), missing annotations, and some simplifications
+"**/tests/*" = ["E501", "ANN", "SIM105", "SIM108", "SIM115"]
+# TODO: jac-scale should fall in line
+"jac-scale/**" = ["UP007", "UP045", "N999", "ANN", "SIM115"]
+# TypeScript parser has Lark transformer callbacks with dynamic signatures
+"jac/jaclang/compiler/ts_parser.py" = ["ANN"]
+
+[lint.isort]
+known-first-party = ["jaclang", "jac_client", "jac_scale", "byllm"]
+
+[lint.flake8-annotations]
+# Don't require annotations for self/cls
+suppress-none-returning = true

@@ -1,34 +1,31 @@
 node MyNode {
-    has val:int;
+    has val: int;
 
     can do with MyWalker entry {
-        print( visitor,"from node", self);
+        print(visitor, "from node", self);
     }
 }
 
 edge MyEdge {
-    has path:int;
+    has path: int;
 
     can do with MyWalker entry {
-        print(visitor,"from edge",self);
+        print(visitor, "from edge", self);
     }
 }
 
 walker MyWalker {
     can does with MyNode entry {
-        if here.val == 20{
-            visit :0:[-->];
-        }
-        elif here.val == 30 {
-            visit :-1:[-->];
-        }
-        elif here.val == 40 {
-            visit :-8:[-->]; # test out of index
-        }
-        else {
+        if here.val == 20 {
+            visit : 0 : [-->];
+        } elif here.val == 30 {
+            visit : -1 : [-->];
+        } elif here.val == 40 {
+            visit : -8 : [-->];  # test out of index
+
+        } else {
             visit [-->];
         }
-
     }
 }
 

@@ -18,13 +18,13 @@ Advanced Features:
 """
 
 import inspect
-from typing import Any, Callable, Dict, List, Optional, Type
-
-from fastapi import Body, FastAPI, HTTPException, Header, Path, Query
-
-from pydantic import BaseModel, Field, create_model
+from collections.abc import Callable
+from typing import Any, Optional, get_type_hints
 
 import uvicorn
+from fastapi import Body, FastAPI, Header, HTTPException, Path, Query, Request
+from fastapi.responses import Response
+from pydantic import BaseModel, Field, create_model
 
 # Import from the separated jserver module
 from .jserver import APIParameter, HTTPMethod, JEndPoint, JServer, ParameterType
@@ -59,12 +59,12 @@ class JFastApiServer(JServer[FastAPI]):
     """
 
     def __init__(
-        self, endpoints: Optional[List[JEndPoint]] = None, app: Optional[FastAPI] = None
+        self, endpoints: list[JEndPoint] | None = None, app: FastAPI | None = None
     ) -> None:
         # Initialize with endpoints (empty list if none provided)
         super().__init__(endpoints or [])
         self.app = app or FastAPI()
-        self._models: Dict[str, Type[BaseModel]] = {}
+        self._models: dict[str, type[BaseModel]] = {}
         self.__server_created = False
 
     def _get(self, endpoint: JEndPoint) -> "JFastApiServer":
@@ -199,7 +199,7 @@ class JFastApiServer(JServer[FastAPI]):
         )
 
         # Set up route options with proper typing
-        route_kwargs: Dict[str, Any] = {
+        route_kwargs: dict[str, Any] = {
             "response_model": endpoint.response_model,
             "status_code": self._get_default_status_code(method),
             "summary": endpoint.summary or f"{method.value} {endpoint.path}",
@@ -207,6 +207,21 @@ class JFastApiServer(JServer[FastAPI]):
             or (endpoint.callback.__doc__ if endpoint.callback.__doc__ else ""),
             "tags": endpoint.tags or [],
         }
+
+        # Auto-detect response_class from callback return type annotation
+        try:
+            hints = get_type_hints(endpoint.callback)
+            return_type = hints.get("return")
+            # Check if return type is a Response subclass
+            if (
+                return_type
+                and isinstance(return_type, type)
+                and issubclass(return_type, Response)
+            ):
+                route_kwargs["response_class"] = return_type
+        except Exception:
+            # If we can't get type hints, that's okay - just skip auto-detection
+            pass
 
         # Register the route with FastAPI
         if method == HTTPMethod.GET:
@@ -234,37 +249,69 @@ class JFastApiServer(JServer[FastAPI]):
     def _create_endpoint_function(
         self,
         callback: Callable[..., Any],
-        parameters: List[APIParameter],
-        dependencies: List[Any],
+        parameters: list[APIParameter],
+        dependencies: list[Any],
     ) -> Callable[..., Any]:
         """Create the actual endpoint function with parameter injection."""
 
-        # If no parameters, create a simple wrapper
+        # Check if callback accepts **kwargs
+        sig = inspect.signature(callback)
+        accepts_kwargs = any(
+            p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
+        )
+
+        # If no parameters, check if we should inject Request for query params
         if not parameters:
-            if inspect.iscoroutinefunction(callback):
+            if accepts_kwargs:
+                # Callback accepts **kwargs, so inject Request to capture query params
+                if inspect.iscoroutinefunction(callback):
 
-                async def async_endpoint_wrapper() -> None:
-                    try:
-                        await callback()
-                    except Exception as e:
-                        raise HTTPException(status_code=500, detail=str(e))
+                    async def async_endpoint_wrapper(request: Request):
+                        try:
+                            # Extract all query parameters and pass as kwargs
+                            query_params = dict(request.query_params)
+                            return await callback(**query_params)
+                        except Exception as e:
+                            raise HTTPException(status_code=500, detail=str(e)) from e
 
-                return async_endpoint_wrapper
+                    return async_endpoint_wrapper
+                else:
+
+                    def sync_endpoint_wrapper(request: Request):
+                        try:
+                            # Extract all query parameters and pass as kwargs
+                            query_params = dict(request.query_params)
+                            return callback(**query_params)
+                        except Exception as e:
+                            raise HTTPException(status_code=500, detail=str(e)) from e
+
+                    return sync_endpoint_wrapper
             else:
+                # No parameters and doesn't accept kwargs, simple wrapper
+                if inspect.iscoroutinefunction(callback):
 
-                def sync_endpoint_wrapper() -> None:
-                    try:
-                        callback()
-                    except Exception as e:
-                        raise HTTPException(status_code=500, detail=str(e))
+                    async def async_endpoint_wrapper__1():
+                        try:
+                            return await callback()
+                        except Exception as e:
+                            raise HTTPException(status_code=500, detail=str(e)) from e
 
-                return sync_endpoint_wrapper
+                    return async_endpoint_wrapper__1
+                else:
+
+                    def sync_endpoint_wrapper__1():
+                        try:
+                            return callback()
+                        except Exception as e:
+                            raise HTTPException(status_code=500, detail=str(e)) from e
+
+                    return sync_endpoint_wrapper__1
 
         # Group parameters by location
-        body_params: List[APIParameter] = []
-        path_params: List[APIParameter] = []
-        query_params: List[APIParameter] = []
-        header_params: List[APIParameter] = []
+        body_params: list[APIParameter] = []
+        path_params: list[APIParameter] = []
+        query_params: list[APIParameter] = []
+        header_params: list[APIParameter] = []
 
         for param in parameters:
             param_location = param.type
@@ -278,15 +325,20 @@ class JFastApiServer(JServer[FastAPI]):
                 header_params.append(param)
 
         # Build parameter strings and their FastAPI annotations
-        param_strs: List[str] = []
-        param_mapping: Dict[str, str] = {}
+        param_strs: list[str] = []
+        param_mapping: dict[str, str] = {}
+
+        # If callback accepts **kwargs, add Request parameter first (before any optional params)
+        if accepts_kwargs:
+            param_strs.append("request: Request")
+            param_mapping["__request__"] = "request"
 
         # Handle body parameters - if multiple, create a single Body model
-        body_model: Optional[Type[BaseModel]] = None
+        body_model: type[BaseModel] | None = None
 
         if len(body_params) >= 1:
             # Always create a dynamic Pydantic model for body parameters
-            model_fields: Dict[str, Any] = {}
+            model_fields: dict[str, Any] = {}
             for param in body_params:
                 param_name = param.name
                 if not param_name:
@@ -345,23 +397,14 @@ class JFastApiServer(JServer[FastAPI]):
                 # Create parameter definition
                 if param_type_enum == ParameterType.PATH:
                     # Path parameters cannot have defaults, so always required
-                    param_str = (
-                        f"{param_name}: {type_name} = "
-                        f"Path(..., description='{description}')"
-                    )
+                    param_str = f"{param_name}: {type_name} = Path(..., description='{description}')"
                 elif param_type_enum == ParameterType.QUERY:
                     if required:
-                        param_str = (
-                            f"{param_name}: {type_name} = "
-                            f"Query(..., description='{description}')"
-                        )
+                        param_str = f"{param_name}: {type_name} = Query(..., description='{description}')"
                     else:
                         # Don't use None as default, treat as optional without default
                         if default_value is None:
-                            param_str = (
-                                f"{param_name}: Optional[{type_name}] = "
-                                f"Query(description='{description}')"
-                            )
+                            param_str = f"{param_name}: Optional[{type_name}] = Query(description='{description}')"
                         else:
                             param_str = (
                                 f"{param_name}: Optional[{type_name}] = "
@@ -369,17 +412,11 @@ class JFastApiServer(JServer[FastAPI]):
                             )
                 elif param_type_enum == ParameterType.HEADER:
                     if required:
-                        param_str = (
-                            f"{param_name}: {type_name} = "
-                            f"Header(..., description='{description}')"
-                        )
+                        param_str = f"{param_name}: {type_name} = Header(..., description='{description}')"
                     else:
                         # Don't use None as default, treat as optional without default
                         if default_value is None:
-                            param_str = (
-                                f"{param_name}: Optional[{type_name}] = "
-                                f"Header(description='{description}')"
-                            )
+                            param_str = f"{param_name}: Optional[{type_name}] = Header(description='{description}')"
                         else:
                             param_str = (
                                 f"{param_name}: Optional[{type_name}] = "
@@ -395,7 +432,7 @@ class JFastApiServer(JServer[FastAPI]):
         params = ", ".join(param_strs)
 
         # Build callback arguments assignment
-        callback_args_lines: List[str] = []
+        callback_args_lines: list[str] = []
         if body_model:
             # Handle body model case
             for param in body_params:
@@ -405,28 +442,43 @@ class JFastApiServer(JServer[FastAPI]):
                         f"        callback_args['{param_name}'] = body_data.{param_name}"
                     )
 
-            # Add other parameters
-            for name in param_mapping.keys():
-                if name != "body_data":
+            # Add other parameters (except __request__ which is used for query extraction)
+            for name in param_mapping:
+                if name not in ("body_data", "__request__"):
                     callback_args_lines.append(
                         f"        callback_args['{name}'] = {name}"
                     )
         else:
-            # Handle normal case
+            # Handle normal case (except __request__ which is used for query extraction)
             callback_args_lines = [
                 f"        callback_args['{name}'] = {name}"
-                for name in param_mapping.keys()
+                for name in param_mapping
+                if name != "__request__"
             ]
 
         callback_args_str = "\n".join(callback_args_lines)
 
+        # If callback accepts kwargs, add code to extract and merge query params
+        extra_query_params_code = ""
+        if accepts_kwargs:
+            # Get the list of explicitly declared parameter names
+            declared_params = [p.name for p in parameters if p.name]
+            declared_params_str = repr(declared_params)
+            extra_query_params_code = f"""
+        # Extract additional query parameters not explicitly declared
+        declared_params = set({declared_params_str})
+        for key, value in request.query_params.items():
+            if key not in declared_params:
+                callback_args[key] = value
+"""
+
         # Create function code
         if inspect.iscoroutinefunction(callback):
             func_code = f"""
-async def endpoint_wrapper({params}) -> Any:
+async def endpoint_wrapper({params}):
     try:
         callback_args: Dict[str, Any] = {{}}
-{callback_args_str}
+{callback_args_str}{extra_query_params_code}
         result = await callback(**callback_args)
         return result
     except Exception as e:
@@ -434,10 +486,10 @@ async def endpoint_wrapper({params}) -> Any:
 """
         else:
             func_code = f"""
-def endpoint_wrapper({params}) -> Any:
+def endpoint_wrapper({params}):
     try:
         callback_args: Dict[str, Any] = {{}}
-{callback_args_str}
+{callback_args_str}{extra_query_params_code}
         result = callback(**callback_args)
         return result
     except Exception as e:
@@ -445,17 +497,18 @@ def endpoint_wrapper({params}) -> Any:
 """
 
         # Prepare execution context
-        exec_globals: Dict[str, Any] = {
+        exec_globals: dict[str, Any] = {
             "callback": callback,
             "HTTPException": HTTPException,
             "Query": Query,
             "Path": Path,
             "Body": Body,
             "Header": Header,
+            "Request": Request,
             "Optional": Optional,
             "Field": Field,
             "create_model": create_model,
-            "Dict": Dict,
+            "Dict": dict,
             "Any": Any,
             "int": int,
             "str": str,
@@ -474,9 +527,13 @@ def endpoint_wrapper({params}) -> Any:
 
         return exec_globals["endpoint_wrapper"]
 
-    def _get_python_type(self, type_string: str) -> Type[Any]:
+    def _get_python_type(self, type_string: str) -> type[Any]:
         """Convert string type to Python type."""
-        type_mapping: Dict[str, Type[Any]] = {
+        # Handle actual type objects that were converted to strings like "<class 'int'>"
+        if type_string.startswith("<class '") and type_string.endswith("'>"):
+            # Extract the type name from "<class 'int'>" format
+            type_string = type_string[8:-2]  # Remove "<class '" and "'>"
+        type_mapping: dict[str, type[Any]] = {
             "str": str,
             "string": str,
             "int": int,
@@ -492,8 +549,8 @@ def endpoint_wrapper({params}) -> Any:
         return type_mapping.get(type_string.lower(), str)
 
     def _create_response_model(
-        self, response_config: Optional[Dict[str, Any]] = None
-    ) -> Optional[Type[BaseModel]]:
+        self, response_config: dict[str, Any] | None = None
+    ) -> type[BaseModel] | None:
         """Create a Pydantic response model from configuration."""
         if not response_config:
             return None
@@ -505,7 +562,7 @@ def endpoint_wrapper({params}) -> Any:
             return None
 
         # Convert field definitions to Pydantic field format
-        pydantic_fields: Dict[str, Any] = {}
+        pydantic_fields: dict[str, Any] = {}
         for field_name, field_config in fields.items():
             field_type = self._get_python_type(field_config.get("type", "str"))
             required = field_config.get("required", True)

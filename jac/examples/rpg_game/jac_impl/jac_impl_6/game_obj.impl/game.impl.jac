@@ -1,22 +1,21 @@
 #=Object=Abilities ===================================================
-
-impl Game.postinit {
-        pygame.<>init();
-        self.font: pygame.font.Font = pygame.font.Font(GENERAL_FONT, 32);
+impl Game.postinit{
+    pygame.<>init();
+    self.font: pygame.font.Font = pygame.font.Font(GENERAL_FONT, 32);
 }
 
-impl Game.createTilemap {
-    for (i, row) in enumerate(self.GameMap.map){
-        for (j, column) in enumerate(row){
-            Ground(self,j,i);
-            if column == "B"{
-                Block(self,j,i);
+impl Game.createTilemap{
+    for (i, row) in enumerate(self.GameMap.map) {
+        for (j, column) in enumerate(row) {
+            Ground(self, j, i);
+            if column == "B" {
+                Block(self, j, i);
             }
-            if column == "E"{
-                Enemy(self,j,i);
+            if column == "E" {
+                Enemy(self, j, i);
             }
-            if column == "P"{
-                self.player = Player(self,j,i);
+            if column == "P" {
+                self.player = Player(self, j, i);
             }
         }
     }
@@ -45,34 +44,31 @@ impl Game.events{
             if self.player.facing == 'up' {
                 Attack(self, self.player.rect.x, self.player.rect.y - TILESIZE);
             }
-            if self.player.facing == 'down'{
+            if self.player.facing == 'down' {
                 Attack(self, self.player.rect.x, self.player.rect.y + TILESIZE);
             }
-            if self.player.facing == 'right'{
+            if self.player.facing == 'right' {
                 Attack(self, self.player.rect.x + TILESIZE, self.player.rect.y);
             }
-            if self.player.facing == 'left'{
+            if self.player.facing == 'left' {
                 Attack(self, self.player.rect.x - TILESIZE, self.player.rect.y);
             }
         }
     }
 }
 # Update all sprites
-
-impl Game.update {
+impl Game.update{
     self.all_sprites.update();
 }
 # Display the game
-
-impl Game.draw {
+impl Game.draw{
     self.screen.fill(BLACK);
     self.all_sprites.draw(self.screen);
     self.clock.tick(FPS);
     pygame.display.update();
 }
 # Game runtime
-
-impl Game.main {
+impl Game.main{
     while self.playing {
         self.events();
         self.update();
@@ -84,12 +80,13 @@ impl Game.main {
     }
 }
 # Game over screen
-
-impl Game.game_over {
+impl Game.game_over{
     self.score -= 2;
     text = self.font.render('GaMe OvEr', True, RED);
-    text_rect = text.get_rect(center = (WIN_WIDTH/2, WIN_HEIGHT/2));
-    restart_button = Button(10,WIN_HEIGHT-135, 120, 125, WHITE, BLACK, 'Restart', 32);
+    text_rect = text.get_rect(center=(WIN_WIDTH / 2, WIN_HEIGHT / 2));
+    restart_button = Button(
+        10, WIN_HEIGHT - 135, 120, 125, WHITE, BLACK, 'Restart', 32
+    );
     for sprite in self.all_sprites {
         sprite.kill();
     }
@@ -106,7 +103,7 @@ impl Game.game_over {
             self.new();
             break;
         }
-        self.screen.blit(self.go_background, (0,0));
+        self.screen.blit(self.go_background, (0, 0));
         self.screen.blit(text, text_rect);
         self.screen.blit(restart_button.image, restart_button.rect);
         self.clock.tick(FPS);
@@ -114,12 +111,11 @@ impl Game.game_over {
     }
 }
 # Introduction Screen
-
-impl Game.intro_screen {
+impl Game.intro_screen{
     intro = True;
     title = self.font.render('Spud-nik : SOLO', True, BLUE);
-    title_rect = title.get_rect(x=WIN_WIDTH/2-100,y=100);
-    play_button = Button(WIN_WIDTH/2-50, 200, 100, 100, WHITE, BLACK, 'Play', 32);
+    title_rect = title.get_rect(x=WIN_WIDTH / 2 - 100, y=100);
+    play_button = Button(WIN_WIDTH / 2 - 50, 200, 100, 100, WHITE, BLACK, 'Play', 32);
     while intro {
         for event in pygame.event.get() {
             if event.type == pygame.QUIT {
@@ -132,7 +128,7 @@ impl Game.intro_screen {
         if play_button.is_pressed(mouse_pos, mouse_pressed) {
             intro = False;
         }
-        self.screen.blit(self.intro_background, (0,0));
+        self.screen.blit(self.intro_background, (0, 0));
         self.screen.blit(title, title_rect);
         self.screen.blit(play_button.image, play_button.rect);
         self.clock.tick(FPS);
@@ -140,12 +136,13 @@ impl Game.intro_screen {
     }
 }
 # Game won
-
-impl Game.game_won {
+impl Game.game_won{
     self.score += 5;
     text = self.font.render('YOU WON!', True, BLUE);
-    text_rect = text.get_rect(center = (WIN_WIDTH/2, WIN_HEIGHT/2));
-    restart_button = Button(10,WIN_HEIGHT-135, 120, 125, WHITE, BLACK, 'Restart', 32);
+    text_rect = text.get_rect(center=(WIN_WIDTH / 2, WIN_HEIGHT / 2));
+    restart_button = Button(
+        10, WIN_HEIGHT - 135, 120, 125, WHITE, BLACK, 'Restart', 32
+    );
     for sprite in self.all_sprites {
         sprite.kill();
     }
@@ -161,9 +158,9 @@ impl Game.game_won {
             self.new();
             break;
         }
-        self.screen.blit(self.intro_background, (0,0));
+        self.screen.blit(self.intro_background, (0, 0));
         self.screen.blit(text, text_rect);
-        self.screen.blit(restart_button.image, restart_button.rect)   ;
+        self.screen.blit(restart_button.image, restart_button.rect);
         self.clock.tick(FPS);
         pygame.display.update();
     }

@@ -7,20 +7,13 @@ implementations (Defs) in the AST. It:
    in separate .impl.jac files
 2. Validates parameter matching between ability declarations and their implementations
 3. Ensures proper inheritance of symbol tables between declarations and implementations
-4. Performs validation checks on archetypes, including:
-   - Proper ordering of default and non-default attributes
-   - Presence of required postinit methods for deferred attributes
-   - Abstract ability implementation validation
 
 This pass is essential for Jac's separation of interface and implementation, allowing
 developers to define archetype and ability interfaces in one file while implementing
 their behavior in separate files.
 """
 
-from typing import Sequence
-
 import jaclang.compiler.unitree as uni
-from jaclang.compiler.constant import Tokens as Tok
 from jaclang.compiler.passes.transform import Transform
 from jaclang.compiler.unitree import Symbol, UniScopeNode
 
@@ -36,7 +29,6 @@ class DeclImplMatchPass(Transform[uni.Module, uni.Module]):
         for impl_module in ir_in.impl_mod:
             self.connect_impls(impl_module.sym_tab, ir_in.sym_tab)
 
-        self.check_archetypes(ir_in)
         return ir_in
 
     def defn_lookup(self, lookup: Symbol) -> uni.NameAtom | None:
@@ -81,7 +73,9 @@ class DeclImplMatchPass(Transform[uni.Module, uni.Module]):
             decl_node = (
                 self.defn_lookup(lookup)
                 if len(arch_refs) == 1 and lookup
-                else lookup.defn[-1] if lookup else None
+                else lookup.defn[-1]
+                if lookup
+                else None
             )
             name_of_links.append(decl_node) if decl_node else None
 
@@ -95,7 +89,9 @@ class DeclImplMatchPass(Transform[uni.Module, uni.Module]):
                     decl_node = (
                         self.defn_lookup(lookup)
                         if len(arch_refs) == 1 and lookup
-                        else lookup.defn[-1] if lookup else None
+                        else lookup.defn[-1]
+                        if lookup
+                        else None
                     )
                     name_of_links.append(decl_node) if decl_node else None
                 else:
@@ -127,9 +123,10 @@ class DeclImplMatchPass(Transform[uni.Module, uni.Module]):
             valid_decl.body = sym.decl.name_of
             sym.decl.name_of.decl_link = valid_decl
             for idx, a in enumerate(sym.decl.name_of.target):
-                if idx < len(name_of_links) and name_of_links[idx]:
-                    a.name_spec.name_of = name_of_links[idx].name_of
-                    a.name_spec.sym = name_of_links[idx].sym
+                if idx < len(name_of_links) and (link := name_of_links[idx]):
+                    a.name_spec.name_of = link.name_of
+                    if (link_sym := link.sym) is not None:
+                        a.name_spec.sym = link_sym
             sym.decl.name_of.sym_tab.names_in_scope.update(
                 valid_decl.sym_tab.names_in_scope
             )
@@ -155,7 +152,6 @@ class DeclImplMatchPass(Transform[uni.Module, uni.Module]):
             and isinstance(valid_decl.signature, uni.FuncSignature)
             and isinstance(sym.decl.name_of.spec, uni.FuncSignature)
         ):
-
             params_decl = valid_decl.signature.params
             params_defn = sym.decl.name_of.spec.params
 
@@ -177,53 +173,3 @@ class DeclImplMatchPass(Transform[uni.Module, uni.Module]):
                             loc_in_kid = par.kid.index(params_decl[idx])
                             par.kid[loc_in_kid] = params_defn[idx]
                         params_decl[idx] = params_defn[idx]
-
-    def check_archetypes(self, ir_in: uni.Module) -> None:
-        """Check all archetypes for issues with attributes and methods."""
-        for node in ir_in.get_all_sub_nodes(uni.Archetype):
-            self.check_archetype(node)
-
-    def check_archetype(self, node: uni.Archetype) -> None:
-        """Check a single archetype for issues."""
-        if node.arch_type.name == Tok.KW_OBJECT and isinstance(node.body, Sequence):
-            self.cur_node = node
-            found_default_init = False
-            for stmnt in node.body:
-                if not isinstance(stmnt, uni.ArchHas):
-                    continue
-                for var in stmnt.vars:
-                    if (var.value is not None) or (var.defer):
-                        found_default_init = True
-                    else:
-                        if found_default_init:
-                            self.log_error(
-                                f"Non default attribute '{var.name.value}' follows default attribute",
-                                node_override=var.name,
-                            )
-                            break
-
-            post_init_vars: list[uni.HasVar] = []
-            postinit_method: uni.Ability | None = None
-
-            for item in node.body:
-
-                if isinstance(item, uni.ArchHas):
-                    for var in item.vars:
-                        if var.defer:
-                            post_init_vars.append(var)
-
-                elif isinstance(item, uni.Ability):
-                    if item.is_abstract:
-                        continue
-                    if (
-                        isinstance(item.name_ref, uni.SpecialVarRef)
-                        and item.name_ref.name == Tok.KW_POST_INIT
-                    ):
-                        postinit_method = item
-
-            # Check if postinit needed and not provided.
-            if len(post_init_vars) != 0 and (postinit_method is None):
-                self.log_error(
-                    'Missing "postinit" method required by un initialized attribute(s).',
-                    node_override=post_init_vars[0].name_spec,
-                )  # We show the error on the first uninitialized var.

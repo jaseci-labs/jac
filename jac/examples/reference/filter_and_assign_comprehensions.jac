@@ -37,21 +37,23 @@ walker ComprehensionDemo {
         # Create objects with varying attributes
         random.seed(42);
         items = [];
-        for i=0 to i<10 by i+=1 {
-            items.append(TestObj(x=random.randint(0, 20), y=random.randint(0, 20), z=i));
+        for i = 0 to i < 10 by i += 1 {
+            items.append(
+                TestObj(x=random.randint(0, 20), y=random.randint(0, 20), z=i)
+            );
         }
 
         # Filter comprehension: collection(?condition1, condition2, ...)
         # Filters objects where ALL conditions are true
-        filtered = items(?x >= 10, y < 15);
+        filtered = items(?x>=10,y<15);
         print(f"Filtered {len(items)} items to {len(filtered)} where x>=10 and y<15");
 
         print("\n=== 2. Filter with Single Condition ===");
-        high_x = items(?x > 15);
+        high_x = items(?x>15);
         print(f"Items with x > 15: {len(high_x)}");
 
         print("\n=== 3. Filter with Multiple Conditions ===");
-        complex_filter = items(?x >= 5, x <= 15, y > 10);
+        complex_filter = items(?x>=5,x<=15,y>10);
         print(f"Items with 5 <= x <= 15 and y > 10: {len(complex_filter)}");
 
         print("\n=== 4. Basic Assign Comprehension ===");
@@ -61,7 +63,7 @@ walker ComprehensionDemo {
 
         # Assign comprehension: collection(=attr1=val1, attr2=val2, ...)
         # Sets attributes on ALL objects in collection
-        objs(=y=100, z=200);
+        objs(=y=100,z=200);
         print(f"After assign(=y=100, z=200): y values = {[o.y for o in objs]}");
 
         print("\n=== 5. Chained Filter and Assign ===");
@@ -73,16 +75,16 @@ walker ComprehensionDemo {
         ];
 
         # Filter people age >= 30, then boost their scores
-        people(?age >= 30)(=score=95);
+        people(?age>=30)(=score=95);
         print("People after filter(age>=30) + assign(score=95):");
         for p in people {
             print(f"  {p.name}: age={p.age}, score={p.score}");
         }
 
         print("\n=== 6. Multiple Chained Filters ===");
-        data = [TestObj(x=i, y=i*2, z=i*3) for i in range(10)];
+        data = [TestObj(x=i, y=i * 2, z=i * 3) for i in range(10)];
         # Apply multiple filters in sequence
-        result = data(?x > 2)(?y < 15)(?z >= 6);
+        result = data(?x>2)(?y<15)(?z>=6);
         print(f"Triple filtered from {len(data)} to {len(result)} items");
 
         # Build graph for spatial comprehensions
@@ -113,14 +115,20 @@ walker ComprehensionDemo {
 
         # Get all direct reports and filter by salary
         all_reports = [-->];
-        high_paid = all_reports(?salary > 75000);
-        print(f"Direct reports: {len(all_reports)}, high paid (>75k): {len(high_paid)}");
+        high_paid = all_reports(?salary>75000);
+        print(
+            f"Direct reports: {len(all_reports)}, high paid (>75k): {len(high_paid)}"
+        );
 
         print("\n=== 8. Typed Edge with Node Filter ===");
         # Traverse specific edge type, filter resulting nodes
         reports_via_edge = [->:ReportsTo:->];
-        engineering = reports_via_edge(?department == "Engineering");
-        print(f"ReportsTo edges: {len(reports_via_edge)}, in Engineering: {len(engineering)}");
+        engineering = reports_via_edge(?department=="Engineering");
+        print(
+            f"ReportsTo edges: {len(reports_via_edge)}, in Engineering: {len(
+                engineering
+            )}"
+        );
 
         print("\n=== 9. Assign Comprehension on Edge Results ===");
         # Get nodes via edges, then modify them
@@ -134,7 +142,7 @@ walker ComprehensionDemo {
         # Get nodes, filter them, then modify filtered subset
         targets = [-->];
         if len(targets) > 0 {
-            high_earners = targets(?salary >= 75000);
+            high_earners = targets(?salary>=75000);
             if len(high_earners) > 0 {
                 high_earners(=salary=90000);
                 print(f"Gave raise to {len(high_earners)} employees");
@@ -155,12 +163,12 @@ with entry {
     print("=== 12. Filter Comprehension Comparison Operators ===");
     nums = [TestObj(x=i) for i in range(10)];
 
-    equal_five = nums(?x == 5);
-    not_five = nums(?x != 5);
-    greater = nums(?x > 5);
-    greater_eq = nums(?x >= 5);
-    less = nums(?x < 5);
-    less_eq = nums(?x <= 5);
+    equal_five = nums(?x==5);
+    not_five = nums(?x!=5);
+    greater = nums(?x>5);
+    greater_eq = nums(?x>=5);
+    less = nums(?x<5);
+    less_eq = nums(?x<=5);
 
     print(f"x==5: {len(equal_five)}, x!=5: {len(not_five)}");
     print(f"x>5: {len(greater)}, x>=5: {len(greater_eq)}");
@@ -168,20 +176,20 @@ with entry {
 
     print("\n=== 13. Assign with Multiple Attributes ===");
     people = [Person(name=f"Person{i}") for i in range(5)];
-    people(=age=25, score=100);
+    people(=age=25,score=100);
     print(f"Assigned age=25, score=100 to {len(people)} people");
     print(f"First person: age={people[0].age}, score={people[0].score}");
 
     print("\n=== 14. Empty Collection Handling ===");
     empty = [];
-    filtered_empty = empty(?x > 5);
+    filtered_empty = empty(?x>5);
     assigned_empty = empty(=x=10);
     print(f"Filter on empty: {len(filtered_empty)}");
     print(f"Assign on empty: {len(assigned_empty)}");
 
     print("\n=== 15. Comprehension Return Values ===");
     original = [TestObj(x=i) for i in range(3)];
-    filtered = original(?x > 0);
+    filtered = original(?x>0);
     assigned = original(=y=50);
 
     print(f"Original list: {len(original)} items");

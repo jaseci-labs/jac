@@ -24,7 +24,6 @@ while n < 5:
 
 
 class SkipWalker(Walker):
-
     @on_entry
     def process(self, here) -> None:
         return

@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Iterable, NamedTuple, Sequence, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, NamedTuple
 
-from jaclang.compiler.program import JacProgram
 from jaclang.utils import convert_to_js_import_path
 
 if TYPE_CHECKING:
@@ -67,7 +67,7 @@ class ClientBundleBuilder:
         source_path = Path(module_path).resolve()
 
         # Get the manifest to determine which files will be included
-        from jaclang.runtimelib.machine import JacMachine as Jac
+        from jaclang.runtimelib.runtime import JacRuntime as Jac
 
         mod = Jac.program.mod.hub.get(str(source_path))
         manifest = mod.gen.client_manifest if mod else None
@@ -110,7 +110,7 @@ class ClientBundleBuilder:
                 if import_path_obj.suffix == ".js":
                     # For .js files, read and include as-is
                     try:
-                        with open(import_path_obj, "r", encoding="utf-8") as f:
+                        with open(import_path_obj, encoding="utf-8") as f:
                             js_code = f.read()
                             import_pieces.append(
                                 f"// Imported .js module: {import_name}"
@@ -211,7 +211,7 @@ class ClientBundleBuilder:
     ) -> ClientBundle:
         """Compile bundle pieces and stitch them together."""
         # Get manifest from JacProgram first to check for imports
-        from jaclang.runtimelib.machine import JacMachine as Jac
+        from jaclang.runtimelib.runtime import JacRuntime as Jac
 
         mod = Jac.program.mod.hub.get(str(module_path))
         manifest = mod.gen.client_manifest if mod else None
@@ -265,8 +265,19 @@ class ClientBundleBuilder:
         Returns:
             Tuple of (js_code, compiled_module) where compiled_module contains the client_manifest
         """
-        program = JacProgram()
-        mod = program.compile(str(source_path))
+        from jaclang.runtimelib.runtime import JacRuntime as Jac
+
+        # Reuse the global program to leverage cached compilations
+        program = Jac.program
+        source_key = str(source_path)
+
+        # Check if already compiled in the global program's cache
+        if source_key in program.mod.hub:
+            mod = program.mod.hub[source_key]
+            return mod.gen.js or "", mod
+
+        # Compile only if not in cache
+        mod = program.compile(source_key)
         if program.errors_had:
             formatted = "\n".join(str(err) for err in program.errors_had)
             raise ClientBundleError(

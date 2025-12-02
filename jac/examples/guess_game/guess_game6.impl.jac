@@ -1,13 +1,13 @@
-impl GuessGame.start {
-    if not [root --> (`?turn)] {
+impl GuessGame.start{
+    if not [root-->(`?turn)] {
         next = root ++> turn(random.randint(1, 10));
     } else {
-        next = [root --> (`?turn)];
+        next = [root-->(`?turn)];
     }
     visit next;
 }
 
-impl GuessGame.process_guess {
+impl GuessGame.process_guess{
     if [-->] {
         visit [-->];
     } else {
@@ -22,5 +22,4 @@ impl GuessGame.process_guess {
             disengage;
         }
     }
-
 }

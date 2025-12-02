@@ -20,9 +20,9 @@ class JacAppTest(AppTest):
             abs_path = os.path.abspath(file_path)
             dirname, basename = os.path.split(abs_path)
             basename = basename.replace(".jac", "")
-            assert (
-                basename not in sys.modules
-            ), "Please use another name for the .jac file. It conflicts with a Python package."
+            assert basename not in sys.modules, (
+                "Please use another name for the .jac file. It conflicts with a Python package."
+            )
             py_lines = [
                 "from jaclang_streamlit import run_streamlit",
                 f'run_streamlit("{basename}", "{dirname}")',

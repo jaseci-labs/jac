@@ -266,7 +266,7 @@ def get_completion_items(ty: types.TypeBase | uni.UniScopeNode) -> list[Completi
     ret = []
 
     if isinstance(ty, uni.UniScopeNode):
-        scope = ty
+        scope: uni.UniScopeNode | None = ty
         while scope:
             for name, sym in scope.names_in_scope.items():
                 kind = completion_kind_from_sym(sym)

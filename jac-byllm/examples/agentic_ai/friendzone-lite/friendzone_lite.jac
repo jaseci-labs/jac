@@ -1,12 +1,11 @@
-import from byllm  { Model, Image }
+import from byllm { Model, Image }
 import from typing { List, Dict, Any }
 import os;
 
-def clear_terminal() -> None {
+def clear_terminal()  -> None {
     # For Windows
     if os.name == "nt" {
-        os.system("cls");
-    # For macOS / Linux
+        os.system("cls");  # For macOS / Linux
     } else {
         os.system("clear");
     }
@@ -25,15 +24,15 @@ obj Response {
     has show_summary: bool;
 }
 
-sem Response = "Memory details refined using the user's input and prior context.";
-sem Response.follow_up_questions = "Ask one follow-up question to continue the conversation. If all required details are present, ask to terminate the conversation.";
-sem Response.summary = "A concise summary of the memory.";
-sem Response.when = "The date of the memory in YYYY-MM-DD format.";
-sem Response.who = "Exact names of people in the memory (e.g., [John, Kate]); return [] if none.";
-sem Response.where = "List of places relevant to the memory.";
-sem Response.what = "What the memory is about.";
-sem Response.show_summary = "True if all required details are present and the summary should be shown.";
-sem Response.terminate_conversation = "True if the user asked to terminate the conversation; otherwise false.";
+sem Response= "Memory details refined using the user's input and prior context.";
+sem Response. follow_up_questions= "Ask one follow-up question to continue the conversation. If all required details are present, ask to terminate the conversation.";
+sem Response. summary= "A concise summary of the memory.";
+sem Response. when= "The date of the memory in YYYY-MM-DD format.";
+sem Response. who= "Exact names of people in the memory (e.g., [John, Kate]); return [] if none.";
+sem Response. where= "List of places relevant to the memory.";
+sem Response. what= "What the memory is about.";
+sem Response. show_summary= "True if all required details are present and the summary should be shown.";
+sem Response. terminate_conversation= "True if the user asked to terminate the conversation; otherwise false.";
 
 """ Update and extract memory details based on user input and context."""
 def update_memory_details(
@@ -49,13 +48,13 @@ def update_memory_details(
     terminate_conversation: bool = False
 ) -> Response by llm();
 
-node session{
+node session {
     has summary: str = "";
     has when: str = "";
     has who: list = [];
     has where: list = [];
     has what: str = "";
-    has conversation : list = [];
+    has conversation: list = [];
     has image_url: str = "";
     has show_summary: bool = False;
     has terminate_conversation: bool = False;
@@ -77,16 +76,16 @@ walker update_session {
             here.image_url = self.image_url;
         }
         response = update_memory_details(
-            image = Image(url=self.image_url),
-            utterance = self.utterance,
-            summary = here.summary,
-            when = here.when,
-            who = here.who,
-            where = here.where,
-            what = here.what,
-            conversation = here.conversation,
-            show_summary = here.show_summary,
-            terminate_conversation = here.terminate_conversation
+            image=Image(url=self.image_url),
+            utterance=self.utterance,
+            summary=here.summary,
+            when=here.when,
+            who=here.who,
+            where=here.where,
+            what=here.what,
+            conversation=here.conversation,
+            show_summary=here.show_summary,
+            terminate_conversation=here.terminate_conversation
         );
         here.summary = response.summary;
         here.when = response.when;
@@ -97,7 +96,9 @@ walker update_session {
         self.show_summary = response.show_summary;
         here.terminate_conversation = response.terminate_conversation;
         self.terminate_conversation = response.terminate_conversation;
-        here.conversation = here.conversation + [{"role": "user", "content": self.utterance}] + [{"role": "assistant", "content": response.follow_up_questions}];
+        here.conversation = here.conversation + [
+            {"role": "user", "content": self.utterance}
+        ] + [{"role": "assistant", "content": response.follow_up_questions}];
 
         if response.show_summary {
             if response.terminate_conversation {
@@ -123,10 +124,9 @@ walker update_session {
             "follow_up_questions": response.follow_up_questions,
             "conversation": here.conversation,
             "image_url": here.image_url
-        };
+        } ;
     }
 }
-
 # with entry {
 #     clear_terminal();
 #     print("🚀 Starting Friendzone Lite...");

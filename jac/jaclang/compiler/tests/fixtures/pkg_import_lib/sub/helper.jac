@@ -1,3 +1,3 @@
 def help_func() {
-    return 'Helper function called' ;
+    return 'Helper function called';
 }

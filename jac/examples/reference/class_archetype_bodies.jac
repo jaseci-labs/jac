@@ -1,25 +1,16 @@
 """Archetype bodies: Member statements (has, static, methods, nested types)."""
 
 """This is a module-level docstring"""
-
-# Note: This example uses 'obj' archetype where all 'has' fields are instance variables.
-# In 'class' archetypes, 'has' fields with defaults become class variables (shared).
-# See class_archetypes.jac for class vs obj comparison.
-
 obj Vehicle {
     """Member docstring"""
-
-    # Has statements with type annotations (instance variables in obj)
     has name: str,
         year: int;
 
     # Static members
     static has count: int = 0;
-
     # Access modifiers
-    has :pub public_id: str = "V123";
-    has :priv private_data: int = 0;
-
+    has : pub public_id: str = "V123";
+    has : priv private_data: int = 0;
     # Has with postinit initialization
     has config: dict by postinit;
 
@@ -48,6 +39,7 @@ obj Vehicle {
     def py_method(self):
         return "Python code"
     ::py::
+
 }
 
 with entry {

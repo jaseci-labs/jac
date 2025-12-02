@@ -4,7 +4,6 @@ This is a pass for formatting Jac code.
 """
 
 from collections import deque
-from typing import Deque, Optional, Tuple
 
 import jaclang.compiler.passes.tool.doc_ir as doc
 import jaclang.compiler.unitree as uni
@@ -36,7 +35,7 @@ class JacFormatPass(Transform[uni.Module, uni.Module]):
         Stops early on overflow or hard/literal lines.
         """
         # Worklist holds (node, indent_level). We only ever push FLAT in a probe.
-        work: Deque[Tuple[object, int]] = deque()
+        work: deque[tuple[object, int]] = deque()
         work.append((node, indent_level))
         steps = 0
         remaining = width_remaining
@@ -99,14 +98,20 @@ class JacFormatPass(Transform[uni.Module, uni.Module]):
 
     def transform(self, ir_in: uni.Module) -> uni.Module:
         """After pass."""
-        ir_in.gen.jac = self.format_doc_ir()
+        formatted = self.format_doc_ir()
+        # Strip trailing whitespace from each line
+        lines = [line.rstrip() for line in formatted.split("\n")]
+        # Remove trailing empty lines and ensure single newline at end
+        while lines and lines[-1] == "":
+            lines.pop()
+        ir_in.gen.jac = "\n".join(lines) + "\n" if lines else ""
         return ir_in
 
     def format_doc_ir(
         self,
-        doc_node: Optional[doc.DocType] = None,
+        doc_node: doc.DocType | None = None,
         indent_level: int = 0,
-        width_remaining: Optional[int] = None,
+        width_remaining: int | None = None,
         is_broken: bool = False,
     ) -> str:
         """Recursively print a Doc node or a list of Doc nodes."""

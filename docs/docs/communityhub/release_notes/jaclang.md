@@ -2,11 +2,19 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking_changes.md) page.
 
-## jaclang 0.9.2 (Unreleased)
+## jaclang 0.9.4 (Unreleased)
 
--**Support iter for statement**: Iter for statement is supported in order to utilize traditional for loop in javascript.
+- **Format Command Enhancements**: The `jac format` command now tracks and reports which files were actually changed during formatting. The summary output shows both total files processed and the count of files that were modified (e.g., `Formatted 10/12 '.jac' files (3 changed).`). Additionally, syntax errors encountered during formatting are now printed with full error details.
 
-## jaclang 0.9.1 (Latest Release)
+## jaclang 0.9.3 (Latest Release)
+
+- **Fixed JSX Text Parsing for Keywords**: Fixed a parser issue where keywords like `to`, `as`, `in`, `is`, `for`, `if`, etc. appearing as text content within JSX elements would cause parse errors. The grammar now correctly recognizes these common English words as valid JSX text content.
+- **Support iter for statement**: Iter for statement is supported in order to utilize traditional for loop in javascript.
+- **JavaScript Export Semantics for Public Declarations**: Declarations explicitly annotated with `:pub` now generate JavaScript `export` statements. This applies to classes (`obj :pub`), functions (`def :pub`), enums (`enum :pub`), and global variables (`glob :pub`), enabling proper ES module exports in generated JavaScript code.
+- **Cross-Language Type Checking for JS/TS Dependencies**: The type checker now supports loading and analyzing JavaScript (`.js`) and TypeScript (`.ts`, `.jsx`, `.tsx`) file dependencies when used with client-side (`cl`) imports. This enables type checking across language boundaries for files with client-language elements, allowing the compiler to parse and include JS/TS modules in the module hub for proper type resolution.
+- **Formatter Improvements and Standardization**: Enhanced the Jac code formatter with improved consistency and standardization across formatting rules.
+
+## jaclang 0.9.1
 
 -**Side effect imports supported**: side effect imports supported which will help to inject css.
 - **Plugin for sending static files**: Added extensible plugin system for sending static files, enabling custom static file serving strategies and integration with various storage backends.

@@ -11,21 +11,20 @@ node Profile {
 
     can get with get_profile entry {
         follwers = [
-            {"id" : jid(i) , "username" : i.username }
-            for i in [self-->( ` ? Profile ) ]
+            {"id": jid(i), "username": i.username} for i in [self-->(`?Profile)]
         ];
-        report {"user" : self , "followers" : follwers } ;
+        report {"user": self, "followers": follwers} ;
     }
 
     can follow with follow_request entry {
-        current_profile = [root-->( ` ? Profile ) ];
+        current_profile = [root-->(`?Profile)];
         current_profile[0] +>: Follow() :+> self;
         report self ;
     }
 
     can un_follow with un_follow_request entry {
-        current_profile = [root-->( ` ? Profile ) ];
-        follow_edge = [edge current_profile[0]->:Follow :->self];
+        current_profile = [root-->(`?Profile)];
+        follow_edge = [edge current_profile[0]->:Follow:->self];
         del follow_edge[0] ;
         report self ;
     }
@@ -56,20 +55,20 @@ node Tweet {
     }
 
     can like_tweet with like_tweet entry {
-        current_profile = [root-->( ` ? Profile ) ];
+        current_profile = [root-->(`?Profile)];
         self +>: Like() :+> current_profile[0];
         report self ;
     }
 
     can remove_like with remove_like entry {
-        current_profile = [root-->( ` ? Profile ) ];
-        like_edge = [edge self->:Like :->current_profile[0]];
+        current_profile = [root-->(`?Profile)];
+        like_edge = [edge self->:Like:->current_profile[0]];
         del like_edge[0] ;
         report self ;
     }
 
     can comment with comment_tweet entry {
-        current_profile = [root-->( ` ? Profile ) ];
+        current_profile = [root-->(`?Profile)];
         comment_node = current_profile[0] +>: Post() :+> Comment(
             content=visitor.content
         );
@@ -80,22 +79,24 @@ node Tweet {
 
     def get_info()  -> TweetInfo {
         return TweetInfo(
-            username=[self<-:Post :<-][0].username,
+            username=[self<-:Post:<-][0].username,
             id=jid(self),
             content=self.content,
             embedding=self.embedding,
-            likes=[i.username for i in [self->:Like :->]],
+            likes=[i.username for i in [self->:Like:->]],
             comments=[
-
-                {"username" : [i<--( ` ? Profile ) ][0].username , "id" : jid(i) , "content" : i.content }
-                for i in [self-->( ` ? Comment ) ]
+                {
+                    "username": [i<--(`?Profile)][0].username,
+                    "id": jid(i),
+                    "content": i.content
+                } for i in [self-->(`?Comment)]
             ]
         );
     }
 
     can get with load_feed entry {
         tweet_info = self.get_info();
-        visitor.results.append({"Tweet_Info" : tweet_info });
+        visitor.results.append({"Tweet_Info": tweet_info});
     }
 }
 
@@ -119,7 +120,7 @@ edge Post {}
 
 walker visit_profile {
     can visit_profile with `root entry {
-        visit [-->( ` ? Profile ) ] else {
+        visit [-->(`?Profile)] else {
             new_profile = here ++> Profile();
             grant(new_profile[0], level=ConnectPerm);
             visit new_profile;
@@ -137,8 +138,8 @@ walker load_user_profiles {
     can load_profiles with `root entry {
         self.profiles: list = [];
         for each_root in allroots() {
-            profile = [each_root-->( ` ? Profile ) ][0];
-            self.profiles.append({"name" : profile.username , "id" : jid(profile) });
+            profile = [each_root-->(`?Profile)][0];
+            self.profiles.append({"name": profile.username, "id": jid(profile)});
         }
     }
 
@@ -183,9 +184,9 @@ walker load_feed(visit_profile) {
     has results: list = [];
 
     can load with Profile entry {
-        visit [-->( ` ? Tweet ) ];
-        for user_node in [->:Follow :->( ` ? Profile ) ] {
-            visit [user_node-->( ` ? Tweet ) ];
+        visit [-->(`?Tweet)];
+        for user_node in [->:Follow:->(`?Profile)] {
+            visit [user_node-->(`?Tweet)];
         }
     }
 

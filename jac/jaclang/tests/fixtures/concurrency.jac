@@ -7,13 +7,11 @@ node A {
         print("Started");
         sleep(2);
         print(visitor);
-
     }
 }
 
 walker B {
     has name: str;
-
 }
 
 def add(x: int, y: int) -> int {
@@ -33,7 +31,7 @@ with entry {
     res1 = wait task1 ;
     res2 = wait task2 ;
     print("All are done");
-    print(wait t1);
+    print(wait t1 );
     print(res1);
     print(res2);
 }

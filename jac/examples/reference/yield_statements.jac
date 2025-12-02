@@ -1,5 +1,4 @@
 # Yield Statements
-
 def simple_generator {
     yield 1;
     yield 2;
@@ -13,7 +12,7 @@ def yield_values {
 }
 
 def yield_none {
-    yield;
+    yield ;
 }
 
 def yield_in_loop(n: int) {

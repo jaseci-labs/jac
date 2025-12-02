@@ -1,7 +1,6 @@
 # Global and Nonlocal Statements
-
 let x = "global x";
-let a = 1, b = 2;
+let a = 1 , b = 2;
 
 def test_global {
     # Global with single name
@@ -12,7 +11,7 @@ def test_global {
 
 def test_multiple_globals {
     # Global with multiple names
-    global a, b;
+    global a,b;
     a = 10;
     b = 20;
     print(f"{a} {b}");
@@ -23,7 +22,7 @@ def outer {
 
     def inner {
         # Nonlocal with single name
-        nonlocal y;
+        nonlocal y ;
         y = "modified by inner";
         print(y);
     }
@@ -40,7 +39,7 @@ def outer_multi {
 
     def inner_multi {
         # Nonlocal with multiple names
-        nonlocal p, q, r;
+        nonlocal p , q , r ;
         p = 10;
         q = 20;
         r = 30;

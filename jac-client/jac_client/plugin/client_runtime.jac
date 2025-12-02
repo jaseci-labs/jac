@@ -106,7 +106,7 @@ cl {
                     "Content-Type": "application/json",
                     "Authorization": f"Bearer {token}" if token else ""
                 },
-                "body": JSON.stringify({"fields": fields})
+                "body": JSON.stringify(fields)
             }
         );
 

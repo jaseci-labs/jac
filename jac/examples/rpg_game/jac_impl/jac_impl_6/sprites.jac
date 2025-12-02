@@ -12,7 +12,7 @@ include settings.map;
 Object for impoting sprite character images.
 """
 obj Spritesheet {
-    has file:str;
+    has file: str;
 
     def postinit;
     def get_sprite(x: int, y: int, width: int, height: int) -> pygame.Surface;
@@ -25,6 +25,7 @@ obj Player(pygame.sprite.Sprite) {
     has game: Game,
         x: int,
         y: int;
+
     has _layer: int = PLAYER_LAYER,
         width: int = TILESIZE,
         height: int = TILESIZE,
@@ -48,6 +49,7 @@ obj Enemy(pygame.sprite.Sprite) {
     has game: Game,
         x: int,
         y: int;
+
     has _layer: int = ENEMY_LAYER,
         width: inr = TILESIZE,
         height: int = TILESIZE,
@@ -70,6 +72,7 @@ obj Block(pygame.sprite.Sprite) {
     has game: Game,
         x: int,
         y: int;
+
     has _layer: int = BLOCK_LAYER,
         width: int = TILESIZE,
         height: int = TILESIZE;
@@ -84,6 +87,7 @@ obj Ground(pygame.sprite.Sprite) {
     has game: Game,
         x: int,
         y: int;
+
     has _layer: int = GROUND_LAYER,
         width: int = TILESIZE,
         height: int = TILESIZE;
@@ -98,6 +102,7 @@ obj Attack(pygame.sprite.Sprite) {
     has game: Game,
         x: int,
         y: int;
+
     has _layer: int = ATTACK_LAYER,
         width: int = TILESIZE,
         height: int = TILESIZE,

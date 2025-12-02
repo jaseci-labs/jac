@@ -7,7 +7,6 @@ def fib(n: int) -> int {
     return fib(n - 1) + fib(n - 2);
 }
 
-
 test first_two {
     print("Testing first 2 fibonacci numbers.");
     assert fib(0) == 0;

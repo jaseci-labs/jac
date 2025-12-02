@@ -1,12 +1,13 @@
 from jaclang.runtimelib.default import hookimpl
-from jaclang.runtimelib.machine import Archetype, WalkerArchetype, ObjectSpatialFunction
+from jaclang.runtimelib.runtime import Archetype, WalkerArchetype, ObjectSpatialFunction
 
 from dataclasses import dataclass
 from functools import wraps
-from typing import Type, Callable
+from typing import Type
+from collections.abc import Callable
 
 
-class JacMachine:
+class JacRuntime:
     @staticmethod
     @hookimpl
     def make_walker(
@@ -14,11 +15,9 @@ class JacMachine:
     ) -> Callable[[type], type]:
         """Create a walker archetype."""
 
-        def decorator(cls: Type[Archetype]) -> Type[Archetype]:
+        def decorator(cls: type[Archetype]) -> type[Archetype]:
             """Decorate class."""
             cls = dataclass(eq=False)(cls)
-            for i in on_entry + on_exit:
-                i.resolve(cls)
             arch_cls = WalkerArchetype
             if not issubclass(cls, arch_cls):
                 cls = type(cls.__name__, (cls, arch_cls), {})
@@ -27,9 +26,7 @@ class JacMachine:
             inner_init = cls.__init__
 
             @wraps(inner_init)
-            def new_init(
-                self: WalkerArchetype, *args: object, **kwargs: object
-            ) -> None:
+            def new_init(self: WalkerArchetype, *args: object, **kwargs: object) -> None:
                 inner_init(self, *args, **kwargs)
                 arch_cls.__init__(self)
 

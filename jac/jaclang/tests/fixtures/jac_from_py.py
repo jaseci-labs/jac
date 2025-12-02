@@ -1,4 +1,4 @@
-from jaclang import JacMachine as Jac
+from jaclang import JacRuntime as Jac
 
 
 def main() -> None:

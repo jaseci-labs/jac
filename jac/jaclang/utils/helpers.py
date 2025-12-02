@@ -5,11 +5,13 @@ import marshal
 import os
 import pdb
 import re
+from functools import lru_cache
 from traceback import TracebackException
 
 from jaclang.settings import settings
 
 
+@lru_cache(maxsize=256)
 def pascal_to_snake(pascal_string: str) -> str:
     """Convert pascal case to snake case."""
     snake_string = re.sub(r"(?<!^)(?=[A-Z])", "_", pascal_string).lower()
@@ -46,6 +48,7 @@ def get_uni_nodes_as_snake_case() -> list[str]:
     """Get all AST nodes as snake case."""
     import inspect
     import sys
+
     import jaclang.compiler.unitree as uni
 
     module_name = uni.__name__
@@ -69,7 +72,7 @@ def get_uni_nodes_as_snake_case() -> list[str]:
 
 def extract_headings(file_path: str) -> dict[str, tuple[int, int]]:
     """Extract headings of contetnts in Jac grammer."""
-    with open(file_path, "r") as file:
+    with open(file_path) as file:
         lines = file.readlines()
     headings = {}
     current_heading = None
@@ -169,7 +172,7 @@ def dump_traceback(e: Exception) -> str:
             jac_filename = py_filename.replace("__jac_gen__", "").replace(".py", ".jac")
             if os.path.exists(jac_filename):
                 try:
-                    with open(jac_filename, "r") as f:
+                    with open(jac_filename) as f:
                         jac_source = f.read()
                     return jac_filename, jac_source
                 except Exception:
@@ -207,7 +210,7 @@ def dump_traceback(e: Exception) -> str:
         # Collapse consecutive internal runtime frames into a single marker (if enabled)
         if is_internal and collapse_internal:
             if not seen_runtime_marker:
-                trace_dump += f'\n{" " * dump_tab_width}... [internal runtime calls]'
+                trace_dump += f"\n{' ' * dump_tab_width}... [internal runtime calls]"
                 seen_runtime_marker = True
             continue
 
@@ -225,7 +228,6 @@ def dump_traceback(e: Exception) -> str:
         if idx == 0 and (
             (frame.lineno is not None) and frame.line and frame.line.strip() != ""
         ):
-
             # Note: This is CPython internals we're trying to get since python doesn't provide
             # the frames original line but the stripped version so we had to do this.
             line_o = frame.line  # Fallback line.
@@ -243,7 +245,7 @@ def dump_traceback(e: Exception) -> str:
                 file_source = display_source
                 if file_source is None:
                     try:
-                        with open(frame.filename, "r") as file:
+                        with open(frame.filename) as file:
                             file_source = file.read()
                     except Exception:
                         file_source = ""
@@ -259,7 +261,7 @@ def dump_traceback(e: Exception) -> str:
                         display_filename, file_source, frame.lineno, off_start, off_end
                     )
 
-        trace_dump += f'\n{" " * dump_tab_width}at {func_signature} {display_filename}:{frame.lineno}'
+        trace_dump += f"\n{' ' * dump_tab_width}at {func_signature} {display_filename}:{frame.lineno}"
 
     return trace_dump
 
