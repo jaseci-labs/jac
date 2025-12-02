@@ -19,9 +19,8 @@ class ImportProcessor:
     ES imports so Vite can resolve and bundle them.
     """
 
-    @staticmethod
     def process_vite_imports(
-        manifest: ClientManifest | None, module_path: Path
+        self, manifest: ClientManifest | None, module_path: Path
     ) -> list[Path | None]:
         """Process client imports for Vite bundling.
 
@@ -36,7 +35,6 @@ class ImportProcessor:
         if manifest and manifest.imports:
             for _, import_path in manifest.imports.items():
                 import_path_obj = Path(import_path)
-
                 if import_path_obj.suffix == ".js":
                     # Inline local JS files and mark as bundled
                     try:
@@ -58,8 +56,7 @@ class ImportProcessor:
 
         return imported_js_modules
 
-    @staticmethod
-    def should_process_import(import_path: Path) -> bool:
+    def should_process_import(self, import_path: Path) -> bool:
         """Check if an import should be processed (compiled/copied) vs left for Vite.
 
         Args:

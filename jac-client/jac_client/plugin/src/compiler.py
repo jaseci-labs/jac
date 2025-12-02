@@ -192,6 +192,9 @@ class ViteCompiler:
                 )
             elif path_obj.suffix == ".js":
                 self._copy_js_file(path_obj, source_root)
+            elif path_obj.suffix in {".ts", ".tsx"}:
+                # Copy TypeScript files to compiled directory for Vite to process
+                self._copy_ts_file(path_obj, source_root)
             else:
                 # Bare specifiers or other assets handled by Vite
                 if path_obj.is_file():
@@ -215,6 +218,29 @@ class ViteCompiler:
             output_path.parent.mkdir(parents=True, exist_ok=True)
             output_path.write_text(js_code, encoding="utf-8")
         except FileNotFoundError:
+            pass
+
+    def _copy_ts_file(self, ts_path: Path, source_root: Path) -> None:
+        """Copy a TypeScript file to the compiled directory.
+
+        Args:
+            ts_path: Path to the TypeScript file
+            source_root: Root directory for preserving folder structure
+        """
+        if not ts_path.exists():
+            return
+
+        try:
+            ts_code = ts_path.read_text(encoding="utf-8")
+            try:
+                relative_path = ts_path.relative_to(source_root)
+                output_path = self.compiled_dir / relative_path
+            except ValueError:
+                output_path = self.compiled_dir / ts_path.name
+
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(ts_code, encoding="utf-8")
+        except (FileNotFoundError, OSError):
             pass
 
     def _copy_asset_file(self, asset_path: Path, source_root: Path) -> None:

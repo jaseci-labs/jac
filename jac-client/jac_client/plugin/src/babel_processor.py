@@ -46,14 +46,18 @@ class BabelProcessor:
     def copy_assets_after_compile(
         self, compiled_dir: Path, build_dir: Path, asset_processor
     ) -> None:
-        """Copy CSS and other asset files from compiled/ to build/ after Babel compilation.
+        """Copy CSS, assets, and TypeScript files from compiled/ to build/ after Babel compilation.
 
-        Babel only transpiles JS, so we need to manually copy assets.
+        Babel only transpiles JS, so we need to manually copy assets and TypeScript files
+        so Vite can resolve them during bundling.
 
         Args:
             compiled_dir: Directory containing compiled files
             build_dir: Directory to copy assets to
             asset_processor: AssetProcessor instance for copying assets
         """
+        # Copy CSS and other asset files
         asset_processor.copy_assets(compiled_dir, build_dir)
+        # Copy TypeScript files so Vite can resolve them
+        asset_processor.copy_typescript_files(compiled_dir, build_dir)
 

@@ -52,24 +52,77 @@ def _candidate_from(base: str, parts: list[str]) -> tuple[str, str] | None:
         return candidate + ".py", "py"
     if os.path.isfile(candidate + ".js"):
         return candidate + ".js", "js"
+    if os.path.isfile(candidate + ".ts"):
+        return candidate + ".ts", "ts"
+    if os.path.isfile(candidate + ".tsx"):
+        return candidate + ".tsx", "tsx"
     return None
 
 
 def resolve_module(target: str, base_path: str) -> tuple[str, str]:
     """Resolve module path and infer language."""
     base_dir = os.path.dirname(base_path)
+    
+    # Handle file extensions in the target (e.g., .components.Button.tsx)
+    # Known file extensions that might be split incorrectly
+    file_extensions = ("tsx", "ts", "jsx", "js", "jac", "py")
+    
     if target.startswith("."):
-        other_target = os.path.join(base_dir, target.lstrip("."))
+        # For relative imports, try converting dots to path separators
+        # e.g., .components.Button.tsx -> components/Button.tsx
+        file_path = target.lstrip(".")
+        # Replace dots with path separators, but preserve file extension
+        if file_path:
+            parts = file_path.split(".")
+            # Check if last part is a file extension
+            if len(parts) >= 2 and parts[-1] in file_extensions:
+                # Combine filename and extension: Button.tsx
+                filename_with_ext = ".".join(parts[-2:])
+                dir_parts = parts[:-2]
+                if dir_parts:
+                    other_target = os.path.join(base_dir, *dir_parts, filename_with_ext)
+                else:
+                    other_target = os.path.join(base_dir, filename_with_ext)
+            else:
+                # No recognized extension, try as-is
+                other_target = os.path.join(base_dir, *parts) if parts else base_dir
+            if os.path.exists(other_target) and os.path.isfile(other_target):
+                # Determine language from extension
+                ext = os.path.splitext(other_target)[1]
+                lang_map = {".tsx": "tsx", ".ts": "ts", ".jsx": "jsx", ".js": "js", ".jac": "jac", ".py": "py"}
+                return other_target, lang_map.get(ext, "other")
+        else:
+            other_target = os.path.join(base_dir, target.lstrip("."))
+            if os.path.exists(other_target) and os.path.isfile(other_target):
+                return other_target, "other"
     else:
         other_target = os.path.join(base_dir, target)
-    if os.path.exists(other_target) and os.path.isfile(other_target):
-        return other_target, "other"
+        if os.path.exists(other_target) and os.path.isfile(other_target):
+            return other_target, "other"
 
     parts = target.split(".")
     level = 0
     while level < len(parts) and parts[level] == "":
         level += 1
     actual_parts = parts[level:]
+    
+    # If the target has a file extension, combine filename and extension
+    if actual_parts and len(actual_parts) >= 2 and actual_parts[-1] in file_extensions:
+        # Last part is extension (e.g., "tsx"), second-to-last is filename (e.g., "Button")
+        ext = "." + actual_parts[-1]
+        filename = actual_parts[-2]
+        dir_parts = actual_parts[:-2]
+        # Reconstruct proper path parts
+        proper_parts = list(dir_parts) + [filename + ext]
+        # Try resolving with proper structure
+        res = _candidate_from(base_dir, proper_parts)
+        if res:
+            return res
+        # Also try in search paths
+        for sp in get_jac_search_paths(base_path):
+            res = _candidate_from(sp, proper_parts)
+            if res:
+                return res
 
     for sp in get_jac_search_paths(base_path):
         res = _candidate_from(sp, actual_parts)
@@ -162,6 +215,8 @@ def convert_to_js_import_path(path: str) -> str:
         ".less",
         ".wasm",
         ".json",
+        ".ts",
+        ".tsx",
     )
 
     # If path starts with dots (relative import)
@@ -199,9 +254,7 @@ def convert_to_js_import_path(path: str) -> str:
         if not js_path.endswith(common_extensions):
             # No recognized extension found, add .js
             js_path += ".js"
-
         return js_path
-
     return path
 
 
