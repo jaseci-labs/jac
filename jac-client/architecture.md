@@ -215,14 +215,14 @@ The system requires a `vite.config.js` with specific settings:
 ```javascript
 resolve: {
   alias: {
-    "@jac-client/utils": path.resolve(__dirname, "src/client_runtime.js"),
+    "@jac-client/utils": path.resolve(__dirname, "compiled/client_runtime.js"),
   },
 }
 ```
 
 This alias is critical because:
 - Compiled Jac code imports runtime utilities via `import {__jacJsx} from "@jac-client/utils"`
-- Vite resolves this to the generated `src/client_runtime.js` file
+- Vite resolves this to the generated `compiled/client_runtime.js` file
 - Enables clean imports without hardcoded relative paths
 
 ### Configuration Parameters

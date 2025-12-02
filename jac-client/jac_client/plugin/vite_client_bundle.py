@@ -414,11 +414,11 @@ root.render(<App />);
         """
 
     def _copy_asset_files(self, src_dir: Path, build_dir: Path) -> None:
-        """Copy CSS and other asset files from src/ to build/ directory recursively.
+        """Copy CSS and other asset files from compiled/ to build/ directory recursively.
 
         Babel only transpiles JavaScript files, so CSS and other assets need to be
         manually copied to the build directory for Vite to resolve them.
-        This method recursively copies assets from subdirectories (e.g., src/assets/)
+        This method recursively copies assets from subdirectories (e.g., compiled/assets/)
         while preserving the directory structure.
         """
         if not src_dir.exists():

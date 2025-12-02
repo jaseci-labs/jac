@@ -19,11 +19,14 @@ export default defineConfig({
     outDir: "dist", // final bundled output
     emptyOutDir: true,
   },
-  plugins: [    tailwindcss(),  ],
+  plugins: [tailwindcss()],
   publicDir: false,
   resolve: {
     alias: {
-      "@jac-client/utils": path.resolve(__dirname, "src/client_runtime.js"),
+      "@jac-client/utils": path.resolve(
+        __dirname,
+        "compiled/client_runtime.js"
+      ),
     },
   },
 });

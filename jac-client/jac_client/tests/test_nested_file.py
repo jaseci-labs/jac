@@ -98,7 +98,7 @@ export default defineConfig({
   publicDir: false,
   resolve: {
     alias: {
-      "@jac-client/utils": path.resolve(__dirname, "src/client_runtime.js"),
+      "@jac-client/utils": path.resolve(__dirname, "compiled/client_runtime.js"),
     },
   },
 });
@@ -188,7 +188,7 @@ def test_nested_advance_example() -> None:
 
 
 def test_nested_folder_structure_preserved() -> None:
-    """Test that nested folder structure is preserved in src/ directory."""
+    """Test that nested folder structure is preserved in compiled/ directory."""
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_path = Path(temp_dir)
 
@@ -212,7 +212,7 @@ def test_nested_folder_structure_preserved() -> None:
         )
         (module,) = Jac.jac_import("app", str(examples_dir))
 
-        # Build the bundle (this creates files in src/)
+        # Build the bundle (this creates files in compiled/)
         bundle = builder.build(module, force=True)
 
         # Verify bundle was created
@@ -235,11 +235,11 @@ def test_nested_folder_structure_preserved() -> None:
 
         button_second_js = level1_dir / "ButtonSecondL.js"
         assert button_second_js.exists(), (
-            f"Expected {button_second_js} to exist in src/level1/ directory"
+            f"Expected {button_second_js} to exist in compiled/level1/ directory"
         )
 
         card_js = level1_dir / "Card.js"
-        assert card_js.exists(), f"Expected {card_js} to exist in src/level1/ directory"
+        assert card_js.exists(), f"Expected {card_js} to exist in compiled/level1/ directory"
 
         # Verify level2 files exist
         level2_dir = level1_dir / "level2"
@@ -247,7 +247,7 @@ def test_nested_folder_structure_preserved() -> None:
 
         button_third_js = level2_dir / "ButtonThirdL.js"
         assert button_third_js.exists(), (
-            f"Expected {button_third_js} to exist in src/level1/level2/ directory"
+            f"Expected {button_third_js} to exist in compiled/level1/level2/ directory"
         )
 
         # Cleanup
@@ -370,7 +370,7 @@ def test_nested_basic_example() -> None:
         )
 
         button_js = components_dir / "button.js"
-        assert button_js.exists(), "Expected button.js to exist in src/components/"
+        assert button_js.exists(), "Expected button.js to exist in compiled/components/"
 
         # Cleanup
         builder.cleanup_temp_dir()
