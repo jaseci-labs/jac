@@ -287,7 +287,11 @@ class TypeEvaluator {
         if path in self.program.mod.hub {
             mod = self.program.mod.hub[path];
         } else {
-            mod = self.program.compile(path, no_cgen=True, type_check=False);
+            # Use minimal_ir=True for imported modules - only need symbol table,
+            # not full IR passes (DeclImplMatchPass, SemanticAnalysisPass, etc.)
+            mod = self.program.compile(
+                path, no_cgen=True, type_check=False, symtab_ir_only=True
+            );
             # FIXME: Inherit from builtin symbol table logic is currently implemented
             # here and checker pass, however it should be in one location, since we're
             # doing type_check=False, it doesn't set parent_scope to builtins, this

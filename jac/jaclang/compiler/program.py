@@ -141,12 +141,19 @@ class JacProgram:
         # options in it.
         no_cgen: bool = False,
         type_check: bool = False,
+        symtab_ir_only: bool = False,
         cancel_token: Event | None = None,
     ) -> uni.Module:
         """Convert a Jac file to an AST."""
         keep_str = use_str or read_file_with_encoding(file_path)
         mod_targ = self.parse_str(keep_str, file_path, cancel_token=cancel_token)
-        self.run_schedule(mod=mod_targ, passes=ir_gen_sched, cancel_token=cancel_token)
+        if symtab_ir_only:
+            # For imported modules, only build symbol table (skip other IR passes)
+            SymTabBuildPass(ir_in=mod_targ, prog=self, cancel_token=cancel_token)
+        else:
+            self.run_schedule(
+                mod=mod_targ, passes=ir_gen_sched, cancel_token=cancel_token
+            )
         if type_check:
             self.run_schedule(
                 mod=mod_targ, passes=type_check_sched, cancel_token=cancel_token
