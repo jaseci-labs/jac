@@ -30,7 +30,6 @@ import lsprotocol.types as lspt;
 import from . { utils }
 import from .module_manager { ModuleManager }
 
-
 class Task {
     has _task_id: int = 0;
 
@@ -41,7 +40,6 @@ class Task {
         Task._task_id += 1;
     }
 }
-
 
 """Jac Language Server, manages JacProgram and LSP."""
 class JacLangServer(JacProgram , LanguageServer) {
@@ -60,7 +58,6 @@ class JacLangServer(JacProgram , LanguageServer) {
     }
 
     def dispatcher(self: JacLangServer) -> None {
-
         while True {
             start_time = time.time();
             task: Task | None = self.queue.get();
@@ -82,7 +79,9 @@ class JacLangServer(JacProgram , LanguageServer) {
                 self.debug("Task cancled id: " + str(task.task_id));
             } else {
                 elapsed = time.time() - start_time;
-                self.debug(f"Task completed id: {str(task.task_id)}, took: {elapsed:.4f}s");
+                self.debug(
+                    f"Task completed id: {str(task.task_id)}, took: {elapsed:.4f}s"
+                );
             }
         }
     }
@@ -123,14 +122,12 @@ class JacLangServer(JacProgram , LanguageServer) {
         self: JacLangServer,
         file_uri: str,
         cancel_token: Event | None = None,
-
+        annex_view: Optional[str] = None,
         # This parameter will be passed recursively
         # and dont need to pass when the function itself is called
         # outside.
-        annex_view: Optional[str] = None,
     ) -> bool {
-
-        if cancel_token and cancel_token.is_set(){
+        if cancel_token and cancel_token.is_set() {
             return;
         }
 
@@ -146,7 +143,7 @@ class JacLangServer(JacProgram , LanguageServer) {
                 cancel_token=cancel_token,
             );
 
-            if cancel_token and cancel_token.is_set(){
+            if cancel_token and cancel_token.is_set() {
                 return;
             }
             self.update_modules(fs_path, build);
@@ -160,10 +157,10 @@ class JacLangServer(JacProgram , LanguageServer) {
             }
             self.publish_diagnostics(
                 (
-                    # to display diagnostic , it need URI starts with "file://"
                     uris.from_fs_path(annex_view)
                     if annex_view
                     else uris.from_fs_path(fs_path)
+                    # to display diagnostic , it need URI starts with "file://"
                 ),
                 utils.gen_diagnostics(
                     (annex_view if annex_view else fs_path),
@@ -247,7 +244,6 @@ class JacLangServer(JacProgram , LanguageServer) {
         position: lspt.Position,
         completion_trigger: Optional[str]
     ) -> lspt.CompletionList {
-
         # NOTE: We may only need to wait for the current file's type check.
         await self.wait_till_idle();
 
@@ -263,7 +259,7 @@ class JacLangServer(JacProgram , LanguageServer) {
                     "found the node at pos " + str(position) + " " + str(node_at_pos)
                 );
                 # For each trigger character we need to handle the completion differently
-                 if isinstance(node_at_pos, uni.Token) {
+                if isinstance(node_at_pos, uni.Token) {
                     if node_at_pos.name == "DOT" {
                         member_access = node_at_pos.parent;
                         self.debug("found dot " + str(member_access));
@@ -271,10 +267,10 @@ class JacLangServer(JacProgram , LanguageServer) {
                             self.debug("before returning the list");
                             return self.get_completion_of_node(member_access.target);
                         }
-                    # FIXME: This is wrong but imma do it anyways like this for now.
-                     } elif node_at_pos.name == "NAME" {
+                        # FIXME: This is wrong but imma do it anyways like this for now.
+                    } elif node_at_pos.name == "NAME" {
                         # Name of atom trailer.
-                         if (
+                        if (
                             node_at_pos.parent
                             and isinstance(node_at_pos.parent, uni.AtomTrailer)
                         ) {
@@ -286,7 +282,7 @@ class JacLangServer(JacProgram , LanguageServer) {
                             );
                         }
                         # Just a name field.
-                         if scope_node := node_at_pos.find_parent_of_type(
+                        if scope_node := node_at_pos.find_parent_of_type(
                             uni.UniScopeNode
                         ) {
                             self.debug("found name in scope node " + str(scope_node));
@@ -402,7 +398,9 @@ class JacLangServer(JacProgram , LanguageServer) {
             prog = JacProgram.jac_str_formatter(
                 source_str=document.source, file_path=document.path
             );
-            formatted_text = prog.mod.main.gen.jac if not prog.errors_had else document.source;
+            formatted_text = prog.mod.main.gen.jac
+            if not prog.errors_had
+            else document.source;
         } except Exception as e {
             self.log_error(f"'Error during formatting: '{e}");
             formatted_text = document.source;
@@ -600,7 +598,6 @@ class JacLangServer(JacProgram , LanguageServer) {
         logging.info(message);
     }
 
-
     def shutdown(self: JacLangServer) -> None {
         try {
             if hasattr(self, 'worker_thread') and self.worker_thread.is_alive() {
@@ -611,5 +608,4 @@ class JacLangServer(JacProgram , LanguageServer) {
             super.shutdown();
         }
     }
-
 }

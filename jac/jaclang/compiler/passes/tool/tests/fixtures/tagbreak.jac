@@ -472,4 +472,22 @@ def test_match_comments(x: int) {
             print("other");
 
     }
+    return
+    # All lines and columns are 1-Based
+    True;
 }
+
+def generate_greeting_code(name: str) -> str by models["code-gen"];
+
+glob llm = MockLLM(
+    # model_name="gpt-4o-mini",
+    model_name="mockllm",
+    outputs=[
+        Person(
+            full_name='Albert Einstein',
+            year_of_death='1955',
+            personality=Personality.EXTROVERT,
+        ),
+
+    ],
+);

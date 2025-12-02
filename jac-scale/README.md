@@ -172,8 +172,9 @@ jac serve main.jac
 
 To use `jac scale`, you need Kubernetes installed on your machine.
 
-**Option A: Minikube (Windows/Linux/Mac)**
-- Follow the [Minikube installation guide](https://minikube.sigs.k8s.io/docs/start/)
+**Option A: MicroK8 (Windows/Linux/Mac)**
+- [Official MicroK8 installation guide](https://microk8s.io/)
+- [ubunutu installation guide](https://www.digitalocean.com/community/tutorials/how-to-setup-a-microk8s-kubernetes-cluster-on-ubuntu-22-04)
 
 **Option B: Docker Desktop with Kubernetes (Windows - Recommended)**
 - Install [Docker Desktop](https://www.docker.com/products/docker-desktop/)
@@ -331,8 +332,9 @@ you can add new todo tasks
 
 To use `jac scale`, you need Kubernetes installed on your machine.
 
-**Option A: Minikube (Windows/Linux/Mac)**
-- Follow the [Minikube installation guide](https://minikube.sigs.k8s.io/docs/start/)
+**Option A: MicroK8 (Windows/Linux/Mac)**
+- [Official MicroK8 installation guide](https://microk8s.io/)
+- [ubunutu installation guide](https://www.digitalocean.com/community/tutorials/how-to-setup-a-microk8s-kubernetes-cluster-on-ubuntu-22-04)
 
 **Option B: Docker Desktop with Kubernetes (Windows - Recommended)**
 - Install [Docker Desktop](https://www.docker.com/products/docker-desktop/)

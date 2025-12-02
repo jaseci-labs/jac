@@ -5,11 +5,13 @@ import marshal
 import os
 import pdb
 import re
+from functools import lru_cache
 from traceback import TracebackException
 
 from jaclang.settings import settings
 
 
+@lru_cache(maxsize=256)
 def pascal_to_snake(pascal_string: str) -> str:
     """Convert pascal case to snake case."""
     snake_string = re.sub(r"(?<!^)(?=[A-Z])", "_", pascal_string).lower()

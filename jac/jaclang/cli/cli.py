@@ -310,57 +310,96 @@ def check(paths: list, print_errs: bool = True) -> None:
     without executing the code. Useful for catching errors early in development.
 
     Args:
-        paths: One or more paths to .jac files to check
+        paths: One or more paths to .jac files or directories containing .jac files
         print_errs: Print detailed error messages (default: True)
 
     Examples:
         jac check myprogram.jac
         jac check file1.jac file2.jac file3.jac
+        jac check myproject/
         jac check myprogram.jac --no-print_errs
     """
     # Handle single string argument for backwards compatibility
     if isinstance(paths, str):
         paths = [paths]
 
+    def check_single_file(
+        prog: JacProgram, file_path: str, print_errs: bool
+    ) -> tuple[bool, int, int]:
+        """Check a single .jac file. Returns (success, errors, warnings)."""
+        path_obj = Path(file_path)
+        if not path_obj.exists():
+            print(f"Error: File '{file_path}' does not exist.", file=sys.stderr)
+            return False, 0, 0
+        try:
+            # Track error/warning counts before compilation
+            err_start = len(prog.errors_had)
+            warn_start = len(prog.warnings_had)
+
+            prog.compile(file_path=file_path, type_check=True, no_cgen=True)
+
+            # Get new errors/warnings from this file
+            new_errors = prog.errors_had[err_start:]
+            new_warnings = prog.warnings_had[warn_start:]
+            errs = len(new_errors)
+            warnings = len(new_warnings)
+
+            if print_errs:
+                for e in new_errors:
+                    print(f"Error: {e}", file=sys.stderr)
+                for w in new_warnings:
+                    print(f"Warning: {w}", file=sys.stderr)
+
+            return errs == 0, errs, warnings
+        except Exception as e:
+            print(f"Error checking '{file_path}': {e}", file=sys.stderr)
+            return False, 0, 0
+
+    total_files = 0
+    failed_files = 0
     total_errors = 0
     total_warnings = 0
-    failed_files = 0
+
+    # Share a single JacProgram across all files to reuse TypeEvaluator and stubs
+    prog = JacProgram()
 
     for path in paths:
-        if not path.endswith(".jac"):
-            print(f"Error: '{path}' is not a .jac file.", file=sys.stderr)
-            failed_files += 1
-            continue
+        path_obj = Path(path)
 
-        if not Path(path).exists():
-            print(f"Error: File '{path}' does not exist.", file=sys.stderr)
-            failed_files += 1
-            continue
-
-        try:
-            (prog := JacProgram()).compile(file_path=path)
-
-            errs = len(prog.errors_had)
-            warnings = len(prog.warnings_had)
+        # Case 1: Single .jac file
+        if path.endswith(".jac"):
+            total_files += 1
+            success, errs, warns = check_single_file(prog, path, print_errs)
             total_errors += errs
-            total_warnings += warnings
-
-            if print_errs and prog.errors_had:
-                for e in prog.errors_had:
-                    print("Error:", e, file=sys.stderr)
-
-            if errs > 0:
+            total_warnings += warns
+            if not success:
                 failed_files += 1
-        except Exception as e:
-            print(f"Error checking '{path}': {e}", file=sys.stderr)
-            failed_files += 1
+            continue
 
-    # Only print summary when there are issues or for single file
-    if len(paths) == 1:
-        if failed_files == 0:
-            print(f"Errors: {total_errors}, Warnings: {total_warnings}")
-    elif total_errors > 0 or total_warnings > 0:
-        print(f"Total - Errors: {total_errors}, Warnings: {total_warnings}")
+        # Case 2: Directory with .jac files
+        if path_obj.is_dir():
+            jac_files = list(path_obj.glob("**/*.jac"))
+            for jac_file in jac_files:
+                total_files += 1
+                success, errs, warns = check_single_file(
+                    prog, str(jac_file), print_errs
+                )
+                total_errors += errs
+                total_warnings += warns
+                if not success:
+                    failed_files += 1
+            continue
+
+        # Case 3: Invalid path
+        print(f"Error: '{path}' is not a .jac file or directory.", file=sys.stderr)
+        failed_files += 1
+
+    passed_files = total_files - failed_files
+    print(
+        f"Checked {total_files} '.jac' files: {passed_files} passed, "
+        f"{failed_files} with errors ({total_errors} errors, {total_warnings} warnings).",
+        file=sys.stderr if total_errors else sys.stdout,
+    )
 
     if failed_files > 0 or total_errors > 0:
         exit(1)
