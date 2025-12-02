@@ -93,11 +93,6 @@ class UniNode:
             else:
                 self.__sub_node_tab[type(i)] = [i]  # type: ignore
 
-    def construct_sub_node_tab(self) -> None:
-        """Construct sub node table (deprecated, kept for compatibility)."""
-        # Force construction by accessing the property
-        _ = self._sub_node_tab
-
     @property
     def sym_tab(self) -> UniScopeNode:
         """Get symbol table."""
