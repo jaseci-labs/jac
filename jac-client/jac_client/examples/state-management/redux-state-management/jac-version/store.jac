@@ -6,11 +6,7 @@ cl {
     let todoActions = getTodoActions();
 
     # Use different names for internal variables
-    let _store = configureStore({
-        "reducer": {
-            "todos": todoReducer
-        }
-    });
+    let _store = configureStore({"reducer": {"todos": todoReducer}});
 
     # Extract all actions
     let _addTodo = todoActions.addTodo;
@@ -20,28 +16,28 @@ cl {
     let _clearCompleted = todoActions.clearCompleted;
 
     # Export store
-    def store() -> any {
+    def store()  -> any {
         return _store;
     }
 
     # Export all todo actions
-    def addTodo() -> any {
+    def addTodo()  -> any {
         return _addTodo;
     }
 
-    def toggleTodo() -> any {
+    def toggleTodo()  -> any {
         return _toggleTodo;
     }
 
-    def deleteTodo() -> any {
+    def deleteTodo()  -> any {
         return _deleteTodo;
     }
 
-    def setFilter() -> any {
+    def setFilter()  -> any {
         return _setFilter;
     }
 
-    def clearCompleted() -> any {
+    def clearCompleted()  -> any {
         return _clearCompleted;
     }
 }

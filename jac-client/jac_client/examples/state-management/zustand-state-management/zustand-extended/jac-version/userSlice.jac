@@ -4,38 +4,25 @@ cl {
         return {
             "user": None,
             "isAuthenticated": False,
-
-            "login": lambda username: str, role: str = "user" -> None {
-                setState(lambda state: any -> dict {
-                    return {
-                        **state,
-                        "user": {"username": username, "role": role},
-                        "isAuthenticated": True
-                    };
-                });
-            },
-
-            "logout": lambda -> None {
-                setState(lambda state: any -> dict {
-                    return {
-                        **state,
-                        "user": None,
-                        "isAuthenticated": False
-                    };
-                });
-            },
-
-            "updateProfile": lambda updates: dict -> None {
-                setState(lambda state: any -> dict {
-                    if not state.user {
-                        return {**state};
-                    }
-                    return {
-                        **state,
-                        "user": {**state.user, **updates}
-                    };
-                });
-            }
+            "login": lambda  username: str , role: str = "user"  -> None{ setState(
+                lambda  state: any  -> dict{ return {
+                    ** state,
+                    "user": {"username": username, "role": role},
+                    "isAuthenticated": True
+                }; }
+            );} ,
+            "logout": lambda   -> None{ setState(
+                lambda  state: any  -> dict{ return {
+                    ** state,
+                    "user": None,
+                    "isAuthenticated": False
+                }; }
+            );} ,
+            "updateProfile": lambda  updates: dict  -> None{ setState(
+                lambda  state: any  -> dict{ if not state.user {
+                    return {** state};
+                }return {** state, "user": {** state.user, ** updates}}; }
+            );}
         };
     }
 }

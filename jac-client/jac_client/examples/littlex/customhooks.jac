@@ -1,11 +1,28 @@
-cl import from .service {createTweet, updateTweet, deleteTweet, likeTweet, removeLike, loadFeed, getProfile, updateProfile,loadAllUserProfiles,addComment, updateComment,deleteComment,followUser,unFollowUser, login,signup, isAuthenticated, logout}
-cl import from react {useState, useEffect}
-cl import from "@jac-client/utils" {useNavigate}
+cl import from .service {
+    createTweet,
+    updateTweet,
+    deleteTweet,
+    likeTweet,
+    removeLike,
+    loadFeed,
+    getProfile,
+    updateProfile,
+    loadAllUserProfiles,
+    addComment,
+    updateComment,
+    deleteComment,
+    followUser,
+    unFollowUser,
+    login,
+    signup,
+    isAuthenticated,
+    logout
+}
+cl import from react { useState, useEffect }
+cl import from "@jac-client/utils" { useNavigate }
 
-
-cl{
-
-       def useAuth() -> dict {
+cl {
+    def useAuth()  -> dict {
         let [isLogin, setIsLogin] = useState(True);
         let [username, setUsername] = useState("");
         let [password, setPassword] = useState("");
@@ -54,7 +71,7 @@ cl{
             }
         }
 
-        def toggleMode() -> None {
+        def toggleMode()  -> None {
             setIsLogin(not isLogin);
             setMessage("");
         }
@@ -71,7 +88,7 @@ cl{
         };
     }
 
-       def useFeed() -> dict {
+    def useFeed()  -> dict {
         let [tweets, setTweets] = useState([]);
         let [profile, setProfile] = useState(None);
         let [users, setUsers] = useState([]);
@@ -87,17 +104,21 @@ cl{
         navigate = useNavigate();
 
         # Initialize data on mount
-        useEffect(lambda -> None {
-            async def loadData() {
+        useEffect(
+            lambda   -> None{ async def loadData() {
                 setLoading(True);
                 try {
                     userProfile = await getProfile();
                     if userProfile and userProfile.user {
-                        setProfile({
-                            "id": userProfile.user.id,
-                            "username": userProfile.user.username,
-                            "followers": userProfile.followers if userProfile.followers else []
-                        });
+                        setProfile(
+                            {
+                                "id": userProfile.user.id,
+                                "username": userProfile.user.username,
+                                "followers": userProfile.followers
+                                if userProfile.followers
+                                else []
+                            }
+                        );
                     }
 
                     feedTweets = await loadFeed();
@@ -110,10 +131,9 @@ cl{
                     navigate("/auth");
                 }
                 setLoading(False);
-            }
-
-            loadData();
-        }, []);
+            } loadData();} ,
+            []
+        );
 
         # Field change handlers
         def handleFieldChange(field: str, value: str) -> None {
@@ -163,17 +183,16 @@ cl{
         async def handleUpdateTweet(tweetId: str, updatedContent: str) {
             updatedTweet = await updateTweet(tweetId, updatedContent);
             if updatedTweet {
-                let updateTweets = tweets.map(lambda tweet: any -> any {
-                    if tweet.id == tweetId {
+                let updateTweets = tweets.map(
+                    lambda  tweet: any  -> any{ if tweet.id == tweetId {
                         return {
-                            **tweet,
+                            ** tweet,
                             embedding: updatedTweet.embedding,
                             content: updatedTweet.content,
                             created_at: updatedTweet.created_at
                         };
-                    }
-                    return {**tweet};
-                });
+                    }return {** tweet}; }
+                );
                 setTweets(updateTweets);
                 setEditingTweet(None);
             }
@@ -182,7 +201,9 @@ cl{
         async def handleDeleteTweet(tweetId: str) {
             success = await deleteTweet(tweetId);
             if success {
-                let updatedTweets = tweets.filter(lambda t: any -> bool { return t.id != tweetId; });
+                let updatedTweets = tweets.filter(
+                    lambda  t: any  -> bool{ return t.id != tweetId; }
+                );
                 setTweets(updatedTweets);
             }
         }
@@ -192,18 +213,21 @@ cl{
                 return;
             }
 
-            tweet = tweets.find(lambda t: any -> bool { return t.id == tweetId; });
-            if not tweet { return; }
+            tweet = tweets.find(lambda  t: any  -> bool{ return t.id == tweetId; } );
+            if not tweet {
+                return;
+            }
 
-            isLiked = tweet.likes and tweet.likes.some(lambda u: any -> bool {
-                return u == profile.username;
-            });
+            isLiked = tweet.likes
+            and tweet.likes.some(
+                lambda  u: any  -> bool{ return u == profile.username; }
+            );
 
             if isLiked {
                 await removeLike(tweetId, profile.username);
-                tweet.likes = tweet.likes.filter(lambda u: any -> bool {
-                    return u != profile.username;
-                });
+                tweet.likes = tweet.likes.filter(
+                    lambda  u: any  -> bool{ return u != profile.username; }
+                );
             } else {
                 await likeTweet(tweetId, profile.username);
                 if not tweet.likes {
@@ -213,12 +237,11 @@ cl{
                 }
             }
 
-            let updatedTweets = tweets.map(lambda t: any -> any {
-                if t.id == tweetId {
+            let updatedTweets = tweets.map(
+                lambda  t: any  -> any{ if t.id == tweetId {
                     return tweet;
-                }
-                return {**t};
-            });
+                }return {** t}; }
+            );
 
             setTweets(updatedTweets);
         }
@@ -230,21 +253,20 @@ cl{
 
             newComment = await addComment(tweetId, content);
             if newComment {
-                let updateTweets = tweets.map(lambda tweet: any -> any {
-                    if tweet.id == tweetId {
-                        let updatedComments = tweet.comments.concat([{
-                            "id": newComment.id,
-                            "username": profile.username,
-                            "content": newComment.content
-                        }]);
-                        return {
-                            **tweet,
-                            comments: updatedComments,
-
-                        };
-                    }
-                    return {**tweet};
-                });
+                let updateTweets = tweets.map(
+                    lambda  tweet: any  -> any{ if tweet.id == tweetId {
+                        let updatedComments = tweet.comments.concat(
+                            [
+                                {
+                                    "id": newComment.id,
+                                    "username": profile.username,
+                                    "content": newComment.content
+                                }
+                            ]
+                        );
+                        return {** tweet, comments: updatedComments,};
+                    }return {** tweet}; }
+                );
                 setTweets(updateTweets);
                 setCommentContent("");
                 setActiveCommentTweet("");
@@ -254,23 +276,17 @@ cl{
         async def handleUpdateComment(commentId: str, updatedContent: str) {
             updatedComment = await updateComment(commentId, updatedContent);
             if updatedComment {
-                let updateTweets = tweets.map(lambda tweet: any -> any {
-                    let updatedComments = tweet.comments.map(lambda comment: any -> any {
-                        if comment.id == commentId {
+                let updateTweets = tweets.map(
+                    lambda  tweet: any  -> any{ let updatedComments = tweet.comments.map(
+                        lambda  comment: any  -> any{ if comment.id == commentId {
                             return {
                                 id: comment.id,
                                 username: comment.username,
                                 content: updatedComment.content
                             };
-                        }
-                        return {**comment};
-                    });
-                    return {
-                        **tweet,
-                        comments: updatedComments
-
-                    };
-                });
+                        }return {** comment}; }
+                    );return {** tweet, comments: updatedComments}; }
+                );
                 setTweets(updateTweets);
                 setEditingComment(None);
             }
@@ -279,20 +295,18 @@ cl{
         async def handleDeleteComment(commentId: str, tweetId: str) {
             success = await deleteComment(commentId);
             if success {
-                let updateTweets = tweets.map(lambda tweet: any -> any {
-                    if tweet.id == tweetId {
-                        let updatedComments = tweet.comments.filter(lambda comment: any -> bool {
-                            return comment.id != commentId;
-                        });
+                let updateTweets = tweets.map(
+                    lambda  tweet: any  -> any{ if tweet.id == tweetId {
+                        let updatedComments = tweet.comments.filter(
+                            lambda  comment: any  -> bool{ return comment.id != commentId; }
+                        );
                         return {
-                            **tweet,
+                            ** tweet,
                             comments: updatedComments,
                             similarity: tweet.similarity
-
                         };
-                    }
-                    return {**tweet};
-                });
+                    }return {** tweet}; }
+                );
                 setTweets(updateTweets);
             }
         }
@@ -304,11 +318,15 @@ cl{
 
             userProfile = await getProfile();
             if userProfile and userProfile.user {
-                setProfile({
-                    "id": userProfile.user.id,
-                    "username": userProfile.user.username,
-                    "followers": userProfile.followers if userProfile.followers else []
-                });
+                setProfile(
+                    {
+                        "id": userProfile.user.id,
+                        "username": userProfile.user.username,
+                        "followers": userProfile.followers
+                        if userProfile.followers
+                        else []
+                    }
+                );
             }
         }
 
@@ -319,11 +337,15 @@ cl{
 
             userProfile = await getProfile();
             if userProfile and userProfile.user {
-                setProfile({
-                    "id": userProfile.user.id,
-                    "username": userProfile.user.username,
-                    "followers": userProfile.followers if userProfile.followers else []
-                });
+                setProfile(
+                    {
+                        "id": userProfile.user.id,
+                        "username": userProfile.user.username,
+                        "followers": userProfile.followers
+                        if userProfile.followers
+                        else []
+                    }
+                );
             }
         }
 
@@ -376,7 +398,6 @@ cl{
             "loading": loading,
             "searchQuery": searchQuery,
             "isSearching": isSearching,
-
             # Handlers
             "handleFieldChange": handleFieldChange,
             "handleUIAction": handleUIAction,
@@ -396,7 +417,7 @@ cl{
     }
 
     # Custom Profile Hook
-    def useProfile() -> dict {
+    def useProfile()  -> dict {
         let [profile, setProfile] = useState(None);
         let [users, setUsers] = useState([]);
         let [newUsername, setNewUsername] = useState("");
@@ -404,16 +425,20 @@ cl{
         navigate = useNavigate();
 
         # Initialize profile data on mount
-        useEffect(lambda -> None {
-            async def loadProfile() {
+        useEffect(
+            lambda   -> None{ async def loadProfile() {
                 try {
                     userProfile = await getProfile();
                     if userProfile and userProfile.user {
-                        setProfile({
-                            "id": userProfile.user.id,
-                            "username": userProfile.user.username,
-                            "followers": userProfile.followers if userProfile.followers else []
-                        });
+                        setProfile(
+                            {
+                                "id": userProfile.user.id,
+                                "username": userProfile.user.username,
+                                "followers": userProfile.followers
+                                if userProfile.followers
+                                else []
+                            }
+                        );
                         setNewUsername(userProfile.user.username);
                     }
 
@@ -423,10 +448,9 @@ cl{
                     console.log("Error loading profile:", e);
                     navigate("/auth");
                 }
-            }
-
-            loadProfile();
-        }, []);
+            } loadProfile();} ,
+            []
+        );
 
         # Field change handler
         def handleFieldChange(field: str, value: str) -> None {
@@ -454,11 +478,13 @@ cl{
 
             try {
                 await updateProfile(newUsername);
-                setProfile({
-                    "id": profile.id,
-                    "username": newUsername,
-                    "followers": profile.followers
-                });
+                setProfile(
+                    {
+                        "id": profile.id,
+                        "username": newUsername,
+                        "followers": profile.followers
+                    }
+                );
                 setMessage("Profile updated successfully!");
             } except Exception as e {
                 setMessage("Failed to update profile");
@@ -473,11 +499,15 @@ cl{
 
             userProfile = await getProfile();
             if userProfile and userProfile.user {
-                setProfile({
-                    "id": userProfile.user.id,
-                    "username": userProfile.user.username,
-                    "followers": userProfile.followers if userProfile.followers else []
-                });
+                setProfile(
+                    {
+                        "id": userProfile.user.id,
+                        "username": userProfile.user.username,
+                        "followers": userProfile.followers
+                        if userProfile.followers
+                        else []
+                    }
+                );
             }
         }
 
@@ -489,11 +519,15 @@ cl{
 
             userProfile = await getProfile();
             if userProfile and userProfile.user {
-                setProfile({
-                    "id": userProfile.user.id,
-                    "username": userProfile.user.username,
-                    "followers": userProfile.followers if userProfile.followers else []
-                });
+                setProfile(
+                    {
+                        "id": userProfile.user.id,
+                        "username": userProfile.user.username,
+                        "followers": userProfile.followers
+                        if userProfile.followers
+                        else []
+                    }
+                );
             }
         }
 
@@ -503,7 +537,6 @@ cl{
             "users": users,
             "newUsername": newUsername,
             "message": message,
-
             # Handlers
             "handleFieldChange": handleFieldChange,
             "handleLogout": handleLogout,
