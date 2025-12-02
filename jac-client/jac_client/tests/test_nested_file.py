@@ -36,7 +36,7 @@ def _create_test_project_with_vite(temp_path: Path) -> tuple[Path, Path]:
             "build": "npm run compile && vite build",
             "dev": "vite dev",
             "preview": "vite preview",
-            "compile": 'babel src --out-dir build --extensions ".jsx,.js" --out-file-extension .js',
+            "compile": 'babel compiled --out-dir build --extensions ".jsx,.js" --out-file-extension .js',
         },
         "dependencies": {
             "react": "^19.2.0",
@@ -98,7 +98,7 @@ export default defineConfig({
   publicDir: false,
   resolve: {
     alias: {
-      "@jac-client/utils": path.resolve(__dirname, "src/client_runtime.js"),
+      "@jac-client/utils": path.resolve(__dirname, "compiled/client_runtime.js"),
     },
   },
 });
@@ -124,8 +124,8 @@ export default defineConfig({
     output_dir = temp_path / "dist"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    src_dir = temp_path / "src"
-    src_dir.mkdir(parents=True, exist_ok=True)
+    compiled_dir = temp_path / "compiled"
+    compiled_dir.mkdir(parents=True, exist_ok=True)
 
     build_dir = temp_path / "build"
     build_dir.mkdir(parents=True, exist_ok=True)
@@ -188,7 +188,7 @@ def test_nested_advance_example() -> None:
 
 
 def test_nested_folder_structure_preserved() -> None:
-    """Test that nested folder structure is preserved in src/ directory."""
+    """Test that nested folder structure is preserved in compiled/ directory."""
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_path = Path(temp_dir)
 
@@ -212,34 +212,36 @@ def test_nested_folder_structure_preserved() -> None:
         )
         (module,) = Jac.jac_import("app", str(examples_dir))
 
-        # Build the bundle (this creates files in src/)
+        # Build the bundle (this creates files in compiled/)
         bundle = builder.build(module, force=True)
 
         # Verify bundle was created
         assert bundle is not None
 
-        src_dir = temp_path / "src"
+        compiled_dir = temp_path / "compiled"
 
         # Verify root level file exists
-        app_js = src_dir / "app.js"
-        assert app_js.exists(), f"Expected {app_js} to exist in src/ directory"
+        app_js = compiled_dir / "app.js"
+        assert app_js.exists(), f"Expected {app_js} to exist in compiled/ directory"
 
-        button_root_js = src_dir / "ButtonRoot.js"
+        button_root_js = compiled_dir / "ButtonRoot.js"
         assert button_root_js.exists(), (
-            f"Expected {button_root_js} to exist in src/ directory"
+            f"Expected {button_root_js} to exist in compiled/ directory"
         )
 
         # Verify level1 files exist
-        level1_dir = src_dir / "level1"
+        level1_dir = compiled_dir / "level1"
         assert level1_dir.exists(), f"Expected {level1_dir} directory to exist"
 
         button_second_js = level1_dir / "ButtonSecondL.js"
         assert button_second_js.exists(), (
-            f"Expected {button_second_js} to exist in src/level1/ directory"
+            f"Expected {button_second_js} to exist in compiled/level1/ directory"
         )
 
         card_js = level1_dir / "Card.js"
-        assert card_js.exists(), f"Expected {card_js} to exist in src/level1/ directory"
+        assert card_js.exists(), (
+            f"Expected {card_js} to exist in compiled/level1/ directory"
+        )
 
         # Verify level2 files exist
         level2_dir = level1_dir / "level2"
@@ -247,7 +249,7 @@ def test_nested_folder_structure_preserved() -> None:
 
         button_third_js = level2_dir / "ButtonThirdL.js"
         assert button_third_js.exists(), (
-            f"Expected {button_third_js} to exist in src/level1/level2/ directory"
+            f"Expected {button_third_js} to exist in compiled/level1/level2/ directory"
         )
 
         # Cleanup
@@ -285,10 +287,10 @@ def test_relative_imports_in_compiled_files() -> None:
         # Verify bundle was created
         assert bundle is not None
 
-        src_dir = temp_path / "src"
+        compiled_dir = temp_path / "compiled"
 
         # Check that app.js imports from level1
-        app_js_content = (src_dir / "app.js").read_text(encoding="utf-8")
+        app_js_content = (compiled_dir / "app.js").read_text(encoding="utf-8")
         assert "level1/ButtonSecondL" in app_js_content, (
             "Expected app.js to import from level1/ButtonSecondL"
         )
@@ -297,15 +299,15 @@ def test_relative_imports_in_compiled_files() -> None:
         )
 
         # Check that ButtonSecondL.js imports from root (using ..)
-        button_second_content = (src_dir / "level1" / "ButtonSecondL.js").read_text(
-            encoding="utf-8"
-        )
+        button_second_content = (
+            compiled_dir / "level1" / "ButtonSecondL.js"
+        ).read_text(encoding="utf-8")
         assert "../ButtonRoot" in button_second_content, (
             "Expected ButtonSecondL.js to import from ../ButtonRoot"
         )
 
         # Check that Card.js imports from both root and level2
-        card_content = (src_dir / "level1" / "Card.js").read_text(encoding="utf-8")
+        card_content = (compiled_dir / "level1" / "Card.js").read_text(encoding="utf-8")
         assert "../ButtonRoot" in card_content, (
             "Expected Card.js to import from ../ButtonRoot (above)"
         )
@@ -315,7 +317,7 @@ def test_relative_imports_in_compiled_files() -> None:
 
         # Check that ButtonThirdL.js imports from root and second level
         button_third_content = (
-            src_dir / "level1" / "level2" / "ButtonThirdL.js"
+            compiled_dir / "level1" / "level2" / "ButtonThirdL.js"
         ).read_text(encoding="utf-8")
         assert "../../ButtonRoot" in button_third_content, (
             "Expected ButtonThirdL.js to import from ../../ButtonRoot"
@@ -361,14 +363,16 @@ def test_nested_basic_example() -> None:
         assert bundle.module_name == "app"
         assert "app" in bundle.client_functions
 
-        src_dir = temp_path / "src"
+        compiled_dir = temp_path / "compiled"
 
         # Verify nested structure is preserved
-        components_dir = src_dir / "components"
-        assert components_dir.exists(), "Expected components directory to exist in src/"
+        components_dir = compiled_dir / "components"
+        assert components_dir.exists(), (
+            "Expected components directory to exist in compiled/"
+        )
 
         button_js = components_dir / "button.js"
-        assert button_js.exists(), "Expected button.js to exist in src/components/"
+        assert button_js.exists(), "Expected button.js to exist in compiled/components/"
 
         # Cleanup
         builder.cleanup_temp_dir()

@@ -40,7 +40,7 @@ def _create_test_project_with_vite(
             "build": "npm run compile && vite build",
             "dev": "vite dev",
             "preview": "vite preview",
-            "compile": 'babel src --out-dir build --extensions ".jsx,.js" --out-file-extension .js',
+            "compile": 'babel compiled --out-dir build --extensions ".jsx,.js" --out-file-extension .js',
         },
         "dependencies": {
             "react": "^19.2.0",
@@ -102,8 +102,8 @@ export default defineConfig({
   publicDir: false,
   resolve: {
     alias: {
-      "@jac-client/utils": path.resolve(__dirname, "src/client_runtime.js"),
-      "@jac-client/assets": path.resolve(__dirname, "src/assets"),
+      "@jac-client/utils": path.resolve(__dirname, "compiled/client_runtime.js"),
+      "@jac-client/assets": path.resolve(__dirname, "compiled/assets"),
     },
   },
 });
@@ -135,7 +135,7 @@ export default defineConfig({
   publicDir: false,
   resolve: {
     alias: {
-      "@jac-client/utils": path.resolve(__dirname, "src/client_runtime.js"),
+      "@jac-client/utils": path.resolve(__dirname, "compiled/client_runtime.js"),
     },
   },
 });
@@ -161,8 +161,8 @@ export default defineConfig({
     output_dir = temp_path / "dist"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    src_dir = temp_path / "src"
-    src_dir.mkdir(parents=True, exist_ok=True)
+    compiled_dir = temp_path / "compiled"
+    compiled_dir.mkdir(parents=True, exist_ok=True)
 
     build_dir = temp_path / "build"
     build_dir.mkdir(parents=True, exist_ok=True)
@@ -290,10 +290,10 @@ def test_import_alias_example() -> None:
         )
         (module,) = Jac.jac_import("app", str(examples_dir))
 
-        # Copy assets from example directory to temp project's src/assets/
-        # This is needed because @jac-client/assets alias points to src/assets
+        # Copy assets from example directory to temp project's compiled/assets/
+        # This is needed because @jac-client/assets alias points to compiled/assets
         example_assets_dir = examples_dir / "assets"
-        temp_assets_dir = temp_path / "src" / "assets"
+        temp_assets_dir = temp_path / "compiled" / "assets"
         if example_assets_dir.exists():
             temp_assets_dir.mkdir(parents=True, exist_ok=True)
             # Copy all files from example assets to temp assets

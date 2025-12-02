@@ -18,7 +18,7 @@ Extends the base `ClientBundleBuilder` to provide Vite integration. Key responsi
    - Recursively traverses import graphs
    - Processes both `.jac` and `.js` imports
    - Accumulates exports and globals across all modules
-   - Writes compiled artifacts to `src/` directory
+   - Writes compiled artifacts to `compiled/` directory
    - **Preserves nested folder structure** (see Nested Folder Handling below)
 
 3. **Import Handling** (`_process_imports`)
@@ -52,17 +52,17 @@ Extends the base `ClientBundleBuilder` to provide Vite integration. Key responsi
 
 2. Recursive dependency resolution
    ├── Traverse all .jac/.js imports
-   ├── Compile/copy each to src/ directory (preserving folder structure)
+   ├── Compile/copy each to compiled/ directory (preserving folder structure)
    ├── Accumulate exports & globals
    └── Skip bare specifiers (handled by Vite)
 
 3. Babel compilation
    ├── Run npm run compile
-   ├── Transpile JavaScript from src/ to build/
+   ├── Transpile JavaScript from compiled/ to build/
    └── Preserves CSS import statements
 
 4. Asset copying
-   ├── Copy CSS and other assets from src/ to build/
+   ├── Copy CSS and other assets from compiled/ to build/
    └── Ensures Vite can resolve CSS imports during bundling
 
 5. Vite bundling
@@ -73,18 +73,18 @@ Extends the base `ClientBundleBuilder` to provide Vite integration. Key responsi
    └── Return code + hash
 
 6. Cleanup
-   └── Remove src/ directory
+   └── Remove compiled/ directory
 ```
 
 ### Nested Folder Handling
 
-The compilation system preserves the folder structure of source files when writing to the `src/` directory, similar to TypeScript transpilation. This ensures that relative imports work correctly and prevents file name conflicts.
+The compilation system preserves the folder structure of source files when writing to the `compiled/` directory, similar to TypeScript transpilation. This ensures that relative imports work correctly and prevents file name conflicts.
 
 #### How It Works
 
 1. **Source Root Detection**: The root module's parent directory is identified as the `source_root`
 2. **Relative Path Calculation**: For each dependency file, the relative path from `source_root` is calculated
-3. **Structure Preservation**: Files are written to `src/` maintaining the same relative folder structure
+3. **Structure Preservation**: Files are written to `compiled/` maintaining the same relative folder structure
 
 #### Example
 
@@ -97,9 +97,9 @@ nested-basic/
     └── button.jac
 ```
 
-The compiled output in `src/` will be:
+The compiled output in `compiled/` will be:
 ```
-src/
+compiled/
 ├── app.js                     (from app.jac)
 ├── buttonroot.js              (from buttonroot.jac)
 └── components/
@@ -142,11 +142,11 @@ import "./styles.css";
 ```
 
 #### 2. Asset Copying (`_copy_asset_files`)
-After Babel compilation, CSS and other asset files are copied from `src/` to `build/`:
+After Babel compilation, CSS and other asset files are copied from `compiled/` to `build/`:
 - **Why**: Babel only transpiles JavaScript, so CSS files need manual copying
 - **When**: After `npm run compile`, before `npm run build`
 - **What**: Copies `.css`, `.scss`, `.sass`, `.less`, and image files
-- **Location**: `src/styles.css` → `build/styles.css`
+- **Location**: `compiled/styles.css` → `build/styles.css`
 
 #### 3. Vite CSS Processing
 Vite processes CSS imports during bundling:
@@ -185,11 +185,11 @@ if path.startswith("/static/") and path.endswith(".css"):
 ```
 app.jac (cl import ".styles.css")
   ↓
-src/app.js (import "./styles.css")
+compiled/app.js (import "./styles.css")
   ↓
-Babel: src/app.js → build/app.js (preserves import)
+Babel: compiled/app.js → build/app.js (preserves import)
   ↓
-_copy_asset_files: src/styles.css → build/styles.css
+_copy_asset_files: compiled/styles.css → build/styles.css
   ↓
 Vite: Processes CSS import, extracts to dist/main.css
   ↓
@@ -204,8 +204,8 @@ Server: Serves from dist/main.css
 - **Export collection**: All client exports are aggregated across the dependency tree
 - **React-based**: Entry point uses React 18's `createRoot` API
 - **Hash-based caching**: Bundle hash enables browser cache invalidation
-- **Temp directory isolation**: Builds in `vite_package_json.parent/src/` to avoid conflicts
-- **Folder structure preservation**: Nested folder structures are preserved in `src/` directory, similar to TypeScript transpilation, ensuring relative imports work correctly
+- **Temp directory isolation**: Builds in `vite_package_json.parent/compiled/` to avoid conflicts
+- **Folder structure preservation**: Nested folder structures are preserved in `compiled/` directory, similar to TypeScript transpilation, ensuring relative imports work correctly
 - **CSS asset handling**: CSS files are copied after Babel compilation to ensure Vite can resolve imports, then extracted to separate files for optimal loading
 
 ### Vite Configuration
@@ -215,19 +215,19 @@ The system requires a `vite.config.js` with specific settings:
 ```javascript
 resolve: {
   alias: {
-    "@jac-client/utils": path.resolve(__dirname, "src/client_runtime.js"),
+    "@jac-client/utils": path.resolve(__dirname, "compiled/client_runtime.js"),
   },
 }
 ```
 
 This alias is critical because:
 - Compiled Jac code imports runtime utilities via `import {__jacJsx} from "@jac-client/utils"`
-- Vite resolves this to the generated `src/client_runtime.js` file
+- Vite resolves this to the generated `compiled/client_runtime.js` file
 - Enables clean imports without hardcoded relative paths
 
 ### Configuration Parameters
 
 - `vite_package_json`: Path to package.json (must exist)
 - `runtime_path`: Path to client runtime file
-- `vite_output_dir`: Build output (defaults to `src/dist/assets`)
+- `vite_output_dir`: Build output (defaults to `compiled/dist/assets`)
 - `vite_minify`: Enable/disable minification

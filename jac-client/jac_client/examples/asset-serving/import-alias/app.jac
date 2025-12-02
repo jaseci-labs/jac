@@ -97,7 +97,7 @@ cl {
                         </code>
                         to
                         <code>
-                            src/assets/
+                            compiled/assets/
                         </code>
                         during build
                     </li>

@@ -146,13 +146,15 @@ class ViteClientBundleBuilder(ClientBundleBuilder):
                 # Change extension from .jac to .js
                 output_path = (
                     self.vite_package_json.parent
-                    / "src"
+                    / "compiled"
                     / relative_path.with_suffix(".js")
                 )
             except ValueError:
                 # If file is outside source_root, fall back to just filename
                 output_path = (
-                    self.vite_package_json.parent / "src" / f"{module_path.stem}.js"
+                    self.vite_package_json.parent
+                    / "compiled"
+                    / f"{module_path.stem}.js"
                 )
 
             # Ensure parent directories exist
@@ -184,12 +186,16 @@ class ViteClientBundleBuilder(ClientBundleBuilder):
                         try:
                             relative_path = path_obj.relative_to(source_root)
                             output_path = (
-                                self.vite_package_json.parent / "src" / relative_path
+                                self.vite_package_json.parent
+                                / "compiled"
+                                / relative_path
                             )
                         except ValueError:
                             # If file is outside source_root, fall back to just filename
                             output_path = (
-                                self.vite_package_json.parent / "src" / path_obj.name
+                                self.vite_package_json.parent
+                                / "compiled"
+                                / path_obj.name
                             )
 
                         # Ensure parent directories exist
@@ -204,12 +210,12 @@ class ViteClientBundleBuilder(ClientBundleBuilder):
                     try:
                         relative_path = path_obj.relative_to(source_root)
                         output_path = (
-                            self.vite_package_json.parent / "src" / relative_path
+                            self.vite_package_json.parent / "compiled" / relative_path
                         )
                     except ValueError:
                         # If file is outside source_root, fall back to just filename
                         output_path = (
-                            self.vite_package_json.parent / "src" / path_obj.name
+                            self.vite_package_json.parent / "compiled" / path_obj.name
                         )
 
                     # Ensure parent directories exist
@@ -259,7 +265,11 @@ class ViteClientBundleBuilder(ClientBundleBuilder):
         )
 
         combined_runtime_utils_js = f"{runtimeutils_js}\n{export_block}"
-        (self.vite_package_json.parent / "src" / "client_runtime.js").write_text(
+        # Ensure compiled directory exists before writing
+        project_dir = self.vite_package_json.parent
+        compiled_dir = project_dir / "compiled"
+        compiled_dir.mkdir(parents=True, exist_ok=True)
+        (compiled_dir / "client_runtime.js").write_text(
             combined_runtime_utils_js, encoding="utf-8"
         )
 
@@ -278,17 +288,17 @@ class ViteClientBundleBuilder(ClientBundleBuilder):
             collected_globals=collected_globals,
         )
 
-        # Copy assets from root assets/ folder to src/assets/ for @jac-client/assets alias
+        # Copy assets from root assets/ folder to compiled/assets/ for @jac-client/assets alias
         project_dir = self.vite_package_json.parent
         root_assets_dir = project_dir / "assets"
-        src_assets_dir = project_dir / "src" / "assets"
+        compiled_assets_dir = project_dir / "compiled" / "assets"
         if root_assets_dir.exists() and root_assets_dir.is_dir():
-            self._copy_asset_files(root_assets_dir, src_assets_dir)
+            self._copy_asset_files(root_assets_dir, compiled_assets_dir)
 
         client_exports = sorted(collected_exports)
         client_globals_map = collected_globals
 
-        entry_file = self.vite_package_json.parent / "src" / "main.js"
+        entry_file = self.vite_package_json.parent / "compiled" / "main.js"
 
         entry_content = """import React from "react";
 import { createRoot } from "react-dom/client";
@@ -333,10 +343,10 @@ root.render(<App />);
 
         # Create temp directory for Vite build
         project_dir = self.vite_package_json.parent
-        src_dir = project_dir / "src"
-        src_dir.mkdir(exist_ok=True)
+        compiled_dir = project_dir / "compiled"
+        compiled_dir.mkdir(exist_ok=True)
 
-        output_dir = self.vite_output_dir or src_dir / "dist" / "assets"
+        output_dir = self.vite_output_dir or compiled_dir / "dist" / "assets"
         output_dir.mkdir(parents=True, exist_ok=True)
 
         try:
@@ -347,9 +357,9 @@ root.render(<App />);
             subprocess.run(
                 command, cwd=project_dir, check=True, capture_output=True, text=True
             )
-            # Copy CSS and other asset files from src/ to build/ after Babel compilation
+            # Copy CSS and other asset files from compiled/ to build/ after Babel compilation
             # Babel only transpiles JS, so we need to manually copy assets
-            self._copy_asset_files(project_dir / "src", project_dir / "build")
+            self._copy_asset_files(project_dir / "compiled", project_dir / "build")
             # then build the code
             command = ["npm", "run", "build"]
             subprocess.run(
@@ -404,11 +414,11 @@ root.render(<App />);
         """
 
     def _copy_asset_files(self, src_dir: Path, build_dir: Path) -> None:
-        """Copy CSS and other asset files from src/ to build/ directory recursively.
+        """Copy CSS and other asset files from compiled/ to build/ directory recursively.
 
         Babel only transpiles JavaScript files, so CSS and other assets need to be
         manually copied to the build directory for Vite to resolve them.
-        This method recursively copies assets from subdirectories (e.g., src/assets/)
+        This method recursively copies assets from subdirectories (e.g., compiled/assets/)
         while preserving the directory structure.
         """
         if not src_dir.exists():
@@ -491,12 +501,12 @@ root.render(<App />);
         return None
 
     def cleanup_temp_dir(self) -> None:
-        """Clean up the src directory and its contents."""
+        """Clean up the compiled directory and its contents."""
         if not self.vite_package_json or not self.vite_package_json.exists():
             return
 
         project_dir = self.vite_package_json.parent
-        temp_dir = project_dir / "src"
+        temp_dir = project_dir / "compiled"
 
         if temp_dir.exists():
             with contextlib.suppress(OSError, shutil.Error):

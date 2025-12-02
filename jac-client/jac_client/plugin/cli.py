@@ -76,9 +76,9 @@ class JacCmd:
                 with open(package_json_path) as f:
                     package_data = json.load(f)
 
-                # create temp folder
-                src_folder = os.path.join(project_path, "src")
-                os.makedirs(src_folder, exist_ok=True)
+                # create compiled folder for transpiled files
+                compiled_folder = os.path.join(project_path, "compiled")
+                os.makedirs(compiled_folder, exist_ok=True)
 
                 # create build folder
                 build_folder = os.path.join(project_path, "build")
@@ -98,7 +98,7 @@ class JacCmd:
                             "build": "npm run compile && vite build",
                             "dev": "vite dev",
                             "preview": "vite preview",
-                            "compile": 'babel src --out-dir build --extensions ".jsx,.js" --out-file-extension .js',
+                            "compile": 'babel compiled --out-dir build --extensions ".jsx,.js" --out-file-extension .js',
                         },
                         "devDependencies": {
                             "vite": "^6.4.1",
@@ -188,10 +188,10 @@ export default defineConfig({
   },
   publicDir: false,
   resolve: {
-    alias: {
-      "@jac-client/utils": path.resolve(__dirname, "src/client_runtime.js"),
-      "@jac-client/assets": path.resolve(__dirname, "src/assets"),
-    },
+      alias: {
+        "@jac-client/utils": path.resolve(__dirname, "compiled/client_runtime.js"),
+        "@jac-client/assets": path.resolve(__dirname, "compiled/assets"),
+      },
   },
 });
 
@@ -220,6 +220,17 @@ Happy coding with Jac!
 
                 with open(os.path.join(project_path, "README.md"), "w") as f:
                     f.write(readme_content)
+
+                # Create .gitignore file
+                gitignore_content = """node_modules
+app.session.bak
+app.session.dat
+app.session.dir
+app.session.users.json
+compiled/
+"""
+                with open(os.path.join(project_path, ".gitignore"), "w") as f:
+                    f.write(gitignore_content)
 
                 # Return to original directory
                 os.chdir(original_cwd)
