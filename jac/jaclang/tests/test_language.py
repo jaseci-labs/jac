@@ -1538,9 +1538,17 @@ def test_escaped_quote_strings(fixture_path, capture_stdout):
 
 def test_by_operator(fixture_path):
     """Test 'by' operator raises NotImplementedError."""
-    with pytest.raises(NotImplementedError) as exc_info:
-        Jac.jac_import("by_operator", base_path=fixture_path("./"))
+    captured_output = io.StringIO()
+    sys.stdout = captured_output
+    sys.stderr = captured_output
 
-    assert "by" in str(exc_info.value).lower()
-    assert "not" in str(exc_info.value).lower()
-    assert "implemented" in str(exc_info.value).lower()
+    with pytest.raises(SystemExit):
+        cli.run(fixture_path("by_operator.jac"))
+
+    sys.stdout = sys.__stdout__
+    sys.stderr = sys.__stderr__
+
+    stdout_value = captured_output.getvalue()
+    assert "by" in stdout_value.lower()
+    assert "not" in stdout_value.lower()
+    assert "implemented" in stdout_value.lower()
