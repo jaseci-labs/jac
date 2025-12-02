@@ -1,13 +1,15 @@
 node simple {
     has tag: str;
 }
+
 edge simple_edge {
     has index: int = 0;
 }
+
 with entry {
-    if (not [root -->]) {
-        root +>:simple_edge:index=0:+> simple(tag="first");
-        root +>:simple_edge:index=1:+> simple(tag="second");
+    if (not [root-->]) {
+        root +>: simple_edge : index=0 :+> simple(tag="first");
+        root +>: simple_edge : index=1 :+> simple(tag="second");
     }
 }
 
@@ -39,6 +41,7 @@ walker filter_on_edge_visit {
     can filter with `root entry {
         visit ([->:simple_edge:index==0:->]);
     }
+
     can end with simple entry {
         print(here);
     }

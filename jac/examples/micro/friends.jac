@@ -6,14 +6,12 @@ node Person {
     }
 }
 
-
 edge Friend {}
 edge Family {
     can announce with FriendFinder entry {
         print(f"{visitor} is traveling to family member");
     }
 }
-
 
 with entry {
     # Susan has a friend connection to John's
@@ -27,27 +25,25 @@ with entry {
     p2 +>: Friend :+> p3;
 }
 
-
 # This is also a class
- walker FriendFinder {
+walker FriendFinder {
     has started: bool = False;
 
     # this is a special method (ability)
-     can report_friend with Person entry {
+    can report_friend with Person entry {
         if self.started {
             print(f"{here.name} is a friend of friend, or family");
         } else {
             self.started = True;
             visit [-->];
         }
-        visit [edge ->:Family :->];
+        visit [edge ->:Family:->];
     }
 
     can move_to_person with `root entry {
         visit [-->];
     }
 }
-
 
 with entry {
     result = FriendFinder() spawn root;

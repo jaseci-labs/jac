@@ -1,5 +1,4 @@
 # Bitwise Expressions
-
 with entry {
     # Bitwise OR
     print(5 | 3);

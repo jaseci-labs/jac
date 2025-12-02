@@ -2,18 +2,15 @@ import from byllm.lib { Model }
 
 glob llm = Model(verbose=True, model_name="gpt-4o-mini");
 
-enum Personality {
-    INTROVERT,
-    EXTROVERT,
-    AMBIVERT
-}
+enum Personality { INTROVERT, EXTROVERT, AMBIVERT }
 
 obj Person {
     has full_name: str,
         yod: int,
         personality: Personality;
 }
-sem Person.yod = "Year of Death of the person";
+
+sem Person. yod= "Year of Death of the person";
 
 glob personality_examples: dict[str, Personality] = {
     'Albert Einstein': Personality.INTROVERT,

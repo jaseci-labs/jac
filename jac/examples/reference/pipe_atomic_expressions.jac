@@ -8,6 +8,6 @@ with entry {
     "Test" :> type :> print;
 
     # Atomic pipe with lambdas for function composition
-    result = 5 :> (lambda x: int : x * 2) :> (lambda x: int : x + 10);
+    result = 5 :> (lambda  x: int: x * 2) :> (lambda  x: int: x + 10);
     print(result);
 }

@@ -15,11 +15,11 @@ with entry {
     child2 = root ++> Person(name="Bob", age=18);
 
     # Now, let's create the relationships between them
-    parent +>:FamilyRelation(relationship_type="parent"):+> child1;
-    parent +>:FamilyRelation(relationship_type="parent"):+> child2;
-    child1 +>:FamilyRelation(relationship_type="sibling"):+> child2;
+    parent +>: FamilyRelation(relationship_type="parent") :+> child1;
+    parent +>: FamilyRelation(relationship_type="parent") :+> child2;
+    child1 +>: FamilyRelation(relationship_type="sibling") :+> child2;
 
-     # You can now ask questions about these relationships
+    # You can now ask questions about these relationships
     children = [parent[0]->:FamilyRelation:relationship_type=="parent":->(`?Person)];
 
     print(f"{parent[0].name} has {len(children)} children:");

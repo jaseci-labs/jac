@@ -6,7 +6,7 @@ import ast as py_ast
 import marshal
 import types
 from threading import Event
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 import jaclang.compiler.unitree as uni
 from jaclang.compiler.parser import JacParser
@@ -18,12 +18,12 @@ from jaclang.compiler.passes.main import (
     JacAnnexPass,
     JacImportDepsPass,
     PreDynamoPass,
-    PyBytecodeGenPass,
-    PyJacAstLinkPass,
     PyastBuildPass,
     PyastGenPass,
-    SemDefMatchPass,
+    PyBytecodeGenPass,
+    PyJacAstLinkPass,
     SemanticAnalysisPass,
+    SemDefMatchPass,
     SymTabBuildPass,
     Transform,
     TypeCheckPass,
@@ -33,29 +33,40 @@ from jaclang.compiler.passes.tool import (
     DocIRGenPass,
     JacFormatPass,
 )
+from jaclang.compiler.ts_parser import TypeScriptParser
 from jaclang.runtimelib.utils import read_file_with_encoding
 from jaclang.settings import settings
 
 if TYPE_CHECKING:
     from jaclang.compiler.type_system.type_evaluator import TypeEvaluator
 
-ir_gen_sched = [
+
+symtab_ir_sched: list[type[Transform[uni.Module, uni.Module]]] = [
     SymTabBuildPass,
     DeclImplMatchPass,
+]
+
+ir_gen_sched: list[type[Transform[uni.Module, uni.Module]]] = [
+    *symtab_ir_sched,
     SemanticAnalysisPass,
     SemDefMatchPass,
     CFGBuildPass,
 ]
-type_check_sched: list = [
+
+type_check_sched: list[type[Transform[uni.Module, uni.Module]]] = [
     TypeCheckPass,
 ]
-py_code_gen = [
+py_code_gen: list[type[Transform[uni.Module, uni.Module]]] = [
     EsastGenPass,
     PyastGenPass,
     PyJacAstLinkPass,
     PyBytecodeGenPass,
 ]
-format_sched = [DocIRGenPass, CommentInjectionPass, JacFormatPass]
+format_sched: list[type[Transform[uni.Module, uni.Module]]] = [
+    DocIRGenPass,
+    CommentInjectionPass,
+    JacFormatPass,
+]
 
 
 class JacProgram:
@@ -63,7 +74,7 @@ class JacProgram:
 
     def __init__(
         self,
-        main_mod: Optional[uni.ProgramModule] = None,
+        main_mod: uni.ProgramModule | None = None,
     ) -> None:
         """Initialize the JacProgram object."""
         self.mod: uni.ProgramModule = main_mod if main_mod else uni.ProgramModule()
@@ -80,7 +91,7 @@ class JacProgram:
             self.type_evaluator = TypeEvaluator(program=self)
         return self.type_evaluator
 
-    def get_bytecode(self, full_target: str) -> Optional[types.CodeType]:
+    def get_bytecode(self, full_target: str) -> types.CodeType | None:
         """Get the bytecode for a specific module."""
         if full_target in self.mod.hub and self.mod.hub[full_target].gen.py_bytecode:
             codeobj = self.mod.hub[full_target].gen.py_bytecode
@@ -105,6 +116,14 @@ class JacProgram:
             )
             had_error = len(py_ast_ret.errors_had) > 0
             mod = py_ast_ret.ir_out
+        elif file_path.endswith((".js", ".ts", ".jsx", ".tsx")):
+            # Parse TypeScript/JavaScript files
+            source = uni.Source(source_str, mod_path=file_path)
+            ts_ast_ret = TypeScriptParser(
+                root_ir=source, prog=self, cancel_token=cancel_token
+            )
+            had_error = len(ts_ast_ret.errors_had) > 0
+            mod = ts_ast_ret.ir_out
         else:
             source = uni.Source(source_str, mod_path=file_path)
             jac_ast_ret: Transform[uni.Source, uni.Module] = JacParser(
@@ -128,12 +147,21 @@ class JacProgram:
         # options in it.
         no_cgen: bool = False,
         type_check: bool = False,
+        symtab_ir_only: bool = False,
         cancel_token: Event | None = None,
     ) -> uni.Module:
         """Convert a Jac file to an AST."""
         keep_str = use_str or read_file_with_encoding(file_path)
         mod_targ = self.parse_str(keep_str, file_path, cancel_token=cancel_token)
-        self.run_schedule(mod=mod_targ, passes=ir_gen_sched, cancel_token=cancel_token)
+        if symtab_ir_only:
+            # only build symbol table and match decl/impl (skip semantic analysis and CFG)
+            self.run_schedule(
+                mod=mod_targ, passes=symtab_ir_sched, cancel_token=cancel_token
+            )
+        else:
+            self.run_schedule(
+                mod=mod_targ, passes=ir_gen_sched, cancel_token=cancel_token
+            )
         if type_check:
             self.run_schedule(
                 mod=mod_targ, passes=type_check_sched, cancel_token=cancel_token
@@ -167,26 +195,26 @@ class JacProgram:
             current_pass(ir_in=mod, prog=self, cancel_token=cancel_token)  # type: ignore
 
     @staticmethod
-    def jac_file_formatter(file_path: str) -> str:
-        """Convert a Jac file to an AST."""
+    def jac_file_formatter(file_path: str) -> JacProgram:
+        """Format a Jac file and return the JacProgram."""
         prog = JacProgram()
         source_str = read_file_with_encoding(file_path)
         source = uni.Source(source_str, mod_path=file_path)
-        prse: Transform = JacParser(root_ir=source, prog=prog)
-        for i in format_sched:
-            prse = i(ir_in=prse.ir_out, prog=prog)
-        prse.errors_had = prog.errors_had
-        prse.warnings_had = prog.warnings_had
-        return prse.ir_out.gen.jac
+        parser_pass = JacParser(root_ir=source, prog=prog)
+        current_mod = parser_pass.ir_out
+        for pass_cls in format_sched:
+            current_mod = pass_cls(ir_in=current_mod, prog=prog).ir_out
+        prog.mod = uni.ProgramModule(current_mod)
+        return prog
 
     @staticmethod
-    def jac_str_formatter(source_str: str, file_path: str) -> str:
-        """Convert a Jac file to an AST."""
+    def jac_str_formatter(source_str: str, file_path: str) -> JacProgram:
+        """Format a Jac string and return the JacProgram."""
         prog = JacProgram()
         source = uni.Source(source_str, mod_path=file_path)
-        prse: Transform = JacParser(root_ir=source, prog=prog)
-        for i in format_sched:
-            prse = i(ir_in=prse.ir_out, prog=prog)
-        prse.errors_had = prog.errors_had
-        prse.warnings_had = prog.warnings_had
-        return prse.ir_out.gen.jac if not prse.errors_had else source_str
+        parser_pass = JacParser(root_ir=source, prog=prog)
+        current_mod = parser_pass.ir_out
+        for pass_cls in format_sched:
+            current_mod = pass_cls(ir_in=current_mod, prog=prog).ir_out
+        prog.mod = uni.ProgramModule(current_mod)
+        return prog

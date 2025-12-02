@@ -2,13 +2,8 @@ import from byllm.lib { MockLLM }
 
 glob llm = MockLLM(
     # model_name="gpt-4o-mini",
-    model_name="mockllm",
-
-    outputs=[
-        "Average marks for Alice : 86.75"
-    ]
+    model_name="mockllm", outputs=["Average marks for Alice : 86.75"]
 );
-
 
 obj Student {
     has name: str;
@@ -20,9 +15,8 @@ obj Student {
     }
 
     """Calculate the average of the marks."""
-    def get_average() -> float by llm();
+    def get_average()  -> float by llm();
 }
-
 
 with entry {
     student = Student(name="Alice");

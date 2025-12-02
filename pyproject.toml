@@ -1,0 +1,19 @@
+# Minimal pyproject.toml for pre-commit hooks
+# This allows pre-commit to install jaclang from the jac/ subdirectory
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jaseci-hooks"
+version = "0.0.1"
+requires-python = ">=3.11"
+
+[project.scripts]
+jac = "jaclang.cli.cli:start_cli"
+
+[tool.setuptools.packages.find]
+where = ["jac"]
+
+[tool.setuptools.package-data]
+"*" = ["*.jac"]

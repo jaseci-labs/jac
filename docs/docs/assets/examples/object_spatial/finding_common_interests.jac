@@ -16,6 +16,7 @@ walker FindCommonInterests {
     can find_common with Person entry {
         if here == self.target_person {
             return;  # Skip self
+
         }
 
         # Find shared interests
@@ -28,7 +29,11 @@ walker FindCommonInterests {
 
         if shared {
             self.common_interests.extend(shared);
-            print(f"{here.name} and {self.target_person.name} both like: {', '.join(shared)}");
+            print(
+                f"{here.name} and {self.target_person.name} both like: {', '.join(
+                    shared
+                )}"
+            );
         }
     }
 }
@@ -36,27 +41,19 @@ walker FindCommonInterests {
 with entry {
     # Create friend network
     alice = root ++> Person(
-        name="Alice",
-        age=25,
-        interests=["coding", "music", "hiking"]
+        name="Alice", age=25, interests=["coding", "music", "hiking"]
     );
 
-    bob = root ++> Person(
-        name="Bob",
-        age=27,
-        interests=["music", "sports", "cooking"]
-    );
+    bob = root ++> Person(name="Bob", age=27, interests=["music", "sports", "cooking"]);
 
     charlie = root ++> Person(
-        name="Charlie",
-        age=24,
-        interests=["coding", "gaming", "music"]
+        name="Charlie", age=24, interests=["coding", "gaming", "music"]
     );
 
     # Create friendships with metadata
-    alice +>:FriendsWith(since="2020-01-15", closeness=8):+> bob;
-    alice +>:FriendsWith(since="2021-06-10", closeness=9):+> charlie;
-    bob +>:FriendsWith(since="2020-12-03", closeness=7):+> charlie;
+    alice +>: FriendsWith(since="2020-01-15", closeness=8) :+> bob;
+    alice +>: FriendsWith(since="2021-06-10", closeness=9) :+> charlie;
+    bob +>: FriendsWith(since="2020-12-03", closeness=7) :+> charlie;
 
     print("=== Friend Network Analysis ===");
 
@@ -73,6 +70,6 @@ with entry {
     }
 
     # Find close friendships (closeness >= 8)
-    close_friendships = [root-->->:FriendsWith:closeness >= 8:->];
+    close_friendships = [root-->->:FriendsWith:closeness>=8:->];
     print(f"Close friendships ({len(close_friendships)} found):");
 }

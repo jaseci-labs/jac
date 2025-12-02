@@ -40,7 +40,6 @@ class Colleague(Edge):
 
 
 class GraphBuilder(Walker):
-
     @on_entry
     def build(self, here: Root) -> None:
         print("=== 1. Untyped Connect Operators ===")
@@ -62,9 +61,7 @@ class GraphBuilder(Walker):
         connect(left=diana, right=nyc, edge=LivesIn)
         print(f"Typed forward: {diana.name} +>:LivesIn:+> {nyc.name}")
         connect(left=london, right=eve, edge=LivesIn)
-        print(
-            f"Typed backward: {eve.name} <+:LivesIn:<+ {london.name} (edge from London to Eve)"
-        )
+        print(f"Typed backward: {eve.name} <+:LivesIn:<+ {london.name} (edge from London to Eve)")
         connect(left=diana, right=eve, edge=Friend, undir=True)
         print(f"Typed bidirectional: {diana.name} <+:Friend:+> {eve.name}")
         print("\n=== 3. Edge Attribute Initialization ===")
@@ -72,35 +69,23 @@ class GraphBuilder(Walker):
         henry = Person(name="Henry", age=31)
         iris = Person(name="Iris", age=24)
         connect(left=grace, right=henry, edge=Friend(since=2015))
-        print(
-            f"Forward with attrs: {grace.name} +>: Friend(since=2015) :+> {henry.name}"
-        )
+        print(f"Forward with attrs: {grace.name} +>: Friend(since=2015) :+> {henry.name}")
         connect(left=iris, right=henry, edge=Friend(since=2018))
-        print(
-            f"Backward with attrs: {henry.name} <+: Friend(since=2018) :<+ {iris.name}"
-        )
-        connect(
-            left=grace, right=iris, edge=Colleague(department="Engineering"), undir=True
-        )
-        print(
-            f"Bidirectional with attrs: {grace.name} <+: Colleague(department='Engineering') :+> {iris.name}"
-        )
+        print(f"Backward with attrs: {henry.name} <+: Friend(since=2018) :<+ {iris.name}")
+        connect(left=grace, right=iris, edge=Colleague(department="Engineering"), undir=True)
+        print(f"Bidirectional with attrs: {grace.name} <+: Colleague(department='Engineering') :+> {iris.name}")
         print("\n=== 4. Chained Connections ===")
         jack = Person(name="Jack", age=35)
         kate = Person(name="Kate", age=29)
         liam = Person(name="Liam", age=30)
         mike = Person(name="Mike", age=33)
-        connect(
-            left=connect(left=connect(left=jack, right=kate), right=liam), right=mike
-        )
+        connect(left=connect(left=connect(left=jack, right=kate), right=liam), right=mike)
         print(f"Chain: {jack.name} ++> {kate.name} ++> {liam.name} ++> {mike.name}")
         print("\n=== 5. Inline Node Creation ===")
         nina = Person(name="Nina", age=28)
         connect(left=nina, right=Person(name="InlineNode1", age=35))
         connect(left=nina, right=Person(name="InlineNode2", age=40), edge=Friend)
-        connect(
-            left=nina, right=Person(name="InlineNode3", age=45), edge=Friend(since=2010)
-        )
+        connect(left=nina, right=Person(name="InlineNode3", age=45), edge=Friend(since=2010))
         print("Connected to 3 inline-created nodes (untyped, typed, with attrs)")
         print("\n=== 6. Connect to Multiple Targets ===")
         oscar = Person(name="Oscar", age=27)
@@ -111,9 +96,7 @@ class GraphBuilder(Walker):
         connect(left=oscar, right=Person(name="Rita", age=30), edge=Friend)
         print(f"Connected {oscar.name} to 3 different targets")
         print("\n=== 7. Disconnect Operator ===")
-        print(
-            "Disconnect syntax: node del [-->] target (deletes edges from node to target)"
-        )
+        print("Disconnect syntax: node del [-->] target (deletes edges from node to target)")
         print("\n=== 8. Connect in Expressions ===")
         steve = Person(name="Steve", age=45)
         tina = Person(name="Tina", age=42)
@@ -125,7 +108,6 @@ class GraphBuilder(Walker):
 
 
 class EdgeTraverser(Walker):
-
     @on_entry
     def traverse_root(self, here: Root) -> None:
         print("\n=== Edge Traversal with Visit ===")

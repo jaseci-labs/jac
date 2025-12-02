@@ -1,4 +1,3 @@
-
 with entry {
     x = x;
 }

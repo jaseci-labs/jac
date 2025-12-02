@@ -56,19 +56,15 @@ walker ShoppingCart {
         print(f"[Inheritance] Processing {type(here).__name__}...");
 
         # Typed context block for derived type Book
-        -> Book {
-            print(f"  -> Book block: '{here.title}' by {here.author}");
-        }
+        ->Book{print(f"  -> Book block: '{here.title}' by {here.author}");}
 
         # Typed context block for derived type Magazine
-        -> Magazine {
-            print(f"  -> Magazine block: '{here.title}' Issue #{here.issue}");
-        }
+        ->Magazine{print(f"  -> Magazine block: '{here.title}' Issue #{here.issue}");}
 
         # Typed context block for derived type Electronics
-        -> Electronics {
-            print(f"  -> Electronics block: {here.name}, {here.warranty_years}yr warranty");
-        }
+        ->Electronics{print(
+            f"  -> Electronics block: {here.name}, {here.warranty_years}yr warranty"
+        );}
 
         self.items_count += 1;
         self.total += here.price;
@@ -81,15 +77,11 @@ walker ShoppingCart {
         print(f"[Tuple] Applying media discount to {type(here).__name__}");
 
         # Typed context block differentiates between the tuple members
-        -> Book {
-            discount = here.price * 0.10;
-            print(f"  -> Book: 10% off = ${discount}");
-        }
+        ->Book{discount = here.price * 0.10;print(f"  -> Book: 10% off = ${discount}");}
 
-        -> Magazine {
-            discount = here.price * 0.20;
-            print(f"  -> Magazine: 20% off = ${discount}");
-        }
+        ->Magazine{discount = here.price * 0.20;print(
+            f"  -> Magazine: 20% off = ${discount}"
+        );}
 
         visit [-->];
     }
@@ -105,23 +97,19 @@ node Checkout {
         self.transactions += 1;
 
         # Specific type: RegularCustomer (subtype of Customer)
-        -> RegularCustomer {
-            print(f"\nRegular customer: {visitor.name}");
-            print(f"Total: ${visitor.total_spent}, Points: {visitor.loyalty_points}");
-        }
+        ->RegularCustomer{print(f"\nRegular customer: {visitor.name}");print(
+            f"Total: ${visitor.total_spent}, Points: {visitor.loyalty_points}"
+        );}
 
         # Specific type: VIPCustomer (subtype of Customer)
-        -> VIPCustomer {
-            discount = visitor.total_spent * visitor.vip_discount;
-            final_total = visitor.total_spent - discount;
-            print(f"\nVIP customer: {visitor.name}");
-            print(f"Subtotal: ${visitor.total_spent}, Discount: -${discount}, Final: ${final_total}");
-        }
+        ->VIPCustomer{discount = visitor.total_spent * visitor.vip_discount;final_total = visitor.total_spent - discount;print(
+            f"\nVIP customer: {visitor.name}"
+        );print(
+            f"Subtotal: ${visitor.total_spent}, Discount: -${discount}, Final: ${final_total}"
+        );}
 
         # Base type: Customer (matches all Customers including subtypes)
-        -> Customer {
-            print(f"Processing payment for {visitor.name}");
-        }
+        ->Customer{print(f"Processing payment for {visitor.name}");}
     }
 }
 

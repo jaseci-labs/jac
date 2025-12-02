@@ -2,21 +2,21 @@ node a {
     has val: int;
 }
 
-
 edge Edge1 {
     has val: int = 5;
 }
 
-
 with entry {
     end = root;
     for i in range(0, 4) {
-        end ++> (end := [ a(val=i) for i in range(0, 3) ]);
+        end ++> (end := [a(val=i) for i in range(0, 3)]);
     }
-    x = [ a(val=i) for i in range(0, 3) ];
+    x = [a(val=i) for i in range(0, 3)];
     end = x[1];
     for i in range(0, 8) {
-        locals()[chr(ord('b') + i)] = (values := [ a(val=j * i + 5.2 * i + 6) for j in range(0, 3) ]);
+        locals()[chr(ord('b') + i)] = (
+            values := [a(val=j * i + 5.2 * i + 6) for j in range(0, 3)]
+        );
         end ++> (end := values);
     }
     p = b[1];
@@ -24,35 +24,25 @@ with entry {
         p +>: Edge1 : val=6 :+> (p := a(val=k));
     }
     # b++>c;
-     # c++>b;
-     d1 = printgraph();
+    # c++>b;
+    d1 = printgraph();
     l1 = d1 |> len;
     #generate dot for all connected with root
-     #  d2=printgraph(b[1],Traverse=True,depth=20,bfs=False,node_limit=12);l2=d2|>len;  #generate dot for all connected with root
-     d2 = printgraph(
-        b[1],
-        edge_type=["Edge1"],
-        depth=20,
-        traverse=True,
-        bfs=False,
-        node_limit=19
+    #  d2=printgraph(b[1],Traverse=True,depth=20,bfs=False,node_limit=12);l2=d2|>len;  #generate dot for all connected with root
+    d2 = printgraph(
+        b[1], edge_type=["Edge1"], depth=20, traverse=True, bfs=False, node_limit=19
     );
     l2 = d2 |> len;
     #generate dot for all connected with root
-     d3 = printgraph(b[2], edge_limit=5, depth=5);
+    d3 = printgraph(b[2], edge_limit=5, depth=5);
     l3 = d3 |> len;
     #generate dot for all connected with b[1] node
-     d4 = printgraph(
-        b[1],
-        bfs=True,
-        edge_type=["Edge1"],
-        node_limit=100,
-        edge_limit=900,
-        depth=300
+    d4 = printgraph(
+        b[1], bfs=True, edge_type=["Edge1"], node_limit=100, edge_limit=900, depth=300
     );
     l4 = d4 |> len;
     #generate dot from nodes with depth 3 connected with b[1] node
-     d5 = printgraph(b[1], node_limit=10, edge_limit=90);
+    d5 = printgraph(b[1], node_limit=10, edge_limit=90);
     l5 := d5 |> len;
     #generate dot from nodes with depth 3 connected with b[1] node
     print(
@@ -81,5 +71,4 @@ with entry {
     # print(d4);
 
     # print(printgraph(node=b[2],bfs=True,depth=3.96,edge_limit=12,node_limit=12.96));
-
 }

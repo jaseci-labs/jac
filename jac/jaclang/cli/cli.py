@@ -8,7 +8,6 @@ import sys
 import types
 from importlib.metadata import version as pkg_version
 from pathlib import Path
-from typing import Optional
 
 import jaclang.compiler.unitree as uni
 from jaclang.cli.cmdreg import cmd_registry
@@ -16,7 +15,8 @@ from jaclang.compiler.passes.main import PyastBuildPass
 from jaclang.compiler.program import JacProgram
 from jaclang.runtimelib.builtin import printgraph
 from jaclang.runtimelib.constructs import WalkerArchetype
-from jaclang.runtimelib.machine import ExecutionContext, JacMachine as Jac, JacUtils
+from jaclang.runtimelib.runtime import ExecutionContext, JacUtils
+from jaclang.runtimelib.runtime import JacRuntime as Jac
 from jaclang.runtimelib.utils import read_file_with_encoding
 from jaclang.settings import settings
 from jaclang.utils.helpers import debugger as db
@@ -24,23 +24,31 @@ from jaclang.utils.lang_tools import AstTool
 
 
 @cmd_registry.register
-def format(path: str, outfile: str = "", to_screen: bool = False) -> None:
+def format(paths: list, outfile: str = "", to_screen: bool = False) -> None:
     """Format .jac files with improved code style.
 
     Applies consistent formatting to Jac code files to improve readability and
     maintain a standardized code style across your project.
 
     Args:
-        path: Path to a .jac file or directory containing .jac files
-        outfile: Optional output file path (when formatting a single file)
+        paths: One or more paths to .jac files or directories containing .jac files
+        outfile: Optional output file path (only valid when formatting a single file)
         to_screen: Print formatted code to stdout instead of writing to file
 
     Examples:
         jac format myfile.jac
+        jac format file1.jac file2.jac file3.jac
         jac format myproject/
         jac format myfile.jac --outfile formatted.jac
         jac format myfile.jac --to_screen
     """
+    # Handle single string argument for backwards compatibility
+    if isinstance(paths, str):
+        paths = [paths]
+
+    if outfile and len(paths) > 1:
+        print("Error: --outfile can only be used with a single file.", file=sys.stderr)
+        exit(1)
 
     def write_formatted_code(code: str, target_path: str) -> None:
         """Write formatted code to the appropriate destination."""
@@ -53,36 +61,76 @@ def format(path: str, outfile: str = "", to_screen: bool = False) -> None:
             with open(target_path, "w") as f:
                 f.write(code)
 
-    path_obj = Path(path)
-
-    # Case 1: Single .jac file
-    if path.endswith(".jac"):
+    def format_single_file(file_path: str) -> tuple[bool, bool]:
+        """Format a single .jac file. Returns (success, changed)."""
+        path_obj = Path(file_path)
         if not path_obj.exists():
-            print(f"Error: File '{path}' does not exist.", file=sys.stderr)
-            exit(1)
-        formatted_code = JacProgram.jac_file_formatter(str(path_obj))
-        write_formatted_code(formatted_code, str(path_obj))
-        return
+            print(f"Error: File '{file_path}' does not exist.", file=sys.stderr)
+            return False, False
+        try:
+            prog = JacProgram.jac_file_formatter(str(path_obj))
+            if prog.errors_had:
+                for error in prog.errors_had:
+                    print(f"{error}", file=sys.stderr)
+                return False, False
+            formatted_code = prog.mod.main.gen.jac
+            original_code = prog.mod.main.source.code
+            changed = formatted_code != original_code
+            write_formatted_code(formatted_code, str(path_obj))
+            return True, changed
+        except Exception as e:
+            print(f"Error formatting '{file_path}': {e}", file=sys.stderr)
+            return False, False
 
-    # Case 2: Directory with .jac files
-    if path_obj.is_dir():
-        jac_files = list(path_obj.glob("**/*.jac"))
-        for jac_file in jac_files:
-            formatted_code = JacProgram.jac_file_formatter(str(jac_file))
-            write_formatted_code(formatted_code, str(jac_file))
+    total_files = 0
+    failed_files = 0
+    changed_files = 0
 
-        print(f"Formatted {len(jac_files)} '.jac' files.", file=sys.stderr)
-        return
+    for path in paths:
+        path_obj = Path(path)
 
-    # Case 3: Invalid path
-    print(f"Error: '{path}' is not a .jac file or directory.", file=sys.stderr)
-    exit(1)
+        # Case 1: Single .jac file
+        if path.endswith(".jac"):
+            total_files += 1
+            success, changed = format_single_file(path)
+            if not success:
+                failed_files += 1
+            elif changed:
+                changed_files += 1
+            continue
+
+        # Case 2: Directory with .jac files
+        if path_obj.is_dir():
+            jac_files = list(path_obj.glob("**/*.jac"))
+            for jac_file in jac_files:
+                total_files += 1
+                success, changed = format_single_file(str(jac_file))
+                if not success:
+                    failed_files += 1
+                elif changed:
+                    changed_files += 1
+            continue
+
+        # Case 3: Invalid path
+        print(f"Error: '{path}' is not a .jac file or directory.", file=sys.stderr)
+        failed_files += 1
+
+    # Only print summary for directory processing or when there are failures
+    if (len(paths) == 1 and Path(paths[0]).is_dir()) or failed_files > 0:
+        print(
+            f"Formatted {total_files - failed_files}/{total_files} '.jac' files "
+            f"({changed_files} changed).",
+            file=sys.stderr,
+        )
+
+    if changed_files > 0:
+        exit(1)
 
 
 def proc_file_sess(
-    filename: str, session: str, root: Optional[str] = None
+    filename: str, session: str, root: str | None = None
 ) -> tuple[str, str, ExecutionContext]:
-    """Create JacMachine and return the base path, module name, and machine state."""
+    """Create JacRuntime and return the base path, module name, and runtime state."""
     if session == "":
         session = (
             cmd_registry.args.session
@@ -255,71 +303,105 @@ def build(filename: str, typecheck: bool = False) -> None:
 
 
 @cmd_registry.register
-def bind(filename: str, typecheck: bool = False) -> None:
-    """Bind the specified .jac file.
+def check(paths: list, print_errs: bool = True) -> None:
+    """Run type checker for specified .jac files.
 
-    Parses and binds a Jac source file, resolving symbols and preparing it for execution.
-    This step is necessary before running the program, as it ensures all references
-    are correctly linked and the program structure is validated.
-    TODO: performs type checking.
-
-    Args:
-        filename: Path to the .jac file to bind
-        typecheck: Print the symbol table after binding (default: False)
-
-    Examples:
-        jac bind myprogram.jac
-        jac bind myprogram.jac -t
-    """
-    if filename.endswith((".jac", ".py")):
-        (out := JacProgram()).bind(file_path=filename)
-        errs = len(out.errors_had)
-        warnings = len(out.warnings_had)
-        if typecheck:
-            for mods in out.mod.hub.values():
-                if mods.name == "builtins":
-                    continue
-                header = (
-                    f"{'=' * 6} SymTable({mods.name}) {'=' * (22 - len(mods.name))}"
-                )
-                divider = "=" * 40
-                print(f"{divider}\n{header}\n{divider}\n{mods.sym_tab.sym_pp()}")
-        print(f"Errors: {errs}, Warnings: {warnings}")
-        if errs > 0:
-            exit(1)
-    else:
-        print("Not a .jac/.py file.", file=sys.stderr)
-        exit(1)
-
-
-@cmd_registry.register
-def check(filename: str, print_errs: bool = True) -> None:
-    """Run type checker for a specified .jac file.
-
-    Performs static type analysis on a Jac program to identify potential type errors
+    Performs static type analysis on Jac programs to identify potential type errors
     without executing the code. Useful for catching errors early in development.
 
     Args:
-        filename: Path to the .jac file to check
+        paths: One or more paths to .jac files or directories containing .jac files
         print_errs: Print detailed error messages (default: True)
 
     Examples:
         jac check myprogram.jac
+        jac check file1.jac file2.jac file3.jac
+        jac check myproject/
         jac check myprogram.jac --no-print_errs
     """
-    if filename.endswith(".jac"):
-        (prog := JacProgram()).compile(file_path=filename)
+    # Handle single string argument for backwards compatibility
+    if isinstance(paths, str):
+        paths = [paths]
 
-        errs = len(prog.errors_had)
-        warnings = len(prog.warnings_had)
-        if print_errs:
-            for e in prog.errors_had:
-                print("Error:", e, file=sys.stderr)
-        print(f"Errors: {errs}, Warnings: {warnings}")
-        if errs > 0:
-            exit(1)
-    else:
-        print("Not a .jac file.", file=sys.stderr)
+    def check_single_file(
+        prog: JacProgram, file_path: str, print_errs: bool
+    ) -> tuple[bool, int, int]:
+        """Check a single .jac file. Returns (success, errors, warnings)."""
+        path_obj = Path(file_path)
+        if not path_obj.exists():
+            print(f"Error: File '{file_path}' does not exist.", file=sys.stderr)
+            return False, 0, 0
+        try:
+            # Track error/warning counts before compilation
+            err_start = len(prog.errors_had)
+            warn_start = len(prog.warnings_had)
+
+            prog.compile(file_path=file_path, type_check=True, no_cgen=True)
+
+            # Get new errors/warnings from this file
+            new_errors = prog.errors_had[err_start:]
+            new_warnings = prog.warnings_had[warn_start:]
+            errs = len(new_errors)
+            warnings = len(new_warnings)
+
+            if print_errs:
+                for e in new_errors:
+                    print(f"Error: {e}", file=sys.stderr)
+                for w in new_warnings:
+                    print(f"Warning: {w}", file=sys.stderr)
+
+            return errs == 0, errs, warnings
+        except Exception as e:
+            print(f"Error checking '{file_path}': {e}", file=sys.stderr)
+            return False, 0, 0
+
+    total_files = 0
+    failed_files = 0
+    total_errors = 0
+    total_warnings = 0
+
+    # Share a single JacProgram across all files to reuse TypeEvaluator and stubs
+    prog = JacProgram()
+
+    for path in paths:
+        path_obj = Path(path)
+
+        # Case 1: Single .jac file
+        if path.endswith(".jac"):
+            total_files += 1
+            success, errs, warns = check_single_file(prog, path, print_errs)
+            total_errors += errs
+            total_warnings += warns
+            if not success:
+                failed_files += 1
+            continue
+
+        # Case 2: Directory with .jac files
+        if path_obj.is_dir():
+            jac_files = list(path_obj.glob("**/*.jac"))
+            for jac_file in jac_files:
+                total_files += 1
+                success, errs, warns = check_single_file(
+                    prog, str(jac_file), print_errs
+                )
+                total_errors += errs
+                total_warnings += warns
+                if not success:
+                    failed_files += 1
+            continue
+
+        # Case 3: Invalid path
+        print(f"Error: '{path}' is not a .jac file or directory.", file=sys.stderr)
+        failed_files += 1
+
+    passed_files = total_files - failed_files
+    print(
+        f"Checked {total_files} '.jac' files: {passed_files} passed, "
+        f"{failed_files} with errors ({total_errors} errors, {total_warnings} warnings).",
+        file=sys.stderr if total_errors else sys.stdout,
+    )
+
+    if failed_files > 0 or total_errors > 0:
         exit(1)
 
 
@@ -456,7 +538,7 @@ def test(
 
 
 @cmd_registry.register
-def tool(tool: str, args: Optional[list] = None) -> None:
+def tool(tool: str, args: list | None = None) -> None:
     """Run the specified AST tool with optional arguments.
 
     Executes specialized tools for working with Jac's Abstract Syntax Tree (AST).
@@ -630,14 +712,11 @@ def py2jac(filename: str) -> None:
             ),
             prog=JacProgram(),
         ).ir_out.unparse(requires_format=False)
-        formatted_code = JacProgram().jac_str_formatter(
-            source_str=code, file_path=filename
-        )
-        if formatted_code:
-            print(formatted_code)
-        else:
+        prog = JacProgram.jac_str_formatter(source_str=code, file_path=filename)
+        if prog.errors_had:
             print("Error converting Python code to Jac.", file=sys.stderr)
             exit(1)
+        print(prog.mod.main.gen.jac)
     else:
         print("Not a .py file.")
         exit(1)

@@ -1,4 +1,4 @@
-def:priv hash(func: Any) {
+def : priv hash(func: Any) {
     def inner(a: Any) {
         print(("#" * 20));
         func(a);
@@ -7,7 +7,7 @@ def:priv hash(func: Any) {
     return inner;
 }
 
-def:protect exclaim(func: Any) {
+def : protect exclaim(func: Any) {
     def inner(b: Any) {
         print(("!" * 20));
         func(b);

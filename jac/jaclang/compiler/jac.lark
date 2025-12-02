@@ -480,6 +480,22 @@ jsx_child: jsx_element
 
 jsx_expression: LBRACE expression RBRACE
 jsx_text: JSX_TEXT
+        | jsx_text_keyword
+
+// Keywords that can appear as text in JSX content (common English words)
+jsx_text_keyword: KW_TO | KW_AS | KW_FROM | KW_WITH | KW_IF | KW_FOR | KW_BY
+                | KW_IN | KW_IS | KW_HAS | KW_CAN | KW_TRY | KW_MATCH | KW_CASE
+                | KW_TEST | KW_LET | KW_ELSE | KW_RETURN | KW_BREAK | KW_CLASS
+                | KW_NODE | KW_EDGE | KW_VISIT | KW_ENTRY | KW_EXIT | KW_WAIT
+                | KW_FLOW | KW_SKIP | KW_CONTINUE | KW_REPORT | KW_RAISE
+                | KW_DEFAULT | KW_YIELD | KW_EXCEPT | KW_FINALLY | KW_ASSERT
+                | KW_WHILE | KW_STATIC | KW_OVERRIDE | KW_SWITCH | KW_HERE
+                | KW_SELF | KW_SUPER | KW_ROOT | NOT | KW_DELETE | KW_IMPORT
+                | KW_INCLUDE | KW_ASYNC | KW_AWAIT | KW_SPAWN | KW_LAMBDA
+                | KW_ENUM | KW_OBJECT | KW_ABSTRACT | KW_WALKER | KW_IMPL
+                | KW_SEM | KW_ELIF | KW_DISENGAGE | KW_PRIV | KW_PUB | KW_PROT
+                | KW_GLOBAL | KW_DEF | KW_CLIENT | KW_INIT | KW_POST_INIT
+                | KW_VISITOR | KW_AND | KW_OR
 
 // [Heading]: Builtin types.
 builtin_type: TYP_TYPE
@@ -614,8 +630,8 @@ NOT: "not" // TODO:AST: Rename to KW_NOT
 
 // Literals ---------------------------------------------------------------- //
 
-STRING: /(r?b?|b?r?)("[^"\r\n]*"|'[^'\r\n]*')/
-       | /(r?b?|b?r?)("""(.|\r|\n)*?"""|'''(.|\r|\n)*?''')/
+STRING: /(r?b?|b?r?)("(?!"").*?(?<!\\)(\\\\)*?"|'(?!'').*?(?<!\\)(\\\\)*?')/i
+       | /(r?b?|b?r?)(""".*?(?<!\\)(\\\\)*?"""|'''.*?(?<!\\)(\\\\)*?''')/is
 
 RF_DQ_START.3: /[rR][fF]"|[fF][rR]"/
 RF_SQ_START.3: /[rR][fF]'|[fF][rR]'/

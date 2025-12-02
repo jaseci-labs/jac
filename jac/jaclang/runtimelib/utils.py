@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import ast as ast3
 import sys
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from types import UnionType
-from typing import Callable, Iterator, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 import jaclang.compiler.unitree as uni
 
@@ -27,17 +28,16 @@ def read_file_with_encoding(file_path: str) -> str:
 
     for encoding in encodings_to_try:
         try:
-            with open(file_path, "r", encoding=encoding) as f:
+            with open(file_path, encoding=encoding) as f:
                 return f.read()
         except UnicodeError:
             continue
         except Exception as e:
-            raise IOError(
-                f"Could not read file {file_path}: {e}. "
-                f"Report this issue: https://github.com/jaseci-labs/jaseci/issues"
+            raise OSError(
+                f"Could not read file {file_path}: {e}. Report this issue: https://github.com/jaseci-labs/jaseci/issues"
             ) from e
 
-    raise IOError(
+    raise OSError(
         f"Could not read file {file_path} with any encoding. "
         f"Report this issue: https://github.com/jaseci-labs/jaseci/issues"
     )
@@ -147,7 +147,6 @@ def traverse_graph(
                 if bfs:
                     queue.append([other_nd, cur_depth + 1])
                 else:
-
                     dfs(other_nd, cur_depth + 1)
 
 
@@ -228,9 +227,9 @@ def is_instance(
     """Check if object is instance of target type."""
     match target:
         case UnionType():
-            return any((is_instance(obj, trg) for trg in target.__args__))
+            return any(is_instance(obj, trg) for trg in target.__args__)
         case tuple():
-            return any((is_instance(obj, trg) for trg in target))
+            return any(is_instance(obj, trg) for trg in target)
         case type():
             return isinstance(obj, target)
         case _:
@@ -245,8 +244,8 @@ def all_issubclass(
         case type():
             return issubclass(classes, target)
         case UnionType():
-            return all((all_issubclass(cls, target) for cls in classes.__args__))
+            return all(all_issubclass(cls, target) for cls in classes.__args__)
         case tuple():
-            return all((all_issubclass(cls, target) for cls in classes))
+            return all(all_issubclass(cls, target) for cls in classes)
         case _:
             return False

@@ -4,7 +4,7 @@ obj GradeBook {
     def add_student(name: str) -> None;
     def add_grade(student: str, grade: int) -> None;
     def get_average(student: str) -> float;
-    def get_all_averages() -> dict[str, float];
+    def get_all_averages()  -> dict[str, float];
 }
 
 impl GradeBook.add_student(name: str) -> None {
@@ -21,7 +21,6 @@ impl GradeBook.add_grade(student: str, grade: int) -> None {
         print(f"Invalid grade: {grade}");
         return;
     }
-
     if student in self.students {
         self.students[student].append(grade);
         print(f"Added grade {grade} for {student}");
@@ -38,7 +37,7 @@ impl GradeBook.get_average(student: str) -> float {
     return sum(grades) / len(grades);
 }
 
-impl GradeBook.get_all_averages() -> dict[str, float] {
+impl GradeBook.get_all_averages()  -> dict[str, float] {
     averages: dict[str, float] = {};
     for (student, grades) in self.students.items() {
         if len(grades) > 0 {

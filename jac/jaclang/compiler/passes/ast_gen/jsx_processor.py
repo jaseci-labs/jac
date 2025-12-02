@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import ast as ast3
-from typing import Optional, TYPE_CHECKING, Union, cast
+from typing import TYPE_CHECKING, cast
 
 import jaclang.compiler.unitree as uni
 
@@ -35,10 +35,11 @@ class EsJsxProcessor:
                 es.Literal(value=None), jac_node=node
             )
         else:
-            tag_expr = (
+            tag_expr = cast(
+                "Expression",
                 node.name.gen.es_ast
                 if node.name.gen.es_ast
-                else self.pass_ref.sync_loc(es.Literal(value=None), jac_node=node.name)
+                else self.pass_ref.sync_loc(es.Literal(value=None), jac_node=node.name),
             )
 
         attributes = node.attributes or []
@@ -53,11 +54,11 @@ class EsJsxProcessor:
             segments: list[Expression] = []
             for attr in attributes:
                 if isinstance(attr, uni.JsxSpreadAttribute):
-                    exp = getattr(attr.gen, "es_ast", None)
+                    exp = attr.gen.es_ast
                     if isinstance(exp, es.Expression):
                         segments.append(exp)
                 elif isinstance(attr, uni.JsxNormalAttribute):
-                    prop = getattr(attr.gen, "es_ast", None)
+                    prop = attr.gen.es_ast
                     if isinstance(prop, es.Property):
                         segments.append(
                             self.pass_ref.sync_loc(
@@ -97,22 +98,26 @@ class EsJsxProcessor:
         else:
             properties: list[Property] = []
             for attr in attributes:
-                prop = getattr(attr.gen, "es_ast", None)
+                prop = attr.gen.es_ast
                 if isinstance(prop, es.Property):
                     properties.append(prop)
             props_expr = self.pass_ref.sync_loc(
                 es.ObjectExpression(properties=properties), jac_node=node
             )
 
-        children_elements: list[Optional[Union[Expression, SpreadElement]]] = []
+        children_elements: list[Expression | SpreadElement | None] = []
         for child in node.children or []:
-            child_expr = getattr(child.gen, "es_ast", None)
+            child_expr = child.gen.es_ast
             if child_expr is None:
                 continue
             if isinstance(child_expr, list):
-                children_elements.extend(child_expr)  # type: ignore[arg-type]
+                # JSX child expressions in list form are Expression types
+                children_elements.extend(
+                    cast("Expression", expr) for expr in child_expr
+                )
             else:
-                children_elements.append(child_expr)
+                # Child expressions are always Expression types
+                children_elements.append(cast("Expression", child_expr))
         children_expr = self.pass_ref.sync_loc(
             es.ArrayExpression(elements=children_elements), jac_node=node
         )
@@ -162,8 +167,8 @@ class EsJsxProcessor:
     def spread_attribute(self, node: uni.JsxSpreadAttribute) -> Expression:
         """Process JSX spread attribute."""
         es = self.es
-        expr = (
-            node.expr.gen.es_ast
+        expr: Expression = (
+            cast("Expression", node.expr.gen.es_ast)
             if node.expr and node.expr.gen.es_ast
             else self.pass_ref.sync_loc(
                 es.ObjectExpression(properties=[]), jac_node=node
@@ -208,7 +213,9 @@ class EsJsxProcessor:
     def text(self, node: uni.JsxText) -> Expression:
         """Process JSX text node."""
         es = self.es
-        raw_value = node.value.value if hasattr(node.value, "value") else node.value
+        raw_value = (
+            node.value.value if isinstance(node.value, uni.Token) else node.value
+        )
         expr = self.pass_ref.sync_loc(es.Literal(value=str(raw_value)), jac_node=node)
         node.gen.es_ast = expr
         return expr
@@ -216,8 +223,8 @@ class EsJsxProcessor:
     def expression(self, node: uni.JsxExpression) -> Expression:
         """Process JSX expression child."""
         es = self.es
-        expr = (
-            node.expr.gen.es_ast
+        expr: Expression = (
+            cast("Expression", node.expr.gen.es_ast)
             if node.expr and node.expr.gen.es_ast
             else self.pass_ref.sync_loc(es.Literal(value=None), jac_node=node.expr)
         )
@@ -243,14 +250,15 @@ class PyJsxProcessor:
         elif any(isinstance(attr, uni.JsxSpreadAttribute) for attr in node.attributes):
             attrs_expr = self.pass_ref.sync(ast3.Dict(keys=[], values=[]), node)
             for attr in node.attributes:
-                attr_ast = cast(ast3.expr, attr.gen.py_ast[0])
                 if isinstance(attr, uni.JsxSpreadAttribute):
+                    attr_ast = cast(ast3.expr, attr.gen.py_ast[0])
                     attrs_expr = self.pass_ref.sync(
                         ast3.Dict(keys=[None, None], values=[attrs_expr, attr_ast]),
                         attr,
                     )
                 elif isinstance(attr, uni.JsxNormalAttribute):
-                    key_ast, value_ast = attr_ast.elts  # type: ignore[attr-defined]
+                    attr_tuple = cast(ast3.Tuple, attr.gen.py_ast[0])
+                    key_ast, value_ast = attr_tuple.elts
                     attrs_expr = self.pass_ref.sync(
                         ast3.Dict(
                             keys=[None, key_ast],
@@ -263,8 +271,8 @@ class PyJsxProcessor:
             values: list[ast3.expr] = []
             for attr in node.attributes:
                 if isinstance(attr, uni.JsxNormalAttribute):
-                    attr_ast = attr.gen.py_ast[0]
-                    key_ast, value_ast = attr_ast.elts  # type: ignore[attr-defined]
+                    attr_ast = cast(ast3.Tuple, attr.gen.py_ast[0])
+                    key_ast, value_ast = attr_ast.elts
                     keys.append(cast(ast3.expr, key_ast))
                     values.append(cast(ast3.expr, value_ast))
             attrs_expr = self.pass_ref.sync(ast3.Dict(keys=keys, values=values), node)
@@ -294,6 +302,7 @@ class PyJsxProcessor:
     def element_name(self, node: uni.JsxElementName) -> list[ast3.AST]:
         """Generate Python AST for JSX element names."""
         name_str = ".".join(part.value for part in node.parts)
+        expr: ast3.expr
         if node.parts and node.parts[0].value[0].isupper():
             expr = self.pass_ref.sync(
                 ast3.Name(id=name_str, ctx=ast3.Load()),
@@ -316,11 +325,11 @@ class PyJsxProcessor:
             return node.gen.py_ast
 
         key_ast = self.pass_ref.sync(ast3.Constant(value=node.name.value), node.name)
-        value_ast = (
-            cast(ast3.expr, node.value.gen.py_ast[0])  # type: ignore[index]
-            if node.value
-            else self.pass_ref.sync(ast3.Constant(value=True), node)
-        )
+        value_ast: ast3.expr
+        if node.value and node.value.gen.py_ast:
+            value_ast = cast(ast3.expr, node.value.gen.py_ast[0])
+        else:
+            value_ast = self.pass_ref.sync(ast3.Constant(value=True), node)
         node.gen.py_ast = [
             self.pass_ref.sync(
                 ast3.Tuple(elts=[key_ast, value_ast], ctx=ast3.Load()),
@@ -331,7 +340,10 @@ class PyJsxProcessor:
 
     def text(self, node: uni.JsxText) -> list[ast3.AST]:
         """Generate Python AST for JSX text nodes."""
-        expr = self.pass_ref.sync(ast3.Constant(value=node.value.value), node)
+        raw_value = (
+            node.value.value if isinstance(node.value, uni.Token) else node.value
+        )
+        expr = self.pass_ref.sync(ast3.Constant(value=str(raw_value)), node)
         node.gen.py_ast = [expr]
         return node.gen.py_ast
 

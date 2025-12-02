@@ -3,13 +3,11 @@
 def divide_numbers(a: float, b: float) -> float {
     try {
         result = a / b;
-    }
-    except ZeroDivisionError as e {
+    } except ZeroDivisionError as e {
         print("Error: Cannot divide by zero!", e);
         result = None;
-        raise;  # Re-raise the exception
-    }
-    finally {
+        raise ;  # Re-raise the exception
+    } finally {
         print("Division operation completed.");
     }
     return result;
@@ -21,8 +19,7 @@ with entry {
         denominator = int(input("Enter the denominator: "));
         result = divide_numbers(numerator, denominator);
         print("Result:", result);
-    }
-    except ValueError {
+    } except ValueError {
         print("Error: Invalid input! Please entry valid integers.");
     }
 }

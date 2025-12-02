@@ -3,7 +3,13 @@
 import from datetime { datetime }
 import from uuid { UUID, uuid4 }
 import from jaclang.compiler.constant { EdgeDir }
-import from jaclang.plugin { Archetype, ArchetypeProtocol, DSFunc, AbsRootHook, hookimpl }
+import from jaclang.plugin {
+    Archetype,
+    ArchetypeProtocol,
+    DSFunc,
+    AbsRootHook,
+    hookimpl
+}
 
 enum AccessMode;
 
@@ -11,7 +17,7 @@ obj Memory {
     has index: dict[UUID, Element] = {},
         save_queue: list[Element] = [];
     #* Main Accessors *#
-    def get_obj(caller_id: UUID, item_id: UUID, override: bool=False) -> Element;
+    def get_obj(caller_id: UUID, item_id: UUID, override: bool = False) -> Element;
     def has_obj(item_id: UUID) -> bool;
     def save_obj(caller_id: UUID, item: Element);
     def del_obj(caller_id: UUID, item: Element);
@@ -25,7 +31,7 @@ obj ExecutionContext {
         memory: Memory = Memory();
 
     def reset;
-    def get_root() -> Archetype;
+    def get_root()  -> Archetype;
 }
 
 "Global Execution Context, should be monkey patched by the user."
@@ -54,7 +60,7 @@ obj Anchor(ArchetypeProtocol) {
     def is_private -> bool;
     def is_readable(caller_id: UUID) -> bool;
     def is_writable(caller_id: UUID) -> bool;
-    def give_access(caller_id: UUID, read_write: bool=False);
+    def give_access(caller_id: UUID, read_write: bool = False);
     def revoke_access(caller_id: UUID);
 }
 
@@ -115,32 +121,39 @@ obj Master {
 
 obj JacPlugin {
     @hookimpl
-    static def bind_archetype(arch: AT, arch_type: str, on_entry: list[str], on_exit: list[str]) -> bool;
+    static def bind_archetype(
+        arch: AT, arch_type: str, on_entry: list[str], on_exit: list[str]
+    ) -> bool;
+
     @hookimpl
-    static def get_root() -> Archetype;
+    static def get_root()  -> Archetype;
+
     @hookimpl
-    static def build_edge(edge_spec: tuple[int, Optional[tuple], Optional[tuple]]) -> Archetype;
+    static def build_edge(
+        edge_spec: tuple[int, Optional[tuple], Optional[tuple]]
+    ) -> Archetype;
+
     @hookimpl
-    static def connect(left: T, right: T, edge_spec: tuple[int, Optional[type], Optional[tuple]]) -> Archetype;
+    static def connect(
+        left: T, right: T, edge_spec: tuple[int, Optional[type], Optional[tuple]]
+    ) -> Archetype;
+
     @hookimpl
     static def visit_node(walker_obj: Any, expr: Any) -> bool;
 }
 
-impl Memory.get_obj
-(caller_id: UUID, item_id: UUID, override: bool=False) -> Element {
+impl Memory.get_obj(caller_id: UUID, item_id: UUID, override: bool = False) -> Element {
     ret = item_id |> self.index.get;
     if override or (ret is not None and caller_id |> ret.__is_readable) {
         return ret;
     }
 }
 
-impl Memory.has_obj
-(item_id: UUID) -> bool {
+impl Memory.has_obj(item_id: UUID) -> bool {
     return item_id in self.index;
 }
 
-impl Memory.save_obj
-(caller_id: UUID, item: Element) {
+impl Memory.save_obj(caller_id: UUID, item: Element) {
     if caller_id |> item.is_writable {
         self.index[item.id] = item;
         if item._persist {
@@ -153,8 +166,7 @@ impl Memory.save_obj
     }
 }
 
-impl Memory.del_obj
-(caller_id: UUID, item: Element) {
+impl Memory.del_obj(caller_id: UUID, item: Element) {
     if caller_id |> item.is_writable {
         self.index.pop(item.id);
         if item._persist {
@@ -187,26 +199,26 @@ impl ExecutionContext.get_root() {
     return self.master.root_node;
 }
 
-impl ExecutionContext.reset {
+impl ExecutionContext.reset{
     self.init();
 }
 
 """Implementation for Jac's Element Abstractions"""
-impl AccessMode {
+impl AccessMode{
     READ_ONLY,
     READ_WRITE,
     PRIVATE
 }
 
-impl Anchor.make_public_ro {
+impl Anchor.make_public_ro{
     self.__jinfo.access_mode = AccessMode.READ_ONLY;
 }
 
-impl Anchor.make_public_rw {
+impl Anchor.make_public_rw{
     self.__jinfo.access_mode = AccessMode.READ_WRITE;
 }
 
-impl Anchor.make_private {
+impl Anchor.make_private{
     self.__jinfo.access_mode = AccessMode.PRIVATE;
 }
 
@@ -222,21 +234,24 @@ impl Anchor.is_private -> bool {
     return self.__jinfo.access_mode == AccessMode.PRIVATE;
 }
 
-impl Anchor.is_readable
-(caller_id: UUID) -> bool {
-    return (caller_id == self.owner_id
+impl Anchor.is_readable(caller_id: UUID) -> bool {
+    return (
+        caller_id == self.owner_id
         or |> self.is_public_read
         or caller_id in self.ro_access
-        or caller_id in self.rw_access);
+        or caller_id in self.rw_access
+    );
 }
 
-impl Anchor.is_writable
-(caller_id: UUID) -> bool {
-    return (caller_id == self.owner_id or |> self.is_public_write or caller_id in self.rw_access);
+impl Anchor.is_writable(caller_id: UUID) -> bool {
+    return (
+        caller_id == self.owner_id
+        or |> self.is_public_write
+        or caller_id in self.rw_access
+    );
 }
 
-impl Anchor.give_access
-(caller_id: UUID, read_write: bool=False) {
+impl Anchor.give_access(caller_id: UUID, read_write: bool = False) {
     if read_write {
         caller_id |> self.rw_access.add;
     } else {
@@ -244,19 +259,15 @@ impl Anchor.give_access
     }
 }
 
-impl Anchor.revoke_access
-(caller_id: UUID) {
+impl Anchor.revoke_access(caller_id: UUID) {
     caller_id |> self.ro_access.discard;
     caller_id |> self.rw_access.discard;
 }
 
-impl Anchor.on_entry
-(cls: type, triggers: list) {
+impl Anchor.on_entry(cls: type, triggers: list) {
     def decorator(func: callable) -> callable {
-        cls.ds_entry_funcs.append(
-            {'types': triggers, 'func': func}
-        );
-        def wrapper(*args: list, **kwargs: dict) -> callable {
+        cls.ds_entry_funcs.append({'types': triggers, 'func': func});
+        def wrapper( *args: list , **kwargs: dict)  -> callable {
             return func(*args, **kwargs);
         }
         return wrapper;
@@ -264,13 +275,10 @@ impl Anchor.on_entry
     return decorator;
 }
 
-impl Anchor.on_exit
-(cls: type, triggers: list) {
+impl Anchor.on_exit(cls: type, triggers: list) {
     def decorator(func: callable) -> callable {
-        cls.ds_exit_funcs.append(
-            {'types': triggers, 'func': func}
-        );
-        def wrapper(*args: list, **kwargs: dict) -> callable {
+        cls.ds_exit_funcs.append({'types': triggers, 'func': func});
+        def wrapper( *args: list , **kwargs: dict)  -> callable {
             return func(*args, **kwargs);
         }
         return wrapper;
@@ -278,14 +286,12 @@ impl Anchor.on_exit
     return decorator;
 }
 
-impl NodeAnchor.connect_node
-(nd: NodeInterface, edg: EdgeInterface) -> Node {
+impl NodeAnchor.connect_node(nd: NodeInterface, edg: EdgeInterface) -> Node {
     edg.attach(self, nd);
     return self;
 }
 
-impl NodeAnchor.edges_to_nodes
-(dir: EdgeDir) -> list[Node] {
+impl NodeAnchor.edges_to_nodes(dir: EdgeDir) -> list[Node] {
     ret_nodes = [];
     if dir in [EdgeDir.OUT, EdgeDir.ANY] {
         for i in self.edges[EdgeDir.OUT] {
@@ -299,14 +305,12 @@ impl NodeAnchor.edges_to_nodes
     return ret_nodes;
 }
 
-impl EdgeAnchor.apply_dir
-(dir: EdgeDir) -> Edge {
+impl EdgeAnchor.apply_dir(dir: EdgeDir) -> Edge {
     self.dir = dir;
     return self;
 }
 
-impl EdgeAnchor.attach
-(src: NodeInterface, trg: NodeInterface) -> Edge {
+impl EdgeAnchor.attach(src: NodeInterface, trg: NodeInterface) -> Edge {
     if self.dir == EdgeDir.IN {
         self.source = trg;
         self.target = src;
@@ -321,8 +325,7 @@ impl EdgeAnchor.attach
     return self;
 }
 
-impl WalkerAnchor.visit_node
-(nds: list[Node] | list[Edge] | Node | Edge) {
+impl WalkerAnchor.visit_node(nds: list[Node] | list[Edge] | Node | Edge) {
     if isinstance(nds, list) {
         for i in nds {
             if (i not in self.ignores) {
@@ -335,8 +338,7 @@ impl WalkerAnchor.visit_node
     return len(nds) if isinstance(nds, list) else 1;
 }
 
-impl WalkerAnchor.ignore_node
-(nds: list[Node] | list[Edge] | Node | Edge) {
+impl WalkerAnchor.ignore_node(nds: list[Node] | list[Edge] | Node | Edge) {
     if isinstance(nds, list) {
         for i in nds {
             i :> self.ignores.append;
@@ -346,29 +348,26 @@ impl WalkerAnchor.ignore_node
     }
 }
 
-impl WalkerAnchor.disengage_now {
+impl WalkerAnchor.disengage_now{
     self.next = [];
     self.disengaged = True;
 }
 
-impl NodeAnchor.__call__
-(walk: object) {
+impl NodeAnchor.__call__(walk: object) {
     if not isinstance(walk.__jac__, WalkerAnchor) {
-        raise TypeError("Argument must be a Walker instance");
+        raise TypeError("Argument must be a Walker instance") ;
     }
     walk(self);
 }
 
-impl EdgeAnchor.__call__
-(walk: EdgeInterface) {
+impl EdgeAnchor.__call__(walk: EdgeInterface) {
     if not isinstance(walk.__jac__, WalkerAnchor) {
-        raise TypeError("Argument must be a Walker instance");
+        raise TypeError("Argument must be a Walker instance") ;
     }
     walk(self.__jac__.target);
 }
 
-impl WalkerAnchor.__call__
-(nd: NodeInterface) {
+impl WalkerAnchor.__call__(nd: NodeInterface) {
     self.path = [];
     self.next = [nd];
     while len(self.next) {
@@ -411,45 +410,44 @@ impl WalkerAnchor.__call__
     self.ignores = [];
 }
 
-impl JacPlugin.bind_archetype
-(arch: AT, arch_type: str, on_entry: list[DSFunc], on_exit: list[DSFunc]) -> bool {
+impl JacPlugin.bind_archetype(
+    arch: AT, arch_type: str, on_entry: list[DSFunc], on_exit: list[DSFunc]
+) -> bool {
     match arch_type {
         case 'obj':
             arch.__jac__ = Anchor(
-                ob=arch,
-                ds_entry_funcs=on_entry,
-                ds_exit_funcs=on_exit
+                ob=arch, ds_entry_funcs=on_entry, ds_exit_funcs=on_exit
             );
+
         case 'node':
             arch.__jac__ = NodeAnchor(
-                ob=arch,
-                ds_entry_funcs=on_entry,
-                ds_exit_funcs=on_exit
+                ob=arch, ds_entry_funcs=on_entry, ds_exit_funcs=on_exit
             );
+
         case 'edge':
             arch.__jac__ = EdgeAnchor(
-                ob=arch,
-                ds_entry_funcs=on_entry,
-                ds_exit_funcs=on_exit
+                ob=arch, ds_entry_funcs=on_entry, ds_exit_funcs=on_exit
             );
+
         case 'walker':
             arch.__jac__ = WalkerAnchor(
-                ob=arch,
-                ds_entry_funcs=on_entry,
-                ds_exit_funcs=on_exit
+                ob=arch, ds_entry_funcs=on_entry, ds_exit_funcs=on_exit
             );
+
         case _:
-            raise ("Invalid archetype type") :> TypeError;
+            raise ("Invalid archetype type") :> TypeError ;
+
     }
     return True;
 }
 
-impl JacPlugin.get_root() -> None {
+impl JacPlugin.get_root()  -> None {
     return exec_ctx.get_root();
 }
 
-impl JacPlugin.build_edge
-(edge_spec: tuple[int, Optional[type], Optional[tuple]]) -> Archetype {
+impl JacPlugin.build_edge(
+    edge_spec: tuple[int, Optional[type], Optional[tuple]]
+) -> Archetype {
     if (not edge_spec[1]) {
         edg_type = GenericEdge;
     } else {
@@ -460,14 +458,14 @@ impl JacPlugin.build_edge
     return edg;
 }
 
-impl JacPlugin.connect
-(left: T, right: T, edge_spec: tuple[int, Optional[type], Optional[tuple]]) -> Archetype {
+impl JacPlugin.connect(
+    left: T, right: T, edge_spec: tuple[int, Optional[type], Optional[tuple]]
+) -> Archetype {
     edg = JacPlugin.build_edge(edge_spec);
     left.connect_node(right.__jac__, edg.__jac__);
 }
 
-impl JacPlugin.visit_node
-(walker_obj: Any, expr: Any) -> bool {
+impl JacPlugin.visit_node(walker_obj: Any, expr: Any) -> bool {
     return walker_obj.__jac__.visit_node(expr);
 }
 

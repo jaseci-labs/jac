@@ -1,3 +1,3 @@
-def code ->str {
+def code -> str {
     return "Hello World!";
 }

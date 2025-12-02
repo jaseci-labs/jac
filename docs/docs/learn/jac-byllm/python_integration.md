@@ -102,7 +102,7 @@ sem Person.ssn = "last four digits of the Social Security number"
 Using `sem` functionality in python is a bit diferent as the attachment is done using a `@sem` decorator.
 
 ```python
-from jaclang import JacMachineInterface as Jac
+from jaclang import JacRuntimeInterface as Jac
 from byllm.lib import Model, by
 
 @Jac.sem('<Person Semstring>', {

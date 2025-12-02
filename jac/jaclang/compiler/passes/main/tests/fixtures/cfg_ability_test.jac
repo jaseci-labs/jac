@@ -1,6 +1,5 @@
 obj math_mod {
-
-    def divide (x: int, y: int) {
+    def divide(x: int, y: int) {
         if y == 0 {
             return 0;
         } else {
@@ -8,10 +7,9 @@ obj math_mod {
         }
     }
 
-    def multiply (x: int, y: int) {
+    def multiply(x: int, y: int) {
         return x * y;
     }
-
 }
 
 with entry {

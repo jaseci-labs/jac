@@ -32,7 +32,6 @@ class Colleague(Edge):
 
 
 class BasicVisitor(Walker):
-
     @on_entry
     def start(self, here: Root) -> None:
         print("BasicVisitor: visiting outgoing edges")
@@ -44,7 +43,6 @@ class BasicVisitor(Walker):
 
 
 class VisitWithElse(Walker):
-
     @on_entry
     def start(self, here: Root) -> None:
         print("VisitWithElse: visiting with else clause")
@@ -72,7 +70,6 @@ class DirectVisit(Walker):
 
 
 class TypedVisit(Walker):
-
     @on_entry
     def start(self, here: Person) -> None:
         print(f"TypedVisit: at {here.name}, visiting Friend edges only")
@@ -87,17 +84,12 @@ class TypedVisit(Walker):
 
 
 class FilteredVisit(Walker):
-
     @on_entry
     def start(self, here: Person) -> None:
         print(f"FilteredVisit: visiting strong colleagues from {here.name}")
         visit(
             self,
-            refs(
-                OPath(here)
-                .edge_out(edge=lambda i: isinstance(i, Colleague) and i.strength > 5)
-                .visit()
-            ),
+            refs(OPath(here).edge_out(edge=lambda i: isinstance(i, Colleague) and i.strength > 5).visit()),
         )
 
     @on_entry
@@ -106,7 +98,6 @@ class FilteredVisit(Walker):
 
 
 class BasicDisengage(Walker):
-
     @on_entry
     def start(self, here: Root) -> None:
         print("BasicDisengage: starting traversal")
@@ -185,7 +176,6 @@ class MultiVisit(Walker):
 
 
 class ImmediateStop(Walker):
-
     @on_entry
     def self_destruct(self, here: Root) -> None:
         print("ImmediateStop: before disengage")

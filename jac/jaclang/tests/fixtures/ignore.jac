@@ -9,25 +9,24 @@ walker GuessGame2 {
 }
 
 node turn {
-    can check with GuessGame|GuessGame2 entry;
+    can check with GuessGame | GuessGame2 entry;
 }
 
-
-impl GuessGame.start_game {
-    for i=0 to i<10 by i+=1 {
+impl GuessGame.start_game{
+    for i = 0 to i < 10 by i += 1 {
         here ++> turn();
     }
     visit [-->];
 }
 
-impl GuessGame2.start_game {
-    for i=0 to i<10 by i+=1 {
+impl GuessGame2.start_game{
+    for i = 0 to i < 10 by i += 1 {
         here ++> turn();
     }
     visit [-->][15:];
 }
 
-impl turn.check {
+impl turn.check{
     print("here", end=", ");
 }
 

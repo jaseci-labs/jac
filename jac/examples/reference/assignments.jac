@@ -1,12 +1,11 @@
 # Assignments
-
 with entry {
     # Simple assignment
     x = 10;
     print(x);
 
     # Chain assignment
-    a = b = c = 20;
+    a = b=c=20;
     print(f"{a} {b} {c}");
 
     # Let keyword

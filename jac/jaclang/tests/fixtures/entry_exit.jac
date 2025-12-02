@@ -12,7 +12,7 @@ walker test_walker {
     }
 
     can log_entry with entry {
-        print("Entering at the beginning of walker: ",here);
+        print("Entering at the beginning of walker: ", here);
         self.entry_count += 1;
     }
 
@@ -22,14 +22,14 @@ walker test_walker {
     }
 
     can log_exit with exit {
-        print("Exiting at the end of walker: ",here);
+        print("Exiting at the end of walker: ", here);
         self.exit_count += 1;
     }
 }
 
 with entry {
     for i in range(10) {
-        root ++> (next:=test_node(value=i));
+        root ++> (next := test_node(value=i));
     }
     wlk_obj = root spawn test_walker();
     print(wlk_obj);

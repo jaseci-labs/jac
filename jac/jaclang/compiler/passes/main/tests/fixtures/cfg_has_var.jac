@@ -1,7 +1,7 @@
 obj Rock {
-    has pellets:list;
+    has pellets: list;
 
-    def count_pellets() -> int {
+    def count_pellets()  -> int {
         return self.pellets.length();
     }
 }

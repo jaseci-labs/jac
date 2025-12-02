@@ -1,20 +1,21 @@
 obj Name {
     has value: str;
 
-    def change(new_value: str){
+    def change(new_value: str) {
         self.value = new_value;
         return self.value;
     }
 }
 
-obj User{
+obj User {
     has name: Name;
-    def greet{
+
+    def greet {
         return "Hello, " + self.name.value;
     }
 }
 
-with entry{
+with entry {
     user = User(Name("Alice"));
     ghost = None;
     print(ghost?.name?.value);

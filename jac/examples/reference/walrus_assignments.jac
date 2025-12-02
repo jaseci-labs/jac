@@ -1,5 +1,4 @@
 # Walrus Assignments
-
 with entry {
     # Walrus in if condition
     if (x := 10) > 5 {

@@ -1,4 +1,4 @@
-from typing_extensions import TypeAlias
+from typing import TypeAlias
 import collections.abc
 
 _ClassInfo: TypeAlias = type | tuple[object, ...]

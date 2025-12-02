@@ -1,4 +1,4 @@
-import from byllm.lib {MockLLM, Image}
+import from byllm.lib { MockLLM, Image }
 import os;
 
 'Personality of the Person'
@@ -9,8 +9,8 @@ enum Personality {
 
 obj Person {
     has full_name: str,
-    year_of_death: str,
-    personality: Personality;
+        year_of_death: str,
+        personality: Personality;
 }
 
 glob llm = MockLLM(
@@ -22,18 +22,15 @@ glob llm = MockLLM(
             year_of_death='1955',
             personality=Personality.EXTROVERT,
         ),
+
     ],
 );
 
 def get_person_info(image_content: Image) -> Person by llm();
 
 with entry {
-
     person_image = Image(
-        os.path.join(
-            os.path.dirname(__file__),
-            'webp_image_of_person.webp'
-        )
+        os.path.join(os.path.dirname(__file__), 'webp_image_of_person.webp')
     );
     person_obj = get_person_info(person_image);
     print(person_obj);

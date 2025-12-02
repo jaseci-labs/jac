@@ -7,10 +7,10 @@ obj MyObj {
     def : pub set_a(val: int) -> None;
 }
 
-impl MyObj.init {
+impl MyObj.init{
     self.a = a;
 }
 
-impl MyObj.set_a {
+impl MyObj.set_a{
     self.a = val;
 }

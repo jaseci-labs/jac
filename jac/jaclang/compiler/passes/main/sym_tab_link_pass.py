@@ -19,7 +19,6 @@ to reference symbols defined in other modules while maintaining proper scoping r
 """
 
 import os
-from typing import Optional
 
 import jaclang.compiler.unitree as uni
 from jaclang.compiler.passes import Transform
@@ -64,16 +63,17 @@ class SymTabLinkPass(Transform[uni.Module, uni.Module]):
 
     def _get_module_path(
         self, mod: uni.Module, node: uni.ModulePath, imp_node: uni.Import
-    ) -> Optional[str]:
+    ) -> str | None:
         """Get the path to the imported module."""
         if imp_node.is_jac:
             rel_path = node.resolve_relative_path()
             if os.path.isdir(rel_path):
                 init_path = os.path.join(rel_path, "__init__")
-                if os.path.isfile(f"{init_path}.jac"):
-                    rel_path = f"{init_path}.jac"
-                else:
-                    rel_path = f"{init_path}.py"
+                rel_path = (
+                    f"{init_path}.jac"
+                    if os.path.isfile(f"{init_path}.jac")
+                    else f"{init_path}.py"
+                )
             if rel_path not in self.prog.mod.hub:
                 self.log_error(
                     f"Module {rel_path} not found in the program. Something went wrong.",
@@ -83,10 +83,11 @@ class SymTabLinkPass(Transform[uni.Module, uni.Module]):
             return rel_path
         else:
             # Python import
-            if node.sym_name in self.prog.py_raise_map:
-                return self.prog.py_raise_map[node.sym_name]
+            path_str = node.dot_path_str
+            if path_str in self.prog.py_raise_map:
+                return self.prog.py_raise_map[path_str]
 
-            full_path = f"{mod.get_href_path(node)}.{node.sym_name}"
+            full_path = f"{mod.get_href_path(node)}.{path_str}"
             if full_path in self.prog.py_raise_map:
                 return self.prog.py_raise_map[full_path]
 

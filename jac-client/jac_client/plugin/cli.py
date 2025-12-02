@@ -7,7 +7,7 @@ import subprocess
 import sys
 
 from jaclang.cli.cmdreg import cmd_registry
-from jaclang.runtimelib.machine import hookimpl
+from jaclang.runtimelib.runtime import hookimpl
 
 
 class JacCmd:
@@ -73,7 +73,7 @@ class JacCmd:
 
                 # Read the generated package.json
                 package_json_path = os.path.join(project_path, "package.json")
-                with open(package_json_path, "r") as f:
+                with open(package_json_path) as f:
                     package_data = json.load(f)
 
                 # create temp folder

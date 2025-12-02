@@ -1,21 +1,19 @@
-
-
 glob a: int = 90;
 
-obj Man{
-    has name:str='';
+obj Man {
+    has name: str = '';
 
-
-    def speak{
-
-        obj Korean{
-            with entry{
+    def speak {
+        obj Korean {
+            with entry {
                 print('HELLO');
                 print(a);
             }
-            has name:str='Korean';
-            def speak{
-                import from one {a}
+
+            has name: str = 'Korean';
+
+            def speak {
+                import from one { a }
                 print(a);
                 print('speaking Korean');
             }
@@ -28,7 +26,7 @@ obj Man{
     }
 }
 
-with entry{
+with entry {
     p = Man();
     print(p.name);
     p.speak();

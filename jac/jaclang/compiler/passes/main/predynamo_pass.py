@@ -1,12 +1,11 @@
 """Pytorch Fix Pass."""
 
 import ast as ast3
-from typing import Optional, TypeVar, cast
+from typing import TypeVar, cast
 
 import jaclang.compiler.unitree as uni
 from jaclang.compiler.constant import Tokens as Tok
 from jaclang.compiler.passes import UniPass
-
 
 T = TypeVar("T", bound=ast3.AST)
 
@@ -44,6 +43,8 @@ class PreDynamoPass(UniPass):
     ) -> None:
         """Replace old node with new nodes in parent's body and kid lists."""
         parent = old_node.parent
+        if parent is None:
+            return
         if isinstance(new_nodes, uni.UniNode):
             new_nodes.parent = parent
             if hasattr(parent, attr):
@@ -68,7 +69,7 @@ class PreDynamoPass(UniPass):
 
     def check_same_lhs(
         self, assign_a: uni.UniNode, assign_b: uni.UniNode
-    ) -> Optional[uni.Name]:
+    ) -> uni.Name | None:
         """Return the common LHS target if both are simple assignment with same target."""
         if not (
             isinstance(assign_a, uni.Assignment)
@@ -82,7 +83,7 @@ class PreDynamoPass(UniPass):
             return None
         return ta  # common target
 
-    def check_call(self, node: uni.ExprStmt) -> Optional[tuple]:
+    def check_call(self, node: uni.ExprStmt) -> tuple | None:
         """Return (target, name, tensor_expr, kwargs) if node is target(name, tensor_expr, **kwargs)."""
         if isinstance(node, uni.ExprStmt) and isinstance(node.expr, uni.FuncCall):
             call = node.expr
@@ -102,7 +103,7 @@ class PreDynamoPass(UniPass):
                     {
                         kw.key._sym_name: kw.value
                         for kw in call.params[2:]
-                        if isinstance(kw, uni.KWPair)
+                        if isinstance(kw, uni.KWPair) and kw.key is not None
                     }
                     if len(call.params) > 2
                     else {}
@@ -113,7 +114,7 @@ class PreDynamoPass(UniPass):
     def exit_if_stmt(self, node: uni.IfStmt) -> None:
         """Exit if statement."""
         a0 = node.body[0]
-        new_node = None
+        new_node: uni.UniNode | None = None
         if node.else_body:
             b0 = node.else_body.body[0]
         else:

@@ -10,7 +10,7 @@ with entry {
     c = len <: a + b :> len;
 
     # Backward atomic pipe with lambda
-    result = (lambda x: int : x * 3) <: 10;
+    result = (lambda  x: int: x * 3) <: 10;
 
     print(c, result);
 }

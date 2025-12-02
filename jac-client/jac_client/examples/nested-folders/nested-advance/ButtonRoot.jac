@@ -1,10 +1,11 @@
 # Root Level Button
-cl import from antd {
-    Button
-}
+cl import from antd { Button }
 
-cl def ButtonRoot() -> any {
-    return <Button type="primary" size="large">
+cl def ButtonRoot()  -> any {
+    return <Button
+        type="primary"
+        size="large"
+    >
         Root Level Button
     </Button>;
 }

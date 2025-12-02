@@ -6,16 +6,17 @@ walker Counter {
 
 node NumberNode {
     has value: int = 0;
+
     can process with Counter entry;
 }
 
-impl Counter.count {
+impl Counter.count{
     here ++> NumberNode(value=10);
     here ++> NumberNode(value=20);
     visit [-->];
 }
 
-impl NumberNode.process {
+impl NumberNode.process{
     print(f"Processing node with value: {self.value}");
 }
 

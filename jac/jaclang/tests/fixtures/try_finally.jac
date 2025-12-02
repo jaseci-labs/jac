@@ -1,16 +1,13 @@
-with entry{
-
+with entry {
     # try and finally stmt
-    try{
+    try {
         print("try block");
-    }finally{
+    } finally {
         print("finally block");
     }
 
-
-
     #  try except else finally
-    try{
+    try {
         print("try block");
     }
     # except{
@@ -19,16 +16,11 @@ with entry{
 
     # except_def: KW_EXCEPT expression (KW_AS NAME)? code_block
     # is there any intention why here we compulsorily need to write type of exception in
-
-    except exception{
+    except exception {
         print("except block");
-    }
-    else{
+    } else {
         print("else block");
-    }
-    finally{
+    }  finally {
         print("finally block");
     }
-
-
 }

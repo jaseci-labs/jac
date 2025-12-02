@@ -145,7 +145,7 @@ Even if we are elimination prompt engineering entirely, we allow specific ways t
     ```
 === "Python"
     ```python linenums="1"
-    from jaclang import JacMachineInterface as Jac
+    from jaclang import JacRuntimeInterface as Jac
     from dataclasses import dataclass
     from byllm.lib import Model, by
     llm =  Model(model_name="gemini/gemini-2.0-flash")

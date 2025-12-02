@@ -387,11 +387,12 @@ cl {
             >
                 @{tweet.username}
             </div>
+            # Random comment
             <div
                 class="tweet-content"
                 style={{"marginBottom": "12px"}}
             >
-                {tweet.content}
+                {tweet.content} # Another andom comment
             </div>
             <div
                 class="tweet-actions"
@@ -457,3 +458,36 @@ def x(
 with entry {
     visit [-->(`?Year:year==self.target_day.year)];
 }
+
+# Match statement comment preservation
+def test_match_comments(x: int) {
+    match x {
+        # comment before first case
+        case 1:
+            # comment in case body
+            print("one");
+
+        # comment between cases
+        case _:
+            print("other");
+
+    }
+    return
+    # All lines and columns are 1-Based
+    True;
+}
+
+def generate_greeting_code(name: str) -> str by models["code-gen"];
+
+glob llm = MockLLM(
+    # model_name="gpt-4o-mini",
+    model_name="mockllm",
+    outputs=[
+        Person(
+            full_name='Albert Einstein',
+            year_of_death='1955',
+            personality=Personality.EXTROVERT,
+        ),
+
+    ],
+);

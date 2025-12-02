@@ -72,9 +72,7 @@ class HttpStatus(Enum):
 
 
 print("\n=== 4. Enum with Python Code Block (Methods) ===")
-print(
-    f"  {HttpStatus.OK.name}: {HttpStatus.OK.get_category()}, is_success: {HttpStatus.OK.is_success()}"
-)
+print(f"  {HttpStatus.OK.name}: {HttpStatus.OK.get_category()}, is_success: {HttpStatus.OK.is_success()}")
 print(f"  {HttpStatus.BAD_REQUEST.name}: {HttpStatus.BAD_REQUEST.get_category()}")
 
 

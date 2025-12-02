@@ -7,7 +7,7 @@ PyrightReference: packages/pyright-internal/src/analyzer/operations.ts
 from typing import TYPE_CHECKING
 
 import jaclang.compiler.unitree as uni
-from jaclang.compiler.constant import SymbolType, Tokens as Tok
+from jaclang.compiler.constant import Tokens as Tok
 
 from . import types as jtypes
 
@@ -120,40 +120,43 @@ def get_type_of_binary_operation(
             )
 
         # Validate connection type if provided.
-        if isinstance(expr.op, uni.ConnectOp) and expr.op.conn_type:
-            conn_type = evaluator.get_type_of_expression(expr.op.conn_type)
-            if (
-                not isinstance(conn_type, jtypes.ClassType)
-                or not conn_type.is_edge_type()
-            ):
-                evaluator.add_diagnostic(
-                    expr.op.conn_type, "Connection type must be an edge instance"
-                )
-            else:
-                # Connection has assign compr.
-                if assign_compr := expr.op.conn_assign:
-                    for assign in assign_compr.assigns:
-                        if assign.key is not None:
-                            edge_inst_type = evaluator._convert_to_instance(conn_type)
-                            if member := evaluator._lookup_object_member(
-                                edge_inst_type, assign.key.sym_name
-                            ):
-                                dest_type = evaluator._set_symbol_to_expr(
-                                    assign.key, member.symbol
+        if isinstance(expr.op, uni.ConnectOp):
+            if expr.op.conn_type:
+                conn_type = evaluator.get_type_of_expression(expr.op.conn_type)
+                if (
+                    not isinstance(conn_type, jtypes.ClassType)
+                    or not conn_type.is_edge_type()
+                ):
+                    evaluator.add_diagnostic(
+                        expr.op.conn_type, "Connection type must be an edge instance"
+                    )
+                else:
+                    # Connection has assign compr.
+                    if assign_compr := expr.op.conn_assign:
+                        for assign in assign_compr.assigns:
+                            if assign.key is not None:
+                                edge_inst_type = evaluator._convert_to_instance(
+                                    conn_type
                                 )
-                                src_type = evaluator.get_type_of_expression(
-                                    assign.value
-                                )
-                                if not evaluator.assign_type(src_type, dest_type):
-                                    evaluator.add_diagnostic(
-                                        assign.value,
-                                        f'Type "{src_type}" is not assignable to type "{dest_type}"',
+                                if member := evaluator._lookup_object_member(
+                                    edge_inst_type, assign.key.sym_name
+                                ):
+                                    dest_type = evaluator._set_symbol_to_expr(
+                                        assign.key, member.symbol
                                     )
-                            else:
-                                evaluator.add_diagnostic(
-                                    assign.key,
-                                    f'Edge type "{conn_type}" has no member named "{assign.key.sym_name}"',
-                                )
+                                    src_type = evaluator.get_type_of_expression(
+                                        assign.value
+                                    )
+                                    if not evaluator.assign_type(src_type, dest_type):
+                                        evaluator.add_diagnostic(
+                                            assign.value,
+                                            f'Type "{src_type}" is not assignable to type "{dest_type}"',
+                                        )
+                                else:
+                                    evaluator.add_diagnostic(
+                                        assign.key,
+                                        f'Edge type "{conn_type}" has no member named "{assign.key.sym_name}"',
+                                    )
 
             return right_type
         # Question: What should be the return type of disconnect operation?

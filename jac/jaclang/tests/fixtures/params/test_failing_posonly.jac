@@ -1,6 +1,5 @@
 # Test failing positional-only parameter cases
-
-def strict_posonly(a: int, b: str, /) -> str {
+def strict_posonly( a: int , b: str , /)  -> str {
     return f"{a}: {b}";
 }
 
@@ -8,7 +7,9 @@ def mixed_posonly(x: int, /, y: str, z: float = 1.0) -> str {
     return f"{x}-{y}-{z}";
 }
 
-def complex_posonly(a: int, b: str = "def", /, c: float, *args: int, kw: bool, **kwargs: any) -> dict {
+def complex_posonly(
+    a: int, b: str = "def", /, c: float, *args: int, kw: bool, **kwargs: any
+) -> dict {
     return {"a": a, "b": b, "c": c, "args": list(args), "kw": kw, "kwargs": kwargs};
 }
 
@@ -16,7 +17,7 @@ def edge_case_posonly(/, x: int) -> int {
     return x;
 }
 
-def no_regular_params(a: int, /, *, b: str) -> str {
+def no_regular_params( a: int , / , * , b: str)  -> str {
     return f"{a}: {b}";
 }
 
@@ -87,9 +88,7 @@ with entry {
         print("✅ PASS: Caught no-regular-params error");
     }
 
-
     result = strict_posonly("not_int", "test");
-
 
     # Test 10: Empty call to required pos-only
     try {

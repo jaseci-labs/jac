@@ -1,5 +1,4 @@
 # Logical and Compare Expressions
-
 with entry {
     # Comparison operators
     print(5 > 4);

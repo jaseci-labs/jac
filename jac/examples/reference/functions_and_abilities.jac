@@ -28,17 +28,17 @@ obj Calculator {
     }
 
     # Static with private access
-    static def:priv internal_helper(x: int) -> int {
+    static def : priv internal_helper(x: int) -> int {
         return x + 100;
     }
 
     # Public instance method
-    def:pub public_method(x: int) -> int {
+    def : pub public_method(x: int) -> int {
         return x * 2;
     }
 
     # Protected method
-    def:protect protected_method -> str {
+    def : protect protected_method -> str {
         return "protected";
     }
 }
@@ -47,15 +47,12 @@ obj Calculator {
 obj AbstractCalculator {
     # Abstract method - must be implemented by subclasses
     def compute(x: int, y: int) -> int abs;
-
     # Forward declaration with params
     def process(value: float) -> float;
-
     # Forward declaration with variadic args
-    def aggregate(*numbers: tuple) -> float;
-
+    def aggregate( *numbers: tuple)  -> float;
     # Forward declaration with kwargs
-    def configure(**options: dict) -> dict;
+    def configure( **options: dict)  -> dict;
 }
 
 obj ConcreteCalculator(AbstractCalculator) {
@@ -67,15 +64,17 @@ obj ConcreteCalculator(AbstractCalculator) {
 
 # ===== Part 4: Implementation Blocks =====
 # Implement forward-declared methods using impl
-impl AbstractCalculator.process(value: float) -> float {
+impl AbstractCalculator.process(
+    value: float
+) -> float {
     return value * 1.5;
 }
 
-impl AbstractCalculator.aggregate(*numbers: tuple) -> float {
+impl AbstractCalculator.aggregate( *numbers: tuple)  -> float {
     return sum(numbers) / len(numbers) if numbers else 0.0;
 }
 
-impl AbstractCalculator.configure(**options: dict) -> dict {
+impl AbstractCalculator.configure( **options: dict)  -> dict {
     options["configured"] = True;
     return options;
 }
@@ -83,22 +82,18 @@ impl AbstractCalculator.configure(**options: dict) -> dict {
 # ===== Part 5: Variadic Parameters =====
 obj Variadic {
     # Positional variadic (*args)
-    def sum_all(*values: tuple) -> int {
+    def sum_all( *values: tuple)  -> int {
         return sum(values);
     }
 
     # Keyword variadic (**kwargs)
-    def collect_options(**opts: dict) -> dict {
+    def collect_options( **opts: dict)  -> dict {
         return opts;
     }
 
     # Mixed: regular, *args, **kwargs
     def combined(base: int, *extras: tuple, **options: dict) -> dict {
-        return {
-            "base": base,
-            "extras": extras,
-            "options": options
-        };
+        return {"base": base, "extras": extras, "options": options};
     }
 }
 
@@ -190,7 +185,9 @@ walker TypedWalker {
 
     # Exit ability with context
     can make_report with exit {
-        print(f"TypedWalker: Visited {self.people_visited} people, {self.cities_visited} cities");
+        print(
+            f"TypedWalker: Visited {self.people_visited} people, {self.cities_visited} cities"
+        );
     }
 }
 

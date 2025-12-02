@@ -10,7 +10,6 @@ obj Obj1 {
 # with entry {  # allowed but discouraged
 #    o1 = spawn Obj1; o1::init;
 # }
-
 obj Obj2 {
     has var: int;
 
@@ -21,7 +20,6 @@ obj Obj2 {
 # with entry {  # allowed but discouraged
 #     o2 = spawn Obj2; o2::init;
 # }
-
 obj Obj3 {
     has var: int;
 
@@ -32,7 +30,6 @@ obj Obj3 {
 # with entry {  # allowed but discouraged
 #     o3 = spawn Obj1; o3::init;
 # }
-
 with entry {
     o1 = spawn Obj1;
     |> o1.init;

@@ -48,13 +48,15 @@ walker GraphBuilder {
         nyc = City(name="New York");
         london = City(name="London");
 
-        diana +>:LivesIn:+> nyc;  # Typed forward
+        diana +>: LivesIn :+> nyc;  # Typed forward
         print(f"Typed forward: {diana.name} +>:LivesIn:+> {nyc.name}");
 
-        eve <+:LivesIn:<+ london;  # Typed backward: london -> eve
-        print(f"Typed backward: {eve.name} <+:LivesIn:<+ {london.name} (edge from London to Eve)");
+        eve <+: LivesIn :<+ london;  # Typed backward: london -> eve
+        print(
+            f"Typed backward: {eve.name} <+:LivesIn:<+ {london.name} (edge from London to Eve)"
+        );
 
-        diana <+:Friend:+> eve;  # Typed bidirectional
+        diana <+: Friend :+> eve;  # Typed bidirectional
         print(f"Typed bidirectional: {diana.name} <+:Friend:+> {eve.name}");
 
         print("\n=== 3. Edge Attribute Initialization ===");
@@ -64,13 +66,19 @@ walker GraphBuilder {
         iris = Person(name="Iris", age=24);
 
         grace +>: Friend(since=2015) :+> henry;  # Forward with attributes
-        print(f"Forward with attrs: {grace.name} +>: Friend(since=2015) :+> {henry.name}");
+        print(
+            f"Forward with attrs: {grace.name} +>: Friend(since=2015) :+> {henry.name}"
+        );
 
         henry <+: Friend(since=2018) :<+ iris;  # Backward with attributes
-        print(f"Backward with attrs: {henry.name} <+: Friend(since=2018) :<+ {iris.name}");
+        print(
+            f"Backward with attrs: {henry.name} <+: Friend(since=2018) :<+ {iris.name}"
+        );
 
         grace <+: Colleague(department="Engineering") :+> iris;  # Bidirectional with attributes
-        print(f"Bidirectional with attrs: {grace.name} <+: Colleague(department='Engineering') :+> {iris.name}");
+        print(
+            f"Bidirectional with attrs: {grace.name} <+: Colleague(department='Engineering') :+> {iris.name}"
+        );
 
         print("\n=== 4. Chained Connections ===");
         # Multiple connects in one expression
@@ -87,7 +95,7 @@ walker GraphBuilder {
         nina = Person(name="Nina", age=28);
 
         nina ++> Person(name="InlineNode1", age=35);  # Untyped with inline
-        nina +>:Friend:+> Person(name="InlineNode2", age=40);  # Typed with inline
+        nina +>: Friend :+> Person(name="InlineNode2", age=40);  # Typed with inline
         nina +>: Friend(since=2010) :+> Person(name="InlineNode3", age=45);  # With attributes
         print("Connected to 3 inline-created nodes (untyped, typed, with attrs)");
 
@@ -99,13 +107,15 @@ walker GraphBuilder {
 
         oscar ++> paula;
         oscar ++> quinn;
-        oscar +>:Friend:+> Person(name="Rita", age=30);
+        oscar +>: Friend :+> Person(name="Rita", age=30);
         print(f"Connected {oscar.name} to 3 different targets");
 
         print("\n=== 7. Disconnect Operator ===");
         # Grammar: disconnect_op: KW_DELETE edge_op_ref
         # Syntax: node del [-->] target
-        print("Disconnect syntax: node del [-->] target (deletes edges from node to target)");
+        print(
+            "Disconnect syntax: node del [-->] target (deletes edges from node to target)"
+        );
 
         print("\n=== 8. Connect in Expressions ===");
         # Connect expressions return values and can be used in larger expressions

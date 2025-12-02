@@ -31,7 +31,6 @@ class Colleague(Edge):
 
 
 class EdgeRefWalker(Walker):
-
     @on_entry
     def demonstrate(self, here: Root) -> None:
         print("=== 1. Basic Edge References ===\n")
@@ -65,31 +64,17 @@ class EdgeRefWalker(Walker):
             print(f"Friend edges [->:Friend:->]: {len(friends)} nodes")
             for n in friends:
                 print(f"  - {n.name}")
-            colleagues = refs(
-                OPath(here).edge_out(edge=lambda i: isinstance(i, Colleague))
-            )
+            colleagues = refs(OPath(here).edge_out(edge=lambda i: isinstance(i, Colleague)))
             print(f"Colleague edges [->:Colleague:->]: {len(colleagues)} nodes")
             for n in colleagues:
                 print(f"  - {n.name}")
             print("\n=== 4. Filtered Edge References ===\n")
-            old_friends = refs(
-                OPath(here).edge_out(
-                    edge=lambda i: isinstance(i, Friend) and i.since < 2018
-                )
-            )
+            old_friends = refs(OPath(here).edge_out(edge=lambda i: isinstance(i, Friend) and i.since < 2018))
             print(f"Friends since before 2018: {len(old_friends)} nodes")
-            experienced_colleagues = refs(
-                OPath(here).edge_out(
-                    edge=lambda i: isinstance(i, Colleague) and i.years > 2
-                )
-            )
+            experienced_colleagues = refs(OPath(here).edge_out(edge=lambda i: isinstance(i, Colleague) and i.years > 2))
             print(f"Colleagues with years > 2: {len(experienced_colleagues)} nodes")
             specific = refs(
-                OPath(here).edge_out(
-                    edge=lambda i: isinstance(i, Colleague)
-                    and i.years >= 1
-                    and (i.years <= 5)
-                )
+                OPath(here).edge_out(edge=lambda i: isinstance(i, Colleague) and i.years >= 1 and (i.years <= 5))
             )
             print(f"Colleagues with 1-5 years: {len(specific)} nodes")
             print("\n=== 5. Edge and Node Keywords ===\n")
@@ -107,17 +92,13 @@ class EdgeRefWalker(Walker):
                 .edge_out(edge=lambda i: isinstance(i, Friend))
                 .edge_out(edge=lambda i: isinstance(i, Friend))
             )
-            print(
-                f"[here ->:Friend:-> ->:Friend:->]: {len(two_hop)} nodes (2 hops via Friend)"
-            )
+            print(f"[here ->:Friend:-> ->:Friend:->]: {len(two_hop)} nodes (2 hops via Friend)")
             mixed = refs(
                 OPath(here)
                 .edge_out(edge=lambda i: isinstance(i, Friend))
                 .edge_out(edge=lambda i: isinstance(i, Colleague))
             )
-            print(
-                f"[here ->:Friend:-> ->:Colleague:->]: {len(mixed)} nodes (Friend then Colleague)"
-            )
+            print(f"[here ->:Friend:-> ->:Colleague:->]: {len(mixed)} nodes (Friend then Colleague)")
             print("Can chain multiple: [node ->:T1:-> ->:T2:-> ->:T3:->]")
             print("\n=== 7. Edge References in Different Contexts ===\n")
             targets = refs(OPath(here).edge_out())
@@ -133,7 +114,6 @@ class EdgeRefWalker(Walker):
 
 
 class Summary(Walker):
-
     @on_entry
     def show(self, here: Root) -> None:
         print("\n" + "=" * 50)

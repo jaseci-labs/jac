@@ -77,7 +77,7 @@ jobs:
         echo "TEST_ENV=true" >> $GITHUB_ENV
 
     - name: Run package tests
-      run: pytest -x  jac-byllm jac-streamlit jac-client
+      run: pytest -x jac-byllm jac-streamlit jac-client
 
     - name: Run littleX tests
       run: jac test jac/examples/littleX/littleX.test.jac

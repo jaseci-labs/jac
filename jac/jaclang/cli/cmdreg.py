@@ -7,9 +7,9 @@ import inspect
 import os
 import re
 import sys
+from collections.abc import Callable
 from dataclasses import fields as dataclass_fields
 from enum import IntEnum
-from typing import Callable, Dict, Optional
 
 from jaclang.settings import Settings as JacSettings
 
@@ -51,7 +51,7 @@ class Command:
         return self.func(*args, **kwargs)
 
 
-def extract_param_descriptions(docstring: str) -> Dict[str, str]:
+def extract_param_descriptions(docstring: str) -> dict[str, str]:
     """Extract parameter descriptions from a function's docstring.
 
     Args:
@@ -262,6 +262,14 @@ class CommandRegistry:
                 shorthand = param_name[:2]
             if param_name == "args":
                 cmd_parser.add_argument("args", nargs=argparse.REMAINDER, help=arg_msg)
+            elif param_name == "paths":
+                # Special handling for multi-file commands (format, check)
+                cmd_parser.add_argument(
+                    "paths",
+                    nargs="+",
+                    help=arg_msg,
+                )
+                first = False
             elif param_name == "filepath":
                 first = False
                 cmd_parser.add_argument(
@@ -309,7 +317,7 @@ class CommandRegistry:
                 )
             else:
                 arg_msg += f", default: {param.default}"
-                if param.annotation == bool:
+                if param.annotation is bool:
                     cmd_parser.add_argument(
                         f"-{shorthand}",
                         f"--{param_name}",
@@ -382,7 +390,7 @@ class CommandRegistry:
         self._finalized = True
         self.pending_commands.clear()
 
-    def get(self, name: str) -> Optional[Command]:
+    def get(self, name: str) -> Command | None:
         """Get the Command instance for a given command name."""
         return self.registry.get(name)
 

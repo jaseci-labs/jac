@@ -19,10 +19,7 @@ from jaclang.lib import (
 
 
 class ClassicAnimal:
-
-    def __init__(
-        self: ClassicAnimal, species: str, age: int, name: str = "Unnamed"
-    ) -> None:
+    def __init__(self: ClassicAnimal, species: str, age: int, name: str = "Unnamed") -> None:
         self.species = species
         self.age = age
         self.name = name
@@ -186,7 +183,6 @@ class DecoratedNode(Pet, Node):
 
 
 class OwnershipWalker(Walker):
-
     @on_entry
     def start(self, here: Root) -> None:
         print("OwnershipWalker: tracking ownership edges")
@@ -207,13 +203,9 @@ classic2.describe()
 print("\n--- Object with Has Declarations (implicit self) ---")
 animal1 = Animal()
 animal2 = Animal()
-print(
-    f"Before assignment - animal1.species: {animal1.species}, animal2.species: {animal2.species}"
-)
+print(f"Before assignment - animal1.species: {animal1.species}, animal2.species: {animal2.species}")
 animal1.species = "Dog"
-print(
-    f"After animal1.species = 'Dog' - animal1.species: {animal1.species}, animal2.species: {animal2.species}"
-)
+print(f"After animal1.species = 'Dog' - animal1.species: {animal1.species}, animal2.species: {animal2.species}")
 print("Note: Each obj instance has its own copy of the variable")
 animal1.make_sound()
 dom = Domesticated()

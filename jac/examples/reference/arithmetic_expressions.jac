@@ -1,5 +1,4 @@
 # Arithmetic Expressions
-
 with entry {
     # Addition and subtraction
     print(10 + 5);

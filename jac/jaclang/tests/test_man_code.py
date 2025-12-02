@@ -5,159 +5,109 @@ import sys
 from contextlib import suppress
 
 from jaclang.cli import cli
-from jaclang.utils.test import TestCase
 
 
-class JacCliTests(TestCase):
-    """Test pass module."""
+def test_circle_jac(examples_path, capture_stdout) -> None:
+    """Basic test for pass."""
+    with capture_stdout() as output:
+        cli.run(examples_path("manual_code/circle.jac"))
 
-    def setUp(self) -> None:
-        """Set up test."""
-        return super().setUp()
+    stdout_value = output.getvalue()
+    assert "Area of a circle with radius 5 using function: 78" in stdout_value
+    assert "Area of a Circle with radius 5 using class: 78" in stdout_value
 
-    def test_circle_jac(self) -> None:
-        """Basic test for pass."""
-        captured_output = io.StringIO()
-        sys.stdout = captured_output
 
-        # Execute the function
-        cli.run(self.examples_abs_path("manual_code/circle.jac"))
+def test_circle_jac_test(examples_path) -> None:
+    """Basic test for pass."""
+    captured_output = io.StringIO()
+    stdout_block = io.StringIO()
+    sys.stderr = captured_output
+    sys.stdout = stdout_block
 
-        sys.stdout = sys.__stdout__
-        stdout_value = captured_output.getvalue()
+    cli.test(examples_path("manual_code/circle.jac"))
 
-        # Assertions or verifications
-        self.assertIn(
-            "Area of a circle with radius 5 using function: 78",
-            stdout_value,
-        )
-        self.assertIn(
-            "Area of a Circle with radius 5 using class: 78",
-            stdout_value,
-        )
+    sys.stderr = sys.__stderr__
+    sys.stdout = sys.__stdout__
+    stderr_value = captured_output.getvalue()
+    assert "Ran 3 tests" in stderr_value
 
-    def test_circle_jac_test(self) -> None:
-        """Basic test for pass."""
-        captured_output = io.StringIO()
-        stdout_block = io.StringIO()
-        sys.stderr = captured_output
-        sys.stdout = stdout_block
 
-        # Execute the function
-        cli.test(self.examples_abs_path("manual_code/circle.jac"))
+def test_clean_circle_jac(examples_path, capture_stdout) -> None:
+    """Basic test for pass."""
+    with capture_stdout() as output:
+        cli.run(examples_path("manual_code/circle_clean.jac"))
 
-        sys.stderr = sys.__stderr__
-        sys.stdout = sys.__stdout__
-        stderr_value = captured_output.getvalue()
-        # Assertions or verifications
-        self.assertIn("Ran 3 tests", stderr_value)
+    stdout_value = output.getvalue()
+    assert stdout_value == (
+        "Area of a circle with radius 5 using function: 78.53981633974483\n"
+        "Area of a Circle with radius 5 using class: 78.53981633974483\n"
+    )
 
-    def test_clean_circle_jac(self) -> None:
-        """Basic test for pass."""
-        captured_output = io.StringIO()
-        sys.stdout = captured_output
 
-        # Execute the function
-        cli.run(self.examples_abs_path("manual_code/circle_clean.jac"))
+def test_pure_circle_jac(examples_path, capture_stdout) -> None:
+    """Basic test for pass."""
+    with capture_stdout() as output:
+        cli.run(examples_path("manual_code/circle_pure.jac"))
 
-        sys.stdout = sys.__stdout__
-        stdout_value = captured_output.getvalue()
+    stdout_value = output.getvalue()
+    assert stdout_value == (
+        "Area of a circle with radius 5 using function: 78.53981633974483\n"
+        "Area of a Circle with radius 5 using class: 78.53981633974483\n"
+    )
 
-        # Assertions or verifications
-        self.assertEqual(
-            "Area of a circle with radius 5 using function: 78.53981633974483\n"
-            "Area of a Circle with radius 5 using class: 78.53981633974483\n",
-            stdout_value,
-        )
 
-    def test_pure_circle_jac(self) -> None:
-        """Basic test for pass."""
-        captured_output = io.StringIO()
-        sys.stdout = captured_output
-
-        # Execute the function
-        cli.run(self.examples_abs_path("manual_code/circle_pure.jac"))
-
-        sys.stdout = sys.__stdout__
-        stdout_value = captured_output.getvalue()
-
-        # Assertions or verifications
-        self.assertEqual(
-            "Area of a circle with radius 5 using function: 78.53981633974483\n"
-            "Area of a Circle with radius 5 using class: 78.53981633974483\n",
-            stdout_value,
-        )
-
-    def test_pure_circle_impl_not_double_generated(self) -> None:
-        """Basic test for pass."""
-        captured_output = io.StringIO()
-        sys.stdout = captured_output
-
+def test_pure_circle_impl_not_double_generated(examples_path, capture_stdout) -> None:
+    """Basic test for pass."""
+    with capture_stdout() as output:
         cli.tool(
             "ir",
             [
                 "py",
-                f"{self.examples_abs_path('manual_code/circle_pure.jac')}",
+                f"{examples_path('manual_code/circle_pure.jac')}",
             ],
         )
 
-        sys.stdout = sys.__stdout__
-        stdout_value = captured_output.getvalue()
+    stdout_value = output.getvalue()
+    assert "\ndef __init__(self" not in stdout_value
 
-        # Assertions or verifications
-        self.assertNotIn("\ndef __init__(self", stdout_value)
 
-    def test_clean_circle_jac_test(self) -> None:
-        """Basic test for pass."""
-        captured_output = io.StringIO()
-        stdio_block = io.StringIO()
-        sys.stderr = captured_output
-        sys.stdout = stdio_block
+def test_clean_circle_jac_test(examples_path) -> None:
+    """Basic test for pass."""
+    captured_output = io.StringIO()
+    stdio_block = io.StringIO()
+    sys.stderr = captured_output
+    sys.stdout = stdio_block
 
-        # Execute the function
-        with suppress(SystemExit):
-            cli.test(self.examples_abs_path("manual_code/circle_clean_tests.jac"))
+    with suppress(SystemExit):
+        cli.test(examples_path("manual_code/circle_clean_tests.jac"))
 
-        sys.stderr = sys.__stderr__
-        sys.stdout = sys.__stdout__
-        stderr_value = captured_output.getvalue()
-        # Assertions or verifications
-        self.assertIn("Ran 3 tests", stderr_value)
+    sys.stderr = sys.__stderr__
+    sys.stdout = sys.__stdout__
+    stderr_value = captured_output.getvalue()
+    assert "Ran 3 tests" in stderr_value
 
-    def test_pure_circle_jac_test(self) -> None:
-        """Basic test for pass."""
-        captured_output = io.StringIO()
-        stdio_block = io.StringIO()
-        sys.stderr = captured_output
-        sys.stdout = stdio_block
 
-        # Execute the function
-        with suppress(SystemExit):
-            cli.test(self.examples_abs_path("manual_code/circle_pure.test.jac"))
+def test_pure_circle_jac_test(examples_path) -> None:
+    """Basic test for pass."""
+    captured_output = io.StringIO()
+    stdio_block = io.StringIO()
+    sys.stderr = captured_output
+    sys.stdout = stdio_block
 
-        sys.stderr = sys.__stderr__
-        sys.stdout = sys.__stdout__
-        stderr_value = captured_output.getvalue()
-        # Assertions or verifications
-        self.assertIn("Ran 3 tests", stderr_value)
+    with suppress(SystemExit):
+        cli.test(examples_path("manual_code/circle_pure.test.jac"))
 
-    def test_jac_name_in_sys_mods(self) -> None:
-        """Basic test for pass."""
-        captured_output = io.StringIO()
-        sys.stdout = captured_output
+    sys.stderr = sys.__stderr__
+    sys.stdout = sys.__stdout__
+    stderr_value = captured_output.getvalue()
+    assert "Ran 3 tests" in stderr_value
 
-        # Execute the function
-        cli.run(self.fixture_abs_path("../../../jaclang/tests/fixtures/abc_check.jac"))
 
-        sys.stdout = sys.__stdout__
-        stdout_value = captured_output.getvalue()
+def test_jac_name_in_sys_mods(fixture_path, capture_stdout) -> None:
+    """Basic test for pass."""
+    with capture_stdout() as output:
+        cli.run(fixture_path("../../../jaclang/tests/fixtures/abc_check.jac"))
 
-        # Assertions or verifications
-        self.assertIn(
-            "Area of a circle with radius 5 using function: 78",
-            stdout_value,
-        )
-        self.assertIn(
-            "Area of a Circle with radius 5 using class: 78",
-            stdout_value,
-        )
+    stdout_value = output.getvalue()
+    assert "Area of a circle with radius 5 using function: 78" in stdout_value
+    assert "Area of a Circle with radius 5 using class: 78" in stdout_value

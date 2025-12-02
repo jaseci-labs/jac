@@ -12,6 +12,8 @@ This pass handles the static resolution and loading of imported modules by:
    - From imports (from x import y)
    - Star imports (from x import *)
    - Aliased imports (import x as y)
+7. Supporting cross-language imports:
+   - JavaScript (.js) and TypeScript (.ts, .tsx, .jsx) files
 
 The pass runs early in the compilation pipeline to ensure all symbols from imported
 modules are available for subsequent passes like symbol table building and type checking.
@@ -23,7 +25,6 @@ import jaclang.compiler.unitree as uni
 from jaclang.compiler.passes import Transform, UniPass
 from jaclang.runtimelib.utils import read_file_with_encoding
 from jaclang.utils.log import logging
-
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +58,10 @@ class JacImportDepsPass(Transform[uni.Module, uni.Module]):
         imp_node = i.parent_of_type(uni.Import)
         if imp_node.is_jac:
             self.import_jac_module(node=i)
+        # Also process client-side imports (JS/TS files)
+        target = i.resolve_relative_path()
+        if target.endswith((".js", ".ts", ".jsx", ".tsx")):
+            self.import_ts_module(node=i)
 
     def import_jac_module(self, node: uni.ModulePath) -> None:
         """Import a module."""
@@ -111,3 +116,15 @@ class JacImportDepsPass(Transform[uni.Module, uni.Module]):
                 inject_name=target.split(os.path.sep)[-1],
                 inject_src=uni.Source("", target),
             )
+
+    def import_ts_module(self, node: uni.ModulePath) -> None:
+        """Import a TypeScript/JavaScript module for type checking."""
+        target = node.resolve_relative_path()
+        if target in self.prog.mod.hub:
+            return
+        if not os.path.exists(target):
+            logger.debug(f"TypeScript/JavaScript module not found: {target}")
+            return
+        # Compile the TypeScript/JavaScript module (parsing + symbol table)
+        mod = self.prog.compile(file_path=target, no_cgen=True)
+        self.load_mod(mod)

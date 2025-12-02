@@ -30,7 +30,7 @@ obj ShellCmd(cmd.Cmd) {
 with entry {
     interface = Interface();
     @interface.register
-    def function_one(a: int, b: str, c: bool=False) {
+    def function_one(a: int, b: str, c: bool = False) {
         print(f"Function One -> a: {a}, b: {b}, c: {c}");
     }
 
@@ -40,7 +40,7 @@ with entry {
     }
 
     @interface.register
-    def function_three(name: str, age: int, country: str='Unknown') {
+    def function_three(name: str, age: int, country: str = 'Unknown') {
         print(f"Function Three -> name: {name}, age: {age}, country: {country}");
     }
     # Run CLI or Shell mode
@@ -48,24 +48,24 @@ with entry {
     interface.run_shell();
 }
 #***Implementation***#
-
-impl Interface.register
-(func: callable) -> callable {
+impl Interface.register(func: callable) -> callable {
     self.functions.append(func);
     return func;
 }
 
 impl Interface.create_parser -> ArgumentParser {
     parser = ArgumentParser();
-    parser.add_argument("base", choices=[f.__name__  for f in functions], help="The function to run");
+    parser.add_argument(
+        "base", choices=[f.__name__ for f in functions], help="The function to run"
+    );
     for func in self.functions {
         sig = inspect.signature(func);
         for (name, param) in sig.parameters.items() {
             kwargs = {};
             if param.default == inspect.Parameter.empty {
-                kwargs = {'required':True };
+                kwargs = {'required': True};
             } else {
-                kwargs = {'default':param.default };
+                kwargs = {'default': param.default};
             }
             parser.add_argument(f"--{func.__name__}.{name}", **kwargs);
         }
@@ -73,7 +73,7 @@ impl Interface.create_parser -> ArgumentParser {
     return parser;
 }
 
-impl Interface.run_from_cli {
+impl Interface.run_from_cli{
     parser = self.create_parser();
     args = parser.parse_args();
     for f in self.functions {
@@ -82,25 +82,27 @@ impl Interface.run_from_cli {
             break;
         }
     }
-    func_args = {k.split('.')[1]:v  for (k, v) in vars(args).items() if k.startswith(func.__name__)};
+    func_args = {
+        k.split('.')[1]: v
+        for (k, v) in vars(args).items()
+        if k.startswith(func.__name__)
+    };
     func(**func_args);
 }
 
-impl Interface.run_shell {
+impl Interface.run_shell{
     ShellCmd(self).cmdloop();
 }
 
-impl ShellCmd.init
-(registry: Interface, *args: list, **kwargs: dict) {
+impl ShellCmd.init(registry: Interface, *args: list, **kwargs: dict) {
     self.cmd.Cmd.__init__(*args, **kwargs);
     self.reg = registry;
 }
 
-impl ShellCmd.default
-(line: str) {
+impl ShellCmd.default(line: str) {
     args = line.split();
     parser = self.reg.create_parser();
-    try  {
+    try {
         parsed_args = parser.parse_args(args);
         for f in self.reg.functions {
             if f.__name__ == parsed_args.base {
@@ -108,14 +110,17 @@ impl ShellCmd.default
                 break;
             }
         }
-        func_args = {k.split('.')[1]:v  for (k, v) in vars(parsed_args).items() if k.startswith(func.__name__)};
+        func_args = {
+            k.split('.')[1]: v
+            for (k, v) in vars(parsed_args).items()
+            if k.startswith(func.__name__)
+        };
         func(**func_args);
-    } except ArgumentError as e  {
+    } except ArgumentError as e {
         print(f"Error: {str(e)}");
     }
 }
 
-impl ShellCmd.do_quit
-(arg: str) -> bool {
+impl ShellCmd.do_quit(arg: str) -> bool {
     return True;
 }

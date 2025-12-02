@@ -7,7 +7,7 @@ obj Button {
     }
 }
 
-def ttt() -> int {
+def ttt()  -> int {
     b = Button();
     a = random.randint(1, 10);
     b.is_pressed((1, 2, 3), a);

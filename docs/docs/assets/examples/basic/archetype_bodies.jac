@@ -2,6 +2,7 @@ obj Car {
     has make: str,
         model: str,
         year: int;
+
     static has wheels: int = 4;
 
     def display_car_info {

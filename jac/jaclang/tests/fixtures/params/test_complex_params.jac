@@ -1,5 +1,4 @@
 # Test complex parameter combinations
-
 def ultimate_signature(
     pos_only: int,
     pos_def: str = "def",
@@ -13,7 +12,7 @@ def ultimate_signature(
     return f"{pos_only}|{pos_def}|{reg_def}|{len(args)}|{kw_req}|{kw_opt}|{len(kwargs)}";
 }
 
-def separators_only(/, *, x: int) -> int {
+def separators_only( / , * , x: int)  -> int {
     return x;
 }
 
@@ -28,13 +27,20 @@ def recursive_test(data: int, /, depth: int = 0, *, max_depth: int = 2) -> int {
     return recursive_test(data + 1, depth + 1, max_depth=max_depth);
 }
 
-def validation_test(x: int, y: str = "test", /, z: float, *args: int, w: bool, **kwargs: str) -> str {
+def validation_test(
+    x: int, y: str = "test", /, z: float, *args: int, w: bool, **kwargs: str
+) -> str {
     return f"x:{x},y:{y},z:{z},args:{len(args)},w:{w},kwargs:{len(kwargs)}";
 }
 
 with entry {
     print("ULTIMATE_MIN:", ultimate_signature(1, reg_def=2.5, kw_req="test"));
-    print("ULTIMATE_FULL:", ultimate_signature(1, "custom", 3.14, False, 10, 20, kw_req="req", kw_opt=200, extra="data"));
+    print(
+        "ULTIMATE_FULL:",
+        ultimate_signature(
+            1, "custom", 3.14, False, 10, 20, kw_req="req", kw_opt=200, extra="data"
+        )
+    );
     print("SEPARATORS:", separators_only(x=42));
     print("EDGE_MIX:", edge_case_mix(1, "test", 1.1, 2.2, c=True, name="edge"));
     print("RECURSIVE:", recursive_test(5), recursive_test(10, max_depth=1));

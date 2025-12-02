@@ -2,7 +2,6 @@ import streamlit as st;
 import requests;
 import base64;
 
-
 def bootstrap_frontend(token: str) {
     st.set_page_config(layout="wide");
     st.title("Welcome to your Jac MCP Chatbot!");
@@ -19,9 +18,22 @@ def bootstrap_frontend(token: str) {
         file_b64 = base64.b64encode(uploaded_file.read()).decode('utf-8');
         file_extension = uploaded_file.name.lower().split('.')[-1];
         file_type = uploaded_file.type or '';
-        supported_types = ['pdf', 'txt', 'png', 'jpg', 'jpeg', 'webp', 'mp4', 'avi', 'mov'];
-        if file_extension not in supported_types and not (file_type.startswith('image') or file_type.startswith('video')) {
-            st.error(f"Unsupported file type: {file_type or 'unknown'}. Please upload PDF, TXT, Image, or Video files.");
+        supported_types = [
+            'pdf',
+            'txt',
+            'png',
+            'jpg',
+            'jpeg',
+            'webp',
+            'mp4',
+            'avi',
+            'mov'
+        ];
+        if file_extension not in supported_types
+        and not (file_type.startswith('image') or file_type.startswith('video')) {
+            st.error(
+                f"Unsupported file type: {file_type or 'unknown'}. Please upload PDF, TXT, Image, or Video files."
+            );
             return;
         }
         # Use upload_pdf walker endpoint for all uploads, saving in uploads/{session_id}
@@ -36,7 +48,9 @@ def bootstrap_frontend(token: str) {
             headers={"Authorization": f"Bearer {token}"}
         );
         if response.status_code == 200 {
-            st.success(f"File '{uploaded_file.name}' uploaded and saved to uploads/{st.session_state.session_id}.");
+            st.success(
+                f"File '{uploaded_file.name}' uploaded and saved to uploads/{st.session_state.session_id}."
+            );
             # Track last uploaded file path in session state
             st.session_state.last_uploaded_file_path = f"uploads/{st.session_state.session_id}/{uploaded_file.name}";
         } else {
@@ -54,7 +68,6 @@ def bootstrap_frontend(token: str) {
     if prompt := st.chat_input("What is up?") {
         # Add user message to chat history
         st.session_state.messages.append({"role": "user", "content": prompt});
-
         # Display user message in chat message container
         with st.chat_message("user") {
             st.markdown(prompt);
@@ -76,14 +89,17 @@ def bootstrap_frontend(token: str) {
                     json=payload,
                     headers={"Authorization": f"Bearer {token}"}
                 );
-
                 if response.status_code == 200 {
                     response = response.json();
-                    print("response is",response);
+                    print("response is", response);
                     st.write(response["reports"][0]["response"]);
-
                     # Add assistant response to chat history
-                    st.session_state.messages.append({"role": "assistant", "content": response["reports"][0]["response"]});
+                    st.session_state.messages.append(
+                        {
+                            "role": "assistant",
+                            "content": response["reports"][0]["response"]
+                        }
+                    );
                 }
             }
         }
@@ -91,7 +107,6 @@ def bootstrap_frontend(token: str) {
 }
 
 with entry {
-
     INSTANCE_URL = "http://localhost:8000";
     TEST_USER_EMAIL = "test@mail.com";
     TEST_USER_PASSWORD = "password";
@@ -105,13 +120,9 @@ with entry {
         # Try registering the user if login fails
         response = requests.post(
             f"{INSTANCE_URL}/user/register",
-            json={
-                "email": TEST_USER_EMAIL,
-                "password": TEST_USER_PASSWORD
-            }
+            json={"email": TEST_USER_EMAIL, "password": TEST_USER_PASSWORD}
         );
         assert response.status_code == 201;
-
         response = requests.post(
             f"{INSTANCE_URL}/user/login",
             json={"email": TEST_USER_EMAIL, "password": TEST_USER_PASSWORD}

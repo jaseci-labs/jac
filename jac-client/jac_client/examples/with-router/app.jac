@@ -204,7 +204,7 @@ cl {
                 <code>
                     {location.pathname}
                 </code>
-                 does not exist.
+                does not exist.
             </p>
             <button
                 onClick={goHome}

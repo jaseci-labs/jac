@@ -4,6 +4,7 @@ import math;
 
 obj Circle {
     has radius: float;
+
     def area -> float {
         return math.pi * self.radius ** 2;
     }

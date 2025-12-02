@@ -7,10 +7,7 @@ walker cycle {
         res = f"> Processing for {here.name} {here.jid}";
         try {
             user_jid = here.jid;
-            day_graph = self.jaseci_sdk.fetch_graph(
-                user_jid=user_jid,
-                date=self.today
-            );
+            day_graph = self.jaseci_sdk.fetch_graph(user_jid=user_jid, date=self.today);
             here spawn update_graph(
                 user_jid=user_jid,
                 date=self.today,

@@ -12,19 +12,27 @@ include settings.map;
 The Game base class
 """
 obj Game {
-    has screen:pygame.surface.Surface = pygame.display.set_mode((WIN_WIDTH, WIN_HEIGHT)),
-        clock:pygame.time.Clock = pygame.time.Clock(),
-        running:bool = True,
-        won:bool = False,
-        score:int = 0,
-        deaths:int = 0,
-        character_spritesheet:pygame.surface.Surface = Spritesheet('../img/character.png'),
-        terrain_spritesheet:pygame.surface.Surface = Spritesheet('../img/terrain.png'),
-        enemy_spritesheet:pygame.surface.Surface = Spritesheet('../img/enemy.png'),
-        attack_spritesheet:pygame.surface.Surface = Spritesheet('../img/attack.png'),
-        intro_background:pygame.surface.Surface = pygame.image.load('../img/introbackground.png'),
-        go_background:pygame.surface.Surface = pygame.image.load('../img/gameover.png'),
-        GameMap:Map = Map();
+    has screen: pygame.surface.Surface = pygame.display.set_mode(
+        (WIN_WIDTH, WIN_HEIGHT)
+    ),
+        clock: pygame.time.Clock = pygame.time.Clock(),
+        running: bool = True,
+        won: bool = False,
+        score: int = 0,
+        deaths: int = 0,
+        character_spritesheet: pygame.surface.Surface = Spritesheet(
+            '../img/character.png'
+        ),
+        terrain_spritesheet: pygame.surface.Surface = Spritesheet('../img/terrain.png'),
+        enemy_spritesheet: pygame.surface.Surface = Spritesheet('../img/enemy.png'),
+        attack_spritesheet: pygame.surface.Surface = Spritesheet('../img/attack.png'),
+        intro_background: pygame.surface.Surface = pygame.image.load(
+            '../img/introbackground.png'
+        ),
+        go_background: pygame.surface.Surface = pygame.image.load(
+            '../img/gameover.png'
+        ),
+        GameMap: Map = Map();
 
     def postinit;
     def createTilemap;
@@ -36,5 +44,4 @@ obj Game {
     def intro_screen;
     def game_won;
     def game_over;
-
 }

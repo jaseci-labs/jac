@@ -2,11 +2,7 @@ import from byllm.lib { Model, Image }
 
 glob llm = Model(model_name="gpt-4o");
 
-enum Personality {
-    INTROVERT,
-    EXTROVERT,
-    AMBIVERT
-}
+enum Personality { INTROVERT, EXTROVERT, AMBIVERT }
 
 obj Person {
     has full_name: str,

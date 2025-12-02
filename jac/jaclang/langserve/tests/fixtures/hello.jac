@@ -1,1 +1,3 @@
-with entry {print("Hello, World!");}
+with entry {
+    print("Hello, World!");
+}

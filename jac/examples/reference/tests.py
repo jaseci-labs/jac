@@ -22,8 +22,7 @@ if __name__ == "__main__":
 
     result = subprocess.run(
         ["jac", "test", f"{__file__}"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         text=True,
     )
     print(result.stderr)

@@ -19,14 +19,13 @@ import from litellm.types.utils { Message as LiteLLMMessage }
 import from pydantic { TypeAdapter }
 import from .schema { tool_to_schema }
 
-
 # The message can be a jaclang defined message or what ever the llm
 # returned object that was feed back to the llm as it was given (dict).
-
-glob MessageType: TypeAlias = 'Message | LiteLLMMessage';
+glob MessageType:
+    TypeAlias = 'Message | LiteLLMMessage';
 
 """Enum for message roles in LLM interactions."""
-enum MessageRole(StrEnum) {
+enum MessageRole ( StrEnum ) {
     SYSTEM = "system",
     USER = "user",
     ASSISTANT = "assistant",
@@ -98,7 +97,7 @@ obj Tool {
     }
 
     """Call the tool function with the provided arguments."""
-    def __call__(*args: list , **kwargs: dict)  -> object {
+    def __call__( *args: list , **kwargs: dict)  -> object {
         # If there is an error with the finish tool, we throw the exception.
         # Since it's the user's responsibility to handle it.
         if self.is_finish_tool() {
@@ -180,10 +179,10 @@ obj ToolCall {
 
     """Call the tool with the provided arguments."""
     def __call__()  -> ToolCallResultMsg {
-        if self.args is not None{
+        if self.args is not None {
             result = self.tool(**self.args);
-        }else{
-            raise ValueError("args is None, Expected a dictionary");
+        } else {
+            raise ValueError("args is None, Expected a dictionary") ;
         }
         return ToolCallResultMsg(
             role=MessageRole.TOOL,
@@ -206,7 +205,7 @@ obj ToolCall {
 
     """Get the output from the finish tool call."""
     def get_output()  -> object {
-        assert (self.is_finish_call()),"This method should only be called for finish tools.";
+        assert (self.is_finish_call()) , "This method should only be called for finish tools.";
         return self.tool(**self.args);
     }
 }
@@ -218,10 +217,11 @@ obj MockToolCall {
 
     """Convert the mock tool call to a ToolCall."""
     def to_tool_call()  -> ToolCall {
+        args_parsed = Tool(self.tool).parse_arguments(self.args);
         return ToolCall(
             call_id="",  # Call ID is not used in mock calls.
             tool=Tool(self.tool),
-            args=self.args,
+            args=args_parsed,
         );
     }
 }
@@ -257,8 +257,7 @@ obj Text(Media) {
 obj Image(Media) {
     has url:
         (
-        "str | bytes | bytearray | memoryview | BytesIO | IO[bytes] | "
-        "os.PathLike[str] | os.PathLike[bytes] | PILImageCls"
+            "str | bytes | bytearray | memoryview | BytesIO | IO[bytes] | ""os.PathLike[str] | os.PathLike[bytes] | PILImageCls"
         );  # type: ignore[name-defined]
 
     has mime_type: str | None = None;
@@ -372,9 +371,8 @@ obj Image(Media) {
 
         # If we reach here, the input type isn't supported
         raise TypeError(
-            "Unsupported Image input type. Provide a URL/path string, data URL, bytes, "
-            "BytesIO, file-like object, os.PathLike, or PIL.Image.Image."
-        );
+            "Unsupported Image input type. Provide a URL/path string, data URL, bytes, ""BytesIO, file-like object, os.PathLike, or PIL.Image.Image."
+        ) ;
     }
 
     """Map a PIL format name to a MIME type with sensible fallbacks."""
@@ -432,9 +430,8 @@ obj Video(Media) {
             import cv2;
         } except ImportError {
             raise ImportError(
-                "OpenCV is required to process video files."
-                "Install `pip install byllm[video]` for video capabilities."
-            );
+                "OpenCV is required to process video files.""Install `pip install byllm[video]` for video capabilities."
+            ) ;
         }
 
         self._base64frames = [];
@@ -465,10 +462,9 @@ obj Video(Media) {
         if self._base64frames is None {
             self.load_frames();
         }
-        assert (self._base64frames is not None),"Frames must be loaded before conversion.";
+        assert (self._base64frames is not None) , "Frames must be loaded before conversion.";
         return [
-            {"type": "image_url",
-            "image_url": f"data:image/jpeg;base64,{frame}",}
+            {"type": "image_url", "image_url": f"data:image/jpeg;base64,{frame}",}
             for frame in self._base64frames
         ];
     }

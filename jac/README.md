@@ -1,9 +1,9 @@
 <div align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://www.jac-lang.org//assets/logo.png">
-    <source media="(prefers-color-scheme: light)" srcset="https://www.jac-lang.org//assets/logo.png">
+    <source media="(prefers-color-scheme: dark)" srcset="https://www.jac-lang.org/assets/logo.png">
+    <source media="(prefers-color-scheme: light)" srcset="https://www.jac-lang.org/assets/logo.png">
     <img alt="Jaclang Programming Language: Unique and Powerful programming language that runs on top of Python"
-         src="https://www.jac-lang.org//assets/logo.png"
+         src="https://www.jac-lang.org/assets/logo.png"
          width="20%">
   </picture>
 
@@ -16,10 +16,10 @@ This is the main source code repository for the [Jac] programming language. It c
 
 [Jac]: https://www.jac-lang.org/
 [Jac Website]: https://www.jac-lang.org/
-[Getting Started]: https://www.jac-lang.org//start/
-[Learn]: https://www.jac-lang.org//learn
-[Documentation]: https://www.jac-lang.org//learn/guide/
-[Contributing]: .github/CONTRIBUTING.md
+[Getting Started]: https://docs.jaseci.org/learn/tour/
+[Learn]: https://docs.jaseci.org/jac_book/
+[Documentation]: https://docs.jaseci.org/jac_book/
+[Contributing]: https://docs.jaseci.org/internals/contrib/
 
 ## What and Why is Jac?
 
@@ -43,8 +43,8 @@ Run `jac` in the terminal to see whether it is installed correctly.
 
 Read ["Getting Started"] from [Docs] for more information.
 
-["Getting Started"]:https://www.jac-lang.org//start/
-[Docs]: https://www.jac-lang.org//learn/guide/
+["Getting Started"]: https://docs.jaseci.org/learn/tour/
+[Docs]: https://docs.jaseci.org/jac_book/
 
 ## Installing from Source
 

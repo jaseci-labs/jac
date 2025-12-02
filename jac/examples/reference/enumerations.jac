@@ -1,5 +1,4 @@
 # Enumerations - Type-safe named constants
-
 import from enum { unique }
 
 # ===== Basic Enums with Integer and String Values =====
@@ -21,10 +20,10 @@ with entry {
 }
 
 # ===== Forward Declaration with Impl and Decorator =====
-@unique
+@ unique
 enum Priority;
 
-impl Priority {
+impl Priority{
     LOW = 1,
     MEDIUM = 2,
     HIGH = 3
@@ -36,7 +35,7 @@ with entry {
 }
 
 # ===== Enum with Access Modifier =====
-enum :protect Permission {
+enum : protect Permission {
     READ = 'read',
     WRITE = 'write',
     EXECUTE = 'execute'
@@ -51,9 +50,7 @@ with entry {
 enum HttpStatus {
     OK = 200,
     BAD_REQUEST = 400,
-    SERVER_ERROR = 500
-
-    ::py::
+    SERVER_ERROR = 500::py::
     def is_success(self):
         return 200 <= self.value < 300
 
@@ -64,11 +61,14 @@ enum HttpStatus {
             return "client_error"
         return "server_error"
     ::py::
+
 }
 
 with entry {
     print("\n=== 4. Enum with Python Code Block (Methods) ===");
-    print(f"  {HttpStatus.OK.name}: {HttpStatus.OK.get_category()}, is_success: {HttpStatus.OK.is_success()}");
+    print(
+        f"  {HttpStatus.OK.name}: {HttpStatus.OK.get_category()}, is_success: {HttpStatus.OK.is_success()}"
+    );
     print(f"  {HttpStatus.BAD_REQUEST.name}: {HttpStatus.BAD_REQUEST.get_category()}");
 }
 

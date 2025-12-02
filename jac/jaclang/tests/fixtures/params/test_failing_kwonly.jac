@@ -1,10 +1,9 @@
 # Test failing keyword-only parameter cases
-
-def strict_kwonly(*, x: int, y: str) -> str {
+def strict_kwonly( * , x: int , y: str)  -> str {
     return f"{x}: {y}";
 }
 
-def kwonly_with_defaults(*, req: int, opt: str = "default") -> str {
+def kwonly_with_defaults( * , req: int , opt: str = "default")  -> str {
     return f"{req}-{opt}";
 }
 
@@ -12,15 +11,24 @@ def mixed_kwonly(a: int, *, kw1: str, kw2: bool = False) -> dict {
     return {"a": a, "kw1": kw1, "kw2": kw2};
 }
 
-def complex_kwonly(pos: int, /, reg: str, *args: float, kw_req: bool, kw_opt: int = 10, **kwargs: any) -> dict {
-    return {"pos": pos, "reg": reg, "args": list(args), "kw_req": kw_req, "kw_opt": kw_opt, "kwargs": kwargs};
+def complex_kwonly(
+    pos: int, /, reg: str, *args: float, kw_req: bool, kw_opt: int = 10, **kwargs: any
+) -> dict {
+    return {
+        "pos": pos,
+        "reg": reg,
+        "args": list(args),
+        "kw_req": kw_req,
+        "kw_opt": kw_opt,
+        "kwargs": kwargs
+    };
 }
 
-def only_star_separator(*, x: int) -> int {
+def only_star_separator( * , x: int)  -> int {
     return x * 2;
 }
 
-def nested_kwonly_issues(*, outer: dict, inner: list = []) -> int {
+def nested_kwonly_issues( * , outer: dict , inner: list = [])  -> int {
     return len(outer) + len(inner);
 }
 
@@ -99,7 +107,6 @@ with entry {
         print("✅ PASS: Caught star-only positional error:", type(e).__name__);
     }
 
-
     # Test 11: Mutable default issues
     try {
         result1 = nested_kwonly_issues(outer={"a": 1});
@@ -132,11 +139,11 @@ with entry {
     }
 }
 
-def additional_kwonly_edge_cases() -> None {
+def additional_kwonly_edge_cases()  -> None {
     print("\n=== ADDITIONAL KEYWORD-ONLY EDGE CASES ===");
 
     # Test 14: Keyword argument name conflicts with Python keywords
-    def python_keyword_conflicts(*, class_name: str, import_path: str = "default") -> str {
+    def python_keyword_conflicts( * , class_name: str , import_path: str = "default")  -> str {
         return f"{class_name}: {import_path}";
     }
 
@@ -148,12 +155,9 @@ def additional_kwonly_edge_cases() -> None {
     }
 
     # Test 15: Very long keyword-only parameter lists
-    def many_kwonly_params(
-        *,
-        p1: int, p2: int, p3: int, p4: int, p5: int,
-        p6: str = "d6", p7: str = "d7", p8: str = "d8"
-    ) -> dict {
-        return {"sum": p1+p2+p3+p4+p5, "strings": [p6, p7, p8]};
+    def many_kwonly_params( * , p1: int , p2: int , p3: int , p4: int , p5: int , p6:
+        str = "d6" , p7: str = "d7" , p8: str = "d8")  -> dict {
+        return {"sum": p1 + p2 + p3 + p4 + p5, "strings": [p6, p7, p8]};
     }
 
     try {
@@ -164,11 +168,11 @@ def additional_kwonly_edge_cases() -> None {
     }
 
     # Test 16: Nested function calls as keyword arguments
-    def helper_func() -> str {
+    def helper_func()  -> str {
         return "helper_result";
     }
 
-    def kwonly_with_function_calls(*, data: str, processed: bool = True) -> str {
+    def kwonly_with_function_calls( * , data: str , processed: bool = True)  -> str {
         return f"data={data}, processed={processed}";
     }
 
@@ -189,7 +193,7 @@ def additional_kwonly_edge_cases() -> None {
 
     # Test 18: Really test duplicate keyword detection properly
     # Note: This might not be detectable at runtime in some languages
-    def test_duplicate_detection() -> None {
+    def test_duplicate_detection()  -> None {
         try {
             # This should be a syntax error, but let's see what happens
             call_string = "strict_kwonly(x=42, y='test', x=99)";

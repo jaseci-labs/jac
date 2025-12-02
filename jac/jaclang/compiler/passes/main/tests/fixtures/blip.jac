@@ -1,2 +1,1 @@
-def apple {
-}
+def apple { }

@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from abc import ABC, abstractmethod
 from threading import Event
-from typing import Generic, Optional, TYPE_CHECKING, Type, TypeVar
+from typing import TYPE_CHECKING, Generic, TypeVar
 
 from jaclang.compiler.codeinfo import CodeLocInfo
 from jaclang.compiler.unitree import UniNode
@@ -16,6 +16,11 @@ from jaclang.utils.log import logging
 if TYPE_CHECKING:
     from jaclang.compiler.program import JacProgram
 
+# Type variables for transforms - T_in/T_out are unconstrained for base transforms
+T_in = TypeVar("T_in")
+T_out = TypeVar("T_out")
+
+# Type variables for AST transforms - constrained to UniNode
 T = TypeVar("T", bound=UniNode)
 R = TypeVar("R", bound=UniNode)
 
@@ -23,18 +28,15 @@ R = TypeVar("R", bound=UniNode)
 class Alert:
     """Alert interface."""
 
-    def __init__(self, msg: str, loc: CodeLocInfo, from_pass: Type[Transform]) -> None:
+    def __init__(self, msg: str, loc: CodeLocInfo, from_pass: type[Transform]) -> None:
         """Initialize alert."""
         self.msg = msg
         self.loc: CodeLocInfo = loc
-        self.from_pass: Type[Transform] = from_pass
+        self.from_pass: type[Transform] = from_pass
 
     def __str__(self) -> str:
         """Return string representation of alert."""
-        return (
-            f" {self.loc.mod_path}, line {self.loc.first_line},"
-            f" col {self.loc.col_start}: {self.msg}"
-        )
+        return f"{self.loc.mod_path}, line {self.loc.first_line}, col {self.loc.col_start}: {self.msg}"
 
     def __repr__(self) -> str:
         """Return string representation of alert."""
@@ -68,29 +70,32 @@ class Alert:
         return self.as_log(colors=colors) + pretty_dump
 
 
-class Transform(ABC, Generic[T, R]):
-    """Abstract class for IR passes."""
+class BaseTransform(ABC, Generic[T_in, T_out]):
+    """Base abstract class for all transforms (no UniNode constraint).
+
+    Use this base class for transforms that don't operate on AST nodes,
+    such as parser transforms that take string input and produce parse trees.
+    """
 
     def __init__(
-        self, ir_in: T, prog: JacProgram, cancel_token: Event | None = None
+        self, ir_in: T_in, prog: JacProgram, cancel_token: Event | None = None
     ) -> None:
         """Initialize pass."""
         self.logger = logging.getLogger(self.__class__.__name__)
         self.errors_had: list[Alert] = []
         self.warnings_had: list[Alert] = []
-        self.cur_node: UniNode = ir_in  # tracks current node during traversal
         self.prog = prog
         self.time_taken = 0.0
-        self.ir_in: T = ir_in
+        self.ir_in: T_in = ir_in
         self.cancel_token = cancel_token
         self.pre_transform()
-        self.ir_out: R = self.timed_transform(ir_in=ir_in)
+        self.ir_out: T_out = self.timed_transform(ir_in=ir_in)
         self.post_transform()
 
     def timed_transform(
         self,
-        ir_in: T,
-    ) -> R:
+        ir_in: T_in,
+    ) -> T_out:
         """Transform with time tracking."""
         start_time = time.time()
         ir_out = self.transform(ir_in=ir_in)
@@ -110,11 +115,34 @@ class Transform(ABC, Generic[T, R]):
         pass
 
     @abstractmethod
-    def transform(self, ir_in: T) -> R:
+    def transform(self, ir_in: T_in) -> T_out:
         """Transform interface."""
         pass
 
-    def log_error(self, msg: str, node_override: Optional[UniNode] = None) -> None:
+    def log_info(self, msg: str) -> None:
+        """Log info."""
+        self.logger.info(msg)
+
+    def is_canceled(self) -> bool:
+        """Check if the pass has been canceled."""
+        return self.cancel_token is not None and self.cancel_token.is_set()
+
+
+class Transform(BaseTransform[T, R]):
+    """Abstract class for IR passes that operate on AST nodes.
+
+    This class extends BaseTransform with UniNode-specific functionality
+    like error/warning logging with source location tracking.
+    """
+
+    def __init__(
+        self, ir_in: T, prog: JacProgram, cancel_token: Event | None = None
+    ) -> None:
+        """Initialize pass."""
+        self.cur_node: UniNode = ir_in  # tracks current node during traversal
+        super().__init__(ir_in, prog, cancel_token)
+
+    def log_error(self, msg: str, node_override: UniNode | None = None) -> None:
         """Pass Error."""
         alrt = Alert(
             msg,
@@ -125,7 +153,7 @@ class Transform(ABC, Generic[T, R]):
         self.prog.errors_had.append(alrt)
         # self.logger.error(alrt.as_log())
 
-    def log_warning(self, msg: str, node_override: Optional[UniNode] = None) -> None:
+    def log_warning(self, msg: str, node_override: UniNode | None = None) -> None:
         """Pass Error."""
         alrt = Alert(
             msg,
@@ -135,14 +163,6 @@ class Transform(ABC, Generic[T, R]):
         self.warnings_had.append(alrt)
         self.prog.warnings_had.append(alrt)
         # self.logger.warning(alrt.as_log())
-
-    def log_info(self, msg: str) -> None:
-        """Log info."""
-        self.logger.info(msg)
-
-    def is_canceled(self) -> bool:
-        """Check if the pass has been canceled."""
-        return self.cancel_token is not None and self.cancel_token.is_set()
 
     def ice(self, msg: str = "Something went horribly wrong!") -> RuntimeError:
         """Pass Error."""

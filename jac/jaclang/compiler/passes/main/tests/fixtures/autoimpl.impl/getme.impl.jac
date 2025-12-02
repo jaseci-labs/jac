@@ -1,3 +1,3 @@
-impl baz {
+impl baz{
     print("baz");
 }

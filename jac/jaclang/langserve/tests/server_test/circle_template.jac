@@ -17,7 +17,6 @@ def calculate_area(radius: float) -> float {
 Above we have the demonstration of a function to calculate the area of a circle.
 Below we have the demonstration of a class to calculate the area of a circle.
 *#
-
 """Enum for shape types"""
 enum ShapeType {
     CIRCLE = "Circle",
@@ -50,21 +49,15 @@ with entry {
 }
 
 # Global also works here
-
 with entry:__main__ {
     # To run the program functionality
-    print(
-        f"Area of a circle with radius {RAD} using function: {calculate_area(RAD)}"
-    );
-    print(
-        f"Area of a {c.shape_type.value} with radius {RAD} using class: {c.area()}"
-    );
+    print(f"Area of a circle with radius {RAD} using function: {calculate_area(RAD)}");
+    print(f"Area of a {c.shape_type.value} with radius {RAD} using class: {c.area()}");
 }
 
 # Unit Tests!
 glob expected_area = 78.53981633974483;
 #{{INJECT_CODE}}
-
 test calc_area {
     assert almostEqual(calculate_area(RAD), expected_area);
 }

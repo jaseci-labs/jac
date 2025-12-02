@@ -9,20 +9,19 @@ walker www(ww) {
 }
 
 node a {
-    can go_to_b with ww|www entry {
+    can go_to_b with ww | www entry {
         print("I am trying to go to b");
         visit [-->](`?b);
     }
 }
 
-impl ww.gb {
+impl ww.gb{
     print("I am in b");
 }
 
-impl www.ggb {
+impl www.ggb{
     print("www is also in b");
 }
-
 
 with entry {
     # na = a();

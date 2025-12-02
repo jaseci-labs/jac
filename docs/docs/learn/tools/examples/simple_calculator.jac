@@ -19,8 +19,7 @@ def simple_calculator() {
 
     # Operation selection
     operation = st.selectbox(
-        "Choose operation:",
-        ["Add", "Subtract", "Multiply", "Divide"]
+        "Choose operation:", ["Add", "Subtract", "Multiply", "Divide"]
     );
 
     # Calculate result
@@ -39,14 +38,11 @@ def simple_calculator() {
                 return;
             }
         }
-
         st.success(f"Result: {result}");
-
         # Add to history
         if "history" not in st.session_state {
             st.session_state.history = [];
         }
-
         st.session_state.history.append(
             f"{num1} {operation.lower()} {num2} = {result}"
         );
@@ -58,7 +54,6 @@ def simple_calculator() {
         for calc in st.session_state.history {
             st.write(f"• {calc}");
         }
-
         if st.button("Clear History") {
             st.session_state.history = [];
             st.rerun();

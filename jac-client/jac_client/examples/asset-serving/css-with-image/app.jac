@@ -1,15 +1,21 @@
 # Pages
-cl import from react {useState, useEffect}
+cl import from react { useState, useEffect }
 cl import ".styles.css";
 
 cl {
-    def app() -> any {
+    def app()  -> any {
         let [count, setCount] = useState(0);
-        useEffect(lambda -> None {
-            console.log("Count: ", count);
-        }, [count]);
-        return <div style={{padding: "20px", textAlign: "center", fontFamily: "Arial, sans-serif"}}>
-            <h1>🍔 Burger Counter App</h1>
+        useEffect(lambda   -> None{ console.log("Count: ", count);} , [count]);
+        return <div
+            style={{
+                padding: "20px",
+                textAlign: "center",
+                fontFamily: "Arial, sans-serif"
+            }}
+        >
+            <h1>
+                🍔 Burger Counter App
+            </h1>
             <img
                 src="/static/assets/burger.png"
                 alt="Delicious Burger"
@@ -21,11 +27,17 @@ cl {
                     boxShadow: "0 4px 8px rgba(0,0,0,0.2)"
                 }}
             />
-            <p style={{fontSize: "18px", margin: "20px 0"}}>
-                You've clicked the burger <strong>{count}</strong> times!
+            <p
+                style={{fontSize: "18px", margin: "20px 0"}}
+            >
+                You've clicked the burger
+                <strong>
+                    {count}
+                </strong>
+                times!
             </p>
             <button
-                onClick={lambda e: any ->  None {setCount(count + 1);}}
+                onClick={lambda  e: any  -> None{ setCount(count + 1);} }
                 style={{
                     padding: "10px 20px",
                     fontSize: "16px",
@@ -39,26 +51,35 @@ cl {
             >
                 Click the Burger! 🍔
             </button>
-
-            <h2 style={{marginTop: "40px", marginBottom: "20px"}}>CSS Asset Examples</h2>
-
+            <h2
+                style={{marginTop: "40px", marginBottom: "20px"}}
+            >
+                CSS Asset Examples
+            </h2>
             <div className="container">
-                <h3 style={{color: "white", textShadow: "2px 2px 4px rgba(0,0,0,0.5)"}}>
+                <h3
+                    style={{color: "white", textShadow: "2px 2px 4px rgba(0,0,0,0.5)"}}
+                >
                     Background Image Example
                 </h3>
-                <p style={{color: "white", textShadow: "2px 2px 4px rgba(0,0,0,0.5)"}}>
+                <p
+                    style={{color: "white", textShadow: "2px 2px 4px rgba(0,0,0,0.5)"}}
+                >
                     This container uses the burger image as a background via CSS
                 </p>
             </div>
-
             <div className="card">
-                <h3>Image in Card</h3>
+                <h3>
+                    Image in Card
+                </h3>
                 <img
                     src="/static/assets/burger.png"
                     alt="Burger in Card"
                     className="burgerImage"
                 />
-                <p style={{marginTop: "15px", color: "#666"}}>
+                <p
+                    style={{marginTop: "15px", color: "#666"}}
+                >
                     This image is displayed within a styled card using CSS classes
                 </p>
             </div>

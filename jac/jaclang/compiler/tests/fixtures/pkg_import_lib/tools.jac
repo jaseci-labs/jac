@@ -1,3 +1,3 @@
 def tool_func() {
-    return 'Tool function executed' ;
+    return 'Tool function executed';
 }

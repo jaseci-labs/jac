@@ -1,5 +1,4 @@
 # Context Managers
-
 with entry {
     # Basic with statement with as binding
     with open(__file__, 'r') as f {
@@ -18,7 +17,9 @@ with entry {
             return self;
         }
 
-        def __exit__(self: Printer, exc_type: object, exc_val: object, exc_tb: object) -> None {
+        def __exit__(
+            self: Printer, exc_type: object, exc_val: object, exc_tb: object
+        ) -> None {
             print("exiting");
         }
     }
@@ -47,7 +48,9 @@ with entry {
                 return self;
             }
 
-            async def __aexit__(self: AsyncContext, exc_type: object, exc_val: object, exc_tb: object) -> None {
+            async def __aexit__(
+                self: AsyncContext, exc_type: object, exc_val: object, exc_tb: object
+            ) -> None {
                 print("async exiting");
             }
         }

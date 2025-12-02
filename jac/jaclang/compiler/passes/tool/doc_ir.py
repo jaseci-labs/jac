@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Optional, TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, Union
 
 if TYPE_CHECKING:
     import jaclang.compiler.unitree as uni
@@ -31,12 +31,10 @@ class Doc:
 class Text(Doc):
     """Simple text content."""
 
-    def __init__(self, text: str, source_token: Optional[uni.Token] = None) -> None:
+    def __init__(self, text: str, source_token: uni.Token | None = None) -> None:
         """Initialize a Text object."""
         self.text: str = text
-        self.source_token: Optional[uni.Token] = (
-            source_token  # Reference to source token
-        )
+        self.source_token: uni.Token | None = source_token  # Reference to source token
 
     def __str__(self) -> str:
         """Return a string representation of the Text object."""
@@ -87,14 +85,14 @@ class Group(Doc):
         self,
         contents: DocType,
         break_contiguous: bool = False,
-        id: Optional[str] = None,
-        ast_node: Optional[uni.UniNode] = None,
+        id: str | None = None,
+        ast_node: uni.UniNode | None = None,
     ) -> None:
         """Initialize a Group object."""
         self.contents: DocType = contents
         self.break_contiguous: bool = break_contiguous
-        self.id: Optional[str] = id
-        self.ast_node: Optional[uni.UniNode] = ast_node  # Reference to AST node
+        self.id: str | None = id
+        self.ast_node: uni.UniNode | None = ast_node  # Reference to AST node
 
     def __str__(self) -> str:
         """Return a string representation of the Group object."""
@@ -112,12 +110,10 @@ class Group(Doc):
 class Indent(Doc):
     """Indented content."""
 
-    def __init__(
-        self, contents: DocType, ast_node: Optional[uni.UniNode] = None
-    ) -> None:
+    def __init__(self, contents: DocType, ast_node: uni.UniNode | None = None) -> None:
         """Initialize an Indent object."""
         self.contents: DocType = contents
-        self.ast_node: Optional[uni.UniNode] = ast_node  # Reference to AST node
+        self.ast_node: uni.UniNode | None = ast_node  # Reference to AST node
 
     def __str__(self) -> str:
         """Return a string representation of the Indent object."""
@@ -134,11 +130,11 @@ class Concat(Doc):
     """A sequence of doc parts."""
 
     def __init__(
-        self, parts: list[DocType], ast_node: Optional[uni.UniNode] = None
+        self, parts: list[DocType], ast_node: uni.UniNode | None = None
     ) -> None:
         """Initialize a Concat object."""
         self.parts: list[DocType] = parts
-        self.ast_node: Optional[uni.UniNode] = ast_node  # Reference to AST node
+        self.ast_node: uni.UniNode | None = ast_node  # Reference to AST node
 
     def __str__(self) -> str:
         """Return a string representation of the Concat object."""
@@ -178,10 +174,10 @@ class IfBreak(Doc):
 class Align(Doc):
     """Alignment relative to the current indentation level."""
 
-    def __init__(self, contents: DocType, n: Optional[int] = None) -> None:
+    def __init__(self, contents: DocType, n: int | None = None) -> None:
         """Initialize an Align object."""
         self.contents: DocType = contents
-        self.n: Optional[int] = (
+        self.n: int | None = (
             n  # Number of spaces, or null to use current indentation level
         )
 

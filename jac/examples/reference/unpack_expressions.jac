@@ -13,7 +13,7 @@ with entry {
     # Dictionary unpacking with **
     dict1 = {'a': 1, 'b': 2};
     dict2 = {'c': 3, 'd': 4};
-    merged = {**dict1, **dict2};
+    merged = {** dict1, ** dict2};
 
     # Unpacking in function calls
     result1 = compute(**merged);

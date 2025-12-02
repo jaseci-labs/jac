@@ -1,3 +1,3 @@
-impl Check.run {
-    1/0;
+impl Check.run{
+    1 / 0;
 }

@@ -4,277 +4,273 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from jaclang.runtimelib.machine import JacMachine as Jac
-from jaclang.utils.test import TestCase
+import pytest
+
+from jaclang.runtimelib.runtime import JacRuntime as Jac
 
 
-class ClientBundleBuilderTests(TestCase):
-    """Validate client bundle compilation."""
+@pytest.fixture(scope="class", autouse=True)
+def reset_machine_class():
+    """Reset machine once for all tests in this class."""
+    Jac.reset_machine()
+    yield
+    Jac.reset_machine()
 
-    def setUp(self) -> None:
-        Jac.reset_machine()
-        return super().setUp()
 
-    def tearDown(self) -> None:
-        Jac.reset_machine()
-        return super().tearDown()
+def test_build_bundle_for_module():
+    """Compile a Jac module and ensure client bundle metadata is emitted."""
+    fixtures_dir = Path(__file__).parent / "fixtures"
+    (module,) = Jac.jac_import("client_app", str(fixtures_dir))
 
-    def test_build_bundle_for_module(self) -> None:
-        """Compile a Jac module and ensure client bundle metadata is emitted."""
-        fixtures_dir = Path(__file__).parent / "fixtures"
-        (module,) = Jac.jac_import("client_app", str(fixtures_dir))
+    builder = Jac.get_client_bundle_builder()
+    bundle = builder.build(module)
 
-        builder = Jac.get_client_bundle_builder()
-        bundle = builder.build(module)
+    assert "function __jacJsx" in bundle.code
+    # Check that registration mechanism is present
+    assert "moduleFunctions[funcName] = funcRef;" in bundle.code
+    assert "scope[funcName] = funcRef;" in bundle.code
+    assert "moduleGlobals[gName] = existing;" in bundle.code
+    assert "scope[gName] = defaultValue;" in bundle.code
+    # Check that actual client functions and globals are defined
+    assert "function client_page()" in bundle.code
+    assert "class ButtonProps" in bundle.code
+    assert 'const API_LABEL = "Runtime Test";' in bundle.code
+    # Check hydration logic is present
+    assert "__jacHydrateFromDom" in bundle.code
+    assert "__jacEnsureHydration" in bundle.code
+    assert 'getElementById("__jac_init__")' in bundle.code
+    assert 'getElementById("__jac_root")' in bundle.code
+    # Check globals iteration logic
+    assert "for (const gName of __objectKeys(payloadGlobals))" in bundle.code
+    assert "client_page" in bundle.client_functions
+    assert "ButtonProps" in bundle.client_functions
+    assert "API_LABEL" in bundle.client_globals
+    assert len(bundle.hash) > 10
 
-        self.assertIn("function __jacJsx", bundle.code)
-        # Check that registration mechanism is present
-        self.assertIn("moduleFunctions[funcName] = funcRef;", bundle.code)
-        self.assertIn("scope[funcName] = funcRef;", bundle.code)
-        self.assertIn("moduleGlobals[gName] = existing;", bundle.code)
-        self.assertIn("scope[gName] = defaultValue;", bundle.code)
-        # Check that actual client functions and globals are defined
-        self.assertIn("function client_page()", bundle.code)
-        self.assertIn("class ButtonProps", bundle.code)
-        self.assertIn('const API_LABEL = "Runtime Test";', bundle.code)
-        # Check hydration logic is present
-        self.assertIn("__jacHydrateFromDom", bundle.code)
-        self.assertIn("__jacEnsureHydration", bundle.code)
-        self.assertIn('getElementById("__jac_init__")', bundle.code)
-        self.assertIn('getElementById("__jac_root")', bundle.code)
-        # Check globals iteration logic
-        self.assertIn("for (const gName of __objectKeys(payloadGlobals))", bundle.code)
-        self.assertIn("client_page", bundle.client_functions)
-        self.assertIn("ButtonProps", bundle.client_functions)
-        self.assertIn("API_LABEL", bundle.client_globals)
-        self.assertGreater(len(bundle.hash), 10)
+    cached = builder.build(module)
+    assert bundle.hash == cached.hash
+    assert bundle.code == cached.code
 
-        cached = builder.build(module)
-        self.assertEqual(bundle.hash, cached.hash)
-        self.assertEqual(bundle.code, cached.code)
 
-    def test_build_bundle_with_cl_import(self) -> None:
-        """Test that cl import statements are properly bundled."""
-        fixtures_dir = Path(__file__).parent / "fixtures"
-        (module,) = Jac.jac_import("client_app_with_import", str(fixtures_dir))
+def test_build_bundle_with_cl_import():
+    """Test that cl import statements are properly bundled."""
+    fixtures_dir = Path(__file__).parent / "fixtures"
+    (module,) = Jac.jac_import("client_app_with_import", str(fixtures_dir))
 
-        builder = Jac.get_client_bundle_builder()
-        bundle = builder.build(module)
+    builder = Jac.get_client_bundle_builder()
+    bundle = builder.build(module)
 
-        # Check that client_runtime functions are included in the bundle
-        self.assertIn("function renderJsxTree", bundle.code)
-        self.assertIn("function jacLogin", bundle.code)
+    # Check that client_runtime functions are included in the bundle
+    assert "function renderJsxTree" in bundle.code
+    assert "function jacLogin" in bundle.code
 
-        # Check that our client code is present
-        self.assertIn("function test_page()", bundle.code)
-        self.assertIn('const APP_TITLE = "Import Test App";', bundle.code)
+    # Check that our client code is present
+    assert "function test_page()" in bundle.code
+    assert 'const APP_TITLE = "Import Test App";' in bundle.code
 
-        # Verify the imported module comment is present
-        self.assertIn("// Imported .jac module: client_runtime", bundle.code)
+    # Verify the imported module comment is present
+    assert "// Imported .jac module: client_runtime" in bundle.code
 
-        # IMPORTANT: Ensure no ES6 import statements are in the bundle
-        # (since everything is bundled together, we don't need module imports)
-        self.assertNotIn("import {", bundle.code)
-        self.assertNotIn('from "client_runtime"', bundle.code)
+    # IMPORTANT: Ensure no ES6 import statements are in the bundle
+    # (since everything is bundled together, we don't need module imports)
+    assert "import {" not in bundle.code
+    assert 'from "client_runtime"' not in bundle.code
 
-        # Check that client functions are registered
-        self.assertIn("test_page", bundle.client_functions)
-        self.assertIn("APP_TITLE", bundle.client_globals)
+    # Check that client functions are registered
+    assert "test_page" in bundle.client_functions
+    assert "APP_TITLE" in bundle.client_globals
 
-        # Ensure the bundle has a valid hash
-        self.assertGreater(len(bundle.hash), 10)
+    # Ensure the bundle has a valid hash
+    assert len(bundle.hash) > 10
 
-    def test_build_bundle_with_relative_import(self) -> None:
-        """Test that cl import from relative paths works correctly."""
-        fixtures_dir = Path(__file__).parent / "fixtures"
-        (module,) = Jac.jac_import("client_app_with_relative_import", str(fixtures_dir))
 
-        builder = Jac.get_client_bundle_builder()
-        bundle = builder.build(module)
+def test_build_bundle_with_relative_import():
+    """Test that cl import from relative paths works correctly."""
+    fixtures_dir = Path(__file__).parent / "fixtures"
+    (module,) = Jac.jac_import("client_app_with_relative_import", str(fixtures_dir))
 
-        # Check that the imported module (client_ui_components) is included
-        self.assertIn("// Imported .jac module: .client_ui_components", bundle.code)
-        self.assertIn("function Button(", bundle.code)
-        self.assertIn("function Card(", bundle.code)
-        self.assertIn("function handleClick(", bundle.code)
+    builder = Jac.get_client_bundle_builder()
+    bundle = builder.build(module)
 
-        # Check that main_page is present
-        self.assertIn("function main_page()", bundle.code)
+    # Check that the imported module (client_ui_components) is included
+    assert "// Imported .jac module: .client_ui_components" in bundle.code
+    assert "function Button(" in bundle.code
+    assert "function Card(" in bundle.code
+    assert "function handleClick(" in bundle.code
 
-        # Check that transitive imports (client_runtime) are included
-        self.assertIn("// Imported .jac module: client_runtime", bundle.code)
-        self.assertIn("function createState(", bundle.code)
-        self.assertIn("function navigate(", bundle.code)
+    # Check that main_page is present
+    assert "function main_page()" in bundle.code
 
-        # IMPORTANT: Ensure NO import statements remain
-        self.assertNotIn("import {", bundle.code)
-        self.assertNotIn('from "', bundle.code)
-        self.assertNotIn("from './", bundle.code)
-        self.assertNotIn('from "./', bundle.code)
+    # Check that transitive imports (client_runtime) are included
+    assert "// Imported .jac module: client_runtime" in bundle.code
+    assert "function createState(" in bundle.code
+    assert "function navigate(" in bundle.code
 
-        # Check that all modules are bundled in the correct order
-        # client_runtime should come first (transitive import)
-        # then client_ui_components (direct import)
-        # then main module code
-        client_runtime_pos = bundle.code.find("// Imported .jac module: client_runtime")
-        ui_components_pos = bundle.code.find(
-            "// Imported .jac module: .client_ui_components"
-        )
-        main_page_pos = bundle.code.find("function main_page()")
+    # IMPORTANT: Ensure NO import statements remain
+    assert "import {" not in bundle.code
+    assert 'from "' not in bundle.code
+    assert "from './" not in bundle.code
+    assert 'from "./' not in bundle.code
 
-        self.assertGreater(ui_components_pos, client_runtime_pos)
-        self.assertGreater(main_page_pos, ui_components_pos)
+    # Check that all modules are bundled in the correct order
+    # client_runtime should come first (transitive import)
+    # then client_ui_components (direct import)
+    # then main module code
+    client_runtime_pos = bundle.code.find("// Imported .jac module: client_runtime")
+    ui_components_pos = bundle.code.find(
+        "// Imported .jac module: .client_ui_components"
+    )
+    main_page_pos = bundle.code.find("function main_page()")
 
-        # Verify client functions are registered
-        self.assertIn("main_page", bundle.client_functions)
+    assert ui_components_pos > client_runtime_pos
+    assert main_page_pos > ui_components_pos
 
-    def test_no_import_statements_in_bundle(self) -> None:
-        """Test that all import statements are stripped from the final bundle."""
-        fixtures_dir = Path(__file__).parent / "fixtures"
-        (module,) = Jac.jac_import("client_app_with_relative_import", str(fixtures_dir))
+    # Verify client functions are registered
+    assert "main_page" in bundle.client_functions
 
-        builder = Jac.get_client_bundle_builder()
-        bundle = builder.build(module)
 
-        # Split bundle into lines and check for any import statements
-        lines = bundle.code.split("\n")
-        import_lines = [
-            line
-            for line in lines
-            if line.strip().startswith("import ") and " from " in line
-        ]
+def test_no_import_statements_in_bundle():
+    """Test that all import statements are stripped from the final bundle."""
+    fixtures_dir = Path(__file__).parent / "fixtures"
+    (module,) = Jac.jac_import("client_app_with_relative_import", str(fixtures_dir))
 
-        # Should be exactly 0 import statements
-        self.assertEqual(
-            len(import_lines),
-            0,
-            f"Found {len(import_lines)} import statement(s) in bundle: {import_lines[:3]}",
-        )
+    builder = Jac.get_client_bundle_builder()
+    bundle = builder.build(module)
 
-        # Also verify using regex pattern
-        import re
+    # Split bundle into lines and check for any import statements
+    lines = bundle.code.split("\n")
+    import_lines = [
+        line
+        for line in lines
+        if line.strip().startswith("import ") and " from " in line
+    ]
 
-        import_pattern = r'^\s*import\s+.*\s+from\s+["\'].*["\'];?\s*$'
-        import_matches = [line for line in lines if re.match(import_pattern, line)]
-        self.assertEqual(
-            len(import_matches),
-            0,
-            f"Found import statements matching pattern: {import_matches[:3]}",
-        )
+    # Should be exactly 0 import statements
+    assert len(import_lines) == 0, (
+        f"Found {len(import_lines)} import statement(s) in bundle: {import_lines[:3]}"
+    )
 
-    def test_transitive_imports_included(self) -> None:
-        """Test that transitive imports (imports from imported modules) are included."""
-        fixtures_dir = Path(__file__).parent / "fixtures"
-        (module,) = Jac.jac_import("client_app_with_relative_import", str(fixtures_dir))
+    # Also verify using regex pattern
+    import re
 
-        builder = Jac.get_client_bundle_builder()
-        bundle = builder.build(module)
+    import_pattern = r'^\s*import\s+.*\s+from\s+["\'].*["\'];?\s*$'
+    import_matches = [line for line in lines if re.match(import_pattern, line)]
+    assert len(import_matches) == 0, (
+        f"Found import statements matching pattern: {import_matches[:3]}"
+    )
 
-        # client_app_with_relative_import imports from client_ui_components
-        # client_ui_components imports from client_runtime
-        # So client_runtime should be included as a transitive import
 
-        # Check that all three modules are present
-        self.assertIn("// Imported .jac module: client_runtime", bundle.code)
-        self.assertIn("// Imported .jac module: .client_ui_components", bundle.code)
+def test_transitive_imports_included():
+    """Test that transitive imports (imports from imported modules) are included."""
+    fixtures_dir = Path(__file__).parent / "fixtures"
+    (module,) = Jac.jac_import("client_app_with_relative_import", str(fixtures_dir))
 
-        # Verify runtime functions are defined (not just referenced)
-        self.assertIn("function createState(", bundle.code)
-        self.assertIn("function navigate(", bundle.code)
+    builder = Jac.get_client_bundle_builder()
+    bundle = builder.build(module)
 
-        # Verify that createState is actually callable (definition before usage)
-        create_state_def_pos = bundle.code.find("function createState(")
-        create_state_usage_pos = bundle.code.find("createState(")
-        self.assertLess(
-            create_state_def_pos,
-            create_state_usage_pos,
-            "createState must be defined before it's used",
-        )
+    # client_app_with_relative_import imports from client_ui_components
+    # client_ui_components imports from client_runtime
+    # So client_runtime should be included as a transitive import
 
-    def test_bundle_size_reasonable(self) -> None:
-        """Test that bundles with imports are reasonably sized."""
-        fixtures_dir = Path(__file__).parent / "fixtures"
+    # Check that all three modules are present
+    assert "// Imported .jac module: client_runtime" in bundle.code
+    assert "// Imported .jac module: .client_ui_components" in bundle.code
 
-        # Simple module without imports
-        (simple_module,) = Jac.jac_import("client_app", str(fixtures_dir))
-        builder = Jac.get_client_bundle_builder()
-        simple_bundle = builder.build(simple_module)
+    # Verify runtime functions are defined (not just referenced)
+    assert "function createState(" in bundle.code
+    assert "function navigate(" in bundle.code
 
-        # Module with imports
-        (import_module,) = Jac.jac_import(
-            "client_app_with_relative_import", str(fixtures_dir)
-        )
-        import_bundle = builder.build(import_module)
+    # Verify that createState is actually callable (definition before usage)
+    create_state_def_pos = bundle.code.find("function createState(")
+    create_state_usage_pos = bundle.code.find("createState(")
+    assert create_state_def_pos < create_state_usage_pos, (
+        "createState must be defined before it's used"
+    )
 
-        # Bundle with imports should be larger (includes additional modules)
-        self.assertGreater(
-            len(import_bundle.code),
-            len(simple_bundle.code),
-            "Bundle with imports should be larger than simple bundle",
-        )
 
-        # But not unreasonably large (should be less than 10x)
-        self.assertLess(
-            len(import_bundle.code),
-            len(simple_bundle.code) * 10,
-            "Bundle should not be unreasonably large",
-        )
+def test_bundle_size_reasonable():
+    """Test that bundles with imports are reasonably sized."""
+    fixtures_dir = Path(__file__).parent / "fixtures"
 
-    def test_import_path_conversion(self) -> None:
-        """Test that Jac-style import paths are converted to JS paths."""
-        from jaclang.utils import convert_to_js_import_path
+    # Simple module without imports
+    (simple_module,) = Jac.jac_import("client_app", str(fixtures_dir))
+    builder = Jac.get_client_bundle_builder()
+    simple_bundle = builder.build(simple_module)
 
-        # Test single dot (current directory)
-        self.assertEqual(convert_to_js_import_path(".module"), "./module.js")
+    # Module with imports
+    (import_module,) = Jac.jac_import(
+        "client_app_with_relative_import", str(fixtures_dir)
+    )
+    import_bundle = builder.build(import_module)
 
-        # Test double dot (parent directory)
-        self.assertEqual(convert_to_js_import_path("..module"), "../module.js")
+    # Bundle with imports should be larger (includes additional modules)
+    assert len(import_bundle.code) > len(simple_bundle.code), (
+        "Bundle with imports should be larger than simple bundle"
+    )
 
-        # Test triple dot (grandparent directory)
-        self.assertEqual(convert_to_js_import_path("...module"), "../../module.js")
+    # But not unreasonably large (should be less than 10x)
+    assert len(import_bundle.code) < len(simple_bundle.code) * 10, (
+        "Bundle should not be unreasonably large"
+    )
 
-        # Test absolute import (no dots)
-        self.assertEqual(convert_to_js_import_path("module"), "module")
 
-    def test_cl_block_functions_exported(self) -> None:
-        """Test that functions inside cl blocks are properly exported."""
-        fixtures_dir = Path(__file__).parent / "fixtures"
-        (module,) = Jac.jac_import("client_ui_components", str(fixtures_dir))
+def test_import_path_conversion():
+    """Test that Jac-style import paths are converted to JS paths."""
+    from jaclang.utils import convert_to_js_import_path
 
-        builder = Jac.get_client_bundle_builder()
-        bundle = builder.build(module)
+    # Test single dot (current directory)
+    assert convert_to_js_import_path(".module") == "./module.js"
 
-        # Functions defined inside cl block should be in client_functions
-        self.assertIn("Button", bundle.client_functions)
-        self.assertIn("Card", bundle.client_functions)
-        self.assertIn("handleClick", bundle.client_functions)
+    # Test double dot (parent directory)
+    assert convert_to_js_import_path("..module") == "../module.js"
 
-        # Check that functions are actually defined in the bundle
-        self.assertIn("function Button(", bundle.code)
-        self.assertIn("function Card(", bundle.code)
-        self.assertIn("function handleClick(", bundle.code)
+    # Test triple dot (grandparent directory)
+    assert convert_to_js_import_path("...module") == "../../module.js"
 
-    def test_bundle_caching_with_imports(self) -> None:
-        """Test that bundle caching works correctly with imports."""
-        fixtures_dir = Path(__file__).parent / "fixtures"
-        (module,) = Jac.jac_import("client_app_with_relative_import", str(fixtures_dir))
+    # Test absolute import (no dots)
+    assert convert_to_js_import_path("module") == "module"
 
-        builder = Jac.get_client_bundle_builder()
 
-        # Build bundle first time
-        bundle1 = builder.build(module)
+def test_cl_block_functions_exported():
+    """Test that functions inside cl blocks are properly exported."""
+    fixtures_dir = Path(__file__).parent / "fixtures"
+    (module,) = Jac.jac_import("client_ui_components", str(fixtures_dir))
 
-        # Build bundle second time (should use cache)
-        bundle2 = builder.build(module)
+    builder = Jac.get_client_bundle_builder()
+    bundle = builder.build(module)
 
-        # Should be identical
-        self.assertEqual(bundle1.hash, bundle2.hash)
-        self.assertEqual(bundle1.code, bundle2.code)
-        self.assertEqual(bundle1.client_functions, bundle2.client_functions)
+    # Functions defined inside cl block should be in client_functions
+    assert "Button" in bundle.client_functions
+    assert "Card" in bundle.client_functions
+    assert "handleClick" in bundle.client_functions
 
-        # Force rebuild
-        bundle3 = builder.build(module, force=True)
+    # Check that functions are actually defined in the bundle
+    assert "function Button(" in bundle.code
+    assert "function Card(" in bundle.code
+    assert "function handleClick(" in bundle.code
 
-        # Should still be identical
-        self.assertEqual(bundle1.hash, bundle3.hash)
-        self.assertEqual(bundle1.code, bundle3.code)
+
+def test_bundle_caching_with_imports():
+    """Test that bundle caching works correctly with imports."""
+    fixtures_dir = Path(__file__).parent / "fixtures"
+    (module,) = Jac.jac_import("client_app_with_relative_import", str(fixtures_dir))
+
+    builder = Jac.get_client_bundle_builder()
+
+    # Build bundle first time
+    bundle1 = builder.build(module)
+
+    # Build bundle second time (should use cache)
+    bundle2 = builder.build(module)
+
+    # Should be identical
+    assert bundle1.hash == bundle2.hash
+    assert bundle1.code == bundle2.code
+    assert bundle1.client_functions == bundle2.client_functions
+
+    # Force rebuild
+    bundle3 = builder.build(module, force=True)
+
+    # Should still be identical
+    assert bundle1.hash == bundle3.hash
+    assert bundle1.code == bundle3.code

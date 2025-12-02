@@ -9,6 +9,7 @@ def python_add(a, b):
     return a + b
 ::py::
 
+
 with entry {
     print("=== 1. Basic Python Block ===");
     print(python_hello());
@@ -38,6 +39,7 @@ obj DataProcessor {
             "min": min(self.data)
         }
     ::py::
+
 }
 
 with entry {
@@ -62,6 +64,7 @@ def python_process_dict(jac_dict):
     """Process Jac dictionaries in Python."""
     return {k: v * 2 for k, v in jac_dict.items()}
 ::py::
+
 
 with entry {
     print("\n=== 3. Python Processing Jac Data ===");
@@ -93,6 +96,7 @@ def math_operations(x):
     }
 ::py::
 
+
 with entry {
     print("\n=== 4. Python Libraries ===");
 
@@ -123,6 +127,7 @@ node MathNode {
         }
         return self.computed
     ::py::
+
 }
 
 with entry {
@@ -148,6 +153,7 @@ obj Counter {
         """Reset counter."""
         self.count = 0
     ::py::
+
 }
 
 with entry {
@@ -189,6 +195,7 @@ obj Calculator {
             "count": len(self.history)
         }
     ::py::
+
 }
 
 with entry {

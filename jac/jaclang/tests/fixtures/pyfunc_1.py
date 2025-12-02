@@ -141,7 +141,7 @@ for i in range(a):
         break
     print(b)
 else:
-    print("Loop completed normally{}".format(i))
+    print(f"Loop completed normally{i}")
 
 numbers = [1, 2, 3, 4, 5]
 squares = [x**2 for x in numbers]
@@ -250,7 +250,7 @@ greet2(name="Alice", age=30)
 
 name = "Alice"
 age = 30
-print("Name: {}, Age: {}".format(name, age))
+print(f"Name: {name}, Age: {age}")
 
 
 x = True

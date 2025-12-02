@@ -20,12 +20,12 @@ class Banana(mm[1]) {
     }
 }
 
-def return_class() -> `Type[Apple] {
+def return_class()  -> `Type[Apple] {
     print('Returning Apple');
     return Apple;
 }
 
-class Kiwi (return_class()) {
+class Kiwi(return_class()) {
     with entry {
         d = 4;
         ;

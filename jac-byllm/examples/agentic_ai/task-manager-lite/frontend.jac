@@ -3,9 +3,7 @@ import requests;
 
 def bootstrap_frontend(token: str) {
     st.set_page_config(
-        page_title="Task Manager Lite - AI Assistant",
-        page_icon="📋",
-        layout="wide"
+        page_title="Task Manager Lite - AI Assistant", page_icon="📋", layout="wide"
     );
 
     st.title("📋 Task Manager Lite - AI Assistant");
@@ -31,7 +29,6 @@ def bootstrap_frontend(token: str) {
         if st.button("📝 Summarize tasks") {
             st.session_state.user_input = "Summarize all my tasks";
         }
-
         st.markdown("**📧 Email Writing**");
         if st.button("✉️ Write a meeting email") {
             st.session_state.user_input = "Write an email to schedule a meeting with my team for next Friday";
@@ -39,7 +36,6 @@ def bootstrap_frontend(token: str) {
         if st.button("📬 Write follow-up email") {
             st.session_state.user_input = "Write a follow-up email for the project update";
         }
-
         st.markdown("**💬 General Chat**");
         if st.button("🤔 Ask a question") {
             st.session_state.user_input = "What are the best practices for time management?";
@@ -80,15 +76,12 @@ def bootstrap_frontend(token: str) {
                 if response.status_code == 200 {
                     result = response.json();
                     task_result = result.get("reports", [{}])[0];
-
                     # Add to results history
                     st.session_state.task_results.insert(0, task_result);
-
                     # Keep only last 10 results
                     if len(st.session_state.task_results) > 10 {
                         st.session_state.task_results = st.session_state.task_results[:10];
                     }
-
                     st.session_state.loading = False;
                     st.success("✅ Request processed successfully!");
                     st.rerun();
@@ -110,7 +103,6 @@ def bootstrap_frontend(token: str) {
     if st.session_state.task_results {
         st.markdown("---");
         st.markdown("## 📊 Recent Activity");
-
         i = 0;
         for result in st.session_state.task_results {
             # Determine node type icon and color
@@ -131,14 +123,12 @@ def bootstrap_frontend(token: str) {
                 color = "gray";
             }
 
-            with st.expander(f"{icon} {node_type} - Request {i+1}") {
+            with st.expander(f"{icon} {node_type} - Request {i + 1}") {
                 # Request details
                 st.markdown(f"**🔀 Routed to:** `{routed_to}`");
-
                 # User input
                 st.markdown("**👤 Your Request:**");
                 st.info(result.get("utterance", "No input recorded"));
-
                 # AI response
                 st.markdown("**🤖 AI Response:**");
                 response_text = result.get("response", "No response recorded");
@@ -153,15 +143,15 @@ def bootstrap_frontend(token: str) {
                 } else {
                     st.warning("No response available");
                 }
-
                 # Copy response button
-                if st.button(f"📋 Copy Response {i+1}") {
-                    st.write("📋 Response copied to clipboard! (Use Ctrl+C to copy manually)");
+                if st.button(f"📋 Copy Response {i + 1}") {
+                    st.write(
+                        "📋 Response copied to clipboard! (Use Ctrl+C to copy manually)"
+                    );
                 }
             }
             i += 1;
         }
-
         # Clear history button
         if st.button("🗑️ Clear History") {
             st.session_state.task_results = [];
@@ -173,9 +163,10 @@ def bootstrap_frontend(token: str) {
     # Footer
     st.markdown("---");
     st.markdown("**🤖 Powered by Task Manager Lite AI Assistant**");
-    st.markdown("✨ Features: 📋 Task management • 📧 Email writing • 💬 Smart chat • 🔀 Intelligent routing");
+    st.markdown(
+        "✨ Features: 📋 Task management • 📧 Email writing • 💬 Smart chat • 🔀 Intelligent routing"
+    );
 }
-
 
 with entry {
     INSTANCE_URL = "http://localhost:8000";
@@ -191,13 +182,9 @@ with entry {
         # Try registering the user if login fails
         response = requests.post(
             f"{INSTANCE_URL}/user/register",
-            json={
-                "email": TEST_USER_EMAIL,
-                "password": TEST_USER_PASSWORD
-            }
+            json={"email": TEST_USER_EMAIL, "password": TEST_USER_PASSWORD}
         );
         assert response.status_code == 201;
-
         response = requests.post(
             f"{INSTANCE_URL}/user/login",
             json={"email": TEST_USER_EMAIL, "password": TEST_USER_PASSWORD}

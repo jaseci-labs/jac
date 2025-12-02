@@ -14,7 +14,7 @@ node turn {
 }
 
 # Will run when in CLI mode (not in cloud)
- with entry:__main__ {
+with entry:__main__ {
     root spawn GuessGame(3);
     root spawn GuessGame(4);
     root spawn GuessGame(5);

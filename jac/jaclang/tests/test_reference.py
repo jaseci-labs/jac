@@ -1,122 +1,103 @@
 """Test Jac reference examples."""
 
+from __future__ import annotations
+
+import ast
 import io
 import os
-from contextlib import redirect_stdout
+import re
 import sys
-from typing import Callable, Optional
+from contextlib import redirect_stdout
 from types import CodeType
+
+import pytest
 
 import jaclang
 from jaclang.compiler.program import JacProgram
-from jaclang.runtimelib.machine import JacMachine as Jac
-from jaclang.utils.test import TestCase
+from jaclang.runtimelib.runtime import JacRuntime as Jac
 
 
-class JacReferenceTests(TestCase):
-    """Test Reference examples."""
+def get_reference_jac_files() -> list[str]:
+    """Get all .jac files from examples/reference directory."""
+    files = []
+    ref_dir = os.path.join(
+        os.path.dirname(os.path.dirname(jaclang.__file__)),
+        "examples/reference",
+    )
+    for root, _, filenames in os.walk(ref_dir):
+        for name in filenames:
+            if name.endswith(".jac") and not name.startswith("err"):
+                files.append(os.path.normpath(os.path.join(root, name)))
+    return files
 
-    test_ref_jac_files_fully_tested: Optional[Callable[[TestCase], None]] = None
-    methods: list[str] = []
 
-    @classmethod
-    def self_attach_ref_tests(cls) -> None:
-        """Attach micro tests."""
-        for filename in [
-            os.path.normpath(os.path.join(root, name))
-            for root, _, files in os.walk(
-                os.path.join(
-                    os.path.dirname(os.path.dirname(jaclang.__file__)),
-                    "examples/reference",
-                )
-            )
-            for name in files
-            if name.endswith(".jac") and not name.startswith("err")
-        ]:
-            method_name = (
-                f"test_ref_{filename.replace('.jac', '').replace(os.sep, '_')}"
-            )
-            cls.methods.append(method_name)
-            setattr(cls, method_name, lambda self, f=filename: self.micro_suite_test(f))
+def execute_and_capture_output(code: str | bytes | CodeType, filename: str = "") -> str:
+    """Execute code and capture stdout."""
+    f = io.StringIO()
+    with redirect_stdout(f):
+        exec(
+            code,
+            {
+                "__file__": filename,
+                "__name__": "__main__",
+            },
+        )
+    return f.getvalue()
 
-        def test_ref_jac_files_fully_tested(self: TestCase) -> None:  # noqa: ANN001
-            """Test that all micro jac files are fully tested."""
-            for filename in cls.methods:
-                if os.path.isfile(filename):
-                    method_name = (
-                        f"test_ref_{filename.replace('.jac', '').replace(os.sep, '_')}"
-                    )
-                    self.assertIn(method_name, dir(self))
 
-        cls.test_ref_jac_files_fully_tested = test_ref_jac_files_fully_tested
+def normalize_function_addresses(text: str) -> str:
+    """Normalize function memory addresses in output for consistent comparison."""
+    return re.sub(r"<function (\w+) at 0x[0-9a-f]+>", r"<function \1 at 0x...>", text)
 
-    def micro_suite_test(self, filename: str) -> None:
-        """Test file."""
-        # Reset machine at the start of each test to ensure clean state
+
+@pytest.fixture(autouse=True)
+def reset_jac_runtime():
+    """Reset Jac runtime before and after each test."""
+    Jac.reset_machine()
+    yield
+    Jac.reset_machine()
+
+
+@pytest.mark.parametrize("filename", get_reference_jac_files())
+def test_reference_file(filename: str) -> None:
+    """Test reference .jac file against its .py equivalent."""
+    if "tests.jac" in filename or "check_statements.jac" in filename:
+        pytest.skip("Skipping test file")
+
+    try:
+        jacast = JacProgram().compile(filename)
+        py_ast = jacast.gen.py_ast[0]
+        assert isinstance(py_ast, ast.Module)
+        code_obj = compile(
+            source=py_ast,
+            filename=jacast.loc.mod_path,
+            mode="exec",
+        )
+        output_jac = execute_and_capture_output(code_obj, filename=filename)
         Jac.reset_machine()
 
-        def execute_and_capture_output(
-            code: str | bytes | CodeType, filename: str = ""
-        ) -> str:
-            f = io.StringIO()
-            with redirect_stdout(f):
-                exec(
-                    code,
-                    {
-                        "__file__": filename,
-                        "__name__": "__main__",
-                    },
-                )
-            return f.getvalue()
+        # Clear byllm modules from cache
+        sys.modules.pop("byllm", None)
+        sys.modules.pop("byllm.lib", None)
 
-        def normalize_function_addresses(text: str) -> str:
-            """Normalize function memory addresses in output for consistent comparison."""
-            import re
+        py_filename = filename.replace(".jac", ".py")
+        with open(py_filename) as file:
+            code_content = file.read()
+        output_py = execute_and_capture_output(code_content, filename=py_filename)
 
-            # Replace <function Name at 0xADDRESS> with <function Name at 0x...>
-            return re.sub(
-                r"<function (\w+) at 0x[0-9a-f]+>", r"<function \1 at 0x...>", text
-            )
+        # Normalize function addresses before comparison
+        output_jac = normalize_function_addresses(output_jac)
+        output_py = normalize_function_addresses(output_py)
 
-        try:
-            if "tests.jac" in filename or "check_statements.jac" in filename:
-                return
-            jacast = JacProgram().compile(filename)
-            code_obj = compile(
-                source=jacast.gen.py_ast[0],
-                filename=jacast.loc.mod_path,
-                mode="exec",
-            )
-            output_jac = execute_and_capture_output(code_obj, filename=filename)
-            Jac.reset_machine()
-            # Clear byllm modules from cache to ensure consistent behavior between JAC and Python runs
-            # when byllm is used
-            sys.modules.pop("byllm", None)
-            sys.modules.pop("byllm.lib", None)
-            filename = filename.replace(".jac", ".py")
-            with open(filename, "r") as file:
-                code_content = file.read()
-            output_py = execute_and_capture_output(code_content, filename=filename)
+        print(f"\nJAC Output:\n{output_jac}")
+        print(f"\nPython Output:\n{output_py}")
 
-            # Normalize function addresses before comparison
-            output_jac = normalize_function_addresses(output_jac)
-            output_py = normalize_function_addresses(output_py)
+        assert len(output_py) > 0
+        for i in output_py.split("\n"):
+            assert i in output_jac
+        for i in output_jac.split("\n"):
+            assert i in output_py
+        assert len(output_jac.split("\n")) == len(output_py.split("\n"))
 
-            print(f"\nJAC Output:\n{output_jac}")
-            print(f"\nPython Output:\n{output_py}")
-
-            self.assertGreater(len(output_py), 0)
-            # doing like below for concurrent_expressions.jac and other current tests
-            for i in output_py.split("\n"):
-                self.assertIn(i, output_jac)
-            for i in output_jac.split("\n"):
-                self.assertIn(i, output_py)
-            self.assertEqual(len(output_jac.split("\n")), len(output_py.split("\n")))
-            # self.assertEqual(output_py, output_jac)
-        except Exception as e:
-            # print(f"\nJAC Output:\n{output_jac}")
-            # print(f"\nPython Output:\n{output_py}")
-            raise e
-
-
-JacReferenceTests.self_attach_ref_tests()
+    except Exception as e:
+        raise e

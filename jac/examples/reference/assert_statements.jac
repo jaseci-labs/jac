@@ -1,5 +1,4 @@
 # Assert Statements
-
 with entry {
     # Basic assert
     assert True;
@@ -11,7 +10,7 @@ with entry {
     print("x > 5");
 
     # Assert with message
-    assert x < 100, "x must be less than 100";
+    assert x < 100 , "x must be less than 100";
     print("x < 100");
 
     # Assert that fails
@@ -23,7 +22,7 @@ with entry {
 
     # Assert with message that fails
     try {
-        assert 1 > 2, "1 is not greater than 2";
+        assert 1 > 2 , "1 is not greater than 2";
     } except AssertionError as e {
         print(f"assertion failed: {e}");
     }

@@ -3,9 +3,7 @@ import requests;
 
 def bootstrap_frontend(token: str) {
     st.set_page_config(
-        page_title="Genius Lite - AI Coding Assistant",
-        page_icon="💻",
-        layout="wide"
+        page_title="Genius Lite - AI Coding Assistant", page_icon="💻", layout="wide"
     );
 
     st.title("🚀 Genius Lite - AI Coding Assistant");
@@ -72,7 +70,9 @@ def bootstrap_frontend(token: str) {
                     st.session_state.loading = False;
                 }
             } except requests.exceptions.Timeout {
-                st.error("⏰ Request timed out. Please try again with a simpler request.");
+                st.error(
+                    "⏰ Request timed out. Please try again with a simpler request."
+                );
                 st.session_state.loading = False;
             } except Exception as e {
                 st.error(f"❌ Error: {str(e)}");
@@ -84,20 +84,16 @@ def bootstrap_frontend(token: str) {
     # Display results
     if st.session_state.results {
         results = st.session_state.results;
-
         st.markdown("---");
         st.markdown("## 🎯 Generated Code Results");
-
         if "total_tasks" in results {
             st.info(f"📋 Completed {results['total_tasks']} tasks");
         }
-
         if "tasks" in results and results["tasks"] {
             i = 1;
             for task in results["tasks"] {
                 task_name = task.get('name', 'Unnamed Task');
                 with st.expander(f"📝 Task {i}: {task_name}") {
-
                     # Task status
                     status = task.get("status", "unknown");
                     if status == "success" {
@@ -105,18 +101,17 @@ def bootstrap_frontend(token: str) {
                     } else {
                         st.error("❌ Failed");
                     }
-
                     # Generated code
                     if task.get("code") {
                         st.markdown("**🔧 Generated Code:**");
                         st.code(task["code"]);
-
                         # Copy button
                         if st.button(f"📋 Copy Code {i}") {
-                            st.write("📋 Code copied to clipboard! (Use Ctrl+C to copy manually)");
+                            st.write(
+                                "📋 Code copied to clipboard! (Use Ctrl+C to copy manually)"
+                            );
                         }
                     }
-
                     # Feedback
                     if task.get("feedback") {
                         st.markdown("**💬 AI Feedback:**");
@@ -126,7 +121,6 @@ def bootstrap_frontend(token: str) {
                 i += 1;
             }
         }
-
         # Clear results button
         if st.button("🗑️ Clear Results") {
             st.session_state.results = None;
@@ -140,7 +134,6 @@ def bootstrap_frontend(token: str) {
     st.markdown("**🤖 Powered by Genius Lite AI Assistant**");
     st.markdown("✨ Features: 📋 Task planning • 🔧 Code generation • ✅ Validation");
 }
-
 
 with entry {
     INSTANCE_URL = "http://localhost:8000";
@@ -156,13 +149,9 @@ with entry {
         # Try registering the user if login fails
         response = requests.post(
             f"{INSTANCE_URL}/user/register",
-            json={
-                "email": TEST_USER_EMAIL,
-                "password": TEST_USER_PASSWORD
-            }
+            json={"email": TEST_USER_EMAIL, "password": TEST_USER_PASSWORD}
         );
         assert response.status_code == 201;
-
         response = requests.post(
             f"{INSTANCE_URL}/user/login",
             json={"email": TEST_USER_EMAIL, "password": TEST_USER_PASSWORD}

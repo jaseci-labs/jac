@@ -1,11 +1,10 @@
-
 obj Foo {
-    def compile() -> None {
+    def compile()  -> None {
         return None;
     }
 }
 
-obj Bar (Foo) {
+obj Bar(Foo) {
     def some() {
         self.compile();  # <-- Ok: should resolve to Foo.compile()
     }
@@ -14,5 +13,5 @@ obj Bar (Foo) {
 with entry {
     b = Bar();
     b.compile();  # <-- Ok
-    b.some();     # <-- Ok
+    b.some();  # <-- Ok
 }

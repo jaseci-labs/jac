@@ -19,6 +19,7 @@ glob SYSTEM_PERSONA = """\
     Do not include explanations, code, or extra text—only the result.
     """;  # noqa E501
 
+
 glob INSTRUCTION_TOOL = """
     Use the tools provided to reach the goal. Call one tool at a time with \
     proper args—no explanations, no narration. Think step by step, invoking tools \
@@ -26,22 +27,20 @@ glob INSTRUCTION_TOOL = """
     output. Only use tools.
     """;  # noqa E501
 
+
 """A class representing the MTIR for JacLang."""
 obj MTIR {
-
-        has messages:list[MessageType];
-        has resp_type: type | None ;
-        has stream: bool;
-        has tools: list[Tool];
-        has call_params: dict[str, object];
+    has messages: list[MessageType];
+    has resp_type: type | None;
+    has stream: bool;
+    has tools: list[Tool];
+    has call_params: dict[str, object];
 
     # FIXME: Comeup with a better name
-
     """Create an MTIR instance."""
-    static
-    def factory(
+    static def factory(
         caller: Callable, args: dict[int | str, object], call_params: dict[str, object]
-    ) -> MTIR{
+    ) -> MTIR {
         # Prepare the tools for the LLM call.
         tools = [Tool(func) for func in call_params.get("tools", [])];  # type: ignore
 
@@ -50,35 +49,35 @@ obj MTIR {
         inputs_detail: list[str] = [];
         media_inputs: list[Media] = [];
 
-        for (key, value) in args.items(){
-            if isinstance(value, Media){
+        for (key, value) in args.items() {
+            if isinstance(value, Media) {
                 media_inputs.append(value);
                 continue;
             }
 
-            if isinstance(key, str){
+            if isinstance(key, str) {
                 inputs_detail.append(f"{key} = {value}");
-            }else{
+            } else {
                 # TODO: Handle *args, **kwargs properly.
-                if key < len(param_names){
+                if key < len(param_names) {
                     inputs_detail.append(f"{param_names[key]} = {value}");
-                }else{
+                } else {
                     inputs_detail.append(f"arg = {value}");
                 }
             }
         }
         incl_info = call_params.get("incl_info");
-        if incl_info and isinstance(incl_info, dict){
-            for (key, value) in incl_info.items(){
-                if isinstance(value, Media){
+        if incl_info and isinstance(incl_info, dict) {
+            for (key, value) in incl_info.items() {
+                if isinstance(value, Media) {
                     media_inputs.append(value);
-                }else{
+                } else {
                     inputs_detail.append(f"{key} = {value}");
                 }
             }
         }
 
-        if isinstance(caller, MethodType){
+        if isinstance(caller, MethodType) {
             inputs_detail.insert(0, f"self = {caller.__self__}");
         }
 
@@ -92,42 +91,28 @@ obj MTIR {
                 role=MessageRole.USER,
                 content=[
                     Text(
-                        Tool.get_func_description(caller)
-                        + "\n\n"
-                        + "\n".join(inputs_detail)
+                        Tool.get_func_description(caller) + "\n\n" + "\n".join(
+                            inputs_detail
+                        )
                     ),
                     *media_inputs,
+
                 ],
             ),
+
         ];
 
         # Prepare return type.
         return_type = get_type_hints(caller).get("return");
         is_streaming = bool(call_params.get("stream", False));
 
-        if is_streaming{
-            if return_type is not str{
-                raise RuntimeError(
-                    "Streaming responses are only supported for str return types."
-                );
-            }
-            if tools{
-                raise RuntimeError(
-                    "Streaming responses are not supported with tool calls yet."
-                );
-            }
-        }
-
-        # TODO: Support mockllm for mocktesting.
-        # Invoke streaming request, this will result in a generator that the caller
-        # should either do .next() or .__iter__() by calling `for tok in resp: ...`
-        if is_streaming and tools{
+        if is_streaming and return_type is not str {
             raise RuntimeError(
-                "Streaming responses are not supported with tool calls yet."
-            );
+                "Streaming responses are only supported for str return types."
+            ) ;
         }
 
-        if len(tools) > 0{
+        if len(tools) > 0 {
             finish_tool = Tool.make_finish_tool(return_type or str);
             tools.append(finish_tool);
         }
@@ -142,7 +127,7 @@ obj MTIR {
     }
 
     """Dispatch the parameters for the MTIR."""
-    def dispatch_params() -> dict[str, object]{
+    def dispatch_params()  -> dict[str, object] {
         params = {
             "messages": self.get_msg_list(),
             "tools": self.get_tool_list() or None,
@@ -156,27 +141,27 @@ obj MTIR {
     }
 
     """Add a message to the request."""
-    def add_message(message: MessageType) -> None{
+    def add_message(message: MessageType) -> None {
         self.messages.append(message);
     }
 
     """Return the messages in a format suitable for LLM API."""
-    def get_msg_list() -> list[dict[str, object] | LiteLLMMessage]{
+    def get_msg_list()  -> list[dict[str, object] | LiteLLMMessage] {
         return [
             msg.to_dict() if isinstance(msg, Message) else msg for msg in self.messages
         ];
     }
 
     """Parse the response from the LLM."""
-    def parse_response(response: str) -> object{
+    def parse_response(response: str) -> object {
         # To use validate_json the string should contains quotes.
         #     example: '"The weather at New York is sunny."'
         # but the response from LLM will not have quotes, so
         # we need to check if it's string and return early.
-        if self.resp_type is None or self.resp_type is str or response.strip() == ""{
+        if self.resp_type is None or self.resp_type is str or response.strip() == "" {
             return response;
         }
-        if self.resp_type{
+        if self.resp_type {
             json_dict = json.loads(response);
             return json_to_instance(json_dict, self.resp_type);
         }
@@ -184,9 +169,9 @@ obj MTIR {
     }
 
     """Get a tool by its name."""
-    def get_tool(tool_name: str) -> Tool | None{
-        for tool in self.tools{
-            if tool.func.__name__ == tool_name{
+    def get_tool(tool_name: str) -> Tool | None {
+        for tool in self.tools {
+            if tool.func.__name__ == tool_name {
                 return tool;
             }
         }
@@ -194,18 +179,17 @@ obj MTIR {
     }
 
     """Return the tools in a format suitable for LLM API."""
-    def get_tool_list() -> list[dict]{
+    def get_tool_list()  -> list[dict] {
         return [tool.get_json_schema() for tool in self.tools];
     }
 
     """Return the JSON schema for the response type."""
-    def get_output_schema() -> dict | None{
-        assert (
-            len(self.tools) == 0 or self.get_tool("finish_tool") is not None
-        ); #Finish tool should be present in the tools list.
-        if len(self.tools) == 0 and self.resp_type{
-            if self.resp_type is str{
+    def get_output_schema()  -> dict | None {
+        assert (len(self.tools) == 0 or self.get_tool("finish_tool") is not None);  #Finish tool should be present in the tools list.
+        if len(self.tools) == 0 and self.resp_type {
+            if self.resp_type is str {
                 return None;  # Strings are default and not using a schema.
+
             }
             return type_to_schema(self.resp_type);
         }
@@ -213,6 +197,4 @@ obj MTIR {
         # thus there is no output schema.
         return None;
     }
-
-
 }

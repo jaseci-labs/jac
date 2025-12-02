@@ -1,59 +1,60 @@
 # Pages
-cl import from react {useState, useEffect}
+cl import from react { useState, useEffect }
 cl import ".styles.scss";
 
 cl {
-    def app() -> any {
+    def app()  -> any {
         let [count, setCount] = useState(0);
 
-        useEffect(lambda -> None {
-            console.log("Count changed: ", count);
-        }, [count]);
+        useEffect(lambda   -> None{ console.log("Count changed: ", count);} , [count]);
 
-        let handleIncrement = lambda e: any -> None {
-            setCount(count + 1);
-        };
+        let handleIncrement = lambda  e: any  -> None{ setCount(count + 1);} ;
 
-        let handleDecrement = lambda e: any -> None {
-            setCount(count - 1);
-        };
+        let handleDecrement = lambda  e: any  -> None{ setCount(count - 1);} ;
 
-        let handleReset = lambda e: any -> None {
-            setCount(0);
-        };
+        let handleReset = lambda  e: any  -> None{ setCount(0);} ;
 
-        let countClass = "countDisplay " + ("positive" if count > 0 else "negative" if count < 0 else "zero");
+        let countClass = "countDisplay " + (
+            "positive" if count > 0 else "negative" if count < 0 else "zero"
+        );
 
         return <div className="container">
             <div className="card">
-                <h1 className="title">Counter Application</h1>
+                <h1 className="title">
+                    Counter Application
+                </h1>
                 <div className="divider"></div>
-
                 <div className="counterSection">
-                    <div className="label">Current Count</div>
-                    <div className={countClass}>{count}</div>
+                    <div className="label">
+                        Current Count
+                    </div>
+                    <div
+                        className={countClass}
+                    >
+                        {count}
+                    </div>
                 </div>
-
                 <div className="divider"></div>
-
                 <div className="buttonGroup">
                     <button
                         className="btn btnDecrement"
-                        onClick={handleDecrement}>
+                        onClick={handleDecrement}
+                    >
                         -
                     </button>
                     <button
                         className="btn btnReset"
-                        onClick={handleReset}>
+                        onClick={handleReset}
+                    >
                         ↻
                     </button>
                     <button
                         className="btn btnIncrement"
-                        onClick={handleIncrement}>
+                        onClick={handleIncrement}
+                    >
                         +
                     </button>
                 </div>
-
                 <div className="hint">
                     Click the buttons to increment, decrement, or reset the counter
                 </div>

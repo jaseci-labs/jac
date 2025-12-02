@@ -9,33 +9,44 @@ class ClassicAnimal {
         self.name = name;
     }
 
-    def describe(self: ClassicAnimal) { print(f"{self.name} is a {self.age} year old {self.species}"); }
+    def describe(self: ClassicAnimal) {
+        print(f"{self.name} is a {self.age} year old {self.species}");
+    }
 }
 
 # Object archetype with has declarations (implicit self in methods)
 obj Animal {
     has species: str = "Unknown";
     has age: int = 0;
-    def make_sound { print(f"{self.species} makes a sound"); }
+
+    def make_sound {
+        print(f"{self.species} makes a sound");
+    }
 }
 
 # Object archetype (implicit self in methods)
 obj Domesticated {
     has owner: str = "None";
     has trained: bool = False;
+
     def train {  # No self parameter - it's implicit in obj
         self.trained = True;
         print(f"Training {self.owner}'s pet");
     }
 }
 
-obj Mammal { has warm_blooded: bool = True; }
+obj Mammal {
+    has warm_blooded: bool = True;
+}
 
 # Node with multiple inheritance
-node Pet(Animal, Domesticated, Mammal) {
+node Pet(Animal , Domesticated , Mammal) {
     has name: str = "Unnamed";
     has favorite_toy: str = "ball";
-    def play { print(f"{self.name} plays with {self.favorite_toy}"); }
+
+    def play {
+        print(f"{self.name} plays with {self.favorite_toy}");
+    }
 
     can greet_person with Person entry {
         print(f"  {self.name} wags tail at {visitor.name}");
@@ -43,9 +54,10 @@ node Pet(Animal, Domesticated, Mammal) {
 }
 
 # Edge with public access modifier and method
-edge :pub Relationship {
+edge : pub Relationship {
     has strength: int = 5;
     has since: int = 2020;
+
     def strengthen {
         self.strength += 1;
         print(f"Relationship strengthened to {self.strength}");
@@ -55,6 +67,7 @@ edge :pub Relationship {
 # Edge with walker ability
 edge Ownership {
     has duration_years: int = 0;
+
     can track with OwnershipWalker entry {
         print(f"  Edge: Ownership duration = {self.duration_years} years");
         self.duration_years += 1;
@@ -65,10 +78,12 @@ edge Ownership {
 walker Person(Animal) {
     has name: str = "Person";
     has visited_count: int = 0;
+
     can greet with `root entry {
         print(f"{self.name}: Starting walk from root");
         visit [-->];
     }
+
     can visit_pet with Pet entry {
         self.visited_count += 1;
         print(f"{self.name} visits {here.name}");
@@ -78,6 +93,7 @@ walker Person(Animal) {
 
 walker Caretaker(Person) {
     has care_quality: int = 10;
+
     can care_for with Pet entry {
         print(f"{self.name} cares for {here.name} (quality: {self.care_quality})");
         visit [-->];
@@ -86,6 +102,7 @@ walker Caretaker(Person) {
 
 walker Veterinarian(Caretaker) {
     has specialty: str = "general";
+
     can examine with Pet entry {
         print(f"Dr. {self.name} ({self.specialty}) examines {here.name}");
         visit [-->];
@@ -95,10 +112,12 @@ walker Veterinarian(Caretaker) {
 # Async walker
 async walker AsyncInspector {
     has inspected: list = [];
+
     async can inspect with `root entry {
         print("AsyncInspector: starting");
         visit [-->];
     }
+
     async can check with Pet entry {
         self.inspected.append(here.name);
         print(f"  Async checking: {here.name}");
@@ -107,9 +126,17 @@ async walker AsyncInspector {
 }
 
 # Access modifiers: private, public, protected
-obj :priv PrivateConfig { has secret_key: str = "hidden"; }
-obj :pub PublicAPI { has version: str = "1.0"; }
-obj :protect ProtectedResource { has resource_id: int = 0; }
+obj : priv PrivateConfig {
+    has secret_key: str = "hidden";
+}
+
+obj : pub PublicAPI {
+    has version: str = "1.0";
+}
+
+obj : protect ProtectedResource {
+    has resource_id: int = 0;
+}
 
 # Forward declarations
 node AnimalNode;
@@ -117,13 +144,15 @@ walker SpecializedWalker;
 edge SpecialEdge;
 
 # Implementation blocks for forward declarations
-impl AnimalNode {
+impl AnimalNode{
     has animal_type: str = "wild";
     has habitat: str = "forest";
-    def describe { print(f"AnimalNode: {self.animal_type} in {self.habitat}"); }
+    def describe {
+        print(f"AnimalNode: {self.animal_type} in {self.habitat}");
+    }
 }
 
-impl SpecializedWalker {
+impl SpecializedWalker{
     has specialization: str = "research";
     can process with AnimalNode entry {
         print(f"SpecializedWalker ({self.specialization}): Processing node");
@@ -131,9 +160,11 @@ impl SpecializedWalker {
     }
 }
 
-impl SpecialEdge {
+impl SpecialEdge{
     has edge_weight: float = 1.0;
-    def get_weight -> float { return self.edge_weight; }
+    def get_weight -> float {
+        return self.edge_weight;
+    }
 }
 
 # Decorators on archetypes
@@ -149,7 +180,9 @@ def track_creation(cls: type) -> type {
 
 @print_bases
 @track_creation
-node DecoratedNode(Pet) { has special_attr: str = "decorated"; }
+node DecoratedNode(Pet) {
+    has special_attr: str = "decorated";
+}
 
 # Walker for edge abilities
 walker OwnershipWalker {
@@ -157,6 +190,7 @@ walker OwnershipWalker {
         print("OwnershipWalker: tracking ownership edges");
         visit [-->];
     }
+
     can visit_node with Pet entry {
         print(f"  At pet: {here.name}");
         visit [edge -->];
@@ -177,11 +211,15 @@ with entry {
     # Demonstrate that obj has variables are instance variables (not class variables)
     animal1 = Animal();
     animal2 = Animal();
-    print(f"Before assignment - animal1.species: {animal1.species}, animal2.species: {animal2.species}");
+    print(
+        f"Before assignment - animal1.species: {animal1.species}, animal2.species: {animal2.species}"
+    );
 
     # Assigning to obj instance variable
     animal1.species = "Dog";
-    print(f"After animal1.species = 'Dog' - animal1.species: {animal1.species}, animal2.species: {animal2.species}");
+    print(
+        f"After animal1.species = 'Dog' - animal1.species: {animal1.species}, animal2.species: {animal2.species}"
+    );
     print("Note: Each obj instance has its own copy of the variable");
     animal1.make_sound();
 
@@ -231,7 +269,9 @@ with entry {
     root spawn OwnershipWalker();
 
     print("\n=== 6. Access Modifiers ===");
-    print(f"Private: {PrivateConfig().secret_key}, Public: {PublicAPI().version}, Protected: {ProtectedResource().resource_id}");
+    print(
+        f"Private: {PrivateConfig().secret_key}, Public: {PublicAPI().version}, Protected: {ProtectedResource().resource_id}"
+    );
 
     print("\n=== 7. Forward Declarations ===");
     animal_node = AnimalNode();

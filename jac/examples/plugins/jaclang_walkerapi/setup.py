@@ -16,7 +16,7 @@ setup(
         "": ["*.ini"],
     },
     entry_points={
-        "jac": ["walkerapi = jaclang_walkerapi.walkerapi:JacMachineInterface"],
+        "jac": ["walkerapi = jaclang_walkerapi.walkerapi:JacRuntime"],
     },
     author="Jason Mars",
     author_email="jason@mars.ninja",
