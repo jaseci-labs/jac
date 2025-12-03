@@ -1,12 +1,12 @@
 # Working with TypeScript in Jac
 
 > **⚠️ Warning: TypeScript as Last Resort**
-> 
+>
 > **Always prefer writing code in Jac when possible.** TypeScript support is provided for cases where you need to:
 > - Integrate existing TypeScript/React component libraries
 > - Reuse complex TypeScript components from other projects
 > - Work with teams that require TypeScript for specific components
-> 
+>
 > For new development, Jac provides all the features you need with better integration and simpler syntax. Only use TypeScript when absolutely necessary.
 
 ---
@@ -198,11 +198,11 @@ interface ButtonProps {
   disabled?: boolean;
 }
 
-export const Button: React.FC<ButtonProps> = ({ 
-  label, 
-  onClick, 
+export const Button: React.FC<ButtonProps> = ({
+  label,
+  onClick,
   variant = 'primary',
-  disabled = false 
+  disabled = false
 }) => {
   const baseStyles: React.CSSProperties = {
     padding: '0.75rem 1.5rem',
@@ -258,13 +258,13 @@ cl {
             <h1>Hello, World!</h1>
             <p>Count: {count}</p>
             <div style={{display: "flex", gap: "1rem", marginTop: "1rem"}}>
-                <Button 
-                    label="Increment" 
+                <Button
+                    label="Increment"
                     onClick={lambda -> None {setCount(count + 1);}}
                     variant="primary"
                 />
-                <Button 
-                    label="Reset" 
+                <Button
+                    label="Reset"
                     onClick={lambda -> None {setCount(0);}}
                     variant="secondary"
                 />

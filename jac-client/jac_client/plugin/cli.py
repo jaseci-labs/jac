@@ -52,11 +52,15 @@ class JacCmd:
             # Ask if TypeScript support is needed
             use_typescript = False
             while True:
-                ts_input = input("Does your project require TypeScript support? (y/n): ").strip().lower()
-                if ts_input in ('y', 'yes'):
+                ts_input = (
+                    input("Does your project require TypeScript support? (y/n): ")
+                    .strip()
+                    .lower()
+                )
+                if ts_input in ("y", "yes"):
                     use_typescript = True
                     break
-                elif ts_input in ('n', 'no'):
+                elif ts_input in ("n", "no"):
                     use_typescript = False
                     break
                 else:
@@ -112,12 +116,14 @@ class JacCmd:
 
                 # Add TypeScript dependencies if requested
                 if use_typescript:
-                    dev_dependencies.update({
-                        "@vitejs/plugin-react": "^4.2.1",
-                        "typescript": "^5.3.3",
-                        "@types/react": "^18.2.45",
-                        "@types/react-dom": "^18.2.18",
-                    })
+                    dev_dependencies.update(
+                        {
+                            "@vitejs/plugin-react": "^4.2.1",
+                            "typescript": "^5.3.3",
+                            "@types/react": "^18.2.45",
+                            "@types/react-dom": "^18.2.18",
+                        }
+                    )
 
                 # Update package.json with Jac-specific configuration
                 package_data.update(
@@ -171,13 +177,13 @@ cl {
             <h1>Hello, World!</h1>
             <p>Count: {count}</p>
             <div style={{display: "flex", gap: "1rem", marginTop: "1rem"}}>
-                <Button 
-                    label="Increment" 
+                <Button
+                    label="Increment"
                     onClick={lambda -> None {setCount(count + 1);}}
                     variant="primary"
                 />
-                <Button 
-                    label="Reset" 
+                <Button
+                    label="Reset"
                     onClick={lambda -> None {setCount(0);}}
                     variant="secondary"
                 />
@@ -336,11 +342,11 @@ interface ButtonProps {
   disabled?: boolean;
 }
 
-export const Button: React.FC<ButtonProps> = ({ 
-  label, 
-  onClick, 
+export const Button: React.FC<ButtonProps> = ({
+  label,
+  onClick,
   variant = 'primary',
-  disabled = false 
+  disabled = false
 }) => {
   const baseStyles: React.CSSProperties = {
     padding: '0.75rem 1.5rem',

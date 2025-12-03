@@ -35,9 +35,7 @@ class BabelProcessor:
                 text=True,
             )
         except subprocess.CalledProcessError as e:
-            raise ClientBundleError(
-                f"Babel compilation failed: {e.stderr}"
-            ) from e
+            raise ClientBundleError(f"Babel compilation failed: {e.stderr}") from e
         except FileNotFoundError:
             raise ClientBundleError(
                 "npm command not found. Ensure Node.js and npm are installed."
@@ -60,4 +58,3 @@ class BabelProcessor:
         asset_processor.copy_assets(compiled_dir, build_dir)
         # Copy TypeScript files so Vite can resolve them
         asset_processor.copy_typescript_files(compiled_dir, build_dir)
-
