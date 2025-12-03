@@ -25,7 +25,7 @@ jac serve app.jac
 This example includes TypeScript support with a `Card` component (`components/Card.tsx`). The TypeScript component is imported and used in the Jac code:
 
 ```jac
-cl import from ".components.Card.tsx" { Card }
+cl import from ".components/Card.tsx" { Card }
 ```
 
 See the TypeScript component in action on the Home page!
