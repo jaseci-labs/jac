@@ -246,7 +246,7 @@ Import and use your TypeScript components in your Jac files:
 ```jac
 # Pages
 cl import from react {useState, useEffect}
-cl import from ".components.Button.tsx" { Button }
+cl import from ".components/Button.tsx" { Button }
 
 cl {
     def app() -> any {
@@ -275,7 +275,7 @@ cl {
 ```
 
 **Import syntax:**
-- Use quotes around the import path: `".components.Button.tsx"`
+- Use quotes around the import path: `".components/Button.tsx"`
 - Include the `.tsx` extension in the import path
 - Import named exports: `{ Button }`
 
@@ -296,7 +296,7 @@ Ensure:
 
 ### Import resolution issues
 
-- Make sure the import path uses quotes: `".components.Button.tsx"`
+- Make sure the import path uses quotes: `".components/Button.tsx"`
 - Verify the file exists in the expected location
 - Check that the path matches the directory structure
 

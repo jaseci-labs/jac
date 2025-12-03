@@ -165,7 +165,7 @@ class JacCmd:
                     main_jac_content = """
 # Pages
 cl import from react {useState, useEffect}
-cl import from ".components.Button.tsx" { Button }
+cl import from ".components/Button.tsx" { Button }
 
 cl {
     def app() -> any {
@@ -408,7 +408,7 @@ This project includes TypeScript support. You can create TypeScript components i
 
 Example:
 ```jac
-cl import from ".components.Button.tsx" {{ Button }}
+cl import from ".components/Button.tsx" {{ Button }}
 ```
 
 See `components/Button.tsx` for an example TypeScript component.

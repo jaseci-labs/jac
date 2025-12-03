@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import json
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -21,8 +21,8 @@ def reset_jac_machine():
     Jac.reset_machine()
 
 
-def _create_test_project_with_typescript(temp_path: Path) -> tuple[Path, Path]:
-    """Create a minimal test project with TypeScript support.
+def _copy_ts_support_project(temp_path: Path) -> tuple[Path, Path]:
+    """Copy the ts-support example project to temp directory.
 
     Args:
         temp_path: Path to the temporary directory
@@ -30,90 +30,19 @@ def _create_test_project_with_typescript(temp_path: Path) -> tuple[Path, Path]:
     Returns:
         Tuple of (package_json_path, output_dir_path)
     """
-    # Create package.json with TypeScript dependencies
-    package_data = {
-        "name": "test-ts-client",
-        "version": "0.0.1",
-        "type": "module",
-        "scripts": {
-            "build": "npm run compile && vite build",
-            "dev": "vite dev",
-            "preview": "vite preview",
-            "compile": 'babel compiled --out-dir build --extensions ".jsx,.js" --out-file-extension .js',
-        },
-        "dependencies": {
-            "react": "^19.2.0",
-            "react-dom": "^19.2.0",
-            "react-router-dom": "^6.30.1",
-        },
-        "devDependencies": {
-            "vite": "^6.4.1",
-            "@babel/cli": "^7.28.3",
-            "@babel/core": "^7.28.5",
-            "@babel/preset-env": "^7.28.5",
-            "@babel/preset-react": "^7.28.5",
-            "@vitejs/plugin-react": "^4.2.1",
-            "typescript": "^5.3.3",
-            "@types/react": "^18.2.45",
-            "@types/react-dom": "^18.2.18",
-        },
-    }
-
-    package_json = temp_path / "package.json"
-    with package_json.open("w", encoding="utf-8") as f:
-        json.dump(package_data, f, indent=2)
-
-    # Create .babelrc file
-    babelrc = temp_path / ".babelrc"
-    babelrc.write_text(
-        """{
-    "presets": [[
-        "@babel/preset-env",
-        {
-            "modules": false
-        }
-    ], "@babel/preset-react"]
-}
-""",
-        encoding="utf-8",
-    )
-
-    # Create vite.config.js with TypeScript support
-    vite_config = temp_path / "vite.config.js"
-    vite_config.write_text(
-        """import { defineConfig } from "vite";
-import path from "path";
-import { fileURLToPath } from "url";
-import react from "@vitejs/plugin-react";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-export default defineConfig({
-  plugins: [react()],
-  root: ".",
-  build: {
-    rollupOptions: {
-      input: "build/main.js",
-      output: {
-        entryFileNames: "client.[hash].js",
-        assetFileNames: "[name].[ext]",
-      },
-    },
-    outDir: "dist",
-    emptyOutDir: true,
-  },
-  publicDir: false,
-  resolve: {
-    alias: {
-      "@jac-client/utils": path.resolve(__dirname, "compiled/client_runtime.js"),
-      "@jac-client/assets": path.resolve(__dirname, "compiled/assets"),
-    },
-    extensions: [".mjs", ".js", ".mts", ".ts", ".jsx", ".tsx", ".json"],
-  },
-});
-""",
-        encoding="utf-8",
-    )
+    # Get the source directory
+    source_dir = Path(__file__).parent.parent / "examples" / "ts-support"
+    
+    # Copy the entire project directory
+    for item in source_dir.iterdir():
+        # Skip node_modules, dist, build, compiled directories to avoid copying large/generated files
+        if item.name in ("node_modules", "dist", "build", "compiled", "__pycache__"):
+            continue
+        dest = temp_path / item.name
+        if item.is_dir():
+            shutil.copytree(item, dest, dirs_exist_ok=True)
+        else:
+            shutil.copy2(item, dest)
 
     # Install dependencies
     result = subprocess.run(
@@ -129,25 +58,19 @@ export default defineConfig({
         error_msg += f"stderr: {result.stderr}\n"
         raise RuntimeError(error_msg)
 
-    # Create output directory
-    output_dir = temp_path / "dist" / "assets"
+    # Create output directory (Vite outputs to dist/, not dist/assets/)
+    output_dir = temp_path / "dist"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    compiled_dir = temp_path / "compiled"
-    compiled_dir.mkdir(parents=True, exist_ok=True)
-
-    build_dir = temp_path / "build"
-    build_dir.mkdir(parents=True, exist_ok=True)
-
-    return package_json, output_dir
+    return temp_path / "package.json", output_dir
 
 
 def test_typescript_fixture_example() -> None:
-    """Test with-ts fixture example with TypeScript component."""
+    """Test ts-support example project with TypeScript component."""
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_path = Path(temp_dir)
 
-        package_json, output_dir = _create_test_project_with_typescript(temp_path)
+        package_json, output_dir = _copy_ts_support_project(temp_path)
         runtime_path = Path(__file__).parent.parent / "plugin" / "client_runtime.jac"
 
         # Initialize the Vite builder
@@ -158,9 +81,8 @@ def test_typescript_fixture_example() -> None:
             vite_minify=False,
         )
 
-        # Import the with-ts fixture
-        fixtures_dir = Path(__file__).parent / "fixtures" / "with-ts"
-        (module,) = Jac.jac_import("app", str(fixtures_dir), reload_module=True)
+        # Import the app from the copied ts-support project
+        (module,) = Jac.jac_import("app", str(temp_path), reload_module=True)
 
         # Build the bundle
         bundle = builder.build(module, force=True)
