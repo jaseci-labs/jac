@@ -5,6 +5,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.2.4 (Unreleased)
 
+- **TypeScript Support**: Added comprehensive TypeScript support for Jac client projects, enabling integration of TypeScript/TSX components alongside Jac code. TypeScript files (`.ts`, `.tsx`) are now automatically copied during the build process and properly handled by Vite bundling. The `jac create_jac_app` CLI now includes an interactive prompt to set up TypeScript support during project creation, automatically configuring `tsconfig.json`, `vite.config.js`, and `package.json` with necessary TypeScript dependencies. [Documentation](https://docs.jaseci.org/jac-client/working-with-ts/)
+
 ## jac-client 0.2.3 (Latest Release)
 
 - **Nested Folder Structure Preservation**: Implemented folder structure preservation during compilation, similar to TypeScript transpilation. Files in nested directories now maintain their relative paths in the compiled output, enabling proper relative imports across multiple directory levels and preventing file name conflicts. This allows developers to organize code in nested folders just like in modern JavaScript/TypeScript projects.

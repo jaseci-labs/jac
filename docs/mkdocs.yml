@@ -110,6 +110,7 @@ nav:
         - Nested Folder Imports: "jac-client/file-system/nested-imports.md"
         - The app.jac Entry Point: "jac-client/file-system/app.jac.md"
       - Handling Assets: "jac-client/asset-serving/intro.md"
+      - TypeScript: "jac-client/working-with-ts.md"
     - Tooling:
       - Jac Debugger: "learn/debugger.md"
       - Run Jac In Browser: "learn/jac_playground.md"
