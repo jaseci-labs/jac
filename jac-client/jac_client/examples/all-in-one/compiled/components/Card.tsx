@@ -8,26 +8,26 @@ interface CardProps {
   onClick?: () => void;
 }
 
-export const Card: React.FC<CardProps> = ({ 
-  title, 
-  description, 
+export const Card: React.FC<CardProps> = ({
+  title,
+  description,
   children,
   variant = 'default',
-  onClick 
+  onClick
 }) => {
   const baseStyles: React.CSSProperties = {
     border: '1px solid #e5e7eb',
     borderRadius: '0.5rem',
     padding: '1.5rem',
     backgroundColor: '#ffffff',
-    boxShadow: variant === 'highlighted' 
+    boxShadow: variant === 'highlighted'
       ? '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
       : '0 1px 3px 0 rgba(0, 0, 0, 0.1)',
     transition: 'all 0.2s ease',
     cursor: onClick ? 'pointer' : 'default',
   };
 
-  const defaultShadow = variant === 'highlighted' 
+  const defaultShadow = variant === 'highlighted'
     ? '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
     : '0 1px 3px 0 rgba(0, 0, 0, 0.1)';
 
@@ -62,4 +62,3 @@ export const Card: React.FC<CardProps> = ({
 };
 
 export default Card;
-

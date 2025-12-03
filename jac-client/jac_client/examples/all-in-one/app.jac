@@ -139,12 +139,14 @@ cl {
                     example.
                 </p>
             </div>
-            <Card 
-                title="TypeScript Card Component" 
+            <Card
+                title="TypeScript Card Component"
                 description="This card is built with TypeScript and demonstrates type-safe component usage in Jac"
                 variant="highlighted"
             >
-                <p style={{"margin": "0.5rem 0", "color": "#374151"}}>
+                <p
+                    style={{"margin": "0.5rem 0", "color": "#374151"}}
+                >
                     This is a TypeScript component imported and used in Jac code!
                 </p>
             </Card>
