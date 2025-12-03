@@ -32,7 +32,7 @@ def _copy_ts_support_project(temp_path: Path) -> tuple[Path, Path]:
     """
     # Get the source directory
     source_dir = Path(__file__).parent.parent / "examples" / "ts-support"
-    
+
     # Copy the entire project directory
     for item in source_dir.iterdir():
         # Skip node_modules, dist, build, compiled directories to avoid copying large/generated files
