@@ -39,7 +39,7 @@ class ViteBundler:
 
         try:
             command = ["npm", "run", "build"]
-            result = subprocess.run(
+            subprocess.run(
                 command,
                 cwd=self.project_dir,
                 check=True,
