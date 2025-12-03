@@ -62,7 +62,11 @@ class ViteCompiler:
                 "Vite package.json not found. Set vite_package_json when using ViteCompiler"
             )
 
-        if compile_to_js_func is None or extract_exports_func is None or extract_globals_func is None:
+        if (
+            compile_to_js_func is None
+            or extract_exports_func is None
+            or extract_globals_func is None
+        ):
             raise ClientBundleError(
                 "compile_to_js_func, extract_exports_func, and extract_globals_func are required"
             )
