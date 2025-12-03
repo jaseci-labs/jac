@@ -170,6 +170,30 @@ export default defineConfig({
     return package_json, output_dir
 
 
+def _copy_example_assets(examples_dir: Path, temp_path: Path) -> None:
+    """Copy assets and CSS files from example directory to temp project's compiled directory.
+    
+    Args:
+        examples_dir: Path to the example directory
+        temp_path: Path to the temporary test project directory
+    """
+    # Copy assets from example directory to temp project's compiled/assets/
+    example_assets_dir = examples_dir / "assets"
+    temp_assets_dir = temp_path / "compiled" / "assets"
+    if example_assets_dir.exists():
+        temp_assets_dir.mkdir(parents=True, exist_ok=True)
+        # Copy all files from example assets to temp assets
+        for asset_file in example_assets_dir.iterdir():
+            if asset_file.is_file():
+                shutil.copy2(asset_file, temp_assets_dir / asset_file.name)
+    
+    # Copy CSS files if they exist (for css-with-image example)
+    example_css = examples_dir / "styles.css"
+    if example_css.exists():
+        temp_css = temp_path / "compiled" / "styles.css"
+        shutil.copy2(example_css, temp_css)
+
+
 def test_image_asset_example() -> None:
     """Test image-asset example with static asset paths."""
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -192,6 +216,11 @@ def test_image_asset_example() -> None:
         examples_dir = (
             Path(__file__).parent.parent / "examples" / "asset-serving" / "image-asset"
         )
+        
+        # Copy assets from example directory to temp project's compiled directory
+        # This is needed because assets need to be in compiled/assets for the build process
+        _copy_example_assets(examples_dir, temp_path)
+        
         (module,) = Jac.jac_import("app", str(examples_dir))
 
         # Build the bundle
@@ -238,6 +267,10 @@ def test_css_with_image_example() -> None:
             / "asset-serving"
             / "css-with-image"
         )
+        
+        # Copy assets from example directory to temp project's compiled directory
+        _copy_example_assets(examples_dir, temp_path)
+        
         (module,) = Jac.jac_import("app", str(examples_dir))
 
         # Build the bundle
@@ -288,18 +321,12 @@ def test_import_alias_example() -> None:
         examples_dir = (
             Path(__file__).parent.parent / "examples" / "asset-serving" / "import-alias"
         )
-        (module,) = Jac.jac_import("app", str(examples_dir))
-
+        
         # Copy assets from example directory to temp project's compiled/assets/
         # This is needed because @jac-client/assets alias points to compiled/assets
-        example_assets_dir = examples_dir / "assets"
-        temp_assets_dir = temp_path / "compiled" / "assets"
-        if example_assets_dir.exists():
-            temp_assets_dir.mkdir(parents=True, exist_ok=True)
-            # Copy all files from example assets to temp assets
-            for asset_file in example_assets_dir.iterdir():
-                if asset_file.is_file():
-                    shutil.copy2(asset_file, temp_assets_dir / asset_file.name)
+        _copy_example_assets(examples_dir, temp_path)
+        
+        (module,) = Jac.jac_import("app", str(examples_dir))
 
         # Build the bundle
         bundle = builder.build(module, force=True)
