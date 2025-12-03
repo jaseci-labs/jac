@@ -482,9 +482,7 @@ class ModuleIntrospector:
                 ),
                 "required": param.default == inspect.Parameter.empty,
                 "default": (
-                    None
-                    if param.default == inspect.Parameter.empty
-                    else str(param.default)
+                    None if param.default == inspect.Parameter.empty else param.default
                 ),
             }
             for name, param in sig.parameters.items()
