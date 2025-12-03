@@ -14,7 +14,7 @@ cl import from .components.button {
 cl import from .button { CustomButtonRoot }
 
 # TypeScript component import
-cl import from ".components.Card.tsx" { Card }
+cl import from ".components/Card.tsx" { Card }
 
 #
 # Basic backend walkers
