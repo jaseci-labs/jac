@@ -22,13 +22,11 @@ export default defineConfig({
   },
   publicDir: false,
   resolve: {
-    alias: {
-      "@jac-client/utils": path.resolve(
-        __dirname,
-        "compiled/client_runtime.js"
-      ),
-      "@jac-client/assets": path.resolve(__dirname, "compiled/assets"),
-    },
-    extensions: [".mjs", ".js", ".mts", ".ts", ".jsx", ".tsx", ".json"],
+      alias: {
+        "@jac-client/utils": path.resolve(__dirname, "compiled/client_runtime.js"),
+        "@jac-client/assets": path.resolve(__dirname, "compiled/assets"),
+      },
+      extensions: [".mjs", ".js", ".mts", ".ts", ".jsx", ".tsx", ".json"],
   },
 });
+
