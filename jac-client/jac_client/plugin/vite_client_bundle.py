@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import contextlib
 import shutil
+from collections.abc import Callable
 from pathlib import Path
 from types import ModuleType
+from typing import cast
 
 from jaclang.runtimelib.client_bundle import (
     ClientBundle,
@@ -47,12 +49,16 @@ class ViteClientBundleBuilder(ClientBundleBuilder):
                 raise ClientBundleError(
                     "Vite package.json not found. Set vite_package_json when using ViteClientBundleBuilder"
                 )
+            # Type cast to match expected signature (actual returns Module from jaclang, not ModuleType)
+            compile_to_js_func: Callable[[Path], tuple[str, ModuleType | None]] = cast(
+                Callable[[Path], tuple[str, ModuleType | None]], self._compile_to_js
+            )
             self._compiler = ViteCompiler(
                 vite_package_json=self.vite_package_json,
                 vite_output_dir=self.vite_output_dir,
                 vite_minify=self.vite_minify,
                 runtime_path=self.runtime_path,
-                compile_to_js_func=self._compile_to_js,
+                compile_to_js_func=compile_to_js_func,
                 extract_exports_func=self._extract_client_exports,
                 extract_globals_func=self._extract_client_globals,
             )
