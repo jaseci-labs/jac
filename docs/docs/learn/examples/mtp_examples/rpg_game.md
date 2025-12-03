@@ -6,41 +6,9 @@ The system creates game levels automatically through structured data types for s
 
 You’ll write code, test it, and see AI-generated levels come to life.
 
-<!-- This tutorial demonstrates how to build a dynamic RPG game level generator using Large Language Models (LLMs) and Jaclang's `by llm` syntax. The tutorial covers creating a system that uses AI to generate balanced, progressively challenging game levels. -->
-
-<!-- <div align="center">
-    <img src="/learn/examples/mtp_examples/assets/rpg_demo.gif" alt="Animated demo of AI-powered RPG level generation" width="528" height="330" loading="lazy" />
-</div> -->
-
-<div align="center">
-    <img src="/learn/examples/mtp_examples/assets/rpg_demo.gif"
-         alt="Animated demo of AI-powered RPG level generation"
-         width="528"
-         height="330"
-         loading="lazy"
-         style="mix-blend-mode: screen;" />
-</div>
-
-<!-- <div align="center" style="margin-top: 20px;">
-  <iframe width="560" height="315" src="https://www.youtube.com/watch?v=FSIZmwfQD1s"
-          title="RPG Level Generator Tutorial"
-          frameborder="0"
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-          allowfullscreen>
-  </iframe>
-</div> -->
-
-<!-- #### 📺 **Watch the Tutorial**:
-
-You can find the complete video walkthrough of this RPG level generator tutorial. The video covers each step in detail and shows the AI generation process in action.
-
-<div align="center">
-<iframe width="560" height="315" src="https://www.youtube.com/embed/FSIZmwfQD1s?si=rNdyOUNiipFDr6Fn" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
-</div> -->
-
-<!-- ## <span style="color: orange">Overview
-
-This tutorial covers building an AI-driven RPG level generator using Jaclang's `by llm` syntax. The system creates game levels automatically through structured data types for spatial positioning and game elements, progressive difficulty scaling that adapts to player progress, and dynamic map rendering from AI-generated data. -->
+<a href="https://www.youtube.com/watch?v=FSIZmwfQD1s" target="_blank" class="youtube-video-link">
+  <img src="https://img.youtube.com/vi/FSIZmwfQD1s/maxresdefault.jpg" alt="YouTube Tutorial: Enable Debug Breakpoints Everywhere">
+</a>
 
 ## <span style="color: orange">Prerequisites
 

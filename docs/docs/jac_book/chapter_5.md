@@ -128,11 +128,6 @@ To further illustrate byLLM's capabilities, let's build a simple image captionin
 
 First lets grab an image from upsplash to work with. You can use any image you like, but for this example, we'll use a photo of a french bulldog. Download the image and save it as `photo.jpg` in the same directory as your Jac code.
 
-![Image Captioning Example](../assets/photo.jpg){ width=300px }
-/// caption
-Photo by <a href="https://unsplash.com/@karsten116?utm_content=creditCopyText&utm_medium=referral&utm_source=unsplash">Karsten Winegeart</a> on <a href="https://unsplash.com/photos/a-french-bulldog-in-a-hoodie-and-gold-chain-GkpLfCRooCA?utm_content=creditCopyText&utm_medium=referral&utm_source=unsplash">Unsplash</a>
-///
-
 Next we'll make use of MLTLLM's `Image` function to handle image inputs. This function allows us to pass images directly to the AI model for analysis. We'll use OpenAI's `gpt-4o-mini` model for this task.
 
 ```jac
