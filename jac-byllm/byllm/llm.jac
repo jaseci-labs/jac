@@ -54,10 +54,9 @@ obj BaseLLM {
     """Construct the call parameters and return self (factory pattern)."""
     def __call__( **kwargs: object)  -> BaseLLM;
 
-    # @property
-    # """Get the call parameters for the LLM."""
-    # def call_params(self) -> dict[str, object];
+    """Invoke the LLM with the given MTIR."""
     def invoke(mtir: MTIR) -> object;
+
     """Prepare the parameters for the LLM call."""
     def make_model_params(mtir: MTIR) -> dict;
 
@@ -128,11 +127,3 @@ obj Model(BaseLLM) {
     def model_call_no_stream(params: dict) -> dict;
     def model_call_with_stream(params: dict);
 }
-# obj MyOpenAIModel(BaseLLM) {
-#     """Initialize the MockLLM connector."""
-#     def init(model_name: str, **kwargs: object) -> str;
-
-#     def model_call_no_stream(params: dict) -> dict;
-
-#     def model_call_with_stream(params: dict);
-# }

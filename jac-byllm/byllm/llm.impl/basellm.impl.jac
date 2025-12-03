@@ -1,9 +1,4 @@
-# ----------------------------------------------------------------------------------
-# BaseLLM Implementations
-# ----------------------------------------------------------------------------------
-impl BaseLLM.init(
-    model_name: str, **kwargs: object
-) -> None {
+impl BaseLLM.init(model_name: str, **kwargs: object) -> None {
     self.model_name = model_name;
     self.config = kwargs;
     self.api_key = self.config.get("api_key", "");
@@ -17,9 +12,6 @@ impl BaseLLM.__call__( **kwargs: object)  -> BaseLLM {
     return self;
 }
 
-# impl BaseLLM.call_params(self) -> dict[str, object] {
-#     raise NotImplementedError("Subclasses must implement this method.");
-# }
 impl BaseLLM.invoke(mtir: MTIR) -> object {
     # If streaming without tools, stream immediately
     if mtir.stream and len(mtir.tools) == 0 {
@@ -162,100 +154,3 @@ impl BaseLLM._stream_final_answer(mtir: MTIR) -> Generator[str, None, None] {
         mtir.tools = original_tools;
     }
 }
-
-# ----------------------------------------------------------------------------------
-# MockLLM Implementations
-# ----------------------------------------------------------------------------------
-impl MockLLM.init(
-    model_name: str, **kwargs: object
-) -> None {
-    super.init(model_name, **kwargs);
-}
-
-impl MockLLM.dispatch_no_streaming(mtir: MTIR) -> CompletionResult {
-    params = self.make_model_params(mtir);
-    output = self.config["outputs"].pop(0);  # type: ignore
-    if isinstance(output, MockToolCall) {
-        self.log_info(
-            f"Mock LLM call completed with tool call:\n{output.to_tool_call()}"
-        );
-        return CompletionResult(output=None, tool_calls=[output.to_tool_call()],);
-    }
-    self.log_info(
-        f"Mock LLM call completed with response:\n{output} with params:\n{params}"
-    );
-    return CompletionResult(output=output, tool_calls=[],);
-}
-
-impl MockLLM.dispatch_streaming(mtir: MTIR) -> Generator[str, None, None] {
-    output = self.config["outputs"].pop(0);  # type: ignore
-    if mtir.stream {
-        while output {
-            chunk_len = random.randint(3, 10);
-            yield output[:chunk_len];  # Simulate token chunk
-            time.sleep(random.uniform(0.01, 0.05));  # Simulate network delay
-            output = output[chunk_len:];
-        }
-    }
-}
-
-# ----------------------------------------------------------------------------------
-# Model Implementations
-# ----------------------------------------------------------------------------------
-impl Model.init(
-    model_name: str, **kwargs: object
-) -> None {
-    super.init(model_name, **kwargs);
-    self.proxy = kwargs.get("proxy", False);
-    # When model_name is 'mockllm', delegate to MockLLM behavior
-    self._mock_delegate = MockLLM(model_name=model_name, **kwargs)
-    if model_name == MODEL_MOCK
-    else None;
-    if not self._mock_delegate {
-        logging.getLogger("httpx").setLevel(logging.WARNING);
-        _disable_debugging();
-        litellm.drop_params = True;
-    }
-}
-
-impl Model.invoke(mtir: MTIR) -> object {
-    if self._mock_delegate {
-        return self._mock_delegate.invoke(mtir);
-    }
-    return super.invoke(mtir);
-}
-
-impl Model.model_call_no_stream(params: dict) -> dict {
-    if self.proxy {
-        client = OpenAI(base_url=self.chat);
-        response = client.chat.completions.create(**params);
-    } else {
-        response = litellm.completion(**params);
-    }
-    return response;
-}
-
-impl Model.model_call_with_stream(params: dict) {
-    if self.proxy {
-        client = OpenAI(base_url=self.api_base, api_key=self.api_key,);
-        response = client.chat.completions.create(stream=True, **params);
-    } else {
-        response = litellm.completion(stream=True, **params);
-    }
-    return response;
-}
-# impl MyOpenAIModel.init(model_name: str, **kwargs: object) {
-#     super.init(model_name, **kwargs);
-# }
-
-# impl MyOpenAIModel.model_call_no_stream(params: dict) {
-#     client = OpenAI(api_key=self.api_key);
-#     response = client.chat.completions.create(**params);
-#     return response;
-# }
-
-# impl MyOpenAIModel.model_call_with_stream(params: dict) {
-#     client = OpenAI(api_key=self.api_key);
-#     response = client.chat.completions.create(stream=True, **params);
-#     return response;
-# }
