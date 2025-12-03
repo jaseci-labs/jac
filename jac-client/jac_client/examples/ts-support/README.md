@@ -52,11 +52,11 @@ interface ButtonProps {
   disabled?: boolean;
 }
 
-export const Button: React.FC<ButtonProps> = ({ 
-  label, 
-  onClick, 
+export const Button: React.FC<ButtonProps> = ({
+  label,
+  onClick,
   variant = 'primary',
-  disabled = false 
+  disabled = false
 }) => {
   // Component implementation
 };
@@ -80,8 +80,8 @@ The Jac compiler will:
 Use the TypeScript component in your Jac code:
 
 ```jac
-<Button 
-    label="Increment" 
+<Button
+    label="Increment"
     onClick={lambda -> None {setCount(count + 1);}}
     variant="primary"
 />

@@ -7,11 +7,11 @@ interface ButtonProps {
   disabled?: boolean;
 }
 
-export const Button: React.FC<ButtonProps> = ({ 
-  label, 
-  onClick, 
+export const Button: React.FC<ButtonProps> = ({
+  label,
+  onClick,
   variant = 'primary',
-  disabled = false 
+  disabled = false
 }) => {
   const baseStyles: React.CSSProperties = {
     padding: '0.75rem 1.5rem',
