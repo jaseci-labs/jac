@@ -696,6 +696,29 @@ def test_connect_filter(fixture_path: Callable[[str], str]) -> None:
         _assert_error_pretty_found(expected, program.errors_had[i].pretty_print())
 
 
+def test_import_star(fixture_abs_path: Callable[[str], str]) -> None:
+    """Test that 'from module import *' works correctly."""
+    program = JacProgram()
+    path = fixture_abs_path("checker_import_star/main.jac")
+    mod = program.compile(path)
+    TypeCheckPass(ir_in=mod, prog=program)
+    assert len(program.errors_had) == 1
+
+    expected_errors = [
+        """
+        Cannot assign <class int> to <class str>
+            a :X = X();
+            x: str = Foo().foo();
+            ^^^^^^^^^^^^^^^^^^^^^
+            y: int = Bar().bar();
+        """
+    ]
+
+    for i, expected in enumerate(expected_errors):
+        _assert_error_pretty_found(expected, program.errors_had[i].pretty_print())
+        _assert_error_pretty_found(expected, program.errors_had[i].pretty_print())
+
+
 def test_inherit_method_lookup(fixture_path: Callable[[str], str]) -> None:
     """Test that inherited methods are properly resolved through MRO."""
     program = JacProgram()

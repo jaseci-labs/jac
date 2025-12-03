@@ -15,7 +15,7 @@ import from jaclang.compiler.type_system.types {
     ClassType,
     FunctionType,
     ModuleType,
-    TypeBase
+    TypeCategory
 }
 import from jaclang.compiler.unitree { UniScopeNode }
 import from missing_mod { SemTokManager }

@@ -159,7 +159,7 @@ class TypeEvaluator {
     def _get_type_from_module(
         self: TypeEvaluator, module: uni.Module, name: str
     ) -> TypeBase {
-        if (symbol := module.lookup(name, incl_inner_scope=True)) is not None {
+        if (symbol := type_utils.lookup_symtab(module, name, self.builtins_module)) is not None {
             return self.get_type_of_symbol(symbol);
         }
         return types.UnknownType();
@@ -393,7 +393,9 @@ class TypeEvaluator {
 
                         # Case 1: Look for symbol inside __init__.ext module
                         if path.name.startswith("__init__") {
-                            if sym := mod.lookup(node_.name.value) {
+                            if sym := type_utils.lookup_symtab(
+                                mod, node_.name.value, self.builtins_module
+                            ) {
                                 return self._set_module_item_symbol_and_type(
                                     node_, sym
                                 );
@@ -429,7 +431,9 @@ class TypeEvaluator {
                     # Eg: 'Import "scipy" could not be resolved'
                     return node_.name.type;
                 }
-                if sym := mod_type.symbol_table.lookup(node_.name.value) {
+                if sym := type_utils.lookup_symtab(
+                    mod_type.symbol_table, node_.name.value, self.builtins_module
+                ) {
                     return self._set_module_item_symbol_and_type(node_, sym);
                 }
             }
@@ -885,8 +889,10 @@ class TypeEvaluator {
                     assert isinstance(expr.right, uni.Name);
                     if isinstance(base_type, types.ModuleType) {
                         # getTypeOfMemberAccessWithBaseType()
-                        if sym := base_type.symbol_table.lookup(
-                            expr.right.value, deep=True
+                        if sym := type_utils.lookup_symtab(
+                            base_type.symbol_table,
+                            expr.right.value,
+                            self.builtins_module
                         ) {
                             return self._set_symbol_to_expr(expr.right, sym);
                         }
@@ -1155,7 +1161,9 @@ class TypeEvaluator {
         if method := self._get_enclosing_method(node_) {
             cls = method.method_owner;
             if isinstance(cls, uni.Archetype) {
-                node_.sym = method.lookup(node_.value);
+                node_.sym = type_utils.lookup_symtab(
+                    method, node_.value, self.builtins_module
+                );
                 node_.type = self.get_type_of_class(cls).clone_as_instance();
                 return node_.type;
             }
