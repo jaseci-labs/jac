@@ -1,0 +1,23 @@
+{
+  "name": "test-client",
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "build": "npm run compile && vite build",
+    "dev": "vite dev",
+    "preview": "vite preview",
+    "compile": "babel compiled --out-dir build --extensions \".jsx,.js\" --out-file-extension .js"
+  },
+  "dependencies": {
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-router-dom": "^7.3.0"
+  },
+  "devDependencies": {
+    "vite": "^6.4.1",
+    "@babel/cli": "^7.28.3",
+    "@babel/core": "^7.28.5",
+    "@babel/preset-env": "^7.28.5",
+    "@babel/preset-react": "^7.28.5"
+  }
+}
