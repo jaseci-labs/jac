@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import contextlib
+from collections.abc import Callable
 from pathlib import Path
 from types import ModuleType
 from typing import TYPE_CHECKING, Any
@@ -39,9 +41,9 @@ class ViteCompiler:
         vite_output_dir: Path | None = None,
         vite_minify: bool = False,
         runtime_path: Path | None = None,
-        compile_to_js_func=None,
-        extract_exports_func=None,
-        extract_globals_func=None,
+        compile_to_js_func: Callable[[Path], tuple[str, ModuleType | None]] | None = None,
+        extract_exports_func: Callable[[Any], list[str]] | None = None,
+        extract_globals_func: Callable[[Any, ModuleType], dict[str, Any]] | None = None,
     ):
         """Initialize the Vite compiler.
 
@@ -258,12 +260,10 @@ class ViteCompiler:
             output_path = self.compiled_dir / asset_path.name
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        try:
+        with contextlib.suppress(FileNotFoundError, OSError):
             output_path.write_text(
                 asset_path.read_text(encoding="utf-8"), encoding="utf-8"
             )
-        except (FileNotFoundError, OSError):
-            pass
 
     def copy_root_assets(self) -> None:
         """Copy assets from root assets/ folder to compiled/assets/ for @jac-client/assets alias."""

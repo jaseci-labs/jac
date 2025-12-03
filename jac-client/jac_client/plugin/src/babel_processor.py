@@ -7,6 +7,8 @@ from pathlib import Path
 
 from jaclang.runtimelib.client_bundle import ClientBundleError
 
+from .asset_processor import AssetProcessor
+
 
 class BabelProcessor:
     """Handles Babel compilation of JavaScript files."""
@@ -27,7 +29,7 @@ class BabelProcessor:
         """
         try:
             command = ["npm", "run", "compile"]
-            result = subprocess.run(
+            subprocess.run(
                 command,
                 cwd=self.project_dir,
                 check=True,
@@ -42,7 +44,7 @@ class BabelProcessor:
             ) from None
 
     def copy_assets_after_compile(
-        self, compiled_dir: Path, build_dir: Path, asset_processor
+        self, compiled_dir: Path, build_dir: Path, asset_processor: AssetProcessor
     ) -> None:
         """Copy CSS, assets, and TypeScript files from compiled/ to build/ after Babel compilation.
 

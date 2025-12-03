@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from types import ModuleType
 from typing import TYPE_CHECKING, Any
@@ -13,7 +14,12 @@ if TYPE_CHECKING:
 class JacToJSCompiler:
     """Handles compilation of Jac files to JavaScript."""
 
-    def __init__(self, compile_to_js_func, extract_exports_func, extract_globals_func):
+    def __init__(
+        self,
+        compile_to_js_func: Callable[[Path], tuple[str, ModuleType | None]],
+        extract_exports_func: Callable[[Any], list[str]],
+        extract_globals_func: Callable[[Any, ModuleType], dict[str, Any]],
+    ):
         """Initialize the Jac to JS compiler.
 
         Args:
