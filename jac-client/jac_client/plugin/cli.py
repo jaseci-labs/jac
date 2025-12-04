@@ -143,6 +143,17 @@ class JacCmd:
                             "react-dom": "^19.2.0",
                             "react-router-dom": "^6.30.1",
                         },
+                        "babel": {
+                            "presets": [
+                                [
+                                    "@babel/preset-env",
+                                    {
+                                        "modules": False,
+                                    },
+                                ],
+                                "@babel/preset-react",
+                            ],
+                        },
                     }
                 )
 
@@ -214,20 +225,6 @@ cl {
                 # Create app.jac file
                 with open(os.path.join(project_path, "app.jac"), "w") as f:
                     f.write(main_jac_content)
-
-                # create .babelrc file
-                babel_config_content = """
-{
-    "presets": [[
-        "@babel/preset-env",
-        {
-            "modules": false
-        }
-    ], "@babel/preset-react"]
-}
-"""
-                with open(os.path.join(project_path, ".babelrc"), "w") as f:
-                    f.write(babel_config_content)
 
                 # create vite.config.js file
                 if use_typescript:

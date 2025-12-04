@@ -60,26 +60,22 @@ def _create_test_project_with_vite(
             "@babel/preset-env": "^7.28.5",
             "@babel/preset-react": "^7.28.5",
         },
+        "babel": {
+            "presets": [
+                [
+                    "@babel/preset-env",
+                    {
+                        "modules": False,
+                    },
+                ],
+                "@babel/preset-react",
+            ],
+        },
     }
 
     package_json = temp_path / "package.json"
     with package_json.open("w", encoding="utf-8") as f:
         json.dump(package_data, f, indent=2)
-
-    # Create .babelrc file
-    babelrc = temp_path / ".babelrc"
-    babelrc.write_text(
-        """{
-    "presets": [[
-        "@babel/preset-env",
-        {
-            "modules": false
-        }
-    ], "@babel/preset-react"]
-}
-""",
-        encoding="utf-8",
-    )
 
     # Create vite.config.js file
     vite_config = temp_path / "vite.config.js"
