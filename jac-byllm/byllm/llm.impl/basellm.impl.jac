@@ -2,7 +2,7 @@ impl BaseLLM.init(model_name: str, **kwargs: object) -> None {
     self.model_name = model_name;
     self.config = kwargs;
     self.api_key = self.config.get("api_key", "");
-    # The parameters for the llm call like temprature, top_k, max_token, etc.
+    # The parameters for the llm call like temperature, top_k, max_token, etc.
     # This is only applicable for the next call passed from `by llm(**kwargs)`.
     self.call_params: dict[str, object] = {};
 }
