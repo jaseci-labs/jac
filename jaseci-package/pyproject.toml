@@ -26,10 +26,10 @@ packages = [{ include = "jaseci" }]
 
 [tool.poetry.dependencies]
 python = "^3.11.0"
-jaclang = "^0.9.3"
-byllm = "^0.4.8"
-jac-client = "^0.2.3"
-jac-streamlit = "^0.0.5"
+jaclang = { git = "https://github.com/jaseci-labs/jaseci.git", branch = "main", subdirectory = "jac" }
+byllm = { git = "https://github.com/jaseci-labs/jaseci.git", branch = "main", subdirectory = "jac-byllm" }
+jac-client = { git = "https://github.com/jaseci-labs/jaseci.git", branch = "main", subdirectory = "jac-client" }
+jac-streamlit = { git = "https://github.com/jaseci-labs/jaseci.git", branch = "main", subdirectory = "jac-streamlit" }
 
 
 [build-system]
