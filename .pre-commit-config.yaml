@@ -6,15 +6,6 @@ exclude: |
         ^$
     )
 repos:
-  # Generate parsers first (required for jac-format/jac-check hooks)
-  - repo: local
-    hooks:
-      - id: generate-parsers
-        name: Generate Lark parsers
-        entry: python3 jac/jaclang/compiler/__init__.py
-        language: system
-        pass_filenames: false
-        always_run: true
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
@@ -45,9 +36,7 @@ repos:
     rev: 6179bab
     hooks:
       - id: jac-format
-        entry: python3 jac/jaclang/compiler/__init__.py
       - id: jac-check
-        entry: python3 jac/jaclang/compiler/__init__.py
         exclude: (/fixtures/|_err\.jac$|_syntax_err\.jac$|jac-client/jac_client/examples/)
   - repo: local
     hooks:

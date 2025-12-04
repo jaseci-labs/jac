@@ -1,7 +1,7 @@
 - id: jac-format
   name: jac-format
   description: Format Jac files with consistent code style
-  entry: jac format
+  entry: python3 jac/jaclang/compiler/__init__.py; jac format
   language: python
   types: [file]
   files: \.jac$
@@ -10,7 +10,7 @@
 - id: jac-check
   name: jac-check
   description: Type check Jac files
-  entry: jac check
+  entry: python3 jac/jaclang/compiler/__init__.py; jac check
   language: python
   types: [file]
   files: \.jac$
