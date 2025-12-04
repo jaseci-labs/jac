@@ -41,12 +41,22 @@ repos:
         language: script
         pass_filenames: false
         always_run: true
-        stages: [commit, push]
-  - repo: https://github.com/jaseci-labs/jaseci
-    rev: 6179bab
-    hooks:
       - id: jac-format
+        name: jac-format
+        description: Format Jac files with consistent code style
+        entry: jac format
+        language: python
+        types: [file]
+        files: \.jac$
+        require_serial: true
       - id: jac-check
+        name: jac-check
+        description: Type check Jac files
+        entry: jac check
+        language: python
+        types: [file]
+        files: \.jac$
+        require_serial: true
         exclude: (/fixtures/|_err\.jac$|_syntax_err\.jac$|jac-client/jac_client/examples/)
   - repo: local
     hooks:
