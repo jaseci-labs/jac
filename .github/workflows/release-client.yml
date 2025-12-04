@@ -19,14 +19,13 @@ jobs:
         uses: actions/setup-python@v2
         with:
           python-version: '3.12'
-      - name: Install Poetry
+      - name: Install build tools
         run: |
-          pip install poetry
+          pip install build twine
       - name: Build and publish package
         run: |
-          poetry config pypi-token.pypi ${{ secrets.PYPI_TOKEN }}
-          poetry build
-          poetry publish
+          python -m build
+          twine upload dist/* -u __token__ -p ${{ secrets.PYPI_TOKEN }}
       # - run: pip install githubrelease
       # - run: python scripts/gh_release.py
       #   env:

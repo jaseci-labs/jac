@@ -52,6 +52,9 @@ out.txt
 .mypy_cache*
 .jac_mypy_cache*
 
+# Generated parsers (built during pip install)
+jaclang/compiler/larkparse/
+
 
 # Jaclang session files
 *.session

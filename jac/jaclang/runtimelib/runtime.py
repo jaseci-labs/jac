@@ -71,7 +71,6 @@ from jaclang.vendor import pluggy
 if TYPE_CHECKING:
     from jaclang.runtimelib.server import ModuleIntrospector
 
-
 plugin_manager = pluggy.PluginManager("jac")
 hookspec = pluggy.HookspecMarker("jac")
 hookimpl = pluggy.HookimplMarker("jac")

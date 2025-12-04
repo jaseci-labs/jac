@@ -162,6 +162,8 @@ def convert_to_js_import_path(path: str) -> str:
         ".less",
         ".wasm",
         ".json",
+        ".ts",
+        ".tsx",
     )
 
     # If path starts with dots (relative import)

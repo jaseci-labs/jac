@@ -1,17 +1,21 @@
 # Jac Quickstart
 
+This document will give you a quick start on Object-Spatial Programming(OSP), the core feature of Jac.
+For a short overview of the language syntax, refer to the [Syntax Quick Reference](./quick_reference.md).
+If using byLLM in Python, refer to its [documentation](./jac-byllm/python_integration.md).
+
+
 ## Python Superset
 Jac is a drop-in replacement for Python and supersets Python, much like Typescript supersets Javascript or C++ supersets C. It extends Python's semantics while maintaining full interoperability with the Python ecosystem.
 Anything you can build with Python, you can build in Jac, and often more efficiently.
 
 <!-- small syntax teaser, idk if there is a more iconic python library-->
+<div class="code-block">
 ```jac
-import time at t;
 
 def example(){
     number = 1+2;
     print(f"Calculated {number}");
-    t.sleep(2);
     if number < 4 {
         print("Small number");
     }
@@ -23,6 +27,7 @@ with entry {
     example();
 }
 ```
+</div>
 
 <!-- distilled from jason's blog: https://www.mars.ninja/blog/2025/10/26/four-things-object-spatial-programming/, using Kimi-K2 thinking -->
 ## Graphs and OSP
@@ -46,6 +51,7 @@ In OSP, objects are not isolated—they exist in space with explicit relationshi
 
 Start by defining nodes as you would regular classes. At this stage, they behave exactly like OOP objects—no graph concepts needed yet:
 
+<div class="code-block">
 ```jac
 node Person {
     has name: str;
@@ -67,6 +73,7 @@ with entry {
     print(alice.greet());  # Standard method call
 }
 ```
+</div>
 
 The output behavior is standard for OOP: "Hello, I'm Alice! Alice is now 26!"
 The graph capability is dormant until you connect nodes.
@@ -75,14 +82,27 @@ The graph capability is dormant until you connect nodes.
 
 This is where OSP diverges. Instead of managing a `list` property, you use **spatial operators** to create first-class relationships that the type system understands:
 
+<div class="code-block run-dot">
 ```jac
-alice ++> bob;      # Alice → Bob (forward relationship)
-alice <++ bob;      # Bob → Alice (backward)
-alice <++> bob;     # Alice ↔ Bob (bidirectional)
+
+node Person {
+    has name: str;
+    has age: int;
+}
+
+with entry {
+    alice = Person(name="Alice", age=25);
+    bob = Person(name="Bob", age=30);
+    root ++> alice;
+    alice ++> bob;      # Alice → Bob (forward relationship)
+    alice <++ bob;      # Bob → Alice (backward)
+    alice <++> bob;     # Alice ↔ Bob (bidirectional)
+}
 
 # You now have a graph structure where relationships exist
 # independently of any object's internal state
 ```
+</div>
 
 Behind the scenes, Jac maintains adjacency information, allowing queries like `[alice -->]` to return connected nodes without you writing traversal logic.
 
@@ -90,8 +110,12 @@ Behind the scenes, Jac maintains adjacency information, allowing queries like `[
 
 The real breakthrough: **relationships are classes**. Unlike OOP where you'd store relationship data as strings in a dictionary, edges have methods, properties, and type safety:
 
+<div class="code-block run-dot">
 ```jac
-node Person { has name: str; }
+node Person {
+    has name: str;
+    has age: int;
+}
 
 edge Friend {
     has since: int;
@@ -103,6 +127,10 @@ edge Friend {
 }
 
 with entry {
+    alice = Person(name="Alice", age=25);
+    bob = Person(name="Bob", age=30);
+
+    root ++> alice
     alice +>:Friend(since=2015, strength=9):+> bob;
 
     # Query all Friend relationships from alice
@@ -112,6 +140,7 @@ with entry {
     # The result is a list of Person nodes, not data structures you have to unpack
 }
 ```
+</div>
 
 This creates a graph edge that "knows" it's a friendship and can answer questions about itself. Visualizing `alice ->:Friend:->` returns the actual `bob` node, ready for method calls.
 
@@ -174,7 +203,13 @@ node Person(Entity) {
 
 **Basic Walker: Visiting Nodes**
 
+<div class="code-block run-dot">
 ```jac
+node Person {
+    has name: str;
+    has age: int;
+}
+
 walker Greeter {
     has greeting_count: int = 0;
 
@@ -198,6 +233,7 @@ with entry {
     root spawn Greeter();  # Launch walker, it navigates autonomously
 }
 ```
+</div>
 
 What happens: `Greeter` spawns at `root`, executes `start` ability, then `visit [-->` sends it to `alice`. The `greet` ability triggers (because `alice` is a `Person`), prints, increments counter, then `visit [-->]` moves it to `bob`. This continues until no unvisited nodes remain.
 

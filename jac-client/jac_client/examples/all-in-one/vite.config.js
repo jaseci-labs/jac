@@ -2,10 +2,12 @@
 import { defineConfig } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
+import react from "@vitejs/plugin-react";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
+  plugins: [react()],
   root: ".", // base folder
   build: {
     rollupOptions: {
@@ -27,5 +29,6 @@ export default defineConfig({
       ),
       "@jac-client/assets": path.resolve(__dirname, "compiled/assets"),
     },
+    extensions: [".mjs", ".js", ".mts", ".ts", ".jsx", ".tsx", ".json"],
   },
 });

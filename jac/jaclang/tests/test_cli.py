@@ -17,13 +17,6 @@ from jaclang.cli.cmdreg import cmd_registry, extract_param_descriptions
 from jaclang.runtimelib.builtin import printgraph
 
 
-# Exported for use by test fixtures that test import functionality
-class JacCliTests:
-    """Dummy class for import testing in fixtures."""
-
-    pass
-
-
 def test_jac_cli_run(fixture_path, capture_stdout) -> None:
     """Basic test for pass."""
     with capture_stdout() as output:
