@@ -1,7 +1,10 @@
 #-------------------------------------------------------------------------------
 # Message Implementations
 #-------------------------------------------------------------------------------
-impl Message.to_dict() {
+impl Message.to_dict()  -> dict[
+    str,
+    object
+] {
     if isinstance(self.content, str) {
         return {"role": self.role.value, "content": self.content,};
     }
@@ -15,11 +18,11 @@ impl Message.to_dict() {
 #-------------------------------------------------------------------------------
 # ToolCallResult Implementations
 #-------------------------------------------------------------------------------
-impl ToolCallResult.postinit() {
+impl ToolCallResultMsg.postinit()  -> None {
     self.role = MessageRole.TOOL;  # Maybe this should be an assertion?
 }
 
-impl ToolCallResult.to_dict() {
+impl ToolCallResultMsg.to_dict()  -> dict[str, object] {
     return {
         "role": self.role.value,
         "content": self.content,

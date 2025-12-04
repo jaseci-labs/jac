@@ -72,11 +72,7 @@ obj BaseLLM {
     """Make a direct model call with the given parameters.
     Get api_key from self.api_key if needed.
     """
-    def model_call_no_stream(params: dict) -> dict {
-        raise NotImplementedError(
-            "Subclasses must implement this method for LLM call with streaming."
-        ) ;
-    }
+    def model_call_no_stream(params: dict) -> dict;
 
     """Make a direct model call with the given parameters.
     Get api_key from self.api_key if needed.

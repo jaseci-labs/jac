@@ -128,6 +128,12 @@ impl BaseLLM.dispatch_streaming(mtir: MTIR) -> Generator[str, None, None] {
     }
 }
 
+impl BaseLLM.model_call_no_stream(params: dict) -> dict {
+    raise NotImplementedError(
+        "Subclasses must implement this method for LLM call without streaming."
+    ) ;
+}
+
 impl BaseLLM.model_call_with_stream(params: dict) -> Generator[str, None, None] {
     raise NotImplementedError(
         "Subclasses must implement this method for LLM call with streaming."

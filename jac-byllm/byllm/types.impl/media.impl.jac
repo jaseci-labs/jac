@@ -1,21 +1,25 @@
 #-------------------------------------------------------------------------------
 # Media Implementations
 #-------------------------------------------------------------------------------
-impl Media.to_dict() {
+impl Media.to_dict()  -> list[
+    dict
+] {
     raise NotImplementedError("Subclasses must implement this method.") ;
 }
 
 #-------------------------------------------------------------------------------
 # Text
 #-------------------------------------------------------------------------------
-impl Text.to_dict() {
+impl Text.to_dict()  -> list[
+    dict
+] {
     return [{"type": "text", "text": self.text}];
 }
 
 #-------------------------------------------------------------------------------
 # Image
 #-------------------------------------------------------------------------------
-impl Image.postinit() {
+impl Image.postinit()  -> None {
     value = self.url;
     # Handle path-like inputs by converting to string
     if isinstance(value, os.PathLike) {
@@ -111,7 +115,7 @@ impl Image.postinit() {
     ) ;
 }
 
-impl Image._format_to_mime(fmt: str | None) {
+impl Image._format_to_mime(fmt: str | None) -> str {
     fmt = (fmt or "PNG").upper();
     if fmt == "WEBP" {
         return "image/webp";
@@ -127,7 +131,7 @@ impl Image._format_to_mime(fmt: str | None) {
     return mime or "image/png";
 }
 
-impl Image._data_url_from_bytes(data: bytes, fmt: str | None) {
+impl Image._data_url_from_bytes(data: bytes, fmt: str | None) -> str {
     mime = self.mime_type or self._format_to_mime(fmt);
     # Ensure mime_type is set on the instance for downstream usage
     self.mime_type = mime;
@@ -135,7 +139,7 @@ impl Image._data_url_from_bytes(data: bytes, fmt: str | None) {
     return f"data:{mime};base64,{b64}";
 }
 
-impl Image.to_dict() {
+impl Image.to_dict()  -> list[dict] {
     image_url = {"url": self.url};
     if self.mime_type {
         image_url["format"] = self.mime_type;
@@ -146,13 +150,13 @@ impl Image.to_dict() {
 #-------------------------------------------------------------------------------
 # Video
 #-------------------------------------------------------------------------------
-impl Video.postinit() {
+impl Video.postinit()  -> None {
     if not os.path.exists(self.path) {
         raise ValueError(f"Video file does not exist: {self.path}") ;
     }
 }
 
-impl Video.load_frames() {
+impl Video.load_frames()  -> None {
     try {
         import cv2;
     } except ImportError {
@@ -181,7 +185,7 @@ impl Video.load_frames() {
     }
 }
 
-impl Video.to_dict() {
+impl Video.to_dict()  -> list[dict] {
     if self._base64frames is None {
         self.load_frames();
     }

@@ -1,4 +1,4 @@
-impl _type_to_schema(ty: type, title: str = "", desc: str = "") {
+impl _type_to_schema(ty: type, title: str = "", desc: str = "") -> dict {
     title = title.replace("_", " ").title();
     context = ({"title": title} if title else {}) | (
         {"description": desc} if desc else {}
@@ -130,7 +130,7 @@ impl _type_to_schema(ty: type, title: str = "", desc: str = "") {
     ) ;
 }
 
-impl _name_of_type(ty: type) {
+impl _name_of_type(ty: type) -> str {
     if get_origin(ty) in (Union, UnionType) {
         names = [_name_of_type(arg) for arg in get_args(ty)];
         return "_or_".join(names);
@@ -141,7 +141,7 @@ impl _name_of_type(ty: type) {
     return "type";
 }
 
-impl _convert_dict_to_schema(ty_dict: type) {
+impl _convert_dict_to_schema(ty_dict: type) -> dict {
     if get_origin(ty_dict) is not dict {
         raise ValueError(f"Expected a dictionary type, got {ty_dict}.") ;
     }
@@ -172,7 +172,7 @@ impl _convert_dict_to_schema(ty_dict: type) {
     };
 }
 
-impl _decode_dict(json_obj: dict) {
+impl _decode_dict(json_obj: dict) -> dict {
     if not isinstance(json_obj, dict) {
         return json_obj;
     }
@@ -183,7 +183,7 @@ impl _decode_dict(json_obj: dict) {
     return {key: _decode_dict(value) for (key, value) in json_obj.items()};
 }
 
-impl _wrap_to_object(schema: dict[str, object]) {
+impl _wrap_to_object(schema: dict[str, object]) -> dict[str, object] {
     if "type" in schema and schema["type"] == "object" {
         return schema;
     }
@@ -197,14 +197,14 @@ impl _wrap_to_object(schema: dict[str, object]) {
     };
 }
 
-impl _unwrap_from_object(json_obj: dict) {
+impl _unwrap_from_object(json_obj: dict) -> dict {
     if _SCHEMA_OBJECT_WRAPPER in json_obj {
         return json_obj[_SCHEMA_OBJECT_WRAPPER];
     }
     return json_obj;
 }
 
-impl type_to_schema(resp_type: type) {
+impl type_to_schema(resp_type: type) -> dict[str, object] {
     type_name = _name_of_type(resp_type);
     schema = _type_to_schema(resp_type, type_name);
     schema = _wrap_to_object(schema);
@@ -215,7 +215,9 @@ impl type_to_schema(resp_type: type) {
     };
 }
 
-impl tool_to_schema(func: Callable, description: str, params_desc: dict[str, str]) {
+impl tool_to_schema(
+    func: Callable, description: str, params_desc: dict[str, str]
+) -> dict[str, object] {
     schema = _type_to_schema(func);  # type: ignore
     properties: dict[str, object] = schema.get("properties", {});  # type: ignore
     required: list[str] = schema.get("required", []);  # type: ignore

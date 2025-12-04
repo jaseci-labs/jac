@@ -1,4 +1,4 @@
-impl Tool.postinit() {
+impl Tool.postinit()  -> None {
     annotations = get_type_hints(self.func);
     with suppress(Exception) {
         self.func.__annotations__ = annotations;
@@ -11,7 +11,7 @@ impl Tool.postinit() {
     }
 }
 
-impl Tool.__call__( *args: list , **kwargs: dict) {
+impl Tool.__call__( *args: list , **kwargs: dict)  -> object {
     # If there is an error with the finish tool, we throw the exception.
     # Since it's the user's responsibility to handle it.
     if self.is_finish_tool() {
@@ -27,11 +27,11 @@ impl Tool.__call__( *args: list , **kwargs: dict) {
     }
 }
 
-impl Tool.get_name() {
+impl Tool.get_name()  -> str {
     return self.func.__name__;
 }
 
-impl Tool.get_func_description(func: Callable) {
+impl Tool.get_func_description(func: Callable) -> str {
     if hasattr(func, "_jac_semstr") {
         return func._jac_semstr;  # type: ignore
 
@@ -39,7 +39,7 @@ impl Tool.get_func_description(func: Callable) {
     return func.__doc__ or func.__name__;
 }
 
-impl Tool.make_finish_tool(resp_type: type) {
+impl Tool.make_finish_tool(resp_type: type) -> Tool {
     def finish_tool(final_output: object) -> object {
         return TypeAdapter(resp_type).validate_python(final_output);
     }
@@ -52,15 +52,15 @@ impl Tool.make_finish_tool(resp_type: type) {
     );
 }
 
-impl Tool.is_finish_tool() {
+impl Tool.is_finish_tool()  -> bool {
     return self.get_name() == "finish_tool";
 }
 
-impl Tool.get_json_schema() {
+impl Tool.get_json_schema()  -> dict[str, object] {
     return tool_to_schema(self.func, self.description, self.params_desc);
 }
 
-impl Tool.parse_arguments(args_json: dict) {
+impl Tool.parse_arguments(args_json: dict) -> dict {
     args = {};
     annotations: dict = {};
     try {
