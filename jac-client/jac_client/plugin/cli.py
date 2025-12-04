@@ -132,9 +132,9 @@ class JacCmd:
                         "description": f"Jac application: {name}",
                         "type": "module",
                         "scripts": {
-                            "build": "npm run compile && vite build",
-                            "dev": "vite dev",
-                            "preview": "vite preview",
+                            "build": "npm run compile && vite build --config .jac-client.configs/vite.config.js",
+                            "dev": "vite dev --config .jac-client.configs/vite.config.js",
+                            "preview": "vite preview --config .jac-client.configs/vite.config.js",
                             "compile": 'babel compiled --out-dir build --extensions ".jsx,.js" --out-file-extension .js',
                         },
                         "devDependencies": dev_dependencies,
@@ -226,74 +226,8 @@ cl {
                 with open(os.path.join(project_path, "app.jac"), "w") as f:
                     f.write(main_jac_content)
 
-                # create vite.config.js file
-                if use_typescript:
-                    vite_config_content = """
-import { defineConfig } from "vite";
-import path from "path";
-import { fileURLToPath } from "url";
-import react from "@vitejs/plugin-react";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-export default defineConfig({
-  plugins: [react()],
-  root: ".", // base folder
-  build: {
-    rollupOptions: {
-      input: "build/main.js", // your compiled entry file
-      output: {
-        entryFileNames: "client.[hash].js", // name of the final js file
-        assetFileNames: "[name].[ext]",
-      },
-    },
-    outDir: "dist", // final bundled output
-    emptyOutDir: true,
-  },
-  publicDir: false,
-  resolve: {
-      alias: {
-        "@jac-client/utils": path.resolve(__dirname, "compiled/client_runtime.js"),
-        "@jac-client/assets": path.resolve(__dirname, "compiled/assets"),
-      },
-      extensions: [".mjs", ".js", ".mts", ".ts", ".jsx", ".tsx", ".json"],
-  },
-});
-
-"""
-                else:
-                    vite_config_content = """
-import { defineConfig } from "vite";
-import path from "path";
-import { fileURLToPath } from "url";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-export default defineConfig({
-  root: ".", // base folder
-  build: {
-    rollupOptions: {
-      input: "build/main.js", // your compiled entry file
-      output: {
-        entryFileNames: "client.[hash].js", // name of the final js file
-        assetFileNames: "[name].[ext]",
-      },
-    },
-    outDir: "dist", // final bundled output
-    emptyOutDir: true,
-  },
-  publicDir: false,
-  resolve: {
-      alias: {
-        "@jac-client/utils": path.resolve(__dirname, "compiled/client_runtime.js"),
-        "@jac-client/assets": path.resolve(__dirname, "compiled/assets"),
-      },
-  },
-});
-
-"""
-                with open(os.path.join(project_path, "vite.config.js"), "w") as f:
-                    f.write(vite_config_content)
+                # Note: vite.config.js will be generated automatically in .jac-client.configs/
+                # during the first bundling process (when running jac serve)
 
                 # Create TypeScript configuration if requested
                 if use_typescript:
@@ -443,6 +377,7 @@ app.session.dat
 app.session.dir
 app.session.users.json
 compiled/
+.jac-client.configs/
 """
                 with open(os.path.join(project_path, ".gitignore"), "w") as f:
                     f.write(gitignore_content)

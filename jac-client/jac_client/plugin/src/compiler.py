@@ -339,8 +339,9 @@ root.render(<App />);
             self.compiled_dir, self.project_dir / "build", self.asset_processor
         )
 
-        # Run Vite build
-        self.vite_bundler.build()
+        # Run Vite build (config will be generated in .jac-client.configs/)
+        entry_file = self.project_dir / "build" / "main.js"
+        self.vite_bundler.build(entry_file=entry_file)
 
         # Read bundle
         bundle_code, bundle_hash = self.vite_bundler.read_bundle()
