@@ -45,7 +45,9 @@ repos:
     rev: 6179bab
     hooks:
       - id: jac-format
+        entry: python3 jac/jaclang/compiler/__init__.py
       - id: jac-check
+        entry: python3 jac/jaclang/compiler/__init__.py
         exclude: (/fixtures/|_err\.jac$|_syntax_err\.jac$|jac-client/jac_client/examples/)
   - repo: local
     hooks:
