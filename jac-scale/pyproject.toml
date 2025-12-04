@@ -3,25 +3,27 @@ name = "jac-scale"
 version = "0.1.0"
 description = ""
 authors = [
-    {name = "juzailmlwork",email = "juzailmlwork@gmail.com"}
+    {name = "juzailmlwork", email = "juzailmlwork@gmail.com"}
 ]
 readme = "README.md"
-requires-python = ">=3.12,<4.0.0"
-packages = [{include = "jac_scale"}]
+requires-python = ">=3.12"
 dependencies = [
-    "jaclang >=0.9.0",
-    "python-dotenv (>=1.2.1,<2.0.0)",
-    "docker (>=7.1.0,<8.0.0)",
-    "kubernetes (>=34.1.0,<35.0.0)",
-    "pymongo (>=4.15.4,<5.0.0)",
-    "redis (>=7.1.0,<8.0.0)",
-    "fastapi (>=0.121.3,<0.122.0)",
-    "uvicorn (>=0.38.0,<0.39.0)"
+    "jaclang>=0.9.0",
+    "python-dotenv>=1.2.1,<2.0.0",
+    "docker>=7.1.0,<8.0.0",
+    "kubernetes>=34.1.0,<35.0.0",
+    "pymongo>=4.15.4,<5.0.0",
+    "redis>=7.1.0,<8.0.0",
+    "fastapi>=0.121.3,<0.122.0",
+    "uvicorn>=0.38.0,<0.39.0",
 ]
 
-[tool.poetry.plugins."jac"]
+[project.entry-points."jac"]
 scale = "jac_scale.plugin:JacCmd"
 
+[tool.setuptools.packages.find]
+include = ["jac_scale*"]
+
 [build-system]
-requires = ["poetry-core>=2.0.0,<3.0.0"]
-build-backend = "poetry.core.masonry.api"
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"

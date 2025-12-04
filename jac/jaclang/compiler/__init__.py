@@ -1,115 +1,113 @@
-"""Jac compiler tools."""
+"""Jac compiler tools and parser generation utilities."""
 
-import contextlib
 import logging
 import os
 import shutil
 import sys
 
-from jaclang.vendor.lark.tools import standalone
+_vendor_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "vendor"))
+if _vendor_dir not in sys.path:
+    sys.path.insert(0, _vendor_dir)
+
+_cur_dir = os.path.dirname(__file__)
 
 
 def generate_static_parser(force: bool = False) -> None:
     """Generate static parser for Jac."""
-    cur_dir = os.path.dirname(__file__)
-    if force or not os.path.exists(os.path.join(cur_dir, "larkparse", "jac_parser.py")):
-        if os.path.exists(os.path.join(cur_dir, "larkparse")):
-            shutil.rmtree(os.path.join(cur_dir, "larkparse"))
-        os.makedirs(os.path.join(cur_dir, "larkparse"), exist_ok=True)
-        with open(os.path.join(cur_dir, "larkparse", "__init__.py"), "w"):
-            pass
-        save_argv = sys.argv
-        sys.argv = [
-            "lark",
-            os.path.join(cur_dir, "jac.lark"),
-            "-o",
-            os.path.join(cur_dir, "larkparse", "jac_parser.py"),
-            "-c",
-        ]
+    from lark.tools import standalone
+
+    larkparse_dir = os.path.join(_cur_dir, "larkparse")
+    if force or not os.path.exists(os.path.join(larkparse_dir, "jac_parser.py")):
+        if os.path.exists(larkparse_dir):
+            shutil.rmtree(larkparse_dir)
+        os.makedirs(larkparse_dir, exist_ok=True)
+        open(os.path.join(larkparse_dir, "__init__.py"), "w").close()
+        sys.argv, save = (
+            [
+                "lark",
+                os.path.join(_cur_dir, "jac.lark"),
+                "-o",
+                os.path.join(larkparse_dir, "jac_parser.py"),
+                "-c",
+            ],
+            sys.argv,
+        )
         standalone.main()
-        sys.argv = save_argv
+        sys.argv = save
 
 
 def generate_ts_static_parser(force: bool = False) -> None:
     """Generate static parser for TypeScript/JavaScript."""
-    cur_dir = os.path.dirname(__file__)
-    ts_parser_path = os.path.join(cur_dir, "larkparse", "ts_parser.py")
+    from lark.tools import standalone
 
+    larkparse_dir = os.path.join(_cur_dir, "larkparse")
+    ts_parser_path = os.path.join(larkparse_dir, "ts_parser.py")
     if force or not os.path.exists(ts_parser_path):
-        os.makedirs(os.path.join(cur_dir, "larkparse"), exist_ok=True)
-        # Ensure __init__.py exists
-        init_path = os.path.join(cur_dir, "larkparse", "__init__.py")
+        os.makedirs(larkparse_dir, exist_ok=True)
+        init_path = os.path.join(larkparse_dir, "__init__.py")
         if not os.path.exists(init_path):
-            with open(init_path, "w"):
-                pass
-
-        save_argv = sys.argv
-        sys.argv = [
-            "lark",
-            os.path.join(cur_dir, "ts.lark"),
-            "-o",
-            ts_parser_path,
-            "-c",
-        ]
+            open(init_path, "w").close()
+        sys.argv, save = (
+            ["lark", os.path.join(_cur_dir, "ts.lark"), "-o", ts_parser_path, "-c"],
+            sys.argv,
+        )
         standalone.main()
-        sys.argv = save_argv
+        sys.argv = save
+
+
+def gen_all_parsers() -> None:
+    """Generate all parsers."""
+    generate_static_parser(force=True)
+    generate_ts_static_parser(force=True)
+    print("Parsers generated.")
 
 
 try:
     from jaclang.compiler.larkparse import jac_parser as jac_lark
-except ModuleNotFoundError:
-    generate_static_parser(force=True)
-    from jaclang.compiler.larkparse import jac_parser as jac_lark
 
-if not hasattr(jac_lark, "Lark_StandAlone"):
-    generate_static_parser(force=True)
-    from jaclang.compiler.larkparse import jac_parser as jac_lark
-
-with contextlib.suppress(AttributeError):
     jac_lark.logger.setLevel(logging.DEBUG)
-contextlib.suppress(ModuleNotFoundError)
+except (ModuleNotFoundError, ImportError):
+    print("Parser not present, generating for developer setup...", file=sys.stderr)
+    try:
+        gen_all_parsers()
+        from jaclang.compiler.larkparse import jac_parser as jac_lark
 
-TOKEN_MAP = {
-    x.name: x.pattern.value
-    for x in jac_lark.Lark_StandAlone().parser.lexer_conf.terminals
-}
+        jac_lark.logger.setLevel(logging.DEBUG)
+    except Exception as e:
+        print(f"Warning: Could not load parser: {e}", file=sys.stderr)
+        jac_lark = None  # type: ignore
 
-# fmt: off
-TOKEN_MAP.update(
+TOKEN_MAP = (
     {
-        "CARROW_L": "<++", "CARROW_R": "++>", "GLOBAL_OP": "global",
-        "NONLOCAL_OP": "nonlocal", "WALKER_OP": ":walker:", "NODE_OP": ":node:",
-        "EDGE_OP": ":edge:", "CLASS_OP": ":class:", "OBJECT_OP": ":obj:",
-        "TYPE_OP": "`", "ABILITY_OP": ":can:", "NULL_OK": "?",
-        "KW_OR": "|", "ARROW_BI": "<-->", "ARROW_L": "<--",
-        "ARROW_R": "-->", "ARROW_L_P1": "<-:", "ARROW_R_P2": ":->",
-        "ARROW_L_P2": ":<-", "ARROW_R_P1": "->:", "CARROW_BI": "<++>",
-        "CARROW_L_P1": "<+:", "RSHIFT_EQ": ">>=", "ELLIPSIS": "...",
-        "CARROW_R_P2": ":+>", "CARROW_L_P2": ":<+", "CARROW_R_P1": "+>:",
-        "PIPE_FWD": "|>", "PIPE_BKWD": "<|", "A_PIPE_FWD": ":>",
-        "A_PIPE_BKWD": "<:", "DOT_FWD": ".>", "STAR_POW": "**",
-        "STAR_MUL": "*", "FLOOR_DIV": "//", "DIV": "/",
-        "PYNLINE": "::py::", "ADD_EQ": "+=", "SUB_EQ": "-=",
-        "STAR_POW_EQ": "**=", "MUL_EQ": "*=", "FLOOR_DIV_EQ": "//=",
-        "DIV_EQ": "/=", "MOD_EQ": "%=", "BW_AND_EQ": "&=",
-        "BW_OR_EQ": "|=", "BW_XOR_EQ": "^=", "BW_NOT_EQ": "~=",
-        "LSHIFT_EQ": "<<=",
+        x.name: x.pattern.value
+        for x in jac_lark.Lark_StandAlone().parser.lexer_conf.terminals
     }
+    if jac_lark
+    else {}
 )
+# fmt: off
+TOKEN_MAP.update({
+    "CARROW_L": "<++", "CARROW_R": "++>", "GLOBAL_OP": "global", "NONLOCAL_OP": "nonlocal",
+    "WALKER_OP": ":walker:", "NODE_OP": ":node:", "EDGE_OP": ":edge:", "CLASS_OP": ":class:",
+    "OBJECT_OP": ":obj:", "TYPE_OP": "`", "ABILITY_OP": ":can:", "NULL_OK": "?", "KW_OR": "|",
+    "ARROW_BI": "<-->", "ARROW_L": "<--", "ARROW_R": "-->", "ARROW_L_P1": "<-:", "ARROW_R_P2": ":->",
+    "ARROW_L_P2": ":<-", "ARROW_R_P1": "->:", "CARROW_BI": "<++>", "CARROW_L_P1": "<+:",
+    "RSHIFT_EQ": ">>=", "ELLIPSIS": "...", "CARROW_R_P2": ":+>", "CARROW_L_P2": ":<+",
+    "CARROW_R_P1": "+>:", "PIPE_FWD": "|>", "PIPE_BKWD": "<|", "A_PIPE_FWD": ":>", "A_PIPE_BKWD": "<:",
+    "DOT_FWD": ".>", "STAR_POW": "**", "STAR_MUL": "*", "FLOOR_DIV": "//", "DIV": "/",
+    "PYNLINE": "::py::", "ADD_EQ": "+=", "SUB_EQ": "-=", "STAR_POW_EQ": "**=", "MUL_EQ": "*=",
+    "FLOOR_DIV_EQ": "//=", "DIV_EQ": "/=", "MOD_EQ": "%=", "BW_AND_EQ": "&=", "BW_OR_EQ": "|=",
+    "BW_XOR_EQ": "^=", "BW_NOT_EQ": "~=", "LSHIFT_EQ": "<<=",
+})
 # fmt: on
 
+__all__ = [
+    "jac_lark",
+    "TOKEN_MAP",
+    "generate_static_parser",
+    "generate_ts_static_parser",
+    "gen_all_parsers",
+]
 
-def get_ts_token_map() -> dict[str, str]:
-    """Get TypeScript token map (lazy loaded)."""
-    try:
-        from jaclang.compiler.larkparse import ts_parser as ts_lark
-
-        return {
-            x.name: x.pattern.value
-            for x in ts_lark.Lark_StandAlone().parser.lexer_conf.terminals
-        }
-    except (ModuleNotFoundError, ImportError):
-        return {}
-
-
-__all__ = ["jac_lark", "TOKEN_MAP", "generate_ts_static_parser", "get_ts_token_map"]
+if __name__ == "__main__":
+    gen_all_parsers()

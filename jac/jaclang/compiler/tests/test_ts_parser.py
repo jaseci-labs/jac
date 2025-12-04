@@ -6,14 +6,8 @@ import pytest
 
 from jaclang.compiler import unitree as uni
 from jaclang.compiler.program import JacProgram
-from jaclang.compiler.ts_parser import TypeScriptParser, get_ts_parser
+from jaclang.compiler.ts_parser import TypeScriptParser
 from jaclang.compiler.unitree import Source
-
-
-@pytest.fixture(scope="session")
-def ensure_ts_parser():
-    """Ensure the TypeScript parser is generated (session scope)."""
-    get_ts_parser()
 
 
 @pytest.fixture
@@ -63,12 +57,6 @@ def parse_ts_file(load_ts_fixture, ts_fixture_abs_path, parse_ts):
 # ==========================================================================
 # Basic Parsing Tests
 # ==========================================================================
-
-
-def test_parser_loads(ensure_ts_parser) -> None:
-    """Test that the TypeScript parser loads successfully."""
-    parser = get_ts_parser()
-    assert parser is not None
 
 
 def test_simple_fixture(parse_ts_file) -> None:

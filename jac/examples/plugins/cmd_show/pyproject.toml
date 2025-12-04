@@ -1,0 +1,23 @@
+[project]
+name = "cmd-show"
+version = "0.0.1"
+description = "Example Jac CLI command plugin"
+authors = [{name = "Sivasuthan S", email = "sivasuthan.sukumar@jaseci.org"}]
+requires-python = ">=3.11"
+dependencies = ["pygments"]
+
+[project.urls]
+Repository = "https://github.com/Jaseci-Labs/jaclang"
+
+[project.entry-points."jac"]
+create_cmd = "cmd_show.show:JacCmd"
+
+[tool.setuptools.packages.find]
+include = ["cmd_show*"]
+
+[tool.setuptools.package-data]
+"*" = ["*.ini"]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
