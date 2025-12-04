@@ -32,6 +32,16 @@ repos:
           - --explicit-package-bases
         additional_dependencies: [types-PyYAML, types-requests]
         exclude: (/fixtures/|/larkparse/|/vendor/|/scripts/|jac/examples/reference)
+  # Generate parsers first (required for jac-format/jac-check hooks)
+  - repo: local
+    hooks:
+      - id: generate-parsers
+        name: Generate Lark parsers
+        entry: ./gen_parser.sh
+        language: script
+        pass_filenames: false
+        always_run: true
+        stages: [commit, push]
   - repo: https://github.com/jaseci-labs/jaseci
     rev: 6179bab
     hooks:
