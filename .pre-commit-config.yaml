@@ -6,6 +6,15 @@ exclude: |
         ^$
     )
 repos:
+  # Generate parsers first (required for jac-format/jac-check hooks)
+  - repo: local
+    hooks:
+      - id: generate-parsers
+        name: Generate Lark parsers
+        entry: python3 -c "from jaclang.compiler import generate_static_parser, generate_ts_static_parser; generate_static_parser(); generate_ts_static_parser()"
+        language: system
+        pass_filenames: false
+        always_run: true
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
@@ -33,7 +42,7 @@ repos:
         additional_dependencies: [types-PyYAML, types-requests]
         exclude: (/fixtures/|/larkparse/|/vendor/|/scripts/|jac/examples/reference)
   - repo: https://github.com/jaseci-labs/jaseci
-    rev: 1637c27ec5ca0cdda59ccc51b8b9e967b3d482b5
+    rev: 6179bab
     hooks:
       - id: jac-format
       - id: jac-check
