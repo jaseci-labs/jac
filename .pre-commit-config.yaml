@@ -11,7 +11,7 @@ repos:
     hooks:
       - id: generate-parsers
         name: Generate Lark parsers
-        entry: python3 -c "from jaclang.compiler import generate_static_parser, generate_ts_static_parser; generate_static_parser(); generate_ts_static_parser()"
+        entry: python3 jac/jaclang/compiler/__init__.py
         language: system
         pass_filenames: false
         always_run: true
