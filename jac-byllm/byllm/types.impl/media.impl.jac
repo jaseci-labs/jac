@@ -161,7 +161,7 @@ impl Video.load_frames()  -> None {
         import cv2;
     } except ImportError {
         raise ImportError(
-            "OpenCV is required to process video files.""Install `pip install byllm[video]` for video capabilities."
+            "OpenCV is required to process video files. ""Install `pip install byllm[video]` for video capabilities."
         ) ;
     }
     self._base64frames = [];

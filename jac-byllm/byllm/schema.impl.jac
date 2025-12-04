@@ -49,7 +49,7 @@ impl _type_to_schema(ty: type, title: str = "", desc: str = "") -> dict {
             return {"type": "array", "items": _type_to_schema(item_type),} | context;
         }
         raise ValueError(
-            f"Unsupported {origin} type for schema generation: {ty}. "f"Only {origin} of the form {origin}[T, ...] are supported."
+            f"Unsupported {origin} type for schema generation: {ty}. Only {origin} of the form {origin}[T, ...] are supported."
         ) ;
     }
     # Handle annotated dictionaries
@@ -126,7 +126,7 @@ impl _type_to_schema(ty: type, title: str = "", desc: str = "") -> dict {
         };
     }
     raise ValueError(
-        f"Unsupported type for schema generation: {ty}. ""Only primitive types, dataclasses, and Union types are supported."
+        f"Unsupported type for schema generation: {ty}. Only primitive types, dataclasses, and Union types are supported."
     ) ;
 }
 

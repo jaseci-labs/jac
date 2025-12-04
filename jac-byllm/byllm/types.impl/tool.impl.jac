@@ -18,7 +18,7 @@ impl Tool.__call__( *args: list , **kwargs: dict)  -> object {
         return self.func(*args, **kwargs);
     }
     try {
-        # TODO: Shoud I json serialize or this is fine?
+        # TODO: Should I json serialize or this is fine?
         return self.func(*args, **kwargs);
     } except Exception as e {
         # For the LLM if the tool failed, it'll see the error message
