@@ -32,22 +32,21 @@ repos:
           - --explicit-package-bases
         additional_dependencies: [types-PyYAML, types-requests]
         exclude: (/fixtures/|/larkparse/|/vendor/|/scripts/|jac/examples/reference)
-  # Generate parsers first (required for jac-format/jac-check hooks)
   - repo: local
     hooks:
       - id: jac-format
         name: jac-format
         description: Format Jac files with consistent code style
-        entry: python3 jac/jaclang/cli/cli.py format
-        language: python
+        entry: env PYTHONPATH=jac python -m jaclang format
+        language: system
         types: [file]
         files: \.jac$
         require_serial: true
       - id: jac-check
         name: jac-check
         description: Type check Jac files
-        entry: python3 jac/jaclang/cli/cli.py check
-        language: python
+        entry: env PYTHONPATH=jac python -m jaclang check
+        language: system
         types: [file]
         files: \.jac$
         require_serial: true

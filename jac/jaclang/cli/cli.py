@@ -9,15 +9,7 @@ import types
 from importlib.metadata import version as pkg_version
 from pathlib import Path
 
-try:
-    from jaclang.cli.cmdreg import cmd_registry
-except Exception:
-    # Add jac directory to sys.path for direct script execution
-    _jac_root = Path(__file__).resolve().parent.parent.parent
-    if str(_jac_root) not in sys.path:
-        sys.path.insert(0, str(_jac_root))
-    from jaclang.cli.cmdreg import cmd_registry
-
+from jaclang.cli.cmdreg import cmd_registry
 
 _runtime_initialized = False
 
