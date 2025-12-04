@@ -35,16 +35,10 @@ repos:
   # Generate parsers first (required for jac-format/jac-check hooks)
   - repo: local
     hooks:
-      - id: generate-parsers
-        name: Generate Lark parsers
-        entry: ./gen_parser.sh
-        language: script
-        pass_filenames: false
-        always_run: true
       - id: jac-format
         name: jac-format
         description: Format Jac files with consistent code style
-        entry: jac format
+        entry: python3 jac/jaclang/cli/cli.py format
         language: python
         types: [file]
         files: \.jac$
@@ -52,7 +46,7 @@ repos:
       - id: jac-check
         name: jac-check
         description: Type check Jac files
-        entry: jac check
+        entry: python3 jac/jaclang/cli/cli.py check
         language: python
         types: [file]
         files: \.jac$
