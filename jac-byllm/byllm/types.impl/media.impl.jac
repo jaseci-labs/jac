@@ -111,7 +111,7 @@ impl Image.postinit()  -> None {
     }
     # If we reach here, the input type isn't supported
     raise TypeError(
-        "Unsupported Image input type. Provide a URL/path string, data URL, bytes, ""BytesIO, file-like object, os.PathLike, or PIL.Image.Image."
+        "Unsupported Image input type. Provide a URL/path string, data URL, bytes, " "BytesIO, file-like object, os.PathLike, or PIL.Image.Image."
     ) ;
 }
 
