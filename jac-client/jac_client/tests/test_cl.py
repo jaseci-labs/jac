@@ -126,43 +126,43 @@ def _create_test_project_with_vite(
 def test_build_bundle_with_vite() -> None:
     """Test that Vite bundling produces optimized output with proper structure."""
     # Create a temporary directory for our test project
-    # Using persistent temp directory for debugging
-    temp_path = Path(__file__).parent / "temp"
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = Path(temp_dir)
 
-    package_json, output_dir = _create_test_project_with_vite(temp_path)
-    runtime_path = Path(__file__).parent.parent / "plugin" / "client_runtime.jac"
-    # Initialize the Vite builder
-    builder = ViteClientBundleBuilder(
-        runtime_path=runtime_path,
-        vite_package_json=package_json,
-        vite_output_dir=output_dir,
-        vite_minify=False,  # Disable minification for easier inspection
-    )
-    # Import the test module
-    fixtures_dir = Path(__file__).parent / "fixtures" / "basic-app"
-    (module,) = Jac.jac_import("app", str(fixtures_dir))
-    # Build the bundle
-    bundle = builder.build(module, force=True)
+        package_json, output_dir = _create_test_project_with_vite(temp_path)
+        runtime_path = Path(__file__).parent.parent / "plugin" / "client_runtime.jac"
+        # Initialize the Vite builder
+        builder = ViteClientBundleBuilder(
+            runtime_path=runtime_path,
+            vite_package_json=package_json,
+            vite_output_dir=output_dir,
+            vite_minify=False,  # Disable minification for easier inspection
+        )
+        # Import the test module
+        fixtures_dir = Path(__file__).parent / "fixtures" / "basic-app"
+        (module,) = Jac.jac_import("app", str(fixtures_dir))
+        # Build the bundle
+        bundle = builder.build(module, force=True)
 
-    assert bundle is not None
-    assert bundle.module_name == "app"
-    assert "app" in bundle.client_functions
-    assert "ButtonProps" in bundle.client_functions
-    assert "API_LABEL" in bundle.client_globals
-    assert len(bundle.hash) > 10
+        assert bundle is not None
+        assert bundle.module_name == "app"
+        assert "app" in bundle.client_functions
+        assert "ButtonProps" in bundle.client_functions
+        assert "API_LABEL" in bundle.client_globals
+        assert len(bundle.hash) > 10
 
-    # Verify bundle code contains expected content
-    assert "function app()" in bundle.code
-    assert 'API_LABEL = "Runtime Test";' in bundle.code
+        # Verify bundle code contains expected content
+        assert "function app()" in bundle.code
+        assert 'API_LABEL = "Runtime Test";' in bundle.code
 
-    # Verify bundle was written to output directory
-    bundle_files = list(output_dir.glob("client.*.js"))
-    assert len(bundle_files) > 0, "Expected at least one bundle file"
+        # Verify bundle was written to output directory
+        bundle_files = list(output_dir.glob("client.*.js"))
+        assert len(bundle_files) > 0, "Expected at least one bundle file"
 
-    # Verify cached bundle is identical
-    cached = builder.build(module, force=False)
-    assert bundle.hash == cached.hash
-    assert bundle.code == cached.code
+        # Verify cached bundle is identical
+        cached = builder.build(module, force=False)
+        assert bundle.hash == cached.hash
+        assert bundle.code == cached.code
 
 
 def test_vite_bundle_without_package_json() -> None:
