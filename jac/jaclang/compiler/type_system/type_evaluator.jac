@@ -146,7 +146,8 @@ class TypeEvaluator {
             if settings.all_warnings {
                 raise FileNotFoundError(f"Stub file not found at {path}") ;
             } else {
-                print(f"Stub file not found at {path}");
+                print(f"Warning: Stub file not found at {path}");
+                exit(0);
             }
         }
         file_content = read_file_with_encoding(path);
