@@ -1,4 +1,6 @@
 impl MockLLM.init(model_name: str, **kwargs: object) -> None {
+    logger.remove();  # remove default stderr sink
+    logger.add(sys.stdout);
     super.init(model_name, **kwargs);
 }
 

@@ -63,20 +63,38 @@ impl BaseLLM.log_info(message: str) -> None {
     # FIXME: The logger.info will not always log so for now I'm printing to stdout
     # remove and log properly.
     if bool(self.config.get("verbose", False)) {
-        print(message);
+        logger.info(message);  # print(message);
     }
+}
+
+impl BaseLLM.format_prompt(params: dict) -> str {
+    log_params = params.copy();
+    if log_params.get("api_key") {
+        log_params["api_key"] = "*" * len(log_params["api_key"]);
+    }
+    #         log = f"""
+    # [SYSTEM]
+    # {log_params["messages"][0]["content"]}
+    # [USER]
+    # {log_params["messages"][1]["content"][0]['text']}
+    # [TOOLS]
+    # {log_params.get("tools")}
+
+    # [RESPONSE FORMAT]
+    # {json.dumps(
+    #             log_params.get("response_format"), indent=2, ensure_ascii=False
+    #         )}
+    #         """;
+    #         return log;
+    return json.dumps(log_params, indent=2, ensure_ascii=False);
 }
 
 impl BaseLLM.dispatch_no_streaming(mtir: MTIR) -> CompletionResult {
     # Construct the parameters for the LLM call
     params = self.make_model_params(mtir);
     # Call the LiteLLM API
-    log_params = (
-        {** params, "api_key": "*" * len(params["api_key"])}
-        if params.get("api_key")
-        else params
-    );
-    self.log_info(f"Calling LLM: {self.model_name} with params:\n{log_params}");
+    log_params = self.format_prompt(params);
+    self.log_info(f"Calling LLM: {self.model_name} with params: {log_params}");
     self.api_key = params.get("api_key");
     self.api_base = params.pop("api_base", DEFAULT_BASE_URL);
     response = self.model_call_no_stream(params);
@@ -109,11 +127,7 @@ impl BaseLLM.dispatch_streaming(mtir: MTIR) -> Generator[str, None, None] {
     # Construct the parameters for the LLM call
     params = self.make_model_params(mtir);
     # Call the LiteLLM API
-    log_params = (
-        {** params, "api_key": "*" * len(params["api_key"])}
-        if params.get("api_key")
-        else params
-    );
+    log_params = self.format_prompt(params);
     self.log_info(f"Calling LLM: {self.model_name} with params:\n{log_params}");
     self.api_key = params.get("api_key");
     self.api_base = params.pop("api_base", DEFAULT_BASE_URL);

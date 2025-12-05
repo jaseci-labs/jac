@@ -66,27 +66,7 @@ obj BaseLLM {
     def log_info(message: str) -> None;
 
     """Format model parameters for logging, masking sensitive information."""
-    def format_prompt(params: dict) -> str {
-        log_params = params.copy();
-        if log_params.get("api_key") {
-            log_params["api_key"] = "*" * len(log_params["api_key"]);
-        }
-        #         log = f"""
-        # [SYSTEM]
-        # {log_params["messages"][0]["content"]}
-        # [USER]
-        # {log_params["messages"][1]["content"][0]['text']}
-        # [TOOLS]
-        # {log_params.get("tools")}
-
-        # [RESPONSE FORMAT]
-        # {json.dumps(
-        #             log_params.get("response_format"), indent=2, ensure_ascii=False
-        #         )}
-        #         """;
-        #         return log;
-        return json.dumps(log_params, indent=2, ensure_ascii=False);
-    }
+    def format_prompt(params: dict) -> str;
 
     """Dispatch the LLM call without streaming."""
     def dispatch_no_streaming(mtir: MTIR) -> CompletionResult;
