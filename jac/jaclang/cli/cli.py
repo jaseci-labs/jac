@@ -366,7 +366,7 @@ def check(paths: list, print_errs: bool = True) -> None:
         file=sys.stderr if total_errors else sys.stdout,
     )
 
-    if failed_files > 0 or total_errors > 0:
+    if total_errors > 0:
         exit(1)
 
 
