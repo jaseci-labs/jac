@@ -143,7 +143,7 @@ class TypeEvaluator {
     """Load and return the builtins stub module."""
     def _load_stub_module(self: TypeEvaluator, path: str) -> uni.Module {
         if not os.path.exists(path) {
-            if settings.all_warnings {
+            if not settings.all_warnings {
                 raise FileNotFoundError(f"Stub file not found at {path}") ;
             } else {
                 print(f"Warning: Stub file not found at {path}");
