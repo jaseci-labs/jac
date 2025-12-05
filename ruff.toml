@@ -42,13 +42,9 @@ known-first-party = ["jaclang", "jac_client", "jac_scale", "byllm"]
 suppress-none-returning = true
 
 [lint.per-file-ignores]
-# Test files don't require type annotations and may use simplified patterns
-"**/tests/**/*.py" = ["ANN001", "ANN201", "ANN202", "SIM105", "SIM115"]
-"**/test_*.py" = ["ANN001", "ANN201", "ANN202", "SIM105", "SIM115"]
-"**/*_test.py" = ["ANN001", "ANN201", "ANN202", "SIM105", "SIM115"]
-# Scripts may have simpler annotation requirements
+"**/tests/**/*.py" = ["ANN001", "ANN201", "ANN202"]
+"**/test_*.py" = ["ANN001", "ANN201", "ANN202"]
+"**/*_test.py" = ["ANN001", "ANN201", "ANN202"]
 "**/scripts/**/*.py" = ["ANN001", "ANN201"]
-# Test fixtures may have unconventional patterns for testing purposes
-"**/fixtures/**/*.py" = ["ANN", "F403", "F401", "E402", "C408", "SIM105"]
-# Legacy module naming and dynamic wrappers (renaming would break imports)
+"**/fixtures/**/*.py" = ["ANN", "F403", "F401", "E402", "C408"]
 "jac-scale/jac_scale/jserver/jfastApi.py" = ["N999", "ANN401"]

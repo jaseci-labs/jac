@@ -797,10 +797,9 @@ def test_client_bundle_has_object_get_polyfill(server_fixture):
 
     # Pre-warm the bundle by requesting a page first (triggers bundle build)
     # This ensures the bundle is cached before we test it directly
-    try:
+    with contextlib.suppress(Exception):
+        # Ignore errors, we just want to trigger bundle building
         server_fixture.request("GET", "/")
-    except Exception:
-        pass  # Ignore errors, we just want to trigger bundle building
 
     # Fetch the client bundle with longer timeout for CI environments
     # Bundle building can be slow on CI runners with limited resources

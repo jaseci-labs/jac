@@ -1,5 +1,6 @@
 """Tests for Integration with Jaclang."""
 
+import contextlib
 import io
 import os
 import sys
@@ -304,11 +305,9 @@ def test_enum_without_value(fixture_path) -> None:
     captured_output = io.StringIO()
     logger.remove()
     logger.add(captured_output)
-    try:
-        jac_import("enum_no_value", base_path=fixture_path("./"))
-    except Exception:
+    with contextlib.suppress(Exception):
         # API key error is expected, but we still capture the output before the error
-        pass
+        jac_import("enum_no_value", base_path=fixture_path("./"))
     stdout_value = captured_output.getvalue()
     assert "YES" in stdout_value
     assert "NO" in stdout_value
