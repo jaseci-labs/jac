@@ -31,6 +31,30 @@ Add to `package.json`:
 
 ### 2. Configure Tailwind in config.json
 
+Create `config.json` in your project root and add Tailwind configuration. You can either:
+
+**Option A: Use the CLI command (recommended)**
+```bash
+jac generate_client_config
+```
+
+This creates a default `config.json` file with the proper structure. Then edit it to add Tailwind:
+
+```json
+{
+  "vite": {
+    "plugins": [
+      "tailwindcss()"
+    ],
+    "lib_imports": [
+      "import tailwindcss from '@tailwindcss/vite'"
+    ]
+  }
+}
+```
+
+**Option B: Create manually**
+
 Create `config.json` in your project root (if it doesn't exist) and add Tailwind configuration:
 
 ```json
@@ -46,7 +70,7 @@ Create `config.json` in your project root (if it doesn't exist) and add Tailwind
 }
 ```
 
-**Note**: If `config.json` doesn't exist, the system will use default configuration. Create the file manually when you need to customize the build (e.g., add Tailwind or other plugins).
+**Note**: If `config.json` doesn't exist, the system will use default configuration. Use `jac generate_client_config` to create it with the proper structure, or create it manually when you need to customize the build.
 
 The `vite.config.js` will be automatically generated with Tailwind support. No manual editing needed!
 
@@ -214,7 +238,14 @@ For custom values:
 
 ### Vite Configuration (config.json)
 
-Tailwind is configured through `config.json` in your project root. Create this file if it doesn't exist:
+Tailwind is configured through `config.json` in your project root. 
+
+**To create the config file:**
+```bash
+jac generate_client_config
+```
+
+This creates a default `config.json` with the proper structure. Then add Tailwind configuration:
 
 ```json
 {
@@ -229,7 +260,7 @@ Tailwind is configured through `config.json` in your project root. Create this f
 }
 ```
 
-**Note**: The `config.json` file is optional. If it doesn't exist, the system uses default configuration. Create it manually when you need to customize plugins or build options.
+**Note**: The `config.json` file is optional. If it doesn't exist, the system uses default configuration. Use `jac generate_client_config` to create it with the proper structure, or create it manually when you need to customize plugins or build options.
 
 The `vite.config.js` is automatically generated from this configuration. You don't need to edit it manually.
 
