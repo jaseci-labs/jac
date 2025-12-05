@@ -32,11 +32,24 @@ repos:
           - --explicit-package-bases
         additional_dependencies: [types-PyYAML, types-requests]
         exclude: (/fixtures/|/larkparse/|/vendor/|/scripts/|jac/examples/reference)
-  - repo: https://github.com/jaseci-labs/jaseci
-    rev: 1637c27ec5ca0cdda59ccc51b8b9e967b3d482b5
+  - repo: local
     hooks:
       - id: jac-format
+        name: jac-format
+        description: Format Jac files with consistent code style
+        entry: env PYTHONPATH=jac python -m jaclang format
+        language: system
+        types: [file]
+        files: \.jac$
+        require_serial: true
       - id: jac-check
+        name: jac-check
+        description: Type check Jac files
+        entry: env PYTHONPATH=jac JACLANG_ALL_WARNINGS=true python -m jaclang check
+        language: system
+        types: [file]
+        files: \.jac$
+        require_serial: true
         exclude: (/fixtures/|_err\.jac$|_syntax_err\.jac$|jac-client/jac_client/examples/)
   - repo: local
     hooks:

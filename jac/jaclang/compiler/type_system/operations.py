@@ -1,4 +1,3 @@
-# flake8: noqa: I300
 """Provides type evaluation logic for unary, binary, augmented assignment and ternary operators.
 
 PyrightReference: packages/pyright-internal/src/analyzer/operations.ts

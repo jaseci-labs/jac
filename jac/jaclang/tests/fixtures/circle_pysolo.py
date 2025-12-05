@@ -8,7 +8,6 @@ import unittest
 from abc import ABC, abstractmethod
 from enum import Enum
 
-
 # Module-level global var
 RAD = 5
 

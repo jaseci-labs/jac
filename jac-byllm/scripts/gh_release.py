@@ -3,7 +3,7 @@
 import tomllib
 
 import markdown_to_json
-from github_release import gh_release_create  # noqa: I100
+from github_release import gh_release_create
 
 
 def get_release_info(version: str) -> str:

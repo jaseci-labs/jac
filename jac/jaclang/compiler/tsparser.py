@@ -7,59 +7,19 @@ import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from threading import Event
-from types import ModuleType
 from typing import TYPE_CHECKING, Any, TypeAlias, TypeVar, cast
 
 import jaclang.compiler.unitree as uni
 from jaclang.compiler.constant import TsTokens as Tok
+from jaclang.compiler.larkparse import ts_parser as ts_lark
 from jaclang.compiler.passes.main import BaseTransform, Transform
 from jaclang.utils.helpers import ANSIColors
 
 if TYPE_CHECKING:
     from jaclang.compiler.program import JacProgram
 
-# Lazy load standalone parser
-_ts_parser = None
-_ts_lark_module = None
-
 T = TypeVar("T", bound=uni.UniNode)
 TL = TypeVar("TL", bound=(uni.UniNode | list))
-
-
-def get_ts_lark() -> ModuleType:
-    """Get the TypeScript Lark module (for Token class etc.)."""
-    global _ts_lark_module
-    if _ts_lark_module is None:
-        try:
-            from jaclang.compiler.larkparse import ts_parser as _ts_lark
-
-            _ts_lark_module = _ts_lark
-        except (ModuleNotFoundError, ImportError):
-            from jaclang.compiler import generate_ts_static_parser
-
-            generate_ts_static_parser(force=True)
-            from jaclang.compiler.larkparse import ts_parser as _ts_lark
-
-            _ts_lark_module = _ts_lark
-    return _ts_lark_module
-
-
-def get_ts_parser() -> object:
-    """Get the TypeScript standalone LALR parser instance."""
-    global _ts_parser
-    if _ts_parser is None:
-        try:
-            from jaclang.compiler.larkparse import ts_parser as _ts_lark
-
-            _ts_parser = _ts_lark.Lark_StandAlone()
-        except (ModuleNotFoundError, ImportError):
-            from jaclang.compiler import generate_ts_static_parser
-
-            generate_ts_static_parser(force=True)
-            from jaclang.compiler.larkparse import ts_parser as _ts_lark
-
-            _ts_parser = _ts_lark.Lark_StandAlone()
-    return _ts_parser
 
 
 @dataclass
@@ -90,7 +50,7 @@ class TsLarkParseTransform(BaseTransform[TsLarkParseInput, TsLarkParseOutput]):
     def transform(self, ir_in: TsLarkParseInput) -> TsLarkParseOutput:
         """Transform input IR by parsing with LALR parser."""
         TsLarkParseTransform.comment_cache = []
-        parser: Any = get_ts_parser()
+        parser: Any = ts_lark.Lark_StandAlone()
         try:
             tree = parser.parse(ir_in.ir_value, on_error=ir_in.on_error)
         except Exception as e:
@@ -180,7 +140,7 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
 
     def error_callback(self, e: object) -> bool:
         """Handle parse error with recovery."""
-        lark_module = get_ts_lark()
+        lark_module = ts_lark
         iparser = getattr(e, "interactive_parser", None)
         if iparser is None:
             return False
@@ -271,7 +231,7 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
 
         def transform(self, tree: object) -> uni.Module:
             """Transform the parse tree to AST."""
-            lark_module = get_ts_lark()
+            lark_module = ts_lark
             transformer_base = lark_module.Transformer
             outer_ref = self
 

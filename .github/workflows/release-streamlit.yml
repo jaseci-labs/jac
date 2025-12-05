@@ -21,14 +21,13 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install Poetry
+      - name: Install build tools
         run: |
-          pip install poetry
+          pip install build twine
 
       - name: Build package
-        run: poetry build
+        run: python -m build
 
       - name: Publish package to PyPI
         run: |
-          poetry config pypi-token.pypi ${{ secrets.PYPI_TOKEN }}
-          poetry publish
+          twine upload dist/* -u __token__ -p ${{ secrets.PYPI_TOKEN }}

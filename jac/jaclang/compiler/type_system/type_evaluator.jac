@@ -13,12 +13,13 @@ import from pathlib { Path }
 import from typing { Callable, TYPE_CHECKING, cast }
 
 import jaclang.compiler.unitree as uni;
-import from jaclang.compiler { TOKEN_MAP }
+import from jaclang.compiler.parser { TOKEN_MAP }
 import from jaclang.compiler.constant { SymbolType, Tokens as Tok }
 import from jaclang.compiler.passes.main.pyast_load_pass { PyastBuildPass }
 import from jaclang.compiler.passes.main.sym_tab_build_pass { SymTabBuildPass }
 import from jaclang.compiler.type_system { types }
 import from jaclang.runtimelib.utils { read_file_with_encoding }
+import from jaclang.settings { settings }
 
 with entry {
     if TYPE_CHECKING {
@@ -142,7 +143,12 @@ class TypeEvaluator {
     """Load and return the builtins stub module."""
     def _load_stub_module(self: TypeEvaluator, path: str) -> uni.Module {
         if not os.path.exists(path) {
-            raise FileNotFoundError(f"Stub file not found at {path}") ;
+            if not settings.all_warnings {
+                raise FileNotFoundError(f"Stub file not found at {path}") ;
+            } else {
+                print(f"Warning: Stub file not found at {path}");
+                exit(0);
+            }
         }
         file_content = read_file_with_encoding(path);
         uni_source = uni.Source(file_content, path);

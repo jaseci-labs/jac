@@ -21,12 +21,11 @@ from jaclang.vendor.pygls.workspace import Workspace
 
 def create_temp_jac_file(initial_content: str = "") -> str:
     """Create a temporary Jac file with optional initial content and return its path."""
-    temp = tempfile.NamedTemporaryFile(
+    with tempfile.NamedTemporaryFile(
         delete=False, suffix=".jac", mode="w", encoding="utf-8"
-    )
-    temp.write(initial_content)
-    temp.close()
-    return temp.name
+    ) as temp:
+        temp.write(initial_content)
+        return temp.name
 
 
 def load_jac_template(template_file: str, code: str = "") -> str:

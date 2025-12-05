@@ -1,7 +1,7 @@
-from os import path
 from dataclasses import dataclass
+from os import path
 
-from byllm.lib import by, MockLLM, Image
+from byllm.lib import Image, MockLLM, by
 
 
 @dataclass

@@ -959,7 +959,7 @@ class JacParser(Transform[uni.Source, uni.Module]):
                         static_kw.line_no = dec.loc.first_line
                         static_kw.c_start = dec.loc.col_start
                         static_kw.c_end = static_kw.c_start + len(static_kw.name)
-                        decorators.remove(dec)  # noqa: B038
+                        decorators.remove(dec)
                         if not ability.is_static:
                             ability.is_static = True
                             if not ability.is_override:
@@ -1825,7 +1825,14 @@ class JacParser(Transform[uni.Source, uni.Module]):
         def walrus_assign(self, _: None) -> uni.Expr:
             """Grammar rule.
 
-            walrus_assign: (named_ref WALRUS_EQ)? pipe
+            walrus_assign: (named_ref WALRUS_EQ)? by_expr
+            """
+            return self._binary_expr_unwind(self.cur_nodes)
+
+        def by_expr(self, _: None) -> uni.Expr:
+            """Grammar rule.
+
+            by_expr: (by_expr KW_BY)? pipe
             """
             return self._binary_expr_unwind(self.cur_nodes)
 
@@ -2230,7 +2237,7 @@ class JacParser(Transform[uni.Source, uni.Module]):
         def atomic_call(self, _: None) -> uni.FuncCall:
             """Grammar rule.
 
-            atomic_call: atomic_chain LPAREN param_list? by_llm? RPAREN
+            atomic_call: atomic_chain LPAREN param_list? RPAREN
             """
             target = self.consume(uni.Expr)
             gencompr = self.match(uni.GenCompr)
@@ -2243,7 +2250,6 @@ class JacParser(Transform[uni.Source, uni.Module]):
                 )
             self.consume_token(Tok.LPAREN)
             params_sn = self.match(list)
-            genai_call = self.match(uni.Expr)
             self.consume_token(Tok.RPAREN)
 
             return uni.FuncCall(
@@ -2253,17 +2259,9 @@ class JacParser(Transform[uni.Source, uni.Module]):
                     if params_sn
                     else []
                 ),
-                genai_call=genai_call,
+                genai_call=None,
                 kid=self.flat_cur_nodes,
             )
-
-        def by_llm(self, _: None) -> uni.Expr:
-            """Grammar rule.
-
-            by_llm: KW_BY expression
-            """
-            self.consume_token(Tok.KW_BY)
-            return self.consume(uni.Expr)
 
         def index_slice(self, _: None) -> uni.IndexSlice:
             """Grammar rule.

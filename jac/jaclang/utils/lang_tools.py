@@ -322,11 +322,3 @@ class AstTool:
     def automate_ref(self) -> str:
         """Automate the reference guide generation."""
         return auto_generate_refs()
-
-    def gen_parser(self) -> str:
-        """Generate static parser."""
-        from jaclang.compiler import generate_static_parser, generate_ts_static_parser
-
-        generate_static_parser(force=True)
-        generate_ts_static_parser(force=True)
-        return "Parser generated."

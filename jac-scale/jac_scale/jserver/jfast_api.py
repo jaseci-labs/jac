@@ -266,7 +266,7 @@ class JFastApiServer(JServer[FastAPI]):
                 # Callback accepts **kwargs, so inject Request to capture query params
                 if inspect.iscoroutinefunction(callback):
 
-                    async def async_endpoint_wrapper(request: Request):
+                    async def async_endpoint_wrapper(request: Request) -> Any:
                         try:
                             # Extract all query parameters and pass as kwargs
                             query_params = dict(request.query_params)
@@ -277,7 +277,7 @@ class JFastApiServer(JServer[FastAPI]):
                     return async_endpoint_wrapper
                 else:
 
-                    def sync_endpoint_wrapper(request: Request):
+                    def sync_endpoint_wrapper(request: Request) -> Any:
                         try:
                             # Extract all query parameters and pass as kwargs
                             query_params = dict(request.query_params)
@@ -290,7 +290,7 @@ class JFastApiServer(JServer[FastAPI]):
                 # No parameters and doesn't accept kwargs, simple wrapper
                 if inspect.iscoroutinefunction(callback):
 
-                    async def async_endpoint_wrapper__1():
+                    async def async_endpoint_wrapper__1() -> Any:
                         try:
                             return await callback()
                         except Exception as e:
@@ -299,7 +299,7 @@ class JFastApiServer(JServer[FastAPI]):
                     return async_endpoint_wrapper__1
                 else:
 
-                    def sync_endpoint_wrapper__1():
+                    def sync_endpoint_wrapper__1() -> Any:
                         try:
                             return callback()
                         except Exception as e:
@@ -357,12 +357,12 @@ class JFastApiServer(JServer[FastAPI]):
                     # Don't use None as default, treat as optional without default
                     if default_value is None:
                         model_fields[param_name] = (
-                            Optional[param_type],
+                            param_type | None,
                             Field(description=description),
                         )
                     else:
                         model_fields[param_name] = (
-                            Optional[param_type],
+                            param_type | None,
                             Field(default_value, description=description),
                         )
 
@@ -576,7 +576,7 @@ def endpoint_wrapper({params}):
             else:
                 default_value = field_config.get("default")
                 pydantic_fields[field_name] = (
-                    Optional[field_type],
+                    field_type | None,
                     Field(default_value, description=description),
                 )
 

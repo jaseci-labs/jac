@@ -1,5 +1,5 @@
-from typing import TypeAlias
 import collections.abc
+from typing import TypeAlias
 
 _ClassInfo: TypeAlias = type | tuple[object, ...]
 Sized = collections.abc.Sized
