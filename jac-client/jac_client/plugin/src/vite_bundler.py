@@ -153,10 +153,10 @@ class ViteBundler:
         """
         configs_dir = self.project_dir / ".jac-client.configs"
         configs_dir.mkdir(exist_ok=True)
-        
+
         # Load configuration (returns defaults if config.json doesn't exist)
         vite_config_data = self.config_loader.get_vite_config()
-        
+
         config_path = configs_dir / "vite.config.js"
 
         has_ts = self._has_typescript_support()
@@ -165,7 +165,7 @@ class ViteBundler:
             entry_relative = entry_file.relative_to(self.project_dir).as_posix()
         except ValueError:
             entry_relative = entry_file.as_posix()
-        
+
         try:
             output_relative = self.output_dir.relative_to(self.project_dir).as_posix()
         except ValueError:
@@ -174,25 +174,25 @@ class ViteBundler:
         # Build plugins array and imports
         plugins = []
         plugin_imports = []
-        
+
         # Add base plugins
         if has_ts:
             plugin_imports.append('import react from "@vitejs/plugin-react";')
-            plugins.append('    react()')
-        
+            plugins.append("    react()")
+
         # Add lib_imports from config (user-provided import statements)
         lib_imports = vite_config_data.get("lib_imports", [])
         for lib_import in lib_imports:
             if isinstance(lib_import, str) and lib_import.strip():
                 plugin_imports.append(lib_import)
-        
+
         # Add custom plugins from config
         custom_plugins = vite_config_data.get("plugins", [])
         for plugin in custom_plugins:
             # Plugin must be a string (function call like "tailwindcss()")
             if isinstance(plugin, str):
                 # Direct function call (e.g., "tailwindcss()" or "tailwindcss({...})")
-                plugins.append(f'    {plugin}')
+                plugins.append(f"    {plugin}")
 
         plugins_str = ",\n".join(plugins) if plugins else ""
         imports_str = "\n".join(plugin_imports) if plugin_imports else ""
@@ -231,10 +231,12 @@ class ViteBundler:
         newline = "\n"
         # Format server config if present
         if server_config_str:
-            server_section = f"  server: {{{newline}{server_config_str}{newline}  }},{newline}"
+            server_section = (
+                f"  server: {{{newline}{server_config_str}{newline}  }},{newline}"
+            )
         else:
             server_section = ""
-        
+
         config_content = f'''import {{ defineConfig }} from "vite";
 import path from "path";
 import {{ fileURLToPath }} from "url";
@@ -305,7 +307,7 @@ export default defineConfig({{
         """
         if not options:
             return ""
-        
+
         items = []
         for key, value in options.items():
             if isinstance(value, str):
@@ -318,7 +320,7 @@ export default defineConfig({{
                 items.append(f"{key}: [{', '.join(repr(v) for v in value)}]")
             else:
                 items.append(f"{key}: {repr(value)}")
-        
+
         return "{ " + ", ".join(items) + " }"
 
     def _format_config_object(self, config: dict, indent: int = 0) -> str:
@@ -333,7 +335,7 @@ export default defineConfig({{
         """
         if not config:
             return ""
-        
+
         indent_str = " " * indent
         items = []
         for key, value in config.items():
@@ -351,5 +353,5 @@ export default defineConfig({{
                 items.append(f"{indent_str}  {key}: {{\n{nested}\n{indent_str}  }},")
             else:
                 items.append(f"{indent_str}  {key}: {repr(value)},")
-        
+
         return "\n".join(items)

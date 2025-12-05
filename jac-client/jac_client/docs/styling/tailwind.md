@@ -238,7 +238,7 @@ For custom values:
 
 ### Vite Configuration (config.json)
 
-Tailwind is configured through `config.json` in your project root. 
+Tailwind is configured through `config.json` in your project root.
 
 **To create the config file:**
 ```bash
