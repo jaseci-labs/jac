@@ -377,7 +377,8 @@ app.session.dat
 app.session.dir
 app.session.users.json
 compiled/
-.jac-client.configs/
+.jac-client.configs/vite.config.js
+# Note: config.json should be committed if you customize it
 """
                 with open(os.path.join(project_path, ".gitignore"), "w") as f:
                     f.write(gitignore_content)

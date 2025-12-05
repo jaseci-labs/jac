@@ -8,6 +8,8 @@ from pathlib import Path
 
 from jaclang.runtimelib.client_bundle import ClientBundleError
 
+from .config_loader import JacClientConfig
+
 
 class ViteBundler:
     """Handles Vite bundling operations."""
@@ -31,6 +33,7 @@ class ViteBundler:
         self.output_dir = output_dir or (project_dir / "compiled" / "dist" / "assets")
         self.minify = minify
         self.config_path = config_path
+        self.config_loader = JacClientConfig(project_dir)
 
     def build(self, entry_file: Path | None = None) -> None:
         """Run Vite build with generated config in .jac-client.configs/.
@@ -140,7 +143,7 @@ class ViteBundler:
         return False
 
     def create_vite_config(self, entry_file: Path) -> Path:
-        """Create vite.config.js in .jac-client.configs/ directory during bundling.
+        """Create vite.config.js from config.json during bundling.
 
         Args:
             entry_file: Path to the entry file (build/main.js)
@@ -150,6 +153,13 @@ class ViteBundler:
         """
         configs_dir = self.project_dir / ".jac-client.configs"
         configs_dir.mkdir(exist_ok=True)
+        
+        # Ensure config.json exists with defaults
+        self.config_loader.create_default_config_file()
+        
+        # Load configuration
+        vite_config_data = self.config_loader.get_vite_config()
+        
         config_path = configs_dir / "vite.config.js"
 
         has_ts = self._has_typescript_support()
@@ -164,50 +174,73 @@ class ViteBundler:
         except ValueError:
             output_relative = self.output_dir.as_posix()
 
+        # Build plugins array and imports
+        plugins = []
+        plugin_imports = []
+        
+        # Add base plugins
         if has_ts:
-            config_content = f'''import {{ defineConfig }} from "vite";
-import path from "path";
-import {{ fileURLToPath }} from "url";
-import react from "@vitejs/plugin-react";
+            plugin_imports.append('import react from "@vitejs/plugin-react";')
+            plugins.append('    react()')
+        
+        # Add custom plugins from config
+        custom_plugins = vite_config_data.get("plugins", [])
+        for plugin in custom_plugins:
+            # Plugin can be a string (module name) or object with name and options
+            if isinstance(plugin, str):
+                # Extract plugin variable name (e.g., "@tailwindcss/vite" -> "tailwindcss")
+                plugin_var = self._get_plugin_var_name(plugin)
+                plugin_imports.append(f'import {plugin_var} from "{plugin}";')
+                plugins.append(f'    {plugin_var}()')
+            elif isinstance(plugin, dict):
+                plugin_name = plugin.get("name", "")
+                plugin_options = plugin.get("options", {})
+                plugin_var = self._get_plugin_var_name(plugin_name)
+                plugin_imports.append(f'import {plugin_var} from "{plugin_name}";')
+                options_str = self._format_plugin_options(plugin_options)
+                if options_str:
+                    plugins.append(f'    {plugin_var}({options_str})')
+                else:
+                    plugins.append(f'    {plugin_var}()')
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-// Config is in .jac-client.configs/, so go up one level to project root
-const projectRoot = path.resolve(__dirname, "..");
+        plugins_str = ",\n".join(plugins) if plugins else ""
+        imports_str = "\n".join(plugin_imports) if plugin_imports else ""
 
-export default defineConfig({{
-  plugins: [react()],
-  root: projectRoot, // base folder (project root)
-  build: {{
-    rollupOptions: {{
-      input: path.resolve(projectRoot, "{entry_relative}"), // your compiled entry file
-      output: {{
-        entryFileNames: "client.[hash].js", // name of the final js file
-        assetFileNames: "[name].[ext]",
-      }},
-    }},
-    outDir: path.resolve(projectRoot, "{output_relative}"), // final bundled output
-    emptyOutDir: true,
-  }},
-  publicDir: false,
-  resolve: {{
-      alias: {{
-        "@jac-client/utils": path.resolve(projectRoot, "compiled/client_runtime.js"),
-        "@jac-client/assets": path.resolve(projectRoot, "compiled/assets"),
-      }},
-      extensions: [".mjs", ".js", ".mts", ".ts", ".jsx", ".tsx", ".json"],
-  }},
-}});
-'''
+        # Build extensions array
+        extensions = [".mjs", ".js"]
+        if has_ts:
+            extensions.extend([".mts", ".ts", ".jsx", ".tsx"])
+        extensions.append(".json")
+        extensions_str = ", ".join(f'"{ext}"' for ext in extensions)
+
+        # Build build options overrides
+        build_overrides = vite_config_data.get("build", {})
+        build_overrides_str = self._format_config_object(build_overrides, indent=4)
+
+        # Build resolve overrides
+        resolve_overrides = vite_config_data.get("resolve", {})
+        resolve_overrides_str = self._format_config_object(resolve_overrides, indent=6)
+
+        # Format imports section
+        if imports_str:
+            imports_section = f"{imports_str}\n"
         else:
-            config_content = f'''import {{ defineConfig }} from "vite";
+            imports_section = ""
+
+        config_content = f'''import {{ defineConfig }} from "vite";
 import path from "path";
 import {{ fileURLToPath }} from "url";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+{imports_section}const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Config is in .jac-client.configs/, so go up one level to project root
 const projectRoot = path.resolve(__dirname, "..");
 
+/**
+ * Vite configuration generated from config.json (in project root)
+ * To customize, edit config.json instead of this file.
+ */
+
 export default defineConfig({{
+  plugins: [{"" if not plugins_str else "\n" + plugins_str + "\n  "}],
   root: projectRoot, // base folder (project root)
   build: {{
     rollupOptions: {{
@@ -219,6 +252,7 @@ export default defineConfig({{
     }},
     outDir: path.resolve(projectRoot, "{output_relative}"), // final bundled output
     emptyOutDir: true,
+{build_overrides_str}
   }},
   publicDir: false,
   resolve: {{
@@ -226,9 +260,88 @@ export default defineConfig({{
         "@jac-client/utils": path.resolve(projectRoot, "compiled/client_runtime.js"),
         "@jac-client/assets": path.resolve(projectRoot, "compiled/assets"),
       }},
+      extensions: [{extensions_str}],
+{resolve_overrides_str}
   }},
 }});
 '''
 
         config_path.write_text(config_content, encoding="utf-8")
         return config_path
+
+    def _get_plugin_var_name(self, plugin_name: str) -> str:
+        """Get a valid JavaScript variable name from plugin module name.
+
+        Args:
+            plugin_name: Plugin module name (e.g., "@tailwindcss/vite")
+
+        Returns:
+            Valid JavaScript variable name (e.g., "tailwindcss")
+        """
+        # Extract the last part after / and remove @ prefix
+        name = plugin_name.split("/")[-1]
+        # Replace hyphens and dots with underscores
+        name = name.replace("-", "_").replace(".", "_")
+        # Remove @ if present
+        name = name.lstrip("@")
+        return name
+
+    def _format_plugin_options(self, options: dict) -> str:
+        """Format plugin options as JavaScript object string.
+
+        Args:
+            options: Plugin options dictionary
+
+        Returns:
+            Formatted JavaScript object string
+        """
+        if not options:
+            return ""
+        
+        items = []
+        for key, value in options.items():
+            if isinstance(value, str):
+                items.append(f"{key}: '{value}'")
+            elif isinstance(value, bool):
+                items.append(f"{key}: {str(value).lower()}")
+            elif isinstance(value, (int, float)):
+                items.append(f"{key}: {value}")
+            elif isinstance(value, list):
+                items.append(f"{key}: [{', '.join(repr(v) for v in value)}]")
+            else:
+                items.append(f"{key}: {repr(value)}")
+        
+        return "{ " + ", ".join(items) + " }"
+
+    def _format_config_object(self, config: dict, indent: int = 0) -> str:
+        """Format config object as JavaScript object string.
+
+        Args:
+            config: Configuration dictionary
+            indent: Indentation level
+
+        Returns:
+            Formatted JavaScript object string
+        """
+        if not config:
+            return ""
+        
+        indent_str = " " * indent
+        items = []
+        for key, value in config.items():
+            if isinstance(value, str):
+                items.append(f"{indent_str}  {key}: '{value}',")
+            elif isinstance(value, bool):
+                items.append(f"{indent_str}  {key}: {str(value).lower()},")
+            elif isinstance(value, (int, float)):
+                items.append(f"{indent_str}  {key}: {value},")
+            elif isinstance(value, list):
+                list_str = ", ".join(repr(v) for v in value)
+                items.append(f"{indent_str}  {key}: [{list_str}],")
+            elif isinstance(value, dict):
+                nested = self._format_config_object(value, indent + 2)
+                items.append(f"{indent_str}  {key}: {{\n{nested}\n{indent_str}  }},")
+            else:
+                items.append(f"{indent_str}  {key}: {repr(value)},")
+        
+        return "\n".join(items)
