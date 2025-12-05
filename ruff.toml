@@ -47,4 +47,4 @@ suppress-none-returning = true
 "**/*_test.py" = ["ANN001", "ANN201", "ANN202"]
 "**/scripts/**/*.py" = ["ANN001", "ANN201"]
 "**/fixtures/**/*.py" = ["ANN", "F403", "F401", "E402", "C408"]
-"jac-scale/jac_scale/jserver/jfastApi.py" = ["N999", "ANN401"]
+"jac-scale/jac_scale/jserver/jfast_api.py" = ["ANN401"]
