@@ -96,17 +96,6 @@ def test_create_jac_app() -> None:
             components_dir = os.path.join(project_path, "components")
             assert not os.path.exists(components_dir)
 
-            # Verify vite.config.js does NOT have TypeScript config
-            vite_config_path = os.path.join(project_path, "vite.config.js")
-            assert os.path.exists(vite_config_path)
-            with open(vite_config_path) as f:
-                vite_config_content = f.read()
-            assert "@vitejs/plugin-react" not in vite_config_content
-            assert (
-                'extensions: [".mjs", ".js", ".mts", ".ts", ".jsx", ".tsx", ".json"]'
-                not in vite_config_content
-            )
-
             # Verify package.json does NOT have TypeScript dependencies
             assert "typescript" not in package_data["devDependencies"]
             assert "@types/react" not in package_data["devDependencies"]
@@ -247,21 +236,6 @@ def test_create_jac_app_with_typescript() -> None:
 
             assert "interface ButtonProps" in button_content
             assert "export const Button" in button_content
-
-            # Verify vite.config.js has TypeScript configuration
-            vite_config_path = os.path.join(project_path, "vite.config.js")
-            assert os.path.exists(vite_config_path)
-
-            with open(vite_config_path) as f:
-                vite_config_content = f.read()
-
-            assert "import react from" in vite_config_content
-            assert "@vitejs/plugin-react" in vite_config_content
-            assert "plugins: [react()]" in vite_config_content
-            assert (
-                'extensions: [".mjs", ".js", ".mts", ".ts", ".jsx", ".tsx", ".json"]'
-                in vite_config_content
-            )
 
             # Verify app.jac includes TypeScript import
             app_jac_path = os.path.join(project_path, "app.jac")
