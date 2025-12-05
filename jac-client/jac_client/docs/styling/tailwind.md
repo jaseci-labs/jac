@@ -22,25 +22,33 @@ Add to `package.json`:
 
 ```json
 {
-  "devDependencies": {
-    "@tailwindcss/vite": "^4.0.0"
+  "dependencies": {
+    "@tailwindcss/vite": "^4.1.17",
+    "tailwindcss": "^4.1.17"
   }
 }
 ```
 
-### 2. Configure Vite
+### 2. Configure Tailwind in config.json
 
-Update `vite.config.js`:
+Create or update `config.json` in your project root:
 
-```javascript
-import { defineConfig } from "vite";
-import tailwindcss from '@tailwindcss/vite'
-
-export default defineConfig({
-  plugins: [tailwindcss()],
-  // ... other config
-});
+```json
+{
+  "vite": {
+    "plugins": [
+      "tailwindcss()"
+    ],
+    "lib_imports": [
+      "import tailwindcss from '@tailwindcss/vite'"
+    ]
+  }
+}
 ```
+
+**Note**: If `config.json` doesn't exist, it will be automatically created with default values on the first build. You can then add the Tailwind configuration above.
+
+The `vite.config.js` will be automatically generated with Tailwind support. No manual editing needed!
 
 ### 3. Add Tailwind Directives
 
@@ -204,7 +212,28 @@ For custom values:
 
 ## Configuration
 
-Customize Tailwind in `tailwind.config.js`:
+### Vite Configuration (config.json)
+
+Tailwind is configured through `config.json` in your project root:
+
+```json
+{
+  "vite": {
+    "plugins": [
+      "tailwindcss()"
+    ],
+    "lib_imports": [
+      "import tailwindcss from '@tailwindcss/vite'"
+    ]
+  }
+}
+```
+
+The `vite.config.js` is automatically generated from this configuration. You don't need to edit it manually.
+
+### Tailwind Configuration (tailwind.config.js)
+
+Customize Tailwind's theme and settings in `tailwind.config.js`:
 
 ```javascript
 export default {
