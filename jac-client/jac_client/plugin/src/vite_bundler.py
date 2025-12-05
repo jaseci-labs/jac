@@ -183,25 +183,19 @@ class ViteBundler:
             plugin_imports.append('import react from "@vitejs/plugin-react";')
             plugins.append('    react()')
         
+        # Add lib_imports from config (user-provided import statements)
+        lib_imports = vite_config_data.get("lib_imports", [])
+        for lib_import in lib_imports:
+            if isinstance(lib_import, str) and lib_import.strip():
+                plugin_imports.append(lib_import)
+        
         # Add custom plugins from config
         custom_plugins = vite_config_data.get("plugins", [])
         for plugin in custom_plugins:
-            # Plugin can be a string (module name) or object with name and options
+            # Plugin must be a string (function call like "tailwindcss()")
             if isinstance(plugin, str):
-                # Extract plugin variable name (e.g., "@tailwindcss/vite" -> "tailwindcss")
-                plugin_var = self._get_plugin_var_name(plugin)
-                plugin_imports.append(f'import {plugin_var} from "{plugin}";')
-                plugins.append(f'    {plugin_var}()')
-            elif isinstance(plugin, dict):
-                plugin_name = plugin.get("name", "")
-                plugin_options = plugin.get("options", {})
-                plugin_var = self._get_plugin_var_name(plugin_name)
-                plugin_imports.append(f'import {plugin_var} from "{plugin_name}";')
-                options_str = self._format_plugin_options(plugin_options)
-                if options_str:
-                    plugins.append(f'    {plugin_var}({options_str})')
-                else:
-                    plugins.append(f'    {plugin_var}()')
+                # Direct function call (e.g., "tailwindcss()" or "tailwindcss({...})")
+                plugins.append(f'    {plugin}')
 
         plugins_str = ",\n".join(plugins) if plugins else ""
         imports_str = "\n".join(plugin_imports) if plugin_imports else ""
@@ -213,20 +207,37 @@ class ViteBundler:
         extensions.append(".json")
         extensions_str = ", ".join(f'"{ext}"' for ext in extensions)
 
-        # Build build options overrides
-        build_overrides = vite_config_data.get("build", {})
-        build_overrides_str = self._format_config_object(build_overrides, indent=4)
+        # Build options - object format only
+        build_config = vite_config_data.get("build", {})
+        if isinstance(build_config, dict) and build_config:
+            build_overrides_str = self._format_config_object(build_config, indent=4)
+        else:
+            build_overrides_str = ""
 
-        # Build resolve overrides
-        resolve_overrides = vite_config_data.get("resolve", {})
-        resolve_overrides_str = self._format_config_object(resolve_overrides, indent=6)
+        # Server options - object format only
+        server_config = vite_config_data.get("server", {})
+        if isinstance(server_config, dict) and server_config:
+            server_config_str = self._format_config_object(server_config, indent=2)
+        else:
+            server_config_str = ""
+
+        # Resolve options - object format only
+        resolve_config = vite_config_data.get("resolve", {})
+        if isinstance(resolve_config, dict) and resolve_config:
+            resolve_overrides_str = self._format_config_object(resolve_config, indent=6)
+        else:
+            resolve_overrides_str = ""
 
         # Format imports section
-        if imports_str:
-            imports_section = f"{imports_str}\n"
-        else:
-            imports_section = ""
+        imports_section = f"{imports_str}\n" if imports_str else ""
 
+        newline = "\n"
+        # Format server config if present
+        if server_config_str:
+            server_section = f"  server: {{{newline}{server_config_str}{newline}  }},{newline}"
+        else:
+            server_section = ""
+        
         config_content = f'''import {{ defineConfig }} from "vite";
 import path from "path";
 import {{ fileURLToPath }} from "url";
@@ -240,7 +251,7 @@ const projectRoot = path.resolve(__dirname, "..");
  */
 
 export default defineConfig({{
-  plugins: [{"" if not plugins_str else "\n" + plugins_str + "\n  "}],
+  plugins: [{newline + plugins_str + newline + "  " if plugins_str else ""}],
   root: projectRoot, // base folder (project root)
   build: {{
     rollupOptions: {{
@@ -255,7 +266,7 @@ export default defineConfig({{
 {build_overrides_str}
   }},
   publicDir: false,
-  resolve: {{
+{server_section}  resolve: {{
       alias: {{
         "@jac-client/utils": path.resolve(projectRoot, "compiled/client_runtime.js"),
         "@jac-client/assets": path.resolve(projectRoot, "compiled/assets"),

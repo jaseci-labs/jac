@@ -28,14 +28,22 @@ class JacClientConfig:
 
         Returns:
             Default config dictionary with all predefined keys
+        
+        Note:
+            Configuration format:
+            - "plugins": array of strings with function calls (e.g., ["tailwindcss()"])
+            - "lib_imports": array of import statements (e.g., ["import tailwindcss from '@tailwindcss/vite'"])
+            - "build": object with build options (e.g., {"sourcemap": true, "minify": "esbuild"})
+            - "server": object with server options (e.g., {"port": 3000, "open": true})
+            - "resolve": object with resolve options (e.g., {"dedupe": ["react", "react-dom"]})
         """
         return {
             "vite": {
-                "plugins": [],  # Custom plugins to add (base plugins are always included)
-                "lib_imports": [],  # Additional library imports
-                "build": {},  # Build options overrides
-                "server": {},  # Dev server options
-                "resolve": {},  # Resolve options overrides
+                "plugins": [],  # Array of plugin function calls (e.g., ["tailwindcss()"])
+                "lib_imports": [],  # Array of import statements (e.g., ["import tailwindcss from '@tailwindcss/vite'"])
+                "build": {},  # Build options object
+                "server": {},  # Server options object
+                "resolve": {},  # Resolve options object
             },
             "ts": {
                 # Future TypeScript config options
