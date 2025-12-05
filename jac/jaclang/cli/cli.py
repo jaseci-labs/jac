@@ -312,6 +312,9 @@ def check(paths: list, print_errs: bool = True) -> None:
         jac check myprogram.jac --no-print_errs
     """
     from jaclang.compiler.program import JacProgram
+    from jaclang.settings import settings
+
+    allwarn = settings.all_warnings
 
     if isinstance(paths, str):
         paths = [paths]
@@ -320,7 +323,7 @@ def check(paths: list, print_errs: bool = True) -> None:
         path_obj = Path(file_path)
         if not path_obj.exists():
             print(f"Error: File '{file_path}' does not exist.", file=sys.stderr)
-            return False, 0, 0
+            return False, 0 if allwarn else 1, 0
         try:
             err_start, warn_start = len(prog.errors_had), len(prog.warnings_had)
             prog.compile(file_path=file_path, type_check=True, no_cgen=True)
@@ -334,7 +337,7 @@ def check(paths: list, print_errs: bool = True) -> None:
             return len(new_errors) == 0, len(new_errors), len(new_warnings)
         except Exception as e:
             print(f"Error checking '{file_path}': {e}", file=sys.stderr)
-            return False, 0, 0
+            return False, 0 if allwarn else 1, 0
 
     total_files = failed_files = total_errors = total_warnings = 0
     prog = JacProgram()
@@ -359,6 +362,7 @@ def check(paths: list, print_errs: bool = True) -> None:
         else:
             print(f"Error: '{path}' is not a .jac file or directory.", file=sys.stderr)
             failed_files += 1
+            total_errors += 0 if allwarn else 1
 
     print(
         f"Checked {total_files} '.jac' files: {total_files - failed_files} passed, "
@@ -366,7 +370,7 @@ def check(paths: list, print_errs: bool = True) -> None:
         file=sys.stderr if total_errors else sys.stdout,
     )
 
-    if failed_files > 0 or total_errors > 0:
+    if total_errors > 0:
         exit(1)
 
 

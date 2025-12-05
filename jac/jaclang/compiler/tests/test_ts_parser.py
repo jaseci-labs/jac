@@ -6,7 +6,7 @@ import pytest
 
 from jaclang.compiler import unitree as uni
 from jaclang.compiler.program import JacProgram
-from jaclang.compiler.ts_parser import TypeScriptParser
+from jaclang.compiler.tsparser import TypeScriptParser
 from jaclang.compiler.unitree import Source
 
 

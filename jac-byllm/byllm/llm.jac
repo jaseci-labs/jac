@@ -5,7 +5,9 @@ enhanced functionality and interface for language model operations.
 """
 
 import logging;
+import from loguru { logger }
 import os;
+import sys;
 import json;
 import random;
 import time;
@@ -124,8 +126,31 @@ obj BaseLLM {
         # FIXME: The logger.info will not always log so for now I'm printing to stdout
         # remove and log properly.
         if bool(self.config.get("verbose", False)) {
-            print(message);
+            logger.info(message);  # print(message);
         }
+    }
+
+    """Format model parameters for logging, masking sensitive information."""
+    def format_prompt(params: dict) -> str {
+        log_params = params.copy();
+        if log_params.get("api_key") {
+            log_params["api_key"] = "*" * len(log_params["api_key"]);
+        }
+        #         log = f"""
+        # [SYSTEM]
+        # {log_params["messages"][0]["content"]}
+        # [USER]
+        # {log_params["messages"][1]["content"][0]['text']}
+        # [TOOLS]
+        # {log_params.get("tools")}
+
+        # [RESPONSE FORMAT]
+        # {json.dumps(
+        #             log_params.get("response_format"), indent=2, ensure_ascii=False
+        #         )}
+        #         """;
+        #         return log;
+        return json.dumps(log_params, indent=2, ensure_ascii=False);
     }
 
     """Dispatch the LLM call without streaming."""
@@ -134,12 +159,8 @@ obj BaseLLM {
         params = self.make_model_params(mtir);
 
         # Call the LiteLLM API
-        log_params = (
-            {** params, "api_key": "*" * len(params["api_key"])}
-            if params.get("api_key")
-            else params
-        );
-        self.log_info(f"Calling LLM: {self.model_name} with params:\n{log_params}");
+        log_params = self.format_prompt(params);
+        self.log_info(f"Calling LLM: {self.model_name} with params: {log_params}");
         self.api_key = params.get("api_key");
         self.api_base = params.pop("api_base", DEFAULT_BASE_URL);
         response = self.model_call_no_stream(params);
@@ -178,11 +199,7 @@ obj BaseLLM {
         params = self.make_model_params(mtir);
 
         # Call the LiteLLM API
-        log_params = (
-            {** params, "api_key": "*" * len(params["api_key"])}
-            if params.get("api_key")
-            else params
-        );
+        log_params = self.format_prompt(params);
         self.log_info(f"Calling LLM: {self.model_name} with params:\n{log_params}");
         self.api_key = params.get("api_key");
         self.api_base = params.pop("api_base", DEFAULT_BASE_URL);
@@ -253,6 +270,8 @@ obj BaseLLM {
 obj MockLLM(BaseLLM) {
     """Initialize the MockLLM connector."""
     def init(model_name: str, **kwargs: object) -> None {
+        logger.remove();  # remove default stderr sink
+        logger.add(sys.stdout);
         super.init(model_name, **kwargs);
     }
 

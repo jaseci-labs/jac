@@ -33,7 +33,7 @@ from jaclang.compiler.passes.tool import (
     DocIRGenPass,
     JacFormatPass,
 )
-from jaclang.compiler.ts_parser import TypeScriptParser
+from jaclang.compiler.tsparser import TypeScriptParser
 from jaclang.runtimelib.utils import read_file_with_encoding
 from jaclang.settings import settings
 

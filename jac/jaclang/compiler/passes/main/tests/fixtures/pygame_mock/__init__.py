@@ -1,3 +1,3 @@
-from .display import set_mode
 from .color import Color
-from .constants import CONST_VALUE, CL
+from .constants import CL, CONST_VALUE
+from .display import set_mode

@@ -1,1 +1,2 @@
-python3 -m jaclang.compiler.__init__
+#!/bin/bash
+python3 jac/jaclang/compiler/__init__.py

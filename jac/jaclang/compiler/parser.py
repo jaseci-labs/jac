@@ -959,7 +959,7 @@ class JacParser(Transform[uni.Source, uni.Module]):
                         static_kw.line_no = dec.loc.first_line
                         static_kw.c_start = dec.loc.col_start
                         static_kw.c_end = static_kw.c_start + len(static_kw.name)
-                        decorators.remove(dec)  # noqa: B038
+                        decorators.remove(dec)
                         if not ability.is_static:
                             ability.is_static = True
                             if not ability.is_override:
