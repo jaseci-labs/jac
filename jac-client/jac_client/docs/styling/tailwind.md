@@ -18,15 +18,10 @@ See the complete working example: [`examples/css-styling/tailwind-example/`](../
 
 ### 1. Install Tailwind CSS
 
-Add to `package.json`:
+Install Tailwind CSS and its Vite plugin using npm:
 
-```json
-{
-  "dependencies": {
-    "@tailwindcss/vite": "^4.1.17",
-    "tailwindcss": "^4.1.17"
-  }
-}
+```bash
+npm install tailwindcss @tailwindcss/vite
 ```
 
 ### 2. Configure Tailwind in config.json
