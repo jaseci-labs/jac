@@ -6,6 +6,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 from jaclang.cli.cmdreg import cmd_registry
 from jaclang.runtimelib.runtime import hookimpl
@@ -431,7 +432,7 @@ compiled/
 
             try:
                 # Get default configuration structure
-                default_config = {
+                default_config: dict[str, Any] = {
                     "vite": {
                         "plugins": [],
                         "lib_imports": [],
