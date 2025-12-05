@@ -112,6 +112,9 @@ nav:
         - The app.jac Entry Point: "jac-client/file-system/app.jac.md"
       - Handling Assets: "jac-client/asset-serving/intro.md"
       - TypeScript: "jac-client/working-with-ts.md"
+      - Advanced:
+        - Introduction: "jac-client/advance/intro.md"
+        - Custom Configuration: "jac-client/advance/custom-config.md"
     - Tooling:
       - Jac Debugger: "learn/debugger.md"
       - Run Jac In Browser: "learn/jac_playground.md"
