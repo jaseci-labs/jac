@@ -21,7 +21,7 @@ impl Model.invoke(mtir: MTIR) -> object {
 
 impl Model.model_call_no_stream(params: dict) -> dict {
     if self.proxy {
-        client = OpenAI(base_url=self.chat);
+        client = OpenAI(base_url=self.api_base);
         response = client.chat.completions.create(**params);
     } else {
         response = litellm.completion(**params);
