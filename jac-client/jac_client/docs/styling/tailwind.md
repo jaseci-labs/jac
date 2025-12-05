@@ -31,7 +31,7 @@ Add to `package.json`:
 
 ### 2. Configure Tailwind in config.json
 
-Create or update `config.json` in your project root:
+Create `config.json` in your project root (if it doesn't exist) and add Tailwind configuration:
 
 ```json
 {
@@ -46,7 +46,7 @@ Create or update `config.json` in your project root:
 }
 ```
 
-**Note**: If `config.json` doesn't exist, it will be automatically created with default values on the first build. You can then add the Tailwind configuration above.
+**Note**: If `config.json` doesn't exist, the system will use default configuration. Create the file manually when you need to customize the build (e.g., add Tailwind or other plugins).
 
 The `vite.config.js` will be automatically generated with Tailwind support. No manual editing needed!
 
@@ -214,7 +214,7 @@ For custom values:
 
 ### Vite Configuration (config.json)
 
-Tailwind is configured through `config.json` in your project root:
+Tailwind is configured through `config.json` in your project root. Create this file if it doesn't exist:
 
 ```json
 {
@@ -228,6 +228,8 @@ Tailwind is configured through `config.json` in your project root:
   }
 }
 ```
+
+**Note**: The `config.json` file is optional. If it doesn't exist, the system uses default configuration. Create it manually when you need to customize plugins or build options.
 
 The `vite.config.js` is automatically generated from this configuration. You don't need to edit it manually.
 
