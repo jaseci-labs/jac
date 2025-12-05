@@ -121,13 +121,4 @@ class JacClientConfig:
         config = self.load()
         return config.get("ts", {})
 
-    def create_default_config_file(self) -> None:
-        """Create a default config.json file in project root if it doesn't exist."""
-        if self.config_file.exists():
-            return
-
-        default_config = self._get_default_config()
-
-        with self.config_file.open("w", encoding="utf-8") as f:
-            json.dump(default_config, f, indent=2)
 

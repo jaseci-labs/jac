@@ -154,10 +154,7 @@ class ViteBundler:
         configs_dir = self.project_dir / ".jac-client.configs"
         configs_dir.mkdir(exist_ok=True)
         
-        # Ensure config.json exists with defaults
-        self.config_loader.create_default_config_file()
-        
-        # Load configuration
+        # Load configuration (returns defaults if config.json doesn't exist)
         vite_config_data = self.config_loader.get_vite_config()
         
         config_path = configs_dir / "vite.config.js"
