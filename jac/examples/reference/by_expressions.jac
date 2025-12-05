@@ -1,5 +1,4 @@
 # By as an operator
-
 with entry {
     # Simple by expression
     result = "hello" by "world";
