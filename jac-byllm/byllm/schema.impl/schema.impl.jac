@@ -11,7 +11,8 @@ impl _type_to_schema(ty: type, title: str = "", desc: str = "") -> dict {
     # Raise on unsupported types
     if ty in (list, dict, set, tuple) {
         raise ValueError(
-            f"Untyped {ty.__name__} is not supported for schema generation. "f"Use {ty.__name__}[T, ...] instead."
+            f"Untyped {ty.__name__} is not supported for schema generation. "
+            f"Use {ty.__name__}[T, ...] instead."
         ) ;
     }
     # Handle primitive types
@@ -98,7 +99,8 @@ impl _type_to_schema(ty: type, title: str = "", desc: str = "") -> dict {
         enum_desc += " the names are [" + ", ".join([e.name for e in ty]) + "].";
         if enum_type not in (int, str) {
             raise ValueError(
-                f"Enum {ty.__name__} has unsupported type {enum_type}. ""Only int and str enums are supported for schema generation."
+                f"Enum {ty.__name__} has unsupported type {enum_type}. "
+                "Only int and str enums are supported for schema generation."
             ) ;
         }
         return {

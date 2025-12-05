@@ -1025,7 +1025,11 @@ class DocIRGenPass(UniPass):
         parts: list[doc.DocType] = []
         for i in node.kid:
             parts.append(i.gen.doc_ir)
-        node.gen.doc_ir = self.group(self.concat(parts, ast_node=node), ast_node=node)
+        # Join parts with soft line breaks so long strings can wrap
+        node.gen.doc_ir = self.group(
+            self.concat(self.intersperse(parts, self.line()), ast_node=node),
+            ast_node=node,
+        )
 
     def exit_set_val(self, node: uni.SetVal) -> None:
         """Generate DocIR for set values."""

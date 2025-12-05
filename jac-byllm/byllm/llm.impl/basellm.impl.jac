@@ -159,7 +159,8 @@ impl BaseLLM._stream_final_answer(mtir: MTIR) -> Generator[str, None, None] {
     # based on all the tool call results gathered so far
     final_instruction = Message(
         role=MessageRole.USER,
-        content="Based on the tool calls and their results above, provide your final answer. ""Be comprehensive and synthesize all the information gathered.",
+        content="Based on the tool calls and their results above, provide your final answer. "
+        "Be comprehensive and synthesize all the information gathered.",
     );
     mtir.add_message(final_instruction);
     # Remove tools and make a streaming call to get the real-time answer

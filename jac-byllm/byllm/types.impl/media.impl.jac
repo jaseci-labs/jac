@@ -111,7 +111,8 @@ impl Image.postinit()  -> None {
     }
     # If we reach here, the input type isn't supported
     raise TypeError(
-        "Unsupported Image input type. Provide a URL/path string, data URL, bytes, " "BytesIO, file-like object, os.PathLike, or PIL.Image.Image."
+        "Unsupported Image input type. Provide a URL/path string, data URL, bytes, "
+        "BytesIO, file-like object, os.PathLike, or PIL.Image.Image."
     ) ;
 }
 
@@ -161,7 +162,8 @@ impl Video.load_frames()  -> None {
         import cv2;
     } except ImportError {
         raise ImportError(
-            "OpenCV is required to process video files. ""Install `pip install byllm[video]` for video capabilities."
+            "OpenCV is required to process video files. "
+            "Install `pip install byllm[video]` for video capabilities."
         ) ;
     }
     self._base64frames = [];
