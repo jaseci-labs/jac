@@ -1,0 +1,13 @@
+{
+  "vite": {
+    "plugins": [
+      "@tailwindcss/vite"
+    ],
+    "lib_imports": [],
+    "build": {},
+    "server": {},
+    "resolve": {}
+  },
+  "ts": {}
+}
+
