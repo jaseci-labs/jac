@@ -5,6 +5,7 @@ import os
 import re
 import subprocess
 import sys
+from pathlib import Path
 
 from jaclang.cli.cmdreg import cmd_registry
 from jaclang.runtimelib.runtime import hookimpl
@@ -402,4 +403,62 @@ compiled/
                 # Return to original directory on error
                 os.chdir(original_cwd)
                 print(f"Error creating project: {e}", file=sys.stderr)
+                exit(1)
+
+        @cmd_registry.register
+        def generate_client_config() -> None:
+            """Generate config.json file for customizing Jac Client build configuration.
+
+            Creates a config.json file in the current directory with default structure
+            that can be customized for plugins, build options, and other settings.
+
+            Examples:
+                jac generate_client_config
+            """
+            current_dir = Path(os.getcwd())
+            config_file = current_dir / "config.json"
+
+            if config_file.exists():
+                print(
+                    f"⚠️  config.json already exists at {config_file}",
+                    file=sys.stderr,
+                )
+                print(
+                    "If you want to regenerate it, delete the existing file first.",
+                    file=sys.stderr,
+                )
+                exit(1)
+
+            try:
+                # Get default configuration structure
+                default_config = {
+                    "vite": {
+                        "plugins": [],
+                        "lib_imports": [],
+                        "build": {},
+                        "server": {},
+                        "resolve": {},
+                    },
+                    "ts": {},
+                }
+
+                # Write config.json
+                with config_file.open("w", encoding="utf-8") as f:
+                    json.dump(default_config, f, indent=2)
+
+                print(f"✅ Successfully created config.json at {config_file}")
+                print("\nYou can now customize:")
+                print("  - vite.plugins: Add Vite plugins (e.g., ['tailwindcss()'])")
+                print("  - vite.lib_imports: Add import statements")
+                print("  - vite.build: Override build options")
+                print("  - vite.server: Configure dev server")
+                print("  - vite.resolve: Override resolve options")
+                print("\nExample for Tailwind CSS:")
+                print('  "vite": {')
+                print('    "plugins": ["tailwindcss()"],')
+                print('    "lib_imports": ["import tailwindcss from \'@tailwindcss/vite\'"]')
+                print("  }")
+
+            except Exception as e:
+                print(f"Error creating config.json: {e}", file=sys.stderr)
                 exit(1)

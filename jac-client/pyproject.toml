@@ -27,7 +27,6 @@ Documentation = "https://jac-lang.org"
 [project.entry-points."jac"]
 serve = "jac_client.plugin.client:JacClient"
 create_jac_app = "jac_client.plugin.cli:JacCmd"
-generate_client_config = "jac_client.plugin.cli:JacCmd"
 
 
 [project.optional-dependencies]
