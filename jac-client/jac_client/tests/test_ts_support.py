@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 import tempfile
@@ -43,6 +44,23 @@ def _copy_ts_support_project(temp_path: Path) -> tuple[Path, Path]:
             shutil.copytree(item, dest, dirs_exist_ok=True)
         else:
             shutil.copy2(item, dest)
+
+    # Ensure config.json exists with minify: false for tests
+    config_json = temp_path / "config.json"
+    config_data = {
+        "vite": {
+            "plugins": [],
+            "lib_imports": [],
+            "build": {
+                "minify": False,
+            },
+            "server": {},
+            "resolve": {},
+        },
+        "ts": {},
+    }
+    with config_json.open("w", encoding="utf-8") as f:
+        json.dump(config_data, f, indent=2)
 
     # Install dependencies
     result = subprocess.run(
