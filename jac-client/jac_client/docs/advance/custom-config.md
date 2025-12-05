@@ -340,7 +340,7 @@ The default configuration handles most use cases. Only add customizations when n
 }
 ```
 
-✅ **Good**: Only adds Tailwind plugin  
+✅ **Good**: Only adds Tailwind plugin
 ❌ **Bad**: Copying entire default config unnecessarily
 
 ### 2. Keep Plugins and Imports in Sync
@@ -370,7 +370,7 @@ For `build`, `server`, and `resolve`, use object format:
 }
 ```
 
-✅ **Good**: Object format  
+✅ **Good**: Object format
 ❌ **Bad**: String format for these keys
 
 ### 4. Version Control
@@ -409,7 +409,7 @@ jac generate_client_config
 
 **Problem**: Changes to `config.json` aren't reflected in the build.
 
-**Solution**: 
+**Solution**:
 - Ensure `config.json` is in the project root
 - Check JSON syntax is valid
 - Verify the build process regenerates the config (it should automatically)
@@ -483,4 +483,3 @@ This merges with defaults, so other build options remain unchanged.
 - [Architecture Overview](../../../architecture.md) - Detailed system architecture
 - [Tailwind CSS](../styling/tailwind.md) - Example of using config.json for Tailwind
 - [Vite Documentation](https://vitejs.dev/config/) - Full Vite configuration reference
-

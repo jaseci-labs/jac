@@ -28,7 +28,7 @@ class JacClientConfig:
 
         Returns:
             Default config dictionary with all predefined keys
-        
+
         Note:
             Configuration format:
             - "plugins": array of strings with function calls (e.g., ["tailwindcss()"])
@@ -71,9 +71,7 @@ class JacClientConfig:
             with self.config_file.open(encoding="utf-8") as f:
                 user_config = json.load(f)
         except json.JSONDecodeError as e:
-            raise ClientBundleError(
-                f"Invalid JSON in {self.config_file}: {e}"
-            ) from e
+            raise ClientBundleError(f"Invalid JSON in {self.config_file}: {e}") from e
         except Exception as e:
             raise ClientBundleError(
                 f"Error reading config file {self.config_file}: {e}"
@@ -83,7 +81,9 @@ class JacClientConfig:
         self._config = self._deep_merge(default_config, user_config)
         return self._config
 
-    def _deep_merge(self, base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    def _deep_merge(
+        self, base: dict[str, Any], override: dict[str, Any]
+    ) -> dict[str, Any]:
         """Deep merge two dictionaries.
 
         Args:
@@ -96,7 +96,11 @@ class JacClientConfig:
         result = base.copy()
 
         for key, value in override.items():
-            if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            if (
+                key in result
+                and isinstance(result[key], dict)
+                and isinstance(value, dict)
+            ):
                 result[key] = self._deep_merge(result[key], value)
             else:
                 result[key] = value
@@ -120,5 +124,3 @@ class JacClientConfig:
         """
         config = self.load()
         return config.get("ts", {})
-
-
