@@ -34,7 +34,7 @@ def output_capturer():
     def stop_capture():
         sys.stdout = captured["old_stdout"]
 
-    def get_output():
+    def get_output() -> str:
         return captured["output"].getvalue() if captured["output"] else ""
 
     return {"start": start_capture, "stop": stop_capture, "get": get_output}

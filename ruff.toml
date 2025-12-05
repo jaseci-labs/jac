@@ -42,8 +42,7 @@ known-first-party = ["jaclang", "jac_client", "jac_scale", "byllm"]
 suppress-none-returning = true
 
 [lint.per-file-ignores]
-"**/tests/**/*.py" = ["ANN001", "ANN201", "ANN202"]
-"**/test_*.py" = ["ANN001", "ANN201", "ANN202"]
-"**/*_test.py" = ["ANN001", "ANN201", "ANN202"]
+"**/tests/**/*.py" = ["ANN001", "ANN201"]
+"**/test_*.py" = ["ANN001", "ANN201"]
+"**/*_test.py" = ["ANN001", "ANN201"]
 "**/scripts/**/*.py" = ["ANN001", "ANN201"]
-"jac-scale/jac_scale/jserver/jfast_api.py" = ["ANN401"]

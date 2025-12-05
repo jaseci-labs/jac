@@ -19,7 +19,7 @@ Advanced Features:
 
 import inspect
 from collections.abc import Callable
-from typing import Any, Optional, get_type_hints
+from typing import Any, Optional, TypeAlias, get_type_hints
 
 import uvicorn
 from fastapi import Body, FastAPI, Header, HTTPException, Path, Query, Request
@@ -28,6 +28,11 @@ from pydantic import BaseModel, Field, create_model
 
 # Import from the separated jserver module
 from .jserver import APIParameter, HTTPMethod, JEndPoint, JServer, ParameterType
+
+# Type alias for FastAPI endpoint return values
+EndpointResponse: TypeAlias = (
+    Response | BaseModel | dict[str, object] | list[object] | str | bytes | None
+)
 
 
 class JFastApiServer(JServer[FastAPI]):
@@ -266,7 +271,9 @@ class JFastApiServer(JServer[FastAPI]):
                 # Callback accepts **kwargs, so inject Request to capture query params
                 if inspect.iscoroutinefunction(callback):
 
-                    async def async_endpoint_wrapper(request: Request) -> Any:
+                    async def async_endpoint_wrapper(
+                        request: Request,
+                    ) -> EndpointResponse:
                         try:
                             # Extract all query parameters and pass as kwargs
                             query_params = dict(request.query_params)
@@ -277,7 +284,7 @@ class JFastApiServer(JServer[FastAPI]):
                     return async_endpoint_wrapper
                 else:
 
-                    def sync_endpoint_wrapper(request: Request) -> Any:
+                    def sync_endpoint_wrapper(request: Request) -> EndpointResponse:
                         try:
                             # Extract all query parameters and pass as kwargs
                             query_params = dict(request.query_params)
@@ -290,7 +297,7 @@ class JFastApiServer(JServer[FastAPI]):
                 # No parameters and doesn't accept kwargs, simple wrapper
                 if inspect.iscoroutinefunction(callback):
 
-                    async def async_endpoint_wrapper__1() -> Any:
+                    async def async_endpoint_wrapper__1() -> EndpointResponse:
                         try:
                             return await callback()
                         except Exception as e:
@@ -299,7 +306,7 @@ class JFastApiServer(JServer[FastAPI]):
                     return async_endpoint_wrapper__1
                 else:
 
-                    def sync_endpoint_wrapper__1() -> Any:
+                    def sync_endpoint_wrapper__1() -> EndpointResponse:
                         try:
                             return callback()
                         except Exception as e:
