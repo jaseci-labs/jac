@@ -456,7 +456,9 @@ compiled/
                 print("\nExample for Tailwind CSS:")
                 print('  "vite": {')
                 print('    "plugins": ["tailwindcss()"],')
-                print('    "lib_imports": ["import tailwindcss from \'@tailwindcss/vite\'"]')
+                print(
+                    '    "lib_imports": ["import tailwindcss from \'@tailwindcss/vite\'"]'
+                )
                 print("  }")
 
             except Exception as e:
