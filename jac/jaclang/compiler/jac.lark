@@ -54,7 +54,7 @@ member_stmt: STRING? (py_code_block | ability | archetype | impl_def | has_stmt 
 has_stmt: KW_STATIC? (KW_LET | KW_HAS) access_tag? has_assign_list SEMI
 has_assign_list: (has_assign_list COMMA)? typed_has_clause
 typed_has_clause: named_ref type_tag (EQ expression | KW_BY KW_POST_INIT)?
-type_tag: COLON expression
+type_tag: COLON pipe
 
 // [Heading]: Enumerations.
 enum: decorators? enum_decl
@@ -69,8 +69,8 @@ ability_decl: KW_OVERRIDE? KW_STATIC? KW_CAN access_tag? named_ref? event_clause
 block_tail: code_block | KW_BY expression SEMI
 event_clause: KW_WITH expression? (KW_EXIT | KW_ENTRY)
 
-func_decl: (LPAREN func_decl_params? RPAREN) (RETURN_HINT expression)?
-         | (RETURN_HINT expression)
+func_decl: (LPAREN func_decl_params? RPAREN) (RETURN_HINT pipe)?
+         | (RETURN_HINT pipe)
 
 func_decl_params: (param_var COMMA)* param_var COMMA?
 param_var: (STAR_POW | STAR_MUL)? named_ref type_tag (EQ expression)?
@@ -139,7 +139,7 @@ else_stmt: KW_ELSE code_block
 while_stmt: KW_WHILE expression code_block else_stmt?
 
 // [Heading]: For statements.
-for_stmt: KW_ASYNC? KW_FOR assignment KW_TO expression KW_BY assignment code_block else_stmt?
+for_stmt: KW_ASYNC? KW_FOR assignment KW_TO pipe KW_BY assignment code_block else_stmt?
        | KW_ASYNC? KW_FOR atomic_chain KW_IN expression code_block else_stmt?
 
 // [Heading]: Try statements.
@@ -249,7 +249,11 @@ expression: concurrent_expr (KW_IF expression KW_ELSE expression)?
 concurrent_expr: (KW_FLOW | KW_WAIT)? walrus_assign
 
 // [Heading]: Walrus assignments.
-walrus_assign: (named_ref WALRUS_EQ)? pipe
+walrus_assign: (named_ref WALRUS_EQ)? by_expr
+
+// [Heading]: By expressions.
+by_expr: pipe
+       | pipe KW_BY by_expr
 
 // [Heading]: Lambda expressions.
 lambda_expr: KW_LAMBDA func_decl_params (RETURN_HINT expression)? ( COLON expression | code_block )
@@ -324,9 +328,7 @@ index_slice: LSQUARE                                                            
            | list_val
 
 // [Heading]: Function calls.
-atomic_call: atomic_chain (gen_compr | LPAREN param_list? by_llm? RPAREN)
-
-by_llm: KW_BY expression
+atomic_call: atomic_chain (gen_compr | LPAREN param_list? RPAREN)
 
 param_list: expr_list COMMA kw_expr_list COMMA?
           | kw_expr_list COMMA?

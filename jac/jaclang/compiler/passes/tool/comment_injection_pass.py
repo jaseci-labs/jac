@@ -227,42 +227,26 @@ class CommentInjectionPass(Transform[uni.Module, uni.Module]):
         """Main recursive processor with type-specific handling."""
         if isinstance(node, doc.Concat):
             ctx = node.ast_node if node.ast_node else ctx
-            if isinstance(ctx, uni.Module):
-                return self._handle_module(ctx, node)
-            if isinstance(ctx, (uni.MatchStmt, uni.SwitchStmt)):
-                return self._handle_match_stmt_comments(ctx, node)
-            if isinstance(ctx, uni.TryStmt):
-                return self._handle_try_stmt_comments(ctx, node)
 
             processed_parts = self._inject_into_parts(node.parts, ctx)
 
-            # Apply context-specific transformations
-            if isinstance(ctx, uni.FuncSignature):
-                processed_parts = self._handle_param_list_comments(ctx, processed_parts)
-            if isinstance(ctx, uni.FuncCall):
-                processed_parts = self._handle_func_call_comments(ctx, processed_parts)
-            if isinstance(ctx, uni.IfStmt):
-                processed_parts = self._handle_if_stmt_comments(ctx, processed_parts)
-            if isinstance(ctx, uni.ElseIf):
-                processed_parts = self._handle_else_if_comments(ctx, processed_parts)
-            if isinstance(ctx, uni.Archetype):
-                processed_parts = self._handle_archetype_pre_body_comments(
-                    ctx, processed_parts
-                )
-            if isinstance(ctx, uni.ArchHas):
-                processed_parts = self._handle_arch_has_pre_vars_comments(
-                    ctx, processed_parts
-                )
-            if isinstance(ctx, uni.Ability):
-                processed_parts = self._handle_ability_pre_body_comments(
-                    ctx, processed_parts
-                )
+            # Handle parenthesized regions (function signatures and calls)
+            if isinstance(ctx, (uni.FuncSignature, uni.FuncCall)):
+                items = ctx.params if hasattr(ctx, "params") else []
+                processed_parts = self._handle_paren_comments(items, processed_parts)
             # Handle empty bodies with comments (no Indent node created for empty bodies)
             if isinstance(
                 ctx,
                 (uni.IfStmt, uni.ElseIf, uni.ElseStmt, uni.WhileStmt, uni.InForStmt),
             ):
                 processed_parts = self._handle_empty_body_comments(ctx, processed_parts)
+            target_ctx = node.ast_node
+            if target_ctx:
+                processed_parts = self._inject_standalone_by_spans(
+                    processed_parts,
+                    target_ctx,
+                    drain_after=isinstance(target_ctx, uni.Module),
+                )
             processed_parts = self._fix_empty_region_spacing(processed_parts)
 
             return doc.Concat(processed_parts, ast_node=ctx)
@@ -355,6 +339,16 @@ class CommentInjectionPass(Transform[uni.Module, uni.Module]):
             )
         return []
 
+    def _doc_line_span(self, node: doc.DocType) -> tuple[int | None, int | None]:
+        """Return the first and last line covered by a DocIR node."""
+        tokens = [t for t in self._get_tokens(node) if getattr(t, "loc", None)]
+        if not tokens:
+            return (None, None)
+        return (
+            min(t.loc.first_line for t in tokens if t.loc),
+            max(t.loc.last_line for t in tokens if t.loc),
+        )
+
     # ========================================================================
     # CORE INJECTION METHODS
     # ========================================================================
@@ -391,210 +385,61 @@ class CommentInjectionPass(Transform[uni.Module, uni.Module]):
 
         return result
 
-    def _handle_module(self, module: uni.Module, concat: doc.Concat) -> doc.Concat:
-        """Handle module-level comment injection between top-level statements."""
+    def _inject_standalone_by_spans(
+        self,
+        parts: list[doc.DocType],
+        ctx: uni.UniNode,
+        *,
+        drain_after: bool = False,
+    ) -> list[doc.DocType]:
+        """Inject standalone comments using token line spans, generically."""
         if not self._comments:
-            return doc.Concat(
-                [self._process(module, part) for part in concat.parts],
-                ast_node=module,
-            )
+            return parts
 
-        result: list[doc.DocType] = []
-        child_idx = 0
-        prev_item_line: int | None = None
-
-        for part in concat.parts:
-            if isinstance(part, doc.Line):
-                result.append(part)
-                continue
-
-            if child_idx < len(module.kid):
-                child = module.kid[child_idx]
-
-                if child.loc:
-                    # Inject standalone comments before this child
-                    comments = self._comments.take_standalone_between(
-                        (prev_item_line + 1) if prev_item_line is not None else 1,
-                        child.loc.first_line,
-                    )
-                    if comments:
-                        prev_item_line = self._emit_standalone_comments(
-                            result,
-                            comments,
-                            prev_item_line=prev_item_line,
-                        )
-
-                result.append(self._process(child, part))
-                if child.loc:
-                    prev_item_line = child.loc.last_line
-                child_idx += 1
-            else:
-                result.append(self._process(module, part))
-
-        # Inject trailing comments
-        trailing = self._comments.take_standalone_after(
-            (prev_item_line + 1) if prev_item_line is not None else 1
+        start_line = (
+            1
+            if isinstance(ctx, uni.Module)
+            else (ctx.loc.first_line if ctx.loc else None)
         )
-        if trailing:
-            self._emit_standalone_comments(
-                result,
-                trailing,
-                prev_item_line=prev_item_line,
-            )
-
-        return doc.Concat(result, ast_node=module)
-
-    def _handle_match_stmt_comments(
-        self, match_node: uni.UniNode, concat: doc.Concat
-    ) -> doc.Concat:
-        """Handle comment injection between cases in match/switch statements."""
-        if not self._comments:
-            return doc.Concat(
-                [self._process(match_node, part) for part in concat.parts],
-                ast_node=match_node,
-            )
-
-        # Get cases from the match statement
-        cases: list[uni.UniNode] = []
-        if isinstance(match_node, uni.MatchStmt | uni.SwitchStmt):
-            cases = list(match_node.cases)
-
-        # Find the opening brace line
-        brace_line: int | None = next(
-            (
-                k.loc.last_line
-                for k in match_node.kid
-                if isinstance(k, uni.Token) and k.name == Tok.LBRACE and k.loc
-            ),
-            None,
-        )
-
+        end_line = (ctx.loc.last_line + 1) if ctx.loc else None
+        prev_line = (start_line - 1) if start_line is not None else None
         result: list[doc.DocType] = []
-        case_idx = 0
-        prev_item_line: int | None = brace_line
 
-        for part in concat.parts:
-            if isinstance(part, doc.Line):
-                result.append(part)
-                continue
-
-            # Check if this part corresponds to a case
-            tokens = self._get_tokens(part)
-            part_line = min((t.loc.first_line for t in tokens if t.loc), default=None)
-
-            if case_idx < len(cases) and part_line:
-                case = cases[case_idx]
-                if case.loc and part_line >= case.loc.first_line:
-                    # Inject comments before this case
-                    start_line = (prev_item_line + 1) if prev_item_line else 1
-                    comments = self._comments.take_standalone_between(
-                        start_line, case.loc.first_line
+        for part in parts:
+            part_start, part_end = self._doc_line_span(part)
+            if part_start is not None:
+                comments = self._comments.take_standalone_between(
+                    (prev_line + 1) if prev_line is not None else 1,
+                    part_start,
+                )
+                if comments:
+                    prev_line = self._emit_standalone_comments(
+                        result, comments, prev_item_line=prev_line
                     )
-                    if comments:
-                        prev_item_line = self._emit_standalone_comments(
-                            result,
-                            comments,
-                            prev_item_line=prev_item_line,
-                        )
+            result.append(part)
+            if part_end is not None:
+                prev_line = part_end
 
-                    result.append(self._process(case, part))
-                    if case.loc:
-                        prev_item_line = case.loc.last_line
-                    case_idx += 1
-                    continue
-
-            result.append(self._process(match_node, part))
-
-        return doc.Concat(result, ast_node=match_node)
-
-    def _handle_try_stmt_comments(
-        self, try_node: uni.TryStmt, concat: doc.Concat
-    ) -> doc.Concat:
-        """Handle comment injection between parts of try/except/else/finally."""
-        if not self._comments:
-            return doc.Concat(
-                [self._process(try_node, part) for part in concat.parts],
-                ast_node=try_node,
+        if end_line is not None:
+            trailing = self._comments.take_standalone_between(
+                (prev_line + 1) if prev_line is not None else 1,
+                end_line,
             )
-
-        # Collect all sub-parts: body end, excepts, else_body, finally_body
-        parts_with_loc: list[tuple[int, int, uni.UniNode | None]] = []
-
-        # Find the closing brace of the try body
-        try_body_end: int | None = None
-        for k in try_node.kid:
-            if isinstance(k, uni.Token) and k.name == Tok.RBRACE and k.loc:
-                try_body_end = k.loc.last_line
-                break
-
-        if try_body_end:
-            parts_with_loc.append((try_body_end, try_body_end, None))
-
-        # Add excepts
-        if try_node.excepts:
-            for exc in try_node.excepts:
-                if exc.loc:
-                    parts_with_loc.append((exc.loc.first_line, exc.loc.last_line, exc))
-
-        # Add else_body
-        if try_node.else_body and try_node.else_body.loc:
-            parts_with_loc.append(
-                (
-                    try_node.else_body.loc.first_line,
-                    try_node.else_body.loc.last_line,
-                    try_node.else_body,
+            if trailing:
+                prev_line = self._emit_standalone_comments(
+                    result, trailing, prev_item_line=prev_line
                 )
-            )
 
-        # Add finally_body
-        if try_node.finally_body and try_node.finally_body.loc:
-            parts_with_loc.append(
-                (
-                    try_node.finally_body.loc.first_line,
-                    try_node.finally_body.loc.last_line,
-                    try_node.finally_body,
+        if drain_after:
+            leftovers = self._comments.take_standalone_after(
+                (prev_line + 1) if prev_line is not None else 1
+            )
+            if leftovers:
+                self._emit_standalone_comments(
+                    result, leftovers, prev_item_line=prev_line
                 )
-            )
 
-        # Sort by start line
-        parts_with_loc.sort(key=lambda x: x[0])
-
-        result: list[doc.DocType] = []
-        part_idx = 0
-        prev_item_line: int | None = try_body_end
-
-        for part in concat.parts:
-            if isinstance(part, doc.Line):
-                result.append(part)
-                continue
-
-            # Get the line of this part
-            tokens = self._get_tokens(part)
-            part_line = min((t.loc.first_line for t in tokens if t.loc), default=None)
-
-            if part_line and part_idx < len(parts_with_loc):
-                start_line, end_line, node = parts_with_loc[part_idx]
-                if part_line >= start_line:
-                    # Inject comments before this part
-                    if prev_item_line is not None:
-                        comments = self._comments.take_standalone_between(
-                            prev_item_line + 1, start_line
-                        )
-                        if comments:
-                            prev_item_line = self._emit_standalone_comments(
-                                result,
-                                comments,
-                                prev_item_line=prev_item_line,
-                            )
-
-                    result.append(self._process(try_node, part))
-                    prev_item_line = end_line
-                    part_idx += 1
-                    continue
-
-            result.append(self._process(try_node, part))
-
-        return doc.Concat(result, ast_node=try_node)
+        return result
 
     def _handle_body_comments(
         self, node: uni.UniNode, indent: doc.Indent
@@ -853,10 +698,10 @@ class CommentInjectionPass(Transform[uni.Module, uni.Module]):
 
         return doc.Indent(doc.Concat(result), ast_node=node)
 
-    def _handle_param_list_comments(
-        self, sig: uni.FuncSignature, parts: list[doc.DocType]
+    def _handle_paren_comments(
+        self, items: Sequence[uni.UniNode] | None, parts: list[doc.DocType]
     ) -> list[doc.DocType]:
-        """Handle comment injection within parameter lists."""
+        """Handle comment injection within parenthesized regions (params/args)."""
         if not self._comments:
             return parts
 
@@ -879,8 +724,8 @@ class CommentInjectionPass(Transform[uni.Module, uni.Module]):
             (i for i, p in enumerate(parts) if isinstance(p, doc.Indent)), None
         )
 
-        if not sig.params:
-            # Empty parameter list: create new indent with comments
+        if not items:
+            # Empty parameter/argument list: create new indent with comments
             result = list(parts[: delim.open_idx + 1])
             comment_parts: list[doc.DocType] = [doc.Line(hard=True, tight=True)]
 
@@ -896,7 +741,7 @@ class CommentInjectionPass(Transform[uni.Module, uni.Module]):
             result.extend(parts[delim.close_idx :])
             return result
 
-        # Non-empty parameter list: append comments to existing structure
+        # Non-empty list: append comments to existing structure
         if indent_idx is not None:
             result = list(parts)
             indent_part = result[indent_idx]
@@ -920,248 +765,6 @@ class CommentInjectionPass(Transform[uni.Module, uni.Module]):
             return result
 
         return parts
-
-    def _handle_func_call_comments(
-        self, call: uni.FuncCall, parts: list[doc.DocType]
-    ) -> list[doc.DocType]:
-        """Handle comment injection within function call argument lists."""
-        if not self._comments:
-            return parts
-
-        # Find parentheses
-        delim = self._find_delimiters(parts, Tok.LPAREN, Tok.RPAREN)
-        if delim is None:
-            return parts
-
-        # Find comments between parentheses
-        comments = self._comments.take_standalone_between(
-            delim.open_line + 1,
-            delim.close_line,
-        )
-
-        if not comments:
-            return parts
-
-        # Find Indent node (present if args are formatted across multiple lines)
-        indent_idx = next(
-            (i for i, p in enumerate(parts) if isinstance(p, doc.Indent)), None
-        )
-
-        if not call.params:
-            # Empty argument list: create new indent with comments
-            result = list(parts[: delim.open_idx + 1])
-            comment_parts: list[doc.DocType] = [doc.Line(hard=True, tight=True)]
-
-            for info in comments:
-                comment_parts.append(doc.Text(info.token.value))
-                comment_parts.append(doc.Line(hard=True))
-
-            if comment_parts and isinstance(comment_parts[-1], doc.Line):
-                comment_parts.pop()
-
-            result.append(doc.Indent(doc.Concat(comment_parts)))
-            result.append(doc.Line(hard=True, tight=True))
-            result.extend(parts[delim.close_idx :])
-            return result
-
-        # Non-empty argument list: append comments to existing structure
-        if indent_idx is not None:
-            result = list(parts)
-            indent_part = result[indent_idx]
-
-            if isinstance(indent_part, doc.Indent) and isinstance(
-                indent_part.contents, doc.Concat
-            ):
-                new_indent_parts = list(indent_part.contents.parts)
-
-                for info in comments:
-                    new_indent_parts.append(doc.Line(hard=True))
-                    new_indent_parts.append(doc.Text(info.token.value))
-
-                result[indent_idx] = doc.Indent(
-                    doc.Concat(
-                        new_indent_parts, ast_node=indent_part.contents.ast_node
-                    ),
-                    ast_node=indent_part.ast_node,
-                )
-
-            return result
-
-        return parts
-
-    def _handle_if_stmt_comments(
-        self, if_stmt: uni.IfStmt, parts: list[doc.DocType]
-    ) -> list[doc.DocType]:
-        """Handle comment injection before else/elif in if statements."""
-        if not self._comments:
-            return parts
-
-        # Find the closing brace of the if body
-        body_end_line: int | None = None
-        for k in if_stmt.kid:
-            if isinstance(k, uni.Token) and k.name == Tok.RBRACE and k.loc:
-                body_end_line = k.loc.last_line
-                break
-
-        if body_end_line is None:
-            return parts
-
-        # Check if there's an else_body (ElseStmt or ElseIf)
-        if not if_stmt.else_body:
-            return parts
-
-        else_start_line: int | None = None
-        if if_stmt.else_body.loc:
-            else_start_line = if_stmt.else_body.loc.first_line
-
-        if else_start_line is None:
-            return parts
-
-        # Get comments between the closing brace and the else/elif
-        comments = self._comments.take_standalone_between(
-            body_end_line + 1, else_start_line
-        )
-
-        if not comments:
-            return parts
-
-        # Find where to inject the comments (before the else_body's DocIR)
-        result: list[doc.DocType] = []
-        for part in parts:
-            # Check if this part corresponds to the else_body
-            tokens = self._get_tokens(part)
-            if tokens:
-                part_line = min(t.loc.first_line for t in tokens if t.loc)
-                if part_line >= else_start_line:
-                    # Inject comments before this part
-                    self._emit_standalone_comments(
-                        result,
-                        comments,
-                        prev_item_line=body_end_line,
-                    )
-                    comments = []  # Clear to avoid re-injecting
-            result.append(part)
-
-        return result
-
-    def _handle_else_if_comments(
-        self, else_if: uni.ElseIf, parts: list[doc.DocType]
-    ) -> list[doc.DocType]:
-        """Handle comment injection before else in elif statements."""
-        if not self._comments:
-            return parts
-
-        # Find the closing brace of the elif body
-        body_end_line: int | None = None
-        for k in else_if.kid:
-            if isinstance(k, uni.Token) and k.name == Tok.RBRACE and k.loc:
-                body_end_line = k.loc.last_line
-                break
-
-        if body_end_line is None:
-            return parts
-
-        # Check if there's an else_body (ElseStmt or another ElseIf)
-        if not else_if.else_body:
-            return parts
-
-        else_start_line: int | None = None
-        if else_if.else_body.loc:
-            else_start_line = else_if.else_body.loc.first_line
-
-        if else_start_line is None:
-            return parts
-
-        # Get comments between the closing brace and the else/elif
-        comments = self._comments.take_standalone_between(
-            body_end_line + 1, else_start_line
-        )
-
-        if not comments:
-            return parts
-
-        # Find where to inject the comments (before the else_body's DocIR)
-        result: list[doc.DocType] = []
-        for part in parts:
-            # Check if this part corresponds to the else_body
-            tokens = self._get_tokens(part)
-            if tokens:
-                part_line = min(t.loc.first_line for t in tokens if t.loc)
-                if part_line >= else_start_line:
-                    # Inject comments before this part
-                    self._emit_standalone_comments(
-                        result,
-                        comments,
-                        prev_item_line=body_end_line,
-                    )
-                    comments = []  # Clear to avoid re-injecting
-            result.append(part)
-
-        return result
-
-    def _handle_archetype_pre_body_comments(
-        self, archetype: uni.Archetype, parts: list[doc.DocType]
-    ) -> list[doc.DocType]:
-        """Handle comment injection between archetype's docstring and declaration."""
-        if not self._comments:
-            return parts
-
-        # Find the archetype keyword (obj, class, node, edge, walker)
-        arch_keyword_line: int | None = None
-        for k in archetype.kid:
-            if isinstance(k, uni.Token) and k.name in (
-                Tok.KW_OBJECT,
-                Tok.KW_CLASS,
-                Tok.KW_NODE,
-                Tok.KW_EDGE,
-                Tok.KW_WALKER,
-            ):
-                if k.loc:
-                    arch_keyword_line = k.loc.first_line
-                break
-
-        if arch_keyword_line is None:
-            return parts
-
-        # Check for a leading docstring
-        docstring_end_line: int | None = None
-        if archetype.kid and isinstance(archetype.kid[0], uni.String):
-            docstring = archetype.kid[0]
-            if docstring.loc:
-                docstring_end_line = docstring.loc.last_line
-
-        # No docstring - comments before keyword are handled at module level
-        if docstring_end_line is None:
-            return parts
-
-        # Get comments between the docstring and the keyword
-        comments = self._comments.take_standalone_between(
-            docstring_end_line + 1, arch_keyword_line
-        )
-
-        if not comments:
-            return parts
-
-        # Find where to inject the comments (after the docstring DocIR)
-        result: list[doc.DocType] = []
-        docstring_found = False
-        for part in parts:
-            result.append(part)
-            # Check if this part is the docstring
-            if not docstring_found:
-                tokens = self._get_tokens(part)
-                if tokens:
-                    part_line = max(t.loc.last_line for t in tokens if t.loc)
-                    if part_line >= docstring_end_line:
-                        # Inject comments after the docstring
-                        self._emit_standalone_comments(
-                            result,
-                            comments,
-                            prev_item_line=docstring_end_line,
-                        )
-                        docstring_found = True
-
-        return result
 
     def _handle_empty_body_comments(
         self, node: uni.UniNode, parts: list[doc.DocType]
@@ -1232,130 +835,6 @@ class CommentInjectionPass(Transform[uni.Module, uni.Module]):
                 break
 
         result.extend(parts[start_idx:])
-        return result
-
-    def _handle_ability_pre_body_comments(
-        self, ability: uni.Ability, parts: list[doc.DocType]
-    ) -> list[doc.DocType]:
-        """Handle comment injection between Ability's docstring and 'def' keyword."""
-        if not self._comments:
-            return parts
-
-        # Find the 'def', 'can', 'async' or ability keyword
-        keyword_line: int | None = None
-        for k in ability.kid:
-            if isinstance(k, uni.Token) and k.name in (
-                Tok.KW_DEF,
-                Tok.KW_CAN,
-                Tok.KW_ASYNC,
-                Tok.KW_STATIC,
-                Tok.KW_OVERRIDE,
-                Tok.KW_ABSTRACT,
-            ):
-                if k.loc:
-                    keyword_line = k.loc.first_line
-                break
-
-        if keyword_line is None:
-            return parts
-
-        # Check for a leading docstring
-        docstring_end_line: int | None = None
-        if ability.doc and ability.doc.loc:
-            docstring_end_line = ability.doc.loc.last_line
-
-        # No docstring - comments before keyword are handled at body level
-        if docstring_end_line is None:
-            return parts
-
-        # Get comments between the docstring and the keyword
-        comments = self._comments.take_standalone_between(
-            docstring_end_line + 1, keyword_line
-        )
-
-        if not comments:
-            return parts
-
-        # Find where to inject the comments (after the docstring DocIR)
-        result: list[doc.DocType] = []
-        docstring_found = False
-        for part in parts:
-            result.append(part)
-            # Check if this part is the docstring
-            if not docstring_found:
-                tokens = self._get_tokens(part)
-                if tokens:
-                    part_line = max(t.loc.last_line for t in tokens if t.loc)
-                    if part_line >= docstring_end_line:
-                        # Inject comments after the docstring
-                        self._emit_standalone_comments(
-                            result,
-                            comments,
-                            prev_item_line=docstring_end_line,
-                        )
-                        docstring_found = True
-
-        return result
-
-    def _handle_arch_has_pre_vars_comments(
-        self, arch_has: uni.ArchHas, parts: list[doc.DocType]
-    ) -> list[doc.DocType]:
-        """Handle comment injection between ArchHas's docstring and 'has' keyword."""
-        if not self._comments:
-            return parts
-
-        # Find the 'has' or 'static' keyword
-        has_keyword_line: int | None = None
-        for k in arch_has.kid:
-            if isinstance(k, uni.Token) and k.name in (
-                Tok.KW_HAS,
-                Tok.KW_STATIC,
-            ):
-                if k.loc:
-                    has_keyword_line = k.loc.first_line
-                break
-
-        if has_keyword_line is None:
-            return parts
-
-        # Check for a leading docstring
-        docstring_end_line: int | None = None
-        if arch_has.kid and isinstance(arch_has.kid[0], uni.String):
-            docstring = arch_has.kid[0]
-            if docstring.loc:
-                docstring_end_line = docstring.loc.last_line
-
-        # No docstring - comments before keyword should be handled at body level
-        if docstring_end_line is None:
-            return parts
-
-        # Get comments between the docstring and the keyword
-        comments = self._comments.take_standalone_between(
-            docstring_end_line + 1, has_keyword_line
-        )
-
-        if not comments:
-            return parts
-
-        # Find where to inject the comments (after the docstring DocIR)
-        result: list[doc.DocType] = []
-        docstring_found = False
-        for part in parts:
-            result.append(part)
-            # Check if this part is the docstring
-            if not docstring_found:
-                tokens = self._get_tokens(part)
-                if tokens:
-                    part_line = max(t.loc.last_line for t in tokens if t.loc)
-                    if part_line >= docstring_end_line:
-                        # Inject comments after the docstring
-                        self._emit_standalone_comments(
-                            result,
-                            comments,
-                            prev_item_line=docstring_end_line,
-                        )
-                        docstring_found = True
-
         return result
 
     def _fix_empty_region_spacing(self, parts: list[doc.DocType]) -> list[doc.DocType]:

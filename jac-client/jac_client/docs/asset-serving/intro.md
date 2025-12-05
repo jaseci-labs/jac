@@ -76,8 +76,8 @@ cl import from "@jac-client/assets/burger.png" { default as burgerImage }
 
 #### How It Works
 
-- Alias configured in `vite.config.js` points to `src/assets/`
-- Assets from root `assets/` folder are copied to `src/assets/` during build
+- Alias configured in `vite.config.js` points to `compiled/assets/`
+- Assets from root `assets/` folder are copied to `compiled/assets/` during build
 - Vite processes imports and generates optimized asset URLs
 - Automatic hash generation for cache busting
 
@@ -142,7 +142,7 @@ project/
 │   ├── images/
 │   ├── fonts/
 │   └── videos/
-├── src/
+├── compiled/
 │   └── assets/         # Assets for import alias (@jac-client/assets)
 └── dist/               # Vite output (auto-generated)
 ```
@@ -196,7 +196,7 @@ cl import from "@jac-client/assets/logo.png" { default as logo }
 
 **Import not resolving**
 - Ensure `vite.config.js` has `@jac-client/assets` alias configured
-- Verify assets are copied to `src/assets/` during build
+- Verify assets are copied to `compiled/assets/` during build
 
 **CSS background image not showing**
 - Use `/static/` prefix in CSS `url()` paths

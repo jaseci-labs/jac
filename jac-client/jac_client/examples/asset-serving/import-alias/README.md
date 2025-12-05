@@ -16,7 +16,7 @@ import-alias/
 ├── app.jac          # Main application file
 ├── assets/          # Static assets directory
 │   └── burger.png   # Burger image
-├── src/             # Source files (generated)
+├── compiled/        # Compiled files (generated)
 ├── build/           # Build output (generated)
 └── dist/            # Distribution output (generated)
 ```
@@ -54,14 +54,14 @@ The alias is configured in `vite.config.js`:
 ```javascript
 resolve: {
   alias: {
-    "@jac-client/assets": path.resolve(__dirname, "src/assets"),
+    "@jac-client/assets": path.resolve(__dirname, "compiled/assets"),
   },
 }
 ```
 
 ### Build Process
 
-1. Assets from root `assets/` folder are copied to `src/assets/` during build
+1. Assets from root `assets/` folder are copied to `compiled/assets/` during build
 2. Vite processes the import and generates optimized asset URLs
 3. Assets are bundled with hash-based filenames for cache invalidation
 4. The imported variable contains the processed asset URL

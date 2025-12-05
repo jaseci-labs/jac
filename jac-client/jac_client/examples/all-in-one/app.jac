@@ -13,6 +13,9 @@ cl import from .components.button {
 }
 cl import from .button { CustomButtonRoot }
 
+# TypeScript component import
+cl import from ".components/Card.tsx" { Card }
+
 #
 # Basic backend walkers
 #
@@ -136,6 +139,17 @@ cl {
                     example.
                 </p>
             </div>
+            <Card
+                title="TypeScript Card Component"
+                description="This card is built with TypeScript and demonstrates type-safe component usage in Jac"
+                variant="highlighted"
+            >
+                <p
+                    style={{"margin": "0.5rem 0", "color": "#374151"}}
+                >
+                    This is a TypeScript component imported and used in Jac code!
+                </p>
+            </Card>
             <div className="card">
                 <h3>
                     Direct &lt;img&gt; asset

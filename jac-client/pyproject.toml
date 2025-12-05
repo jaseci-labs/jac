@@ -1,9 +1,9 @@
-[tool.poetry]
+[project]
 name = "jac-client"
 version = "0.2.3"
 description = "Build full-stack web applications with Jac - one language for frontend and backend."
-authors = ["Jason Mars <jason@mars.ninja>"]
-maintainers = ["Jason Mars <jason@mars.ninja>"]
+authors = [{name = "Jason Mars", email = "jason@mars.ninja"}]
+maintainers = [{name = "Jason Mars", email = "jason@mars.ninja"}]
 license = "MIT"
 readme = "README.md"
 keywords = [
@@ -14,23 +14,29 @@ keywords = [
     "full-stack",
     "web-development",
 ]
-repository = "https://github.com/Jaseci-Labs/jaseci"
-homepage = "https://jaseci.org"
-documentation = "https://jac-lang.org"
-packages = [{include = "jac_client"}]
+requires-python = ">=3.12"
+dependencies = [
+    "jaclang==0.9.3",
+]
 
-[tool.poetry.dependencies]
-python = "^3.12.0"
-jaclang = "0.9.3"
+[project.urls]
+Repository = "https://github.com/Jaseci-Labs/jaseci"
+Homepage = "https://jaseci.org"
+Documentation = "https://jac-lang.org"
 
-[tool.poetry.group.dev.dependencies]
-python-dotenv = "1.0.1"
-pytest = "8.3.5"
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
-
-[tool.poetry.plugins."jac"]
+[project.entry-points."jac"]
 serve = "jac_client.plugin.client:JacClient"
 create_jac_app = "jac_client.plugin.cli:JacCmd"
+
+[project.optional-dependencies]
+dev = [
+    "python-dotenv==1.0.1",
+    "pytest==8.3.5",
+]
+
+[tool.setuptools.packages.find]
+include = ["jac_client*"]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"

@@ -1,3 +1,3 @@
-from jaclang import JacRuntimeInterface as _
+from jaclang import JacRuntimeInterface as _  # noqa: F401
 
-from .helper import help_func
+from .helper import help_func as help_func

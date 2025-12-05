@@ -8,12 +8,12 @@ This guide covers all styling approaches available in Jac web applications. Each
 
 | Styling Approach | Documentation | Example Location |
 |------------------|---------------|------------------|
-| [**Pure CSS**](./pure-css.md) | Traditional CSS with external stylesheet | [`examples/css-styling/pure-css/`](../../examples/css-styling/pure-css/) |
-| [**Tailwind CSS**](./tailwind.md) | Utility-first CSS framework | [`examples/css-styling/tailwind-example/`](../../examples/css-styling/tailwind-example/) |
-| [**Sass/SCSS**](./sass.md) | CSS preprocessor with variables, mixins, nesting | [`examples/css-styling/sass-example/`](../../examples/css-styling/sass-example/) |
-| [**Styled Components**](./styled-components.md) | CSS-in-JS with styled-components | [`examples/css-styling/styled-components/`](../../examples/css-styling/styled-components/) |
-| [**JavaScript Styling**](./js-styling.md) | Inline styles using JavaScript objects | [`examples/css-styling/js-styling/`](../../examples/css-styling/js-styling/) |
-| [**Material-UI**](./material-ui.md) | React component library with Material Design | [`examples/css-styling/material-ui/`](../../examples/css-styling/material-ui/) |
+| [**Pure CSS**](./pure-css.md) | Traditional CSS with external stylesheet | [`examples/css-styling/pure-css/`](https://docs.jaseci.org/jac-client/styling/pure-css/) |
+| [**Tailwind CSS**](./tailwind.md) | Utility-first CSS framework | [`examples/css-styling/tailwind-example/`](https://docs.jaseci.org/jac-client/styling/tailwind/) |
+| [**Sass/SCSS**](./sass.md) | CSS preprocessor with variables, mixins, nesting | [`examples/css-styling/sass-example/`](https://docs.jaseci.org/jac-client/styling/sass/) |
+| [**Styled Components**](./styled-components.md) | CSS-in-JS with styled-components | [`examples/css-styling/styled-components/`](https://docs.jaseci.org/jac-client/styling/styled-components/) |
+| [**JavaScript Styling**](./js-styling.md) | Inline styles using JavaScript objects | [`examples/css-styling/js-styling/`](https://docs.jaseci.org/jac-client/styling/js-styling/) |
+| [**Material-UI**](./material-ui.md) | React component library with Material Design | [`examples/css-styling/material-ui/`](https://docs.jaseci.org/jac-client/styling/material-ui/) |
 
 ## Styling Approaches Overview
 

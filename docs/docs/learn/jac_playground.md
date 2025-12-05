@@ -14,8 +14,6 @@ with entry {
 
 ## How to Use
 
-![Description of GIF](../assets/runtime.gif)
-
 1. **Start with Examples**: Click on any example from the right sidebar to load it into the editor
 2. **Modify and Experiment**: Edit the code to see how changes affect the output
 3. **Run Your Code**: Press the "Run" button to execute your program
@@ -28,11 +26,6 @@ Debug Mode transforms the Jac Playground into a powerful development environment
 ### Jaclang Graph Visualizer
 
 ![Debug Mode with Graph Visualizer](../assets/visualizer.jpg)
-
-
-### Jac Playground - Jaclang Graph Visualizer Demo
-
-![Click here to watch the Debug Mode Demo Video](../assets/playground_demo.gif)
 
 ### Using Debug Mode Effectively
 

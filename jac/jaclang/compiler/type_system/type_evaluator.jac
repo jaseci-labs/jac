@@ -13,12 +13,13 @@ import from pathlib { Path }
 import from typing { Callable, TYPE_CHECKING, cast }
 
 import jaclang.compiler.unitree as uni;
-import from jaclang.compiler { TOKEN_MAP }
+import from jaclang.compiler.parser { TOKEN_MAP }
 import from jaclang.compiler.constant { SymbolType, Tokens as Tok }
 import from jaclang.compiler.passes.main.pyast_load_pass { PyastBuildPass }
 import from jaclang.compiler.passes.main.sym_tab_build_pass { SymTabBuildPass }
 import from jaclang.compiler.type_system { types }
 import from jaclang.runtimelib.utils { read_file_with_encoding }
+import from jaclang.settings { settings }
 
 with entry {
     if TYPE_CHECKING {
@@ -119,6 +120,8 @@ class TypeEvaluator {
         self.prefetch: PrefetchedTypes = PrefetchedTypes();
         self.diagnostic_callback: DiagnosticCallback | None = None;
         self.builtins_module: uni.Module | None = None;
+        # Cache for module types by resolved path to avoid redundant lookups.
+        self._module_type_cache: dict[str, types.ModuleType] = {};
 
         # NOTE: The initialization order here is important.
         self.typing_module = self._load_stub_module(
@@ -140,7 +143,12 @@ class TypeEvaluator {
     """Load and return the builtins stub module."""
     def _load_stub_module(self: TypeEvaluator, path: str) -> uni.Module {
         if not os.path.exists(path) {
-            raise FileNotFoundError(f"Stub file not found at {path}") ;
+            if not settings.all_warnings {
+                raise FileNotFoundError(f"Stub file not found at {path}") ;
+            } else {
+                print(f"Warning: Stub file not found at {path}");
+                exit(0);
+            }
         }
         file_content = read_file_with_encoding(path);
         uni_source = uni.Source(file_content, path);
@@ -285,7 +293,10 @@ class TypeEvaluator {
         if path in self.program.mod.hub {
             mod = self.program.mod.hub[path];
         } else {
-            mod = self.program.compile(path, no_cgen=True, type_check=False);
+            # Use symtab_ir_only=True to skip semantic analysis and CFG passes.
+            mod = self.program.compile(
+                path, no_cgen=True, type_check=False, symtab_ir_only=True
+            );
             # FIXME: Inherit from builtin symbol table logic is currently implemented
             # here and checker pass, however it should be in one location, since we're
             # doing type_check=False, it doesn't set parent_scope to builtins, this
@@ -308,8 +319,17 @@ class TypeEvaluator {
             if node_.path[-1].type {
                 return node_.path[-1].type;
             }
+            # Compute path list once before the loop.
+            path_list = node_.resolve_relative_path_list();
             for (idx, npath) in enumerate(node_.path) {
-                mod_path = node_.resolve_relative_path_list()[idx];
+                mod_path = path_list[idx];
+
+                # Check module type cache first.
+                if mod_path in self._module_type_cache {
+                    npath.type = self._module_type_cache[mod_path];
+                    npath._sym_category = SymbolType.MODULE;
+                    continue;
+                }
 
                 # If the path doesn't exist, return unknown type.
                 # eg: import from ..mod { item }  # <-- Here ..mod might not exist.
@@ -328,6 +348,8 @@ class TypeEvaluator {
                 );
                 npath.type = mod_type;
                 npath._sym_category = SymbolType.MODULE;
+                # Cache the module type for future lookups.
+                self._module_type_cache[mod_path] = mod_type;
             }
             if node_.alias {
                 node_.alias.type = node_.path[-1].type;

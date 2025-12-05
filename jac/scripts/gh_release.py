@@ -2,7 +2,7 @@
 
 import tomllib
 
-from github_release import gh_release_create  # noqa: I100
+from github_release import gh_release_create
 
 with open("pyproject.toml", "rb") as f:
     data = tomllib.load(f)

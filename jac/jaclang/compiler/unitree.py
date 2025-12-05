@@ -53,26 +53,45 @@ class UniNode:
         """Initialize ast."""
         self.parent: UniNode | None = None
         self.kid: list[UniNode] = [x.set_parent(self) for x in kid]
-        self._sub_node_tab: dict[type, list[UniNode]] = {}
-        self.construct_sub_node_tab()
+        self.__sub_node_tab: dict[type, list[UniNode]] | None = None
         self._in_mod_nodes: list[UniNode] = []
-        self.gen: CodeGenTarget = CodeGenTarget()
+        self._gen: CodeGenTarget | None = None
         self.loc: CodeLocInfo = CodeLocInfo(*self.resolve_tok_range())
 
-    def construct_sub_node_tab(self) -> None:
+    @property
+    def gen(self) -> CodeGenTarget:
+        """Lazy initialization of CodeGenTarget."""
+        if self._gen is None:
+            self._gen = CodeGenTarget()
+        return self._gen
+
+    @gen.setter
+    def gen(self, value: CodeGenTarget) -> None:
+        """Set CodeGenTarget."""
+        self._gen = value
+
+    @property
+    def _sub_node_tab(self) -> dict[type, list[UniNode]]:
+        """Lazy initialization of sub node table."""
+        if self.__sub_node_tab is None:
+            self.__sub_node_tab = {}
+            self._construct_sub_node_tab()
+        return self.__sub_node_tab
+
+    def _construct_sub_node_tab(self) -> None:
         """Construct sub node table."""
         for i in self.kid:
             if not i:
                 continue
             for k, v in i._sub_node_tab.items():
-                if k in self._sub_node_tab:
-                    self._sub_node_tab[k].extend(v)
+                if k in self.__sub_node_tab:  # type: ignore
+                    self.__sub_node_tab[k].extend(v)  # type: ignore
                 else:
-                    self._sub_node_tab[k] = copy(v)
-            if type(i) in self._sub_node_tab:
-                self._sub_node_tab[type(i)].append(i)
+                    self.__sub_node_tab[k] = copy(v)  # type: ignore
+            if type(i) in self.__sub_node_tab:  # type: ignore
+                self.__sub_node_tab[type(i)].append(i)  # type: ignore
             else:
-                self._sub_node_tab[type(i)] = [i]
+                self.__sub_node_tab[type(i)] = [i]  # type: ignore
 
     @property
     def sym_tab(self) -> UniScopeNode:

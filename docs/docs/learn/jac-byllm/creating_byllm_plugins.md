@@ -80,23 +80,23 @@ class MybyllmRuntime:
 Register the plugin using entry points in `pyproject.toml`:
 
 ```toml
-[tool.poetry]
+[project]
 name = "my-byllm-plugin"
 version = "0.1.0"
 description = "My custom byLLM plugin"
-authors = ["Your Name <your.email@example.com>"]
+authors = [{name = "Your Name", email = "your.email@example.com"}]
+requires-python = ">=3.11"
+dependencies = [
+    "byllm",
+    "jaclang",
+]
 
-[tool.poetry.dependencies]
-python = "^3.11"
-byllm = "*"
-jaclang = "*"
-
-[tool.poetry.plugins."jac"]
+[project.entry-points."jac"]
 my-byllm-plugin = "my_byllm_plugin.plugin:MybyllmRuntime"
 
 [build-system]
-requires = ["poetry-core>=1.0.0"]
-build-backend = "poetry.core.masonry.api"
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
 ```
 
 ### Step 4: Install and Test Your Plugin

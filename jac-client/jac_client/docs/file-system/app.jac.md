@@ -8,7 +8,7 @@ Every Jac client project **must** have an `app.jac` file. This file serves as th
 
 When you run `jac serve app.jac`, the build system:
 1. Compiles `app.jac` to JavaScript
-2. Generates an entry file (`src/main.js`) that imports your `app` function:
+2. Generates an entry file (`compiled/main.js`) that imports your `app` function:
    ```javascript
    import { app as App } from "./app.js";
    ```

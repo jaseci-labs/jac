@@ -50,7 +50,7 @@ def _create_test_project_with_vite(
             "build": "npm run compile && vite build",
             "dev": "vite dev",
             "preview": "vite preview",
-            "compile": 'babel src --out-dir build --extensions ".jsx,.js" --out-file-extension .js',
+            "compile": 'babel compiled --out-dir build --extensions ".jsx,.js" --out-file-extension .js',
         },
         "dependencies": dependencies,
         "devDependencies": {
@@ -107,7 +107,7 @@ export default defineConfig({
   publicDir: false,
   resolve: {
     alias: {
-      "@jac-client/utils": path.resolve(__dirname, "src/client_runtime.js"),
+      "@jac-client/utils": path.resolve(__dirname, "compiled/client_runtime.js"),
     },
   },
 });
@@ -133,8 +133,8 @@ export default defineConfig({
     output_dir = temp_path / "dist"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    src_dir = temp_path / "src"
-    src_dir.mkdir(parents=True, exist_ok=True)
+    compiled_dir = temp_path / "compiled"
+    compiled_dir.mkdir(parents=True, exist_ok=True)
 
     build_dir = temp_path / "build"
     build_dir.mkdir(parents=True, exist_ok=True)

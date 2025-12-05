@@ -16,7 +16,7 @@ image-asset/
 ├── app.jac          # Main application file
 ├── assets/          # Static assets directory
 │   └── burger.png   # Burger image
-├── src/             # Source files (generated)
+├── compiled/        # Compiled files (generated)
 ├── build/           # Build output (generated)
 └── dist/            # Distribution output (generated)
 ```

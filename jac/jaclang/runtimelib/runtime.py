@@ -71,7 +71,6 @@ from jaclang.vendor import pluggy
 if TYPE_CHECKING:
     from jaclang.runtimelib.server import ModuleIntrospector
 
-
 plugin_manager = pluggy.PluginManager("jac")
 hookspec = pluggy.HookspecMarker("jac")
 hookimpl = pluggy.HookimplMarker("jac")
@@ -1589,6 +1588,18 @@ class JacByLLM:
             return _wrapped_caller
 
         return _decorator
+
+    @staticmethod
+    def by_operator(left: Any, right: Any) -> Any:  # noqa: ANN401
+        """by operator feature for expression composition.
+
+        Currently not implemented - raises NotImplementedError.
+        The exact execution behavior is not yet defined.
+        """
+        raise NotImplementedError(
+            "The 'by' operator is not yet implemented. "
+            "This feature is reserved for future use."
+        )
 
 
 class JacUtils:

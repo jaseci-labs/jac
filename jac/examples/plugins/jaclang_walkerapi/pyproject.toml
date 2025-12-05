@@ -1,0 +1,23 @@
+[project]
+name = "jaclang-walkerapi"
+version = "0.0.1"
+description = "Example Jac runtime plugin"
+authors = [{name = "Jason Mars", email = "jason@mars.ninja"}]
+requires-python = ">=3.11"
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/Jaseci-Labs/jaclang"
+
+[project.entry-points."jac"]
+walkerapi = "jaclang_walkerapi.walkerapi:JacRuntime"
+
+[tool.setuptools.packages.find]
+include = ["jaclang_walkerapi*"]
+
+[tool.setuptools.package-data]
+"*" = ["*.ini"]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"

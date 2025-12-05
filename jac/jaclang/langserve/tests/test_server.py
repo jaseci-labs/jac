@@ -195,7 +195,7 @@ def test_go_to_definition_md_path(fixture_path) -> None:
             (14, 34, "compiler/type_system/__init__.py:0:0-0:0"),
             (18, 5, "compiler/type_system/types.py:64:0-103:7"),  # TypeBase now on line 18
             (20, 34, "compiler/unitree.py:0:0-0:0"),              # UniScopeNode now on line 20
-            (20, 48, "compiler/unitree.py:316:0-547:11"),
+            (20, 48, "compiler/unitree.py:335:0-566:11"),
             (22, 22, "langserve/tests/fixtures/circle.jac:7:5-7:8"),  # RAD now on line 22, fixture line changed too
             (23, 38, "vendor/pygls/uris.py:0:0-0:0"),             # uris now on line 23
             (24, 52, "vendor/pygls/server.py:351:0-615:13"),      # LanguageServer on line 24

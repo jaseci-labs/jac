@@ -1,5 +1,6 @@
 """Tests for Integration with Jaclang."""
 
+import contextlib
 import io
 import os
 import sys
@@ -299,14 +300,14 @@ def test_python_lib_mode() -> None:
 
 def test_enum_without_value(fixture_path) -> None:
     """This tests enum without values, where enum names gets into the prompt."""
+    from loguru import logger
+
     captured_output = io.StringIO()
-    sys.stdout = captured_output
-    try:
-        jac_import("enum_no_value", base_path=fixture_path("./"))
-    except Exception:
+    logger.remove()
+    logger.add(captured_output)
+    with contextlib.suppress(Exception):
         # API key error is expected, but we still capture the output before the error
-        pass
-    sys.stdout = sys.__stdout__
+        jac_import("enum_no_value", base_path=fixture_path("./"))
     stdout_value = captured_output.getvalue()
     assert "YES" in stdout_value
     assert "NO" in stdout_value

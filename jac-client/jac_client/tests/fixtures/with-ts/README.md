@@ -1,0 +1,29 @@
+# with-ts
+
+## Running Jac Code
+
+Make sure node modules are installed:
+```bash
+npm install
+```
+
+To run your Jac code, use the Jac CLI:
+
+```bash
+jac serve app.jac
+```
+
+## TypeScript Support
+
+This project includes TypeScript support. You can create TypeScript components in the `components/` directory and import them in your Jac files.
+
+Example:
+```jac
+cl import from ".components/Button.tsx" { Button }
+```
+
+See `components/Button.tsx` for an example TypeScript component.
+
+For more information, see the [TypeScript guide](../../docs/working-with-ts.md).
+
+Happy coding with Jac and TypeScript! 🚀
