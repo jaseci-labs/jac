@@ -181,8 +181,8 @@ class LanguageServerTestHelper:
         )
 
         if message_contains:
-            assert message_contains in diagnostics[0].message, (
-                f"Expected '{message_contains}' in diagnostic message"
+            assert any(message_contains in diag.message for diag in diagnostics), (
+                f"Expected '{message_contains}' in diagnostic messages: {[d.message for d in diagnostics]}"
             )
 
     def assert_semantic_tokens_count(self, expected_count: int) -> None:

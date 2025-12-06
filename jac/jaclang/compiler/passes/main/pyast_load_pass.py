@@ -444,7 +444,8 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
             return uni.Assignment(
                 target=[target],
                 type_tag=None,
-                mutable=True,
+                # Augmented assignments should not redeclare the target
+                mutable=False,
                 aug_op=op,
                 value=value,
                 kid=[target, op, value],

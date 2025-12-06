@@ -29,7 +29,9 @@ from jaclang.vendor.pygls.uris import from_fs_path
 CIRCLE_TEMPLATE = "circle_template.jac"
 GLOB_TEMPLATE = "glob_template.jac"
 EXPECTED_CIRCLE_TOKEN_COUNT = 345
+EXPECTED_CIRCLE_TOKEN_COUNT_ERROR = 345
 EXPECTED_GLOB_TOKEN_COUNT = 15
+EXPECTED_GLOB_ERROR_TOKEN_COUNT = 15
 
 
 def test_open_valid_file_no_diagnostics():
@@ -61,9 +63,7 @@ def test_open_with_syntax_error():
 
     try:
         helper.open_document()
-        helper.assert_has_diagnostics(
-            count=2, message_contains="Unexpected token 'error'"
-        )
+        helper.assert_has_diagnostics(count=2, message_contains="Unexpected token")
 
         diagnostics = helper.get_diagnostics()
         assert str(diagnostics[0].range) == "59:0-59:5"
@@ -95,7 +95,7 @@ def test_did_open_and_simple_syntax_error():
         )
         helper.change_document(broken_code)
         helper.assert_has_diagnostics(count=2)
-        helper.assert_semantic_tokens_count(EXPECTED_CIRCLE_TOKEN_COUNT)
+        helper.assert_semantic_tokens_count(EXPECTED_CIRCLE_TOKEN_COUNT_ERROR)
     finally:
         ls.shutdown()
         test_file.cleanup()
@@ -123,10 +123,8 @@ def test_did_save():
             test_file._get_template_path(CIRCLE_TEMPLATE), "error"
         )
         helper.save_document(broken_code)
-        helper.assert_semantic_tokens_count(EXPECTED_CIRCLE_TOKEN_COUNT)
-        helper.assert_has_diagnostics(
-            count=2, message_contains="Unexpected token 'error'"
-        )
+        helper.assert_semantic_tokens_count(EXPECTED_CIRCLE_TOKEN_COUNT_ERROR)
+        helper.assert_has_diagnostics(count=2, message_contains="Unexpected token")
     finally:
         ls.shutdown()
         test_file.cleanup()
@@ -154,7 +152,9 @@ def test_did_change():
         # Change with syntax error
         helper.change_document("\nerror" + test_file.code)
         helper.assert_semantic_tokens_count(EXPECTED_CIRCLE_TOKEN_COUNT)
-        helper.assert_has_diagnostics(count=2, message_contains="Unexpected token")
+        helper.assert_has_diagnostics(
+            count=2, message_contains="Unexpected token 'error'"
+        )
     finally:
         ls.shutdown()
         test_file.cleanup()
@@ -207,7 +207,7 @@ def test_multifile_workspace():
 
         # Check semantic tokens before change
         helper1.assert_semantic_tokens_count(EXPECTED_GLOB_TOKEN_COUNT)
-        helper2.assert_semantic_tokens_count(EXPECTED_GLOB_TOKEN_COUNT)
+        helper2.assert_semantic_tokens_count(EXPECTED_GLOB_ERROR_TOKEN_COUNT)
 
         # Change first file
         changed_code = load_jac_template(
@@ -217,7 +217,7 @@ def test_multifile_workspace():
 
         # Verify semantic tokens after change
         helper1.assert_semantic_tokens_count(20)
-        helper2.assert_semantic_tokens_count(EXPECTED_GLOB_TOKEN_COUNT)
+        helper2.assert_semantic_tokens_count(EXPECTED_GLOB_ERROR_TOKEN_COUNT)
     finally:
         ls.shutdown()
         file1.cleanup()

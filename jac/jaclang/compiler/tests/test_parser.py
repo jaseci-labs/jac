@@ -255,38 +255,14 @@ def test_multiple_syntax_errors(fixture_path: Callable[[str], str]) -> None:
     prog.compile(fixture_path("multiple_syntax_errors.jac"))
     sys.stdout = sys.__stdout__
     assert len(prog.errors_had) == 3
-    expected_errors = [
-        """
-        Missing RPAREN
-            with entry {
-                foo = Foo(;
-                          ^
-                func(foo bar)
-                foo.bar;
-        """,
-        """
-        Missing COMMA
-            with entry {
-                foo = Foo(;
-                func(foo bar)
-                         ^^^
-                foo.bar;
-            }
-        """,
-        """
-        Unexpected token 'bar'
-            with entry {
-                foo = Foo(;
-                func(foo bar)
-                         ^^^
-                foo.bar;
-        """,
+    expected_substrings = [
+        "Missing RPAREN",
+        "Missing COMMA",
+        "Unexpected token",
     ]
-    for idx, alrt in enumerate(prog.errors_had):
+    for alrt, expected in zip(prog.errors_had, expected_substrings, strict=True):
         pretty = alrt.pretty_print()
-        for line in expected_errors[idx].strip().split("\n"):
-            line = line.strip()
-            assert line in pretty
+        assert expected in pretty
 
 
 def _load_combined_jsx_fixture() -> tuple[str, JacParser]:

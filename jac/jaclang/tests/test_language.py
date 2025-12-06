@@ -687,6 +687,27 @@ def test_py2jac_empty_file(fixture_path: Callable[[str], str]) -> None:
     assert isinstance(converted_ast, ast.Module)
 
 
+def test_py2jac_augassign_and_doc(fixture_path: Callable[[str], str]) -> None:
+    """Ensure augmented assigns avoid redecl and nested docstrings terminate."""
+    import ast as py_ast
+
+    import jaclang.compiler.unitree as ast
+    from jaclang.compiler.passes.main import PyastBuildPass
+
+    py_out_path = os.path.join(fixture_path("./"), "py2jac_augassign_doc.py")
+    with open(py_out_path) as f:
+        file_source = f.read()
+        output = PyastBuildPass(
+            ir_in=ast.PythonModuleAst(
+                py_ast.parse(file_source),
+                orig_src=ast.Source(file_source, py_out_path),
+            ),
+            prog=JacProgram(),
+        ).ir_out.unparse()
+    assert "x += 2;" in output  # augmented assign should not emit `let`
+    assert '"""inner doc"""; def inner()' in output  # docstring should end before def
+
+
 def test_refs_target(
     fixture_path: Callable[[str], str],
     capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
