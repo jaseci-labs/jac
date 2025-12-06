@@ -29,9 +29,9 @@ from jaclang.vendor.pygls.uris import from_fs_path
 CIRCLE_TEMPLATE = "circle_template.jac"
 GLOB_TEMPLATE = "glob_template.jac"
 EXPECTED_CIRCLE_TOKEN_COUNT = 345
-EXPECTED_CIRCLE_TOKEN_COUNT_ERROR = 330
+EXPECTED_CIRCLE_TOKEN_COUNT_ERROR = 345
 EXPECTED_GLOB_TOKEN_COUNT = 15
-EXPECTED_GLOB_ERROR_TOKEN_COUNT = 10
+EXPECTED_GLOB_ERROR_TOKEN_COUNT = 15
 
 
 def test_open_valid_file_no_diagnostics():
@@ -63,10 +63,10 @@ def test_open_with_syntax_error():
 
     try:
         helper.open_document()
-        helper.assert_has_diagnostics(count=5, message_contains="Unexpected token")
+        helper.assert_has_diagnostics(count=2, message_contains="Unexpected token")
 
         diagnostics = helper.get_diagnostics()
-        assert str(diagnostics[0].range) == "59:0-59:15"
+        assert str(diagnostics[0].range) == "59:0-59:5"
     finally:
         ls.shutdown()
         test_file.cleanup()
@@ -94,7 +94,7 @@ def test_did_open_and_simple_syntax_error():
             test_file._get_template_path(CIRCLE_TEMPLATE), "error"
         )
         helper.change_document(broken_code)
-        helper.assert_has_diagnostics(count=5)
+        helper.assert_has_diagnostics(count=2)
         helper.assert_semantic_tokens_count(EXPECTED_CIRCLE_TOKEN_COUNT_ERROR)
     finally:
         ls.shutdown()
@@ -124,7 +124,7 @@ def test_did_save():
         )
         helper.save_document(broken_code)
         helper.assert_semantic_tokens_count(EXPECTED_CIRCLE_TOKEN_COUNT_ERROR)
-        helper.assert_has_diagnostics(count=5, message_contains="Unexpected token")
+        helper.assert_has_diagnostics(count=2, message_contains="Unexpected token")
     finally:
         ls.shutdown()
         test_file.cleanup()

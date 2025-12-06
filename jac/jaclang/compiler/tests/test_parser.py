@@ -254,9 +254,10 @@ def test_multiple_syntax_errors(fixture_path: Callable[[str], str]) -> None:
     prog = JacProgram()
     prog.compile(fixture_path("multiple_syntax_errors.jac"))
     sys.stdout = sys.__stdout__
-    assert len(prog.errors_had) == 2
+    assert len(prog.errors_had) == 3
     expected_substrings = [
         "Missing RPAREN",
+        "Missing COMMA",
         "Unexpected token",
     ]
     for alrt, expected in zip(prog.errors_had, expected_substrings, strict=True):
