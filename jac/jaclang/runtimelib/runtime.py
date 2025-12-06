@@ -32,7 +32,6 @@ from uuid import UUID
 
 from jaclang.compiler.constant import Constants as Con
 from jaclang.compiler.constant import EdgeDir, colors
-from jaclang.compiler.program import JacProgram
 from jaclang.runtimelib.archetype import (
     GenericEdge as _GenericEdge,
 )
@@ -44,7 +43,8 @@ from jaclang.runtimelib.archetype import (
 from jaclang.runtimelib.archetype import (
     Root as _Root,
 )
-from jaclang.runtimelib.client_bundle import ClientBundle, ClientBundleBuilder
+
+# ClientBundle and ClientBundleBuilder are imported lazily in JacClientBundle
 from jaclang.runtimelib.constructs import (
     AccessLevel,
     Anchor,
@@ -61,15 +61,37 @@ from jaclang.runtimelib.constructs import (
 )
 from jaclang.runtimelib.memory import Memory, Shelf, ShelfStorage
 from jaclang.runtimelib.mtp import MTIR
-from jaclang.runtimelib.utils import (
-    all_issubclass,
-    traverse_graph,
-)
 from jaclang.utils import infer_language
 from jaclang.vendor import pluggy
 
 if TYPE_CHECKING:
+    from jaclang.compiler.program import JacProgram
+    from jaclang.runtimelib.client_bundle import ClientBundle, ClientBundleBuilder
     from jaclang.runtimelib.server import ModuleIntrospector
+
+
+class _LazyProgramDescriptor:
+    """Descriptor for lazy JacProgram instantiation.
+
+    This delays importing the compiler module until the program is actually needed,
+    allowing more modules to be converted to Jac (since they won't be in the
+    eager import chain).
+    """
+
+    _instance: JacProgram | None = None
+
+    def __get__(self, obj: object, objtype: type | None = None) -> JacProgram:
+        """Lazily create and return JacProgram instance."""
+        if _LazyProgramDescriptor._instance is None:
+            from jaclang.compiler.program import JacProgram
+
+            _LazyProgramDescriptor._instance = JacProgram()
+        return _LazyProgramDescriptor._instance
+
+    def __set__(self, obj: object, value: JacProgram) -> None:
+        """Set the JacProgram instance."""
+        _LazyProgramDescriptor._instance = value
+
 
 plugin_manager = pluggy.PluginManager("jac")
 hookspec = pluggy.HookspecMarker("jac")
@@ -432,6 +454,8 @@ class JacWalker:
         node: NodeAnchor | EdgeAnchor,
     ) -> WalkerArchetype:
         """Jac's spawn operator feature."""
+        from jaclang.runtimelib.utils import all_issubclass
+
         warch = walker.archetype
         walker.path = []
         current_loc = node.archetype
@@ -524,6 +548,8 @@ class JacWalker:
         node: NodeAnchor | EdgeAnchor,
     ) -> WalkerArchetype:
         """Jac's spawn operator feature."""
+        from jaclang.runtimelib.utils import all_issubclass
+
         warch = walker.archetype
         walker.path = []
         current_loc = node.archetype
@@ -718,6 +744,8 @@ class JacBuiltin:
         format: str,
     ) -> str:
         """Generate graph for visualizing nodes and edges."""
+        from jaclang.runtimelib.utils import traverse_graph
+
         edge_type = edge_type if edge_type else []
         visited_nodes: list[NodeArchetype] = []
         node_depths: dict[NodeArchetype, int] = {node: 0}
@@ -971,8 +999,9 @@ class JacBasics:
         if lng is None:
             lng = infer_language(target, base_path)
 
-        if not JacRuntime.program:
-            JacRuntimeInterface.attach_program(JacProgram())
+        # JacRuntime.program is lazy - accessing it will create if needed
+        # This check ensures the program exists before we use it
+        _ = JacRuntime.program
 
         # Compute the module name
         # Convert relative imports (e.g., ".foo") to absolute
@@ -1451,6 +1480,8 @@ class JacClientBundle:
     @staticmethod
     def get_client_bundle_builder() -> ClientBundleBuilder:
         """Get the client bundle builder instance."""
+        from jaclang.runtimelib.client_bundle import ClientBundleBuilder
+
         return ClientBundleBuilder()
 
     @staticmethod
@@ -1951,11 +1982,11 @@ plugin_manager.add_hookspecs(JacRuntimeSpec)
 class JacRuntime(JacRuntimeInterface):
     """Jac Machine State."""
 
-    loaded_modules: dict[str, types.ModuleType] = {}
     base_path_dir: str = os.getcwd()
-    program: JacProgram = JacProgram()
+    program: JacProgram = _LazyProgramDescriptor()  # type: ignore[assignment]
     pool: ThreadPoolExecutor = ThreadPoolExecutor()
     exec_ctx: ExecutionContext | None = None
+    loaded_modules: dict[str, types.ModuleType] = {}
 
     @staticmethod
     def set_base_path(base_path: str) -> None:
@@ -1972,13 +2003,8 @@ class JacRuntime(JacRuntimeInterface):
     @staticmethod
     def reset_machine() -> None:
         """Reset the machine."""
-        # Remove Jac modules from sys.modules, but skip special module names
-        # that Python relies on (like __main__, __mp_main__, etc.)
-        special_modules = {"__main__", "__mp_main__", "builtins"}
-        for i in JacRuntime.loaded_modules.values():
-            if i.__name__ not in special_modules:
-                sys.modules.pop(i.__name__, None)
-        JacRuntime.loaded_modules.clear()
+        from jaclang.compiler.program import JacProgram
+
         JacRuntime.base_path_dir = os.getcwd()
         JacRuntime.program = JacProgram()
         JacRuntime.pool = ThreadPoolExecutor()

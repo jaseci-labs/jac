@@ -15,8 +15,10 @@ import sys
 from collections.abc import Sequence
 from types import ModuleType
 
-
+from jaclang.settings import settings
 from jaclang.utils.log import logging
+from jaclang.utils.module_resolver import get_jac_search_paths, get_py_search_paths
+
 logger = logging.getLogger(__name__)
 
 
@@ -73,8 +75,6 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         target: ModuleType | None = None,
     ) -> importlib.machinery.ModuleSpec | None:
         """Find the spec for the module."""
-        from jaclang.settings import settings
-        from jaclang.utils.module_resolver import get_jac_search_paths, get_py_search_paths
         # Handle case where no byllm plugin is installed
         if fullname == "byllm" or fullname.startswith("byllm."):
             # Check if byllm is actually installed by looking for it in sys.path
@@ -169,6 +169,7 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         regular module (.jac/.py) execution.
         """
         from jaclang.runtimelib.runtime import JacRuntime as Jac
+
         if not module.__spec__ or not module.__spec__.origin:
             raise ImportError(
                 f"Cannot find spec or origin for module {module.__name__}"
