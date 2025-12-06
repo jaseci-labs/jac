@@ -2117,6 +2117,10 @@ class Ability(
         new_kid: list[UniNode] = []
         if self.doc:
             new_kid.append(self.doc)
+            # When defining an ability inside another ability, make the docstring a
+            # standalone statement so it doesn't merge with surrounding code.
+            if isinstance(self.parent, Ability):
+                new_kid.append(self.gen_token(Tok.SEMI))
         client_tok = self._source_client_token()
         if self.is_client_decl and (client_tok is not None or not self.in_client_block):
             new_kid.append(client_tok if client_tok else self.gen_token(Tok.KW_CLIENT))
