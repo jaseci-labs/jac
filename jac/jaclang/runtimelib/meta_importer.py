@@ -15,12 +15,8 @@ import sys
 from collections.abc import Sequence
 from types import ModuleType
 
-from jaclang.runtimelib.runtime import JacRuntime as Jac
-from jaclang.runtimelib.runtime import JacRuntimeInterface
-from jaclang.settings import settings
-from jaclang.utils.log import logging
-from jaclang.utils.module_resolver import get_jac_search_paths, get_py_search_paths
 
+from jaclang.utils.log import logging
 logger = logging.getLogger(__name__)
 
 
@@ -77,6 +73,8 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         target: ModuleType | None = None,
     ) -> importlib.machinery.ModuleSpec | None:
         """Find the spec for the module."""
+        from jaclang.settings import settings
+        from jaclang.utils.module_resolver import get_jac_search_paths, get_py_search_paths
         # Handle case where no byllm plugin is installed
         if fullname == "byllm" or fullname.startswith("byllm."):
             # Check if byllm is actually installed by looking for it in sys.path
@@ -170,6 +168,7 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         module creation from execution. It handles both package (__init__.jac) and
         regular module (.jac/.py) execution.
         """
+        from jaclang.runtimelib.runtime import JacRuntime as Jac
         if not module.__spec__ or not module.__spec__.origin:
             raise ImportError(
                 f"Cannot find spec or origin for module {module.__name__}"
@@ -179,7 +178,7 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         is_pkg = module.__spec__.submodule_search_locations is not None
 
         # Register module in JacRuntime's tracking
-        JacRuntimeInterface.load_module(module.__name__, module)
+        Jac.load_module(module.__name__, module)
 
         # Get and execute bytecode
         codeobj = Jac.program.get_bytecode(full_target=file_path)
