@@ -40,4 +40,5 @@ def test_python_file_parses_with_pyast_build_pass(filename: str) -> None:
 
     assert isinstance(py_module, ast.Module)
     # Should unparse without raising (formatting not required for this check)
-    assert py_module.unparse(requires_format=False)
+    unparsed = py_module.unparse(requires_format=False)
+    assert isinstance(unparsed, str)
