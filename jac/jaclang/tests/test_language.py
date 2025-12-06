@@ -705,9 +705,7 @@ def test_py2jac_augassign_and_doc(fixture_path: Callable[[str], str]) -> None:
             prog=JacProgram(),
         ).ir_out.unparse()
     assert "x += 2;" in output  # augmented assign should not emit `let`
-    assert (
-        '"""inner doc""";\n    def inner()' in output
-    )  # docstring should end before def
+    assert '"""inner doc"""; def inner()' in output  # docstring should end before def
 
 
 def test_refs_target(
