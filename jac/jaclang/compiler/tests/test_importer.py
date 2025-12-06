@@ -195,6 +195,10 @@ def test_jac_import_py_files(fixture_abs_path: Callable[[str], str]) -> None:
         settings.load_env_vars()
         os.chdir(os.path.dirname(fixture_abs_path("jac_import_py_files.py")))
         Jac.reset_machine()
+        # Clear modules from sys.modules to force re-import with new settings
+        sys.modules.pop("jac_import_py_files", None)
+        sys.modules.pop("jac_module", None)
+        sys.modules.pop("python_module", None)
         Jac.set_base_path(fixture_abs_path("jac_import_py_files.py"))
         JacRuntimeInterface.attach_program(JacProgram())
         Jac.jac_import(

@@ -1707,6 +1707,9 @@ class JacUtils:
                 lng="jac",
             )
             module = result[0] if result else None
+            # Register under the desired module name for lookup
+            if module:
+                sys.modules[module_name] = module
             return module
         except Exception as e:
             logger.error(f"Error importing dynamic module '{module_name}': {e}")
