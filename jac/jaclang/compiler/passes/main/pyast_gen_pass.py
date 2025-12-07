@@ -23,7 +23,7 @@ import copy
 import textwrap
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import TypeVar, cast
+from typing import ClassVar, TypeVar, cast
 
 import jaclang.compiler.unitree as uni
 from jaclang.compiler.constant import Constants as Con
@@ -93,6 +93,22 @@ UNARY_OP_MAP: dict[Tok, type[ast3.unaryop]] = {
 
 class PyastGenPass(BaseAstGenPass[ast3.AST]):
     """Jac blue transpilation to python pass."""
+
+    # Cached builtin names, shared across all instances
+    _builtin_names: ClassVar[set[str] | None] = None
+
+    @classmethod
+    def _get_builtin_names(cls) -> set[str]:
+        """Get the set of builtin names, cached after first successful access."""
+        if cls._builtin_names is None:
+            try:
+                import jaclang.runtimelib.builtin as builtin_mod
+
+                cls._builtin_names = set(builtin_mod.__all__)
+            except (ImportError, AttributeError):
+                # Builtin module not yet available during bootstrap
+                return set()
+        return cls._builtin_names
 
     def before_pass(self) -> None:
         self.child_passes: list[PyastGenPass] = self._init_child_passes(PyastGenPass)
@@ -3363,15 +3379,8 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
 
     def exit_name(self, node: uni.Name) -> None:
         name = node.sym_name
-        # Track if this name is a known builtin (lazy import to avoid circular dependency)
-        try:
-            import jaclang.runtimelib.builtin as builtin_mod
-
-            if name in set(builtin_mod.__all__):
-                self.builtin_imports.add(name)
-        except (ImportError, AttributeError):
-            # Builtin module not yet available during bootstrap, skip tracking
-            pass
+        if name in self._get_builtin_names():
+            self.builtin_imports.add(name)
         node.gen.py_ast = [self.sync(ast3.Name(id=name, ctx=node.py_ctx_func()))]
 
     def exit_float(self, node: uni.Float) -> None:
