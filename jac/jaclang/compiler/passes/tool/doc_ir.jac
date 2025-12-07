@@ -7,7 +7,9 @@ with entry {
         import jaclang.compiler.unitree as uni;
     }
     # Define DocType for self-referential typing
-    let DocType = Union[('Doc', 'Text', 'Line', 'Group', 'Indent', 'Concat', 'IfBreak', 'Align')];
+    let DocType = Union[
+        ('Doc', 'Text', 'Line', 'Group', 'Indent', 'Concat', 'IfBreak', 'Align')
+    ];
 }
 
 """Base class for document parts."""
@@ -32,7 +34,9 @@ class Doc {
 """Simple text content."""
 class Text(Doc) {
     """Initialize a Text object."""
-    def __init__(self: Text, text: str, source_token: (uni.Token | None) = None) -> None {
+    def __init__(
+        self: Text, text: str, source_token: (uni.Token | None) = None
+    ) -> None {
         let self.text = text;
         let self.source_token = source_token;
     }
@@ -45,8 +49,8 @@ class Text(Doc) {
     def treeprint(self: Text, level: int = 0) -> str {
         let indent = '  ' * level;
         let token_info = f" [token@L{self.source_token.loc.first_line}]"
-            if self.source_token
-            else '';
+        if self.source_token
+        else '';
         return f'{indent}Text("{self.text}"){token_info}';
     }
 }
@@ -55,10 +59,7 @@ class Text(Doc) {
 class Line(Doc) {
     """Initialize a Line object."""
     def __init__(
-        self: Line,
-        hard: bool = False,
-        literal: bool = False,
-        tight: bool = False
+        self: Line, hard: bool = False, literal: bool = False, tight: bool = False
     ) -> None {
         let self.hard = hard;
         let self.literal = literal;
