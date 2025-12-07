@@ -459,10 +459,10 @@ flowchart LR
 | 1.4 | `runtimelib/constructs.py` | 42 | ✅ DONE | Converted to `constructs.jac` |
 | 1.5 | `runtimelib/memory.py` | 232 | ✅ DONE | Converted to `memory.jac` |
 | 1.6 | `passes/tool/doc_ir.py` | 192 | ✅ DONE | Converted to `doc_ir.jac` |
-| 1.7 | `passes/ecmascript/estree.py` | 978 | 🚧 BLOCKED | Needs: (1) fix `field` import bug in jac2py, (2) lazy imports added to esast_gen_pass.py, es_unparse.py, __init__.py, (3) EsastGenPass skip logic for self-compilation |
-| 1.8 | `type_system/types.py` | 415 | ⏳ PENDING | Needs lazy import in unitree.py |
-| 1.9 | `type_system/operations.py` | 164 | ⏳ PENDING | Depends on types.py |
-| 1.10 | `utils/helpers.py` | 403 | ⏳ PENDING | Needs lazy import in transform.py |
+| 1.7 | `passes/ecmascript/estree.py` | 978 | 🚧 BLOCKED | Circular import during compilation - imported by program.py which is needed to compile .jac files |
+| 1.8 | `type_system/types.py` | 415 | ✅ DONE | Converted to `types.jac` - lazy import added to unitree.py |
+| 1.9 | `type_system/operations.py` | 164 | ✅ DONE | Converted to `operations.jac` - fixed py2jac bug with glob declarations |
+| 1.10 | `utils/helpers.py` | 403 | 🚧 BLOCKED | Circular import during compilation - py2jac command depends on it |
 
 **New Module Created:**
 | File | Lines | Notes |
@@ -476,8 +476,29 @@ flowchart LR
 - `passes/ecmascript/esast_gen_pass.py`: Added `_LazyEstreeModule` class and `transform()` skip logic
 - `passes/ecmascript/es_unparse.py`: Added `_LazyEstreeModule` class for lazy estree import
 
-**Blocking Issue for estree.py:**
-The py2jac/jac2py roundtrip has a bug where `field` from `dataclasses` is incorrectly generated as `from jaclang.lib import field` instead of `from dataclasses import field`. This needs to be fixed in the code generation passes before estree.py can be converted.
+**CRITICAL BUG FIXED - Field Descriptor Issue:**
+Discovered and fixed critical py2jac bug where module-level constants placed inside `with entry` blocks become Field descriptors when accessed from functions, causing `TypeError: argument of type 'Field' is not iterable`.
+
+**Solution:** Module-level constants must be declared with `glob` outside `with entry` blocks:
+```jac
+# CORRECT - module-level constant outside with entry
+glob BINARY_OPERATOR_MAP: dict[str, tuple[str, str]] = {...};
+
+with entry {
+    if TYPE_CHECKING {
+        import from .type_evaluator { TypeEvaluator }
+    }
+}
+```
+
+**Bug Details:**
+The py2jac converter in `pyast_load_pass.py` incorrectly places ALL module-level code (including constant assignments) into `with entry` blocks using `let` declarations. This causes them to become Field descriptors in the compiled Python code. The fix requires manually moving module-level constants outside with `glob` declarations.
+
+**Blocking Issues for estree.py and helpers.py:**
+Both files are imported by core compiler components (`program.py` and `pyast_load_pass.py` respectively) that are required to compile .jac files. This creates a circular dependency during the py2jac conversion process itself - a true bootstrapping problem that requires either:
+1. A two-stage compilation process where these files are pre-compiled
+2. Keeping them as .py files until the compiler can self-host
+3. Modifying the import system to handle .jac compilation without importing these modules
 
 ---
 

@@ -11,7 +11,6 @@ Reference:
 
 import jaclang.compiler.unitree as uni
 from jaclang.compiler.passes import UniPass
-from jaclang.compiler.type_system import types as jtypes
 
 
 class TypeCheckPass(UniPass):
@@ -61,6 +60,8 @@ class TypeCheckPass(UniPass):
         """Enter an ability node."""
         # If the node has @staticmethod decorator, mark it as static method.
         # this is needed since ast raised from python does not have this info.
+        from jaclang.compiler.type_system import types as jtypes
+
         for decor in node.decorators or []:
             ty = self.evaluator.get_type_of_expression(decor)
             if isinstance(ty, jtypes.ClassType) and ty.is_builtin("staticmethod"):

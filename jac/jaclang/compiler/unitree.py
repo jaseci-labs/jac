@@ -12,6 +12,7 @@ from enum import IntEnum
 from hashlib import md5
 from types import EllipsisType
 from typing import (
+    TYPE_CHECKING,
     Any,
     Generic,
     TypeVar,
@@ -36,8 +37,10 @@ from jaclang.compiler.constant import (
     JacSemTokenType as SemTokType,
 )
 from jaclang.compiler.constant import Tokens as Tok
-from jaclang.compiler.type_system.types import TypeBase
 from jaclang.utils import resolve_relative_path
+
+if TYPE_CHECKING:
+    from jaclang.compiler.type_system.types import TypeBase
 from jaclang.utils.treeprinter import (
     print_ast_tree,
     print_symtab_tree,
@@ -3590,7 +3593,7 @@ class FormattedValue(Expr):
         return res
 
     def unparse(self) -> str:
-        self.normalize()
+        valid = self.normalize()
         # Generate {expr} without spaces inside braces
         result = "{" + self.format_part.unparse()
         if self.conversion != -1:
@@ -3598,6 +3601,8 @@ class FormattedValue(Expr):
         if self.format_spec:
             result += ":" + self.format_spec.unparse()
         result += "}"
+        if not valid:
+            raise NotImplementedError(f"Node {type(self).__name__} is not valid.")
         return result
 
 
@@ -3970,7 +3975,7 @@ class AtomTrailer(Expr):
         return res
 
     def unparse(self) -> str:
-        self.normalize()
+        valid = self.normalize()
         # For attribute access (self.x) and subscripts (list[x]),
         # we don't want spaces around the dot or before brackets
         result = self.target.unparse()
@@ -3980,6 +3985,8 @@ class AtomTrailer(Expr):
             result += "."
         if self.right:
             result += self.right.unparse()
+        if not valid:
+            raise NotImplementedError(f"Node {type(self).__name__} is not valid.")
         return result
 
     @property
@@ -4142,7 +4149,7 @@ class IndexSlice(AtomExpr):
         return res
 
     def unparse(self) -> str:
-        self.normalize()
+        valid = self.normalize()
         # Generate [content] without spaces inside brackets
         result = "["
         if self.is_range:
@@ -4159,6 +4166,8 @@ class IndexSlice(AtomExpr):
         elif len(self.slices) == 1 and self.slices[0].start:
             result += self.slices[0].start.unparse()
         result += "]"
+        if not valid:
+            raise NotImplementedError(f"Node {type(self).__name__} is not valid.")
         return result
 
 
@@ -5018,7 +5027,7 @@ class MatchArch(MatchPattern):
         return res
 
     def unparse(self) -> str:
-        self.normalize()
+        valid = self.normalize()
         # Generate name(...) without spaces around parentheses
         result = self.name.unparse() + "("
         parts = []
@@ -5027,6 +5036,8 @@ class MatchArch(MatchPattern):
         if self.kw_patterns:
             parts.extend(kw.unparse() for kw in self.kw_patterns)
         result += ", ".join(parts) + ")"
+        if not valid:
+            raise NotImplementedError(f"Node {type(self).__name__} is not valid.")
         return result
 
 

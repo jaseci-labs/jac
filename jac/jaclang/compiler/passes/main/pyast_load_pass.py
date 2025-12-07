@@ -24,7 +24,6 @@ from typing import TYPE_CHECKING, TypeAlias, TypeVar, cast
 import jaclang.compiler.unitree as uni
 from jaclang.compiler.constant import Tokens as Tok
 from jaclang.compiler.passes.uni_pass import Transform
-from jaclang.utils.helpers import pascal_to_snake
 
 if TYPE_CHECKING:
     from jaclang.compiler.program import JacProgram
@@ -56,6 +55,8 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
 
     def convert(self, node: py_ast.AST) -> uni.UniNode:
         """Get python node type."""
+        from jaclang.utils.helpers import pascal_to_snake
+
         if self.is_canceled():
             raise StopIteration
         if hasattr(self, f"proc_{pascal_to_snake(type(node).__name__)}"):
