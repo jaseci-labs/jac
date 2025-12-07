@@ -12,7 +12,8 @@ with entry {
 
 # FIX: py2jac bug - module-level constants must be declared with glob outside with entry block
 # Otherwise they become Field descriptors when accessed from functions
-glob BINARY_OPERATOR_MAP: dict[str, tuple[str, str]] = {
+glob BINARY_OPERATOR_MAP:
+    dict[str, tuple[str, str]] = {
     Tok.PLUS: ('__add__', '__radd__'),
     Tok.MINUS: ('__sub__', '__rsub__'),
     Tok.STAR_MUL: ('__mul__', '__rmul__'),
@@ -33,6 +34,7 @@ glob BINARY_OPERATOR_MAP: dict[str, tuple[str, str]] = {
     Tok.GT: ('__gt__', '__lt__'),
     Tok.GTE: ('__ge__', '__le__')
 };
+
 """Return the binary operator's jtype."""
 def get_type_of_binary_operation(
     evaluator: 'TypeEvaluator', expr: uni.BinaryExpr
@@ -99,11 +101,15 @@ def get_type_of_binary_operation(
                                     assign.value
                                 );
                                 if not evaluator.assign_type(src_type, dest_type) {
-                                    let msg = 'Type "{}" is not assignable to type "{}"'.format(src_type, dest_type);
+                                    let msg = 'Type "{}" is not assignable to type "{}"'.format(
+                                        src_type, dest_type
+                                    );
                                     evaluator.add_diagnostic(assign.value, msg);
                                 }
                             } else {
-                                let msg = 'Edge type "{}" has no member named "{}"'.format(conn_type, assign.key.sym_name);
+                                let msg = 'Edge type "{}" has no member named "{}"'.format(
+                                    conn_type, assign.key.sym_name
+                                );
                                 evaluator.add_diagnostic(assign.key, msg);
                             }
                         }
@@ -115,4 +121,3 @@ def get_type_of_binary_operation(
     }
     return jtypes.UnknownType();
 }
-
