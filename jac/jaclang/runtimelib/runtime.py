@@ -2005,6 +2005,13 @@ class JacRuntime(JacRuntimeInterface):
         """Reset the machine."""
         from jaclang.compiler.program import JacProgram
 
+        # Remove Jac modules from sys.modules, but skip special module names
+        # that Python relies on (like __main__, __mp_main__, etc.)
+        special_modules = {"__main__", "__mp_main__", "builtins"}
+        for i in JacRuntime.loaded_modules.values():
+            if i.__name__ not in special_modules:
+                sys.modules.pop(i.__name__, None)
+        JacRuntime.loaded_modules.clear()
         JacRuntime.base_path_dir = os.getcwd()
         JacRuntime.program = JacProgram()
         JacRuntime.pool = ThreadPoolExecutor()
