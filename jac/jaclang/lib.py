@@ -1,23 +1,24 @@
 """Jac Library - User-friendly interface for library mode."""
 
 import sys
-from jaclang.runtimelib.runtime import JacRuntimeInterface, JacClassReferences
+
+from jaclang.runtimelib.runtime import JacClassReferences, JacRuntimeInterface
 
 
 def __getattr__(name: str):
     """Lazy attribute access to initialize imports when needed."""
     # Don't initialize lazy imports for special/private attributes
     # This prevents circular imports during module loading
-    if name.startswith('_'):
+    if name.startswith("_"):
         raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
     # Check if we're in the middle of loading runtimelib modules
     # If so, return a forward reference to avoid circular dependency
     runtimelib_modules = [
-        'jaclang.runtimelib.constructs',
-        'jaclang.runtimelib.archetype',
-        'jaclang.runtimelib.memory',
-        'jaclang.runtimelib.mtp',
+        "jaclang.runtimelib.constructs",
+        "jaclang.runtimelib.archetype",
+        "jaclang.runtimelib.memory",
+        "jaclang.runtimelib.mtp",
     ]
 
     # Don't check for circular imports - just proceed normally
@@ -58,16 +59,32 @@ def __dir__():
     from jaclang.runtimelib.runtime import _init_lazy_imports
 
     _init_lazy_imports()
-    return sorted([name for name in dir(JacRuntimeInterface) if not name.startswith("_")])
+    return sorted(
+        [name for name in dir(JacRuntimeInterface) if not name.startswith("_")]
+    )
 
 
 # Pre-populate __all__ with common exports so "from jaclang.lib import X" works
 __all__ = [
     # Class references
-    "Node", "Edge", "Walker", "Obj", "Root", "GenericEdge", "OPath", "DSFunc",
+    "Node",
+    "Edge",
+    "Walker",
+    "Obj",
+    "Root",
+    "GenericEdge",
+    "OPath",
+    "DSFunc",
     # Common runtime methods
-    "root", "spawn", "visit", "disengage", "connect", "disconnect",
-    "create_j_context", "get_context", "reset_machine",
+    "root",
+    "spawn",
+    "visit",
+    "disengage",
+    "connect",
+    "disconnect",
+    "create_j_context",
+    "get_context",
+    "reset_machine",
 ]
 
 
@@ -75,7 +92,6 @@ __all__ = [
 # This enables "from jaclang.lib import Node" to work
 def _populate_namespace():
     """Populate the module namespace with class and method references."""
-    import sys
 
     current_module = sys.modules[__name__]
 

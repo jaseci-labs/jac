@@ -11,4 +11,3 @@ class MTIR {
         let call_params: <>dict[(str, object)];
     }
 }
-

@@ -42,7 +42,9 @@ _lazy_imports_initialized = False
 AccessLevel = Anchor = Archetype = EdgeAnchor = EdgeArchetype = GenericEdge = None  # type: ignore
 NodeAnchor = NodeArchetype = Root = WalkerAnchor = WalkerArchetype = None  # type: ignore
 Memory = Shelf = ShelfStorage = MTIR = None  # type: ignore
-_GenericEdge = _Root = ObjectSpatialDestination = ObjectSpatialFunction = ObjectSpatialPath = None  # type: ignore
+_GenericEdge = _Root = ObjectSpatialDestination = ObjectSpatialFunction = (
+    ObjectSpatialPath
+) = None  # type: ignore
 
 
 def _init_lazy_imports() -> None:
@@ -55,7 +57,12 @@ def _init_lazy_imports() -> None:
     global AccessLevel, Anchor, Archetype, EdgeAnchor, EdgeArchetype, GenericEdge
     global NodeAnchor, NodeArchetype, Root, WalkerAnchor, WalkerArchetype
     global Memory, Shelf, ShelfStorage, MTIR
-    global _GenericEdge, _Root, ObjectSpatialDestination, ObjectSpatialFunction, ObjectSpatialPath
+    global \
+        _GenericEdge, \
+        _Root, \
+        ObjectSpatialDestination, \
+        ObjectSpatialFunction, \
+        ObjectSpatialPath
 
     if _lazy_imports_initialized:
         return
@@ -63,13 +70,24 @@ def _init_lazy_imports() -> None:
     # Check if we're being called during module initialization (circular import)
     import sys
 
-    if 'jaclang.runtimelib.constructs' in sys.modules:
-        mod = sys.modules['jaclang.runtimelib.constructs']
-        if not hasattr(mod, 'AccessLevel'):
+    if "jaclang.runtimelib.constructs" in sys.modules:
+        mod = sys.modules["jaclang.runtimelib.constructs"]
+        if not hasattr(mod, "AccessLevel"):
             # Module is being loaded, skip initialization to avoid circular import
             return
 
     try:
+        from jaclang.runtimelib.archetype import (
+            GenericEdge as _GenericEdge,
+        )
+        from jaclang.runtimelib.archetype import (
+            ObjectSpatialDestination,
+            ObjectSpatialFunction,
+            ObjectSpatialPath,
+        )
+        from jaclang.runtimelib.archetype import (
+            Root as _Root,
+        )
         from jaclang.runtimelib.constructs import (
             AccessLevel,
             Anchor,
@@ -85,13 +103,6 @@ def _init_lazy_imports() -> None:
         )
         from jaclang.runtimelib.memory import Memory, Shelf, ShelfStorage
         from jaclang.runtimelib.mtp import MTIR
-        from jaclang.runtimelib.archetype import (
-            GenericEdge as _GenericEdge,
-            Root as _Root,
-            ObjectSpatialDestination,
-            ObjectSpatialFunction,
-            ObjectSpatialPath,
-        )
 
         _lazy_imports_initialized = True
     except ImportError:
@@ -104,15 +115,8 @@ def _init_lazy_imports() -> None:
 if TYPE_CHECKING:
     from jaclang.compiler.program import JacProgram
     from jaclang.runtimelib.archetype import (
-        GenericEdge as _GenericEdge,
-    )
-    from jaclang.runtimelib.archetype import (
         ObjectSpatialDestination,
-        ObjectSpatialFunction,
         ObjectSpatialPath,
-    )
-    from jaclang.runtimelib.archetype import (
-        Root as _Root,
     )
     from jaclang.runtimelib.client_bundle import ClientBundle, ClientBundleBuilder
     from jaclang.runtimelib.constructs import (
@@ -789,36 +793,44 @@ class _JacClassReferencesMeta(type):
         # Import from archetype module
         if name == "DSFunc":
             from jaclang.runtimelib.archetype import ObjectSpatialFunction
-            setattr(cls, "DSFunc", ObjectSpatialFunction)
+
+            cls.DSFunc = ObjectSpatialFunction
             return ObjectSpatialFunction
         elif name == "OPath":
             from jaclang.runtimelib.archetype import ObjectSpatialPath
-            setattr(cls, "OPath", ObjectSpatialPath)
+
+            cls.OPath = ObjectSpatialPath
             return ObjectSpatialPath
         elif name == "Root":
             from jaclang.runtimelib.archetype import Root as _Root
-            setattr(cls, "Root", _Root)
+
+            cls.Root = _Root
             return _Root
         elif name == "GenericEdge":
             from jaclang.runtimelib.archetype import GenericEdge as _GenericEdge
-            setattr(cls, "GenericEdge", _GenericEdge)
+
+            cls.GenericEdge = _GenericEdge
             return _GenericEdge
         # Import from constructs module
         elif name == "Obj":
             from jaclang.runtimelib.constructs import Archetype
-            setattr(cls, "Obj", Archetype)
+
+            cls.Obj = Archetype
             return Archetype
         elif name == "Node":
             from jaclang.runtimelib.constructs import NodeArchetype
-            setattr(cls, "Node", NodeArchetype)
+
+            cls.Node = NodeArchetype
             return NodeArchetype
         elif name == "Edge":
             from jaclang.runtimelib.constructs import EdgeArchetype
-            setattr(cls, "Edge", EdgeArchetype)
+
+            cls.Edge = EdgeArchetype
             return EdgeArchetype
         elif name == "Walker":
             from jaclang.runtimelib.constructs import WalkerArchetype
-            setattr(cls, "Walker", WalkerArchetype)
+
+            cls.Walker = WalkerArchetype
             return WalkerArchetype
         raise AttributeError(f"JacClassReferences has no attribute '{name}'")
 
@@ -2078,7 +2090,9 @@ def generate_plugin_helpers(
     # Use the original class's metaclass when creating the proxy class
     # This preserves custom metaclasses like _JacClassReferencesMeta
     original_metaclass = type(plugin_class)
-    proxy_cls = original_metaclass(f"{plugin_class.__name__}", (object,), proxy_namespace)
+    proxy_cls = original_metaclass(
+        f"{plugin_class.__name__}", (object,), proxy_namespace
+    )
 
     return spec_cls, impl_cls, proxy_cls
 
@@ -2120,7 +2134,9 @@ class JacRuntime(JacRuntimeInterface):
         # Also skip runtime library modules (archetype, constructs, memory, mtp)
         # to prevent class redefinition issues with pickle
         special_modules = {
-            "__main__", "__mp_main__", "builtins",
+            "__main__",
+            "__mp_main__",
+            "builtins",
             "jaclang.runtimelib.archetype",
             "jaclang.runtimelib.constructs",
             "jaclang.runtimelib.memory",

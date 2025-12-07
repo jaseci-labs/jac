@@ -10,6 +10,7 @@ import from .archetype { TANCH, Anchor, NodeAnchor, Root }
 with entry {
     let ID = TypeVar('ID');
 }
+
 """Generic Memory Handler."""
 @dataclass
 class Memory(Generic[(ID, TANCH)]) {
@@ -23,10 +24,12 @@ class Memory(Generic[(ID, TANCH)]) {
         self.__mem__.clear();
         self.__gc__.clear();
     }
+
     """Check if id if already cached."""
     def is_cached(self: Memory, id: ID) -> bool {
         return (id in self.__mem__);
     }
+
     """Find anchors from memory with filter."""
     def query(
         self: Memory, filter: (Callable[([TANCH], bool)] | None) = None
@@ -37,6 +40,7 @@ class Memory(Generic[(ID, TANCH)]) {
             if (not filter or filter(anchor))
         );
     }
+
     """Get all the roots."""
     def all_root(self: Memory) -> Generator[Root] {
         for anchor in self.query(
@@ -46,6 +50,7 @@ class Memory(Generic[(ID, TANCH)]) {
             ;
         }
     }
+
     """Find anchors from memory by ids with filter."""
     def find(
         self: Memory,
@@ -61,6 +66,7 @@ class Memory(Generic[(ID, TANCH)]) {
             if ((anchor := self.__mem__.get(id)) and (not filter or filter(anchor)))
         );
     }
+
     """Find one anchor from memory by ids with filter."""
     def find_one(
         self: Memory,
@@ -69,14 +75,17 @@ class Memory(Generic[(ID, TANCH)]) {
     ) -> (TANCH | None) {
         return next(self.find(ids, filter), None);
     }
+
     """Find one by id."""
     def find_by_id(self: Memory, id: ID) -> (TANCH | None) {
         return self.__mem__.get(id);
     }
+
     """Save anchor to memory."""
     def <>set(self: Memory, data: TANCH) -> None {
         let self.__mem__[data.id] = data;
     }
+
     """Remove anchor/s from memory."""
     def remove(self: Memory, ids: (ID | Iterable[ID])) -> None {
         if not isinstance(ids, Iterable) {
@@ -88,25 +97,31 @@ class Memory(Generic[(ID, TANCH)]) {
             }
         }
     }
+
     """Commit all data from memory to datasource."""
     def commit(self: Memory, anchor: (TANCH | None) = None) -> None { }
+
     """Commit all data from memory to datasource."""
     def get_gc(self: Memory) -> <>list {
         return <>list(self.__gc__);
     }
+
     """Commit all data from memory to datasource."""
     def remove_from_gc(self: Memory, anchor: TANCH) -> None {
         self.__gc__.remove(anchor);
     }
+
     """Commit all data from memory to datasource."""
     def get_mem(self: Memory) -> <>dict {
         return self.__mem__;
     }
+
     """Commit all data from memory to datasource."""
     def remove_from_mem(self: Memory, anchor: (ID | UUID)) -> None {
         self.__mem__.pop(anchor);
     }
 }
+
 """Shelf Handler."""
 @dataclass
 class ShelfStorage(Memory[(UUID, Anchor)]) {
@@ -119,6 +134,7 @@ class ShelfStorage(Memory[(UUID, Anchor)]) {
         super.init();
         let self.__shelf__ = open(session) if session else None;
     }
+
     """Commit all data from memory to datasource."""
     def commit(self: ShelfStorage, anchor: (Anchor | None) = None) -> None {
         if isinstance(self.__shelf__, Shelf) {
@@ -141,6 +157,7 @@ class ShelfStorage(Memory[(UUID, Anchor)]) {
             self.sync_mem_to_db(<>set((self.__mem__.keys() - keys)));
         }
     }
+
     """Close memory handler."""
     def close(self: ShelfStorage) -> None {
         self.commit();
@@ -149,6 +166,7 @@ class ShelfStorage(Memory[(UUID, Anchor)]) {
         }
         super.close();
     }
+
     """Manually sync memory to db."""
     def sync_mem_to_db(self: ShelfStorage, keys: Iterable[UUID]) -> None {
         import from jaclang.runtimelib.runtime { JacRuntimeInterface as Jac }
@@ -193,6 +211,7 @@ class ShelfStorage(Memory[(UUID, Anchor)]) {
             }
         }
     }
+
     """Find anchors from memory with filter."""
     def query(
         self: ShelfStorage, filter: (Callable[([Anchor], bool)] | None) = None
@@ -212,6 +231,7 @@ class ShelfStorage(Memory[(UUID, Anchor)]) {
             ;
         }
     }
+
     """Find anchors from datasource by ids with filter."""
     def find(
         self: ShelfStorage,
@@ -241,6 +261,7 @@ class ShelfStorage(Memory[(UUID, Anchor)]) {
             ;
         }
     }
+
     """Find one by id."""
     def find_by_id(self: ShelfStorage, id: UUID) -> (Anchor | None) {
         let data = super.find_by_id(id);
@@ -254,4 +275,3 @@ class ShelfStorage(Memory[(UUID, Anchor)]) {
         return data;
     }
 }
-

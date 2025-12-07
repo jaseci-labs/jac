@@ -35,4 +35,3 @@ with entry {
         'ShelfStorage'
     ];
 }
-
