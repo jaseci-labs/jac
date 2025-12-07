@@ -16,6 +16,10 @@
 | `runtimelib/constructs.py` | 42 | ✅ **CONVERTED** | Now `constructs.jac` |
 | `runtimelib/memory.py` | 232 | ✅ **CONVERTED** | Now `memory.jac` |
 | `passes/tool/doc_ir.py` | 192 | ✅ **CONVERTED** | Now `doc_ir.jac` |
+| `passes/tool/jac_formatter_pass.py` | 212 | ✅ **CONVERTED** | Now `jac_formatter_pass.jac` |
+| `type_system/types.py` | 415 | ✅ **CONVERTED** | Now `types.jac` |
+| `type_system/operations.py` | 164 | ✅ **CONVERTED** | Now `operations.jac` |
+| `type_system/type_evaluator.py` | ~1,500 | ✅ **CONVERTED** | Now `type_evaluator.jac` |
 | `runtimelib/client_runtime.jac` | ~700 | ✅ **CREATED** | New client runtime module |
 
 ### Key Infrastructure Completed
@@ -25,17 +29,36 @@
    - `TYPE_CHECKING` imports to prevent circular dependencies
    - Dynamic `__getattr__` for on-demand module loading
 
-2. **Bootstrap Chain Identified** - Modules that must remain Python during import:
+2. **Lazy Pass Loading** - Implemented in `passes/main/__init__.py` and `program.py`:
+   - Analysis passes (SemanticAnalysisPass, CFGBuildPass, etc.) now lazy-loaded via `__getattr__`
+   - Schedule getters (`get_ir_gen_sched()`, `get_type_check_sched()`, etc.) enable deferred imports
+   - Allows tool passes and other non-schedule modules to be converted to Jac
+
+3. **Bootstrap Chain Identified** - Modules that must remain Python during import:
    - `utils/log.py`, `utils/helpers.py` - imported early by transform.py
-   - `type_system/types.py`, `type_system/operations.py` - imported by unitree.py
-   - Core compiler pipeline files
+   - Core compiler pipeline files (SymTabBuildPass, PyastGenPass, PyBytecodeGenPass)
+   - Passes in compilation schedule cannot be converted without pre-compilation
+
+### Critical Discovery: Pass Conversion Limitations
+
+**Passes IN the compilation schedule** (symtab_ir_sched, ir_gen_sched, py_code_gen) **cannot be directly converted** to .jac without pre-compilation because:
+1. When importing a .jac pass, JacMetaImporter compiles it
+2. Compilation requires the pass schedule to run
+3. The schedule includes the pass being compiled → **circular dependency**
+
+**Passes NOT in the schedule** (tool passes, utility modules) **can be freely converted** because they're loaded after main compilation completes.
+
+**Solutions for schedule passes:**
+- Pre-compile .jac passes during package installation and cache bytecode
+- Use `jac2py` to generate Python from .jac (roundtrip: py → jac → py)
+- Keep .py stubs that load from bytecode cache
 
 ### Metrics Update
 
 | Metric | Original | Current | Target |
 |--------|----------|---------|--------|
-| **Converted to Jac** | 0 LOC | ~1,800 LOC | ~45,000 LOC |
-| **Phase 1 Complete** | 0% | ~60% | 100% |
+| **Converted to Jac** | 0 LOC | ~3,500 LOC | ~45,000 LOC |
+| **Phase 1 Complete** | 0% | ~75% | 100% |
 | **Tests Passing** | ✅ | ✅ | ✅ |
 
 ---

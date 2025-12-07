@@ -10,23 +10,13 @@ from typing import TYPE_CHECKING
 
 import jaclang.compiler.unitree as uni
 from jaclang.compiler.parser import JacParser
-from jaclang.compiler.passes.ecmascript import EsastGenPass
 from jaclang.compiler.passes.main import (
     Alert,
-    CFGBuildPass,
-    DeclImplMatchPass,
-    JacAnnexPass,
-    JacImportDepsPass,
-    PreDynamoPass,
     PyastBuildPass,
     PyastGenPass,
     PyBytecodeGenPass,
-    PyJacAstLinkPass,
-    SemanticAnalysisPass,
-    SemDefMatchPass,
     SymTabBuildPass,
     Transform,
-    TypeCheckPass,
 )
 
 # Tool passes are imported lazily to allow doc_ir.py to be converted to Jac
@@ -38,27 +28,45 @@ if TYPE_CHECKING:
     from jaclang.compiler.type_system.type_evaluator import TypeEvaluator
 
 
-symtab_ir_sched: list[type[Transform[uni.Module, uni.Module]]] = [
-    SymTabBuildPass,
-    DeclImplMatchPass,
-]
+# Lazy schedule getters - enables converting analysis passes to Jac
+def get_symtab_ir_sched() -> list[type[Transform[uni.Module, uni.Module]]]:
+    """Return symbol table build schedule with lazy imports."""
+    from jaclang.compiler.passes.main import DeclImplMatchPass
 
-ir_gen_sched: list[type[Transform[uni.Module, uni.Module]]] = [
-    *symtab_ir_sched,
-    SemanticAnalysisPass,
-    SemDefMatchPass,
-    CFGBuildPass,
-]
+    return [SymTabBuildPass, DeclImplMatchPass]
 
-type_check_sched: list[type[Transform[uni.Module, uni.Module]]] = [
-    TypeCheckPass,
-]
-py_code_gen: list[type[Transform[uni.Module, uni.Module]]] = [
-    EsastGenPass,
-    PyastGenPass,
-    PyJacAstLinkPass,
-    PyBytecodeGenPass,
-]
+
+def get_ir_gen_sched() -> list[type[Transform[uni.Module, uni.Module]]]:
+    """Return full IR generation schedule with lazy imports."""
+    from jaclang.compiler.passes.main import (
+        CFGBuildPass,
+        DeclImplMatchPass,
+        SemanticAnalysisPass,
+        SemDefMatchPass,
+    )
+
+    return [
+        SymTabBuildPass,
+        DeclImplMatchPass,
+        SemanticAnalysisPass,
+        SemDefMatchPass,
+        CFGBuildPass,
+    ]
+
+
+def get_type_check_sched() -> list[type[Transform[uni.Module, uni.Module]]]:
+    """Return type checking schedule with lazy imports."""
+    from jaclang.compiler.passes.main import TypeCheckPass
+
+    return [TypeCheckPass]
+
+
+def get_py_code_gen() -> list[type[Transform[uni.Module, uni.Module]]]:
+    """Return Python code generation schedule with lazy imports."""
+    from jaclang.compiler.passes.ecmascript import EsastGenPass
+    from jaclang.compiler.passes.main import PyJacAstLinkPass
+
+    return [EsastGenPass, PyastGenPass, PyJacAstLinkPass, PyBytecodeGenPass]
 
 
 def get_format_sched() -> list[type[Transform[uni.Module, uni.Module]]]:
@@ -74,6 +82,13 @@ def get_format_sched() -> list[type[Transform[uni.Module, uni.Module]]]:
         CommentInjectionPass,
         JacFormatPass,
     ]
+
+
+# Backward compatibility aliases (deprecated - will be removed)
+symtab_ir_sched: list[type[Transform[uni.Module, uni.Module]]] = []
+ir_gen_sched: list[type[Transform[uni.Module, uni.Module]]] = []
+type_check_sched: list[type[Transform[uni.Module, uni.Module]]] = []
+py_code_gen: list[type[Transform[uni.Module, uni.Module]]] = []
 
 
 class JacProgram:
@@ -143,6 +158,8 @@ class JacProgram:
         if self.mod.main.stub_only:
             self.mod = uni.ProgramModule(mod)
         self.mod.hub[mod.loc.mod_path] = mod
+        from jaclang.compiler.passes.main import JacAnnexPass
+
         JacAnnexPass(ir_in=mod, prog=self)
         return mod
 
@@ -163,22 +180,26 @@ class JacProgram:
         if symtab_ir_only:
             # only build symbol table and match decl/impl (skip semantic analysis and CFG)
             self.run_schedule(
-                mod=mod_targ, passes=symtab_ir_sched, cancel_token=cancel_token
+                mod=mod_targ, passes=get_symtab_ir_sched(), cancel_token=cancel_token
             )
         else:
             self.run_schedule(
-                mod=mod_targ, passes=ir_gen_sched, cancel_token=cancel_token
+                mod=mod_targ, passes=get_ir_gen_sched(), cancel_token=cancel_token
             )
         if type_check:
             self.run_schedule(
-                mod=mod_targ, passes=type_check_sched, cancel_token=cancel_token
+                mod=mod_targ, passes=get_type_check_sched(), cancel_token=cancel_token
             )
         # If the module has syntax errors, we skip code generation.
         if (not mod_targ.has_syntax_errors) and (not no_cgen):
-            if settings.predynamo_pass and PreDynamoPass not in py_code_gen:
-                py_code_gen.insert(0, PreDynamoPass)
+            codegen_sched = get_py_code_gen()
+            if settings.predynamo_pass:
+                from jaclang.compiler.passes.main import PreDynamoPass
+
+                if PreDynamoPass not in codegen_sched:
+                    codegen_sched.insert(0, PreDynamoPass)
             self.run_schedule(
-                mod=mod_targ, passes=py_code_gen, cancel_token=cancel_token
+                mod=mod_targ, passes=codegen_sched, cancel_token=cancel_token
             )
         return mod_targ
 
@@ -186,6 +207,8 @@ class JacProgram:
         self, file_path: str, use_str: str | None = None, type_check: bool = False
     ) -> uni.Module:
         """Convert a Jac file to an AST."""
+        from jaclang.compiler.passes.main import JacImportDepsPass, SemanticAnalysisPass
+
         mod_targ = self.compile(file_path, use_str, type_check=type_check)
         JacImportDepsPass(ir_in=mod_targ, prog=self)
         SemanticAnalysisPass(ir_in=mod_targ, prog=self)
