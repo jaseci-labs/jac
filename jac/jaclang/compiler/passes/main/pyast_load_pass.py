@@ -44,6 +44,7 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
         """Initialize parser."""
         self.mod_path = ir_in.loc.mod_path
         self.orig_src = ir_in.loc.orig_src
+        self.in_type_annotation = False  # Track if we're processing a type annotation
         Transform.__init__(self, ir_in=ir_in, prog=prog, cancel_token=cancel_token)
 
     def nu(self, node: T) -> T:
@@ -190,7 +191,10 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
         sig: uni.FuncSignature | None = (
             res if isinstance(res, uni.FuncSignature) else None
         )
+        # Mark that we're processing a type annotation for return type
+        self.in_type_annotation = True
         ret_sig = self.convert(node.returns) if node.returns else None
+        self.in_type_annotation = False
         if isinstance(ret_sig, uni.Expr):
             if not sig:
                 sig = uni.FuncSignature(
@@ -410,11 +414,15 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
         valid = [target for target in targets if isinstance(target, uni.Expr)]
         if not len(valid) == len(targets):
             raise self.ice("Length mismatch in assignment targets")
+        # Check if any target is a subscript or attribute access (AtomTrailer)
+        # If so, this is not a variable declaration, so mutable should be False
+        is_var_declaration = not any(isinstance(t, uni.AtomTrailer) for t in valid)
         if isinstance(value, uni.Expr):
             return uni.Assignment(
                 target=valid,
                 value=value,
                 type_tag=None,
+                mutable=is_var_declaration,
                 kid=[*valid, value],
             )
         else:
@@ -464,7 +472,10 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
             simple: int
         """
         target = self.convert(node.target)
+        # Mark that we're processing a type annotation
+        self.in_type_annotation = True
         annotation = self.convert(node.annotation)
+        self.in_type_annotation = False
         if isinstance(annotation, uni.Expr):
             annotation_subtag = uni.SubTag[uni.Expr](tag=annotation, kid=[annotation])
         else:
@@ -1729,6 +1740,9 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
             for _, v in TOKEN_MAP.items()
             if v not in ["float", "int", "str", "bool", "self"]
         ]
+        # When in a type annotation context, don't escape type keywords
+        # They're used as type names, not as values
+        should_escape = node.id in reserved_keywords and not self.in_type_annotation
         ret = uni.Name(
             orig_src=self.orig_src,
             name=Tok.NAME,
@@ -1739,7 +1753,7 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
             col_end=node.col_offset + len(node.id),
             pos_start=0,
             pos_end=0,
-            is_kwesc=(node.id in reserved_keywords),
+            is_kwesc=should_escape,
         )
         return ret
 
@@ -2115,6 +2129,8 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
             pos_end=0,
             is_kwesc=(node.arg in reserved_keywords),
         )
+        # Mark that we're processing a type annotation
+        self.in_type_annotation = True
         ann_expr = (
             self.convert(node.annotation)
             if node.annotation
@@ -2130,6 +2146,7 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
                 pos_end=0,
             )
         )
+        self.in_type_annotation = False
         if not isinstance(ann_expr, uni.Expr):
             raise self.ice("Expected annotation to be an expression")
         annot = uni.SubTag[uni.Expr](tag=ann_expr, kid=[ann_expr])
