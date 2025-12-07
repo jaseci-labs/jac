@@ -833,7 +833,9 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
             # issues when parsing the generated Jac code.
             unwrapped_left = left
             is_same_op_chain = False
-            if isinstance(left, uni.AtomUnit) and isinstance(left.value, uni.BinaryExpr):
+            if isinstance(left, uni.AtomUnit) and isinstance(
+                left.value, uni.BinaryExpr
+            ):
                 if left.value.op.value == op.value:
                     unwrapped_left = left.value
                     is_same_op_chain = True
