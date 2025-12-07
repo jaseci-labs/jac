@@ -49,10 +49,6 @@ if TYPE_CHECKING:
     root: Callable[..., object] = JacRT.root
     spawn: Callable[..., object] = JacRT.spawn
     visit: Callable[..., object] = JacRT.visit
-else:
-    for _name in __all__:
-        # Placeholder definitions to satisfy static checks; replaced lazily.
-        globals()[_name] = None  # type: ignore[assignment]
 
 
 def __getattr__(name: str) -> object:
@@ -139,8 +135,9 @@ def _populate_namespace() -> None:
             return (cast(type, self._resolve()),)
 
     # Add lazy references to module __dict__
+    # Note: hasattr() triggers __getattr__ which resolves and caches the actual values
     for name in __all__:
-        if not hasattr(current_module, name) or getattr(current_module, name) is None:
+        if not hasattr(current_module, name):
             setattr(current_module, name, LazyRef(name))
 
 
