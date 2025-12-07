@@ -28,11 +28,8 @@ from jaclang.compiler.passes.main import (
     Transform,
     TypeCheckPass,
 )
-from jaclang.compiler.passes.tool import (
-    CommentInjectionPass,
-    DocIRGenPass,
-    JacFormatPass,
-)
+
+# Tool passes are imported lazily to allow doc_ir.py to be converted to Jac
 from jaclang.compiler.tsparser import TypeScriptParser
 from jaclang.runtimelib.utils import read_file_with_encoding
 from jaclang.settings import settings
@@ -62,11 +59,21 @@ py_code_gen: list[type[Transform[uni.Module, uni.Module]]] = [
     PyJacAstLinkPass,
     PyBytecodeGenPass,
 ]
-format_sched: list[type[Transform[uni.Module, uni.Module]]] = [
-    DocIRGenPass,
-    CommentInjectionPass,
-    JacFormatPass,
-]
+
+
+def get_format_sched() -> list[type[Transform[uni.Module, uni.Module]]]:
+    """Return format schedule with lazy imports to allow doc_ir.jac conversion."""
+    from jaclang.compiler.passes.tool import (
+        CommentInjectionPass,
+        DocIRGenPass,
+        JacFormatPass,
+    )
+
+    return [
+        DocIRGenPass,
+        CommentInjectionPass,
+        JacFormatPass,
+    ]
 
 
 class JacProgram:
@@ -202,7 +209,7 @@ class JacProgram:
         source = uni.Source(source_str, mod_path=file_path)
         parser_pass = JacParser(root_ir=source, prog=prog)
         current_mod = parser_pass.ir_out
-        for pass_cls in format_sched:
+        for pass_cls in get_format_sched():
             current_mod = pass_cls(ir_in=current_mod, prog=prog).ir_out
         prog.mod = uni.ProgramModule(current_mod)
         return prog
@@ -214,7 +221,7 @@ class JacProgram:
         source = uni.Source(source_str, mod_path=file_path)
         parser_pass = JacParser(root_ir=source, prog=prog)
         current_mod = parser_pass.ir_out
-        for pass_cls in format_sched:
+        for pass_cls in get_format_sched():
             current_mod = pass_cls(ir_in=current_mod, prog=prog).ir_out
         prog.mod = uni.ProgramModule(current_mod)
         return prog

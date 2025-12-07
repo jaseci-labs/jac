@@ -52,7 +52,6 @@ from jaclang.runtimelib.constructs import (
     EdgeAnchor,
     EdgeArchetype,
     GenericEdge,
-    JacTestCheck,
     NodeAnchor,
     NodeArchetype,
     Root,
@@ -1122,6 +1121,8 @@ class JacBasics:
     @staticmethod
     def jac_test(test_fun: Callable) -> Callable:
         """Create a test."""
+        from jaclang.runtimelib.test import JacTestCheck
+
         file_path = getfile(test_fun)
         func_name = test_fun.__name__
 
@@ -1168,6 +1169,8 @@ class JacBasics:
         verbose: bool = False,
     ) -> int:
         """Run the test suite in the specified .jac file."""
+        from jaclang.runtimelib.test import JacTestCheck
+
         test_file = False
         ret_count = 0
         if filepath:

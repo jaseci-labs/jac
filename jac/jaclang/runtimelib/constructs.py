@@ -18,7 +18,6 @@ from .archetype import (
 )
 from .memory import Memory, ShelfStorage
 from .mtp import MTIR
-from .test import JacTestCheck, JacTestResult, JacTextTestRunner
 
 __all__ = [
     "AccessLevel",
@@ -36,7 +35,4 @@ __all__ = [
     "ObjectSpatialFunction",
     "Memory",
     "ShelfStorage",
-    "JacTestResult",
-    "JacTextTestRunner",
-    "JacTestCheck",
 ]
