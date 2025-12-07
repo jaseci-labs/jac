@@ -2141,6 +2141,8 @@ class JacRuntime(JacRuntimeInterface):
             "jaclang.runtimelib.constructs",
             "jaclang.runtimelib.memory",
             "jaclang.runtimelib.mtp",
+            "jaclang.runtimelib.test",
+            "jaclang.compiler.passes.tool.doc_ir",
         }
         for i in JacRuntime.loaded_modules.values():
             if i.__name__ not in special_modules:

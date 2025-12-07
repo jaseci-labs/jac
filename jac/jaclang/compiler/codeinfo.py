@@ -37,16 +37,28 @@ class CodeGenTarget:
 
     def __init__(self) -> None:
         """Initialize code generation target."""
-        import jaclang.compiler.passes.tool.doc_ir as doc
-
         self.py: str = ""
         self.jac: str = ""
-        self.doc_ir: doc.DocType = doc.Text("")
+        self._doc_ir: Any = None  # Lazily initialized to allow doc_ir.jac conversion
         self.js: str = ""
         self.client_manifest: ClientManifest = ClientManifest()
         self.py_ast: list[ast3.AST] = []
         self.py_bytecode: bytes | None = None
         self.es_ast: EsNode | Sequence[EsNode] | SliceInfo | IndexInfo | None = None
+
+    @property
+    def doc_ir(self) -> Any:
+        """Lazy initialization of doc_ir to allow doc_ir.jac conversion."""
+        if self._doc_ir is None:
+            import jaclang.compiler.passes.tool.doc_ir as doc
+
+            self._doc_ir = doc.Text("")
+        return self._doc_ir
+
+    @doc_ir.setter
+    def doc_ir(self, value: Any) -> None:
+        """Set doc_ir value."""
+        self._doc_ir = value
 
 
 class CodeLocInfo:
