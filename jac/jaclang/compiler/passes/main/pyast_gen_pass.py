@@ -3363,11 +3363,15 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
 
     def exit_name(self, node: uni.Name) -> None:
         name = node.sym_name
-        # Track if this name is a known builtin
-        import jaclang.runtimelib.builtin
+        # Track if this name is a known builtin (lazy import to avoid circular dependency)
+        try:
+            import jaclang.runtimelib.builtin as builtin_mod
 
-        if name in set(jaclang.runtimelib.builtin.__all__):
-            self.builtin_imports.add(name)
+            if name in set(builtin_mod.__all__):
+                self.builtin_imports.add(name)
+        except (ImportError, AttributeError):
+            # Builtin module not yet available during bootstrap, skip tracking
+            pass
         node.gen.py_ast = [self.sync(ast3.Name(id=name, ctx=node.py_ctx_func()))]
 
     def exit_float(self, node: uni.Float) -> None:
