@@ -1,25 +1,66 @@
 """Jac Library - User-friendly interface for library mode."""
 
 import sys
+from collections.abc import Callable
+from contextlib import suppress
+from typing import TYPE_CHECKING, cast
 
 from jaclang.runtimelib.runtime import JacClassReferences, JacRuntimeInterface
 
+# Pre-populate __all__ with common exports so "from jaclang.lib import X" works
+__all__ = [
+    # Class references
+    "Node",
+    "Edge",
+    "Walker",
+    "Obj",
+    "Root",
+    "GenericEdge",
+    "OPath",
+    "DSFunc",
+    # Common runtime methods
+    "root",
+    "spawn",
+    "visit",
+    "disengage",
+    "connect",
+    "disconnect",
+    "create_j_context",
+    "get_context",
+    "reset_machine",
+]
 
-def __getattr__(name: str):
+if TYPE_CHECKING:
+    from jaclang.runtimelib.archetype import GenericEdge, Root
+    from jaclang.runtimelib.archetype import ObjectSpatialFunction as DSFunc
+    from jaclang.runtimelib.archetype import ObjectSpatialPath as OPath
+    from jaclang.runtimelib.constructs import Archetype as Obj
+    from jaclang.runtimelib.constructs import EdgeArchetype as Edge
+    from jaclang.runtimelib.constructs import NodeArchetype as Node
+    from jaclang.runtimelib.constructs import WalkerArchetype as Walker
+    from jaclang.runtimelib.runtime import JacRuntimeInterface as JacRT
+
+    connect: Callable[..., object] = JacRT.connect
+    create_j_context: Callable[..., object] = JacRT.create_j_context
+    disconnect: Callable[..., object] = JacRT.disconnect
+    disengage: Callable[..., object] = JacRT.disengage
+    get_context: Callable[..., object] = JacRT.get_context
+    reset_machine: Callable[..., object] = JacRT.reset_machine
+    root: Callable[..., object] = JacRT.root
+    spawn: Callable[..., object] = JacRT.spawn
+    visit: Callable[..., object] = JacRT.visit
+else:
+    for _name in __all__:
+        # Placeholder definitions to satisfy static checks; replaced lazily.
+        globals()[_name] = None  # type: ignore[assignment]
+
+
+def __getattr__(name: str) -> object:
     """Lazy attribute access to initialize imports when needed."""
     # Don't initialize lazy imports for special/private attributes
     # This prevents circular imports during module loading
     if name.startswith("_"):
         raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
-
-    # Check if we're in the middle of loading runtimelib modules
-    # If so, return a forward reference to avoid circular dependency
-    runtimelib_modules = [
-        "jaclang.runtimelib.constructs",
-        "jaclang.runtimelib.archetype",
-        "jaclang.runtimelib.memory",
-        "jaclang.runtimelib.mtp",
-    ]
 
     # Don't check for circular imports - just proceed normally
     # The circular import protection was preventing legitimate imports
@@ -54,7 +95,7 @@ def __getattr__(name: str):
 
 
 # Build __all__ - this will be populated lazily
-def __dir__():
+def __dir__() -> list[str]:
     """Return list of available attributes."""
     from jaclang.runtimelib.runtime import _init_lazy_imports
 
@@ -64,44 +105,20 @@ def __dir__():
     )
 
 
-# Pre-populate __all__ with common exports so "from jaclang.lib import X" works
-__all__ = [
-    # Class references
-    "Node",
-    "Edge",
-    "Walker",
-    "Obj",
-    "Root",
-    "GenericEdge",
-    "OPath",
-    "DSFunc",
-    # Common runtime methods
-    "root",
-    "spawn",
-    "visit",
-    "disengage",
-    "connect",
-    "disconnect",
-    "create_j_context",
-    "get_context",
-    "reset_machine",
-]
-
-
 # Populate the module namespace with lazy references
 # This enables "from jaclang.lib import Node" to work
-def _populate_namespace():
+def _populate_namespace() -> None:
     """Populate the module namespace with class and method references."""
 
     current_module = sys.modules[__name__]
 
     # Create lazy wrapper that will trigger initialization on first access
     class LazyRef:
-        def __init__(self, attr_name):
+        def __init__(self, attr_name: str) -> None:
             self.attr_name = attr_name
-            self._resolved = None
+            self._resolved: object | None = None
 
-        def _resolve(self):
+        def _resolve(self) -> object:
             if self._resolved is None:
                 # Call __getattr__ directly to avoid recursion
                 self._resolved = current_module.__getattr__(self.attr_name)
@@ -109,20 +126,21 @@ def _populate_namespace():
                 setattr(current_module, self.attr_name, self._resolved)
             return self._resolved
 
-        def __call__(self, *args, **kwargs):
-            return self._resolve()(*args, **kwargs)
+        def __call__(self, *args: object, **kwargs: object) -> object:
+            resolved = cast(Callable[..., object], self._resolve())
+            return resolved(*args, **kwargs)
 
-        def __getattr__(self, name):
+        def __getattr__(self, name: str) -> object:
             return getattr(self._resolve(), name)
 
-        def __mro_entries__(self, bases):
+        def __mro_entries__(self, bases: tuple[type, ...]) -> tuple[type, ...]:
             # Support for using LazyRef in class inheritance
             # When used as a base class, resolve and return the actual class
-            return (self._resolve(),)
+            return (cast(type, self._resolve()),)
 
     # Add lazy references to module __dict__
     for name in __all__:
-        if not hasattr(current_module, name):
+        if not hasattr(current_module, name) or getattr(current_module, name) is None:
             setattr(current_module, name, LazyRef(name))
 
 
@@ -130,9 +148,5 @@ def _populate_namespace():
 # The hasattr() check in _populate_namespace triggers __getattr__ which
 # tries to import constructs while it's still loading
 # Instead, we'll populate on first actual use
-try:
+with suppress(ImportError):
     _populate_namespace()
-except ImportError:
-    # Circular import detected - skip for now
-    # Namespace will work via __getattr__ fallback
-    pass
