@@ -809,7 +809,7 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
         else:
             raise self.ice()
 
-    def proc_bin_op(self, node: py_ast.BinOp) -> uni.AtomUnit:
+    def proc_bin_op(self, node: py_ast.BinOp) -> uni.AtomUnit | uni.BinaryExpr:
         """Process python node.
 
         class BinOp(expr):
@@ -827,12 +827,26 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
             and isinstance(op, uni.Token)
             and isinstance(right, uni.Expr)
         ):
+            # For same-operator chains (e.g., A | B | C), avoid deeply nested
+            # parentheses by unwrapping the left AtomUnit if it contains a
+            # BinaryExpr with the same operator. This prevents recursion depth
+            # issues when parsing the generated Jac code.
+            unwrapped_left = left
+            is_same_op_chain = False
+            if isinstance(left, uni.AtomUnit) and isinstance(left.value, uni.BinaryExpr):
+                if left.value.op.value == op.value:
+                    unwrapped_left = left.value
+                    is_same_op_chain = True
+
             value = uni.BinaryExpr(
-                left=left,
+                left=unwrapped_left,
                 op=op,
                 right=right,
-                kid=[left, op, right],
+                kid=[unwrapped_left, op, right],
             )
+            # Only wrap in parentheses if this is not a same-operator chain
+            if is_same_op_chain:
+                return value
             return uni.AtomUnit(
                 value=value,
                 kid=[

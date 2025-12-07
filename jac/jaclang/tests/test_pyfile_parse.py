@@ -42,3 +42,8 @@ def test_python_file_parses_with_pyast_build_pass(filename: str) -> None:
     # Should unparse without raising (formatting not required for this check)
     unparsed = py_module.unparse(requires_format=False)
     assert isinstance(unparsed, str)
+
+    # Verify the generated Jac string can be parsed back by the Jac parser.
+    # This catches issues like deeply nested expressions that cause recursion errors.
+    prog = JacProgram.jac_str_formatter(source_str=unparsed, file_path=filename)
+    assert not prog.errors_had, f"Failed to parse generated Jac code for {filename}"
