@@ -38,13 +38,39 @@ from jaclang.vendor import pluggy
 # Flag to track if lazy imports have been initialized
 _lazy_imports_initialized = False
 
-# Module-level placeholders for lazy imports (will be populated by _init_lazy_imports)
-AccessLevel = Anchor = Archetype = EdgeAnchor = EdgeArchetype = GenericEdge = None  # type: ignore
-NodeAnchor = NodeArchetype = Root = WalkerAnchor = WalkerArchetype = None  # type: ignore
-Memory = Shelf = ShelfStorage = MTIR = None  # type: ignore
-_GenericEdge = _Root = ObjectSpatialDestination = ObjectSpatialFunction = (
-    ObjectSpatialPath
-) = None  # type: ignore
+# Type hints for lazy imports - these are only for static type checking
+if TYPE_CHECKING:
+    from jaclang.compiler.program import JacProgram
+    from jaclang.runtimelib.archetype import (
+        ObjectSpatialDestination,
+        ObjectSpatialFunction,
+        ObjectSpatialPath,
+    )
+    from jaclang.runtimelib.client_bundle import ClientBundle, ClientBundleBuilder
+    from jaclang.runtimelib.constructs import (
+        AccessLevel,
+        Anchor,
+        Archetype,
+        EdgeAnchor,
+        EdgeArchetype,
+        GenericEdge,
+        NodeAnchor,
+        NodeArchetype,
+        Root,
+        WalkerAnchor,
+        WalkerArchetype,
+    )
+    from jaclang.runtimelib.memory import Memory, Shelf, ShelfStorage
+    from jaclang.runtimelib.mtp import MTIR
+    from jaclang.runtimelib.server import ModuleIntrospector
+else:
+    # Module-level placeholders for lazy imports (populated by _init_lazy_imports)
+    AccessLevel = Anchor = Archetype = EdgeAnchor = EdgeArchetype = GenericEdge = None  # type: ignore
+    NodeAnchor = NodeArchetype = Root = WalkerAnchor = WalkerArchetype = None  # type: ignore
+    Memory = Shelf = ShelfStorage = MTIR = None  # type: ignore
+    _GenericEdge = _Root = ObjectSpatialDestination = ObjectSpatialFunction = (
+        ObjectSpatialPath
+    ) = None  # type: ignore
 
 
 def _init_lazy_imports() -> None:
@@ -109,32 +135,6 @@ def _init_lazy_imports() -> None:
         # If we get an import error during circular import, just skip
         # The imports will be retried later
         pass
-
-
-# Type hints for lazy imports - these are only for static type checking
-if TYPE_CHECKING:
-    from jaclang.compiler.program import JacProgram
-    from jaclang.runtimelib.archetype import (
-        ObjectSpatialDestination,
-        ObjectSpatialPath,
-    )
-    from jaclang.runtimelib.client_bundle import ClientBundle, ClientBundleBuilder
-    from jaclang.runtimelib.constructs import (
-        AccessLevel,
-        Anchor,
-        Archetype,
-        EdgeAnchor,
-        EdgeArchetype,
-        GenericEdge,
-        NodeAnchor,
-        NodeArchetype,
-        Root,
-        WalkerAnchor,
-        WalkerArchetype,
-    )
-    from jaclang.runtimelib.memory import Memory, Shelf, ShelfStorage
-    from jaclang.runtimelib.mtp import MTIR
-    from jaclang.runtimelib.server import ModuleIntrospector
 
 
 class _LazyProgramDescriptor:
@@ -839,6 +839,31 @@ class JacClassReferences(metaclass=_JacClassReferencesMeta):
     """Default Classes References with lazy loading."""
 
     TYPE_CHECKING: bool = TYPE_CHECKING
+    if TYPE_CHECKING:
+        from jaclang.runtimelib.archetype import (
+            ObjectSpatialFunction as DSFunc,
+        )
+        from jaclang.runtimelib.archetype import (
+            ObjectSpatialPath as OPath,
+        )
+        from jaclang.runtimelib.archetype import (
+            Root,
+        )
+        from jaclang.runtimelib.constructs import (
+            Archetype as Obj,
+        )
+        from jaclang.runtimelib.constructs import (
+            EdgeArchetype as Edge,
+        )
+        from jaclang.runtimelib.constructs import (
+            GenericEdge,
+        )
+        from jaclang.runtimelib.constructs import (
+            NodeArchetype as Node,
+        )
+        from jaclang.runtimelib.constructs import (
+            WalkerArchetype as Walker,
+        )
 
 
 class JacBuiltin:
@@ -2089,7 +2114,7 @@ def generate_plugin_helpers(
 
     # Use the original class's metaclass when creating the proxy class
     # This preserves custom metaclasses like _JacClassReferencesMeta
-    original_metaclass = type(plugin_class)
+    original_metaclass: type = cast(type, type(plugin_class))
     proxy_cls = original_metaclass(
         f"{plugin_class.__name__}", (object,), proxy_namespace
     )

@@ -37,8 +37,8 @@ class Text(Doc) {
     def __init__(
         self: Text, text: str, source_token: (uni.Token | None) = None
     ) -> None {
-        let self.text = text;
-        let self.source_token = source_token;
+        self.text = text;
+        self.source_token = source_token;
     }
 
     """Return a string representation of the Text object."""
@@ -61,9 +61,9 @@ class Line(Doc) {
     def __init__(
         self: Line, hard: bool = False, literal: bool = False, tight: bool = False
     ) -> None {
-        let self.hard = hard;
-        let self.literal = literal;
-        let self.tight = tight;
+        self.hard = hard;
+        self.literal = literal;
+        self.tight = tight;
     }
 
     """Return a string representation of the Line object."""
@@ -101,10 +101,10 @@ class Group(Doc) {
         id: (str | None) = None,
         ast_node: (uni.UniNode | None) = None
     ) -> None {
-        let self.contents = contents;
-        let self.break_contiguous = break_contiguous;
-        let self.id = id;
-        let self.ast_node = ast_node;
+        self.contents = contents;
+        self.break_contiguous = break_contiguous;
+        self.id = id;
+        self.ast_node = ast_node;
     }
 
     """Return a string representation of the Group object."""
@@ -126,8 +126,8 @@ class Indent(Doc) {
     def __init__(
         self: Indent, contents: DocType, ast_node: (uni.UniNode | None) = None
     ) -> None {
-        let self.contents = contents;
-        let self.ast_node = ast_node;
+        self.contents = contents;
+        self.ast_node = ast_node;
     }
 
     """Return a string representation of the Indent object."""
@@ -149,8 +149,8 @@ class Concat(Doc) {
     def __init__(
         self: Concat, parts: list[DocType], ast_node: (uni.UniNode | None) = None
     ) -> None {
-        let self.parts = parts;
-        let self.ast_node = ast_node;
+        self.parts = parts;
+        self.ast_node = ast_node;
     }
 
     """Return a string representation of the Concat object."""
@@ -172,8 +172,8 @@ class IfBreak(Doc) {
     def __init__(
         self: IfBreak, break_contents: DocType, flat_contents: DocType
     ) -> None {
-        let self.break_contents = break_contents;
-        let self.flat_contents = flat_contents;
+        self.break_contents = break_contents;
+        self.flat_contents = flat_contents;
     }
 
     """Return a string representation of the IfBreak object."""
@@ -196,8 +196,8 @@ class IfBreak(Doc) {
 class Align(Doc) {
     """Initialize an Align object."""
     def __init__(self: Align, contents: DocType, n: (int | None) = None) -> None {
-        let self.contents = contents;
-        let self.n = n;
+        self.contents = contents;
+        self.n = n;
     }
 
     """Return a string representation of the Align object."""

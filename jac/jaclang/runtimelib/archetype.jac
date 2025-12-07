@@ -117,10 +117,10 @@ class ObjectSpatialPath {
         if not isinstance(origin, <>list) {
             let origin = [origin];
         }
-        let self.origin = origin;
-        let self.destinations = [] if (destinations is None) else destinations;
-        let self.edge_only = False;
-        let self.from_visit = False;
+        self.origin = origin;
+        self.destinations = [] if (destinations is None) else destinations;
+        self.edge_only = False;
+        self.from_visit = False;
     }
 
     """Convert filter."""
@@ -182,13 +182,13 @@ class ObjectSpatialPath {
 
     """Set edge only."""
     def <>edge(self: ObjectSpatialPath) -> ObjectSpatialPath {
-        let self.edge_only = True;
+        self.edge_only = True;
         return self;
     }
 
     """Set from visit."""
     def <>visit(self: ObjectSpatialPath) -> ObjectSpatialPath {
-        let self.from_visit = True;
+        self.from_visit = True;
         return self;
     }
 
@@ -244,7 +244,7 @@ class Anchor {
     def make_stub(self: Anchor) -> TANCH {
         if self.is_populated() {
             let unloaded = object.__new__(self.__class__);
-            let unloaded.id = self.id;
+            unloaded.id = self.id;
             return unloaded;
         }
         return self;
@@ -297,8 +297,8 @@ class Anchor {
     def __setstate__(self: Anchor, state: <>dict[(str, Any)]) -> None {
         self.__dict__.update(state);
         if (self.is_populated() and self.archetype) {
-            let self.archetype.__jac__ = self;
-            let self.hash = hash(dumps(self));
+            self.archetype.__jac__ = self;
+            self.hash = hash(dumps(self));
         }
     }
 
@@ -356,7 +356,7 @@ class NodeAnchor(Anchor) {
     def __getstate__(self: NodeAnchor) -> <>dict[str, object] {
         let state = super.__getstate__();
         if self.is_populated() {
-            let state['edges'] = [<>edge.make_stub() for <>edge in self.edges];
+            state['edges'] = [<>edge.make_stub() for <>edge in self.edges];
         }
         return state;
     }

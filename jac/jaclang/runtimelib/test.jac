@@ -14,8 +14,8 @@ class JacTestResult(unittest.TextTestResult) {
         max_failures: (int | None) = None
     ) -> None {
         super.init(stream, descriptions, verbosity);
-        let self.failures_count = JacTestCheck.failcount;
-        let self.max_failures = max_failures;
+        self.failures_count = JacTestCheck.failcount;
+        self.max_failures = max_failures;
     }
 
     """Count failures and stop."""
@@ -32,7 +32,7 @@ class JacTestResult(unittest.TextTestResult) {
 
     """Stop the test execution."""
     def stop(self: JacTestResult) -> None {
-        let self.shouldStop = True;
+        self.shouldStop = True;
     }
 }
 
@@ -42,7 +42,7 @@ class JacTextTestRunner(unittest.TextTestRunner) {
     def __init__(
         self: JacTextTestRunner, max_failures: (int | None) = None, **kwargs: Any
     ) -> None {
-        let self.max_failures = max_failures;
+        self.max_failures = max_failures;
         super.init(**kwargs);
     }
 
@@ -81,9 +81,9 @@ class JacTestCheck {
 
     """Clear the test suite."""
     static def reset()  -> None {
-        let JacTestCheck.test_case = unittest.TestCase();
-        let JacTestCheck.test_suite = unittest.TestSuite();
-        let JacTestCheck.test_suite_path = {};
+        JacTestCheck.test_case = unittest.TestCase();
+        JacTestCheck.test_suite = unittest.TestSuite();
+        JacTestCheck.test_suite_path = {};
     }
 
     """Run the test suite."""
@@ -134,7 +134,7 @@ class JacTestCheck {
         } else {
             let fails = len(result.failures);
             JacTestCheck.failcount += fails;
-            let JacTestCheck.breaker = (JacTestCheck.failcount >= maxfail)
+            JacTestCheck.breaker = (JacTestCheck.failcount >= maxfail)
             if maxfail
             else True;
         }
@@ -148,7 +148,7 @@ class JacTestCheck {
             let filepath = filepath[:-4];
         }
         if (filepath not in JacTestCheck.test_suite_path) {
-            let JacTestCheck.test_suite_path[filepath] = [];
+            JacTestCheck.test_suite_path[filepath] = [];
         }
         let test_case = unittest.FunctionTestCase(test_func);
         JacTestCheck.test_suite_path[filepath].append(

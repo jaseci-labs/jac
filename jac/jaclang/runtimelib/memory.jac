@@ -83,7 +83,7 @@ class Memory(Generic[(ID, TANCH)]) {
 
     """Save anchor to memory."""
     def <>set(self: Memory, data: TANCH) -> None {
-        let self.__mem__[data.id] = data;
+        self.__mem__[data.id] = data;
     }
 
     """Remove anchor/s from memory."""
@@ -132,7 +132,7 @@ class ShelfStorage(Memory[(UUID, Anchor)]) {
     """Initialize memory handler."""
     def __init__(self: ShelfStorage, session: (str | None) = None) -> None {
         super.init();
-        let self.__shelf__ = open(session) if session else None;
+        self.__shelf__ = open(session) if session else None;
     }
 
     """Commit all data from memory to datasource."""
@@ -189,23 +189,23 @@ class ShelfStorage(Memory[(UUID, Anchor)]) {
                                 self.__shelf__.pop(_id, None);
                                 continue;
                             }
-                            let p_d.edges = d.edges;
+                            p_d.edges = d.edges;
                         }
                         if Jac.check_write_access(d) {
                             if (hash(dumps(p_d.access)) != hash(dumps(d.access))) {
-                                let p_d.access = d.access;
+                                p_d.access = d.access;
                             }
                             if (hash(dumps(p_d.archetype)) != hash(dumps(d.archetype))) {
-                                let p_d.archetype = d.archetype;
+                                p_d.archetype = d.archetype;
                             }
                         }
-                        let self.__shelf__[_id] = p_d;
+                        self.__shelf__[_id] = p_d;
                     } elif not (
                         isinstance(d, NodeAnchor)
                         and not isinstance(d.archetype, Root)
                         and not d.edges
                     ) {
-                        let self.__shelf__[_id] = d;
+                        self.__shelf__[_id] = d;
                     }
                 }
             }
@@ -220,7 +220,7 @@ class ShelfStorage(Memory[(UUID, Anchor)]) {
             for anchor in self.__shelf__.values() {
                 if (not filter or filter(anchor)) {
                     if (anchor.id not in self.__mem__) {
-                        let self.__mem__[anchor.id] = anchor;
+                        self.__mem__[anchor.id] = anchor;
                     }
                     yield anchor;
                     ;
@@ -249,7 +249,7 @@ class ShelfStorage(Memory[(UUID, Anchor)]) {
                     and (id not in self.__gc__)
                     and (_anchor := self.__shelf__.get(str(id)))
                 ) {
-                    let self.__mem__[id] = anchor=_anchor;
+                    self.__mem__[id] = anchor=_anchor;
                 }
                 if (anchor and (not filter or filter(anchor))) {
                     yield anchor;
@@ -270,7 +270,7 @@ class ShelfStorage(Memory[(UUID, Anchor)]) {
             and isinstance(self.__shelf__, Shelf)
             and (data := self.__shelf__.get(str(id)))
         ) {
-            let self.__mem__[id] = data;
+            self.__mem__[id] = data;
         }
         return data;
     }
