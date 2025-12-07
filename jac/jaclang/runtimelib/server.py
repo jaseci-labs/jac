@@ -13,17 +13,17 @@ from contextlib import suppress
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
-from typing import Any, Literal, TypeAlias, get_type_hints
+from typing import TYPE_CHECKING, Any, Literal, TypeAlias, get_type_hints
 from urllib.parse import parse_qs, urlparse
 
 from jaclang.runtimelib.client_bundle import ClientBundleError
-from jaclang.runtimelib.constructs import (
-    Archetype,
-    NodeArchetype,
-    Root,
-    WalkerArchetype,
-)
 from jaclang.runtimelib.runtime import JacRuntime as Jac
+
+if TYPE_CHECKING:
+    from jaclang.runtimelib.constructs import (
+        Archetype,
+        WalkerArchetype,
+    )
 
 # Type Aliases
 JsonValue: TypeAlias = (
@@ -58,6 +58,8 @@ class JacSerializer:
     @staticmethod
     def serialize(obj: object) -> JsonValue:
         """Serialize objects to JSON-compatible format."""
+        from jaclang.runtimelib.constructs import Archetype
+
         if obj is None or isinstance(obj, (str, int, float, bool)):
             return obj
 
@@ -81,6 +83,8 @@ class JacSerializer:
     @staticmethod
     def _serialize_archetype(arch: Archetype) -> dict[str, JsonValue]:
         """Serialize Archetype instances."""
+        from jaclang.runtimelib.constructs import NodeArchetype, WalkerArchetype
+
         result: dict[str, JsonValue] = {
             "_jac_type": type(arch).__name__,
             "_jac_id": arch.__jac__.id.hex,
@@ -137,6 +141,8 @@ class UserManager:
 
     def create_user(self, username: str, password: str) -> dict[str, str]:
         """Create a new user with their own root node. Returns dict with user data or error."""
+        from jaclang.runtimelib.constructs import Root
+
         if username in self._users:
             return {"error": "User already exists"}
 
@@ -232,6 +238,8 @@ class ExecutionManager:
         self, walker_cls: type[WalkerArchetype], fields: dict[str, Any], username: str
     ) -> dict[str, JsonValue]:
         """Spawn a walker in user's context."""
+        from jaclang.runtimelib.constructs import NodeArchetype
+
         root_id = self.user_manager.get_root_id(username)
         if not root_id:
             return {"error": "User not found"}
@@ -341,6 +349,7 @@ class ModuleIntrospector:
             return
 
         import jaclang.compiler.unitree as uni
+        from jaclang.runtimelib.constructs import WalkerArchetype
 
         self._function_access = {}
         self._walker_access = {}
@@ -402,6 +411,8 @@ class ModuleIntrospector:
 
     def _collect_walkers(self) -> dict[str, type[WalkerArchetype]]:
         """Collect walker classes from module."""
+        from jaclang.runtimelib.constructs import WalkerArchetype
+
         if not self._module:
             return {}
 
