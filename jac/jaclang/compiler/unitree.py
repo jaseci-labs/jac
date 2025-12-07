@@ -1647,6 +1647,10 @@ class Archetype(
         new_kid: list[UniNode] = []
         if self.doc:
             new_kid.append(self.doc)
+            # When defining a class inside code blocks (not at module/class level),
+            # make the docstring a standalone statement so it doesn't merge with code.
+            if not isinstance(self.parent, (Module, Archetype, Enum)):
+                new_kid.append(self.gen_token(Tok.SEMI))
         client_tok = self._source_client_token()
         if self.is_client_decl and (client_tok is not None or not self.in_client_block):
             new_kid.append(client_tok if client_tok else self.gen_token(Tok.KW_CLIENT))
@@ -2117,9 +2121,9 @@ class Ability(
         new_kid: list[UniNode] = []
         if self.doc:
             new_kid.append(self.doc)
-            # When defining an ability inside another ability, make the docstring a
-            # standalone statement so it doesn't merge with surrounding code.
-            if isinstance(self.parent, Ability):
+            # When defining an ability inside code blocks (not at module/class level),
+            # make the docstring a standalone statement so it doesn't merge with code.
+            if not isinstance(self.parent, (Module, Archetype, Enum)):
                 new_kid.append(self.gen_token(Tok.SEMI))
         client_tok = self._source_client_token()
         if self.is_client_decl and (client_tok is not None or not self.in_client_block):
@@ -3585,6 +3589,17 @@ class FormattedValue(Expr):
         self.set_kids(nodes=new_kid)
         return res
 
+    def unparse(self) -> str:
+        self.normalize()
+        # Generate {expr} without spaces inside braces
+        result = "{" + self.format_part.unparse()
+        if self.conversion != -1:
+            result += "!" + chr(self.conversion)
+        if self.format_spec:
+            result += ":" + self.format_spec.unparse()
+        result += "}"
+        return result
+
 
 class ListVal(AtomExpr):
     """ListVal node type for Jac Ast."""
@@ -3954,6 +3969,19 @@ class AtomTrailer(Expr):
         self.set_kids(nodes=new_kid)
         return res
 
+    def unparse(self) -> str:
+        self.normalize()
+        # For attribute access (self.x) and subscripts (list[x]),
+        # we don't want spaces around the dot or before brackets
+        result = self.target.unparse()
+        if self.is_null_ok:
+            result += "?"
+        if self.is_attr:
+            result += "."
+        if self.right:
+            result += self.right.unparse()
+        return result
+
     @property
     def as_attr_list(self) -> list[AstSymbolNode]:
         left = self.right if isinstance(self.right, AtomTrailer) else self.target
@@ -4112,6 +4140,26 @@ class IndexSlice(AtomExpr):
         new_kid.append(self.gen_token(Tok.RSQUARE))
         self.set_kids(nodes=new_kid)
         return res
+
+    def unparse(self) -> str:
+        self.normalize()
+        # Generate [content] without spaces inside brackets
+        result = "["
+        if self.is_range:
+            for i, slice in enumerate(self.slices):
+                if i > 0:
+                    result += ", "
+                if slice.start:
+                    result += slice.start.unparse()
+                result += ":"
+                if slice.stop:
+                    result += slice.stop.unparse()
+                if slice.step:
+                    result += ":" + slice.step.unparse()
+        elif len(self.slices) == 1 and self.slices[0].start:
+            result += self.slices[0].start.unparse()
+        result += "]"
+        return result
 
 
 class TypeRef(AtomExpr):
@@ -4969,6 +5017,18 @@ class MatchArch(MatchPattern):
         self.set_kids(nodes=new_kid)
         return res
 
+    def unparse(self) -> str:
+        self.normalize()
+        # Generate name(...) without spaces around parentheses
+        result = self.name.unparse() + "("
+        parts = []
+        if self.arg_patterns:
+            parts.extend(arg.unparse() for arg in self.arg_patterns)
+        if self.kw_patterns:
+            parts.extend(kw.unparse() for kw in self.kw_patterns)
+        result += ", ".join(parts) + ")"
+        return result
+
 
 # AST Terminal Node Types
 # --------------------------
@@ -5249,7 +5309,12 @@ class String(Literal):
     def unparse(self) -> str:
         super().unparse()
         if self.parent and isinstance(self.parent, FString):
-            return self.lit_value
+            # Escape special chars in f-string literal parts:
+            # { -> {{ and } -> }} (f-string interpolation delimiters)
+            # # -> \# (comment delimiter in Jac)
+            escaped = self.lit_value.replace("{", "{{").replace("}", "}}")
+            escaped = escaped.replace("#", "\\#")
+            return escaped
         return self.value
 
 

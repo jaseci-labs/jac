@@ -45,6 +45,8 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
         self.mod_path = ir_in.loc.mod_path
         self.orig_src = ir_in.loc.orig_src
         self.in_type_annotation = False  # Track if we're processing a type annotation
+        self.in_match_pattern = False  # Track if we're processing a match pattern class
+        self.in_fstring_expr = False  # Track if we're inside an f-string interpolation
         Transform.__init__(self, ir_in=ir_in, prog=prog, cancel_token=cancel_token)
 
     def nu(self, node: T) -> T:
@@ -486,10 +488,14 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
             and isinstance(annotation, uni.Expr)
             and isinstance(target, uni.Expr)
         ):
+            # Check if target is an attribute/subscript access (AtomTrailer)
+            # If so, this is not a variable declaration, so mutable should be False
+            is_var_declaration = not isinstance(target, uni.AtomTrailer)
             return uni.Assignment(
                 target=[target],
                 value=value if isinstance(value, (uni.Expr, uni.YieldExpr)) else None,
                 type_tag=annotation_subtag,
+                mutable=is_var_declaration,
                 kid=(
                     [target, annotation_subtag, value]
                     if value
@@ -1210,10 +1216,14 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
         conversion: int
         format_spec: expr | None
         """
+        # F-string interpolation contains Python code, not Jac code, so don't escape keywords
+        prev_in_fstring = self.in_fstring_expr
+        self.in_fstring_expr = True
         value = self.convert(node.value)
         fmt_spec = (
             cast(uni.Expr, self.convert(node.format_spec)) if node.format_spec else None
         )
+        self.in_fstring_expr = prev_in_fstring
         if isinstance(value, uni.Expr):
             ret = uni.FormattedValue(
                 format_part=value,
@@ -1446,6 +1456,31 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
         else:
             start = "f'"
             end = "'"
+        # Check if string parts contain quote characters and switch styles as needed
+        # Collect all content from string parts to check for quote conflicts
+        all_content = "".join(
+            part.lit_value for part in valid if isinstance(part, uni.String)
+        )
+        has_single = "'" in all_content
+        has_double = '"' in all_content
+        is_triple = len(end) == 3
+
+        # If content has both quote types and we're not using triple quotes, use triple
+        if has_single and has_double and not is_triple:
+            if "'" in end:
+                start = 'f"""'
+                end = '"""'
+            else:
+                start = "f'''"
+                end = "'''"
+        # If content has the current quote char, switch to the other style
+        elif ("'" in end and has_single) or ('"' in end and has_double):
+            if "'" in end:
+                start = start.replace("'", '"')
+                end = end.replace("'", '"')
+            else:
+                start = start.replace('"', "'")
+                end = end.replace('"', "'")
         tok_start = self.operator(Tok.STRING, start)
         tok_end = self.operator(Tok.STRING, end)
         fstr = uni.FString(
@@ -1566,7 +1601,10 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
             kwd_attrs: list[_Identifier]
             kwd_patterns: list[pattern]
         """
+        # Don't escape keywords in match pattern class names
+        self.in_match_pattern = True
         cls = self.convert(node.cls)
+        self.in_match_pattern = False
         kid = [cls]
         if len(node.patterns) != 0:
             patterns = [self.convert(i) for i in node.patterns]
@@ -1756,9 +1794,14 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
             for _, v in TOKEN_MAP.items()
             if v not in ["float", "int", "str", "bool", "self"]
         ]
-        # When in a type annotation context, don't escape type keywords
-        # They're used as type names, not as values
-        should_escape = node.id in reserved_keywords and not self.in_type_annotation
+        # When in a type annotation, match pattern, or f-string expr context, don't escape keywords
+        # They're used as type names or Python code, not as Jac keywords
+        should_escape = (
+            node.id in reserved_keywords
+            and not self.in_type_annotation
+            and not self.in_match_pattern
+            and not self.in_fstring_expr
+        )
         ret = uni.Name(
             orig_src=self.orig_src,
             name=Tok.NAME,
