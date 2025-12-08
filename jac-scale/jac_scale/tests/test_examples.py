@@ -1,5 +1,6 @@
 """Test for running jac-scale examples and testing their APIs."""
 
+import contextlib
 import socket
 import subprocess
 import time
@@ -155,10 +156,8 @@ class JacScaleTestRunner:
 
             for file in session_dir.iterdir():
                 if file.name.startswith(prefix):
-                    try:
+                    with contextlib.suppress(Exception):
                         file.unlink()
-                    except Exception:
-                        pass
 
         # Clean up directories after stopping
         example_dir = self.example_file.parent
@@ -284,7 +283,9 @@ class JacScaleTestRunner:
 
         return response.text
 
-    def spawn_walker(self, walker_name: str, **kwargs: Any) -> dict[str, Any]:
+    def spawn_walker(
+        self, walker_name: str, **kwargs: dict[str, Any]
+    ) -> dict[str, Any]:
         """Spawn a walker with the given parameters.
 
         Args:
@@ -298,7 +299,9 @@ class JacScaleTestRunner:
             "POST", f"/walker/{walker_name}", data=kwargs, use_token=True
         )
 
-    def call_function(self, function_name: str, **kwargs: Any) -> Any:
+    def call_function(
+        self, function_name: str, **kwargs: dict[str, Any]
+    ) -> dict[str, Any]:
         """Call a function with the given parameters.
 
         Args:
@@ -321,7 +324,12 @@ class JacScaleTestRunner:
         self.start_server()
         return self
 
-    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: object | None,
+    ) -> None:
         """Context manager exit."""
         self.stop_server()
 
