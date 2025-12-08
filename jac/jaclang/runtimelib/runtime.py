@@ -2041,19 +2041,19 @@ class JacTTGGenerator:
     @classmethod
     def extract_name(cls, input: Archetype) -> str:
         """Split the name by left bracket."""
-        return str(input).split(chr(40))[0].split(" ")[0]
+        return type(input).__name__
 
     @classmethod
     def get_walker_code(cls, walker: WalkerArchetype) -> unitree.Archetype:
         """Get the walker type code from walker instance."""
+        walker_module = JacRuntime.loaded_modules.get(type(walker).__module__)
         extracted_name = JacTTGGenerator.extract_name(walker)
-        # TODO: VERY TRRIBLE. WILL ASK
-        code = JacRuntime.program.mod.hub[
-            "/home/patrickli/Space/jaseci/jac/jaclang/tests/fixtures/jac_ttg/basic.jac"
-        ]
-        for walker_code in code.get_all_sub_nodes(unitree.Archetype):
-            if walker_code.name.value == JacTTGGenerator.extract_name(walker):
-                return walker_code
+        if walker_module and hasattr(walker_module, "__file__"):
+            file_path = str(walker_module.__file__)
+            code = JacRuntime.program.mod.hub[file_path]
+            for walker_code in code.get_all_sub_nodes(unitree.Archetype):
+                if walker_code.name.value == JacTTGGenerator.extract_name(walker):
+                    return walker_code
         raise ValueError(f"Walker code for {extracted_name} not found in program.")
 
     class PossibleVisitsInWalkers:
