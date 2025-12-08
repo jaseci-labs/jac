@@ -2019,7 +2019,7 @@ class JacTTGGenerator:
             for edge in edges:
                 if (
                     visit is None
-                    or JacTTGGenerator.extract_name(edge.archetype) == visit
+                    or JacTTGGenerator.extract_type_name(edge.archetype) == visit
                 ):
                     filtered_neighbors.append(edge.target.archetype)
             # Get all neighbors
@@ -2037,9 +2037,8 @@ class JacTTGGenerator:
             cls.cache[key] = result
             return result
 
-    # TODO: Very bad implementation. Should not exist anywhere.
     @classmethod
-    def extract_name(cls, input: Archetype) -> str:
+    def extract_type_name(cls, input: Archetype) -> str:
         """Split the name by left bracket."""
         return type(input).__name__
 
@@ -2054,15 +2053,15 @@ class JacTTGGenerator:
         return result.decl.find_parent_of_type(unitree.Archetype)
 
     @classmethod
-    def get_walker_code(cls, walker: WalkerArchetype) -> unitree.Archetype:
+    def get_type_definition(cls, obj: Archetype) -> unitree.Archetype:
         """Get the walker type code from walker instance."""
-        walker_module = JacRuntime.loaded_modules.get(type(walker).__module__)
-        extracted_name = JacTTGGenerator.extract_name(walker)
+        walker_module = JacRuntime.loaded_modules.get(type(obj).__module__)
+        extracted_name = JacTTGGenerator.extract_type_name(obj)
         if walker_module and hasattr(walker_module, "__file__"):
             file_path = str(walker_module.__file__)
             code = JacRuntime.program.mod.hub[file_path]
             for walker_code in code.get_all_sub_nodes(unitree.Archetype):
-                if walker_code.name.value == JacTTGGenerator.extract_name(walker):
+                if walker_code.name.value == JacTTGGenerator.extract_type_name(obj):
                     return walker_code
         raise ValueError(f"Walker code for {extracted_name} not found in program.")
 
@@ -2111,7 +2110,7 @@ class JacTTGGenerator:
             #     JacTTGGenerator.extract_name(node)
             # ).decl.find_parent_of_type(unitree.Archetype)
             node_type = JacTTGGenerator.resolve_to_archetype(
-                walker, JacTTGGenerator.extract_name(node)
+                walker, JacTTGGenerator.extract_type_name(node)
             )
             if node_type is None:
                 raise RuntimeError("Node type not found")
@@ -2135,7 +2134,7 @@ class JacTTGGenerator:
     ) -> TypedWalkerState:
         """Get the set based TTG for multiple walker spawns."""
         ttg_root = JacTTGGenerator.TypedWalkerState(
-            walker_type=JacTTGGenerator.extract_name(walker),
+            walker_type=JacTTGGenerator.extract_type_name(walker),
             depth=0,
             node=start_node,
             children=[],
@@ -2150,7 +2149,7 @@ class JacTTGGenerator:
             state = walker_states.pop(0)
             node = state.node
             visited_nodes.add(node)
-            walker_code = JacTTGGenerator.get_walker_code(walker)
+            walker_code = JacTTGGenerator.get_type_definition(walker)
             filtered_neighbors: list[NodeArchetype] = [
                 neighbor
                 for visit in JacTTGGenerator.PossibleVisitsInWalkers.get(
