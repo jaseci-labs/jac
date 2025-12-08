@@ -741,11 +741,11 @@ def test_py2jac_reassign_semantics(
         "py2jac bug: 'let' used for reassignment in loop - "
         "this creates a shadowed variable instead of reassigning"
     )
-    assert "let status = " not in jac_code.split("let status = ")[
-        2
-    ] if jac_code.count("let status = ") > 1 else True, (
-        "py2jac bug: 'let' used for reassignment in conditional"
-    )
+    assert (
+        "let status = " not in jac_code.split("let status = ")[2]
+        if jac_code.count("let status = ") > 1
+        else True
+    ), "py2jac bug: 'let' used for reassignment in conditional"
 
     # Execute the converted code and verify it produces correct results
     with capture_stdout() as captured_output:

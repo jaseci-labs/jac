@@ -7,12 +7,12 @@ cl import from '@jac-client/utils' { jacSignup, jacLogin, jacLogout, jacIsLogged
 
 cl {
     def app()  -> any {
-        let [isLoggedIn, setIsLoggedIn] = useState(False);
-        let [isSignup, setIsSignup] = useState(False);
-        let [username, setUsername] = useState("");
-        let [password, setPassword] = useState("");
-        let [error, setError] = useState("");
-        let [loading, setLoading] = useState(False);
+        let[isLoggedIn, setIsLoggedIn] = useState(False);
+        let[isSignup, setIsSignup] = useState(False);
+        let[username, setUsername] = useState("");
+        let[password, setPassword] = useState("");
+        let[error, setError] = useState("");
+        let[loading, setLoading] = useState(False);
 
         # Check login status on mount
         useEffect(lambda   -> None{ setIsLoggedIn(jacIsLoggedIn());} , []);

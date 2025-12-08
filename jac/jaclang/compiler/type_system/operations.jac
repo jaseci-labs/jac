@@ -86,9 +86,7 @@ def get_type_of_binary_operation(
                 } elif (assign_compr := expr.op.conn_assign) {
                     for assign in assign_compr.assigns {
                         if (assign.key is not None) {
-                            edge_inst_type = evaluator._convert_to_instance(
-                                conn_type
-                            );
+                            edge_inst_type = evaluator._convert_to_instance(conn_type);
                             if (
                                 member := evaluator._lookup_object_member(
                                     edge_inst_type, assign.key.sym_name

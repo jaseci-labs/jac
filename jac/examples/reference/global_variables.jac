@@ -1,15 +1,15 @@
 """Global variables: Module-level variables with keyword."""
 
 # Glob with access modifiers
-glob :priv private_val = 5;
-glob :pub public_val = 10;
+glob : priv private_val = 5;
+glob : pub public_val = 10;
 
 # Glob with access modifiers
-glob :protect protected_var = 15;
+glob : protect protected_var = 15;
 glob shared_var = 20;
 
 # Multiple variable declarations
-glob x = 1, y = 2, z = 3;
+glob x = 1 , y = 2 , z = 3;
 
 # Typed global
 glob counter: int = 0;

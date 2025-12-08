@@ -59,10 +59,8 @@ with entry {
     # Expected: Result: 5.0, Division by zero error
 
     # Test 7: Lambda as higher-order function argument
-    apply_operation = lambda  x: int , y: int  -> int{ multiply = lambda  a:
-        int , b: int  -> int{ result = a * b;return result; } ;return multiply(
-        x, y
-    ); } ;
+    apply_operation = lambda  x: int , y: int  -> int{ multiply = lambda  a: int , b:
+        int  -> int{ result = a * b;return result; } ;return multiply(x, y); } ;
 
     print("Test 7 - apply_operation(6, 7):", apply_operation(6, 7));
     # Expected: 42

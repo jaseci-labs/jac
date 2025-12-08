@@ -24,8 +24,8 @@ cl import from react {
 
 cl {
     def app()  -> any {
-        let [todos, setTodos] = useState([]);
-        let [input, setInput] = useState("");
+        let[todos, setTodos] = useState([]);
+        let[input, setInput] = useState("");
 
         # Event Handler
         async def addTodo()  -> None {

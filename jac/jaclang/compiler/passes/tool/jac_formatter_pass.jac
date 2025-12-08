@@ -156,21 +156,15 @@ class JacFormatPass(Transform[(uni.Module, uni.Module)]) {
                     }
                     current_line_budget = max(0, (full_budget - used));
                 } else {
-                    current_line_budget = max(
-                        0, (current_line_budget - len(part_str))
-                    );
+                    current_line_budget = max(0, (current_line_budget - len(part_str)));
                 }
             }
             return ''.join(result);
         } elif isinstance(doc_node, doc.IfBreak) {
-            branch = doc_node.break_contents
-            if is_broken
-            else doc_node.flat_contents;
+            branch = doc_node.break_contents if is_broken else doc_node.flat_contents;
             return self.format_doc_ir(branch, indent_level, width_remaining, is_broken);
         } elif isinstance(doc_node, doc.Align) {
-            align_spaces = doc_node.n
-            if (doc_node.n is not None)
-            else self.indent_size;
+            align_spaces = doc_node.n if (doc_node.n is not None) else self.indent_size;
             extra_levels = align_spaces // self.indent_size;
             child_indent_level = indent_level + extra_levels;
             child_width_budget = max(0, (width_remaining - align_spaces));

@@ -208,9 +208,7 @@ class ClassType(TypeBase) {
         if self.is_instance() {
             return self;
         }
-        private = ClassType.ClassDetailsPrivate(
-            type_args=self.private.type_args[:]
-        );
+        private = ClassType.ClassDetailsPrivate(type_args=self.private.type_args[:]);
         new_instance = ClassType(self.shared, private=private, flags=self.flags);
         new_flag = self.flags;
         new_flag = TypeFlags((new_flag & ~TypeFlags.Instantiable));

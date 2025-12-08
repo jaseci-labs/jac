@@ -125,9 +125,7 @@ class JacTestCheck {
                 }
             }
         }
-        runner = JacTextTestRunner(
-            max_failures=maxfail, failfast=xit, verbosity=verb
-        );
+        runner = JacTextTestRunner(max_failures=maxfail, failfast=xit, verbosity=verb);
         result = runner.run(test_suite);
         if result.wasSuccessful() {
             print('Passed successfully.');
