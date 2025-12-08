@@ -6,7 +6,7 @@ from typing import Any
 
 import jwt
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 from jac_scale.jserver.jfast_api import JFastApiServer
 from jac_scale.jserver.jserver import APIParameter, HTTPMethod, JEndPoint, ParameterType
@@ -57,9 +57,20 @@ class JacAPIServer(JServer):
             allow_headers=["*"],  # Allows all headers
         )
 
-    def login(self, email: str, password: str) -> tuple[int, JsonValue]:
-        res = self.auth_handler.login(email, password)
-        return res.status, res.body
+    def login(self, email: str, password: str) -> JSONResponse:
+        if not email or not password:
+            return JSONResponse(
+                status_code=400, content={"error": "Email and password required"}
+            )
+
+        result = self.user_manager.authenticate(email, password)
+        if not result:
+            return JSONResponse(
+                status_code=401, content={"error": "Invalid credentials"}
+            )
+
+        result["token"] = self.create_jwt_token(email)
+        return JSONResponse(status_code=200, content=dict[str, JsonValue](result))
 
     def register_login_endpoint(self) -> None:
         self.server_impl.add_endpoint(
@@ -92,9 +103,13 @@ class JacAPIServer(JServer):
             )
         )
 
-    def create_user(self, email: str, password: str) -> tuple[int, JsonValue]:
-        res = self.auth_handler.create_user(email, password)
-        return res.status, res.body
+    def create_user(self, email: str, password: str) -> JSONResponse:
+        res = self.user_manager.create_user(email, password)
+        if "error" in res:
+            return JSONResponse(content=res, status_code=400)
+
+        res["token"] = self.create_jwt_token(email)
+        return JSONResponse(content=res, status_code=201)
 
     def register_create_user_endpoint(self) -> None:
         self.server_impl.add_endpoint(
