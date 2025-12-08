@@ -1,5 +1,4 @@
 
-
 # Define package-level constants
 glob PACKAGE_NAME = "MyPackage";
 glob PACKAGE_VERSION = "2.0.0";
