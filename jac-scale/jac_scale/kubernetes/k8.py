@@ -419,9 +419,10 @@ def deploy_k8(
     # Define Service for Jaseci-app
     # -------------------
     # Build port configuration
+    service_port = 80 if is_aws else container_port
     port_config: dict[str, Any] = {
         "protocol": "TCP",
-        "port": container_port,
+        "port": service_port,
         "targetPort": container_port,
     }
     if not is_aws:
@@ -535,13 +536,31 @@ def deploy_k8(
 
     path = "/walkers" if testing else "/docs"
     if is_aws:
-        print(
-            "NLB is being provisioned. Once ready, the service will be accessible via the AWS NLB DNS name."
-        )
-        # For AWS, we would need the NLB URL which takes time to provision
-        print(
-            f"Run 'kubectl get svc {app_name}-service -n {namespace}' to get the NLB endpoint."
-        )
+        time.sleep(60)
+        nlb_url = None
+        try:
+            service = core_v1.read_namespaced_service(
+                f"{app_name}-service", namespace
+            )
+            nlb_ingress = service.status.load_balancer.ingress
+            if nlb_ingress and len(nlb_ingress) > 0:
+                endpoint = nlb_ingress[0].hostname or nlb_ingress[0].ip
+                nlb_url = f"http://{endpoint}"
+            else:
+                print(
+                    f"NLB is being provisioned. Run 'kubectl get svc {app_name}-service -n {namespace}' to get the endpoint."
+                )
+        except Exception as e:
+            print(f"Could not retrieve NLB endpoint: {e}")
+            print(
+                f"Run 'kubectl get svc {app_name}-service -n {namespace}' to get the NLB endpoint."
+            )
+        
+        # Check deployment status with NLB URL
+        if nlb_url and check_deployment_status(node_port, path, nlb_url=nlb_url):
+            print(
+                f"Deployment complete! Access Jaseci-app at {nlb_url}{path}"
+            )
     else:
         # Check deployment status for NodePort
         if check_deployment_status(node_port, path):
