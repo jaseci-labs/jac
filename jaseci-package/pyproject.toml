@@ -22,7 +22,7 @@ keywords = [
 requires-python = ">=3.11"
 dependencies = [
     "jaclang>=0.9.4",
-    "byllm>=0.4.9",
+    "byllm>=0.4.8",
     "jac-client>=0.2.4",
     "jac-streamlit>=0.0.5",
 ]
