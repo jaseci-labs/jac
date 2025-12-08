@@ -1,5 +1,1 @@
-import from .connector {
-    connect,
-    disconnect,
-    is_connected
-}
+import from .connector { connect, disconnect, is_connected }

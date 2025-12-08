@@ -1,7 +1,4 @@
-import from mylib.math_utils {
-    add,
-    multiply
-}
+import from mylib.math_utils { add, multiply }
 import from mylib.string_utils { greet }
 
 with entry {

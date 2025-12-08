@@ -1,7 +1,4 @@
-import from pkg.sibling {
-    SIBLING_VALUE,
-    sibling_func
-}
+import from pkg.sibling { SIBLING_VALUE, sibling_func }
 import from pkg.base { BASE_VALUE }
 
 with entry {

@@ -1,12 +1,4 @@
-import from mathlib {
-    add,
-    subtract,
-    multiply,
-    divide,
-    PI,
-    E,
-    Calculator
-}
+import from mathlib { add, subtract, multiply, divide, PI, E, Calculator }
 
 with entry {
     print(f"Init reexport - add(5, 3): {add(5, 3)}");

@@ -1,6 +1,4 @@
-import from utils {
-    utility_variable
-}
+import from utils { utility_variable }
 import from inner.one_dep { INNER }
 
 with entry {

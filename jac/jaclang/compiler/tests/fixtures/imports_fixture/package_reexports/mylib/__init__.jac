@@ -1,7 +1,4 @@
-import from .core {
-    CORE_VALUE,
-    core_function
-}
+import from .core { CORE_VALUE, core_function }
 import from .utils { UTIL_VALUE, util_function }
 
 # Package-level constant

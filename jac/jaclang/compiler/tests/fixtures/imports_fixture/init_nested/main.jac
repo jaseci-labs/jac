@@ -1,10 +1,4 @@
-import from database {
-    User,
-    Post,
-    connect,
-    disconnect,
-    DB_VERSION
-}
+import from database { User, Post, connect, disconnect, DB_VERSION }
 
 import from database.models { Comment }
 

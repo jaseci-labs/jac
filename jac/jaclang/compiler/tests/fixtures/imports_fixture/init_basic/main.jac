@@ -1,8 +1,4 @@
-import from mypackage {
-    PACKAGE_NAME,
-    greet,
-    Helper
-}
+import from mypackage { PACKAGE_NAME, greet, Helper }
 
 with entry {
     print(f"Init basic - PACKAGE_NAME: {PACKAGE_NAME}");

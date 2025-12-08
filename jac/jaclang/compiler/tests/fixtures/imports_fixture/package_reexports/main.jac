@@ -1,9 +1,4 @@
-import from mylib {
-    CORE_VALUE,
-    core_function,
-    UTIL_VALUE,
-    PACKAGE_VERSION
-}
+import from mylib { CORE_VALUE, core_function, UTIL_VALUE, PACKAGE_VERSION }
 
 with entry {
     print(f"Package module import - CORE_VALUE: {CORE_VALUE}");

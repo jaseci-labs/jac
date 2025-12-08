@@ -1,7 +1,4 @@
-import from mypackage {
-    HELPER_VALUE,
-    helper_func
-}
+import from mypackage { HELPER_VALUE, helper_func }
 
 with entry {
     print(f"Package from-import - HELPER_VALUE: {HELPER_VALUE}");

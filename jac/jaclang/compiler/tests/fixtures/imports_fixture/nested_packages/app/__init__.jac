@@ -1,4 +1,1 @@
-import from .constants {
-    APP_NAME,
-    VERSION
-}
+import from .constants { APP_NAME, VERSION }

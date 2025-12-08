@@ -1,9 +1,4 @@
-import from .operations {
-    add,
-    subtract,
-    multiply,
-    divide
-}
+import from .operations { add, subtract, multiply, divide }
 import from .constants { PI }
 
 obj Calculator {
