@@ -4,7 +4,7 @@
 
 ---
 
-## Current Status (Updated: December 2024)
+## Current Status (Updated: December 7, 2024)
 
 ### Phase 1 Progress: ✅ Significant Progress
 
@@ -21,6 +21,28 @@
 | `type_system/operations.py` | 164 | ✅ **CONVERTED** | Now `operations.jac` |
 | `type_system/type_evaluator.py` | ~1,500 | ✅ **CONVERTED** | Now `type_evaluator.jac` |
 | `runtimelib/client_runtime.jac` | ~700 | ✅ **CREATED** | New client runtime module |
+| `runtimelib/utils.py` | 251 | 🚫 **BLOCKED** | Circular import - `read_file_with_encoding` moved to `compiler/utils.py` |
+| `runtimelib/builtin.py` | 113 | 🚫 **BLOCKED** | Circular import during type eval chain |
+
+### Infrastructure Restructuring (December 7, 2024)
+
+To break circular dependencies and enable more modules to be converted, the following restructuring was completed:
+
+1. **Created `compiler/utils.py`** - Pure Python utilities with no runtimelib dependencies
+   - Moved `read_file_with_encoding()` from `runtimelib/utils.py`
+   - This breaks the circular dependency: `program.py` → `runtimelib/utils.py` → (requires runtime to compile .jac)
+
+2. **Updated `compiler/program.py`** - Now imports from `compiler/utils.py` instead of `runtimelib/utils.py`
+
+3. **Updated `compiler/passes/main/import_pass.py`** - Made `read_file_with_encoding` import lazy (inside function)
+
+4. **Updated `runtimelib/utils.py`** - Added re-export for backward compatibility
+
+5. **Made `runtimelib/runtime.py` imports lazy**:
+   - Added `_LazyThreadPoolDescriptor` class for lazy `ThreadPoolExecutor` initialization
+   - Made `tempfile` import lazy (inside function)
+   - Added `ThreadPoolExecutor` and `BaseHTTPRequestHandler` to `TYPE_CHECKING` block
+   - This reduces the import footprint during bootstrap
 
 ### Key Infrastructure Completed
 
@@ -38,6 +60,21 @@
    - `utils/log.py`, `utils/helpers.py` - imported early by transform.py
    - Core compiler pipeline files (SymTabBuildPass, PyastGenPass, PyBytecodeGenPass)
    - Passes in compilation schedule cannot be converted without pre-compilation
+
+### Additional Bootstrap Chain Dependencies (December 2024)
+
+The following modules have been identified as part of the bootstrap chain and **cannot be converted** without pre-compilation infrastructure:
+
+1. **`runtimelib/utils.py`** - Contains `read_file_with_encoding` which is imported at module level by:
+   - `compiler/program.py` (line 24)
+   - `compiler/passes/main/import_pass.py` (line 26)
+
+   These imports happen during Jac compilation, creating a circular dependency when trying to compile `utils.jac`.
+
+2. **`runtimelib/builtin.py`** - Imports from `jaclang.runtimelib.runtime` which triggers type evaluation chain:
+   - When `builtin.jac` is compiled, it imports `runtime`
+   - Runtime triggers type evaluation → `type_evaluator.jac` → `types.jac`
+   - This creates circular import during the module initialization phase
 
 ### Critical Discovery: Pass Conversion Limitations
 

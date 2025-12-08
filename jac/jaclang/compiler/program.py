@@ -21,7 +21,7 @@ from jaclang.compiler.passes.main import (
 
 # Tool passes are imported lazily to allow doc_ir.py to be converted to Jac
 from jaclang.compiler.tsparser import TypeScriptParser
-from jaclang.runtimelib.utils import read_file_with_encoding
+from jaclang.compiler.utils import read_file_with_encoding
 from jaclang.settings import settings
 
 if TYPE_CHECKING:

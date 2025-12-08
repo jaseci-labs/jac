@@ -11,36 +11,11 @@ from typing import TYPE_CHECKING
 
 import jaclang.compiler.unitree as uni
 
+# Re-export from compiler.utils for backward compatibility
+from jaclang.compiler.utils import read_file_with_encoding
+
 if TYPE_CHECKING:
     from jaclang.runtimelib.constructs import NodeArchetype
-
-
-def read_file_with_encoding(file_path: str) -> str:
-    """Read file with proper encoding detection."""
-    encodings_to_try = [
-        "utf-8-sig",
-        "utf-8",
-        "utf-16",
-        "utf-16le",
-        "utf-16be",
-        # "latin-1", # TODO: Support reading files with Latin-1 encoding
-    ]
-
-    for encoding in encodings_to_try:
-        try:
-            with open(file_path, encoding=encoding) as f:
-                return f.read()
-        except UnicodeError:
-            continue
-        except Exception as e:
-            raise OSError(
-                f"Could not read file {file_path}: {e}. Report this issue: https://github.com/jaseci-labs/jaseci/issues"
-            ) from e
-
-    raise OSError(
-        f"Could not read file {file_path} with any encoding. "
-        f"Report this issue: https://github.com/jaseci-labs/jaseci/issues"
-    )
 
 
 @contextmanager

@@ -4,17 +4,87 @@ from __future__ import annotations
 
 import json
 from abc import abstractmethod
-from typing import ClassVar, override
+from typing import TYPE_CHECKING, Any, ClassVar, override
 
-from jaclang.runtimelib.constructs import AccessLevel, NodeArchetype
-from jaclang.runtimelib.runtime import JacRuntimeInterface as Jac
-from jaclang.runtimelib.utils import collect_node_connections
+if TYPE_CHECKING:
+    from jaclang.runtimelib.constructs import AccessLevel, NodeArchetype
 
-# Create module level constants for easier access
-NoPerm = AccessLevel.NO_ACCESS
-ReadPerm = AccessLevel.READ
-ConnectPerm = AccessLevel.CONNECT
-WritePerm = AccessLevel.WRITE
+
+def _get_jac() -> Any:
+    """Lazily get JacRuntimeInterface."""
+    from jaclang.runtimelib.runtime import JacRuntimeInterface
+
+    return JacRuntimeInterface
+
+
+def _get_access_level() -> Any:
+    """Lazily get AccessLevel enum."""
+    from jaclang.runtimelib.constructs import AccessLevel
+
+    return AccessLevel
+
+
+def _get_jid() -> Any:
+    """Get jid lazily."""
+    return _get_jac().object_ref
+
+
+def _get_jobj() -> Any:
+    """Get jobj lazily."""
+    return _get_jac().get_object
+
+
+def _get_grant() -> Any:
+    """Get grant lazily."""
+    return _get_jac().perm_grant
+
+
+def _get_revoke() -> Any:
+    """Get revoke lazily."""
+    return _get_jac().perm_revoke
+
+
+def _get_allroots() -> Any:
+    """Get allroots lazily."""
+    return _get_jac().get_all_root
+
+
+def _get_save() -> Any:
+    """Get save lazily."""
+    return _get_jac().save
+
+
+def _get_commit() -> Any:
+    """Get commit lazily."""
+    return _get_jac().commit
+
+
+# Create module level constants for easier access using __getattr__
+def __getattr__(name: str) -> Any:
+    """Lazily resolve module-level attributes."""
+    if name == "NoPerm":
+        return _get_access_level().NO_ACCESS
+    elif name == "ReadPerm":
+        return _get_access_level().READ
+    elif name == "ConnectPerm":
+        return _get_access_level().CONNECT
+    elif name == "WritePerm":
+        return _get_access_level().WRITE
+    elif name == "jid":
+        return _get_jid()
+    elif name == "jobj":
+        return _get_jobj()
+    elif name == "grant":
+        return _get_grant()
+    elif name == "revoke":
+        return _get_revoke()
+    elif name == "allroots":
+        return _get_allroots()
+    elif name == "save":
+        return _get_save()
+    elif name == "commit":
+        return _get_commit()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def printgraph(
@@ -29,7 +99,7 @@ def printgraph(
     format: str = "dot",
 ) -> str:
     """Print the graph in different formats."""
-    from jaclang.runtimelib.runtime import JacRuntimeInterface as Jac
+    Jac = _get_jac()
 
     fmt = format.lower()
     if fmt == "json":
@@ -48,17 +118,11 @@ def printgraph(
     )
 
 
-jid = Jac.object_ref
-jobj = Jac.get_object
-grant = Jac.perm_grant
-revoke = Jac.perm_revoke
-allroots = Jac.get_all_root
-save = Jac.save
-commit = Jac.commit
-
-
 def _jac_graph_json(file: str | None = None) -> str:
     """Get the graph in json string."""
+    from jaclang.runtimelib.utils import collect_node_connections
+
+    Jac = _get_jac()
     visited_nodes: set = set()
     connections: set = set()
     edge_ids: set = set()

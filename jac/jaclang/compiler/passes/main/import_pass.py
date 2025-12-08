@@ -23,7 +23,6 @@ import os
 
 import jaclang.compiler.unitree as uni
 from jaclang.compiler.passes import Transform, UniPass
-from jaclang.runtimelib.utils import read_file_with_encoding
 from jaclang.utils.log import logging
 
 logger = logging.getLogger(__name__)
@@ -104,6 +103,8 @@ class JacImportDepsPass(Transform[uni.Module, uni.Module]):
                 return self.prog.mod.hub[jac_init_path]
             return self.prog.compile(file_path=jac_init_path)
         elif os.path.exists(py_init_path := os.path.join(target, "__init__.py")):
+            from jaclang.compiler.utils import read_file_with_encoding
+
             file_source = read_file_with_encoding(py_init_path)
             mod = uni.Module.make_stub(
                 inject_name=target.split(os.path.sep)[-1],
