@@ -2027,13 +2027,13 @@ class JacTTGGenerator:
 
         @classmethod
         def filter_neighbors(
-            cls, node_idx: int, visit: JacTTGGenerator.VisitType
+            cls, node: NodeArchetype, visit: JacTTGGenerator.VisitType
         ) -> list[NodeArchetype]:
             """Filter neighbors with caching."""
-            key = (node_idx, visit)
+            key = (node, visit)
             if key in cls.cache:
                 return cls.cache[key]
-            result = cls._filter_neighbors(node_idx, visit)
+            result = cls._filter_neighbors(node, visit)
             cls.cache[key] = result
             return result
 
