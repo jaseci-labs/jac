@@ -64,8 +64,7 @@ def cluster_type() -> str:
                 return "aws"
 
         return "local"
-    except Exception as exc:
-        print(f"Warning: Failed to detect cluster type: {exc}")
+    except Exception:
         return "local"
 
 
@@ -298,8 +297,6 @@ def deploy_k8(
     cluster_env = cluster_type()
     is_aws = cluster_env == "aws"
     service_type = "LoadBalancer" if is_aws else "NodePort"
-    print(f"Detected cluster type: {cluster_env.upper()}")
-    print(f"Using service type: {service_type}")
     # -------------------
     # Define MongoDB deployment/service (if needed)
     # -------------------
@@ -381,7 +378,6 @@ def deploy_k8(
         ]
         init_containers.append(build_container)
         if "requirements.txt" in os.listdir(code_folder):
-            print("requirements.txt exists")
             install_part = (
                 f"pip install -r /app/requirements.txt && jac serve {file_name}"
             )
@@ -485,8 +481,6 @@ def deploy_k8(
     # Deploy MongoDB (if enabled)
     # -------------------
     if mongodb_enabled:
-        print("Checking MongoDB status...")
-
         try:
             apps_v1.read_namespaced_stateful_set(name=mongodb_name, namespace=namespace)
         except ApiException as e:
@@ -513,8 +507,6 @@ def deploy_k8(
     # Deploy Redis (if enabled)
     # -------------------
     if redis_enabled:
-        print("Checking Redis status...")
-
         try:
             apps_v1.read_namespaced_deployment(name=redis_name, namespace=namespace)
         except ApiException as e:
@@ -551,13 +543,6 @@ def deploy_k8(
             f"Run 'kubectl get svc {app_name}-service -n {namespace}' to get the NLB endpoint."
         )
     else:
-        print(
-            f"NodePort service created. Access the application via: <node-ip>:{node_port}"
-        )
-        print(
-            f"Run 'kubectl get svc {app_name}-service -n {namespace}' to get the service endpoint."
-        )
-
         # Check deployment status for NodePort
         if check_deployment_status(node_port, path):
             print(
