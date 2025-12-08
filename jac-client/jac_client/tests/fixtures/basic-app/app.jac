@@ -8,7 +8,7 @@ cl obj ButtonProps {
 }
 
 cl def app() {
-    let props = ButtonProps(label="Tap Me", color="primary");
+    props = ButtonProps(label="Tap Me", color="primary");
     return <div class="app">
         <h1>
             {API_LABEL}

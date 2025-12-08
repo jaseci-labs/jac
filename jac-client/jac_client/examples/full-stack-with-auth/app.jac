@@ -54,8 +54,8 @@ walker toggle_todo {
 cl {
     # Navigation
     def Navigation()  -> any {
-        let isLoggedIn = jacIsLoggedIn();
-        let navigate = useNavigate();
+        isLoggedIn = jacIsLoggedIn();
+        navigate = useNavigate();
 
         def handleLogout(e: any) -> None {
             e.preventDefault();
@@ -139,10 +139,10 @@ cl {
 
     # Login Page
     def LoginPage()  -> any {
-        let [username, setUsername] = useState("");
-        let [password, setPassword] = useState("");
-        let [error, setError] = useState("");
-        let navigate = useNavigate();
+        [username, setUsername] = useState("");
+        [password, setPassword] = useState("");
+        [error, setError] = useState("");
+        navigate = useNavigate();
 
         async def handleLogin(e: any) -> None {
             e.preventDefault();
@@ -167,7 +167,7 @@ cl {
             setPassword(e.target.value);
         }
 
-        let errorDisplay = None;
+        errorDisplay = None;
         if error {
             errorDisplay = <div
                 style={{"color": "#dc2626", "fontSize": "14px", "marginBottom": "10px"}}
@@ -265,10 +265,10 @@ cl {
 
     # Signup Page
     def SignupPage()  -> any {
-        let [username, setUsername] = useState("");
-        let [password, setPassword] = useState("");
-        let [error, setError] = useState("");
-        let navigate = useNavigate();
+        [username, setUsername] = useState("");
+        [password, setPassword] = useState("");
+        [error, setError] = useState("");
+        navigate = useNavigate();
 
         async def handleSignup(e: any) -> None {
             e.preventDefault();
@@ -293,7 +293,7 @@ cl {
             setPassword(e.target.value);
         }
 
-        let errorDisplay = None;
+        errorDisplay = None;
         if error {
             errorDisplay = <div
                 style={{"color": "#dc2626", "fontSize": "14px", "marginBottom": "10px"}}
@@ -391,9 +391,9 @@ cl {
 
     # TodoInput Component
     def TodoInput(props: any) -> any {
-        let input = props.input;
-        let setInput = props.setInput;
-        let addTodo = props.addTodo;
+        input = props.input;
+        setInput = props.setInput;
+        addTodo = props.addTodo;
 
         return <div
             style={{"display": "flex", "gap": "8px", "marginBottom": "16px"}}
@@ -432,8 +432,8 @@ cl {
 
     # TodoFilters Component
     def TodoFilters(props: any) -> any {
-        let filter = props.filter;
-        let setFilter = props.setFilter;
+        filter = props.filter;
+        setFilter = props.setFilter;
 
         return <div
             style={{"display": "flex", "gap": "8px", "marginBottom": "16px"}}
@@ -485,9 +485,9 @@ cl {
 
     # TodoItem Component
     def TodoItem(props: any) -> any {
-        let todo = props.todo;
-        let toggleTodo = props.toggleTodo;
-        let deleteTodo = props.deleteTodo;
+        todo = props.todo;
+        toggleTodo = props.toggleTodo;
+        deleteTodo = props.deleteTodo;
 
         return <div
             key={todo._jac_id}
@@ -533,9 +533,9 @@ cl {
 
     # TodoList Component
     def TodoList(props: any) -> any {
-        let filteredTodos = props.filteredTodos;
-        let toggleTodo = props.toggleTodo;
-        let deleteTodo = props.deleteTodo;
+        filteredTodos = props.filteredTodos;
+        toggleTodo = props.toggleTodo;
+        deleteTodo = props.deleteTodo;
 
         if filteredTodos.length == 0 {
             return <div
@@ -564,9 +564,9 @@ cl {
             return <Navigate to="/login" />;
         }
 
-        let [todos, setTodos] = useState([]);
-        let [input, setInput] = useState("");
-        let [filter, setFilter] = useState("all");
+        [todos, setTodos] = useState([]);
+        [input, setInput] = useState("");
+        [filter, setFilter] = useState("all");
 
         # Load todos on mount
         useEffect(

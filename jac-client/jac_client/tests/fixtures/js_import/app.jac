@@ -5,10 +5,10 @@ cl import from .utils { formatMessage, calculateSum, JS_CONSTANT, MessageFormatt
 cl let JS_IMPORT_LABEL: str = "JavaScript Import Test";
 
 cl def JsImportTest()  -> any {
-    let greeting = formatMessage("Jac");
-    let sum = calculateSum(5, 3);
-    let formatter = MessageFormatter("JS");
-    let formatted = formatter.format("Hello from JS class");
+    greeting = formatMessage("Jac");
+    sum = calculateSum(5, 3);
+    formatter = MessageFormatter("JS");
+    formatted = formatter.format("Hello from JS class");
 
     return <div class="js-import-test">
         <h1>

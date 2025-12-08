@@ -207,7 +207,7 @@ walker load_feed(visit_profile) {
 # ===================================================================
 
 # Reactive state management
-cl let [appState, setAppState] = createState(
+cl [appState, setAppState] = createState(
     {"tweets": [], "loading": False}
 );
 
