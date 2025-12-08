@@ -117,7 +117,9 @@ def cleanup_k8_resources() -> None:
     delete_if_exists(
         core_v1.delete_namespaced_service, f"{redis_name}-service", namespace, "Service"
     )
-
+    delete_if_exists(
+        core_v1.delete_namespaced_pod, f"{app_name}-code-sync", namespace, "Pod"
+    )
     # Delete all PVCs for this app
     pvcs = core_v1.list_namespaced_persistent_volume_claim(namespace)
     for pvc in pvcs.items:
