@@ -63,30 +63,34 @@ impl BaseLLM.log_info(message: str) -> None {
     # FIXME: The logger.info will not always log so for now I'm printing to stdout
     # remove and log properly.
     if bool(self.config.get("verbose", False)) {
-        logger.info(message);  # print(message);
+        logger.info(message);
     }
 }
 
 impl BaseLLM.format_prompt(params: dict) -> str {
+    MAGENTA = "\033[95m";
+    RESET = "\033[0m";
     log_params = params.copy();
     if log_params.get("api_key") {
         log_params["api_key"] = "*" * len(log_params["api_key"]);
     }
-    #         log = f"""
-    # [SYSTEM]
-    # {log_params["messages"][0]["content"]}
-    # [USER]
-    # {log_params["messages"][1]["content"][0]['text']}
-    # [TOOLS]
-    # {log_params.get("tools")}
-
-    # [RESPONSE FORMAT]
-    # {json.dumps(
-    #             log_params.get("response_format"), indent=2, ensure_ascii=False
-    #         )}
-    #         """;
-    #         return log;
-    return json.dumps(log_params, indent=2, ensure_ascii=False);
+    log = f"""
+    {MAGENTA}[SYSTEM]{RESET}
+    {log_params["messages"][0]["content"]}
+    {MAGENTA}[USER]{RESET}
+    {log_params["messages"][1]["content"][0]['text']}
+    {MAGENTA}[TOOL]{RESET}
+    {log_params["messages"][3]["content"]
+    if len(log_params["messages"]) > 3
+    else "No tools provided."}
+    {" "}
+    {MAGENTA}[TOOLS]{RESET}
+    {json.dumps(log_params.get("tools"), indent=2, ensure_ascii=False)
+    if log_params.get("tools")
+    else ""}
+    {MAGENTA}[RESPONSE FORMAT]{RESET}
+    {json.dumps(log_params.get("response_format"), indent=2, ensure_ascii=False)}""";
+    return log;
 }
 
 impl BaseLLM.dispatch_no_streaming(mtir: MTIR) -> CompletionResult {
@@ -105,7 +109,7 @@ impl BaseLLM.dispatch_no_streaming(mtir: MTIR) -> CompletionResult {
     message: LiteLLMMessage = response.choices[0].message;  # type: ignore
     mtir.add_message(message);
     output_content: str = message.content or "";  # type: ignore
-    self.log_info(f"LLM call completed with response:\n{output_content}");
+    self.log_info(f"LLM call completed with response:{output_content}");
     output_value = mtir.parse_response(output_content);
     tool_calls: list[ToolCall] = [];
     for tool_call in message.tool_calls or [] {  # type: ignore
