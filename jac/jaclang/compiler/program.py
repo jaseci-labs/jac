@@ -22,7 +22,6 @@ from jaclang.compiler.passes.main import (
 # Tool passes are imported lazily to allow doc_ir.py to be converted to Jac
 from jaclang.compiler.tsparser import TypeScriptParser
 from jaclang.compiler.utils import read_file_with_encoding
-from jaclang.settings import settings
 
 if TYPE_CHECKING:
     from jaclang.compiler.type_system.type_evaluator import TypeEvaluator
@@ -193,11 +192,6 @@ class JacProgram:
         # If the module has syntax errors, we skip code generation.
         if (not mod_targ.has_syntax_errors) and (not no_cgen):
             codegen_sched = get_py_code_gen()
-            if settings.predynamo_pass:
-                from jaclang.compiler.passes.main import PreDynamoPass
-
-                if PreDynamoPass not in codegen_sched:
-                    codegen_sched.insert(0, PreDynamoPass)
             self.run_schedule(
                 mod=mod_targ, passes=codegen_sched, cancel_token=cancel_token
             )

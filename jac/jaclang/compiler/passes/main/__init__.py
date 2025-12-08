@@ -23,7 +23,6 @@ _LAZY_PASSES = {
     "CFGBuildPass": ".cfg_build_pass",
     "DeclImplMatchPass": ".def_impl_match_pass",
     "JacImportDepsPass": ".import_pass",
-    "PreDynamoPass": ".predynamo_pass",
     "PyJacAstLinkPass": ".pyjac_ast_link_pass",
     "SemDefMatchPass": ".sem_def_match_pass",
     "SemanticAnalysisPass": ".semantic_analysis_pass",
@@ -40,7 +39,6 @@ if TYPE_CHECKING:
     from .def_impl_match_pass import DeclImplMatchPass as DeclImplMatchPass
     from .def_use_pass import DefUsePass as DefUsePass
     from .import_pass import JacImportDepsPass as JacImportDepsPass
-    from .predynamo_pass import PreDynamoPass as PreDynamoPass
     from .pyjac_ast_link_pass import PyJacAstLinkPass as PyJacAstLinkPass
     from .sem_def_match_pass import SemDefMatchPass as SemDefMatchPass
     from .semantic_analysis_pass import SemanticAnalysisPass as SemanticAnalysisPass
@@ -78,7 +76,6 @@ __all__ = [
     "SemDefMatchPass",
     "PyastBuildPass",
     "PyastGenPass",
-    "PreDynamoPass",
     "PyBytecodeGenPass",
     "CFGBuildPass",
     "PyJacAstLinkPass",
