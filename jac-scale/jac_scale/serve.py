@@ -1,9 +1,12 @@
 import mimetypes
 from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
+import jwt
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 from jac_scale.jserver.jfast_api import JFastApiServer
 from jac_scale.jserver.jserver import APIParameter, HTTPMethod, JEndPoint, ParameterType
@@ -11,8 +14,30 @@ from jaclang.runtimelib.runtime import JacRuntime as Jac
 from jaclang.runtimelib.server import JacAPIServer as JServer
 from jaclang.runtimelib.server import JsonValue
 
+JWT_SECRET = "supersecretkey"
+JWT_ALGORITHM = "HS256"
+JWT_EXP_DELTA_DAYS = 7
+
 
 class JacAPIServer(JServer):
+    @staticmethod
+    def create_jwt_token(username: str) -> str:
+        now = datetime.now(UTC)  # UTC time
+        payload: dict[str, Any] = {
+            "username": username,
+            "exp": now + timedelta(days=JWT_EXP_DELTA_DAYS),
+            "iat": now,
+        }
+        return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+    @staticmethod
+    def validate_jwt_token(token: str) -> str | None:
+        try:
+            decoded = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+            return decoded["username"]
+        except Exception:
+            return None
+
     def __init__(
         self,
         module_name: str,
@@ -32,9 +57,20 @@ class JacAPIServer(JServer):
             allow_headers=["*"],  # Allows all headers
         )
 
-    def login(self, email: str, password: str) -> tuple[int, JsonValue]:
-        res = self.auth_handler.login(email, password)
-        return res.status, res.body
+    def login(self, email: str, password: str) -> JSONResponse:
+        if not email or not password:
+            return JSONResponse(
+                status_code=400, content={"error": "Email and password required"}
+            )
+
+        result = self.user_manager.authenticate(email, password)
+        if not result:
+            return JSONResponse(
+                status_code=401, content={"error": "Invalid credentials"}
+            )
+
+        result["token"] = self.create_jwt_token(email)
+        return JSONResponse(status_code=200, content=dict[str, JsonValue](result))
 
     def register_login_endpoint(self) -> None:
         self.server_impl.add_endpoint(
@@ -67,9 +103,13 @@ class JacAPIServer(JServer):
             )
         )
 
-    def create_user(self, email: str, password: str) -> tuple[int, JsonValue]:
-        res = self.auth_handler.create_user(email, password)
-        return res.status, res.body
+    def create_user(self, email: str, password: str) -> JSONResponse:
+        res = self.user_manager.create_user(email, password)
+        if "error" in res:
+            return JSONResponse(content=res, status_code=400)
+
+        res["token"] = self.create_jwt_token(email)
+        return JSONResponse(content=res, status_code=201)
 
     def register_create_user_endpoint(self) -> None:
         self.server_impl.add_endpoint(
@@ -105,24 +145,32 @@ class JacAPIServer(JServer):
     def create_walker_callback(
         self, walker_name: str, has_node_param: bool = False
     ) -> Callable[..., dict[str, JsonValue]]:
+        requires_auth = self.introspector.is_auth_required_for_walker(walker_name)
+
         def callback(
             node: str | None = None, **kwargs: JsonValue
         ) -> dict[str, JsonValue]:
+            username: str | None = None
+
+            if requires_auth:
+                authorization = kwargs.pop("Authorization", None)
+
+                token: str | None = None
+                if (
+                    authorization
+                    and isinstance(authorization, str)
+                    and authorization.startswith("Bearer ")
+                ):
+                    token = authorization[7:]  # Remove "Bearer " prefix
+
+                username = self.validate_jwt_token(token) if token else None
+                if not username:
+                    return {"error": "Unauthorized", "status": 401}
+
             if node:
                 kwargs["_jac_spawn_node"] = node
             return self.execution_manager.spawn_walker(
-                self.get_walkers()[walker_name], kwargs, "__guest__"
-            )
-
-        return callback
-
-    def create_function_callback(
-        self, func_name: str
-    ) -> Callable[..., dict[str, JsonValue]]:
-        def callback(**kwargs: JsonValue) -> dict[str, JsonValue]:
-            print(f"Executing function '{func_name}' with params: {kwargs}")
-            return self.execution_manager.execute_function(
-                self.get_functions()[func_name], kwargs, "__guest__"
+                self.get_walkers()[walker_name], kwargs, username or "__guest__"
             )
 
         return callback
@@ -131,6 +179,20 @@ class JacAPIServer(JServer):
         self, walker_name: str, invoke_on_root: bool
     ) -> list[APIParameter]:
         parameters: list[APIParameter] = []
+
+        # Only add Authorization header if walker requires authentication
+        if self.introspector.is_auth_required_for_walker(walker_name):
+            parameters.append(
+                APIParameter(
+                    name="Authorization",
+                    data_type="string",
+                    required=False,
+                    default=None,
+                    description="Bearer token for authentication",
+                    type=ParameterType.HEADER,
+                )
+            )
+
         walker_fields = self.introspector.introspect_walker(
             self.get_walkers()[walker_name]
         )["fields"]
@@ -155,8 +217,88 @@ class JacAPIServer(JServer):
             )
         return parameters
 
+    def register_walkers_endpoints(self) -> None:
+        for walker_name in self.get_walkers():
+            self.server_impl.add_endpoint(
+                JEndPoint(
+                    method=HTTPMethod.POST,
+                    path=f"/walker/{walker_name}/{{node}}",
+                    callback=self.create_walker_callback(
+                        walker_name, has_node_param=True
+                    ),
+                    parameters=self.create_walker_parameters(
+                        walker_name, invoke_on_root=False
+                    ),
+                    response_model=None,
+                    tags=["Walkers"],
+                    summary="API Entry",
+                    description="API Entry",
+                )
+            )
+            self.server_impl.add_endpoint(
+                JEndPoint(
+                    method=HTTPMethod.POST,
+                    path=f"/walker/{walker_name}",
+                    callback=self.create_walker_callback(
+                        walker_name, has_node_param=False
+                    ),
+                    parameters=self.create_walker_parameters(
+                        walker_name, invoke_on_root=True
+                    ),
+                    response_model=None,
+                    tags=["Walkers"],
+                    summary="API Root",
+                    description="API Root",
+                )
+            )
+
+    def create_function_callback(
+        self, func_name: str
+    ) -> Callable[..., dict[str, JsonValue]]:
+        requires_auth = self.introspector.is_auth_required_for_function(func_name)
+
+        def callback(**kwargs: JsonValue) -> dict[str, JsonValue]:
+            username: str | None = None
+
+            if requires_auth:
+                # Extract and validate authorization header
+                authorization = kwargs.pop("Authorization", None)
+
+                token: str | None = None
+                if (
+                    authorization
+                    and isinstance(authorization, str)
+                    and authorization.startswith("Bearer ")
+                ):
+                    token = authorization[7:]  # Remove "Bearer " prefix
+
+                username = self.validate_jwt_token(token) if token else None
+                if not username:
+                    return {"error": "Unauthorized", "status": 401}
+
+            print(f"Executing function '{func_name}' with params: {kwargs}")
+            return self.execution_manager.execute_function(
+                self.get_functions()[func_name], kwargs, username or "__guest__"
+            )
+
+        return callback
+
     def create_function_parameters(self, func_name: str) -> list[APIParameter]:
         parameters: list[APIParameter] = []
+
+        # Only add Authorization header if function requires authentication
+        if self.introspector.is_auth_required_for_function(func_name):
+            parameters.append(
+                APIParameter(
+                    name="Authorization",
+                    data_type="string",
+                    required=False,
+                    default=None,
+                    description="Bearer token for authentication",
+                    type=ParameterType.HEADER,
+                )
+            )
+
         func_fields = self.introspector.introspect_callable(
             self.get_functions()[func_name]
         )["parameters"]
@@ -171,6 +313,21 @@ class JacAPIServer(JServer):
                 )
             )
         return parameters
+
+    def register_functions_endpoints(self) -> None:
+        for func_name in self.get_functions():
+            self.server_impl.add_endpoint(
+                JEndPoint(
+                    method=HTTPMethod.GET,
+                    path=f"/function/{func_name}",
+                    callback=self.create_function_callback(func_name),
+                    parameters=self.create_function_parameters(func_name),
+                    response_model=None,
+                    tags=["Functions"],
+                    summary="This is a summary",
+                    description="This is a description",
+                )
+            )
 
     def render_page_callback(self) -> Callable[..., HTMLResponse]:
         """Create callback that extracts all query parameters from FastAPI Request."""
@@ -419,6 +576,71 @@ class JacAPIServer(JServer):
             media_type="text/plain",
         )
 
+    def _configure_openapi_security(self) -> None:
+        """Configure OpenAPI security scheme to only apply to walker endpoints that require auth."""
+        from fastapi.openapi.utils import get_openapi
+
+        def custom_openapi() -> dict[str, Any]:
+            if self.server_impl.app.openapi_schema:
+                return self.server_impl.app.openapi_schema
+
+            openapi_schema = get_openapi(
+                title=self.server_impl.app.title,
+                version=self.server_impl.app.version,
+                routes=self.server_impl.app.routes,
+            )
+
+            # Add Bearer token security scheme
+            openapi_schema["components"] = openapi_schema.get("components", {})
+            openapi_schema["components"]["securitySchemes"] = {
+                "BearerAuth": {
+                    "type": "http",
+                    "scheme": "bearer",
+                    "bearerFormat": "JWT",
+                    "description": "Enter your JWT token (without 'Bearer ' prefix)",
+                }
+            }
+
+            # Apply security only to walker and function endpoints that require authentication
+            for path, path_item in openapi_schema.get("paths", {}).items():
+                if path.startswith("/walker/"):
+                    # Extract walker name from path (e.g., /walker/MyWalker or /walker/MyWalker/{node})
+                    path_parts = path.split("/")
+                    if len(path_parts) >= 3:
+                        walker_name = path_parts[2].split("{")[0].rstrip("/")
+                        # Check if this walker requires authentication
+                        if (
+                            walker_name in self.get_walkers()
+                            and self.introspector.is_auth_required_for_walker(
+                                walker_name
+                            )
+                        ):
+                            # Apply security to all methods in this path
+                            for method in path_item:
+                                if method in ["get", "post", "put", "patch", "delete"]:
+                                    path_item[method]["security"] = [{"BearerAuth": []}]
+                elif path.startswith("/function/"):
+                    # Extract function name from path (e.g., /function/my_function)
+                    path_parts = path.split("/")
+                    if len(path_parts) >= 3:
+                        func_name = path_parts[2]
+                        # Check if this function requires authentication
+                        if (
+                            func_name in self.get_functions()
+                            and self.introspector.is_auth_required_for_function(
+                                func_name
+                            )
+                        ):
+                            # Apply security to all methods in this path
+                            for method in path_item:
+                                if method in ["get", "post", "put", "patch", "delete"]:
+                                    path_item[method]["security"] = [{"BearerAuth": []}]
+
+            self.server_impl.app.openapi_schema = openapi_schema
+            return openapi_schema
+
+        self.server_impl.app.openapi = custom_openapi
+
     def start(self) -> None:
         self.introspector.load()
 
@@ -427,62 +649,16 @@ class JacAPIServer(JServer):
         self.register_page_endpoint()
         self.register_client_js_endpoint()
         self.register_static_file_endpoint()
-
-        # Register endpoints for each walker
-        for walker_name in self.get_walkers():
-            self.server_impl.add_endpoint(
-                JEndPoint(
-                    method=HTTPMethod.POST,
-                    path=f"/walker/{walker_name}/{{node}}",
-                    callback=self.create_walker_callback(
-                        walker_name, has_node_param=True
-                    ),
-                    parameters=self.create_walker_parameters(
-                        walker_name, invoke_on_root=False
-                    ),
-                    response_model=None,
-                    tags=["Walkers"],
-                    summary="API Entry",
-                    description="API Entry",
-                )
-            )
-            self.server_impl.add_endpoint(
-                JEndPoint(
-                    method=HTTPMethod.POST,
-                    path=f"/walker/{walker_name}",
-                    callback=self.create_walker_callback(
-                        walker_name, has_node_param=False
-                    ),
-                    parameters=self.create_walker_parameters(
-                        walker_name, invoke_on_root=True
-                    ),
-                    response_model=None,
-                    tags=["Walkers"],
-                    summary="API Root",
-                    description="API Root",
-                )
-            )
-
-        # Register endpoints for each function
-        for func_name in self.get_functions():
-            self.server_impl.add_endpoint(
-                JEndPoint(
-                    method=HTTPMethod.GET,
-                    path=f"/function/{func_name}",
-                    callback=self.create_function_callback(func_name),
-                    parameters=self.create_function_parameters(func_name),
-                    response_model=None,
-                    tags=["Functions"],
-                    summary="This is a summary",
-                    description="This is a description",
-                )
-            )
-
-        if "__guest__" not in self.user_manager._users:
-            self.user_manager.create_user("__guest__", "__no_password__")
+        self.register_walkers_endpoints()
+        self.register_functions_endpoints()
 
         # Register root asset endpoint LAST (catch-all for files like /img.png)
         # Must be registered after all other endpoints to avoid conflicts
         self.register_root_asset_endpoint()
+
+        # Configure OpenAPI security scheme after all routes are registered
+        self._configure_openapi_security()
+
+        self.user_manager.create_user("__guest__", "__no_password__")
 
         self.server_impl.run_server()
