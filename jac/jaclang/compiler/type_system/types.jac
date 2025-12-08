@@ -14,41 +14,41 @@ with entry {
 """Enumeration of type categories."""
 class TypeCategory(IntEnum) {
     with entry {
-        let Unbound = auto();
-        let Unknown = auto();
-        let Never = auto();
-        let Any = auto();
-        let Module = auto();
-        let TypeVar = auto();
-        let Class = auto();
-        let Function = auto();
-        let Union = auto();
+        Unbound = auto();
+        Unknown = auto();
+        Never = auto();
+        Any = auto();
+        Module = auto();
+        TypeVar = auto();
+        Class = auto();
+        Function = auto();
+        Union = auto();
     }
 }
 
 """Flags to set on a type.\n\n    foo = 42  # <-- Here type of foo is `int` class, Instance type.\n    foo = int # <-- Here type of foo is `type[int]`, Instantiable is set.\n    foo: int = 42\n         ^^^------- Here the type of the expression `int` is `type[int]`\n                    That is same as the prefetched int_class that has the\n                    flag Instantiable set.\n\n                    calling convertToInstance() will return the same type\n                    with Instance flag set.\n    """
 class TypeFlags(IntEnum) {
     with entry {
-        let Null = 0;
-        let Instantiable = 1 << 0;
-        let Instance = 1 << 1;
-        let Ambiguous = 1 << 2;
+        Null = 0;
+        Instantiable = 1 << 0;
+        Instance = 1 << 1;
+        Ambiguous = 1 << 2;
     }
 }
 
 """Enumeration of parameter categories."""
 class ParameterCategory(IntEnum) {
     with entry {
-        let Positional = auto();
-        let ArgsList = auto();
-        let KwargsDict = auto();
+        Positional = auto();
+        ArgsList = auto();
+        KwargsDict = auto();
     }
 }
 
 """Maps to pyright's TypeBase<T> in the types.ts file.\n\n    This is the base class for all type instance of the jaclang that holds\n    information about the type's category and any additional metadata and\n    utilities to analyze type information and provide type checking.\n    """
 class TypeBase(ABC) {
     with entry {
-        let CATEGORY: ClassVar[TypeCategory];
+        CATEGORY: ClassVar[TypeCategory];
     }
 
     """Initialize obviously."""
@@ -91,35 +91,35 @@ class TypeBase(ABC) {
 """Represents a type that is not bound to a specific value or context."""
 class UnboundType(TypeBase) {
     with entry {
-        let CATEGORY: ClassVar[TypeCategory] = TypeCategory.Unbound;
+        CATEGORY: ClassVar[TypeCategory] = TypeCategory.Unbound;
     }
 }
 
 """Represents a type that is not known or cannot be determined."""
 class UnknownType(TypeBase) {
     with entry {
-        let CATEGORY: ClassVar[TypeCategory] = TypeCategory.Unknown;
+        CATEGORY: ClassVar[TypeCategory] = TypeCategory.Unknown;
     }
 }
 
 """Represents a type that can never occur."""
 class NeverType(TypeBase) {
     with entry {
-        let CATEGORY: ClassVar[TypeCategory] = TypeCategory.Never;
+        CATEGORY: ClassVar[TypeCategory] = TypeCategory.Never;
     }
 }
 
 """Represents a type that can be anything."""
 class AnyType(TypeBase) {
     with entry {
-        let CATEGORY: ClassVar[TypeCategory] = TypeCategory.Any;
+        CATEGORY: ClassVar[TypeCategory] = TypeCategory.Any;
     }
 }
 
 """Represents a module type."""
 class ModuleType(TypeBase) {
     with entry {
-        let CATEGORY: ClassVar[TypeCategory] = TypeCategory.Module;
+        CATEGORY: ClassVar[TypeCategory] = TypeCategory.Module;
     }
 
     """Initialize the class."""
@@ -136,7 +136,7 @@ class ModuleType(TypeBase) {
 """Represents a type variable."""
 class TypeVarType(TypeBase) {
     with entry {
-        let CATEGORY: ClassVar[TypeCategory] = TypeCategory.TypeVar;
+        CATEGORY: ClassVar[TypeCategory] = TypeCategory.TypeVar;
     }
 
     """Initialize obviously."""
@@ -148,7 +148,7 @@ class TypeVarType(TypeBase) {
 """Represents a class type."""
 class ClassType(TypeBase) {
     with entry {
-        let CATEGORY: ClassVar[TypeCategory] = TypeCategory.Class;
+        CATEGORY: ClassVar[TypeCategory] = TypeCategory.Class;
     }
 
     """Holds the shared details of class type.\n\n        The shared detail of classes will points to the same instance across multiple clones\n        of the same class. This is needed when we do `==` between two classes, if they have the\n        same shared object, that means they both are the same class (with different context).\n        """
@@ -208,20 +208,20 @@ class ClassType(TypeBase) {
         if self.is_instance() {
             return self;
         }
-        let private = ClassType.ClassDetailsPrivate(
+        private = ClassType.ClassDetailsPrivate(
             type_args=self.private.type_args[:]
         );
-        let new_instance = ClassType(self.shared, private=private, flags=self.flags);
-        let new_flag = self.flags;
-        let new_flag = TypeFlags((new_flag & ~TypeFlags.Instantiable));
-        let new_flags = TypeFlags((new_flag | TypeFlags.Instance));
+        new_instance = ClassType(self.shared, private=private, flags=self.flags);
+        new_flag = self.flags;
+        new_flag = TypeFlags((new_flag & ~TypeFlags.Instantiable));
+        new_flags = TypeFlags((new_flag | TypeFlags.Instance));
         new_instance.flags = new_flags;
         return new_instance;
     }
 
     """Return a new class type specialized with the given type arguments."""
     def specialize_generics(self: ClassType, type_args: list[TypeBase]) -> ClassType {
-        let new_private = ClassType.ClassDetailsPrivate(type_args=type_args);
+        new_private = ClassType.ClassDetailsPrivate(type_args=type_args);
         return ClassType(self.shared, private=new_private, flags=self.flags);
     }
 
@@ -233,7 +233,7 @@ class ClassType(TypeBase) {
     """Lookup a member in the class type."""
     def lookup_member_symbol(self: ClassType, member: str) -> (Symbol | None) {
         for cls in self.shared.mro {
-            let members = cls.shared.symbol_table.names_in_scope;
+            members = cls.shared.symbol_table.names_in_scope;
             if (member in members) {
                 return members[member];
             }
@@ -261,7 +261,7 @@ class ClassType(TypeBase) {
     def is_edge_type(self: ClassType) -> bool {
         import jaclang.compiler.unitree as uni;
         import from jaclang.compiler.constant { SymbolType }
-        let arch = self.shared.symbol_table;
+        arch = self.shared.symbol_table;
         assert isinstance(arch, uni.Archetype);
         return (arch.sym_category == SymbolType.EDGE_ARCH);
     }
@@ -273,7 +273,7 @@ class ClassType(TypeBase) {
         if self.shared.is_root_class {
             return True;
         }
-        let arch = self.shared.symbol_table;
+        arch = self.shared.symbol_table;
         assert isinstance(arch, uni.Archetype);
         return (arch.sym_category == SymbolType.NODE_ARCH);
     }
@@ -282,11 +282,11 @@ class ClassType(TypeBase) {
 """Enumeration of parameter kinds."""
 class ParamKind(IntEnum) {
     with entry {
-        let POSONLY = 0;
-        let NORMAL = 1;
-        let VARARG = 2;
-        let KWONLY = 3;
-        let KWARG = 4;
+        POSONLY = 0;
+        NORMAL = 1;
+        VARARG = 2;
+        KWONLY = 3;
+        KWARG = 4;
     }
 }
 
@@ -315,7 +315,7 @@ class Parameter {
 """Represents a function type."""
 class FunctionType(TypeBase) {
     with entry {
-        let CATEGORY: ClassVar[TypeCategory] = TypeCategory.Function;
+        CATEGORY: ClassVar[TypeCategory] = TypeCategory.Function;
     }
 
     """Initialize obviously."""
@@ -334,7 +334,7 @@ class FunctionType(TypeBase) {
 
     """Specialize the function type based on the given class type."""
     def specialize(self: FunctionType, class_type: ClassType) -> FunctionType {
-        let clone = FunctionType(
+        clone = FunctionType(
             func_name=self.func_name,
             return_type=self.return_type,
             parameters=[
@@ -352,18 +352,18 @@ class FunctionType(TypeBase) {
             if (not param.param_type or not isinstance(param.param_type, TypeVarType)) {
                 continue;
             }
-            let idx = self._index_of_type_param(class_type, param.param_type);
+            idx = self._index_of_type_param(class_type, param.param_type);
             if ((idx != -1) and (idx < len(class_type.private.type_args))) {
-                let ty = class_type.private.type_args[idx];
-                let ty = ty.clone_as_instance() if isinstance(ty, ClassType) else ty;
+                ty = class_type.private.type_args[idx];
+                ty = ty.clone_as_instance() if isinstance(ty, ClassType) else ty;
                 param.param_type = ty;
             }
         }
         if (clone.return_type and isinstance(clone.return_type, TypeVarType)) {
-            let idx = self._index_of_type_param(class_type, clone.return_type);
+            idx = self._index_of_type_param(class_type, clone.return_type);
             if ((idx != -1) and (idx < len(class_type.private.type_args))) {
-                let ty = class_type.private.type_args[idx];
-                let ty = ty.clone_as_instance() if isinstance(ty, ClassType) else ty;
+                ty = class_type.private.type_args[idx];
+                ty = ty.clone_as_instance() if isinstance(ty, ClassType) else ty;
                 clone.return_type = ty;
             }
         }
@@ -386,7 +386,7 @@ class FunctionType(TypeBase) {
 """Represents a union type."""
 class UnionType(TypeBase) {
     with entry {
-        let CATEGORY: ClassVar[TypeCategory] = TypeCategory.Union;
+        CATEGORY: ClassVar[TypeCategory] = TypeCategory.Union;
     }
 
     """Initialize obviously."""

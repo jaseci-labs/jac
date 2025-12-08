@@ -31,16 +31,16 @@ class JacFormatPass(Transform[(uni.Module, uni.Module)]) {
         *,
         max_steps: int = 2000
     ) -> bool {
-        let work: deque[tuple[(object, int)]] = deque();
+        work: deque[tuple[(object, int)]] = deque();
         work.append((<>node, indent_level));
-        let steps = 0;
-        let remaining = width_remaining;
+        steps = 0;
+        remaining = width_remaining;
         while work {
             if (steps >= max_steps) {
                 return False;
             }
             steps += 1;
-            let (cur, lvl) = work.pop();
+            (cur, lvl) = work.pop();
             if isinstance(cur, doc.Text) {
                 remaining -= len(cur.text);
                 if (remaining <= 0) {
@@ -66,8 +66,8 @@ class JacFormatPass(Transform[(uni.Module, uni.Module)]) {
             } elif isinstance(cur, doc.Indent) {
                 work.append((cur.contents, (lvl + 1)));
             } elif isinstance(cur, doc.Align) {
-                let align_spaces = cur.n if (cur.n is not None) else self.indent_size;
-                let extra_levels = align_spaces // self.indent_size;
+                align_spaces = cur.n if (cur.n is not None) else self.indent_size;
+                extra_levels = align_spaces // self.indent_size;
                 work.append((cur.contents, (lvl + extra_levels)));
             } elif isinstance(cur, doc.IfBreak) {
                 work.append((cur.flat_contents, lvl));
@@ -80,8 +80,8 @@ class JacFormatPass(Transform[(uni.Module, uni.Module)]) {
 
     """After pass."""
     def transform(self: JacFormatPass, ir_in: uni.Module) -> uni.Module {
-        let formatted = self.format_doc_ir();
-        let lines = [line.rstrip() for line in formatted.split('\n')];
+        formatted = self.format_doc_ir();
+        lines = [line.rstrip() for line in formatted.split('\n')];
         while (lines and (lines[-1] == '')) {
             lines.pop();
         }
@@ -98,10 +98,10 @@ class JacFormatPass(Transform[(uni.Module, uni.Module)]) {
         is_broken: bool = False
     ) -> str {
         if (doc_node is None) {
-            let doc_node = self.ir_in.gen.doc_ir;
+            doc_node = self.ir_in.gen.doc_ir;
         }
         if (width_remaining is None) {
-            let width_remaining = self.MAX_LINE_LENGTH;
+            width_remaining = self.MAX_LINE_LENGTH;
         }
         if isinstance(doc_node, doc.Text) {
             return doc_node.text;
@@ -116,7 +116,7 @@ class JacFormatPass(Transform[(uni.Module, uni.Module)]) {
                 return ' ';
             }
         } elif isinstance(doc_node, doc.Group) {
-            let fits_flat = self._probe_fits(
+            fits_flat = self._probe_fits(
                 doc_node.contents,
                 indent_level=indent_level,
                 width_remaining=width_remaining
@@ -128,15 +128,15 @@ class JacFormatPass(Transform[(uni.Module, uni.Module)]) {
                 is_broken=not fits_flat
             );
         } elif isinstance(doc_node, doc.Indent) {
-            let new_indent_level = indent_level + 1;
+            new_indent_level = indent_level + 1;
             return self.format_doc_ir(
                 doc_node.contents, new_indent_level, width_remaining, is_broken
             );
         } elif isinstance(doc_node, doc.Concat) {
-            let result: list[str] = [];
-            let current_line_budget = width_remaining;
+            result: list[str] = [];
+            current_line_budget = width_remaining;
             for part in doc_node.parts {
-                let part_str = self.format_doc_ir(
+                part_str = self.format_doc_ir(
                     part, indent_level, current_line_budget, is_broken
                 );
                 if (part_str.startswith('\n') and result and result[-1].endswith(' ')) {
@@ -144,36 +144,36 @@ class JacFormatPass(Transform[(uni.Module, uni.Module)]) {
                 }
                 result.append(part_str);
                 if ('\n' in part_str) {
-                    let last_line = part_str.splitlines()[-1];
-                    let full_budget = max(
+                    last_line = part_str.splitlines()[-1];
+                    full_budget = max(
                         0, (self.MAX_LINE_LENGTH - (indent_level * self.indent_size))
                     );
-                    let indent_spaces = ' ' * (indent_level * self.indent_size);
+                    indent_spaces = ' ' * (indent_level * self.indent_size);
                     if last_line.startswith(indent_spaces) {
-                        let used = len(last_line) - len(indent_spaces);
+                        used = len(last_line) - len(indent_spaces);
                     } else {
-                        let used = len(last_line);
+                        used = len(last_line);
                     }
-                    let current_line_budget = max(0, (full_budget - used));
+                    current_line_budget = max(0, (full_budget - used));
                 } else {
-                    let current_line_budget = max(
+                    current_line_budget = max(
                         0, (current_line_budget - len(part_str))
                     );
                 }
             }
             return ''.join(result);
         } elif isinstance(doc_node, doc.IfBreak) {
-            let branch = doc_node.break_contents
+            branch = doc_node.break_contents
             if is_broken
             else doc_node.flat_contents;
             return self.format_doc_ir(branch, indent_level, width_remaining, is_broken);
         } elif isinstance(doc_node, doc.Align) {
-            let align_spaces = doc_node.n
+            align_spaces = doc_node.n
             if (doc_node.n is not None)
             else self.indent_size;
-            let extra_levels = align_spaces // self.indent_size;
-            let child_indent_level = indent_level + extra_levels;
-            let child_width_budget = max(0, (width_remaining - align_spaces));
+            extra_levels = align_spaces // self.indent_size;
+            child_indent_level = indent_level + extra_levels;
+            child_width_budget = max(0, (width_remaining - align_spaces));
             return self.format_doc_ir(
                 doc_node.contents, child_indent_level, child_width_budget, is_broken
             );

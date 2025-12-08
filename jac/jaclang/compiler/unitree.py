@@ -1134,10 +1134,7 @@ class GlobalVars(ClientFacingNode, ElementStmt, AstAccessNode):
         client_tok = self._source_client_token()
         if self.is_client_decl and (client_tok is not None or not self.in_client_block):
             new_kid.append(client_tok if client_tok else self.gen_token(Tok.KW_CLIENT))
-        if self.is_frozen:
-            new_kid.append(self.gen_token(Tok.KW_LET))
-        else:
-            new_kid.append(self.gen_token(Tok.KW_GLOBAL))
+        new_kid.append(self.gen_token(Tok.KW_GLOBAL))
         if self.access:
             new_kid.append(self.access)
         for i, assign in enumerate(self.assignments):
@@ -2405,11 +2402,7 @@ class ArchHas(AstAccessNode, AstDocNode, ArchBlockStmt, CodeBlockStmt):
             new_kid.append(self.doc)
         if self.is_static:
             new_kid.append(self.gen_token(Tok.KW_STATIC))
-        (
-            new_kid.append(self.gen_token(Tok.KW_LET))
-            if self.is_frozen
-            else new_kid.append(self.gen_token(Tok.KW_HAS))
-        )
+        new_kid.append(self.gen_token(Tok.KW_HAS))
         if self.access:
             new_kid.append(self.access)
         for i, var in enumerate(self.vars):
@@ -3256,8 +3249,6 @@ class Assignment(AstTypedVarNode, EnumBlockStmt, CodeBlockStmt):
             res = res and self.type_tag.normalize(deep) if self.type_tag else res
             res = res and self.aug_op.normalize(deep) if self.aug_op else res
         new_kid: list[UniNode] = []
-        if self.mutable and not self.is_enum_stmt:
-            new_kid.append(self.gen_token(Tok.KW_LET))
         for idx, targ in enumerate(self.target):
             new_kid.append(targ)
             if idx < len(self.target) - 1:

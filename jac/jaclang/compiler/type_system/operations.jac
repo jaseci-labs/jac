@@ -39,8 +39,8 @@ glob BINARY_OPERATOR_MAP:
 def get_type_of_binary_operation(
     evaluator: 'TypeEvaluator', expr: uni.BinaryExpr
 ) -> jtypes.TypeBase {
-    let left_type = evaluator.get_type_of_expression(expr.left);
-    let right_type = evaluator.get_type_of_expression(expr.right);
+    left_type = evaluator.get_type_of_expression(expr.left);
+    right_type = evaluator.get_type_of_expression(expr.right);
     if (
         (expr.op in (Tok.KW_IS, Tok.KW_ISN, Tok.KW_IN, Tok.KW_NIN))
         and (evaluator.prefetch.bool_class is not None)
@@ -48,7 +48,7 @@ def get_type_of_binary_operation(
         evaluator._convert_to_instance(evaluator.prefetch.bool_class);
     }
     if (isinstance(expr.op, uni.Token) and (expr.op.name in BINARY_OPERATOR_MAP)) {
-        let (magic, rmagic) = BINARY_OPERATOR_MAP[expr.op.name];
+        (magic, rmagic) = BINARY_OPERATOR_MAP[expr.op.name];
         return (
             evaluator.get_type_of_magic_method_call(left_type, magic)
             or evaluator.get_type_of_magic_method_call(right_type, rmagic)
@@ -75,7 +75,7 @@ def get_type_of_binary_operation(
         }
         if isinstance(expr.op, uni.ConnectOp) {
             if expr.op.conn_type {
-                let conn_type = evaluator.get_type_of_expression(expr.op.conn_type);
+                conn_type = evaluator.get_type_of_expression(expr.op.conn_type);
                 if (
                     not isinstance(conn_type, jtypes.ClassType)
                     or not conn_type.is_edge_type()
@@ -86,7 +86,7 @@ def get_type_of_binary_operation(
                 } elif (assign_compr := expr.op.conn_assign) {
                     for assign in assign_compr.assigns {
                         if (assign.key is not None) {
-                            let edge_inst_type = evaluator._convert_to_instance(
+                            edge_inst_type = evaluator._convert_to_instance(
                                 conn_type
                             );
                             if (
@@ -94,20 +94,20 @@ def get_type_of_binary_operation(
                                     edge_inst_type, assign.key.sym_name
                                 )
                             ) {
-                                let dest_type = evaluator._set_symbol_to_expr(
+                                dest_type = evaluator._set_symbol_to_expr(
                                     assign.key, member.symbol
                                 );
-                                let src_type = evaluator.get_type_of_expression(
+                                src_type = evaluator.get_type_of_expression(
                                     assign.value
                                 );
                                 if not evaluator.assign_type(src_type, dest_type) {
-                                    let msg = 'Type "{}" is not assignable to type "{}"'.format(
+                                    msg = 'Type "{}" is not assignable to type "{}"'.format(
                                         src_type, dest_type
                                     );
                                     evaluator.add_diagnostic(assign.value, msg);
                                 }
                             } else {
-                                let msg = 'Edge type "{}" has no member named "{}"'.format(
+                                msg = 'Edge type "{}" has no member named "{}"'.format(
                                     conn_type, assign.key.sym_name
                                 );
                                 evaluator.add_diagnostic(assign.key, msg);

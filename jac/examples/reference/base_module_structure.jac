@@ -7,8 +7,8 @@ It describes the purpose of the entire module.
 # 1. Import statement
 import math;
 
-# 2. Global variable (using let as requested)
-let global_value: int = 42;
+# 2. Global variable (using glob keyword)
+glob global_value: int = 42;
 
 # 3. Archetype (object)
 obj MyObject {

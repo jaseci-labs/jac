@@ -6,8 +6,8 @@ import from dataclasses { dataclass }
 @dataclass(eq=False, repr=False)
 class MTIR {
     with entry {
-        let caller: Callable;
-        let args: <>dict[((int | str), object)];
-        let call_params: <>dict[(str, object)];
+        caller: Callable;
+        args: <>dict[((int | str), object)];
+        call_params: <>dict[(str, object)];
     }
 }

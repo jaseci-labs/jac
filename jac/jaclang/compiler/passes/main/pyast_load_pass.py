@@ -417,15 +417,13 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
         valid = [target for target in targets if isinstance(target, uni.Expr)]
         if not len(valid) == len(targets):
             raise self.ice("Length mismatch in assignment targets")
-        # Check if any target is a subscript or attribute access (AtomTrailer)
-        # If so, this is not a variable declaration, so mutable should be False
-        is_var_declaration = not any(isinstance(t, uni.AtomTrailer) for t in valid)
+
         if isinstance(value, uni.Expr):
             return uni.Assignment(
                 target=valid,
                 value=value,
                 type_tag=None,
-                mutable=is_var_declaration,
+                mutable=False,
                 kid=[*valid, value],
             )
         else:
@@ -489,14 +487,11 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
             and isinstance(annotation, uni.Expr)
             and isinstance(target, uni.Expr)
         ):
-            # Check if target is an attribute/subscript access (AtomTrailer)
-            # If so, this is not a variable declaration, so mutable should be False
-            is_var_declaration = not isinstance(target, uni.AtomTrailer)
             return uni.Assignment(
                 target=[target],
                 value=value if isinstance(value, (uni.Expr, uni.YieldExpr)) else None,
                 type_tag=annotation_subtag,
-                mutable=is_var_declaration,
+                mutable=False,
                 kid=(
                     [target, annotation_subtag, value]
                     if value

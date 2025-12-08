@@ -17,7 +17,7 @@ import from .archetype {
 import from .memory { Memory, ShelfStorage }
 import from .mtp { MTIR }
 with entry {
-    let __all__ = [
+    __all__ = [
         'AccessLevel',
         'Anchor',
         'NodeAnchor',

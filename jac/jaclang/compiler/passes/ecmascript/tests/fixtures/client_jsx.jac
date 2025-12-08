@@ -1,6 +1,6 @@
 """Combined JSX fixture covering client declarations and varied JSX patterns."""
 
-cl let API_URL: str = "https://api.example.com";
+cl glob API_URL: str = "https://api.example.com";
 
 cl obj ButtonProps {
     has label: str = "Hello";
@@ -33,20 +33,20 @@ cl def jsx_bug_tests() {
 
 with entry {
     # Common values used across scenarios
-    let name = "World";
-    let age = 30;
-    let count = 42;
-    let props = "dummy_props";
-    let extraProps = "extra_props";
+    name = "World";
+    age = 30;
+    count = 42;
+    props = "dummy_props";
+    extraProps = "extra_props";
 
     # Basic JSX shapes
-    let basic_div = <div />;
-    let basic_component = <MyComponent />;
-    let attribute_button = <button
+    basic_div = <div />;
+    basic_component = <MyComponent />;
+    attribute_button = <button
         id="submit"
         disabled
     />;
-    let attr_with_expr = <div
+    attr_with_expr = <div
         id={name}
         data-age={age}
     >
@@ -54,21 +54,21 @@ with entry {
     </div>;
 
     # Expressions embedded in JSX
-    let greeting = <h1>
+    greeting = <h1>
         {"Hello " + name + "!"}
     </h1>;
-    let button = <button
+    button = <button
         id={name}
         count={count}
     >
         {"Click"}
     </button>;
-    let computed = <div>
+    computed = <div>
         {count + 10}
     </div>;
 
     # Nested elements and layout
-    let card = <div>
+    card = <div>
         <h1>
             {"Title"}
         </h1>
@@ -80,7 +80,7 @@ with entry {
         </button>
     </div>;
 
-    let layout = <div>
+    layout = <div>
         <header>
             <nav>
                 <a>
@@ -99,15 +99,15 @@ with entry {
     </div>;
 
     # Components and namespaces
-    let comp_props = <Button
+    comp_props = <Button
         color="blue"
         size="large"
     >
         Submit
     </Button>;
-    let comp_namespaced = <UI.Button />;
-    let comp_deep_namespace = <Form.Input.Text />;
-    let app = <App>
+    comp_namespaced = <UI.Button />;
+    comp_deep_namespace = <Form.Input.Text />;
+    app = <App>
         <Header />
         <Main>
             <Sidebar />
@@ -117,8 +117,8 @@ with entry {
     </App>;
 
     # Fragments
-    let empty_fragment = <></>;
-    let fragment_with_children = <>
+    empty_fragment = <></>;
+    fragment_with_children = <>
         <h1>
             {"Title"}
         </h1>
@@ -126,7 +126,7 @@ with entry {
             {"Paragraph"}
         </p>
     </>;
-    let mixed_fragment = <>
+    mixed_fragment = <>
         {"Some text"}
         <div>
             {"Element"}
@@ -138,16 +138,16 @@ with entry {
     </>;
 
     # Spread attributes
-    let spread_div = <div
+    spread_div = <div
         {...props}
     />;
-    let spread_button = <button
+    spread_button = <button
         {...props}
         {...extraProps}
     >
         {"Click"}
     </button>;
-    let spread_input = <input
+    spread_input = <input
         type="text"
         {...props}
         disabled

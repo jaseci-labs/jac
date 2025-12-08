@@ -320,14 +320,14 @@ def test_client_keyword_tagging() -> None:
     - Block of statements with cl { }
     - Empty cl blocks
     - Multiple cl blocks at top level
-    - Various statement types (import, let, obj, test)
+    - Various statement types (import, glob, obj, test)
     """
     # Test 1: Mixed single and block client markers
     source = """
-cl let foo = 1;
-let bar = 2;
+cl glob foo = 1;
+glob bar = 2;
 cl {
-    let baz = 3;
+    glob baz = 3;
     test sample {}
 }
 """
@@ -346,7 +346,7 @@ cl {
         True,
         False,
         False,
-    ]  # cl let, let, ClientBlock (not ClientFacingNode)
+    ]  # cl glob, glob, ClientBlock (not ClientFacingNode)
     # Check the ClientBlock's body
     client_block = body[2]
     assert isinstance(client_block, uni.ClientBlock)
@@ -362,7 +362,7 @@ cl {
     source = """
 cl {
     import foo;
-    let x = 1;
+    glob x = 1;
     obj MyClass {}
     test my_test {}
 }
@@ -384,11 +384,11 @@ cl {
     # Test 3: Multiple cl blocks at top level
     source = """
 cl {
-    let a = 1;
+    glob a = 1;
 }
-let b = 2;
+glob b = 2;
 cl {
-    let c = 3;
+    glob c = 3;
 }
 """
     module = JacProgram().parse_str(source, "test.jac")
@@ -401,12 +401,12 @@ cl {
     assert isinstance(body[2], uni.ClientBlock)
     assert not (
         isinstance(body[1], uni.ClientFacingNode) and body[1].is_client_decl
-    )  # let b is not client
+    )  # glob b is not client
 
     # Test 4: Empty client block
     source = """
 cl {}
-let x = 1;
+glob x = 1;
 """
     module = JacProgram().parse_str(source, "test.jac")
     body = module.body

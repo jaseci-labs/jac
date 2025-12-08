@@ -598,10 +598,7 @@ class DocIRGenPass(UniPass):
         seen_eq = False
 
         for i in node.kid:
-            if isinstance(i, uni.Token) and i.name == Tok.KW_LET:
-                lhs_parts.append(i.gen.doc_ir)
-                lhs_parts.append(self.space())
-            elif isinstance(i, uni.Token) and i.name == Tok.EQ and not seen_eq:
+            if isinstance(i, uni.Token) and i.name == Tok.EQ and not seen_eq:
                 eq_tok = i.gen.doc_ir
                 seen_eq = True
             elif seen_eq:

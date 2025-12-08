@@ -17,10 +17,14 @@ def get_jaclang_python_files() -> list[str]:
     """Return all jaclang package .py files we expect to parse."""
     base = Path(jaclang.__file__).parent
     files: list[str] = []
+    # Auto-generated parser files that are too large for py2jac conversion
+    skip_files = {"jac_parser.py", "jac_lark.py"}
     for path in base.rglob("*.py"):
         if "__pycache__" in path.parts:
             continue
         if "vendor" in path.parts:
+            continue
+        if path.name in skip_files:
             continue
         files.append(str(path))
     return sorted(files)

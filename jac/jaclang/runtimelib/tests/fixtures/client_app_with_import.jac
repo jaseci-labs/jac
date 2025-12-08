@@ -2,7 +2,7 @@
 
 cl import from jac:client_runtime { renderJsxTree, jacLogin, }
 
-cl let APP_TITLE: str = "Import Test App";
+cl glob APP_TITLE: str = "Import Test App";
 
 cl def test_page() {
     return <div class="container">

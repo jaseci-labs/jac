@@ -11,7 +11,9 @@ cl import from jac:client_runtime {
 
 cl {
     # Reactive state management
-    let [appState, setAppState] = createState({"tweets": [], "loading": False});
+    glob _state = createState({"tweets": [], "loading": False});
+    glob appState = _state[0];
+    glob setAppState = _state[1];
 
     # Shared data model for client/server
     obj ClientTweet {

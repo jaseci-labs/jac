@@ -51,7 +51,7 @@ arch_type: KW_WALKER
 // [Heading]: Class Archetype bodies.
 member_block: LBRACE member_stmt* RBRACE
 member_stmt: STRING? (py_code_block | ability | archetype | impl_def | has_stmt | free_code)
-has_stmt: KW_STATIC? (KW_LET | KW_HAS) access_tag? has_assign_list SEMI
+has_stmt: KW_STATIC? KW_HAS access_tag? has_assign_list SEMI
 has_assign_list: (has_assign_list COMMA)? typed_has_clause
 typed_has_clause: named_ref type_tag (EQ expression | KW_BY KW_POST_INIT)?
 type_tag: COLON pipe
@@ -86,7 +86,7 @@ impl_tail: enum_block | block_tail
 sem_def: KW_SEM dotted_name (EQ | KW_IS) STRING SEMI
 
 // [Heading]: Global variables.
-global_var: (KW_LET | KW_GLOBAL) access_tag? assignment_list SEMI
+global_var: KW_GLOBAL access_tag? assignment_list SEMI
 assignment_list: (assignment | named_ref) (COMMA (assignment | named_ref))* COMMA?
 
 // [Heading]: With entry blocks.
@@ -223,7 +223,7 @@ visit_stmt: KW_VISIT (COLON expression COLON)? expression (else_stmt | SEMI)
 disenage_stmt: KW_DISENGAGE SEMI
 
 // [Heading]: Assignments.
-assignment: KW_LET? (atomic_chain EQ)+ (yield_expr | expression)
+assignment: (atomic_chain EQ)+ (yield_expr | expression)
           | atomic_chain type_tag (EQ (yield_expr | expression))?
           | atomic_chain aug_op (yield_expr | expression)
 
@@ -487,7 +487,7 @@ jsx_text: JSX_TEXT
 // Keywords that can appear as text in JSX content (common English words)
 jsx_text_keyword: KW_TO | KW_AS | KW_FROM | KW_WITH | KW_IF | KW_FOR | KW_BY
                 | KW_IN | KW_IS | KW_HAS | KW_CAN | KW_TRY | KW_MATCH | KW_CASE
-                | KW_TEST | KW_LET | KW_ELSE | KW_RETURN | KW_BREAK | KW_CLASS
+                | KW_TEST | KW_ELSE | KW_RETURN | KW_BREAK | KW_CLASS
                 | KW_NODE | KW_EDGE | KW_VISIT | KW_ENTRY | KW_EXIT | KW_WAIT
                 | KW_FLOW | KW_SKIP | KW_CONTINUE | KW_REPORT | KW_RAISE
                 | KW_DEFAULT | KW_YIELD | KW_EXCEPT | KW_FINALLY | KW_ASSERT
@@ -553,7 +553,6 @@ TYP_TYPE: "type"
 
 // Keywords ---------------------------------------------------------------- //
 
-KW_LET: "let"
 KW_ABSTRACT: "abs"
 KW_CLASS: "class"
 KW_OBJECT: "obj"

@@ -12,19 +12,19 @@ import from typing { Any, ClassVar, TypeAlias, TypeVar }
 import from uuid { UUID, uuid4 }
 import from ..compiler.constant { EdgeDir }
 with entry {
-    let logger = getLogger(__name__);
-    let TARCH = TypeVar('TARCH', bound='Archetype');
-    let TANCH = TypeVar('TANCH', bound='Anchor');
-    let T = TypeVar('T');
+    logger = getLogger(__name__);
+    TARCH = TypeVar('TARCH', bound='Archetype');
+    TANCH = TypeVar('TANCH', bound='Anchor');
+    T = TypeVar('T');
 }
 
 """Access level enum."""
 class AccessLevel(IntEnum) {
     with entry {
-        let NO_ACCESS = -1;
-        let READ = 0;
-        let CONNECT = 1;
-        let WRITE = 2;
+        NO_ACCESS = -1;
+        READ = 0;
+        CONNECT = 1;
+        WRITE = 2;
     }
 
     """Cast access level."""
@@ -47,7 +47,7 @@ class AccessLevel(IntEnum) {
 @dataclass
 class Access {
     with entry {
-        let anchors: <>dict[(str, AccessLevel)] = field(default_factory=<>dict);
+        anchors: <>dict[(str, AccessLevel)] = field(default_factory=<>dict);
     }
 
     """Validate access."""
@@ -60,8 +60,8 @@ class Access {
 @dataclass
 class Permission {
     with entry {
-        let all: AccessLevel = AccessLevel.NO_ACCESS;
-        let roots: Access = field(default_factory=Access);
+        all: AccessLevel = AccessLevel.NO_ACCESS;
+        roots: Access = field(default_factory=Access);
     }
 }
 
@@ -69,22 +69,22 @@ class Permission {
 @dataclass
 class AnchorReport {
     with entry {
-        let id: str;
-        let context: <>dict[(str, Any)];
+        id: str;
+        context: <>dict[(str, Any)];
     }
 }
 
 with entry {
-    let ObjectSpatialFilter: TypeAlias = 'Callable[[Archetype], bool] | Archetype | list[Archetype] | None';
+    ObjectSpatialFilter: TypeAlias = 'Callable[[Archetype], bool] | Archetype | list[Archetype] | None';
 }
 
 """Object-Spatial Destination."""
 @dataclass(eq=False, repr=False)
 class ObjectSpatialDestination {
     with entry {
-        let direction: EdgeDir;
-        let <>edge: (Callable[([Archetype], bool)] | None) = None;
-        let <>node: (Callable[([Archetype], bool)] | None) = None;
+        direction: EdgeDir;
+        <>edge: (Callable[([Archetype], bool)] | None) = None;
+        <>node: (Callable[([Archetype], bool)] | None) = None;
     }
 
     """Filter edge."""
@@ -102,10 +102,10 @@ class ObjectSpatialDestination {
 @dataclass(eq=False, repr=False)
 class ObjectSpatialPath {
     with entry {
-        let origin: <>list[NodeArchetype];
-        let destinations: <>list[ObjectSpatialDestination];
-        let edge_only: bool;
-        let from_visit: bool;
+        origin: <>list[NodeArchetype];
+        destinations: <>list[ObjectSpatialDestination];
+        edge_only: bool;
+        from_visit: bool;
     }
 
     """Override Init."""
@@ -115,7 +115,7 @@ class ObjectSpatialPath {
         destinations: (<>list[ObjectSpatialDestination] | None) = None
     ) -> None {
         if not isinstance(origin, <>list) {
-            let origin = [origin];
+            origin = [origin];
         }
         self.origin = origin;
         self.destinations = [] if (destinations is None) else destinations;
@@ -205,17 +205,17 @@ class ObjectSpatialPath {
 
     """Override repr."""
     def __repr__(self: ObjectSpatialPath) -> str {
-        let repr = 'nodes ';
+        repr = 'nodes ';
         for dest in self.destinations {
             match dest.direction {
                 case EdgeDir.IN:
-                    let repr = self.repr_builder(repr, dest, '<<');
+                    repr = self.repr_builder(repr, dest, '<<');
 
                 case EdgeDir.OUT:
-                    let repr = self.repr_builder(repr, dest, '>>');
+                    repr = self.repr_builder(repr, dest, '>>');
 
                 case _:
-                    let repr = self.repr_builder(repr, dest, '--');
+                    repr = self.repr_builder(repr, dest, '--');
 
             }
         }
@@ -227,12 +227,12 @@ class ObjectSpatialPath {
 @dataclass(eq=False, repr=False, kw_only=True)
 class Anchor {
     with entry {
-        let archetype: Archetype;
-        let id: UUID = field(default_factory=uuid4);
-        let <>root: (UUID | None) = None;
-        let access: Permission = field(default_factory=Permission);
-        let persistent: bool = False;
-        let hash: int = 0;
+        archetype: Archetype;
+        id: UUID = field(default_factory=uuid4);
+        <>root: (UUID | None) = None;
+        access: Permission = field(default_factory=Permission);
+        persistent: bool = False;
+        hash: int = 0;
     }
 
     """Check if state."""
@@ -243,7 +243,7 @@ class Anchor {
     """Return unsynced copy of anchor."""
     def make_stub(self: Anchor) -> TANCH {
         if self.is_populated() {
-            let unloaded = object.__new__(self.__class__);
+            unloaded = object.__new__(self.__class__);
             unloaded.id = self.id;
             return unloaded;
         }
@@ -253,7 +253,7 @@ class Anchor {
     """Retrieve the Archetype from db and return."""
     def populate(self: Anchor) -> None {
         import from jaclang.runtimelib.runtime { JacRuntimeInterface as Jac }
-        let jsrc = Jac.get_context().mem;
+        jsrc = Jac.get_context().mem;
         if (anchor := jsrc.find_by_id(self.id)) {
             self.__dict__.update(anchor.__dict__);
         }
@@ -278,7 +278,7 @@ class Anchor {
     """Serialize Anchor."""
     def __getstate__(self: Anchor) -> <>dict[str, Any] {
         if self.is_populated() {
-            let unlinked = object.__new__(self.archetype.__class__);
+            unlinked = object.__new__(self.archetype.__class__);
             unlinked.__dict__.update(self.archetype.__dict__);
             unlinked.__dict__.pop('__jac__', None);
             return {
@@ -305,15 +305,15 @@ class Anchor {
     """Override representation."""
     def __repr__(self: Anchor) -> str {
         if self.is_populated() {
-            let attrs = '';
+            attrs = '';
             for f in fields(self) {
                 if (f.name in self.__dict__) {
                     attrs += f"{f.name}={self.__dict__[f.name]}, ";
                 }
             }
-            let attrs = attrs[:-2];
+            attrs = attrs[:-2];
         } else {
-            let attrs = f"id={self.id}";
+            attrs = f"id={self.id}";
         }
         return f"{self.__class__.__name__}({attrs})";
     }
@@ -348,13 +348,13 @@ class Anchor {
 @dataclass(eq=False, repr=False, kw_only=True)
 class NodeAnchor(Anchor) {
     with entry {
-        let archetype: NodeArchetype;
-        let edges: <>list[EdgeAnchor];
+        archetype: NodeArchetype;
+        edges: <>list[EdgeAnchor];
     }
 
     """Serialize Node Anchor."""
     def __getstate__(self: NodeAnchor) -> <>dict[str, object] {
-        let state = super.__getstate__();
+        state = super.__getstate__();
         if self.is_populated() {
             state['edges'] = [<>edge.make_stub() for <>edge in self.edges];
         }
@@ -366,15 +366,15 @@ class NodeAnchor(Anchor) {
 @dataclass(eq=False, repr=False, kw_only=True)
 class EdgeAnchor(Anchor) {
     with entry {
-        let archetype: EdgeArchetype;
-        let source: NodeAnchor;
-        let target: NodeAnchor;
-        let is_undirected: bool;
+        archetype: EdgeArchetype;
+        source: NodeAnchor;
+        target: NodeAnchor;
+        is_undirected: bool;
     }
 
     """Serialize Node Anchor."""
     def __getstate__(self: EdgeAnchor) -> <>dict[str, object] {
-        let state = super.__getstate__();
+        state = super.__getstate__();
         if self.is_populated() {
             state.update(
                 {
@@ -392,11 +392,11 @@ class EdgeAnchor(Anchor) {
 @dataclass(eq=False, repr=False, kw_only=True)
 class WalkerAnchor(Anchor) {
     with entry {
-        let archetype: WalkerArchetype;
-        let path: <>list[NodeAnchor] = field(default_factory=<>list);
-        let next: <>list[(NodeAnchor | EdgeAnchor)] = field(default_factory=<>list);
-        let ignores: <>list[NodeAnchor] = field(default_factory=<>list);
-        let disengaged: bool = False;
+        archetype: WalkerArchetype;
+        path: <>list[NodeAnchor] = field(default_factory=<>list);
+        next: <>list[(NodeAnchor | EdgeAnchor)] = field(default_factory=<>list);
+        ignores: <>list[NodeAnchor] = field(default_factory=<>list);
+        disengaged: bool = False;
     }
 }
 
@@ -404,7 +404,7 @@ class WalkerAnchor(Anchor) {
 @dataclass(eq=False, repr=False, kw_only=True)
 class ObjectAnchor(Anchor) {
     with entry {
-        let archetype: ObjectArchetype;
+        archetype: ObjectArchetype;
     }
 }
 
@@ -412,8 +412,8 @@ class ObjectAnchor(Anchor) {
 @dataclass(eq=False, repr=False, kw_only=True)
 class Archetype {
     with entry {
-        let _jac_entry_funcs_: ClassVar[<>list[ObjectSpatialFunction]] = [];
-        let _jac_exit_funcs_: ClassVar[<>list[ObjectSpatialFunction]] = [];
+        _jac_entry_funcs_: ClassVar[<>list[ObjectSpatialFunction]] = [];
+        _jac_exit_funcs_: ClassVar[<>list[ObjectSpatialFunction]] = [];
     }
 
     """Create default anchor."""
@@ -444,7 +444,7 @@ class Archetype {
 """Node Archetype Protocol."""
 class NodeArchetype(Archetype) {
     with entry {
-        let __jac_base__: ClassVar[bool] = True;
+        __jac_base__: ClassVar[bool] = True;
     }
 
     """Create default anchor."""
@@ -457,16 +457,16 @@ class NodeArchetype(Archetype) {
 """Edge Archetype Protocol."""
 class EdgeArchetype(Archetype) {
     with entry {
-        let __jac_base__: ClassVar[bool] = True;
-        let __jac__: EdgeAnchor;
+        __jac_base__: ClassVar[bool] = True;
+        __jac__: EdgeAnchor;
     }
 }
 
 """Walker Archetype Protocol."""
 class WalkerArchetype(Archetype) {
     with entry {
-        let __jac_async__: ClassVar[bool] = False;
-        let __jac_base__: ClassVar[bool] = True;
+        __jac_async__: ClassVar[bool] = False;
+        __jac_base__: ClassVar[bool] = True;
     }
 
     """Create default anchor."""
@@ -479,7 +479,7 @@ class WalkerArchetype(Archetype) {
 """Walker Archetype Protocol."""
 class ObjectArchetype(Archetype) {
     with entry {
-        let __jac_base__: ClassVar[bool] = True;
+        __jac_base__: ClassVar[bool] = True;
     }
 
     """Create default anchor."""
@@ -493,7 +493,7 @@ class ObjectArchetype(Archetype) {
 @dataclass(eq=False)
 class GenericEdge(EdgeArchetype) {
     with entry {
-        let __jac_base__: ClassVar[bool] = True;
+        __jac_base__: ClassVar[bool] = True;
     }
 
     """Override repr for archetype."""
@@ -506,7 +506,7 @@ class GenericEdge(EdgeArchetype) {
 @dataclass(eq=False)
 class Root(NodeArchetype) {
     with entry {
-        let __jac_base__: ClassVar[bool] = True;
+        __jac_base__: ClassVar[bool] = True;
     }
 
     """Create default anchor."""
@@ -525,8 +525,8 @@ class Root(NodeArchetype) {
 @dataclass(eq=False)
 class ObjectSpatialFunction {
     with entry {
-        let name: str;
-        let func: Callable[([Any, Any], Any)];
+        name: str;
+        func: Callable[([Any, Any], Any)];
     }
 
     """Get function parameter annotations."""
@@ -534,10 +534,10 @@ class ObjectSpatialFunction {
     def trigger(
         self: ObjectSpatialFunction
     ) -> (((<>type | UnionType) | <>tuple[((<>type | UnionType), ...)]) | None) {
-        let parameters = signature(self.func, eval_str=True).parameters;
+        parameters = signature(self.func, eval_str=True).parameters;
         if (len(parameters) >= 2) {
-            let second_param = <>list(parameters.values())[1];
-            let ty = second_param.annotation;
+            second_param = <>list(parameters.values())[1];
+            ty = second_param.annotation;
             return ty if (ty != _empty) else None;
         }
         return None;

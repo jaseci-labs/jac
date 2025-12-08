@@ -154,7 +154,6 @@ class Tokens(str, Enum):
     TYP_BYTES = "TYP_BYTES"
     TYP_ANY = "TYP_ANY"
     TYP_TYPE = "TYP_TYPE"
-    KW_LET = "KW_LET"
     KW_ABSTRACT = "KW_ABSTRACT"
     KW_OBJECT = "KW_OBJECT"
     KW_CLASS = "KW_CLASS"

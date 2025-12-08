@@ -74,7 +74,7 @@ def greet(name: str = "World") -> str {
     return "Hello, " + name + "!";
 }
 
-cl let WELCOME_TITLE: str = "Runtime Test";
+cl glob WELCOME_TITLE: str = "Runtime Test";
 
 cl def client_page() {
     return <section class="welcome">
