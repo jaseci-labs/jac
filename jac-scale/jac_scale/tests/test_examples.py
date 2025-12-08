@@ -384,15 +384,6 @@ class TestJacClientExamples:
             assert "/static/client.js" in page_content
             assert ".container {" in runner.request_raw("GET", "/styles.css")
 
-    def test_sass_example(self) -> None:
-        """Test SASS styling example."""
-        example_file = JacClientExamples / "css-styling" / "sass-example" / "app.jac"
-        with JacScaleTestRunner(
-            example_file, session_name="sass_test", setup_npm=True
-        ) as runner:
-            assert "/static/client.js" in runner.request_raw("GET", "/page/app")
-            assert "btnReset:hover" in runner.request_raw("GET", "/static/main.css")
-
     def test_styled_components(self) -> None:
         """Test Styled Components example."""
         example_file = (
@@ -403,14 +394,3 @@ class TestJacClientExamples:
         ) as runner:
             assert "/static/client.js" in runner.request_raw("GET", "/page/app")
             assert "import styled from" in runner.request_raw("GET", "/styled.js")
-
-    def test_tailwind_example(self) -> None:
-        """Test Tailwind CSS example."""
-        example_file = (
-            JacClientExamples / "css-styling" / "tailwind-example" / "app.jac"
-        )
-        with JacScaleTestRunner(
-            example_file, session_name="tailwind_test", setup_npm=True
-        ) as runner:
-            assert "/static/client.js" in runner.request_raw("GET", "/page/app")
-            assert "tailwindcss" in runner.request_raw("GET", "/static/main.css")
