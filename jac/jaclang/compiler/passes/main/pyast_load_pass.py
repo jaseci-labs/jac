@@ -631,7 +631,9 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
         ]
         if valid_orelse:
             first_elm = valid_orelse[0]
-            if isinstance(first_elm, uni.IfStmt):
+            # Only convert to ElseIf if the IfStmt is the sole statement in the else block.
+            # If there are additional statements after the if, use ElseStmt to preserve them.
+            if isinstance(first_elm, uni.IfStmt) and len(valid_orelse) == 1:
                 else_body: uni.ElseIf | uni.ElseStmt | None = uni.ElseIf(
                     condition=first_elm.condition,
                     body=first_elm.body,
