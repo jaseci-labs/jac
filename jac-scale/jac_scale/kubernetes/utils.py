@@ -259,7 +259,7 @@ def cluster_type() -> str:
     """
     try:
         from kubernetes import client
-        
+
         v1 = client.CoreV1Api()
         nodes = v1.list_node()
 
@@ -315,7 +315,7 @@ def ensure_pvc_exists(
             raise
 
     from typing import Any
-    
+
     pvc_body: dict[str, Any] = {
         "apiVersion": "v1",
         "kind": "PersistentVolumeClaim",
@@ -385,8 +385,7 @@ def run_kubectl_command(args: list[str], cwd=None) -> None:
     """Execute a kubectl command and surface useful error details."""
     import shutil
     import subprocess
-    from pathlib import Path
-    
+
     if shutil.which("kubectl") is None:
         raise RuntimeError("kubectl is required to sync code to the PVC.")
 
@@ -414,7 +413,7 @@ def sync_code_to_pvc(
     """Stage the application code inside the PVC using a transient helper pod."""
     import tempfile
     from pathlib import Path
-    
+
     sync_pod_name = f"{app_name}-code-sync"
 
     pod_body = {

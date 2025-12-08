@@ -103,7 +103,7 @@ def deploy_k8(
         sync_image = "busybox:1.36"
 
         ensure_pvc_exists(core_v1, namespace, pvc_name, pvc_size)
-        print(f"Syncing application code")
+        print("Syncing application code")
         sync_code_to_pvc(
             core_v1,
             namespace,
@@ -297,9 +297,7 @@ def deploy_k8(
         time.sleep(60)
         nlb_url = None
         try:
-            service = core_v1.read_namespaced_service(
-                f"{app_name}-service", namespace
-            )
+            service = core_v1.read_namespaced_service(f"{app_name}-service", namespace)
             nlb_ingress = service.status.load_balancer.ingress
             if nlb_ingress and len(nlb_ingress) > 0:
                 endpoint = nlb_ingress[0].hostname or nlb_ingress[0].ip
@@ -313,12 +311,10 @@ def deploy_k8(
             print(
                 f"Run 'kubectl get svc {app_name}-service -n {namespace}' to get the NLB endpoint."
             )
-        
+
         # Check deployment status with NLB URL
         if nlb_url and check_deployment_status(node_port, path, nlb_url=nlb_url):
-            print(
-                f"Deployment complete! Access Jaseci-app at {nlb_url}{path}"
-            )
+            print(f"Deployment complete! Access Jaseci-app at {nlb_url}{path}")
     else:
         # Check deployment status for NodePort
         if check_deployment_status(node_port, path):
