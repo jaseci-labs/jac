@@ -2044,6 +2044,16 @@ class JacTTGGenerator:
         return type(input).__name__
 
     @classmethod
+    def resolve_to_archetype(cls, scope_src: unitree.UniNode, name: str) -> Archetype:
+        scope = scope_src.find_parent_of_type(unitree.UniScopeNode)
+        if scope is None:
+            raise RuntimeError("Lookup failed")
+        result = scope.lookup(name)
+        if result is None:
+            raise RuntimeError("Lookup failed")
+        return result.decl.find_parent_of_type(unitree.Archetype)
+
+    @classmethod
     def get_walker_code(cls, walker: WalkerArchetype) -> unitree.Archetype:
         """Get the walker type code from walker instance."""
         walker_module = JacRuntime.loaded_modules.get(type(walker).__module__)
@@ -2059,7 +2069,9 @@ class JacTTGGenerator:
     class PossibleVisitsInWalkers:
         # Mapping walker type and node type to visit types.
         # TODO: Find a better representation of types.
-        visits: dict[tuple[str, str], list[JacTTGGenerator.VisitType]] = {}
+        visits: dict[
+            tuple[unitree.Archetype, unitree.Archetype], list[JacTTGGenerator.VisitType]
+        ] = {}
 
         @classmethod
         def _get_to_edge_type_of_visit(
@@ -2077,26 +2089,35 @@ class JacTTGGenerator:
                 if len(ability.get_all_sub_nodes(unitree.EventSignature)) == 0:
                     continue
                 # Get the name of the node type
-                node_type_name = (
-                    ability.get_all_sub_nodes(unitree.EventSignature)[0]
-                    .get_all_sub_nodes(unitree.Name)[0]
-                    .value
+                node_type_name = ability.get_all_sub_nodes(unitree.EventSignature)[
+                    0
+                ].get_all_sub_nodes(unitree.Name)[0]
+
+                node_type = JacTTGGenerator.resolve_to_archetype(
+                    node_type_name, node_type_name.value
                 )
+
                 res = [
                     cls._get_to_edge_type_of_visit(visit_stmt)
                     for visit_stmt in ability.get_all_sub_nodes(unitree.VisitStmt)
                 ]
-                cls.visits[(JacTTGGenerator.extract_name(walker), node_type_name)] = res
+                cls.visits[(walker, node_type)] = res
 
         @classmethod
         def get(
             cls, walker: unitree.Archetype, node: NodeArchetype
         ) -> list[JacTTGGenerator.VisitType]:
-            walker_type_name = JacTTGGenerator.extract_name(walker)
-            node_type_name = JacTTGGenerator.extract_name(node)
-            if cls.visits.get((walker_type_name, node_type_name)) is None:
+            # node_type = walker.lookup(
+            #     JacTTGGenerator.extract_name(node)
+            # ).decl.find_parent_of_type(unitree.Archetype)
+            node_type = JacTTGGenerator.resolve_to_archetype(
+                walker, JacTTGGenerator.extract_name(node)
+            )
+            if node_type is None:
+                raise RuntimeError("Node type not found")
+            if cls.visits.get((walker, node_type)) is None:
                 cls._set_all_visits_for_a_walker(walker)
-            res = cls.visits[(walker_type_name, node_type_name)]
+            res = cls.visits[(walker, node_type)]
             return res
 
     @dataclass
