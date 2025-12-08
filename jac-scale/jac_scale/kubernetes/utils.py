@@ -3,6 +3,7 @@ import os
 import tarfile
 import time
 from collections.abc import Callable
+from pathlib import Path
 
 import requests
 import urllib3
@@ -383,7 +384,7 @@ def wait_for_pod_deletion(
     raise TimeoutError(f"Timed out waiting for pod '{pod_name}' deletion.")
 
 
-def run_kubectl_command(args: list[str], cwd=None) -> None:
+def run_kubectl_command(args: list[str], cwd: str | Path | None = None) -> None:
     """Execute a kubectl command and surface useful error details."""
     import shutil
     import subprocess
