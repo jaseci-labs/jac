@@ -219,23 +219,34 @@ def check_deployment_status(
     initial_wait: int = 60,
     interval: int = 30,
     max_retries: int = 10,
+    nlb_url: str | None = None,
 ) -> bool:
     """
-    Wait for a service on localhost at the given NodePort to become available.
+    Wait for a service to become available.
 
+    Can work with either NodePort (localhost:node_port) or NLB (AWS Load Balancer URL).
+    If nlb_url is provided, it will be used. Otherwise, localhost:node_port will be used.
     """
-    url = f"http://localhost:{node_port}{path}"
+    if nlb_url:
+        # Use the provided NLB URL
+        url = f"{nlb_url.rstrip('/')}{path}"
+    else:
+        # Use NodePort on localhost
+        url = f"http://localhost:{node_port}{path}"
+
     time.sleep(initial_wait)
 
     for attempt in range(1, max_retries + 1):
         try:
-            response = requests.get(url)
+            response = requests.get(url, timeout=10)
             if response.status_code == 200:
+                print(f"Service is available at: {url}")
                 return True
-        except RequestException:
-            pass
+        except RequestException as e:
+            if attempt == max_retries:
+                print(f"Failed to connect to {url}: {e}")
 
         if attempt < max_retries:
             time.sleep(interval)
-    else:
-        return False
+
+    return False

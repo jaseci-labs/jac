@@ -23,6 +23,52 @@ from .utils import (
 )
 
 
+def cluster_type() -> str:
+    """Detect if the current connected cluster is AWS or local.
+
+    Returns:
+        'aws' for AWS EKS clusters, 'local' for local/other clusters.
+    """
+    try:
+        v1 = client.CoreV1Api()
+        nodes = v1.list_node()
+
+        if not nodes.items:
+            return "local"
+
+        # Check node provider IDs for AWS indicators
+        for node in nodes.items:
+            provider_id = node.spec.provider_id or ""
+            # AWS provider IDs follow format: aws:///region/zone/instance-id
+            if provider_id.startswith("aws://"):
+                return "aws"
+
+        # Check node labels for AWS EKS indicators
+        for node in nodes.items:
+            labels = node.metadata.labels or {}
+            # EKS nodes have specific labels
+            if (
+                "topology.kubernetes.io/region" in labels
+                and any(
+                    region in labels.get("topology.kubernetes.io/region", "")
+                    for region in ["us-", "eu-", "ap-", "ca-", "sa-"]
+                )
+                and (
+                    "karpenter.sh/provisioner-name" in labels
+                    or (
+                        "kubernetes.io/os" in labels
+                        and "node.kubernetes.io/instance-type" in labels
+                    )
+                )
+            ):
+                return "aws"
+
+        return "local"
+    except Exception as exc:
+        print(f"Warning: Failed to detect cluster type: {exc}")
+        return "local"
+
+
 def ensure_pvc_exists(
     core_v1: client.CoreV1Api,
     namespace: str,
@@ -247,6 +293,13 @@ def deploy_k8(
     check_k8_status()
     ensure_namespace_exists(namespace)
     env_list = load_env_variables(code_folder)
+
+    # Detect cluster type (AWS or local)
+    cluster_env = cluster_type()
+    is_aws = cluster_env == "aws"
+    service_type = "LoadBalancer" if is_aws else "NodePort"
+    print(f"Detected cluster type: {cluster_env.upper()}")
+    print(f"Using service type: {service_type}")
     # -------------------
     # Define MongoDB deployment/service (if needed)
     # -------------------
@@ -369,22 +422,34 @@ def deploy_k8(
     # -------------------
     # Define Service for Jaseci-app
     # -------------------
+    # Build port configuration
+    port_config: dict[str, Any] = {
+        "protocol": "TCP",
+        "port": container_port,
+        "targetPort": container_port,
+    }
+    if not is_aws:
+        port_config["nodePort"] = node_port
+
+    service_spec: dict[str, Any] = {
+        "selector": {"app": app_name},
+        "ports": [port_config],
+        "type": service_type,
+    }
+
+    # Add AWS-specific annotations for LoadBalancer
+    service_metadata: dict[str, Any] = {"name": f"{app_name}-service"}
+    if is_aws:
+        service_metadata["annotations"] = {
+            "service.beta.kubernetes.io/aws-load-balancer-type": "nlb",
+            "service.beta.kubernetes.io/aws-load-balancer-scheme": "internet-facing",
+        }
+
     service = {
         "apiVersion": "v1",
         "kind": "Service",
-        "metadata": {"name": f"{app_name}-service"},
-        "spec": {
-            "selector": {"app": app_name},
-            "ports": [
-                {
-                    "protocol": "TCP",
-                    "port": container_port,
-                    "targetPort": container_port,
-                    "nodePort": node_port,
-                }
-            ],
-            "type": "NodePort",
-        },
+        "metadata": service_metadata,
+        "spec": service_spec,
     }
 
     deployment = {
@@ -477,7 +542,24 @@ def deploy_k8(
     core_v1.create_namespaced_service(namespace=namespace, body=service)
 
     path = "/walkers" if testing else "/docs"
-    if check_deployment_status(node_port, path):
-        print(f"Deployment complete! Access Jaseci-app at http://localhost:{node_port}")
+    if is_aws:
+        print(
+            "NLB is being provisioned. Once ready, the service will be accessible via the AWS NLB DNS name."
+        )
+        # For AWS, we would need the NLB URL which takes time to provision
+        print(
+            f"Run 'kubectl get svc {app_name}-service -n {namespace}' to get the NLB endpoint."
+        )
     else:
-        print("Deployment failed or service not responding.")
+        print(
+            f"NodePort service created. Access the application via: <node-ip>:{node_port}"
+        )
+        print(
+            f"Run 'kubectl get svc {app_name}-service -n {namespace}' to get the service endpoint."
+        )
+
+        # Check deployment status for NodePort
+        if check_deployment_status(node_port, path):
+            print(
+                f"Deployment complete! Access Jaseci-app at http://localhost:{node_port}{path}"
+            )
