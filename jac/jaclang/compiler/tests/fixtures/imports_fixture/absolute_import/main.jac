@@ -1,6 +1,5 @@
 # Fixture 01: Simple absolute import (2 files)
 # main.jac - imports module_a using absolute import
-
 import module_a;
 
 with entry {

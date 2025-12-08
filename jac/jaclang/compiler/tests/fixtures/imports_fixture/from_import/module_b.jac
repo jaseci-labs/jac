@@ -1,6 +1,5 @@
 # Fixture 02: Simple from-import (2 files)
 # module_b.jac - the module to be imported from
-
 glob VALUE_B = "Hello from module_b";
 glob ANOTHER_VALUE = 100;
 

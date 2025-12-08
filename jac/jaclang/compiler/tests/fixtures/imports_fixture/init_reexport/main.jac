@@ -2,7 +2,15 @@
 # main.jac - demonstrates how __init__.jac can aggregate exports from multiple modules
 
 # Import from package level (symbols re-exported via __init__.jac)
-import from mathlib { add, subtract, multiply, divide, PI, E, Calculator }
+import from mathlib {
+    add,
+    subtract,
+    multiply,
+    divide,
+    PI,
+    E,
+    Calculator
+}
 
 with entry {
     print(f"Init reexport - add(5, 3): {add(5, 3)}");
@@ -12,5 +20,7 @@ with entry {
     print(f"Init reexport - PI: {PI}");
     print(f"Init reexport - E: {E}");
     calc = Calculator();
-    print(f"Init reexport - Calculator.compute(10, 2, 'add'): {calc.compute(10, 2, 'add')}");
+    print(
+        f"Init reexport - Calculator.compute(10, 2, 'add'): {calc.compute(10, 2, 'add')}"
+    );
 }

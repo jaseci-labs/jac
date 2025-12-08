@@ -1,7 +1,8 @@
 # Fixture 10: Mixed absolute and relative imports
 # main.jac - uses absolute imports from outside package
-
-import from library.base { BASE_ID }
+import from library.base {
+    BASE_ID
+}
 import from library.extended { EXTENDED_ID, get_extended_id }
 import library.base as lib_base;
 

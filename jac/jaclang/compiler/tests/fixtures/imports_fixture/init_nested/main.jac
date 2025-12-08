@@ -2,7 +2,13 @@
 # main.jac - demonstrates hierarchical __init__.jac organization
 
 # Import from top-level package (aggregated in __init__.jac)
-import from database { User, Post, connect, disconnect, DB_VERSION }
+import from database {
+    User,
+    Post,
+    connect,
+    disconnect,
+    DB_VERSION
+}
 
 # Can also import subpackage directly
 import from database.models { Comment }

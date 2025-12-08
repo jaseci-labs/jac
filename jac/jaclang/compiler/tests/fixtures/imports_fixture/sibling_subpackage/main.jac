@@ -1,6 +1,5 @@
 # Fixture 12: Sibling subpackage imports
 # main.jac
-
 import from top.sub_a.a_module { A_VALUE, a_func }
 import from top.sub_b.b_module { B_VALUE, b_func }
 

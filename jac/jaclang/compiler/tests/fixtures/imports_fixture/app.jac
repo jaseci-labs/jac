@@ -1,9 +1,5 @@
+import from multi_level_import.main { utility_variable }
 
-
-
-import from  multi_level_import.main {utility_variable}
-
-
-with entry{
+with entry {
     print(utility_variable);
 }

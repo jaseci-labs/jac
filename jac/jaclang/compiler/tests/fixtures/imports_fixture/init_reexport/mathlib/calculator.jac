@@ -1,12 +1,16 @@
 # mathlib/calculator.jac
 # Calculator class that uses other mathlib modules
-
-import from .operations { add, subtract, multiply, divide }
+import from .operations {
+    add,
+    subtract,
+    multiply,
+    divide
+}
 import from .constants { PI }
 
 obj Calculator {
     has last_result: float = 0.0;
-    
+
     def compute(a: float, b: float, operation: str) -> float {
         if operation == "add" {
             self.last_result = add(a, b);
@@ -19,7 +23,7 @@ obj Calculator {
         }
         return self.last_result;
     }
-    
+
     def get_pi -> float {
         return PI;
     }

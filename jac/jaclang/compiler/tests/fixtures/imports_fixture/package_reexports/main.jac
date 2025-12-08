@@ -2,7 +2,12 @@
 # main.jac - import from package using __init__.jac aggregated exports
 
 # Import from package level - symbols re-exported via __init__.jac
-import from mylib { CORE_VALUE, core_function, UTIL_VALUE, PACKAGE_VERSION }
+import from mylib {
+    CORE_VALUE,
+    core_function,
+    UTIL_VALUE,
+    PACKAGE_VERSION
+}
 
 with entry {
     print(f"Package module import - CORE_VALUE: {CORE_VALUE}");

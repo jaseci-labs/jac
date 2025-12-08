@@ -1,6 +1,5 @@
 # circular/module_y.jac
 # Safe circular import - import inside function
-
 glob VALUE_Y = "Value from Y";
 
 def get_x_value -> str {

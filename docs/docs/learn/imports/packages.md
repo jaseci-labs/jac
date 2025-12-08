@@ -206,7 +206,7 @@ init_reexport/
 
 !!! tip "When to use `__init__.jac`"
     Use `__init__.jac` when you want to:
-    
+
     - Create a simplified public API
     - Hide internal module structure
     - Add package-level constants or initialization

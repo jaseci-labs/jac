@@ -1,7 +1,9 @@
 # Fixture 07: Relative imports within package
 # main.jac - runs the package with relative imports
-
-import from pkg.sibling { SIBLING_VALUE, sibling_func }
+import from pkg.sibling {
+    SIBLING_VALUE,
+    sibling_func
+}
 import from pkg.base { BASE_VALUE }
 
 with entry {
