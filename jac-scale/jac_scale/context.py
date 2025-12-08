@@ -2,9 +2,7 @@ from dataclasses import MISSING
 from typing import Any
 from uuid import UUID
 
-from jac_scale.memory_hierarchy import MultiHierarchyMemory
 from jaclang.compiler.constant import Constants as Con
-from jaclang.runtimelib.constructs import Anchor, NodeAnchor, Root
 from jaclang.runtimelib.runtime import ExecutionContext
 
 
@@ -17,6 +15,9 @@ class JScaleExecutionContext(ExecutionContext):
         root: str | None = None,
     ) -> None:
         """Initialize JScaleExecutionContext."""
+        from jac_scale.memory_hierarchy import MultiHierarchyMemory
+        from jaclang.runtimelib.constructs import Anchor, NodeAnchor, Root
+
         self.mem: MultiHierarchyMemory = MultiHierarchyMemory()
         self.reports: list[Any] = []
         self.custom: Any = MISSING
