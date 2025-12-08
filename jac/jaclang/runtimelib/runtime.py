@@ -533,7 +533,7 @@ class JacWalker:
         from jaclang.runtimelib.utils import all_issubclass
 
         warch = walker.archetype
-        warch.__ttg__ = JacTTGGenerator.get_set_based_ttg(warch, node.archetype)
+        warch.__ttg__ = JacTTGGenerator.get_ttg(warch, node.archetype)
         walker.path = []
         current_loc = node.archetype
 
@@ -2130,7 +2130,7 @@ class JacTTGGenerator:
         children: list[JacTTGGenerator.TypedWalkerState]
 
     @classmethod
-    def get_set_based_ttg(
+    def get_ttg(
         cls, walker: WalkerArchetype, start_node: NodeArchetype
     ) -> TypedWalkerState:
         """Get the set based TTG for multiple walker spawns."""
