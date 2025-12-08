@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING
 import jaclang.compiler.unitree as uni
 
 # Re-export from compiler.utils for backward compatibility
-from jaclang.compiler.utils import read_file_with_encoding
 
 if TYPE_CHECKING:
     from jaclang.runtimelib.constructs import NodeArchetype

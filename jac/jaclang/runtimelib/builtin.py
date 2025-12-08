@@ -7,7 +7,7 @@ from abc import abstractmethod
 from typing import TYPE_CHECKING, Any, ClassVar, override
 
 if TYPE_CHECKING:
-    from jaclang.runtimelib.constructs import AccessLevel, NodeArchetype
+    from jaclang.runtimelib.constructs import NodeArchetype
 
 
 def _get_jac() -> Any:

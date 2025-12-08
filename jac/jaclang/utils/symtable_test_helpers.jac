@@ -31,14 +31,12 @@ def look_down(tab: UniScopeNode, name: str, deep: bool = True) -> Symbol | None 
 
 """Assert that a symbol exists in the symbol table."""
 def assert_symbol_exists(
-    sym_table: UniScopeNode,
-    symbol_name: str,
-    symbol_type: str | None = None
+    sym_table: UniScopeNode, symbol_name: str, symbol_type: str | None = None
 ) -> Symbol {
     symbol = look_down(sym_table, symbol_name);
-    assert symbol is not None, f"Symbol '{symbol_name}' not found in symbol table";
+    assert symbol is not None , f"Symbol '{symbol_name}' not found in symbol table";
     if symbol_type {
-        assert symbol_type in str(symbol), (
+        assert symbol_type in str(symbol) , (
             f"Symbol '{symbol_name}' is not of type '{symbol_type}'"
         );
     }
@@ -49,7 +47,7 @@ def assert_symbol_exists(
 def assert_symbol_decl_at(symbol: Symbol, line: int, col: int) -> None {
     decl_info = str(symbol);
     expected_decl = f"{line}:{col}";
-    assert expected_decl in decl_info, (
+    assert expected_decl in decl_info , (
         f"Symbol declaration not found at {expected_decl}. Got: {decl_info}"
     );
 }
@@ -61,7 +59,7 @@ def assert_symbol_defns_at(
     symbol_str = str(symbol);
     for (line, col) in expected_defns {
         expected_defn = f"{line}:{col}";
-        assert expected_defn in symbol_str, (
+        assert expected_defn in symbol_str , (
             f"Symbol definition not found at {expected_defn}. Got: {symbol_str}"
         );
     }
@@ -72,7 +70,7 @@ def assert_symbol_uses_at(symbol: Symbol, expected_uses: list[tuple[int, int]]) 
     symbol_uses_str = str(symbol.uses);
     for (line, col) in expected_uses {
         expected_use = f"{line}:{col}";
-        assert expected_use in symbol_uses_str, (
+        assert expected_use in symbol_uses_str , (
             f"Symbol use not found at {expected_use}. Got: {symbol_uses_str}"
         );
     }
@@ -106,14 +104,20 @@ def assert_sub_table_exists(
     sub_tables = sym_table.kid_scope;
     table_names = [table.scope_name for table in sub_tables];
     type_names = [table.get_type() for table in sub_tables];
-    matching_tables = [name for name in table_names if table_name in name];
-    matching_types = [
-        type_name for type_name in type_names if tab_type in str(type_name)
+    matching_tables = [
+        name
+        for name in table_names
+        if table_name in name
     ];
-    assert len(matching_tables) > 0, (
+    matching_types = [
+        type_name
+        for type_name in type_names
+        if tab_type in str(type_name)
+    ];
+    assert len(matching_tables) > 0 , (
         f"Sub-table '{table_name}' not found. Available: {table_names}"
     );
-    assert len(matching_types) > 0, (
+    assert len(matching_types) > 0 , (
         f"Sub-table type '{tab_type}' not found in {table_names} of types {type_names}"
     );
     return sub_tables[table_names.index(matching_tables[0])];

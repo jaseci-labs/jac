@@ -151,7 +151,9 @@ def random_value_for_type(tp: Any, *, _depth: int = 0, _max_depth: int = 10) -> 
 
     # Any / object => pick a simple JSON-friendly value
     if tp in (Any, object) {
-        return random.choice([_rand_str(), random.randint(0, 9999), True, None, random.uniform(0, 1)]);
+        return random.choice(
+            [_rand_str(), random.randint(0, 9999), True, None, random.uniform(0, 1)]
+        );
     }
 
     # Primitives and common stdlib scalars
@@ -173,7 +175,15 @@ def random_value_for_type(tp: Any, *, _depth: int = 0, _max_depth: int = 10) -> 
         if type(None) in options and len(options) > 1 and random.random() < 0.3 {
             return None;
         }
-        chosen = _choose_from([t for t in options if t is not type(None)]) if options else None;
+        chosen = _choose_from(
+            [
+                t
+                for t in options
+                if t is not type(None)
+            ]
+        )
+        if options
+        else None;
         return random_value_for_type(chosen, _depth=_depth + 1, _max_depth=_max_depth);
     }
 
@@ -184,8 +194,9 @@ def random_value_for_type(tp: Any, *, _depth: int = 0, _max_depth: int = 10) -> 
             # Tuple[T, ...]
             n = random.randint(0, 5);
             return tuple(
-                random_value_for_type(args[0], _depth=_depth + 1, _max_depth=_max_depth)
-                for _ in range(n)
+                random_value_for_type(
+                    args[0], _depth=_depth + 1, _max_depth=_max_depth
+                ) for _ in range(n)
             );
         } else {
             return tuple(
@@ -229,8 +240,7 @@ def random_value_for_type(tp: Any, *, _depth: int = 0, _max_depth: int = 10) -> 
     if origin is dict {
         key_t = get_args(tp)[0] if get_args(tp) else Any;
         val_t = get_args(tp)[1] if len(get_args(tp)) > 1 else Any;
-
-        def mk_key() -> Any {
+        def mk_key()  -> Any {
             k = random_value_for_type(key_t, _depth=_depth + 1, _max_depth=_max_depth);
             try {
                 hash(k);
@@ -239,11 +249,11 @@ def random_value_for_type(tp: Any, *, _depth: int = 0, _max_depth: int = 10) -> 
                 return str(k);
             }
         }
-
         size = random.randint(0, 5);
         return {
-            mk_key(): random_value_for_type(val_t, _depth=_depth + 1, _max_depth=_max_depth)
-            for _ in range(size)
+            mk_key(): random_value_for_type(
+                val_t, _depth=_depth + 1, _max_depth=_max_depth
+            ) for _ in range(size)
         };
     }
 
@@ -254,11 +264,15 @@ def random_value_for_type(tp: Any, *, _depth: int = 0, _max_depth: int = 10) -> 
         anns = tp.__annotations__;
         out: dict = {};
         for k in req {
-            out[k] = random_value_for_type(anns[k], _depth=_depth + 1, _max_depth=_max_depth);
+            out[k] = random_value_for_type(
+                anns[k], _depth=_depth + 1, _max_depth=_max_depth
+            );
         }
         for k in opt {
             if random.random() < 0.6 {
-                out[k] = random_value_for_type(anns[k], _depth=_depth + 1, _max_depth=_max_depth);
+                out[k] = random_value_for_type(
+                    anns[k], _depth=_depth + 1, _max_depth=_max_depth
+                );
             }
         }
         return out;
@@ -286,7 +300,6 @@ def random_value_for_type(tp: Any, *, _depth: int = 0, _max_depth: int = 10) -> 
         } except Exception {
             type_hints = {};
         }
-
         kwargs: dict = {};
         for f in dc_fields(tp) {
             if f.init {
@@ -296,7 +309,9 @@ def random_value_for_type(tp: Any, *, _depth: int = 0, _max_depth: int = 10) -> 
                     }
                 }
                 field_type = type_hints.get(f.name, f.type);
-                kwargs[f.name] = random_value_for_type(field_type, _depth=_depth + 1, _max_depth=_max_depth);
+                kwargs[f.name] = random_value_for_type(
+                    field_type, _depth=_depth + 1, _max_depth=_max_depth
+                );
             }
         }
         try {
@@ -304,7 +319,13 @@ def random_value_for_type(tp: Any, *, _depth: int = 0, _max_depth: int = 10) -> 
             return tp(**kwargs);
         } except TypeError {
             assert isinstance(tp, type);
-            return tp(**{k: v for (k, v) in kwargs.items() if v is not MISSING});
+            return tp(
+                **{
+                    k: v
+                    for (k, v) in kwargs.items()
+                    if v is not MISSING
+                }
+            );
         }
     }
 
@@ -312,10 +333,14 @@ def random_value_for_type(tp: Any, *, _depth: int = 0, _max_depth: int = 10) -> 
     if isinstance(tp, TypeVar) {
         if tp.__constraints__ {
             chosen = _choose_from(tp.__constraints__);
-            return random_value_for_type(chosen, _depth=_depth + 1, _max_depth=_max_depth);
+            return random_value_for_type(
+                chosen, _depth=_depth + 1, _max_depth=_max_depth
+            );
         }
         if tp.__bound__ {
-            return random_value_for_type(tp.__bound__, _depth=_depth + 1, _max_depth=_max_depth);
+            return random_value_for_type(
+                tp.__bound__, _depth=_depth + 1, _max_depth=_max_depth
+            );
         }
         return random_value_for_type(Any, _depth=_depth + 1, _max_depth=_max_depth);
     }
@@ -327,11 +352,11 @@ def random_value_for_type(tp: Any, *, _depth: int = 0, _max_depth: int = 10) -> 
         if args and len(args) == 2 {
             ret_t = args[1];
         }
-
-        def _fn_stub(*_a: Any, **_k: Any) -> Any {
-            return random_value_for_type(ret_t, _depth=_depth + 1, _max_depth=_max_depth);
+        def _fn_stub( *_a: Any , **_k: Any)  -> Any {
+            return random_value_for_type(
+                ret_t, _depth=_depth + 1, _max_depth=_max_depth
+            );
         }
-
         return _fn_stub;
     }
 
@@ -349,14 +374,18 @@ def random_value_for_type(tp: Any, *, _depth: int = 0, _max_depth: int = 10) -> 
                 if name == 'self' {
                     continue;
                 }
-                ann = param.annotation if param.annotation is not inspect._empty else Any;
+                ann = param.annotation
+                if param.annotation is not inspect._empty
+                else Any;
                 if param.default is not inspect._empty and random.random() < 0.4 {
                     continue;
                 }
                 if param.kind in (param.VAR_POSITIONAL, param.VAR_KEYWORD) {
                     continue;
                 }
-                kwargs[name] = random_value_for_type(ann, _depth=_depth + 1, _max_depth=_max_depth);
+                kwargs[name] = random_value_for_type(
+                    ann, _depth=_depth + 1, _max_depth=_max_depth
+                );
             }
             return tp(**kwargs);
         } except Exception {
@@ -384,7 +413,7 @@ def returns_fake(func: Any) -> Any {
     ret_t = type_hints.get('return', Any);
 
     @wraps(func)
-    def wrapper(*args: Any, **kwargs: Any) -> Any {
+    def wrapper( *args: Any , **kwargs: Any)  -> Any {
         return random_value_for_type(ret_t);
     }
 
