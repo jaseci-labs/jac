@@ -22,3 +22,26 @@ else:
             "Try reinstalling it via 'pip install --force-reinstall jaclang'.\n"
         )
         sys.exit(1)
+
+# Import from Jac modules (JacMetaImporter is now active)
+from byllm.lib import (  # noqa: E402
+    MTIR,
+    Image,
+    MockLLM,
+    MockToolCall,
+    Model,
+    Video,
+    by,
+)
+from byllm.plugin import JacRuntime  # noqa: E402
+
+__all__ = [
+    "by",
+    "Image",
+    "JacRuntime",
+    "MockLLM",
+    "MockToolCall",
+    "Model",
+    "MTIR",
+    "Video",
+]
