@@ -285,3 +285,20 @@ def get_completion_items(ty: types.TypeBase | uni.UniScopeNode) -> list[Completi
             ret.append(CompletionItem(label=name, kind=kind))
 
     return ret
+
+
+def lookup_symtab(
+    symtable: uni.UniScopeNode, name: str, builtins_to_inject: uni.Module
+) -> Symbol | None:
+    """Lookup a symbol in the symbol table."""
+
+    mod: uni.Module | None = None
+    if isinstance(symtable, uni.Module):
+        mod = symtable
+    else:
+        mod = symtable.find_parent_of_type(uni.Module)
+
+    if mod and (mod.parent_scope is None and mod != builtins_to_inject):
+        mod.parent_scope = builtins_to_inject
+
+    return symtable.lookup(name, deep=True, incl_inner_scope=True)

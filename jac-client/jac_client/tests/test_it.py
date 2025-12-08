@@ -8,11 +8,21 @@ import shutil
 import socket
 import tempfile
 import time
-from subprocess import Popen, run
+from subprocess import PIPE, Popen, run
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 import pytest
+
+from jaclang.runtimelib.runtime import JacRuntime as Jac
+
+
+@pytest.fixture(autouse=True)
+def reset_jac_machine():
+    """Reset Jac machine before and after each test."""
+    Jac.reset_machine()
+    yield
+    Jac.reset_machine()
 
 
 def _wait_for_port(
@@ -68,33 +78,34 @@ def test_all_in_one_app_endpoints() -> None:
             print(f"[DEBUG] Changed working directory to {temp_dir}")
 
             # 1. Create a new Jac app via CLI (requires jac + jac-client plugin installed)
+            # Note: We provide "n\n" for TypeScript support since all-in-one already has TS configured
             print(f"[DEBUG] Running 'jac create_jac_app {app_name}'")
-            create_result = run(
+            process = Popen(
                 ["jac", "create_jac_app", app_name],
-                capture_output=True,
+                stdin=PIPE,
+                stdout=PIPE,
+                stderr=PIPE,
                 text=True,
             )
+            stdout, stderr = process.communicate(input="n\n")
+            returncode = process.returncode
+
             print(
                 "[DEBUG] 'jac create_jac_app' completed "
-                f"returncode={create_result.returncode}\n"
-                f"STDOUT:\n{create_result.stdout}\n"
-                f"STDERR:\n{create_result.stderr}\n"
+                f"returncode={returncode}\n"
+                f"STDOUT:\n{stdout}\n"
+                f"STDERR:\n{stderr}\n"
             )
 
             # If the currently installed `jac` CLI does not support `create_jac_app`,
             # skip this integration test instead of failing the whole suite.
-            if (
-                create_result.returncode != 0
-                and "invalid choice: 'create_jac_app'" in create_result.stderr
-            ):
+            if returncode != 0 and "invalid choice: 'create_jac_app'" in stderr:
                 pytest.skip(
                     "Skipping: installed `jac` CLI does not support `create_jac_app`."
                 )
 
-            assert create_result.returncode == 0, (
-                "jac create_jac_app failed\n"
-                f"STDOUT:\n{create_result.stdout}\n"
-                f"STDERR:\n{create_result.stderr}\n"
+            assert returncode == 0, (
+                f"jac create_jac_app failed\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}\n"
             )
 
             project_path = os.path.join(temp_dir, app_name)

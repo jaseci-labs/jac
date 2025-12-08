@@ -4,28 +4,17 @@ from __future__ import annotations
 
 import json
 from abc import abstractmethod
-from enum import Enum
 from typing import ClassVar, override
 
-from jaclang.runtimelib.constructs import NodeArchetype
+from jaclang.runtimelib.constructs import AccessLevel, NodeArchetype
 from jaclang.runtimelib.runtime import JacRuntimeInterface as Jac
 from jaclang.runtimelib.utils import collect_node_connections
 
-
-class AccessLevelEnum(Enum):
-    """Access level constants for JAC objects."""
-
-    NO_ACCESS = "NO_ACCESS"
-    READ = "READ"
-    CONNECT = "CONNECT"
-    WRITE = "WRITE"
-
-
 # Create module level constants for easier access
-NoPerm = AccessLevelEnum.NO_ACCESS
-ReadPerm = AccessLevelEnum.READ
-ConnectPerm = AccessLevelEnum.CONNECT
-WritePerm = AccessLevelEnum.WRITE
+NoPerm = AccessLevel.NO_ACCESS
+ReadPerm = AccessLevel.READ
+ConnectPerm = AccessLevel.CONNECT
+WritePerm = AccessLevel.WRITE
 
 
 def printgraph(

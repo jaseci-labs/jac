@@ -54,8 +54,8 @@ def test_annexalbe_by_discovery(fixture_path: Callable[[str], str]) -> None:
     # Typechecked modules also will be present along with annex modules
     # ["incautoimpl", "autoimpl", "autoimpl.something.else.impl",
     #  "autoimpl.impl", "autoimpl.empty.impl", "autoimpl.cl",
-    #  "getme.impl", "typing", "types", "builtins",]
-    assert len(all_mods) == 10
+    #  "getme.impl", "typing", "types", "builtins","jac_builtins"]
+    assert len(all_mods) == 11
     for main_mod in all_mods:
         for i in main_mod.impl_mod:
             if i.name not in ["autoimpl", "incautoimpl"]:

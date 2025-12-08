@@ -1,8 +1,10 @@
 """Tests for Integration with Jaclang."""
 
+import contextlib
 import io
 import os
 import sys
+from collections.abc import Callable
 
 import pytest
 import yaml
@@ -15,7 +17,7 @@ jac_import = Jac.jac_import
 
 
 @pytest.fixture
-def fixture_path():
+def fixture_path() -> Callable[[str], str]:
     """Fixture to get the absolute path of fixtures directory."""
 
     def _fixture_abs_path(fixture: str) -> str:
@@ -28,7 +30,7 @@ def fixture_path():
     return _fixture_abs_path
 
 
-def test_llm_mail_summerize(fixture_path) -> None:
+def test_llm_mail_summerize(fixture_path: Callable[[str], str]) -> None:
     """Parse micro jac file."""
     captured_output = io.StringIO()
     sys.stdout = captured_output
@@ -46,7 +48,7 @@ def test_llm_mail_summerize(fixture_path) -> None:
         assert summary in stdout_value
 
 
-def test_method_include_context(fixture_path) -> None:
+def test_method_include_context(fixture_path: Callable[[str], str]) -> None:
     """Test the method include context functionality."""
     captured_output = io.StringIO()
     sys.stdout = captured_output
@@ -58,7 +60,7 @@ def test_method_include_context(fixture_path) -> None:
     assert "Average marks for Alice : 86.75" in stdout_value
 
 
-def test_with_llm_function(fixture_path) -> None:
+def test_with_llm_function(fixture_path: Callable[[str], str]) -> None:
     """Parse micro jac file."""
     captured_output = io.StringIO()
     sys.stdout = captured_output
@@ -68,7 +70,7 @@ def test_with_llm_function(fixture_path) -> None:
     assert "👤➡️🗼" in stdout_value
 
 
-def test_method_tool_call(fixture_path) -> None:
+def test_method_tool_call(fixture_path: Callable[[str], str]) -> None:
     """Parse micro jac file."""
     captured_output = io.StringIO()
     sys.stdout = captured_output
@@ -79,7 +81,7 @@ def test_method_tool_call(fixture_path) -> None:
     assert "Result: 46" in stdout_value
 
 
-def test_params_format(fixture_path) -> None:
+def test_params_format(fixture_path: Callable[[str], str]) -> None:
     """Parse micro jac file."""
     captured_output = io.StringIO()
     sys.stdout = captured_output
@@ -111,7 +113,7 @@ def test_params_format(fixture_path) -> None:
     )
 
 
-def test_image_input(fixture_path) -> None:
+def test_image_input(fixture_path: Callable[[str], str]) -> None:
     """Parse micro jac file."""
     captured_output = io.StringIO()
     sys.stdout = captured_output
@@ -121,7 +123,7 @@ def test_image_input(fixture_path) -> None:
     assert "The image shows a hot air balloon shaped like a heart" in stdout_value
 
 
-def test_streaming_output(fixture_path) -> None:
+def test_streaming_output(fixture_path: Callable[[str], str]) -> None:
     """Parse micro jac file."""
     captured_output = io.StringIO()
     sys.stdout = captured_output
@@ -134,7 +136,7 @@ def test_streaming_output(fixture_path) -> None:
     )
 
 
-def test_streaming_with_react(fixture_path) -> None:
+def test_streaming_with_react(fixture_path: Callable[[str], str]) -> None:
     """Test streaming output with ReAct method (tool calling)."""
     captured_output = io.StringIO()
     sys.stdout = captured_output
@@ -146,7 +148,7 @@ def test_streaming_with_react(fixture_path) -> None:
     assert "Test passed!" in stdout_value
 
 
-def test_by_expr(fixture_path) -> None:
+def test_by_expr(fixture_path: Callable[[str], str]) -> None:
     """Test by llm['as'].expression instead of llm() call."""
     captured_output = io.StringIO()
     sys.stdout = captured_output
@@ -166,7 +168,7 @@ def test_by_expr(fixture_path) -> None:
         assert line in stdout_value
 
 
-def test_with_llm_method(fixture_path) -> None:
+def test_with_llm_method(fixture_path: Callable[[str], str]) -> None:
     """Parse micro jac file."""
     captured_output = io.StringIO()
     sys.stdout = captured_output
@@ -179,7 +181,7 @@ def test_with_llm_method(fixture_path) -> None:
     assert "Personality.INTROVERT" in stdout_value
 
 
-def test_with_llm_lower(fixture_path) -> None:
+def test_with_llm_lower(fixture_path: Callable[[str], str]) -> None:
     """Parse micro jac file."""
     captured_output = io.StringIO()
     sys.stdout = captured_output
@@ -194,7 +196,7 @@ def test_with_llm_lower(fixture_path) -> None:
     )
 
 
-def test_with_llm_type(fixture_path) -> None:
+def test_with_llm_type(fixture_path: Callable[[str], str]) -> None:
     """Parse micro jac file."""
     captured_output = io.StringIO()
     sys.stdout = captured_output
@@ -213,7 +215,7 @@ def test_with_llm_type(fixture_path) -> None:
     assert desired_output_count == 2
 
 
-def test_with_llm_image(fixture_path) -> None:
+def test_with_llm_image(fixture_path: Callable[[str], str]) -> None:
     """Test MTLLLM Image Implementation."""
     pytest.importorskip("PIL", reason="This test requires Pillow to be installed.")
     captured_output = io.StringIO()
@@ -229,7 +231,7 @@ def test_with_llm_image(fixture_path) -> None:
     assert "data:image/jpeg;base64," not in stdout_value[:500]
 
 
-def test_webp_image_support(fixture_path):
+def test_webp_image_support(fixture_path: Callable[[str], str]) -> None:
     """Test MTLLLM image support for webp format."""
     captured_output = io.StringIO()
     sys.stdout = captured_output
@@ -240,7 +242,7 @@ def test_webp_image_support(fixture_path):
     assert "year_of_death='1955'" in stdout_value
 
 
-def test_with_llm_video(fixture_path) -> None:
+def test_with_llm_video(fixture_path: Callable[[str], str]) -> None:
     """Test MTLLLM Video Implementation."""
     pytest.importorskip("cv2", reason="This test requires OpenCV to be installed.")
     captured_output = io.StringIO()
@@ -256,7 +258,7 @@ def test_with_llm_video(fixture_path) -> None:
     assert video_explanation in stdout_value
 
 
-def test_semstrings(fixture_path) -> None:
+def test_semstrings(fixture_path: Callable[[str], str]) -> None:
     """Test the semstrings with the new sem keyword.
 
     obj Foo {
@@ -297,22 +299,22 @@ def test_python_lib_mode() -> None:
     assert "breaking the Enigma code" in person.description
 
 
-def test_enum_without_value(fixture_path) -> None:
+def test_enum_without_value(fixture_path: Callable[[str], str]) -> None:
     """This tests enum without values, where enum names gets into the prompt."""
+    from loguru import logger
+
     captured_output = io.StringIO()
-    sys.stdout = captured_output
-    try:
-        jac_import("enum_no_value", base_path=fixture_path("./"))
-    except Exception:
+    logger.remove()
+    logger.add(captured_output)
+    with contextlib.suppress(Exception):
         # API key error is expected, but we still capture the output before the error
-        pass
-    sys.stdout = sys.__stdout__
+        jac_import("enum_no_value", base_path=fixture_path("./"))
     stdout_value = captured_output.getvalue()
     assert "YES" in stdout_value
     assert "NO" in stdout_value
 
 
-def test_fixtures_image_types(fixture_path) -> None:
+def test_fixtures_image_types(fixture_path: Callable[[str], str]) -> None:
     """Test various image input types in Jaclang."""
     captured_output = io.StringIO()
     sys.stdout = captured_output

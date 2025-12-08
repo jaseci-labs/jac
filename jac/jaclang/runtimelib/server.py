@@ -13,17 +13,17 @@ from contextlib import suppress
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
-from typing import Any, Literal, TypeAlias, get_type_hints
+from typing import TYPE_CHECKING, Any, Literal, TypeAlias, get_type_hints
 from urllib.parse import parse_qs, urlparse
 
 from jaclang.runtimelib.client_bundle import ClientBundleError
-from jaclang.runtimelib.constructs import (
-    Archetype,
-    NodeArchetype,
-    Root,
-    WalkerArchetype,
-)
 from jaclang.runtimelib.runtime import JacRuntime as Jac
+
+if TYPE_CHECKING:
+    from jaclang.runtimelib.constructs import (
+        Archetype,
+        WalkerArchetype,
+    )
 
 # Type Aliases
 JsonValue: TypeAlias = (
@@ -58,6 +58,8 @@ class JacSerializer:
     @staticmethod
     def serialize(obj: object) -> JsonValue:
         """Serialize objects to JSON-compatible format."""
+        from jaclang.runtimelib.constructs import Archetype
+
         if obj is None or isinstance(obj, (str, int, float, bool)):
             return obj
 
@@ -81,6 +83,8 @@ class JacSerializer:
     @staticmethod
     def _serialize_archetype(arch: Archetype) -> dict[str, JsonValue]:
         """Serialize Archetype instances."""
+        from jaclang.runtimelib.constructs import NodeArchetype, WalkerArchetype
+
         result: dict[str, JsonValue] = {
             "_jac_type": type(arch).__name__,
             "_jac_id": arch.__jac__.id.hex,
@@ -137,6 +141,8 @@ class UserManager:
 
     def create_user(self, username: str, password: str) -> dict[str, str]:
         """Create a new user with their own root node. Returns dict with user data or error."""
+        from jaclang.runtimelib.constructs import Root
+
         if username in self._users:
             return {"error": "User already exists"}
 
@@ -164,7 +170,7 @@ class UserManager:
         self._tokens[token] = username
         self._persist()
 
-        return {"username": username, "token": token, "root_id": root_id}
+        return {"email": username, "token": token, "root_id": root_id}
 
     def authenticate(self, username: str, password: str) -> dict[str, str] | None:
         """Authenticate a user and return their data."""
@@ -176,7 +182,7 @@ class UserManager:
 
         if user["password_hash"] == password_hash:
             return {
-                "username": username,
+                "email": username,
                 "token": user["token"],
                 "root_id": user["root_id"],
             }
@@ -232,6 +238,8 @@ class ExecutionManager:
         self, walker_cls: type[WalkerArchetype], fields: dict[str, Any], username: str
     ) -> dict[str, JsonValue]:
         """Spawn a walker in user's context."""
+        from jaclang.runtimelib.constructs import NodeArchetype
+
         root_id = self.user_manager.get_root_id(username)
         if not root_id:
             return {"error": "User not found"}
@@ -341,6 +349,7 @@ class ModuleIntrospector:
             return
 
         import jaclang.compiler.unitree as uni
+        from jaclang.runtimelib.constructs import WalkerArchetype
 
         self._function_access = {}
         self._walker_access = {}
@@ -402,6 +411,8 @@ class ModuleIntrospector:
 
     def _collect_walkers(self) -> dict[str, type[WalkerArchetype]]:
         """Collect walker classes from module."""
+        from jaclang.runtimelib.constructs import WalkerArchetype
+
         if not self._module:
             return {}
 
@@ -482,9 +493,7 @@ class ModuleIntrospector:
                 ),
                 "required": param.default == inspect.Parameter.empty,
                 "default": (
-                    None
-                    if param.default == inspect.Parameter.empty
-                    else str(param.default)
+                    None if param.default == inspect.Parameter.empty else param.default
                 ),
             }
             for name, param in sig.parameters.items()
@@ -688,23 +697,23 @@ class RouteHandler:
 class AuthHandler(RouteHandler):
     """Handle authentication routes."""
 
-    def create_user(self, username: str, password: str) -> Response:
+    def create_user(self, email: str, password: str) -> Response:
         """Create new user."""
-        if not username or not password:
-            return Response(400, {"error": "Username and password required"})
+        if not email or not password:
+            return Response(400, {"error": "Email and password required"})
 
-        result = self.user_manager.create_user(username, password)
+        result = self.user_manager.create_user(email, password)
         if "error" in result:
             return Response(400, dict[str, JsonValue](result))
 
         return Response(201, dict[str, JsonValue](result))
 
-    def login(self, username: str, password: str) -> Response:
+    def login(self, email: str, password: str) -> Response:
         """Authenticate user."""
-        if not username or not password:
-            return Response(400, {"error": "Username and password required"})
+        if not email or not password:
+            return Response(400, {"error": "Email and password required"})
 
-        result = self.user_manager.authenticate(username, password)
+        result = self.user_manager.authenticate(email, password)
         if not result:
             return Response(401, {"error": "Invalid credentials"})
 
@@ -979,7 +988,7 @@ class JacAPIServer:
                         {
                             "message": "Jac API Server",
                             "endpoints": {
-                                "POST /user/create": "Create a new user",
+                                "POST /user/register": "Create a new user",
                                 "POST /user/login": "Authenticate and get token",
                                 "GET /functions": "List all available functions",
                                 "GET /walkers": "List all available walkers",
@@ -1080,16 +1089,16 @@ class JacAPIServer:
                     return
 
                 # Public auth endpoints
-                if path == "/user/create":
+                if path == "/user/register":
                     response = server.auth_handler.create_user(
-                        data.get("username", ""), data.get("password", "")
+                        data.get("email", ""), data.get("password", "")
                     )
                     self._send_response(response)
                     return
 
                 if path == "/user/login":
                     response = server.auth_handler.login(
-                        data.get("username", ""), data.get("password", "")
+                        data.get("email", ""), data.get("password", "")
                     )
                     self._send_response(response)
                     return
@@ -1206,7 +1215,7 @@ class JacAPIServer:
             print(f"Module: {self.module_name}")
             print(f"Session: {self.session_path}")
             print("\nAvailable endpoints:")
-            print("  POST /user/create - Create a new user")
+            print("  POST /user/register - Create a new user")
             print("  POST /user/login - Login and get auth token")
             print("  GET /functions - List all functions")
             print("  GET /walkers - List all walkers")
@@ -1255,15 +1264,15 @@ def print_endpoint_docs(server: JacAPIServer) -> None:
     section("AUTHENTICATION")
     endpoint(
         "POST",
-        "/user/create",
+        "/user/register",
         "Create new user account",
-        'Body: { "username": str, "password": str }',
+        'Body: { "email": str, "password": str }',
     )
     endpoint(
         "POST",
         "/user/login",
         "Authenticate and get token",
-        'Body: { "username": str, "password": str }',
+        'Body: { "email": str, "password": str }',
     )
 
     # Introspection

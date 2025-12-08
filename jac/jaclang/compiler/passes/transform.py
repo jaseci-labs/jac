@@ -144,6 +144,9 @@ class Transform(BaseTransform[T, R]):
 
     def log_error(self, msg: str, node_override: UniNode | None = None) -> None:
         """Pass Error."""
+        if settings.all_warnings:
+            self.log_warning(msg, node_override)
+            return
         alrt = Alert(
             msg,
             self.cur_node.loc if not node_override else node_override.loc,

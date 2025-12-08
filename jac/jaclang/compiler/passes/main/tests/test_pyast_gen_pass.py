@@ -6,6 +6,8 @@ import sys
 import types
 from collections.abc import Callable
 
+import pytest
+
 import jaclang.compiler.unitree as uni
 from conftest import check_pass_ast_complete, get_micro_jac_files
 from jaclang.compiler.passes.main import PyastGenPass
@@ -292,7 +294,7 @@ def parent_scrub(node: uni.UniNode) -> bool:
 
 
 # Micro suite tests - generated dynamically
-def pytest_generate_tests(metafunc):
+def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
     """Generate test cases for micro jac files."""
     if "micro_jac_file" in metafunc.fixturenames:
         micro_files = get_micro_jac_files()

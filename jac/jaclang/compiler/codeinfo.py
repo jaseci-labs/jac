@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from jaclang.compiler.passes.ecmascript.estree import (
         Node as EsNode,
     )
+    from jaclang.compiler.passes.tool.doc_ir import Doc
     from jaclang.compiler.unitree import Source, Token
 
 
@@ -37,16 +38,30 @@ class CodeGenTarget:
 
     def __init__(self) -> None:
         """Initialize code generation target."""
-        import jaclang.compiler.passes.tool.doc_ir as doc
-
         self.py: str = ""
         self.jac: str = ""
-        self.doc_ir: doc.DocType = doc.Text("")
+        self._doc_ir: Doc | None = (
+            None  # Lazily initialized to allow doc_ir.jac conversion
+        )
         self.js: str = ""
         self.client_manifest: ClientManifest = ClientManifest()
         self.py_ast: list[ast3.AST] = []
         self.py_bytecode: bytes | None = None
         self.es_ast: EsNode | Sequence[EsNode] | SliceInfo | IndexInfo | None = None
+
+    @property
+    def doc_ir(self) -> Doc:
+        """Lazy initialization of doc_ir to allow doc_ir.jac conversion."""
+        if self._doc_ir is None:
+            import jaclang.compiler.passes.tool.doc_ir as doc
+
+            self._doc_ir = doc.Text("")
+        return self._doc_ir
+
+    @doc_ir.setter
+    def doc_ir(self, value: Doc) -> None:
+        """Set doc_ir value."""
+        self._doc_ir = value
 
 
 class CodeLocInfo:

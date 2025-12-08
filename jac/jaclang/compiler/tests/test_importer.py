@@ -3,6 +3,7 @@
 import io
 import os
 import sys
+from collections.abc import Callable
 
 import pytest
 
@@ -14,7 +15,7 @@ from jaclang.settings import settings
 
 
 @pytest.fixture
-def fixture_abs_path():
+def fixture_abs_path() -> Callable[[str], str]:
     """Get absolute path to fixture file."""
     import inspect
 
@@ -41,7 +42,7 @@ def reset_jac_machine():
     Jac.reset_machine()
 
 
-def test_import_basic_python(fixture_abs_path) -> None:
+def test_import_basic_python(fixture_abs_path: Callable[[str], str]) -> None:
     """Test basic self loading."""
     sys.modules.pop("fixtures", None)
     sys.modules.pop("fixtures.hello_world", None)
@@ -53,7 +54,7 @@ def test_import_basic_python(fixture_abs_path) -> None:
     assert h.hello() == "Hello World!"  # type: ignore
 
 
-def test_modules_correct(fixture_abs_path) -> None:
+def test_modules_correct(fixture_abs_path: Callable[[str], str]) -> None:
     """Test basic self loading."""
     sys.modules.pop("fixtures", None)
     sys.modules.pop("fixtures.hello_world", None)
@@ -68,7 +69,7 @@ def test_modules_correct(fixture_abs_path) -> None:
     )
 
 
-def test_jac_py_import(fixture_abs_path) -> None:
+def test_jac_py_import(fixture_abs_path: Callable[[str], str]) -> None:
     """Basic test for pass."""
     captured_output = io.StringIO()
     sys.stdout = captured_output
@@ -82,7 +83,7 @@ def test_jac_py_import(fixture_abs_path) -> None:
     )
 
 
-def test_jac_py_import_auto(fixture_abs_path) -> None:
+def test_jac_py_import_auto(fixture_abs_path: Callable[[str], str]) -> None:
     """Basic test for pass."""
     captured_output = io.StringIO()
     sys.stdout = captured_output
@@ -96,7 +97,7 @@ def test_jac_py_import_auto(fixture_abs_path) -> None:
     )
 
 
-def test_import_with_jacpath(fixture_abs_path) -> None:
+def test_import_with_jacpath(fixture_abs_path: Callable[[str], str]) -> None:
     """Test module import using JACPATH."""
     # Set up a temporary JACPATH environment variable
     import os
@@ -142,7 +143,7 @@ def test_import_with_jacpath(fixture_abs_path) -> None:
         jacpath_dir.cleanup()
 
 
-def test_importer_with_submodule_jac(fixture_abs_path) -> None:
+def test_importer_with_submodule_jac(fixture_abs_path: Callable[[str], str]) -> None:
     """Test basic self loading."""
     captured_output = io.StringIO()
     sys.stdout = captured_output
@@ -153,7 +154,7 @@ def test_importer_with_submodule_jac(fixture_abs_path) -> None:
     assert "Tool function executed" in stdout_value
 
 
-def test_importer_with_submodule_py(fixture_abs_path) -> None:
+def test_importer_with_submodule_py(fixture_abs_path: Callable[[str], str]) -> None:
     captured_output = io.StringIO()
     sys.stdout = captured_output
     cli.run(fixture_abs_path("pkg_import_main_py.jac"))
@@ -164,7 +165,7 @@ def test_importer_with_submodule_py(fixture_abs_path) -> None:
     assert "pkg_import_lib_py.glob_var_lib" in stdout_value
 
 
-def test_jac_import_py_files(fixture_abs_path) -> None:
+def test_jac_import_py_files(fixture_abs_path: Callable[[str], str]) -> None:
     """Test importing Python files using Jac import system."""
     captured_output = io.StringIO()
     sys.stdout = captured_output

@@ -5,7 +5,7 @@ from pathlib import Path
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, Response
 
-from jac_scale.jserver.jfastApi import JFastApiServer
+from jac_scale.jserver.jfast_api import JFastApiServer
 from jac_scale.jserver.jserver import APIParameter, HTTPMethod, JEndPoint, ParameterType
 from jaclang.runtimelib.runtime import JacRuntime as Jac
 from jaclang.runtimelib.server import JacAPIServer as JServer
@@ -32,8 +32,8 @@ class JacAPIServer(JServer):
             allow_headers=["*"],  # Allows all headers
         )
 
-    def login(self, username: str, password: str) -> tuple[int, JsonValue]:
-        res = self.auth_handler.login(username, password)
+    def login(self, email: str, password: str) -> tuple[int, JsonValue]:
+        res = self.auth_handler.login(email, password)
         return res.status, res.body
 
     def register_login_endpoint(self) -> None:
@@ -44,11 +44,11 @@ class JacAPIServer(JServer):
                 callback=self.login,
                 parameters=[
                     APIParameter(
-                        name="username",
+                        name="email",
                         data_type="string",
                         required=True,
                         default=None,
-                        description="Username for login",
+                        description="Email for login",
                         type=ParameterType.BODY,
                     ),
                     APIParameter(
@@ -67,19 +67,19 @@ class JacAPIServer(JServer):
             )
         )
 
-    def create_user(self, username: str, password: str) -> tuple[int, JsonValue]:
-        res = self.auth_handler.create_user(username, password)
+    def create_user(self, email: str, password: str) -> tuple[int, JsonValue]:
+        res = self.auth_handler.create_user(email, password)
         return res.status, res.body
 
     def register_create_user_endpoint(self) -> None:
         self.server_impl.add_endpoint(
             JEndPoint(
                 method=HTTPMethod.POST,
-                path="/user/create",
+                path="/user/register",
                 callback=self.create_user,
                 parameters=[
                     APIParameter(
-                        name="username",
+                        name="email",
                         data_type="string",
                         required=True,
                         default=None,

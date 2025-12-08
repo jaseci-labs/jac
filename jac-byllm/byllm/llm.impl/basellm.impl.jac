@@ -1,0 +1,177 @@
+impl BaseLLM.init(model_name: str, **kwargs: object) -> None {
+    self.model_name = model_name;
+    self.config = kwargs;
+    self.api_key = self.config.get("api_key", "");
+    # The parameters for the llm call like temperature, top_k, max_token, etc.
+    # This is only applicable for the next call passed from `by llm(**kwargs)`.
+    self.call_params: dict[str, object] = {};
+}
+
+impl BaseLLM.__call__( **kwargs: object)  -> BaseLLM {
+    self.call_params = kwargs;
+    return self;
+}
+
+impl BaseLLM.invoke(mtir: MTIR) -> object {
+    # If streaming without tools, stream immediately
+    if mtir.stream and len(mtir.tools) == 0 {
+        return self.dispatch_streaming(mtir);
+    }
+    # Invoke the LLM and handle tool calls (ReAct loop).
+    while True {
+        resp = self.dispatch_no_streaming(mtir);
+        if resp.tool_calls {
+            for tool_call in resp.tool_calls {
+                if tool_call.is_finish_call() {
+                    # If streaming is enabled, make a new streaming call
+                    mtir.add_message(tool_call());
+                    # to generate the final answer based on all context
+                    if mtir.stream {
+                        return self._stream_final_answer(mtir);
+                    }
+                    return tool_call.get_output();
+                } else {
+                    mtir.add_message(tool_call());
+                }
+            }
+        } else {
+            break;
+        }
+    }
+    return resp.output;
+}
+
+impl BaseLLM.make_model_params(mtir: MTIR) -> dict {
+    params = {
+        "model": self.model_name,
+        "api_base": (
+            self.config.get("base_url")
+            or self.config.get("host")
+            or self.config.get("api_base")
+        ),
+        "messages": mtir.get_msg_list(),
+        "tools": mtir.get_tool_list() or None,
+        "response_format": mtir.get_output_schema(),
+        "temperature": self.call_params.get("temperature", 0.7),
+        "max_tokens": self.call_params.get("max_tokens"),
+
+    };
+    return params;
+}
+
+impl BaseLLM.log_info(message: str) -> None {
+    # FIXME: The logger.info will not always log so for now I'm printing to stdout
+    # remove and log properly.
+    if bool(self.config.get("verbose", False)) {
+        logger.info(message);  # print(message);
+    }
+}
+
+impl BaseLLM.format_prompt(params: dict) -> str {
+    log_params = params.copy();
+    if log_params.get("api_key") {
+        log_params["api_key"] = "*" * len(log_params["api_key"]);
+    }
+    #         log = f"""
+    # [SYSTEM]
+    # {log_params["messages"][0]["content"]}
+    # [USER]
+    # {log_params["messages"][1]["content"][0]['text']}
+    # [TOOLS]
+    # {log_params.get("tools")}
+
+    # [RESPONSE FORMAT]
+    # {json.dumps(
+    #             log_params.get("response_format"), indent=2, ensure_ascii=False
+    #         )}
+    #         """;
+    #         return log;
+    return json.dumps(log_params, indent=2, ensure_ascii=False);
+}
+
+impl BaseLLM.dispatch_no_streaming(mtir: MTIR) -> CompletionResult {
+    # Construct the parameters for the LLM call
+    params = self.make_model_params(mtir);
+    # Call the LiteLLM API
+    log_params = self.format_prompt(params);
+    self.log_info(f"Calling LLM: {self.model_name} with params: {log_params}");
+    self.api_key = params.get("api_key");
+    self.api_base = params.pop("api_base", DEFAULT_BASE_URL);
+    response = self.model_call_no_stream(params);
+    # Output format:
+    # https://docs.litellm.ai/docs/#response-format-openai-format
+    #
+    # TODO: Handle stream output (type ignoring stream response)
+    message: LiteLLMMessage = response.choices[0].message;  # type: ignore
+    mtir.add_message(message);
+    output_content: str = message.content or "";  # type: ignore
+    self.log_info(f"LLM call completed with response:\n{output_content}");
+    output_value = mtir.parse_response(output_content);
+    tool_calls: list[ToolCall] = [];
+    for tool_call in message.tool_calls or [] {  # type: ignore
+
+        if tool := mtir.get_tool(tool_call.function.name) {
+            args_json = json.loads(tool_call.function.arguments);
+            args = tool.parse_arguments(args_json);
+            tool_calls.append(ToolCall(call_id=tool_call.id, tool=tool, args=args));
+        } else {
+            raise RuntimeError(
+                f"Attempted to call tool: '{tool_call.function.name}' which was not present."
+            ) ;
+        }
+    }
+    return CompletionResult(output=output_value, tool_calls=tool_calls,);
+}
+
+impl BaseLLM.dispatch_streaming(mtir: MTIR) -> Generator[str, None, None] {
+    # Construct the parameters for the LLM call
+    params = self.make_model_params(mtir);
+    # Call the LiteLLM API
+    log_params = self.format_prompt(params);
+    self.log_info(f"Calling LLM: {self.model_name} with params:\n{log_params}");
+    self.api_key = params.get("api_key");
+    self.api_base = params.pop("api_base", DEFAULT_BASE_URL);
+    response = self.model_call_with_stream(params);
+    for chunk in response {
+        if hasattr(chunk, "choices") {
+            if chunk.choices and chunk.choices[0].delta {
+                delta = chunk.choices[0].delta;
+                yield delta.content or "";
+            }
+        }
+    }
+}
+
+impl BaseLLM.model_call_no_stream(params: dict) -> dict {
+    raise NotImplementedError(
+        "Subclasses must implement this method for LLM call without streaming."
+    ) ;
+}
+
+impl BaseLLM.model_call_with_stream(params: dict) -> Generator[str, None, None] {
+    raise NotImplementedError(
+        "Subclasses must implement this method for LLM call with streaming."
+    ) ;
+}
+
+impl BaseLLM._stream_final_answer(mtir: MTIR) -> Generator[str, None, None] {
+    # Add a message instructing the LLM to provide the final answer
+    # based on all the tool call results gathered so far
+    final_instruction = Message(
+        role=MessageRole.USER,
+        content="Based on the tool calls and their results above, provide your final answer. "
+        "Be comprehensive and synthesize all the information gathered.",
+    );
+    mtir.add_message(final_instruction);
+    # Remove tools and make a streaming call to get the real-time answer
+    # We temporarily clear tools so the LLM just responds with text
+    original_tools = mtir.tools;
+    mtir.tools = [];
+    try {
+        # Make the actual streaming call - this is REAL streaming from the LLM!
+        yield from self.dispatch_streaming(mtir);
+    } finally {
+        # Restore tools (though we're done at this point)
+        mtir.tools = original_tools;
+    }
+}

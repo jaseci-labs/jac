@@ -338,7 +338,7 @@ export UV_SSL_CERTFILE="/etc/ssl/certs/cert.pem"
 | `UV_H11_MAX_INCOMPLETE_EVENT_SIZE` | h11_max_incomplete_event_size | None | Maximum h11 incomplete event size |
 
 !!! note "Running with Workers"
-    `UV_RELOAD` and `UV_WORKERS` are not supported with `jac serve`. If you need multiple workers, use `poetry run standalone` and set the `APP_PATH` environment variable to your Jac file.
+    `UV_RELOAD` and `UV_WORKERS` are not supported with `jac serve`. If you need multiple workers, use `uvicorn` directly with the `--workers` flag and set the `APP_PATH` environment variable to your Jac file.
 
 ## Environment Presets for Different Scenarios
 

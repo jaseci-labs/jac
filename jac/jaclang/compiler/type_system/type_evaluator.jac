@@ -13,12 +13,13 @@ import from pathlib { Path }
 import from typing { Callable, TYPE_CHECKING, cast }
 
 import jaclang.compiler.unitree as uni;
-import from jaclang.compiler { TOKEN_MAP }
+import from jaclang.compiler.parser { TOKEN_MAP }
 import from jaclang.compiler.constant { SymbolType, Tokens as Tok }
 import from jaclang.compiler.passes.main.pyast_load_pass { PyastBuildPass }
 import from jaclang.compiler.passes.main.sym_tab_build_pass { SymTabBuildPass }
 import from jaclang.compiler.type_system { types }
 import from jaclang.runtimelib.utils { read_file_with_encoding }
+import from jaclang.settings { settings }
 
 with entry {
     if TYPE_CHECKING {
@@ -62,6 +63,8 @@ obj PrefetchedTypes {
     has mapping_class: TypeBase | None = None;
     has template_class: TypeBase | None = None;
     has type_var_class: TypeBase | None = None;
+    # Prefetched from jac_builtins.pyi file
+    has root_class: TypeBase | None = None;
 }
 
 """Represents a single entry in the symbol resolution stack."""
@@ -103,6 +106,10 @@ class TypeEvaluator {
         os.path.dirname(__file__), "../../vendor/typeshed/stdlib/types.pyi",
     );
 
+    has _JAC_BUILTINS_STUB_FILE_PATH: str = os.path.join(
+        os.path.dirname(__file__), "jac_builtins.pyi",
+    );
+
     """Initialize the type evaluator with prefetched types.
 
     Implementation Note:
@@ -135,14 +142,22 @@ class TypeEvaluator {
         self.builtins_module = self._load_stub_module(
             TypeEvaluator._BUILTINS_STUB_FILE_PATH
         );
+        self.jac_builtins_module = self._load_stub_module(
+            TypeEvaluator._JAC_BUILTINS_STUB_FILE_PATH
+        );
 
         self._prefetch_types();
     }
 
-    """Load and return the builtins stub module."""
+    """Load and return builtins stub module."""
     def _load_stub_module(self: TypeEvaluator, path: str) -> uni.Module {
         if not os.path.exists(path) {
-            raise FileNotFoundError(f"Stub file not found at {path}") ;
+            if not settings.all_warnings {
+                raise FileNotFoundError(f"Stub file not found at {path}") ;
+            } else {
+                print(f"Warning: Stub file not found at {path}");
+                exit(0);
+            }
         }
         file_content = read_file_with_encoding(path);
         uni_source = uni.Source(file_content, path);
@@ -159,18 +174,20 @@ class TypeEvaluator {
     def _get_type_from_module(
         self: TypeEvaluator, module: uni.Module, name: str
     ) -> TypeBase {
-        if (symbol := module.lookup(name, incl_inner_scope=True)) is not None {
+        if (symbol := type_utils.lookup_symtab(module, name, self.builtins_module)) is not None {
             return self.get_type_of_symbol(symbol);
         }
         return types.UnknownType();
     }
 
     """Return the prefetched types for the type evaluator."""
-    def _prefetch_types(self: TypeEvaluator) -> "PrefetchedTypes" {
+    def _prefetch_types(self: TypeEvaluator) {
         get_types_type = lambda  type_name: str  -> types.TypeBase:
             self._get_type_from_module(self.types_module, type_name);
         get_builtin_type = lambda  type_name: str  -> types.TypeBase:
             self._get_type_from_module(self.builtins_module, type_name);
+        get_jac_builtin_type = lambda  type_name: str  -> types.TypeBase:
+            self._get_type_from_module(self.jac_builtins_module, type_name);
 
         # TODO: Pyright first try load NoneType from typeshed and if it cannot
         # then it set to unknown type.
@@ -193,6 +210,8 @@ class TypeEvaluator {
         # self.prefetch.supports_keys_and_get_item_class =
         # self.prefetch.mapping_class =
         # self.prefetch.template_class =
+        self.prefetch.root_class = get_jac_builtin_type("Root");
+        self.prefetch.root_class.shared.is_root_class = True;
     }
 
     def get_none_type(self: TypeEvaluator) -> TypeBase {
@@ -393,7 +412,9 @@ class TypeEvaluator {
 
                         # Case 1: Look for symbol inside __init__.ext module
                         if path.name.startswith("__init__") {
-                            if sym := mod.lookup(node_.name.value) {
+                            if sym := type_utils.lookup_symtab(
+                                mod, node_.name.value, self.builtins_module
+                            ) {
                                 return self._set_module_item_symbol_and_type(
                                     node_, sym
                                 );
@@ -429,7 +450,9 @@ class TypeEvaluator {
                     # Eg: 'Import "scipy" could not be resolved'
                     return node_.name.type;
                 }
-                if sym := mod_type.symbol_table.lookup(node_.name.value) {
+                if sym := type_utils.lookup_symtab(
+                    mod_type.symbol_table, node_.name.value, self.builtins_module
+                ) {
                     return self._set_module_item_symbol_and_type(node_, sym);
                 }
             }
@@ -885,8 +908,10 @@ class TypeEvaluator {
                     assert isinstance(expr.right, uni.Name);
                     if isinstance(base_type, types.ModuleType) {
                         # getTypeOfMemberAccessWithBaseType()
-                        if sym := base_type.symbol_table.lookup(
-                            expr.right.value, deep=True
+                        if sym := type_utils.lookup_symtab(
+                            base_type.symbol_table,
+                            expr.right.value,
+                            self.builtins_module
                         ) {
                             return self._set_symbol_to_expr(expr.right, sym);
                         }
@@ -1030,6 +1055,9 @@ class TypeEvaluator {
 
             case uni.Name() | uni.SpecialVarRef():
                 if isinstance(expr, uni.SpecialVarRef) {
+                    if expr.name == Tok.KW_ROOT {
+                        return self._get_type_of_root(expr);
+                    }
                     # Handle "here" and "visitor" special name ref.
                     if expr.name in (Tok.KW_HERE, Tok.KW_VISITOR) {
                         if (method := self._get_enclosing_method(expr)) {
@@ -1151,11 +1179,13 @@ class TypeEvaluator {
     }
 
     """Return the effective type of self."""
-    def _get_type_of_self(self: TypeEvaluator, node_: uni.Name) -> TypeBase {
+    def _get_type_of_self(self: TypeEvaluator, node_: uni.SpecialVarRef) -> TypeBase {
         if method := self._get_enclosing_method(node_) {
             cls = method.method_owner;
             if isinstance(cls, uni.Archetype) {
-                node_.sym = method.lookup(node_.value);
+                node_.sym = type_utils.lookup_symtab(
+                    method, node_.value, self.builtins_module
+                );
                 node_.type = self.get_type_of_class(cls).clone_as_instance();
                 return node_.type;
             }
@@ -1164,6 +1194,13 @@ class TypeEvaluator {
             }
         }
         return types.UnknownType();
+    }
+
+    """Return the effective type of root."""
+    def _get_type_of_root(self: TypeEvaluator, node_: uni.SpecialVarRef) -> TypeBase {
+        node_.sym = self.prefetch.root_class.get_class_symbol();
+        node_.type = self.prefetch.root_class.clone_as_instance();
+        return node_.type;
     }
 
     """Convert a class type to an instance type."""

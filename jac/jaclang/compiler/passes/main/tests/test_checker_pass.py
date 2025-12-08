@@ -94,6 +94,20 @@ def test_imported_sym(fixture_path: Callable[[str], str]) -> None:
     )
 
 
+def test_datetime_import(fixture_path: Callable[[str], str]) -> None:
+    program = JacProgram()
+    mod = program.compile(fixture_path("checker_import_star/main.jac"))
+    TypeCheckPass(ir_in=mod, prog=program)
+    assert len(program.errors_had) == 1
+    _assert_error_pretty_found(
+        """
+      d: str = datetime.date();
+      ^^^^^^^^^^^^^^^^^^^^^^
+    """,
+        program.errors_had[0].pretty_print(),
+    )
+
+
 def test_member_access_type_infered(fixture_path: Callable[[str], str]) -> None:
     program = JacProgram()
     mod = program.compile(fixture_path("member_access_type_inferred.jac"))
@@ -694,6 +708,20 @@ def test_connect_filter(fixture_path: Callable[[str], str]) -> None:
 
     for i, expected in enumerate(expected_errors):
         _assert_error_pretty_found(expected, program.errors_had[i].pretty_print())
+
+
+def test_root_type(fixture_path: Callable[[str], str]) -> None:
+    program = JacProgram()
+    path = fixture_path("checker_root_type.jac")
+    mod = program.compile(path)
+    TypeCheckPass(ir_in=mod, prog=program)
+    assert len(program.errors_had) == 1
+    expected_error = """
+            root ++> c;
+            x: str = root;  # <- error
+            ^^^^^^^^^^^^^^
+            """
+    _assert_error_pretty_found(expected_error, program.errors_had[0].pretty_print())
 
 
 def test_inherit_method_lookup(fixture_path: Callable[[str], str]) -> None:

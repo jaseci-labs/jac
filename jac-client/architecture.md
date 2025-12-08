@@ -208,22 +208,174 @@ Server: Serves from dist/main.css
 - **Folder structure preservation**: Nested folder structures are preserved in `compiled/` directory, similar to TypeScript transpilation, ensuring relative imports work correctly
 - **CSS asset handling**: CSS files are copied after Babel compilation to ensure Vite can resolve imports, then extracted to separate files for optimal loading
 
-### Vite Configuration
+### Configuration System
 
-The system requires a `vite.config.js` with specific settings:
+The Jac Client uses a **JSON-based configuration system** that allows developers to customize the build process through a simple `config.json` file in the project root.
 
-```javascript
-resolve: {
-  alias: {
-    "@jac-client/utils": path.resolve(__dirname, "compiled/client_runtime.js"),
+#### Configuration File Structure
+
+The `config.json` file uses a hierarchical structure with predefined keys for different configuration types:
+
+```json
+{
+  "vite": {
+    "plugins": [],
+    "lib_imports": [],
+    "build": {},
+    "server": {},
+    "resolve": {}
   },
+  "ts": {}
 }
 ```
 
-This alias is critical because:
-- Compiled Jac code imports runtime utilities via `import {__jacJsx} from "@jac-client/utils"`
-- Vite resolves this to the generated `compiled/client_runtime.js` file
-- Enables clean imports without hardcoded relative paths
+#### Configuration Processing
+
+1. **Config Loading** (`JacClientConfig`)
+   - Loads `config.json` from project root
+   - Merges user config with defaults using deep merge
+   - Creates default config file if it doesn't exist
+   - Validates JSON structure
+
+2. **Config Generation** (`ViteBundler.create_vite_config`)
+   - Reads configuration from `config.json`
+   - Generates `vite.config.js` in `.jac-client.configs/` directory
+   - Injects user customizations into the generated config
+   - Automatically includes base plugins and required aliases
+
+3. **Build Execution**
+   - Uses generated `vite.config.js` for Vite bundling
+   - Config is regenerated on each build to reflect latest changes
+
+#### Configuration Keys
+
+##### `vite.plugins`
+Array of plugin function calls to add to Vite config:
+```json
+{
+  "vite": {
+    "plugins": ["tailwindcss()"]
+  }
+}
+```
+
+##### `vite.lib_imports`
+Array of import statements for plugins and libraries:
+```json
+{
+  "vite": {
+    "lib_imports": ["import tailwindcss from '@tailwindcss/vite'"]
+  }
+}
+```
+
+##### `vite.build`
+Object with build options that override defaults:
+```json
+{
+  "vite": {
+    "build": {
+      "sourcemap": true,
+      "minify": "esbuild"
+    }
+  }
+}
+```
+
+##### `vite.server`
+Object with dev server options:
+```json
+{
+  "vite": {
+    "server": {
+      "port": 3000,
+      "open": true
+    }
+  }
+}
+```
+
+##### `vite.resolve`
+Object with resolve options (merged with base aliases):
+```json
+{
+  "vite": {
+    "resolve": {
+      "dedupe": ["react", "react-dom"]
+    }
+  }
+}
+```
+
+#### Base Configuration
+
+The system automatically includes essential configuration:
+
+- **Base plugins**: React plugin (if TypeScript is detected)
+- **Required aliases**:
+  - `@jac-client/utils` → `compiled/client_runtime.js`
+  - `@jac-client/assets` → `compiled/assets`
+- **Build settings**: Entry point, output directory, file naming
+- **Extensions**: JavaScript and TypeScript file extensions
+
+#### Generated Vite Config
+
+The generated `vite.config.js` in `.jac-client.configs/` includes:
+
+```javascript
+export default defineConfig({
+  plugins: [
+    react(),           // Base plugin (if TS)
+    tailwindcss()      // User plugins from config.json
+  ],
+  root: projectRoot,
+  build: {
+    rollupOptions: {
+      input: path.resolve(projectRoot, "build/main.js"),
+      output: {
+        entryFileNames: "client.[hash].js",
+        assetFileNames: "[name].[ext]",
+      },
+    },
+    outDir: path.resolve(projectRoot, "dist"),
+    emptyOutDir: true,
+    // User build overrides from config.json
+  },
+  resolve: {
+    alias: {
+      "@jac-client/utils": path.resolve(projectRoot, "compiled/client_runtime.js"),
+      "@jac-client/assets": path.resolve(projectRoot, "compiled/assets"),
+    },
+    extensions: [".mjs", ".js", ".mts", ".ts", ".jsx", ".tsx", ".json"],
+    // User resolve overrides from config.json
+  },
+});
+```
+
+#### Configuration Workflow
+
+```
+1. Developer edits config.json in project root
+   ↓
+2. Build process loads config.json via JacClientConfig
+   ↓
+3. Config merged with defaults (deep merge)
+   ↓
+4. ViteBundler generates vite.config.js in .jac-client.configs/
+   ↓
+5. Vite uses generated config for bundling
+   ↓
+6. Generated config is gitignored (config.json is committed)
+```
+
+#### Benefits
+
+- **Simple**: JSON format is easy to edit and understand
+- **Standardized**: Predefined keys prevent configuration errors
+- **Extensible**: Easy to add new config types (e.g., `ts`)
+- **Maintainable**: Defaults are always preserved
+- **Version controlled**: `config.json` can be committed to git
+- **Auto-generated**: `vite.config.js` is generated automatically
 
 ### Configuration Parameters
 

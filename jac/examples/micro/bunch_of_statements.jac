@@ -7,7 +7,9 @@ generator of even numbers.
 def example_function(numbers: list[int]) -> int {
     # multi string
     print(
-        "this function processes the provided list.""It then yields the even numbers.""It will stop once an even number greater than 20 is found."
+        "this function processes the provided list."
+        "It then yields the even numbers."
+        "It will stop once an even number greater than 20 is found."
     );
 
     # assignments and expressions

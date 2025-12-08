@@ -77,6 +77,7 @@ function executeJacCodeInWorker(code, inputHandler, commandType = "run") {
             }
         };
         pyodideWorker.addEventListener("message", handleMessage);
+        console.log("Sending code to worker:", commandType);
         pyodideWorker.postMessage({ type: commandType, code });
     });
 }
@@ -404,12 +405,13 @@ async function setupCodeBlock(div) {
                 outputBlock.textContent = outputBlock.textContent.replace(loadingMsg + (initialMessage ? "\n" : ""), "");
             }
 
-            // show the run's output for graph,
-            let showOutputs = true;
-
             const outputHandler = (event) => {
-                if (!showOutputs) return;               // suppress when requested
                 const { output, stream } = event.detail;
+                console.log("Raw output received: ", output);
+                if (output === ">>> Graph content saved to /home/pyodide/temp.dot") {
+                    return;  // filter out this line
+                }
+                console.log("Filtered output: ", output);
                 outputBlock.textContent += output;
                 outputBlock.scrollTop = outputBlock.scrollHeight;
             };
@@ -425,13 +427,7 @@ async function setupCodeBlock(div) {
             try {
                 const codeToRun = editor.getValue();
                 const inputHandler = createInputHandler();
-                if (commandType === "dot") {
-                    await executeJacCodeInWorker(codeToRun, inputHandler, "run");
-                    showOutputs = false;     // avoid duplicate outputs
-                    await executeJacCodeInWorker(codeToRun, inputHandler, "dot");
-                } else {
-                    await executeJacCodeInWorker(codeToRun, inputHandler, commandType);
-                }
+                await executeJacCodeInWorker(codeToRun, inputHandler, commandType);
             } catch (error) {
                 outputBlock.textContent += `\nError: ${error}`;
             } finally {

@@ -1,6 +1,7 @@
 """Test Jac Plugins."""
 
 import subprocess
+from collections.abc import Callable
 
 from jaclang_streamlit import AppTest
 
@@ -30,7 +31,7 @@ def test_streamlit() -> None:
     assert "filename" in dot_result.stdout
 
 
-def test_app(fixture_path) -> None:
+def test_app(fixture_path: Callable[[str], str]) -> None:
     """Test Jac Streamlit App."""
     fixture_abs_path = fixture_path("sample.jac")
     app: AppTest = AppTest.from_jac_file(fixture_abs_path).run()

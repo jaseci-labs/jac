@@ -3,11 +3,22 @@
 import io
 import os
 import sys
+from collections.abc import Callable
+from typing import TypedDict
 
 import pytest
 
 from jaclang.cli import cli
 from jaclang.runtimelib.tests.conftest import fixture_abs_path
+
+
+class OutputCapturerDict(TypedDict):
+    """Type for output_capturer fixture."""
+
+    start: Callable[[], None]
+    stop: Callable[[], None]
+    get: Callable[[], str]
+
 
 session = ""
 
@@ -23,19 +34,20 @@ def captured_output():
 
 
 @pytest.fixture
-def output_capturer():
+def output_capturer() -> OutputCapturerDict:
     """Fixture that provides functions to capture and restore output."""
-    captured = {"output": None, "old_stdout": sys.__stdout__}
+    captured: dict[str, object] = {"output": None, "old_stdout": sys.__stdout__}
 
-    def start_capture():
+    def start_capture() -> None:
         captured["output"] = io.StringIO()
-        sys.stdout = captured["output"]
+        sys.stdout = captured["output"]  # type: ignore[assignment]
 
-    def stop_capture():
-        sys.stdout = captured["old_stdout"]
+    def stop_capture() -> None:
+        sys.stdout = captured["old_stdout"]  # type: ignore[assignment]
 
-    def get_output():
-        return captured["output"].getvalue() if captured["output"] else ""
+    def get_output() -> str:
+        output = captured["output"]
+        return output.getvalue() if output else ""  # type: ignore[attr-defined]
 
     return {"start": start_capture, "stop": stop_capture, "get": get_output}
 
@@ -49,7 +61,9 @@ def del_session(session: str) -> None:
             os.remove(f"{path}/{file}")
 
 
-def test_walker_simple_persistent(output_capturer):
+def test_walker_simple_persistent(
+    output_capturer: OutputCapturerDict,
+) -> None:
     """Test simple persistent object."""
     session = fixture_abs_path("test_walker_simple_persistent.session")
     output_capturer["start"]()
@@ -70,7 +84,9 @@ def test_walker_simple_persistent(output_capturer):
     del_session(session)
 
 
-def test_entrypoint_root(output_capturer):
+def test_entrypoint_root(
+    output_capturer: OutputCapturerDict,
+) -> None:
     """Test entrypoint being root."""
     session = fixture_abs_path("test_entrypoint_root.session")
     cli.enter(
@@ -97,7 +113,9 @@ def test_entrypoint_root(output_capturer):
     del_session(session)
 
 
-def test_entrypoint_non_root(output_capturer):
+def test_entrypoint_non_root(
+    output_capturer: OutputCapturerDict,
+) -> None:
     """Test entrypoint being non root node."""
     session = fixture_abs_path("test_entrypoint_non_root.session")
     cli.enter(
@@ -169,7 +187,9 @@ def test_get_edge():
     del_session(session)
 
 
-def test_filter_on_edge_get_edge(output_capturer):
+def test_filter_on_edge_get_edge(
+    output_capturer: OutputCapturerDict,
+) -> None:
     """Test filtering on edge."""
     session = fixture_abs_path("test_filter_on_edge_get_edge.session")
     cli.run(
@@ -187,7 +207,9 @@ def test_filter_on_edge_get_edge(output_capturer):
     del_session(session)
 
 
-def test_filter_on_edge_get_node(output_capturer):
+def test_filter_on_edge_get_node(
+    output_capturer: OutputCapturerDict,
+) -> None:
     """Test filtering on edge, then get node."""
     session = fixture_abs_path("test_filter_on_edge_get_node.session")
     cli.run(
@@ -205,7 +227,9 @@ def test_filter_on_edge_get_node(output_capturer):
     del_session(session)
 
 
-def test_filter_on_node_get_node(output_capturer):
+def test_filter_on_node_get_node(
+    output_capturer: OutputCapturerDict,
+) -> None:
     """Test filtering on node, then get edge."""
     session = fixture_abs_path("test_filter_on_node_get_node.session")
     cli.run(
@@ -223,7 +247,9 @@ def test_filter_on_node_get_node(output_capturer):
     del_session(session)
 
 
-def test_filter_on_edge_visit(output_capturer):
+def test_filter_on_edge_visit(
+    output_capturer: OutputCapturerDict,
+) -> None:
     """Test filtering on edge, then visit."""
     session = fixture_abs_path("test_filter_on_edge_visit.session")
     cli.run(
@@ -241,7 +267,9 @@ def test_filter_on_edge_visit(output_capturer):
     del_session(session)
 
 
-def test_filter_on_node_visit(output_capturer):
+def test_filter_on_node_visit(
+    output_capturer: OutputCapturerDict,
+) -> None:
     """Test filtering on node, then visit."""
     session = fixture_abs_path("test_filter_on_node_visit.session")
     cli.run(
@@ -259,7 +287,9 @@ def test_filter_on_node_visit(output_capturer):
     del_session(session)
 
 
-def test_indirect_reference_node(output_capturer):
+def test_indirect_reference_node(
+    output_capturer: OutputCapturerDict,
+) -> None:
     """Test reference node indirectly without visiting."""
     session = fixture_abs_path("test_indirect_reference_node.session")
     cli.enter(
@@ -280,7 +310,9 @@ def test_indirect_reference_node(output_capturer):
     del_session(session)
 
 
-def test_walker_purger(output_capturer):
+def test_walker_purger(
+    output_capturer: OutputCapturerDict,
+) -> None:
     """Test simple persistent object."""
     session = fixture_abs_path("test_walker_purger.session")
     output_capturer["start"]()
@@ -347,9 +379,9 @@ def test_walker_purger(output_capturer):
 
 
 def trigger_access_validation_test(
-    output_capturer,
-    roots,
-    nodes,
+    output_capturer: OutputCapturerDict,
+    roots: list[str],
+    nodes: list[str],
     give_access_to_full_graph: bool,
     via_all: bool = False,
 ) -> None:
@@ -643,7 +675,9 @@ def trigger_access_validation_test(
     )
 
 
-def test_other_root_access(output_capturer):
+def test_other_root_access(
+    output_capturer: OutputCapturerDict,
+) -> None:
     """Test filtering on node, then visit."""
     global session
     session = fixture_abs_path("other_root_access.session")
@@ -763,7 +797,9 @@ def test_other_root_access(output_capturer):
     del_session(session)
 
 
-def test_savable_object(output_capturer):
+def test_savable_object(
+    output_capturer: OutputCapturerDict,
+) -> None:
     """Test ObjectAnchor save."""
     global session
     session = fixture_abs_path("savable_object.session")
@@ -835,7 +871,9 @@ def test_savable_object(output_capturer):
     del_session(session)
 
 
-def test_traversing_save(output_capturer):
+def test_traversing_save(
+    output_capturer: OutputCapturerDict,
+) -> None:
     """Test traversing save."""
     global session
     session = fixture_abs_path("traversing_save.session")
@@ -868,7 +906,9 @@ def test_traversing_save(output_capturer):
     del_session(session)
 
 
-def test_custom_access_validation(output_capturer):
+def test_custom_access_validation(
+    output_capturer: OutputCapturerDict,
+) -> None:
     """Test custom access validation."""
     global session
     session = fixture_abs_path("custom_access_validation.session")

@@ -6,6 +6,8 @@ import os
 import socket
 import threading
 import time
+from collections.abc import Generator
+from http.server import HTTPServer
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -41,11 +43,11 @@ def del_session(session: str) -> None:
 class ServerFixture:
     """Server fixture helper class."""
 
-    def __init__(self, request):
+    def __init__(self, request: pytest.FixtureRequest) -> None:
         """Initialize server fixture."""
-        self.server = None
-        self.server_thread = None
-        self.httpd = None
+        self.server: JacAPIServer | None = None
+        self.server_thread: threading.Thread | None = None
+        self.httpd: HTTPServer | None = None
         try:
             self.port = get_free_port()
         except PermissionError:
@@ -54,7 +56,7 @@ class ServerFixture:
         test_name = request.node.name
         self.session_file = fixture_abs_path(f"test_serve_{test_name}.session")
 
-    def start_server(self, api_file="serve_api.jac"):
+    def start_server(self, api_file: str = "serve_api.jac") -> None:
         """Start the API server in a background thread."""
         from http.server import HTTPServer
 
@@ -140,7 +142,7 @@ class ServerFixture:
             payload = e.read().decode()
             return e.code, payload, dict(e.headers)
 
-    def cleanup(self):
+    def cleanup(self) -> None:
         """Clean up server resources."""
         # Close user manager if it exists
         if self.server and hasattr(self.server, "user_manager"):
@@ -164,7 +166,9 @@ class ServerFixture:
 
 
 @pytest.fixture
-def server_fixture(request):
+def server_fixture(
+    request: pytest.FixtureRequest,
+) -> Generator[ServerFixture, None, None]:
     """Pytest fixture for server setup and teardown."""
     fixture = ServerFixture(request)
     yield fixture
@@ -174,111 +178,113 @@ def server_fixture(request):
 # Tests for TestServeCommand
 
 
-def test_user_manager_creation(server_fixture):
+def test_user_manager_creation(server_fixture: ServerFixture) -> None:
     """Test UserManager creates users with unique roots."""
     user_mgr = UserManager(server_fixture.session_file)
 
     # Create first user
-    result1 = user_mgr.create_user("user1", "pass1")
+    result1 = user_mgr.create_user("user1@example.com", "pass1")
     assert "token" in result1
     assert "root_id" in result1
-    assert result1["username"] == "user1"
+    assert result1["email"] == "user1@example.com"
 
     # Create second user
-    result2 = user_mgr.create_user("user2", "pass2")
+    result2 = user_mgr.create_user("user2@example.com", "pass2")
     assert "token" in result2
     assert "root_id" in result2
 
     # Users should have different roots
     assert result1["root_id"] != result2["root_id"]
 
-    # Duplicate username should fail
-    result3 = user_mgr.create_user("user1", "pass3")
+    # Duplicate email should fail
+    result3 = user_mgr.create_user("user1@example.com", "pass3")
     assert "error" in result3
 
 
-def test_user_manager_authentication(server_fixture):
+def test_user_manager_authentication(server_fixture: ServerFixture) -> None:
     """Test UserManager authentication."""
     user_mgr = UserManager(server_fixture.session_file)
 
     # Create user
-    create_result = user_mgr.create_user("testuser", "testpass")
+    create_result = user_mgr.create_user("testuser@example.com", "testpass")
     original_token = create_result["token"]
 
     # Authenticate with correct credentials
-    auth_result = user_mgr.authenticate("testuser", "testpass")
+    auth_result = user_mgr.authenticate("testuser@example.com", "testpass")
     assert auth_result is not None
-    assert auth_result["username"] == "testuser"
+    assert auth_result["email"] == "testuser@example.com"
     assert auth_result["token"] == original_token
 
     # Wrong password
-    auth_fail = user_mgr.authenticate("testuser", "wrongpass")
+    auth_fail = user_mgr.authenticate("testuser@example.com", "wrongpass")
     assert auth_fail is None
 
     # Nonexistent user
-    auth_fail2 = user_mgr.authenticate("nouser", "pass")
+    auth_fail2 = user_mgr.authenticate("nouser@example.com", "pass")
     assert auth_fail2 is None
 
 
-def test_user_manager_token_validation(server_fixture):
+def test_user_manager_token_validation(server_fixture: ServerFixture) -> None:
     """Test UserManager token validation."""
     user_mgr = UserManager(server_fixture.session_file)
 
     # Create user
-    result = user_mgr.create_user("validuser", "validpass")
+    result = user_mgr.create_user("validuser@example.com", "validpass")
     token = result["token"]
 
     # Valid token
-    username = user_mgr.validate_token(token)
-    assert username == "validuser"
+    email = user_mgr.validate_token(token)
+    assert email == "validuser@example.com"
 
     # Invalid token
-    username = user_mgr.validate_token("invalid_token")
-    assert username is None
+    email = user_mgr.validate_token("invalid_token")
+    assert email is None
 
 
-def test_server_user_creation(server_fixture):
+def test_server_user_creation(server_fixture: ServerFixture) -> None:
     """Test user creation endpoint."""
     server_fixture.start_server()
 
     # Create user
     result = server_fixture.request(
-        "POST", "/user/create", {"username": "alice", "password": "secret123"}
+        "POST",
+        "/user/register",
+        {"email": "alice@example.com", "password": "secret123"},
     )
 
-    assert "username" in result
+    assert "email" in result
     assert "token" in result
     assert "root_id" in result
-    assert result["username"] == "alice"
+    assert result["email"] == "alice@example.com"
 
 
-def test_server_user_login(server_fixture):
+def test_server_user_login(server_fixture: ServerFixture) -> None:
     """Test user login endpoint."""
     server_fixture.start_server()
 
     # Create user
     create_result = server_fixture.request(
-        "POST", "/user/create", {"username": "bob", "password": "pass456"}
+        "POST", "/user/register", {"email": "bob@example.com", "password": "pass456"}
     )
 
     # Login with correct credentials
     login_result = server_fixture.request(
-        "POST", "/user/login", {"username": "bob", "password": "pass456"}
+        "POST", "/user/login", {"email": "bob@example.com", "password": "pass456"}
     )
 
     assert "token" in login_result
-    assert login_result["username"] == "bob"
+    assert login_result["email"] == "bob@example.com"
     assert login_result["root_id"] == create_result["root_id"]
 
     # Login with wrong password
     login_fail = server_fixture.request(
-        "POST", "/user/login", {"username": "bob", "password": "wrongpass"}
+        "POST", "/user/login", {"email": "bob@example.com", "password": "wrongpass"}
     )
 
     assert "error" in login_fail
 
 
-def test_server_authentication_required(server_fixture):
+def test_server_authentication_required(server_fixture: ServerFixture) -> None:
     """Test that protected endpoints require authentication."""
     server_fixture.start_server()
 
@@ -288,13 +294,13 @@ def test_server_authentication_required(server_fixture):
     assert "Unauthorized" in result["error"]
 
 
-def test_server_list_functions(server_fixture):
+def test_server_list_functions(server_fixture: ServerFixture) -> None:
     """Test listing functions endpoint."""
     server_fixture.start_server()
 
     # Create user and get token
     create_result = server_fixture.request(
-        "POST", "/user/create", {"username": "funcuser", "password": "pass"}
+        "POST", "/user/register", {"email": "funcuser@example.com", "password": "pass"}
     )
     token = create_result["token"]
 
@@ -306,13 +312,13 @@ def test_server_list_functions(server_fixture):
     assert "greet" in result["functions"]
 
 
-def test_server_get_function_signature(server_fixture):
+def test_server_get_function_signature(server_fixture: ServerFixture) -> None:
     """Test getting function signature."""
     server_fixture.start_server()
 
     # Create user
     create_result = server_fixture.request(
-        "POST", "/user/create", {"username": "siguser", "password": "pass"}
+        "POST", "/user/register", {"email": "siguser@example.com", "password": "pass"}
     )
     token = create_result["token"]
 
@@ -328,13 +334,13 @@ def test_server_get_function_signature(server_fixture):
     assert sig["parameters"]["b"]["required"] is True
 
 
-def test_server_call_function(server_fixture):
+def test_server_call_function(server_fixture: ServerFixture) -> None:
     """Test calling a function endpoint."""
     server_fixture.start_server()
 
     # Create user
     create_result = server_fixture.request(
-        "POST", "/user/create", {"username": "calluser", "password": "pass"}
+        "POST", "/user/register", {"email": "calluser@example.com", "password": "pass"}
     )
     token = create_result["token"]
 
@@ -355,13 +361,13 @@ def test_server_call_function(server_fixture):
     assert result2["result"] == "Hello, World!"
 
 
-def test_server_call_function_with_defaults(server_fixture):
+def test_server_call_function_with_defaults(server_fixture: ServerFixture) -> None:
     """Test calling function with default parameters."""
     server_fixture.start_server()
 
     # Create user
     create_result = server_fixture.request(
-        "POST", "/user/create", {"username": "defuser", "password": "pass"}
+        "POST", "/user/register", {"email": "defuser@example.com", "password": "pass"}
     )
     token = create_result["token"]
 
@@ -374,13 +380,13 @@ def test_server_call_function_with_defaults(server_fixture):
     assert result["result"] == "Hello, World!"
 
 
-def test_server_list_walkers(server_fixture):
+def test_server_list_walkers(server_fixture: ServerFixture) -> None:
     """Test listing walkers endpoint."""
     server_fixture.start_server()
 
     # Create user
     create_result = server_fixture.request(
-        "POST", "/user/create", {"username": "walkuser", "password": "pass"}
+        "POST", "/user/register", {"email": "walkuser@example.com", "password": "pass"}
     )
     token = create_result["token"]
 
@@ -393,13 +399,13 @@ def test_server_list_walkers(server_fixture):
     assert "CompleteTask" in result["walkers"]
 
 
-def test_server_get_walker_info(server_fixture):
+def test_server_get_walker_info(server_fixture: ServerFixture) -> None:
     """Test getting walker information."""
     server_fixture.start_server()
 
     # Create user
     create_result = server_fixture.request(
-        "POST", "/user/create", {"username": "infouser", "password": "pass"}
+        "POST", "/user/register", {"email": "infouser@example.com", "password": "pass"}
     )
     token = create_result["token"]
 
@@ -418,13 +424,13 @@ def test_server_get_walker_info(server_fixture):
     assert info["fields"]["priority"]["default"] is not None
 
 
-def test_server_spawn_walker(server_fixture):
+def test_server_spawn_walker(server_fixture: ServerFixture) -> None:
     """Test spawning a walker."""
     server_fixture.start_server()
 
     # Create user
     create_result = server_fixture.request(
-        "POST", "/user/create", {"username": "spawnuser", "password": "pass"}
+        "POST", "/user/register", {"email": "spawnuser@example.com", "password": "pass"}
     )
     token = create_result["token"]
     # Spawn CreateTask walker
@@ -457,16 +463,16 @@ def test_server_spawn_walker(server_fixture):
     assert "result" in result3
 
 
-def test_server_user_isolation(server_fixture):
+def test_server_user_isolation(server_fixture: ServerFixture) -> None:
     """Test that users have isolated graph spaces."""
     server_fixture.start_server()
 
     # Create two users
     user1 = server_fixture.request(
-        "POST", "/user/create", {"username": "user1", "password": "pass1"}
+        "POST", "/user/register", {"email": "user1@example.com", "password": "pass1"}
     )
     user2 = server_fixture.request(
-        "POST", "/user/create", {"username": "user2", "password": "pass2"}
+        "POST", "/user/register", {"email": "user2@example.com", "password": "pass2"}
     )
 
     token1 = user1["token"]
@@ -492,13 +498,15 @@ def test_server_user_isolation(server_fixture):
     assert user1["root_id"] != user2["root_id"]
 
 
-def test_server_invalid_function(server_fixture):
+def test_server_invalid_function(server_fixture: ServerFixture) -> None:
     """Test calling nonexistent function."""
     server_fixture.start_server()
 
     # Create user
     create_result = server_fixture.request(
-        "POST", "/user/create", {"username": "invaliduser", "password": "pass"}
+        "POST",
+        "/user/register",
+        {"email": "invaliduser@example.com", "password": "pass"},
     )
     token = create_result["token"]
 
@@ -510,13 +518,15 @@ def test_server_invalid_function(server_fixture):
     assert "error" in result
 
 
-def test_server_invalid_walker(server_fixture):
+def test_server_invalid_walker(server_fixture: ServerFixture) -> None:
     """Test spawning nonexistent walker."""
     server_fixture.start_server()
 
     # Create user
     create_result = server_fixture.request(
-        "POST", "/user/create", {"username": "invalidwalk", "password": "pass"}
+        "POST",
+        "/user/register",
+        {"email": "invalidwalk@example.com", "password": "pass"},
     )
     token = create_result["token"]
 
@@ -528,12 +538,12 @@ def test_server_invalid_walker(server_fixture):
     assert "error" in result
 
 
-def test_client_page_and_bundle_endpoints(server_fixture):
+def test_client_page_and_bundle_endpoints(server_fixture: ServerFixture) -> None:
     """Render a client page and fetch the bundled JavaScript."""
     server_fixture.start_server()
 
     create_result = server_fixture.request(
-        "POST", "/user/create", {"username": "pageuser", "password": "pass"}
+        "POST", "/user/register", {"email": "pageuser@example.com", "password": "pass"}
     )
     token = create_result["token"]
 
@@ -557,7 +567,7 @@ def test_client_page_and_bundle_endpoints(server_fixture):
     assert "function __jacJsx" in js_body
 
 
-def test_server_root_endpoint(server_fixture):
+def test_server_root_endpoint(server_fixture: ServerFixture) -> None:
     """Test root endpoint returns API information."""
     server_fixture.start_server()
 
@@ -565,12 +575,12 @@ def test_server_root_endpoint(server_fixture):
 
     assert "message" in result
     assert "endpoints" in result
-    assert "POST /user/create" in result["endpoints"]
+    assert "POST /user/register" in result["endpoints"]
     assert "GET /functions" in result["endpoints"]
     assert "GET /walkers" in result["endpoints"]
 
 
-def test_module_loading_and_introspection(server_fixture):
+def test_module_loading_and_introspection(server_fixture: ServerFixture) -> None:
     """Test that module loads correctly and introspection works."""
     # Load module
     base, mod, mach = cli.proc_file_sess(fixture_abs_path("serve_api.jac"), "")
@@ -619,13 +629,13 @@ def test_module_loading_and_introspection(server_fixture):
     mach.close()
 
 
-def test_csr_mode_empty_root(server_fixture):
+def test_csr_mode_empty_root(server_fixture: ServerFixture) -> None:
     """Test CSR mode returns empty __jac_root for client-side rendering."""
     server_fixture.start_server()
 
     # Create user
     create_result = server_fixture.request(
-        "POST", "/user/create", {"username": "csruser", "password": "pass"}
+        "POST", "/user/register", {"email": "csruser@example.com", "password": "pass"}
     )
     token = create_result["token"]
 
@@ -648,7 +658,7 @@ def test_csr_mode_empty_root(server_fixture):
     assert '"function": "client_page"' in html_body
 
 
-def test_csr_mode_with_server_default(server_fixture):
+def test_csr_mode_with_server_default(server_fixture: ServerFixture) -> None:
     """render_client_page returns an empty shell when called directly."""
     # Load module
     base, mod, mach = cli.proc_file_sess(fixture_abs_path("serve_api.jac"), "")
@@ -686,7 +696,9 @@ def test_csr_mode_with_server_default(server_fixture):
     mach.close()
 
 
-def test_root_data_persistence_across_server_restarts(server_fixture):
+def test_root_data_persistence_across_server_restarts(
+    server_fixture: ServerFixture,
+) -> None:
     """Test that user data and graph persist across server restarts.
 
     This test verifies that both user credentials and graph data (nodes and
@@ -699,8 +711,8 @@ def test_root_data_persistence_across_server_restarts(server_fixture):
     # Create user and get token
     create_result = server_fixture.request(
         "POST",
-        "/user/create",
-        {"username": "persistuser", "password": "testpass123"},
+        "/user/register",
+        {"email": "persistuser@example.com", "password": "testpass123"},
     )
     token = create_result["token"]
     root_id = create_result["root_id"]
@@ -757,7 +769,7 @@ def test_root_data_persistence_across_server_restarts(server_fixture):
     login_result = server_fixture.request(
         "POST",
         "/user/login",
-        {"username": "persistuser", "password": "testpass123"},
+        {"email": "persistuser@example.com", "password": "testpass123"},
     )
 
     # User should be able to log in successfully
@@ -791,16 +803,15 @@ def test_root_data_persistence_across_server_restarts(server_fixture):
     assert "result" in complete_result
 
 
-def test_client_bundle_has_object_get_polyfill(server_fixture):
+def test_client_bundle_has_object_get_polyfill(server_fixture: ServerFixture) -> None:
     """Test that client bundle includes Object.prototype.get polyfill."""
     server_fixture.start_server()
 
     # Pre-warm the bundle by requesting a page first (triggers bundle build)
     # This ensures the bundle is cached before we test it directly
-    try:
+    with contextlib.suppress(Exception):
+        # Ignore errors, we just want to trigger bundle building
         server_fixture.request("GET", "/")
-    except Exception:
-        pass  # Ignore errors, we just want to trigger bundle building
 
     # Fetch the client bundle with longer timeout for CI environments
     # Bundle building can be slow on CI runners with limited resources
@@ -816,13 +827,15 @@ def test_client_bundle_has_object_get_polyfill(server_fixture):
     assert "__jacRegisterClientModule" in js_body
 
 
-def test_login_form_renders_with_correct_elements(server_fixture):
+def test_login_form_renders_with_correct_elements(
+    server_fixture: ServerFixture,
+) -> None:
     """Test that client page renders with correct HTML elements via HTTP endpoint."""
     server_fixture.start_server()
 
     # Create user
     create_result = server_fixture.request(
-        "POST", "/user/create", {"username": "formuser", "password": "pass"}
+        "POST", "/user/register", {"email": "formuser@example.com", "password": "pass"}
     )
     token = create_result["token"]
 
@@ -857,13 +870,15 @@ def test_login_form_renders_with_correct_elements(server_fixture):
     assert "function client_page" in js_body
 
 
-def test_default_page_is_csr(server_fixture):
+def test_default_page_is_csr(server_fixture: ServerFixture) -> None:
     """Test that the default page response is CSR (client-side rendering)."""
     server_fixture.start_server()
 
     # Create user
     create_result = server_fixture.request(
-        "POST", "/user/create", {"username": "csrdefaultuser", "password": "pass"}
+        "POST",
+        "/user/register",
+        {"email": "csrdefaultuser@example.com", "password": "pass"},
     )
     token = create_result["token"]
 
@@ -901,7 +916,7 @@ def test_default_page_is_csr(server_fixture):
     assert '<div id="__jac_root"></div>' in html_ssr
 
 
-def test_faux_flag_prints_endpoint_docs(server_fixture):
+def test_faux_flag_prints_endpoint_docs(server_fixture: ServerFixture) -> None:
     """Test that --faux flag prints endpoint documentation without starting server."""
     import io
     from contextlib import redirect_stdout
@@ -951,7 +966,7 @@ def test_faux_flag_prints_endpoint_docs(server_fixture):
     assert "Bearer token" in output
 
 
-def test_faux_flag_with_littlex_example(server_fixture):
+def test_faux_flag_with_littlex_example(server_fixture: ServerFixture) -> None:
     """Test that --faux flag correctly identifies functions, walkers, and endpoints in littleX example."""
     import io
 
@@ -1000,7 +1015,7 @@ def test_faux_flag_with_littlex_example(server_fixture):
     assert "/walker/update_profile" in output
 
     # Verify authentication and introspection endpoints are still present
-    assert "/user/create" in output
+    assert "/user/register" in output
     assert "Available" in output
     assert "1 client functions" in output  # 15 client functions
     # Verify some client functions are listed
@@ -1012,14 +1027,16 @@ def test_faux_flag_with_littlex_example(server_fixture):
 
 
 @pytest.fixture
-def access_server_fixture(request):
+def access_server_fixture(
+    request: pytest.FixtureRequest,
+) -> Generator[ServerFixture, None, None]:
     """Pytest fixture for access level server setup and teardown."""
     fixture = ServerFixture(request)
     yield fixture
     fixture.cleanup()
 
 
-def test_public_function_without_auth(access_server_fixture):
+def test_public_function_without_auth(access_server_fixture: ServerFixture) -> None:
     """Test that public functions can be called without authentication."""
     access_server_fixture.start_server("serve_api_access.jac")
 
@@ -1032,7 +1049,9 @@ def test_public_function_without_auth(access_server_fixture):
     assert result["result"] == "Hello, Test! (public)"
 
 
-def test_public_function_get_info_without_auth(access_server_fixture):
+def test_public_function_get_info_without_auth(
+    access_server_fixture: ServerFixture,
+) -> None:
     """Test that public function info can be retrieved without authentication."""
     access_server_fixture.start_server("serve_api_access.jac")
 
@@ -1043,7 +1062,9 @@ def test_public_function_get_info_without_auth(access_server_fixture):
     assert "parameters" in result["signature"]
 
 
-def test_protected_function_requires_auth(access_server_fixture):
+def test_protected_function_requires_auth(
+    access_server_fixture: ServerFixture,
+) -> None:
     """Test that protected functions require authentication."""
     access_server_fixture.start_server("serve_api_access.jac")
 
@@ -1056,13 +1077,15 @@ def test_protected_function_requires_auth(access_server_fixture):
     assert "Unauthorized" in result["error"]
 
 
-def test_protected_function_with_auth(access_server_fixture):
+def test_protected_function_with_auth(access_server_fixture: ServerFixture) -> None:
     """Test that protected functions work with authentication."""
     access_server_fixture.start_server("serve_api_access.jac")
 
     # Create user and get token
     create_result = access_server_fixture.request(
-        "POST", "/user/create", {"username": "authuser", "password": "pass123"}
+        "POST",
+        "/user/register",
+        {"email": "authuser@example.com", "password": "pass123"},
     )
     token = create_result["token"]
 
@@ -1078,7 +1101,7 @@ def test_protected_function_with_auth(access_server_fixture):
     assert result["result"] == "Protected: secret"
 
 
-def test_private_function_requires_auth(access_server_fixture):
+def test_private_function_requires_auth(access_server_fixture: ServerFixture) -> None:
     """Test that private functions require authentication."""
     access_server_fixture.start_server("serve_api_access.jac")
 
@@ -1091,13 +1114,15 @@ def test_private_function_requires_auth(access_server_fixture):
     assert "Unauthorized" in result["error"]
 
 
-def test_private_function_with_auth(access_server_fixture):
+def test_private_function_with_auth(access_server_fixture: ServerFixture) -> None:
     """Test that private functions work with authentication."""
     access_server_fixture.start_server("serve_api_access.jac")
 
     # Create user and get token
     create_result = access_server_fixture.request(
-        "POST", "/user/create", {"username": "privuser", "password": "pass456"}
+        "POST",
+        "/user/register",
+        {"email": "privuser@example.com", "password": "pass456"},
     )
     token = create_result["token"]
 
@@ -1113,7 +1138,7 @@ def test_private_function_with_auth(access_server_fixture):
     assert result["result"] == "Private: topsecret"
 
 
-def test_public_walker_without_auth(access_server_fixture):
+def test_public_walker_without_auth(access_server_fixture: ServerFixture) -> None:
     """Test that public walkers can be spawned without authentication."""
     access_server_fixture.start_server("serve_api_access.jac")
 
@@ -1126,7 +1151,7 @@ def test_public_walker_without_auth(access_server_fixture):
     assert "reports" in result
 
 
-def test_protected_walker_requires_auth(access_server_fixture):
+def test_protected_walker_requires_auth(access_server_fixture: ServerFixture) -> None:
     """Test that protected walkers require authentication."""
     access_server_fixture.start_server("serve_api_access.jac")
 
@@ -1139,13 +1164,15 @@ def test_protected_walker_requires_auth(access_server_fixture):
     assert "Unauthorized" in result["error"]
 
 
-def test_protected_walker_with_auth(access_server_fixture):
+def test_protected_walker_with_auth(access_server_fixture: ServerFixture) -> None:
     """Test that protected walkers work with authentication."""
     access_server_fixture.start_server("serve_api_access.jac")
 
     # Create user and get token
     create_result = access_server_fixture.request(
-        "POST", "/user/create", {"username": "walkuser", "password": "pass789"}
+        "POST",
+        "/user/register",
+        {"email": "walkuser@example.com", "password": "pass789"},
     )
     token = create_result["token"]
 
@@ -1161,7 +1188,7 @@ def test_protected_walker_with_auth(access_server_fixture):
     assert "reports" in result
 
 
-def test_private_walker_requires_auth(access_server_fixture):
+def test_private_walker_requires_auth(access_server_fixture: ServerFixture) -> None:
     """Test that private walkers require authentication."""
     access_server_fixture.start_server("serve_api_access.jac")
 
@@ -1174,13 +1201,15 @@ def test_private_walker_requires_auth(access_server_fixture):
     assert "Unauthorized" in result["error"]
 
 
-def test_private_walker_with_auth(access_server_fixture):
+def test_private_walker_with_auth(access_server_fixture: ServerFixture) -> None:
     """Test that private walkers work with authentication."""
     access_server_fixture.start_server("serve_api_access.jac")
 
     # Create user and get token
     create_result = access_server_fixture.request(
-        "POST", "/user/create", {"username": "privwalk", "password": "pass000"}
+        "POST",
+        "/user/register",
+        {"email": "privwalk@example.com", "password": "pass000"},
     )
     token = create_result["token"]
 
@@ -1196,7 +1225,9 @@ def test_private_walker_with_auth(access_server_fixture):
     assert "reports" in result
 
 
-def test_introspection_list_requires_auth(access_server_fixture):
+def test_introspection_list_requires_auth(
+    access_server_fixture: ServerFixture,
+) -> None:
     """Test that introspection list endpoints require authentication."""
     access_server_fixture.start_server("serve_api_access.jac")
 
@@ -1206,13 +1237,15 @@ def test_introspection_list_requires_auth(access_server_fixture):
     assert "Unauthorized" in result["error"]
 
 
-def test_mixed_access_levels(access_server_fixture):
+def test_mixed_access_levels(access_server_fixture: ServerFixture) -> None:
     """Test server with mixed access levels (public, protected, private)."""
     access_server_fixture.start_server("serve_api_access.jac")
 
     # Create authenticated user
     create_result = access_server_fixture.request(
-        "POST", "/user/create", {"username": "mixeduser", "password": "mixedpass"}
+        "POST",
+        "/user/register",
+        {"email": "mixeduser@example.com", "password": "mixedpass"},
     )
     token = create_result["token"]
 

@@ -1,7 +1,7 @@
 """Test ECMAScript AST generation using consolidated Jac fixtures."""
 
 import json
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 
 import pytest
@@ -13,7 +13,7 @@ from jaclang.compiler.program import JacProgram
 
 
 @pytest.fixture
-def fixture_path():
+def fixture_path() -> Callable[[str], str]:
     """Return a function that returns absolute path to a fixture file."""
 
     def _get_fixture_path(filename: str) -> str:
@@ -52,7 +52,7 @@ def compile_to_esast(filename: str) -> es.Program:
     return es_ir.gen.es_ast
 
 
-def test_core_fixture_ast_shape(fixture_path) -> None:
+def test_core_fixture_ast_shape(fixture_path: Callable[[str], str]) -> None:
     """Core fixture should expose fundamental declarations in the ESTree."""
     core_fixture = "core_language_features.jac"
     es_ast = compile_to_esast(fixture_path(core_fixture))
@@ -82,7 +82,9 @@ def test_core_fixture_ast_shape(fixture_path) -> None:
     )
 
 
-def test_advanced_fixture_contains_async_and_spread_nodes(fixture_path) -> None:
+def test_advanced_fixture_contains_async_and_spread_nodes(
+    fixture_path: Callable[[str], str],
+) -> None:
     """Advanced fixture should surface async, await, and spread constructs."""
     advanced_fixture = "advanced_language_features.jac"
     es_ast = compile_to_esast(fixture_path(advanced_fixture))
@@ -105,7 +107,9 @@ def test_advanced_fixture_contains_async_and_spread_nodes(fixture_path) -> None:
     assert "ReturnStatement" in ast_json
 
 
-def test_client_fixture_generates_client_bundle(fixture_path) -> None:
+def test_client_fixture_generates_client_bundle(
+    fixture_path: Callable[[str], str],
+) -> None:
     """Client fixture should retain JSX lowering behaviour."""
     client_fixture = "client_jsx.jac"
     es_ast = compile_to_esast(fixture_path(client_fixture))
@@ -119,7 +123,7 @@ def test_client_fixture_generates_client_bundle(fixture_path) -> None:
     assert "server_only" not in js_code
 
 
-def test_es_ast_serializes_to_json(fixture_path) -> None:
+def test_es_ast_serializes_to_json(fixture_path: Callable[[str], str]) -> None:
     """ESTree should serialize cleanly to JSON for downstream tooling."""
     core_fixture = "core_language_features.jac"
     es_ast = compile_to_esast(fixture_path(core_fixture))
@@ -130,7 +134,7 @@ def test_es_ast_serializes_to_json(fixture_path) -> None:
     assert len(serialized) > 1000
 
 
-def test_class_separate_impl_file(fixture_path) -> None:
+def test_class_separate_impl_file(fixture_path: Callable[[str], str]) -> None:
     """Test that separate impl files work correctly for class archetypes."""
     es_ast = compile_to_esast(fixture_path("class_separate_impl.jac"))
     js_code = es_to_js(es_ast)
@@ -167,7 +171,7 @@ def test_class_separate_impl_file(fixture_path) -> None:
     assert "power(" in js_code
 
 
-def test_fstring_generates_template_literal(fixture_path) -> None:
+def test_fstring_generates_template_literal(fixture_path: Callable[[str], str]) -> None:
     """Test that f-strings are converted to JavaScript template literals."""
     advanced_fixture = "advanced_language_features.jac"
     es_ast = compile_to_esast(fixture_path(advanced_fixture))
@@ -201,7 +205,9 @@ def test_fstring_generates_template_literal(fixture_path) -> None:
     assert "${" in js_code, "Template literal should contain ${} syntax"
 
 
-def test_export_semantics_for_pub_declarations(fixture_path) -> None:
+def test_export_semantics_for_pub_declarations(
+    fixture_path: Callable[[str], str],
+) -> None:
     """Test that :pub annotated declarations generate JavaScript exports."""
     es_ast = compile_to_esast(fixture_path("export_semantics.jac"))
     js_code = es_to_js(es_ast)
