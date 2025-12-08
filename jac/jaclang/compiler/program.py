@@ -70,11 +70,11 @@ def get_py_code_gen() -> list[type[Transform[uni.Module, uni.Module]]]:
 
 def get_format_sched() -> list[type[Transform[uni.Module, uni.Module]]]:
     """Return format schedule with lazy imports to allow doc_ir.jac conversion."""
-    from jaclang.compiler.passes.tool import (
+    from jaclang.compiler.passes.tool.comment_injection_pass import (
         CommentInjectionPass,
-        DocIRGenPass,
-        JacFormatPass,
     )
+    from jaclang.compiler.passes.tool.doc_ir_gen_pass import DocIRGenPass
+    from jaclang.compiler.passes.tool.jac_formatter_pass import JacFormatPass
 
     return [
         DocIRGenPass,
