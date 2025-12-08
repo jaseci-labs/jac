@@ -5021,7 +5021,7 @@ class MatchArch(MatchPattern):
         valid = self.normalize()
         # Generate name(...) without spaces around parentheses
         result = self.name.unparse() + "("
-        parts = []
+        parts: list[str] = []
         if self.arg_patterns:
             parts.extend(arg.unparse() for arg in self.arg_patterns)
         if self.kw_patterns:

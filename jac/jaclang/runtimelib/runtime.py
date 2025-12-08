@@ -1743,7 +1743,7 @@ class JacByLLM:
     @staticmethod
     def call_llm(model: object, mtir: MTIR) -> Any:  # noqa: ANN401
         """Call the LLM model."""
-        from jaclang.utils import NonGPT
+        from jaclang.utils import NonGPT  # type: ignore[attr-defined]
 
         random_value_for_type: Callable[[Any], Any] = NonGPT.random_value_for_type
 
