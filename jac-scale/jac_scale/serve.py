@@ -662,4 +662,4 @@ class JacAPIServer(JServer):
 
         self.user_manager.create_user("__guest__", "__no_password__")
 
-        self.server_impl.run_server()
+        self.server_impl.run_server(port=self.port)

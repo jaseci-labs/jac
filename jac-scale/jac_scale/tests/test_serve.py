@@ -182,33 +182,33 @@ class TestJacScaleServe:
         """Test user creation endpoint."""
         result = self._request(
             "POST",
-            "/user/create",
-            {"username": "testuser1", "password": "testpass123"},
+            "/user/register",
+            {"email": "testuser1@example.com", "password": "testpass123"},
         )
 
-        assert "username" in result
+        assert "email" in result
         assert "token" in result
         assert "root_id" in result
-        assert result["username"] == "testuser1"
+        assert result["email"] == "testuser1@example.com"
 
     def test_user_login(self) -> None:
         """Test user login endpoint."""
         # Create user first
         create_result = self._request(
             "POST",
-            "/user/create",
-            {"username": "loginuser", "password": "loginpass"},
+            "/user/register",
+            {"email": "loginuser@example.com", "password": "loginpass"},
         )
 
         # Login with correct credentials
         login_result = self._request(
             "POST",
             "/user/login",
-            {"username": "loginuser", "password": "loginpass"},
+            {"email": "loginuser@example.com", "password": "loginpass"},
         )
 
         assert "token" in login_result
-        assert login_result["username"] == "loginuser"
+        assert login_result["email"] == "loginuser@example.com"
         assert login_result["root_id"] == create_result["root_id"]
 
     def test_user_login_wrong_password(self) -> None:
@@ -216,15 +216,15 @@ class TestJacScaleServe:
         # Create user
         self._request(
             "POST",
-            "/user/create",
-            {"username": "failuser", "password": "correctpass"},
+            "/user/register",
+            {"email": "failuser@example.com", "password": "correctpass"},
         )
 
         # Try to login with wrong password
         login_result = self._request(
             "POST",
             "/user/login",
-            {"username": "failuser", "password": "wrongpass"},
+            {"email": "failuser@example.com", "password": "wrongpass"},
         )
 
         assert "error" in login_result
@@ -234,8 +234,8 @@ class TestJacScaleServe:
         # Create user
         create_result = self._request(
             "POST",
-            "/user/create",
-            {"username": "adduser", "password": "pass"},
+            "/user/register",
+            {"email": "adduser@example.com", "password": "pass"},
         )
         token = create_result["token"]
 
@@ -255,8 +255,8 @@ class TestJacScaleServe:
         # Create user
         create_result = self._request(
             "POST",
-            "/user/create",
-            {"username": "greetuser", "password": "pass"},
+            "/user/register",
+            {"email": "greetuser@example.com", "password": "pass"},
         )
         token = create_result["token"]
 
@@ -276,8 +276,8 @@ class TestJacScaleServe:
         # Create user
         create_result = self._request(
             "POST",
-            "/user/create",
-            {"username": "defuser", "password": "pass"},
+            "/user/register",
+            {"email": "defuser@example.com", "password": "pass"},
         )
         token = create_result["token"]
 
@@ -297,8 +297,8 @@ class TestJacScaleServe:
         # Create user
         create_result = self._request(
             "POST",
-            "/user/create",
-            {"username": "spawnuser", "password": "pass"},
+            "/user/register",
+            {"email": "spawnuser@example.com", "password": "pass"},
         )
         token = create_result["token"]
 
@@ -318,15 +318,16 @@ class TestJacScaleServe:
         # Create two users
         user1 = self._request(
             "POST",
-            "/user/create",
-            {"username": "isolate1", "password": "pass1"},
+            "/user/register",
+            {"email": "isolate1@example.com", "password": "pass1"},
         )
         user2 = self._request(
             "POST",
-            "/user/create",
-            {"username": "isolate2", "password": "pass2"},
+            "/user/register",
+            {"email": "isolate2@example.com", "password": "pass2"},
         )
 
+        print(user1)
         # Users should have different root IDs
         assert user1["root_id"] != user2["root_id"]
 
@@ -335,8 +336,8 @@ class TestJacScaleServe:
         # Create user
         create_result = self._request(
             "POST",
-            "/user/create",
-            {"username": "invalidfunc", "password": "pass"},
+            "/user/register",
+            {"email": "invalidfunc@example.com", "password": "pass"},
         )
         token = create_result["token"]
 
@@ -355,8 +356,8 @@ class TestJacScaleServe:
         # Create user
         create_result = self._request(
             "POST",
-            "/user/create",
-            {"username": "invalidwalk", "password": "pass"},
+            "/user/register",
+            {"email": "invalidwalk@example.com", "password": "pass"},
         )
         token = create_result["token"]
 
@@ -375,8 +376,8 @@ class TestJacScaleServe:
         # Create user
         create_result = self._request(
             "POST",
-            "/user/create",
-            {"username": "multuser", "password": "pass"},
+            "/user/register",
+            {"email": "multuser@example.com", "password": "pass"},
         )
         token = create_result["token"]
 
