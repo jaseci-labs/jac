@@ -2,12 +2,16 @@
 
 import io
 import sys
-from contextlib import suppress
+from collections.abc import Callable
+from contextlib import AbstractContextManager, suppress
 
 from jaclang.cli import cli
 
 
-def test_circle_jac(examples_path, capture_stdout) -> None:
+def test_circle_jac(
+    examples_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Basic test for pass."""
     with capture_stdout() as output:
         cli.run(examples_path("manual_code/circle.jac"))
@@ -17,7 +21,7 @@ def test_circle_jac(examples_path, capture_stdout) -> None:
     assert "Area of a Circle with radius 5 using class: 78" in stdout_value
 
 
-def test_circle_jac_test(examples_path) -> None:
+def test_circle_jac_test(examples_path: Callable[[str], str]) -> None:
     """Basic test for pass."""
     captured_output = io.StringIO()
     stdout_block = io.StringIO()
@@ -32,7 +36,10 @@ def test_circle_jac_test(examples_path) -> None:
     assert "Ran 3 tests" in stderr_value
 
 
-def test_clean_circle_jac(examples_path, capture_stdout) -> None:
+def test_clean_circle_jac(
+    examples_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Basic test for pass."""
     with capture_stdout() as output:
         cli.run(examples_path("manual_code/circle_clean.jac"))
@@ -44,7 +51,10 @@ def test_clean_circle_jac(examples_path, capture_stdout) -> None:
     )
 
 
-def test_pure_circle_jac(examples_path, capture_stdout) -> None:
+def test_pure_circle_jac(
+    examples_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Basic test for pass."""
     with capture_stdout() as output:
         cli.run(examples_path("manual_code/circle_pure.jac"))
@@ -56,7 +66,10 @@ def test_pure_circle_jac(examples_path, capture_stdout) -> None:
     )
 
 
-def test_pure_circle_impl_not_double_generated(examples_path, capture_stdout) -> None:
+def test_pure_circle_impl_not_double_generated(
+    examples_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Basic test for pass."""
     with capture_stdout() as output:
         cli.tool(
@@ -71,7 +84,7 @@ def test_pure_circle_impl_not_double_generated(examples_path, capture_stdout) ->
     assert "\ndef __init__(self" not in stdout_value
 
 
-def test_clean_circle_jac_test(examples_path) -> None:
+def test_clean_circle_jac_test(examples_path: Callable[[str], str]) -> None:
     """Basic test for pass."""
     captured_output = io.StringIO()
     stdio_block = io.StringIO()
@@ -87,7 +100,7 @@ def test_clean_circle_jac_test(examples_path) -> None:
     assert "Ran 3 tests" in stderr_value
 
 
-def test_pure_circle_jac_test(examples_path) -> None:
+def test_pure_circle_jac_test(examples_path: Callable[[str], str]) -> None:
     """Basic test for pass."""
     captured_output = io.StringIO()
     stdio_block = io.StringIO()
@@ -103,7 +116,10 @@ def test_pure_circle_jac_test(examples_path) -> None:
     assert "Ran 3 tests" in stderr_value
 
 
-def test_jac_name_in_sys_mods(fixture_path, capture_stdout) -> None:
+def test_jac_name_in_sys_mods(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Basic test for pass."""
     with capture_stdout() as output:
         cli.run(fixture_path("../../../jaclang/tests/fixtures/abc_check.jac"))

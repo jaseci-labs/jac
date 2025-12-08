@@ -9,6 +9,8 @@ import subprocess
 import sys
 import tempfile
 import traceback
+from collections.abc import Callable
+from contextlib import AbstractContextManager
 
 import pytest
 
@@ -17,14 +19,10 @@ from jaclang.cli.cmdreg import cmd_registry, extract_param_descriptions
 from jaclang.runtimelib.builtin import printgraph
 
 
-# Exported for use by test fixtures that test import functionality
-class JacCliTests:
-    """Dummy class for import testing in fixtures."""
-
-    pass
-
-
-def test_jac_cli_run(fixture_path, capture_stdout) -> None:
+def test_jac_cli_run(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Basic test for pass."""
     with capture_stdout() as output:
         cli.run(fixture_path("hello.jac"))
@@ -33,7 +31,10 @@ def test_jac_cli_run(fixture_path, capture_stdout) -> None:
     assert "Hello World!" in stdout_value
 
 
-def test_jac_cli_run_python_file(fixture_path, capture_stdout) -> None:
+def test_jac_cli_run_python_file(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test running Python files with jac run command."""
     with capture_stdout() as output:
         cli.run(fixture_path("python_run_test.py"))
@@ -46,7 +47,10 @@ def test_jac_cli_run_python_file(fixture_path, capture_stdout) -> None:
     assert "10" in stdout_value
 
 
-def test_jac_run_py_fstr(fixture_path, capture_stdout) -> None:
+def test_jac_run_py_fstr(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test running Python files with jac run command."""
     with capture_stdout() as output:
         cli.run(fixture_path("pyfunc_fstr.py"))
@@ -61,7 +65,10 @@ def test_jac_run_py_fstr(fixture_path, capture_stdout) -> None:
     assert "name = Peter 🤔" in stdout_value
 
 
-def test_jac_run_py_fmt(fixture_path, capture_stdout) -> None:
+def test_jac_run_py_fmt(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test running Python files with jac run command."""
     with capture_stdout() as output:
         cli.run(fixture_path("pyfunc_fmt.py"))
@@ -76,7 +83,10 @@ def test_jac_run_py_fmt(fixture_path, capture_stdout) -> None:
     assert "The End." in stdout_value
 
 
-def test_jac_run_pyfunc_kwesc(fixture_path, capture_stdout) -> None:
+def test_jac_run_pyfunc_kwesc(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test running Python files with jac run command."""
     with capture_stdout() as output:
         cli.run(fixture_path("pyfunc_kwesc.py"))
@@ -89,7 +99,7 @@ def test_jac_run_pyfunc_kwesc(fixture_path, capture_stdout) -> None:
     assert "Dict: 90" in out[3]
 
 
-def test_jac_cli_alert_based_err(fixture_path) -> None:
+def test_jac_cli_alert_based_err(fixture_path: Callable[[str], str]) -> None:
     """Basic test for pass."""
     captured_output = io.StringIO()
     sys.stdout = captured_output
@@ -106,7 +116,7 @@ def test_jac_cli_alert_based_err(fixture_path) -> None:
     assert "Error" in stdout_value
 
 
-def test_jac_cli_alert_based_runtime_err(fixture_path) -> None:
+def test_jac_cli_alert_based_runtime_err(fixture_path: Callable[[str], str]) -> None:
     """Test runtime errors with internal calls collapsed (default behavior)."""
     captured_output = io.StringIO()
     sys.stdout = captured_output
@@ -146,7 +156,9 @@ def test_jac_cli_alert_based_runtime_err(fixture_path) -> None:
         assert pattern not in output
 
 
-def test_jac_cli_runtime_err_with_internal_stack(fixture_path) -> None:
+def test_jac_cli_runtime_err_with_internal_stack(
+    fixture_path: Callable[[str], str],
+) -> None:
     """Test runtime errors with internal calls shown when setting enabled."""
     from jaclang.settings import settings
 
@@ -191,7 +203,7 @@ def test_jac_cli_runtime_err_with_internal_stack(fixture_path) -> None:
         settings.show_internal_stack_errs = original_setting
 
 
-def test_jac_impl_err(fixture_path) -> None:
+def test_jac_impl_err(fixture_path: Callable[[str], str]) -> None:
     """Basic test for pass."""
     if "jaclang.tests.fixtures.err" in sys.modules:
         del sys.modules["jaclang.tests.fixtures.err"]
@@ -211,7 +223,7 @@ def test_jac_impl_err(fixture_path) -> None:
     assert f'"{path_to_file}", line 2' in stdout_value
 
 
-def test_param_name_diff(fixture_path) -> None:
+def test_param_name_diff(fixture_path: Callable[[str], str]) -> None:
     """Test when parameter name from definitinon and declaration are mismatched."""
     captured_output = io.StringIO()
     sys.stdout = captured_output
@@ -230,7 +242,7 @@ def test_param_name_diff(fixture_path) -> None:
         assert exp in output
 
 
-def test_jac_test_err(fixture_path) -> None:
+def test_jac_test_err(fixture_path: Callable[[str], str]) -> None:
     """Basic test for pass."""
     captured_output = io.StringIO()
     sys.stdout = captured_output
@@ -243,7 +255,9 @@ def test_jac_test_err(fixture_path) -> None:
     assert f'"{path_to_file}", line 2,' in stdout_value
 
 
-def test_jac_ast_tool_pass_template(capture_stdout) -> None:
+def test_jac_ast_tool_pass_template(
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Basic test for pass."""
     with capture_stdout() as output:
         cli.tool("pass_template")
@@ -253,7 +267,10 @@ def test_jac_ast_tool_pass_template(capture_stdout) -> None:
     assert stdout_value.count("def exit_") > 10
 
 
-def test_ast_print(fixture_path, capture_stdout) -> None:
+def test_ast_print(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Testing for print AstTool."""
     with capture_stdout() as output:
         cli.tool("ir", ["ast", f"{fixture_path('hello.jac')}"])
@@ -263,7 +280,10 @@ def test_ast_print(fixture_path, capture_stdout) -> None:
 
 
 @pytest.mark.skip(reason="Skipping builtins loading test")
-def test_builtins_loading(fixture_path, capture_stdout) -> None:
+def test_builtins_loading(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Testing for print AstTool."""
     from jaclang.settings import settings
 
@@ -288,7 +308,10 @@ def test_builtins_loading(fixture_path, capture_stdout) -> None:
     )
 
 
-def test_ast_printgraph(fixture_path, capture_stdout) -> None:
+def test_ast_printgraph(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Testing for print AstTool."""
     with capture_stdout() as output:
         cli.tool("ir", ["ast.", f"{fixture_path('hello.jac')}"])
@@ -300,7 +323,10 @@ def test_ast_printgraph(fixture_path, capture_stdout) -> None:
     )
 
 
-def test_cfg_printgraph(fixture_path, capture_stdout) -> None:
+def test_cfg_printgraph(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Testing for print CFG."""
     with capture_stdout() as output:
         cli.tool("ir", ["cfg.", f"{fixture_path('hello.jac')}"])
@@ -315,7 +341,10 @@ def test_cfg_printgraph(fixture_path, capture_stdout) -> None:
     assert correct_graph == stdout_value
 
 
-def test_del_clean(fixture_path, capture_stdout) -> None:
+def test_del_clean(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Testing for print AstTool."""
     with capture_stdout() as output:
         cli.check(f"{fixture_path('del_clean.jac')}")
@@ -324,7 +353,10 @@ def test_del_clean(fixture_path, capture_stdout) -> None:
     assert "0 errors, 0 warnings" in stdout_value
 
 
-def test_build_and_run(fixture_path, capture_stdout) -> None:
+def test_build_and_run(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Testing for print AstTool."""
     if os.path.exists(f"{fixture_path('needs_import.jir')}"):
         os.remove(f"{fixture_path('needs_import.jir')}")
@@ -337,7 +369,7 @@ def test_build_and_run(fixture_path, capture_stdout) -> None:
     assert "<module 'pyfunc' from" in stdout_value
 
 
-def test_run_test(fixture_path) -> None:
+def test_run_test(fixture_path: Callable[[str], str]) -> None:
     """Basic test for pass."""
     process = subprocess.Popen(
         ["jac", "test", f"{fixture_path('run_test.jac')}", "-m 2"],
@@ -381,7 +413,7 @@ def test_run_test(fixture_path) -> None:
     assert "F.F" in stderr
 
 
-def test_run_specific_test_only(fixture_path) -> None:
+def test_run_specific_test_only(fixture_path: Callable[[str], str]) -> None:
     """Test a specific test case."""
     process = subprocess.Popen(
         [
@@ -418,7 +450,10 @@ def test_graph_coverage() -> None:
     assert len(printgraph_params) + 2 == len(graph_params)
 
 
-def test_graph(examples_path, capture_stdout) -> None:
+def test_graph(
+    examples_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test for graph CLI cmd."""
     with capture_stdout() as output:
         cli.dot(f"{examples_path('reference/connect_expressions_(osp).jac')}")
@@ -430,7 +465,10 @@ def test_graph(examples_path, capture_stdout) -> None:
     assert "connect_expressions_(osp).dot\n" in stdout_value
 
 
-def test_py_to_jac(fixture_path, capture_stdout) -> None:
+def test_py_to_jac(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test for graph CLI cmd."""
     with capture_stdout() as output:
         cli.py2jac(f"{fixture_path('../../tests/fixtures/pyfunc.py')}")
@@ -441,7 +479,10 @@ def test_py_to_jac(fixture_path, capture_stdout) -> None:
     assert '"""Print function."""' in stdout_value
 
 
-def test_lambda_arg_annotation(fixture_path, capture_stdout) -> None:
+def test_lambda_arg_annotation(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test for lambda argument annotation."""
     with capture_stdout() as output:
         cli.jac2py(f"{fixture_path('../../tests/fixtures/lambda_arg_annotation.jac')}")
@@ -452,7 +493,10 @@ def test_lambda_arg_annotation(fixture_path, capture_stdout) -> None:
     assert "f = lambda x: 'even' if x % 2 == 0 else 'odd'" in stdout_value
 
 
-def test_lambda_self(fixture_path, capture_stdout) -> None:
+def test_lambda_self(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test for lambda argument annotation."""
     with capture_stdout() as output:
         cli.jac2py(f"{fixture_path('../../tests/fixtures/lambda_self.jac')}")
@@ -465,7 +509,10 @@ def test_lambda_self(fixture_path, capture_stdout) -> None:
     assert "sorted(users, key=lambda x: x['email'], reverse=True)" in stdout_value
 
 
-def test_param_arg(fixture_path, capture_stdout) -> None:
+def test_param_arg(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test for lambda argument annotation."""
     from jaclang.compiler.program import JacProgram
 
@@ -505,7 +552,7 @@ def test_param_arg(fixture_path, capture_stdout) -> None:
     assert stdout_value[-2] == "VALIDATION: x:1,y:2.5,z:10,args:1,w:True,kwargs:1"
 
 
-def test_caching_issue(fixture_path) -> None:
+def test_caching_issue(fixture_path: Callable[[str], str]) -> None:
     """Test for Caching Issue."""
     test_file = fixture_path("test_caching_issue.jac")
     test_cases = [(10, True), (11, False)]
@@ -604,7 +651,7 @@ def test_cli_help_uses_docstring_descriptions() -> None:
             )
 
 
-def test_run_jac_name_py(fixture_path) -> None:
+def test_run_jac_name_py(fixture_path: Callable[[str], str]) -> None:
     """Test a specific test case."""
     process = subprocess.Popen(
         [
@@ -622,7 +669,7 @@ def test_run_jac_name_py(fixture_path) -> None:
     assert "Sum: 8" in stdout
 
 
-def test_jac_run_py_bugs(fixture_path) -> None:
+def test_jac_run_py_bugs(fixture_path: Callable[[str], str]) -> None:
     """Test jac run python files."""
     process = subprocess.Popen(
         [
@@ -640,7 +687,7 @@ def test_jac_run_py_bugs(fixture_path) -> None:
     assert "MyModule initialized!" in stdout
 
 
-def test_cli_defaults_to_run_with_file(fixture_path) -> None:
+def test_cli_defaults_to_run_with_file(fixture_path: Callable[[str], str]) -> None:
     """jac myfile.jac should behave like jac run myfile.jac."""
     process = subprocess.Popen(
         [
@@ -656,7 +703,7 @@ def test_cli_defaults_to_run_with_file(fixture_path) -> None:
     assert "Hello World!" in stdout
 
 
-def test_cli_error_exit_codes(fixture_path) -> None:
+def test_cli_error_exit_codes(fixture_path: Callable[[str], str]) -> None:
     """Test that CLI commands return non-zero exit codes on errors."""
     # Test run command with syntax error
     process = subprocess.Popen(

@@ -1,10 +1,12 @@
 """Simple Python test file for jac run command."""
 
+from jaclang.tests.fixtures import py_namedexpr
+
 print("Hello from Python!")
 print("This is a test Python file.")
 
 
-def main():
+def main() -> int:
     """Main function to demonstrate execution."""
     result = 42
     print(f"Result: {result}")
@@ -14,8 +16,5 @@ def main():
 if __name__ == "__main__":
     main()
     print("Python execution completed.")
-
-
-from jaclang.tests.fixtures import py_namedexpr
 
 py_namedexpr.walrus_example()

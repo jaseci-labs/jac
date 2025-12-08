@@ -2,13 +2,16 @@
 
 import ast as ast3
 import os
+from collections.abc import Callable
 from difflib import unified_diff
+
+import pytest
 
 from conftest import get_micro_jac_files
 from jaclang.compiler.program import JacProgram
 
 
-def test_double_unparse(examples_path) -> None:
+def test_double_unparse(examples_path: Callable[[str], str]) -> None:
     """Parse micro jac file."""
     try:
         code_gen_pure = JacProgram().compile(examples_path("manual_code/circle.jac"))
@@ -57,7 +60,7 @@ def micro_suite_test(filename: str) -> None:
 
 
 # Generate micro suite tests dynamically
-def pytest_generate_tests(metafunc):
+def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
     """Generate test cases for all micro jac files."""
     if "micro_jac_file" in metafunc.fixturenames:
         files = get_micro_jac_files()
@@ -66,6 +69,6 @@ def pytest_generate_tests(metafunc):
         )
 
 
-def test_micro_suite(micro_jac_file):
+def test_micro_suite(micro_jac_file: str) -> None:
     """Test micro jac file with unparse."""
     micro_suite_test(micro_jac_file)

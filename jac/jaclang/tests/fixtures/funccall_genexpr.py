@@ -1,4 +1,7 @@
-def total(values):
+from collections.abc import Iterable
+
+
+def total(values: Iterable[int]) -> int:
     return sum(values)
 
 

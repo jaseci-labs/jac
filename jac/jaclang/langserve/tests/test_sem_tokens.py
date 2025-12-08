@@ -9,7 +9,7 @@ from jaclang.langserve.sem_manager import SemTokManager
 
 
 @pytest.fixture
-def initial_sem_tokens():
+def initial_sem_tokens() -> list[int]:
     """Fixture for initial semantic tokens."""
     # fmt: off
     return [
@@ -20,7 +20,7 @@ def initial_sem_tokens():
 
 
 @pytest.fixture
-def document_lines():
+def document_lines() -> list[str]:
     """Fixture for document lines."""
     return [
         "",
@@ -35,7 +35,10 @@ def document_lines():
 
 
 def check_semantic_token_update(
-    case: tuple, expected_output: str, initial_sem_tokens: list, document_lines: list
+    case: tuple,
+    expected_output: str,
+    initial_sem_tokens: list[int],
+    document_lines: list[str],
 ) -> None:
     """Check semantic token update."""
     doc_lines = copy.deepcopy(document_lines)
@@ -61,7 +64,9 @@ def check_semantic_token_update(
     assert expected_output in str(updated_semtokens), f"\nFailed for case: {case[4]}"
 
 
-def test_multiline_before_first_token(initial_sem_tokens, document_lines) -> None:
+def test_multiline_before_first_token(
+    initial_sem_tokens: list[int], document_lines: list[str]
+) -> None:
     """Test multiline before first token."""
     case = (
         lspt.Position(line=0, character=0),
@@ -76,7 +81,9 @@ def test_multiline_before_first_token(initial_sem_tokens, document_lines) -> Non
     )
 
 
-def test_multiline_between_tokens(initial_sem_tokens, document_lines) -> None:
+def test_multiline_between_tokens(
+    initial_sem_tokens: list[int], document_lines: list[str]
+) -> None:
     """Test multiline between tokens."""
     case = (
         lspt.Position(line=5, character=19),
@@ -92,7 +99,9 @@ def test_multiline_between_tokens(initial_sem_tokens, document_lines) -> None:
     )
 
 
-def test_multiline_at_end_of_line(initial_sem_tokens, document_lines) -> None:
+def test_multiline_at_end_of_line(
+    initial_sem_tokens: list[int], document_lines: list[str]
+) -> None:
     """Test multiline at end of line."""
     case = (
         lspt.Position(line=4, character=37),
@@ -108,7 +117,9 @@ def test_multiline_at_end_of_line(initial_sem_tokens, document_lines) -> None:
     )
 
 
-def test_sameline_space_between_tokens(initial_sem_tokens, document_lines) -> None:
+def test_sameline_space_between_tokens(
+    initial_sem_tokens: list[int], document_lines: list[str]
+) -> None:
     """Test sameline space between tokens."""
     case = (
         lspt.Position(line=5, character=20),
@@ -122,7 +133,9 @@ def test_sameline_space_between_tokens(initial_sem_tokens, document_lines) -> No
     )
 
 
-def test_sameline_tab_between_tokens(initial_sem_tokens, document_lines) -> None:
+def test_sameline_tab_between_tokens(
+    initial_sem_tokens: list[int], document_lines: list[str]
+) -> None:
     """Test sameline tab between tokens."""
     case = (
         lspt.Position(line=5, character=20),
@@ -136,7 +149,9 @@ def test_sameline_tab_between_tokens(initial_sem_tokens, document_lines) -> None
     )
 
 
-def test_tab_at_start_of_token(initial_sem_tokens, document_lines) -> None:
+def test_tab_at_start_of_token(
+    initial_sem_tokens: list[int], document_lines: list[str]
+) -> None:
     """Test tab at start of token."""
     case = (
         lspt.Position(line=5, character=21),
@@ -150,7 +165,9 @@ def test_tab_at_start_of_token(initial_sem_tokens, document_lines) -> None:
     )
 
 
-def test_insert_inside_token(initial_sem_tokens, document_lines) -> None:
+def test_insert_inside_token(
+    initial_sem_tokens: list[int], document_lines: list[str]
+) -> None:
     """Test insert inside token."""
     case = (
         lspt.Position(line=5, character=13),
@@ -164,7 +181,9 @@ def test_insert_inside_token(initial_sem_tokens, document_lines) -> None:
     )
 
 
-def test_insert_inside_token_selected_range(initial_sem_tokens, document_lines) -> None:
+def test_insert_inside_token_selected_range(
+    initial_sem_tokens: list[int], document_lines: list[str]
+) -> None:
     """Test insert inside token selected range."""
     case = (
         lspt.Position(line=5, character=12),
@@ -178,7 +197,9 @@ def test_insert_inside_token_selected_range(initial_sem_tokens, document_lines) 
     )
 
 
-def test_newline_at_start_of_token(initial_sem_tokens, document_lines) -> None:
+def test_newline_at_start_of_token(
+    initial_sem_tokens: list[int], document_lines: list[str]
+) -> None:
     """Test newline at start of token."""
     case = (
         lspt.Position(line=5, character=21),
@@ -194,7 +215,9 @@ def test_newline_at_start_of_token(initial_sem_tokens, document_lines) -> None:
     )
 
 
-def test_newline_after_parenthesis(initial_sem_tokens, document_lines) -> None:
+def test_newline_after_parenthesis(
+    initial_sem_tokens: list[int], document_lines: list[str]
+) -> None:
     """Test newline after parenthesis."""
     case = (
         lspt.Position(line=4, character=19),
@@ -210,7 +233,9 @@ def test_newline_after_parenthesis(initial_sem_tokens, document_lines) -> None:
     )
 
 
-def test_insert_newline_at_end_of_token(initial_sem_tokens, document_lines) -> None:
+def test_insert_newline_at_end_of_token(
+    initial_sem_tokens: list[int], document_lines: list[str]
+) -> None:
     """Test insert newline at end of token."""
     case = (
         lspt.Position(line=5, character=27),
@@ -226,7 +251,9 @@ def test_insert_newline_at_end_of_token(initial_sem_tokens, document_lines) -> N
     )
 
 
-def test_deletion_basic(initial_sem_tokens, document_lines) -> None:
+def test_deletion_basic(
+    initial_sem_tokens: list[int], document_lines: list[str]
+) -> None:
     """Test deletion basic."""
     case = (
         lspt.Position(line=5, character=4),
@@ -240,7 +267,9 @@ def test_deletion_basic(initial_sem_tokens, document_lines) -> None:
     )
 
 
-def test_multiline_deletion(initial_sem_tokens, document_lines) -> None:
+def test_multiline_deletion(
+    initial_sem_tokens: list[int], document_lines: list[str]
+) -> None:
     """Test multiline deletion."""
     case = (
         lspt.Position(line=3, character=49),
@@ -258,7 +287,9 @@ def test_multiline_deletion(initial_sem_tokens, document_lines) -> None:
     )
 
 
-def test_single_deletion_inside_token(initial_sem_tokens, document_lines) -> None:
+def test_single_deletion_inside_token(
+    initial_sem_tokens: list[int], document_lines: list[str]
+) -> None:
     """Test single deletion inside token."""
     case = (
         lspt.Position(line=5, character=12),
@@ -273,7 +304,7 @@ def test_single_deletion_inside_token(initial_sem_tokens, document_lines) -> Non
 
 
 def test_deletion_inside_token_selected_range(
-    initial_sem_tokens, document_lines
+    initial_sem_tokens: list[int], document_lines: list[str]
 ) -> None:
     """Test deletion inside token selected range."""
     case = (
@@ -288,7 +319,9 @@ def test_deletion_inside_token_selected_range(
     )
 
 
-def test_selected_multiline_deletion(initial_sem_tokens, document_lines) -> None:
+def test_selected_multiline_deletion(
+    initial_sem_tokens: list[int], document_lines: list[str]
+) -> None:
     """Test selected multiline deletion."""
     case = (
         lspt.Position(line=4, character=44),
@@ -307,7 +340,7 @@ def test_selected_multiline_deletion(initial_sem_tokens, document_lines) -> None
 
 
 def test_multi_line_insert_on_selected_region(
-    initial_sem_tokens, document_lines
+    initial_sem_tokens: list[int], document_lines: list[str]
 ) -> None:
     """Test multi line insert on selected region."""
     case = (

@@ -5,6 +5,8 @@ import os
 import subprocess
 import sys
 import tempfile
+from collections.abc import Callable, Generator
+from contextlib import AbstractContextManager
 from pathlib import Path
 from unittest.mock import patch
 
@@ -17,7 +19,9 @@ from jaclang.runtimelib.utils import read_file_with_encoding
 
 
 @pytest.fixture(autouse=True)
-def setup_jac_runtime(fixture_path):
+def setup_jac_runtime(
+    fixture_path: Callable[[str], str],
+) -> Generator[None, None, None]:
     """Set up and tear down Jac runtime for each test."""
     Jac.reset_machine()
     Jac.set_base_path(fixture_path("./"))
@@ -26,7 +30,10 @@ def setup_jac_runtime(fixture_path):
     Jac.reset_machine()
 
 
-def test_sub_abilities(fixture_path, capture_stdout):
+def test_sub_abilities(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Basic test for pass."""
     with capture_stdout() as captured_output:
         cli.run(fixture_path("sub_abil_sep.jac"))
@@ -37,7 +44,10 @@ def test_sub_abilities(fixture_path, capture_stdout):
     assert stdout_value == "Hello, world!\nI'm a ninja Myca!\n"
 
 
-def test_sub_abilities_multi(fixture_path, capture_stdout):
+def test_sub_abilities_multi(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Basic test for pass."""
     with capture_stdout() as captured_output:
         cli.run(fixture_path("sub_abil_sep_multilev.jac"))  # type: ignore
@@ -48,7 +58,10 @@ def test_sub_abilities_multi(fixture_path, capture_stdout):
     assert stdout_value == "Hello, world!\nI'm a ninja Myca!\n"
 
 
-def test_simple_jac_red(examples_path, capture_stdout):
+def test_simple_jac_red(
+    examples_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Parse micro jac file."""
     with capture_stdout() as captured_output:
         Jac.jac_import(
@@ -63,7 +76,10 @@ def test_simple_jac_red(examples_path, capture_stdout):
     )
 
 
-def test_simple_walk_by_edge(examples_path, capture_stdout):
+def test_simple_walk_by_edge(
+    examples_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Parse micro jac file."""
     with capture_stdout() as captured_output:
         Jac.jac_import("micro.simple_walk_by_edge", base_path=examples_path(""))
@@ -71,7 +87,10 @@ def test_simple_walk_by_edge(examples_path, capture_stdout):
     assert stdout_value == "Visited 1\nVisited 2\n"
 
 
-def test_guess_game(fixture_path, capture_stdout):
+def test_guess_game(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Parse micro jac file."""
     with capture_stdout() as captured_output:
         Jac.jac_import("guess_game", base_path=fixture_path("./"))
@@ -82,7 +101,10 @@ def test_guess_game(fixture_path, capture_stdout):
     )
 
 
-def test_printgraph(fixture_path, capture_stdout):
+def test_printgraph(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test the dot gen of builtin function."""
     import json
 
@@ -113,7 +135,10 @@ def test_printgraph(fixture_path, capture_stdout):
         ]
 
 
-def test_printgraph_mermaid(fixture_path, capture_stdout):
+def test_printgraph_mermaid(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test the mermaid gen of builtin function."""
     with capture_stdout() as captured_output:
         Jac.jac_import(
@@ -124,7 +149,10 @@ def test_printgraph_mermaid(fixture_path, capture_stdout):
     assert "flowchart LR" in stdout_value
 
 
-def test_chandra_bugs(fixture_path, capture_stdout):
+def test_chandra_bugs(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Parse micro jac file."""
     with capture_stdout() as captured_output:
         Jac.jac_import("chandra_bugs", base_path=fixture_path("./"))
@@ -135,7 +163,10 @@ def test_chandra_bugs(fixture_path, capture_stdout):
     )
 
 
-def test_chandra_bugs2(fixture_path, capture_stdout):
+def test_chandra_bugs2(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Parse micro jac file."""
     with capture_stdout() as captured_output:
         Jac.jac_import("chandra_bugs2", base_path=fixture_path("./"))
@@ -148,7 +179,10 @@ def test_chandra_bugs2(fixture_path, capture_stdout):
     )
 
 
-def test_ignore(fixture_path, capture_stdout):
+def test_ignore(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Parse micro jac file."""
     with capture_stdout() as captured_output:
         Jac.jac_import("ignore_dup", base_path=fixture_path("./"))
@@ -157,7 +191,10 @@ def test_ignore(fixture_path, capture_stdout):
     assert stdout_value.split("\n")[1].count("here") == 5
 
 
-def test_dataclass_hasability(fixture_path, capture_stdout):
+def test_dataclass_hasability(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Parse micro jac file."""
     with capture_stdout() as captured_output:
         Jac.jac_import("hashcheck_dup", base_path=fixture_path("./"))
@@ -165,13 +202,15 @@ def test_dataclass_hasability(fixture_path, capture_stdout):
     assert stdout_value.count("check") == 2
 
 
-def test_arith_precedence(capture_stdout):
+def test_arith_precedence(
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Basic precedence test."""
     prog = JacProgram().compile(
         use_str="with entry {print(4-5-4);}", file_path="test.jac"
     )
     with capture_stdout() as captured_output:
-        exec(compile(prog.gen.py_ast[0], "test.jac", "exec"))
+        exec(compile(prog.gen.py_ast[0], "test.jac", "exec"))  # type: ignore[call-overload]
     stdout_value = captured_output.getvalue()
     assert stdout_value == "-5\n"
 
@@ -192,7 +231,10 @@ def test_assignment_list_no_infinite_loop():
     assert len(jac_prog.errors_had) > 0  # Check errors on program
 
 
-def test_need_import(fixture_path, capture_stdout):
+def test_need_import(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test importing python."""
     with capture_stdout() as captured_output:
         Jac.jac_import("needs_import", base_path=fixture_path("./"))
@@ -200,7 +242,10 @@ def test_need_import(fixture_path, capture_stdout):
     assert "<module 'pyfunc' from" in stdout_value
 
 
-def test_gen_dot_bubble(fixture_path, capture_stdout):
+def test_gen_dot_bubble(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test the dot gen of nodes and edges of bubblesort."""
     with capture_stdout() as captured_output:
         Jac.jac_import("gendot_bubble_sort", base_path=fixture_path("./"))
@@ -208,7 +253,10 @@ def test_gen_dot_bubble(fixture_path, capture_stdout):
     assert '[label="inner_node(main=5, sub=2)"fillcolor="#FFDEAD"];' in stdout_value
 
 
-def test_assign_operation(fixture_path, capture_stdout):
+def test_assign_operation(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test assign_compr."""
     with capture_stdout() as captured_output:
         Jac.jac_import("assign_compr_dup", base_path=fixture_path("./"))
@@ -216,7 +264,10 @@ def test_assign_operation(fixture_path, capture_stdout):
     assert stdout_value == "[MyObj(apple=5, banana=7), MyObj(apple=5, banana=7)]\n"
 
 
-def test_raw_bytestr(fixture_path, capture_stdout):
+def test_raw_bytestr(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test raw string and byte string."""
     with capture_stdout() as captured_output:
         Jac.jac_import("raw_byte_string", base_path=fixture_path("./"))
@@ -225,7 +276,10 @@ def test_raw_bytestr(fixture_path, capture_stdout):
     assert stdout_value.count("<class 'bytes'>") == 3
 
 
-def test_fstring_multiple_quotation(fixture_path, capture_stdout):
+def test_fstring_multiple_quotation(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test fstring with multiple quotation."""
     with capture_stdout() as captured_output:
         Jac.jac_import(
@@ -239,7 +293,10 @@ def test_fstring_multiple_quotation(fixture_path, capture_stdout):
     assert stdout_value.split("\n")[3] == 'hello klkl"""'
 
 
-def test_deep_imports(fixture_path, capture_stdout):
+def test_deep_imports(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Parse micro jac file."""
     with capture_stdout() as captured_output:
         Jac.jac_import("deep_import", base_path=fixture_path("./"))
@@ -247,7 +304,7 @@ def test_deep_imports(fixture_path, capture_stdout):
     assert stdout_value.split("\n")[0] == "one level deeperslHello World!"
 
 
-def test_deep_imports_interp_mode(fixture_path):
+def test_deep_imports_interp_mode(fixture_path: Callable[[str], str]) -> None:
     """Parse micro jac file."""
     Jac.set_base_path(fixture_path("./"))
     Jac.attach_program(
@@ -264,7 +321,10 @@ def test_deep_imports_interp_mode(fixture_path):
     assert len(Jac.program.mod.hub.keys()) == 5
 
 
-def test_deep_imports_mods(fixture_path, capture_stdout):
+def test_deep_imports_mods(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Parse micro jac file."""
     Jac.reset_machine()
     targets = [
@@ -284,7 +344,10 @@ def test_deep_imports_mods(fixture_path, capture_stdout):
         assert i in stdout_value
 
 
-def test_deep_outer_imports_one(fixture_path, capture_stdout):
+def test_deep_outer_imports_one(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Parse micro jac file."""
     with capture_stdout() as captured_output:
         Jac.jac_import(
@@ -299,7 +362,10 @@ def test_deep_outer_imports_one(fixture_path, capture_stdout):
     )
 
 
-def test_deep_outer_imports_from_loc(fixture_path, capture_stdout):
+def test_deep_outer_imports_from_loc(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Parse micro jac file."""
     with capture_stdout() as captured_output:
         os.chdir(fixture_path("./deep/deeper/"))
@@ -312,7 +378,10 @@ def test_deep_outer_imports_from_loc(fixture_path, capture_stdout):
     )
 
 
-def test_has_lambda_goodness(fixture_path, capture_stdout):
+def test_has_lambda_goodness(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test has lambda_goodness."""
     with capture_stdout() as captured_output:
         Jac.jac_import("has_goodness", base_path=fixture_path("./"))
@@ -321,7 +390,10 @@ def test_has_lambda_goodness(fixture_path, capture_stdout):
     assert stdout_value.split("\n")[1] == "mydict:  {'a': 2, 'b': 4}"
 
 
-def test_conn_assign_on_edges(fixture_path, capture_stdout):
+def test_conn_assign_on_edges(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test conn assign on edges."""
     with capture_stdout() as captured_output:
         Jac.jac_import("edge_ops", base_path=fixture_path("./"))
@@ -331,7 +403,10 @@ def test_conn_assign_on_edges(fixture_path, capture_stdout):
     assert "12\n" in stdout_value
 
 
-def test_disconnect(fixture_path, capture_stdout):
+def test_disconnect(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test conn assign on edges."""
     with capture_stdout() as captured_output:
         Jac.jac_import("disconn", base_path=fixture_path("./"))
@@ -344,7 +419,10 @@ def test_disconnect(fixture_path, capture_stdout):
     assert "['GenericEdge', 'GenericEdge', 'GenericEdge']" in stdout_value[5]
 
 
-def test_simple_archs(fixture_path, capture_stdout):
+def test_simple_archs(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test conn assign on edges."""
     with capture_stdout() as captured_output:
         Jac.jac_import("simple_archs", base_path=fixture_path("./"))
@@ -353,7 +431,10 @@ def test_simple_archs(fixture_path, capture_stdout):
     assert stdout_value.split("\n")[1] == "0"
 
 
-def test_edge_walk(fixture_path, capture_stdout):
+def test_edge_walk(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test walking through edges."""
     with capture_stdout() as captured_output:
         Jac.jac_import("edges_walk", base_path=fixture_path("./"))
@@ -365,7 +446,10 @@ def test_edge_walk(fixture_path, capture_stdout):
     assert "[node_a(val=42), node_a(val=42)]\n" in stdout_value
 
 
-def test_tuple_of_tuple_assign(fixture_path, capture_stdout):
+def test_tuple_of_tuple_assign(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test walking through edges."""
     with capture_stdout() as captured_output:
         Jac.jac_import("tuplytuples", base_path=fixture_path("./"))
@@ -376,7 +460,10 @@ def test_tuple_of_tuple_assign(fixture_path, capture_stdout):
     )
 
 
-def test_deferred_field(fixture_path, capture_stdout):
+def test_deferred_field(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test walking through edges."""
     with capture_stdout() as captured_output:
         Jac.jac_import("deferred_field", base_path=fixture_path("./"))
@@ -384,7 +471,10 @@ def test_deferred_field(fixture_path, capture_stdout):
     assert "5 15" in stdout_value
 
 
-def test_gen_dot_builtin(fixture_path, capture_stdout):
+def test_gen_dot_builtin(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test the dot gen of nodes and edges as a builtin."""
     with capture_stdout() as captured_output:
         Jac.jac_import("builtin_printgraph", base_path=fixture_path("./"))
@@ -392,7 +482,10 @@ def test_gen_dot_builtin(fixture_path, capture_stdout):
     assert stdout_value.count("True") == 16
 
 
-def test_with_contexts(fixture_path, capture_stdout):
+def test_with_contexts(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test walking through edges."""
     with capture_stdout() as captured_output:
         Jac.jac_import("with_context", base_path=fixture_path("./"))
@@ -405,7 +498,10 @@ def test_with_contexts(fixture_path, capture_stdout):
     )
 
 
-def test_typed_filter_compr(examples_path, capture_stdout):
+def test_typed_filter_compr(
+    examples_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Parse micro jac file."""
     with capture_stdout() as captured_output:
         Jac.jac_import("micro.typed_filter_compr", base_path=examples_path(""))
@@ -417,7 +513,10 @@ def test_typed_filter_compr(examples_path, capture_stdout):
     assert "[MyObj(a=0), MyObj(a=1), MyObj(a=2)]\n" in stdout_value
 
 
-def test_edge_node_walk(fixture_path, capture_stdout):
+def test_edge_node_walk(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test walking through edges and nodes."""
     with capture_stdout() as captured_output:
         Jac.jac_import("edge_node_walk", base_path=fixture_path("./"))
@@ -429,14 +528,17 @@ def test_edge_node_walk(fixture_path, capture_stdout):
     assert "[node_b(val=42), node_b(val=42)]\n" in stdout_value
 
 
-def test_annotation_tuple_issue(fixture_path):
+def test_annotation_tuple_issue(fixture_path: Callable[[str], str]) -> None:
     """Test conn assign on edges."""
     mypass = JacProgram().compile(fixture_path("./slice_vals.jac"))
     assert "Annotated[Str, INT, BLAH]" in mypass.gen.py
     assert "tuple[int, Optional[type], Optional[tuple]]" in mypass.gen.py
 
 
-def test_enum_inside_arch(fixture_path, capture_stdout):
+def test_enum_inside_arch(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test Enum as member stmt."""
     with capture_stdout() as captured_output:
         Jac.jac_import("enum_inside_archtype", base_path=fixture_path("./"))
@@ -444,7 +546,7 @@ def test_enum_inside_arch(fixture_path, capture_stdout):
     assert "2 Accessing privileged Data" in stdout_value
 
 
-def test_pyfunc_1(fixture_path):
+def test_pyfunc_1(fixture_path: Callable[[str], str]) -> None:
     """Test py ast to Jac ast conversion."""
     import ast as py_ast
 
@@ -469,7 +571,7 @@ def test_pyfunc_1(fixture_path):
     assert '\n\n"""Say hello"""\n@my_decorator\n\n def say_hello() {' in output
 
 
-def test_pyfunc_2(fixture_path):
+def test_pyfunc_2(fixture_path: Callable[[str], str]) -> None:
     """Test py ast to Jac ast conversion."""
     import ast as py_ast
 
@@ -492,7 +594,7 @@ def test_pyfunc_2(fixture_path):
     assert "<>node = 90;\n    print(<>node);\n" in output
 
 
-def test_pyfunc_3(fixture_path):
+def test_pyfunc_3(fixture_path: Callable[[str], str]) -> None:
     """Test py ast to Jac ast conversion."""
     import ast as py_ast
 
@@ -515,7 +617,7 @@ def test_pyfunc_3(fixture_path):
     assert "class Sample {\n    def init" in output
 
 
-def test_py2jac(fixture_path):
+def test_py2jac(fixture_path: Callable[[str], str]) -> None:
     """Test py ast to Jac ast conversion."""
     import ast as py_ast
 
@@ -530,7 +632,7 @@ def test_py2jac(fixture_path):
                 py_ast.parse(file_source),
                 orig_src=ast.Source(file_source, py_out_path),
             ),
-            prog=None,
+            prog=JacProgram(),
         ).ir_out.unparse()
     assert "match Container(inner=Inner(x=a, y=b)) {\n" in output
     assert "case Container(inner = Inner(x = a, y = 0)):\n" in output
@@ -538,7 +640,7 @@ def test_py2jac(fixture_path):
     assert "case _:\n" in output
 
 
-def test_py2jac_params(fixture_path):
+def test_py2jac_params(fixture_path: Callable[[str], str]) -> None:
     """Test py ast to Jac ast conversion."""
     import ast as py_ast
 
@@ -553,19 +655,19 @@ def test_py2jac_params(fixture_path):
                 py_ast.parse(file_source),
                 orig_src=ast.Source(file_source, py_out_path),
             ),
-            prog=None,
+            prog=JacProgram(),
         ).ir_out.unparse()
     assert (
         "def isinstance( <>obj: object , class_or_tuple: _ClassInfo , /)  -> bool {"
         in output
     )
     assert (
-        "def len(<>obj: Sized, astt: Any, /, z: int, j: str, a: Any = 90) -> int {"
+        "def len(<>obj: Sized, astt: object, /, z: int, j: str, a: int = 90) -> int {"
         in output
     )
 
 
-def test_py2jac_empty_file(fixture_path):
+def test_py2jac_empty_file(fixture_path: Callable[[str], str]) -> None:
     """Test py ast to Jac ast conversion."""
     import ast as py_ast
 
@@ -580,12 +682,36 @@ def test_py2jac_empty_file(fixture_path):
                 py_ast.parse(file_source),
                 orig_src=ast.Source(file_source, py_out_path),
             ),
-            prog=None,
+            prog=JacProgram(),
         ).ir_out
     assert isinstance(converted_ast, ast.Module)
 
 
-def test_refs_target(fixture_path, capture_stdout):
+def test_py2jac_augassign_and_doc(fixture_path: Callable[[str], str]) -> None:
+    """Ensure augmented assigns avoid redecl and nested docstrings terminate."""
+    import ast as py_ast
+
+    import jaclang.compiler.unitree as ast
+    from jaclang.compiler.passes.main import PyastBuildPass
+
+    py_out_path = os.path.join(fixture_path("./"), "py2jac_augassign_doc.py")
+    with open(py_out_path) as f:
+        file_source = f.read()
+        output = PyastBuildPass(
+            ir_in=ast.PythonModuleAst(
+                py_ast.parse(file_source),
+                orig_src=ast.Source(file_source, py_out_path),
+            ),
+            prog=JacProgram(),
+        ).ir_out.unparse()
+    assert "x += 2;" in output  # augmented assign should not emit `let`
+    assert '"""inner doc"""; def inner()' in output  # docstring should end before def
+
+
+def test_refs_target(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test py ast to Jac ast conversion output."""
     with capture_stdout() as captured_output:
         Jac.jac_import("refs_target", base_path=fixture_path("./"))
@@ -613,7 +739,10 @@ def test_double_format_issue():
     assert before == after
 
 
-def test_inherit_check(fixture_path, capture_stdout):
+def test_inherit_check(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test py ast to Jac ast conversion output."""
     with capture_stdout() as captured_output:
         Jac.jac_import("inherit_check", base_path=fixture_path("./"))
@@ -621,7 +750,10 @@ def test_inherit_check(fixture_path, capture_stdout):
     assert stdout_value == "I am in b\nI am in b\nwww is also in b\n"
 
 
-def test_tuple_unpack(fixture_path, capture_stdout):
+def test_tuple_unpack(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test tuple unpack."""
     with capture_stdout() as captured_output:
         Jac.jac_import("tupleunpack", base_path=fixture_path("./"))
@@ -630,7 +762,10 @@ def test_tuple_unpack(fixture_path, capture_stdout):
     assert "[2, 3, 4]" in stdout_value[1]
 
 
-def test_trailing_comma(fixture_path, capture_stdout):
+def test_trailing_comma(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test trailing comma."""
     with capture_stdout() as captured_output:
         Jac.jac_import("trailing_comma", base_path=fixture_path("./"))
@@ -638,7 +773,10 @@ def test_trailing_comma(fixture_path, capture_stdout):
     assert "Code compiled and ran successfully!" in stdout_value
 
 
-def test_try_finally(fixture_path, capture_stdout):
+def test_try_finally(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test try finally."""
     with capture_stdout() as captured_output:
         Jac.jac_import("try_finally", base_path=fixture_path("./"))
@@ -650,7 +788,10 @@ def test_try_finally(fixture_path, capture_stdout):
     assert "finally block" in stdout_value[4]
 
 
-def test_arithmetic_bug(fixture_path, capture_stdout):
+def test_arithmetic_bug(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test arithmetic bug."""
     with capture_stdout() as captured_output:
         Jac.jac_import("arithmetic_bug", base_path=fixture_path("./"))
@@ -662,7 +803,10 @@ def test_arithmetic_bug(fixture_path, capture_stdout):
     assert stdout_value[4] == "12"
 
 
-def test_lambda_expr(fixture_path, capture_stdout):
+def test_lambda_expr(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test lambda expr."""
     with capture_stdout() as captured_output:
         Jac.jac_import("lambda", base_path=fixture_path("./"))
@@ -671,7 +815,10 @@ def test_lambda_expr(fixture_path, capture_stdout):
     assert stdout_value[1] == "567"
 
 
-def test_override_walker_inherit(fixture_path, capture_stdout):
+def test_override_walker_inherit(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test py ast to Jac ast conversion output."""
     with capture_stdout() as captured_output:
         Jac.jac_import("walker_override", base_path=fixture_path("./"))
@@ -680,8 +827,9 @@ def test_override_walker_inherit(fixture_path, capture_stdout):
 
 
 def test_self_with_no_sig(
-    fixture_path, capture_stdout
-):  # we can get rid of this, isn't?
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:  # we can get rid of this, isn't?
     """Test py ast to Jac ast conversion output."""
     with capture_stdout() as captured_output:
         Jac.jac_import("nosigself", base_path=fixture_path("./"))
@@ -690,8 +838,9 @@ def test_self_with_no_sig(
 
 
 def test_hash_init_check(
-    fixture_path, capture_stdout
-):  # we can get rid of this, isn't?
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:  # we can get rid of this, isn't?
     """Test py ast to Jac ast conversion output."""
     with capture_stdout() as captured_output:
         Jac.jac_import("hash_init_check", base_path=fixture_path("./"))
@@ -699,14 +848,14 @@ def test_hash_init_check(
     assert "Test Passed" in stdout_value
 
 
-def test_multiline_single_tok(fixture_path):
+def test_multiline_single_tok(fixture_path: Callable[[str], str]) -> None:
     """Test conn assign on edges."""
     mypass = JacProgram().compile(fixture_path("byllmissue.jac"))
     assert "2:5 - 4:8" in mypass.pp()
 
 
 @pytest.mark.xfail(reason="TODO: Support symtable for inheritance")
-def test_inherit_baseclass_sym(examples_path):
+def test_inherit_baseclass_sym(examples_path: Callable[[str], str]) -> None:
     """Basic test for symtable support for inheritance."""
     mypass = JacProgram().compile(examples_path("guess_game/guess_game3.jac"))
     table = None
@@ -721,7 +870,10 @@ def test_inherit_baseclass_sym(examples_path):
     assert table.lookup("attempts") is not None
 
 
-def test_edge_expr_not_type(fixture_path, capture_stdout):
+def test_edge_expr_not_type(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test importing python."""
     with capture_stdout() as captured_output:
         Jac.jac_import("edgetypeissue", base_path=fixture_path("./"))
@@ -729,7 +881,10 @@ def test_edge_expr_not_type(fixture_path, capture_stdout):
     assert "[x()]" in stdout_value
 
 
-def test_blank_with_entry(fixture_path, capture_stdout):
+def test_blank_with_entry(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test importing python."""
     with capture_stdout() as captured_output:
         Jac.jac_import("blankwithentry", base_path=fixture_path("./"))
@@ -737,7 +892,10 @@ def test_blank_with_entry(fixture_path, capture_stdout):
     assert "i work" in stdout_value
 
 
-def test_kwonly_params(fixture_path, capture_stdout):
+def test_kwonly_params(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test importing python."""
     with capture_stdout() as captured_output:
         Jac.jac_import("test_kwonly_params", base_path=fixture_path("./params"))
@@ -749,7 +907,10 @@ def test_kwonly_params(fixture_path, capture_stdout):
     assert stdout_value[4] == "ALL_KW: 100:test:1.0 200:hi:9.9"
 
 
-def test_complex_params(fixture_path, capture_stdout):
+def test_complex_params(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test importing python."""
     with capture_stdout() as captured_output:
         Jac.jac_import("test_complex_params", base_path=fixture_path("./params"))
@@ -762,7 +923,10 @@ def test_complex_params(fixture_path, capture_stdout):
     assert stdout_value[5] == "VALIDATION: x:1,y:2.5,z:10,args:1,w:True,kwargs:1"
 
 
-def test_param_failing(fixture_path, capture_stdout):
+def test_param_failing(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test importing python."""
     with capture_stdout() as captured_output:
         for i in [
@@ -775,7 +939,10 @@ def test_param_failing(fixture_path, capture_stdout):
     assert "FAILED" not in stdout_value
 
 
-def test_double_import_exec(fixture_path, capture_stdout):
+def test_double_import_exec(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test importing python."""
     with capture_stdout() as captured_output:
         Jac.jac_import("dblhello", base_path=fixture_path("./"))
@@ -784,7 +951,10 @@ def test_double_import_exec(fixture_path, capture_stdout):
     assert "im still here" in stdout_value
 
 
-def test_cls_method(fixture_path, capture_stdout):
+def test_cls_method(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test class method output."""
     with capture_stdout() as captured_output:
         Jac.jac_import("cls_method", base_path=fixture_path("./"))
@@ -794,7 +964,10 @@ def test_cls_method(fixture_path, capture_stdout):
     assert stdout_value[2] == "Hello, World! Hello, World22!"
 
 
-def test_list_methods(fixture_path, capture_stdout):
+def test_list_methods(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test list_modules, list_walkers, list_nodes, and list_edges."""
     Jac.reset_machine()
     Jac.set_base_path(fixture_path("."))
@@ -814,7 +987,10 @@ def test_list_methods(fixture_path, capture_stdout):
     assert "Created 5 items." in stdout_value
 
 
-def test_walker_dynamic_update(fixture_path, capture_stdout):
+def test_walker_dynamic_update(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test dynamic update of a walker during runtime."""
     Jac.reset_machine()
     Jac.set_base_path(fixture_path("."))
@@ -872,7 +1048,10 @@ def test_walker_dynamic_update(fixture_path, capture_stdout):
                 bar_file.write(original_content)
 
 
-def test_dynamic_spawn_archetype(fixture_path, capture_stdout):
+def test_dynamic_spawn_archetype(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test that the walker and node can be spawned and behaves as expected."""
     with capture_stdout() as captured_output:
         cli.run(fixture_path("dynamic_archetype.jac"))
@@ -907,7 +1086,10 @@ def test_dynamic_spawn_archetype(fixture_path, capture_stdout):
         )
 
 
-def test_dynamic_archetype_creation(fixture_path, capture_stdout):
+def test_dynamic_archetype_creation(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test that the walker and node can be created dynamically."""
     with capture_stdout() as captured_output:
         cli.run(fixture_path("create_dynamic_archetype.jac"))
@@ -922,7 +1104,10 @@ def test_dynamic_archetype_creation(fixture_path, capture_stdout):
     )
 
 
-def test_dynamic_archetype_creation_rel_import(fixture_path, capture_stdout):
+def test_dynamic_archetype_creation_rel_import(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test that the walker and node can be created dynamically, with relative import."""
     with capture_stdout() as captured_output:
         cli.run(fixture_path("arch_rel_import_creation.jac"))
@@ -935,7 +1120,10 @@ def test_dynamic_archetype_creation_rel_import(fixture_path, capture_stdout):
         assert val in output, f"Expected '{val}' in output."
 
 
-def test_object_ref_interface(fixture_path, capture_stdout):
+def test_object_ref_interface(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test class method output."""
     with capture_stdout() as captured_output:
         cli.run(fixture_path("objref.jac"))
@@ -945,7 +1133,10 @@ def test_object_ref_interface(fixture_path, capture_stdout):
     assert stdout_value[2] == "valid: True"
 
 
-def test_match_multi_ex(fixture_path, capture_stdout):
+def test_match_multi_ex(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test match case with multiple expressions."""
     with capture_stdout() as captured_output:
         Jac.jac_import("match_multi_ex", base_path=fixture_path("./"))
@@ -954,7 +1145,10 @@ def test_match_multi_ex(fixture_path, capture_stdout):
     assert stdout_value[1] == "ten"
 
 
-def test_entry_exit(fixture_path, capture_stdout):
+def test_entry_exit(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test entry and exit behavior of walker."""
     with capture_stdout() as captured_output:
         Jac.jac_import("entry_exit", base_path=fixture_path("./"))
@@ -964,7 +1158,10 @@ def test_entry_exit(fixture_path, capture_stdout):
     assert "Exiting at the end of walker:  test_node(value=" in stdout_value[11]
 
 
-def test_visit_order(fixture_path, capture_stdout):
+def test_visit_order(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test entry and exit behavior of walker."""
     with capture_stdout() as captured_output:
         Jac.jac_import("visit_order", base_path=fixture_path("./"))
@@ -972,7 +1169,10 @@ def test_visit_order(fixture_path, capture_stdout):
     assert stdout_value == "[MyNode(Name='End'), MyNode(Name='Middle')]\n"
 
 
-def test_global_multivar(fixture_path, capture_stdout):
+def test_global_multivar(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test supporting multiple global variable in a statement."""
     with capture_stdout() as captured_output:
         Jac.jac_import("glob_multivar_statement", base_path=fixture_path("./"))
@@ -981,7 +1181,10 @@ def test_global_multivar(fixture_path, capture_stdout):
     assert "Welcome to Jaseci!" in stdout_value[1]
 
 
-def test_archetype_def(fixture_path, capture_stdout):
+def test_archetype_def(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test archetype definition bug."""
     with capture_stdout() as captured_output:
         Jac.jac_import("archetype_def_bug", base_path=fixture_path("./"))
@@ -990,7 +1193,10 @@ def test_archetype_def(fixture_path, capture_stdout):
     assert "MyNode" in stdout_value[1]
 
 
-def test_visit_sequence(fixture_path, capture_stdout):
+def test_visit_sequence(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test conn assign on edges."""
     with capture_stdout() as captured_output:
         Jac.jac_import("visit_sequence", base_path=fixture_path("./"))
@@ -1003,7 +1209,10 @@ def test_visit_sequence(fixture_path, capture_stdout):
     )
 
 
-def test_connect_traverse_syntax(fixture_path, capture_stdout):
+def test_connect_traverse_syntax(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test connect traverse syntax."""
     with capture_stdout() as captured_output:
         Jac.jac_import("connect_traverse_syntax", base_path=fixture_path("./"))
@@ -1018,7 +1227,10 @@ def test_connect_traverse_syntax(fixture_path, capture_stdout):
     )  # Remove after dropping deprecated syntax support
 
 
-def test_node_del(fixture_path, capture_stdout):
+def test_node_del(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test complex nested impls."""
     with capture_stdout() as captured_output:
         Jac.jac_import("node_del", base_path=fixture_path("./"))
@@ -1041,7 +1253,9 @@ def create_temp_jac_file(
     return full_path
 
 
-def test_import_from_site_packages(capture_stdout):
+def test_import_from_site_packages(
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test importing a Jac module from simulated site-packages."""
     with tempfile.TemporaryDirectory() as tmpdir:
         # Simulate site-packages directory structure
@@ -1067,7 +1281,9 @@ def test_import_from_site_packages(capture_stdout):
             assert "Site package module loaded!" in stdout_value
 
 
-def test_import_from_jacpath(capture_stdout):
+def test_import_from_jacpath(
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test importing a Jac module from JACPATH."""
     with tempfile.TemporaryDirectory() as tmpdir:
         # Simulate JACPATH directory
@@ -1105,7 +1321,7 @@ def test_import_from_jacpath(capture_stdout):
         assert "JACPATH module loaded!" in stdout_value
 
 
-def test_obj_hasvar_initialization(fixture_path):
+def test_obj_hasvar_initialization(fixture_path: Callable[[str], str]) -> None:
     """Basic test for pass."""
     (out := JacProgram()).compile(fixture_path("uninitialized_hasvars.jac"))
     assert out.errors_had
@@ -1140,7 +1356,10 @@ def test_obj_hasvar_initialization(fixture_path):
         assert exp in errors_output
 
 
-def test_async_walker(fixture_path, capture_stdout):
+def test_async_walker(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test async walker."""
     with capture_stdout() as captured_output:
         Jac.jac_import("async_walker", base_path=fixture_path("./"))
@@ -1150,7 +1369,10 @@ def test_async_walker(fixture_path, capture_stdout):
     assert "Coroutine task is completed" in stdout_value[6]
 
 
-def test_async_function(fixture_path, capture_stdout):
+def test_async_function(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test async ability."""
     with capture_stdout() as captured_output:
         Jac.jac_import("async_function", base_path=fixture_path("./"))
@@ -1160,7 +1382,10 @@ def test_async_function(fixture_path, capture_stdout):
     assert "World!" in stdout_value[2]
 
 
-def test_concurrency(fixture_path, capture_stdout):
+def test_concurrency(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test concurrency in jaclang."""
     with capture_stdout() as captured_output:
         Jac.jac_import("concurrency", base_path=fixture_path("./"))
@@ -1171,7 +1396,9 @@ def test_concurrency(fixture_path, capture_stdout):
     assert "13" in stdout_value[10]
 
 
-def test_import_jac_from_py(capture_stdout):
+def test_import_jac_from_py(
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Parse micro jac file."""
     with capture_stdout() as captured_output:
         from .fixtures import jac_from_py
@@ -1185,7 +1412,7 @@ def test_import_jac_from_py(capture_stdout):
     )
 
 
-def test_py_namedexpr(fixture_path):
+def test_py_namedexpr(fixture_path: Callable[[str], str]) -> None:
     """Ensure NamedExpr nodes are converted to AtomUnit."""
     import ast as py_ast
 
@@ -1205,7 +1432,7 @@ def test_py_namedexpr(fixture_path):
     assert "(x := 10)" in output
 
 
-def test_py_bool_parentheses(fixture_path):
+def test_py_bool_parentheses(fixture_path: Callable[[str], str]) -> None:
     """Ensure boolean expressions preserve parentheses during conversion."""
     import ast as py_ast
 
@@ -1229,7 +1456,10 @@ def test_py_bool_parentheses(fixture_path):
     assert "(tok[1] > change_end_char)" in output
 
 
-def test_here_visitor_usage(fixture_path, capture_stdout):
+def test_here_visitor_usage(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test visitor, here keyword usage in jaclang."""
     with capture_stdout() as captured_output:
         Jac.jac_import("here_visitor_usage", base_path=fixture_path("./"))
@@ -1238,7 +1468,7 @@ def test_here_visitor_usage(fixture_path, capture_stdout):
     assert "Visitor name is  Walker 1" in stdout_value[1]
 
 
-def test_here_visitor_error(fixture_path):
+def test_here_visitor_error(fixture_path: Callable[[str], str]) -> None:
     """Test visitor, here keyword usage in jaclang."""
     captured_output = io.StringIO()
     sys.stdout = captured_output
@@ -1252,7 +1482,10 @@ def test_here_visitor_error(fixture_path):
     assert "'here' is not defined" in stdout_value
 
 
-def test_edge_ability(fixture_path, capture_stdout):
+def test_edge_ability(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test visitor, here keyword usage in jaclang."""
     with capture_stdout() as captured_output:
         cli.run(fixture_path("edge_ability.jac"))
@@ -1263,7 +1496,10 @@ def test_edge_ability(fixture_path, capture_stdout):
     assert "MyEdge from walker MyEdge(path=2)" in stdout_value[16]
 
 
-def test_backward_edge_visit(fixture_path, capture_stdout):
+def test_backward_edge_visit(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test backward edge visit in jaclang."""
     with capture_stdout() as captured_output:
         cli.run(fixture_path("backward_edge_visit.jac"))
@@ -1274,7 +1510,10 @@ def test_backward_edge_visit(fixture_path, capture_stdout):
     assert "MyWalker() from node MyNode(val=40)" in stdout_value[9]
 
 
-def test_visit_traversal(fixture_path, capture_stdout):
+def test_visit_traversal(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test visit traversal semantic in jaclang."""
     with capture_stdout() as captured_output:
         cli.run(fixture_path("visit_traversal.jac"))
@@ -1287,7 +1526,10 @@ def test_visit_traversal(fixture_path, capture_stdout):
     assert "MyWalker() from node MyNode(val=70)" in stdout_value[9]
 
 
-def test_async_ability(fixture_path, capture_stdout):
+def test_async_ability(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test async ability."""
     with capture_stdout() as captured_output:
         Jac.jac_import("async_ability", base_path=fixture_path("./"))
@@ -1302,7 +1544,10 @@ def test_async_ability(fixture_path, capture_stdout):
     assert "Coroutine task is completed" in stdout_value[17]
 
 
-def test_iter_for_continue(fixture_path, capture_stdout):
+def test_iter_for_continue(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test iter for continue."""
     with capture_stdout() as captured_output:
         Jac.jac_import("iter_for_continue", base_path=fixture_path("./"))
@@ -1314,7 +1559,10 @@ def test_iter_for_continue(fixture_path, capture_stdout):
     assert "4" in stdout_value[4]
 
 
-def test_unicode_string_literals(fixture_path, capture_stdout):
+def test_unicode_string_literals(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test unicode characters in string literals are preserved correctly."""
     with capture_stdout() as captured_output:
         Jac.jac_import("unicode_strings", base_path=fixture_path("./"))
@@ -1345,7 +1593,10 @@ def test_sitecustomize_meta_importer():
         assert proc.stdout.strip() == "via meta"
 
 
-def test_spawn_loc_list(fixture_path, capture_stdout):
+def test_spawn_loc_list(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test spawning a walker on list of nodes."""
     with capture_stdout() as captured_output:
         Jac.jac_import("spawn_loc_list", base_path=fixture_path("./"))
@@ -1357,7 +1608,10 @@ def test_spawn_loc_list(fixture_path, capture_stdout):
     assert "I am here MyNode(val=30)" in stdout_value[6]
 
 
-def test_while_else(fixture_path, capture_stdout):
+def test_while_else(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test else part in while loop."""
     with capture_stdout() as captured_output:
         Jac.jac_import("while_else", base_path=fixture_path("./"))
@@ -1461,7 +1715,10 @@ def test_read_file_with_encoding_special_characters():
         os.unlink(temp_path)
 
 
-def test_funccall_genexpr(fixture_path, capture_stdout):
+def test_funccall_genexpr(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test function call with generator expression in both Jac and py2jac."""
     # Test language support
     with capture_stdout() as captured_output:
@@ -1477,7 +1734,10 @@ def test_funccall_genexpr(fixture_path, capture_stdout):
     assert "result = total((x * x) for x in range(5));" in stdout_value
 
 
-def test_attr_pattern_case(fixture_path, capture_stdout):
+def test_attr_pattern_case(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test attribute pattern matching."""
     with capture_stdout() as captured_output:
         Jac.jac_import("attr_pattern_case", base_path=fixture_path("./"))
@@ -1485,7 +1745,10 @@ def test_attr_pattern_case(fixture_path, capture_stdout):
     assert "Matched a.b.c Hello Jaseci!" in stdout_value[0]
 
 
-def test_switch_case(fixture_path, capture_stdout):
+def test_switch_case(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test switch-case."""
     with capture_stdout() as captured_output:
         Jac.jac_import("switch_case", base_path=fixture_path("./"))
@@ -1499,7 +1762,10 @@ def test_switch_case(fixture_path, capture_stdout):
     assert "No match found for value: mango" in stdout_value[6]
 
 
-def test_safe_call_operator(fixture_path, capture_stdout):
+def test_safe_call_operator(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test safe call operator."""
     with capture_stdout() as captured_output:
         Jac.jac_import("safe_call_operator", base_path=fixture_path("./"))
@@ -1510,7 +1776,10 @@ def test_safe_call_operator(fixture_path, capture_stdout):
     assert "None" in stdout_value[3]
 
 
-def test_anonymous_ability_execution(fixture_path, capture_stdout):
+def test_anonymous_ability_execution(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test that anonymous abilities execute correctly with synthetic names."""
     with capture_stdout() as captured_output:
         Jac.jac_import("anonymous_ability_test", base_path=fixture_path("./"))
@@ -1523,7 +1792,10 @@ def test_anonymous_ability_execution(fixture_path, capture_stdout):
     assert "Walker visiting node" in stdout_value
 
 
-def test_escaped_quote_strings(fixture_path, capture_stdout):
+def test_escaped_quote_strings(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Test strings with escaped quotes are handled correctly."""
     with capture_stdout() as captured_output:
         Jac.jac_import("escaped_quote_strings", base_path=fixture_path("./"))
@@ -1534,3 +1806,21 @@ def test_escaped_quote_strings(fixture_path, capture_stdout):
     assert 'She said "Don\'t forget the \\backslash\\"' in stdout_value
     assert "Line 1\nLine 2\tTabbed" in stdout_value
     assert "Path: C:\\Users\\Documents\\file.txt" in stdout_value
+
+
+def test_by_operator(fixture_path: Callable[[str], str]) -> None:
+    """Test 'by' operator raises NotImplementedError."""
+    captured_output = io.StringIO()
+    sys.stdout = captured_output
+    sys.stderr = captured_output
+
+    with pytest.raises(SystemExit):
+        cli.run(fixture_path("by_operator.jac"))
+
+    sys.stdout = sys.__stdout__
+    sys.stderr = sys.__stderr__
+
+    stdout_value = captured_output.getvalue()
+    assert "by" in stdout_value.lower()
+    assert "not" in stdout_value.lower()
+    assert "implemented" in stdout_value.lower()

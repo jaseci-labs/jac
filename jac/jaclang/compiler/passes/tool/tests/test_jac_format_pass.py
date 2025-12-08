@@ -2,7 +2,10 @@
 
 import ast as ast3
 import os
+from collections.abc import Callable
 from difflib import unified_diff
+
+import pytest
 
 import jaclang.compiler.unitree as uni
 from conftest import get_micro_jac_files
@@ -11,7 +14,9 @@ from jaclang.utils.helpers import add_line_numbers
 
 
 def compare_files(
-    fixture_path, original_file: str, formatted_file: str | None = None
+    fixture_path: Callable[[str], str],
+    original_file: str,
+    formatted_file: str | None = None,
 ) -> None:
     """Compare the original file with a provided formatted file or a new formatted version."""
     try:
@@ -45,7 +50,7 @@ def compare_files(
         raise
 
 
-def test_simple_walk_fmt(fixture_path) -> None:
+def test_simple_walk_fmt(fixture_path: Callable[[str], str]) -> None:
     """Tests if the file matches a particular format."""
     compare_files(
         fixture_path,
@@ -53,7 +58,7 @@ def test_simple_walk_fmt(fixture_path) -> None:
     )
 
 
-def test_tagbreak(fixture_path) -> None:
+def test_tagbreak(fixture_path: Callable[[str], str]) -> None:
     """Tests if the file matches a particular format."""
     compare_files(
         fixture_path,
@@ -61,7 +66,7 @@ def test_tagbreak(fixture_path) -> None:
     )
 
 
-def test_has_fmt(fixture_path) -> None:
+def test_has_fmt(fixture_path: Callable[[str], str]) -> None:
     """Tests if the file matches a particular format."""
     compare_files(
         fixture_path,
@@ -69,7 +74,7 @@ def test_has_fmt(fixture_path) -> None:
     )
 
 
-def test_import_fmt(fixture_path) -> None:
+def test_import_fmt(fixture_path: Callable[[str], str]) -> None:
     """Tests if the file matches a particular format."""
     compare_files(
         fixture_path,
@@ -77,7 +82,7 @@ def test_import_fmt(fixture_path) -> None:
     )
 
 
-def test_archetype(fixture_path) -> None:
+def test_archetype(fixture_path: Callable[[str], str]) -> None:
     """Tests if the file matches a particular format."""
     compare_files(
         fixture_path,
@@ -169,7 +174,7 @@ def micro_suite_test(filename: str) -> None:
 
 
 # Generate micro suite tests dynamically
-def pytest_generate_tests(metafunc):
+def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
     """Generate test cases for all micro jac files."""
     if "micro_jac_file" in metafunc.fixturenames:
         files = get_micro_jac_files()
@@ -178,6 +183,6 @@ def pytest_generate_tests(metafunc):
         )
 
 
-def test_micro_suite(micro_jac_file):
+def test_micro_suite(micro_jac_file: str) -> None:
     """Test micro jac file with formatter."""
     micro_suite_test(micro_jac_file)

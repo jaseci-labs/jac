@@ -6,11 +6,16 @@ import asyncio
 import os
 import tempfile
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from jaclang.langserve.engine import JacLangServer
 
 from lsprotocol.types import (
     DidChangeTextDocumentParams,
     DidOpenTextDocumentParams,
     DidSaveTextDocumentParams,
+    SemanticTokens,
     TextDocumentItem,
     VersionedTextDocumentIdentifier,
 )
@@ -21,12 +26,11 @@ from jaclang.vendor.pygls.workspace import Workspace
 
 def create_temp_jac_file(initial_content: str = "") -> str:
     """Create a temporary Jac file with optional initial content and return its path."""
-    temp = tempfile.NamedTemporaryFile(
+    with tempfile.NamedTemporaryFile(
         delete=False, suffix=".jac", mode="w", encoding="utf-8"
-    )
-    temp.write(initial_content)
-    temp.close()
-    return temp.name
+    ) as temp:
+        temp.write(initial_content)
+        return temp.name
 
 
 def load_jac_template(template_file: str, code: str = "") -> str:
@@ -36,7 +40,7 @@ def load_jac_template(template_file: str, code: str = "") -> str:
     return jac_template.replace("#{{INJECT_CODE}}", code)
 
 
-def create_ls_with_workspace(file_path: str):
+def create_ls_with_workspace(file_path: str) -> tuple[str | None, JacLangServer]:
     """Create JacLangServer and workspace for a given file path, return (uri, ls)."""
     from jaclang.langserve.engine import JacLangServer
 
@@ -72,7 +76,7 @@ class JacTestFile:
         """Get absolute path to test template file."""
         return os.path.abspath(os.path.join(os.path.dirname(__file__), file_name))
 
-    def cleanup(self):
+    def cleanup(self) -> None:
         """Remove temporary test file."""
         if os.path.exists(self.path):
             os.remove(self.path)
@@ -86,7 +90,7 @@ class JacTestFile:
 class LanguageServerTestHelper:
     """Helper class for language server testing operations."""
 
-    def __init__(self, ls, test_file: JacTestFile):
+    def __init__(self, ls: JacLangServer, test_file: JacTestFile) -> None:
         self.ls = ls
         self.test_file = test_file
 
@@ -154,7 +158,7 @@ class LanguageServerTestHelper:
         """Get diagnostics for the current document."""
         return self.ls.diagnostics.get(self.test_file.uri, [])
 
-    def get_semantic_tokens(self):
+    def get_semantic_tokens(self) -> SemanticTokens:
         """Get semantic tokens for the current document."""
         return self.ls.get_semantic_tokens(self.test_file.uri)
 
@@ -177,8 +181,8 @@ class LanguageServerTestHelper:
         )
 
         if message_contains:
-            assert message_contains in diagnostics[0].message, (
-                f"Expected '{message_contains}' in diagnostic message"
+            assert any(message_contains in diag.message for diag in diagnostics), (
+                f"Expected '{message_contains}' in diagnostic messages: {[d.message for d in diagnostics]}"
             )
 
     def assert_semantic_tokens_count(self, expected_count: int) -> None:

@@ -84,7 +84,7 @@ class MultiHierarchyMemory(Memory[UUID, Anchor]):
         self.commit()
         self.mem.close()
 
-    def sync(self, anchors):
+    def sync(self, anchors: Iterable[Anchor]) -> None:
         if self.redis.redis_is_available():
             self.redis.commit(keys=anchors)
             self.mongo.commit(keys=anchors)
@@ -209,7 +209,7 @@ class MongoDB:  # Memory[UUID, Anchor]):
                 return anchor
         return None
 
-    def commit_bulk(self, anchors) -> None:
+    def commit_bulk(self, anchors: Iterable[Anchor]) -> None:
         """
         Faster bulk commit:
         - Deletes anchors in GC
@@ -379,7 +379,8 @@ class ShelfDB:
 
         if self._shelf is None:
             # dbm.dumb creates two files: .dat and .dir
-            raw_db = dbm.dumb.open(self.shelf_path, "c")
+            # Note: Can't use context manager - db must stay open for Shelf lifecycle
+            raw_db = dbm.dumb.open(self.shelf_path, "c")  # noqa: SIM115
             db_as_mapping = cast(MutableMapping[bytes, bytes], raw_db)
             self._shelf = shelve.Shelf(db_as_mapping, writeback=False)
         return self._shelf

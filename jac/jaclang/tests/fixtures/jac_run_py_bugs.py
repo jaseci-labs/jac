@@ -6,7 +6,7 @@ class SimpleClass:
         self.name = name
         self.age = age
 
-    def greet(self):
+    def greet(self) -> str:
         return f"Hello, my name is {self.name} and I am {self.age} years old."
 
 

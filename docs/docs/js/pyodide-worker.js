@@ -115,6 +115,7 @@ builtins.input = pyodide_input
         const output = await pyodide.runPythonAsync(`
 from jaclang.cli.cli import run, serve, dot
 import sys, json, os
+import tempfile
 
 # Set up streaming output
 streaming_stdout = StreamingOutput("stdout")
@@ -126,12 +127,13 @@ sys.stdout = streaming_stdout
 sys.stderr = streaming_stderr
 
 jac_code = ${jacCode}
-with open("/tmp/temp.jac", "w") as f:
-    f.write(jac_code)
+with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as temp_jac:
+    temp_jac.write(jac_code)
+    temp_jac_path = temp_jac.name
 
 try:
     if "${cliCommand}" == "serve":
-        serve("/tmp/temp.jac", faux=True)
+        serve(temp_jac_path)
 
     elif "${cliCommand}" == "dot":
         dot_path = "/home/pyodide/temp.dot"
@@ -142,7 +144,7 @@ try:
             except Exception as e:
                 print(f"Warning: Could not remove old DOT file: {e}", file=sys.stderr)
 
-        dot("/tmp/temp.jac")
+        dot(temp_jac_path, saveto=dot_path)
 
         if os.path.exists(dot_path):
             with open(dot_path, "r") as f:
@@ -155,7 +157,8 @@ try:
             print("Error: DOT file not found after generation.", file=sys.stderr)
 
     else:
-        run("/tmp/temp.jac")
+        run(temp_jac_path)
+
 except SystemExit:
     # The Jac compiler may call SystemExit on fatal errors (e.g., syntax errors).
     # Detailed error reports are already emitted to stderr by the parser,
@@ -163,6 +166,11 @@ except SystemExit:
     pass
 except Exception as e:
     print(f"Error: {e}", file=sys.stderr)
+finally:
+    try:
+        os.remove(temp_jac_path)
+    except Exception as e:
+        print(f"Warning: Could not remove temporary file: {e}", file=sys.stderr)
 
 # Restore original streams
 sys.stdout = original_stdout

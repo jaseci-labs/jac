@@ -5,6 +5,14 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.2.4 (Unreleased)
 
+- **JSON-Based Configuration System**: Introduced a flexible JSON-based configuration system that allows developers to customize Vite build settings, add plugins, and override build options through a simple `config.json` file in the project root. The system automatically generates `vite.config.js` in `.jac-client.configs/` directory, keeping the project root clean while preserving all essential defaults. Supports custom plugins (e.g., Tailwind CSS), build options, server configuration, and resolve options. [Documentation](https://docs.jaseci.org/jac-client/advance/custom-config/)
+
+- **CLI Command for Config Generation**: Added `jac generate_client_config` command to create a default `config.json` file with the proper structure, making it easy for developers to start customizing their build configuration. The command prevents accidental overwrites of existing config files.
+
+- **Centralized Babel Configuration**: Moved Babel configuration from separate `.babelrc` files into `package.json`, centralizing project configuration and reducing file clutter in the project root.
+
+- **TypeScript Support**: Added comprehensive TypeScript support for Jac client projects, enabling integration of TypeScript/TSX components alongside Jac code. TypeScript files (`.ts`, `.tsx`) are now automatically copied during the build process and properly handled by Vite bundling. The `jac create_jac_app` CLI now includes an interactive prompt to set up TypeScript support during project creation, automatically configuring `tsconfig.json`, `vite.config.js`, and `package.json` with necessary TypeScript dependencies. [Documentation](https://docs.jaseci.org/jac-client/working-with-ts/)
+
 ## jac-client 0.2.3 (Latest Release)
 
 - **Nested Folder Structure Preservation**: Implemented folder structure preservation during compilation, similar to TypeScript transpilation. Files in nested directories now maintain their relative paths in the compiled output, enabling proper relative imports across multiple directory levels and preventing file name conflicts. This allows developers to organize code in nested folders just like in modern JavaScript/TypeScript projects.

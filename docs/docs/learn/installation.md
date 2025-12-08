@@ -62,7 +62,7 @@ For the best development experience, install the Jac VS Code extension:
 
 **For Cursor users:**
 
-1. Go to the [latest Jaseci release page](https://github.com/Jaseci-Labs/jaseci/releases/latest)
+1. Go to the [latest Jaseci release page](https://github.com/Jaseci-Labs/jac-vscode/releases/latest)
 2. Download the latest `jaclang-extension-*.vsix` file from the release assets
 3. Open Cursor
 4. Press `Ctrl+Shift+P` (or `Cmd+Shift+P` on Mac)

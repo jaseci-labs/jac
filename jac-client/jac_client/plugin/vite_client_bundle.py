@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import contextlib
-import hashlib
 import shutil
-import subprocess
+from collections.abc import Callable
 from pathlib import Path
 from types import ModuleType
-from typing import TYPE_CHECKING, Any
+from typing import cast
 
 from jaclang.runtimelib.client_bundle import (
     ClientBundle,
@@ -16,8 +15,7 @@ from jaclang.runtimelib.client_bundle import (
     ClientBundleError,
 )
 
-if TYPE_CHECKING:
-    from jaclang.compiler.codeinfo import ClientManifest
+from .src import ViteCompiler
 
 
 class ViteClientBundleBuilder(ClientBundleBuilder):
@@ -42,188 +40,29 @@ class ViteClientBundleBuilder(ClientBundleBuilder):
         self.vite_output_dir = vite_output_dir
         self.vite_package_json = vite_package_json
         self.vite_minify = vite_minify
+        self._compiler: ViteCompiler | None = None
 
-    def _process_vite_imports(
-        self, manifest: ClientManifest | None, module_path: Path
-    ) -> list[Path | None]:
-        """Process client imports for Vite bundling.
-
-        Only mark modules as bundled when we actually inline their code (.jac files we compile
-        and local .js files we embed). Bare package specifiers (e.g., "antd") are left as real
-        ES imports so Vite can resolve and bundle them.
-        """
-        imported_js_modules: list[Path | None] = []
-        if manifest and manifest.imports:
-            for _, import_path in manifest.imports.items():
-                import_path_obj = Path(import_path)
-
-                if import_path_obj.suffix == ".js":
-                    # Inline local JS files and mark as bundled
-                    try:
-                        imported_js_modules.append(import_path_obj)
-                    except FileNotFoundError:
-                        imported_js_modules.append(None)
-
-                elif import_path_obj.suffix == ".jac":
-                    # Compile .jac imports and include transitive .jac imports
-                    try:
-                        imported_js_modules.append(import_path_obj)
-                    except ClientBundleError:
-                        imported_js_modules.append(None)
-
-                else:
-                    # Non .jac/.js entries (likely bare specifiers) should be handled by Vite.
-                    # Do not inline or mark as bundled so their import lines are preserved.
-                    pass
-
-        return imported_js_modules
-
-    def _compile_dependencies_recursively(
-        self,
-        module_path: Path,
-        visited: set[Path] | None = None,
-        collected_exports: set[str] | None = None,
-        collected_globals: dict[str, Any] | None = None,
-        source_root: Path | None = None,
-    ) -> None:
-        """Recursively compile/copy .jac/.js imports to temp, skipping bundling.
-
-        Only prepares dependency JS artifacts for Vite by writing compiled JS (.jac)
-        or copying local JS (.js) into the temp directory. Bare specifiers are left
-        untouched for Vite to resolve.
-
-        Args:
-            module_path: Path to the module being compiled
-            visited: Set of already visited paths to avoid cycles
-            collected_exports: Set to accumulate exported symbols
-            collected_globals: Dict to accumulate global values
-            source_root: Root directory of the source files (for preserving folder structure)
-        """
-        if visited is None:
-            visited = set()
-        if collected_exports is None:
-            collected_exports = set()
-        if collected_globals is None:
-            collected_globals = {}
-
-        module_path = module_path.resolve()
-        if module_path in visited:
-            return
-        visited.add(module_path)
-
-        # Set source_root on first call (root module's parent directory)
-        if source_root is None:
-            source_root = module_path.parent.resolve()
-
-        manifest = None
-
-        # Compile current module to JS and append registration
-        module_js, mod = self._compile_to_js(module_path)
-        manifest = mod.gen.client_manifest if mod else None
-
-        # Extract exports from manifest
-        exports_list = self._extract_client_exports(manifest)
-        collected_exports.update(exports_list)
-
-        # Build globals map using manifest.globals_values only for non-root
-        non_root_globals: dict[str, Any] = {}
-        if manifest:
-            for name in manifest.globals:
-                non_root_globals[name] = manifest.globals_values.get(name)
-        collected_globals.update(non_root_globals)
-        export_block = (
-            f"export {{ {', '.join(exports_list)} }};\n" if exports_list else ""
-        )
-
-        # inport jacJsx from client_runtime_utils.jac
-        jac_jsx_path = 'import {__jacJsx, __jacSpawn} from "@jac-client/utils";'
-
-        combined_js = f"{jac_jsx_path}\n{module_js}\n{export_block}"
-        if self.vite_package_json is not None:
-            # Preserve folder structure: calculate relative path from source_root
-            try:
-                relative_path = module_path.relative_to(source_root)
-                # Change extension from .jac to .js
-                output_path = (
-                    self.vite_package_json.parent
-                    / "compiled"
-                    / relative_path.with_suffix(".js")
+    def _get_compiler(self) -> ViteCompiler:
+        """Get or create the Vite compiler instance."""
+        if self._compiler is None:
+            if not self.vite_package_json or not self.vite_package_json.exists():
+                raise ClientBundleError(
+                    "Vite package.json not found. Set vite_package_json when using ViteClientBundleBuilder"
                 )
-            except ValueError:
-                # If file is outside source_root, fall back to just filename
-                output_path = (
-                    self.vite_package_json.parent
-                    / "compiled"
-                    / f"{module_path.stem}.js"
-                )
-
-            # Ensure parent directories exist
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            output_path.write_text(combined_js, encoding="utf-8")
-
-        if not manifest or not manifest.imports:
-            return
-
-        for _name, import_path in manifest.imports.items():
-            path_obj = Path(import_path).resolve()
-            # Avoid re-processing
-            if path_obj in visited:
-                continue
-            if path_obj.suffix == ".jac":
-                # Recurse into transitive deps
-                self._compile_dependencies_recursively(
-                    path_obj,
-                    visited,
-                    collected_exports=collected_exports,
-                    collected_globals=collected_globals,
-                    source_root=source_root,
-                )
-            elif path_obj.suffix == ".js":
-                try:
-                    js_code = path_obj.read_text(encoding="utf-8")
-                    if self.vite_package_json is not None:
-                        # Preserve folder structure for .js files too
-                        try:
-                            relative_path = path_obj.relative_to(source_root)
-                            output_path = (
-                                self.vite_package_json.parent
-                                / "compiled"
-                                / relative_path
-                            )
-                        except ValueError:
-                            # If file is outside source_root, fall back to just filename
-                            output_path = (
-                                self.vite_package_json.parent
-                                / "compiled"
-                                / path_obj.name
-                            )
-
-                        # Ensure parent directories exist
-                        output_path.parent.mkdir(parents=True, exist_ok=True)
-                        output_path.write_text(js_code, encoding="utf-8")
-                except FileNotFoundError:
-                    pass
-            else:
-                # Bare specifiers or other assets handled by Vite
-                if self.vite_package_json is not None and path_obj.is_file():
-                    # Preserve folder structure for other assets too
-                    try:
-                        relative_path = path_obj.relative_to(source_root)
-                        output_path = (
-                            self.vite_package_json.parent / "compiled" / relative_path
-                        )
-                    except ValueError:
-                        # If file is outside source_root, fall back to just filename
-                        output_path = (
-                            self.vite_package_json.parent / "compiled" / path_obj.name
-                        )
-
-                    # Ensure parent directories exist
-                    output_path.parent.mkdir(parents=True, exist_ok=True)
-                    output_path.write_text(
-                        path_obj.read_text(encoding="utf-8"), encoding="utf-8"
-                    )
-                continue
+            # Type cast to match expected signature (actual returns Module from jaclang, not ModuleType)
+            compile_to_js_func: Callable[[Path], tuple[str, ModuleType | None]] = cast(
+                Callable[[Path], tuple[str, ModuleType | None]], self._compile_to_js
+            )
+            self._compiler = ViteCompiler(
+                vite_package_json=self.vite_package_json,
+                vite_output_dir=self.vite_output_dir,
+                vite_minify=self.vite_minify,
+                runtime_path=self.runtime_path,
+                compile_to_js_func=compile_to_js_func,
+                extract_exports_func=self._extract_client_exports,
+                extract_globals_func=self._extract_client_globals,
+            )
+        return self._compiler
 
     def _compile_bundle(
         self,
@@ -231,274 +70,20 @@ class ViteClientBundleBuilder(ClientBundleBuilder):
         module_path: Path,
     ) -> ClientBundle:
         """Override to use Vite bundling instead of simple concatenation."""
+        compiler = self._get_compiler()
 
-        # Check if package.json exists before proceeding
-        if not self.vite_package_json or not self.vite_package_json.exists():
-            raise ClientBundleError(
-                "Vite package.json not found. Set vite_package_json when using ViteClientBundleBuilder"
-            )
-
-        # client_runtime for jac client utils
-        runtime_utils_path = self.runtime_path.parent / "client_runtime.jac"
-        runtimeutils_js, mod = self._compile_to_js(runtime_utils_path)
-        runtimeutils_manifest = mod.gen.client_manifest if mod else None
-        runtimeutils_exports_list = self._extract_client_exports(runtimeutils_manifest)
-
-        # Add React Router exports that are variable declarations (not functions)
-        # These need to be manually added since they're 'let' declarations, not 'def' functions
-        router_exports = [
-            "Router",
-            "Routes",
-            "Route",
-            "Link",
-            "Navigate",
-            "useNavigate",
-            "useLocation",
-            "useParams",
-        ]
-
-        # Combine manifest exports with router exports
-        all_exports = sorted(set(runtimeutils_exports_list + router_exports))
-
-        export_block = (
-            f"export {{ {', '.join(all_exports)} }};\n" if all_exports else ""
-        )
-
-        combined_runtime_utils_js = f"{runtimeutils_js}\n{export_block}"
-        # Ensure compiled directory exists before writing
-        project_dir = self.vite_package_json.parent
-        compiled_dir = project_dir / "compiled"
-        compiled_dir.mkdir(parents=True, exist_ok=True)
-        (compiled_dir / "client_runtime.js").write_text(
-            combined_runtime_utils_js, encoding="utf-8"
-        )
-
-        # Get manifest from JacProgram first to check for imports
-        # Collect exports/globals across root and recursive deps
-        module_js, mod = self._compile_to_js(module_path)
-        module_manifest = mod.gen.client_manifest if mod else None
-        collected_exports: set[str] = set(self._extract_client_exports(module_manifest))
-
-        client_globals_map = self._extract_client_globals(module_manifest, module)
-        collected_globals: dict[str, Any] = dict(client_globals_map)
-        # Recursively prepare dependencies and accumulate symbols
-        self._compile_dependencies_recursively(
-            module_path,
-            collected_exports=collected_exports,
-            collected_globals=collected_globals,
-        )
-
-        # Copy assets from root assets/ folder to compiled/assets/ for @jac-client/assets alias
-        project_dir = self.vite_package_json.parent
-        root_assets_dir = project_dir / "assets"
-        compiled_assets_dir = project_dir / "compiled" / "assets"
-        if root_assets_dir.exists() and root_assets_dir.is_dir():
-            self._copy_asset_files(root_assets_dir, compiled_assets_dir)
-
-        client_exports = sorted(collected_exports)
-        client_globals_map = collected_globals
-
-        entry_file = self.vite_package_json.parent / "compiled" / "main.js"
-
-        entry_content = """import React from "react";
-import { createRoot } from "react-dom/client";
-import { app as App } from "./app.js";
-
-const root = createRoot(document.getElementById("root"));
-root.render(<App />);
-"""
-        entry_file.write_text(entry_content, encoding="utf-8")
-
-        bundle_code, bundle_hash = self._bundle_with_vite(
-            module.__name__, client_exports
+        # Compile and bundle using the compiler
+        bundle_code, bundle_hash, client_exports, client_globals = (
+            compiler.compile_and_bundle(module, module_path)
         )
 
         return ClientBundle(
             module_name=module.__name__,
             code=bundle_code,
             client_functions=client_exports,
-            client_globals=list(client_globals_map.keys()),
+            client_globals=client_globals,
             hash=bundle_hash,
         )
-
-    def _bundle_with_vite(
-        self, module_name: str, client_functions: list[str]
-    ) -> tuple[str, str]:
-        """Bundle JavaScript code using Vite for optimization.
-
-        Args:
-            module_name: Name of the module being bundled
-            client_functions: List of client function names
-
-        Returns:
-            Tuple of (bundle_code, bundle_hash)
-
-        Raises:
-            ClientBundleError: If Vite bundling fails
-        """
-        if not self.vite_package_json or not self.vite_package_json.exists():
-            raise ClientBundleError(
-                "Vite package.json not found. Set vite_package_json when using ViteClientBundleBuilder"
-            )
-
-        # Create temp directory for Vite build
-        project_dir = self.vite_package_json.parent
-        compiled_dir = project_dir / "compiled"
-        compiled_dir.mkdir(exist_ok=True)
-
-        output_dir = self.vite_output_dir or compiled_dir / "dist" / "assets"
-        output_dir.mkdir(parents=True, exist_ok=True)
-
-        try:
-            # Run Vite build from project directory
-            # need to install packages you told in package.json inside here
-            # first compile the code
-            command = ["npm", "run", "compile"]
-            subprocess.run(
-                command, cwd=project_dir, check=True, capture_output=True, text=True
-            )
-            # Copy CSS and other asset files from compiled/ to build/ after Babel compilation
-            # Babel only transpiles JS, so we need to manually copy assets
-            self._copy_asset_files(project_dir / "compiled", project_dir / "build")
-            # then build the code
-            command = ["npm", "run", "build"]
-            subprocess.run(
-                command, cwd=project_dir, check=True, capture_output=True, text=True
-            )
-        except subprocess.CalledProcessError as e:
-            raise ClientBundleError(f"Vite build failed: {e.stderr}") from e
-        except FileNotFoundError:
-            raise ClientBundleError(
-                "npx or vite command not found. Ensure Node.js and npm are installed."
-            ) from None
-        # Find the generated bundle file
-        bundle_file = self._find_vite_bundle(output_dir)
-        if not bundle_file:
-            raise ClientBundleError("Vite build completed but no bundle file found")
-
-        # Read the bundled code
-        bundle_code = bundle_file.read_text(encoding="utf-8")
-        bundle_hash = hashlib.sha256(bundle_code.encode("utf-8")).hexdigest()
-
-        return bundle_code, bundle_hash
-
-    def _generate_vite_config(self, entry_file: Path, output_dir: Path) -> str:
-        """Generate Vite configuration for bundling."""
-        entry_name = entry_file.as_posix()
-        output_dir_name = output_dir.as_posix()
-        minify_setting = "true" if self.vite_minify else "false"
-
-        return f"""
-            import {{ defineConfig }} from 'vite';
-            import {{ resolve }} from 'path';
-
-            export default defineConfig({{
-            build: {{
-                outDir: '{output_dir_name}',
-                emptyOutDir: true,
-                rollupOptions: {{
-                input: {{
-                    main: resolve(__dirname, '{entry_name}'),
-                }},
-                output: {{
-                    entryFileNames: 'client.[hash].js',
-                    format: 'iife',
-                    name: 'JacClient',
-                }},
-                }},
-                minify: {minify_setting}, // Configurable minification
-            }},
-            resolve: {{
-            }}
-            }});
-        """
-
-    def _copy_asset_files(self, src_dir: Path, build_dir: Path) -> None:
-        """Copy CSS and other asset files from compiled/ to build/ directory recursively.
-
-        Babel only transpiles JavaScript files, so CSS and other assets need to be
-        manually copied to the build directory for Vite to resolve them.
-        This method recursively copies assets from subdirectories (e.g., compiled/assets/)
-        while preserving the directory structure.
-        """
-        if not src_dir.exists():
-            return
-
-        # Ensure build directory exists
-        build_dir.mkdir(parents=True, exist_ok=True)
-
-        # Asset file extensions to copy
-        asset_extensions = {
-            ".css",
-            ".scss",
-            ".sass",
-            ".less",
-            ".svg",
-            ".png",
-            ".jpg",
-            ".jpeg",
-            ".gif",
-            ".webp",
-            ".ico",
-            ".woff",
-            ".woff2",
-            ".ttf",
-            ".eot",
-            ".otf",
-            ".mp4",
-            ".webm",
-            ".mp3",
-            ".wav",
-        }
-
-        def copy_recursive(
-            source: Path, destination: Path, base: Path | None = None
-        ) -> None:
-            """Recursively copy asset files from source to destination.
-
-            Args:
-                source: Source directory to copy from
-                destination: Destination directory to copy to
-                base: Base directory for calculating relative paths (defaults to source)
-            """
-            if not source.exists():
-                return
-
-            if base is None:
-                base = source
-
-            for item in source.iterdir():
-                if item.is_file() and item.suffix.lower() in asset_extensions:
-                    # Preserve relative path structure from base
-                    relative_path = item.relative_to(base)
-                    dest_file = destination / relative_path
-                    dest_file.parent.mkdir(parents=True, exist_ok=True)
-                    with contextlib.suppress(OSError, shutil.Error):
-                        shutil.copy2(item, dest_file)
-                elif item.is_dir():
-                    # Recursively process subdirectories
-                    copy_recursive(item, destination, base)
-
-        # Copy files from src_dir root and recursively from subdirectories
-        copy_recursive(src_dir, build_dir)
-
-    def _find_vite_bundle(self, output_dir: Path) -> Path | None:
-        """Find the generated Vite bundle file."""
-        for file in output_dir.glob("client.*.js"):
-            return file
-        return None
-
-    def _find_vite_css(self, output_dir: Path) -> Path | None:
-        """Find the generated Vite CSS file."""
-        # Vite typically outputs CSS as main.css or with a hash
-        # Try main.css first (most common), then any .css file
-        css_file = output_dir / "main.css"
-        if css_file.exists():
-            return css_file
-        # Fallback: find any CSS file
-        for file in output_dir.glob("*.css"):
-            return file
-        return None
 
     def cleanup_temp_dir(self) -> None:
         """Clean up the compiled directory and its contents."""

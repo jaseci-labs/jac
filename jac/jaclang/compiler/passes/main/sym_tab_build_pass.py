@@ -104,7 +104,7 @@ class SymTabBuildPass(UniPass):
         else:
             try:
                 module = self.prog.compile(
-                    import_all_module_path, no_cgen=False, type_check=False
+                    import_all_module_path, no_cgen=True, type_check=False
                 )
             except Exception:
                 return

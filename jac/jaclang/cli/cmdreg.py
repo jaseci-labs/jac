@@ -11,8 +11,6 @@ from collections.abc import Callable
 from dataclasses import fields as dataclass_fields
 from enum import IntEnum
 
-from jaclang.settings import Settings as JacSettings
-
 
 class CommandPriority(IntEnum):
     """Priority levels for command registration.
@@ -117,6 +115,7 @@ class CommandRegistry:
         self.registry = {}
         self.pending_commands = {}
         self._finalized = False
+        self._settings_added = False
         self.parser = argparse.ArgumentParser(
             prog="jac",
             description="Jac Programming Language CLI - A tool for working with Jac programs",
@@ -137,7 +136,14 @@ class CommandRegistry:
         )
         self.args = argparse.Namespace()
 
-        # Global settings overrides
+    def _add_settings_arguments(self) -> None:
+        """Add global settings arguments (lazily loaded)."""
+        if self._settings_added:
+            return
+        self._settings_added = True
+
+        from jaclang.settings import Settings as JacSettings
+
         settings_group = self.parser.add_argument_group(
             "settings",
             "Override Jac settings (from config/env). Provide only flags you want to change.",
@@ -146,7 +152,6 @@ class CommandRegistry:
             name = fld.name
             opt = f"--{name.replace('_', '-')}"
             if fld.type is bool:
-                # Tri-state: default None so unspecified won't override
                 settings_group.add_argument(
                     opt,
                     dest=name,
@@ -382,6 +387,9 @@ class CommandRegistry:
         """
         if self._finalized:
             return
+
+        # Add settings arguments lazily
+        self._add_settings_arguments()
 
         # Resolve all pending commands
         for name in list(self.pending_commands.keys()):

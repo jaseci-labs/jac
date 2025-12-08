@@ -32,6 +32,7 @@ jobs:
           pip install -e jac
           pip install -e jac-scale
           pip install pytest
+          pip install -e jac-client
 
       # - name: Install Docker (needed for Kind)
       #   uses: docker/setup-docker@v2
@@ -51,7 +52,7 @@ jobs:
 
       - name: Run K8 tests
         run: |
-          pytest -v jac-scale/jac_scale/kubernetes/tests/test_deploy_k8.py
+          pytest -v jac-scale/jac_scale/tests/test_deploy_k8.py
 
       - name: Delete Kind cluster
         if: always()

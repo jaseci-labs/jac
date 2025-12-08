@@ -2,13 +2,13 @@ import mimetypes
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import jwt
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import HTMLResponse, Response
 
-from jac_scale.jserver.jfastApi import JFastApiServer
+from jac_scale.jserver.jfast_api import JFastApiServer
 from jac_scale.jserver.jserver import APIParameter, HTTPMethod, JEndPoint, ParameterType
 from jaclang.runtimelib.runtime import JacRuntime as Jac
 from jaclang.runtimelib.server import JacAPIServer as JServer
@@ -31,7 +31,7 @@ class JacAPIServer(JServer):
         return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
     @staticmethod
-    def validate_jwt_token(token: str) -> Optional[str]:
+    def validate_jwt_token(token: str) -> str | None:
         try:
             decoded = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
             return decoded["username"]
@@ -57,20 +57,9 @@ class JacAPIServer(JServer):
             allow_headers=["*"],  # Allows all headers
         )
 
-    def login(self, username: str, password: str) -> JSONResponse:
-        if not username or not password:
-            return JSONResponse(
-                status_code=400, content={"error": "Username and password required"}
-            )
-
-        result = self.user_manager.authenticate(username, password)
-        if not result:
-            return JSONResponse(
-                status_code=401, content={"error": "Invalid credentials"}
-            )
-
-        result["token"] = self.create_jwt_token(username)
-        return JSONResponse(status_code=200, content=dict[str, JsonValue](result))
+    def login(self, email: str, password: str) -> tuple[int, JsonValue]:
+        res = self.auth_handler.login(email, password)
+        return res.status, res.body
 
     def register_login_endpoint(self) -> None:
         self.server_impl.add_endpoint(
@@ -80,11 +69,11 @@ class JacAPIServer(JServer):
                 callback=self.login,
                 parameters=[
                     APIParameter(
-                        name="username",
+                        name="email",
                         data_type="string",
                         required=True,
                         default=None,
-                        description="Username for login",
+                        description="Email for login",
                         type=ParameterType.BODY,
                     ),
                     APIParameter(
@@ -103,23 +92,19 @@ class JacAPIServer(JServer):
             )
         )
 
-    def create_user(self, username: str, password: str) -> JSONResponse:
-        res = self.user_manager.create_user(username, password)
-        if "error" in res:
-            return JSONResponse(content=res, status_code=400)
-
-        res["token"] = self.create_jwt_token(username)
-        return JSONResponse(content=res, status_code=201)
+    def create_user(self, email: str, password: str) -> tuple[int, JsonValue]:
+        res = self.auth_handler.create_user(email, password)
+        return res.status, res.body
 
     def register_create_user_endpoint(self) -> None:
         self.server_impl.add_endpoint(
             JEndPoint(
                 method=HTTPMethod.POST,
-                path="/user/create",
+                path="/user/register",
                 callback=self.create_user,
                 parameters=[
                     APIParameter(
-                        name="username",
+                        name="email",
                         data_type="string",
                         required=True,
                         default=None,
@@ -148,14 +133,14 @@ class JacAPIServer(JServer):
         requires_auth = self.introspector.is_auth_required_for_walker(walker_name)
 
         def callback(
-            node: Optional[str] = None, **kwargs: JsonValue
+            node: str | None = None, **kwargs: JsonValue
         ) -> dict[str, JsonValue]:
-            username: Optional[str] = None
+            username: str | None = None
 
             if requires_auth:
                 authorization = kwargs.pop("Authorization", None)
 
-                token: Optional[str] = None
+                token: str | None = None
                 if (
                     authorization
                     and isinstance(authorization, str)
@@ -258,13 +243,13 @@ class JacAPIServer(JServer):
         requires_auth = self.introspector.is_auth_required_for_function(func_name)
 
         def callback(**kwargs: JsonValue) -> dict[str, JsonValue]:
-            username: Optional[str] = None
+            username: str | None = None
 
             if requires_auth:
                 # Extract and validate authorization header
                 authorization = kwargs.pop("Authorization", None)
 
-                token: Optional[str] = None
+                token: str | None = None
                 if (
                     authorization
                     and isinstance(authorization, str)
@@ -580,7 +565,7 @@ class JacAPIServer(JServer):
         """Configure OpenAPI security scheme to only apply to walker endpoints that require auth."""
         from fastapi.openapi.utils import get_openapi
 
-        def custom_openapi():
+        def custom_openapi() -> dict[str, Any]:
             if self.server_impl.app.openapi_schema:
                 return self.server_impl.app.openapi_schema
 

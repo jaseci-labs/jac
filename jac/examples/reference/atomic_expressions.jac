@@ -39,7 +39,7 @@ with entry {
     st = {1,2,3};
 
     # Multistring
-    multi = "Hello ""World";
+    multi = "Hello " "World";
 
     # F-string
     name = "Alice";

@@ -25,7 +25,8 @@ def assert_statement_met_expectation(statement: str, expectation: str,) -> bool 
 test assert_statement_met_expectation_working {
     is_true = assert_statement_met_expectation(
         "La météo à Paris est de 22°C et venteux.",
-        "The weather in Paris *MUST* match 22 degrees Celsius and windy.""And the statement *SHOULD* be in French.",
+        "The weather in Paris *MUST* match 22 degrees Celsius and windy."
+        "And the statement *SHOULD* be in French.",
     );
     assert is_true;
 }
@@ -209,7 +210,8 @@ test tool_functionality {
     statement = answer_user("Tell me the weather in paris in French.");
     assert assert_statement_met_expectation(
         statement,
-        "The weather in Paris *MUST* match 22 degrees Celsius and windy.""And the statement *SHOULD* be in French.",
+        "The weather in Paris *MUST* match 22 degrees Celsius and windy."
+        "And the statement *SHOULD* be in French.",
     );
 }
 

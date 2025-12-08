@@ -121,11 +121,12 @@ def cleanup_k8_resources() -> None:
     # Delete all PVCs for this app
     pvcs = core_v1.list_namespaced_persistent_volume_claim(namespace)
     for pvc in pvcs.items:
-        if pvc.metadata.name.startswith(f"{app_name}-mongo-data"):
+        if pvc.metadata.name.startswith(app_name):
             try:
                 core_v1.delete_namespaced_persistent_volume_claim(
                     pvc.metadata.name, namespace
                 )
+                print(f"Deleted PVC: {pvc.metadata.name}")
             except client.exceptions.ApiException as e:
                 print(f"Error deleting PVC '{pvc.metadata.name}': {e}")
 

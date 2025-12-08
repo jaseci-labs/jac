@@ -177,8 +177,10 @@ class ClassType(TypeBase):
             *,
             type_params: list[TypeVarType] | None = None,
             base_classes: list[TypeBase] | None = None,
+            # TODO: These should be bitmask flags.
             is_builtin_class: bool = False,
             is_data_class: bool = False,
+            is_root_class: bool = False,
         ) -> None:
             """Initialize obviously."""
             self.class_name = class_name
@@ -199,6 +201,7 @@ class ClassType(TypeBase):
             #
             self.is_builtin_class = is_builtin_class
             self.is_data_class = is_data_class
+            self.is_root_class = is_root_class
 
     class ClassDetailsPrivate:
         """Holds the private details of class type.
@@ -291,6 +294,8 @@ class ClassType(TypeBase):
         import jaclang.compiler.unitree as uni
         from jaclang.compiler.constant import SymbolType
 
+        if self.shared.is_root_class:
+            return True
         arch = self.shared.symbol_table
         assert isinstance(arch, uni.Archetype)
         return arch.sym_category == SymbolType.NODE_ARCH
