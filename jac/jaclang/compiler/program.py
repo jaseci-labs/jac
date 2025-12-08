@@ -68,6 +68,26 @@ def get_py_code_gen() -> list[type[Transform[uni.Module, uni.Module]]]:
     return [EsastGenPass, PyastGenPass, PyJacAstLinkPass, PyBytecodeGenPass]
 
 
+def get_minimal_ir_gen_sched() -> list[type[Transform[uni.Module, uni.Module]]]:
+    """Return minimal IR generation schedule (no CFG for faster bootstrap).
+
+    This schedule is used for bootstrap-critical modules that need basic
+    semantic analysis but don't need full control flow analysis.
+    """
+    from jaclang.compiler.passes.main import DeclImplMatchPass, SemanticAnalysisPass
+
+    return [SymTabBuildPass, DeclImplMatchPass, SemanticAnalysisPass]
+
+
+def get_minimal_py_code_gen() -> list[type[Transform[uni.Module, uni.Module]]]:
+    """Return minimal Python code generation schedule (bytecode only, no JS/type analysis).
+
+    This schedule is used for bootstrap-critical modules (like runtimelib) that must
+    be compiled without triggering imports that could cause circular dependencies.
+    """
+    return [PyastGenPass, PyBytecodeGenPass]
+
+
 def get_format_sched() -> list[type[Transform[uni.Module, uni.Module]]]:
     """Return format schedule with lazy imports to allow doc_ir.jac conversion."""
     from jaclang.compiler.passes.tool.comment_injection_pass import (
@@ -81,13 +101,6 @@ def get_format_sched() -> list[type[Transform[uni.Module, uni.Module]]]:
         CommentInjectionPass,
         JacFormatPass,
     ]
-
-
-# Backward compatibility aliases (deprecated - will be removed)
-symtab_ir_sched: list[type[Transform[uni.Module, uni.Module]]] = []
-ir_gen_sched: list[type[Transform[uni.Module, uni.Module]]] = []
-type_check_sched: list[type[Transform[uni.Module, uni.Module]]] = []
-py_code_gen: list[type[Transform[uni.Module, uni.Module]]] = []
 
 
 class JacProgram:
@@ -112,12 +125,20 @@ class JacProgram:
             self.type_evaluator = TypeEvaluator(program=self)
         return self.type_evaluator
 
-    def get_bytecode(self, full_target: str) -> types.CodeType | None:
-        """Get the bytecode for a specific module."""
+    def get_bytecode(
+        self, full_target: str, minimal: bool = False
+    ) -> types.CodeType | None:
+        """Get the bytecode for a specific module.
+
+        Args:
+            full_target: The full path to the module file.
+            minimal: If True, use minimal compilation (no JS/type analysis).
+                     This avoids circular imports for bootstrap-critical modules.
+        """
         if full_target in self.mod.hub and self.mod.hub[full_target].gen.py_bytecode:
             codeobj = self.mod.hub[full_target].gen.py_bytecode
             return marshal.loads(codeobj) if isinstance(codeobj, bytes) else None
-        result = self.compile(file_path=full_target)
+        result = self.compile(file_path=full_target, minimal=minimal)
         return marshal.loads(result.gen.py_bytecode) if result.gen.py_bytecode else None
 
     def parse_str(
@@ -171,9 +192,21 @@ class JacProgram:
         no_cgen: bool = False,
         type_check: bool = False,
         symtab_ir_only: bool = False,
+        minimal: bool = False,
         cancel_token: Event | None = None,
     ) -> uni.Module:
-        """Convert a Jac file to an AST."""
+        """Convert a Jac file to an AST.
+
+        Args:
+            file_path: Path to the Jac file to compile.
+            use_str: Optional source string to use instead of reading from file.
+            no_cgen: If True, skip code generation entirely.
+            type_check: If True, run type checking pass.
+            symtab_ir_only: If True, only build symbol table (skip semantic analysis).
+            minimal: If True, use minimal compilation mode (bytecode only, no JS).
+                     This avoids circular imports for bootstrap-critical modules.
+            cancel_token: Optional event to cancel compilation.
+        """
         keep_str = use_str or read_file_with_encoding(file_path)
         mod_targ = self.parse_str(keep_str, file_path, cancel_token=cancel_token)
         if symtab_ir_only:
@@ -181,17 +214,25 @@ class JacProgram:
             self.run_schedule(
                 mod=mod_targ, passes=get_symtab_ir_sched(), cancel_token=cancel_token
             )
+        elif minimal:
+            # Minimal IR generation (skip CFG for faster bootstrap)
+            self.run_schedule(
+                mod=mod_targ,
+                passes=get_minimal_ir_gen_sched(),
+                cancel_token=cancel_token,
+            )
         else:
+            # Full IR generation
             self.run_schedule(
                 mod=mod_targ, passes=get_ir_gen_sched(), cancel_token=cancel_token
             )
-        if type_check:
+        if type_check and not minimal:
             self.run_schedule(
                 mod=mod_targ, passes=get_type_check_sched(), cancel_token=cancel_token
             )
         # If the module has syntax errors, we skip code generation.
         if (not mod_targ.has_syntax_errors) and (not no_cgen):
-            codegen_sched = get_py_code_gen()
+            codegen_sched = get_minimal_py_code_gen() if minimal else get_py_code_gen()
             self.run_schedule(
                 mod=mod_targ, passes=codegen_sched, cancel_token=cancel_token
             )

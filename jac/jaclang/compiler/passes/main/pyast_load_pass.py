@@ -1827,6 +1827,19 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
         value = self.convert(node.value)
         if isinstance(value, uni.Expr) and isinstance(target, uni.Name):
             op = self.operator(Tok.WALRUS_EQ, ":=")
+            # Wrap conditional expressions in parentheses to preserve precedence
+            # In Jac, walrus has higher precedence than ternary, but Python's
+            # NamedExpr wraps the entire conditional. Adding parens ensures
+            # the correct interpretation when the Jac code is re-parsed.
+            if isinstance(value, uni.IfElseExpr):
+                value = uni.AtomUnit(
+                    value=value,
+                    kid=[
+                        self.operator(Tok.LPAREN, "("),
+                        value,
+                        self.operator(Tok.RPAREN, ")"),
+                    ],
+                )
             expr = uni.BinaryExpr(
                 left=target,
                 op=op,
@@ -1836,9 +1849,9 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
             return uni.AtomUnit(
                 value=expr,
                 kid=[
-                    self.operator(Tok.RPAREN, "("),
+                    self.operator(Tok.LPAREN, "("),
                     expr,
-                    self.operator(Tok.LPAREN, ")"),
+                    self.operator(Tok.RPAREN, ")"),
                 ],
             )
         else:

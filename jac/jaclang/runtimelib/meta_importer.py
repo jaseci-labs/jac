@@ -68,6 +68,17 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
 
     byllm_found: bool = False
 
+    # Modules that require minimal compilation to avoid circular imports.
+    # These are bootstrap-critical modules in runtimelib and compiler.
+    MINIMAL_COMPILE_MODULES: frozenset[str] = frozenset(
+        {
+            "jaclang.runtimelib.builtin",
+            "jaclang.runtimelib.utils",
+            "jaclang.runtimelib.server",
+            "jaclang.runtimelib.client_bundle",
+        }
+    )
+
     def find_spec(
         self,
         fullname: str,
@@ -181,8 +192,12 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         # Register module in JacRuntime's tracking
         Jac.load_module(module.__name__, module)
 
+        # Use minimal compilation for bootstrap-critical modules to avoid
+        # circular imports (these modules are needed by the compiler itself)
+        use_minimal = module.__name__ in self.MINIMAL_COMPILE_MODULES
+
         # Get and execute bytecode
-        codeobj = Jac.program.get_bytecode(full_target=file_path)
+        codeobj = Jac.program.get_bytecode(full_target=file_path, minimal=use_minimal)
         if not codeobj:
             if is_pkg:
                 # Empty package is OK - just register it
