@@ -46,7 +46,7 @@ cl import from '@jac-client/utils' { jacSpawn }
 
 cl {
     def TodoApp() -> any {
-        let [todos, setTodos] = useState([]);
+        [todos, setTodos] = useState([]);
 
         useEffect(lambda -> None {
             async def loadTodos() -> None {
@@ -273,7 +273,7 @@ cl import from '@jac-client/utils' {
 
 cl {
     def LoginPage() -> any {
-        let [error, setError] = useState("");
+        [error, setError] = useState("");
 
         async def handleLogin(e: any) -> None {
             e.preventDefault();
@@ -358,8 +358,8 @@ cl import from '@jac-client/utils' { jacIsLoggedIn, jacSpawn, navigate }
 
 cl {
     def ProtectedDashboard() -> any {
-        let [user, setUser] = useState(None);
-        let [loading, setLoading] = useState(True);
+        [user, setUser] = useState(None);
+        [loading, setLoading] = useState(True);
 
         useEffect(lambda -> None {
             if not jacIsLoggedIn() {
@@ -392,8 +392,8 @@ cl import from '@jac-client/utils' { jacSpawn }
 
 cl {
     def CreateTodoForm() -> any {
-        let [text, setText] = useState("");
-        let [loading, setLoading] = useState(False);
+        [text, setText] = useState("");
+        [loading, setLoading] = useState(False);
 
         async def handleSubmit(e: any) -> None {
             e.preventDefault();
@@ -607,7 +607,7 @@ cl import from react { useState, useEffect }
 
 cl {
     def Counter() -> any {
-        let [count, setCount] = useState(0);
+        [count, setCount] = useState(0);
 
         useEffect(lambda -> None {
             console.log("Count: ", count);

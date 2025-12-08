@@ -68,8 +68,8 @@ walker toggle_todo {
 cl {
     # Navigation
     def Navigation()  -> any {
-        let isLoggedIn = jacIsLoggedIn();
-        let navigate = useNavigate();
+        isLoggedIn = jacIsLoggedIn();
+        navigate = useNavigate();
 
         def handleLogout(e: any) -> None {
             e.preventDefault();
@@ -153,10 +153,10 @@ cl {
 
     # Login Page
     def LoginPage()  -> any {
-        let [username, setUsername] = useState("");
-        let [password, setPassword] = useState("");
-        let [error, setError] = useState("");
-        let navigate = useNavigate();
+        [username, setUsername] = useState("");
+        [password, setPassword] = useState("");
+        [error, setError] = useState("");
+        navigate = useNavigate();
 
         async def handleLogin(e: any) -> None {
             e.preventDefault();
@@ -181,7 +181,7 @@ cl {
             setPassword(e.target.value);
         }
 
-        let errorDisplay = None;
+        errorDisplay = None;
         if error {
             errorDisplay = <div
                 style={{"color": "#dc2626", "fontSize": "14px", "marginBottom": "10px"}}
@@ -279,10 +279,10 @@ cl {
 
     # Signup Page
     def SignupPage()  -> any {
-        let [username, setUsername] = useState("");
-        let [password, setPassword] = useState("");
-        let [error, setError] = useState("");
-        let navigate = useNavigate();
+        [username, setUsername] = useState("");
+        [password, setPassword] = useState("");
+        [error, setError] = useState("");
+        navigate = useNavigate();
 
         async def handleSignup(e: any) -> None {
             e.preventDefault();
@@ -307,7 +307,7 @@ cl {
             setPassword(e.target.value);
         }
 
-        let errorDisplay = None;
+        errorDisplay = None;
         if error {
             errorDisplay = <div
                 style={{"color": "#dc2626", "fontSize": "14px", "marginBottom": "10px"}}
@@ -410,9 +410,9 @@ cl {
             return <Navigate to="/login" />;
         }
 
-        let [todos, setTodos] = useState([]);
-        let [input, setInput] = useState("");
-        let [filter, setFilter] = useState("all");
+        [todos, setTodos] = useState([]);
+        [input, setInput] = useState("");
+        [filter, setFilter] = useState("all");
 
         # Load todos on mount
         useEffect(

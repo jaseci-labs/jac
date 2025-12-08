@@ -50,7 +50,7 @@ cl import from react { useState }
 
 cl {
     def Counter() -> any {
-        let [count, setCount] = useState(0);
+        [count, setCount] = useState(0);
 
         return <div>
             <h1>Count: {count}</h1>
@@ -77,9 +77,9 @@ cl import from react { useState }
 
 cl {
     def TodoApp() -> any {
-        let [todos, setTodos] = useState([]);
-        let [inputValue, setInputValue] = useState("");
-        let [filter, setFilter] = useState("all");
+        [todos, setTodos] = useState([]);
+        [inputValue, setInputValue] = useState("");
+        [filter, setFilter] = useState("all");
 
         return <div>Todo App</div>;
     }
@@ -97,7 +97,7 @@ cl import from react { useState, useEffect }
 
 cl {
     def MyComponent() -> any {
-        let [data, setData] = useState(None);
+        [data, setData] = useState(None);
 
         useEffect(lambda -> None {
             console.log("Component mounted!");
@@ -129,7 +129,7 @@ cl import from react { useState, useEffect }
 
 cl {
     def Counter() -> any {
-        let [count, setCount] = useState(0);
+        [count, setCount] = useState(0);
 
         useEffect(lambda -> None {
             console.log("Count changed to:", count);
@@ -186,8 +186,8 @@ cl import from '@jac-client/utils' { jacSpawn }
 
 cl {
     def TodoApp() -> any {
-        let [todos, setTodos] = useState([]);
-        let [loading, setLoading] = useState(True);
+        [todos, setTodos] = useState([]);
+        [loading, setLoading] = useState(True);
 
         useEffect(lambda -> None {
             async def loadTodos() -> None {
@@ -224,8 +224,8 @@ cl import from react { useState, useEffect }
 
 cl {
     def WindowResizeHandler() -> any {
-        let [width, setWidth] = useState(0);
-        let [height, setHeight] = useState(0);
+        [width, setWidth] = useState(0);
+        [height, setHeight] = useState(0);
 
         useEffect(lambda -> any {
             def handleResize() -> None {
@@ -262,8 +262,8 @@ cl import from '@jac-client/utils' { jacSpawn }
 
 cl {
     def ProfileView() -> any {
-        let [profile, setProfile] = useState(None);
-        let [loading, setLoading] = useState(True);
+        [profile, setProfile] = useState(None);
+        [loading, setLoading] = useState(True);
 
         useEffect(lambda -> None {
             async def loadUserProfile() -> None {
@@ -362,9 +362,9 @@ cl import from '@jac-client/utils' { jacSpawn }
 
 cl {
     def app() -> any {
-        let [todos, setTodos] = useState([]);
-        let [inputValue, setInputValue] = useState("");
-        let [filter, setFilter] = useState("all");
+        [todos, setTodos] = useState([]);
+        [inputValue, setInputValue] = useState("");
+        [filter, setFilter] = useState("all");
 
         useEffect(lambda -> None {
             async def loadTodos() -> None {
@@ -476,9 +476,9 @@ cl import from '@jac-client/utils' { jacSpawn }
 
 cl {
     def Dashboard() -> any {
-        let [stats, setStats] = useState(None);
-        let [activity, setActivity] = useState([]);
-        let [loading, setLoading] = useState(True);
+        [stats, setStats] = useState(None);
+        [activity, setActivity] = useState([]);
+        [loading, setLoading] = useState(True);
 
         useEffect(lambda -> None {
             async def loadDashboardData() -> None {
@@ -518,7 +518,7 @@ cl import from react { useState, useEffect }
 
 cl {
     def TimerComponent() -> any {
-        let [seconds, setSeconds] = useState(0);
+        [seconds, setSeconds] = useState(0);
 
         useEffect(lambda -> any {
             # Set up timer
@@ -608,9 +608,9 @@ Show loading indicators while data is being fetched:
 ```jac
 #  Good: Clear loading states
 def Component() -> any {
-    let [data, setData] = useState(None);
-    let [loading, setLoading] = useState(True);
-    let [error, setError] = useState(None);
+    [data, setData] = useState(None);
+    [loading, setLoading] = useState(True);
+    [error, setError] = useState(None);
 
     useEffect(lambda -> None {
         async def loadData() -> None {
@@ -730,7 +730,7 @@ The `createState()` hook was a Jac-specific state management solution:
 
 ```jac
 # Legacy approach - use useState instead
-let [state, setState] = createState({"count": 0});
+[state, setState] = createState({"count": 0});
 
 def Component() -> any {
     s = state();
@@ -743,7 +743,7 @@ def Component() -> any {
 ```jac
 # Modern approach with React hooks
 def Component() -> any {
-    let [count, setCount] = useState(0);
+    [count, setCount] = useState(0);
     return <div>{count}</div>;
 }
 ```
@@ -754,7 +754,7 @@ These were Signal-based reactive primitives from Jac:
 
 ```jac
 # Legacy approach
-let [count, setCount] = createSignal(0);
+[count, setCount] = createSignal(0);
 
 createEffect(lambda -> None {
     console.log("Count:", count());
@@ -765,7 +765,7 @@ createEffect(lambda -> None {
 
 ```jac
 # Modern approach with React hooks
-let [count, setCount] = useState(0);
+[count, setCount] = useState(0);
 
 useEffect(lambda -> None {
     console.log("Count:", count);

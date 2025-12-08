@@ -178,7 +178,7 @@ cl {
     # Updated TodoList with empty state
     def TodoList(props: any) -> any {
         # For now, we'll manually control this
-        let hasTodos = true;  # Change to false to see empty state
+        hasTodos = true;  # Change to false to see empty state
 
         if not hasTodos {
             return <div style={{
