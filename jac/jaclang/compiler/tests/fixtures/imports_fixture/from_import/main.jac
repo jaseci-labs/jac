@@ -1,5 +1,3 @@
-# Fixture 02: Simple from-import (2 files)
-# main.jac - uses 'import from X { Y }' syntax
 import from module_b {
     VALUE_B,
     calculate,

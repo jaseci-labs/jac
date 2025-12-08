@@ -1,5 +1,3 @@
-# database/models/comment.jac
-# Comment model definition
 obj Comment {
     has text: str;
     has author: str;

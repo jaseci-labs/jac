@@ -1,7 +1,3 @@
-# Fixture 15: Nested packages with __init__.jac at multiple levels
-# main.jac - demonstrates hierarchical __init__.jac organization
-
-# Import from top-level package (aggregated in __init__.jac)
 import from database {
     User,
     Post,
@@ -10,7 +6,6 @@ import from database {
     DB_VERSION
 }
 
-# Can also import subpackage directly
 import from database.models { Comment }
 
 with entry {

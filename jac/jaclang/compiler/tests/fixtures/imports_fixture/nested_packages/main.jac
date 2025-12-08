@@ -1,5 +1,3 @@
-# Fixture 09: Multi-level nested packages
-# main.jac
 import from app.services.user_service { create_user, get_version }
 import from app.models.user { User }
 import from app.constants { APP_NAME }

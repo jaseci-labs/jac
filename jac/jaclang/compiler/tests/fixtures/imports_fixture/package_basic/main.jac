@@ -1,7 +1,3 @@
-# Fixture 05: Package with __init__.jac
-# main.jac - imports from a package using __init__.jac
-
-# Direct import from package (uses __init__.jac re-exports)
 import from mypackage {
     HELPER_VALUE,
     helper_func

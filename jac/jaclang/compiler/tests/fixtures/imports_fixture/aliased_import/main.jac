@@ -1,5 +1,3 @@
-# Fixture 04: Import with alias (2 files)
-# main.jac - uses 'import X as Y' syntax
 import module_d as md;
 import from module_d { long_function_name as lfn }
 

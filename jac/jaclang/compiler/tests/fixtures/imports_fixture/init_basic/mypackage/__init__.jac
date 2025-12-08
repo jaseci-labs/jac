@@ -1,14 +1,10 @@
-
-# Define package-level constants
 glob PACKAGE_NAME = "MyPackage";
 glob PACKAGE_VERSION = "2.0.0";
 
-# Define package-level function
 def greet(name: str) -> str {
     return f"Hello, {name} from {PACKAGE_NAME}!";
 }
 
-# Define package-level class
 obj Helper {
     has version: str = PACKAGE_VERSION;
 

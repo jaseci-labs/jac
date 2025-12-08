@@ -1,5 +1,3 @@
-# Fixture 11: Circular import handling (safe pattern)
-# main.jac
 import from circular.module_x { VALUE_X, get_y_value }
 import from circular.module_y { VALUE_Y, get_x_value }
 

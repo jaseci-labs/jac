@@ -1,5 +1,3 @@
-# database/models/post.jac
-# Post model definition
 obj Post {
     has title: str;
     has author: str;

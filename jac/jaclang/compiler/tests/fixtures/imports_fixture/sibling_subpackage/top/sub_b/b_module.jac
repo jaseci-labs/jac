@@ -1,5 +1,3 @@
-# top/sub_b/b_module.jac
-# Import from sibling subpackage using parent-relative import
 import from ..sub_a.a_module {
     A_VALUE,
     a_func

@@ -1,5 +1,3 @@
-# mathlib/operations.jac
-# Basic arithmetic operations
 def add(a: float, b: float) -> float {
     return a + b;
 }

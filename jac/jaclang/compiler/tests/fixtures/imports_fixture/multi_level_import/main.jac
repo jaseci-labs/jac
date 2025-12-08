@@ -1,6 +1,3 @@
-
-# Multi-level package imports example
-# Demonstrates importing from sibling and nested modules
 import from utils {
     utility_variable
 }

@@ -1,5 +1,3 @@
-# library/extended.jac
-# Uses relative import for same package
 import from .base { BASE_ID, get_base_id }
 
 glob EXTENDED_ID = BASE_ID + 1;

@@ -1,5 +1,3 @@
-# database/models/user.jac
-# User model definition
 obj User {
     has name: str;
     has email: str;

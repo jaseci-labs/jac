@@ -1,4 +1,3 @@
-# app/services/user_service.jac
 import from ..models.user { User }
 import from ..constants { VERSION }
 

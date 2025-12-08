@@ -1,5 +1,3 @@
-# mathlib/calculator.jac
-# Calculator class that uses other mathlib modules
 import from .operations {
     add,
     subtract,

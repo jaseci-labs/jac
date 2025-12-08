@@ -1,5 +1,3 @@
-# Fixture 08: Parent relative imports (..)
-# main.jac - tests parent-level relative imports
 import from project.sub.deep {
     DEEP_VALUE,
     deep_func

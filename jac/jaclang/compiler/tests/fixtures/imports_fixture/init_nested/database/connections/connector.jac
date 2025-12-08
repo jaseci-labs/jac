@@ -1,5 +1,3 @@
-# database/connections/connector.jac
-# Database connection functions
 glob _current_db: str = "";
 
 def connect(db_name: str) -> str {

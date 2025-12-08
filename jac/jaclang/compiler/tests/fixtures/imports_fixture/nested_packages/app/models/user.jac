@@ -1,4 +1,3 @@
-# app/models/user.jac
 import from ..constants { APP_NAME }
 
 obj User {

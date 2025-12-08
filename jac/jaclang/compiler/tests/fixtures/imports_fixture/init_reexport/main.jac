@@ -1,7 +1,3 @@
-# Fixture 14: __init__.jac with re-exports from submodules
-# main.jac - demonstrates how __init__.jac can aggregate exports from multiple modules
-
-# Import from package level (symbols re-exported via __init__.jac)
 import from mathlib {
     add,
     subtract,

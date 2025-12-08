@@ -1,7 +1,3 @@
-# Fixture 03: From-import star (2 files)
-# main.jac - uses 'import from X { * }' syntax
-
-# import from module_c { * }
 include module_c;
 
 with entry {
