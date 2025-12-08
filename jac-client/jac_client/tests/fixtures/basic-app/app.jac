@@ -1,6 +1,6 @@
 """Sample Jac module containing client-side declarations."""
 
-cl let API_LABEL: str = "Runtime Test";
+cl glob API_LABEL: str = "Runtime Test";
 
 cl obj ButtonProps {
     has label: str = "Tap Me";

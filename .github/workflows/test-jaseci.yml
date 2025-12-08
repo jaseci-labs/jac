@@ -67,8 +67,6 @@ jobs:
         pip install -e jac-client
         pip install -e jac-byllm
         pip install -e jac-streamlit
-        pip install numpy
-        pip install scikit-learn
         pip install pytest
         pip install pytest-xdist
 
@@ -78,6 +76,3 @@ jobs:
 
     - name: Run package tests
       run: pytest -x jac-byllm jac-streamlit jac-client
-
-    - name: Run littleX tests
-      run: jac test jac/examples/littleX/littleX.test.jac

@@ -2,7 +2,7 @@
 
 cl import from .utils { formatMessage, calculateSum, JS_CONSTANT, MessageFormatter }
 
-cl let JS_IMPORT_LABEL: str = "JavaScript Import Test";
+cl glob JS_IMPORT_LABEL: str = "JavaScript Import Test";
 
 cl def JsImportTest()  -> any {
     greeting = formatMessage("Jac");
