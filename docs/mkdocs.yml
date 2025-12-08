@@ -48,6 +48,10 @@ nav:
           - "learn/data_spatial/walkers.md" # Walker
           - "learn/data_spatial/filtering.md" # Filtering
           - "learn/data_spatial/sequence.md"
+        - Imports and File Structure:
+          - "learn/imports/basics.md" # Import syntax basics
+          - "learn/imports/packages.md" # Packages and __init__.jac
+          - "learn/imports/relative_imports.md" # Relative imports
         - FAQ: "learn/data_spatial/FAQ.md" # faq
     - Programming 'by' LLM:
         - byLLM: "learn/jac-byllm/with_llm.md"
