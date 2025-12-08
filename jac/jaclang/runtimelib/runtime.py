@@ -30,6 +30,7 @@ from typing import (
 )
 from uuid import UUID
 
+from jaclang.compiler import unitree
 from jaclang.compiler.constant import Constants as Con
 from jaclang.compiler.constant import EdgeDir, colors
 from jaclang.utils import infer_language
@@ -71,6 +72,7 @@ else:
     _GenericEdge = _Root = ObjectSpatialDestination = ObjectSpatialFunction = (
         ObjectSpatialPath
     ) = None  # type: ignore
+    TTGGenerator = None  # type: ignore
 
 
 def _init_lazy_imports() -> None:
@@ -531,6 +533,7 @@ class JacWalker:
         from jaclang.runtimelib.utils import all_issubclass
 
         warch = walker.archetype
+        warch.__ttg__ = JacTTGGenerator.get_set_based_ttg(warch, node.archetype)
         walker.path = []
         current_loc = node.archetype
 
@@ -1994,6 +1997,167 @@ class JacUtils:
         return future.result()
 
 
+class JacTTGGenerator:
+    @dataclass
+    class TTGNode:
+        node: NodeArchetype
+        edges: set[JacTTGGenerator.TTGNode]
+
+    VisitType = str | None
+
+    class FilteredNeighborCtx:
+        cache: dict[tuple[int, JacTTGGenerator.VisitType], list[NodeArchetype]] = {}
+
+        @classmethod
+        def _filter_neighbors(
+            cls, node: NodeArchetype, visit: JacTTGGenerator.VisitType
+        ) -> list[NodeArchetype]:
+            """Filter neighbors based on visit info and walker type."""
+            filtered_neighbors = []
+            anchor = node.__jac__
+            edges: list[EdgeAnchor] = anchor.edges
+            for edge in edges:
+                if (
+                    visit is None
+                    or JacTTGGenerator.extract_name(edge.archetype) == visit
+                ):
+                    filtered_neighbors.append(edge.target.archetype)
+            # Get all neighbors
+            return filtered_neighbors
+
+        @classmethod
+        def filter_neighbors(
+            cls, node_idx: int, visit: JacTTGGenerator.VisitType
+        ) -> list[NodeArchetype]:
+            """Filter neighbors with caching."""
+            key = (node_idx, visit)
+            if key in cls.cache:
+                return cls.cache[key]
+            result = cls._filter_neighbors(node_idx, visit)
+            cls.cache[key] = result
+            return result
+
+    # TODO: Very bad implementation. Should not exist anywhere.
+    @classmethod
+    def extract_name(cls, input: Archetype) -> str:
+        """Split the name by left bracket."""
+        return str(input).split(chr(40))[0].split(" ")[0]
+
+    @classmethod
+    def get_walker_code(cls, walker: WalkerArchetype) -> unitree.Archetype:
+        """Get the walker type code from walker instance."""
+        extracted_name = JacTTGGenerator.extract_name(walker)
+        # TODO: VERY TRRIBLE. WILL ASK
+        code = JacRuntime.program.mod.hub[
+            "/home/patrickli/Space/jaseci/jac/jaclang/tests/fixtures/jac_ttg/basic.jac"
+        ]
+        for walker_code in code.get_all_sub_nodes(unitree.Archetype):
+            if walker_code.name.value == JacTTGGenerator.extract_name(walker):
+                return walker_code
+        raise ValueError(f"Walker code for {extracted_name} not found in program.")
+
+    class PossibleVisitsInWalkers:
+        # Mapping walker type and node type to visit types.
+        # TODO: Find a better representation of types.
+        visits: dict[tuple[str, str], list[JacTTGGenerator.VisitType]] = {}
+
+        @classmethod
+        def _get_to_edge_type_of_visit(
+            cls, visit_stmt: unitree.VisitStmt
+        ) -> JacTTGGenerator.VisitType:
+            filters = visit_stmt.get_all_sub_nodes(unitree.FilterCompr)
+            if len(filters) == 0:
+                return None
+            return filters[0].get_all_sub_nodes(unitree.Name)[0].value
+
+        @classmethod
+        def _set_all_visits_for_a_walker(cls, walker: unitree.Archetype):
+            abilities = walker.get_all_sub_nodes(unitree.Ability)
+            for ability in abilities:
+                if len(ability.get_all_sub_nodes(unitree.EventSignature)) == 0:
+                    continue
+                # Get the name of the node type
+                node_type_name = (
+                    ability.get_all_sub_nodes(unitree.EventSignature)[0]
+                    .get_all_sub_nodes(unitree.Name)[0]
+                    .value
+                )
+                res = [
+                    cls._get_to_edge_type_of_visit(visit_stmt)
+                    for visit_stmt in ability.get_all_sub_nodes(unitree.VisitStmt)
+                ]
+                cls.visits[(JacTTGGenerator.extract_name(walker), node_type_name)] = res
+
+        @classmethod
+        def get(
+            cls, walker: unitree.Archetype, node: NodeArchetype
+        ) -> list[JacTTGGenerator.VisitType]:
+            walker_type_name = JacTTGGenerator.extract_name(walker)
+            node_type_name = JacTTGGenerator.extract_name(node)
+            if cls.visits.get((walker_type_name, node_type_name)) is None:
+                cls._set_all_visits_for_a_walker(walker)
+            res = cls.visits[(walker_type_name, node_type_name)]
+            return res
+
+    @dataclass
+    class TypedWalkerState:
+        """Store the walker state with type."""
+
+        walker_type: str
+        node: NodeArchetype
+        depth: int
+        children: list[JacTTGGenerator.TypedWalkerState]
+
+    @classmethod
+    def get_set_based_ttg(
+        cls, walker: WalkerArchetype, start_node: NodeArchetype
+    ) -> TypedWalkerState:
+        """Get the set based TTG for multiple walker spawns."""
+        ttg_root = JacTTGGenerator.TypedWalkerState(
+            walker_type=JacTTGGenerator.extract_name(walker),
+            depth=0,
+            node=start_node,
+            children=[],
+        )
+        walker_states = [ttg_root]
+
+        visited_nodes: set[NodeArchetype] = set()
+        existing_edges: set[tuple[NodeArchetype, NodeArchetype]] = set()
+
+        # TODO: DETERMINE A BETTER THRESHOLD HERE.
+        while walker_states and len(visited_nodes) < 100:
+            state = walker_states.pop(0)
+            node = state.node
+            visited_nodes.add(node)
+            walker_code = JacTTGGenerator.get_walker_code(walker)
+            filtered_neighbors: list[NodeArchetype] = [
+                neighbor
+                for visit in JacTTGGenerator.PossibleVisitsInWalkers.get(
+                    walker_code, node
+                )
+                for neighbor in JacTTGGenerator.FilteredNeighborCtx.filter_neighbors(
+                    node, visit
+                )
+                if neighbor not in visited_nodes
+            ]
+
+            for neighbor in filtered_neighbors:
+                # archetypes = network.get_edge_data(node, neighbor)[0].get("archetype")
+                if (node, neighbor) in existing_edges:
+                    continue
+                existing_edges.add((node, neighbor))
+                # print(f"DEBUG: Edge from {node} to {neighbor}")
+                new_walker_state = JacTTGGenerator.TypedWalkerState(
+                    node=neighbor,
+                    walker_type=state.walker_type,
+                    depth=state.depth + 1,
+                    children=[],
+                )
+                state.children.append(new_walker_state)
+                walker_states.append(new_walker_state)
+        return ttg_root
+
+
 class JacRuntimeInterface(
     JacClassReferences,
     JacAccessValidation,
@@ -2008,6 +2172,7 @@ class JacRuntimeInterface(
     JacByLLM,
     JacResponseBuilder,
     JacUtils,
+    JacTTGGenerator,
     metaclass=_JacClassReferencesMeta,
 ):
     """Jac Feature."""
