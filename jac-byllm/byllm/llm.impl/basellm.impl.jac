@@ -78,7 +78,9 @@ impl BaseLLM.format_prompt(params: dict) -> str {
     {MAGENTA}[SYSTEM]{RESET}
     {log_params["messages"][0]["content"]}
     {MAGENTA}[USER]{RESET}
-    {log_params["messages"][1]["content"][0]['text']}
+    {log_params["messages"][1]["content"][0]['text']
+    if isinstance(log_params["messages"][1]["content"], list)
+    else log_params["messages"][1]["content"]}
     {MAGENTA}[TOOL]{RESET}
     {log_params["messages"][3]["content"]
     if len(log_params["messages"]) > 3
@@ -89,7 +91,9 @@ impl BaseLLM.format_prompt(params: dict) -> str {
     if log_params.get("tools")
     else ""}
     {MAGENTA}[RESPONSE FORMAT]{RESET}
-    {json.dumps(log_params.get("response_format"), indent=2, ensure_ascii=False)}""";
+    {json.dumps(log_params.get("response_format"), indent=2, ensure_ascii=False)
+    if log_params.get("response_format") is not None
+    else "None"}""";
     return log;
 }
 
