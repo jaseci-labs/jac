@@ -266,20 +266,3 @@ def _candidate_from_typeshed(base: str, parts: list[str]) -> tuple[str, str] | N
                 return inner_pkg_init_pyi, "pyi"
 
     return None
-
-
-class PythonModuleResolver:
-    """Resolver for Python modules with enhanced import capabilities."""
-
-    def resolve_module_path(self, target: str, base_path: str) -> str:
-        """Resolve Python module path without importing."""
-        caller_dir = (
-            base_path if os.path.isdir(base_path) else os.path.dirname(base_path)
-        )
-        caller_dir = caller_dir if caller_dir else os.getcwd()
-        local_py_file = os.path.join(caller_dir, target.split(".")[-1] + ".py")
-
-        if os.path.exists(local_py_file):
-            return local_py_file
-        else:
-            raise ImportError(f"Module '{target}' not found in {caller_dir}")

@@ -402,35 +402,6 @@ class CommandRegistry:
         """Get the Command instance for a given command name."""
         return self.registry.get(name)
 
-    def get_all_commands(self) -> dict:
-        """Get all registered commands along with their details."""
-        all_commands = {}
-        for name, comd in self.registry.items():
-            doc = comd.func.__doc__ or "No help available."
-            args = comd.sig.parameters
-            all_commands[name] = (doc, args)
-        return all_commands
-
-    def has_command(self, name: str) -> bool:
-        """Check if a command is already registered."""
-        return name in self.registry
-
-    def list_commands(self) -> dict[str, dict[str, CommandPriority | str]]:
-        """List all registered commands with metadata.
-
-        Returns:
-            Dictionary mapping command names to metadata including source and priority
-        """
-        return {
-            name: {
-                "source": cmd.source,
-                "priority": cmd.priority,
-                "priority_name": cmd.priority.name,
-                "doc": cmd.func.__doc__ or "No documentation",
-            }
-            for name, cmd in self.registry.items()
-        }
-
 
 cmd_registry = CommandRegistry()
 

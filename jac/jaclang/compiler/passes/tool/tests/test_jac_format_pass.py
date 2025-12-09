@@ -90,41 +90,6 @@ def test_archetype(fixture_path: Callable[[str], str]) -> None:
     )
 
 
-# def test_corelib_fmt(fixture_path) -> None:
-#     """Tests if the file matches a particular format."""
-#     compare_files(
-#         fixture_path,
-#         os.path.join(fixture_path(""), "corelib_fmt.jac"),
-#     )
-
-# def test_doc_string_fmt(fixture_path) -> None:
-#     """Tests if the file matches a particular format."""
-#     compare_files(
-#         fixture_path,
-#         os.path.join(fixture_path(""), "doc_string.jac"),
-#     )
-
-# def test_compare_myca_fixtures(fixture_path) -> None:
-#     """Tests if files in the myca fixtures directory do not change after being formatted."""
-#     fixtures_dir = os.path.join(fixture_path(""), "myca_formatted_code")
-#     fixture_files = os.listdir(fixtures_dir)
-#     for file_name in fixture_files:
-#         if file_name == "__jac_gen__":
-#             continue
-#         file_path = os.path.join(fixtures_dir, file_name)
-#         compare_files(fixture_path, file_path)
-
-# def test_general_format_fixtures(fixture_path) -> None:
-#     """Tests if files in the general fixtures directory do not change after being formatted."""
-#     fixtures_dir = os.path.join(fixture_path(""), "general_format_checks")
-#     fixture_files = os.listdir(fixtures_dir)
-#     for file_name in fixture_files:
-#         if file_name == "__jac_gen__":
-#             continue
-#         file_path = os.path.join(fixtures_dir, file_name)
-#         compare_files(fixture_path, file_path)
-
-
 def micro_suite_test(filename: str) -> None:
     """
     Tests the Jac formatter by:

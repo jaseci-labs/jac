@@ -29,21 +29,6 @@ def add_line_numbers(s: str) -> str:
     return "\n".join(f"{i + 1}: \t{line}" for i, line in enumerate(lines))
 
 
-def clip_code_section(s: str, target_line: int, line_range: int) -> str:
-    """Clip a section of code and highlight target line."""
-    lines = s.split("\n")
-    start = max(0, target_line - line_range - 1)
-    end = min(target_line + line_range, len(lines))
-
-    result = []
-    for i in range(start, end):
-        line = lines[i]
-        if i == target_line - 1:
-            line = "*" + line
-        result.append(line)
-    return "\n".join(result)
-
-
 def get_uni_nodes_as_snake_case() -> list[str]:
     """Get all AST nodes as snake case."""
     import inspect
@@ -140,17 +125,6 @@ def auto_generate_refs() -> str:
         '# Jac Language Reference\n\n--8<-- "jac/examples/reference/introduction.md"\n'
     )
     return md_str
-
-
-def is_standard_lib_module(module_path: str) -> bool:
-    """Check if a module is a standard library module."""
-    import os
-    import sysconfig
-
-    stdlib_dir = sysconfig.get_paths()["stdlib"]
-    direc_path = os.path.join(stdlib_dir, module_path)
-    file_path = direc_path + ".py"
-    return os.path.isfile(file_path) or os.path.isdir(direc_path)
 
 
 def dump_traceback(e: Exception) -> str:
