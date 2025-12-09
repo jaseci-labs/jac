@@ -9,7 +9,6 @@ from jaclang.lib import (
     Root,
     Walker,
     assign_all,
-    build_edge,
     connect,
     disengage,
     filter_on,

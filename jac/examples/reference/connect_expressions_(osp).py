@@ -7,7 +7,6 @@ from jaclang.lib import (
     OPath,
     Root,
     Walker,
-    build_edge,
     connect,
     disengage,
     on_entry,

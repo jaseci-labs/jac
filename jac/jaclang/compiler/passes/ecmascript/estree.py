@@ -86,14 +86,6 @@ class Literal(Node):
     type: TypingLiteral["Literal"] = field(default="Literal", init=False)
 
 
-@dataclass
-class RegExpLiteral(Literal):
-    """Regular expression literal."""
-
-    regex: dict[str, str] = field(default_factory=dict)  # {pattern: str, flags: str}
-    type: TypingLiteral["Literal"] = field(default="Literal", init=False)
-
-
 # Program and Statements
 # ======================
 

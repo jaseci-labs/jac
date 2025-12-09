@@ -109,12 +109,6 @@ class EdgeDir(Enum):
     ANY = 3  # <-->
 
 
-class Values(int, Enum):
-    """Token constants for Jac."""
-
-    JAC_ERROR_LINE_RANGE = 3
-
-
 class SymbolAccess(Enum):
     """Symbol types."""
 

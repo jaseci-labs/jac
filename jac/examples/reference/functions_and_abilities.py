@@ -6,7 +6,6 @@ from jaclang.lib import (
     OPath,
     Root,
     Walker,
-    build_edge,
     connect,
     disengage,
     impl_patch_filename,
