@@ -25,6 +25,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
+        pip install icecream
         pip install -e jac
         pip install pytest
         pip install pytest-xdist
@@ -48,6 +49,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
+        pip install icecream
         pip install -e jac
         pip install pytest
         pip install pytest-xdist
@@ -71,6 +73,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
+        pip install icecream
         pip install -e jac
         pip install pytest
         pip install pytest-xdist

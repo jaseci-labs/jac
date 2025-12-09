@@ -22,9 +22,10 @@ def test_js_codegen_generates_js_and_manifest() -> None:
     fixture = FIXTURE_DIR / "client_jsx.jac"
     prog = JacProgram()
     module = prog.compile(str(fixture))
-    print('module>>>c ',module)
-    print('prog mod>>>c ',prog.mod)
-    print('prog modhub >>>c ',prog.mod.hub)
+    from icecream import ic
+    ic('module>>>c ',module)
+    ic('prog mod>>>c ',prog.mod)
+    ic('prog modhub >>>c ',prog.mod.hub)
 
 
     assert module.gen.js.strip(), "Expected JavaScript output for client declarations"
