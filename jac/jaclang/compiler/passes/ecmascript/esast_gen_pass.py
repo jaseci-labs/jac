@@ -148,8 +148,9 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
         from jaclang.compiler.codeinfo import ClientManifest
         if self.ir_in.name =='client_jsx':
             ic("esast_gen_pass started")
+            ic(id(self.prog))
             ic(self.prog.mod.hub)
-            ic(self.prog.get_type_evaluator())
+            ic(id(self.prog.get_type_evaluator()))
         self.child_passes: list[EsastGenPass] = self._init_child_passes(EsastGenPass)
         self.imports: list[es.ImportDeclaration] = []
         self.exports: list[es.ExportNamedDeclaration] = []
@@ -2000,7 +2001,8 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
         if isinstance(node.target, uni.Name):
             if self.ir_in.name =='client_jsx':
                 ic(node.target.sym_name)
-                ic( self.prog.get_type_evaluator().get_type_of_expression(node.target))
+                ic(id(self.prog))
+                ic(id(self.prog.get_type_evaluator().get_type_of_expression(node.target)))
             callee_type = self.prog.get_type_evaluator().get_type_of_expression(
                 node.target
             )
