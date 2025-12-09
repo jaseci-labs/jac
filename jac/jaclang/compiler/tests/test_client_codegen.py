@@ -23,10 +23,10 @@ def test_js_codegen_generates_js_and_manifest() -> None:
     prog = JacProgram()
     module = prog.compile(str(fixture))
     from icecream import ic
-    ic('module>>>c ',module)
-    ic('prog mod>>>c ',prog.mod)
-    ic('prog modhub >>>c ',prog.mod.hub)
 
+    ic("module>>>c ", module)
+    ic("prog mod>>>c ", prog.mod)
+    ic("prog modhub >>>c ", prog.mod.hub)
 
     assert module.gen.js.strip(), "Expected JavaScript output for client declarations"
     assert "function component" in module.gen.js

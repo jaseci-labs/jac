@@ -144,11 +144,11 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
 
     def before_pass(self) -> None:
         """Initialize the pass."""
-        if self.ir_in.name == 'client_jsx':
-                print(self.prog.mod)
-                print(self.prog.mod)
-                print(self.prog.mod.hub)
-                print(self.prog.get_type_evaluator())
+        if self.ir_in.name == "client_jsx":
+            print(self.prog.mod)
+            print(self.prog.mod)
+            print(self.prog.mod.hub)
+            print(self.prog.get_type_evaluator())
 
         from jaclang.compiler.codeinfo import ClientManifest
 
@@ -1967,7 +1967,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
                     jac_node=node,
                 )
         if isinstance(node.target, uni.Name):
-            if self.ir_in.name == 'client_jsx':
+            if self.ir_in.name == "client_jsx":
                 print(self.prog.mod)
                 print(self.prog.mod)
                 print(self.prog.mod.hub)
