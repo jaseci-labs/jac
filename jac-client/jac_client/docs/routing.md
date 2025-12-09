@@ -270,13 +270,13 @@ cl import from "@jac-client/utils" { useNavigate }
 
 cl {
     def LoginForm() -> any {
-        [username, setUsername] = useState("");
+        [email, setEmail] = useState("");
         [password, setPassword] = useState("");
         navigate = useNavigate();
 
     async def handleLogin(e: any) -> None {
         e.preventDefault();
-        success = await jacLogin(username, password);
+        success = await jacLogin(email, password);
         if success {
             navigate("/dashboard");  # Navigate after successful login
         } else {
@@ -286,10 +286,10 @@ cl {
 
         return <form onSubmit={handleLogin}>
             <input
-                type="text"
-                value={username}
-                onChange={lambda e: any -> None { setUsername(e.target.value); }}
-                placeholder="Username"
+                type="email"
+                value={email}
+                onChange={lambda e: any -> None { setEmail(e.target.value); }}
+                placeholder="Email"
             />
             <input
                 type="password"
@@ -408,7 +408,9 @@ cl {
 
         async def handleLogin(e: any) -> None {
             e.preventDefault();
-            success = await jacLogin(username, password);
+            email = document.getElementById("email").value;
+            password = document.getElementById("password").value;
+            success = await jacLogin(email, password);
             if success {
                 navigate("/dashboard");
             }
@@ -416,8 +418,8 @@ cl {
 
         return <form onSubmit={handleLogin}>
             <h2>Login</h2>
-            <input type="text" placeholder="Username" />
-            <input type="password" placeholder="Password" />
+            <input id="email" type="email" placeholder="Email" />
+            <input id="password" type="password" placeholder="Password" />
             <button type="submit">Login</button>
         </form>;
     }
