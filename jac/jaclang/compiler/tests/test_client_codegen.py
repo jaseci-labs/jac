@@ -85,14 +85,14 @@ def test_type_to_typeof_conversion() -> None:
     test_code = '''"""Test type() to typeof conversion."""
 
 cl def check_types() {
-    let x = 42;
-    let y = "hello";
-    let z = True;
+    x = 42;
+    y = "hello";
+    z = True;
 
-    let t1 = type(x);
-    let t2 = type(y);
-    let t3 = type(z);
-    let t4 = type("world");
+    t1 = type(x);
+    t2 = type(y);
+    t3 = type(z);
+    t4 = type("world");
 
     return t1;
 }
@@ -136,10 +136,10 @@ def test_spawn_operator_supports_positional_and_spread() -> None:
 }
 
 cl def spawn_client() {
-    let node_id = "abcd";
-    let extra = {"meta": {"source": "client"}};
-    let positional = node_id spawn MixedWalker("First", 3);
-    let spread = MixedWalker("Second", 1, **extra) spawn root;
+    node_id = "abcd";
+    extra = {"meta": {"source": "client"}};
+    positional = node_id spawn MixedWalker("First", 3);
+    spread = MixedWalker("Second", 1, **extra) spawn root;
     return {"positional": positional, "spread": spread};
 }
 """

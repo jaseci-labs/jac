@@ -2,7 +2,7 @@
 
 cl import from antd { Button }
 
-cl let APP_NAME: str = "Ant Design Test";
+cl glob APP_NAME: str = "Ant Design Test";
 
 cl def ButtonTest() {
     return <div>

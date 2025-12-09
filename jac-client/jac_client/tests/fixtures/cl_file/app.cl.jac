@@ -1,8 +1,8 @@
 import from react { useState }
 
 def app()  -> any {
-    let [todos, setTodos] = useState([]);
-    let [input, setInput] = useState("");
+    [todos, setTodos] = useState([]);
+    [input, setInput] = useState("");
 
     # Event Handler
     async def addTodo()  -> None {

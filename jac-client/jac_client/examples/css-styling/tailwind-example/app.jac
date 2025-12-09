@@ -3,17 +3,17 @@ cl import from react { useState, useEffect }
 cl import ".global.css";
 cl {
     def app()  -> any {
-        let [count, setCount] = useState(0);
+        [count, setCount] = useState(0);
 
         useEffect(lambda   -> None{ console.log("Count changed: ", count);} , [count]);
 
-        let handleIncrement = lambda  e: any  -> None{ setCount(count + 1);} ;
+        handleIncrement = lambda  e: any  -> None{ setCount(count + 1);} ;
 
-        let handleDecrement = lambda  e: any  -> None{ setCount(count - 1);} ;
+        handleDecrement = lambda  e: any  -> None{ setCount(count - 1);} ;
 
-        let handleReset = lambda  e: any  -> None{ setCount(0);} ;
+        handleReset = lambda  e: any  -> None{ setCount(0);} ;
 
-        let countColorClass = "text-gray-800"
+        countColorClass = "text-gray-800"
         if count == 0
         else ("text-green-600" if count > 0 else "text-red-600");
 

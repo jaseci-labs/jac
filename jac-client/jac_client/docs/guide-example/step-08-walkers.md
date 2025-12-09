@@ -135,9 +135,9 @@ Update your `useEffect` to load todos from the backend:
 
 ```jac
 def app() -> any {
-    let [todos, setTodos] = useState([]);
-    let [input, setInput] = useState("");
-    let [filter, setFilter] = useState("all");
+    [todos, setTodos] = useState([]);
+    [input, setInput] = useState("");
+    [filter, setFilter] = useState("all");
 
     # Load todos from backend when app mounts
     useEffect(lambda -> None {
@@ -352,7 +352,7 @@ report {"success": True};  # Report an object
 Every node gets a unique `_jac_id`:
 
 ```jac
-let todo = result.reports[0][0];
+todo = result.reports[0][0];
 console.log(todo._jac_id);  # "urn:uuid:abc123..."
 ```
 
@@ -381,7 +381,7 @@ walker create_todo {
 cl {
     def app() -> any {
         # This code runs in the browser
-        let result = root spawn create_todo(text="Todo");
+        result = root spawn create_todo(text="Todo");
     }
 }
 ```
@@ -483,7 +483,7 @@ can report_todos with Todo entry {
 ```jac
 # Safe access
 if result.reports and result.reports.length > 0 {
-    let todo = result.reports[0][0];
+    todo = result.reports[0][0];
     console.log(todo._jac_id);
 }
 ```

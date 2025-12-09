@@ -1094,6 +1094,12 @@ class TypeEvaluator {
                     return self.get_type_of_symbol(symbol);
                 }
 
+            case uni.TypeRef():
+                ty = self.get_type_of_expression(expr.target);
+                if isinstance(ty, types.ClassType) {
+                    return ty.clone_as_class();
+                }
+
         }
 
         # TODO: More expressions.

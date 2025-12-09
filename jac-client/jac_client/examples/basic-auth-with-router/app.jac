@@ -20,8 +20,8 @@ cl import from "@jac-client/utils" {
 cl {
     # Navigation Component
     def Navigation()  -> any {
-        let isLoggedIn = jacIsLoggedIn();
-        let navigate = useNavigate();
+        isLoggedIn = jacIsLoggedIn();
+        navigate = useNavigate();
 
         def handleLogout(e: any) -> None {
             e.preventDefault();
@@ -109,10 +109,10 @@ cl {
 
     # Login Page
     def LoginPage()  -> any {
-        let [username, setUsername] = useState("");
-        let [password, setPassword] = useState("");
-        let [error, setError] = useState("");
-        let navigate = useNavigate();
+        [username, setUsername] = useState("");
+        [password, setPassword] = useState("");
+        [error, setError] = useState("");
+        navigate = useNavigate();
 
         async def handleLogin(e: any) -> None {
             e.preventDefault();
@@ -137,7 +137,7 @@ cl {
             setPassword(e.target.value);
         }
 
-        let errorDisplay = None;
+        errorDisplay = None;
         if error {
             errorDisplay = <div
                 style={{"color": "#dc2626", "fontSize": "14px", "marginBottom": "12px"}}
@@ -235,10 +235,10 @@ cl {
 
     # Signup Page
     def SignupPage()  -> any {
-        let [username, setUsername] = useState("");
-        let [password, setPassword] = useState("");
-        let [error, setError] = useState("");
-        let navigate = useNavigate();
+        [username, setUsername] = useState("");
+        [password, setPassword] = useState("");
+        [error, setError] = useState("");
+        navigate = useNavigate();
 
         async def handleSignup(e: any) -> None {
             e.preventDefault();
@@ -263,7 +263,7 @@ cl {
             setPassword(e.target.value);
         }
 
-        let errorDisplay = None;
+        errorDisplay = None;
         if error {
             errorDisplay = <div
                 style={{"color": "#dc2626", "fontSize": "14px", "marginBottom": "12px"}}

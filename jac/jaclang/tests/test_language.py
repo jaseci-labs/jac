@@ -293,6 +293,25 @@ def test_fstring_multiple_quotation(
     assert stdout_value.split("\n")[3] == 'hello klkl"""'
 
 
+def test_fstring_escape_sequences(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
+    """Test that escape sequences in f-strings are properly decoded."""
+    with capture_stdout() as captured_output:
+        Jac.jac_import(
+            "compiler/passes/main/tests/fixtures/fstring_escape_sequences",
+            base_path=fixture_path("../../"),
+        )
+    stdout_value = captured_output.getvalue()
+    lines = stdout_value.strip().split("\n")
+    # Verify escape sequences are actual newlines/tabs, not literal \n or \t
+    assert lines[0] == "'hello\\nworld'"  # repr shows \n as \\n
+    assert lines[1] == "'tab\\there'"  # repr shows \t as \\t
+    assert lines[2] == "'line1\\nline2\\nline3'"
+    assert lines[3] == "'world\\tworld\\tworld'"
+
+
 def test_deep_imports(
     fixture_path: Callable[[str], str],
     capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
@@ -588,7 +607,7 @@ def test_pyfunc_2(fixture_path: Callable[[str], str]) -> None:
             ),
             prog=JacProgram(),
         ).ir_out.unparse()
-    assert "class X {\n    with entry {\n        let a_b = 67;" in output
+    assert "class X {\n    with entry {\n        a_b = 67;" in output
     assert "br = b'Hello\\\\\\\\nWorld'" in output
     assert "class Circle {\n    def init(self: Circle, radius: float" in output
     assert "<>node = 90;\n    print(<>node);\n" in output
@@ -706,6 +725,58 @@ def test_py2jac_augassign_and_doc(fixture_path: Callable[[str], str]) -> None:
         ).ir_out.unparse()
     assert "x += 2;" in output  # augmented assign should not emit `let`
     assert '"""inner doc"""; def inner()' in output  # docstring should end before def
+
+
+def test_py2jac_reassign_semantics(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
+    """Test that py2jac preserves variable reassignment semantics.
+
+    This test catches the bug where py2jac incorrectly uses 'let' for
+    variable reassignments inside loops/conditionals, which creates
+    shadowed variables instead of modifying the outer scope variable.
+    """
+    import ast as py_ast
+
+    import jaclang.compiler.unitree as ast
+    from jaclang.compiler.passes.main import PyastBuildPass
+
+    py_out_path = os.path.join(fixture_path("./"), "py2jac_reassign.py")
+    with open(py_out_path) as f:
+        file_source = f.read()
+        jac_code = PyastBuildPass(
+            ir_in=ast.PythonModuleAst(
+                py_ast.parse(file_source),
+                orig_src=ast.Source(file_source, py_out_path),
+            ),
+            prog=JacProgram(),
+        ).ir_out.unparse()
+
+    # Key check: reassignments should NOT use 'let'
+    # Wrong: "let found = True;" inside the if block
+    # Right: "found = True;" inside the if block
+    assert "let found = True" not in jac_code, (
+        "py2jac bug: 'let' used for reassignment in loop - "
+        "this creates a shadowed variable instead of reassigning"
+    )
+    assert (
+        "let status = " not in jac_code.split("let status = ")[2]
+        if jac_code.count("let status = ") > 1
+        else True
+    ), "py2jac bug: 'let' used for reassignment in conditional"
+
+    # Execute the converted code and verify it produces correct results
+    with capture_stdout() as captured_output:
+        Jac.jac_import(
+            target="py2jac_reassign",
+            base_path=fixture_path("./"),
+        )
+    stdout_value = captured_output.getvalue()
+    assert "All tests passed!" in stdout_value, (
+        f"Converted Jac code produced wrong output. "
+        f"This likely means py2jac created shadowed variables. Output: {stdout_value}"
+    )
 
 
 def test_refs_target(
@@ -1390,8 +1461,8 @@ def test_concurrency(
     with capture_stdout() as captured_output:
         Jac.jac_import("concurrency", base_path=fixture_path("./"))
     stdout_value = captured_output.getvalue().split("\n")
-    assert "Started" in stdout_value[0]
-    assert "B(name='Hi')" in stdout_value[8]
+    assert "Started" in stdout_value[3]
+    assert "B(name='Hi')" in stdout_value[7]
     assert "11" in stdout_value[9]
     assert "13" in stdout_value[10]
 

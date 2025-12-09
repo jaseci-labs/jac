@@ -32,9 +32,9 @@ Add this component:
 
 ```jac
 def LoginPage() -> any {
-    let [username, setUsername] = useState("");
-    let [password, setPassword] = useState("");
-    let [error, setError] = useState("");
+    [username, setUsername] = useState("");
+    [password, setPassword] = useState("");
+    [error, setError] = useState("");
 
     async def handleLogin(e: any) -> None {
         e.preventDefault();
@@ -61,7 +61,7 @@ def LoginPage() -> any {
         setPassword(e.target.value);
     }
 
-    let errorDisplay = None;
+    errorDisplay = None;
     if error {
         errorDisplay = <div style={{
             "color": "#dc2626",
@@ -151,9 +151,9 @@ Add this component:
 
 ```jac
 def SignupPage() -> any {
-    let [username, setUsername] = useState("");
-    let [password, setPassword] = useState("");
-    let [error, setError] = useState("");
+    [username, setUsername] = useState("");
+    [password, setPassword] = useState("");
+    [error, setError] = useState("");
 
     async def handleSignup(e: any) -> None {
         e.preventDefault();
@@ -180,7 +180,7 @@ def SignupPage() -> any {
         setPassword(e.target.value);
     }
 
-    let errorDisplay = None;
+    errorDisplay = None;
     if error {
         errorDisplay = <div style={{
             "color": "#dc2626",
@@ -331,10 +331,10 @@ Authentication = Proving who you are
 
 ```jac
 # 1. Sign up a new user
-let result = await jacSignup(username, password);
+result = await jacSignup(username, password);
 
 # 2. Log in an existing user
-let success = await jacLogin(username, password);
+success = await jacLogin(username, password);
 
 # 3. Log out
 jacLogout();
@@ -348,7 +348,7 @@ if jacIsLoggedIn() {
 ### How jacSignup Works
 
 ```jac
-let result = await jacSignup("alice", "password123");
+result = await jacSignup("alice", "password123");
 
 // Returns:
 {
@@ -367,7 +367,7 @@ let result = await jacSignup("alice", "password123");
 ### How jacLogin Works
 
 ```jac
-let success = await jacLogin("alice", "password123");
+success = await jacLogin("alice", "password123");
 
 // Returns:
 true  // Login successful
@@ -440,7 +440,7 @@ Always use `type="password"` for passwords!
 ### Error Handling
 
 ```jac
-let [error, setError] = useState("");
+[error, setError] = useState("");
 
 # Show error if exists
 {(<div style={{"color": "red"}}>{error}</div>) if error else None}

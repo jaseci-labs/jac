@@ -33,7 +33,6 @@ from jaclang.compiler.constant import Tokens as Tok
 from jaclang.compiler.passes.ast_gen import BaseAstGenPass
 from jaclang.compiler.passes.ast_gen.jsx_processor import EsJsxProcessor
 from jaclang.compiler.passes.ecmascript.es_unparse import es_to_js
-from jaclang.compiler.type_system import types as jtypes
 from jaclang.utils import convert_to_js_import_path, resolve_relative_path
 
 _T = TypeVar("_T", bound=es.Node)
@@ -1167,9 +1166,13 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
         if node.condition and node.condition.gen.es_ast:
             test = cast(es.Expression, node.condition.gen.es_ast)
 
-        update: es.Expression | None = None
-        if node.count_by and node.count_by.gen.es_ast:
-            update = cast(es.Expression, node.count_by.gen.es_ast)
+        update: es.AssignmentExpression | None = None
+        if (
+            node.count_by
+            and node.count_by.gen.es_ast
+            and isinstance(node.count_by.gen.es_ast, es.ExpressionStatement)
+        ):
+            update = cast(es.AssignmentExpression, node.count_by.gen.es_ast.expression)
 
         body = self._build_block_statement(node, node.body)
 
@@ -1806,6 +1809,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
 
     def exit_func_call(self, node: uni.FuncCall) -> None:
         """Process function call."""
+        from jaclang.compiler.type_system import types as jtypes
 
         # Special case: type(x) -> typeof x in JavaScript
         # Check the target directly before processing it into an es_ast

@@ -544,7 +544,12 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
             self.builtin_imports.update(child_pass.builtin_imports)
 
         # Add builtin imports if any were used
-        if self.builtin_imports:
+        # Skip when compiling the builtin module itself to avoid self-referential imports
+        is_builtin_module = (
+            node.loc.mod_path.endswith(("builtin.jac", "builtin.py"))
+            and "runtimelib" in node.loc.mod_path
+        )
+        if self.builtin_imports and not is_builtin_module:
             self.preamble.append(
                 self.sync(
                     ast3.ImportFrom(

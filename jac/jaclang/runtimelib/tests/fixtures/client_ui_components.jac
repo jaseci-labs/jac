@@ -4,7 +4,9 @@ cl import from jac:client_runtime { createState, navigate, }
 
 cl {
     # Shared state
-    let [uiState, setUiState] = createState({"theme": "light"});
+    glob _uiState = createState({"theme": "light"});
+    glob uiState = _uiState[0];
+    glob setUiState = _uiState[1];
 
     # UI Component
     def Button(label: str) -> any {

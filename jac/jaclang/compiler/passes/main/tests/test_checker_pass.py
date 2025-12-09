@@ -423,6 +423,14 @@ def test_checker_call_expr_class(fixture_path: Callable[[str], str]) -> None:
     )
 
 
+def test_type_ref_resolution(fixture_path: Callable[[str], str]) -> None:
+    path = fixture_path("checker_type_ref.jac")
+    program = JacProgram()
+    mod = program.compile(path)
+    TypeCheckPass(ir_in=mod, prog=program)
+    assert len(program.errors_had) == 0
+
+
 def test_checker_mod_path(fixture_path: Callable[[str], str]) -> None:
     path = fixture_path("checker_mod_path.jac")
     program = JacProgram()

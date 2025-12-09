@@ -4,7 +4,7 @@ cl import ".styles.css";
 
 cl {
     def app()  -> any {
-        let [count, setCount] = useState(0);
+        [count, setCount] = useState(0);
         useEffect(lambda   -> None{ console.log("Count: ", count);} , [count]);
         return <div
             style={{

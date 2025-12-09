@@ -88,13 +88,8 @@ Docstrings naturally enhance the semantics of their associated code constructs, 
 
 ## How well does byLLM work?
 
-byLLM is built using the underline priciple of Meaning Typed Programming and we shown our evaluation data compared with two such AI integration frameworks for python, such as DSPy and LMQL. We show significant performance gain against LMQL while allowing on par or better performance to DSPy, while having a lower cost and faster runtime.
+byLLM is built using the underline priciple of Meaning Typed Programming and we shown our evaluation data compared with two such AI integration frameworks for python, such as DSPy and LMQL. We show significant performance gain against LMQL while allowing on par or better performance to DSPy, while reducing devloper complexity upto 10x.
 
-<div align="center">
-    <img src="../docs/docs/assets/correctness_comparison.png" alt="Correctness Comparison" width="600" style="max-width: 100%;">
-    <br>
-    <em>Figure: Correctness comparison of byLLM with DSPy and LMQL on benchmark tasks.</em>
-</div>
 
 **📚 Full Documentation**: [Jac byLLM Documentation](https://www.jac-lang.org/learn/jac-byllm/with_llm/)
 

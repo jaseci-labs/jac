@@ -114,7 +114,7 @@ Add this component to show navigation at the top:
 
 ```jac
 def Navigation() -> any {
-    let isLoggedIn = jacIsLoggedIn();
+    isLoggedIn = jacIsLoggedIn();
 
     if isLoggedIn {
         return <nav style={{
@@ -349,10 +349,10 @@ def TodosPage() -> any {
 ### useNavigate Hook
 
 ```jac
-let navigate = useNavigate();
+navigate = useNavigate();
 
 async def handleLogin() -> None {
-    let success = await jacLogin(username, password);
+    success = await jacLogin(username, password);
     if success {
         navigate("/todos");  # Navigate programmatically
     }
@@ -394,7 +394,7 @@ This pattern:
 
 ```jac
 def Navigation() -> any {
-    let isLoggedIn = jacIsLoggedIn();
+    isLoggedIn = jacIsLoggedIn();
 
     if isLoggedIn {
         return <nav>

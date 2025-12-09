@@ -8,7 +8,9 @@ cl import from jac:client_runtime {
     Link,
 }
 
-cl let [appState, setAppState] = createState({"user": None, "loggedIn": False});
+cl glob _appState = createState({"user": None, "loggedIn": False});
+cl glob appState = _appState[0];
+cl glob setAppState = _appState[1];
 
 cl {
     # Counter component using reactive signal

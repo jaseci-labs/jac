@@ -96,7 +96,7 @@ cl import from react {useState}
 
 cl {
     def app() -> any {
-        let [count, setCount] = useState(0);
+        [count, setCount] = useState(0);
         return <div>
             <h1>Hello, World!</h1>
             <p>Count: {count}</p>
@@ -129,7 +129,7 @@ cl {
     }
 
     def app() -> any {
-        let [todos, setTodos] = useState([]);
+        [todos, setTodos] = useState([]);
 
         useEffect(lambda -> None {
             async def loadTodos() -> None {
@@ -233,7 +233,7 @@ cl import from react { useState, useEffect }
 
 cl {
     def Counter() -> any {
-        let [count, setCount] = useState(0);
+        [count, setCount] = useState(0);
 
         useEffect(lambda -> None {
             console.log("Count changed:", count);
@@ -268,9 +268,9 @@ cl import from react {useState, useEffect}
 
 cl {
     def app() -> any {
-        let [todos, setTodos] = useState([]);
-        let [input, setInput] = useState("");
-        let [filter, setFilter] = useState("all");
+        [todos, setTodos] = useState([]);
+        [input, setInput] = useState("");
+        [filter, setFilter] = useState("all");
 
         # Load todos on mount
         useEffect(lambda -> None {
@@ -347,7 +347,7 @@ def Button() -> any {
 
 ```jac
 def InputField() -> any {
-    let [value, setValue] = useState("");
+    [value, setValue] = useState("");
 
     return <input
         type="text"
@@ -605,8 +605,8 @@ cl import from react {useState}
 
 cl {
     def app() -> any {
-        let [todos, setTodos] = useState([]);
-        let [input, setInput] = useState("");
+        [todos, setTodos] = useState([]);
+        [input, setInput] = useState("");
 
         # Event Handler
         async def addTodo() -> None {

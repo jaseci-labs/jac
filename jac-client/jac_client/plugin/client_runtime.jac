@@ -55,16 +55,16 @@ cl {
     # Direct re-exports of React Router components for seamless integration
     # Router uses HashRouter for hash-based routing (#/path)
     # See: https://reactrouter.com/6.30.1/router-components/hash-router
-    let Router = ReactRouterHashRouter;
-    let Routes = ReactRouterRoutes;
-    let Route = ReactRouterRoute;
-    let Link = ReactRouterLink;
-    let Navigate = ReactRouterNavigate;
+    glob Router = ReactRouterHashRouter;
+    glob Routes = ReactRouterRoutes;
+    glob Route = ReactRouterRoute;
+    glob Link = ReactRouterLink;
+    glob Navigate = ReactRouterNavigate;
 
     # React Router Hooks - wrapped for Jac compatibility
-    let useNavigate = reactRouterUseNavigate;
-    let useLocation = reactRouterUseLocation;
-    let useParams = reactRouterUseParams;
+    glob useNavigate = reactRouterUseNavigate;
+    glob useLocation = reactRouterUseLocation;
+    glob useParams = reactRouterUseParams;
 
     # useRouter Hook - convenience hook that combines common router utilities
     def useRouter()  -> dict {

@@ -17,10 +17,14 @@ def get_jaclang_python_files() -> list[str]:
     """Return all jaclang package .py files we expect to parse."""
     base = Path(jaclang.__file__).parent
     files: list[str] = []
+    # Auto-generated parser files that are too large for py2jac conversion
+    skip_files = {"jac_parser.py", "jac_lark.py"}
     for path in base.rglob("*.py"):
         if "__pycache__" in path.parts:
             continue
         if "vendor" in path.parts:
+            continue
+        if path.name in skip_files:
             continue
         files.append(str(path))
     return sorted(files)
@@ -42,3 +46,8 @@ def test_python_file_parses_with_pyast_build_pass(filename: str) -> None:
     # Should unparse without raising (formatting not required for this check)
     unparsed = py_module.unparse(requires_format=False)
     assert isinstance(unparsed, str)
+
+    # Verify the generated Jac string can be parsed back by the Jac parser.
+    # This catches issues like deeply nested expressions that cause recursion errors.
+    prog = JacProgram.jac_str_formatter(source_str=unparsed, file_path=filename)
+    assert not prog.errors_had, f"Failed to parse generated Jac code for {filename}"

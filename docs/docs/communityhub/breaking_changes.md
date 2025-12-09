@@ -6,6 +6,37 @@ This page documents significant breaking changes in Jac and Jaseci that may affe
 
 MTLLM library is now deprecated and replaced by the byLLM package. In all place where `mtllm` was used before can be replaced with `byllm`.
 
+### Version 0.9.4
+
+#### 1. `let` Keyword Removed - Use Direct Assignment
+
+The `let` keyword has been removed from Jaclang. Variable declarations now use direct assignment syntax, aligning with Python's approach to variable binding.
+
+**Before**
+
+```jac
+with entry {
+    let x = 10;
+    let name = "Alice";
+    let [count, setCount] = useState(0);
+}
+```
+
+**After**
+
+```jac
+with entry {
+    x = 10;
+    name = "Alice";
+    [count, setCount] = useState(0);
+}
+```
+
+**Key Changes:**
+- Remove the `let` keyword from all variable declarations
+- Use direct assignment (`x = value`) instead of `let x = value`
+- This applies to all contexts including destructuring assignments
+
 ### Version 0.8.10
 
 #### 1. byLLM Imports Moved to `byllm.lib`

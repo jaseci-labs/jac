@@ -1,6 +1,6 @@
 # Global and Nonlocal Statements
-let x = "global x";
-let a = 1 , b = 2;
+glob x = "global x";
+glob a = 1 , b = 2;
 
 def test_global {
     # Global with single name

@@ -7,7 +7,6 @@ JavaScript source code (unparsing).
 from __future__ import annotations
 
 from jaclang.compiler.passes.ecmascript import estree as es
-from jaclang.utils.helpers import pascal_to_snake
 
 
 class JSCodeGenerator:
@@ -24,6 +23,8 @@ class JSCodeGenerator:
 
     def generate(self, node: es.Node | None) -> str:
         """Generate JavaScript code for a node."""
+        from jaclang.utils.helpers import pascal_to_snake
+
         if node is None:
             return ""
         method_name = f"gen_{pascal_to_snake(node.type)}"

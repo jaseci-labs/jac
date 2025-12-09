@@ -79,7 +79,7 @@ def math_operations(x):
 print("\n=== 4. Python Libraries ===")
 data = {"name": "Jac", "version": 1.0, "features": ["OSP", "Python interop"]}
 json_str = format_json(data)
-print(f"JSON output:\\n{json_str}")
+print(f"JSON output:\n{json_str}")
 math_result = math_operations(16)
 log_val = round(math_result["log"], 2)
 print(f"Math: sqrt={math_result['sqrt']}, log={log_val}")

@@ -12,3 +12,8 @@ walker SomeWalker {
         visit [-->(`?SomeNode:some_attr==10)];
     }
 }
+
+with entry {
+    [foo, bar] = [1, 2];
+    print(foo);  # <-- 17:10 go to line 16:5
+}

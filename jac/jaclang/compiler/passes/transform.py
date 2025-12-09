@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING, Generic, TypeVar
 from jaclang.compiler.codeinfo import CodeLocInfo
 from jaclang.compiler.unitree import UniNode
 from jaclang.settings import settings
-from jaclang.utils.helpers import ANSIColors, pretty_print_source_location
 from jaclang.utils.log import logging
 
 if TYPE_CHECKING:
@@ -44,6 +43,8 @@ class Alert:
 
     def as_log(self, *, colors: bool = False) -> str:
         """Return the alert as a single line log as opposed to the pretty print."""
+        from jaclang.utils.helpers import ANSIColors
+
         file_path: str = self.loc.mod_path
         if file_path == "":
             return self.msg  # There are error messages without file references.
@@ -57,6 +58,8 @@ class Alert:
 
     def pretty_print(self, *, colors: bool = False) -> str:
         """Pretty prints the Alert to show the alert with source location."""
+        from jaclang.utils.helpers import pretty_print_source_location
+
         pretty_dump = pretty_print_source_location(
             self.loc.mod_path,
             self.loc.orig_src.code,

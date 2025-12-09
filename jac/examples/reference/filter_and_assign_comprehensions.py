@@ -106,7 +106,7 @@ class ComprehensionDemo(Walker):
 
     @on_entry
     def demo_edge_filters(self, here: Employee) -> None:
-        print(f"\\n=== At {here.name} ===")
+        print(f"\n=== At {here.name} ===")
         print("=== 7. Filter Comprehension on Edge Results ===")
         all_reports = refs(OPath(here).edge_out())
         high_paid = filter_on(items=all_reports, func=lambda i: i.salary > 75000)

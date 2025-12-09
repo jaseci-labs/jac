@@ -52,7 +52,7 @@ import from react {
 }
 
 def app -> Any {
-    let [answer, setAnswer] = useState(0);
+    [answer, setAnswer] = useState(0);
 
     async def computeAnswer() -> None {
         response = root spawn add(x=40, y=2);
@@ -98,7 +98,7 @@ walker create_todo {
 # Frontend Components
 cl {
     def app() -> any {
-        let [todos, setTodos] = useState([]);
+        [todos, setTodos] = useState([]);
 
         async def addTodo() -> None {
             response = root spawn create_todo(text="New task");

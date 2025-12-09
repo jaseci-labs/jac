@@ -2,7 +2,7 @@
 
 cl with entry {
     # Test 1: Basic IIFE with no parameters
-    let result1 = (
+    result1 = (
         def get_value()  -> int {
             return 42;
         }
@@ -12,7 +12,7 @@ cl with entry {
     # Expected: 42
 
     # Test 2: IIFE with parameters
-    let result2 = (
+    result2 = (
         def calculate(x: int, y: int) -> int {
             return x * y + x + y;
         }
@@ -24,11 +24,11 @@ cl with entry {
     # Expected: 23 (15 + 5 + 3)
 
     # Test 3: IIFE with local variables
-    let result3 = (
+    result3 = (
         def compute()  -> int {
-            let a = 10;
-            let b = 20;
-            let c = 30;
+            a = 10;
+            b = 20;
+            c = 30;
             return a + b + c;
         }
     )();
@@ -37,7 +37,7 @@ cl with entry {
     # Expected: 60
 
     # Test 4: IIFE with conditional logic
-    let result4 = (
+    result4 = (
         def check_number(n: int) -> str {
             if n > 0 {
                 return "positive";
@@ -55,10 +55,10 @@ cl with entry {
     # Expected: positive
 
     # Test 5: IIFE with loop
-    let result5 = (
+    result5 = (
         def sum_to_n(n: int) -> int {
-            let total = 0;
-            let i = 1;
+            total = 0;
+            i = 1;
             while i <= n {
                 total = total + i;
                 i = i + 1;
@@ -73,7 +73,7 @@ cl with entry {
     # Expected: 15
 
     # Test 6: IIFE returning a function
-    let adder = (
+    adder = (
         def make_adder(x: int) {
             return lambda  y: int: x + y;
         }
@@ -85,9 +85,9 @@ cl with entry {
     # Expected: 15
 
     # Test 7: Nested IIFE
-    let result7 = (
+    result7 = (
         def outer()  -> int {
-            let x = (
+            x = (
                 def inner()  -> int {
                     return 100;
                 }
@@ -100,10 +100,10 @@ cl with entry {
     # Expected: 150
 
     # Test 8: IIFE with array operations
-    let result8 = (
+    result8 = (
         def process_data(data: list) -> int {
-            let sum = 0;
-            let count = 0;
+            sum = 0;
+            count = 0;
             for item in data {
                 sum = sum + item;
                 count = count + 1;
@@ -122,8 +122,8 @@ cl with entry {
     # Expected: 30
 
     # Test 9: IIFE used in assignment chain
-    let x = 5;
-    let result9 = x + (
+    x = 5;
+    result9 = x + (
         def double(n: int) -> int {
             return n * 2;
         }
@@ -135,10 +135,10 @@ cl with entry {
     # Expected: 15
 
     # Test 10: IIFE with object creation
-    let result10 = (
+    result10 = (
         def create_object()  -> dict {
-            let obj = {"name": "Test", "value": 123, "active": True};
-            return obj;
+            my_obj = {"name": "Test", "value": 123, "active": True};
+            return my_obj;
         }
     )();
 
@@ -146,10 +146,10 @@ cl with entry {
     # Expected: {name: 'Test', value: 123, active: true}
 
     # Test 11: IIFE with string manipulation
-    let result11 = (
+    result11 = (
         def format_message(name: str, age: int) -> str {
-            let message = "Hello, " + name + "!";
-            let age_part = " You are " + str(age) + " years old.";
+            message = "Hello, " + name + "!";
+            age_part = " You are " + str(age) + " years old.";
             return message + age_part;
         }
     )(
@@ -160,9 +160,9 @@ cl with entry {
     # Expected: Hello, Alice! You are 25 years old.
 
     # Test 12: IIFE with closure
-    let counter = (
+    counter = (
         def create_counter() {
-            let count = 0;
+            count = 0;
             return lambda  (){ count = count + 1;return count; } ;
         }
     )();

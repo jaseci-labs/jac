@@ -250,7 +250,7 @@ cl import from ".components/Button.tsx" { Button }
 
 cl {
     def app() -> any {
-        let [count, setCount] = useState(0);
+        [count, setCount] = useState(0);
         useEffect(lambda -> None {
             console.log("Count: ", count);
         }, [count]);

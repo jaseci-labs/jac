@@ -7,7 +7,7 @@ with entry {
         import jaclang.compiler.unitree as uni;
     }
     # Define DocType for self-referential typing
-    let DocType = Union[
+    DocType = Union[
         ('Doc', 'Text', 'Line', 'Group', 'Indent', 'Concat', 'IfBreak', 'Align')
     ];
 }
@@ -26,7 +26,7 @@ class Doc {
 
     """Return an indented string representation of the Doc object."""
     def treeprint(self: Doc, level: int = 0) -> str {
-        let indent = '  ' * level;
+        indent = '  ' * level;
         return f"{indent}{self.__class__.__name__}";
     }
 }
@@ -47,8 +47,8 @@ class Text(Doc) {
     }
 
     def treeprint(self: Text, level: int = 0) -> str {
-        let indent = '  ' * level;
-        let token_info = f" [token@L{self.source_token.loc.first_line}]"
+        indent = '  ' * level;
+        token_info = f" [token@L{self.source_token.loc.first_line}]"
         if self.source_token
         else '';
         return f'{indent}Text("{self.text}"){token_info}';
@@ -68,7 +68,7 @@ class Line(Doc) {
 
     """Return a string representation of the Line object."""
     def __str__(self: Line) -> str {
-        let attrs: list[str] = [];
+        attrs: list[str] = [];
         if self.hard {
             attrs.append('hard');
         }
@@ -79,8 +79,8 @@ class Line(Doc) {
     }
 
     def treeprint(self: Line, level: int = 0) -> str {
-        let indent = '  ' * level;
-        let attrs: list[str] = [];
+        indent = '  ' * level;
+        attrs: list[str] = [];
         if self.hard {
             attrs.append('hard=True');
         }
@@ -113,9 +113,9 @@ class Group(Doc) {
     }
 
     def treeprint(self: Group, level: int = 0) -> str {
-        let indent = '  ' * level;
-        let header = f"{indent}Group(id={self.id}, break_contiguous={self.break_contiguous}):";
-        let children_repr: list[str] = [self.contents.treeprint(level + 1)];
+        indent = '  ' * level;
+        header = f"{indent}Group(id={self.id}, break_contiguous={self.break_contiguous}):";
+        children_repr: list[str] = [self.contents.treeprint(level + 1)];
         return header + '\n' + '\n'.join(children_repr);
     }
 }
@@ -136,9 +136,9 @@ class Indent(Doc) {
     }
 
     def treeprint(self: Indent, level: int = 0) -> str {
-        let indent = '  ' * level;
-        let header = f"{indent}Indent:";
-        let children_repr: list[str] = [self.contents.treeprint(level + 1)];
+        indent = '  ' * level;
+        header = f"{indent}Indent:";
+        children_repr: list[str] = [self.contents.treeprint(level + 1)];
         return header + '\n' + '\n'.join(children_repr);
     }
 }
@@ -159,9 +159,9 @@ class Concat(Doc) {
     }
 
     def treeprint(self: Concat, level: int = 0) -> str {
-        let indent = '  ' * level;
-        let header = f"{indent}Concat:";
-        let children_repr = [part.treeprint(level + 1) for part in self.parts];
+        indent = '  ' * level;
+        header = f"{indent}Concat:";
+        children_repr = [part.treeprint(level + 1) for part in self.parts];
         return header + '\n' + '\n'.join(children_repr);
     }
 }
@@ -182,11 +182,11 @@ class IfBreak(Doc) {
     }
 
     def treeprint(self: IfBreak, level: int = 0) -> str {
-        let indent = '  ' * level;
-        let header = f"{indent}IfBreak:";
-        let break_repr: list[str] = [f"{indent}  break_contents:"];
+        indent = '  ' * level;
+        header = f"{indent}IfBreak:";
+        break_repr: list[str] = [f"{indent}  break_contents:"];
         break_repr.append(self.break_contents.treeprint(level + 2));
-        let flat_repr: list[str] = [f"{indent}  flat_contents:"];
+        flat_repr: list[str] = [f"{indent}  flat_contents:"];
         flat_repr.append(self.flat_contents.treeprint(level + 2));
         return header + '\n' + '\n'.join(break_repr) + '\n' + '\n'.join(flat_repr);
     }
@@ -206,9 +206,9 @@ class Align(Doc) {
     }
 
     def treeprint(self: Align, level: int = 0) -> str {
-        let indent = '  ' * level;
-        let header = f"{indent}Align(n={self.n}):";
-        let children_repr: list[str] = [self.contents.treeprint(level + 1)];
+        indent = '  ' * level;
+        header = f"{indent}Align(n={self.n}):";
+        children_repr: list[str] = [self.contents.treeprint(level + 1)];
         return header + '\n' + '\n'.join(children_repr);
     }
 }
