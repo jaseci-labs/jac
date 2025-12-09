@@ -1,5 +1,5 @@
 <div align="center">
-    <img src="/assets/byLLM_name_logo.png" height="150" width="300" alt="byLLM logo">
+    <img src="https://byllm.jaseci.org/logo.png" height="150" width="300" alt="byLLM logo">
 
 </div>
 
@@ -28,15 +28,6 @@ The MTP concept is implemented in Jac-lang through the **byLLM** plugin, which i
     <a href="https://github.com/jaseci-labs/jaseci/tree/main/jac-byllm" class="md-button" style="display: inline-block; margin-right: 10px;">GitHub</a>
     <a href="https://discord.gg/6j3QNdtcN6" class="md-button" style="display: inline-block; margin-right: 10px;">Discord</a>
 </div>
-
-<!-- ![](./assets/byLLM_name_logo.png) -->
-
-<!-- **Quick Links:**
-
-- [About byLLM](https://www.jac-lang.org/learn/jac-byllm/with_llm/)
-- [Get started](https://www.jac-lang.org/learn/jac-byllm/quickstart/)
-- [Usage docs](https://www.jac-lang.org/learn/jac-byllm/usage/)
-- [Research Paper](https://arxiv.org/abs/2405.08965) -->
 
 
 Installation is simple via PyPI:

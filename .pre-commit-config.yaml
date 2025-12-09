@@ -61,8 +61,6 @@ repos:
         exclude: |
           (?x)(
               ^jac-client/jac_client/examples/all-in-one/assets/burger.png$|
-              ^docs/docs/assets/byLLM\ Logo\.png$|
-              ^docs/docs/assets/byLLM_name_logo\.png$|
               ^docs/docs/assets/debug_mode\.jpg$|
               ^docs/docs/assets/examples/jac_book/node1\.png$|
               ^docs/docs/assets/examples/jac_book/node2\.png$|

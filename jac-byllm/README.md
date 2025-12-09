@@ -1,5 +1,5 @@
 <div align="center">
-    <img src="../docs/docs/assets/byLLM_name_logo.png" height="150">
+    <img src="https://byllm.jaseci.org/logo.png" height="150">
 
   [About byLLM] | [Get started] | [Usage docs] | [Research Paper]
 </div>
