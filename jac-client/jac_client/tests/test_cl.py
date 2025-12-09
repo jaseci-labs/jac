@@ -180,12 +180,10 @@ def test_vite_bundle_without_package_json() -> None:
     )
 
     # Building should raise an error
-    from jaclang.runtimelib.client_bundle import ClientBundleError
-
-    with pytest.raises(ClientBundleError) as cm:
+    # Note: We use pytest.raises with match= because Jac's module reloading
+    # can create a different class instance than what we import
+    with pytest.raises(Exception, match="Vite package.json not found"):
         builder.build(module, force=True)
-
-    assert "Vite package.json not found" in str(cm.value)
 
 
 def test_build_bundle_with_antd() -> None:
