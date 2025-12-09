@@ -12,6 +12,7 @@ def get_wind_speed_report(city: str) -> str by MockLLM(
         MockToolCall(tool=get_live_wind_speed, args={"city": "Puttalam"}),
         "The current wind speed in Puttalam is about 18-22 km/h."
     ],
+    show_params=False,
     verbose=True,
 )(
     tools=[get_live_wind_speed]

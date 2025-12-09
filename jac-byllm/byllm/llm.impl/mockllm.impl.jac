@@ -13,9 +13,14 @@ impl MockLLM.dispatch_no_streaming(mtir: MTIR) -> CompletionResult {
         );
         return CompletionResult(output=None, tool_calls=[output.to_tool_call()],);
     }
-    self.log_info(
-        f"Mock LLM call completed with response:\n{output} with params:\n{params}"
-    );
+    log_params = self.format_prompt(params);
+    if bool(self.config.get("show_params", False)) {
+        self.log_info(f"Mock LLM Call Parameters: {params}");
+    } else {
+        self.log_info(
+            f"Mock LLM call completed with response: {output} with params: {log_params}"
+        );
+    }
     return CompletionResult(output=output, tool_calls=[],);
 }
 
