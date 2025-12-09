@@ -32,6 +32,52 @@ jobs:
     - name: Run Jac core tests
       run: pytest -x jac -n auto
 
+  test-core-again:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v5
+      with:
+        submodules: true
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v3
+      with:
+        python-version: 3.12
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e jac
+        pip install pytest
+        pip install pytest-xdist
+
+    - name: Run Jac core tests
+      run: pytest -x jac -n auto
+
+  test-core-again-2:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v5
+      with:
+        submodules: true
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v3
+      with:
+        python-version: 3.12
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e jac
+        pip install pytest
+        pip install pytest-xdist
+
+    - name: Run Jac core tests
+      run: pytest -x jac -n auto
+
   test-packages:
     runs-on: ubuntu-latest
     services:
