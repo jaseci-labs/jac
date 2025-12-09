@@ -1969,6 +1969,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
         if isinstance(node.target, uni.Name):
             if self.ir_in.name == "client_jsx":
                 from icecream import ic
+
                 ic(self.prog.mod)
                 ic(self.prog.mod)
                 ic(self.prog.mod.hub)
