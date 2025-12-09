@@ -709,7 +709,8 @@ cl {
                 <div
                     style={{"display": "flex", "gap": "1rem", "alignItems": "center"}}
                 >
-                    {isLoggedIn and (
+                    {isLoggedIn
+                    and (
                         <>
                             <Link
                                 to="/"
