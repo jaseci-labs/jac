@@ -91,7 +91,7 @@ def test_impl_stay_connected(fixture_path: Callable[[str], str]) -> None:
         lsp.type_check_file(circle_impl_file)
         pos = lspt.Position(8, 11)
         assert (
-            "ability) calculate_area\\n( radius : float ) -> float"
+            "ability) calculate_area\n( radius : float ) -> float"
             in lsp.get_hover_info(circle_impl_file, pos).contents.value.replace("'", "")
         )
     finally:
@@ -106,7 +106,7 @@ def test_impl_auto_discover(fixture_path: Callable[[str], str]) -> None:
         lsp.type_check_file(circle_impl_file)
         pos = lspt.Position(8, 11)
         assert (
-            "(public ability) calculate_area\\n( radius : float ) -> float"
+            "(public ability) calculate_area\n( radius : float ) -> float"
             in lsp.get_hover_info(circle_impl_file, pos).contents.value.replace("'", "")
         )
     finally:
@@ -193,12 +193,12 @@ def test_go_to_definition_md_path(fixture_path: Callable[[str], str]) -> None:
             (7, 17, "typing.py:0:0-0:0"),
             (9, 18, "compiler/__init__.py:0:0-0:0"),
             (9, 38, "compiler/unitree.py:0:0-0:0"),
-            (10, 34, "jac/jaclang/__init__.py:8:3-8:22"),
+            (10, 34, "jac/jaclang/__init__.py:13:3-13:22"),
             (11, 35, "compiler/constant.py:0:0-0:0"),
             (11, 47, "compiler/constant.py:5:0-34:9"),
             (13, 47, "compiler/type_system/type_utils.py:0:0-0:0"),
             (14, 34, "compiler/type_system/__init__.py:0:0-0:0"),
-            (18, 5, "compiler/type_system/types.py:64:0-103:7"),  # TypeBase now on line 18
+            (18, 5, "compiler/type_system/types.jac:48:6-48:14"),  # TypeBase now on line 18
             (20, 34, "compiler/unitree.py:0:0-0:0"),              # UniScopeNode now on line 20
             # (20, 48, "compiler/unitree.py:335:0-566:11"),
             (22, 22, "langserve/tests/fixtures/circle.jac:7:5-7:8"),  # RAD now on line 22, fixture line changed too

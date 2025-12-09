@@ -30,13 +30,13 @@ def Card(
 
 with entry {
     # 1. Basic HTML element with text
-    let basic_element = <div>
+    basic_element = <div>
         Hello World
     </div>;
     print("Basic element:", basic_element);
 
     # 2. Element with attributes
-    let with_attrs = <div
+    with_attrs = <div
         class="container"
         id="main"
     >
@@ -45,14 +45,14 @@ with entry {
     print("With attributes:", with_attrs);
 
     # 3. Self-closing element
-    let self_closing = <img
+    self_closing = <img
         src="image.jpg"
         alt="Description"
     />;
     print("Self-closing:", self_closing);
 
     # 4. Nested elements
-    let nested = (
+    nested = (
         <div>
             <h1>
                 Title
@@ -65,9 +65,9 @@ with entry {
     print("Nested elements:", nested);
 
     # 5. Elements with expression attributes
-    let name = "user123";
-    let age = 25;
-    let user_element = <div
+    name = "user123";
+    age = 25;
+    user_element = <div
         id={name}
         data-age={age}
     >
@@ -76,22 +76,22 @@ with entry {
     print("Expression attributes:", user_element);
 
     # 6. Elements with expression children
-    let count = 42;
-    let with_expr_child = <div>
+    count = 42;
+    with_expr_child = <div>
         Count: {count}
     </div>;
     print("Expression children:", with_expr_child);
 
     # 7. Component usage (capitalized names)
-    let button = <Button
+    button = <Button
         text="Click Me"
         onclick="handleClick()"
     />;
     print("Component:", button);
 
     # 8. Spread attributes
-    let props = {"class": "btn", "type": "submit"};
-    let with_spread = <button
+    props = {"class": "btn", "type": "submit"};
+    with_spread = <button
         {...props}
     >
         Submit
@@ -99,8 +99,8 @@ with entry {
     print("Spread attributes:", with_spread);
 
     # 9. Mixed attributes and spread
-    let base_props = {"class": "card"};
-    let card = <Card
+    base_props = {"class": "card"};
+    card = <Card
         {...base_props}
         title="Welcome"
         content="Hello!"
@@ -109,7 +109,7 @@ with entry {
     print("Mixed spread:", card);
 
     # 10. Complex nested structure
-    let app = (
+    app = (
         <div class="app">
             <header>
                 <h1>
@@ -146,7 +146,7 @@ with entry {
     print("Complex structure:", app);
 
     # 11. Fragment (no tag name)
-    let fragment = (
+    fragment = (
         <>
             <div>
                 First
@@ -159,8 +159,8 @@ with entry {
     print("Fragment:", fragment);
 
     # 12. Dynamic list rendering
-    let items = ["Apple", "Banana", "Cherry"];
-    let list_items = [
+    items = ["Apple", "Banana", "Cherry"];
+    list_items = [
         (
             <li
                 key={i}
@@ -169,15 +169,15 @@ with entry {
             </li>
         ) for (i, item) in enumerate(items)
     ];
-    let list_element = <ul>
+    list_element = <ul>
         {list_items}
     </ul>;
     print("Dynamic list:", list_element);
 
     # 13. Conditional rendering with expressions
-    let is_logged_in = True;
-    let user_name = "Alice";
-    let greeting = <div>
+    is_logged_in = True;
+    user_name = "Alice";
+    greeting = <div>
         {f"Welcome, {user_name}!" if is_logged_in else "Please log in"}
     </div>;
     print("Conditional:", greeting);

@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, TypeVar
 
 import jaclang.compiler.unitree as uni
 from jaclang.compiler.passes.transform import Transform
-from jaclang.utils.helpers import pascal_to_snake
 
 if TYPE_CHECKING:
     from jaclang.compiler.program import JacProgram
@@ -37,11 +36,15 @@ class UniPass(Transform[uni.Module, uni.Module]):
 
     def enter_node(self, node: uni.UniNode) -> None:
         """Run on entering node."""
+        from jaclang.utils.helpers import pascal_to_snake
+
         if hasattr(self, f"enter_{pascal_to_snake(type(node).__name__)}"):
             getattr(self, f"enter_{pascal_to_snake(type(node).__name__)}")(node)
 
     def exit_node(self, node: uni.UniNode) -> None:
         """Run on exiting node."""
+        from jaclang.utils.helpers import pascal_to_snake
+
         if hasattr(self, f"exit_{pascal_to_snake(type(node).__name__)}"):
             getattr(self, f"exit_{pascal_to_snake(type(node).__name__)}")(node)
 

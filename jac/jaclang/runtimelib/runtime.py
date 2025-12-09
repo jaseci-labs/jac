@@ -7,14 +7,12 @@ import html
 import inspect
 import os
 import sys
-import tempfile
 import types
 from collections import OrderedDict
 from collections.abc import Callable, Coroutine, Mapping, Sequence
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import Future
 from dataclasses import MISSING, dataclass, field
 from functools import wraps
-from http.server import BaseHTTPRequestHandler
 from inspect import getfile
 from logging import getLogger
 from pathlib import Path
@@ -40,6 +38,9 @@ _lazy_imports_initialized = False
 
 # Type hints for lazy imports - these are only for static type checking
 if TYPE_CHECKING:
+    from concurrent.futures import ThreadPoolExecutor
+    from http.server import BaseHTTPRequestHandler
+
     from jaclang.compiler.program import JacProgram
     from jaclang.runtimelib.archetype import (
         ObjectSpatialDestination,
@@ -158,6 +159,28 @@ class _LazyProgramDescriptor:
     def __set__(self, obj: object, value: JacProgram) -> None:
         """Set the JacProgram instance."""
         _LazyProgramDescriptor._instance = value
+
+
+class _LazyThreadPoolDescriptor:
+    """Descriptor for lazy ThreadPoolExecutor instantiation.
+
+    This delays importing concurrent.futures until the pool is actually needed,
+    allowing more modules to be converted to Jac.
+    """
+
+    _instance: ThreadPoolExecutor | None = None
+
+    def __get__(self, obj: object, objtype: type | None = None) -> ThreadPoolExecutor:
+        """Lazily create and return ThreadPoolExecutor instance."""
+        if _LazyThreadPoolDescriptor._instance is None:
+            from concurrent.futures import ThreadPoolExecutor
+
+            _LazyThreadPoolDescriptor._instance = ThreadPoolExecutor()
+        return _LazyThreadPoolDescriptor._instance
+
+    def __set__(self, obj: object, value: ThreadPoolExecutor) -> None:
+        """Set the ThreadPoolExecutor instance."""
+        _LazyThreadPoolDescriptor._instance = value
 
 
 plugin_manager = pluggy.PluginManager("jac")
@@ -1720,7 +1743,7 @@ class JacByLLM:
     @staticmethod
     def call_llm(model: object, mtir: MTIR) -> Any:  # noqa: ANN401
         """Call the LLM model."""
-        from jaclang.utils import NonGPT
+        from jaclang.utils import NonGPT  # type: ignore[attr-defined]
 
         random_value_for_type: Callable[[Any], Any] = NonGPT.random_value_for_type
 
@@ -1872,6 +1895,8 @@ class JacUtils:
             os.makedirs(base_path)
         if not module_name:
             module_name = f"_dynamic_module_{len(JacRuntime.loaded_modules)}"
+
+        import tempfile
 
         with tempfile.NamedTemporaryFile(
             mode="w",
@@ -2133,7 +2158,7 @@ class JacRuntime(JacRuntimeInterface):
 
     base_path_dir: str = os.getcwd()
     program: JacProgram = _LazyProgramDescriptor()  # type: ignore[assignment]
-    pool: ThreadPoolExecutor = ThreadPoolExecutor()
+    pool: ThreadPoolExecutor = _LazyThreadPoolDescriptor()  # type: ignore[assignment]
     exec_ctx: ExecutionContext | None = None
     loaded_modules: dict[str, types.ModuleType] = {}
 
@@ -2175,6 +2200,8 @@ class JacRuntime(JacRuntimeInterface):
         JacRuntime.loaded_modules.clear()
         JacRuntime.base_path_dir = os.getcwd()
         JacRuntime.program = JacProgram()
+        from concurrent.futures import ThreadPoolExecutor
+
         JacRuntime.pool = ThreadPoolExecutor()
         if JacRuntime.exec_ctx is not None:
             JacRuntime.exec_ctx.mem.close()

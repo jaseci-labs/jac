@@ -77,7 +77,7 @@ cl {
     # ============================================================================
 
     # Global reactive context for managing signals, effects, and re-renders
-    let __jacReactiveContext = {
+    glob __jacReactiveContext = {
         "signals": [],  # Global signal storage (enables closures)
         "pendingRenders": [],  # Batched re-renders queue
         "flushScheduled": False,  # Debounce flag for batching

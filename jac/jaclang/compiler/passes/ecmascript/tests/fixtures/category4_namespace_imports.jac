@@ -23,11 +23,11 @@ cl {
 
     # Using imported namespaces
     def example_usage() {
-        let component = React.createElement("div", {}, "Hello");
-        let numbers = [1, 2, 3];
-        let now = DateUtils.formatDate();
+        component = React.createElement("div", {}, "Hello");
+        numbers = [1, 2, 3];
+        now = DateUtils.formatDate();
 
-        let result = utils.processData({});
+        result = utils.processData({});
         helpers.logMessage("Processing complete");
 
         return component;

@@ -1,6 +1,6 @@
 with entry {
     # Test: IIFE returning a function
-    let adder = (
+    adder = (
         def make_adder(x: int) {
             return lambda  y: int: x + y;
         }

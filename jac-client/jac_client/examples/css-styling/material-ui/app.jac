@@ -13,15 +13,15 @@ cl import from '@mui/icons-material/Refresh' { default as RefreshIcon }
 
 cl {
     def app()  -> any {
-        let [count, setCount] = useState(0);
+        [count, setCount] = useState(0);
 
         useEffect(lambda   -> None{ console.log("Count changed: ", count);} , [count]);
 
-        let handleIncrement = lambda  e: any  -> None{ setCount(count + 1);} ;
+        handleIncrement = lambda  e: any  -> None{ setCount(count + 1);} ;
 
-        let handleDecrement = lambda  e: any  -> None{ setCount(count - 1);} ;
+        handleDecrement = lambda  e: any  -> None{ setCount(count - 1);} ;
 
-        let handleReset = lambda  e: any  -> None{ setCount(0);} ;
+        handleReset = lambda  e: any  -> None{ setCount(0);} ;
 
         return <Box
             sx={{

@@ -29,7 +29,7 @@ cl {
 
     # Using imported functions in a simple client function
     def example_usage()  -> int {
-        let count = 0;
+        count = 0;
         httpGet("/api/data");
         jacLogin("user", "pass");
         return count;

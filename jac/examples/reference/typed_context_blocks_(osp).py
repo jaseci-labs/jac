@@ -99,12 +99,12 @@ class Checkout(Node):
     def process_payment(self, visitor: Customer) -> None:
         self.transactions += 1
         if isinstance(visitor, RegularCustomer):
-            print(f"\\nRegular customer: {visitor.name}")
+            print(f"\nRegular customer: {visitor.name}")
             print(f"Total: ${visitor.total_spent}, Points: {visitor.loyalty_points}")
         if isinstance(visitor, VIPCustomer):
             discount = visitor.total_spent * visitor.vip_discount
             final_total = visitor.total_spent - discount
-            print(f"\\nVIP customer: {visitor.name}")
+            print(f"\nVIP customer: {visitor.name}")
             print(f"Subtotal: ${visitor.total_spent}, Discount: -${discount}, Final: ${final_total}")
         if isinstance(visitor, Customer):
             print(f"Processing payment for {visitor.name}")
@@ -115,7 +115,7 @@ print("Hierarchy: Product -> Media -> Book/Magazine")
 print("            Product -> Electronics\n")
 cart = ShoppingCart()
 spawn(root(), cart)
-print(f"\\nCart: {cart.items_count} items, Total: ${cart.total}\\n")
+print(f"\nCart: {cart.items_count} items, Total: ${cart.total}\n")
 print("=== Demo 2: Customer Inheritance Chain ===")
 print("Hierarchy: Customer -> RegularCustomer/VIPCustomer\n")
 checkout = connect(left=root(), right=Checkout())

@@ -39,13 +39,13 @@ cl import from react {
 
 cl {
     def app()  -> any {
-        let [standardResult, setStandardResult] = useState(None);
-        let [standardComputed, setStandardComputed] = useState(None);
-        let [reverseResult, setReverseResult] = useState(None);
-        let [uuidResult, setUuidResult] = useState(None);
-        let [reverseUuidResult, setReverseUuidResult] = useState(None);
-        let [positionalResult, setPositionalResult] = useState(None);
-        let [spreadResult, setSpreadResult] = useState(None);
+        [standardResult, setStandardResult] = useState(None);
+        [standardComputed, setStandardComputed] = useState(None);
+        [reverseResult, setReverseResult] = useState(None);
+        [uuidResult, setUuidResult] = useState(None);
+        [reverseUuidResult, setReverseUuidResult] = useState(None);
+        [positionalResult, setPositionalResult] = useState(None);
+        [spreadResult, setSpreadResult] = useState(None);
 
         async def loadData()  -> None {
             # Test standard spawn order: node spawn walker()

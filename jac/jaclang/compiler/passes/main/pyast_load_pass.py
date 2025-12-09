@@ -24,7 +24,6 @@ from typing import TYPE_CHECKING, TypeAlias, TypeVar, cast
 import jaclang.compiler.unitree as uni
 from jaclang.compiler.constant import Tokens as Tok
 from jaclang.compiler.passes.uni_pass import Transform
-from jaclang.utils.helpers import pascal_to_snake
 
 if TYPE_CHECKING:
     from jaclang.compiler.program import JacProgram
@@ -45,6 +44,8 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
         self.mod_path = ir_in.loc.mod_path
         self.orig_src = ir_in.loc.orig_src
         self.in_type_annotation = False  # Track if we're processing a type annotation
+        self.in_match_pattern = False  # Track if we're processing a match pattern class
+        self.in_fstring_expr = False  # Track if we're inside an f-string interpolation
         Transform.__init__(self, ir_in=ir_in, prog=prog, cancel_token=cancel_token)
 
     def nu(self, node: T) -> T:
@@ -54,6 +55,8 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
 
     def convert(self, node: py_ast.AST) -> uni.UniNode:
         """Get python node type."""
+        from jaclang.utils.helpers import pascal_to_snake
+
         if self.is_canceled():
             raise StopIteration
         if hasattr(self, f"proc_{pascal_to_snake(type(node).__name__)}"):
@@ -414,15 +417,13 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
         valid = [target for target in targets if isinstance(target, uni.Expr)]
         if not len(valid) == len(targets):
             raise self.ice("Length mismatch in assignment targets")
-        # Check if any target is a subscript or attribute access (AtomTrailer)
-        # If so, this is not a variable declaration, so mutable should be False
-        is_var_declaration = not any(isinstance(t, uni.AtomTrailer) for t in valid)
+
         if isinstance(value, uni.Expr):
             return uni.Assignment(
                 target=valid,
                 value=value,
                 type_tag=None,
-                mutable=is_var_declaration,
+                mutable=False,
                 kid=[*valid, value],
             )
         else:
@@ -490,6 +491,7 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
                 target=[target],
                 value=value if isinstance(value, (uni.Expr, uni.YieldExpr)) else None,
                 type_tag=annotation_subtag,
+                mutable=False,
                 kid=(
                     [target, annotation_subtag, value]
                     if value
@@ -629,7 +631,9 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
         ]
         if valid_orelse:
             first_elm = valid_orelse[0]
-            if isinstance(first_elm, uni.IfStmt):
+            # Only convert to ElseIf if the IfStmt is the sole statement in the else block.
+            # If there are additional statements after the if, use ElseStmt to preserve them.
+            if isinstance(first_elm, uni.IfStmt) and len(valid_orelse) == 1:
                 else_body: uni.ElseIf | uni.ElseStmt | None = uni.ElseIf(
                     condition=first_elm.condition,
                     body=first_elm.body,
@@ -809,7 +813,7 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
         else:
             raise self.ice()
 
-    def proc_bin_op(self, node: py_ast.BinOp) -> uni.AtomUnit:
+    def proc_bin_op(self, node: py_ast.BinOp) -> uni.AtomUnit | uni.BinaryExpr:
         """Process python node.
 
         class BinOp(expr):
@@ -827,12 +831,30 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
             and isinstance(op, uni.Token)
             and isinstance(right, uni.Expr)
         ):
+            # For same-operator chains (e.g., A | B | C), avoid deeply nested
+            # parentheses by unwrapping the left AtomUnit if it contains a
+            # BinaryExpr with the same operator. This prevents recursion depth
+            # issues when parsing the generated Jac code.
+            unwrapped_left = left
+            is_same_op_chain = False
+            if (
+                isinstance(left, uni.AtomUnit)
+                and isinstance(left.value, uni.BinaryExpr)
+                and isinstance(left.value.op, uni.Token)
+                and left.value.op.value == op.value
+            ):
+                unwrapped_left = left.value
+                is_same_op_chain = True
+
             value = uni.BinaryExpr(
-                left=left,
+                left=unwrapped_left,
                 op=op,
                 right=right,
-                kid=[left, op, right],
+                kid=[unwrapped_left, op, right],
             )
+            # Only wrap in parentheses if this is not a same-operator chain
+            if is_same_op_chain:
+                return value
             return uni.AtomUnit(
                 value=value,
                 kid=[
@@ -1194,10 +1216,14 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
         conversion: int
         format_spec: expr | None
         """
+        # F-string interpolation contains Python code, not Jac code, so don't escape keywords
+        prev_in_fstring = self.in_fstring_expr
+        self.in_fstring_expr = True
         value = self.convert(node.value)
         fmt_spec = (
             cast(uni.Expr, self.convert(node.format_spec)) if node.format_spec else None
         )
+        self.in_fstring_expr = prev_in_fstring
         if isinstance(value, uni.Expr):
             ret = uni.FormattedValue(
                 format_part=value,
@@ -1430,6 +1456,31 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
         else:
             start = "f'"
             end = "'"
+        # Check if string parts contain quote characters and switch styles as needed
+        # Collect all content from string parts to check for quote conflicts
+        all_content = "".join(
+            part.lit_value for part in valid if isinstance(part, uni.String)
+        )
+        has_single = "'" in all_content
+        has_double = '"' in all_content
+        is_triple = len(end) == 3
+
+        # If content has both quote types and we're not using triple quotes, use triple
+        if has_single and has_double and not is_triple:
+            if "'" in end:
+                start = 'f"""'
+                end = '"""'
+            else:
+                start = "f'''"
+                end = "'''"
+        # If content has the current quote char, switch to the other style
+        elif ("'" in end and has_single) or ('"' in end and has_double):
+            if "'" in end:
+                start = start.replace("'", '"')
+                end = end.replace("'", '"')
+            else:
+                start = start.replace('"', "'")
+                end = end.replace('"', "'")
         tok_start = self.operator(Tok.STRING, start)
         tok_end = self.operator(Tok.STRING, end)
         fstr = uni.FString(
@@ -1550,7 +1601,10 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
             kwd_attrs: list[_Identifier]
             kwd_patterns: list[pattern]
         """
+        # Don't escape keywords in match pattern class names
+        self.in_match_pattern = True
         cls = self.convert(node.cls)
+        self.in_match_pattern = False
         kid = [cls]
         if len(node.patterns) != 0:
             patterns = [self.convert(i) for i in node.patterns]
@@ -1740,9 +1794,14 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
             for _, v in TOKEN_MAP.items()
             if v not in ["float", "int", "str", "bool", "self"]
         ]
-        # When in a type annotation context, don't escape type keywords
-        # They're used as type names, not as values
-        should_escape = node.id in reserved_keywords and not self.in_type_annotation
+        # When in a type annotation, match pattern, or f-string expr context, don't escape keywords
+        # They're used as type names or Python code, not as Jac keywords
+        should_escape = (
+            node.id in reserved_keywords
+            and not self.in_type_annotation
+            and not self.in_match_pattern
+            and not self.in_fstring_expr
+        )
         ret = uni.Name(
             orig_src=self.orig_src,
             name=Tok.NAME,
@@ -1768,6 +1827,19 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
         value = self.convert(node.value)
         if isinstance(value, uni.Expr) and isinstance(target, uni.Name):
             op = self.operator(Tok.WALRUS_EQ, ":=")
+            # Wrap conditional expressions in parentheses to preserve precedence
+            # In Jac, walrus has higher precedence than ternary, but Python's
+            # NamedExpr wraps the entire conditional. Adding parens ensures
+            # the correct interpretation when the Jac code is re-parsed.
+            if isinstance(value, uni.IfElseExpr):
+                value = uni.AtomUnit(
+                    value=value,
+                    kid=[
+                        self.operator(Tok.LPAREN, "("),
+                        value,
+                        self.operator(Tok.RPAREN, ")"),
+                    ],
+                )
             expr = uni.BinaryExpr(
                 left=target,
                 op=op,
@@ -1777,9 +1849,9 @@ class PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]):
             return uni.AtomUnit(
                 value=expr,
                 kid=[
-                    self.operator(Tok.RPAREN, "("),
+                    self.operator(Tok.LPAREN, "("),
                     expr,
-                    self.operator(Tok.LPAREN, ")"),
+                    self.operator(Tok.RPAREN, ")"),
                 ],
             )
         else:

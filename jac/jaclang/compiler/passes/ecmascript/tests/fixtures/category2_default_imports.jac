@@ -23,9 +23,9 @@ cl {
 
     # Using imported defaults
     def example_usage() {
-        let app = Vue.createApp({});
+        app = Vue.createApp({});
         axios.get("/api/data");
-        let element = React.createElement("div", {}, "Hello");
+        element = React.createElement("div", {}, "Hello");
 
         return element;
     }

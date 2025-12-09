@@ -50,7 +50,7 @@ cl {
     }
 
     def app() -> any {
-        let [input, setInput] = useState("");
+        [input, setInput] = useState("");
 
         return <div style={{
             "maxWidth": "600px",
@@ -114,8 +114,8 @@ cl {
     }
 
     def app() -> any {
-        let [todos, setTodos] = useState([]);
-        let [input, setInput] = useState("");
+        [todos, setTodos] = useState([]);
+        [input, setInput] = useState("");
 
         # Function to add a new todo
         def addTodo() -> None {
@@ -123,7 +123,7 @@ cl {
                 return;  # Don't add empty todos
             }
 
-            let newTodo = {
+            newTodo = {
                 "text": input.trim(),
                 "done": false
             };
@@ -269,8 +269,8 @@ cl {
     }
 
     def app() -> any {
-        let [todos, setTodos] = useState([]);
-        let [input, setInput] = useState("");
+        [todos, setTodos] = useState([]);
+        [input, setInput] = useState("");
 
         # Add todo
         def addTodo() -> None {
@@ -278,7 +278,7 @@ cl {
                 return;
             }
 
-            let newTodo = {
+            newTodo = {
                 "id": Date.now(),  # Use timestamp as unique ID
                 "text": input.trim(),
                 "done": false
@@ -406,9 +406,9 @@ cl {
     }
 
     def app() -> any {
-        let [todos, setTodos] = useState([]);
-        let [input, setInput] = useState("");
-        let [filter, setFilter] = useState("all");
+        [todos, setTodos] = useState([]);
+        [input, setInput] = useState("");
+        [filter, setFilter] = useState("all");
 
         # ... (keep addTodo, toggleTodo, deleteTodo functions)
 
@@ -536,7 +536,7 @@ This lets children trigger parent behavior!
 
 ```jac
 def app() -> any {
-    let [count, setCount] = useState(0);
+    [count, setCount] = useState(0);
 
     def increment() -> None {
         setCount(count + 1);  # Update state
@@ -615,7 +615,7 @@ def handleClick() -> None {
 **Pattern 1: Toggle Boolean**
 
 ```jac
-let [isOpen, setIsOpen] = useState(false);
+[isOpen, setIsOpen] = useState(false);
 
 def toggle() -> None {
     setIsOpen(not isOpen);
@@ -627,7 +627,7 @@ def toggle() -> None {
 **Pattern 2: Update Input**
 
 ```jac
-let [text, setText] = useState("");
+[text, setText] = useState("");
 
 <input
     value={text}
@@ -640,7 +640,7 @@ let [text, setText] = useState("");
 **Pattern 3: Add to List**
 
 ```jac
-let [items, setItems] = useState([]);
+[items, setItems] = useState([]);
 
 def addItem(newItem: any) -> None {
     setItems(items.concat([newItem]));

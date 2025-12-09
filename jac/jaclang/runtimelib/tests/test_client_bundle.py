@@ -34,7 +34,7 @@ def test_build_bundle_for_module():
     # Check that actual client functions and globals are defined
     assert "function client_page()" in bundle.code
     assert "class ButtonProps" in bundle.code
-    assert 'const API_LABEL = "Runtime Test";' in bundle.code
+    assert 'let API_LABEL = "Runtime Test";' in bundle.code
     # Check hydration logic is present
     assert "__jacHydrateFromDom" in bundle.code
     assert "__jacEnsureHydration" in bundle.code
@@ -66,7 +66,7 @@ def test_build_bundle_with_cl_import():
 
     # Check that our client code is present
     assert "function test_page()" in bundle.code
-    assert 'const APP_TITLE = "Import Test App";' in bundle.code
+    assert 'let APP_TITLE = "Import Test App";' in bundle.code
 
     # Verify the imported module comment is present
     assert "// Imported .jac module: client_runtime" in bundle.code

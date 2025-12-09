@@ -56,7 +56,7 @@ class JacCmd:
             _, filename = os.path.split(filename)
             dot_file = os.path.abspath(f"{filename.replace('.jac', '.dot')}")
             dot_streamlit_view_file = os.path.join(
-                os.path.dirname(__file__), "dot_viewer.py"
+                os.path.dirname(__file__), "dot_viewer.jac"
             )
             bootstrap.run(
                 dot_streamlit_view_file,

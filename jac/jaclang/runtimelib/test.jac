@@ -60,23 +60,23 @@ class JacTextTestRunner(unittest.TextTestRunner) {
 """Jac Testing and Checking."""
 class JacTestCheck {
     with entry {
-        let test_case = unittest.TestCase();
-        let test_suite = unittest.TestSuite();
+        test_case = unittest.TestCase();
+        test_suite = unittest.TestSuite();
     }
 
     """Test Suite."""
     @dataclass
     class TestSuite {
         with entry {
-            let test_case: unittest.FunctionTestCase;
-            let func_name: str;
+            test_case: unittest.FunctionTestCase;
+            func_name: str;
         }
     }
 
     with entry {
-        let test_suite_path: <>dict[(str, <>list[TestSuite])] = {};
-        let breaker = False;
-        let failcount = 0;
+        test_suite_path: <>dict[(str, <>list[TestSuite])] = {};
+        breaker = False;
+        failcount = 0;
     }
 
     """Clear the test suite."""
@@ -94,17 +94,17 @@ class JacTestCheck {
         filepath: (str | None),
         func_name: (str | None)
     ) -> None {
-        let verb = 2 if verbose else 1;
-        let test_suite = JacTestCheck.test_suite;
+        verb = 2 if verbose else 1;
+        test_suite = JacTestCheck.test_suite;
         if (filepath and filepath.endswith('.test.jac')) {
-            let filepath = filepath[:-9];
+            filepath = filepath[:-9];
         } elif (filepath and filepath.endswith('.jac')) {
-            let filepath = filepath[:-4];
+            filepath = filepath[:-4];
         }
         if filepath {
-            let test_cases = JacTestCheck.test_suite_path.get(filepath);
+            test_cases = JacTestCheck.test_suite_path.get(filepath);
             if (test_cases is not None) {
-                let test_suite = unittest.TestSuite();
+                test_suite = unittest.TestSuite();
                 for test_case in test_cases {
                     if func_name {
                         if (test_case.func_name == func_name) {
@@ -116,7 +116,7 @@ class JacTestCheck {
                 }
             }
         } elif func_name {
-            let test_suite = unittest.TestSuite();
+            test_suite = unittest.TestSuite();
             for test_cases in JacTestCheck.test_suite_path.values() {
                 for test_case in test_cases {
                     if (test_case.func_name == func_name) {
@@ -125,14 +125,12 @@ class JacTestCheck {
                 }
             }
         }
-        let runner = JacTextTestRunner(
-            max_failures=maxfail, failfast=xit, verbosity=verb
-        );
-        let result = runner.run(test_suite);
+        runner = JacTextTestRunner(max_failures=maxfail, failfast=xit, verbosity=verb);
+        result = runner.run(test_suite);
         if result.wasSuccessful() {
             print('Passed successfully.');
         } else {
-            let fails = len(result.failures);
+            fails = len(result.failures);
             JacTestCheck.failcount += fails;
             JacTestCheck.breaker = (JacTestCheck.failcount >= maxfail)
             if maxfail
@@ -143,14 +141,14 @@ class JacTestCheck {
     """Create a new test."""
     static def add_test(filepath: str, func_name: str, test_func: Callable) -> None {
         if (filepath and filepath.endswith('.test.jac')) {
-            let filepath = filepath[:-9];
+            filepath = filepath[:-9];
         } elif (filepath and filepath.endswith('.jac')) {
-            let filepath = filepath[:-4];
+            filepath = filepath[:-4];
         }
         if (filepath not in JacTestCheck.test_suite_path) {
             JacTestCheck.test_suite_path[filepath] = [];
         }
-        let test_case = unittest.FunctionTestCase(test_func);
+        test_case = unittest.FunctionTestCase(test_func);
         JacTestCheck.test_suite_path[filepath].append(
             JacTestCheck.TestSuite(test_case=test_case, func_name=func_name)
         );

@@ -34,9 +34,9 @@ cl import from react { useState, useEffect }
 
 cl {
     def TodoApp() -> any {
-        let [todos, setTodos] = useState([]);
-        let [filter, setFilter] = useState("all");
-        let [loading, setLoading] = useState(False);
+        [todos, setTodos] = useState([]);
+        [filter, setFilter] = useState("all");
+        [loading, setLoading] = useState(False);
 
         useEffect(lambda -> None {
             async def loadTodos() -> None {
@@ -71,10 +71,10 @@ cl import from react { useState, useEffect }
 cl {
     def TodoApp() -> any {
         # Separate state variables for different concerns
-        let [todos, setTodos] = useState([]);
-        let [filter, setFilter] = useState("all");
-        let [loading, setLoading] = useState(False);
-        let [error, setError] = useState(None);
+        [todos, setTodos] = useState([]);
+        [filter, setFilter] = useState("all");
+        [loading, setLoading] = useState(False);
+        [error, setError] = useState(None);
 
         useEffect(lambda -> None {
             async def loadTodos() -> None {
@@ -124,7 +124,7 @@ cl import from react { useState }
 cl {
     def UserProfile() -> any {
         # Good: Related data in one object
-        let [user, setUser] = useState({
+        [user, setUser] = useState({
             "name": "",
             "email": "",
             "avatar": ""
@@ -157,21 +157,21 @@ cl import from react { useState, useEffect }
 cl {
     def App() -> any {
         # User state
-        let [user, setUser] = useState(None);
-        let [isLoggedIn, setIsLoggedIn] = useState(False);
+        [user, setUser] = useState(None);
+        [isLoggedIn, setIsLoggedIn] = useState(False);
 
         # Todo state
-        let [todos, setTodos] = useState([]);
-        let [selectedId, setSelectedId] = useState(None);
+        [todos, setTodos] = useState([]);
+        [selectedId, setSelectedId] = useState(None);
 
         # UI state
-        let [theme, setTheme] = useState("light");
-        let [sidebarOpen, setSidebarOpen] = useState(False);
-        let [modalOpen, setModalOpen] = useState(False);
+        [theme, setTheme] = useState("light");
+        [sidebarOpen, setSidebarOpen] = useState(False);
+        [modalOpen, setModalOpen] = useState(False);
 
         # Settings state
-        let [notifications, setNotifications] = useState(True);
-        let [language, setLanguage] = useState("en");
+        [notifications, setNotifications] = useState(True);
+        [language, setLanguage] = useState("en");
 
         useEffect(lambda -> None {
             async def loadData() -> None {
@@ -207,8 +207,8 @@ cl {
 
     def App() -> any {
         # Global state
-        let [currentUser, setCurrentUser] = useState(None);
-        let [theme, setTheme] = useState("light");
+        [currentUser, setCurrentUser] = useState(None);
+        [theme, setTheme] = useState("light");
 
         appValue = {
             "currentUser": currentUser,
@@ -229,8 +229,8 @@ cl {
         app = useContext(AppContext);
 
         # Local component state
-        let [text, setText] = useState("");
-        let [valid, setValid] = useState(False);
+        [text, setText] = useState("");
+        [valid, setValid] = useState(False);
 
         def validate(value: str) -> None {
             setValid(len(value.trim()) > 0);
@@ -251,8 +251,8 @@ cl {
 
     def TodoList() -> any {
         # Local list state
-        let [sortBy, setSortBy] = useState("date");
-        let [order, setOrder] = useState("asc");
+        [sortBy, setSortBy] = useState("date");
+        [order, setOrder] = useState("asc");
 
         # Access global context
         app = useContext(AppContext);
@@ -279,9 +279,9 @@ cl import from '@jac-client/utils' { jacLogout }
 cl {
     # Custom hook: User management
     def useUser() -> dict {
-        let [user, setUser] = useState(None);
-        let [loading, setLoading] = useState(False);
-        let [error, setError] = useState(None);
+        [user, setUser] = useState(None);
+        [loading, setLoading] = useState(False);
+        [error, setError] = useState(None);
 
         async def loadUser() -> None {
             setLoading(True);
@@ -316,8 +316,8 @@ cl {
 
     # Custom hook: Todo management
     def useTodos() -> dict {
-        let [todos, setTodos] = useState([]);
-        let [loading, setLoading] = useState(False);
+        [todos, setTodos] = useState([]);
+        [loading, setLoading] = useState(False);
 
         async def loadTodos() -> None {
             setLoading(True);
@@ -395,8 +395,8 @@ cl import from react { useState, useMemo }
 
 cl {
     def TodoApp() -> any {
-        let [todos, setTodos] = useState([]);
-        let [filter, setFilter] = useState("all");
+        [todos, setTodos] = useState([]);
+        [filter, setFilter] = useState("all");
 
         # Memoized filtered todos - only recomputes when todos or filter changes
         filteredTodos = useMemo(lambda -> list {
@@ -446,8 +446,8 @@ cl import from react { useState }
 
 cl {
     def TodoApp() -> any {
-        let [todos, setTodos] = useState([]);
-        let [filter, setFilter] = useState("all");
+        [todos, setTodos] = useState([]);
+        [filter, setFilter] = useState("all");
 
         # Simple derived values - computed on each render
         def getFilteredTodos() -> list {
@@ -485,8 +485,8 @@ cl import from react { useState, useEffect }
 
 cl {
     def TodoApp() -> any {
-        let [todos, setTodos] = useState([]);
-        let [stats, setStats] = useState({
+        [todos, setTodos] = useState([]);
+        [stats, setStats] = useState({
             "total": 0,
             "active": 0,
             "completed": 0
@@ -574,7 +574,7 @@ cl {
             "loading": False
         };
 
-        let [state, dispatch] = useReducer(todoReducer, initialState);
+        [state, dispatch] = useReducer(todoReducer, initialState);
 
         useEffect(lambda -> None {
             async def loadTodos() -> None {
@@ -629,8 +629,8 @@ cl {
 
     # Provider component
     def TodoProvider(props: dict) -> any {
-        let [todos, setTodos] = useState([]);
-        let [filter, setFilter] = useState("all");
+        [todos, setTodos] = useState([]);
+        [filter, setFilter] = useState("all");
 
         async def addTodo(text: str) -> None {
             response = root spawn create_todo(text=text);
@@ -720,7 +720,7 @@ cl import from react { useState, useCallback }
 
 cl {
     def TodoApp() -> any {
-        let [todos, setTodos] = useState([]);
+        [todos, setTodos] = useState([]);
 
         # Memoized callback - only recreated if todos changes
         handleToggle = useCallback(lambda id: str -> None {
@@ -762,8 +762,8 @@ cl import from react { useState }
 
 cl {
     def TodoApp() -> any {
-        let [todos, setTodos] = useState([]);
-        let [filter, setFilter] = useState("all");
+        [todos, setTodos] = useState([]);
+        [filter, setFilter] = useState("all");
 
         # Action functions
         async def addTodo(text: str) -> None {
@@ -815,8 +815,8 @@ cl import from react { useState, useMemo }
 
 cl {
     def TodoApp() -> any {
-        let [todos, setTodos] = useState([]);
-        let [filter, setFilter] = useState("all");
+        [todos, setTodos] = useState([]);
+        [filter, setFilter] = useState("all");
 
         # Memoized selectors
         filteredTodos = useMemo(lambda -> list {
@@ -865,7 +865,7 @@ cl {
     # Main app with combined hooks
     def App() -> any {
         # User state with useState
-        let [user, setUser] = useState(None);
+        [user, setUser] = useState(None);
 
         # Todo state with useReducer
         def todoReducer(state: dict, action: dict) -> dict {
@@ -885,10 +885,10 @@ cl {
             return state;
         }
 
-        let [todoState, dispatch] = useReducer(todoReducer, {"todos": [], "loading": False});
+        [todoState, dispatch] = useReducer(todoReducer, {"todos": [], "loading": False});
 
         # UI state with useState
-        let [theme, setTheme] = useState("light");
+        [theme, setTheme] = useState("light");
 
         useEffect(lambda -> None {
             async def loadData() -> None {
@@ -930,12 +930,12 @@ cl import from react { useState, useEffect, useMemo, useCallback }
 cl {
     def TodoApp() -> any {
         # State management
-        let [todos, setTodos] = useState([]);
-        let [filter, setFilter] = useState("all");
-        let [loading, setLoading] = useState(False);
-        let [error, setError] = useState(None);
-        let [user, setUser] = useState(None);
-        let [sidebarOpen, setSidebarOpen] = useState(False);
+        [todos, setTodos] = useState([]);
+        [filter, setFilter] = useState("all");
+        [loading, setLoading] = useState(False);
+        [error, setError] = useState(None);
+        [user, setUser] = useState(None);
+        [sidebarOpen, setSidebarOpen] = useState(False);
 
         # Load initial data
         useEffect(lambda -> None {
@@ -1093,15 +1093,15 @@ cl import from react { useState }
 
 #  Good: Separate state variables
 def App() -> any {
-    let [user, setUser] = useState(None);
-    let [todos, setTodos] = useState([]);
-    let [sidebarOpen, setSidebarOpen] = useState(False);
-    let [theme, setTheme] = useState("light");
+    [user, setUser] = useState(None);
+    [todos, setTodos] = useState([]);
+    [sidebarOpen, setSidebarOpen] = useState(False);
+    [theme, setTheme] = useState("light");
 }
 
 #  Avoid: One giant state object for unrelated data
 def App() -> any {
-    let [appState, setAppState] = useState({
+    [appState, setAppState] = useState({
         "user": None,
         "todos": [],
         "sidebarOpen": False,
@@ -1117,7 +1117,7 @@ cl import from react { useState, useMemo }
 
 #  Good: Memoize expensive calculations
 def TodoApp() -> any {
-    let [todos, setTodos] = useState([]);
+    [todos, setTodos] = useState([]);
 
     activeTodos = useMemo(lambda -> list {
         return todos.filter(lambda t: any -> bool { return not t.done; });
@@ -1126,7 +1126,7 @@ def TodoApp() -> any {
 
 #  Avoid: Computing on every render
 def TodoApp() -> any {
-    let [todos, setTodos] = useState([]);
+    [todos, setTodos] = useState([]);
 
     # This runs on every render, even if todos hasn't changed
     activeTodos = todos.filter(lambda t: any -> bool { return not t.done; });
@@ -1140,14 +1140,14 @@ cl import from react { useState }
 
 #  Good: Calculate derived values
 def TodoApp() -> any {
-    let [todos, setTodos] = useState([]);
+    [todos, setTodos] = useState([]);
     activeCount = todos.filter(lambda t: any -> bool { return not t.done; }).length;
 }
 
 #  Avoid: Storing derived values in state
 def TodoApp() -> any {
-    let [todos, setTodos] = useState([]);
-    let [activeCount, setActiveCount] = useState(0);  # Redundant!
+    [todos, setTodos] = useState([]);
+    [activeCount, setActiveCount] = useState(0);  # Redundant!
 }
 ```
 
@@ -1165,13 +1165,13 @@ def TodoApp() -> any {
         return state;
     }
 
-    let [state, dispatch] = useReducer(reducer, {"todos": [], "count": 0});
+    [state, dispatch] = useReducer(reducer, {"todos": [], "count": 0});
 }
 
 #  Avoid: Multiple useState for interdependent state
 def TodoApp() -> any {
-    let [todos, setTodos] = useState([]);
-    let [count, setCount] = useState(0);
+    [todos, setTodos] = useState([]);
+    [count, setCount] = useState(0);
     # Risk of inconsistency - need to update both together
 }
 ```
@@ -1183,9 +1183,9 @@ cl import from react { useState, useEffect }
 
 #  Good: Comprehensive state management
 def TodoApp() -> any {
-    let [todos, setTodos] = useState([]);
-    let [loading, setLoading] = useState(False);
-    let [error, setError] = useState(None);
+    [todos, setTodos] = useState([]);
+    [loading, setLoading] = useState(False);
+    [error, setError] = useState(None);
 
     useEffect(lambda -> None {
         async def loadTodos() -> None {
@@ -1216,7 +1216,7 @@ cl import from react { useState, useCallback }
 
 #  Good: Memoized callbacks prevent unnecessary re-renders
 def TodoApp() -> any {
-    let [todos, setTodos] = useState([]);
+    [todos, setTodos] = useState([]);
 
     handleToggle = useCallback(lambda id: str -> None {
         setTodos(todos.map(lambda t: any -> any {
@@ -1238,7 +1238,7 @@ cl import from react { useState, useContext, createContext }
 ThemeContext = createContext("light");
 
 def App() -> any {
-    let [theme, setTheme] = useState("light");
+    [theme, setTheme] = useState("light");
     return <ThemeContext.Provider value={theme}>
         <DeeplyNestedComponent />
     </ThemeContext.Provider>;
