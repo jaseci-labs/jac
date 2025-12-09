@@ -109,7 +109,7 @@ def test_core_fixture_emits_expected_constructs(
         "function greet",
         "function fibonacci",
         "for (const i of array)",
-        "for (let i = 0; i < limit; i += 1;)",
+        "for (let i = 0; i < limit; i += 1)",
         "while (counter > 0)",
     ]:
         assert pattern in js_code
