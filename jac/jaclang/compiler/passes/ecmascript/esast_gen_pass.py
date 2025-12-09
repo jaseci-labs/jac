@@ -1961,6 +1961,11 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
                     jac_node=node,
                 )
         if isinstance(node.target, uni.Name):
+            if self.ir_in.name == 'client_jsx':
+                print(self.prog.mod)
+                print(self.prog.mod)
+                print(self.prog.mod.hub)
+                print(self.prog.get_type_evaluator())
             callee_type = self.prog.get_type_evaluator().get_type_of_expression(
                 node.target
             )

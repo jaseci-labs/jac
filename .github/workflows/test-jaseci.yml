@@ -30,7 +30,7 @@ jobs:
         pip install pytest-xdist
 
     - name: Run Jac core tests
-      run: pytest -x jac -n auto
+      run: pytest -s -x jac -n auto
 
   test-core-again:
     runs-on: ubuntu-latest
@@ -53,7 +53,7 @@ jobs:
         pip install pytest-xdist
 
     - name: Run Jac core tests
-      run: pytest -x jac -n auto
+      run: pytest -s -x jac -n auto
 
   test-core-again-2:
     runs-on: ubuntu-latest
@@ -76,7 +76,7 @@ jobs:
         pip install pytest-xdist
 
     - name: Run Jac core tests
-      run: pytest -x jac -n auto
+      run: pytest -s -x jac -n auto
 
   test-packages:
     runs-on: ubuntu-latest
