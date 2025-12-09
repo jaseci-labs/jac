@@ -1968,10 +1968,11 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
                 )
         if isinstance(node.target, uni.Name):
             if self.ir_in.name == "client_jsx":
-                print(self.prog.mod)
-                print(self.prog.mod)
-                print(self.prog.mod.hub)
-                print(self.prog.get_type_evaluator())
+                from icecream import ic
+                ic(self.prog.mod)
+                ic(self.prog.mod)
+                ic(self.prog.mod.hub)
+                ic(self.prog.get_type_evaluator())
             callee_type = self.prog.get_type_evaluator().get_type_of_expression(
                 node.target
             )
