@@ -327,7 +327,7 @@ cl {
             alert("Password must be at least 6 characters long.");
             return;
         }
-        # Use runtime auth function - no need to know about /user/create endpoint!
+        # Use runtime auth function - no need to know about /user/register endpoint!
         result = await jacSignup(username, password);
         if result["success"] if "success" in result else False {
             alert("Account created successfully! Welcome to LittleX!");

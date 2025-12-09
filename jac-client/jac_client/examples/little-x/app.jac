@@ -328,11 +328,11 @@ cl def LoginForm()  -> any {
                 <label
                     style={{"display": "block", "marginBottom": "5px"}}
                 >
-                    Username:
+                    Email:
                 </label>
                 <input
-                    type="text"
-                    id="username"
+                    type="email"
+                    id="email"
                     style={{
                         "width": "100%",
                         "padding": "8px",
@@ -410,9 +410,9 @@ cl def LoginForm()  -> any {
 # Handle login form submission
 cl async def handle_login(event: any) -> None {
     event.preventDefault();
-    username = document.getElementById("username").value;
+    email = document.getElementById("email").value;
     password = document.getElementById("password").value;
-    success = await jacLogin(username, password);
+    success = await jacLogin(email, password);
     if success {
         navigate("/home");
     } else {
@@ -448,11 +448,11 @@ cl def SignupForm()  -> any {
                 <label
                     style={{"display": "block", "marginBottom": "5px"}}
                 >
-                    Username:
+                    Email:
                 </label>
                 <input
-                    type="text"
-                    id="signup-username"
+                    type="email"
+                    id="signup-email"
                     required
                     style={{
                         "width": "100%",
@@ -529,7 +529,7 @@ cl def SignupForm()  -> any {
 # Handle signup form submission
 cl async def handle_signup(event: any) -> None {
     event.preventDefault();
-    username = document.getElementById("signup-username").value;
+    email = document.getElementById("signup-email").value;
     password = document.getElementById("signup-password").value;
     password_confirm = document.getElementById("signup-password-confirm").value;
     # Client-side validation
@@ -537,16 +537,16 @@ cl async def handle_signup(event: any) -> None {
         alert("Passwords do not match!");
         return;
     }
-    if username.length < 3 {
-        alert("Username must be at least 3 characters long.");
+    if email.length < 3 {
+        alert("Email must be at least 3 characters long.");
         return;
     }
     if password.length < 6 {
         alert("Password must be at least 6 characters long.");
         return;
     }
-    # Use runtime auth function - no need to know about /user/create endpoint!
-    result = await jacSignup(username, password);
+    # Use runtime auth function - no need to know about /user/register endpoint!
+    result = await jacSignup(email, password);
     if result["success"] if "success" in result else False {
         alert("Account created successfully! Welcome to LittleX!");
         navigate("/home");

@@ -148,13 +148,13 @@ cl {
     }
 
     # Authentication helpers
-    async def jacSignup(username: str, password: str) -> dict {
+    async def jacSignup(email: str, password: str) -> dict {
         response = await fetch(
-            "/user/create",
+            "/user/register",
             {
                 "method": "POST",
                 "headers": {"Content-Type": "application/json"},
-                "body": JSON.stringify({"username": username, "password": password})
+                "body": JSON.stringify({"email": email, "password": password})
             }
         );
 
@@ -163,7 +163,7 @@ cl {
             token = data["token"];
             if token {
                 __setLocalStorage("jac_token", token);
-                return {"success": True, "token": token, "username": username};
+                return {"success": True, "token": token, "email": email};
             }
             return {"success": False, "error": "No token received"};
         } else {
@@ -182,13 +182,13 @@ cl {
         }
     }
 
-    async def jacLogin(username: str, password: str) -> bool {
+    async def jacLogin(email: str, password: str) -> bool {
         response = await fetch(
             "/user/login",
             {
                 "method": "POST",
                 "headers": {"Content-Type": "application/json"},
-                "body": JSON.stringify({"username": username, "password": password})
+                "body": JSON.stringify({"email": email, "password": password})
             }
         );
 

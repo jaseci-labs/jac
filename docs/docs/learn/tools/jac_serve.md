@@ -38,7 +38,7 @@ Returns API information and available endpoints.
 curl http://localhost:8000/
 ```
 
-#### POST /user/create
+#### POST /user/register
 Create a new user account. Each user gets their own persistent root node.
 
 **Request Body:**
@@ -60,7 +60,7 @@ Create a new user account. Each user gets their own persistent root node.
 
 **Example:**
 ```bash
-curl -X POST http://localhost:8000/user/create \
+curl -X POST http://localhost:8000/user/register \
   -H "Content-Type: application/json" \
   -d '{"username": "alice", "password": "secret123"}'
 ```
@@ -268,7 +268,7 @@ jac serve example_api.jac
 
 ### 2. Create a user
 ```bash
-TOKEN=$(curl -s -X POST http://localhost:8000/user/create \
+TOKEN=$(curl -s -X POST http://localhost:8000/user/register \
   -H "Content-Type: application/json" \
   -d '{"username": "alice", "password": "secret123"}' \
   | jq -r '.token')
