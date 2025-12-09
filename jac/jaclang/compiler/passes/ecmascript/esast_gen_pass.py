@@ -144,6 +144,12 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
 
     def before_pass(self) -> None:
         """Initialize the pass."""
+        if self.ir_in.name == 'client_jsx':
+                print(self.prog.mod)
+                print(self.prog.mod)
+                print(self.prog.mod.hub)
+                print(self.prog.get_type_evaluator())
+
         from jaclang.compiler.codeinfo import ClientManifest
 
         self.child_passes: list[EsastGenPass] = self._init_child_passes(EsastGenPass)
