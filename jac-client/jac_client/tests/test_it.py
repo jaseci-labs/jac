@@ -327,9 +327,7 @@ def test_all_in_one_app_endpoints() -> None:
                 test_email = "test_user@example.com"
                 test_password = "test_password_123"
                 try:
-                    print(
-                        "[DEBUG] Sending POST request to /user/register endpoint"
-                    )
+                    print("[DEBUG] Sending POST request to /user/register endpoint")
                     register_payload = {
                         "email": test_email,
                         "password": test_password,
@@ -368,9 +366,7 @@ def test_all_in_one_app_endpoints() -> None:
 
                 # POST /user/login – login with registered credentials
                 try:
-                    print(
-                        "[DEBUG] Sending POST request to /user/login endpoint"
-                    )
+                    print("[DEBUG] Sending POST request to /user/login endpoint")
                     login_payload = {
                         "email": test_email,
                         "password": test_password,
@@ -382,9 +378,7 @@ def test_all_in_one_app_endpoints() -> None:
                         method="POST",
                     )
                     with urlopen(req_login, timeout=20) as resp_login:
-                        login_body = resp_login.read().decode(
-                            "utf-8", errors="ignore"
-                        )
+                        login_body = resp_login.read().decode("utf-8", errors="ignore")
                         print(
                             "[DEBUG] Received response from /user/login\n"
                             f"Status: {resp_login.status}\n"
@@ -429,7 +423,10 @@ def test_all_in_one_app_endpoints() -> None:
                                 f"Body: {invalid_body}"
                             )
                             # Login should fail with invalid credentials
-                            assert resp_invalid.status != 200 or "error" in invalid_body.lower()
+                            assert (
+                                resp_invalid.status != 200
+                                or "error" in invalid_body.lower()
+                            )
                     except HTTPError as http_err:
                         # Expected: login should fail with 401 or similar
                         print(
@@ -439,7 +436,9 @@ def test_all_in_one_app_endpoints() -> None:
                             f"Expected 400/401/403 for invalid login, got {http_err.code}"
                         )
                 except URLError as exc:
-                    print(f"[DEBUG] Unexpected error while testing invalid login: {exc}")
+                    print(
+                        f"[DEBUG] Unexpected error while testing invalid login: {exc}"
+                    )
                     pytest.fail("Unexpected error testing invalid login")
 
             finally:
