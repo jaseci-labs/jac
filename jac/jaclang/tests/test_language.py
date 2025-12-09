@@ -1442,8 +1442,8 @@ def test_concurrency(
     with capture_stdout() as captured_output:
         Jac.jac_import("concurrency", base_path=fixture_path("./"))
     stdout_value = captured_output.getvalue().split("\n")
-    assert "Started" in stdout_value[0]
-    assert "B(name='Hi')" in stdout_value[8]
+    assert "Started" in stdout_value[3]
+    assert "B(name='Hi')" in stdout_value[7]
     assert "11" in stdout_value[9]
     assert "13" in stdout_value[10]
 
