@@ -147,7 +147,7 @@ def deploy_k8(
             "export DEBIAN_FRONTEND=noninteractive && "
             "apt-get update && apt-get install -y git npm nodejs && "
             "rm -rf ./jaseci || true && "
-            "git clone --branch jac-scale-fixes-accoemondate-jac-gpt --single-branch --depth 1 "
+            "git clone --branch jac-scale-aws-compatibility --single-branch --depth 1 "
             "https://github.com/juzailmlwork/jaseci.git && "
             "cd ./jaseci && "
             "git submodule update --init --recursive && "
