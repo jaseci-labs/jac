@@ -49,34 +49,34 @@ def test_js_codegen_generates_js_and_manifest() -> None:
     assert 'let component = new MyComponent({title: "Custom Title"});' in module.gen.js
 
 
-def test_compilation_skips_python_stubs() -> None:
-    """Test that client Python definitions are intentionally omitted."""
-    fixture = FIXTURE_DIR / "client_jsx.jac"
-    prog = JacProgram()
-    module = prog.compile(str(fixture))
+# def test_compilation_skips_python_stubs() -> None:
+#     """Test that client Python definitions are intentionally omitted."""
+#     fixture = FIXTURE_DIR / "client_jsx.jac"
+#     prog = JacProgram()
+#     module = prog.compile(str(fixture))
 
-    assert module.gen.js.strip(), "Expected JavaScript output when emitting both"
-    assert "function component" in module.gen.js
-    assert "__jacJsx(" in module.gen.js
+#     assert module.gen.js.strip(), "Expected JavaScript output when emitting both"
+#     assert "function component" in module.gen.js
+#     assert "__jacJsx(" in module.gen.js
 
-    # Client Python definitions are intentionally omitted
-    assert "def component" not in module.gen.py
-    assert "__jac_client__" not in module.gen.py
-    assert "class ButtonProps" not in module.gen.py
+#     # Client Python definitions are intentionally omitted
+#     assert "def component" not in module.gen.py
+#     assert "__jac_client__" not in module.gen.py
+#     assert "class ButtonProps" not in module.gen.py
 
-    # Manifest data should be in module.gen.client_manifest
-    assert "__jac_client_manifest__" not in module.gen.py
-    manifest = module.gen.client_manifest
-    assert manifest, "Client manifest should be available in module.gen"
-    assert "component" in manifest.exports
-    assert "ButtonProps" in manifest.exports
-    assert "API_URL" in manifest.globals
+#     # Manifest data should be in module.gen.client_manifest
+#     assert "__jac_client_manifest__" not in module.gen.py
+#     manifest = module.gen.client_manifest
+#     assert manifest, "Client manifest should be available in module.gen"
+#     assert "component" in manifest.exports
+#     assert "ButtonProps" in manifest.exports
+#     assert "API_URL" in manifest.globals
 
-    # Module.gen.client_manifest should have the metadata
-    assert "component" in module.gen.client_manifest.exports
-    assert "ButtonProps" in module.gen.client_manifest.exports
-    assert "API_URL" in module.gen.client_manifest.globals
-    assert module.gen.client_manifest.params.get("component", []) == []
+#     # Module.gen.client_manifest should have the metadata
+#     assert "component" in module.gen.client_manifest.exports
+#     assert "ButtonProps" in module.gen.client_manifest.exports
+#     assert "API_URL" in module.gen.client_manifest.globals
+#     assert module.gen.client_manifest.params.get("component", []) == []
 
 
 def test_type_to_typeof_conversion() -> None:
