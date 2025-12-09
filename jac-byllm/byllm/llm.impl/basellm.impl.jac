@@ -113,7 +113,7 @@ impl BaseLLM.dispatch_no_streaming(mtir: MTIR) -> CompletionResult {
     message: LiteLLMMessage = response.choices[0].message;  # type: ignore
     mtir.add_message(message);
     output_content: str = message.content or "";  # type: ignore
-    self.log_info(f"LLM call completed with response:{output_content}");
+    self.log_info(f"LLM call completed with response: {output_content}");
     output_value = mtir.parse_response(output_content);
     tool_calls: list[ToolCall] = [];
     for tool_call in message.tool_calls or [] {  # type: ignore
