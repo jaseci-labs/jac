@@ -5,6 +5,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.2.4 (Unreleased)
 
+- **Authentication API Update**: Updated authentication functions (`jacLogin` and `jacSignup`) to use `email` instead of `username` for user identification. This change aligns with standard authentication practices and improves security. All authentication examples and documentation have been updated to reflect this change. The `/user/register` and `/user/login` endpoints now accept `email` in the request payload. End-to-end tests have been added to verify authentication endpoint functionality. [Breaking Change - See Migration Guide]
+
 - **JSON-Based Configuration System**: Introduced a flexible JSON-based configuration system that allows developers to customize Vite build settings, add plugins, and override build options through a simple `config.json` file in the project root. The system automatically generates `vite.config.js` in `.jac-client.configs/` directory, keeping the project root clean while preserving all essential defaults. Supports custom plugins (e.g., Tailwind CSS), build options, server configuration, and resolve options. [Documentation](https://docs.jaseci.org/jac-client/advance/custom-config/)
 
 - **CLI Command for Config Generation**: Added `jac generate_client_config` command to create a default `config.json` file with the proper structure, making it easy for developers to start customizing their build configuration. The command prevents accidental overwrites of existing config files.
