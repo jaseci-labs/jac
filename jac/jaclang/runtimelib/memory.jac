@@ -8,15 +8,15 @@ import from typing { Any, Generic, TypeVar, cast }
 import from uuid { UUID }
 import from .archetype { TANCH, Anchor, NodeAnchor, Root }
 with entry {
-    let ID = TypeVar('ID');
+    ID = TypeVar('ID');
 }
 
 """Generic Memory Handler."""
 @dataclass
 class Memory(Generic[(ID, TANCH)]) {
     with entry {
-        let __mem__: <>dict[((ID | UUID), TANCH)] = field(default_factory=<>dict);
-        let __gc__: <>set[TANCH] = field(default_factory=<>set);
+        __mem__: <>dict[((ID | UUID), TANCH)] = field(default_factory=<>dict);
+        __gc__: <>set[TANCH] = field(default_factory=<>set);
     }
 
     """Close memory handler."""
@@ -58,7 +58,7 @@ class Memory(Generic[(ID, TANCH)]) {
         filter: (Callable[([TANCH], TANCH)] | None) = None
     ) -> Generator[TANCH] {
         if not isinstance(ids, Iterable) {
-            let ids = [ids];
+            ids = [ids];
         }
         return (
             anchor
@@ -89,7 +89,7 @@ class Memory(Generic[(ID, TANCH)]) {
     """Remove anchor/s from memory."""
     def remove(self: Memory, ids: (ID | Iterable[ID])) -> None {
         if not isinstance(ids, Iterable) {
-            let ids = [ids];
+            ids = [ids];
         }
         for id in ids {
             if (anchor := self.__mem__.pop(id, None)) {
@@ -126,7 +126,7 @@ class Memory(Generic[(ID, TANCH)]) {
 @dataclass
 class ShelfStorage(Memory[(UUID, Anchor)]) {
     with entry {
-        let __shelf__: (Shelf[Anchor] | None) = None;
+        __shelf__: (Shelf[Anchor] | None) = None;
     }
 
     """Initialize memory handler."""
@@ -152,7 +152,7 @@ class ShelfStorage(Memory[(UUID, Anchor)]) {
                 self.__shelf__.pop(str(anc.id), None);
                 self.__mem__.pop(anc.id, None);
             }
-            let keys = <>set(self.__mem__.keys());
+            keys = <>set(self.__mem__.keys());
             self.sync_mem_to_db(keys);
             self.sync_mem_to_db(<>set((self.__mem__.keys() - keys)));
         }
@@ -177,7 +177,7 @@ class ShelfStorage(Memory[(UUID, Anchor)]) {
                     and d.persistent
                     and (d.hash != hash(dumps(d)))
                 ) {
-                    let _id = str(d.id);
+                    _id = str(d.id);
                     if (p_d := self.__shelf__.get(_id)) {
                         if (
                             isinstance(p_d, NodeAnchor)
@@ -239,11 +239,11 @@ class ShelfStorage(Memory[(UUID, Anchor)]) {
         filter: (Callable[([Anchor], Anchor)] | None) = None
     ) -> Generator[Anchor] {
         if not isinstance(ids, Iterable) {
-            let ids = [ids];
+            ids = [ids];
         }
         if isinstance(self.__shelf__, Shelf) {
             for id in ids {
-                let anchor = self.__mem__.get(id);
+                anchor = self.__mem__.get(id);
                 if (
                     not anchor
                     and (id not in self.__gc__)
@@ -264,7 +264,7 @@ class ShelfStorage(Memory[(UUID, Anchor)]) {
 
     """Find one by id."""
     def find_by_id(self: ShelfStorage, id: UUID) -> (Anchor | None) {
-        let data = super.find_by_id(id);
+        data = super.find_by_id(id);
         if (
             not data
             and isinstance(self.__shelf__, Shelf)

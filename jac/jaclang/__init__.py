@@ -3,6 +3,11 @@
 import sys
 
 from jaclang.runtimelib.meta_importer import JacMetaImporter
+
+# Register JacMetaImporter BEFORE loading plugins, so .jac modules can be imported
+if not any(isinstance(f, JacMetaImporter) for f in sys.meta_path):
+    sys.meta_path.insert(0, JacMetaImporter())
+
 from jaclang.runtimelib.runtime import (
     JacRuntime,
     JacRuntimeImpl,
@@ -12,8 +17,5 @@ from jaclang.runtimelib.runtime import (
 
 plugin_manager.register(JacRuntimeImpl)
 plugin_manager.load_setuptools_entrypoints("jac")
-
-if not any(isinstance(f, JacMetaImporter) for f in sys.meta_path):
-    sys.meta_path.insert(0, JacMetaImporter())
 
 __all__ = ["JacRuntimeInterface", "JacRuntime"]

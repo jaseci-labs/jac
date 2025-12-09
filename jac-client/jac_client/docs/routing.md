@@ -228,7 +228,7 @@ cl import from "@jac-client/utils" { Link, useLocation }
 
 cl {
     def Navigation() -> any {
-        let location = useLocation();
+        location = useLocation();
 
         def linkStyle(path: str) -> dict {
             isActive = location.pathname == path;
@@ -270,9 +270,9 @@ cl import from "@jac-client/utils" { useNavigate }
 
 cl {
     def LoginForm() -> any {
-        let [username, setUsername] = useState("");
-        let [password, setPassword] = useState("");
-        let navigate = useNavigate();
+        [username, setUsername] = useState("");
+        [password, setPassword] = useState("");
+        navigate = useNavigate();
 
     async def handleLogin(e: any) -> None {
         e.preventDefault();
@@ -326,8 +326,8 @@ cl import from "@jac-client/utils" { useParams, Link }
 
 cl {
     def UserProfile() -> any {
-        let params = useParams();
-        let userId = params.id;
+        params = useParams();
+        userId = params.id;
 
         return <div>
             <h1>User Profile</h1>
@@ -363,7 +363,7 @@ cl import from "@jac-client/utils" { useLocation }
 
 cl {
     def CurrentPath() -> any {
-        let location = useLocation();
+        location = useLocation();
 
         return <div>
             <p>Current pathname: {location.pathname}</p>
@@ -404,7 +404,7 @@ cl {
     }
 
     def LoginPage() -> any {
-        let navigate = useNavigate();
+        navigate = useNavigate();
 
         async def handleLogin(e: any) -> None {
             e.preventDefault();
@@ -452,7 +452,7 @@ cl import from "@jac-client/utils" { Router, Routes, Route, Link, useLocation }
 
 cl {
     def Navigation() -> any {
-        let location = useLocation();
+        location = useLocation();
 
         def linkStyle(path: str) -> dict {
             isActive = location.pathname == path;
@@ -531,8 +531,8 @@ cl {
     }
 
     def UserProfile() -> any {
-        let params = useParams();
-        let username = params.id;
+        params = useParams();
+        username = params.id;
 
         return <div>
             <h1> Profile: {username}</h1>
@@ -583,7 +583,7 @@ cl import from "@jac-client/utils" {
 ```jac
 #  CORRECT - Use useNavigate hook
 def MyComponent() -> any {
-    let navigate = useNavigate();
+    navigate = useNavigate();
     navigate("/dashboard");
 }
 
@@ -618,8 +618,8 @@ def ProtectedPage() -> any {
 
 # Access parameter in component
 def UserProfile() -> any {
-    let params = useParams();
-    let userId = params.id;
+    params = useParams();
+    userId = params.id;
     return <div>User: {userId}</div>;
 }
 ```
@@ -627,7 +627,7 @@ def UserProfile() -> any {
 ### 7. **Active Link Styling**
 ```jac
 def Navigation() -> any {
-    let location = useLocation();
+    location = useLocation();
 
     def isActive(path: str) -> bool {
         return location.pathname == path;

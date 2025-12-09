@@ -154,7 +154,6 @@ class Tokens(str, Enum):
     TYP_BYTES = "TYP_BYTES"
     TYP_ANY = "TYP_ANY"
     TYP_TYPE = "TYP_TYPE"
-    KW_LET = "KW_LET"
     KW_ABSTRACT = "KW_ABSTRACT"
     KW_OBJECT = "KW_OBJECT"
     KW_CLASS = "KW_CLASS"
@@ -410,7 +409,6 @@ class TsTokens(str, Enum):
 
     # Keywords - Declarations
     KW_VAR = "KW_VAR"
-    KW_LET = "KW_LET"
     KW_CONST = "KW_CONST"
     KW_FUNCTION = "KW_FUNCTION"
     KW_CLASS = "KW_CLASS"
@@ -591,7 +589,6 @@ class TsTokens(str, Enum):
 TS_TOKEN_VALUES = {
     # Keywords - Declarations
     TsTokens.KW_VAR: "var",
-    TsTokens.KW_LET: "let",
     TsTokens.KW_CONST: "const",
     TsTokens.KW_FUNCTION: "function",
     TsTokens.KW_CLASS: "class",

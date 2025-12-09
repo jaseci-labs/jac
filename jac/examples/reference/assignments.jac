@@ -9,7 +9,7 @@ with entry {
     print(f"{a} {b} {c}");
 
     # Let keyword
-    let value = 100;
+    value = 100;
     print(value);
 
     # Type annotation with value
@@ -23,7 +23,7 @@ with entry {
     print(result);
 
     # Let with type
-    let count: int = 5;
+    count: int = 5;
     print(count);
 
     # Augmented arithmetic assignments

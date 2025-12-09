@@ -18,7 +18,7 @@ cl {
 
     def app() -> any {
         # Try using a normal variable
-        let todos = [
+        todos = [
             {"text": "Learn Jac", "done": false},
             {"text": "Build app", "done": false}
         ];
@@ -47,7 +47,7 @@ cl import from react {useState}
 cl {
     def app() -> any {
         # Create state with useState
-        let [todos, setTodos] = useState([]);
+        [todos, setTodos] = useState([]);
 
         return <div style={{"padding": "20px"}}>
             <h1>My Todos</h1>
@@ -103,7 +103,7 @@ cl {
 
     def app() -> any {
         # State for input field
-        let [input, setInput] = useState("");
+        [input, setInput] = useState("");
 
         return <div style={{
             "maxWidth": "600px",
@@ -159,7 +159,7 @@ cl {
 
     def app() -> any {
         # State for todos
-        let [todos, setTodos] = useState([
+        [todos, setTodos] = useState([
             {"text": "Learn Jac basics", "done": false},
             {"text": "Build a todo app", "done": false}
         ]);
@@ -242,11 +242,11 @@ cl {
     }
 
     def app() -> any {
-        let [todos, setTodos] = useState([
+        [todos, setTodos] = useState([
             {"text": "Learn Jac basics", "done": false},
             {"text": "Build a todo app", "done": true}
         ]);
-        let [filter, setFilter] = useState("all");
+        [filter, setFilter] = useState("all");
 
         return <div style={{
             "maxWidth": "600px",
@@ -293,7 +293,7 @@ class TodoApp:
 ```jac
 # Jac with React
 def app() -> any {
-    let [todos, setTodos] = useState([]);  # This is state
+    [todos, setTodos] = useState([]);  # This is state
 
     # When you call setTodos(), React automatically updates the UI!
 }
@@ -302,7 +302,7 @@ def app() -> any {
 ### The `useState` Hook
 
 ```jac
-let [value, setValue] = useState(initialValue);
+[value, setValue] = useState(initialValue);
 ```
 
 **Returns a pair:**
@@ -313,19 +313,19 @@ let [value, setValue] = useState(initialValue);
 
 ```jac
 # String state
-let [name, setName] = useState("Alice");
+[name, setName] = useState("Alice");
 
 # Number state
-let [count, setCount] = useState(0);
+[count, setCount] = useState(0);
 
 # Boolean state
-let [isOpen, setIsOpen] = useState(false);
+[isOpen, setIsOpen] = useState(false);
 
 # Array state
-let [todos, setTodos] = useState([]);
+[todos, setTodos] = useState([]);
 
 # Object state
-let [user, setUser] = useState({"name": "Alice", "age": 30});
+[user, setUser] = useState({"name": "Alice", "age": 30});
 ```
 
 ### Why Use `useState`?
@@ -334,7 +334,7 @@ let [user, setUser] = useState({"name": "Alice", "age": 30});
 
 ```jac
 def app() -> any {
-    let count = 0;  # Normal variable
+    count = 0;  # Normal variable
 
     # Button click would change count, but UI won't update!
     return <button>Count: {count}</button>;
@@ -345,7 +345,7 @@ def app() -> any {
 
 ```jac
 def app() -> any {
-    let [count, setCount] = useState(0);  # State
+    [count, setCount] = useState(0);  # State
 
     # When setCount is called, React re-renders the component!
     return <button>Count: {count}</button>;
@@ -358,10 +358,10 @@ You can have multiple pieces of state:
 
 ```jac
 def app() -> any {
-    let [todos, setTodos] = useState([]);
-    let [input, setInput] = useState("");
-    let [filter, setFilter] = useState("all");
-    let [loading, setLoading] = useState(false);
+    [todos, setTodos] = useState([]);
+    [input, setInput] = useState("");
+    [filter, setFilter] = useState("all");
+    [loading, setLoading] = useState(false);
 
     # Use them independently
 }
@@ -375,14 +375,14 @@ Follow this pattern:
 
 ```jac
 # Pattern: [thing, setThing]
-let [count, setCount] = useState(0);
-let [name, setName] = useState("");
-let [isOpen, setIsOpen] = useState(false);
-let [todos, setTodos] = useState([]);
+[count, setCount] = useState(0);
+[name, setName] = useState("");
+[isOpen, setIsOpen] = useState(false);
+[todos, setTodos] = useState([]);
 
 #  Bad names
-let [count, updateCount] = useState(0);  # Inconsistent
-let [x, y] = useState(0);                 # Not descriptive
+[count, updateCount] = useState(0);  # Inconsistent
+[x, y] = useState(0);                 # Not descriptive
 ```
 
 ### The `.map()` Method for Lists
@@ -414,11 +414,11 @@ items = [TodoItem(text=todo["text"]) for todo in todos]
 
 ```jac
 #  WRONG - Never do this!
-let [todos, setTodos] = useState([]);
+[todos, setTodos] = useState([]);
 todos.push(newTodo);  # DON'T modify directly!
 
 #  CORRECT - Create new array
-let [todos, setTodos] = useState([]);
+[todos, setTodos] = useState([]);
 setTodos(todos.concat([newTodo]));  # Create new array
 ```
 
@@ -430,7 +430,7 @@ State flows down through props:
 
 ```jac
 def Parent() -> any {
-    let [name, setName] = useState("Alice");
+    [name, setName] = useState("Alice");
 
     # Pass state down as props
     return <Child name={name} />;
@@ -478,10 +478,10 @@ setTodos(todos.concat([newTodo]));
 
 ```jac
 #  Wrong
-let [todos, setTodos] = useState();  # undefined
+[todos, setTodos] = useState();  # undefined
 
 #  Correct
-let [todos, setTodos] = useState([]);  # empty array
+[todos, setTodos] = useState([]);  # empty array
 ```
 
 ### Issue: useState is not defined
@@ -499,7 +499,7 @@ cl import from react {useState}
 Try adding more initial todos:
 
 ```jac
-let [todos, setTodos] = useState([
+[todos, setTodos] = useState([
     {"text": "Learn Jac basics", "done": true},
     {"text": "Build a todo app", "done": false},
     {"text": "Deploy to production", "done": false},
@@ -510,7 +510,7 @@ let [todos, setTodos] = useState([
 And display the count of completed todos:
 
 ```jac
-let completedCount = todos.filter(lambda todo: any -> bool {
+completedCount = todos.filter(lambda todo: any -> bool {
     return todo.done;
 }).length;
 

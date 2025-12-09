@@ -115,8 +115,8 @@ def test_client_fixture_generates_client_bundle(
     es_ast = compile_to_esast(fixture_path(client_fixture))
     js_code = es_to_js(es_ast)
 
-    assert 'const API_URL = "https://api.example.com";' in js_code, (
-        "Client global should remain const."
+    assert 'let API_URL = "https://api.example.com";' in js_code, (
+        "Client global should use let."
     )
     assert "function component()" in js_code
     assert "__jacJsx" in js_code

@@ -684,7 +684,7 @@ def py2jac(filename: str) -> None:
     import jaclang.compiler.unitree as uni
     from jaclang.compiler.passes.main import PyastBuildPass
     from jaclang.compiler.program import JacProgram
-    from jaclang.runtimelib.utils import read_file_with_encoding
+    from jaclang.compiler.utils import read_file_with_encoding
 
     if filename.endswith(".py"):
         file_source = read_file_with_encoding(filename)

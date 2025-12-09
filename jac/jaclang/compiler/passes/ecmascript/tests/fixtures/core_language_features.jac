@@ -1,7 +1,7 @@
 """Combined core Jac constructs for ECMAScript generator tests."""
 
 cl {
-    let global_counter: int = 0;
+    glob al_counter: int = 0;
 
     # Basic functions and control flow
     def add(a: int, b: int) -> int {

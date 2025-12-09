@@ -473,15 +473,15 @@ class JacParser(Transform[uni.Source, uni.Module]):
         def global_var(self, _: None) -> uni.GlobalVars:
             """Grammar rule.
 
-            global_var: (KW_LET | KW_GLOBAL) access_tag? assignment_list SEMI
+            global_var: KW_GLOBAL access_tag? assignment_list SEMI
             """
-            is_frozen = self.consume(uni.Token).name == Tok.KW_LET
+            self.consume(uni.Token)  # KW_GLOBAL
             access_tag = self.match(uni.SubTag)
             assignments_list = self.consume(list)
             return uni.GlobalVars(
                 access=access_tag,
                 assignments=self.extract_from_list(assignments_list, uni.Assignment),
-                is_frozen=is_frozen,
+                is_frozen=False,
                 kid=self.flat_cur_nodes,
             )
 
@@ -1229,15 +1229,14 @@ class JacParser(Transform[uni.Source, uni.Module]):
         def has_stmt(self, kid: list[uni.UniNode]) -> uni.ArchHas:
             """Grammar rule.
 
-            has_stmt: KW_STATIC? (KW_LET | KW_HAS) access_tag? has_assign_list SEMI
+            has_stmt: KW_STATIC? KW_HAS access_tag? has_assign_list SEMI
             """
             chomp = [*kid]
             is_static = (
                 isinstance(chomp[0], uni.Token) and chomp[0].name == Tok.KW_STATIC
             )
             chomp = chomp[1:] if is_static else chomp
-            is_freeze = isinstance(chomp[0], uni.Token) and chomp[0].name == Tok.KW_LET
-            chomp = chomp[1:]
+            chomp = chomp[1:]  # Skip KW_HAS
             access = chomp[0] if isinstance(chomp[0], uni.SubTag) else None
             chomp = chomp[1:] if access else chomp
             assign = chomp[0]
@@ -1246,7 +1245,7 @@ class JacParser(Transform[uni.Source, uni.Module]):
                 return uni.ArchHas(
                     vars=assigns,
                     is_static=is_static,
-                    is_frozen=is_freeze,
+                    is_frozen=False,
                     access=access,
                     kid=self.flat_cur_nodes,
                 )
@@ -1740,7 +1739,7 @@ class JacParser(Transform[uni.Source, uni.Module]):
         def assignment(self, _: None) -> uni.Assignment:
             """Grammar rule.
 
-            assignment: KW_LET? (atomic_chain EQ)+ (yield_expr | expression)
+            assignment: (atomic_chain EQ)+ (yield_expr | expression)
                       | atomic_chain type_tag (EQ (yield_expr | expression))?
                       | atomic_chain aug_op (yield_expr | expression)
             """
@@ -1748,7 +1747,6 @@ class JacParser(Transform[uni.Source, uni.Module]):
             type_tag: uni.SubTag | None = None
             is_aug: uni.Token | None = None
 
-            is_frozen = bool(self.match_token(Tok.KW_LET))
             if first_expr := self.match(uni.Expr):
                 assignees.append(first_expr)
 
@@ -1774,7 +1772,7 @@ class JacParser(Transform[uni.Source, uni.Module]):
                     target=valid_assignees,
                     type_tag=type_tag,
                     value=value,
-                    mutable=is_frozen,
+                    mutable=False,
                     aug_op=is_aug,
                     kid=self.flat_cur_nodes,
                 )
@@ -1782,7 +1780,7 @@ class JacParser(Transform[uni.Source, uni.Module]):
                 target=valid_assignees,
                 type_tag=type_tag,
                 value=value,
-                mutable=is_frozen,
+                mutable=False,
                 kid=self.flat_cur_nodes,
             )
 

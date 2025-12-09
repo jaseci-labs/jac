@@ -13,7 +13,6 @@ import jaclang.compiler.unitree as uni
 from jaclang.compiler.constant import TsTokens as Tok
 from jaclang.compiler.larkparse import ts_parser as ts_lark
 from jaclang.compiler.passes.main import BaseTransform, Transform
-from jaclang.utils.helpers import ANSIColors
 
 if TYPE_CHECKING:
     from jaclang.compiler.program import JacProgram
@@ -208,6 +207,8 @@ class TypeScriptParser(Transform[uni.Source, uni.Module]):
 
     def report_errors(self, *, colors: bool = True) -> None:
         """Report errors to user."""
+        from jaclang.utils.helpers import ANSIColors
+
         if not sys.stderr.isatty():
             colors = False
         for alrt in self.errors_had:

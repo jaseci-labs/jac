@@ -34,9 +34,9 @@ walker read_todos {
 
 cl {
     def app()  -> any {
-        let [todos, setTodos] = useState([]);
-        let [inputValue, setInputValue] = useState("");
-        let [filter, setFilter] = useState("all");
+        [todos, setTodos] = useState([]);
+        [inputValue, setInputValue] = useState("");
+        [filter, setFilter] = useState("all");
 
         useEffect(
             lambda   -> None{ async def loadTodos()  -> None {

@@ -12,6 +12,7 @@ from enum import IntEnum
 from hashlib import md5
 from types import EllipsisType
 from typing import (
+    TYPE_CHECKING,
     Any,
     Generic,
     TypeVar,
@@ -36,8 +37,10 @@ from jaclang.compiler.constant import (
     JacSemTokenType as SemTokType,
 )
 from jaclang.compiler.constant import Tokens as Tok
-from jaclang.compiler.type_system.types import TypeBase
 from jaclang.utils import resolve_relative_path
+
+if TYPE_CHECKING:
+    from jaclang.compiler.type_system.types import TypeBase
 from jaclang.utils.treeprinter import (
     print_ast_tree,
     print_symtab_tree,
@@ -1042,7 +1045,8 @@ class Module(AstDocNode, UniScopeNode):
 
     def format(self) -> str:
         """Get all sub nodes of type."""
-        from jaclang.compiler.passes.tool import DocIRGenPass, JacFormatPass
+        from jaclang.compiler.passes.tool.doc_ir_gen_pass import DocIRGenPass
+        from jaclang.compiler.passes.tool.jac_formatter_pass import JacFormatPass
         from jaclang.compiler.program import JacProgram
 
         return JacFormatPass(
@@ -1131,10 +1135,7 @@ class GlobalVars(ClientFacingNode, ElementStmt, AstAccessNode):
         client_tok = self._source_client_token()
         if self.is_client_decl and (client_tok is not None or not self.in_client_block):
             new_kid.append(client_tok if client_tok else self.gen_token(Tok.KW_CLIENT))
-        if self.is_frozen:
-            new_kid.append(self.gen_token(Tok.KW_LET))
-        else:
-            new_kid.append(self.gen_token(Tok.KW_GLOBAL))
+        new_kid.append(self.gen_token(Tok.KW_GLOBAL))
         if self.access:
             new_kid.append(self.access)
         for i, assign in enumerate(self.assignments):
@@ -1647,6 +1648,10 @@ class Archetype(
         new_kid: list[UniNode] = []
         if self.doc:
             new_kid.append(self.doc)
+            # When defining a class inside code blocks (not at module/class level),
+            # make the docstring a standalone statement so it doesn't merge with code.
+            if not isinstance(self.parent, (Module, Archetype, Enum)):
+                new_kid.append(self.gen_token(Tok.SEMI))
         client_tok = self._source_client_token()
         if self.is_client_decl and (client_tok is not None or not self.in_client_block):
             new_kid.append(client_tok if client_tok else self.gen_token(Tok.KW_CLIENT))
@@ -2117,9 +2122,9 @@ class Ability(
         new_kid: list[UniNode] = []
         if self.doc:
             new_kid.append(self.doc)
-            # When defining an ability inside another ability, make the docstring a
-            # standalone statement so it doesn't merge with surrounding code.
-            if isinstance(self.parent, Ability):
+            # When defining an ability inside code blocks (not at module/class level),
+            # make the docstring a standalone statement so it doesn't merge with code.
+            if not isinstance(self.parent, (Module, Archetype, Enum)):
                 new_kid.append(self.gen_token(Tok.SEMI))
         client_tok = self._source_client_token()
         if self.is_client_decl and (client_tok is not None or not self.in_client_block):
@@ -2398,11 +2403,7 @@ class ArchHas(AstAccessNode, AstDocNode, ArchBlockStmt, CodeBlockStmt):
             new_kid.append(self.doc)
         if self.is_static:
             new_kid.append(self.gen_token(Tok.KW_STATIC))
-        (
-            new_kid.append(self.gen_token(Tok.KW_LET))
-            if self.is_frozen
-            else new_kid.append(self.gen_token(Tok.KW_HAS))
-        )
+        new_kid.append(self.gen_token(Tok.KW_HAS))
         if self.access:
             new_kid.append(self.access)
         for i, var in enumerate(self.vars):
@@ -3249,8 +3250,6 @@ class Assignment(AstTypedVarNode, EnumBlockStmt, CodeBlockStmt):
             res = res and self.type_tag.normalize(deep) if self.type_tag else res
             res = res and self.aug_op.normalize(deep) if self.aug_op else res
         new_kid: list[UniNode] = []
-        if self.mutable and not self.is_enum_stmt:
-            new_kid.append(self.gen_token(Tok.KW_LET))
         for idx, targ in enumerate(self.target):
             new_kid.append(targ)
             if idx < len(self.target) - 1:
@@ -3584,6 +3583,19 @@ class FormattedValue(Expr):
         new_kid.append(self.gen_token(Tok.RBRACE))
         self.set_kids(nodes=new_kid)
         return res
+
+    def unparse(self) -> str:
+        valid = self.normalize()
+        # Generate {expr} without spaces inside braces
+        result = "{" + self.format_part.unparse()
+        if self.conversion != -1:
+            result += "!" + chr(self.conversion)
+        if self.format_spec:
+            result += ":" + self.format_spec.unparse()
+        result += "}"
+        if not valid:
+            raise NotImplementedError(f"Node {type(self).__name__} is not valid.")
+        return result
 
 
 class ListVal(AtomExpr):
@@ -3954,6 +3966,21 @@ class AtomTrailer(Expr):
         self.set_kids(nodes=new_kid)
         return res
 
+    def unparse(self) -> str:
+        valid = self.normalize()
+        # For attribute access (self.x) and subscripts (list[x]),
+        # we don't want spaces around the dot or before brackets
+        result = self.target.unparse()
+        if self.is_null_ok:
+            result += "?"
+        if self.is_attr:
+            result += "."
+        if self.right:
+            result += self.right.unparse()
+        if not valid:
+            raise NotImplementedError(f"Node {type(self).__name__} is not valid.")
+        return result
+
     @property
     def as_attr_list(self) -> list[AstSymbolNode]:
         left = self.right if isinstance(self.right, AtomTrailer) else self.target
@@ -4112,6 +4139,28 @@ class IndexSlice(AtomExpr):
         new_kid.append(self.gen_token(Tok.RSQUARE))
         self.set_kids(nodes=new_kid)
         return res
+
+    def unparse(self) -> str:
+        valid = self.normalize()
+        # Generate [content] without spaces inside brackets
+        result = "["
+        if self.is_range:
+            for i, slice in enumerate(self.slices):
+                if i > 0:
+                    result += ", "
+                if slice.start:
+                    result += slice.start.unparse()
+                result += ":"
+                if slice.stop:
+                    result += slice.stop.unparse()
+                if slice.step:
+                    result += ":" + slice.step.unparse()
+        elif len(self.slices) == 1 and self.slices[0].start:
+            result += self.slices[0].start.unparse()
+        result += "]"
+        if not valid:
+            raise NotImplementedError(f"Node {type(self).__name__} is not valid.")
+        return result
 
 
 class TypeRef(AtomExpr):
@@ -4969,6 +5018,20 @@ class MatchArch(MatchPattern):
         self.set_kids(nodes=new_kid)
         return res
 
+    def unparse(self) -> str:
+        valid = self.normalize()
+        # Generate name(...) without spaces around parentheses
+        result = self.name.unparse() + "("
+        parts: list[str] = []
+        if self.arg_patterns:
+            parts.extend(arg.unparse() for arg in self.arg_patterns)
+        if self.kw_patterns:
+            parts.extend(kw.unparse() for kw in self.kw_patterns)
+        result += ", ".join(parts) + ")"
+        if not valid:
+            raise NotImplementedError(f"Node {type(self).__name__} is not valid.")
+        return result
+
 
 # AST Terminal Node Types
 # --------------------------
@@ -5240,6 +5303,27 @@ class String(Literal):
             except (ValueError, SyntaxError):
                 return self.value
         else:
+            # For f-string literal parts (no quotes), decode common escape sequences
+            # but only if the f-string is not a raw string (rf"..." or fr"...")
+            if self.parent and isinstance(self.parent, FString):
+                fstring_parent: FString = self.parent
+                # Check if it's a raw f-string by looking at the start token
+                is_raw = False
+                if fstring_parent.start and fstring_parent.start.value:
+                    prefix = fstring_parent.start.value.lower()
+                    is_raw = "r" in prefix
+                if not is_raw:
+                    # Decode escape sequences in the correct order:
+                    # First protect \\ by replacing with placeholder, then decode
+                    # escape sequences, then restore backslashes
+                    result = self.value
+                    placeholder = "\x00"
+                    result = result.replace("\\\\", placeholder)
+                    result = result.replace("\\n", "\n")
+                    result = result.replace("\\t", "\t")
+                    result = result.replace("\\r", "\r")
+                    result = result.replace(placeholder, "\\")
+                    return result
             return self.value
 
     def normalize(self, deep: bool = True) -> bool:
@@ -5249,7 +5333,12 @@ class String(Literal):
     def unparse(self) -> str:
         super().unparse()
         if self.parent and isinstance(self.parent, FString):
-            return self.lit_value
+            # Escape special chars in f-string literal parts:
+            # { -> {{ and } -> }} (f-string interpolation delimiters)
+            # # -> \# (comment delimiter in Jac)
+            escaped = self.lit_value.replace("{", "{{").replace("}", "}}")
+            escaped = escaped.replace("#", "\\#")
+            return escaped
         return self.value
 
 

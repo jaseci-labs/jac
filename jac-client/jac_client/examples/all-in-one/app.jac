@@ -48,10 +48,10 @@ walker get_server_message {
 cl {
     # Home page demonstrating CSS styling + direct asset usage + basic walkers
     def Home()  -> any {
-        let [count, setCount] = useState(0);
-        let [pingResult, setPingResult] = useState("");
-        let [serverMessage, setServerMessage] = useState("");
-        let [lastTodoMessage, setLastTodoMessage] = useState("");
+        [count, setCount] = useState(0);
+        [pingResult, setPingResult] = useState("");
+        [serverMessage, setServerMessage] = useState("");
+        [lastTodoMessage, setLastTodoMessage] = useState("");
 
         useEffect(
             lambda   -> None{ console.log("Home count changed: ", count);} , [count]
@@ -357,7 +357,7 @@ cl {
 
     # Navigation component with active link styling (same pattern as routing docs)
     def Navigation()  -> any {
-        let location = useLocation();
+        location = useLocation();
 
         def linkStyle(path: str) -> dict {
             isActive = location.pathname == path;

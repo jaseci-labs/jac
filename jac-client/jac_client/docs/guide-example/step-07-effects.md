@@ -39,9 +39,9 @@ cl {
     # ... (keep all your components from step 6)
 
     def app() -> any {
-        let [todos, setTodos] = useState([]);
-        let [input, setInput] = useState("");
-        let [filter, setFilter] = useState("all");
+        [todos, setTodos] = useState([]);
+        [input, setInput] = useState("");
+        [filter, setFilter] = useState("all");
 
         # Run once when component mounts
         useEffect(lambda -> None {
@@ -66,15 +66,15 @@ cl {
     # ... (keep all components)
 
     def app() -> any {
-        let [todos, setTodos] = useState([]);
-        let [input, setInput] = useState("");
-        let [filter, setFilter] = useState("all");
+        [todos, setTodos] = useState([]);
+        [input, setInput] = useState("");
+        [filter, setFilter] = useState("all");
 
         # Load todos from localStorage when app mounts
         useEffect(lambda -> None {
-            let saved = localStorage.getItem("todos");
+            saved = localStorage.getItem("todos");
             if saved {
-                let parsed = JSON.parse(saved);
+                parsed = JSON.parse(saved);
                 setTodos(parsed);
             }
         }, []);
@@ -104,10 +104,10 @@ cl {
     # ... (keep all components)
 
     def app() -> any {
-        let [todos, setTodos] = useState([]);
-        let [input, setInput] = useState("");
-        let [filter, setFilter] = useState("all");
-        let [loading, setLoading] = useState(true);
+        [todos, setTodos] = useState([]);
+        [input, setInput] = useState("");
+        [filter, setFilter] = useState("all");
+        [loading, setLoading] = useState(true);
 
         # Load todos
         useEffect(lambda -> None {
@@ -115,9 +115,9 @@ cl {
 
             # Simulate loading delay
             setTimeout(lambda -> None {
-                let saved = localStorage.getItem("todos");
+                saved = localStorage.getItem("todos");
                 if saved {
-                    let parsed = JSON.parse(saved);
+                    parsed = JSON.parse(saved);
                     setTodos(parsed);
                 }
                 setLoading(false);
@@ -231,11 +231,11 @@ You can use multiple `useEffect` hooks for different purposes:
 
 ```jac
 def app() -> any {
-    let [todos, setTodos] = useState([]);
+    [todos, setTodos] = useState([]);
 
     # Effect 1: Load data once
     useEffect(lambda -> None {
-        let saved = localStorage.getItem("todos");
+        saved = localStorage.getItem("todos");
         if saved {
             setTodos(JSON.parse(saved));
         }
@@ -280,7 +280,7 @@ Browser's built-in storage:
 localStorage.setItem("key", "value");
 
 # Load data
-let value = localStorage.getItem("key");
+value = localStorage.getItem("key");
 
 # Remove data
 localStorage.removeItem("key");
@@ -290,7 +290,7 @@ localStorage.clear();
 
 # For objects/arrays, use JSON
 localStorage.setItem("todos", JSON.stringify(todos));
-let todos = JSON.parse(localStorage.getItem("todos"));
+todos = JSON.parse(localStorage.getItem("todos"));
 ```
 
 **Storage limits:**
@@ -303,7 +303,7 @@ let todos = JSON.parse(localStorage.getItem("todos"));
 When loading from localStorage, you don't want to immediately save back:
 
 ```jac
-let [loading, setLoading] = useState(true);
+[loading, setLoading] = useState(true);
 
 # Load
 useEffect(lambda -> None {
@@ -326,7 +326,7 @@ useEffect(lambda -> None {
 ```jac
 useEffect(lambda -> None {
     async def fetchData() -> None {
-        let data = await apiCall();
+        data = await apiCall();
         setState(data);
     }
     fetchData();
@@ -345,7 +345,7 @@ useEffect(lambda -> None {
 
 ```jac
 useEffect(lambda -> None {
-    let timerId = setInterval(lambda -> None {
+    timerId = setInterval(lambda -> None {
         console.log("Tick");
     }, 1000);
 
@@ -444,7 +444,7 @@ useEffect(lambda -> None {
 Try adding a "last saved" timestamp:
 
 ```jac
-let [lastSaved, setLastSaved] = useState(None);
+[lastSaved, setLastSaved] = useState(None);
 
 useEffect(lambda -> None {
     if not loading and todos.length > 0 {
