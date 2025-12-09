@@ -1,5 +1,5 @@
 #
-# Combined example: routing + CSS styling + asset serving + nested folder imports
+# Combined example: auth + routing + CSS styling + asset serving + nested folder imports
 #
 cl import from react { useState, useEffect }
 cl import from "@jac-client/utils" {

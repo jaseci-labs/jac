@@ -323,6 +323,125 @@ def test_all_in_one_app_endpoints() -> None:
                     print(f"[DEBUG] Error while requesting /walker/create_todo: {exc}")
                     pytest.fail("Failed to POST /walker/create_todo")
 
+                # POST /user/register – register a new user
+                test_email = "test_user@example.com"
+                test_password = "test_password_123"
+                try:
+                    print(
+                        "[DEBUG] Sending POST request to /user/register endpoint"
+                    )
+                    register_payload = {
+                        "email": test_email,
+                        "password": test_password,
+                    }
+                    req_register = Request(
+                        "http://127.0.0.1:8000/user/register",
+                        data=json.dumps(register_payload).encode("utf-8"),
+                        headers={"Content-Type": "application/json"},
+                        method="POST",
+                    )
+                    with urlopen(req_register, timeout=20) as resp_register:
+                        register_body = resp_register.read().decode(
+                            "utf-8", errors="ignore"
+                        )
+                        print(
+                            "[DEBUG] Received response from /user/register\n"
+                            f"Status: {resp_register.status}\n"
+                            f"Body (truncated to 500 chars):\n{register_body[:500]}"
+                        )
+                        assert resp_register.status == 201
+                        register_data = json.loads(register_body)
+                        assert "email" in register_data
+                        assert "token" in register_data
+                        assert "root_id" in register_data
+                        assert register_data["email"] == test_email
+                        assert len(register_data["token"]) > 0
+                        assert len(register_data["root_id"]) > 0
+                        print(
+                            f"[DEBUG] Successfully registered user: {test_email}\n"
+                            f"Token: {register_data['token'][:20]}...\n"
+                            f"Root ID: {register_data['root_id']}"
+                        )
+                except (URLError, HTTPError) as exc:
+                    print(f"[DEBUG] Error while requesting /user/register: {exc}")
+                    pytest.fail("Failed to POST /user/register")
+
+                # POST /user/login – login with registered credentials
+                try:
+                    print(
+                        "[DEBUG] Sending POST request to /user/login endpoint"
+                    )
+                    login_payload = {
+                        "email": test_email,
+                        "password": test_password,
+                    }
+                    req_login = Request(
+                        "http://127.0.0.1:8000/user/login",
+                        data=json.dumps(login_payload).encode("utf-8"),
+                        headers={"Content-Type": "application/json"},
+                        method="POST",
+                    )
+                    with urlopen(req_login, timeout=20) as resp_login:
+                        login_body = resp_login.read().decode(
+                            "utf-8", errors="ignore"
+                        )
+                        print(
+                            "[DEBUG] Received response from /user/login\n"
+                            f"Status: {resp_login.status}\n"
+                            f"Body (truncated to 500 chars):\n{login_body[:500]}"
+                        )
+                        assert resp_login.status == 200
+                        login_data = json.loads(login_body)
+                        assert "token" in login_data
+                        assert len(login_data["token"]) > 0
+                        print(
+                            f"[DEBUG] Successfully logged in user: {test_email}\n"
+                            f"Token: {login_data['token'][:20]}..."
+                        )
+                except (URLError, HTTPError) as exc:
+                    print(f"[DEBUG] Error while requesting /user/login: {exc}")
+                    pytest.fail("Failed to POST /user/login")
+
+                # POST /user/login – test login with invalid credentials
+                try:
+                    print(
+                        "[DEBUG] Sending POST request to /user/login with invalid credentials"
+                    )
+                    invalid_login_payload = {
+                        "email": "nonexistent@example.com",
+                        "password": "wrong_password",
+                    }
+                    req_invalid_login = Request(
+                        "http://127.0.0.1:8000/user/login",
+                        data=json.dumps(invalid_login_payload).encode("utf-8"),
+                        headers={"Content-Type": "application/json"},
+                        method="POST",
+                    )
+                    try:
+                        with urlopen(req_invalid_login, timeout=20) as resp_invalid:
+                            # If we get here, the request succeeded but should have failed
+                            invalid_body = resp_invalid.read().decode(
+                                "utf-8", errors="ignore"
+                            )
+                            print(
+                                "[DEBUG] Received response from /user/login (invalid creds)\n"
+                                f"Status: {resp_invalid.status}\n"
+                                f"Body: {invalid_body}"
+                            )
+                            # Login should fail with invalid credentials
+                            assert resp_invalid.status != 200 or "error" in invalid_body.lower()
+                    except HTTPError as http_err:
+                        # Expected: login should fail with 401 or similar
+                        print(
+                            f"[DEBUG] Expected error for invalid login: {http_err.code} {http_err.reason}"
+                        )
+                        assert http_err.code in (400, 401, 403), (
+                            f"Expected 400/401/403 for invalid login, got {http_err.code}"
+                        )
+                except URLError as exc:
+                    print(f"[DEBUG] Unexpected error while testing invalid login: {exc}")
+                    pytest.fail("Unexpected error testing invalid login")
+
             finally:
                 if server is not None:
                     print("[DEBUG] Terminating server process")
