@@ -1,11 +1,7 @@
 <div align="center">
-    <img src="/assets/byLLM_name_logo.png" height="150" width="300" alt="byLLM logo">
+    <img src="https://github.com/jaseci-labs/jaseci-website/blob/main/byllm/src/assets/byLLM_name_logo.png?raw=true" height="150" width="300" alt="byLLM logo">
 
 </div>
-
-<!-- <div align="center">
-    <h1 style="font-size:18px; font-style:italic; margin:0.2em 0 0 0;">Prompt Less, Smile More</h1>
-</div> -->
 
 <hr />
 
