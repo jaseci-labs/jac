@@ -2001,6 +2001,7 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
         if isinstance(node.target, uni.Name):
             if self.ir_in.name =='client_jsx':
                 ic(node.target.sym_name)
+                ic(node.target)
                 ic(id(self.prog))
                 ic(self.prog.get_type_evaluator().get_type_of_expression(node.target))
             callee_type = self.prog.get_type_evaluator().get_type_of_expression(
