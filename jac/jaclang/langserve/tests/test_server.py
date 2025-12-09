@@ -91,7 +91,7 @@ def test_impl_stay_connected(fixture_path: Callable[[str], str]) -> None:
         lsp.type_check_file(circle_impl_file)
         pos = lspt.Position(8, 11)
         assert (
-            "ability) calculate_area\\n( radius : float ) -> float"
+            "ability) calculate_area\n( radius : float ) -> float"
             in lsp.get_hover_info(circle_impl_file, pos).contents.value.replace("'", "")
         )
     finally:
@@ -106,7 +106,7 @@ def test_impl_auto_discover(fixture_path: Callable[[str], str]) -> None:
         lsp.type_check_file(circle_impl_file)
         pos = lspt.Position(8, 11)
         assert (
-            "(public ability) calculate_area\\n( radius : float ) -> float"
+            "(public ability) calculate_area\n( radius : float ) -> float"
             in lsp.get_hover_info(circle_impl_file, pos).contents.value.replace("'", "")
         )
     finally:

@@ -50,15 +50,15 @@ class EdgeRefWalker(Walker):
     @on_entry
     def show_refs(self, here: Person) -> None:
         if here.name == "Alice":
-            print(f"\\n=== 2. Edge References from {here.name} ===\\n")
+            print(f"\n=== 2. Edge References from {here.name} ===\n")
             outgoing = refs(OPath(here).edge_out())
             print(f"Outgoing [-->]: {len(outgoing)} nodes")
             for n in outgoing:
                 print(f"  - {n.name}")
             incoming = refs(OPath(here).edge_in())
-            print(f"\\nIncoming [<--]: {len(incoming)} nodes")
+            print(f"\nIncoming [<--]: {len(incoming)} nodes")
             both = refs(OPath(here).edge_any())
-            print(f"\\nBidirectional [<-->]: {len(both)} nodes")
+            print(f"\nBidirectional [<-->]: {len(both)} nodes")
             print("\n=== 3. Typed Edge References ===\n")
             friends = refs(OPath(here).edge_out(edge=lambda i: isinstance(i, Friend)))
             print(f"Friend edges [->:Friend:->]: {len(friends)} nodes")

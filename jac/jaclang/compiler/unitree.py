@@ -5303,9 +5303,27 @@ class String(Literal):
             except (ValueError, SyntaxError):
                 return self.value
         else:
-            # For f-string literal parts (no quotes), decode escape sequences
+            # For f-string literal parts (no quotes), decode common escape sequences
+            # but only if the f-string is not a raw string (rf"..." or fr"...")
             if self.parent and isinstance(self.parent, FString):
-                return self.value.encode("utf-8").decode("unicode_escape")
+                fstring_parent: FString = self.parent
+                # Check if it's a raw f-string by looking at the start token
+                is_raw = False
+                if fstring_parent.start and fstring_parent.start.value:
+                    prefix = fstring_parent.start.value.lower()
+                    is_raw = "r" in prefix
+                if not is_raw:
+                    # Decode escape sequences in the correct order:
+                    # First protect \\ by replacing with placeholder, then decode
+                    # escape sequences, then restore backslashes
+                    result = self.value
+                    placeholder = "\x00"
+                    result = result.replace("\\\\", placeholder)
+                    result = result.replace("\\n", "\n")
+                    result = result.replace("\\t", "\t")
+                    result = result.replace("\\r", "\r")
+                    result = result.replace(placeholder, "\\")
+                    return result
             return self.value
 
     def normalize(self, deep: bool = True) -> bool:
