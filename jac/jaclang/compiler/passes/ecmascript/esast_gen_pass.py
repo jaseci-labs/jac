@@ -1166,9 +1166,13 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
         if node.condition and node.condition.gen.es_ast:
             test = cast(es.Expression, node.condition.gen.es_ast)
 
-        update: es.Expression | None = None
-        if node.count_by and node.count_by.gen.es_ast:
-            update = cast(es.Expression, node.count_by.gen.es_ast)
+        update: es.AssignmentExpression | None = None
+        if (
+            node.count_by
+            and node.count_by.gen.es_ast
+            and isinstance(node.count_by.gen.es_ast, es.ExpressionStatement)
+        ):
+            update = cast(es.AssignmentExpression, node.count_by.gen.es_ast.expression)
 
         body = self._build_block_statement(node, node.body)
 
