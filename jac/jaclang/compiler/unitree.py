@@ -5303,6 +5303,9 @@ class String(Literal):
             except (ValueError, SyntaxError):
                 return self.value
         else:
+            # For f-string literal parts (no quotes), decode escape sequences
+            if self.parent and isinstance(self.parent, FString):
+                return self.value.encode("utf-8").decode("unicode_escape")
             return self.value
 
     def normalize(self, deep: bool = True) -> bool:

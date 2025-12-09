@@ -23,7 +23,7 @@ class ViteClientBundleBuilder(ClientBundleBuilder) {
         vite_package_json: (Path | None) = None,
         vite_minify: bool = False
     ) -> None {
-        super().__init__(runtime_path);
+        super.init(runtime_path);
         self.vite_output_dir = vite_output_dir;
         self.vite_package_json = vite_package_json;
         self.vite_minify = vite_minify;
