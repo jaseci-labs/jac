@@ -6,7 +6,6 @@ import os
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
-import pytest
 
 from jaclang.compiler.program import JacProgram
 
@@ -19,7 +18,6 @@ FIXTURE_DIR = (
 )
 
 
-@pytest.mark.skip(reason="Failing randomly on CI")
 def test_js_codegen_generates_js_and_manifest() -> None:
     """Test JavaScript code generation produces valid output and manifest."""
     fixture = FIXTURE_DIR / "client_jsx.jac"

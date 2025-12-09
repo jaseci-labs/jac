@@ -25,6 +25,7 @@ import json
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any, TypeVar, cast
+from icecream import ic
 
 import jaclang.compiler.passes.ecmascript.estree as es
 import jaclang.compiler.unitree as uni
@@ -145,7 +146,10 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
     def before_pass(self) -> None:
         """Initialize the pass."""
         from jaclang.compiler.codeinfo import ClientManifest
-
+        if self.ir_in.name =='client_jsx':
+            ic("esast_gen_pass started")
+            ic(self.prog.mod.hub)
+            ic(self.prog.get_type_evaluator())
         self.child_passes: list[EsastGenPass] = self._init_child_passes(EsastGenPass)
         self.imports: list[es.ImportDeclaration] = []
         self.exports: list[es.ExportNamedDeclaration] = []
@@ -1994,6 +1998,8 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
                     jac_node=node,
                 )
         if isinstance(node.target, uni.Name):
+            if self.ir_in.name =='client_jsx':
+                ic( self.prog.get_type_evaluator().get_type_of_expression(node.target))
             callee_type = self.prog.get_type_evaluator().get_type_of_expression(
                 node.target
             )
