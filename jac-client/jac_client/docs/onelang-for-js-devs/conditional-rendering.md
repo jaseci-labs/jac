@@ -1,46 +1,12 @@
 # Conditional Rendering in JAC-Lang (Onelang)
 
-A comprehensive guide to conditional rendering patterns in JAC-lang for building dynamic React-like UIs.
+This guide covers conditional rendering patterns in JAC-lang for building dynamic React-like user interfaces.
 
-> **📦 Full Examples**: See the complete working examples at [jac-client-examples/conditional-rendering](https://github.com/jaseci-labs/jac-client-examples/tree/main/conditional-rendering)
-
-## 📋 Table of Contents
-
-1. [If/Else with Early Return](#1-ifelse-with-early-return)
-2. [Ternary Operator](#2-ternary-operator-python-style)
-3. [Complex Ternary (Chained)](#3-complex-ternary-chained-if-else)
-4. [Logical AND Operator](#4-logical-and-operator)
-5. [Logical OR Operator](#5-logical-or-operator---default-values)
-6. [Nullish Coalescing](#6-nullish-coalescing-equivalent-️-not-supported)
-7. [Switch Statement](#7-switch-statement-️-not-supported)
-8. [Object Lookup / Mapping](#8-object-lookup--mapping)
-9. [Multiple If-Elif-Else](#9-multiple-if-elif-else)
-10. [Rendering Nothing](#10-rendering-nothing)
-11. [Conditional CSS Classes](#11-conditional-css-classes)
-12. [Conditional Attributes](#12-conditional-attributesprops)
-13. [List Conditional Rendering](#13-list-conditional-rendering)
-14. [Conditional with Fragments](#14-conditional-with-fragments)
-15. [Multiple Conditions Combined](#15-multiple-conditions-combined)
-16. [Interactive State Example](#16-interactive-state-example)
-17. [Enum-Based Rendering](#17-enum-based-rendering)
+> **Full Examples**: See the complete working examples at [jac-client-examples/conditional-rendering](https://github.com/jaseci-labs/jac-client-examples/tree/main/conditional-rendering)
 
 ---
 
-## Running the Examples
 
-Make sure node modules are installed:
-
-```bash
-npm install
-```
-
-To run your Jac code, use the Jac CLI:
-
-```bash
-jac serve app.jac
-```
-
----
 
 ## 1. If/Else with Early Return
 
@@ -52,9 +18,9 @@ The most basic conditional rendering pattern. Return different JSX based on a co
 def IfElseExample(props: dict) -> any {
     let isLoggedIn = props.isLoggedIn;
     if isLoggedIn {
-        return <div>✅ Welcome back, User!</div>;
+        return <div>Welcome back, User!</div>;
     }
-    return <div>🔒 Please sign in.</div>;
+    return <div>Please sign in.</div>;
 }
 ```
 
@@ -63,17 +29,17 @@ def IfElseExample(props: dict) -> any {
 ```jsx
 function IfElseExample({ isLoggedIn }) {
   if (isLoggedIn) {
-    return <div>✅ Welcome back, User!</div>;
+    return <div>Welcome back, User!</div>;
   }
-  return <div>🔒 Please sign in.</div>;
+  return <div>Please sign in.</div>;
 }
 ```
 
 ### Usage:
 
 ```jac
-<IfElseExample isLoggedIn={True} />   # Shows: ✅ Welcome back, User!
-<IfElseExample isLoggedIn={False} />  # Shows: 🔒 Please sign in.
+<IfElseExample isLoggedIn={True} />   # Shows: Welcome back, User!
+<IfElseExample isLoggedIn={False} />  # Shows: Please sign in.
 ```
 
 ---
@@ -90,7 +56,7 @@ def TernaryExample(props: dict) -> any {
     let isOnline = props.isOnline;
     return (
         <div>
-            Status: {(<span style={{ color: "green" }}>🟢 Online</span>) if isOnline else (<span style={{ color: "red" }}>🔴 Offline</span>)}
+            Status: {(<span style={{ color: "green" }}>Online</span>) if isOnline else (<span style={{ color: "red" }}>Offline</span>)}
         </div>
     );
 }
@@ -105,24 +71,24 @@ function TernaryExample({ isOnline }) {
     <div>
       Status:{" "}
       {isOnline ? (
-        <span style={{ color: "green" }}>🟢 Online</span>
+        <span style={{ color: "green" }}>Online</span>
       ) : (
-        <span style={{ color: "red" }}>🔴 Offline</span>
+        <span style={{ color: "red" }}>Offline</span>
       )}
     </div>
   );
 }
 ```
 
-### ⚠️ Important Note:
+### Important Note:
 
 In JAC, **always wrap JSX elements in parentheses** when using ternary:
 
 ```jac
-# ✅ Correct - wrapped in parentheses
+# Correct - wrapped in parentheses
 {(<span>Yes</span>) if condition else (<span>No</span>)}
 
-# ❌ Wrong - missing parentheses
+# Wrong - missing parentheses
 {<span>Yes</span> if condition else <span>No</span>}
 ```
 
@@ -140,7 +106,7 @@ def ComplexTernaryExample(props: dict) -> any {
     let condition2 = props.condition2;
     return (
         <div>
-            {(<span>✅ Condition 1 is true</span>) if condition1 else ((<span>🔵 Condition 2 is true</span>) if condition2 else (<span>⚪ Both are false</span>))}
+            {(<span>Condition 1 is true</span>) if condition1 else ((<span>Condition 2 is true</span>) if condition2 else (<span>Both are false</span>))}
         </div>
     );
 }
@@ -153,11 +119,11 @@ function ComplexTernaryExample({ condition1, condition2 }) {
   return (
     <div>
       {condition1 ? (
-        <span>✅ Condition 1</span>
+        <span>Condition 1</span>
       ) : condition2 ? (
-        <span>🔵 Condition 2</span>
+        <span>Condition 2</span>
       ) : (
-        <span>⚪ Both false</span>
+        <span>Both false</span>
       )}
     </div>
   );
@@ -182,7 +148,7 @@ def LogicalAndExample(props: dict) -> any {
             <span>Notifications: </span>
             {hasNotifications and count > 0 and (
                 <span style={{ color: "blue", fontWeight: "bold" }}>
-                    🔔 You have {count} new messages!
+                    You have {count} new messages!
                 </span>
             )}
             {not hasNotifications and <span>No new notifications</span>}
@@ -200,7 +166,7 @@ function LogicalAndExample({ hasNotifications, count }) {
       <span>Notifications: </span>
       {hasNotifications && count > 0 && (
         <span style={{ color: "blue", fontWeight: "bold" }}>
-          🔔 You have {count} new messages!
+          You have {count} new messages!
         </span>
       )}
       {!hasNotifications && <span>No new notifications</span>}
@@ -222,7 +188,7 @@ def LogicalOrExample(props: dict) -> any {
     let username = props.username;
     return (
         <div>
-            Hello, <strong>{username or "Guest"}</strong>! 👋
+            Hello, <strong>{username or "Guest"}</strong>!
         </div>
     );
 }
@@ -234,7 +200,7 @@ def LogicalOrExample(props: dict) -> any {
 function LogicalOrExample({ username }) {
   return (
     <div>
-      Hello, <strong>{username || "Guest"}</strong>! 👋
+      Hello, <strong>{username || "Guest"}</strong>!
     </div>
   );
 }
@@ -243,16 +209,16 @@ function LogicalOrExample({ username }) {
 ### Usage:
 
 ```jac
-<LogicalOrExample username="John" />   # Shows: Hello, John! 👋
-<LogicalOrExample username="" />       # Shows: Hello, Guest! 👋
-<LogicalOrExample username={None} />   # Shows: Hello, Guest! 👋
+<LogicalOrExample username="John" />   # Shows: Hello, John!
+<LogicalOrExample username="" />       # Shows: Hello, Guest!
+<LogicalOrExample username={None} />   # Shows: Hello, Guest!
 ```
 
 ---
 
-## 7. Switch Statement (⚠️ NOT SUPPORTED)
+## 6. Switch Statement (NOT SUPPORTED)
 
-> **⚠️ IMPORTANT: Switch statements are NOT currently supported in JAC-lang for client-side rendering.**
+> **Important:** Switch statements are NOT currently supported in JAC-lang for client-side rendering.
 
 ### React Example (NOT available in JAC):
 
@@ -261,13 +227,13 @@ function LogicalOrExample({ username }) {
 function SwitchExample({ status }) {
   switch (status) {
     case "success":
-      return <span style={{ color: "green" }}>✅ Success!</span>;
+      return <span style={{ color: "green" }}>Success!</span>;
     case "error":
-      return <span style={{ color: "red" }}>❌ Error</span>;
+      return <span style={{ color: "red" }}>Error</span>;
     case "loading":
-      return <span style={{ color: "orange" }}>⏳ Loading...</span>;
+      return <span style={{ color: "orange" }}>Loading...</span>;
     default:
-      return <span>❓ Unknown</span>;
+      return <span>Unknown</span>;
   }
 }
 ```
@@ -281,15 +247,15 @@ def SwitchWorkaround1(props: dict) -> any {
     let status = props.status;
 
     if status == "success" {
-        return <span style={{ color: "green" }}>✅ Success!</span>;
+        return <span style={{ color: "green" }}>Success!</span>;
     }
     if status == "error" {
-        return <span style={{ color: "red" }}>❌ Error occurred</span>;
+        return <span style={{ color: "red" }}>Error occurred</span>;
     }
     if status == "loading" {
-        return <span style={{ color: "orange" }}>⏳ Loading...</span>;
+        return <span style={{ color: "orange" }}>Loading...</span>;
     }
-    return <span>❓ Unknown status</span>;
+    return <span>Unknown status</span>;
 }
 ```
 
@@ -300,22 +266,22 @@ def SwitchWorkaround2(props: dict) -> any {
     let status = props.status;
 
     let statusConfig = {
-        "success": { "color": "green", "icon": "✅", "text": "Success!" },
-        "error": { "color": "red", "icon": "❌", "text": "Error occurred" },
-        "loading": { "color": "orange", "icon": "⏳", "text": "Loading..." },
-        "pending": { "color": "blue", "icon": "⏸️", "text": "Pending" }
+        "success": { "color": "green", "text": "Success!" },
+        "error": { "color": "red", "text": "Error occurred" },
+        "loading": { "color": "orange", "text": "Loading..." },
+        "pending": { "color": "blue", "text": "Pending" }
     };
 
-    let defaultStatus = { "color": "gray", "icon": "❓", "text": "Unknown status" };
+    let defaultStatus = { "color": "gray", "text": "Unknown status" };
     let current = statusConfig[status] if status in statusConfig else defaultStatus;
 
-    return <span style={{ color: current["color"] }}>{current["icon"]} {current["text"]}</span>;
+    return <span style={{ color: current["color"] }}>{current["text"]}</span>;
 }
 ```
 
 ---
 
-## 8. Object Lookup / Mapping
+## 7. Object Lookup / Mapping
 
 A powerful alternative to switch statements - map keys to values/components.
 
@@ -325,9 +291,9 @@ A powerful alternative to switch statements - map keys to values/components.
 def ObjectLookupExample(props: dict) -> any {
     let theme = props.theme;
     let themes = {
-        "light": { "bg": "#ffffff", "text": "#000000", "emoji": "☀️" },
-        "dark": { "bg": "#333333", "text": "#ffffff", "emoji": "🌙" },
-        "sepia": { "bg": "#f4ecd8", "text": "#5c4033", "emoji": "📜" }
+        "light": { "bg": "#ffffff", "text": "#000000", "name": "Light" },
+        "dark": { "bg": "#333333", "text": "#ffffff", "name": "Dark" },
+        "sepia": { "bg": "#f4ecd8", "text": "#5c4033", "name": "Sepia" }
     };
 
     # Use 'in' to check if key exists
@@ -338,7 +304,7 @@ def ObjectLookupExample(props: dict) -> any {
             backgroundColor: currentTheme["bg"],
             color: currentTheme["text"]
         }}>
-            {currentTheme["emoji"]} Current Theme: <strong>{theme or "light"}</strong>
+            Current Theme: <strong>{theme or "light"}</strong>
         </div>
     );
 }
@@ -353,7 +319,7 @@ let value = dict[key] if key in dict else defaultValue;
 
 ---
 
-## 9. Multiple If-Elif-Else
+## 8. Multiple If-Elif-Else
 
 For complex branching logic, use helper functions.
 
@@ -366,18 +332,18 @@ def MultipleConditionsIfElse(props: dict) -> any {
     # Helper function for complex logic
     def getUserAccess() -> any {
         if not user {
-            return <span>👤 No user - Please login</span>;
+            return <span>No user - Please login</span>;
         }
         if user["role"] == "admin" {
-            return <span>👑 Admin Dashboard Access</span>;
+            return <span>Admin Dashboard Access</span>;
         }
         if user["role"] == "moderator" {
-            return <span>🛡️ Moderator Access</span>;
+            return <span>Moderator Access</span>;
         }
         if user["role"] == "member" {
-            return <span>👥 Member Access</span>;
+            return <span>Member Access</span>;
         }
-        return <span>👋 Guest Access</span>;
+        return <span>Guest Access</span>;
     }
 
     return <div>{getUserAccess()}</div>;
@@ -394,7 +360,7 @@ def MultipleConditionsIfElse(props: dict) -> any {
 
 ---
 
-## 10. Rendering Nothing
+## 9. Rendering Nothing
 
 Return an empty fragment to render nothing.
 
@@ -406,7 +372,7 @@ def RenderNothingExample(props: dict) -> any {
     if not shouldShow {
         return <></>;  # Empty fragment - renders nothing
     }
-    return <div>🎉 I'm visible!</div>;
+    return <div>I am visible!</div>;
 }
 ```
 
@@ -417,7 +383,7 @@ function RenderNothingExample({ shouldShow }) {
   if (!shouldShow) {
     return null; // React uses null
   }
-  return <div>🎉 I'm visible!</div>;
+  return <div>I am visible!</div>;
 }
 ```
 
@@ -429,7 +395,7 @@ function RenderNothingExample({ shouldShow }) {
 
 ---
 
-## 11. Conditional CSS Classes
+## 10. Conditional CSS Classes
 
 Build class strings dynamically.
 
@@ -449,7 +415,7 @@ def ConditionalClassesExample(props: dict) -> any {
     return (
         <div>
             <button className={buttonClasses}>
-                {("✓ Active") if isActive else ("Inactive")} Button
+                {("Active") if isActive else ("Inactive")} Button
             </button>
             <small>Classes: {buttonClasses}</small>
         </div>
@@ -459,7 +425,7 @@ def ConditionalClassesExample(props: dict) -> any {
 
 ---
 
-## 12. Conditional Attributes/Props
+## 11. Conditional Attributes/Props
 
 Apply attributes conditionally.
 
@@ -491,7 +457,7 @@ def ConditionalAttributesExample(props: dict) -> any {
 
 ---
 
-## 13. List Conditional Rendering
+## 12. List Conditional Rendering
 
 Handle empty lists gracefully.
 
@@ -503,7 +469,7 @@ def ListConditionalExample(props: dict) -> any {
 
     # Check for empty list
     if not items or items.length == 0 {
-        return <div>📭 No items found.</div>;
+        return <div>No items found.</div>;
     }
 
     # Helper function for map
@@ -513,7 +479,7 @@ def ListConditionalExample(props: dict) -> any {
 
     return (
         <div>
-            <strong>📋 Items List:</strong>
+            <strong>Items List:</strong>
             <ul>
                 {items.map(renderItem)}
             </ul>
@@ -531,7 +497,7 @@ def ListConditionalExample(props: dict) -> any {
 
 ---
 
-## 14. Conditional with Fragments
+## 13. Conditional with Fragments
 
 Use fragments (`<>...</>`) to group elements without extra DOM nodes.
 
@@ -546,13 +512,13 @@ def FragmentsExample(props: dict) -> any {
 
     return (
         <div>
-            <strong>👤 {userName}</strong>
+            <strong>{userName}</strong>
             {showDetails and user and (
                 <>
                     <br />
-                    <span>📧 Email: {user["email"]}</span>
+                    <span>Email: {user["email"]}</span>
                     <br />
-                    <span>📱 Phone: {user["phone"]}</span>
+                    <span>Phone: {user["phone"]}</span>
                 </>
             )}
         </div>
@@ -562,7 +528,7 @@ def FragmentsExample(props: dict) -> any {
 
 ---
 
-## 15. Multiple Conditions Combined
+## 14. Multiple Conditions Combined
 
 Handle loading, error, and data states.
 
@@ -576,10 +542,10 @@ def MultipleConditionsExample(props: dict) -> any {
 
     return (
         <div>
-            {isLoading and <span>⏳ Loading data...</span>}
-            {not isLoading and error and <span style={{ color: "red" }}>❌ Error: {error}</span>}
-            {not isLoading and not error and data and <span style={{ color: "green" }}>✅ Data: {data}</span>}
-            {not isLoading and not error and not data and <span>📭 No data available</span>}
+            {isLoading and <span>Loading data...</span>}
+            {not isLoading and error and <span style={{ color: "red" }}>Error: {error}</span>}
+            {not isLoading and not error and data and <span style={{ color: "green" }}>Data: {data}</span>}
+            {not isLoading and not error and not data and <span>No data available</span>}
         </div>
     );
 }
@@ -587,7 +553,7 @@ def MultipleConditionsExample(props: dict) -> any {
 
 ---
 
-## 16. Interactive State Example
+## 15. Interactive State Example
 
 Use `useState` for interactive components.
 
@@ -611,10 +577,10 @@ def InteractiveExample(props: dict) -> any {
 
             {isVisible and (
                 <div>
-                    🎉 Hidden content is now visible!
+                    Hidden content is now visible!
                     {count > 5 and (
                         <div style={{ color: "blue" }}>
-                            ⭐ Bonus: Count is greater than 5!
+                            Bonus: Count is greater than 5!
                         </div>
                     )}
                 </div>
@@ -632,7 +598,7 @@ def InteractiveExample(props: dict) -> any {
 
 ---
 
-## 17. Enum-Based Rendering
+## 16. Enum-Based Rendering
 
 Map page/state names to content configurations.
 
@@ -643,17 +609,17 @@ def EnumBasedExample(props: dict) -> any {
     let currentPage = props.currentPage;
 
     let pageContent = {
-        "home": { "icon": "🏠", "title": "Home Page", "content": "Welcome!" },
-        "about": { "icon": "📖", "title": "About Us", "content": "Learn more." },
-        "contact": { "icon": "📞", "title": "Contact", "content": "Get in touch." }
+        "home": { "title": "Home Page", "content": "Welcome!" },
+        "about": { "title": "About Us", "content": "Learn more." },
+        "contact": { "title": "Contact", "content": "Get in touch." }
     };
 
-    let defaultPage = { "icon": "❓", "title": "Not Found", "content": "Page not found." };
+    let defaultPage = { "title": "Not Found", "content": "Page not found." };
     let page = pageContent[currentPage] if currentPage in pageContent else defaultPage;
 
     return (
         <div>
-            <h4>{page["icon"]} {page["title"]}</h4>
+            <h4>{page["title"]}</h4>
             <p>{page["content"]}</p>
         </div>
     );
@@ -662,7 +628,7 @@ def EnumBasedExample(props: dict) -> any {
 
 ---
 
-## 📊 Quick Reference: JAC vs React
+## Quick Reference: JAC vs React
 
 | Feature            | React/JavaScript          | JAC-Lang            |
 | ------------------ | ------------------------- | ------------------- |
@@ -677,17 +643,13 @@ def EnumBasedExample(props: dict) -> any {
 | Arrow function     | `() => {}`                | `lambda: ...`       |
 | Dict access        | `obj.key` or `obj["key"]` | `obj["key"]`        |
 | Key exists         | `key in obj`              | `key in obj`        |
-| Nullish coalescing | `??`                      | ⚠️ Not supported    |
-| Switch statement   | `switch/case`             | ⚠️ Not supported    |
+| Nullish coalescing | `??`                      | Not supported       |
+| Switch statement   | `switch/case`             | Not supported       |
 
 ---
 
-## ⚠️ Known Limitations
+## Known Limitations
 
 1. **Nullish Coalescing (`??`)** - Use explicit `None` check or `or` operator
 2. **Switch Statement** - Use if-elif-else chains or object lookup pattern
 3. **JSX in Ternary** - Always wrap in parentheses: `(<Component />) if cond else (<Other />)`
-
----
-
-Happy coding with JAC! 🎯

@@ -1,12 +1,18 @@
 # Lambda Functions in JAC-Client (Onelang)
 
-## Arrow Functions → Lambda Functions
+This guide explains how JavaScript arrow functions translate to lambda functions in JAC-Client.
 
-If you're coming from a **React/JavaScript** background, this guide will help you understand how **arrow functions** translate to **lambda functions** in JAC-Client (Onelang).
+> **Full Examples**: See the complete working examples at [jac-client-examples/arrow-functions](https://github.com/jaseci-labs/jac-client-examples/tree/main/arrow-functions)
 
 ---
 
-## 🔑 Key Concept
+## Arrow Functions to Lambda Functions
+
+If you are coming from a React/JavaScript background, this guide will help you understand how arrow functions translate to lambda functions in JAC-Client (Onelang).
+
+---
+
+## Key Concept
 
 | React/JavaScript | JAC-Client (Onelang)                   |
 | ---------------- | -------------------------------------- |
@@ -17,7 +23,7 @@ If you're coming from a **React/JavaScript** background, this guide will help yo
 
 ---
 
-## 📖 Syntax Reference
+## Syntax Reference
 
 ### 1. No Parameters
 
@@ -116,7 +122,7 @@ onClick={lambda: handleSelect(1, "Apple")}
 
 ---
 
-## 🎯 Common Patterns
+## Common Patterns
 
 ### Event Handlers
 
@@ -143,7 +149,7 @@ let handleChange = lambda e: any -> None {
 
 ### Complex Inline onClick with Lambda
 
-When you need to do **multiple things** or have **logic** inside an onClick handler:
+When you need to do multiple things or have logic inside an onClick handler:
 
 ```javascript
 // React - Multiple actions in onClick
@@ -231,7 +237,7 @@ useEffect(lambda -> None {
 
 ---
 
-### useCallback & useMemo
+### useCallback and useMemo
 
 ```javascript
 // React - useCallback
@@ -301,7 +307,7 @@ let listItems = items.map(renderItem);
 
 ---
 
-### 🔥 Inline Lambda in JSX (The Common React Pattern)
+### Inline Lambda in JSX (The Common React Pattern)
 
 This is the pattern React developers use most often - rendering lists directly inside JSX without assigning to variables first:
 
@@ -350,7 +356,7 @@ This is the pattern React developers use most often - rendering lists directly i
   {items
     .filter((item) => item.inStock)
     .map((item) => (
-      <span key={item.id}>✅ {item.name}</span>
+      <span key={item.id}>In Stock: {item.name}</span>
     ))}
 </div>
 ```
@@ -362,7 +368,7 @@ This is the pattern React developers use most often - rendering lists directly i
         return item["inStock"];
     }).map(lambda item: any -> any {
         return (
-            <span key={item["id"]}>✅ {item["name"]}</span>
+            <span key={item["id"]}>In Stock: {item["name"]}</span>
         );
     })}
 </div>
@@ -373,14 +379,14 @@ This is the pattern React developers use most often - rendering lists directly i
 ```javascript
 // React - Using .some() for conditional UI
 {
-  items.some((item) => !item.inStock) && <p>⚠️ Some items are out of stock!</p>;
+  items.some((item) => not item.inStock) && <p>Some items are out of stock!</p>;
 }
 ```
 
 ```jac
 # JAC-Client - Using .some() for conditional UI
 {items.some(lambda item: any -> any { return not item["inStock"]; }) and (
-    <p>⚠️ Some items are out of stock!</p>
+    <p>Some items are out of stock!</p>
 )}
 ```
 
@@ -389,14 +395,14 @@ This is the pattern React developers use most often - rendering lists directly i
 ```javascript
 // React
 {
-  items.every((item) => item.price < 10) && <p>✅ All items under $10</p>;
+  items.every((item) => item.price < 10) && <p>All items under $10</p>;
 }
 ```
 
 ```jac
 # JAC-Client
 {items.every(lambda item: any -> any { return item["price"] < 10; }) and (
-    <p>✅ All items under $10</p>
+    <p>All items under $10</p>
 )}
 ```
 
@@ -455,7 +461,7 @@ onClick={lambda: fetchData()}
 
 ---
 
-## 🔄 Quick Conversion Table
+## Quick Conversion Table
 
 | React/JavaScript                           | JAC-Client                                                                |
 | ------------------------------------------ | ------------------------------------------------------------------------- |
@@ -479,7 +485,7 @@ onClick={lambda: fetchData()}
 
 ---
 
-## ⚠️ Key Differences
+## Key Differences
 
 1. **Type Annotations Required**: JAC-Client requires type annotations for lambda parameters
 
@@ -502,41 +508,20 @@ onClick={lambda: fetchData()}
 
 ---
 
-## 📁 Files in This Example
 
-- **`app.js`** - React/JavaScript arrow function examples
-- **`app.jac`** - Equivalent JAC-Client lambda function examples
-- **`README.md`** - This documentation
 
----
 
-## 🚀 Running the Examples
 
-### React Version (app.js)
-
-```bash
-npm install
-npm run dev
-```
-
-### JAC Version (app.jac)
-
-```bash
-jac serve app.jac
-```
-
----
-
-## 💡 Tips for React Developers
+## Tips for React Developers
 
 1. **Think "lambda" instead of "arrow"** - Same concept, different keyword
 
 2. **Always specify types** - JAC-Client is typed, so include `: Type` for parameters and `-> ReturnType` for returns
 
-3. **Use `any` when uncertain** - If you're not sure of the type, `any` works like TypeScript's `any`
+3. **Use `any` when uncertain** - If you are not sure of the type, `any` works like TypeScript's `any`
 
 4. **Helper functions for clarity** - For `.map()` and `.filter()`, defining separate helper functions often reads better than inline lambdas
 
-5. **`None` = void** - Use `-> None` when the function doesn't return anything (like React's void arrow functions)
+5. **`None` = void** - Use `-> None` when the function does not return anything (like React's void arrow functions)
 
 6. **Object syntax** - Use `{ "key": value }` with quoted keys for objects/dicts in JAC-Client

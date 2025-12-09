@@ -1,22 +1,28 @@
-# 🔄 Loops in JAC-Client (Onelang)
+# Loops in JAC-Client (Onelang)
 
-Learn how to use loops in JAC-Client with interactive examples for beginners.
+This guide covers loop syntax in JAC-Client with practical examples for developers familiar with JavaScript or Python.
 
-## ⚠️ Important Note
+> **Full Examples**: See the complete working examples at [jac-client-examples/loops](https://github.com/jaseci-labs/jac-client-examples/tree/main/loops)
 
-**`range()` does NOT work in JAC-Client/Onelang!**
+---
 
-Use counter-based loops instead.
+## Important Note
 
-## 🔑 Key Syntax Comparison
+The `range()` function does NOT work in JAC-Client/Onelang. Use counter-based loops instead.
+
+---
+
+## Key Syntax Comparison
 
 | Language       | Syntax                      |
 | -------------- | --------------------------- |
 | **JavaScript** | `for(let i=0; i<5; i++) {}` |
 | **Python**     | `for i in range(5):`        |
-| **JAC-Client**   | `for i=0 to i<5 by i+=1 {}` |
+| **JAC-Client** | `for i=0 to i<5 by i+=1 {}` |
 
-## 📋 Loop Syntax Breakdown
+---
+
+## Loop Syntax Breakdown
 
 ```
 for i=0 to i<5 by i+=1 {
@@ -24,11 +30,13 @@ for i=0 to i<5 by i+=1 {
 }
 ```
 
-- `i=0` → **Start value** (initialization)
-- `i<5` → **Condition** (loop continues while true)
-- `i+=1` → **Increment** (executed after each iteration)
+- `i=0` - **Start value** (initialization)
+- `i<5` - **Condition** (loop continues while true)
+- `i+=1` - **Increment** (executed after each iteration)
 
-## 📚 Examples Covered
+---
+
+## Examples
 
 ### 1. Basic Counter Loop
 
@@ -155,7 +163,7 @@ for i=2 to i<=20 by i+=2 {
 # Result: [2, 4, 6, 8, 10, 12, 14, 16, 18, 20]
 ```
 
-### 9. Loop with Index + Array Access
+### 9. Loop with Index and Array Access
 
 ```jac
 let colors = ["Red", "Green", "Blue", "Yellow", "Purple"];
@@ -197,21 +205,23 @@ for i=1 to i<=5 by i+=1 {
 for i=1 to i<=5 by i+=1 {
     let stars = "";
     for j=0 to j<i by j+=1 {
-        stars = stars + "⭐";
+        stars = stars + "*";
     }
     console.log(stars);
 }
 # Output:
-# ⭐
-# ⭐⭐
-# ⭐⭐⭐
-# ⭐⭐⭐⭐
-# ⭐⭐⭐⭐⭐
+# *
+# **
+# ***
+# ****
+# *****
 ```
 
-## 🚀 Quick Reference Table
+---
 
-| Loop Type      | JAC-Client Syntax                  |
+## Quick Reference Table
+
+| Loop Type      | JAC-Client Syntax                |
 | -------------- | -------------------------------- |
 | Basic Counter  | `for i=0 to i<5 by i+=1 {...}`   |
 | Inclusive End  | `for i=1 to i<=10 by i+=1 {...}` |
@@ -220,35 +230,31 @@ for i=1 to i<=5 by i+=1 {
 | For-In (Array) | `for item in array {...}`        |
 | While          | `while condition {...}`          |
 
-## 🏃 Running the Example
+---
 
-```bash
-cd loop-utils
-npm install
-jac serve app.jac
-```
 
-Then open your browser to view the interactive examples!
 
-## ❌ What NOT to Use
+## Common Mistakes to Avoid
 
 ```jac
-# ❌ WRONG - range() doesn't work in Onelang!
+# WRONG - range() does not work in Onelang
 for i in range(5) {
     console.log(i);
 }
 
-# ✅ CORRECT - Use counter-based loop
+# CORRECT - Use counter-based loop
 for i=0 to i<5 by i+=1 {
     console.log(i);
 }
 ```
 
-## 💡 Tips for Beginners
+---
+
+## Tips
 
 1. **Always use `i+=1`** for incrementing, not `i++`
 2. **Use `i<=n`** for inclusive end (includes n)
 3. **Use `i<n`** for exclusive end (stops before n)
 4. **Use `i-=1`** for countdown loops
-5. **For arrays**, use `for item in array` when you don't need the index
+5. **For arrays**, use `for item in array` when you do not need the index
 6. **Use counter loop** when you need the index: `for i=0 to i<arr.length by i+=1`

@@ -1,6 +1,12 @@
 # Exception Handling in JAC-Lang (Onelang)
 
-## 🔑 Key Difference: `try/catch` vs `try/except`
+This guide covers error handling patterns in JAC-Lang for developers familiar with JavaScript's try/catch syntax.
+
+> **Full Examples**: See the complete working examples at [jac-client-examples/exception-handling](https://github.com/jaseci-labs/jac-client-examples/tree/main/exception-handling)
+
+---
+
+## Key Difference: try/catch vs try/except
 
 | React/JavaScript                   | JAC-Lang (Onelang)                              |
 | ---------------------------------- | ----------------------------------------------- |
@@ -10,7 +16,7 @@
 
 ---
 
-## 📖 Syntax Reference
+## Syntax Reference
 
 ### Basic Try/Except
 
@@ -102,7 +108,7 @@ try {
 
 ---
 
-## 🎯 Common Patterns
+## Common Patterns
 
 ### Input Validation
 
@@ -170,7 +176,7 @@ def safeGetItem(arr: list, index: int) -> any {
 
 ---
 
-## 🔄 Quick Conversion Table
+## Quick Conversion Table
 
 | React/JavaScript         | JAC-Lang                    |
 | ------------------------ | --------------------------- |
@@ -179,11 +185,11 @@ def safeGetItem(arr: list, index: int) -> any {
 | `finally { }`            | `finally { }`               |
 | `throw new Error("msg")` | `raise Exception("msg")`    |
 | `throw error`            | `raise e`                   |
-| `error.message`          | `(e.toString())`                    |
+| `error.message`          | `(e.toString())`            |
 
 ---
 
-## 📁 Examples in This File
+## Examples Covered
 
 1. **Basic Try/Except** - Division by zero handling
 2. **Try/Except/Finally** - Cleanup operations
@@ -200,16 +206,8 @@ def safeGetItem(arr: list, index: int) -> any {
 
 ---
 
-## 🚀 Running the Example
 
-```bash
-npm install
-jac serve app.jac
-```
-
----
-
-## 💡 Tips
+## Tips
 
 1. **Always use `Exception as e`** - JAC requires specifying the exception type
 2. **Use `(e.toString())` to get error message** - Convert exception to string for display

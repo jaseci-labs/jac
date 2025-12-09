@@ -1,8 +1,12 @@
-# 📋 List Handling in JAC-Client (Onelang)
+# List Handling in JAC-Client (Onelang)
 
-Practical array/list methods with inline lambdas for real-world use cases.
+This guide covers array and list methods with inline lambdas for practical use cases.
 
-## 🔑 Lambda Syntax in List Methods
+> **Full Examples**: See the complete working examples at [jac-client-examples/list-utils](https://github.com/jaseci-labs/jac-client-examples/tree/main/list-utils)
+
+---
+
+## Lambda Syntax in List Methods
 
 ```jac
 # Basic inline lambda
@@ -15,7 +19,9 @@ items.map(lambda item: str, i: int -> any { return <li key={i}>{item}</li>; })
 items.filter(lambda n: int -> bool { return n > 5; })
 ```
 
-## 📚 Quick Reference
+---
+
+## Quick Reference
 
 | Method        | Purpose         | Example                                                   |
 | ------------- | --------------- | --------------------------------------------------------- |
@@ -31,7 +37,9 @@ items.filter(lambda n: int -> bool { return n > 5; })
 | `.includes()` | Contains?       | `arr.includes("value")`                                   |
 | `.indexOf()`  | Find index      | `arr.indexOf("value")`                                    |
 
-## 🎯 Common Patterns
+---
+
+## Common Patterns
 
 ### Render List in JSX
 
@@ -43,7 +51,7 @@ items.filter(lambda n: int -> bool { return n > 5; })
 </ul>
 ```
 
-### Filter + Map Chain
+### Filter and Map Chain
 
 ```jac
 let activeNames = users
@@ -87,7 +95,9 @@ arr.sort(lambda a, b -> int { return b - a; });
 let copy = arr.slice();  # or use spread: [*arr]
 ```
 
-## 🏃 Running
+---
+
+## Running the Example
 
 ```bash
 cd list-utils
@@ -95,7 +105,9 @@ npm install
 jac serve app.jac
 ```
 
-## 💡 Tips
+---
+
+## Tips
 
 1. Use `.concat()` instead of `.push()` for immutable updates
 2. Always provide `key` prop when mapping in JSX
