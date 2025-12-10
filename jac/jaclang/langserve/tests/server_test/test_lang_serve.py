@@ -1,5 +1,6 @@
 """Test suite for Jac language server features."""
 
+import asyncio
 # Import jaclang first to set up vendor path for lsprotocol
 from lsprotocol.types import (
     DocumentFormattingParams,
@@ -40,17 +41,18 @@ def test_open_valid_file_no_diagnostics():
     uri, ls = create_ls_with_workspace(test_file.path)
     test_file.uri = uri
     helper = LanguageServerTestHelper(ls, test_file)
-
-    try:
-        helper.open_document()
-        # helper.assert_no_diagnostics()
-        helper.assert_has_diagnostics(
-            count=1,
-            message_contains="Cannot assign <class str> to parameter 'radius' of type <class float>",
-        )
-    finally:
-        ls.shutdown()
-        test_file.cleanup()
+    async def inner_test():
+        try:
+            await helper.open_document()
+            # helper.assert_no_diagnostics()
+            helper.assert_has_diagnostics(
+                count=1,
+                message_contains="Cannot assign <class str> to parameter 'radius' of type <class float>",
+            )
+        finally:
+            ls.shutdown()
+            test_file.cleanup()
+    asyncio.run(inner_test())
 
 
 def test_open_with_syntax_error():
@@ -61,15 +63,17 @@ def test_open_with_syntax_error():
         test_file.uri = uri
     helper = LanguageServerTestHelper(ls, test_file)
 
-    try:
-        helper.open_document()
-        helper.assert_has_diagnostics(count=2, message_contains="Unexpected token")
+    async def inner_test():
+        try:
+            await helper.open_document()
+            helper.assert_has_diagnostics(count=2, message_contains="Unexpected token")
 
-        diagnostics = helper.get_diagnostics()
-        assert str(diagnostics[0].range) == "59:0-59:5"
-    finally:
-        ls.shutdown()
-        test_file.cleanup()
+            diagnostics = helper.get_diagnostics()
+            assert str(diagnostics[0].range) == "59:0-59:5"
+        finally:
+            ls.shutdown()
+            test_file.cleanup()
+    asyncio.run(inner_test())
 
 
 def test_did_open_and_simple_syntax_error():
@@ -79,26 +83,28 @@ def test_did_open_and_simple_syntax_error():
     test_file.uri = uri
     helper = LanguageServerTestHelper(ls, test_file)
 
-    try:
-        # Open valid file
-        print("Opening valid file...")
-        helper.open_document()
-        # helper.assert_no_diagnostics()
-        helper.assert_has_diagnostics(
-            count=1,
-            message_contains="Cannot assign <class str> to parameter 'radius' of type <class float>",
-        )
+    async def inner_test():
+        try:
+            # Open valid file
+            print("Opening valid file...")
+            await helper.open_document()
+            # helper.assert_no_diagnostics()
+            helper.assert_has_diagnostics(
+                count=1,
+                message_contains="Cannot assign <class str> to parameter 'radius' of type <class float>",
+            )
 
-        # Introduce syntax error
-        broken_code = load_jac_template(
-            test_file._get_template_path(CIRCLE_TEMPLATE), "error"
-        )
-        helper.change_document(broken_code)
-        helper.assert_has_diagnostics(count=2)
-        helper.assert_semantic_tokens_count(EXPECTED_CIRCLE_TOKEN_COUNT_ERROR)
-    finally:
-        ls.shutdown()
-        test_file.cleanup()
+            # Introduce syntax error
+            broken_code = load_jac_template(
+                test_file._get_template_path(CIRCLE_TEMPLATE), "error"
+            )
+            await helper.change_document(broken_code)
+            helper.assert_has_diagnostics(count=2)
+            helper.assert_semantic_tokens_count(EXPECTED_CIRCLE_TOKEN_COUNT_ERROR)
+        finally:
+            ls.shutdown()
+            test_file.cleanup()
+    asyncio.run(inner_test())
 
 
 def test_did_save():
@@ -109,25 +115,27 @@ def test_did_save():
         test_file.uri = uri
     helper = LanguageServerTestHelper(ls, test_file)
 
-    try:
-        helper.open_document()
-        helper.save_document()
-        # helper.assert_no_diagnostics()
-        helper.assert_has_diagnostics(
-            count=1,
-            message_contains="Cannot assign <class str> to parameter 'radius' of type <class float>",
-        )
+    async def inner_test():
+        try:
+            await helper.open_document()
+            await helper.save_document()
+            # helper.assert_no_diagnostics()
+            helper.assert_has_diagnostics(
+                count=1,
+                message_contains="Cannot assign <class str> to parameter 'radius' of type <class float>",
+            )
 
-        # Save with syntax error
-        broken_code = load_jac_template(
-            test_file._get_template_path(CIRCLE_TEMPLATE), "error"
-        )
-        helper.save_document(broken_code)
-        helper.assert_semantic_tokens_count(EXPECTED_CIRCLE_TOKEN_COUNT_ERROR)
-        helper.assert_has_diagnostics(count=2, message_contains="Unexpected token")
-    finally:
-        ls.shutdown()
-        test_file.cleanup()
+            # Save with syntax error
+            broken_code = load_jac_template(
+                test_file._get_template_path(CIRCLE_TEMPLATE), "error"
+            )
+            await helper.save_document(broken_code)
+            helper.assert_semantic_tokens_count(EXPECTED_CIRCLE_TOKEN_COUNT_ERROR)
+            helper.assert_has_diagnostics(count=2, message_contains="Unexpected token")
+        finally:
+            ls.shutdown()
+            test_file.cleanup()
+    asyncio.run(inner_test())
 
 
 def test_did_change():
@@ -138,26 +146,28 @@ def test_did_change():
         test_file.uri = uri
     helper = LanguageServerTestHelper(ls, test_file)
 
-    try:
-        helper.open_document()
+    async def inner_test():
+        try:
+            await helper.open_document()
 
-        # Change without error
-        helper.change_document("\n" + test_file.code)
-        # helper.assert_no_diagnostics()
-        helper.assert_has_diagnostics(
-            count=1,
-            message_contains="Cannot assign <class str> to parameter 'radius' of type <class float>",
-        )
+            # Change without error
+            await helper.change_document("\n" + test_file.code)
+            # helper.assert_no_diagnostics()
+            helper.assert_has_diagnostics(
+                count=1,
+                message_contains="Cannot assign <class str> to parameter 'radius' of type <class float>",
+            )
 
-        # Change with syntax error
-        helper.change_document("\nerror" + test_file.code)
-        helper.assert_semantic_tokens_count(EXPECTED_CIRCLE_TOKEN_COUNT)
-        helper.assert_has_diagnostics(
-            count=2, message_contains="Unexpected token 'error'"
-        )
-    finally:
-        ls.shutdown()
-        test_file.cleanup()
+            # Change with syntax error
+            await helper.change_document("\nerror" + test_file.code)
+            helper.assert_semantic_tokens_count(EXPECTED_CIRCLE_TOKEN_COUNT)
+            helper.assert_has_diagnostics(
+                count=2, message_contains="Unexpected token 'error'"
+            )
+        finally:
+            ls.shutdown()
+            test_file.cleanup()
+    asyncio.run(inner_test())
 
 
 def test_vsce_formatting():
@@ -165,20 +175,22 @@ def test_vsce_formatting():
     test_file = JacTestFile.from_template(CIRCLE_TEMPLATE)
     uri, ls = create_ls_with_workspace(test_file.path)
 
-    try:
-        params = DocumentFormattingParams(
-            text_document=TextDocumentIdentifier(uri=uri or ""),
-            options=FormattingOptions(tab_size=4, insert_spaces=True),
-        )
-        edits = formatting(ls, params)
+    async def inner_test():
+        try:
+            params = DocumentFormattingParams(
+                text_document=TextDocumentIdentifier(uri=uri or ""),
+                options=FormattingOptions(tab_size=4, insert_spaces=True),
+            )
+            edits = formatting(ls, params)
 
-        assert isinstance(edits, list)
-        assert len(edits) > 0
-        assert isinstance(edits[0], TextEdit)
-        assert len(edits[0].new_text) > 100
-    finally:
-        ls.shutdown()
-        test_file.cleanup()
+            assert isinstance(edits, list)
+            assert len(edits) > 0
+            assert isinstance(edits[0], TextEdit)
+            assert len(edits[0].new_text) > 100
+        finally:
+            ls.shutdown()
+            test_file.cleanup()
+    asyncio.run(inner_test())
 
 
 def test_multifile_workspace():
@@ -196,29 +208,31 @@ def test_multifile_workspace():
     helper1 = LanguageServerTestHelper(ls, file1)
     helper2 = LanguageServerTestHelper(ls, file2)
 
-    try:
-        # Open both files
-        helper1.open_document()
-        helper2.open_document()
+    async def inner_test():
+        try:
+            # Open both files
+            await helper1.open_document()
+            await helper2.open_document()
 
-        # Verify initial state
-        helper1.assert_no_diagnostics()
-        helper2.assert_has_diagnostics(count=1, message_contains="Unexpected token")
+            # Verify initial state
+            helper1.assert_no_diagnostics()
+            helper2.assert_has_diagnostics(count=1, message_contains="Unexpected token")
 
-        # Check semantic tokens before change
-        helper1.assert_semantic_tokens_count(EXPECTED_GLOB_TOKEN_COUNT)
-        helper2.assert_semantic_tokens_count(EXPECTED_GLOB_ERROR_TOKEN_COUNT)
+            # Check semantic tokens before change
+            helper1.assert_semantic_tokens_count(EXPECTED_GLOB_TOKEN_COUNT)
+            helper2.assert_semantic_tokens_count(EXPECTED_GLOB_ERROR_TOKEN_COUNT)
 
-        # Change first file
-        changed_code = load_jac_template(
-            file1._get_template_path(GLOB_TEMPLATE), "glob x = 90;"
-        )
-        helper1.change_document(changed_code)
+            # Change first file
+            changed_code = load_jac_template(
+                file1._get_template_path(GLOB_TEMPLATE), "glob x = 90;"
+            )
+            await helper1.change_document(changed_code)
 
-        # Verify semantic tokens after change
-        helper1.assert_semantic_tokens_count(20)
-        helper2.assert_semantic_tokens_count(EXPECTED_GLOB_ERROR_TOKEN_COUNT)
-    finally:
-        ls.shutdown()
-        file1.cleanup()
-        file2.cleanup()
+            # Verify semantic tokens after change
+            helper1.assert_semantic_tokens_count(20)
+            helper2.assert_semantic_tokens_count(EXPECTED_GLOB_ERROR_TOKEN_COUNT)
+        finally:
+            ls.shutdown()
+            file1.cleanup()
+            file2.cleanup()
+    asyncio.run(inner_test())
