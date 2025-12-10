@@ -340,7 +340,7 @@ class JFastApiServer(JServer[FastAPI]) {
             ];
             declared_params_str = repr(declared_params);
             extra_query_params_code = f"""
-        \# Extract additional query parameters not explicitly declared
+        # Extract additional query parameters not explicitly declared
         declared_params = set({declared_params_str})
         for key, value in request.query_params.items():
             if key not in declared_params:
