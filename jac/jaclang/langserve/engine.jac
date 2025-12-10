@@ -31,13 +31,10 @@ import from . { utils }
 import from .module_manager { ModuleManager }
 
 class Task {
-    has _task_id: int = 0;
-
-    def init(self: Task, file_uri: str) {
-        self.task_id = Task._task_id;
+    def init(self: Task, file_uri: str, task_id: int) {
+        self.task_id = task_id;
         self.cancel_token = threading.Event();
         self.file_uri = file_uri;
-        Task._task_id += 1;
     }
 }
 
@@ -53,6 +50,7 @@ class JacLangServer(JacProgram , LanguageServer) {
         # Worker thread for type checking.
         self.queue = Queue();
         self.last_task: Task | None = None;
+        self._next_task_id: int = 0;  # Per-server task ID counter
         self.worker_thread = threading.Thread(target=self.dispatcher);
         self.worker_thread.start();
     }
@@ -184,7 +182,9 @@ class JacLangServer(JacProgram , LanguageServer) {
             self.last_task.cancel_token.set();
             self.debug(f" Cancelling id: " + str(self.last_task.task_id));
         }
-        self.last_task = Task(file_uri);
+        task_id = self._next_task_id;
+        self._next_task_id += 1;
+        self.last_task = Task(file_uri, task_id);
 
         # Remove all the previous tasks.
         while True {
