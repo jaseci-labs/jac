@@ -158,9 +158,9 @@ class LanguageServerTestHelper:
         """Get diagnostics for the current document."""
         return self.ls.diagnostics.get(self.test_file.uri, [])
 
-    def get_semantic_tokens(self) -> SemanticTokens:
+    def get_semantic_tokens(self, _print: bool = False) -> SemanticTokens:
         """Get semantic tokens for the current document."""
-        return self.ls.get_semantic_tokens(self.test_file.uri)
+        return self.ls.get_semantic_tokens(self.test_file.uri,_print= _print)
 
     def assert_no_diagnostics(self) -> None:
         """Assert that there are no diagnostics."""

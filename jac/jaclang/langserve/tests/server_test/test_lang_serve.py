@@ -96,7 +96,7 @@ def test_did_open_and_simple_syntax_error():
         broken_code = load_jac_template(
             test_file._get_template_path(CIRCLE_TEMPLATE), "error"
         )
-        ic(f'before change: {len(helper.get_semantic_tokens().data)} ')
+        ic(f'before change: {len(helper.get_semantic_tokens(_print=True).data)} ')
         helper.change_document(broken_code)
         ic(f'after   change: {len(helper.get_semantic_tokens().data)} ')
         helper.assert_has_diagnostics(count=2)
