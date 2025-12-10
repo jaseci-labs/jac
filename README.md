@@ -1,8 +1,8 @@
 <div align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://www.jac-lang.org//assets/logo.png">
-    <source media="(prefers-color-scheme: light)" srcset="https://www.jac-lang.org//assets/logo.png">
-    <img alt="Jaclang logo" src="https://www.jac-lang.org//assets/logo.png" width="150px">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/docs/assets/logo.png">
+    <source media="(prefers-color-scheme: light)" srcset="docs/docs/assets/logo.png">
+    <img alt="Jaclang logo" src="docs/docs/assets/logo.png" width="80px">
   </picture>
 
   <h1>Jaseci</h1>
