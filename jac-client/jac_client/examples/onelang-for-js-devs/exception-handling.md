@@ -20,91 +20,99 @@ This guide covers error handling patterns in JAC-Lang for developers familiar wi
 
 ### Basic Try/Except
 
-```javascript
-// React/JavaScript
-try {
-  riskyOperation();
-} catch (error) {
-  console.log("Error:", error.message);
-}
-```
+=== "JavaScript"
 
-```jac
-# JAC-Lang
-try {
-    riskyOperation();
-} except Exception as e {
-    console.log("Error:", (e.toString()));
-}
-```
+    ```javascript
+    try {
+      riskyOperation();
+    } catch (error) {
+      console.log("Error:", error.message);
+    }
+    ```
+
+=== "JAC-Client"
+
+    ```jac
+    try {
+        riskyOperation();
+    } except Exception as e {
+        console.log("Error:", (e.toString()));
+    }
+    ```
 
 ---
 
 ### Try/Except/Finally
 
-```javascript
-// React/JavaScript
-try {
-  doSomething();
-} catch (error) {
-  handleError(error);
-} finally {
-  cleanup(); // Always runs
-}
-```
+=== "JavaScript"
 
-```jac
-# JAC-Lang
-try {
-    doSomething();
-} except Exception as e {
-    handleError(e);
-} finally {
-    cleanup();  # Always runs
-}
-```
+    ```javascript
+    try {
+      doSomething();
+    } catch (error) {
+      handleError(error);
+    } finally {
+      cleanup(); // Always runs
+    }
+    ```
+
+=== "JAC-Client"
+
+    ```jac
+    try {
+        doSomething();
+    } except Exception as e {
+        handleError(e);
+    } finally {
+        cleanup();  # Always runs
+    }
+    ```
 
 ---
 
 ### Raising/Throwing Errors
 
-```javascript
-// React/JavaScript
-if (value < 0) {
-  throw new Error("Value cannot be negative!");
-}
-```
+=== "JavaScript"
 
-```jac
-# JAC-Lang
-if value < 0 {
-    raise Exception("Value cannot be negative!");
-}
-```
+    ```javascript
+    if (value < 0) {
+      throw new Error("Value cannot be negative!");
+    }
+    ```
+
+=== "JAC-Client"
+
+    ```jac
+    if value < 0 {
+        raise Exception("Value cannot be negative!");
+    }
+    ```
 
 ---
 
 ### Re-Raising Exceptions
 
-```javascript
-// React/JavaScript
-try {
-  riskyOperation();
-} catch (error) {
-  console.log("Logging error...");
-  throw error; // Re-throw
-}
-```
+=== "JavaScript"
 
-```jac
-# JAC-Lang
-try {
-    riskyOperation();
-} except Exception as e {
-    console.log("Logging error...");
-    raise e;  # Re-raise
-}
-```
+    ```javascript
+    try {
+      riskyOperation();
+    } catch (error) {
+      console.log("Logging error...");
+      throw error; // Re-throw
+    }
+    ```
+
+=== "JAC-Client"
+
+    ```jac
+    try {
+        riskyOperation();
+    } except Exception as e {
+        console.log("Logging error...");
+        raise e;  # Re-raise
+    }
+    ```
 
 ---
 

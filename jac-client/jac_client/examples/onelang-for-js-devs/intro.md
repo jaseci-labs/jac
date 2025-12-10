@@ -31,66 +31,74 @@ Before diving into specific topics, here is a quick overview of the main syntax 
 
 ### Variables and Types
 
-```javascript
-// JavaScript
-const name = "Alice";
-let count = 0;
-```
+=== "JavaScript"
 
-```jac
-# JAC-Client
-let name = "Alice";
-let count = 0;
-```
+    ```javascript
+    const name = "Alice";
+    let count = 0;
+    ```
+
+=== "JAC-Client"
+
+    ```jac
+    let name = "Alice";
+    let count = 0;
+    ```
 
 ### Functions
 
-```javascript
-// JavaScript
-function greet(name) {
-  return `Hello, ${name}!`;
-}
+=== "JavaScript"
 
-const double = (n) => n * 2;
-```
+    ```javascript
+    function greet(name) {
+      return `Hello, ${name}!`;
+    }
 
-```jac
-# JAC-Client
-def greet(name: str) -> str {
-    return "Hello, " + name + "!";
-}
+    const double = (n) => n * 2;
+    ```
 
-let double = lambda n: int -> int { return n * 2; };
-```
+=== "JAC-Client"
+
+    ```jac
+    def greet(name: str) -> str {
+        return "Hello, " + name + "!";
+    }
+
+    let double = lambda n: int -> int { return n * 2; };
+    ```
 
 ### Conditionals
 
-```javascript
-// JavaScript
-const status = isOnline ? "Online" : "Offline";
-```
+=== "JavaScript"
 
-```jac
-# JAC-Client
-let status = ("Online") if isOnline else ("Offline");
-```
+    ```javascript
+    const status = isOnline ? "Online" : "Offline";
+    ```
+
+=== "JAC-Client"
+
+    ```jac
+    let status = ("Online") if isOnline else ("Offline");
+    ```
 
 ### Components
 
-```javascript
-// React
-function Greeting({ name }) {
-  return <div>Hello, {name}!</div>;
-}
-```
+=== "React"
 
-```jac
-# JAC-Client
-def Greeting(props: dict) -> any {
-    let name = props.name;
-    return <div>Hello, {name}!</div>;
-}
-```
+    ```javascript
+    function Greeting({ name }) {
+      return <div>Hello, {name}!</div>;
+    }
+    ```
+
+=== "JAC-Client"
+
+    ```jac
+    def Greeting(props: dict) -> any {
+        let name = props.name;
+        return <div>Hello, {name}!</div>;
+    }
+    ```
 
 ## Getting Help
 

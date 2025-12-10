@@ -27,86 +27,95 @@ If you are coming from a React/JavaScript background, this guide will help you u
 
 ### 1. No Parameters
 
-```javascript
-// React/JavaScript
-const sayHello = () => {
-  console.log("Hello!");
-};
+=== "JavaScript"
 
-// Short form
-() => console.log("Hello!");
-```
+    ```javascript
+    const sayHello = () => {
+      console.log("Hello!");
+    };
 
-```jac
-# JAC-Client - Full syntax with body
-let sayHello = lambda -> None {
-    console.log("Hello!");
-};
+    // Short form
+    () => console.log("Hello!");
+    ```
 
-# Short form (expression)
-lambda: console.log("Hello!")
-```
+=== "JAC-Client"
+
+    ```jac
+    # Full syntax with body
+    let sayHello = lambda -> None {
+        console.log("Hello!");
+    };
+
+    # Short form (expression)
+    lambda: console.log("Hello!")
+    ```
 
 ---
 
 ### 2. Single Parameter
 
-```javascript
-// React/JavaScript
-const double = (n) => {
-  return n * 2;
-};
+=== "JavaScript"
 
-// Short form
-n => n * 2
+    ```javascript
+    const double = (n) => {
+      return n * 2;
+    };
 
-// Event handler
-(e) => setInputValue(e.target.value)
-```
+    // Short form
+    n => n * 2
 
-```jac
-# JAC-Client - Single parameter
-let double = lambda n: int -> int {
-    return n * 2;
-};
+    // Event handler
+    (e) => setInputValue(e.target.value)
+    ```
 
-# Event handler
-lambda e: any -> None { setInputValue(e.target.value); }
+=== "JAC-Client"
 
-# Inline call (wrapping with lambda)
-onClick={lambda: double(5)}
-```
+    ```jac
+    # Single parameter
+    let double = lambda n: int -> int {
+        return n * 2;
+    };
+
+    # Event handler
+    lambda e: any -> None { setInputValue(e.target.value); }
+
+    # Inline call (wrapping with lambda)
+    onClick={lambda: double(5)}
+    ```
 
 ---
 
 ### 3. Multiple Parameters
 
-```javascript
-// React/JavaScript
-const add = (a, b) => {
-  return a + b;
-};
+=== "JavaScript"
 
-// With handler
-const handleSelect = (id, name) => {
-  setSelected({ id, name });
-};
-```
+    ```javascript
+    const add = (a, b) => {
+      return a + b;
+    };
 
-```jac
-# JAC-Client - Multiple parameters
-let add = lambda a: int, b: int -> int {
-    return a + b;
-};
+    // With handler
+    const handleSelect = (id, name) => {
+      setSelected({ id, name });
+    };
+    ```
 
-# With handler
-let handleSelect = lambda id: int, name: str -> None {
-    setSelected({ "id": id, "name": name });
-};
+=== "JAC-Client"
 
-# Usage - wrap in lambda to pass arguments
-onClick={lambda: handleSelect(1, "Apple")}
-```
+    ```jac
+    # Multiple parameters
+    let add = lambda a: int, b: int -> int {
+        return a + b;
+    };
+
+    # With handler
+    let handleSelect = lambda id: int, name: str -> None {
+        setSelected({ "id": id, "name": name });
+    };
+
+    # Usage - wrap in lambda to pass arguments
+    onClick={lambda: handleSelect(1, "Apple")}
+    ```
 
 ---
 
@@ -126,24 +135,28 @@ onClick={lambda: handleSelect(1, "Apple")}
 
 ### Event Handlers
 
-```javascript
-// React - onClick handler
-<button onClick={() => handleClick(id)}>Click</button>
+=== "React"
 
-// React - onChange handler
-<input onChange={(e) => setValue(e.target.value)} />
-```
+    ```javascript
+    // onClick handler
+    <button onClick={() => handleClick(id)}>Click</button>
 
-```jac
-# JAC-Client - onClick handler
-<button onClick={lambda: handleClick(id)}>Click</button>
+    // onChange handler
+    <input onChange={(e) => setValue(e.target.value)} />
+    ```
 
-# JAC-Client - onChange handler (define handler first)
-let handleChange = lambda e: any -> None {
-    setValue(e.target.value);
-};
-<input onChange={handleChange} />
-```
+=== "JAC-Client"
+
+    ```jac
+    # onClick handler
+    <button onClick={lambda: handleClick(id)}>Click</button>
+
+    # onChange handler (define handler first)
+    let handleChange = lambda e: any -> None {
+        setValue(e.target.value);
+    };
+    <input onChange={handleChange} />
+    ```
 
 ---
 
@@ -151,118 +164,128 @@ let handleChange = lambda e: any -> None {
 
 When you need to do multiple things or have logic inside an onClick handler:
 
-```javascript
-// React - Multiple actions in onClick
-<button onClick={() => {
-  setLoading(true);
-  fetchData();
-  console.log("Clicked!");
-}}>
-  Submit
-</button>
+=== "React"
 
-// React - Conditional logic in onClick
-<button onClick={() => {
-  if (isValid) {
-    handleSubmit();
-  } else {
-    showError("Invalid input");
-  }
-}}>
-  Submit
-</button>
+    ```javascript
+    // Multiple actions in onClick
+    <button onClick={() => {
+      setLoading(true);
+      fetchData();
+      console.log("Clicked!");
+    }}>
+      Submit
+    </button>
 
-// React - Prevent default + action
-<form onSubmit={(e) => {
-  e.preventDefault();
-  handleSubmit();
-}}>
-```
-
-```jac
-# JAC-Client - Multiple actions in onClick
-<button onClick={lambda -> None {
-    setLoading(True);
-    fetchData();
-    console.log("Clicked!");
-}}>
-    Submit
-</button>
-
-# JAC-Client - Conditional logic in onClick
-<button onClick={lambda -> None {
-    if isValid {
+    // Conditional logic in onClick
+    <button onClick={() => {
+      if (isValid) {
         handleSubmit();
-    } else {
+      } else {
         showError("Invalid input");
-    }
-}}>
-    Submit
-</button>
+      }
+    }}>
+      Submit
+    </button>
 
-# JAC-Client - Prevent default + action
-<form onSubmit={lambda e: any -> None {
-    e.preventDefault();
-    handleSubmit();
-}}>
-```
+    // Prevent default + action
+    <form onSubmit={(e) => {
+      e.preventDefault();
+      handleSubmit();
+    }}>
+    ```
+
+=== "JAC-Client"
+
+    ```jac
+    # Multiple actions in onClick
+    <button onClick={lambda -> None {
+        setLoading(True);
+        fetchData();
+        console.log("Clicked!");
+    }}>
+        Submit
+    </button>
+
+    # Conditional logic in onClick
+    <button onClick={lambda -> None {
+        if isValid {
+            handleSubmit();
+        } else {
+            showError("Invalid input");
+        }
+    }}>
+        Submit
+    </button>
+
+    # Prevent default + action
+    <form onSubmit={lambda e: any -> None {
+        e.preventDefault();
+        handleSubmit();
+    }}>
+    ```
 
 **Key Syntax Difference:**
 
-| Pattern | React | JAC-Client |
-|---------|-------|----------|
-| Simple call | `onClick={() => fn()}` | `onClick={lambda: fn()}` |
-| With event | `onClick={(e) => fn(e)}` | `onClick={lambda e: any -> None { fn(e); }}` |
-| Multi-line | `onClick={() => { a(); b(); }}` | `onClick={lambda -> None { a(); b(); }}` |
-| With logic | `onClick={() => { if(x) a(); }}` | `onClick={lambda -> None { if x { a(); } }}` |
+| Pattern     | React                            | JAC-Client                                   |
+| ----------- | -------------------------------- | -------------------------------------------- |
+| Simple call | `onClick={() => fn()}`           | `onClick={lambda: fn()}`                     |
+| With event  | `onClick={(e) => fn(e)}`         | `onClick={lambda e: any -> None { fn(e); }}` |
+| Multi-line  | `onClick={() => { a(); b(); }}`  | `onClick={lambda -> None { a(); b(); }}`     |
+| With logic  | `onClick={() => { if(x) a(); }}` | `onClick={lambda -> None { if x { a(); } }}` |
 
 ---
 
 ### useEffect
 
-```javascript
-// React
-useEffect(() => {
-  console.log("Effect ran!");
-  return () => cleanup();
-}, [deps]);
-```
+=== "React"
 
-```jac
-# JAC-Client
-useEffect(lambda -> None {
-    console.log("Effect ran!");
-    # cleanup return is handled differently
-}, [deps]);
-```
+    ```javascript
+    useEffect(() => {
+      console.log("Effect ran!");
+      return () => cleanup();
+    }, [deps]);
+    ```
+
+=== "JAC-Client"
+
+    ```jac
+    useEffect(lambda -> None {
+        console.log("Effect ran!");
+        # cleanup return is handled differently
+    }, [deps]);
+    ```
 
 ---
 
 ### useCallback and useMemo
 
-```javascript
-// React - useCallback
-const memoizedCallback = useCallback(() => {
-  doSomething(a, b);
-}, [a, b]);
+=== "React"
 
-// React - useMemo
-const memoizedValue = useMemo(() => computeExpensive(a, b), [a, b]);
-```
+    ```javascript
+    // useCallback
+    const memoizedCallback = useCallback(() => {
+      doSomething(a, b);
+    }, [a, b]);
 
-```jac
-# JAC-Client - useCallback
-let memoizedCallback = useCallback(
-    lambda -> None { doSomething(a, b); },
-    [a, b]
-);
+    // useMemo
+    const memoizedValue = useMemo(() => computeExpensive(a, b), [a, b]);
+    ```
 
-# JAC-Client - useMemo
-let memoizedValue = useMemo(
-    lambda -> any { return computeExpensive(a, b); },
-    [a, b]
-);
-```
+=== "JAC-Client"
+
+    ```jac
+    # useCallback
+    let memoizedCallback = useCallback(
+        lambda -> None { doSomething(a, b); },
+        [a, b]
+    );
+
+    # useMemo
+    let memoizedValue = useMemo(
+        lambda -> any { return computeExpensive(a, b); },
+        [a, b]
+    );
+    ```
 
 ---
 
@@ -270,32 +293,35 @@ let memoizedValue = useMemo(
 
 **Important:** For `.map()` and `.filter()`, JAC-Client works best with helper functions:
 
-```javascript
-// React
-const names = users.map((user) => user.name);
-const adults = users.filter((user) => user.age >= 18);
-const listItems = items.map((item) => <li key={item.id}>{item.name}</li>);
-```
+=== "React"
 
-```jac
-# JAC-Client - Define helper functions
-def getName(user: dict, index: int) -> any {
-    return user["name"];
-}
+    ```javascript
+    const names = users.map((user) => user.name);
+    const adults = users.filter((user) => user.age >= 18);
+    const listItems = items.map((item) => <li key={item.id}>{item.name}</li>);
+    ```
 
-def isAdult(user: dict, index: int) -> any {
-    return user["age"] >= 18;
-}
+=== "JAC-Client"
 
-def renderItem(item: dict, index: int) -> any {
-    return <li key={item["id"]}>{item["name"]}</li>;
-}
+    ```jac
+    # Define helper functions
+    def getName(user: dict, index: int) -> any {
+        return user["name"];
+    }
 
-# Use with array methods
-let names = users.map(getName);
-let adults = users.filter(isAdult);
-let listItems = items.map(renderItem);
-```
+    def isAdult(user: dict, index: int) -> any {
+        return user["age"] >= 18;
+    }
+
+    def renderItem(item: dict, index: int) -> any {
+        return <li key={item["id"]}>{item["name"]}</li>;
+    }
+
+    # Use with array methods
+    let names = users.map(getName);
+    let adults = users.filter(isAdult);
+    let listItems = items.map(renderItem);
+    ```
 
 **Alternative: Inline lambda for .map()**
 
@@ -312,126 +338,132 @@ let listItems = items.map(renderItem);
 
 This is the pattern React developers use most often - rendering lists directly inside JSX without assigning to variables first:
 
-```javascript
-// React - Inline .map() in JSX
-<div>
-  {items.map((item) => (
-    <button
-      key={item.id}
-      style={{
-        backgroundColor: selected?.id === item.id ? "#28a745" : "#007bff",
-      }}
-      onClick={() => handleSelect(item.id, item.name)}
-    >
-      {item.name}
-    </button>
-  ))}
-</div>
-```
+=== "React"
 
-```jac
-# JAC-Client - Inline .map() in JSX
-<div>
-    {items.map(lambda item: any -> any {
-        let isSelected = selected and selected["id"] == item["id"];
-        return (
-            <button
-                key={item["id"]}
-                style={{
-                    "backgroundColor": ("#28a745") if isSelected else ("#007bff")
-                }}
-                onClick={lambda: handleSelect(item["id"], item["name"])}
-            >
-                {item["name"]}
-            </button>
-        );
-    })}
-</div>
-```
+    ```javascript
+    <div>
+      {items.map((item) => (
+        <button
+          key={item.id}
+          style={{
+            backgroundColor: selected?.id === item.id ? "#28a745" : "#007bff",
+          }}
+          onClick={() => handleSelect(item.id, item.name)}
+        >
+          {item.name}
+        </button>
+      ))}
+    </div>
+    ```
+
+=== "JAC-Client"
+
+    ```jac
+    <div>
+        {items.map(lambda item: any -> any {
+            let isSelected = selected and selected["id"] == item["id"];
+            return (
+                <button
+                    key={item["id"]}
+                    style={{
+                        "backgroundColor": ("#28a745") if isSelected else ("#007bff")
+                    }}
+                    onClick={lambda: handleSelect(item["id"], item["name"])}
+                >
+                    {item["name"]}
+                </button>
+            );
+        })}
+    </div>
+    ```
 
 ### Inline .filter().map() Chain
 
-```javascript
-// React - Filter then map inline
-<div>
-  {items
-    .filter((item) => item.inStock)
-    .map((item) => (
-      <span key={item.id}>In Stock: {item.name}</span>
-    ))}
-</div>
-```
+=== "React"
 
-```jac
-# JAC-Client - Filter then map inline
-<div>
-    {items.filter(lambda item: any -> any {
-        return item["inStock"];
-    }).map(lambda item: any -> any {
-        return (
-            <span key={item["id"]}>In Stock: {item["name"]}</span>
-        );
-    })}
-</div>
-```
+    ```javascript
+    <div>
+      {items
+        .filter((item) => item.inStock)
+        .map((item) => (
+          <span key={item.id}>In Stock: {item.name}</span>
+        ))}
+    </div>
+    ```
+
+=== "JAC-Client"
+
+    ```jac
+    <div>
+        {items.filter(lambda item: any -> any {
+            return item["inStock"];
+        }).map(lambda item: any -> any {
+            return (
+                <span key={item["id"]}>In Stock: {item["name"]}</span>
+            );
+        })}
+    </div>
+    ```
 
 ### Inline .some() for Conditional Rendering
 
-```javascript
-// React - Using .some() for conditional UI
-{
-  items.some((item) => not item.inStock) && <p>Some items are out of stock!</p>;
-}
-```
+=== "React"
 
-```jac
-# JAC-Client - Using .some() for conditional UI
-{items.some(lambda item: any -> any { return not item["inStock"]; }) and (
-    <p>Some items are out of stock!</p>
-)}
-```
+    ```javascript
+    {items.some((item) => !item.inStock) && <p>Some items are out of stock!</p>}
+    ```
+
+=== "JAC-Client"
+
+    ```jac
+    {items.some(lambda item: any -> any { return not item["inStock"]; }) and (
+        <p>Some items are out of stock!</p>
+    )}
+    ```
 
 ### Inline .every() Check
 
-```javascript
-// React
-{
-  items.every((item) => item.price < 10) && <p>All items under $10</p>;
-}
-```
+=== "React"
 
-```jac
-# JAC-Client
-{items.every(lambda item: any -> any { return item["price"] < 10; }) and (
-    <p>All items under $10</p>
-)}
-```
+    ```javascript
+    {items.every((item) => item.price < 10) && <p>All items under $10</p>}
+    ```
+
+=== "JAC-Client"
+
+    ```jac
+    {items.every(lambda item: any -> any { return item["price"] < 10; }) and (
+        <p>All items under $10</p>
+    )}
+    ```
 
 ### Inline .map() with Index
 
-```javascript
-// React - Using index in map
-<ol>
-  {items.map((item, index) => (
-    <li key={item.id}>
-      #{index + 1}: {item.name}
-    </li>
-  ))}
-</ol>
-```
+=== "React"
 
-```jac
-# JAC-Client - Using index in map
-<ol>
-    {items.map(lambda item: any, index: int -> any {
-        return (
-            <li key={item["id"]}>
-                #{index + 1}: {item["name"]}
-            </li>
-        );
-    })}
-</ol>
-```
+    ```javascript
+    <ol>
+      {items.map((item, index) => (
+        <li key={item.id}>
+          #{index + 1}: {item.name}
+        </li>
+      ))}
+    </ol>
+    ```
+
+=== "JAC-Client"
+
+    ```jac
+    <ol>
+        {items.map(lambda item: any, index: int -> any {
+            return (
+                <li key={item["id"]}>
+                    #{index + 1}: {item["name"]}
+                </li>
+            );
+        })}
+    </ol>
+    ```
 
 ---
 
@@ -439,26 +471,29 @@ This is the pattern React developers use most often - rendering lists directly i
 
 **Note:** For async operations, use `async def` instead of lambda:
 
-```javascript
-// React
-const fetchData = async () => {
-  const response = await fetch("/api/data");
-  const data = await response.json();
-  setData(data);
-};
-```
+=== "React"
 
-```jac
-# JAC-Client - Use async def for async functions
-async def fetchData() {
-    let response = await fetch("/api/data");
-    let data = await response.json();
-    setData(data);
-}
+    ```javascript
+    const fetchData = async () => {
+      const response = await fetch("/api/data");
+      const data = await response.json();
+      setData(data);
+    };
+    ```
 
-# Call it
-onClick={lambda: fetchData()}
-```
+=== "JAC-Client"
+
+    ```jac
+    # Use async def for async functions
+    async def fetchData() {
+        let response = await fetch("/api/data");
+        let data = await response.json();
+        setData(data);
+    }
+
+    # Call it
+    onClick={lambda: fetchData()}
+    ```
 
 ---
 

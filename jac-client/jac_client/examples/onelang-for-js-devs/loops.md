@@ -1,6 +1,6 @@
 # Loops in JAC-Client (Onelang)
 
-This guide covers loop syntax in JAC-Client with practical examples for developers familiar with JavaScript or Python.
+This guide covers loop syntax in JAC-Client for developers familiar with JavaScript.
 
 > **Full Examples**: See the complete working examples at [jac-client-examples/loops](https://github.com/jaseci-labs/jac-client-examples/tree/main/loops)
 
@@ -8,7 +8,8 @@ This guide covers loop syntax in JAC-Client with practical examples for develope
 
 ## Important Note
 
-The `range()` function does NOT work in JAC-Client/Onelang. Use counter-based loops instead.
+!!! warning "range() does NOT work"
+    The `range()` function does NOT work in JAC-Client/Onelang. Use counter-based loops instead.
 
 ---
 
@@ -22,225 +23,238 @@ The `range()` function does NOT work in JAC-Client/Onelang. Use counter-based lo
 
 ---
 
-## Loop Syntax Breakdown
+## Basic Counter Loop
 
-```
-for i=0 to i<5 by i+=1 {
-    // loop body
-}
-```
+=== "JavaScript"
 
-- `i=0` - **Start value** (initialization)
-- `i<5` - **Condition** (loop continues while true)
-- `i+=1` - **Increment** (executed after each iteration)
+    ```javascript
+    // Count from 0 to 4
+    for (let i = 0; i < 5; i++) {
+      console.log(i);
+    }
+    ```
+
+=== "JAC-Client"
+
+    ```jac
+    # Count from 0 to 4
+    for i=0 to i<5 by i+=1 {
+        console.log(i);
+    }
+    ```
+
+**Syntax breakdown:**
+
+- `i=0` → Start value (initialization)
+- `i<5` → Condition (loop continues while true)
+- `i+=1` → Increment (after each iteration)
 
 ---
 
-## Examples
+## Custom Step/Increment
 
-### 1. Basic Counter Loop
+=== "JavaScript"
 
-```jac
-# Count from 0 to 4
-for i=0 to i<5 by i+=1 {
-    console.log(i);
-}
-```
-
-### 2. Different Start Values
-
-```jac
-# Loop from 1 to 5 (inclusive)
-for i=1 to i<=5 by i+=1 {
-    console.log(i);  # Prints: 1, 2, 3, 4, 5
-}
-
-# Loop from 10 to 15
-for i=10 to i<=15 by i+=1 {
-    console.log(i);
-}
-```
-
-### 3. Custom Step/Increment
-
-```jac
-# Even numbers (step by 2)
-for i=0 to i<=10 by i+=2 {
-    console.log(i);  # Prints: 0, 2, 4, 6, 8, 10
-}
-
-# Step by 5
-for i=0 to i<=20 by i+=5 {
-    console.log(i);  # Prints: 0, 5, 10, 15, 20
-}
-```
-
-### 4. Countdown (Decrement)
-
-```jac
-# Countdown from 5 to 0
-for i=5 to i>=0 by i-=1 {
-    console.log(i);  # Prints: 5, 4, 3, 2, 1, 0
-}
-
-# Countdown by 2
-for i=10 to i>=0 by i-=2 {
-    console.log(i);  # Prints: 10, 8, 6, 4, 2, 0
-}
-```
-
-### 5. For-In Loop (Arrays)
-
-```jac
-# Iterate array elements
-let fruits = ["Apple", "Banana", "Cherry"];
-
-for fruit in fruits {
-    console.log(fruit);
-}
-# Prints: Apple, Banana, Cherry
-
-# Sum numbers
-let total = 0;
-for num in [10, 20, 30] {
-    total = total + num;
-}
-```
-
-### 6. Nested Loops
-
-```jac
-# Multiplication table
-for i=1 to i<=5 by i+=1 {
-    for j=1 to j<=5 by j+=1 {
-        let product = i * j;
-        console.log(i.toString() + " x " + j.toString() + " = " + product.toString());
+    ```javascript
+    // Even numbers (step by 2)
+    for (let i = 0; i <= 10; i += 2) {
+      console.log(i);  // 0, 2, 4, 6, 8, 10
     }
-}
+    ```
 
-# Grid coordinates
-for row=0 to row<3 by row+=1 {
-    for col=0 to col<3 by col+=1 {
-        console.log("[" + row.toString() + "," + col.toString() + "]");
+=== "JAC-Client"
+
+    ```jac
+    # Even numbers (step by 2)
+    for i=0 to i<=10 by i+=2 {
+        console.log(i);  # 0, 2, 4, 6, 8, 10
     }
-}
-```
+    ```
 
-### 7. While Loop
+---
 
-```jac
-# Basic while loop
-let count = 0;
-while count < 5 {
-    console.log("Count:", count);
-    count = count + 1;
-}
+## Countdown (Decrement)
 
-# Double until condition
-let value = 1;
-while value < 100 {
-    console.log(value);
-    value = value * 2;
-}
-```
+=== "JavaScript"
 
-### 8. Building Arrays with Loops
-
-```jac
-# Build array of squares
-let squares = [];
-for i=1 to i<=10 by i+=1 {
-    let square = i * i;
-    squares = squares.concat([square]);
-}
-# Result: [1, 4, 9, 16, 25, 36, 49, 64, 81, 100]
-
-# Build even numbers
-let evens = [];
-for i=2 to i<=20 by i+=2 {
-    evens = evens.concat([i]);
-}
-# Result: [2, 4, 6, 8, 10, 12, 14, 16, 18, 20]
-```
-
-### 9. Loop with Index and Array Access
-
-```jac
-let colors = ["Red", "Green", "Blue", "Yellow", "Purple"];
-
-# Forward iteration with index
-for i=0 to i<colors.length by i+=1 {
-    console.log("Index " + i.toString() + ": " + colors[i]);
-}
-
-# Reverse iteration
-for i=colors.length-1 to i>=0 by i-=1 {
-    console.log(colors[i]);
-}
-
-# Every other element
-for i=0 to i<colors.length by i+=2 {
-    console.log(colors[i]);  # Prints: Red, Blue, Purple
-}
-```
-
-### 10. Practical Examples
-
-```jac
-# Sum 1 to 100
-let sum = 0;
-for i=1 to i<=100 by i+=1 {
-    sum = sum + i;
-}
-# Result: 5050
-
-# Factorial calculation
-let factorial = 1;
-for i=1 to i<=5 by i+=1 {
-    factorial = factorial * i;
-}
-# Result: 120 (5!)
-
-# Generate star pattern
-for i=1 to i<=5 by i+=1 {
-    let stars = "";
-    for j=0 to j<i by j+=1 {
-        stars = stars + "*";
+    ```javascript
+    // Countdown from 5 to 0
+    for (let i = 5; i >= 0; i--) {
+      console.log(i);  // 5, 4, 3, 2, 1, 0
     }
-    console.log(stars);
-}
-# Output:
-# *
-# **
-# ***
-# ****
-# *****
-```
+    ```
+
+=== "JAC-Client"
+
+    ```jac
+    # Countdown from 5 to 0
+    for i=5 to i>=0 by i-=1 {
+        console.log(i);  # 5, 4, 3, 2, 1, 0
+    }
+    ```
+
+---
+
+## For-In Loop (Arrays)
+
+=== "JavaScript"
+
+    ```javascript
+    const fruits = ["Apple", "Banana", "Cherry"];
+
+    for (const fruit of fruits) {
+      console.log(fruit);
+    }
+    // or
+    fruits.forEach(fruit => console.log(fruit));
+    ```
+
+=== "JAC-Client"
+
+    ```jac
+    let fruits = ["Apple", "Banana", "Cherry"];
+
+    for fruit in fruits {
+        console.log(fruit);
+    }
+    ```
+
+---
+
+## While Loop
+
+=== "JavaScript"
+
+    ```javascript
+    let count = 0;
+    while (count < 5) {
+      console.log("Count:", count);
+      count++;
+    }
+    ```
+
+=== "JAC-Client"
+
+    ```jac
+    let count = 0;
+    while count < 5 {
+        console.log("Count:", count);
+        count = count + 1;
+    }
+    ```
+
+---
+
+## Nested Loops
+
+=== "JavaScript"
+
+    ```javascript
+    // Multiplication table
+    for (let i = 1; i <= 3; i++) {
+      for (let j = 1; j <= 3; j++) {
+        console.log(`${i} x ${j} = ${i * j}`);
+      }
+    }
+    ```
+
+=== "JAC-Client"
+
+    ```jac
+    # Multiplication table
+    for i=1 to i<=3 by i+=1 {
+        for j=1 to j<=3 by j+=1 {
+            let product = i * j;
+            console.log(i.toString() + " x " + j.toString() + " = " + product.toString());
+        }
+    }
+    ```
+
+---
+
+## Loop with Array Index
+
+=== "JavaScript"
+
+    ```javascript
+    const colors = ["Red", "Green", "Blue"];
+
+    for (let i = 0; i < colors.length; i++) {
+      console.log(`Index ${i}: ${colors[i]}`);
+    }
+    ```
+
+=== "JAC-Client"
+
+    ```jac
+    let colors = ["Red", "Green", "Blue"];
+
+    for i=0 to i<colors.length by i+=1 {
+        console.log("Index " + i.toString() + ": " + colors[i]);
+    }
+    ```
+
+---
+
+## Building Arrays with Loops
+
+=== "JavaScript"
+
+    ```javascript
+    // Build array of squares
+    let squares = [];
+    for (let i = 1; i <= 5; i++) {
+      squares.push(i * i);
+    }
+    // Result: [1, 4, 9, 16, 25]
+    ```
+
+=== "JAC-Client"
+
+    ```jac
+    # Build array of squares
+    let squares = [];
+    for i=1 to i<=5 by i+=1 {
+        let square = i * i;
+        squares = squares.concat([square]);
+    }
+    # Result: [1, 4, 9, 16, 25]
+    ```
 
 ---
 
 ## Quick Reference Table
 
-| Loop Type      | JAC-Client Syntax                |
-| -------------- | -------------------------------- |
-| Basic Counter  | `for i=0 to i<5 by i+=1 {...}`   |
-| Inclusive End  | `for i=1 to i<=10 by i+=1 {...}` |
-| Custom Step    | `for i=0 to i<10 by i+=2 {...}`  |
-| Countdown      | `for i=10 to i>=0 by i-=1 {...}` |
-| For-In (Array) | `for item in array {...}`        |
-| While          | `while condition {...}`          |
+| Loop Type      | JavaScript                    | JAC-Client                       |
+| -------------- | ----------------------------- | -------------------------------- |
+| Basic Counter  | `for(let i=0; i<5; i++)`      | `for i=0 to i<5 by i+=1`         |
+| Inclusive End  | `for(let i=1; i<=10; i++)`    | `for i=1 to i<=10 by i+=1`       |
+| Custom Step    | `for(let i=0; i<10; i+=2)`    | `for i=0 to i<10 by i+=2`        |
+| Countdown      | `for(let i=10; i>=0; i--)`    | `for i=10 to i>=0 by i-=1`       |
+| For-In (Array) | `for(const x of arr)`         | `for x in arr`                   |
+| While          | `while(condition) {}`         | `while condition {}`             |
 
 ---
 
-## Common Mistakes to Avoid
+## Common Mistakes
 
 ```jac
-# WRONG - range() does not work in Onelang
+# ❌ WRONG - range() does not work
 for i in range(5) {
     console.log(i);
 }
 
-# CORRECT - Use counter-based loop
+# ✅ CORRECT - Use counter-based loop
+for i=0 to i<5 by i+=1 {
+    console.log(i);
+}
+
+# ❌ WRONG - i++ does not work
+for i=0 to i<5 by i++ {
+    console.log(i);
+}
+
+# ✅ CORRECT - Use i+=1
 for i=0 to i<5 by i+=1 {
     console.log(i);
 }
@@ -254,5 +268,4 @@ for i=0 to i<5 by i+=1 {
 2. **Use `i<=n`** for inclusive end (includes n)
 3. **Use `i<n`** for exclusive end (stops before n)
 4. **Use `i-=1`** for countdown loops
-5. **For arrays**, use `for item in array` when you do not need the index
-6. **Use counter loop** when you need the index: `for i=0 to i<arr.length by i+=1`
+5. **For arrays**, use `for item in array` when you don't need the index

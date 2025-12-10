@@ -10,28 +10,28 @@ This guide covers conditional rendering patterns in JAC-lang for building dynami
 
 The most basic conditional rendering pattern. Return different JSX based on a condition.
 
-### JAC Syntax:
+=== "JAC-Client"
 
-```jac
-def IfElseExample(props: dict) -> any {
-    let isLoggedIn = props.isLoggedIn;
-    if isLoggedIn {
-        return <div>Welcome back, User!</div>;
+    ```jac
+    def IfElseExample(props: dict) -> any {
+        let isLoggedIn = props.isLoggedIn;
+        if isLoggedIn {
+            return <div>Welcome back, User!</div>;
+        }
+        return <div>Please sign in.</div>;
     }
-    return <div>Please sign in.</div>;
-}
-```
+    ```
 
-### React Equivalent:
+=== "React"
 
-```jsx
-function IfElseExample({ isLoggedIn }) {
-  if (isLoggedIn) {
-    return <div>Welcome back, User!</div>;
-  }
-  return <div>Please sign in.</div>;
-}
-```
+    ```jsx
+    function IfElseExample({ isLoggedIn }) {
+      if (isLoggedIn) {
+        return <div>Welcome back, User!</div>;
+      }
+      return <div>Please sign in.</div>;
+    }
+    ```
 
 ### Usage:
 
@@ -46,37 +46,37 @@ function IfElseExample({ isLoggedIn }) {
 
 Inline conditional rendering using Python's ternary syntax.
 
-### JAC Syntax:
+=== "JAC-Client"
 
-```jac
-# JAC uses Python-style: (value_if_true) if condition else (value_if_false)
-def TernaryExample(props: dict) -> any {
-    let isOnline = props.isOnline;
-    return (
+    ```jac
+    # JAC uses Python-style: (value_if_true) if condition else (value_if_false)
+    def TernaryExample(props: dict) -> any {
+        let isOnline = props.isOnline;
+        return (
+            <div>
+                Status: {(<span style={{ color: "green" }}>Online</span>) if isOnline else (<span style={{ color: "red" }}>Offline</span>)}
+            </div>
+        );
+    }
+    ```
+
+=== "React"
+
+    ```jsx
+    // React uses: condition ? value_if_true : value_if_false
+    function TernaryExample({ isOnline }) {
+      return (
         <div>
-            Status: {(<span style={{ color: "green" }}>Online</span>) if isOnline else (<span style={{ color: "red" }}>Offline</span>)}
+          Status:{" "}
+          {isOnline ? (
+            <span style={{ color: "green" }}>Online</span>
+          ) : (
+            <span style={{ color: "red" }}>Offline</span>
+          )}
         </div>
-    );
-}
-```
-
-### React Equivalent:
-
-```jsx
-// React uses: condition ? value_if_true : value_if_false
-function TernaryExample({ isOnline }) {
-  return (
-    <div>
-      Status:{" "}
-      {isOnline ? (
-        <span style={{ color: "green" }}>Online</span>
-      ) : (
-        <span style={{ color: "red" }}>Offline</span>
-      )}
-    </div>
-  );
-}
-```
+      );
+    }
+    ```
 
 ### Important Note:
 
@@ -96,37 +96,37 @@ In JAC, **always wrap JSX elements in parentheses** when using ternary:
 
 For multiple conditions, chain ternary operators.
 
-### JAC Syntax:
+=== "JAC-Client"
 
-```jac
-def ComplexTernaryExample(props: dict) -> any {
-    let condition1 = props.condition1;
-    let condition2 = props.condition2;
-    return (
+    ```jac
+    def ComplexTernaryExample(props: dict) -> any {
+        let condition1 = props.condition1;
+        let condition2 = props.condition2;
+        return (
+            <div>
+                {(<span>Condition 1 is true</span>) if condition1 else ((<span>Condition 2 is true</span>) if condition2 else (<span>Both are false</span>))}
+            </div>
+        );
+    }
+    ```
+
+=== "React"
+
+    ```jsx
+    function ComplexTernaryExample({ condition1, condition2 }) {
+      return (
         <div>
-            {(<span>Condition 1 is true</span>) if condition1 else ((<span>Condition 2 is true</span>) if condition2 else (<span>Both are false</span>))}
+          {condition1 ? (
+            <span>Condition 1</span>
+          ) : condition2 ? (
+            <span>Condition 2</span>
+          ) : (
+            <span>Both false</span>
+          )}
         </div>
-    );
-}
-```
-
-### React Equivalent:
-
-```jsx
-function ComplexTernaryExample({ condition1, condition2 }) {
-  return (
-    <div>
-      {condition1 ? (
-        <span>Condition 1</span>
-      ) : condition2 ? (
-        <span>Condition 2</span>
-      ) : (
-        <span>Both false</span>
-      )}
-    </div>
-  );
-}
-```
+      );
+    }
+    ```
 
 ---
 
@@ -134,44 +134,44 @@ function ComplexTernaryExample({ condition1, condition2 }) {
 
 Show something only when a condition is true.
 
-### JAC Syntax:
+=== "JAC-Client"
 
-```jac
-# JAC uses 'not' instead of '!'
-def LogicalAndExample(props: dict) -> any {
-    let hasNotifications = props.hasNotifications;
-    let count = props.count;
-    return (
+    ```jac
+    # JAC uses 'not' instead of '!'
+    def LogicalAndExample(props: dict) -> any {
+        let hasNotifications = props.hasNotifications;
+        let count = props.count;
+        return (
+            <div>
+                <span>Notifications: </span>
+                {hasNotifications and count > 0 and (
+                    <span style={{ color: "blue", fontWeight: "bold" }}>
+                        You have {count} new messages!
+                    </span>
+                )}
+                {not hasNotifications and <span>No new notifications</span>}
+            </div>
+        );
+    }
+    ```
+
+=== "React"
+
+    ```jsx
+    function LogicalAndExample({ hasNotifications, count }) {
+      return (
         <div>
-            <span>Notifications: </span>
-            {hasNotifications and count > 0 and (
-                <span style={{ color: "blue", fontWeight: "bold" }}>
-                    You have {count} new messages!
-                </span>
-            )}
-            {not hasNotifications and <span>No new notifications</span>}
+          <span>Notifications: </span>
+          {hasNotifications && count > 0 && (
+            <span style={{ color: "blue", fontWeight: "bold" }}>
+              You have {count} new messages!
+            </span>
+          )}
+          {!hasNotifications && <span>No new notifications</span>}
         </div>
-    );
-}
-```
-
-### React Equivalent:
-
-```jsx
-function LogicalAndExample({ hasNotifications, count }) {
-  return (
-    <div>
-      <span>Notifications: </span>
-      {hasNotifications && count > 0 && (
-        <span style={{ color: "blue", fontWeight: "bold" }}>
-          You have {count} new messages!
-        </span>
-      )}
-      {!hasNotifications && <span>No new notifications</span>}
-    </div>
-  );
-}
-```
+      );
+    }
+    ```
 
 ---
 
@@ -179,30 +179,30 @@ function LogicalAndExample({ hasNotifications, count }) {
 
 Provide fallback/default values when a value is falsy.
 
-### JAC Syntax:
+=== "JAC-Client"
 
-```jac
-def LogicalOrExample(props: dict) -> any {
-    let username = props.username;
-    return (
+    ```jac
+    def LogicalOrExample(props: dict) -> any {
+        let username = props.username;
+        return (
+            <div>
+                Hello, <strong>{username or "Guest"}</strong>!
+            </div>
+        );
+    }
+    ```
+
+=== "React"
+
+    ```jsx
+    function LogicalOrExample({ username }) {
+      return (
         <div>
-            Hello, <strong>{username or "Guest"}</strong>!
+          Hello, <strong>{username || "Guest"}</strong>!
         </div>
-    );
-}
-```
-
-### React Equivalent:
-
-```jsx
-function LogicalOrExample({ username }) {
-  return (
-    <div>
-      Hello, <strong>{username || "Guest"}</strong>!
-    </div>
-  );
-}
-```
+      );
+    }
+    ```
 
 ### Usage:
 
@@ -362,28 +362,28 @@ def MultipleConditionsIfElse(props: dict) -> any {
 
 Return an empty fragment to render nothing.
 
-### JAC Syntax:
+=== "JAC-Client"
 
-```jac
-def RenderNothingExample(props: dict) -> any {
-    let shouldShow = props.shouldShow;
-    if not shouldShow {
-        return <></>;  # Empty fragment - renders nothing
+    ```jac
+    def RenderNothingExample(props: dict) -> any {
+        let shouldShow = props.shouldShow;
+        if not shouldShow {
+            return <></>;  # Empty fragment - renders nothing
+        }
+        return <div>I am visible!</div>;
     }
-    return <div>I am visible!</div>;
-}
-```
+    ```
 
-### React Equivalent:
+=== "React"
 
-```jsx
-function RenderNothingExample({ shouldShow }) {
-  if (!shouldShow) {
-    return null; // React uses null
-  }
-  return <div>I am visible!</div>;
-}
-```
+    ```jsx
+    function RenderNothingExample({ shouldShow }) {
+      if (!shouldShow) {
+        return null; // React uses null
+      }
+      return <div>I am visible!</div>;
+    }
+    ```
 
 ### Key Difference:
 
