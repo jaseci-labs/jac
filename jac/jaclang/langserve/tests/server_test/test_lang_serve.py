@@ -1,5 +1,6 @@
 """Test suite for Jac language server features."""
 
+from icecream import ic  # noqa: F401
 # Import jaclang first to set up vendor path for lsprotocol
 from lsprotocol.types import (
     DocumentFormattingParams,
@@ -82,7 +83,9 @@ def test_did_open_and_simple_syntax_error():
     try:
         # Open valid file
         print("Opening valid file...")
+        ic(f'before opeen: {len(helper.get_semantic_tokens().data)} ')
         helper.open_document()
+        ic(f'after open: {len(helper.get_semantic_tokens().data)} ')
         # helper.assert_no_diagnostics()
         helper.assert_has_diagnostics(
             count=1,
@@ -93,8 +96,11 @@ def test_did_open_and_simple_syntax_error():
         broken_code = load_jac_template(
             test_file._get_template_path(CIRCLE_TEMPLATE), "error"
         )
+        ic(f'before change: {len(helper.get_semantic_tokens().data)} ')
         helper.change_document(broken_code)
+        ic(f'after   change: {len(helper.get_semantic_tokens().data)} ')
         helper.assert_has_diagnostics(count=2)
+        ic(f'Full : {helper.get_semantic_tokens().data} ')
         helper.assert_semantic_tokens_count(EXPECTED_CIRCLE_TOKEN_COUNT_ERROR)
     finally:
         ls.shutdown()
