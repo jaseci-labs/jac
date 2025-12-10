@@ -899,6 +899,11 @@ class TypeEvaluator {
             # End of prefetched types
             # ----------------------------------------------------------------------
             case uni.AtomTrailer():
+                print(expr.unparse());
+                print('all mods:', self.program.mod.hub.keys());
+                if '/tmp/' in self.program.mod.hub.keys() {
+                    print(expr.unparse());
+                }
                 # NOTE: Pyright is using CFG to figure out the member type by narrowing the base
                 # type and filtering the members. We're not doing that anytime sooner.
                 base_type = self.get_type_of_expression(expr.target);

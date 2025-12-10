@@ -21,7 +21,7 @@ class SemTokManager {
     }
 
     """Return semantic tokens."""
-    def gen_sem_tokens(self: SemTokManager, ir: uni.Modulee) -> list[int] {
+    def gen_sem_tokens(self: SemTokManager, ir: uni.Module) -> list[int] {
         tokens = [];
         (prev_line, prev_col) = (0, 0);
         for nd in ir._in_mod_nodes {
