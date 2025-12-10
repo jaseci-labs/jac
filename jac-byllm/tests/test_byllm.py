@@ -103,6 +103,17 @@ def test_params_format(fixture_path: Callable[[str], str]) -> None:
     for key in required_keys:
         assert key in extracted_dict, f"Missing key: {key}"
 
+    add_message = extracted_dict["messages"]
+    assert add_message[0]["role"] == "system", (
+        "First message should be of role 'system'"
+    )
+    assert add_message[1]["role"] == "user", "Second message should be of role 'user'"
+    assert add_message[3]["role"] == "tool", "Fourth message should be of role 'tool'"
+    assert (
+        add_message[3]["content"]
+        == "The current wind speed in Puttalam is about 18-22 km/h."
+    ), "Content mismatch"
+
     add_tool = extracted_dict["tools"][0]
     assert add_tool["type"] == "function", "First tool should be of type 'function'"
     assert add_tool["function"]["name"] == "get_live_wind_speed", (
