@@ -239,22 +239,22 @@ This guide covers loop syntax in JAC-Client for developers familiar with JavaScr
 ## Common Mistakes
 
 ```jac
-# ❌ WRONG - range() does not work
+#  WRONG - range() does not work
 for i in range(5) {
     console.log(i);
 }
 
-# ✅ CORRECT - Use counter-based loop
+#  CORRECT - Use counter-based loop
 for i=0 to i<5 by i+=1 {
     console.log(i);
 }
 
-# ❌ WRONG - i++ does not work
+#  WRONG - i++ does not work
 for i=0 to i<5 by i++ {
     console.log(i);
 }
 
-# ✅ CORRECT - Use i+=1
+#  CORRECT - Use i+=1
 for i=0 to i<5 by i+=1 {
     console.log(i);
 }
