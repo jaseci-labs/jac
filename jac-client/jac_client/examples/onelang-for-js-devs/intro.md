@@ -75,8 +75,6 @@ const status = isOnline ? "Online" : "Offline";
 let status = ("Online") if isOnline else ("Offline");
 ```
 
-
-
 ### Components
 
 ```javascript
@@ -93,7 +91,6 @@ def Greeting(props: dict) -> any {
     return <div>Hello, {name}!</div>;
 }
 ```
-
 
 ## Getting Help
 

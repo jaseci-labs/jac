@@ -232,8 +232,6 @@ for i=1 to i<=5 by i+=1 {
 
 ---
 
-
-
 ## Common Mistakes to Avoid
 
 ```jac

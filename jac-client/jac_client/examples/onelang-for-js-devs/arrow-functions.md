@@ -208,6 +208,7 @@ When you need to do multiple things or have logic inside an onClick handler:
 ```
 
 **Key Syntax Difference:**
+
 | Pattern | React | JAC-Client |
 |---------|-------|----------|
 | Simple call | `onClick={() => fn()}` | `onClick={lambda: fn()}` |
@@ -507,10 +508,6 @@ onClick={lambda: fetchData()}
    - JAC: `lambda: expression`
 
 ---
-
-
-
-
 
 ## Tips for React Developers
 

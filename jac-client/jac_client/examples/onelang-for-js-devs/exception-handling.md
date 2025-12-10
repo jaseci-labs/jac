@@ -206,7 +206,6 @@ def safeGetItem(arr: list, index: int) -> any {
 
 ---
 
-
 ## Tips
 
 1. **Always use `Exception as e`** - JAC requires specifying the exception type

@@ -6,8 +6,6 @@ This guide covers conditional rendering patterns in JAC-lang for building dynami
 
 ---
 
-
-
 ## 1. If/Else with Early Return
 
 The most basic conditional rendering pattern. Return different JSX based on a condition.
