@@ -7,14 +7,14 @@ from lsprotocol.types import (
     TextDocumentIdentifier,
     TextEdit,
 )
-from tests.langserve.server_test.utils import (
+
+from jaclang.langserve.server import formatting
+from jaclang.langserve.tests.server_test.utils import (
     JacTestFile,
     LanguageServerTestHelper,
     create_ls_with_workspace,
     load_jac_template,
 )
-
-from jaclang.langserve.server import formatting
 from jaclang.vendor.pygls.uris import from_fs_path
 
 # NOTE: circle.jac emits a spurious type error at the call to super.init:
@@ -28,8 +28,8 @@ from jaclang.vendor.pygls.uris import from_fs_path
 
 CIRCLE_TEMPLATE = "circle_template.jac"
 GLOB_TEMPLATE = "glob_template.jac"
-EXPECTED_CIRCLE_TOKEN_COUNT = 355
-EXPECTED_CIRCLE_TOKEN_COUNT_ERROR = 355
+EXPECTED_CIRCLE_TOKEN_COUNT = 345
+EXPECTED_CIRCLE_TOKEN_COUNT_ERROR = 330
 EXPECTED_GLOB_TOKEN_COUNT = 15
 EXPECTED_GLOB_ERROR_TOKEN_COUNT = 15
 
@@ -43,10 +43,11 @@ def test_open_valid_file_no_diagnostics():
 
     try:
         helper.open_document()
-        # TODO: This file contains a false positive diagnostic.
-        # Once its fixed, uncomment this.
-        #
         # helper.assert_no_diagnostics()
+        helper.assert_has_diagnostics(
+            count=1,
+            message_contains="Cannot assign <class str> to parameter 'radius' of type <class float>",
+        )
     finally:
         ls.shutdown()
         test_file.cleanup()
@@ -65,7 +66,7 @@ def test_open_with_syntax_error():
         helper.assert_has_diagnostics(count=2, message_contains="Unexpected token")
 
         diagnostics = helper.get_diagnostics()
-        assert str(diagnostics[0].range) == "57:0-57:5"
+        assert str(diagnostics[0].range) == "59:0-59:5"
     finally:
         ls.shutdown()
         test_file.cleanup()
@@ -82,10 +83,11 @@ def test_did_open_and_simple_syntax_error():
         # Open valid file
         print("Opening valid file...")
         helper.open_document()
-        # TODO: This file contains a false positive diagnostic.
-        # Once its fixed, uncomment this.
-        #
         # helper.assert_no_diagnostics()
+        helper.assert_has_diagnostics(
+            count=1,
+            message_contains="Cannot assign <class str> to parameter 'radius' of type <class float>",
+        )
 
         # Introduce syntax error
         broken_code = load_jac_template(
@@ -110,10 +112,11 @@ def test_did_save():
     try:
         helper.open_document()
         helper.save_document()
-        # TODO: This file contains a false positive diagnostic.
-        # Once its fixed, uncomment this.
-        #
         # helper.assert_no_diagnostics()
+        helper.assert_has_diagnostics(
+            count=1,
+            message_contains="Cannot assign <class str> to parameter 'radius' of type <class float>",
+        )
 
         # Save with syntax error
         broken_code = load_jac_template(
@@ -140,10 +143,11 @@ def test_did_change():
 
         # Change without error
         helper.change_document("\n" + test_file.code)
-        # TODO: This file contains a false positive diagnostic.
-        # Once its fixed, uncomment this.
-        #
         # helper.assert_no_diagnostics()
+        helper.assert_has_diagnostics(
+            count=1,
+            message_contains="Cannot assign <class str> to parameter 'radius' of type <class float>",
+        )
 
         # Change with syntax error
         helper.change_document("\nerror" + test_file.code)

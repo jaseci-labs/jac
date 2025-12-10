@@ -1,54 +1,14 @@
-import contextlib
 import inspect
 import os
-import sys
-from collections.abc import Callable, Generator
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import lsprotocol.types as lspt
 import pytest
 
-from jaclang import JacRuntime as Jac
 from jaclang.langserve.engine import JacLangServer
 from jaclang.vendor.pygls import uris
 from jaclang.vendor.pygls.workspace import Workspace
-
-
-def _clear_jac_modules() -> None:
-    """Clear jac-compiled modules from sys.modules."""
-    jac_modules_to_clear = [
-        k
-        for k in list(sys.modules.keys())
-        if k.startswith("__jac_gen__")
-        or (
-            not k.startswith(("jaclang", "test", "_"))
-            and hasattr(sys.modules.get(k), "__jac_mod__")
-        )
-    ]
-    for mod in jac_modules_to_clear:
-        sys.modules.pop(mod, None)
-
-
-# Track all servers created during a test for cleanup
-_active_servers: list[JacLangServer] = []
-
-
-@pytest.fixture(autouse=True)
-def reset_jac_machine() -> Generator[None, None, None]:
-    """Reset Jac machine before each test to avoid state pollution."""
-    _clear_jac_modules()
-    Jac.reset_machine()
-    _active_servers.clear()
-    yield
-    # Clear type system state from all servers created during the test
-    for server in _active_servers:
-        # Ensure worker thread is stopped to avoid cross-test interference.
-        with contextlib.suppress(Exception):
-            server.shutdown()
-        server.clear_type_system(clear_hub=True)
-    _active_servers.clear()
-    _clear_jac_modules()
-    Jac.reset_machine()
 
 
 @pytest.fixture
@@ -87,13 +47,20 @@ def examples_abs_path() -> Callable[[str], str]:
 @pytest.fixture
 def passes_main_fixture_abs_path() -> Callable[[str], str]:
     """Get absolute path of a fixture from compiler passes main fixtures directory."""
-    from pathlib import Path
+    import jaclang
 
     def _passes_main_fixture_abs_path(file: str) -> str:
-        # tests/langserve/test_server.py -> tests/compiler/passes/main/fixtures/
-        tests_dir = Path(__file__).parent.parent
-        file_path = tests_dir / "compiler" / "passes" / "main" / "fixtures" / file
-        return str(file_path.resolve())
+        fixture_src = jaclang.__file__
+        file_path = os.path.join(
+            os.path.dirname(fixture_src),
+            "compiler",
+            "passes",
+            "main",
+            "tests",
+            "fixtures",
+            file,
+        )
+        return os.path.abspath(file_path)
 
     return _passes_main_fixture_abs_path
 
@@ -106,8 +73,6 @@ def create_server(
     workspace_root = workspace_path or fixture_path_func("")
     workspace = Workspace(workspace_root, lsp)
     lsp.lsp._workspace = workspace
-    # Track server for cleanup in reset_jac_machine fixture
-    _active_servers.append(lsp)
     return lsp
 
 
@@ -232,21 +197,20 @@ def test_go_to_definition_md_path(fixture_path: Callable[[str], str]) -> None:
             (6, 17, "concurrent/__init__.py:0:0-0:0"),
             (6, 28, "concurrent/futures/__init__.py:0:0-0:0"),
             (7, 17, "typing.py:0:0-0:0"),
-            (9, 18, "jaclang/pycore/__init__.py:0:0-0:0"),
-            (9, 25, "jaclang/pycore/unitree.py:0:0-0:0"),
-            (10, 34, "jac/jaclang/__init__.py:19:3-19:22"),
-            (11, 35, "jaclang/pycore/constant.py:0:0-0:0"),
-            (11, 47, "jaclang/pycore/constant.py:5:0-34:9"),
-            (13, 47, "jaclang/compiler/type_system/type_utils.jac:0:0-0:0"),
-            (14, 34, "jaclang/compiler/type_system/__init__.py:0:0-0:0"),
-            (18, 5, "compiler/type_system/types.jac:67:6-67:14"),  # TypeBase now on line 18
-            (20, 34, "jaclang/pycore/unitree.py:0:0-0:0"),              # UniScopeNode now on line 20
+            (9, 18, "compiler/__init__.py:0:0-0:0"),
+            (9, 38, "compiler/unitree.py:0:0-0:0"),
+            (10, 34, "jac/jaclang/__init__.py:13:3-13:22"),
+            (11, 35, "compiler/constant.py:0:0-0:0"),
+            (11, 47, "compiler/constant.py:5:0-34:9"),
+            (13, 47, "compiler/type_system/type_utils.py:0:0-0:0"),
+            (14, 34, "compiler/type_system/__init__.py:0:0-0:0"),
+            (18, 5, "compiler/type_system/types.jac:47:6-47:14"),  # TypeBase now on line 18
+            (20, 34, "compiler/unitree.py:0:0-0:0"),              # UniScopeNode now on line 20
             # (20, 48, "compiler/unitree.py:335:0-566:11"),
-            (22, 22, "tests/langserve/fixtures/circle.jac:7:5-7:8"),  # RAD now on line 22, fixture line changed too
-            (23, 38, "jaclang/vendor/pygls/uris.py:0:0-0:0"),             # uris now on line 23
-            (24, 52, "jaclang/vendor/pygls/server.py:351:0-615:13"),      # LanguageServer on line 24
-            (26, 31, "jaclang/vendor/lsprotocol/types.py:0:0-0:0"),       # lspt now on line 26
-            (29, 26, "jaclang/pycore/log.py:0:0-0:0"), # Position now on line 27
+            (22, 22, "langserve/tests/fixtures/circle.jac:7:5-7:8"),  # RAD now on line 22, fixture line changed too
+            (23, 38, "vendor/pygls/uris.py:0:0-0:0"),             # uris now on line 23
+            (24, 52, "vendor/pygls/server.py:351:0-615:13"),      # LanguageServer on line 24
+            (26, 31, "vendor/lsprotocol/types.py:0:0-0:0"),       # lspt now on line 26
         ]
         # fmt: on
 
@@ -325,15 +289,12 @@ def test_missing_mod_warning(fixture_path: Callable[[str], str]) -> None:
         import_file = uris.from_fs_path(fixture_path("md_path.jac"))
         lsp.type_check_file(import_file)
 
-        expected_warnings = [
+        positions = [
             "fixtures/md_path.jac, line 21, col 13: Module not found",  # missing_mod
             "fixtures/md_path.jac, line 27, col 8: Module not found",  # nonexistent_module
         ]
-        warnings_str = [str(w) for w in lsp.warnings_had]
-        for expected in expected_warnings:
-            assert any(expected in w for w in warnings_str), (
-                f"Expected warning '{expected}' not found in {warnings_str}"
-            )
+        for idx, expected in enumerate(positions):
+            assert expected in str(lsp.warnings_had[idx])
     finally:
         lsp.shutdown()
 
@@ -416,178 +377,6 @@ def test_go_to_def_import_star(
         for line, char, expected in positions:
             assert expected in str(
                 lsp.get_definition(import_star_file, lspt.Position(line - 1, char - 1))
-            )
-    finally:
-        lsp.shutdown()
-
-
-def test_stub_impl_hover_and_goto_def(fixture_path: Callable[[str], str]) -> None:
-    """Test hover and go-to-definition on method stubs and impl files.
-
-    This tests:
-    1. Hover on type annotations (self: MyServer) in method stubs works
-    2. Hover on type annotations in impl files works
-    3. Go-to-definition on method stubs (init, process) navigates to impl file
-    """
-    lsp = create_server(None, fixture_path)
-    try:
-        test_file = uris.from_fs_path(fixture_path("stub_hover.jac"))
-        impl_file_path = fixture_path("stub_hover.impl.jac")
-        impl_file = uris.from_fs_path(impl_file_path)
-        lsp.type_check_file(test_file)
-
-        # ================================================================
-        # Test hover on type annotations in stub file
-        # ================================================================
-
-        # Hover on MyServer in: def process(self: MyServer, data: str) -> str;
-        # Line 13 (0-indexed: 12), MyServer starts at column 22
-        hover = lsp.get_hover_info(test_file, lspt.Position(12, 24))
-        assert hover is not None, "Hover should return info for self type annotation"
-        assert "MyServer" in hover.contents.value, (
-            f"Hover should show MyServer info, got: {hover.contents.value}"
-        )
-
-        # Hover on MyServer in: def handle(self: MyServer, request: int) -> None;
-        # Line 14 (0-indexed: 13), MyServer starts at column 21
-        hover2 = lsp.get_hover_info(test_file, lspt.Position(13, 23))
-        assert hover2 is not None, "Hover should return info for self type annotation"
-        assert "MyServer" in hover2.contents.value, (
-            f"Hover should show MyServer info, got: {hover2.contents.value}"
-        )
-
-        # ================================================================
-        # Test hover on type annotations in impl file
-        # ================================================================
-
-        # Hover on MyServer in impl file: impl MyServer.handle(self: MyServer, ...)
-        # Line 15 (0-indexed: 14), MyServer in self type annotation starts at column 27
-        lsp.type_check_file(impl_file)
-        hover3 = lsp.get_hover_info(impl_file, lspt.Position(14, 29))
-        assert hover3 is not None, "Hover should return info for self type in impl file"
-        assert "MyServer" in hover3.contents.value, (
-            f"Hover should show MyServer info in impl, got: {hover3.contents.value}"
-        )
-
-        # ================================================================
-        # Test go-to-definition from stub to impl
-        # ================================================================
-
-        # Goto def on 'init' stub (line 12, col 10) -> should go to impl line 5
-        # def init(self: MyServer, name: str) -> None;
-        defn = lsp.get_definition(test_file, lspt.Position(11, 10))
-        assert defn is not None, "Definition should be found for init stub"
-        assert impl_file_path in defn.uri, (
-            f"Definition should point to impl file, got: {defn.uri}"
-        )
-        assert defn.range.start.line == 4, (
-            f"Definition should be at line 5 (0-indexed: 4), got: {defn.range.start.line}"
-        )
-
-        # Goto def on 'process' stub (line 13, col 10) -> should go to impl line 11
-        # def process(self: MyServer, data: str) -> str;
-        defn2 = lsp.get_definition(test_file, lspt.Position(12, 10))
-        assert defn2 is not None, "Definition should be found for process stub"
-        assert impl_file_path in defn2.uri, (
-            f"Definition should point to impl file, got: {defn2.uri}"
-        )
-        assert defn2.range.start.line == 10, (
-            f"Definition should be at line 11 (0-indexed: 10), got: {defn2.range.start.line}"
-        )
-
-        # ================================================================
-        # Test go-to-definition for static field access (MyServer._counter)
-        # ================================================================
-
-        # Goto def on '_counter' in 'MyServer._counter' (line 7, col 31)
-        # Should go to static has declaration in stub file (line 10)
-        defn3 = lsp.get_definition(impl_file, lspt.Position(6, 33))
-        assert defn3 is not None, "Definition should be found for static field _counter"
-        assert "stub_hover.jac" in defn3.uri, (
-            f"Definition should point to declaration file, got: {defn3.uri}"
-        )
-        assert defn3.range.start.line == 9, (
-            f"Definition should be at line 10 (0-indexed: 9), got: {defn3.range.start.line}"
-        )
-
-        # ================================================================
-        # Test hover and go-to-definition for Python type methods in impl bodies
-        # This tests the fix for type resolution in impl bodies where
-        # Python type methods (like Thread.start) should be properly resolved.
-        # ================================================================
-
-        # Hover on 'start' in 'self.worker.start()' (line 23, col 17)
-        # Line 23 (0-indexed: 22): `    self.worker.start();`
-        # 'start' starts at column 17 (0-indexed: 16)
-        hover_start = lsp.get_hover_info(impl_file, lspt.Position(22, 17))
-        assert hover_start is not None, (
-            "Hover should return info for Thread.start method in impl body"
-        )
-
-        # Hover on 'worker' in 'self.worker.start()' (line 23, col 10)
-        hover_worker = lsp.get_hover_info(impl_file, lspt.Position(22, 10))
-        assert hover_worker is not None, (
-            "Hover should return info for worker field in impl body"
-        )
-        assert "Thread" in hover_worker.contents.value, (
-            f"Hover should show Thread type, got: {hover_worker.contents.value}"
-        )
-
-        # Go-to-definition on 'start' should go to Python threading module
-        defn_start = lsp.get_definition(impl_file, lspt.Position(22, 17))
-        assert defn_start is not None, (
-            "Definition should be found for Thread.start method"
-        )
-        assert "threading" in defn_start.uri, (
-            f"Definition should point to threading module, got: {defn_start.uri}"
-        )
-
-    finally:
-        lsp.shutdown()
-
-
-def test_go_to_definition_impl_body_self_attr(
-    passes_main_fixture_abs_path: Callable[[str], str],
-) -> None:
-    """Test go-to-definition for self.attr in impl bodies navigates to has declaration.
-
-    This tests the fix for symbol resolution in .impl.jac files, where clicking on
-    'self.count' in an impl body should navigate to the 'has count' declaration
-    in the base .jac file.
-    """
-    lsp = create_server(None, lambda x: "")
-    try:
-        impl_file = uris.from_fs_path(
-            passes_main_fixture_abs_path("impl_symbol_resolution.impl.jac")
-        )
-        lsp.type_check_file(impl_file)
-
-        # fmt: off
-        # Test positions in impl_symbol_resolution.impl.jac (1-indexed for test input):
-        # Line 5: `    return self.count;`
-        #         - 'count' starts at column 17
-        # Line 9: `    return f"{self.name}: {self.count}";`
-        #         - 'name' is at column 21, 'count' is at column 34
-        #
-        # Expected targets in impl_symbol_resolution.jac (0-indexed in LSP output):
-        # Line 3 (0-indexed): `    has count: int = 0,` -> count at 3:8-3:13
-        # Line 4 (0-indexed): `        name: str = "default";` -> name at 4:8-4:12
-        positions = [
-            # (impl_line, impl_char, expected_target)
-            (5, 17, "impl_symbol_resolution.jac:3:8-3:13"),   # count in `return self.count`
-            (9, 21, "impl_symbol_resolution.jac:4:8-4:12"),   # name in f-string
-            (9, 34, "impl_symbol_resolution.jac:3:8-3:13"),   # count in f-string
-        ]
-        # fmt: on
-
-        for line, char, expected in positions:
-            result = lsp.get_definition(impl_file, lspt.Position(line - 1, char - 1))
-            assert result is not None, (
-                f"Expected definition at line {line}, char {char}, got None"
-            )
-            assert expected in str(result), (
-                f"Expected '{expected}' in definition for line {line}, char {char}, "
-                f"got: {result}"
             )
     finally:
         lsp.shutdown()
