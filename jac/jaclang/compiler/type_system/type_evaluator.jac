@@ -901,11 +901,11 @@ class TypeEvaluator {
             case uni.AtomTrailer():
                 import sys;
                 if '/tmp/' in str(self.program.mod.hub.keys()) and 'ShapeType' in expr.unparse() {
+                    print(expr.unparse(),file=sys.stderr);
                     print('all mods: ',file=sys.stderr);
                     for (k,v) in self.program.mod.hub.items() {
                         print(f'  {k}',file=sys.stderr);
                     }
-                    print(expr.unparse(),file=sys.stderr);
                 }
                 # NOTE: Pyright is using CFG to figure out the member type by narrowing the base
                 # type and filtering the members. We're not doing that anytime sooner.

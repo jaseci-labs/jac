@@ -9,6 +9,7 @@ Reference:
     craizy_type_expr branch: type_checker_pass.py
 """
 
+import sys
 import jaclang.compiler.unitree as uni
 from jaclang.compiler.passes import UniPass
 
@@ -21,6 +22,17 @@ class TypeCheckPass(UniPass):
         self.evaluator = self.prog.get_type_evaluator()
         self.evaluator.diagnostic_callback = self._add_diagnostic
         self._insert_builtin_symbols()
+
+    def after_pass(self) -> None:
+        if '/tmp/' in str(self.ir_in.loc.mod_path):
+            node_list = []
+            for nd in self.ir_in._in_mod_nodes:
+                if isinstance(nd, uni.NameAtom) and nd.sem_token:
+                    # print(f'  node: {nd.unparse()}',file=sys.stderr)
+                    node_list.append(f'({nd.unparse()})')
+            print(f'TypeCheckPass: sem tokens for {self.ir_in.loc.mod_path}:',file=sys.stderr)
+            print('  ' + ', '.join(node_list),file=sys.stderr)
+        return super().after_pass()
 
     def _add_diagnostic(self, node: uni.UniNode, message: str, warning: bool) -> None:
         """Add a diagnostic message to the pass."""
