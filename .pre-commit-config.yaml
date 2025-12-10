@@ -76,10 +76,6 @@ repos:
               ^docs/docs/assets/org1_logo\.png$|
               ^docs/docs/assets/org2_logo\.png$|
               ^docs/docs/assets/org3_logo\.png$|
-              ^docs/docs/assets/p2_arch\.png$|
-              ^docs/docs/assets/photo\.jpg$|
-              ^docs/docs/assets/playground_demo\.gif$|
-              ^docs/docs/assets/runtime\.gif$|
               ^docs/docs/assets/visualizer\.jpg$|
               ^docs/docs/learn/assets/debugger/debugger-complex_function-breakpoint\.png$|
               ^docs/docs/learn/assets/debugger/debugger-complex_function-options\.png$|
@@ -100,20 +96,8 @@ repos:
               ^docs/docs/learn/examples/agentic_ai/friendzone-lite/friendzone\.png$|
               ^docs/docs/learn/examples/agentic_ai/task-manager-lite/task\ manager\.png$|
               ^docs/docs/learn/examples/littleX/src/front_end\.png$|
-              ^docs/docs/learn/examples/mtp_examples/assets/rpg_demo\.gif$|
-              ^docs/docs/learn/examples/rag_chatbot/images/1_swagger\.png$|
-              ^docs/docs/learn/examples/rag_chatbot/images/1_vscode\.png$|
-              ^docs/docs/learn/examples/rag_chatbot/images/2_graph\.png$|
-              ^docs/docs/learn/examples/rag_chatbot/images/2_rag\.png$|
-              ^docs/docs/learn/examples/rag_chatbot/images/2_rag_search\.png$|
-              ^docs/docs/learn/examples/rag_chatbot/images/3_chat_interface\.png$|
               ^docs/docs/learn/examples/rag_chatbot/images/chatbot\.jpg$|
-              ^docs/docs/learn/examples/rag_chatbot/images/image\.png$|
               ^docs/docs/learn/examples/rag_chatbot/images/image_chat\.jpg$|
-              ^docs/docs/learn/examples/rag_chatbot/solution/docs/clinical_medicine\.pdf$|
-              ^docs/docs/playground/favicon\.ico$|
-              ^docs/docs/playground/jaseci\.png$|
-              ^docs/docs/playground/onigasm\.wasm$|
               ^jac-byllm/examples/agentic_ai/task-manager-lite/task_manager\.png$|
               ^jac-byllm/examples/vision/math_question\.jpg$|
               ^jac-byllm/examples/vision/mugen\.mp4$|
@@ -124,36 +108,14 @@ repos:
               ^jac-byllm/tests/fixtures/image\.jpg$|
               ^jac-byllm/tests/fixtures/math_question\.jpg$|
               ^jac-byllm/tests/fixtures/webp_image_of_person\.webp$|
-              ^jac-client/jac_client/docs/assets/pipe_line\.png$|
               ^jac-client/jac_client/examples/asset-serving/css-with-image/assets/burger\.png$|
               ^jac-client/jac_client/examples/asset-serving/image-asset/assets/burger\.png$|
               ^jac-client/jac_client/examples/asset-serving/import-alias/assets/burger\.png$|
               ^jac-streamlit/assets/interactive\ view\.png$|
               ^jac-streamlit/assets/static\ view\.png$|
               ^jac/examples/rpg_game/jac_impl/fonts/8bitoperator_jve\.ttf$|
-              ^jac/examples/rpg_game/jac_impl/img/attack\.png$|
-              ^jac/examples/rpg_game/jac_impl/img/character\.png$|
-              ^jac/examples/rpg_game/jac_impl/img/enemy\.png$|
-              ^jac/examples/rpg_game/jac_impl/img/gameover\.png$|
-              ^jac/examples/rpg_game/jac_impl/img/introbackground\.png$|
-              ^jac/examples/rpg_game/jac_impl/img/single\.png$|
-              ^jac/examples/rpg_game/jac_impl/img/terrain\.png$|
               ^jac/examples/rpg_game/lib_mode/8bitoperator_jve\.ttf$|
-              ^jac/examples/rpg_game/lib_mode/img/attack\.png$|
-              ^jac/examples/rpg_game/lib_mode/img/character\.png$|
-              ^jac/examples/rpg_game/lib_mode/img/enemy\.png$|
-              ^jac/examples/rpg_game/lib_mode/img/gameover\.png$|
-              ^jac/examples/rpg_game/lib_mode/img/introbackground\.png$|
-              ^jac/examples/rpg_game/lib_mode/img/single\.png$|
-              ^jac/examples/rpg_game/lib_mode/img/terrain\.png$|
-              ^jac/examples/rpg_game/python_impl/8bitoperator_jve\.ttf$|
-              ^jac/examples/rpg_game/python_impl/img/attack\.png$|
-              ^jac/examples/rpg_game/python_impl/img/character\.png$|
-              ^jac/examples/rpg_game/python_impl/img/enemy\.png$|
-              ^jac/examples/rpg_game/python_impl/img/gameover\.png$|
-              ^jac/examples/rpg_game/python_impl/img/introbackground\.png$|
-              ^jac/examples/rpg_game/python_impl/img/single\.png$|
-              ^jac/examples/rpg_game/python_impl/img/terrain\.png$
+              ^jac/examples/rpg_game/python_impl/8bitoperator_jve\.ttf$
           )
 
       - id: ban-em-dashes
