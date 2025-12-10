@@ -76,7 +76,7 @@ jobs:
 
     - name: Run package tests
       run: pytest -x jac-byllm jac-streamlit jac-client
-      
+
   test-langserve:
     runs-on: ubuntu-latest
     steps:
