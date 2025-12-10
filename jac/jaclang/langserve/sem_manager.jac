@@ -1,6 +1,5 @@
 """Semantic Token Manager module."""
 import from typing { List, Optional, Tuple }
-import from icecream { ic }
 
 import jaclang.compiler.unitree as uni;
 import from jaclang { JacRuntimeInterface as Jac }
@@ -22,14 +21,11 @@ class SemTokManager {
     }
 
     """Return semantic tokens."""
-    def gen_sem_tokens(self: SemTokManager, ir: uni.Module,_print:Optional[bool] = False) -> list[int] {
+    def gen_sem_tokens(self: SemTokManager, ir: uni.Modulee) -> list[int] {
         tokens = [];
         (prev_line, prev_col) = (0, 0);
         for nd in ir._in_mod_nodes {
             if isinstance(nd, uni.NameAtom) and nd.sem_token {
-                if _print{
-                    ic(nd.unparse());
-                }
                 (line, col_start, col_end) = (
                     (nd.loc.first_line - 1),
                     (nd.loc.col_start - 1),
