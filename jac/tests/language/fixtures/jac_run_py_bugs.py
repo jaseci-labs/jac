@@ -1,4 +1,4 @@
-from tests.language.fixtures.jac_run_py_import import MyModule
+from jac_run_py_import import MyModule
 
 
 class SimpleClass:
