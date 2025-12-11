@@ -1,5 +1,4 @@
 """Babel processing for JavaScript transpilation."""
-import from __future__ { annotations }
 import subprocess;
 import from pathlib { Path }
 import from jaclang.runtimelib.client_bundle { ClientBundleError }

@@ -1,5 +1,4 @@
 """Core constructs for Jac Language."""
-import from __future__ { annotations }
 import unittest;
 import from collections.abc { Callable }
 import from dataclasses { dataclass }

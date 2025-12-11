@@ -73,7 +73,7 @@ class JacAPIServer(JServer) {
             );
         }
         result['token'] = self.create_jwt_token(email);
-        return JSONResponse(status_code=200, content=<>dict[(str, JsonValue)](result));
+        return JSONResponse(status_code=200, content=dict[(str, JsonValue)](result));
     }
 
     def register_login_endpoint(self: JacAPIServer) -> None {
@@ -87,17 +87,17 @@ class JacAPIServer(JServer) {
                         name='email',
                         data_type='string',
                         required=True,
-                        <>default=None,
+                        default=None,
                         description='Email for login',
-                        <>type=ParameterType.BODY
+                        type=ParameterType.BODY
                     ),
                     APIParameter(
                         name='password',
                         data_type='string',
                         required=True,
-                        <>default=None,
+                        default=None,
                         description='Password for login',
-                        <>type=ParameterType.BODY
+                        type=ParameterType.BODY
                     )
                 ],
                 response_model=None,
@@ -128,17 +128,17 @@ class JacAPIServer(JServer) {
                         name='email',
                         data_type='string',
                         required=True,
-                        <>default=None,
+                        default=None,
                         description='Username for new user',
-                        <>type=ParameterType.BODY
+                        type=ParameterType.BODY
                     ),
                     APIParameter(
                         name='password',
                         data_type='string',
                         required=True,
-                        <>default=None,
+                        default=None,
                         description='Password for new user',
-                        <>type=ParameterType.BODY
+                        type=ParameterType.BODY
                     )
                 ],
                 response_model=None,
@@ -154,7 +154,7 @@ class JacAPIServer(JServer) {
     ) -> Callable[..., dict[(str, JsonValue)]] {
         requires_auth = self.introspector.is_auth_required_for_walker(walker_name);
         def callback(
-            <>node: (str | None) = None, **kwargs: JsonValue
+            node: (str | None) = None, **kwargs: JsonValue
         ) -> dict[str, JsonValue] {
             username: (str | None) = None;
             if requires_auth {
@@ -172,8 +172,8 @@ class JacAPIServer(JServer) {
                     return {'error': 'Unauthorized', 'status': 401};
                 }
             }
-            if <>node {
-                kwargs['_jac_spawn_node'] = <>node;
+            if node {
+                kwargs['_jac_spawn_node'] = node;
             }
             return self.execution_manager.spawn_walker(
                 self.get_walkers()[walker_name], kwargs, (username or '__guest__')
@@ -192,9 +192,9 @@ class JacAPIServer(JServer) {
                     name='Authorization',
                     data_type='string',
                     required=False,
-                    <>default=None,
+                    default=None,
                     description='Bearer token for authentication',
-                    <>type=ParameterType.HEADER
+                    type=ParameterType.HEADER
                 )
             );
         }
@@ -210,9 +210,9 @@ class JacAPIServer(JServer) {
                     name='node' if (field_name == '_jac_spawn_node') else field_name,
                     data_type=walker_fields[field_name]['type'],
                     required=walker_fields[field_name]['required'],
-                    <>default=walker_fields[field_name]['default'],
+                    default=walker_fields[field_name]['default'],
                     description=f"Field {field_name} for walker {walker_name}",
-                    <>type=ParameterType.BODY
+                    type=ParameterType.BODY
                     if (field_name != '_jac_spawn_node')
                     else ParameterType.PATH
                 )
@@ -297,9 +297,9 @@ class JacAPIServer(JServer) {
                     name='Authorization',
                     data_type='string',
                     required=False,
-                    <>default=None,
+                    default=None,
                     description='Bearer token for authentication',
-                    <>type=ParameterType.HEADER
+                    type=ParameterType.HEADER
                 )
             );
         }
@@ -312,8 +312,9 @@ class JacAPIServer(JServer) {
                     name=field_name,
                     data_type=func_fields[field_name]['type'],
                     required=func_fields[field_name]['required'],
-                    <>default=func_fields[field_name]['default'],
-                    description=f"Field {field_name} for function {func_name}"
+                    default=func_fields[field_name]['default'],
+                    description=f"Field {field_name} for function {func_name}",
+                    type=ParameterType.BODY
                 )
             );
         }
@@ -324,7 +325,7 @@ class JacAPIServer(JServer) {
         for func_name in self.get_functions() {
             self.server_impl.add_endpoint(
                 JEndPoint(
-                    method=HTTPMethod.GET,
+                    method=HTTPMethod.POST,
                     path=f"/function/{func_name}",
                     callback=self.create_function_callback(func_name),
                     parameters=self.create_function_parameters(func_name),
@@ -361,9 +362,9 @@ class JacAPIServer(JServer) {
                         name='page_name',
                         data_type='string',
                         required=True,
-                        <>default=None,
+                        default=None,
                         description='Name of the page to render',
-                        <>type=ParameterType.PATH
+                        type=ParameterType.PATH
                     )
                 ],
                 response_model=None,
@@ -421,9 +422,9 @@ class JacAPIServer(JServer) {
                         name='file_path',
                         data_type='string',
                         required=True,
-                        <>default=None,
+                        default=None,
                         description='Path of the static file to serve',
-                        <>type=ParameterType.PATH
+                        type=ParameterType.PATH
                     )
                 ],
                 response_model=None,
@@ -495,9 +496,9 @@ class JacAPIServer(JServer) {
                         name='file_path',
                         data_type='string',
                         required=True,
-                        <>default=None,
+                        default=None,
                         description='Path to asset file (e.g., img.png, icons/logo.svg)',
-                        <>type=ParameterType.PATH
+                        type=ParameterType.PATH
                     )
                 ],
                 response_model=None,
@@ -636,6 +637,6 @@ class JacAPIServer(JServer) {
         self.register_root_asset_endpoint();
         self._configure_openapi_security();
         self.user_manager.create_user('__guest__', '__no_password__');
-        self.server_impl.run_server();
+        self.server_impl.run_server(port=self.port);
     }
 }

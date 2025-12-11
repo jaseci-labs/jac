@@ -1,5 +1,4 @@
 """Client bundle generation utilities for Jac web front-ends."""
-import from __future__ { annotations }
 import hashlib;
 import json;
 import from collections.abc { Iterable, Sequence }

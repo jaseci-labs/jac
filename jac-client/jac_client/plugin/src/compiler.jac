@@ -1,5 +1,4 @@
 """Main compilation orchestration module."""
-import from __future__ { annotations }
 import contextlib;
 import from collections.abc { Callable }
 import from pathlib { Path }

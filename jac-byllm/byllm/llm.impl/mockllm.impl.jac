@@ -6,6 +6,8 @@ impl MockLLM.init(model_name: str, **kwargs: object) -> None {
 
 impl MockLLM.dispatch_no_streaming(mtir: MTIR) -> CompletionResult {
     params = self.make_model_params(mtir);
+    message = "{'role': 'assistant', 'content': {'text': 'Mock response'}}";
+    mtir.add_message(message);
     output = self.config["outputs"].pop(0);  # type: ignore
     if isinstance(output, MockToolCall) {
         self.log_info(

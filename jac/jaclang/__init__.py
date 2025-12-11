@@ -2,7 +2,7 @@
 
 import sys
 
-from jaclang.runtimelib.meta_importer import JacMetaImporter
+from jaclang.meta_importer import JacMetaImporter
 
 # Register JacMetaImporter BEFORE loading plugins, so .jac modules can be imported
 if not any(isinstance(f, JacMetaImporter) for f in sys.meta_path):

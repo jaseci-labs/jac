@@ -1,5 +1,4 @@
 """REST API Server for Jac Programs."""
-import from __future__ { annotations }
 import hashlib;
 import html;
 import inspect;

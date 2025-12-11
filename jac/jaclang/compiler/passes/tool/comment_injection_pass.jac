@@ -1,5 +1,4 @@
 """Pass to inject comments using token-level precision.\n\nThis pass injects comments into the DocIR structure by:\n1. Categorizing comments as inline (same line as token) or standalone\n2. Injecting inline comments after their anchor tokens\n3. Injecting standalone comments at appropriate positions (module, body, params)\n4. Handling spacing adjustments for empty structures that receive comments\n"""
-import from __future__ { annotations }
 import from bisect { bisect_left }
 import from collections.abc { Sequence }
 import from dataclasses { dataclass }

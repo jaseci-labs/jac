@@ -1,5 +1,4 @@
 """Core constructs for Jac Language."""
-import from __future__ { annotations }
 import from collections.abc { Callable, Generator, Iterable }
 import from dataclasses { dataclass, field }
 import from pickle { dumps }

@@ -1,5 +1,4 @@
 """Plugin for Jac's with_llm feature."""
-import from __future__ { annotations }
 import from collections.abc { Callable }
 import from typing { TYPE_CHECKING }
 import from jaclang.runtimelib.runtime { hookimpl }
