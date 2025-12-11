@@ -8,9 +8,8 @@ import from jaclang.runtimelib.client_bundle { ClientBundleError }
 import from .config_loader { JacClientConfig }
 import from .vite_bundler { ViteBundler }
 
-"""Handles installing npm packages by updating config.json."""
 class PackageInstaller {
-    """Initialize the package installer."""
+    """Handles installing npm packages by updating config.json."""
     def __init__(self: PackageInstaller, project_dir: Path) {
         self.project_dir = project_dir;
         self.config_loader = JacClientConfig(project_dir);
@@ -147,6 +146,9 @@ class PackageInstaller {
         with self.config_file.open('w', encoding='utf-8') as f {
             json.dump(config, f, indent=2);
         }
+
+        # Regenerate package.json and run npm install to actually remove the package
+        self._regenerate_and_install();
     }
 
     """List all installed packages from config.json."""

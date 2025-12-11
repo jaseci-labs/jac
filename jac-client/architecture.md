@@ -318,6 +318,12 @@ jac install --cl lodash@^4.17.21     # Install with specific version
 jac install --cl                     # Install all packages from config.json
 ```
 
+**Uninstall Package:**
+```bash
+jac uninstall --cl lodash            # Remove from dependencies
+jac uninstall --cl -D @types/react  # Remove from devDependencies
+```
+
 **Project Creation:**
 ```bash
 jac create_jac_app my-app            # Creates config.json with package.name = "my-app"
@@ -551,6 +557,21 @@ export default defineConfig({
 3. ViteBundler generates package.json from config.json
    ↓
 4. npm install runs (installs packages)
+   ↓
+5. package-lock.json moved to .jac-client.configs/
+   ↓
+6. Root package.json removed (keeps only .jac-client.configs/)
+```
+
+**Uninstall Workflow**:
+```
+1. Developer runs: jac uninstall --cl lodash
+   ↓
+2. PackageInstaller removes package from config.json
+   ↓
+3. ViteBundler regenerates package.json from updated config.json
+   ↓
+4. npm install runs (removes package from node_modules)
    ↓
 5. package-lock.json moved to .jac-client.configs/
    ↓

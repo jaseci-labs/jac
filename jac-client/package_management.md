@@ -189,10 +189,11 @@ Core installation workflow:
 5. Remove root `package.json` (keep only `.jac-client.configs/package.json`)
 
 #### `uninstall_package(package_name, is_dev)`
-Removes a package from `config.json`:
+Removes a package from `config.json` and uninstalls it:
 1. Load current `config.json`
 2. Remove package from appropriate dependencies dict
 3. Write updated `config.json`
+4. Call `_regenerate_and_install()` to update `package.json` and run `npm install`
 
 #### `list_packages()`
 Returns all packages from `config.json`:
@@ -295,6 +296,32 @@ jac install --cl lodash@^4.17.21
 - npm not found: Clear error message
 - npm install failure: Displays stderr
 
+### Command: `jac uninstall --cl`
+
+**File**: `jac_client/plugin/cli.py`
+
+**Usage**:
+```bash
+# Uninstall specific package (dependencies)
+jac uninstall --cl lodash
+
+# Uninstall specific package (devDependencies)
+jac uninstall --cl -D @types/react
+```
+
+**Implementation**:
+1. Validates `--cl` flag is present
+2. Validates package name is provided
+3. Creates `PackageInstaller` instance
+4. Calls `uninstall_package()` with `is_dev` flag
+5. Handles errors and provides user feedback
+
+**Error Handling**:
+- Missing `config.json`: Suggests running `jac generate_client_config`
+- Package not found: Clear error message indicating which dependency type was checked
+- npm not found: Clear error message
+- npm install failure: Displays stderr
+
 ### Command: `jac create_jac_app`
 
 **File**: `jac_client/plugin/cli.py`
@@ -329,7 +356,7 @@ The `name` field is automatically populated from the project filename.
 
 ### 2. Vite Bundler
 
-**File**: `jac_client/plugin/src/vite_bundler.jac`
+**File**: `jac_client/plugin/src/vite_bundler.py`
 
 **Integration**:
 - `build()` method checks for `package.json` before building
