@@ -62,6 +62,16 @@ class PackageInstaller {
         self._regenerate_and_install();
     }
 
+    """Install all packages from config.json (regenerate package.json and run npm install)."""
+    def install_all(self: PackageInstaller) -> None {
+        if not self.config_file.exists() {
+            raise ClientBundleError(
+                f'config.json not found at {self.config_file}. Run "jac generate_client_config" first.'
+            ) ;
+        }
+        self._regenerate_and_install();
+    }
+
     """Regenerate package.json from config.json and run npm install."""
     def _regenerate_and_install(self: PackageInstaller) -> None {
         # Regenerate package.json from updated config.json

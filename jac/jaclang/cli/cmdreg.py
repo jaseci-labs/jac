@@ -322,7 +322,13 @@ class CommandRegistry:
                 )
             else:
                 arg_msg += f", default: {param.default}"
-                if param.annotation is bool:
+                # Check if annotation is bool (handle both type and string annotations)
+                is_bool = (
+                    param.annotation is bool
+                    or (isinstance(param.annotation, str) and param.annotation == "bool")
+                    or (hasattr(param.annotation, "__name__") and param.annotation.__name__ == "bool")
+                )
+                if is_bool:
                     cmd_parser.add_argument(
                         f"-{shorthand}",
                         f"--{param_name}",

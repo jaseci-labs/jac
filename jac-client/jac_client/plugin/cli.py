@@ -438,7 +438,7 @@ compiled/
                 exit(1)
 
         @cmd_registry.register
-        def install(package: str, cl: bool = False, D: bool = False) -> None:
+        def install(filepath: str = "", cl: bool = False, D: bool = False) -> None:
             """Install npm packages for Jac Client projects.
 
             Adds packages to config.json (dependencies or devDependencies).
@@ -446,15 +446,17 @@ compiled/
             Use -D flag to add to devDependencies instead of dependencies.
 
             Args:
-                package: Package name to install (e.g., "lodash" or "lodash@^4.17.21")
+                filepath: Package name to install (e.g., "lodash" or "lodash@^4.17.21")
                 cl: Flag to indicate client-side package installation
                 D: Flag to add to devDependencies (default: dependencies)
 
             Examples:
-                jac install --cl lodash
-                jac install --cl -D @types/react
-                jac install --cl lodash@^4.17.21
+                jac install --cl                    # Install all packages from config.json
+                jac install --cl lodash             # Install specific package
+                jac install --cl -D @types/react    # Install as devDependency
+                jac install --cl lodash@^4.17.21    # Install with specific version
             """
+            # Note: cl should be detected as boolean, but if not, we check it here
             if not cl:
                 print(
                     "Error: --cl flag is required for client package installation",
@@ -470,13 +472,6 @@ compiled/
                 )
                 exit(1)
 
-            if not package:
-                print(
-                    "Error: Package name is required",
-                    file=sys.stderr,
-                )
-                exit(1)
-
             try:
                 from pathlib import Path
                 from jac_client.plugin.src.package_installer import PackageInstaller
@@ -484,8 +479,15 @@ compiled/
                 current_dir = Path(os.getcwd())
                 installer = PackageInstaller(current_dir)
 
+                # If no package name provided, install all packages from config.json
+                if not filepath:
+                    print("📦 Installing all packages from config.json...")
+                    installer.install_all();
+                    print("✅ Successfully installed all packages")
+                    return
+
                 # Parse package name and version
-                package_parts = package.split("@", 1)
+                package_parts = filepath.split("@", 1)
                 package_name = package_parts[0]
                 package_version = package_parts[1] if len(package_parts) > 1 else None
 
