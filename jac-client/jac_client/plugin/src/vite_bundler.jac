@@ -1,5 +1,4 @@
 """Vite bundling module."""
-import from __future__ { annotations }
 import hashlib;
 import subprocess;
 import from pathlib { Path }

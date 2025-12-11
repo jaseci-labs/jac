@@ -1,5 +1,4 @@
 """Representation of types used during type analysis."""
-import from __future__ { annotations }
 import from abc { ABC }
 import from enum { IntEnum, auto }
 import from pathlib { Path }

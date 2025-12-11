@@ -1,5 +1,4 @@
 """Configuration loader for Jac Client build system."""
-import from __future__ { annotations }
 import json;
 import from pathlib { Path }
 import from typing { Any }

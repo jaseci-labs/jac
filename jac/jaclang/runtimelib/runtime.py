@@ -1199,7 +1199,7 @@ class JacBasics:
             # Handle special case: override_name="__main__" means run as script
             if override_name == "__main__":
                 # For __main__ execution, we use spec_from_file_location
-                from jaclang.runtimelib.meta_importer import JacMetaImporter
+                from jaclang.meta_importer import JacMetaImporter
 
                 finder = JacMetaImporter()
                 # Pass None as path for top-level imports (e.g., "micro.simple_walk")

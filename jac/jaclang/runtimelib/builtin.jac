@@ -1,5 +1,4 @@
 """Jac specific builtins."""
-import from __future__ { annotations }
 import json;
 import from abc { abstractmethod }
 import from collections.abc { Callable }

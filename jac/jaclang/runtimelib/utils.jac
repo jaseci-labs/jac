@@ -1,5 +1,4 @@
 """Helper for construct."""
-import from __future__ { annotations }
 import ast as ast3;
 import sys;
 import from collections.abc { Callable, Iterator }

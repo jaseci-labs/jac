@@ -1,5 +1,4 @@
 """Jac to JavaScript compilation module."""
-import from __future__ { annotations }
 import from collections.abc { Callable }
 import from pathlib { Path }
 import from types { ModuleType }

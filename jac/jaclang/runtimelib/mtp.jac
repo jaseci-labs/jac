@@ -1,5 +1,4 @@
 """Meaning Typed Programming constructs for Jac Language."""
-import from __future__ { annotations }
 import from collections.abc { Callable }
 obj MTRuntime {
     has caller: Callable;

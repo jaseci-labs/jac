@@ -172,6 +172,7 @@ def dump_traceback(e: Exception) -> str:
             "/jaclang/runtimelib/" in normalized
             or "/jaclang/vendor/" in normalized
             or "/site-packages/pluggy/" in normalized
+            or normalized.endswith("/jaclang/meta_importer.py")
         )
 
     # Process and print frames, collapsing consecutive internal runtime calls
