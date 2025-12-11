@@ -67,12 +67,11 @@ class JacClient {
     @staticmethod @hookimpl
     static def get_client_bundle_builder()  -> ViteClientBundleBuilder {
         base_path = Path(Jac.base_path_dir);
-        # Prefer generated package.json in .jac-client.configs/, fallback to root for backward compatibility
+        # package.json should only exist in .jac-client.configs/
         generated_package_json = base_path / '.jac-client.configs' / 'package.json';
-        root_package_json = base_path / 'package.json';
         
-        # Generate package.json if it doesn't exist (neither generated nor root)
-        if (not generated_package_json.exists() and not root_package_json.exists()) {
+        # Generate package.json if it doesn't exist
+        if not generated_package_json.exists() {
             # Use ViteBundler to generate package.json from config.json
             bundler = ViteBundler(base_path);
             generated_path = bundler.create_package_json();
@@ -84,18 +83,13 @@ class JacClient {
             }
             package_json_path = generated_path.resolve();
         } else {
-            # Use existing package.json (prefer generated, fallback to root)
-            if generated_package_json.exists() {
-                package_json_path = generated_package_json.resolve();
-            } else {
-                package_json_path = root_package_json.resolve();
-            }
+            package_json_path = generated_package_json.resolve();
         }
         
         # Final verification that package.json exists before creating builder
         if not package_json_path.exists() {
             raise ClientBundleError(
-                f'package.json not found at {package_json_path}. Expected at {generated_package_json} or {root_package_json}'
+                f'package.json not found at {package_json_path}. Expected at {generated_package_json}'
             ) ;
         }
         output_dir = base_path / 'dist';

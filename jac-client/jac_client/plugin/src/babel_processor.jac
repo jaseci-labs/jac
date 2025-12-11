@@ -16,45 +16,34 @@ class BabelProcessor {
 
     """Run Babel compilation (npm run compile)."""
     def compile(self: BabelProcessor) -> None {
-        # Ensure package.json exists before running npm (npm expects it in project root)
-        root_package_json = self.project_dir / 'package.json';
-        generated_package_json = self.project_dir / '.jac-client.configs' / 'package.json';
+        bundler = ViteBundler(self.project_dir);
         
-        if not root_package_json.exists() {
-            # Generate package.json if it doesn't exist
-            if generated_package_json.exists() {
-                # Copy from generated location
-                shutil.copy2(generated_package_json, root_package_json);
-            } else {
-                # Generate from config.json
-                bundler = ViteBundler(self.project_dir);
-                bundler.create_package_json();
-            }
-        }
-        
-        # Ensure dependencies are installed (check if node_modules exists)
-        node_modules = self.project_dir / 'node_modules';
-        if not node_modules.exists() {
-            try {
-                subprocess.run(
-                    ['npm', 'install'],
-                    cwd=self.project_dir,
-                    check=True,
-                    capture_output=True,
-                    text=True
-                );
-            } except subprocess.CalledProcessError as e {
-                raise ClientBundleError(
-                    f'Failed to install npm dependencies: {e.stderr}'
-                ) from e ;
-            } except FileNotFoundError {
-                raise ClientBundleError(
-                    'npm command not found. Ensure Node.js and npm are installed.'
-                ) from None ;
-            }
-        }
+        # Ensure root package.json exists temporarily for npm commands
+        bundler._ensure_root_package_json();
         
         try {
+            # Ensure dependencies are installed (check if node_modules exists)
+            node_modules = self.project_dir / 'node_modules';
+            if not node_modules.exists() {
+                try {
+                    subprocess.run(
+                        ['npm', 'install'],
+                        cwd=self.project_dir,
+                        check=True,
+                        capture_output=True,
+                        text=True
+                    );
+                } except subprocess.CalledProcessError as e {
+                    raise ClientBundleError(
+                        f'Failed to install npm dependencies: {e.stderr}'
+                    ) from e ;
+                } except FileNotFoundError {
+                    raise ClientBundleError(
+                        'npm command not found. Ensure Node.js and npm are installed.'
+                    ) from None ;
+                }
+            }
+            
             command = ['npm', 'run', 'compile'];
             subprocess.run(
                 command,
@@ -63,12 +52,9 @@ class BabelProcessor {
                 capture_output=True,
                 text=True
             );
-        } except subprocess.CalledProcessError as e {
-            raise ClientBundleError(f"Babel compilation failed: {e.stderr}") from e ;
-        } except FileNotFoundError {
-            raise ClientBundleError(
-                'npm command not found. Ensure Node.js and npm are installed.'
-            ) from None ;
+        } finally {
+            # Always clean up root package.json and move package-lock.json
+            bundler._cleanup_root_package_files();
         }
     }
 

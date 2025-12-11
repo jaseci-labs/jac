@@ -78,9 +78,11 @@ class PackageInstaller {
         bundler = ViteBundler(self.project_dir);
         bundler.create_package_json();
 
-        # Run npm install to actually install the packages
-        # npm needs package.json in root, so we keep it temporarily
+        # Ensure root package.json exists temporarily for npm commands
+        bundler._ensure_root_package_json();
+
         try {
+            # Run npm install to actually install the packages
             subprocess.run(
                 ['npm', 'install'],
                 cwd=self.project_dir,
@@ -96,22 +98,9 @@ class PackageInstaller {
             raise ClientBundleError(
                 'npm command not found. Ensure Node.js and npm are installed.'
             ) from None ;
-        }
-
-        # Move package-lock.json to .jac-client.configs/ if it exists
-        root_package_lock = self.project_dir / 'package-lock.json';
-        configs_dir = self.project_dir / '.jac-client.configs';
-        configs_package_lock = configs_dir / 'package-lock.json';
-        
-        if root_package_lock.exists() {
-            configs_dir.mkdir(exist_ok=True);
-            shutil.move(str(root_package_lock), str(configs_package_lock));
-        }
-
-        # Remove root package.json (keep only in .jac-client.configs/)
-        root_package_json = self.project_dir / 'package.json';
-        if root_package_json.exists() {
-            root_package_json.unlink();
+        } finally {
+            # Always clean up root package.json and move package-lock.json
+            bundler._cleanup_root_package_files();
         }
     }
 

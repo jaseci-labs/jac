@@ -1,21 +1,22 @@
 """Vite bundling module."""
 import from __future__ { annotations }
 import hashlib;
+import json;
 import shutil;
 import subprocess;
 import from pathlib { Path }
+import from typing { Optional }
 import from jaclang.runtimelib.client_bundle { ClientBundleError }
 import from .config_loader { JacClientConfig }
-
 """Handles Vite bundling operations."""
 class ViteBundler {
     """Initialize the Vite bundler."""
     def __init__(
         self: ViteBundler,
         project_dir: Path,
-        output_dir: (Path | None) = None,
+        output_dir: Optional[Path] = None,
         minify: bool = False,
-        config_path: (Path | None) = None
+        config_path: Optional[Path] = None
     ) {
         self.project_dir = project_dir;
         self.output_dir = output_dir or (project_dir / 'compiled' / 'dist' / 'assets');
@@ -23,39 +24,35 @@ class ViteBundler {
         self.config_path = config_path;
         self.config_loader = JacClientConfig(project_dir);
     }
-
     """Run Vite build with generated config in .jac-client.configs/."""
-    def build(self: ViteBundler, entry_file: (Path | None) = None) -> None {
+    def build(self: ViteBundler, entry_file: Optional[Path] = None) -> None {
         self.output_dir.mkdir(parents=True, exist_ok=True);
-        # Generate package.json if it doesn't exist in .jac-client.configs/
         generated_package_json = self.project_dir / '.jac-client.configs' / 'package.json';
         if not generated_package_json.exists() {
             self.create_package_json();
         }
-        
-        # Ensure dependencies are installed (check if node_modules exists)
-        node_modules = self.project_dir / 'node_modules';
-        if not node_modules.exists() {
-            try {
-                subprocess.run(
-                    ['npm', 'install'],
-                    cwd=self.project_dir,
-                    check=True,
-                    capture_output=True,
-                    text=True
-                );
-            } except subprocess.CalledProcessError as e {
-                raise ClientBundleError(
-                    f'Failed to install npm dependencies: {e.stderr}'
-                ) from e ;
-            } except FileNotFoundError {
-                raise ClientBundleError(
-                    'npm command not found. Ensure Node.js and npm are installed.'
-                ) from None ;
-            }
-        }
-        
+        self._ensure_root_package_json();
         try {
+            node_modules = self.project_dir / 'node_modules';
+            if not node_modules.exists() {
+                try {
+                    subprocess.run(
+                        ['npm', 'install'],
+                        cwd=self.project_dir,
+                        check=True,
+                        capture_output=True,
+                        text=True
+                    );
+                } except subprocess.CalledProcessError as e {
+                    raise e from ClientBundleError(
+                        f"Failed to install npm dependencies: {e.stderr}"
+                    ) ;
+                } except FileNotFoundError {
+                    raise None from ClientBundleError(
+                        'npm command not found. Ensure Node.js and npm are installed.'
+                    ) ;
+                }
+            }
             if self.config_path {
                 command = ['npx', 'vite', 'build', '--config', str(self.config_path)];
             } elif entry_file {
@@ -71,25 +68,19 @@ class ViteBundler {
                 capture_output=True,
                 text=True
             );
-        } except subprocess.CalledProcessError as e {
-            raise ClientBundleError(f"Vite build failed: {e.stderr}") from e ;
-        } except FileNotFoundError {
-            raise ClientBundleError(
-                'npm command not found. Ensure Node.js and npm are installed.'
-            ) from None ;
+        } finally {
+            self._cleanup_root_package_files();
         }
     }
-
     """Find the generated Vite bundle file."""
-    def find_bundle(self: ViteBundler) -> (Path | None) {
+    def find_bundle(self: ViteBundler) -> Optional[Path] {
         for file in self.output_dir.glob('client.*.js') {
             return file;
         }
         return None;
     }
-
     """Find the generated Vite CSS file."""
-    def find_css(self: ViteBundler) -> (Path | None) {
+    def find_css(self: ViteBundler) -> Optional[Path] {
         css_file = self.output_dir / 'main.css';
         if css_file.exists() {
             return css_file;
@@ -99,7 +90,6 @@ class ViteBundler {
         }
         return None;
     }
-
     """Read the bundled code and compute its hash."""
     def read_bundle(self: ViteBundler) -> tuple[str, str] {
         bundle_file = self.find_bundle();
@@ -110,17 +100,14 @@ class ViteBundler {
         bundle_hash = hashlib.sha256(bundle_code.encode('utf-8')).hexdigest();
         return (bundle_code, bundle_hash);
     }
-
     """Check if the project has TypeScript support."""
     def _has_typescript_support(self: ViteBundler) -> bool {
         tsconfig_path = self.project_dir / 'tsconfig.json';
         if tsconfig_path.exists() {
             return True;
         }
-        # Check generated package.json first
         generated_package_json = self.project_dir / '.jac-client.configs' / 'package.json';
         if generated_package_json.exists() {
-            import json;
             try {
                 with generated_package_json.open() as f {
                     package_data = json.load(f);
@@ -129,12 +116,12 @@ class ViteBundler {
                         return True;
                     }
                 }
-            } except (json.JSONDecodeError, KeyError) { }
+            } except (json.JSONDecodeError, KeyError) {
+                ;
+            }
         }
-        # Fallback to root package.json for backward compatibility
         package_json_path = self.project_dir / 'package.json';
         if package_json_path.exists() {
-            import json;
             try {
                 with package_json_path.open() as f {
                     package_data = json.load(f);
@@ -143,11 +130,12 @@ class ViteBundler {
                         return True;
                     }
                 }
-            } except (json.JSONDecodeError, KeyError) { }
+            } except (json.JSONDecodeError, KeyError) {
+                ;
+            }
         }
         return False;
     }
-
     """Create vite.config.js from config.json during bundling."""
     def create_vite_config(self: ViteBundler, entry_file: Path) -> Path {
         configs_dir = self.project_dir / '.jac-client.configs';
@@ -155,71 +143,59 @@ class ViteBundler {
         vite_config_data = self.config_loader.get_vite_config();
         config_path = configs_dir / 'vite.config.js';
         has_ts = self._has_typescript_support();
-
         try {
             entry_relative = entry_file.relative_to(self.project_dir).as_posix();
         } except ValueError {
             entry_relative = entry_file.as_posix();
         }
-
         try {
             output_relative = self.output_dir.relative_to(self.project_dir).as_posix();
         } except ValueError {
             output_relative = self.output_dir.as_posix();
         }
-
         plugins = [];
         plugin_imports = [];
         if has_ts {
             plugin_imports.append('import react from "@vitejs/plugin-react";');
             plugins.append('    react()');
         }
-
         lib_imports = vite_config_data.get('lib_imports', []);
         for lib_import in lib_imports {
             if (isinstance(lib_import, str) and lib_import.strip()) {
                 plugin_imports.append(lib_import);
             }
         }
-
         custom_plugins = vite_config_data.get('plugins', []);
         for plugin in custom_plugins {
             if isinstance(plugin, str) {
                 plugins.append(f"    {plugin}");
             }
         }
-
         plugins_str = ',\n'.join(plugins) if plugins else '';
         imports_str = '\n'.join(plugin_imports) if plugin_imports else '';
-
         extensions = ['.mjs', '.js'];
         if has_ts {
             extensions.extend(['.mts', '.ts', '.jsx', '.tsx']);
         }
         extensions.append('.json');
         extensions_str = ', '.join(f'"{ext}"' for ext in extensions);
-
         build_config = vite_config_data.get('build', {});
         build_overrides_str = self._format_config_object(build_config, indent=4)
-        if (isinstance(build_config, dict) and build_config)
+        if (isinstance(build_config, <>dict) and build_config)
         else '';
-
         server_config = vite_config_data.get('server', {});
         server_config_str = self._format_config_object(server_config, indent=2)
-        if (isinstance(server_config, dict) and server_config)
+        if (isinstance(server_config, <>dict) and server_config)
         else '';
-
         resolve_config = vite_config_data.get('resolve', {});
         resolve_overrides_str = self._format_config_object(resolve_config, indent=6)
-        if (isinstance(resolve_config, dict) and resolve_config)
+        if (isinstance(resolve_config, <>dict) and resolve_config)
         else '';
-
-        imports_section = f"{imports_str}\n" if imports_str else '';
+        imports_section = f"{imports_str}" if imports_str else '';
         newline = '\n';
         server_section = f"  server: {{{newline}{server_config_str}{newline}  }},{newline}"
         if server_config_str
         else '';
-
         config_content = f'''import {{ defineConfig }} from "vite";
 import path from "path";
 import {{ fileURLToPath }} from "url";
@@ -269,7 +245,6 @@ export default defineConfig({{
         name = name.lstrip('@');
         return name;
     }
-
     """Format plugin options as JavaScript object string."""
     def _format_plugin_options(self: ViteBundler, options: dict) -> str {
         if not options {
@@ -283,7 +258,7 @@ export default defineConfig({{
                 items.append(f"{key}: {str(value).lower()}");
             } elif isinstance(value, (int, float)) {
                 items.append(f"{key}: {value}");
-            } elif isinstance(value, list) {
+            } elif isinstance(value, <>list) {
                 items.append(f"{key}: [{', '.join(repr(v) for v in value)}]");
             } else {
                 items.append(f"{key}: {repr(value)}");
@@ -291,7 +266,6 @@ export default defineConfig({{
         }
         return '{ ' + ', '.join(items) + ' }';
     }
-
     """Format config object as JavaScript object string."""
     def _format_config_object(self: ViteBundler, config: dict, indent: int = 0) -> str {
         if not config {
@@ -306,12 +280,12 @@ export default defineConfig({{
                 items.append(f"{indent_str}  {key}: {str(value).lower()},");
             } elif isinstance(value, (int, float)) {
                 items.append(f"{indent_str}  {key}: {value},");
-            } elif isinstance(value, list) {
+            } elif isinstance(value, <>list) {
                 list_str = ', '.join(repr(v) for v in value);
                 items.append(f"{indent_str}  {key}: [{list_str}],");
-            } elif isinstance(value, dict) {
+            } elif isinstance(value, <>dict) {
                 nested = self._format_config_object(value, (indent + 2));
-                items.append(f"{indent_str}  {key}: {{\n{nested}\n{indent_str}  }},");
+                items.append(f"{indent_str}  {key}: {{{nested}{indent_str}  }},");
             } else {
                 items.append(f"{indent_str}  {key}: {repr(value)},");
             }
@@ -319,38 +293,63 @@ export default defineConfig({{
         return '\n'.join(items);
     }
 
+    """Ensure root package.json exists temporarily for npm commands.\n\n        Create root package.json temporarily if it doesn't exist.\n        """
+    def _ensure_root_package_json(self: ViteBundler) -> None {
+        generated_package_json = self.project_dir / '.jac-client.configs' / 'package.json';
+        root_package_json = self.project_dir / 'package.json';
+        if not generated_package_json.exists() {
+            self.create_package_json();
+        }
+        if not root_package_json.exists() {
+            shutil.copy2(generated_package_json, root_package_json);
+        }
+    }
+    """Clean up root package.json and move package-lock.json to .jac-client.configs/.\n\n        Remove root package.json and move package-lock.json to .jac-client.configs/.\n        """
+    def _cleanup_root_package_files(self: ViteBundler) -> None {
+        root_package_json = self.project_dir / 'package.json';
+        root_package_lock = self.project_dir / 'package-lock.json';
+        configs_dir = self.project_dir / '.jac-client.configs';
+        configs_package_lock = configs_dir / 'package-lock.json';
+        if root_package_lock.exists() {
+            configs_dir.mkdir(exist_ok=True);
+            if configs_package_lock.exists() {
+                configs_package_lock.unlink();
+            }
+            shutil.move(str(root_package_lock), str(configs_package_lock));
+        }
+        if root_package_json.exists() {
+            root_package_json.unlink();
+        }
+    }
     """Create package.json from config.json during bundling."""
-    def create_package_json(self: ViteBundler, project_name: (str | None) = None) -> Path {
+    def create_package_json(
+        self: ViteBundler, project_name: Optional[str] = None
+    ) -> Path {
         configs_dir = self.project_dir / '.jac-client.configs';
         configs_dir.mkdir(exist_ok=True);
         package_config = self.config_loader.get_package_config();
         package_json_path = configs_dir / 'package.json';
         has_ts = self._has_typescript_support();
-
-        # Get project name from config, parameter, or project directory name
         name = package_config.get('name', '');
         if (not name and project_name) {
             name = project_name;
         }
         if not name {
-            # Try to get from existing package.json
             existing_package = self.project_dir / 'package.json';
             if existing_package.exists() {
-                import json;
                 try {
                     with existing_package.open() as f {
                         existing_data = json.load(f);
                         name = existing_data.get('name', '');
+                    }
+                } except (json.JSONDecodeError, KeyError) {
+                    ;
                 }
-                } except (json.JSONDecodeError, KeyError) { }
             }
         }
         if not name {
-            # Fallback to project directory name
             name = self.project_dir.name or 'jac-app';
         }
-
-        # Build default devDependencies
         dev_dependencies = {
             'vite': '^6.4.1',
             '@babel/cli': '^7.28.3',
@@ -358,62 +357,45 @@ export default defineConfig({{
             '@babel/preset-env': '^7.28.5',
             '@babel/preset-react': '^7.28.5'
         };
-
-        # Add TypeScript dependencies if needed
         if has_ts {
-            dev_dependencies.update({
-                '@vitejs/plugin-react': '^4.2.1',
-                'typescript': '^5.3.3',
-                '@types/react': '^18.2.45',
-                '@types/react-dom': '^18.2.18'
-            });
+            dev_dependencies.update(
+                {
+                    '@vitejs/plugin-react': '^4.2.1',
+                    'typescript': '^5.3.3',
+                    '@types/react': '^18.2.45',
+                    '@types/react-dom': '^18.2.18'
+                }
+            );
         }
-
-        # Merge with user-defined devDependencies
         user_dev_deps = package_config.get('devDependencies', {});
         dev_dependencies.update(user_dev_deps);
-
-        # Build default dependencies
         dependencies = {
             'react': '^19.2.0',
             'react-dom': '^19.2.0',
             'react-router-dom': '^6.30.1'
         };
-
-        # Merge with user-defined dependencies
         user_deps = package_config.get('dependencies', {});
         dependencies.update(user_deps);
-
-        # Build scripts
         scripts = {
             'build': 'npm run compile && vite build --config .jac-client.configs/vite.config.js',
             'dev': 'vite dev --config .jac-client.configs/vite.config.js',
             'preview': 'vite preview --config .jac-client.configs/vite.config.js',
             'compile': 'babel compiled --out-dir build --extensions ".jsx,.js" --out-file-extension .js'
         };
-
-        # Merge with user-defined scripts
         user_scripts = package_config.get('scripts', {});
         scripts.update(user_scripts);
-
-        # Build babel config (always included, not from config.json)
         babel_config = {
             'presets': [
-                [
-                    '@babel/preset-env',
-                    {
-                        'modules': False
-                    }
-                ],
+                ['@babel/preset-env', {'modules': False}],
                 '@babel/preset-react'
             ]
         };
-
-        # Build package.json structure (type, scripts, and default deps are always included, not from config)
         package_data = {
             'name': name,
             'version': package_config.get('version', '1.0.0'),
-            'description': package_config.get('description', f'Jac application: {name}'),
+            'description': package_config.get(
+                'description', f"Jac application: {name}"
+            ),
             'type': 'module',
             'main': 'index.js',
             'scripts': scripts,
@@ -421,25 +403,17 @@ export default defineConfig({{
             'devDependencies': dev_dependencies,
             'babel': babel_config
         };
-
-        # Add any additional fields from config (excluding fields that are always included)
         for (key, value) in package_config.items() {
-            if (key not in {'name', 'version', 'description', 'dependencies', 'devDependencies'}) {
+            if (
+                key not in {'name','version','description','dependencies','devDependencies'}
+            ) {
                 package_data[key] = value;
             }
         }
-
-        # Write package.json
-        import json;
         with package_json_path.open('w', encoding='utf-8') as f {
             json.dump(package_data, f, indent=2);
         }
-        
-        # Also copy to root so npm commands can find it (npm expects package.json in project root)
-        # Always sync root package.json with generated one to keep them in sync
-        root_package_json = self.project_dir / 'package.json';
-        shutil.copy2(package_json_path, root_package_json);
-        
         return package_json_path;
     }
 }
+
