@@ -30,7 +30,7 @@ jobs:
         pip install pytest-xdist
 
     - name: Run Jac core tests
-      run: pytest -x jac -n auto --ignore=jac/jaclang/langserve/tests/
+      run: pytest -x jac -n auto --ignore=jac/tests/langserve/
 
   test-packages:
     runs-on: ubuntu-latest
@@ -99,5 +99,5 @@ jobs:
 
     - name: Run language server tests
       run: | # work-around for github CI
-        pytest jac/jaclang/langserve/tests/test_server.py
-        pytest jac/jaclang/langserve/tests/server_test/test_lang_serve.py
+        pytest jac/tests/langserve/test_server.py
+        pytest jac/tests/langserve/server_test/test_lang_serve.py
