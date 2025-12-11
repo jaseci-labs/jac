@@ -436,3 +436,75 @@ compiled/
             except Exception as e:
                 print(f"Error creating config.json: {e}", file=sys.stderr)
                 exit(1)
+
+        @cmd_registry.register
+        def install(package: str, cl: bool = False, D: bool = False) -> None:
+            """Install npm packages for Jac Client projects.
+
+            Adds packages to config.json (dependencies or devDependencies).
+            The --cl flag indicates this is for client-side packages.
+            Use -D flag to add to devDependencies instead of dependencies.
+
+            Args:
+                package: Package name to install (e.g., "lodash" or "lodash@^4.17.21")
+                cl: Flag to indicate client-side package installation
+                D: Flag to add to devDependencies (default: dependencies)
+
+            Examples:
+                jac install --cl lodash
+                jac install --cl -D @types/react
+                jac install --cl lodash@^4.17.21
+            """
+            if not cl:
+                print(
+                    "Error: --cl flag is required for client package installation",
+                    file=sys.stderr,
+                )
+                print(
+                    "Usage: jac install --cl <package_name>",
+                    file=sys.stderr,
+                )
+                print(
+                    "       jac install --cl -D <package_name>  (for devDependencies)",
+                    file=sys.stderr,
+                )
+                exit(1)
+
+            if not package:
+                print(
+                    "Error: Package name is required",
+                    file=sys.stderr,
+                )
+                exit(1)
+
+            try:
+                from pathlib import Path
+                from jac_client.plugin.src.package_installer import PackageInstaller
+
+                current_dir = Path(os.getcwd())
+                installer = PackageInstaller(current_dir)
+
+                # Parse package name and version
+                package_parts = package.split("@", 1)
+                package_name = package_parts[0]
+                package_version = package_parts[1] if len(package_parts) > 1 else None
+
+                # Install the package
+                installer.install_package(
+                    package_name=package_name,
+                    version=package_version,
+                    is_dev=D
+                )
+
+                dep_type = "devDependencies" if D else "dependencies"
+                version_str = f"@{package_version}" if package_version else ""
+                print(
+                    f"✅ Added {package_name}{version_str} to {dep_type} in config.json"
+                )
+                print("📦 Installing package via npm...")
+                # npm install is handled by PackageInstaller.install_package()
+                print(f"✅ Successfully installed {package_name}{version_str}")
+
+            except Exception as e:
+                print(f"Error installing package: {e}", file=sys.stderr)
+                exit(1)
