@@ -69,14 +69,13 @@ def file_to_str() -> Callable[[str], str]:
 @pytest.fixture
 def lang_fixture_abs_path() -> Callable[[str], str]:
     """Get language fixture absolute path."""
-    import jaclang
+    from pathlib import Path
 
     def _lang_fixture_abs_path(file: str) -> str:
-        fixture_src = jaclang.__file__
-        file_path = os.path.join(
-            os.path.dirname(fixture_src), "tests", "fixtures", file
-        )
-        return os.path.abspath(file_path)
+        # tests/compiler/test_parser.py -> tests/language/fixtures/
+        tests_dir = Path(__file__).parent.parent
+        file_path = tests_dir / "language" / "fixtures" / file
+        return str(file_path.resolve())
 
     return _lang_fixture_abs_path
 
@@ -268,10 +267,9 @@ def test_multiple_syntax_errors(fixture_path: Callable[[str], str]) -> None:
 def _load_combined_jsx_fixture() -> tuple[str, JacParser]:
     """Parse the consolidated JSX fixture once for downstream assertions."""
     fixture_path = (
-        Path(__file__).resolve().parent.parent
+        Path(__file__).resolve().parent
         / "passes"
         / "ecmascript"
-        / "tests"
         / "fixtures"
         / "client_jsx.jac"
     )

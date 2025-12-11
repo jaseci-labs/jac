@@ -283,7 +283,7 @@ def test_fstring_multiple_quotation(
     """Test fstring with multiple quotation."""
     with capture_stdout() as captured_output:
         Jac.jac_import(
-            "compiler/passes/main/tests/fixtures/fstrings",
+            "compiler/passes/main/fixtures/fstrings",
             base_path=fixture_path("../../"),
         )
     stdout_value = captured_output.getvalue()
@@ -300,7 +300,7 @@ def test_fstring_escape_sequences(
     """Test that escape sequences in f-strings are properly decoded."""
     with capture_stdout() as captured_output:
         Jac.jac_import(
-            "compiler/passes/main/tests/fixtures/fstring_escape_sequences",
+            "compiler/passes/main/fixtures/fstring_escape_sequences",
             base_path=fixture_path("../../"),
         )
     stdout_value = captured_output.getvalue()
@@ -1798,7 +1798,7 @@ def test_funccall_genexpr(
     assert "Result: 30" in stdout_value
 
     # Test py2jac conversion
-    py_file_path = f"{fixture_path('../../tests/fixtures/funccall_genexpr.py')}"
+    py_file_path = f"{fixture_path('funccall_genexpr.py')}"
     with capture_stdout() as captured_output:
         cli.py2jac(py_file_path)
     stdout_value = captured_output.getvalue()

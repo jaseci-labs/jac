@@ -16,7 +16,7 @@ import pytest
 from jaclang.cli import cli
 from jaclang.runtimelib.runtime import JacRuntime as Jac
 from jaclang.runtimelib.server import JacAPIServer, UserManager
-from jaclang.runtimelib.tests.conftest import fixture_abs_path
+from tests.runtimelib.conftest import fixture_abs_path
 
 
 def get_free_port() -> int:

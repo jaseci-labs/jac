@@ -122,7 +122,7 @@ def test_jac_name_in_sys_mods(
 ) -> None:
     """Basic test for pass."""
     with capture_stdout() as output:
-        cli.run(fixture_path("../../../jaclang/tests/fixtures/abc_check.jac"))
+        cli.run(fixture_path("abc_check.jac"))
 
     stdout_value = output.getvalue()
     assert "Area of a circle with radius 5 using function: 78" in stdout_value

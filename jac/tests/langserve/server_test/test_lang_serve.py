@@ -7,14 +7,14 @@ from lsprotocol.types import (
     TextDocumentIdentifier,
     TextEdit,
 )
-
-from jaclang.langserve.server import formatting
-from jaclang.langserve.tests.server_test.utils import (
+from tests.langserve.server_test.utils import (
     JacTestFile,
     LanguageServerTestHelper,
     create_ls_with_workspace,
     load_jac_template,
 )
+
+from jaclang.langserve.server import formatting
 from jaclang.vendor.pygls.uris import from_fs_path
 
 # NOTE: circle.jac emits a spurious type error at the call to super.init:

@@ -28,15 +28,13 @@ def fixture_path() -> Callable[[str], str]:
 @pytest.fixture
 def lang_fixture_path() -> Callable[[str], str]:
     """Return a function that returns absolute path to a language fixture file."""
+    from pathlib import Path
 
     def _get_lang_fixture_path(file: str) -> str:
-        import jaclang
-
-        fixture_src = jaclang.__file__
-        file_path = os.path.join(
-            os.path.dirname(fixture_src), "tests", "fixtures", file
-        )
-        return os.path.abspath(file_path)
+        # tests/compiler/passes/ecmascript/ -> tests/language/fixtures/
+        tests_dir = Path(__file__).parent.parent.parent.parent
+        file_path = tests_dir / "language" / "fixtures" / file
+        return str(file_path.resolve())
 
     return _get_lang_fixture_path
 

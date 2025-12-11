@@ -10,13 +10,7 @@ import pytest
 
 from jaclang.compiler.program import JacProgram
 
-FIXTURE_DIR = (
-    Path(__file__).resolve().parent.parent
-    / "passes"
-    / "ecmascript"
-    / "tests"
-    / "fixtures"
-)
+FIXTURE_DIR = Path(__file__).resolve().parent / "passes" / "ecmascript" / "fixtures"
 
 
 @pytest.mark.skip(reason="Failing randomly on CI")

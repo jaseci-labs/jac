@@ -141,9 +141,11 @@ def test_automated() -> None:
     assert len(other_reference_files) == 0
 
 
-def test_py_jac_mode(tool: AstTool, fixture_path: Callable[[str], str]) -> None:
+def test_py_jac_mode(tool: AstTool) -> None:
     """Testing for py_jac_mode support."""
-    file = fixture_path("../../../tests/fixtures/pyfunc.py")
+    from pathlib import Path
+
+    file = str(Path(__file__).parent.parent / "language" / "fixtures" / "pyfunc.py")
     out = tool.ir(["unparse", file])
     assert "def my_print(x: object) -> None" in out
 

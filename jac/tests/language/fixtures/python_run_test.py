@@ -1,6 +1,6 @@
 """Simple Python test file for jac run command."""
 
-from jaclang.tests.fixtures import py_namedexpr
+from tests.language.fixtures import py_namedexpr
 
 print("Hello from Python!")
 print("This is a test Python file.")

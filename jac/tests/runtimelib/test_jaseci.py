@@ -9,7 +9,7 @@ from typing import TypedDict
 import pytest
 
 from jaclang.cli import cli
-from jaclang.runtimelib.tests.conftest import fixture_abs_path
+from tests.runtimelib.conftest import fixture_abs_path
 
 
 class OutputCapturerDict(TypedDict):

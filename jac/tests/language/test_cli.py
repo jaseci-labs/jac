@@ -471,7 +471,7 @@ def test_py_to_jac(
 ) -> None:
     """Test for graph CLI cmd."""
     with capture_stdout() as output:
-        cli.py2jac(f"{fixture_path('../../tests/fixtures/pyfunc.py')}")
+        cli.py2jac(f"{fixture_path('pyfunc.py')}")
 
     stdout_value = output.getvalue()
     assert "def my_print(x: object) -> None" in stdout_value
@@ -485,7 +485,7 @@ def test_lambda_arg_annotation(
 ) -> None:
     """Test for lambda argument annotation."""
     with capture_stdout() as output:
-        cli.jac2py(f"{fixture_path('../../tests/fixtures/lambda_arg_annotation.jac')}")
+        cli.jac2py(f"{fixture_path('lambda_arg_annotation.jac')}")
 
     stdout_value = output.getvalue()
     assert "x = lambda a, b: b + a" in stdout_value
@@ -499,7 +499,7 @@ def test_lambda_self(
 ) -> None:
     """Test for lambda argument annotation."""
     with capture_stdout() as output:
-        cli.jac2py(f"{fixture_path('../../tests/fixtures/lambda_self.jac')}")
+        cli.jac2py(f"{fixture_path('lambda_self.jac')}")
 
     stdout_value = output.getvalue()
     assert "def travel(self, here: City) -> None:" in stdout_value
@@ -516,11 +516,9 @@ def test_param_arg(
     """Test for lambda argument annotation."""
     from jaclang.compiler.program import JacProgram
 
-    filename = fixture_path("../../tests/fixtures/params/test_complex_params.jac")
+    filename = fixture_path("params/test_complex_params.jac")
     with capture_stdout() as output:
-        cli.jac2py(
-            f"{fixture_path('../../tests/fixtures/params/test_complex_params.jac')}"
-        )
+        cli.jac2py(f"{fixture_path('params/test_complex_params.jac')}")
         py_code = JacProgram().compile(file_path=filename).gen.py
 
         with tempfile.NamedTemporaryFile(

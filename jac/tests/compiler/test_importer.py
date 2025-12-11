@@ -64,16 +64,21 @@ def test_modules_correct(fixture_abs_path: Callable[[str], str]) -> None:
     )
     Jac.jac_import("fixtures.hello_world", base_path=__file__)
     assert "module 'fixtures.hello_world'" in str(Jac.loaded_modules)
-    assert "/tests/fixtures/hello_world.jac" in str(Jac.loaded_modules).replace(
-        "\\\\", "/"
-    )
+    assert "/tests/compiler/fixtures/hello_world.jac" in str(
+        Jac.loaded_modules
+    ).replace("\\\\", "/")
 
 
-def test_jac_py_import(fixture_abs_path: Callable[[str], str]) -> None:
+def test_jac_py_import() -> None:
     """Basic test for pass."""
+    from pathlib import Path
+
+    fixture_file = str(
+        Path(__file__).parent.parent / "language" / "fixtures" / "jp_importer.jac"
+    )
     captured_output = io.StringIO()
     sys.stdout = captured_output
-    cli.run(fixture_abs_path("../../../tests/fixtures/jp_importer.jac"))
+    cli.run(fixture_file)
     sys.stdout = sys.__stdout__
     stdout_value = captured_output.getvalue()
     assert "Hello World!" in stdout_value
@@ -83,11 +88,16 @@ def test_jac_py_import(fixture_abs_path: Callable[[str], str]) -> None:
     )
 
 
-def test_jac_py_import_auto(fixture_abs_path: Callable[[str], str]) -> None:
+def test_jac_py_import_auto() -> None:
     """Basic test for pass."""
+    from pathlib import Path
+
+    fixture_file = str(
+        Path(__file__).parent.parent / "language" / "fixtures" / "jp_importer_auto.jac"
+    )
     captured_output = io.StringIO()
     sys.stdout = captured_output
-    cli.run(fixture_abs_path("../../../tests/fixtures/jp_importer_auto.jac"))
+    cli.run(fixture_file)
     sys.stdout = sys.__stdout__
     stdout_value = captured_output.getvalue()
     assert "Hello World!" in stdout_value

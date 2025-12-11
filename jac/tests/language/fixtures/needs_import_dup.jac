@@ -1,8 +1,8 @@
 """Test of jac importing python."""
 import os;
-import jaclang.tests.fixtures.pyfunc as pyfunc;
+import tests.language.fixtures.pyfunc as pyfunc;
 import random;
-import from jaclang.tests.fixtures.pyfunc { my_print }
+import from tests.language.fixtures.pyfunc { my_print }
 
 with entry {
     pyfunc.__name__ = "pyfunc";
@@ -11,8 +11,8 @@ with entry {
     print(random.random());
 }
 
-import jaclang.tests.fixtures.circle_pysolo;
-import from jaclang.tests.fixtures.circle_pysolo { calculate_area }
+import tests.language.fixtures.circle_pysolo;
+import from tests.language.fixtures.circle_pysolo { calculate_area }
 
 with entry {
     print(f"are {calculate_area(2.0)}");
