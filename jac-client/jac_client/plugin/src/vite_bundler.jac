@@ -1,6 +1,7 @@
 """Vite bundling module."""
 import from __future__ { annotations }
 import hashlib;
+import shutil;
 import subprocess;
 import from pathlib { Path }
 import from jaclang.runtimelib.client_bundle { ClientBundleError }
@@ -26,6 +27,34 @@ class ViteBundler {
     """Run Vite build with generated config in .jac-client.configs/."""
     def build(self: ViteBundler, entry_file: (Path | None) = None) -> None {
         self.output_dir.mkdir(parents=True, exist_ok=True);
+        # Generate package.json if it doesn't exist in .jac-client.configs/
+        generated_package_json = self.project_dir / '.jac-client.configs' / 'package.json';
+        if not generated_package_json.exists() {
+            self.create_package_json();
+        }
+        
+        # Ensure dependencies are installed (check if node_modules exists)
+        node_modules = self.project_dir / 'node_modules';
+        if not node_modules.exists() {
+            try {
+                subprocess.run(
+                    ['npm', 'install'],
+                    cwd=self.project_dir,
+                    check=True,
+                    capture_output=True,
+                    text=True
+                );
+            } except subprocess.CalledProcessError as e {
+                raise ClientBundleError(
+                    f'Failed to install npm dependencies: {e.stderr}'
+                ) from e ;
+            } except FileNotFoundError {
+                raise ClientBundleError(
+                    'npm command not found. Ensure Node.js and npm are installed.'
+                ) from None ;
+            }
+        }
+        
         try {
             if self.config_path {
                 command = ['npx', 'vite', 'build', '--config', str(self.config_path)];
@@ -88,6 +117,21 @@ class ViteBundler {
         if tsconfig_path.exists() {
             return True;
         }
+        # Check generated package.json first
+        generated_package_json = self.project_dir / '.jac-client.configs' / 'package.json';
+        if generated_package_json.exists() {
+            import json;
+            try {
+                with generated_package_json.open() as f {
+                    package_data = json.load(f);
+                    dev_deps = package_data.get('devDependencies', {});
+                    if ('@vitejs/plugin-react' in dev_deps) {
+                        return True;
+                    }
+                }
+            } except (json.JSONDecodeError, KeyError) { }
+        }
+        # Fallback to root package.json for backward compatibility
         package_json_path = self.project_dir / 'package.json';
         if package_json_path.exists() {
             import json;
@@ -273,5 +317,129 @@ export default defineConfig({{
             }
         }
         return '\n'.join(items);
+    }
+
+    """Create package.json from config.json during bundling."""
+    def create_package_json(self: ViteBundler, project_name: (str | None) = None) -> Path {
+        configs_dir = self.project_dir / '.jac-client.configs';
+        configs_dir.mkdir(exist_ok=True);
+        package_config = self.config_loader.get_package_config();
+        package_json_path = configs_dir / 'package.json';
+        has_ts = self._has_typescript_support();
+
+        # Get project name from config, parameter, or project directory name
+        name = package_config.get('name', '');
+        if (not name and project_name) {
+            name = project_name;
+        }
+        if not name {
+            # Try to get from existing package.json
+            existing_package = self.project_dir / 'package.json';
+            if existing_package.exists() {
+                import json;
+                try {
+                    with existing_package.open() as f {
+                        existing_data = json.load(f);
+                        name = existing_data.get('name', '');
+                }
+                } except (json.JSONDecodeError, KeyError) { }
+            }
+        }
+        if not name {
+            # Fallback to project directory name
+            name = self.project_dir.name or 'jac-app';
+        }
+
+        # Build default devDependencies
+        dev_dependencies = {
+            'vite': '^6.4.1',
+            '@babel/cli': '^7.28.3',
+            '@babel/core': '^7.28.5',
+            '@babel/preset-env': '^7.28.5',
+            '@babel/preset-react': '^7.28.5'
+        };
+
+        # Add TypeScript dependencies if needed
+        if has_ts {
+            dev_dependencies.update({
+                '@vitejs/plugin-react': '^4.2.1',
+                'typescript': '^5.3.3',
+                '@types/react': '^18.2.45',
+                '@types/react-dom': '^18.2.18'
+            });
+        }
+
+        # Merge with user-defined devDependencies
+        user_dev_deps = package_config.get('devDependencies', {});
+        dev_dependencies.update(user_dev_deps);
+
+        # Build default dependencies
+        dependencies = {
+            'react': '^19.2.0',
+            'react-dom': '^19.2.0',
+            'react-router-dom': '^6.30.1'
+        };
+
+        # Merge with user-defined dependencies
+        user_deps = package_config.get('dependencies', {});
+        dependencies.update(user_deps);
+
+        # Build scripts
+        scripts = {
+            'build': 'npm run compile && vite build --config .jac-client.configs/vite.config.js',
+            'dev': 'vite dev --config .jac-client.configs/vite.config.js',
+            'preview': 'vite preview --config .jac-client.configs/vite.config.js',
+            'compile': 'babel compiled --out-dir build --extensions ".jsx,.js" --out-file-extension .js'
+        };
+
+        # Merge with user-defined scripts
+        user_scripts = package_config.get('scripts', {});
+        scripts.update(user_scripts);
+
+        # Build babel config (always included, not from config.json)
+        babel_config = {
+            'presets': [
+                [
+                    '@babel/preset-env',
+                    {
+                        'modules': False
+                    }
+                ],
+                '@babel/preset-react'
+            ]
+        };
+
+        # Build package.json structure (type, scripts, and default deps are always included, not from config)
+        package_data = {
+            'name': name,
+            'version': package_config.get('version', '1.0.0'),
+            'description': package_config.get('description', f'Jac application: {name}'),
+            'type': 'module',
+            'main': 'index.js',
+            'scripts': scripts,
+            'dependencies': dependencies,
+            'devDependencies': dev_dependencies,
+            'babel': babel_config
+        };
+
+        # Add any additional fields from config (excluding fields that are always included)
+        for (key, value) in package_config.items() {
+            if (key not in {'name', 'version', 'description', 'dependencies', 'devDependencies'}) {
+                package_data[key] = value;
+            }
+        }
+
+        # Write package.json
+        import json;
+        with package_json_path.open('w', encoding='utf-8') as f {
+            json.dump(package_data, f, indent=2);
+        }
+        
+        # Also copy to root so npm commands can find it (npm expects package.json in project root)
+        # Always sync root package.json with generated one to keep them in sync
+        root_package_json = self.project_dir / 'package.json';
+        shutil.copy2(package_json_path, root_package_json);
+        
+        return package_json_path;
     }
 }

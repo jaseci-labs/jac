@@ -85,16 +85,6 @@ class JacCmd:
                 original_cwd = os.getcwd()
                 os.chdir(project_path)
 
-                # Initialize npm package
-                print("Initializing npm package...")
-                npm_init_cmd = ["npm", "init", "-y"]
-                subprocess.run(npm_init_cmd, capture_output=True, text=True, check=True)
-
-                # Read the generated package.json
-                package_json_path = os.path.join(project_path, "package.json")
-                with open(package_json_path) as f:
-                    package_data = json.load(f)
-
                 # create compiled folder for transpiled files
                 compiled_folder = os.path.join(project_path, "compiled")
                 os.makedirs(compiled_folder, exist_ok=True)
@@ -107,68 +97,33 @@ class JacCmd:
                 assets_folder = os.path.join(project_path, "assets")
                 os.makedirs(assets_folder, exist_ok=True)
 
-                # Prepare devDependencies
-                dev_dependencies = {
-                    "vite": "^6.4.1",
-                    "@babel/cli": "^7.28.3",
-                    "@babel/core": "^7.28.5",
-                    "@babel/preset-env": "^7.28.5",
-                    "@babel/preset-react": "^7.28.5",
+                # Create config.json with package configuration
+                # Default dependencies and scripts are added during build time, not in config.json
+                config_data = {
+                    "vite": {
+                        "plugins": [],
+                        "lib_imports": [],
+                        "build": {},
+                        "server": {},
+                        "resolve": {},
+                    },
+                    "ts": {},
+                    "package": {
+                        "name": name,
+                        "version": "1.0.0",
+                        "description": f"Jac application: {name}",
+                        "devDependencies": {},
+                        "dependencies": {},
+                    },
                 }
 
-                # Add TypeScript dependencies if requested
-                if use_typescript:
-                    dev_dependencies.update(
-                        {
-                            "@vitejs/plugin-react": "^4.2.1",
-                            "typescript": "^5.3.3",
-                            "@types/react": "^18.2.45",
-                            "@types/react-dom": "^18.2.18",
-                        }
-                    )
+                # Write config.json
+                config_file_path = os.path.join(project_path, "config.json")
+                with open(config_file_path, "w") as f:
+                    json.dump(config_data, f, indent=2)
 
-                # Update package.json with Jac-specific configuration
-                package_data.update(
-                    {
-                        "name": name,
-                        "description": f"Jac application: {name}",
-                        "type": "module",
-                        "scripts": {
-                            "build": "npm run compile && vite build --config .jac-client.configs/vite.config.js",
-                            "dev": "vite dev --config .jac-client.configs/vite.config.js",
-                            "preview": "vite preview --config .jac-client.configs/vite.config.js",
-                            "compile": 'babel compiled --out-dir build --extensions ".jsx,.js" --out-file-extension .js',
-                        },
-                        "devDependencies": dev_dependencies,
-                        "dependencies": {
-                            "react": "^19.2.0",
-                            "react-dom": "^19.2.0",
-                            "react-router-dom": "^6.30.1",
-                        },
-                        "babel": {
-                            "presets": [
-                                [
-                                    "@babel/preset-env",
-                                    {
-                                        "modules": False,
-                                    },
-                                ],
-                                "@babel/preset-react",
-                            ],
-                        },
-                    }
-                )
-
-                # Write updated package.json
-                with open(package_json_path, "w") as f:
-                    json.dump(package_data, f, indent=2)
-
-                print("Installing Vite...")
-                # Install Vite
-                npm_install_cmd = ["npm", "install"]
-                subprocess.run(
-                    npm_install_cmd, capture_output=True, text=True, check=True
-                )
+                print("✅ Created config.json with package configuration")
+                print("📦 package.json will be generated in .jac-client.configs/ on first build")
 
                 # Create basic project structure
                 print("Setting up project structure...")
@@ -441,6 +396,13 @@ compiled/
                         "resolve": {},
                     },
                     "ts": {},
+                    "package": {
+                        "name": "",
+                        "version": "1.0.0",
+                        "description": "",
+                        "dependencies": {},
+                        "devDependencies": {},
+                    },
                 }
 
                 # Write config.json
@@ -454,13 +416,22 @@ compiled/
                 print("  - vite.build: Override build options")
                 print("  - vite.server: Configure dev server")
                 print("  - vite.resolve: Override resolve options")
+                print("  - package.dependencies: Add npm dependencies")
+                print("  - package.devDependencies: Add npm dev dependencies")
+                print("  - package.scripts: Customize npm scripts")
                 print("\nExample for Tailwind CSS:")
                 print('  "vite": {')
                 print('    "plugins": ["tailwindcss()"],')
                 print(
                     '    "lib_imports": ["import tailwindcss from \'@tailwindcss/vite\'"]'
                 )
+                print("  },")
+                print('  "package": {')
+                print('    "devDependencies": {')
+                print('      "@tailwindcss/vite": "^4.1.17"')
+                print("    }")
                 print("  }")
+                print("\nNote: package.json will be generated in .jac-client.configs/ on build")
 
             except Exception as e:
                 print(f"Error creating config.json: {e}", file=sys.stderr)
