@@ -4,7 +4,7 @@ impl MockLLM.init(model_name: str, **kwargs: object) -> None {
     super.init(model_name, **kwargs);
 }
 
-impl MockLLM.dispatch_no_streaming(mtir: MTIR) -> CompletionResult {
+impl MockLLM.dispatch_no_streaming(mtir: MTRuntime) -> CompletionResult {
     params = self.make_model_params(mtir);
     output = self.config["outputs"].pop(0);  # type: ignore
     if isinstance(output, MockToolCall) {
@@ -24,7 +24,7 @@ impl MockLLM.dispatch_no_streaming(mtir: MTIR) -> CompletionResult {
     return CompletionResult(output=output, tool_calls=[],);
 }
 
-impl MockLLM.dispatch_streaming(mtir: MTIR) -> Generator[str, None, None] {
+impl MockLLM.dispatch_streaming(mtir: MTRuntime) -> Generator[str, None, None] {
     output = self.config["outputs"].pop(0);  # type: ignore
     if mtir.stream {
         while output {

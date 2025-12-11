@@ -12,7 +12,7 @@ impl BaseLLM.__call__( **kwargs: object)  -> BaseLLM {
     return self;
 }
 
-impl BaseLLM.invoke(mtir: MTIR) -> object {
+impl BaseLLM.invoke(mtir: MTRuntime) -> object {
     # If streaming without tools, stream immediately
     if mtir.stream and len(mtir.tools) == 0 {
         return self.dispatch_streaming(mtir);
@@ -41,7 +41,7 @@ impl BaseLLM.invoke(mtir: MTIR) -> object {
     return resp.output;
 }
 
-impl BaseLLM.make_model_params(mtir: MTIR) -> dict {
+impl BaseLLM.make_model_params(mtir: MTRuntime) -> dict {
     params = {
         "model": self.model_name,
         "api_base": (
@@ -97,7 +97,7 @@ impl BaseLLM.format_prompt(params: dict) -> str {
     return log;
 }
 
-impl BaseLLM.dispatch_no_streaming(mtir: MTIR) -> CompletionResult {
+impl BaseLLM.dispatch_no_streaming(mtir: MTRuntime) -> CompletionResult {
     # Construct the parameters for the LLM call
     params = self.make_model_params(mtir);
     # Call the LiteLLM API
@@ -131,7 +131,7 @@ impl BaseLLM.dispatch_no_streaming(mtir: MTIR) -> CompletionResult {
     return CompletionResult(output=output_value, tool_calls=tool_calls,);
 }
 
-impl BaseLLM.dispatch_streaming(mtir: MTIR) -> Generator[str, None, None] {
+impl BaseLLM.dispatch_streaming(mtir: MTRuntime) -> Generator[str, None, None] {
     # Construct the parameters for the LLM call
     params = self.make_model_params(mtir);
     # Call the LiteLLM API
@@ -162,7 +162,7 @@ impl BaseLLM.model_call_with_stream(params: dict) -> Generator[str, None, None] 
     ) ;
 }
 
-impl BaseLLM._stream_final_answer(mtir: MTIR) -> Generator[str, None, None] {
+impl BaseLLM._stream_final_answer(mtir: MTRuntime) -> Generator[str, None, None] {
     # Add a message instructing the LLM to provide the final answer
     # based on all the tool call results gathered so far
     final_instruction = Message(
