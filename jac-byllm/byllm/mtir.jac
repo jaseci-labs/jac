@@ -35,10 +35,11 @@ obj MTIR {
     has call_params: dict[str, object];
 
     @property
-    def runtime() -> MTRuntime{
+    def runtime()  -> MTRuntime {
         return MTRuntime.factory(self.caller, self.args, self.call_params);
     }
 }
+
 """A class representing the MTRuntime for JacLang."""
 obj MTRuntime {
     has messages: list[MessageType];
