@@ -300,11 +300,15 @@ class EsastGenPass(BaseAstGenPass[es.Statement]):
         """Search for a symbol in the main module."""
         if not isinstance(expr, uni.Name):
             return None
-        return self.get_main_mod().lookup(expr.sym_name)
+        if mod := self.get_main_mod():
+            return mod.lookup(expr.sym_name)
+        return None
 
-    def get_main_mod(self) -> uni.Module:
+    def get_main_mod(self) -> uni.Module | None:
         """Get the main module of the program."""
-        return self.prog.mod.main
+        if main_mod_path := self.ir_in.annexable_by:
+            return self.prog.mod.hub.get(main_mod_path)
+        return None
 
     def _collect_walker_field_names(
         self, walker_symbol: uni.Symbol | None
