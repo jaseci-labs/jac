@@ -110,7 +110,7 @@ class JacProgram:
         self,
     ) -> None:
         """Initialize the JacProgram object."""
-        self.mod: uni.ProgramModule =uni.ProgramModule()
+        self.mod: uni.ProgramModule = uni.ProgramModule()
         self.py_raise_map: dict[str, str] = {}
         self.errors_had: list[Alert] = []
         self.warnings_had: list[Alert] = []
