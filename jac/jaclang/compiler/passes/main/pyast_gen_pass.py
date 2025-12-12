@@ -2817,7 +2817,7 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
                 )
             ]
             node.right.gen.py_ast[0].ctx = ast3.Load()  # type: ignore
-        
+
         if node.is_null_ok:
             # Helper to create the walrus assignment: __jac_tmp := target
             target_value = cast(ast3.expr, node.target.gen.py_ast[0])
@@ -2829,24 +2829,28 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
             )
             tmp_ref = self.sync(ast3.Name(id="__jac_tmp", ctx=ast3.Load()))
             none_const = self.sync(ast3.Constant(value=None))
-            
+
             # Determine the body expression based on the operation type
             if isinstance(node.gen.py_ast[0], ast3.Attribute):
                 body_expr = self.sync(
                     ast3.Call(
                         func=self.sync(ast3.Name(id="getattr", ctx=ast3.Load())),
-                        args=[tmp_ref, self.sync(ast3.Constant(value=node.gen.py_ast[0].attr)), none_const],
+                        args=[
+                            tmp_ref,
+                            self.sync(ast3.Constant(value=node.gen.py_ast[0].attr)),
+                            none_const,
+                        ],
                         keywords=[],
                     )
                 )
             else:
                 # For subscripts and other operations, update reference and use as-is
-                if isinstance(node.gen.py_ast[0], ast3.Attribute):
-                    node.gen.py_ast[0].value = tmp_ref
-                elif isinstance(node.gen.py_ast[0], ast3.Subscript):
+                if isinstance(node.gen.py_ast[0], ast3.Attribute) or isinstance(
+                    node.gen.py_ast[0], ast3.Subscript
+                ):
                     node.gen.py_ast[0].value = tmp_ref
                 body_expr = cast(ast3.expr, node.gen.py_ast[0])
-            
+
             # Generate: body_expr if (__jac_tmp := target) is not None else None
             node.gen.py_ast = [
                 self.sync(
