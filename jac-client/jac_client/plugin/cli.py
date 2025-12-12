@@ -487,9 +487,23 @@ compiled/
                     return
 
                 # Parse package name and version
-                package_parts = filepath.split("@", 1)
-                package_name = package_parts[0]
-                package_version = package_parts[1] if len(package_parts) > 1 else None
+                # Handle scoped packages (e.g., @types/react)
+                # Version separator is @, but @ at start is part of package name
+                if filepath.startswith("@"):
+                    # For scoped packages, find version separator after the scope
+                    # e.g., @types/react@^18.0.0 -> @types/react, ^18.0.0
+                    last_at_index = filepath.rfind("@")
+                    if last_at_index > 0:  # @ found and not at position 0
+                        package_name = filepath[:last_at_index]
+                        package_version = filepath[last_at_index + 1 :]
+                    else:
+                        package_name = filepath
+                        package_version = None
+                else:
+                    # For non-scoped packages, split on first @
+                    package_parts = filepath.split("@", 1)
+                    package_name = package_parts[0]
+                    package_version = package_parts[1] if len(package_parts) > 1 else None
 
                 # Install the package
                 installer.install_package(
