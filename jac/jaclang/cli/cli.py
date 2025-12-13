@@ -819,6 +819,11 @@ def serve(
             with open(filename, "rb") as f:
                 Jac.attach_program(pickle.load(f))
                 Jac.jac_import(target=mod, base_path=base, lng=lng)
+        if Jac.program.errors_had:
+            for error in Jac.program.errors_had:
+                print(f"{error}", file=sys.stderr)
+            mach.close()
+            exit(1)
     except Exception as e:
         print(f"Error loading {filename}: {e}", file=sys.stderr)
         mach.close()
