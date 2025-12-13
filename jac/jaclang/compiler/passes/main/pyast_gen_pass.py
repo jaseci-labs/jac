@@ -2819,12 +2819,10 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
             node.right.gen.py_ast[0].ctx = ast3.Load()  # type: ignore
 
         if node.is_null_ok:
-            # Helper to create the walrus assignment: __jac_tmp := target
-            target_value = cast(ast3.expr, node.target.gen.py_ast[0])
             walrus_assign = self.sync(
                 ast3.NamedExpr(
                     target=self.sync(ast3.Name(id="__jac_tmp", ctx=ast3.Store())),
-                    value=target_value,
+                    value=cast(ast3.expr, node.target.gen.py_ast[0]),
                 )
             )
             tmp_ref = self.sync(ast3.Name(id="__jac_tmp", ctx=ast3.Load()))
