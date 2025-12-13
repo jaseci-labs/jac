@@ -1,6 +1,6 @@
-impl MTIR.factory(
+impl MTRuntime.factory(
     caller: Callable, args: dict[int | str, object], call_params: dict[str, object]
-) -> MTIR {
+) -> MTRuntime {
     # Prepare the tools for the LLM call.
     tools = [Tool(func) for func in call_params.get("tools", [])];  # type: ignore
     # Construct the input information from the arguments.
@@ -69,7 +69,7 @@ impl MTIR.factory(
         finish_tool = Tool.make_finish_tool(return_type or str);
         tools.append(finish_tool);
     }
-    return MTIR(
+    return MTRuntime(
         messages=messages,
         tools=tools,
         resp_type=return_type,
@@ -78,7 +78,7 @@ impl MTIR.factory(
     );
 }
 
-impl MTIR.dispatch_params()  -> dict[str, object] {
+impl MTRuntime.dispatch_params()  -> dict[str, object] {
     params = {
         "messages": self.get_msg_list(),
         "tools": self.get_tool_list() or None,
@@ -91,17 +91,17 @@ impl MTIR.dispatch_params()  -> dict[str, object] {
     return params;
 }
 
-impl MTIR.add_message(message: MessageType) -> None {
+impl MTRuntime.add_message(message: MessageType) -> None {
     self.messages.append(message);
 }
 
-impl MTIR.get_msg_list()  -> list[dict[str, object] | LiteLLMMessage] {
+impl MTRuntime.get_msg_list()  -> list[dict[str, object] | LiteLLMMessage] {
     return [
         msg.to_dict() if isinstance(msg, Message) else msg for msg in self.messages
     ];
 }
 
-impl MTIR.parse_response(response: str) -> object {
+impl MTRuntime.parse_response(response: str) -> object {
     # To use validate_json the string should contains quotes.
     #     example: '"The weather at New York is sunny."'
     # but the response from LLM will not have quotes, so
@@ -116,7 +116,7 @@ impl MTIR.parse_response(response: str) -> object {
     return response;
 }
 
-impl MTIR.get_tool(tool_name: str) -> Tool | None {
+impl MTRuntime.get_tool(tool_name: str) -> Tool | None {
     for tool in self.tools {
         if tool.func.__name__ == tool_name {
             return tool;
@@ -125,11 +125,11 @@ impl MTIR.get_tool(tool_name: str) -> Tool | None {
     return None;
 }
 
-impl MTIR.get_tool_list()  -> list[dict] {
+impl MTRuntime.get_tool_list()  -> list[dict] {
     return [tool.get_json_schema() for tool in self.tools];
 }
 
-impl MTIR.get_output_schema()  -> dict | None {
+impl MTRuntime.get_output_schema()  -> dict | None {
     assert (len(self.tools) == 0 or self.get_tool("finish_tool") is not None);  #Finish tool should be present in the tools list.
     if len(self.tools) == 0 and self.resp_type {
         if self.resp_type is str {

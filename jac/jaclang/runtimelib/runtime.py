@@ -62,13 +62,13 @@ if TYPE_CHECKING:
         WalkerArchetype,
     )
     from jaclang.runtimelib.memory import Memory, Shelf, ShelfStorage
-    from jaclang.runtimelib.mtp import MTIR
+    from jaclang.runtimelib.mtp import MTIR, MTRuntime
     from jaclang.runtimelib.server import ModuleIntrospector
 else:
     # Module-level placeholders for lazy imports (populated by _init_lazy_imports)
     AccessLevel = Anchor = Archetype = EdgeAnchor = EdgeArchetype = GenericEdge = None  # type: ignore
     NodeAnchor = NodeArchetype = Root = WalkerAnchor = WalkerArchetype = None  # type: ignore
-    Memory = Shelf = ShelfStorage = MTIR = None  # type: ignore
+    Memory = Shelf = ShelfStorage = MTRuntime = MTIR = None  # type: ignore
     _GenericEdge = _Root = ObjectSpatialDestination = ObjectSpatialFunction = (
         ObjectSpatialPath
     ) = None  # type: ignore
@@ -83,7 +83,7 @@ def _init_lazy_imports() -> None:
     global _lazy_imports_initialized
     global AccessLevel, Anchor, Archetype, EdgeAnchor, EdgeArchetype, GenericEdge
     global NodeAnchor, NodeArchetype, Root, WalkerAnchor, WalkerArchetype
-    global Memory, Shelf, ShelfStorage, MTIR
+    global Memory, Shelf, ShelfStorage, MTRuntime, MTIR
     global \
         _GenericEdge, \
         _Root, \
@@ -129,7 +129,7 @@ def _init_lazy_imports() -> None:
             WalkerArchetype,
         )
         from jaclang.runtimelib.memory import Memory, Shelf, ShelfStorage
-        from jaclang.runtimelib.mtp import MTIR
+        from jaclang.runtimelib.mtp import MTIR, MTRuntime
 
         _lazy_imports_initialized = True
     except ImportError:
@@ -1725,9 +1725,9 @@ class JacByLLM:
     @staticmethod
     def get_mtir(
         caller: Callable, args: dict[int | str, object], call_params: dict[str, object]
-    ) -> MTIR:
+    ) -> MTRuntime:
         """Get byLLM library."""
-        return MTIR(caller=caller, args=args, call_params=call_params)
+        return MTIR(caller=caller, args=args, call_params=call_params).runtime
 
     @staticmethod
     def sem(semstr: str, inner_semstr: dict[str, str]) -> Callable:
@@ -1741,7 +1741,7 @@ class JacByLLM:
         return decorator
 
     @staticmethod
-    def call_llm(model: object, mtir: MTIR) -> Any:  # noqa: ANN401
+    def call_llm(model: object, mtir: MTRuntime) -> Any:  # noqa: ANN401
         """Call the LLM model."""
         from jaclang.utils import NonGPT  # type: ignore[attr-defined]
 

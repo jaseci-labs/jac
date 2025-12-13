@@ -12,7 +12,7 @@ impl Model.init(model_name: str, **kwargs: object) -> None {
     }
 }
 
-impl Model.invoke(mtir: MTIR) -> object {
+impl Model.invoke(mtir: MTRuntime) -> object {
     if self._mock_delegate {
         return self._mock_delegate.invoke(mtir);
     }

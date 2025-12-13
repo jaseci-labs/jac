@@ -13,7 +13,7 @@ import random;
 import time;
 
 import from typing { Generator }
-import from byllm.mtir { MTIR }
+import from byllm.mtir { MTRuntime }
 import litellm;
 import from litellm._logging { _disable_debugging }
 import from openai { OpenAI }
@@ -56,11 +56,11 @@ obj BaseLLM {
     """Construct the call parameters and return self (factory pattern)."""
     def __call__( **kwargs: object)  -> BaseLLM;
 
-    """Invoke the LLM with the given MTIR."""
-    def invoke(mtir: MTIR) -> object;
+    """Invoke the LLM with the given MTRuntime."""
+    def invoke(mtir: MTRuntime) -> object;
 
     """Prepare the parameters for the LLM call."""
-    def make_model_params(mtir: MTIR) -> dict;
+    def make_model_params(mtir: MTRuntime) -> dict;
 
     """Log a message to the console."""
     def log_info(message: str) -> None;
@@ -69,10 +69,10 @@ obj BaseLLM {
     def format_prompt(params: dict) -> str;
 
     """Dispatch the LLM call without streaming."""
-    def dispatch_no_streaming(mtir: MTIR) -> CompletionResult;
+    def dispatch_no_streaming(mtir: MTRuntime) -> CompletionResult;
 
     """Dispatch the LLM call with streaming."""
-    def dispatch_streaming(mtir: MTIR) -> Generator[str, None, None];
+    def dispatch_streaming(mtir: MTRuntime) -> Generator[str, None, None];
 
     """Make a direct model call with the given parameters.
     Get api_key from self.api_key if needed.
@@ -93,7 +93,7 @@ obj BaseLLM {
     - This makes a REAL streaming API call to the LLM
     - _stream_finish_output just splits an already-complete string
     """
-    def _stream_final_answer(mtir: MTIR) -> Generator[str, None, None];
+    def _stream_final_answer(mtir: MTRuntime) -> Generator[str, None, None];
 }
 
 """LLM Connector for a mock LLM service that simulates responses."""
@@ -102,10 +102,10 @@ obj MockLLM(BaseLLM) {
     def init(model_name: str, **kwargs: object) -> None;
 
     """Dispatch the mock LLM call with the given request."""
-    override def dispatch_no_streaming(mtir: MTIR) -> CompletionResult;
+    override def dispatch_no_streaming(mtir: MTRuntime) -> CompletionResult;
 
     """Dispatch the mock LLM call with the given request."""
-    override def dispatch_streaming(mtir: MTIR) -> Generator[str, None, None];
+    override def dispatch_streaming(mtir: MTRuntime) -> Generator[str, None, None];
 }
 
 """A wrapper class that abstracts LiteLLM functionality.
@@ -123,7 +123,7 @@ obj Model(BaseLLM) {
     def init(model_name: str, **kwargs: object) -> None;
 
     """Invoke the LLM, delegating to MockLLM if applicable."""
-    override def invoke(mtir: MTIR) -> object;
+    override def invoke(mtir: MTRuntime) -> object;
 
     def model_call_no_stream(params: dict) -> dict;
     def model_call_with_stream(params: dict);

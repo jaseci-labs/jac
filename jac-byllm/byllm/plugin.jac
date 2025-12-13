@@ -6,7 +6,7 @@ import from jaclang.runtimelib.runtime { hookimpl }
 with entry {
     if TYPE_CHECKING {
         import from byllm.llm { Model }
-        import from byllm.mtir { MTIR }
+        import from byllm.mtir { MTIR, MTRuntime }
     }
 }
 
@@ -15,13 +15,13 @@ class JacRuntime {
     """Call JacLLM and return the result."""
     @staticmethod @hookimpl
     static def get_mtir(caller: Callable, args: dict, call_params: dict) -> object {
-        import from byllm.mtir { MTIR }
-        return MTIR.factory(caller, args, call_params);
+        import from byllm.mtir { MTIR, MTRuntime }
+        return MTIR(caller, args, call_params).runtime;
     }
 
     """Call JacLLM and return the result."""
     @staticmethod @hookimpl
-    static def call_llm(model: Model, mtir: MTIR) -> object {
+    static def call_llm(model: Model, mtir: MTRuntime) -> object {
         return model.invoke(mtir=mtir);
     }
 
@@ -30,7 +30,7 @@ class JacRuntime {
     static def by(model: Model) -> Callable {
         def _decorator(caller: Callable) -> Callable {
             def _wrapped_caller( *args: object , **kwargs: object)  -> object {
-                import from byllm.mtir { MTIR }
+                import from byllm.mtir { MTIR, MTRuntime }
                 invoke_args: dict[(int | str, object)] = {};
                 for (i, arg) in enumerate(args) {
                     invoke_args[i] = arg;
@@ -38,9 +38,9 @@ class JacRuntime {
                 for (key, value) in kwargs.items() {
                     invoke_args[key] = value;
                 }
-                mtir = MTIR.factory(
+                mtir = MTIR(
                     caller=caller, args=invoke_args, call_params=model.call_params
-                );
+                ).runtime;
                 return model.invoke(mtir=mtir);
             }
             return _wrapped_caller;
