@@ -2831,6 +2831,7 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
             none_const = self.sync(ast3.Constant(value=None))
 
             # Determine the body expression based on the operation type
+            body_expr: ast3.expr
             if isinstance(node.gen.py_ast[0], ast3.Attribute):
                 body_expr = self.sync(
                     ast3.Call(
@@ -2845,9 +2846,7 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
                 )
             else:
                 # For subscripts and other operations, update reference and use as-is
-                if isinstance(node.gen.py_ast[0], ast3.Attribute) or isinstance(
-                    node.gen.py_ast[0], ast3.Subscript
-                ):
+                if isinstance(node.gen.py_ast[0], (ast3.Attribute, ast3.Subscript)):
                     node.gen.py_ast[0].value = tmp_ref
                 body_expr = cast(ast3.expr, node.gen.py_ast[0])
 
