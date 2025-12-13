@@ -110,11 +110,7 @@ def LoginPage()  -> any {
                 </button>
             </form>
             <p
-                style={{
-                    "textAlign": "center",
-                    "marginTop": "16px",
-                    "fontSize": "14px"
-                }}
+                style={{"textAlign": "center", "marginTop": "16px", "fontSize": "14px"}}
             >
                 Need an account?
                 {" "}
@@ -237,11 +233,7 @@ def SignupPage()  -> any {
                 </button>
             </form>
             <p
-                style={{
-                    "textAlign": "center",
-                    "marginTop": "16px",
-                    "fontSize": "14px"
-                }}
+                style={{"textAlign": "center", "marginTop": "16px", "fontSize": "14px"}}
             >
                 Have an account?
                 {" "}
@@ -264,9 +256,7 @@ def Home()  -> any {
     [serverMessage, setServerMessage] = useState("");
     [lastTodoMessage, setLastTodoMessage] = useState("");
 
-    useEffect(
-        lambda   -> None{ console.log("Home count changed: ", count);} , [count]
-    );
+    useEffect(lambda   -> None{ console.log("Home count changed: ", count);} , [count]);
 
     # Call simple backend walkers
     async def handlePing()  -> None {
@@ -327,10 +317,7 @@ def Home()  -> any {
         </p>
         <div className="container">
             <h2
-                style={{
-                    "color": "white",
-                    "textShadow": "2px 2px 4px rgba(0,0,0,0.6)"
-                }}
+                style={{"color": "white", "textShadow": "2px 2px 4px rgba(0,0,0,0.6)"}}
             >
                 CSS Background Image
             </h2>
