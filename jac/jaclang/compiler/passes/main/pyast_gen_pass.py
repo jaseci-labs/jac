@@ -2855,12 +2855,14 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
                         if kw.arg == "items":
                             kw.value = tmp_ref
                 # Check if this is an assign_all call (AssignCompr)
-                if isinstance(call_node.func, ast3.Attribute) or (
-                    isinstance(call_node.func, ast3.Name)
-                    and call_node.func.id == "assign_all"
-                ):
-                    if call_node.args:
-                        call_node.args[0] = tmp_ref
+                if (
+                    isinstance(call_node.func, ast3.Attribute)
+                    or (
+                        isinstance(call_node.func, ast3.Name)
+                        and call_node.func.id == "assign_all"
+                    )
+                ) and call_node.args:
+                    call_node.args[0] = tmp_ref
                 body_expr = cast(ast3.expr, call_node)
             else:
                 # For subscripts and other operations, update reference and use as-is
