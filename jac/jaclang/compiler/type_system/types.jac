@@ -401,6 +401,17 @@ class UnionType(TypeBase) {
     """Initialize obviously."""
     def __init__(self: UnionType, types: list[TypeBase]) -> None {
         super.init();
-        self.types = types;
+
+        # Flatten nested union types
+        flattened_types: list[TypeBase] = [];
+        for ty in types {
+            if isinstance(ty, UnionType) {
+                flattened_types.extend(ty.types);
+            } else {
+                flattened_types.append(ty);
+            }
+        }
+
+        self.types = flattened_types;
     }
 }

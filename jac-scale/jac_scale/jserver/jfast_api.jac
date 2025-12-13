@@ -1,19 +1,61 @@
-"""\nJFastApiServer: A FastAPI Implementation of JServer\n\nThis module provides a FastAPI-specific implementation of the JServer abstract base class.\nIt handles endpoint registration with FastAPI applications and provides all the FastAPI-specific\nfunctionality like parameter injection, response model generation, and route creation.\n\nKey Components:\n- JFastApiServer: FastAPI implementation of JServer\n- create_app(): Creates a basic FastAPI application for demonstration\n\nAdvanced Features:\n- Parameter injection with type conversion\n- Response model generation from JSON schema\n- Support for async/sync callback functions\n- Automatic OpenAPI documentation generation\n- Integration with JAC pass execution patterns\n"""
+"""
+JFastApiServer: A FastAPI Implementation of JServer
+
+This module provides a FastAPI-specific implementation of the JServer abstract base class.
+It handles endpoint registration with FastAPI applications and provides all the FastAPI-specific
+functionality like parameter injection, response model generation, and route creation.
+
+Key Components:
+- JFastApiServer: FastAPI implementation of JServer
+- create_app(): Creates a basic FastAPI application for demonstration
+
+Advanced Features:
+- Parameter injection with type conversion
+- Response model generation from JSON schema
+- Support for async/sync callback functions
+- Automatic OpenAPI documentation generation
+- Integration with JAC pass execution patterns
+"""
+
 import inspect;
+import uvicorn;
 import from collections.abc { Callable }
 import from typing { Any, Optional, TypeAlias, get_type_hints }
-import uvicorn;
 import from fastapi { Body, FastAPI, Header, HTTPException, Path, Query, Request }
 import from fastapi.responses { Response }
 import from pydantic { BaseModel, Field, create_model }
 import from .jserver { APIParameter, HTTPMethod, JEndPoint, JServer, ParameterType }
-with entry {
-    EndpointResponse: TypeAlias = Response | BaseModel | <>dict[(str, object)] | <>list[
-        object
-    ] | str | <>bytes | None;
-}
 
-"""\n    A FastAPI implementation of JServer for programmatic endpoint creation.\n\n    JFastApiServer provides FastAPI-specific implementation of the JServer interface,\n    handling endpoint registration with FastAPI applications.\n\n    This class implements the JServer interface by:\n    - Storing registered endpoints internally\n    - Implementing HTTP method handlers (_get, _post, _put, _patch, _delete)\n    - Providing FastAPI app instance for server execution\n\n    Example:\n        >>> # Create server with endpoints\n        >>> endpoints = [\n        ...     JEndPoint(HTTPMethod.GET, "/users", get_users_callback),\n        ...     JEndPoint(HTTPMethod.POST, "/users", create_user_callback)\n        ... ]\n        >>> server = JFastApiServer(endpoints)\n        >>>\n        >>> # Execute to create FastAPI routes\n        >>> server.execute()\n        >>> app = server.create_server()\n\n    Attributes:\n        app (FastAPI): The underlying FastAPI application instance\n    """
+glob EndpointResponse: TypeAlias = Response | BaseModel | <>dict[(str, object)] | <>list[
+    object
+] | str | <>bytes | None;
+
+"""
+JFastApiServer: FastAPI implementation of JServer for programmatic endpoint creation.
+
+JFastApiServer provides FastAPI-specific implementation of the JServer interface,
+handling endpoint registration with FastAPI applications.
+
+This class implements the JServer interface by:
+- Storing registered endpoints internally
+- Implementing HTTP method handlers (_get, _post, _put, _patch, _delete)
+- Providing FastAPI app instance for server execution
+
+    Example:
+        >>> # Create server with endpoints
+        >>> endpoints = [
+        ...     JEndPoint(HTTPMethod.GET, "/users", get_users_callback),
+        ...     JEndPoint(HTTPMethod.POST, "/users", create_user_callback)
+        ... ]
+        >>> server = JFastApiServer(endpoints)
+        >>>
+        >>> # Execute to create FastAPI routes
+        >>> server.execute()
+        >>> app = server.create_server()
+
+    Attributes:
+        app (FastAPI): The underlying FastAPI application instance
+"""
 class JFastApiServer(JServer[FastAPI]) {
     def __init__(
         self: JFastApiServer,
@@ -26,37 +68,74 @@ class JFastApiServer(JServer[FastAPI]) {
         self.__server_created = False;
     }
 
-    """\n        Handle execution of a GET endpoint by registering it with FastAPI.\n\n        Args:\n            endpoint (JEndPoint): The GET endpoint to execute\n\n        Returns:\n            JFastApiServer: Self for method chaining\n        """
+    """
+    Handle execution of a GET endpoint by registering it with FastAPI.
+        Args:
+            endpoint (JEndPoint): The GET endpoint to execute
+        Returns:
+            JFastApiServer: Self for method chaining
+    """
     def _get(self: JFastApiServer, endpoint: JEndPoint) -> 'JFastApiServer' {
         self._create_fastapi_route(HTTPMethod.GET, endpoint);
         return self;
     }
 
-    """\n        Handle execution of a POST endpoint by registering it with FastAPI.\n\n        Args:\n            endpoint (JEndPoint): The POST endpoint to execute\n\n        Returns:\n            JFastApiServer: Self for method chaining\n        """
+    """
+    Handle execution of a POST endpoint by registering it with FastAPI.
+    Args:
+        endpoint (JEndPoint): The POST endpoint to execute
+    Returns:
+        JFastApiServer: Self for method chaining
+    """
     def _post(self: JFastApiServer, endpoint: JEndPoint) -> 'JFastApiServer' {
         self._create_fastapi_route(HTTPMethod.POST, endpoint);
         return self;
     }
 
-    """\n        Handle execution of a PUT endpoint by registering it with FastAPI.\n\n        Args:\n            endpoint (JEndPoint): The PUT endpoint to execute\n\n        Returns:\n            JFastApiServer: Self for method chaining\n        """
+    """
+    Handle execution of a PUT endpoint by registering it with FastAPI.
+    Args:
+        endpoint (JEndPoint): The PUT endpoint to execute
+    Returns:
+        JFastApiServer: Self for method chaining
+    """
     def _put(self: JFastApiServer, endpoint: JEndPoint) -> 'JFastApiServer' {
         self._create_fastapi_route(HTTPMethod.PUT, endpoint);
         return self;
     }
 
-    """\n        Handle execution of a PATCH endpoint by registering it with FastAPI.\n\n        Args:\n            endpoint (JEndPoint): The PATCH endpoint to execute\n\n        Returns:\n            JFastApiServer: Self for method chaining\n        """
+    """
+    Handle execution of a PATCH endpoint by registering it with FastAPI.
+    Args:
+        endpoint (JEndPoint): The PATCH endpoint to execute
+    Returns:
+        JFastApiServer: Self for method chaining
+    """
     def _patch(self: JFastApiServer, endpoint: JEndPoint) -> 'JFastApiServer' {
         self._create_fastapi_route(HTTPMethod.PATCH, endpoint);
         return self;
     }
 
-    """\n        Handle execution of a DELETE endpoint by registering it with FastAPI.\n\n        Args:\n            endpoint (JEndPoint): The DELETE endpoint to execute\n\n        Returns:\n            JFastApiServer: Self for method chaining\n        """
+    """
+    Handle execution of a DELETE endpoint by registering it with FastAPI.
+    Args:
+        endpoint (JEndPoint): The DELETE endpoint to execute
+    Returns:
+        JFastApiServer: Self for method chaining
+    """
     def _delete(self: JFastApiServer, endpoint: JEndPoint) -> 'JFastApiServer' {
         self._create_fastapi_route(HTTPMethod.DELETE, endpoint);
         return self;
     }
 
-    """\n        Calculate route priority for sorting. More specific routes get higher priority (lower number).\n\n        Priority rules:\n        1. Static paths (no parameters) come first\n        2. Paths with fewer parameters come before paths with more parameters\n        3. Longer paths come before shorter paths\n        4. Alphabetical order for tie-breaking\n        """
+    """
+    Calculate route priority for sorting. More specific routes get higher priority (lower number).
+    Priority rules:
+        1. Static paths (no parameters) come first
+        2. Paths with fewer parameters come before paths with more parameters
+        3. Longer paths come before shorter paths
+        4. Alphabetical order for tie-breaking
+    """
     def _route_priority(
         self: JFastApiServer, endpoint: JEndPoint
     ) -> tuple[int, int, str] {
@@ -73,13 +152,24 @@ class JFastApiServer(JServer[FastAPI]) {
         return (priority, -segment_count, path);
     }
 
-    """\n        Execute all endpoints by processing them through their respective HTTP method handlers.\n\n        Routes are sorted to ensure more specific paths are registered before generic ones\n        to avoid path matching conflicts.\n        """
+    """
+    Execute all endpoints by processing them through their respective HTTP method handlers.
+    Routes are sorted to ensure more specific paths are registered before generic ones
+    to avoid path matching conflicts.
+    """
     def execute(self: JFastApiServer) -> None {
         self._endpoints = sorted(self._endpoints, key=self._route_priority);
         super.execute();
     }
 
-    """\n        Create a complete FastAPI server with all endpoints registered.\n\n        This method executes all registered endpoints to create FastAPI routes\n        and returns the configured FastAPI application.\n\n        Returns:\n            FastAPI: The configured FastAPI application instance\n        """
+    """
+    Create a complete FastAPI server with all endpoints registered.
+    This method executes all registered endpoints to create FastAPI routes
+    and returns the configured FastAPI application.
+
+    Returns:
+        FastAPI: The configured FastAPI application instance
+    """
     def create_server(self: JFastApiServer) -> FastAPI {
         if not self.__server_created {
             self.execute();
@@ -88,7 +178,12 @@ class JFastApiServer(JServer[FastAPI]) {
         return self.app;
     }
 
-    """\n        Create and register a FastAPI route for the given endpoint.\n\n        Args:\n            method (HTTPMethod): The HTTP method for the route\n            endpoint (JEndPoint): The endpoint configuration\n        """
+    """
+    Create and register a FastAPI route for the given endpoint.
+    Args:method (HTTPMethod): The HTTP method for the route
+        method (HTTPMethod): The HTTP method for the route
+        endpoint (JEndPoint): The endpoint configuration
+    """
     def _create_fastapi_route(
         self: JFastApiServer, method: HTTPMethod, endpoint: JEndPoint
     ) -> None {
@@ -453,7 +548,7 @@ def endpoint_wrapper({params}):
         return model;
     }
 
-    """\n        Get the underlying FastAPI application instance.\n        """
+    """Get the underlying FastAPI application instance."""
     def get_app(self: JFastApiServer) -> FastAPI {
         return self.app;
     }

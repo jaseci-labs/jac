@@ -3,6 +3,7 @@ import from typing { Any }
 import from uuid { UUID }
 import from jaclang.compiler.constant { Constants as Con }
 import from jaclang.runtimelib.runtime { ExecutionContext }
+
 """Jac Scale Execution Context with custom memory backend."""
 class JScaleExecutionContext(ExecutionContext) {
     """Initialize JScaleExecutionContext."""
@@ -13,6 +14,7 @@ class JScaleExecutionContext(ExecutionContext) {
     ) -> None {
         import from jac_scale.memory_hierarchy { MultiHierarchyMemory }
         import from jaclang.runtimelib.constructs { Anchor, NodeAnchor, Root }
+
         self.mem: MultiHierarchyMemory = MultiHierarchyMemory();
         self.reports: list[Any] = [];
         self.custom: Any = MISSING;
