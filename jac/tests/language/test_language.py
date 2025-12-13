@@ -1843,8 +1843,10 @@ def test_safe_call_operator(
     stdout_value = captured_output.getvalue().split("\n")
     assert "None" in stdout_value[0]
     assert "Alice" in stdout_value[1]
-    assert "3" in stdout_value[2]
+    assert "None" in stdout_value[2]
     assert "None" in stdout_value[3]
+    assert "3" in stdout_value[4]
+    assert "None" in stdout_value[5]
 
 
 def test_anonymous_ability_execution(
