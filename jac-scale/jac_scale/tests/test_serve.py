@@ -4,9 +4,11 @@ import contextlib
 import socket
 import subprocess
 import time
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+import jwt as pyjwt
 import requests
 
 
@@ -172,6 +174,33 @@ class TestJacScaleServe:
 
         return json_response  # type: ignore[return-value]
 
+    def _create_expired_token(self, username: str, days_ago: int = 1) -> str:
+        """Create an expired JWT token for testing."""
+        # Use the same secret as the server (default)
+        secret = "supersecretkey"
+        algorithm = "HS256"
+
+        past_time = datetime.now(UTC) - timedelta(days=days_ago)
+        payload = {
+            "username": username,
+            "exp": past_time + timedelta(hours=1),  # Expired 1 hour after past_time
+            "iat": past_time,
+        }
+        return pyjwt.encode(payload, secret, algorithm=algorithm)
+
+    def _create_very_old_token(self, username: str, days_ago: int = 15) -> str:
+        """Create a token that's too old to refresh."""
+        secret = "supersecretkey"
+        algorithm = "HS256"
+
+        past_time = datetime.now(UTC) - timedelta(days=days_ago)
+        payload = {
+            "username": username,
+            "exp": past_time + timedelta(hours=1),
+            "iat": past_time,
+        }
+        return pyjwt.encode(payload, secret, algorithm=algorithm)
+
     def test_server_root_endpoint(self) -> None:
         """Test that the server is running and FastAPI docs are available."""
         # Check that /docs endpoint exists (FastAPI auto-generated docs)
@@ -228,6 +257,232 @@ class TestJacScaleServe:
         )
 
         assert "error" in login_result
+
+    def test_refresh_token_with_missing_token(self) -> None:
+        """Test refresh endpoint without token parameter."""
+        refresh_result = self._request(
+            "POST",
+            "/user/refresh-token",
+            {},
+        )
+
+        # Case 1: FastAPI Automatic Validation (422 Unprocessable Entity)
+        # This happens because 'token' is missing from the body entirely.
+        if "detail" in refresh_result:
+            assert isinstance(refresh_result["detail"], list)
+            error_entry = refresh_result["detail"][0]
+            assert error_entry["loc"] == ["body", "token"]
+            assert error_entry["type"] == "missing"
+
+        # Case 2: Custom Logic Error
+        # This handles cases where your code manually returns an error (if you bypass Pydantic).
+        else:
+            assert "error" in refresh_result
+            assert refresh_result["error"] in [
+                "Token is required",
+                "Invalid or expired token",
+            ]
+
+    def test_refresh_token_with_bearer_prefix(self) -> None:
+        """Test refreshing token with 'Bearer ' prefix."""
+        # Create user and get token
+        create_result = self._request(
+            "POST",
+            "/user/register",
+            {"email": "refresh_bearer@example.com", "password": "password123"},
+        )
+        original_token = create_result["token"]
+
+        # Refresh with Bearer prefix
+        refresh_result = self._request(
+            "POST",
+            "/user/refresh-token",
+            {"token": f"Bearer {original_token}"},
+        )
+
+        assert "token" in refresh_result
+        assert "message" in refresh_result
+        assert refresh_result["message"] == "Token refreshed successfully"
+
+    def test_refresh_token_with_empty_token(self) -> None:
+        """Test refresh endpoint with empty token."""
+        refresh_result = self._request(
+            "POST",
+            "/user/refresh-token",
+            {"token": ""},
+        )
+
+        assert "error" in refresh_result
+        assert refresh_result["error"] == "Token is required"
+
+    def test_refresh_token_with_invalid_token(self) -> None:
+        """Test refreshing with completely invalid token."""
+        refresh_result = self._request(
+            "POST",
+            "/user/refresh-token",
+            {"token": "invalid.token.here"},
+        )
+
+        assert "error" in refresh_result
+        assert refresh_result["error"] == "Invalid or expired token"
+
+    def test_refresh_token_with_malformed_token(self) -> None:
+        """Test refreshing with malformed JWT token."""
+        refresh_result = self._request(
+            "POST",
+            "/user/refresh-token",
+            {"token": "not.a.jwt"},
+        )
+
+        assert "error" in refresh_result
+        assert refresh_result["error"] == "Invalid or expired token"
+
+    def test_refresh_token_too_old(self) -> None:
+        """Test refreshing with token older than refresh window."""
+        # Create user first
+        self._request(
+            "POST",
+            "/user/register",
+            {"email": "refresh_old@example.com", "password": "password123"},
+        )
+
+        # Create a very old token (15 days old, beyond refresh window)
+        very_old_token = self._create_very_old_token(
+            "refresh_old@example.com", days_ago=15
+        )
+
+        # Try to refresh the very old token
+        refresh_result = self._request(
+            "POST",
+            "/user/refresh-token",
+            {"token": very_old_token},
+        )
+
+        assert "error" in refresh_result
+        assert refresh_result["error"] == "Invalid or expired token"
+
+    def test_refresh_token_with_nonexistent_user(self) -> None:
+        """Test refreshing token for user that doesn't exist."""
+        # Create token for non-existent user
+        fake_token = self._create_expired_token("nonexistent@example.com", days_ago=1)
+
+        refresh_result = self._request(
+            "POST",
+            "/user/refresh-token",
+            {"token": fake_token},
+        )
+
+        assert "error" in refresh_result
+        assert refresh_result["error"] == "Invalid or expired token"
+
+    def test_refresh_token_multiple_times(self) -> None:
+        """Test refreshing token multiple times in succession."""
+        # Create user and get initial token
+        create_result = self._request(
+            "POST",
+            "/user/register",
+            {"email": "refresh_multi@example.com", "password": "password123"},
+        )
+        token1 = create_result["token"]
+
+        # First refresh
+        refresh_result1 = self._request(
+            "POST",
+            "/user/refresh-token",
+            {"token": token1},
+        )
+        token2 = refresh_result1["token"]
+        assert token2 != token1
+
+        # Second refresh
+        refresh_result2 = self._request(
+            "POST",
+            "/user/refresh-token",
+            {"token": token2},
+        )
+        token3 = refresh_result2["token"]
+        assert token3 != token2
+        assert token3 != token1
+
+    def test_refresh_token_preserves_username(self) -> None:
+        """Test that refreshed token contains correct username."""
+        # Create user
+        email = "refresh_preserve@example.com"
+        create_result = self._request(
+            "POST",
+            "/user/register",
+            {"email": email, "password": "password123"},
+        )
+        original_token = create_result["token"]
+
+        # Refresh token
+        refresh_result = self._request(
+            "POST",
+            "/user/refresh-token",
+            {"token": original_token},
+        )
+        new_token = refresh_result["token"]
+
+        # Decode both tokens and verify username is preserved
+        secret = "supersecretkey"
+        algorithm = "HS256"
+
+        original_payload = pyjwt.decode(original_token, secret, algorithms=[algorithm])
+        new_payload = pyjwt.decode(new_token, secret, algorithms=[algorithm])
+
+        assert original_payload["username"] == email
+        assert new_payload["username"] == email
+        assert original_payload["username"] == new_payload["username"]
+
+    def test_refresh_token_updates_expiration(self) -> None:
+        """Test that refreshed token has updated expiration time."""
+        # Create user and get token
+        create_result = self._request(
+            "POST",
+            "/user/register",
+            {"email": "refresh_exp@example.com", "password": "password123"},
+        )
+        original_token = create_result["token"]
+
+        # Wait a moment to ensure time difference
+        time.sleep(1)
+
+        # Refresh token
+        refresh_result = self._request(
+            "POST",
+            "/user/refresh-token",
+            {"token": original_token},
+        )
+        new_token = refresh_result["token"]
+
+        # Decode tokens and compare expiration times
+        secret = "supersecretkey"
+        algorithm = "HS256"
+
+        original_payload = pyjwt.decode(original_token, secret, algorithms=[algorithm])
+        new_payload = pyjwt.decode(new_token, secret, algorithms=[algorithm])
+
+        # New token should have later expiration time
+        assert new_payload["exp"] > original_payload["exp"]
+        assert new_payload["iat"] > original_payload["iat"]
+
+    def test_refresh_endpoint_in_openapi_docs(self) -> None:
+        """Test that refresh endpoint appears in OpenAPI documentation."""
+        response = requests.get(f"{self.base_url}/openapi.json", timeout=5)
+        assert response.status_code == 200
+
+        openapi_spec = response.json()
+        paths = openapi_spec.get("paths", {})
+
+        # Check that refresh endpoint is documented
+        assert "/user/refresh-token" in paths
+        refresh_endpoint = paths["/user/refresh-token"]
+        assert "post" in refresh_endpoint
+
+        # Check endpoint metadata
+        post_spec = refresh_endpoint["post"]
+        assert post_spec["summary"] == "Refresh JWT token"
+        assert "User APIs" in post_spec["tags"]
 
     def test_call_function_add_numbers(self) -> None:
         """Test calling the add_numbers function."""

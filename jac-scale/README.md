@@ -43,8 +43,8 @@ First, clone the main Jaseci repository which contains JAC and JAC-Scale:
 
 ```bash
 git clone https://github.com/jaseci-labs/jaseci.git
-git submodule update --init --recursive
 cd jaseci
+git submodule update --init --recursive
 ```
 
 ### 2. Create Python Virtual Environment
@@ -284,8 +284,8 @@ First, clone the main Jaseci repository which contains JAC and JAC-Scale:
 
 ```bash
 git clone https://github.com/jaseci-labs/jaseci.git
-git submodule update --init --recursive
 cd jaseci
+git submodule update --init --recursive
 ```
 
 ### 2. Create Python Virtual Environment
@@ -438,6 +438,9 @@ jac destroy app.jac
 | `K8_REDIS` | Whether Redis is needed (`True`/`False`) | `True` |
 | `MONGODB_URI` | URL of MongoDB database | - |
 | `REDIS_URL` | URL of Redis database | - |
+| `JWT_EXP_DELTA_DAYS` | Number of days until JWT token expires | `7` |
+| `JWT_SECRET` | Secret key used for JWT token signing and verification | `'supersecretkey'` |
+| `JWT_ALGORITHM` | Algorithm used for JWT token encoding/decoding | `'HS256'` |
 
 ## Deployment Modes
 
