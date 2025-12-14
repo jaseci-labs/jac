@@ -130,7 +130,7 @@ class PyastBuildPass(Transform[(uni.PythonModuleAst, uni.Module)]) {
     def proc_function_def(
         self: PyastBuildPass, <>node: (py_ast.FunctionDef | py_ast.AsyncFunctionDef)
     ) -> uni.Ability {
-        import from jaclang.compiler { TOKEN_MAP }
+        import from jaclang.pycore.jac_parser { TOKEN_MAP }
         reserved_keywords = [v for (_, v) in TOKEN_MAP.items()];
         name = uni.Name(
             orig_src=self.orig_src,
@@ -404,7 +404,7 @@ class PyastBuildPass(Transform[(uni.PythonModuleAst, uni.Module)]) {
     def proc_aug_assign(
         self: PyastBuildPass, <>node: py_ast.AugAssign
     ) -> uni.Assignment {
-        import from jaclang.compiler { TOKEN_MAP }
+        import from jaclang.pycore.jac_parser { TOKEN_MAP }
         target = self.convert(<>node.target);
         op = self.convert(<>node.op);
         if isinstance(op, uni.Token) {
@@ -1729,7 +1729,7 @@ class PyastBuildPass(Transform[(uni.PythonModuleAst, uni.Module)]) {
 
     """Process python node.\n\n        class Name(expr):\n        if sys.version_info >= (3, 10):\n            __match_args__ = ("id", "ctx")\n        id: _Identifier\n        ctx: expr_context\n        """
     def proc_name(self: PyastBuildPass, <>node: py_ast.Name) -> uni.Name {
-        import from jaclang.compiler { TOKEN_MAP }
+        import from jaclang.pycore.jac_parser { TOKEN_MAP }
         reserved_keywords = [
             v
             for (_, v) in TOKEN_MAP.items()
@@ -1792,7 +1792,7 @@ class PyastBuildPass(Transform[(uni.PythonModuleAst, uni.Module)]) {
     def proc_nonlocal(
         self: PyastBuildPass, <>node: py_ast.Nonlocal
     ) -> uni.NonLocalStmt {
-        import from jaclang.compiler { TOKEN_MAP }
+        import from jaclang.pycore.jac_parser { TOKEN_MAP }
         reserved_keywords = [v for (_, v) in TOKEN_MAP.items()];
         names: list[uni.NameAtom] = [];
         for name in <>node.names {
@@ -2110,7 +2110,7 @@ class PyastBuildPass(Transform[(uni.PythonModuleAst, uni.Module)]) {
 
     """Process python node.\n\n        class arg(AST):\n            arg: _Identifier\n            annotation: expr | None\n        """
     def proc_arg(self: PyastBuildPass, <>node: py_ast.arg) -> uni.ParamVar {
-        import from jaclang.compiler { TOKEN_MAP }
+        import from jaclang.pycore.jac_parser { TOKEN_MAP }
         reserved_keywords = [
             v
             for (_, v) in TOKEN_MAP.items()
@@ -2459,7 +2459,7 @@ class PyastBuildPass(Transform[(uni.PythonModuleAst, uni.Module)]) {
     def proc_keyword(self: PyastBuildPass, <>node: py_ast.keyword) -> uni.KWPair {
         arg = None;
         if <>node.arg {
-            import from jaclang.compiler { TOKEN_MAP }
+            import from jaclang.pycore.jac_parser { TOKEN_MAP }
             reserved_keywords = [v for (_, v) in TOKEN_MAP.items()];
             arg = uni.Name(
                 orig_src=self.orig_src,

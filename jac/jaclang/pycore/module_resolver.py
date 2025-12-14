@@ -234,10 +234,9 @@ def convert_to_js_import_path(path: str) -> str:
 
 def get_typeshed_paths() -> list[str]:
     """Return the typeshed stubs and stdlib directories if available."""
-    # Path calculation: pycore/utils -> pycore -> jaclang -> vendor/typeshed
+    # Path calculation: pycore -> jaclang -> vendor/typeshed
     base = os.path.join(
-        os.path.dirname(__file__),  # jaclang/pycore/utils
-        "..",  # jaclang/pycore
+        os.path.dirname(__file__),  # jaclang/pycore
         "..",  # jaclang
         "vendor",
         "typeshed",  # jaclang/vendor/typeshed

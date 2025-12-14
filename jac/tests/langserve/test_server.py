@@ -233,14 +233,14 @@ def test_go_to_definition_md_path(fixture_path: Callable[[str], str]) -> None:
             (6, 28, "concurrent/futures/__init__.py:0:0-0:0"),
             (7, 17, "typing.py:0:0-0:0"),
             (9, 18, "jaclang/pycore/__init__.py:0:0-0:0"),
-            (9, 38, "jaclang/pycore/ast/unitree.py:0:0-0:0"),
+            (9, 25, "jaclang/pycore/unitree.py:0:0-0:0"),
             (10, 34, "jac/jaclang/__init__.py:18:3-18:22"),
-            (11, 35, "jaclang/pycore/ast/constant.py:0:0-0:0"),
-            (11, 47, "jaclang/pycore/ast/constant.py:5:0-34:9"),
+            (11, 35, "jaclang/pycore/constant.py:0:0-0:0"),
+            (11, 47, "jaclang/pycore/constant.py:5:0-34:9"),
             (13, 47, "jaclang/compiler/type_system/type_utils.jac:0:0-0:0"),
             (14, 34, "jaclang/compiler/type_system/__init__.py:0:0-0:0"),
             (18, 5, "compiler/type_system/types.jac:47:6-47:14"),  # TypeBase now on line 18
-            (20, 34, "jaclang/pycore/ast/unitree.py:0:0-0:0"),              # UniScopeNode now on line 20
+            (20, 34, "jaclang/pycore/unitree.py:0:0-0:0"),              # UniScopeNode now on line 20
             # (20, 48, "compiler/unitree.py:335:0-566:11"),
             (22, 22, "tests/langserve/fixtures/circle.jac:7:5-7:8"),  # RAD now on line 22, fixture line changed too
             (23, 38, "jaclang/vendor/pygls/uris.py:0:0-0:0"),             # uris now on line 23
@@ -324,12 +324,13 @@ def test_missing_mod_warning(fixture_path: Callable[[str], str]) -> None:
         import_file = uris.from_fs_path(fixture_path("md_path.jac"))
         lsp.type_check_file(import_file)
 
-        positions = [
+        expected_warnings = [
             "fixtures/md_path.jac, line 21, col 13: Module not found",  # missing_mod
             "fixtures/md_path.jac, line 27, col 8: Module not found",  # nonexistent_module
         ]
-        for idx, expected in enumerate(positions):
-            assert expected in str(lsp.warnings_had[idx])
+        warnings_str = [str(w) for w in lsp.warnings_had]
+        for expected in expected_warnings:
+            assert any(expected in w for w in warnings_str), f"Expected warning '{expected}' not found in {warnings_str}"
     finally:
         lsp.shutdown()
 
