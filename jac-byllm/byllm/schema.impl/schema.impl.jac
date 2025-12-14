@@ -137,7 +137,7 @@ impl _name_of_type(ty: type) -> str {
         names = [_name_of_type(arg) for arg in get_args(ty)];
         return "_or_".join(names);
     }
-    if hasattr(ty, "__name__") {
+    if ty?.__name__ {
         return ty.__name__;
     }
     return "type";
