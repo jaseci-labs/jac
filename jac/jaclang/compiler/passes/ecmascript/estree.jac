@@ -11,6 +11,7 @@ with entry {
         ('constructor', 'method', 'get', 'set')
     ];
 }
+
 """Source location information for a node."""
 @dataclass
 class SourceLocation {
@@ -20,6 +21,7 @@ class SourceLocation {
         end: (Position | None) = None;
     }
 }
+
 """Position in source code."""
 @dataclass
 class Position {
@@ -28,6 +30,7 @@ class Position {
         column: int = 0;
     }
 }
+
 """Base class for all ESTree nodes."""
 @dataclass
 class Node {
@@ -36,6 +39,7 @@ class Node {
         loc: (SourceLocation | None) = field(<>default=None);
     }
 }
+
 """Identifier node."""
 @dataclass
 class Identifier(Node) {
@@ -46,6 +50,7 @@ class Identifier(Node) {
         );
     }
 }
+
 """Private identifier for class members (ES2022)."""
 @dataclass
 class PrivateIdentifier(Node) {
@@ -56,6 +61,7 @@ class PrivateIdentifier(Node) {
         );
     }
 }
+
 """Literal value node (supports BigInt in ES2020)."""
 @dataclass
 class Literal(Node) {
@@ -66,6 +72,7 @@ class Literal(Node) {
         <>type: TypingLiteral['Literal'] = field(<>default='Literal', <>init=False);
     }
 }
+
 """Root node of an ESTree."""
 @dataclass
 class Program(Node) {
@@ -75,6 +82,7 @@ class Program(Node) {
         <>type: TypingLiteral['Program'] = field(<>default='Program', <>init=False);
     }
 }
+
 """Expression statement."""
 @dataclass
 class ExpressionStatement(Node) {
@@ -85,6 +93,7 @@ class ExpressionStatement(Node) {
         );
     }
 }
+
 """Directive (e.g., 'use strict') - ES5."""
 @dataclass
 class Directive(ExpressionStatement) {
@@ -95,6 +104,7 @@ class Directive(ExpressionStatement) {
         );
     }
 }
+
 """Block statement."""
 @dataclass
 class BlockStatement(Node) {
@@ -105,6 +115,7 @@ class BlockStatement(Node) {
         );
     }
 }
+
 """Empty statement (;)."""
 @dataclass
 class EmptyStatement(Node) {
@@ -114,6 +125,7 @@ class EmptyStatement(Node) {
         );
     }
 }
+
 """Debugger statement."""
 @dataclass
 class DebuggerStatement(Node) {
@@ -123,6 +135,7 @@ class DebuggerStatement(Node) {
         );
     }
 }
+
 """With statement."""
 @dataclass
 class WithStatement(Node) {
@@ -134,6 +147,7 @@ class WithStatement(Node) {
         );
     }
 }
+
 """Return statement."""
 @dataclass
 class ReturnStatement(Node) {
@@ -144,6 +158,7 @@ class ReturnStatement(Node) {
         );
     }
 }
+
 """Labeled statement."""
 @dataclass
 class LabeledStatement(Node) {
@@ -155,6 +170,7 @@ class LabeledStatement(Node) {
         );
     }
 }
+
 """Break statement."""
 @dataclass
 class BreakStatement(Node) {
@@ -165,6 +181,7 @@ class BreakStatement(Node) {
         );
     }
 }
+
 """Continue statement."""
 @dataclass
 class ContinueStatement(Node) {
@@ -175,6 +192,7 @@ class ContinueStatement(Node) {
         );
     }
 }
+
 """If statement."""
 @dataclass
 class IfStatement(Node) {
@@ -187,6 +205,7 @@ class IfStatement(Node) {
         );
     }
 }
+
 """Switch statement."""
 @dataclass
 class SwitchStatement(Node) {
@@ -198,6 +217,7 @@ class SwitchStatement(Node) {
         );
     }
 }
+
 """Switch case clause."""
 @dataclass
 class SwitchCase(Node) {
@@ -209,6 +229,7 @@ class SwitchCase(Node) {
         );
     }
 }
+
 """Throw statement."""
 @dataclass
 class ThrowStatement(Node) {
@@ -219,6 +240,7 @@ class ThrowStatement(Node) {
         );
     }
 }
+
 """Try statement."""
 @dataclass
 class TryStatement(Node) {
@@ -231,6 +253,7 @@ class TryStatement(Node) {
         );
     }
 }
+
 """Catch clause."""
 @dataclass
 class CatchClause(Node) {
@@ -242,6 +265,7 @@ class CatchClause(Node) {
         );
     }
 }
+
 """While statement."""
 @dataclass
 class WhileStatement(Node) {
@@ -253,6 +277,7 @@ class WhileStatement(Node) {
         );
     }
 }
+
 """Do-while statement."""
 @dataclass
 class DoWhileStatement(Node) {
@@ -264,6 +289,7 @@ class DoWhileStatement(Node) {
         );
     }
 }
+
 """For statement."""
 @dataclass
 class ForStatement(Node) {
@@ -277,6 +303,7 @@ class ForStatement(Node) {
         );
     }
 }
+
 """For-in statement."""
 @dataclass
 class ForInStatement(Node) {
@@ -289,6 +316,7 @@ class ForInStatement(Node) {
         );
     }
 }
+
 """For-of statement (ES6)."""
 @dataclass
 class ForOfStatement(Node) {
@@ -302,6 +330,7 @@ class ForOfStatement(Node) {
         );
     }
 }
+
 """Function declaration."""
 @dataclass
 class FunctionDeclaration(Node) {
@@ -316,6 +345,7 @@ class FunctionDeclaration(Node) {
         );
     }
 }
+
 """Variable declaration."""
 @dataclass
 class VariableDeclaration(Node) {
@@ -327,6 +357,7 @@ class VariableDeclaration(Node) {
         );
     }
 }
+
 """Variable declarator."""
 @dataclass
 class VariableDeclarator(Node) {
@@ -338,6 +369,7 @@ class VariableDeclarator(Node) {
         );
     }
 }
+
 """This expression."""
 @dataclass
 class ThisExpression(Node) {
@@ -347,6 +379,7 @@ class ThisExpression(Node) {
         );
     }
 }
+
 """Array expression."""
 @dataclass
 class ArrayExpression(Node) {
@@ -359,6 +392,7 @@ class ArrayExpression(Node) {
         );
     }
 }
+
 """Object expression."""
 @dataclass
 class ObjectExpression(Node) {
@@ -369,6 +403,7 @@ class ObjectExpression(Node) {
         );
     }
 }
+
 """Object property."""
 @dataclass
 class Property(Node) {
@@ -382,6 +417,7 @@ class Property(Node) {
         <>type: TypingLiteral['Property'] = field(<>default='Property', <>init=False);
     }
 }
+
 """Function expression."""
 @dataclass
 class FunctionExpression(Node) {
@@ -396,6 +432,7 @@ class FunctionExpression(Node) {
         );
     }
 }
+
 """Arrow function expression (ES6)."""
 @dataclass
 class ArrowFunctionExpression(Node) {
@@ -409,6 +446,7 @@ class ArrowFunctionExpression(Node) {
         );
     }
 }
+
 """Unary expression."""
 @dataclass
 class UnaryExpression(Node) {
@@ -421,6 +459,7 @@ class UnaryExpression(Node) {
         );
     }
 }
+
 """Update expression."""
 @dataclass
 class UpdateExpression(Node) {
@@ -433,6 +472,7 @@ class UpdateExpression(Node) {
         );
     }
 }
+
 """Binary expression."""
 @dataclass
 class BinaryExpression(Node) {
@@ -445,6 +485,7 @@ class BinaryExpression(Node) {
         );
     }
 }
+
 """Assignment expression."""
 @dataclass
 class AssignmentExpression(Node) {
@@ -457,6 +498,7 @@ class AssignmentExpression(Node) {
         );
     }
 }
+
 """Logical expression."""
 @dataclass
 class LogicalExpression(Node) {
@@ -469,6 +511,7 @@ class LogicalExpression(Node) {
         );
     }
 }
+
 """Member expression."""
 @dataclass
 class MemberExpression(Node) {
@@ -482,6 +525,7 @@ class MemberExpression(Node) {
         );
     }
 }
+
 """Conditional (ternary) expression."""
 @dataclass
 class ConditionalExpression(Node) {
@@ -494,6 +538,7 @@ class ConditionalExpression(Node) {
         );
     }
 }
+
 """Call expression."""
 @dataclass
 class CallExpression(Node) {
@@ -506,6 +551,7 @@ class CallExpression(Node) {
         );
     }
 }
+
 """Optional chaining expression (ES2020)."""
 @dataclass
 class ChainExpression(Node) {
@@ -516,6 +562,7 @@ class ChainExpression(Node) {
         );
     }
 }
+
 """New expression."""
 @dataclass
 class NewExpression(Node) {
@@ -527,6 +574,7 @@ class NewExpression(Node) {
         );
     }
 }
+
 """Sequence expression."""
 @dataclass
 class SequenceExpression(Node) {
@@ -537,6 +585,7 @@ class SequenceExpression(Node) {
         );
     }
 }
+
 """Yield expression."""
 @dataclass
 class YieldExpression(Node) {
@@ -548,6 +597,7 @@ class YieldExpression(Node) {
         );
     }
 }
+
 """Await expression (ES2017)."""
 @dataclass
 class AwaitExpression(Node) {
@@ -558,6 +608,7 @@ class AwaitExpression(Node) {
         );
     }
 }
+
 """Template literal (ES6)."""
 @dataclass
 class TemplateLiteral(Node) {
@@ -569,6 +620,7 @@ class TemplateLiteral(Node) {
         );
     }
 }
+
 """Template element."""
 @dataclass
 class TemplateElement(Node) {
@@ -580,6 +632,7 @@ class TemplateElement(Node) {
         );
     }
 }
+
 """Tagged template expression (ES6)."""
 @dataclass
 class TaggedTemplateExpression(Node) {
@@ -591,6 +644,7 @@ class TaggedTemplateExpression(Node) {
         );
     }
 }
+
 """Spread element (ES6)."""
 @dataclass
 class SpreadElement(Node) {
@@ -601,6 +655,7 @@ class SpreadElement(Node) {
         );
     }
 }
+
 """Super keyword."""
 @dataclass
 class Super(Node) {
@@ -608,6 +663,7 @@ class Super(Node) {
         <>type: TypingLiteral['Super'] = field(<>default='Super', <>init=False);
     }
 }
+
 """Meta property (e.g., new.target)."""
 @dataclass
 class MetaProperty(Node) {
@@ -619,6 +675,7 @@ class MetaProperty(Node) {
         );
     }
 }
+
 """Assignment pattern (default parameters)."""
 @dataclass
 class AssignmentPattern(Node) {
@@ -630,6 +687,7 @@ class AssignmentPattern(Node) {
         );
     }
 }
+
 """Array destructuring pattern."""
 @dataclass
 class ArrayPattern(Node) {
@@ -640,6 +698,7 @@ class ArrayPattern(Node) {
         );
     }
 }
+
 """Object destructuring pattern."""
 @dataclass
 class ObjectPattern(Node) {
@@ -652,6 +711,7 @@ class ObjectPattern(Node) {
         );
     }
 }
+
 """Assignment property in object pattern."""
 @dataclass
 class AssignmentProperty(Node) {
@@ -665,6 +725,7 @@ class AssignmentProperty(Node) {
         <>type: TypingLiteral['Property'] = field(<>default='Property', <>init=False);
     }
 }
+
 """Rest element."""
 @dataclass
 class RestElement(Node) {
@@ -675,6 +736,7 @@ class RestElement(Node) {
         );
     }
 }
+
 """Class declaration."""
 @dataclass
 class ClassDeclaration(Node) {
@@ -687,6 +749,7 @@ class ClassDeclaration(Node) {
         );
     }
 }
+
 """Class expression."""
 @dataclass
 class ClassExpression(Node) {
@@ -699,6 +762,7 @@ class ClassExpression(Node) {
         );
     }
 }
+
 """Class body (ES2022: supports methods, properties, and static blocks)."""
 @dataclass
 class ClassBody(Node) {
@@ -709,6 +773,7 @@ class ClassBody(Node) {
         <>type: TypingLiteral['ClassBody'] = field(<>default='ClassBody', <>init=False);
     }
 }
+
 """Method definition (ES2022: supports private identifiers)."""
 @dataclass
 class MethodDefinition(Node) {
@@ -723,6 +788,7 @@ class MethodDefinition(Node) {
         );
     }
 }
+
 """Class field definition (ES2022)."""
 @dataclass
 class PropertyDefinition(Node) {
@@ -736,6 +802,7 @@ class PropertyDefinition(Node) {
         );
     }
 }
+
 """Static initialization block (ES2022)."""
 @dataclass
 class StaticBlock(Node) {
@@ -746,6 +813,7 @@ class StaticBlock(Node) {
         );
     }
 }
+
 """Import declaration."""
 @dataclass
 class ImportDeclaration(Node) {
@@ -760,6 +828,7 @@ class ImportDeclaration(Node) {
         );
     }
 }
+
 """Dynamic import expression (ES2020)."""
 @dataclass
 class ImportExpression(Node) {
@@ -770,6 +839,7 @@ class ImportExpression(Node) {
         );
     }
 }
+
 """Import specifier."""
 @dataclass
 class ImportSpecifier(Node) {
@@ -781,6 +851,7 @@ class ImportSpecifier(Node) {
         );
     }
 }
+
 """Import default specifier."""
 @dataclass
 class ImportDefaultSpecifier(Node) {
@@ -791,6 +862,7 @@ class ImportDefaultSpecifier(Node) {
         );
     }
 }
+
 """Import namespace specifier."""
 @dataclass
 class ImportNamespaceSpecifier(Node) {
@@ -801,6 +873,7 @@ class ImportNamespaceSpecifier(Node) {
         );
     }
 }
+
 """Export named declaration."""
 @dataclass
 class ExportNamedDeclaration(Node) {
@@ -813,6 +886,7 @@ class ExportNamedDeclaration(Node) {
         );
     }
 }
+
 """Export specifier."""
 @dataclass
 class ExportSpecifier(Node) {
@@ -824,6 +898,7 @@ class ExportSpecifier(Node) {
         );
     }
 }
+
 """Export default declaration."""
 @dataclass
 class ExportDefaultDeclaration(Node) {
@@ -834,6 +909,7 @@ class ExportDefaultDeclaration(Node) {
         );
     }
 }
+
 """Export all declaration."""
 @dataclass
 class ExportAllDeclaration(Node) {
@@ -845,6 +921,7 @@ class ExportAllDeclaration(Node) {
         );
     }
 }
+
 """Represents slice operation info (e.g., arr[start:stop])."""
 @dataclass
 class SliceInfo {
@@ -853,6 +930,7 @@ class SliceInfo {
         stop: (Node | None) = None;
     }
 }
+
 """Represents index operation info (e.g., arr[index])."""
 @dataclass
 class IndexInfo {
@@ -860,6 +938,7 @@ class IndexInfo {
         value: (Node | None) = None;
     }
 }
+
 with entry {
     Statement = ExpressionStatement | BlockStatement | EmptyStatement | DebuggerStatement | WithStatement | ReturnStatement | LabeledStatement | BreakStatement | ContinueStatement | IfStatement | SwitchStatement | ThrowStatement | TryStatement | WhileStatement | DoWhileStatement | ForStatement | ForInStatement | ForOfStatement | FunctionDeclaration | VariableDeclaration | ClassDeclaration;
     Expression = (
@@ -871,6 +950,7 @@ with entry {
         ImportDeclaration | ExportNamedDeclaration | ExportDefaultDeclaration | ExportAllDeclaration
     );
 }
+
 """Convert an ESTree node to a dictionary representation."""
 def es_node_to_dict(<>node: Node) -> dict[str, Any] {
     result: dict[(str, Any)] = {'type': <>node.type};
@@ -902,4 +982,3 @@ def es_node_to_dict(<>node: Node) -> dict[str, Any] {
     }
     return result;
 }
-

@@ -26,6 +26,7 @@ class AstKidInfo {
         self.default = <>default;
     }
 }
+
 """Meta data about AST nodes."""
 class UniNodeInfo {
     with entry {
@@ -37,6 +38,7 @@ class UniNodeInfo {
         self.cls = cls;
         self.process(cls);
     }
+
     """Process UniNode class."""
     def process(self: UniNodeInfo, cls: type[uni.UniNode]) -> None {
         self.name = cls.__name__;
@@ -58,6 +60,7 @@ class UniNodeInfo {
         }
     }
 }
+
 """Ast tools."""
 class AstTool {
     """Initialize."""
@@ -111,6 +114,7 @@ class AstTool {
             key=lambda  cls: Any: source_code.find(f"class {cls.name}")
         );
     }
+
     """Generate pass template."""
     def pass_template(self: AstTool) -> str {
         output = 'import jaclang.pycore.ast.unitree as ast\nfrom jaclang.pycore.passes import Pass\n\nclass SomePass(Pass):\n';
@@ -148,6 +152,7 @@ class AstTool {
         );
         return output;
     }
+
     """List python ast nodes."""
     def py_uni_nodes(self: AstTool) -> str {
         import from jaclang.compiler.passes.main { PyastBuildPass }
@@ -168,8 +173,7 @@ class AstTool {
         for i in node_names {
             nd = pascal_to_snake(i);
             this_func = (
-                f"def proc_{nd}(self, node: py_ast.{i}) -> ast.UniNode:\n"
-                + '    """Process python node."""\n\n'
+                f"def proc_{nd}(self, node: py_ast.{i}) -> ast.UniNode:\n" + '    """Process python node."""\n\n'
             );
             if (nd not in pass_func_names) {
                 missing.append(this_func);

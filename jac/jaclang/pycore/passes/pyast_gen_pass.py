@@ -567,7 +567,9 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
         # Add library imports at the end of preamble
         # Skip when compiling jaclang.lib itself to avoid self-referential imports.
         mod_path_norm = node.loc.mod_path.replace("\\", "/")
-        is_jaclib_module = mod_path_norm.endswith(("/jaclang/lib.jac", "/jaclang/lib.py"))
+        is_jaclib_module = mod_path_norm.endswith(
+            ("/jaclang/lib.jac", "/jaclang/lib.py")
+        )
         if self.jaclib_imports and not is_jaclib_module:
             self.preamble.append(
                 self.sync(

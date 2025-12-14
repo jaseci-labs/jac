@@ -44,6 +44,7 @@ with entry {
         <>visit: Callable[(..., object)] = JacRT.visit;
     }
 }
+
 """Lazy attribute access to initialize imports when needed."""
 def __getattr__(name: str) -> object {
     if name.startswith('_') {
@@ -72,6 +73,7 @@ def __getattr__(name: str) -> object {
     }
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'") ;
 }
+
 """Return list of available attributes."""
 def __dir__()  -> list[str] {
     import from jaclang.pycore.runtime.runtime { _init_lazy_imports }
@@ -84,6 +86,7 @@ def __dir__()  -> list[str] {
         ]
     );
 }
+
 """Populate the module namespace with class and method references."""
 def _populate_namespace()  -> None {
     current_module = sys.modules[__name__];
@@ -92,6 +95,7 @@ def _populate_namespace()  -> None {
             self.attr_name = attr_name;
             self._resolved: (object | None) = None;
         }
+
         def _resolve(self: LazyRef) -> object {
             if (self._resolved is None) {
                 self._resolved = current_module.__getattr__(self.attr_name);
@@ -99,16 +103,17 @@ def _populate_namespace()  -> None {
             }
             return self._resolved;
         }
+
         def __call__(self: LazyRef, *args: object, **kwargs: object) -> object {
             resolved = cast(Callable[..., object], self._resolve());
             return resolved(*args, **kwargs);
         }
+
         def __getattr__(self: LazyRef, name: str) -> object {
             return getattr(self._resolve(), name);
         }
-        def __mro_entries__(
-            self: LazyRef, bases: tuple[type, ...]
-        ) -> tuple[type, ...] {
+
+        def __mro_entries__(self: LazyRef, bases: tuple[type, ...]) -> tuple[type, ...] {
             return (cast(type, self._resolve()), );
         }
     }
@@ -118,6 +123,7 @@ def _populate_namespace()  -> None {
         }
     }
 }
+
 with entry {
     ;
 }

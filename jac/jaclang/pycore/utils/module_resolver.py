@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import importlib.util
 import os
 import site
 import sys
-import importlib.util
 
 
 def get_jac_search_paths(base_path: str | None = None) -> list[str]:

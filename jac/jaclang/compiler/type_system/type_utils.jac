@@ -22,6 +22,7 @@ class ClassMember {
         self.skipped_undeclared_type = False;
     }
 }
+
 """Compute the method resolution order (MRO) for a class type.\n\n    This uses the C3 linearization algorithm to compute the MRO.\n    See https://www.python.org/download/releases/2.3/mro/\n    """
 def compute_mro_linearization(cls: types.ClassType) -> None {
     if cls.shared.mro {
@@ -43,6 +44,7 @@ def compute_mro_linearization(cls: types.ClassType) -> None {
         }
     }
 }
+
 """Tracks parameter assignments for function calls.\n\n    This class helps in tracking which parameters have been matched\n    with arguments in a function call. It supports positional, named,\n    *args, and **kwargs arguments.\n    """
 class ParamAssignmentTracker {
     """Initialize obviously."""
@@ -60,6 +62,7 @@ class ParamAssignmentTracker {
             }
         }
     }
+
     """Lookup a named parameter by name and if any match is found we mark it as such."""
     def lookup_named_parameter(
         self: ParamAssignmentTracker, param_name: str
@@ -92,6 +95,7 @@ class ParamAssignmentTracker {
         }
         return self.kwargs;
     }
+
     """Mark all named parameters as matched."""
     def _mark_all_named_params_as_matched(self: ParamAssignmentTracker) -> None {
         for param in self.params {
@@ -106,6 +110,7 @@ class ParamAssignmentTracker {
             }
         }
     }
+
     """Mark all positional parameters as matched."""
     def _mark_all_positional_params_as_matched(self: ParamAssignmentTracker) -> None {
         for param in self.params {
@@ -121,6 +126,7 @@ class ParamAssignmentTracker {
         }
         self.curr_param_idx = -1;
     }
+
     """Match a named argument to a parameter."""
     def match_named_argument(
         self: ParamAssignmentTracker, arg: uni.KWPair
@@ -137,6 +143,7 @@ class ParamAssignmentTracker {
             ) ;
         }
     }
+
     """Match a positional argument to a parameter."""
     def match_positional_argument(
         self: ParamAssignmentTracker, arg: uni.Expr
@@ -168,6 +175,7 @@ class ParamAssignmentTracker {
             raise Exception('Too many positional arguments') ;
         }
     }
+
     """Check if there are any unmatched required parameters."""
     def get_unmatched_required_params(
         self: ParamAssignmentTracker
@@ -190,6 +198,7 @@ class ParamAssignmentTracker {
         return ret;
     }
 }
+
 """A completion item."""
 @dataclass
 class CompletionItem {
@@ -199,6 +208,7 @@ class CompletionItem {
         detail: (str | None) = None;
     }
 }
+
 """The kind of a completion entry."""
 class CompletionItemKind(int , Enum) {
     with entry {
@@ -229,6 +239,7 @@ class CompletionItemKind(int , Enum) {
         TypeParameter = 25;
     }
 }
+
 """Get the completion item kind from a symbol."""
 def completion_kind_from_sym(sym: Symbol) -> int {
     match sym.decl.name_of {
@@ -250,6 +261,7 @@ def completion_kind_from_sym(sym: Symbol) -> int {
     }
     return CompletionItemKind.Text;
 }
+
 """Return a list of completion items for the type."""
 def get_completion_items(
     ty: (types.TypeBase | uni.UniScopeNode)
@@ -282,6 +294,7 @@ def get_completion_items(
     }
     return ret;
 }
+
 """Lookup a symbol in the symbol table."""
 def lookup_symtab(
     symtable: uni.UniScopeNode, name: str, builtins_to_inject: uni.Module
