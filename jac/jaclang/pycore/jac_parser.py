@@ -10,7 +10,7 @@ from threading import Event
 from typing import TYPE_CHECKING, TypeAlias, TypeVar, cast
 
 import jaclang.pycore.unitree as uni
-from jaclang.pycore import lark_jac_parser as jl
+import jaclang.pycore.lark_jac_parser as jl
 from jaclang.pycore.constant import EdgeDir
 from jaclang.pycore.constant import Tokens as Tok
 from jaclang.pycore.passes import BaseTransform, Transform

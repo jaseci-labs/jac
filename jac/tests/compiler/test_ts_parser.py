@@ -6,7 +6,7 @@ from typing import Protocol
 
 import pytest
 
-from jaclang.pycore import unitree as uni
+import jaclang.pycore.unitree as uni
 from jaclang.pycore.program import JacProgram
 from jaclang.pycore.tsparser import TypeScriptParser
 from jaclang.pycore.unitree import Source

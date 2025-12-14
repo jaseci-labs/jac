@@ -11,8 +11,8 @@ from pathlib import Path
 import pytest
 
 import jaclang
-from jaclang.pycore import lark_jac_parser as jl
-from jaclang.pycore import unitree as uni
+import jaclang.pycore.lark_jac_parser as jl
+import jaclang.pycore.unitree as uni
 from jaclang.pycore.constant import Tokens
 from jaclang.pycore.jac_parser import JacParser
 from jaclang.pycore.program import JacProgram
