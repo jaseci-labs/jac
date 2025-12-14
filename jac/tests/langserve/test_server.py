@@ -1,3 +1,4 @@
+import contextlib
 import inspect
 import os
 import sys
@@ -42,10 +43,8 @@ def reset_jac_machine() -> Generator[None, None, None]:
     # Clear type system state from all servers created during the test
     for server in _active_servers:
         # Ensure worker thread is stopped to avoid cross-test interference.
-        try:
+        with contextlib.suppress(Exception):
             server.shutdown()
-        except Exception:
-            pass
         server.clear_type_system(clear_hub=True)
     _active_servers.clear()
     _clear_jac_modules()
