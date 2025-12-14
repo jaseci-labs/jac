@@ -1,8 +1,8 @@
 """DocIrGenPass for Jaseci Ast.\n\nThis is a pass for generating DocIr for Jac code.\n"""
 import from collections.abc { Sequence }
 import jaclang.compiler.passes.tool.doc_ir as doc;
-import jaclang.pycore.ast.unitree as uni;
-import from jaclang.pycore.ast.constant { Tokens as Tok }
+import jaclang.pycore.unitree as uni;
+import from jaclang.pycore.constant { Tokens as Tok }
 import from jaclang.pycore.passes { UniPass }
 """DocIrGenPass generate DocIr for Jac code."""
 class DocIRGenPass(UniPass) {

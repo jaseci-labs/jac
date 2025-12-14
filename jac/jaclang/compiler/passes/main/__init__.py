@@ -73,7 +73,7 @@ def __getattr__(name: str) -> type:
         if os.path.exists(jac_file):
             # Use Jac import mechanism via the meta importer
             from jaclang.meta_importer import JacMetaImporter
-            from jaclang.pycore.runtime.runtime import JacRuntime as Jac
+            from jaclang.pycore.runtime import JacRuntime as Jac
 
             # Create module spec and load
             importer = JacMetaImporter()

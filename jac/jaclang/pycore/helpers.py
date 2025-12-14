@@ -34,7 +34,7 @@ def get_uni_nodes_as_snake_case() -> list[str]:
     import inspect
     import sys
 
-    import jaclang.pycore.ast.unitree as uni
+    import jaclang.pycore.unitree as uni
 
     module_name = uni.__name__
     module = sys.modules[module_name]

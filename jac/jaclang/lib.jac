@@ -3,7 +3,7 @@ import sys;
 import from collections.abc { Callable }
 import from contextlib { suppress }
 import from typing { TYPE_CHECKING, cast }
-import from jaclang.pycore.runtime.runtime { JacClassReferences, JacRuntimeInterface }
+import from jaclang.pycore.runtime { JacClassReferences, JacRuntimeInterface }
 with entry {
     __all__ = [
         'Node',
@@ -25,7 +25,7 @@ with entry {
         'reset_machine'
     ];
     if TYPE_CHECKING {
-        import from jaclang.pycore.runtime.runtime { JacRuntimeInterface as JacRT }
+        import from jaclang.pycore.runtime { JacRuntimeInterface as JacRT }
         import from jaclang.runtimelib.archetype { GenericEdge, Root }
         import from jaclang.runtimelib.archetype { ObjectSpatialFunction as DSFunc }
         import from jaclang.runtimelib.archetype { ObjectSpatialPath as OPath }
@@ -50,10 +50,7 @@ def __getattr__(name: str) -> object {
     if name.startswith('_') {
         raise AttributeError(f"module '{__name__}' has no attribute '{name}'") ;
     }
-    import from jaclang.pycore.runtime.runtime {
-        _init_lazy_imports,
-        _lazy_imports_initialized
-    }
+    import from jaclang.pycore.runtime { _init_lazy_imports, _lazy_imports_initialized }
     _init_lazy_imports();
     try {
         value = JacClassReferences.__getattr__(name);
@@ -76,7 +73,7 @@ def __getattr__(name: str) -> object {
 
 """Return list of available attributes."""
 def __dir__()  -> list[str] {
-    import from jaclang.pycore.runtime.runtime { _init_lazy_imports }
+    import from jaclang.pycore.runtime { _init_lazy_imports }
     _init_lazy_imports();
     return sorted(
         [

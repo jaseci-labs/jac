@@ -6,7 +6,7 @@ from contextlib import AbstractContextManager
 
 import pytest
 
-import jaclang.pycore.ast.unitree as uni
+import jaclang.pycore.unitree as uni
 from jaclang import JacRuntime as Jac
 from jaclang.cli import cli
 from jaclang.pycore.program import JacProgram

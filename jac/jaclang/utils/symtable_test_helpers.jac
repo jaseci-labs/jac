@@ -1,6 +1,6 @@
 """Symbol table testing helpers for Jaseci."""
 
-import from jaclang.pycore.ast.unitree { Symbol, UniScopeNode }
+import from jaclang.pycore.unitree { Symbol, UniScopeNode }
 
 """Lookup a variable in the symbol table."""
 def look_down(tab: UniScopeNode, name: str, deep: bool = True) -> Symbol | None {

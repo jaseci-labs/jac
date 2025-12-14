@@ -28,9 +28,9 @@ from typing import (
 )
 from uuid import UUID
 
-from jaclang.pycore.ast.constant import Constants as Con
-from jaclang.pycore.ast.constant import EdgeDir, colors
-from jaclang.pycore.utils.module_resolver import infer_language
+from jaclang.pycore.constant import Constants as Con
+from jaclang.pycore.constant import EdgeDir, colors
+from jaclang.pycore.module_resolver import infer_language
 from jaclang.vendor import pluggy
 
 # Flag to track if lazy imports have been initialized

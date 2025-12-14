@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any, Generic, TypeVar
 
-import jaclang.pycore.ast.unitree as uni
+import jaclang.pycore.unitree as uni
 from jaclang.pycore.passes.uni_pass import UniPass
 
 T = TypeVar("T")

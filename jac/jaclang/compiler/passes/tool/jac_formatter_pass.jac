@@ -5,7 +5,7 @@ This is a pass for formatting Jac code.
 
 import from collections { deque }
 import jaclang.compiler.passes.tool.doc_ir as doc;
-import jaclang.pycore.ast.unitree as uni;
+import jaclang.pycore.unitree as uni;
 import from jaclang.pycore.passes { Transform }
 import from jaclang.pycore.settings { settings }
 

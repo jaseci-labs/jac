@@ -7,10 +7,10 @@ from abc import ABC, abstractmethod
 from threading import Event
 from typing import TYPE_CHECKING, Generic, TypeVar
 
-from jaclang.pycore.ast.codeinfo import CodeLocInfo
-from jaclang.pycore.ast.unitree import UniNode
+from jaclang.pycore.codeinfo import CodeLocInfo
+from jaclang.pycore.log import logging
 from jaclang.pycore.settings import settings
-from jaclang.pycore.utils.log import logging
+from jaclang.pycore.unitree import UniNode
 
 if TYPE_CHECKING:
     from jaclang.pycore.program import JacProgram
@@ -43,7 +43,7 @@ class Alert:
 
     def as_log(self, *, colors: bool = False) -> str:
         """Return the alert as a single line log as opposed to the pretty print."""
-        from jaclang.pycore.utils.helpers import ANSIColors
+        from jaclang.pycore.helpers import ANSIColors
 
         file_path: str = self.loc.mod_path
         if file_path == "":
@@ -58,7 +58,7 @@ class Alert:
 
     def pretty_print(self, *, colors: bool = False) -> str:
         """Pretty prints the Alert to show the alert with source location."""
-        from jaclang.pycore.utils.helpers import pretty_print_source_location
+        from jaclang.pycore.helpers import pretty_print_source_location
 
         pretty_dump = pretty_print_source_location(
             self.loc.mod_path,

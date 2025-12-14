@@ -15,12 +15,12 @@ import sys
 from collections.abc import Sequence
 from types import ModuleType
 
-from jaclang.pycore.settings import settings
-from jaclang.pycore.utils.log import logging
-from jaclang.pycore.utils.module_resolver import (
+from jaclang.pycore.log import logging
+from jaclang.pycore.module_resolver import (
     get_jac_search_paths,
     get_py_search_paths,
 )
+from jaclang.pycore.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -207,7 +207,7 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         module creation from execution. It handles both package (__init__.jac) and
         regular module (.jac/.py) execution.
         """
-        from jaclang.pycore.runtime.runtime import JacRuntime as Jac
+        from jaclang.pycore.runtime import JacRuntime as Jac
 
         if not module.__spec__ or not module.__spec__.origin:
             raise ImportError(
@@ -239,7 +239,7 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
 
         This method is required by runpy when using `python -m module`.
         """
-        from jaclang.pycore.runtime.runtime import JacRuntime as Jac
+        from jaclang.pycore.runtime import JacRuntime as Jac
 
         # Find the .jac file for this module
         paths_to_search = get_jac_search_paths()

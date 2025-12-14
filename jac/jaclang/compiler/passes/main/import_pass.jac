@@ -19,9 +19,9 @@ The pass runs early in the compilation pipeline to ensure all symbols from impor
 modules are available for subsequent passes like symbol table building and type checking.
 """
 import os;
-import jaclang.pycore.ast.unitree as uni;
+import jaclang.pycore.unitree as uni;
 import from jaclang.pycore.passes { Transform, UniPass }
-import from jaclang.pycore.utils.log { logging }
+import from jaclang.pycore.log { logging }
 
 with entry {
     logger = logging.getLogger(__name__);
@@ -106,7 +106,7 @@ class JacImportDepsPass(Transform[(uni.Module, uni.Module)]) {
             }
             return self.prog.compile(file_path=jac_init_path);
         } elif os.path.exists((py_init_path := os.path.join(target, '__init__.py'))) {
-            import from jaclang.pycore.utils.helpers { read_file_with_encoding }
+            import from jaclang.pycore.helpers { read_file_with_encoding }
             file_source = read_file_with_encoding(py_init_path);
             mod = uni.Module.make_stub(
                 inject_name=target.split(os.path.sep)[-1],

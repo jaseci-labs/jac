@@ -6,8 +6,8 @@ import re;
 import from collections.abc { Sequence }
 import from threading { Event }
 import from typing { TYPE_CHECKING, TypeAlias, TypeVar, cast }
-import jaclang.pycore.ast.unitree as uni;
-import from jaclang.pycore.ast.constant { Tokens as Tok }
+import jaclang.pycore.unitree as uni;
+import from jaclang.pycore.constant { Tokens as Tok }
 import from jaclang.pycore.passes.uni_pass { Transform }
 with entry {
     if TYPE_CHECKING {
@@ -41,7 +41,7 @@ class PyastBuildPass(Transform[(uni.PythonModuleAst, uni.Module)]) {
 
     """Get python node type."""
     def convert(self: PyastBuildPass, <>node: py_ast.AST) -> uni.UniNode {
-        import from jaclang.pycore.utils.helpers { pascal_to_snake }
+        import from jaclang.pycore.helpers { pascal_to_snake }
         if self.is_canceled() {
             raise StopIteration ;
         }

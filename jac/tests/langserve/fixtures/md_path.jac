@@ -6,9 +6,9 @@ import time;
 import from concurrent.futures { ThreadPoolExecutor }  # TODO: go_to_def is not working here bcz threadpoolexecutor is inside some if statement
 import from typing { Callable, Optional }
 
-import jaclang.pycore.ast.unitree as uni;
+import jaclang.pycore.unitree as uni;
 import from jaclang { JacRuntimeInterface }
-import from jaclang.pycore.ast.constant { SymbolType }
+import from jaclang.pycore.constant { SymbolType }
 import from jaclang.pycore.program { JacProgram }
 import from jaclang.compiler.type_system.type_utils { get_completion_items }
 import from jaclang.compiler.type_system.types {
@@ -17,7 +17,7 @@ import from jaclang.compiler.type_system.types {
     ModuleType,
     TypeBase
 }
-import from jaclang.pycore.ast.unitree { UniScopeNode }
+import from jaclang.pycore.unitree { UniScopeNode }
 import from missing_mod { SemTokManager }
 import from circle { RAD }
 import from jaclang.vendor.pygls { uris }

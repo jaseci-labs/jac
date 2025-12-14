@@ -16,7 +16,7 @@ with entry {
 def _ensure_jac_runtime()  -> None {
     global _runtime_initialized;
     if not _runtime_initialized {
-        import from jaclang.pycore.runtime.runtime { JacRuntime as Jac }
+        import from jaclang.pycore.runtime { JacRuntime as Jac }
         Jac.setup();
         _runtime_initialized = True;
     }
@@ -119,8 +119,8 @@ def format(paths: list, outfile: str = '', to_screen: bool = False) -> None {
 
 """Create JacRuntime and return the base path, module name, and runtime state."""
 def proc_file_sess(filename: str, session: str, <>root: (str | None) = None) -> tuple {
-    import from jaclang.pycore.runtime.runtime { JacRuntime as Jac }
-    import from jaclang.pycore.runtime.runtime { JacUtils }
+    import from jaclang.pycore.runtime { JacRuntime as Jac }
+    import from jaclang.pycore.runtime { JacUtils }
     if (session == '') {
         session = cmd_registry.args.session
         if (
@@ -154,7 +154,7 @@ def run(
     filename: str, session: str = '', main: bool = True, cache: bool = True
 ) -> None {
     _ensure_jac_runtime();
-    import from jaclang.pycore.runtime.runtime { JacRuntime as Jac }
+    import from jaclang.pycore.runtime { JacRuntime as Jac }
     (base, mod, mach) = proc_file_sess(filename, session);
     lng = filename.split('.')[-1];
     Jac.set_base_path(base);
@@ -178,7 +178,7 @@ def run(
             }
         }
     } except Exception as e {
-        import from jaclang.pycore.utils.helpers { dump_traceback }
+        import from jaclang.pycore.helpers { dump_traceback }
         print(dump_traceback(e), file=sys.stderr);
         mach.close();
         <>exit(1);
@@ -190,7 +190,7 @@ def run(
 @cmd_registry.register
 def get_object(filename: str, id: str, session: str = '', main: bool = True) -> dict {
     _ensure_jac_runtime();
-    import from jaclang.pycore.runtime.runtime { JacRuntime as Jac }
+    import from jaclang.pycore.runtime { JacRuntime as Jac }
     (base, mod, mach) = proc_file_sess(filename, session);
     if filename.endswith('.jac') {
         Jac.jac_import(
@@ -332,7 +332,7 @@ def enter(
     <>node: str = ''
 ) -> None {
     _ensure_jac_runtime();
-    import from jaclang.pycore.runtime.runtime { JacRuntime as Jac }
+    import from jaclang.pycore.runtime { JacRuntime as Jac }
     import from jaclang.runtimelib.constructs { WalkerArchetype }
     (base, mod, mach) = proc_file_sess(filename, session, <>root);
     if filename.endswith('.jac') {
@@ -382,7 +382,7 @@ def <>test(
     verbose: bool = False
 ) -> None {
     _ensure_jac_runtime();
-    import from jaclang.pycore.runtime.runtime { JacRuntime as Jac }
+    import from jaclang.pycore.runtime { JacRuntime as Jac }
     failcount = Jac.run_test(
         filepath=filepath,
         func_name=('test_' + test_name) if test_name else None,
@@ -423,7 +423,7 @@ def tool(tool: str, args: (list | None) = None) -> None {
 @cmd_registry.register
 def debug(filename: str, main: bool = True, cache: bool = False) -> None {
     import from jaclang.pycore.program { JacProgram }
-    import from jaclang.pycore.utils.helpers { debugger as db }
+    import from jaclang.pycore.helpers { debugger as db }
     (base, mod) = os.path.split(filename);
     base = base if base else './';
     mod = mod[:-4];
@@ -465,7 +465,7 @@ def dot(
     to_screen: bool = False
 ) -> None {
     _ensure_jac_runtime();
-    import from jaclang.pycore.runtime.runtime { JacRuntime as Jac }
+    import from jaclang.pycore.runtime { JacRuntime as Jac }
     import from jaclang.runtimelib.builtin { printgraph }
     (base, mod, jac_machine) = proc_file_sess(filename, session);
     if filename.endswith('.jac') {
@@ -509,10 +509,10 @@ def dot(
 """Convert a Python file to Jac code.\n\n    Translates Python source code to equivalent Jac code, helping with migration\n    from Python to Jac. The conversion handles basic syntax and structures but\n    may require manual adjustments for complex code.\n\n    Args:\n        filename: Path to the .py file to convert\n\n    Examples:\n        jac py2jac myscript.py > converted.jac\n    """
 @cmd_registry.register
 def py2jac(filename: str) -> None {
-    import jaclang.pycore.ast.unitree as uni;
+    import jaclang.pycore.unitree as uni;
     import from jaclang.compiler.passes.main { PyastBuildPass }
     import from jaclang.pycore.program { JacProgram }
-    import from jaclang.pycore.utils.helpers { read_file_with_encoding }
+    import from jaclang.pycore.helpers { read_file_with_encoding }
     if filename.endswith('.py') {
         file_source = read_file_with_encoding(filename);
         code = PyastBuildPass(
@@ -596,7 +596,7 @@ def serve(
     faux: bool = False
 ) -> None {
     _ensure_jac_runtime();
-    import from jaclang.pycore.runtime.runtime { JacRuntime as Jac }
+    import from jaclang.pycore.runtime { JacRuntime as Jac }
     import from jaclang.runtimelib.server { JacAPIServer }
     (base, mod, mach) = proc_file_sess(filename, session);
     lng = filename.split('.')[-1];
@@ -644,7 +644,7 @@ def serve(
 
 """Start the command line interface."""
 def start_cli()  -> None {
-    import from jaclang.pycore.runtime.runtime { JacRuntime as Jac }
+    import from jaclang.pycore.runtime { JacRuntime as Jac }
     Jac.create_cmd();
     cmd_registry.finalize();
     parser = cmd_registry.parser;

@@ -4,16 +4,16 @@ import inspect;
 import json;
 import os;
 import sys;
-import jaclang.pycore.ast.unitree as uni;
+import jaclang.pycore.unitree as uni;
 import from jaclang.compiler.passes.ecmascript { EsastGenPass, es_node_to_dict }
 import from jaclang.compiler.passes.ecmascript.es_unparse { es_to_js }
 import from jaclang.compiler.passes.ecmascript.estree { Node as EsNode }
 import from jaclang.compiler.passes.main { PyastBuildPass }
 import from jaclang.compiler.passes.main.cfg_build_pass { cfg_dot_from_file }
 import from jaclang.compiler.passes.tool.doc_ir_gen_pass { DocIRGenPass }
-import from jaclang.pycore.ast.unitree { UniScopeNode }
+import from jaclang.pycore.unitree { UniScopeNode }
 import from jaclang.pycore.program { JacProgram }
-import from jaclang.pycore.utils.helpers { auto_generate_refs, pascal_to_snake }
+import from jaclang.pycore.helpers { auto_generate_refs, pascal_to_snake }
 import from jaclang.runtimelib.utils { read_file_with_encoding }
 """Information about a kid."""
 class AstKidInfo {
@@ -117,7 +117,7 @@ class AstTool {
 
     """Generate pass template."""
     def pass_template(self: AstTool) -> str {
-        output = 'import jaclang.pycore.ast.unitree as ast\nfrom jaclang.pycore.passes import Pass\n\nclass SomePass(Pass):\n';
+        output = 'import jaclang.pycore.unitree as ast\nfrom jaclang.pycore.passes import Pass\n\nclass SomePass(Pass):\n';
         """Emit to output.""";
         def emit(to_append: str) -> None {
             nonlocal output ;
@@ -137,9 +137,7 @@ class AstTool {
             }
             emit('    """\n');
         }
-        output = output.replace('jaclang.pycore.ast.unitree.', '').replace(
-            'typing.', ''
-        ).replace(
+        output = output.replace('jaclang.pycore.unitree.', '').replace('typing.', '').replace(
             "<enum '", ''
         ).replace(
             "'>", ''
@@ -320,7 +318,7 @@ class AstTool {
                 typ_str = str(kid.typ);
                 arrow = '-.->' if ('Optional' in typ_str) else '-->';
                 typ = typ_str.replace('typing.', '').replace(
-                    'jaclang.pycore.ast.unitree.', ''
+                    'jaclang.pycore.unitree.', ''
                 ).replace(
                     'Optional[', ''
                 ).replace(

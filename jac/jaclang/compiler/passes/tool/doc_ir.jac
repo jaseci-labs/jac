@@ -3,7 +3,7 @@ import from typing { TYPE_CHECKING, Union }
 
 with entry {
     if TYPE_CHECKING {
-        import jaclang.pycore.ast.unitree as uni;
+        import jaclang.pycore.unitree as uni;
     }
     # Define DocType for self-referential typing
     DocType = Union[

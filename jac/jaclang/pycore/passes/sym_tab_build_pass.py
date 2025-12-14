@@ -18,10 +18,10 @@ The symbol table is a fundamental data structure that enables name resolution,
 type checking, and semantic analysis throughout the compilation process.
 """
 
-import jaclang.pycore.ast.unitree as uni
-from jaclang.pycore.ast.constant import SymbolAccess
-from jaclang.pycore.ast.unitree import UniScopeNode
+import jaclang.pycore.unitree as uni
+from jaclang.pycore.constant import SymbolAccess
 from jaclang.pycore.passes.uni_pass import UniPass
+from jaclang.pycore.unitree import UniScopeNode
 
 
 class SymTabBuildPass(UniPass):

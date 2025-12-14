@@ -9,7 +9,7 @@ import from pickle { dumps }
 import from types { UnionType }
 import from typing { Any, ClassVar, TypeAlias, TypeVar }
 import from uuid { UUID, uuid4 }
-import from ..pycore.ast.constant { EdgeDir }
+import from ..pycore.constant { EdgeDir }
 with entry {
     logger = getLogger(__name__);
     TARCH = TypeVar('TARCH', bound='Archetype');

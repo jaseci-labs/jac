@@ -1,7 +1,7 @@
 """Provides type evaluation logic for unary, binary, augmented assignment and ternary operators.\n\nPyrightReference: packages/pyright-internal/src/analyzer/operations.ts\n"""
 import from typing { TYPE_CHECKING }
-import jaclang.pycore.ast.unitree as uni;
-import from jaclang.pycore.ast.constant { Tokens as Tok }
+import jaclang.pycore.unitree as uni;
+import from jaclang.pycore.constant { Tokens as Tok }
 import from . { types as jtypes }
 
 with entry {

@@ -6,11 +6,11 @@ import from dataclasses { dataclass }
 import from pathlib { Path }
 import from types { ModuleType }
 import from typing { TYPE_CHECKING, Any, NamedTuple }
-import from jaclang.pycore.utils.module_resolver { convert_to_js_import_path }
+import from jaclang.pycore.module_resolver { convert_to_js_import_path }
 with entry {
     if TYPE_CHECKING {
-        import from jaclang.pycore.ast.codeinfo { ClientManifest }
-        import from jaclang.pycore.ast.unitree { Module }
+        import from jaclang.pycore.codeinfo { ClientManifest }
+        import from jaclang.pycore.unitree { Module }
     }
 }
 

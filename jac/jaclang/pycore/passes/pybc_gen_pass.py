@@ -15,7 +15,7 @@ directly executed by the Python virtual machine.
 import ast as ast3
 import marshal
 
-import jaclang.pycore.ast.unitree as uni
+import jaclang.pycore.unitree as uni
 from jaclang.pycore.passes.transform import Transform
 
 

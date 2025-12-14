@@ -138,7 +138,7 @@ obj MongoDB {
     """
     def <>set(anchor: Anchor) -> None {
         import from jaclang.runtimelib.archetype { NodeAnchor }
-        import from jaclang.pycore.runtime.runtime { JacRuntimeInterface as Jac }
+        import from jaclang.pycore.runtime { JacRuntimeInterface as Jac }
         _id = self._to_uuid(anchor.id);
         try {
             current_hash = hash(dumps(anchor));
@@ -220,7 +220,7 @@ obj MongoDB {
     """
     def commit_bulk(anchors: Iterable[Anchor]) -> None {
         import from jaclang.runtimelib.archetype { NodeAnchor }
-        import from jaclang.pycore.runtime.runtime { JacRuntimeInterface as Jac }
+        import from jaclang.pycore.runtime { JacRuntimeInterface as Jac }
         ops: list = [];
         for anc in anchors {
             _id = self._to_uuid(anc.id);

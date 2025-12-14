@@ -5,7 +5,7 @@ from __future__ import annotations
 from threading import Event
 from typing import TYPE_CHECKING, TypeVar
 
-import jaclang.pycore.ast.unitree as uni
+import jaclang.pycore.unitree as uni
 from jaclang.pycore.passes.transform import Transform
 
 if TYPE_CHECKING:
@@ -36,14 +36,14 @@ class UniPass(Transform[uni.Module, uni.Module]):
 
     def enter_node(self, node: uni.UniNode) -> None:
         """Run on entering node."""
-        from jaclang.pycore.utils.helpers import pascal_to_snake
+        from jaclang.pycore.helpers import pascal_to_snake
 
         if hasattr(self, f"enter_{pascal_to_snake(type(node).__name__)}"):
             getattr(self, f"enter_{pascal_to_snake(type(node).__name__)}")(node)
 
     def exit_node(self, node: uni.UniNode) -> None:
         """Run on exiting node."""
-        from jaclang.pycore.utils.helpers import pascal_to_snake
+        from jaclang.pycore.helpers import pascal_to_snake
 
         if hasattr(self, f"exit_{pascal_to_snake(type(node).__name__)}"):
             getattr(self, f"exit_{pascal_to_snake(type(node).__name__)}")(node)

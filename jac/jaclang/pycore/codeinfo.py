@@ -16,7 +16,7 @@ if TYPE_CHECKING:
         Node as EsNode,
     )
     from jaclang.compiler.passes.tool.doc_ir import Doc
-    from jaclang.pycore.ast.unitree import Source, Token
+    from jaclang.pycore.unitree import Source, Token
 
 
 @dataclass

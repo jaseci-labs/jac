@@ -369,7 +369,7 @@ class ModuleIntrospector {
         if not self._module {
             return;
         }
-        import jaclang.pycore.ast.unitree as uni;
+        import jaclang.pycore.unitree as uni;
         import from jaclang.runtimelib.constructs { WalkerArchetype }
         self._function_access = {};
         self._walker_access = {};

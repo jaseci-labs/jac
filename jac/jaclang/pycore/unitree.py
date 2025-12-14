@@ -19,28 +19,28 @@ from typing import (
     cast,
 )
 
-from jaclang.pycore.ast.codeinfo import CodeGenTarget, CodeLocInfo
-from jaclang.pycore.ast.constant import (
+from jaclang.pycore.codeinfo import CodeGenTarget, CodeLocInfo
+from jaclang.pycore.constant import (
     DELIM_MAP,
     EdgeDir,
     SymbolAccess,
     SymbolType,
 )
-from jaclang.pycore.ast.constant import (
+from jaclang.pycore.constant import (
     Constants as Con,
 )
-from jaclang.pycore.ast.constant import (
+from jaclang.pycore.constant import (
     JacSemTokenModifier as SemTokMod,
 )
-from jaclang.pycore.ast.constant import (
+from jaclang.pycore.constant import (
     JacSemTokenType as SemTokType,
 )
-from jaclang.pycore.ast.constant import Tokens as Tok
-from jaclang.pycore.utils.module_resolver import resolve_relative_path
+from jaclang.pycore.constant import Tokens as Tok
+from jaclang.pycore.module_resolver import resolve_relative_path
 
 if TYPE_CHECKING:
     from jaclang.compiler.type_system.types import TypeBase
-from jaclang.pycore.utils.treeprinter import (
+from jaclang.pycore.treeprinter import (
     print_ast_tree,
     print_symtab_tree,
     printgraph_ast_tree,
@@ -174,7 +174,7 @@ class UniNode:
             raise ValueError(f"Empty kid for Token {type(self).__name__}")
 
     def gen_token(self, name: Tok, value: str | None = None) -> Token:
-        from jaclang.pycore.parser import TOKEN_MAP
+        from jaclang.pycore.jac_parser import TOKEN_MAP
 
         value = (
             value

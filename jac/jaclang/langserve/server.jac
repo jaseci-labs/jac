@@ -7,7 +7,7 @@ import logging;
 
 import from typing { Optional }
 
-import from jaclang.pycore.ast.constant {
+import from jaclang.pycore.constant {
     JacSemTokenModifier as SemTokMod,
     JacSemTokenType as SemTokType
 }

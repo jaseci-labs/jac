@@ -16,7 +16,7 @@ class JSCodeGenerator {
 
     """Generate JavaScript code for a node."""
     def generate(self: JSCodeGenerator, <>node: (es.Node | None)) -> str {
-        import from jaclang.pycore.utils.helpers { pascal_to_snake }
+        import from jaclang.pycore.helpers { pascal_to_snake }
         if (<>node is None) {
             return '';
         }

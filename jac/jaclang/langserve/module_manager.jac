@@ -1,4 +1,4 @@
-import jaclang.pycore.ast.unitree as uni;
+import jaclang.pycore.unitree as uni;
 import from jaclang.pycore.program { JacProgram }
 import from .sem_manager { SemTokManager }
 

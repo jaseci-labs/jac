@@ -1,7 +1,7 @@
 """Python-Jac AST Linking Pass for the Jac compiler.\n\nThis pass establishes bidirectional links between Python AST nodes and their corresponding\nJac AST nodes by:\n\n1. Creating connections where multiple Jac nodes map to a single Python node\n2. Handling special cases like abilities/functions where the structure differs between languages\n3. Ensuring proper name resolution across the AST boundary\n4. Maintaining parameter correspondence between declarations and implementations\n5. Supporting complex language constructs like archetypes, enums, and abilities\n\nThese links are essential for error reporting, debugging, and maintaining semantic\nrelationships between the two AST representations throughout the compilation process.\n"""
 import ast as ast3;
 import from collections.abc { Sequence }
-import jaclang.pycore.ast.unitree as uni;
+import jaclang.pycore.unitree as uni;
 import from jaclang.pycore.passes { UniPass }
 """Link jac ast to python ast nodes."""
 class PyJacAstLinkPass(UniPass) {

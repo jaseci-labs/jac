@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 import jaclang
-import jaclang.pycore.ast.unitree as ast
+import jaclang.pycore.unitree as ast
 from jaclang.compiler.passes.main import PyastBuildPass
 from jaclang.pycore.program import JacProgram
 

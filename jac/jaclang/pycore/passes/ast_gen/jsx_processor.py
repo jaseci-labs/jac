@@ -5,7 +5,7 @@ from __future__ import annotations
 import ast as ast3
 from typing import TYPE_CHECKING, cast
 
-import jaclang.pycore.ast.unitree as uni
+import jaclang.pycore.unitree as uni
 
 if TYPE_CHECKING:
     from jaclang.compiler.passes.ecmascript.esast_gen_pass import EsastGenPass

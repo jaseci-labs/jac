@@ -1,7 +1,7 @@
 """Plugin for Jac's with_llm feature."""
 import from collections.abc { Callable }
 import from typing { TYPE_CHECKING }
-import from jaclang.pycore.runtime.runtime { hookimpl }
+import from jaclang.pycore.runtime { hookimpl }
 
 with entry {
     if TYPE_CHECKING {

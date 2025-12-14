@@ -11,9 +11,9 @@ This pass is essential for Jac's semantic annotation system, allowing developers
 semantics in one file and link them to their corresponding declarations in another.
 """
 
-import jaclang.pycore.ast.unitree as uni;
+import jaclang.pycore.unitree as uni;
 import from jaclang.pycore.passes.transform { Transform }
-import from jaclang.pycore.ast.unitree { Symbol, UniScopeNode }
+import from jaclang.pycore.unitree { Symbol, UniScopeNode }
 
 """Jac Semantic definition match pass."""
 class SemDefMatchPass(Transform[(uni.Module, uni.Module)]) {

@@ -1,4 +1,4 @@
-import jaclang.pycore.ast.unitree as uni;
+import jaclang.pycore.unitree as uni;
 
 with entry {
     a: int = uni.Module;  # <-- Error

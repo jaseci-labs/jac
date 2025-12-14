@@ -9,10 +9,10 @@ from dataclasses import dataclass
 from threading import Event
 from typing import TYPE_CHECKING, TypeAlias, TypeVar, cast
 
-import jaclang.pycore.ast.unitree as uni
-from jaclang.pycore.ast.constant import EdgeDir
-from jaclang.pycore.ast.constant import Tokens as Tok
-from jaclang.pycore.parser.larkparse import jac_parser as jl
+import jaclang.pycore.unitree as uni
+from jaclang.pycore import lark_jac_parser as jl
+from jaclang.pycore.constant import EdgeDir
+from jaclang.pycore.constant import Tokens as Tok
 from jaclang.pycore.passes import BaseTransform, Transform
 
 if TYPE_CHECKING:

@@ -25,10 +25,10 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import ClassVar, TypeVar, cast
 
-import jaclang.pycore.ast.unitree as uni
-from jaclang.pycore.ast.constant import Constants as Con
-from jaclang.pycore.ast.constant import EdgeDir
-from jaclang.pycore.ast.constant import Tokens as Tok
+import jaclang.pycore.unitree as uni
+from jaclang.pycore.constant import Constants as Con
+from jaclang.pycore.constant import EdgeDir
+from jaclang.pycore.constant import Tokens as Tok
 from jaclang.pycore.passes.ast_gen import BaseAstGenPass
 from jaclang.pycore.passes.ast_gen.jsx_processor import PyJsxProcessor
 

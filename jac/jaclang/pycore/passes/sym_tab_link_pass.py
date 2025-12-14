@@ -20,9 +20,9 @@ to reference symbols defined in other modules while maintaining proper scoping r
 
 import os
 
-import jaclang.pycore.ast.unitree as uni
-from jaclang.pycore.ast.unitree import InheritedSymbolTable, UniScopeNode
+import jaclang.pycore.unitree as uni
 from jaclang.pycore.passes.transform import Transform
+from jaclang.pycore.unitree import InheritedSymbolTable, UniScopeNode
 
 
 class SymTabLinkPass(Transform[uni.Module, uni.Module]):

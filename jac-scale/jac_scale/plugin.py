@@ -8,12 +8,12 @@ import sys
 from dotenv import load_dotenv
 
 from jaclang.cli.cmdreg import CommandPriority, cmd_registry
-from jaclang.pycore.runtime.runtime import (
+from jaclang.pycore.runtime import (
     ExecutionContext,
     hookimpl,
     plugin_manager,
 )
-from jaclang.pycore.runtime.runtime import (
+from jaclang.pycore.runtime import (
     JacRuntime as Jac,
 )
 

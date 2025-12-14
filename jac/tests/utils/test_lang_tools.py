@@ -7,7 +7,7 @@ from collections.abc import Callable
 import pytest
 
 import jaclang
-from jaclang.pycore.utils.helpers import extract_headings, heading_to_snake
+from jaclang.pycore.helpers import extract_headings, heading_to_snake
 from jaclang.runtimelib.utils import read_file_with_encoding
 from jaclang.utils.lang_tools import AstTool
 
