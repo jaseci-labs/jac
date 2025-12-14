@@ -1,6 +1,7 @@
 """Test for jac-scale serve command and REST API server."""
 
 import contextlib
+import glob
 import socket
 import subprocess
 import time
@@ -49,6 +50,9 @@ class TestJacScaleServe:
         # Use unique session file for tests
         cls.session_file = cls.fixtures_dir / f"test_serve_{cls.port}.session"
 
+        # Clean up any existing session files before starting
+        cls._cleanup_session_files()
+
         # Start the server process
         cls.server_process = None
         cls._start_server()
@@ -64,6 +68,9 @@ class TestJacScaleServe:
             except subprocess.TimeoutExpired:
                 cls.server_process.kill()
                 cls.server_process.wait()
+
+        # Give the server a moment to fully release file handles
+        time.sleep(0.5)
 
         # Clean up session files
         cls._cleanup_session_files()
@@ -141,6 +148,11 @@ class TestJacScaleServe:
                 if file.name.startswith(prefix):
                     with contextlib.suppress(Exception):
                         file.unlink()
+
+        session_pattern = str(cls.fixtures_dir / "test_serve_*.session*")
+        for file_path in glob.glob(session_pattern):
+            with contextlib.suppress(Exception):
+                Path(file_path).unlink()
 
     def _request(
         self,
@@ -646,3 +658,339 @@ class TestJacScaleServe:
 
         assert "result" in result
         assert result["result"] == 56
+
+    def test_status_code_user_register_201_success(self) -> None:
+        """Test POST /user/register returns 201 on successful registration."""
+        response = requests.post(
+            f"{self.base_url}/user/register",
+            json={"email": "status201@example.com", "password": "password123"},
+            timeout=5,
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert "token" in data
+        assert "email" in data
+        assert data["email"] == "status201@example.com"
+
+    def test_status_code_user_register_400_already_exists(self) -> None:
+        """Test POST /user/register returns 400 when user already exists."""
+        email = "status400exists@example.com"
+        # Create user first
+        requests.post(
+            f"{self.base_url}/user/register",
+            json={"email": email, "password": "password123"},
+            timeout=5,
+        )
+
+        # Try to create again
+        response = requests.post(
+            f"{self.base_url}/user/register",
+            json={"email": email, "password": "password123"},
+            timeout=5,
+        )
+        assert response.status_code == 400
+        data = response.json()
+        assert "error" in data
+
+    def test_status_code_user_login_200_success(self) -> None:
+        """Test POST /user/login returns 200 on successful login."""
+        email = "status200login@example.com"
+        # Create user first
+        requests.post(
+            f"{self.base_url}/user/register",
+            json={"email": email, "password": "password123"},
+            timeout=5,
+        )
+
+        # Login
+        response = requests.post(
+            f"{self.base_url}/user/login",
+            json={"email": email, "password": "password123"},
+            timeout=5,
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert "token" in data
+
+    def test_status_code_user_login_400_missing_credentials(self) -> None:
+        """Test POST /user/login returns 400/422 when email or password is missing."""
+        # Missing password - FastAPI returns 422 for validation errors
+        response = requests.post(
+            f"{self.base_url}/user/login",
+            json={"email": "test@example.com"},
+            timeout=5,
+        )
+        assert response.status_code in [400, 422]  # 422 from FastAPI validation
+        data = response.json()
+        # Either custom error or FastAPI validation error
+        assert "error" in data or "detail" in data
+
+        # Missing email
+        response = requests.post(
+            f"{self.base_url}/user/login",
+            json={"password": "password123"},
+            timeout=5,
+        )
+        assert response.status_code in [400, 422]
+
+        # Missing both
+        response = requests.post(
+            f"{self.base_url}/user/login",
+            json={},
+            timeout=5,
+        )
+        assert response.status_code in [400, 422]
+
+        # Empty string values - should trigger custom 400 validation
+        response = requests.post(
+            f"{self.base_url}/user/login",
+            json={"email": "", "password": "password123"},
+            timeout=5,
+        )
+        assert response.status_code == 400
+        data = response.json()
+        assert data["error"] == "Email and password required"
+
+    def test_status_code_user_login_401_invalid_credentials(self) -> None:
+        """Test POST /user/login returns 401 for invalid credentials."""
+        email = "status401login@example.com"
+        # Create user
+        requests.post(
+            f"{self.base_url}/user/register",
+            json={"email": email, "password": "correctpass"},
+            timeout=5,
+        )
+
+        # Wrong password
+        response = requests.post(
+            f"{self.base_url}/user/login",
+            json={"email": email, "password": "wrongpass"},
+            timeout=5,
+        )
+        assert response.status_code == 401
+        data = response.json()
+        assert data["error"] == "Invalid credentials"
+
+        # Non-existent user
+        response = requests.post(
+            f"{self.base_url}/user/login",
+            json={"email": "nonexistent@example.com", "password": "password"},
+            timeout=5,
+        )
+        assert response.status_code == 401
+
+    def test_status_code_refresh_token_200_success(self) -> None:
+        """Test POST /user/refresh-token returns 200 on successful refresh."""
+        # Create user and get token
+        create_response = requests.post(
+            f"{self.base_url}/user/register",
+            json={"email": "status200refresh@example.com", "password": "password123"},
+            timeout=5,
+        )
+        token = create_response.json()["token"]
+
+        # Refresh token
+        response = requests.post(
+            f"{self.base_url}/user/refresh-token",
+            json={"token": token},
+            timeout=5,
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert "token" in data
+        assert data["message"] == "Token refreshed successfully"
+
+    def test_status_code_refresh_token_400_missing_token(self) -> None:
+        """Test POST /user/refresh-token returns 400/422 when token is missing."""
+        # Empty token - custom validation returns 400
+        response = requests.post(
+            f"{self.base_url}/user/refresh-token",
+            json={"token": ""},
+            timeout=5,
+        )
+        assert response.status_code == 400
+        data = response.json()
+        assert data["error"] == "Token is required"
+
+        # Null token - FastAPI validation may return 422
+        response = requests.post(
+            f"{self.base_url}/user/refresh-token",
+            json={"token": None},
+            timeout=5,
+        )
+        assert response.status_code in [400, 422]
+
+    def test_status_code_refresh_token_401_invalid_token(self) -> None:
+        """Test POST /user/refresh-token returns 401 for invalid token."""
+        # Invalid token format
+        response = requests.post(
+            f"{self.base_url}/user/refresh-token",
+            json={"token": "invalid_token_string"},
+            timeout=5,
+        )
+        assert response.status_code == 401
+        data = response.json()
+        assert data["error"] == "Invalid or expired token"
+
+        # Malformed JWT
+        response = requests.post(
+            f"{self.base_url}/user/refresh-token",
+            json={"token": "not.a.jwt"},
+            timeout=5,
+        )
+        assert response.status_code == 401
+
+    def test_status_code_walker_200_success(self) -> None:
+        """Test POST /walker/{name} returns 200 on successful execution."""
+        # Create user
+        create_response = requests.post(
+            f"{self.base_url}/user/register",
+            json={"email": "status200walker@example.com", "password": "password123"},
+            timeout=5,
+        )
+        token = create_response.json()["token"]
+
+        # Execute walker
+        response = requests.post(
+            f"{self.base_url}/walker/CreateTask",
+            json={"title": "Test Task", "priority": 2},
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=5,
+        )
+        assert response.status_code == 200
+
+    def test_status_code_function_200_success(self) -> None:
+        """Test POST /function/{name} returns 200 on successful execution."""
+        # Create user
+        create_response = requests.post(
+            f"{self.base_url}/user/register",
+            json={"email": "status200func@example.com", "password": "password123"},
+            timeout=5,
+        )
+        token = create_response.json()["token"]
+
+        # Execute function
+        response = requests.post(
+            f"{self.base_url}/function/add_numbers",
+            json={"a": 10, "b": 20},
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=5,
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert "result" in data
+
+    def test_status_code_page_404_not_found(self) -> None:
+        """Test GET /page/{name} returns 404 for non-existent page."""
+        response = requests.get(
+            f"{self.base_url}/page/nonexistent_page_xyz",
+            timeout=5,
+        )
+        assert response.status_code == 404
+        assert "404" in response.text
+
+    def test_status_code_static_client_js_200_or_503(self) -> None:
+        """Test GET /static/client.js returns 200 or 503."""
+        response = requests.get(
+            f"{self.base_url}/static/client.js",
+            timeout=5,
+        )
+        # Should be either 200 (success) or 503 (bundle generation failed)
+        assert response.status_code in [200, 503]
+        if response.status_code == 200:
+            assert "application/javascript" in response.headers.get("content-type", "")
+
+    def test_status_code_static_file_404_not_found(self) -> None:
+        """Test GET /static/{path} returns 404 for non-existent file."""
+        response = requests.get(
+            f"{self.base_url}/static/nonexistent_file.css",
+            timeout=5,
+        )
+        assert response.status_code == 404
+        assert "not found" in response.text.lower()
+
+    def test_status_code_root_asset_404_not_found(self) -> None:
+        """Test GET /{file_path} returns 404 for non-existent asset."""
+        response = requests.get(
+            f"{self.base_url}/nonexistent_image.png",
+            timeout=5,
+        )
+        assert response.status_code == 404
+
+    def test_status_code_root_asset_404_disallowed_extension(self) -> None:
+        """Test GET /{file_path} returns 404 for disallowed file extensions."""
+        # Try .exe file
+        response = requests.get(
+            f"{self.base_url}/malware.exe",
+            timeout=5,
+        )
+        assert response.status_code == 404
+
+        # Try .php file
+        response = requests.get(
+            f"{self.base_url}/script.php",
+            timeout=5,
+        )
+        assert response.status_code == 404
+
+    def test_status_code_root_asset_404_reserved_paths(self) -> None:
+        """Test GET /{file_path} returns 404 for reserved path prefixes."""
+        # These paths should be excluded even with valid extensions
+        reserved_paths = [
+            "page/something.png",
+            "walker/something.png",
+            "function/something.png",
+            "user/something.png",
+            "static/something.png",
+        ]
+
+        for path in reserved_paths:
+            response = requests.get(
+                f"{self.base_url}/{path}",
+                timeout=5,
+            )
+            assert response.status_code == 404
+
+    def test_status_code_integration_auth_flow(self) -> None:
+        """Integration test for complete authentication flow with status codes."""
+        email = "integration_status@example.com"
+
+        # Register - 201
+        register_response = requests.post(
+            f"{self.base_url}/user/register",
+            json={"email": email, "password": "secure123"},
+            timeout=5,
+        )
+        assert register_response.status_code == 201
+        token1 = register_response.json()["token"]
+
+        # Login - 200
+        login_response = requests.post(
+            f"{self.base_url}/user/login",
+            json={"email": email, "password": "secure123"},
+            timeout=5,
+        )
+        assert login_response.status_code == 200
+        token2 = login_response.json()["token"]
+
+        # Refresh token - 200
+        refresh_response = requests.post(
+            f"{self.base_url}/user/refresh-token",
+            json={"token": token1},
+            timeout=5,
+        )
+        assert refresh_response.status_code == 200
+        token3 = refresh_response.json()["token"]
+
+        # Failed login - 401
+        fail_response = requests.post(
+            f"{self.base_url}/user/login",
+            json={"email": email, "password": "wrongpass"},
+            timeout=5,
+        )
+        assert fail_response.status_code == 401
+
+        # Verify all tokens are different
+        assert token1 != token2
+        assert token2 != token3
+        assert token1 != token3

@@ -231,7 +231,7 @@ class JFastApiServer(JServer[FastAPI]) {
     def _get_default_status_code(self: JFastApiServer, method: HTTPMethod) -> int {
         status_codes = {
             HTTPMethod.GET: 200,
-            HTTPMethod.POST: 201,
+            HTTPMethod.POST: 200,
             HTTPMethod.PUT: 200,
             HTTPMethod.PATCH: 200,
             HTTPMethod.DELETE: 204
