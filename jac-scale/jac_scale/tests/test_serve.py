@@ -120,7 +120,7 @@ class TestJacScaleServe:
                     server_ready = True
                     break
             except (requests.ConnectionError, requests.Timeout):
-                time.sleep(0.2)
+                time.sleep(2)
 
         # If we get here and server is not ready, it failed to start
         if not server_ready:
