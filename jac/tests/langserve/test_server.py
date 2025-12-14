@@ -41,6 +41,11 @@ def reset_jac_machine() -> Generator[None, None, None]:
     yield
     # Clear type system state from all servers created during the test
     for server in _active_servers:
+        # Ensure worker thread is stopped to avoid cross-test interference.
+        try:
+            server.shutdown()
+        except Exception:
+            pass
         server.clear_type_system(clear_hub=True)
     _active_servers.clear()
     _clear_jac_modules()
@@ -228,20 +233,20 @@ def test_go_to_definition_md_path(fixture_path: Callable[[str], str]) -> None:
             (6, 17, "concurrent/__init__.py:0:0-0:0"),
             (6, 28, "concurrent/futures/__init__.py:0:0-0:0"),
             (7, 17, "typing.py:0:0-0:0"),
-            (9, 18, "compiler/__init__.py:0:0-0:0"),
-            (9, 38, "compiler/unitree.py:0:0-0:0"),
-            (10, 34, "jac/jaclang/__init__.py:13:3-13:22"),
-            (11, 35, "compiler/constant.py:0:0-0:0"),
-            (11, 47, "compiler/constant.py:5:0-34:9"),
-            (13, 47, "compiler/type_system/type_utils.py:0:0-0:0"),
-            (14, 34, "compiler/type_system/__init__.py:0:0-0:0"),
+            (9, 18, "jaclang/pycore/__init__.py:0:0-0:0"),
+            (9, 38, "jaclang/pycore/ast/unitree.py:0:0-0:0"),
+            (10, 34, "jac/jaclang/__init__.py:15:3-15:22"),
+            (11, 35, "jaclang/pycore/ast/constant.py:0:0-0:0"),
+            (11, 47, "jaclang/pycore/ast/constant.py:5:0-34:9"),
+            (13, 47, "jaclang/compiler/type_system/type_utils.jac:0:0-0:0"),
+            (14, 34, "jaclang/compiler/type_system/__init__.py:0:0-0:0"),
             (18, 5, "compiler/type_system/types.jac:47:6-47:14"),  # TypeBase now on line 18
-            (20, 34, "compiler/unitree.py:0:0-0:0"),              # UniScopeNode now on line 20
+            (20, 34, "jaclang/pycore/ast/unitree.py:0:0-0:0"),              # UniScopeNode now on line 20
             # (20, 48, "compiler/unitree.py:335:0-566:11"),
             (22, 22, "tests/langserve/fixtures/circle.jac:7:5-7:8"),  # RAD now on line 22, fixture line changed too
-            (23, 38, "vendor/pygls/uris.py:0:0-0:0"),             # uris now on line 23
-            (24, 52, "vendor/pygls/server.py:351:0-615:13"),      # LanguageServer on line 24
-            (26, 31, "vendor/lsprotocol/types.py:0:0-0:0"),       # lspt now on line 26
+            (23, 38, "jaclang/vendor/pygls/uris.py:0:0-0:0"),             # uris now on line 23
+            (24, 52, "jaclang/vendor/pygls/server.py:351:0-615:13"),      # LanguageServer on line 24
+            (26, 31, "jaclang/vendor/lsprotocol/types.py:0:0-0:0"),       # lspt now on line 26
         ]
         # fmt: on
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import site
 import sys
+import importlib.util
 
 
 def get_jac_search_paths(base_path: str | None = None) -> list[str]:
@@ -64,6 +65,30 @@ def resolve_module(target: str, base_path: str) -> tuple[str, str]:
         other_target = os.path.join(base_dir, target)
     if os.path.exists(other_target) and os.path.isfile(other_target):
         return other_target, "other"
+
+    # Fall back to Python's import resolution. This supports non-filesystem
+    # `sys.path` entries (e.g., PEP 660 editable installs with path hooks),
+    # which our manual filesystem search cannot traverse.
+    if not target.startswith("."):
+        try:
+            spec = importlib.util.find_spec(target)
+        except (ImportError, AttributeError, ValueError):
+            spec = None
+        if spec and spec.origin and spec.origin not in {"built-in", "frozen"}:
+            origin = spec.origin
+            ext = os.path.splitext(origin)[1].lower()
+            # Ignore non-source origins (e.g. extension modules like `.so`),
+            # since they can't be parsed for symbols; fall back to typeshed.
+            if ext in {".jac", ".pyi", ".py", ".js", ".ts", ".jsx", ".tsx"}:
+                if ext == ".jac":
+                    return origin, "jac"
+                if ext == ".pyi":
+                    return origin, "pyi"
+                if ext == ".py":
+                    return origin, "py"
+                if ext in {".js", ".ts", ".jsx", ".tsx"}:
+                    return origin, "js"
+                return origin, "other"
 
     parts = target.split(".")
     level = 0

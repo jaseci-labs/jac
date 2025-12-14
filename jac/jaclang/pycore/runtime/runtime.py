@@ -2201,6 +2201,17 @@ class JacRuntime(JacRuntimeInterface):
             "jaclang.runtimelib.mtp",
             "jaclang.runtimelib.test",
             "jaclang.compiler.passes.tool.doc_ir",
+            # Keep language server + type-system modules stable across resets.
+            # These are imported at module scope in tests and rely on `isinstance`
+            # checks against types defined in these modules.
+            "jaclang.langserve.engine",
+            "jaclang.compiler.type_system.types",
+            "jaclang.compiler.type_system.type_evaluator",
+            "jaclang.compiler.type_system.type_utils",
+            # ES AST nodes are stored in compiled program state and may be pickled.
+            # Keep their defining module stable across resets to avoid class identity
+            # mismatches during pickling.
+            "jaclang.compiler.passes.ecmascript.estree",
         }
         for i in JacRuntime.loaded_modules.values():
             if i.__name__ not in special_modules:

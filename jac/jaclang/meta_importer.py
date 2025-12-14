@@ -91,6 +91,11 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
             "jaclang.compiler.passes.main.def_impl_match_pass",
             "jaclang.compiler.passes.main.cfg_build_pass",
             "jaclang.compiler.passes.main.pyast_load_pass",
+            # ECMAScript codegen modules are used by the full codegen schedule,
+            # so compiling them requires a minimal schedule to avoid cycles.
+            "jaclang.compiler.passes.ecmascript.estree",
+            "jaclang.compiler.passes.ecmascript.es_unparse",
+            "jaclang.compiler.passes.ecmascript.esast_gen_pass",
         }
     )
 
