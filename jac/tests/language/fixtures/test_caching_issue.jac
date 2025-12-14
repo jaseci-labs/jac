@@ -1,5 +1,3 @@
-
-            test mytest{
-                assert 10 == 10;
-            }
-            
+test mytest {
+    assert 10 == 10;
+}
