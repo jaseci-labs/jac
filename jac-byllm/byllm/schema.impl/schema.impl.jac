@@ -3,10 +3,10 @@ impl _type_to_schema(ty: type, title: str = "", desc: str = "") -> dict {
     context = ({"title": title} if title else {}) | (
         {"description": desc} if desc else {}
     );
-    semstr: str = ty._jac_semstr if hasattr(ty, "_jac_semstr") else "";
-    semstr = semstr or (ty.__doc__ if hasattr(ty, "__doc__") else "") or "";  # type: ignore
+    semstr: str = ty?._jac_semstr;
+    semstr = semstr or (ty?.__doc__) or "";  # type: ignore
     semstr_inner: dict[str, str] = (
-        ty._jac_semstr_inner if hasattr(ty, "_jac_semstr_inner") else {}
+        ty._jac_semstr_inner if ty?._jac_semstr_inner else {}
     );
     # Raise on unsupported types
     if ty in (list, dict, set, tuple) {
