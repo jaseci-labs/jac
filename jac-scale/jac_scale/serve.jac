@@ -14,7 +14,7 @@ import from jac_scale.jserver.jserver {
     JEndPoint,
     ParameterType
 }
-import from jaclang.runtimelib.runtime { JacRuntime as Jac }
+import from jaclang.pycore.runtime.runtime { JacRuntime as Jac }
 import from jaclang.runtimelib.server { JacAPIServer as JServer }
 import from jaclang.runtimelib.server { JsonValue }
 

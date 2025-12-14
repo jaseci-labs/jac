@@ -1,6 +1,8 @@
 """Core primitives for Jaseci.
 
-This __init__.py exists to enable importing runtime.py during bootstrap
-without triggering .jac compilation. The __init__.jac is loaded later
-for full functionality.
+This package exists to host Jac `.jac` runtime modules.
+
+The legacy `jaclang.runtimelib.runtime` import path is now provided via an
+alias set in `jaclang.__init__` to avoid eager `.jac` compilation during
+bootstrap.
 """
