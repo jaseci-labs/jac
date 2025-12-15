@@ -1,0 +1,17 @@
+{
+  "vite": {
+    "plugins": [],
+    "lib_imports": [],
+    "build": {},
+    "server": {},
+    "resolve": {}
+  },
+  "ts": {},
+  "package": {
+    "name": "image-asset",
+    "version": "1.0.0",
+    "description": "Jac application: image-asset",
+    "dependencies": {},
+    "devDependencies": {}
+  }
+}
