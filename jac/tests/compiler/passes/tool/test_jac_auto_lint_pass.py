@@ -164,6 +164,45 @@ class TestJacAutoLintPass:
         assert "glob module_var" in formatted
         assert "glob cls_obj" in formatted
 
+    def test_init_postinit_conversion(
+        self, auto_lint_fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that __init__ and __post_init__ are converted to init/postinit."""
+        input_path = auto_lint_fixture_path("init_conversion.jac")
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True)
+        formatted = prog.mod.main.gen.jac
+
+        # Python-style __init__ should be converted to Jac's init keyword
+        assert "def __init__" not in formatted
+        assert "def init" in formatted
+
+        # Python-style __post_init__ should be converted to Jac's postinit keyword
+        assert "def __post_init__" not in formatted
+        assert "def postinit" in formatted
+
+        # Regular methods should remain unchanged
+        assert "def greet" in formatted
+
+        # Classes should still be present
+        assert "class Person" in formatted
+        assert "class Employee" in formatted
+        assert "class DataClass" in formatted
+        assert "class CommentedClass" in formatted
+
+        # Comments should be preserved
+        assert "# Constructor comment before __init__" in formatted
+        assert "# Set the name field" in formatted
+        assert "# inline comment for age" in formatted
+        assert "# Post-initialization hook" in formatted
+        assert "# Default department assignment" in formatted
+        assert "# Comment inside init body" in formatted
+        assert "# Another comment at end" in formatted
+
+        # Docstrings should be preserved
+        assert '"""Initialize a Person with name and age."""' in formatted
+        assert '"""Initialize Employee with additional employee_id."""' in formatted
+
 
 class TestIsPureExpression:
     """Unit tests for the is_pure_expression method."""
