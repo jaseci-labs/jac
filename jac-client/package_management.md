@@ -19,6 +19,7 @@ The Jac Client package management system abstracts npm package management into a
 **Location**: Project root (`{project_dir}/config.json`)
 
 **Structure**:
+
 ```json
 {
   "package": {
@@ -36,6 +37,7 @@ The Jac Client package management system abstracts npm package management into a
 ```
 
 **Fields**:
+
 - `name`: Project name (auto-populated from project filename when using `jac create_jac_app`)
 - `version`: Project version (default: "1.0.0")
 - `description`: Project description
@@ -43,6 +45,7 @@ The Jac Client package management system abstracts npm package management into a
 - `devDependencies`: Development npm packages
 
 **What's NOT in config.json**:
+
 - `scripts`: Auto-generated during build
 - `babel`: Auto-generated during build
 - `type`: Always `"module"`, auto-generated
@@ -54,18 +57,21 @@ The Jac Client package management system abstracts npm package management into a
 **File**: `jac_client/plugin/src/config_loader.jac`
 
 **Responsibilities**:
+
 - Load and parse `config.json`
 - Merge user config with defaults
 - Provide accessors for different config sections
 - Validate JSON structure
 
 **Key Methods**:
+
 - `load()`: Loads and merges config with defaults
 - `get_package_config()`: Returns the `package` section
 - `get_vite_config()`: Returns the `vite` section
 - `get_ts_config()`: Returns the `ts` section
 
 **Default Package Config**:
+
 ```python
 {
     'name': '',
@@ -81,6 +87,7 @@ The Jac Client package management system abstracts npm package management into a
 **File**: `jac_client/plugin/src/vite_bundler.jac`
 
 **Responsibilities**:
+
 - Generate `package.json` from `config.json`
 - Merge user dependencies with defaults
 - Include build-time fields (scripts, babel, type)
@@ -96,6 +103,7 @@ The Jac Client package management system abstracts npm package management into a
    - Fallback to `"jac-app"`
 
 2. **Default Dependencies**:
+
    ```json
    {
      "dependencies": {
@@ -114,6 +122,7 @@ The Jac Client package management system abstracts npm package management into a
    ```
 
 3. **TypeScript Dependencies** (if TypeScript support detected):
+
    ```json
    {
      "devDependencies": {
@@ -126,6 +135,7 @@ The Jac Client package management system abstracts npm package management into a
    ```
 
 4. **Default Scripts**:
+
    ```json
    {
      "scripts": {
@@ -138,6 +148,7 @@ The Jac Client package management system abstracts npm package management into a
    ```
 
 5. **Babel Config** (always included):
+
    ```json
    {
      "babel": {
@@ -154,6 +165,7 @@ The Jac Client package management system abstracts npm package management into a
    - `main: "index.js"`
 
 **Output Locations**:
+
 - Primary: `.jac-client.configs/package.json` (persisted)
 - Temporary: `{project_root}/package.json` (for npm commands, removed after install)
 
@@ -162,6 +174,7 @@ The Jac Client package management system abstracts npm package management into a
 **File**: `jac_client/plugin/src/package_installer.jac`
 
 **Responsibilities**:
+
 - Update `config.json` with new packages
 - Trigger `package.json` regeneration
 - Execute `npm install`
@@ -170,18 +183,24 @@ The Jac Client package management system abstracts npm package management into a
 **Key Methods**:
 
 #### `install_package(package_name, version, is_dev)`
+
 Adds a package to `config.json` and installs it:
+
 1. Load current `config.json`
 2. Add package to `dependencies` or `devDependencies`
 3. Write updated `config.json`
 4. Call `_regenerate_and_install()`
 
 #### `install_all()`
+
 Installs all packages from `config.json`:
+
 1. Call `_regenerate_and_install()`
 
 #### `_regenerate_and_install()`
+
 Core installation workflow:
+
 1. Generate `package.json` from `config.json` (via `ViteBundler.create_package_json()`)
 2. Copy `package.json` to project root (npm requires it there)
 3. Run `npm install` in project root
@@ -189,14 +208,18 @@ Core installation workflow:
 5. Remove root `package.json` (keep only `.jac-client.configs/package.json`)
 
 #### `uninstall_package(package_name, is_dev)`
+
 Removes a package from `config.json` and uninstalls it:
+
 1. Load current `config.json`
 2. Remove package from appropriate dependencies dict
 3. Write updated `config.json`
 4. Call `_regenerate_and_install()` to update `package.json` and run `npm install`
 
 #### `list_packages()`
+
 Returns all packages from `config.json`:
+
 ```python
 {
     'dependencies': {...},
@@ -234,12 +257,14 @@ Returns all packages from `config.json`:
 ### After Installation
 
 **Persisted Files**:
+
 - `config.json` (root) - Source configuration (committed to git)
 - `.jac-client.configs/package.json` - Generated package.json (gitignored)
 - `.jac-client.configs/package-lock.json` - Lock file (gitignored)
 - `node_modules/` - Installed packages (gitignored)
 
 **Removed Files**:
+
 - `package.json` (root) - Removed after npm install
 
 ### During Build
@@ -268,6 +293,7 @@ Returns all packages from `config.json`:
 **File**: `jac_client/plugin/cli.py`
 
 **Usage**:
+
 ```bash
 # Install all packages from config.json
 jac install --cl
@@ -283,6 +309,7 @@ jac install --cl lodash@^4.17.21
 ```
 
 **Implementation**:
+
 1. Validates `--cl` flag is present
 2. Creates `PackageInstaller` instance
 3. If no package name: calls `install_all()`
@@ -292,6 +319,7 @@ jac install --cl lodash@^4.17.21
 5. Handles errors and provides user feedback
 
 **Error Handling**:
+
 - Missing `config.json`: Suggests running `jac generate_client_config`
 - npm not found: Clear error message
 - npm install failure: Displays stderr
@@ -301,6 +329,7 @@ jac install --cl lodash@^4.17.21
 **File**: `jac_client/plugin/cli.py`
 
 **Usage**:
+
 ```bash
 # Uninstall specific package (dependencies)
 jac uninstall --cl lodash
@@ -310,6 +339,7 @@ jac uninstall --cl -D @types/react
 ```
 
 **Implementation**:
+
 1. Validates `--cl` flag is present
 2. Validates package name is provided
 3. Creates `PackageInstaller` instance
@@ -317,6 +347,7 @@ jac uninstall --cl -D @types/react
 5. Handles errors and provides user feedback
 
 **Error Handling**:
+
 - Missing `config.json`: Suggests running `jac generate_client_config`
 - Package not found: Clear error message indicating which dependency type was checked
 - npm not found: Clear error message
@@ -327,6 +358,7 @@ jac uninstall --cl -D @types/react
 **File**: `jac_client/plugin/cli.py`
 
 **Creates Initial Config**:
+
 ```json
 {
   "package": {
@@ -350,6 +382,7 @@ The `name` field is automatically populated from the project filename.
 **File**: `jac_client/plugin/client.jac`
 
 **Integration**:
+
 - `get_client_bundle_builder()` checks for `package.json`
 - If missing, generates it via `ViteBundler.create_package_json()`
 - Ensures `package.json` exists before initializing `ViteClientBundleBuilder`
@@ -359,6 +392,7 @@ The `name` field is automatically populated from the project filename.
 **File**: `jac_client/plugin/src/vite_bundler.py`
 
 **Integration**:
+
 - `build()` method checks for `package.json` before building
 - Calls `create_package_json()` if missing
 - Ensures `node_modules` exists (runs `npm install` if needed)
@@ -368,6 +402,7 @@ The `name` field is automatically populated from the project filename.
 **File**: `jac_client/plugin/src/babel_processor.jac`
 
 **Integration**:
+
 - Requires `package.json` in root for `npm run compile`
 - Relies on `ViteBundler` to ensure it exists
 
@@ -418,6 +453,7 @@ When generating `package.json`, dependencies are merged as follows:
 4. **Preserve user deps**: Additional user packages are added
 
 **Example**:
+
 ```json
 // config.json
 {
@@ -447,6 +483,7 @@ When generating `package.json`, dependencies are merged as follows:
 **Scenario**: User runs `jac install --cl` without `config.json`
 
 **Handling**:
+
 - `PackageInstaller` raises `ClientBundleError`
 - Error message: `"config.json not found. Run 'jac generate_client_config' first."`
 
@@ -455,6 +492,7 @@ When generating `package.json`, dependencies are merged as follows:
 **Scenario**: `npm` command not available in PATH
 
 **Handling**:
+
 - `subprocess.run()` raises `FileNotFoundError`
 - `PackageInstaller` catches and raises `ClientBundleError`
 - Error message: `"npm command not found. Ensure Node.js and npm are installed."`
@@ -464,6 +502,7 @@ When generating `package.json`, dependencies are merged as follows:
 **Scenario**: `npm install` fails (network, permissions, etc.)
 
 **Handling**:
+
 - `subprocess.run()` raises `CalledProcessError`
 - `PackageInstaller` catches and raises `ClientBundleError`
 - Error message includes `e.stderr` for debugging
@@ -473,6 +512,7 @@ When generating `package.json`, dependencies are merged as follows:
 **Scenario**: Build process starts but `package.json` doesn't exist
 
 **Handling**:
+
 - `client.jac.get_client_bundle_builder()` checks for existence
 - If missing, calls `ViteBundler.create_package_json()` automatically
 - Ensures build can proceed without manual intervention
@@ -499,4 +539,3 @@ Potential improvements to the package management system:
 5. **Custom Scripts**: Allow user-defined scripts in `config.json` (merged with defaults)
 6. **Package Groups**: Organize dependencies into logical groups
 7. **Auto-update**: Automatic updates for patch/minor versions
-

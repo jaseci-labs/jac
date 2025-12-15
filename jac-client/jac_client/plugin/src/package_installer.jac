@@ -90,9 +90,7 @@ class PackageInstaller {
                 text=True
             );
         } except subprocess.CalledProcessError as e {
-            raise ClientBundleError(
-                f'Failed to install npm packages: {e.stderr}'
-            ) from e ;
+            raise ClientBundleError(f'Failed to install npm packages: {e.stderr}') from e ;
         } except FileNotFoundError {
             raise ClientBundleError(
                 'npm command not found. Ensure Node.js and npm are installed.'
@@ -105,9 +103,7 @@ class PackageInstaller {
 
     """Uninstall a package by removing it from config.json."""
     def uninstall_package(
-        self: PackageInstaller,
-        package_name: str,
-        is_dev: bool = False
+        self: PackageInstaller, package_name: str, is_dev: bool = False
     ) -> None {
         if not self.config_file.exists() {
             raise ClientBundleError(
@@ -128,7 +124,7 @@ class PackageInstaller {
 
         # Remove package if it exists
         if (deps_key in package_config and package_name in package_config[deps_key]) {
-            del package_config[deps_key][package_name];
+            del package_config[deps_key][package_name] ;
             # Remove empty dict if no dependencies left
             if not package_config[deps_key] {
                 package_config[deps_key] = {};
@@ -168,4 +164,3 @@ class PackageInstaller {
         };
     }
 }
-

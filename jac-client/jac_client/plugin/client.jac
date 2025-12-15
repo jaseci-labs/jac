@@ -69,7 +69,7 @@ class JacClient {
         base_path = Path(Jac.base_path_dir);
         # package.json should only exist in .jac-client.configs/
         generated_package_json = base_path / '.jac-client.configs' / 'package.json';
-        
+
         # Generate package.json if it doesn't exist
         if not generated_package_json.exists() {
             # Use ViteBundler to generate package.json from config.json
@@ -85,7 +85,7 @@ class JacClient {
         } else {
             package_json_path = generated_package_json.resolve();
         }
-        
+
         # Final verification that package.json exists before creating builder
         if not package_json_path.exists() {
             raise ClientBundleError(
