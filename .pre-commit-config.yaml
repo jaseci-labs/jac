@@ -1,8 +1,8 @@
 exclude: |
     (?x)(
         ^jac/jaclang/vendor/|
-        ^jac/jaclang/compiler/larkparse/jac_parser\.py$|
-        ^jac/jaclang/compiler/larkparse/ts_parser\.py$|
+        ^jac/jaclang/pycore/lark_jac_parser\.py$|
+        ^jac/jaclang/pycore/lark_ts_parser\.py$|
         ^$
     )
 repos:
@@ -36,7 +36,7 @@ repos:
           - --config-file=mypy.ini
           - --explicit-package-bases
         additional_dependencies: [types-PyYAML, types-requests]
-        exclude: (/fixtures/|/larkparse/|/vendor/|/scripts/|jac/examples/reference)
+        exclude: (/fixtures/|lark_jac_parser\.py|lark_ts_parser\.py|/vendor/|/scripts/|jac/examples/reference)
   - repo: local
     hooks:
       - id: jac-format

@@ -1,5 +1,5 @@
-import jaclang.compiler.unitree as uni;
-import from jaclang.compiler.program { JacProgram }
+import jaclang.pycore.unitree as uni;
+import from jaclang.pycore.program { JacProgram }
 import from .sem_manager { SemTokManager }
 
 """Handles Jac module, semantic manager, and alert management."""

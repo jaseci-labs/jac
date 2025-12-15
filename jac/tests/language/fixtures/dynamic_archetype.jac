@@ -1,4 +1,4 @@
-import from jaclang.runtimelib.runtime { JacRuntime }
+import from jaclang { JacRuntime }
 import from bar { Item }
 
 node test_node {

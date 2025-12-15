@@ -13,8 +13,8 @@ from urllib.request import Request, urlopen
 
 import pytest
 
+from jaclang import JacRuntime as Jac
 from jaclang.cli import cli
-from jaclang.runtimelib.runtime import JacRuntime as Jac
 from jaclang.runtimelib.server import JacAPIServer, UserManager
 from tests.runtimelib.conftest import fixture_abs_path
 

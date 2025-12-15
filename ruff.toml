@@ -6,11 +6,9 @@ line-length = 88
 # Exclude same paths as pre-commit
 exclude = [
     "jac/jaclang/vendor/",
-    "jac/jaclang/compiler/larkparse/jac_parser.py",
-    "jac/jaclang/compiler/larkparse/ts_parser.py",
-    # Parser transformers with many callbacks following established patterns
-    "jac/jaclang/compiler/ts_parser.py",
-    "jac/jaclang/compiler/tsparser.py",
+    # Generated Lark standalone parsers
+    "jac/jaclang/pycore/lark_jac_parser.py",
+    "jac/jaclang/pycore/lark_ts_parser.py",
     # Examples may contain Python 3.12+ syntax for demonstration
     "jac/examples/",
 ]

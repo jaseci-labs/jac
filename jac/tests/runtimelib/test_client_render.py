@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from jaclang.runtimelib.runtime import JacRuntime as Jac
+from jaclang import JacRuntime as Jac
 from jaclang.runtimelib.server import JacAPIServer
 from tests.runtimelib.conftest import fixture_abs_path
 

@@ -1,4 +1,4 @@
-"""MTIR (Meaning Typed Intermediate Representation) module for JacLang runtime library."""
+"""MTRuntime (Meaning Typed Intermediate Representation) module for JacLang runtime library."""
 import inspect;
 import json;
 import from types { MethodType }
@@ -30,6 +30,18 @@ glob INSTRUCTION_TOOL = """
 
 """A class representing the MTIR for JacLang."""
 obj MTIR {
+    has caller: Callable;
+    has args: dict[int | str, object];
+    has call_params: dict[str, object];
+
+    @property
+    def runtime()  -> MTRuntime {
+        return MTRuntime.factory(self.caller, self.args, self.call_params);
+    }
+}
+
+"""A class representing the MTRuntime for JacLang."""
+obj MTRuntime {
     has messages: list[MessageType];
     has resp_type: type | None;
     has stream: bool;
@@ -37,12 +49,12 @@ obj MTIR {
     has call_params: dict[str, object];
 
     # FIXME: Comeup with a better name
-    """Create an MTIR instance."""
+    """Create an MTRuntime instance."""
     static def factory(
         caller: Callable, args: dict[int | str, object], call_params: dict[str, object]
-    ) -> MTIR;
+    ) -> MTRuntime;
 
-    """Dispatch the parameters for the MTIR."""
+    """Dispatch the parameters for the MTRuntime."""
     def dispatch_params()  -> dict[str, object];
 
     """Add a message to the request."""

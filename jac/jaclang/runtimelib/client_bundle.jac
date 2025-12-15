@@ -6,11 +6,11 @@ import from dataclasses { dataclass }
 import from pathlib { Path }
 import from types { ModuleType }
 import from typing { TYPE_CHECKING, Any, NamedTuple }
-import from jaclang.utils { convert_to_js_import_path }
+import from jaclang.pycore.module_resolver { convert_to_js_import_path }
 with entry {
     if TYPE_CHECKING {
-        import from jaclang.compiler.codeinfo { ClientManifest }
-        import from jaclang.compiler.unitree { Module }
+        import from jaclang.pycore.codeinfo { ClientManifest }
+        import from jaclang.pycore.unitree { Module }
     }
 }
 
@@ -66,7 +66,7 @@ class ClientBundleBuilder {
         }
         module_path = module.__file__.replace('.py', '.jac');
         source_path = Path(module_path).resolve();
-        import from jaclang.runtimelib.runtime { JacRuntime as Jac }
+        import from jaclang { JacRuntime as Jac }
         mod = Jac.program.mod.hub.get(str(source_path));
         manifest = mod.gen.client_manifest if mod else None;
         bundle_paths = [source_path];
@@ -191,7 +191,7 @@ class ClientBundleBuilder {
     def _compile_bundle(
         self: ClientBundleBuilder, module: ModuleType, module_path: Path
     ) -> ClientBundle {
-        import from jaclang.runtimelib.runtime { JacRuntime as Jac }
+        import from jaclang { JacRuntime as Jac }
         mod = Jac.program.mod.hub.get(str(module_path));
         manifest = mod.gen.client_manifest if mod else None;
         (import_pieces, bundled_module_names) = self._process_imports(
@@ -230,7 +230,7 @@ class ClientBundleBuilder {
     def _compile_to_js(
         self: ClientBundleBuilder, source_path: Path
     ) -> tuple[str, Module] {
-        import from jaclang.runtimelib.runtime { JacRuntime as Jac }
+        import from jaclang { JacRuntime as Jac }
         program = Jac.program;
         source_key = str(source_path);
         if (source_key in program.mod.hub) {

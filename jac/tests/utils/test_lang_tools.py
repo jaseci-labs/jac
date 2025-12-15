@@ -7,8 +7,8 @@ from collections.abc import Callable
 import pytest
 
 import jaclang
+from jaclang.pycore.helpers import extract_headings, heading_to_snake
 from jaclang.runtimelib.utils import read_file_with_encoding
-from jaclang.utils.helpers import extract_headings, heading_to_snake
 from jaclang.utils.lang_tools import AstTool
 
 
@@ -115,7 +115,7 @@ def test_print_py(tool: AstTool) -> None:
 
 def test_automated() -> None:
     """Testing for py, jac, md files for each content in Jac Grammer."""
-    lark_path = os.path.join(os.path.dirname(jaclang.__file__), "compiler/jac.lark")
+    lark_path = os.path.join(os.path.dirname(jaclang.__file__), "pycore/jac.lark")
     headings_ = extract_headings(lark_path)
     snake_case_headings = [heading_to_snake(key) for key in headings_]
     refr_path = os.path.join(os.path.dirname(jaclang.__file__), "../examples/reference")

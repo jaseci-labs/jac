@@ -1,77 +1,102 @@
 import from abc { ABC, abstractmethod }
 import from collections.abc { Callable }
 import from dataclasses { dataclass }
-import from enum { Enum }
 import from typing { Any, Generic, TypeVar }
 import from pydantic { BaseModel }
-with entry {
-    T = TypeVar('T');
+import from enum { StrEnum }
+
+glob T = TypeVar('T');
+
+class HTTPMethod(StrEnum) {
+    has GET: str = 'GET';
+    has POST: str = 'POST';
+    has PUT: str = 'PUT';
+    has PATCH: str = 'PATCH';
+    has DELETE: str = 'DELETE';
 }
 
-class HTTPMethod(str , Enum) {
-    with entry {
-        GET = 'GET';
-        POST = 'POST';
-        PUT = 'PUT';
-        PATCH = 'PATCH';
-        DELETE = 'DELETE';
-    }
+class ParameterType(StrEnum) {
+    has QUERY: str = 'query';
+    has PATH: str = 'path';
+    has BODY: str = 'body';
+    has HEADER: str = 'header';
 }
 
-class ParameterType(str , Enum) {
-    with entry {
-        QUERY = 'query';
-        PATH = 'path';
-        BODY = 'body';
-        HEADER = 'header';
-    }
+obj APIParameter {
+    has name: str;
+    has <>type: ParameterType = ParameterType.QUERY;
+    has data_type: str = 'str';
+    has required: bool = True;
+    has <>default: Any = None;
+    has description: str = '';
 }
 
-@dataclass
-class APIParameter {
-    with entry {
-        name: str;
-        <>type: ParameterType = ParameterType.QUERY;
-        data_type: str = 'str';
-        required: bool = True;
-        <>default: Any = None;
-        description: str = '';
-    }
+"""
+Data class representing a single API endpoint.
+This class provides a clean representation of an endpoint configuration,
+including its method, path, callback function, parameters, and response model.
+
+Attributes:
+    method (HTTPMethod): The HTTP method for the endpoint (GET, POST, etc.)
+    path (str): The URL path for the endpoint
+    callback (Callable): The function to be called when the endpoint is accessed
+    parameters (list[APIParameter] | None): List of parameters for the endpoint
+    response_model (type[BaseModel] | None): Pydantic model for the response
+    tags (list[str] | None): Tags for categorizing the endpoint
+    summary (str | None): Short summary of the endpoint
+    description (str | None): Detailed description of the endpoint
+"""
+obj JEndPoint {
+    has method: HTTPMethod;
+    has path: str;
+    has callback: Callable[(..., Any)];
+    has parameters: (list[APIParameter] | None) = None;
+    has response_model: (type[BaseModel] | None) = None;
+    has tags: (list[str] | None) = None;
+    has summary: (str | None) = None;
+    has description: (str | None) = None;
 }
 
-"""\n    Data class representing a single API endpoint.\n\n    This class provides a clean representation of an endpoint configuration,\n    including its method, path, callback function, parameters, and response model.\n\n    Attributes:\n        method (HTTPMethod): The HTTP method for this endpoint\n        path (str): The URL path for this endpoint\n        callback (Callable): The function to call when this endpoint is hit\n        parameters (Optional[List[Dict[str, Any]]]): List of parameter configurations\n        response_model (Optional[Type[BaseModel]]): Pydantic model for response validation\n        tags (Optional[List[str]]): Tags for API documentation\n        summary (Optional[str]): Short summary for API documentation\n        description (Optional[str]): Detailed description for API documentation\n    """
-@dataclass
-class JEndPoint {
-    with entry {
-        method: HTTPMethod;
-        path: str;
-        callback: Callable[(..., Any)];
-        parameters: (list[APIParameter] | None) = None;
-        response_model: (type[BaseModel] | None) = None;
-        tags: (list[str] | None) = None;
-        summary: (str | None) = None;
-        description: (str | None) = None;
-    }
-}
-
-"""\n    Abstract base class for server implementations.\n    """
+"""Abstract base class for server implementations."""
 class JServer(ABC , Generic[T]) {
+    """
+    Initialize the server with a list of endpoints.
+    Args:
+        end_points (list[JEndPoint]): List of endpoint definitions to register
+    """
     def __init__(self: JServer, end_points: list[JEndPoint]) -> None {
         super.init();
         self._endpoints = end_points;
     }
 
-    """\n        Return the list of registered endpoints.\n\n        This method should return only the endpoints that have been registered\n        with this server implementation, not create new ones.\n\n        Returns:\n            List[JEndPoint]: List of registered endpoint definitions\n        """
+    """
+    Return the list of registered endpoints.
+    This method should return only the endpoints that have been registered
+    with this server implementation, not create new ones.
+
+    Returns:
+        List[JEndPoint]: List of registered endpoint definitions
+    """
     def get_endpoints(self: JServer) -> list[JEndPoint] {
         return self._endpoints;
     }
 
-    """\n        Add a single endpoint to the server implementation.\n\n        Args:\n            endpoint (JEndPoint): The endpoint to add\n        """
+    """
+    Add a single endpoint to the server implementation.
+
+    Args:
+    endpoint (JEndPoint): The endpoint to add
+    """
     def add_endpoint(self: JServer, endpoint: JEndPoint) -> None {
         self._endpoints.append(endpoint);
     }
 
-    """\n        Execute the provided endpoints by calling the appropriate HTTP method handlers.\n\n        This method iterates through the endpoint list and calls the appropriate\n        method (get, post, put, patch, delete) based on each endpoint's HTTP method.\n        """
+    """
+    Execute the provided endpoints by calling the appropriate HTTP method handlers.
+
+    This method iterates through the endpoint list and calls the appropriate
+    method (get, post, put, patch, delete) based on each endpoint's HTTP method.
+    """
     def execute(self: JServer) -> None {
         for endpoint in self._endpoints {
             if (endpoint.method == HTTPMethod.GET) {
@@ -88,45 +113,53 @@ class JServer(ABC , Generic[T]) {
         }
     }
 
-    """\n        Handle execution of a GET endpoint.\n        """
+    """Handle execution of a GET endpoint."""
     @abstractmethod
     def _get(self: JServer, endpoint: JEndPoint) -> 'JServer[T]' {
         ;
     }
 
-    """\n        Handle execution of a POST endpoint.\n        """
+    """Handle execution of a POST endpoint."""
     @abstractmethod
     def _post(self: JServer, endpoint: JEndPoint) -> 'JServer[T]' {
         ;
     }
 
-    """\n        Handle execution of a PUT endpoint.\n        """
+    """Handle execution of a PUT endpoint."""
     @abstractmethod
     def _put(self: JServer, endpoint: JEndPoint) -> 'JServer[T]' {
         ;
     }
 
-    """\n        Handle execution of a PATCH endpoint.\n        """
+    """Handle execution of a PATCH endpoint."""
     @abstractmethod
     def _patch(self: JServer, endpoint: JEndPoint) -> 'JServer[T]' {
         ;
     }
 
-    """\n        Handle execution of a DELETE endpoint.\n        """
+    """Handle execution of a DELETE endpoint."""
     @abstractmethod
     def _delete(self: JServer, endpoint: JEndPoint) -> 'JServer[T]' {
         ;
     }
 
-    """\n        Create a complete server with all endpoints registered.\n\n        This is a convenience method that gets all endpoints and executes them\n        to create a fully configured server. The return type depends on the\n        concrete implementation.\n\n        Args:\n            app (Optional[FastAPI]): Optional FastAPI instance to use (ignored in base implementation)\n\n        Returns:\n            Any: Implementation-specific configured server\n        """
-    @abstractmethod
-    def create_server(self: JServer) -> T {
-        ;
-    }
+    """
+    Create a complete server with all endpoints registered.
 
-    """\n        Run the server on the specified host and port.\n\n        Args:\n            host (str): The host address to bind the server to\n            port (int): The port number to bind the server to\n        """
+    This is a convenience method that gets all endpoints and executes them
+    to create a fully configured server. The return type depends on the
+    concrete implementation.
+
+    Args:
+        app (Optional[FastAPI]): Optional FastAPI instance to use (ignored in base implementation)
+
+    Returns:
+        Any: Implementation-specific configured server
+    """
     @abstractmethod
-    def run_server(self: JServer, host: str = 'localhost', port: int = 8000) -> None {
-        ;
-    }
+    def create_server(self: JServer) -> T { }
+
+    """Run the server on the specified host and port."""
+    @abstractmethod
+    def run_server(self: JServer, host: str = 'localhost', port: int = 8000) -> None { }
 }

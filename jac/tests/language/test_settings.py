@@ -3,7 +3,7 @@
 import os
 from unittest.mock import mock_open, patch
 
-from jaclang.settings import settings
+from jaclang.pycore.settings import settings
 
 
 def test_settings_config() -> None:

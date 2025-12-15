@@ -7,7 +7,7 @@ with entry {
     if TYPE_CHECKING {
         import from enum { IntEnum }
         import from jaclang.runtimelib.constructs { AccessLevel, NodeArchetype }
-        import from jaclang.runtimelib.runtime { JacRuntimeInterface }
+        import from jaclang { JacRuntimeInterface }
         jid: Callable[(..., Any)];
         jobj: Callable[(..., Any)];
         grant: Callable[(..., Any)];
@@ -24,7 +24,7 @@ with entry {
 
 """Lazily get JacRuntimeInterface."""
 def _get_jac()  -> type[JacRuntimeInterface] {
-    import from jaclang.runtimelib.runtime { JacRuntimeInterface }
+    import from jaclang { JacRuntimeInterface }
     return JacRuntimeInterface;
 }
 

@@ -1,5 +1,9 @@
 from jaclang.runtimelib.default import hookimpl
-from jaclang.runtimelib.runtime import Archetype, WalkerArchetype, ObjectSpatialFunction
+from jaclang.runtimelib.constructs import (  # type: ignore[attr-defined]
+    Archetype,
+    ObjectSpatialFunction,
+    WalkerArchetype,
+)
 
 from dataclasses import dataclass
 from functools import wraps

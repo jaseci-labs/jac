@@ -5,8 +5,8 @@ import from pathlib { Path }
 import from typing { TYPE_CHECKING, ClassVar }
 with entry {
     if TYPE_CHECKING {
-        import from jaclang.compiler.unitree { Expr, Symbol }
-        import from jaclang.compiler.unitree { UniScopeNode as SymbolTable }
+        import from jaclang.pycore.unitree { Expr, Symbol }
+        import from jaclang.pycore.unitree { UniScopeNode as SymbolTable }
     }
 }
 
@@ -268,8 +268,8 @@ class ClassType(TypeBase) {
 
     """Return true if this class is the built-in Edge type."""
     def is_edge_type(self: ClassType) -> bool {
-        import jaclang.compiler.unitree as uni;
-        import from jaclang.compiler.constant { SymbolType }
+        import jaclang.pycore.unitree as uni;
+        import from jaclang.pycore.constant { SymbolType }
         arch = self.shared.symbol_table;
         assert isinstance(arch, uni.Archetype);
         return (arch.sym_category == SymbolType.EDGE_ARCH);
@@ -277,8 +277,8 @@ class ClassType(TypeBase) {
 
     """Return true if this class is the built-in Node type."""
     def is_node_type(self: ClassType) -> bool {
-        import jaclang.compiler.unitree as uni;
-        import from jaclang.compiler.constant { SymbolType }
+        import jaclang.pycore.unitree as uni;
+        import from jaclang.pycore.constant { SymbolType }
         if self.shared.is_root_class {
             return True;
         }
@@ -401,6 +401,17 @@ class UnionType(TypeBase) {
     """Initialize obviously."""
     def __init__(self: UnionType, types: list[TypeBase]) -> None {
         super.init();
-        self.types = types;
+
+        # Flatten nested union types
+        flattened_types: list[TypeBase] = [];
+        for ty in types {
+            if isinstance(ty, UnionType) {
+                flattened_types.extend(ty.types);
+            } else {
+                flattened_types.append(ty);
+            }
+        }
+
+        self.types = flattened_types;
     }
 }

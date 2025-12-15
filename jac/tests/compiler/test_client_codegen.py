@@ -8,7 +8,7 @@ from tempfile import NamedTemporaryFile
 
 import pytest
 
-from jaclang.compiler.program import JacProgram
+from jaclang.pycore.program import JacProgram
 
 FIXTURE_DIR = Path(__file__).resolve().parent / "passes" / "ecmascript" / "fixtures"
 

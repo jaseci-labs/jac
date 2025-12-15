@@ -11,12 +11,12 @@ from pathlib import Path
 import pytest
 
 import jaclang
-from jaclang.compiler import jac_lark as jl
-from jaclang.compiler import unitree as uni
-from jaclang.compiler.constant import Tokens
-from jaclang.compiler.parser import JacParser
-from jaclang.compiler.program import JacProgram
-from jaclang.compiler.unitree import Source
+import jaclang.pycore.lark_jac_parser as jl
+import jaclang.pycore.unitree as uni
+from jaclang.pycore.constant import Tokens
+from jaclang.pycore.jac_parser import JacParser
+from jaclang.pycore.program import JacProgram
+from jaclang.pycore.unitree import Source
 from jaclang.runtimelib.utils import read_file_with_encoding
 
 
@@ -174,7 +174,7 @@ def test_all_ast_has_normalize() -> None:
     import inspect
     import sys
 
-    import jaclang.compiler.unitree as uni
+    import jaclang.pycore.unitree as uni
 
     exclude = [
         "UniNode",

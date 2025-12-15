@@ -7,9 +7,9 @@ from contextlib import AbstractContextManager
 
 import pytest
 
-import jaclang.compiler.unitree as uni
+import jaclang.pycore.unitree as uni
 from jaclang.cli import cli
-from jaclang.compiler.program import JacProgram
+from jaclang.pycore.program import JacProgram
 
 
 def test_pygen_jac_cli(fixture_path: Callable[[str], str]) -> None:

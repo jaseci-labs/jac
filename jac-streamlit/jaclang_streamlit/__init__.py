@@ -5,7 +5,7 @@ from jaclang_streamlit.test_app import JacAppTest as AppTest
 
 def run_streamlit(basename: str, dirname: str) -> None:
     """Run the Streamlit application."""
-    from jaclang.runtimelib.runtime import JacRuntimeInterface
+    from jaclang.pycore.runtime import JacRuntimeInterface
 
     JacRuntimeInterface.jac_import(
         basename, base_path=dirname, reload_module=True

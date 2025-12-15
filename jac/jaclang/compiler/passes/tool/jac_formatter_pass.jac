@@ -5,9 +5,9 @@ This is a pass for formatting Jac code.
 
 import from collections { deque }
 import jaclang.compiler.passes.tool.doc_ir as doc;
-import jaclang.compiler.unitree as uni;
-import from jaclang.compiler.passes { Transform }
-import from jaclang.settings { settings }
+import jaclang.pycore.unitree as uni;
+import from jaclang.pycore.passes { Transform }
+import from jaclang.pycore.settings { settings }
 
 """JacFormat Pass format Jac code."""
 class JacFormatPass(Transform[(uni.Module, uni.Module)]) {

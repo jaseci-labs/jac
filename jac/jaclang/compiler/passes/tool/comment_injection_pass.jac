@@ -4,9 +4,9 @@ import from collections.abc { Sequence }
 import from dataclasses { dataclass }
 import from typing { NamedTuple }
 import jaclang.compiler.passes.tool.doc_ir as doc;
-import jaclang.compiler.unitree as uni;
-import from jaclang.compiler.constant { Tokens as Tok }
-import from jaclang.compiler.passes { Transform }
+import jaclang.pycore.unitree as uni;
+import from jaclang.pycore.constant { Tokens as Tok }
+import from jaclang.pycore.passes { Transform }
 """Information about a pair of delimiters and their positions."""
 class DelimiterInfo(NamedTuple) {
     with entry {

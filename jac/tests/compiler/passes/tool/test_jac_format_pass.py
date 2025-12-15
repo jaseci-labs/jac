@@ -7,10 +7,10 @@ from difflib import unified_diff
 
 import pytest
 
-import jaclang.compiler.unitree as uni
+import jaclang.pycore.unitree as uni
 from conftest import get_micro_jac_files
-from jaclang.compiler.program import JacProgram
-from jaclang.utils.helpers import add_line_numbers
+from jaclang.pycore.helpers import add_line_numbers
+from jaclang.pycore.program import JacProgram
 
 
 def compare_files(

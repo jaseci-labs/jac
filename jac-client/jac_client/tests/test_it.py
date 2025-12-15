@@ -14,7 +14,7 @@ from urllib.request import Request, urlopen
 
 import pytest
 
-from jaclang.runtimelib.runtime import JacRuntime as Jac
+from jaclang.pycore.runtime import JacRuntime as Jac
 
 
 @pytest.fixture(autouse=True)

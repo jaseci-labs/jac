@@ -13,7 +13,7 @@ import from pathlib { Path }
 import from typing { TYPE_CHECKING, Any, Literal, TypeAlias, get_type_hints }
 import from urllib.parse { parse_qs, urlparse }
 import from jaclang.runtimelib.client_bundle { ClientBundleError }
-import from jaclang.runtimelib.runtime { JacRuntime as Jac }
+import from jaclang { JacRuntime as Jac }
 with entry {
     if TYPE_CHECKING {
         import from jaclang.runtimelib.constructs { Archetype, WalkerArchetype }
@@ -369,7 +369,7 @@ class ModuleIntrospector {
         if not self._module {
             return;
         }
-        import jaclang.compiler.unitree as uni;
+        import jaclang.pycore.unitree as uni;
         import from jaclang.runtimelib.constructs { WalkerArchetype }
         self._function_access = {};
         self._walker_access = {};

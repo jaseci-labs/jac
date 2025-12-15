@@ -160,7 +160,7 @@ def test_jac_cli_runtime_err_with_internal_stack(
     fixture_path: Callable[[str], str],
 ) -> None:
     """Test runtime errors with internal calls shown when setting enabled."""
-    from jaclang.settings import settings
+    from jaclang.pycore.settings import settings
 
     original_setting = settings.show_internal_stack_errs
 
@@ -285,7 +285,7 @@ def test_builtins_loading(
     capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
 ) -> None:
     """Testing for print AstTool."""
-    from jaclang.settings import settings
+    from jaclang.pycore.settings import settings
 
     settings.ast_symbol_info_detailed = True
     with capture_stdout() as output:
@@ -317,10 +317,7 @@ def test_ast_printgraph(
         cli.tool("ir", ["ast.", f"{fixture_path('hello.jac')}"])
 
     stdout_value = output.getvalue()
-    assert (
-        '[label="MultiString" shape="oval" style="filled" fillcolor="#fccca4"]'
-        in stdout_value
-    )
+    assert '[label="MultiString"]' in stdout_value
 
 
 def test_cfg_printgraph(
@@ -514,7 +511,7 @@ def test_param_arg(
     capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
 ) -> None:
     """Test for lambda argument annotation."""
-    from jaclang.compiler.program import JacProgram
+    from jaclang.pycore.program import JacProgram
 
     filename = fixture_path("params/test_complex_params.jac")
     with capture_stdout() as output:

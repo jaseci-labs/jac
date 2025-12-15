@@ -6,10 +6,10 @@ from contextlib import AbstractContextManager
 
 import pytest
 
-import jaclang.compiler.unitree as uni
+import jaclang.pycore.unitree as uni
 from jaclang import JacRuntime as Jac
 from jaclang.cli import cli
-from jaclang.compiler.program import JacProgram
+from jaclang.pycore.program import JacProgram
 
 
 @pytest.fixture(autouse=True)

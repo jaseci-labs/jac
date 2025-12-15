@@ -20,6 +20,8 @@ with entry {
     ghost = None;
     print(ghost?.name?.value);
     print(user?.name?.value);
+    print(user?.item?.value);
+    print(user?.name?.items);
     mylist = [1, 2, 3];
     print(mylist?[2]);
     mlist = None;

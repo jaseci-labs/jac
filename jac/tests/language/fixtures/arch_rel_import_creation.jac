@@ -1,4 +1,4 @@
-import from jaclang.runtimelib.runtime { JacRuntime }
+import from jaclang { JacRuntime }
 
 glob dynamic_module_source = """
 import from arch_create_util {UtilityNode}
