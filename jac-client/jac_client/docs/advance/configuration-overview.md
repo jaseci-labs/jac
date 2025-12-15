@@ -98,6 +98,7 @@ Jac Client uses a **configuration-first approach** where all project settings, d
 The system starts with sensible defaults. **Important**: Default npm packages are automatically added during build time and should not be included in `config.json`:
 
 **Automatically Added Packages:**
+
 - **Dependencies**: `react`, `react-dom`, `react-router-dom`
 - **DevDependencies**: `vite`, `@babel/cli`, `@babel/core`, `@babel/preset-env`, `@babel/preset-react`
 - **TypeScript** (if detected): `typescript`, `@types/react`, `@types/react-dom`, `@vitejs/plugin-react`

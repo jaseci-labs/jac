@@ -78,6 +78,7 @@ npm install installs packages
 Packages are stored in `config.json` under the `package` section. However, **default dependencies are automatically added during build time** and should not be included in `config.json`:
 
 **Automatically Added (Don't include in config.json):**
+
 - **Dependencies**: `react`, `react-dom`, `react-router-dom`
 - **DevDependencies**: `vite`, `@babel/cli`, `@babel/core`, `@babel/preset-env`, `@babel/preset-react`
 - **TypeScript packages** (if TypeScript is detected): `typescript`, `@types/react`, `@types/react-dom`, `@vitejs/plugin-react`
@@ -106,11 +107,13 @@ Packages are stored in `config.json` under the `package` section. However, **def
 The following dependencies are **automatically added during build time** and should **not** be included in `config.json`:
 
 **Runtime Dependencies (always added):**
+
 - `react` (^19.2.0)
 - `react-dom` (^19.2.0)
 - `react-router-dom` (^6.30.1)
 
 **Development Dependencies (always added):**
+
 - `vite` (^6.4.1)
 - `@babel/cli` (^7.28.3)
 - `@babel/core` (^7.28.5)
@@ -118,6 +121,7 @@ The following dependencies are **automatically added during build time** and sho
 - `@babel/preset-react` (^7.28.5)
 
 **TypeScript Dependencies (added if TypeScript is detected):**
+
 - `typescript` (^5.3.3)
 - `@types/react` (^18.2.45)
 - `@types/react-dom` (^18.2.18)
