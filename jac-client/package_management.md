@@ -30,7 +30,7 @@ The Jac Client package management system abstracts npm package management into a
       "lodash": "^4.17.21"
     },
     "devDependencies": {
-      "@types/react": "^18.2.45"
+      "sass": "^1.77.8"
     }
   }
 }
@@ -41,8 +41,8 @@ The Jac Client package management system abstracts npm package management into a
 - `name`: Project name (auto-populated from project filename when using `jac create_jac_app`)
 - `version`: Project version (default: "1.0.0")
 - `description`: Project description
-- `dependencies`: Runtime npm packages
-- `devDependencies`: Development npm packages
+- `dependencies`: Runtime npm packages (only custom packages, not React/Babel defaults)
+- `devDependencies`: Development npm packages (only custom packages, not Vite/Babel defaults)
 
 **What's NOT in config.json**:
 
@@ -50,7 +50,7 @@ The Jac Client package management system abstracts npm package management into a
 - `babel`: Auto-generated during build
 - `type`: Always `"module"`, auto-generated
 - `main`: Auto-generated (default: "index.js")
-- Core dependencies (React, Vite, Babel): Auto-merged during generation
+- **Core dependencies (React, Vite, Babel)**: Automatically added during build time - should NOT be included in `config.json` unless you need to override the default version
 
 ### 2. Configuration Loader (`JacClientConfig`)
 
@@ -288,7 +288,7 @@ Returns all packages from `config.json`:
 
 ## CLI Integration
 
-### Command: `jac install --cl`
+### Command: `jac add --cl`
 
 **File**: `jac_client/plugin/cli.py`
 
@@ -296,46 +296,46 @@ Returns all packages from `config.json`:
 
 ```bash
 # Install all packages from config.json
-jac install --cl
+jac add --cl
 
-# Install specific package (dependencies)
-jac install --cl lodash
+# Add specific package (dependencies)
+jac add --cl lodash
 
-# Install specific package (devDependencies)
-jac install --cl -D @types/react
+# Add specific package (devDependencies)
+jac add --cl -D @types/react
 
-# Install with version
-jac install --cl lodash@^4.17.21
+# Add with version
+jac add --cl lodash@^4.17.21
 ```
 
 **Implementation**:
 
 1. Validates `--cl` flag is present
 2. Creates `PackageInstaller` instance
-3. If no package name: calls `install_all()`
+3. If no package name: calls `install_all()` to install all packages from config.json
 4. If package name provided:
-   - Parses package name and version
+   - Parses package name and version (handles scoped packages correctly)
    - Calls `install_package()` with `is_dev` flag
 5. Handles errors and provides user feedback
 
 **Error Handling**:
 
-- Missing `config.json`: Suggests running `jac generate_client_config`
+- Missing `config.json`: Suggests running `jac generate_client_config` (for legacy projects)
 - npm not found: Clear error message
 - npm install failure: Displays stderr
 
-### Command: `jac uninstall --cl`
+### Command: `jac remove --cl`
 
 **File**: `jac_client/plugin/cli.py`
 
 **Usage**:
 
 ```bash
-# Uninstall specific package (dependencies)
-jac uninstall --cl lodash
+# Remove specific package (dependencies)
+jac remove --cl lodash
 
-# Uninstall specific package (devDependencies)
-jac uninstall --cl -D @types/react
+# Remove specific package (devDependencies)
+jac remove --cl -D @types/react
 ```
 
 **Implementation**:
@@ -348,7 +348,7 @@ jac uninstall --cl -D @types/react
 
 **Error Handling**:
 
-- Missing `config.json`: Suggests running `jac generate_client_config`
+- Missing `config.json`: Suggests running `jac generate_client_config` (for legacy projects)
 - Package not found: Clear error message indicating which dependency type was checked
 - npm not found: Clear error message
 - npm install failure: Displays stderr
@@ -455,37 +455,50 @@ When generating `package.json`, dependencies are merged as follows:
 **Example**:
 
 ```json
-// config.json
+// config.json (only custom packages)
 {
   "package": {
     "dependencies": {
-      "lodash": "^4.17.21",
-      "react": "^18.0.0"  // Overrides default
+      "lodash": "^4.17.21"
+    },
+    "devDependencies": {
+      "sass": "^1.77.8"
     }
   }
 }
 
-// Generated package.json
+// Generated package.json (defaults + user packages)
 {
   "dependencies": {
-    "react": "^18.0.0",        // User override
-    "react-dom": "^19.2.0",    // Default
-    "react-router-dom": "^6.30.1",  // Default
-    "lodash": "^4.17.21"       // User addition
+    "react": "^19.2.0",        // Auto-added default
+    "react-dom": "^19.2.0",    // Auto-added default
+    "react-router-dom": "^6.30.1",  // Auto-added default
+    "lodash": "^4.17.21"       // User package
+  },
+  "devDependencies": {
+    "vite": "^6.4.1",          // Auto-added default
+    "@babel/cli": "^7.28.3",   // Auto-added default
+    "@babel/core": "^7.28.5",  // Auto-added default
+    "@babel/preset-env": "^7.28.5",  // Auto-added default
+    "@babel/preset-react": "^7.28.5",  // Auto-added default
+    "sass": "^1.77.8"          // User package
   }
 }
 ```
+
+> **Note**: React, Babel, and Vite packages are automatically added during build time. Users should only include custom packages in `config.json`. If a user explicitly adds a default package (e.g., `react`), it will override the default version.
 
 ## Error Scenarios and Handling
 
 ### Missing config.json
 
-**Scenario**: User runs `jac install --cl` without `config.json`
+**Scenario**: User runs `jac add --cl` without `config.json`
 
 **Handling**:
 
 - `PackageInstaller` raises `ClientBundleError`
-- Error message: `"config.json not found. Run 'jac generate_client_config' first."`
+- Error message: `"config.json not found. Run 'jac generate_client_config' first."` (for legacy projects)
+- For new projects: `config.json` is automatically created with `jac create_jac_app`
 
 ### npm Not Found
 
