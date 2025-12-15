@@ -520,7 +520,9 @@ class JacLangServer(JacProgram , LanguageServer) {
             return make_location(parent.decl_link.sym.decl);
         }
         if isinstance(parent, uni.AstImplNeedingNode) and parent.body {
-            return make_location(parent.body.sym.decl);
+            if isinstance(parent.body, uni.ImplDef) {
+                return make_location(parent.body.sym.decl);
+            }
         }
         if not node_selected or not node_selected.type {
             return None;

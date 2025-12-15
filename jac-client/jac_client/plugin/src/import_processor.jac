@@ -1,5 +1,4 @@
 """Import processing for Vite bundling."""
-import from __future__ { annotations }
 import from pathlib { Path }
 import from typing { TYPE_CHECKING }
 import from jaclang.runtimelib.client_bundle { ClientBundleError }

@@ -1,5 +1,4 @@
 """Asset file processing and copying utilities."""
-import from __future__ { annotations }
 import contextlib;
 import shutil;
 import from pathlib { Path }

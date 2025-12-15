@@ -1,5 +1,4 @@
 """Base memory hierachy implementation."""
-import from __future__ { annotations }
 import os;
 import shelve;
 import from collections.abc { Iterable, MutableMapping }

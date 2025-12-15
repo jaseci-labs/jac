@@ -1,5 +1,4 @@
 """Vite-enhanced client bundle generation for Jac web front-ends."""
-import from __future__ { annotations }
 import contextlib;
 import shutil;
 import from collections.abc { Callable }

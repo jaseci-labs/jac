@@ -1,5 +1,4 @@
 """Core constructs for Jac Language."""
-import from __future__ { annotations }
 import from collections.abc { Callable }
 import from dataclasses { asdict, dataclass, field, fields, is_dataclass }
 import from enum { IntEnum }

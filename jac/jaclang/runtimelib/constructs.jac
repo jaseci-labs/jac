@@ -1,5 +1,4 @@
 """Core constructs for Jac Language."""
-import from __future__ { annotations }
 import from .archetype {
     AccessLevel,
     Anchor,

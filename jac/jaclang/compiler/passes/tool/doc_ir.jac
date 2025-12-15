@@ -1,5 +1,4 @@
 """Document Intermediate Representation (DocIR) classes."""
-import from __future__ { annotations }
 import from typing { TYPE_CHECKING, Union }
 
 with entry {
