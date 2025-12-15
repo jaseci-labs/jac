@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from jac_client.plugin.vite_client_bundle import ViteClientBundleBuilder
 from jac_client.plugin.src.vite_bundler import ViteBundler
+from jac_client.plugin.vite_client_bundle import ViteClientBundleBuilder
 from jaclang.pycore.runtime import JacRuntime as Jac
 
 
