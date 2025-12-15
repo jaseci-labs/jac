@@ -151,12 +151,14 @@ jac add --cl @vitejs/plugin-react@^4.0.0    # Scoped with version
 #### What Happens
 
 **When adding a specific package** (`jac add --cl <package>`):
+
 1. Package is added to `config.json` (dependencies or devDependencies)
 2. `package.json` is regenerated from `config.json`
 3. `npm install` is run to install the package
 4. `package-lock.json` is created/updated
 
 **When installing all packages** (`jac add --cl` without package name):
+
 1. Reads all packages from `config.json` (both `dependencies` and `devDependencies`)
 2. `package.json` is regenerated from `config.json`
 3. `npm install` is run to install **all** configured packages
@@ -214,6 +216,7 @@ jac add --cl
 ```
 
 This will **install all packages** listed in both `dependencies` and `devDependencies` sections of your `config.json`. The command:
+
 1. Regenerates `package.json` from `config.json`
 2. Runs `npm install` to install all configured packages
 3. Updates `package-lock.json` accordingly
@@ -306,8 +309,8 @@ jac add --cl lodash
 
 ### 2. Commit config.json, Not package.json
 
--  **Commit**: `config.json` (your source of truth)
--  **Don't commit**: `.jac-client.configs/package.json` (generated)
+- **Commit**: `config.json` (your source of truth)
+- **Don't commit**: `.jac-client.configs/package.json` (generated)
 
 The `.gitignore` automatically excludes generated files.
 

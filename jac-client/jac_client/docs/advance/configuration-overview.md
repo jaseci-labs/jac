@@ -317,16 +317,16 @@ project-root/
 
 **Commit**:
 
--  `config.json` - Your configuration
--  `app.jac` - Your application code
--  `components/` - Your components
--  `assets/` - Your assets
+- `config.json` - Your configuration
+- `app.jac` - Your application code
+- `components/` - Your components
+- `assets/` - Your assets
 
 **Don't Commit** (automatically gitignored):
 
--  `.jac-client.configs/` - Generated files
--  `node_modules/` - Dependencies
--  `compiled/` - Build output
+- `.jac-client.configs/` - Generated files
+- `node_modules/` - Dependencies
+- `compiled/` - Build output
 
 ## Best Practices
 
