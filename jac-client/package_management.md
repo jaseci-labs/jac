@@ -302,7 +302,7 @@ jac add --cl
 jac add --cl lodash
 
 # Add specific package (devDependencies)
-jac add --cl -D @types/react
+jac add --cl -d @types/react
 
 # Add with version
 jac add --cl lodash@^4.17.21
