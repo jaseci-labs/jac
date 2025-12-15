@@ -177,7 +177,7 @@ def test_create_jac_app_with_typescript() -> None:
             with open(package_json_path) as f:
                 package_data = json.load(f)
 
-            assert package_data["name"] == test_project_name
+            assert package_data["package"]["name"] == test_project_name
 
             # Verify tsconfig.json was created
             tsconfig_path = os.path.join(project_path, "tsconfig.json")
