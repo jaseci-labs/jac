@@ -508,7 +508,7 @@ def test_install_package_to_devdependencies() -> None:
 
             # Run add --cl -D command
             run(
-                ["jac", "add", "--cl", "-D", "@types/react"],
+                ["jac", "add", "--cl", "-d", "@types/react"],
                 capture_output=True,
                 text=True,
             )
@@ -697,7 +697,7 @@ def test_uninstall_package_from_devdependencies() -> None:
 
             # Run remove --cl -D command
             result = run(
-                ["jac", "remove", "--cl", "-D", "@types/react"],
+                ["jac", "remove", "--cl", "-d", "@types/react"],
                 capture_output=True,
                 text=True,
             )

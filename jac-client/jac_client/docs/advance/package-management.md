@@ -30,7 +30,7 @@ jac add --cl lodash@^4.17.21
 Add a dev dependency:
 
 ```bash
-jac add --cl -D @types/react
+jac add --cl -d @types/react
 ```
 
 ### Removing a Package
@@ -75,7 +75,14 @@ npm install installs packages
 
 ### Package Storage
 
-Packages are stored in `config.json` under the `package` section:
+Packages are stored in `config.json` under the `package` section. However, **default dependencies are automatically added during build time** and should not be included in `config.json`:
+
+**Automatically Added (Don't include in config.json):**
+- **Dependencies**: `react`, `react-dom`, `react-router-dom`
+- **DevDependencies**: `vite`, `@babel/cli`, `@babel/core`, `@babel/preset-env`, `@babel/preset-react`
+- **TypeScript packages** (if TypeScript is detected): `typescript`, `@types/react`, `@types/react-dom`, `@vitejs/plugin-react`
+
+**Only include custom packages in config.json:**
 
 ```json
 {
@@ -83,16 +90,40 @@ Packages are stored in `config.json` under the `package` section:
     "name": "my-app",
     "version": "1.0.0",
     "dependencies": {
-      "lodash": "^4.17.21",
-      "react": "^18.0.0"
+      "lodash": "^4.17.21"
     },
     "devDependencies": {
-      "@types/react": "^18.0.0",
-      "vite": "^5.0.0"
+      "sass": "^1.77.8"
     }
   }
 }
 ```
+
+> **Note**: React, React-DOM, React-Router-DOM, and all Babel packages are automatically added to the generated `package.json` during build time. You only need to add custom packages that aren't part of the defaults.
+
+### Default Dependencies (Automatically Added)
+
+The following dependencies are **automatically added during build time** and should **not** be included in `config.json`:
+
+**Runtime Dependencies (always added):**
+- `react` (^19.2.0)
+- `react-dom` (^19.2.0)
+- `react-router-dom` (^6.30.1)
+
+**Development Dependencies (always added):**
+- `vite` (^6.4.1)
+- `@babel/cli` (^7.28.3)
+- `@babel/core` (^7.28.5)
+- `@babel/preset-env` (^7.28.5)
+- `@babel/preset-react` (^7.28.5)
+
+**TypeScript Dependencies (added if TypeScript is detected):**
+- `typescript` (^5.3.3)
+- `@types/react` (^18.2.45)
+- `@types/react-dom` (^18.2.18)
+- `@vitejs/plugin-react` (^4.2.1)
+
+> **Important**: Only add custom packages to `config.json`. The build system automatically includes all default dependencies when generating `package.json`.
 
 ### Generated Files
 
@@ -116,7 +147,7 @@ Add a package to your project.
 jac add --cl lodash
 
 # Add to devDependencies
-jac add --cl -D @types/react
+jac add --cl -d @types/react
 
 # Add with specific version
 jac add --cl lodash@^4.17.21
@@ -331,23 +362,23 @@ For production apps, pin exact versions or use caret ranges:
 
 ### 4. Keep Dependencies Organized
 
-Separate runtime dependencies from dev dependencies:
+Separate runtime dependencies from dev dependencies (only custom packages):
 
 ```json
 {
   "package": {
     "dependencies": {
-      "react": "^18.0.0",
       "lodash": "^4.17.21"
     },
     "devDependencies": {
-      "@types/react": "^18.0.0",
       "@types/lodash": "^4.17.21",
-      "vite": "^5.0.0"
+      "sass": "^1.77.8"
     }
   }
 }
 ```
+
+> **Note**: React, Babel, and Vite packages are automatically added during build time and don't need to be in `config.json`.
 
 ### 5. Regular Updates
 
@@ -416,17 +447,15 @@ jac add --cl
 
 ## Examples
 
-### Example 1: Adding React with TypeScript
+### Example 1: TypeScript Support
+
+TypeScript dependencies are automatically added when TypeScript is detected (via `tsconfig.json` or TypeScript packages in config). You don't need to manually add React or TypeScript types - they're included automatically.
+
+If you need additional TypeScript-related packages:
 
 ```bash
-# Add React
-jac add --cl react
-
-# Add React types
-jac add --cl -D @types/react
-
-# Add React DOM types
-jac add --cl -D @types/react-dom
+# Add additional TypeScript tooling (if needed)
+jac add --cl -d @types/lodash
 ```
 
 Result in `config.json`:
@@ -434,23 +463,22 @@ Result in `config.json`:
 ```json
 {
   "package": {
-    "dependencies": {
-      "react": "latest"
-    },
+    "dependencies": {},
     "devDependencies": {
-      "@types/react": "latest",
-      "@types/react-dom": "latest"
+      "@types/lodash": "latest"
     }
   }
 }
 ```
 
+> **Note**: React, React-DOM, React-Router-DOM, and TypeScript packages (`typescript`, `@types/react`, `@types/react-dom`, `@vitejs/plugin-react`) are automatically added during build time when TypeScript is detected.
+
 ### Example 2: Adding Tailwind CSS
 
 ```bash
 # Add Tailwind
-jac add --cl -D @tailwindcss/vite
-jac add --cl -D tailwindcss
+jac add --cl -d @tailwindcss/vite
+jac add --cl -d tailwindcss
 ```
 
 Then update `config.json`:
@@ -477,17 +505,15 @@ Then update `config.json`:
 jac create_jac_app my-app
 cd my-app
 
-# Add dependencies
-jac add --cl react
-jac add --cl react-dom
+# Add custom dependencies (React/Babel are added automatically)
 jac add --cl lodash@^4.17.21
 
-# Add dev dependencies
-jac add --cl -D @types/react
-jac add --cl -D @types/react-dom
-jac add --cl -D @types/lodash
-jac add --cl -D vite
+# Add custom dev dependencies
+jac add --cl -d @types/lodash
+jac add --cl -d sass
 ```
+
+> **Note**: React, React-DOM, React-Router-DOM, Vite, and Babel packages are automatically added during build time. You only need to add custom packages like `lodash`, `sass`, `tailwindcss`, etc.
 
 ## Related Documentation
 

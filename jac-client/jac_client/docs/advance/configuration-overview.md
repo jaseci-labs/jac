@@ -95,7 +95,14 @@ Jac Client uses a **configuration-first approach** where all project settings, d
 
 ### Default Configuration
 
-The system starts with sensible defaults:
+The system starts with sensible defaults. **Important**: Default npm packages are automatically added during build time and should not be included in `config.json`:
+
+**Automatically Added Packages:**
+- **Dependencies**: `react`, `react-dom`, `react-router-dom`
+- **DevDependencies**: `vite`, `@babel/cli`, `@babel/core`, `@babel/preset-env`, `@babel/preset-react`
+- **TypeScript** (if detected): `typescript`, `@types/react`, `@types/react-dom`, `@vitejs/plugin-react`
+
+**Default Config Structure:**
 
 ```json
 {
@@ -122,6 +129,8 @@ The system starts with sensible defaults:
   }
 }
 ```
+
+> **Note**: The `package` section in `config.json` should only contain **custom packages** that aren't part of the defaults. React, Babel, and Vite packages are automatically added when `package.json` is generated.
 
 ### Deep Merge Strategy
 
@@ -163,20 +172,22 @@ User configuration is merged with defaults using deep merge:
 
 ### Configuration-First Package Management
 
-Unlike traditional npm projects, packages are managed through `config.json`:
+Unlike traditional npm projects, packages are managed through `config.json`. However, **default dependencies (React, Babel, Vite) are automatically added during build time** and should not be included:
 
 ```json
 {
   "package": {
     "dependencies": {
-      "react": "^18.0.0"
+      "lodash": "^4.17.21"
     },
     "devDependencies": {
-      "@types/react": "^18.0.0"
+      "sass": "^1.77.8"
     }
   }
 }
 ```
+
+> **Important**: React, React-DOM, React-Router-DOM, Vite, and all Babel packages are automatically added to the generated `package.json` during build time. Only include custom packages in `config.json`.
 
 ### Package Lifecycle
 
@@ -282,9 +293,9 @@ cd my-app
 # 2. Config.json is automatically created with jac create_jac_app
 # (For legacy projects, run: jac generate_client_config)
 
-# 3. Add packages
-jac add --cl react
-jac add --cl -D @types/react
+# 3. Add custom packages (React/Babel are added automatically)
+jac add --cl lodash
+jac add --cl -d sass
 
 # 4. Customize build (edit config.json)
 # Add plugins, build options, etc.

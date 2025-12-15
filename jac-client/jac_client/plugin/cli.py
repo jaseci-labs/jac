@@ -457,7 +457,7 @@ compiled/
             Examples:
                 jac add --cl                    # Install all packages from config.json
                 jac add --cl lodash             # Add specific package
-                jac add --cl -D @types/react    # Add as devDependency
+                jac add --cl -d @types/react    # Add as devDependency
                 jac add --cl lodash@^4.17.21    # Add with specific version
             """
             # Note: cl should be detected as boolean, but if not, we check it here
@@ -471,7 +471,7 @@ compiled/
                     file=sys.stderr,
                 )
                 print(
-                    "       jac add --cl -D <package_name>  (for devDependencies)",
+                    "       jac add --cl -d <package_name>  (for devDependencies)",
                     file=sys.stderr,
                 )
                 exit(1)

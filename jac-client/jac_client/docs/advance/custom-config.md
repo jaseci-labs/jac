@@ -222,16 +222,16 @@ Manage npm dependencies and package metadata. This section is used to generate `
     "version": "1.0.0",
     "description": "My Jac application",
     "dependencies": {
-      "react": "^18.0.0",
       "lodash": "^4.17.21"
     },
     "devDependencies": {
-      "@types/react": "^18.0.0",
-      "vite": "^5.0.0"
+      "sass": "^1.77.8"
     }
   }
 }
 ```
+
+> **Important**: React, React-DOM, React-Router-DOM, Vite, and Babel packages are **automatically added during build time** and should not be included in `config.json`. Only add custom packages that aren't part of the defaults.
 
 **Note**: It's recommended to use the CLI commands (`jac add --cl` and `jac remove --cl`) to manage packages rather than manually editing this section. See [Package Management](./package-management.md) for details.
 
