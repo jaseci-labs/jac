@@ -507,7 +507,7 @@ def test_install_package_to_devdependencies() -> None:
                 json.dump(config_data, f)
 
             # Run add --cl -D command
-            result = run(
+            run(
                 ["jac", "add", "--cl", "-D", "@types/react"],
                 capture_output=True,
                 text=True,

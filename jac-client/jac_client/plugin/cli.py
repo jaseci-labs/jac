@@ -442,7 +442,7 @@ compiled/
                 exit(1)
 
         @cmd_registry.register
-        def add(filepath: str = "", cl: bool = False, D: bool = False) -> None:
+        def add(filepath: str = "", cl: bool = False, d: bool = False) -> None:
             """Add npm packages to Jac Client projects.
 
             Adds packages to config.json (dependencies or devDependencies).
@@ -452,7 +452,7 @@ compiled/
             Args:
                 filepath: Package name to add (e.g., "lodash" or "lodash@^4.17.21")
                 cl: Flag to indicate client-side package installation
-                D: Flag to add to devDependencies (default: dependencies)
+                d: Flag to add to devDependencies (default: dependencies)
 
             Examples:
                 jac add --cl                    # Install all packages from config.json
@@ -514,10 +514,10 @@ compiled/
 
                 # Install the package
                 installer.install_package(
-                    package_name=package_name, version=package_version, is_dev=D
+                    package_name=package_name, version=package_version, is_dev=d
                 )
 
-                dep_type = "devDependencies" if D else "dependencies"
+                dep_type = "devDependencies" if d else "dependencies"
                 version_str = f"@{package_version}" if package_version else ""
                 print(
                     f"✅ Added {package_name}{version_str} to {dep_type} in config.json"
@@ -531,7 +531,7 @@ compiled/
                 exit(1)
 
         @cmd_registry.register
-        def remove(filepath: str, cl: bool = False, D: bool = False) -> None:
+        def remove(filepath: str, cl: bool = False, d: bool = False) -> None:
             """Remove npm packages from Jac Client projects.
 
             Removes packages from config.json (dependencies or devDependencies).
@@ -541,7 +541,7 @@ compiled/
             Args:
                 filepath: Package name to remove (required)
                 cl: Flag to indicate client-side package removal
-                D: Flag to remove from devDependencies (default: dependencies)
+                d: Flag to remove from devDependencies (default: dependencies)
 
             Examples:
                 jac remove --cl lodash             # Remove from dependencies
@@ -582,9 +582,9 @@ compiled/
                 installer = PackageInstaller(current_dir)
 
                 # Uninstall the package
-                installer.uninstall_package(package_name=filepath, is_dev=D)
+                installer.uninstall_package(package_name=filepath, is_dev=d)
 
-                dep_type = "devDependencies" if D else "dependencies"
+                dep_type = "devDependencies" if d else "dependencies"
                 print(f"✅ Removed {filepath} from {dep_type} in config.json")
                 print("📦 Updating packages via npm...")
                 # npm install is handled by PackageInstaller.uninstall_package()
