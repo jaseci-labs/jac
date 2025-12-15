@@ -310,15 +310,15 @@ def test_generate_client_config_existing_file() -> None:
 
 
 def test_install_without_cl_flag() -> None:
-    """Test install command without --cl flag should fail."""
+    """Test add command without --cl flag should fail."""
     with tempfile.TemporaryDirectory() as temp_dir:
         original_cwd = os.getcwd()
         try:
             os.chdir(temp_dir)
 
-            # Run install command without --cl flag
+            # Run add command without --cl flag
             result = run(
-                ["jac", "install", "lodash"],
+                ["jac", "add", "lodash"],
                 capture_output=True,
                 text=True,
             )
@@ -332,7 +332,7 @@ def test_install_without_cl_flag() -> None:
 
 
 def test_install_all_packages() -> None:
-    """Test install --cl command installs all packages from config.json."""
+    """Test add --cl command installs all packages from config.json."""
     with tempfile.TemporaryDirectory() as temp_dir:
         original_cwd = os.getcwd()
         try:
@@ -362,9 +362,9 @@ def test_install_all_packages() -> None:
             with open(config_path, "w") as f:
                 json.dump(config_data, f)
 
-            # Run install --cl command without package name
+            # Run add --cl command without package name
             result = run(
-                ["jac", "install", "--cl"],
+                ["jac", "add", "--cl"],
                 capture_output=True,
                 text=True,
             )
@@ -379,7 +379,7 @@ def test_install_all_packages() -> None:
 
 
 def test_install_package_to_dependencies() -> None:
-    """Test install --cl command adds package to dependencies."""
+    """Test add --cl command adds package to dependencies."""
     with tempfile.TemporaryDirectory() as temp_dir:
         original_cwd = os.getcwd()
         try:
@@ -407,9 +407,9 @@ def test_install_package_to_dependencies() -> None:
             with open(config_path, "w") as f:
                 json.dump(config_data, f)
 
-            # Run install --cl command with package name
+            # Run add --cl command with package name
             result = run(
-                ["jac", "install", "--cl", "lodash"],
+                ["jac", "add", "--cl", "lodash"],
                 capture_output=True,
                 text=True,
             )
@@ -430,7 +430,7 @@ def test_install_package_to_dependencies() -> None:
 
 
 def test_install_package_with_version() -> None:
-    """Test install --cl command with specific version."""
+    """Test add --cl command with specific version."""
     with tempfile.TemporaryDirectory() as temp_dir:
         original_cwd = os.getcwd()
         try:
@@ -458,9 +458,9 @@ def test_install_package_with_version() -> None:
             with open(config_path, "w") as f:
                 json.dump(config_data, f)
 
-            # Run install --cl command with package and version
+            # Run add --cl command with package and version
             result = run(
-                ["jac", "install", "--cl", "lodash@^4.17.21"],
+                ["jac", "add", "--cl", "lodash@^4.17.21"],
                 capture_output=True,
                 text=True,
             )
@@ -480,7 +480,7 @@ def test_install_package_with_version() -> None:
 
 
 def test_install_package_to_devdependencies() -> None:
-    """Test install --cl -D command adds package to devDependencies."""
+    """Test add --cl -D command adds package to devDependencies."""
     with tempfile.TemporaryDirectory() as temp_dir:
         original_cwd = os.getcwd()
         try:
@@ -508,9 +508,9 @@ def test_install_package_to_devdependencies() -> None:
             with open(config_path, "w") as f:
                 json.dump(config_data, f)
 
-            # Run install --cl -D command
+            # Run add --cl -D command
             result = run(
-                ["jac", "install", "--cl", "-D", "@types/react"],
+                ["jac", "add", "--cl", "-D", "@types/react"],
                 capture_output=True,
                 text=True,
             )
@@ -531,15 +531,15 @@ def test_install_package_to_devdependencies() -> None:
 
 
 def test_install_without_config_json() -> None:
-    """Test install --cl command when config.json doesn't exist."""
+    """Test add --cl command when config.json doesn't exist."""
     with tempfile.TemporaryDirectory() as temp_dir:
         original_cwd = os.getcwd()
         try:
             os.chdir(temp_dir)
 
-            # Run install --cl command without config.json
+            # Run add --cl command without config.json
             result = run(
-                ["jac", "install", "--cl", "lodash"],
+                ["jac", "add", "--cl", "lodash"],
                 capture_output=True,
                 text=True,
             )
@@ -553,15 +553,15 @@ def test_install_without_config_json() -> None:
 
 
 def test_uninstall_without_cl_flag() -> None:
-    """Test uninstall command without --cl flag should fail."""
+    """Test remove command without --cl flag should fail."""
     with tempfile.TemporaryDirectory() as temp_dir:
         original_cwd = os.getcwd()
         try:
             os.chdir(temp_dir)
 
-            # Run uninstall command without --cl flag
+            # Run remove command without --cl flag
             result = run(
-                ["jac", "uninstall", "lodash"],
+                ["jac", "remove", "lodash"],
                 capture_output=True,
                 text=True,
             )
@@ -575,7 +575,7 @@ def test_uninstall_without_cl_flag() -> None:
 
 
 def test_uninstall_without_package_name() -> None:
-    """Test uninstall --cl command without package name should fail."""
+    """Test remove --cl command without package name should fail."""
     with tempfile.TemporaryDirectory() as temp_dir:
         original_cwd = os.getcwd()
         try:
@@ -603,9 +603,9 @@ def test_uninstall_without_package_name() -> None:
             with open(config_path, "w") as f:
                 json.dump(config_data, f)
 
-            # Run uninstall --cl command without package name
+            # Run remove --cl command without package name
             result = run(
-                ["jac", "uninstall", "--cl"],
+                ["jac", "remove", "--cl"],
                 capture_output=True,
                 text=True,
             )
@@ -619,7 +619,7 @@ def test_uninstall_without_package_name() -> None:
 
 
 def test_uninstall_package_from_dependencies() -> None:
-    """Test uninstall --cl command removes package from dependencies."""
+    """Test remove --cl command removes package from dependencies."""
     with tempfile.TemporaryDirectory() as temp_dir:
         original_cwd = os.getcwd()
         try:
@@ -649,9 +649,9 @@ def test_uninstall_package_from_dependencies() -> None:
             with open(config_path, "w") as f:
                 json.dump(config_data, f)
 
-            # Run uninstall --cl command
+            # Run remove --cl command
             result = run(
-                ["jac", "uninstall", "--cl", "lodash"],
+                ["jac", "remove", "--cl", "lodash"],
                 capture_output=True,
                 text=True,
             )
@@ -671,7 +671,7 @@ def test_uninstall_package_from_dependencies() -> None:
 
 
 def test_uninstall_package_from_devdependencies() -> None:
-    """Test uninstall --cl -D command removes package from devDependencies."""
+    """Test remove --cl -D command removes package from devDependencies."""
     with tempfile.TemporaryDirectory() as temp_dir:
         original_cwd = os.getcwd()
         try:
@@ -701,9 +701,9 @@ def test_uninstall_package_from_devdependencies() -> None:
             with open(config_path, "w") as f:
                 json.dump(config_data, f)
 
-            # Run uninstall --cl -D command
+            # Run remove --cl -D command
             result = run(
-                ["jac", "uninstall", "--cl", "-D", "@types/react"],
+                ["jac", "remove", "--cl", "-D", "@types/react"],
                 capture_output=True,
                 text=True,
             )
@@ -723,7 +723,7 @@ def test_uninstall_package_from_devdependencies() -> None:
 
 
 def test_uninstall_nonexistent_package() -> None:
-    """Test uninstall --cl command with non-existent package should fail."""
+    """Test remove --cl command with non-existent package should fail."""
     with tempfile.TemporaryDirectory() as temp_dir:
         original_cwd = os.getcwd()
         try:
@@ -751,9 +751,9 @@ def test_uninstall_nonexistent_package() -> None:
             with open(config_path, "w") as f:
                 json.dump(config_data, f)
 
-            # Run uninstall --cl command with non-existent package
+            # Run remove --cl command with non-existent package
             result = run(
-                ["jac", "uninstall", "--cl", "nonexistent-package"],
+                ["jac", "remove", "--cl", "nonexistent-package"],
                 capture_output=True,
                 text=True,
             )
@@ -767,15 +767,15 @@ def test_uninstall_nonexistent_package() -> None:
 
 
 def test_uninstall_without_config_json() -> None:
-    """Test uninstall --cl command when config.json doesn't exist."""
+    """Test remove --cl command when config.json doesn't exist."""
     with tempfile.TemporaryDirectory() as temp_dir:
         original_cwd = os.getcwd()
         try:
             os.chdir(temp_dir)
 
-            # Run uninstall --cl command without config.json
+            # Run remove --cl command without config.json
             result = run(
-                ["jac", "uninstall", "--cl", "lodash"],
+                ["jac", "remove", "--cl", "lodash"],
                 capture_output=True,
                 text=True,
             )

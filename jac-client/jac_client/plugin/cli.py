@@ -438,23 +438,23 @@ compiled/
                 exit(1)
 
         @cmd_registry.register
-        def install(filepath: str = "", cl: bool = False, D: bool = False) -> None:
-            """Install npm packages for Jac Client projects.
+        def add(filepath: str = "", cl: bool = False, D: bool = False) -> None:
+            """Add npm packages to Jac Client projects.
 
             Adds packages to config.json (dependencies or devDependencies).
             The --cl flag indicates this is for client-side packages.
             Use -D flag to add to devDependencies instead of dependencies.
 
             Args:
-                filepath: Package name to install (e.g., "lodash" or "lodash@^4.17.21")
+                filepath: Package name to add (e.g., "lodash" or "lodash@^4.17.21")
                 cl: Flag to indicate client-side package installation
                 D: Flag to add to devDependencies (default: dependencies)
 
             Examples:
-                jac install --cl                    # Install all packages from config.json
-                jac install --cl lodash             # Install specific package
-                jac install --cl -D @types/react    # Install as devDependency
-                jac install --cl lodash@^4.17.21    # Install with specific version
+                jac add --cl                    # Install all packages from config.json
+                jac add --cl lodash             # Add specific package
+                jac add --cl -D @types/react    # Add as devDependency
+                jac add --cl lodash@^4.17.21    # Add with specific version
             """
             # Note: cl should be detected as boolean, but if not, we check it here
             if not cl:
@@ -463,11 +463,11 @@ compiled/
                     file=sys.stderr,
                 )
                 print(
-                    "Usage: jac install --cl <package_name>",
+                    "Usage: jac add --cl <package_name>",
                     file=sys.stderr,
                 )
                 print(
-                    "       jac install --cl -D <package_name>  (for devDependencies)",
+                    "       jac add --cl -D <package_name>  (for devDependencies)",
                     file=sys.stderr,
                 )
                 exit(1)
@@ -522,37 +522,37 @@ compiled/
                 print(f"✅ Successfully installed {package_name}{version_str}")
 
             except Exception as e:
-                print(f"Error installing package: {e}", file=sys.stderr)
+                print(f"Error adding package: {e}", file=sys.stderr)
                 exit(1)
 
         @cmd_registry.register
-        def uninstall(filepath: str, cl: bool = False, D: bool = False) -> None:
-            """Uninstall npm packages from Jac Client projects.
+        def remove(filepath: str, cl: bool = False, D: bool = False) -> None:
+            """Remove npm packages from Jac Client projects.
 
             Removes packages from config.json (dependencies or devDependencies).
             The --cl flag indicates this is for client-side packages.
             Use -D flag to remove from devDependencies instead of dependencies.
 
             Args:
-                filepath: Package name to uninstall (required)
-                cl: Flag to indicate client-side package uninstallation
+                filepath: Package name to remove (required)
+                cl: Flag to indicate client-side package removal
                 D: Flag to remove from devDependencies (default: dependencies)
 
             Examples:
-                jac uninstall --cl lodash             # Remove from dependencies
-                jac uninstall --cl -D @types/react    # Remove from devDependencies
+                jac remove --cl lodash             # Remove from dependencies
+                jac remove --cl -D @types/react    # Remove from devDependencies
             """
             if not cl:
                 print(
-                    "Error: --cl flag is required for client package uninstallation",
+                    "Error: --cl flag is required for client package removal",
                     file=sys.stderr,
                 )
                 print(
-                    "Usage: jac uninstall --cl <package_name>",
+                    "Usage: jac remove --cl <package_name>",
                     file=sys.stderr,
                 )
                 print(
-                    "       jac uninstall --cl -D <package_name>  (for devDependencies)",
+                    "       jac remove --cl -D <package_name>  (for devDependencies)",
                     file=sys.stderr,
                 )
                 exit(1)
@@ -563,7 +563,7 @@ compiled/
                     file=sys.stderr,
                 )
                 print(
-                    "Usage: jac uninstall --cl <package_name>",
+                    "Usage: jac remove --cl <package_name>",
                     file=sys.stderr,
                 )
                 exit(1)
@@ -575,7 +575,7 @@ compiled/
                 current_dir = Path(os.getcwd())
                 installer = PackageInstaller(current_dir)
 
-                # Uninstall the package
+                # Remove the package
                 installer.uninstall_package(
                     package_name=filepath,
                     is_dev=D
@@ -587,8 +587,8 @@ compiled/
                 )
                 print("📦 Updating packages via npm...")
                 # npm install is handled by PackageInstaller.uninstall_package()
-                print(f"✅ Successfully uninstalled {filepath}")
+                print(f"✅ Successfully removed {filepath}")
 
             except Exception as e:
-                print(f"Error uninstalling package: {e}", file=sys.stderr)
+                print(f"Error removing package: {e}", file=sys.stderr)
                 exit(1)
