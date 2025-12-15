@@ -205,6 +205,7 @@ Manage npm dependencies and package metadata. This section is used to generate `
 **Format**: JavaScript object
 
 **Keys**:
+
 - `name`: Package name
 - `version`: Package version
 - `description`: Package description
@@ -460,6 +461,7 @@ jac generate_client_config
 - Provides helpful output with examples
 
 **When to use**:
+
 - Migrating projects created before Jac Client 0.2.4
 - Manually setting up configuration in an existing project
 

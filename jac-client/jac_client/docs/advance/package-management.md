@@ -5,6 +5,7 @@ Manage npm dependencies for your Jac Client projects through a centralized confi
 ## Overview
 
 Jac Client provides a unified package management system that:
+
 - Manages dependencies through `config.json` (not `package.json`)
 - Automatically generates `package.json` from your configuration
 - Integrates seamlessly with the build system
@@ -130,6 +131,7 @@ jac add --cl
 #### Package Name Formats
 
 **Regular packages:**
+
 ```bash
 jac add --cl lodash              # Latest version
 jac add --cl lodash@^4.17.21     # Specific version
@@ -137,6 +139,7 @@ jac add --cl react@18.0.0        # Exact version
 ```
 
 **Scoped packages:**
+
 ```bash
 jac add --cl @types/react                    # Latest version
 jac add --cl @types/react@^18.0.0            # Specific version
@@ -290,8 +293,8 @@ jac add --cl lodash
 
 ### 2. Commit config.json, Not package.json
 
-- ✅ **Commit**: `config.json` (your source of truth)
-- ❌ **Don't commit**: `.jac-client.configs/package.json` (generated)
+-  **Commit**: `config.json` (your source of truth)
+-  **Don't commit**: `.jac-client.configs/package.json` (generated)
 
 The `.gitignore` automatically excludes generated files.
 
@@ -349,6 +352,7 @@ jac add --cl
 **Problem**: Error when adding a package.
 
 **Solution**:
+
 - Verify package name is correct
 - Check npm registry is accessible
 - Ensure you have internet connection
@@ -358,6 +362,7 @@ jac add --cl
 **Problem**: Package version conflicts during installation.
 
 **Solution**:
+
 - Check `package.json` in `.jac-client.configs/` for conflicts
 - Update conflicting packages to compatible versions
 - Use `npm ls` to see dependency tree
@@ -367,6 +372,7 @@ jac add --cl
 **Problem**: Changes to `config.json` not reflected.
 
 **Solution**:
+
 - Run `jac add --cl` to regenerate and install
 - Check JSON syntax is valid
 - Verify package names are correct
@@ -376,6 +382,7 @@ jac add --cl
 **Problem**: `npm command not found` error.
 
 **Solution**:
+
 - Ensure Node.js and npm are installed
 - Verify npm is in your PATH
 - Check Node.js version: `node --version`
@@ -385,6 +392,7 @@ jac add --cl
 **Problem**: Scoped package not parsed correctly.
 
 **Solution**:
+
 - Use the CLI command (handles scoping automatically)
 - For manual edits, ensure format: `"@scope/package": "version"`
 
@@ -468,4 +476,3 @@ jac add --cl -D vite
 - [Configuration System Overview](./configuration-overview.md) - Complete guide to the configuration system
 - [Custom Configuration](./custom-config.md) - Configure Vite build settings
 - [Working with TypeScript](../working-with-ts.md) - TypeScript setup
-

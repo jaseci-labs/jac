@@ -311,15 +311,17 @@ project-root/
 ### Version Control
 
 **Commit**:
-- ✅ `config.json` - Your configuration
-- ✅ `app.jac` - Your application code
-- ✅ `components/` - Your components
-- ✅ `assets/` - Your assets
+
+-  `config.json` - Your configuration
+-  `app.jac` - Your application code
+-  `components/` - Your components
+-  `assets/` - Your assets
 
 **Don't Commit** (automatically gitignored):
-- ❌ `.jac-client.configs/` - Generated files
-- ❌ `node_modules/` - Dependencies
-- ❌ `compiled/` - Build output
+
+-  `.jac-client.configs/` - Generated files
+-  `node_modules/` - Dependencies
+-  `compiled/` - Build output
 
 ## Best Practices
 
@@ -398,6 +400,7 @@ jac add --cl
 **Problem**: Configuration not being applied.
 
 **Solutions**:
+
 - Verify `config.json` is in project root
 - Check JSON syntax is valid
 - Ensure file encoding is UTF-8
@@ -408,6 +411,7 @@ jac add --cl
 **Problem**: `npm install` fails.
 
 **Solutions**:
+
 - Verify Node.js and npm are installed
 - Check internet connection
 - Clear npm cache: `npm cache clean --force`
@@ -418,6 +422,7 @@ jac add --cl
 **Problem**: Generated files don't match config.json.
 
 **Solutions**:
+
 - Run `jac add --cl` to regenerate
 - Delete `.jac-client.configs/` and rebuild
 - Check config.json syntax
@@ -427,6 +432,7 @@ jac add --cl
 **Problem**: Configuration merge produces unexpected results.
 
 **Solutions**:
+
 - Understand deep merge behavior (arrays replace, objects merge)
 - Check default configuration
 - Verify JSON structure
@@ -475,4 +481,3 @@ While JSON doesn't support conditionals, you can:
 - [Custom Configuration](./custom-config.md) - Detailed Vite configuration guide
 - [Package Management](./package-management.md) - Complete package management guide
 - [Architecture Overview](../../../architecture.md) - System architecture details
-
