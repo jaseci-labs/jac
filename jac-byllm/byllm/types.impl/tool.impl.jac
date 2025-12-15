@@ -4,7 +4,7 @@ impl Tool.postinit()  -> None {
         self.func.__annotations__ = annotations;
     }
     self.description = Tool.get_func_description(self.func);
-    if hasattr(self.func, "_jac_semstr_inner") {
+    if self.func?._jac_semstr_inner {
         self.params_desc = self.func._jac_semstr_inner;  # type: ignore
     } else {
         self.params_desc = {name: str(type) for (name, type) in annotations.items()};
@@ -32,7 +32,7 @@ impl Tool.get_name()  -> str {
 }
 
 impl Tool.get_func_description(func: Callable) -> str {
-    if hasattr(func, "_jac_semstr") {
+    if func?._jac_semstr {
         return func._jac_semstr;  # type: ignore
 
     }
