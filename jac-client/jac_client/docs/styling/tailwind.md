@@ -27,15 +27,9 @@ npm install tailwindcss @tailwindcss/vite
 
 ### 2. Configure Tailwind in config.json
 
-Create `config.json` in your project root and add Tailwind configuration. You can either:
+Add Tailwind configuration to your `config.json` file. For new projects created with `jac create_jac_app`, `config.json` is automatically created. For legacy projects (pre-0.2.4), you can create it using `jac generate_client_config`.
 
-**Option A: Use the CLI command (recommended)**
-
-```bash
-jac generate_client_config
-```
-
-This creates a default `config.json` file with the proper structure. Then edit it to add Tailwind:
+Edit your `config.json` to add Tailwind:
 
 ```json
 {
@@ -50,24 +44,7 @@ This creates a default `config.json` file with the proper structure. Then edit i
 }
 ```
 
-**Option B: Create manually**
-
-Create `config.json` in your project root (if it doesn't exist) and add Tailwind configuration:
-
-```json
-{
-  "vite": {
-    "plugins": [
-      "tailwindcss()"
-    ],
-    "lib_imports": [
-      "import tailwindcss from '@tailwindcss/vite'"
-    ]
-  }
-}
-```
-
-**Note**: If `config.json` doesn't exist, the system will use default configuration. Use `jac generate_client_config` to create it with the proper structure, or create it manually when you need to customize the build.
+**Note**: For new projects, `config.json` is automatically created when you run `jac create_jac_app`. For legacy projects (pre-0.2.4), you can create it using `jac generate_client_config` or create it manually.
 
 The `vite.config.js` will be automatically generated with Tailwind support. No manual editing needed!
 
@@ -258,7 +235,7 @@ This creates a default `config.json` with the proper structure. Then add Tailwin
 }
 ```
 
-**Note**: The `config.json` file is optional. If it doesn't exist, the system uses default configuration. Use `jac generate_client_config` to create it with the proper structure, or create it manually when you need to customize plugins or build options.
+**Note**: For new projects, `config.json` is automatically created when you run `jac create_jac_app`. For legacy projects (pre-0.2.4), you can create it using `jac generate_client_config` or create it manually.
 
 The `vite.config.js` is automatically generated from this configuration. You don't need to edit it manually.
 
