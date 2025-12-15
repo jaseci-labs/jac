@@ -23,6 +23,7 @@ class ViteBundler {
         self.config_path = config_path;
         self.config_loader = JacClientConfig(project_dir);
     }
+
     """Run Vite build with generated config in .jac-client.configs/."""
     def build(self: ViteBundler, entry_file: Optional[Path] = None) -> None {
         self.output_dir.mkdir(parents=True, exist_ok=True);
@@ -71,6 +72,7 @@ class ViteBundler {
             self._cleanup_root_package_files();
         }
     }
+
     """Find the generated Vite bundle file."""
     def find_bundle(self: ViteBundler) -> Optional[Path] {
         for file in self.output_dir.glob('client.*.js') {
@@ -78,6 +80,7 @@ class ViteBundler {
         }
         return None;
     }
+
     """Find the generated Vite CSS file."""
     def find_css(self: ViteBundler) -> Optional[Path] {
         css_file = self.output_dir / 'main.css';
@@ -89,6 +92,7 @@ class ViteBundler {
         }
         return None;
     }
+
     """Read the bundled code and compute its hash."""
     def read_bundle(self: ViteBundler) -> tuple[str, str] {
         bundle_file = self.find_bundle();
@@ -99,6 +103,7 @@ class ViteBundler {
         bundle_hash = hashlib.sha256(bundle_code.encode('utf-8')).hexdigest();
         return (bundle_code, bundle_hash);
     }
+
     """Check if the project has TypeScript support."""
     def _has_typescript_support(self: ViteBundler) -> bool {
         tsconfig_path = self.project_dir / 'tsconfig.json';
@@ -135,6 +140,7 @@ class ViteBundler {
         }
         return False;
     }
+
     """Create vite.config.js from config.json during bundling."""
     def create_vite_config(self: ViteBundler, entry_file: Path) -> Path {
         configs_dir = self.project_dir / '.jac-client.configs';
@@ -244,6 +250,7 @@ export default defineConfig({{
         name = name.lstrip('@');
         return name;
     }
+
     """Format plugin options as JavaScript object string."""
     def _format_plugin_options(self: ViteBundler, options: dict) -> str {
         if not options {
@@ -265,6 +272,7 @@ export default defineConfig({{
         }
         return '{ ' + ', '.join(items) + ' }';
     }
+
     """Format config object as JavaScript object string."""
     def _format_config_object(self: ViteBundler, config: dict, indent: int = 0) -> str {
         if not config {
@@ -303,6 +311,7 @@ export default defineConfig({{
             shutil.copy2(generated_package_json, root_package_json);
         }
     }
+
     """Clean up root package.json and move package-lock.json to .jac-client.configs/.\n\n        Remove root package.json and move package-lock.json to .jac-client.configs/.\n        """
     def _cleanup_root_package_files(self: ViteBundler) -> None {
         root_package_json = self.project_dir / 'package.json';
@@ -320,6 +329,7 @@ export default defineConfig({{
             root_package_json.unlink();
         }
     }
+
     """Create package.json from config.json during bundling."""
     def create_package_json(
         self: ViteBundler, project_name: Optional[str] = None
@@ -415,4 +425,3 @@ export default defineConfig({{
         return package_json_path;
     }
 }
-

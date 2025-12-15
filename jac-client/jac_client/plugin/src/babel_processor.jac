@@ -15,10 +15,10 @@ class BabelProcessor {
     """Run Babel compilation (npm run compile)."""
     def compile(self: BabelProcessor) -> None {
         bundler = ViteBundler(self.project_dir);
-        
+
         # Ensure root package.json exists temporarily for npm commands
         bundler._ensure_root_package_json();
-        
+
         try {
             # Ensure dependencies are installed (check if node_modules exists)
             node_modules = self.project_dir / 'node_modules';
@@ -41,7 +41,7 @@ class BabelProcessor {
                     ) from None ;
                 }
             }
-            
+
             command = ['npm', 'run', 'compile'];
             subprocess.run(
                 command,

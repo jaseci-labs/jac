@@ -123,7 +123,9 @@ class JacCmd:
                     json.dump(config_data, f, indent=2)
 
                 print("✅ Created config.json with package configuration")
-                print("📦 package.json will be generated in .jac-client.configs/ on first build")
+                print(
+                    "📦 package.json will be generated in .jac-client.configs/ on first build"
+                )
 
                 # Create basic project structure
                 print("Setting up project structure...")
@@ -431,7 +433,9 @@ compiled/
                 print('      "@tailwindcss/vite": "^4.1.17"')
                 print("    }")
                 print("  }")
-                print("\nNote: package.json will be generated in .jac-client.configs/ on build")
+                print(
+                    "\nNote: package.json will be generated in .jac-client.configs/ on build"
+                )
 
             except Exception as e:
                 print(f"Error creating config.json: {e}", file=sys.stderr)
@@ -474,6 +478,7 @@ compiled/
 
             try:
                 from pathlib import Path
+
                 from jac_client.plugin.src.package_installer import PackageInstaller
 
                 current_dir = Path(os.getcwd())
@@ -503,13 +508,13 @@ compiled/
                     # For non-scoped packages, split on first @
                     package_parts = filepath.split("@", 1)
                     package_name = package_parts[0]
-                    package_version = package_parts[1] if len(package_parts) > 1 else None
+                    package_version = (
+                        package_parts[1] if len(package_parts) > 1 else None
+                    )
 
                 # Install the package
                 installer.install_package(
-                    package_name=package_name,
-                    version=package_version,
-                    is_dev=D
+                    package_name=package_name, version=package_version, is_dev=D
                 )
 
                 dep_type = "devDependencies" if D else "dependencies"
@@ -570,21 +575,17 @@ compiled/
 
             try:
                 from pathlib import Path
+
                 from jac_client.plugin.src.package_installer import PackageInstaller
 
                 current_dir = Path(os.getcwd())
                 installer = PackageInstaller(current_dir)
 
                 # Uninstall the package
-                installer.uninstall_package(
-                    package_name=filepath,
-                    is_dev=D
-                )
+                installer.uninstall_package(package_name=filepath, is_dev=D)
 
                 dep_type = "devDependencies" if D else "dependencies"
-                print(
-                    f"✅ Removed {filepath} from {dep_type} in config.json"
-                )
+                print(f"✅ Removed {filepath} from {dep_type} in config.json")
                 print("📦 Updating packages via npm...")
                 # npm install is handled by PackageInstaller.uninstall_package()
                 print(f"✅ Successfully uninstalled {filepath}")

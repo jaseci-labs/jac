@@ -352,9 +352,7 @@ def test_install_all_packages() -> None:
                     "name": "test-project",
                     "version": "1.0.0",
                     "description": "Test project",
-                    "dependencies": {
-                        "lodash": "^4.17.21"
-                    },
+                    "dependencies": {"lodash": "^4.17.21"},
                     "devDependencies": {},
                 },
             }
@@ -522,7 +520,7 @@ def test_install_package_to_devdependencies() -> None:
 
             assert "@types/react" in updated_config["package"]["devDependencies"]
             assert "@types/react" not in updated_config["package"]["dependencies"]
-            
+
             # Note: npm install might fail in test environment, but config.json should still be updated
             # The important part is that the package was added to the correct section in config.json
 
@@ -639,9 +637,7 @@ def test_uninstall_package_from_dependencies() -> None:
                     "name": "test-project",
                     "version": "1.0.0",
                     "description": "Test project",
-                    "dependencies": {
-                        "lodash": "^4.17.21"
-                    },
+                    "dependencies": {"lodash": "^4.17.21"},
                     "devDependencies": {},
                 },
             }
@@ -692,9 +688,7 @@ def test_uninstall_package_from_devdependencies() -> None:
                     "version": "1.0.0",
                     "description": "Test project",
                     "dependencies": {},
-                    "devDependencies": {
-                        "@types/react": "^18.0.0"
-                    },
+                    "devDependencies": {"@types/react": "^18.0.0"},
                 },
             }
             config_path = os.path.join(temp_dir, "config.json")
