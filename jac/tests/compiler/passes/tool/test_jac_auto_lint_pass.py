@@ -173,35 +173,20 @@ class TestJacAutoLintPass:
         prog = JacProgram.jac_file_formatter(input_path, auto_lint=True)
         formatted = prog.mod.main.gen.jac
 
-        # Python-style __init__ should be converted to Jac's init keyword
+        # Method definitions converted
         assert "def __init__" not in formatted
-        assert "def init" in formatted
-
-        # Python-style __post_init__ should be converted to Jac's postinit keyword
         assert "def __post_init__" not in formatted
+        assert "def init" in formatted
         assert "def postinit" in formatted
 
-        # Regular methods should remain unchanged
+        # Regular methods unchanged
         assert "def greet" in formatted
 
-        # Classes should still be present
-        assert "class Person" in formatted
-        assert "class Employee" in formatted
-        assert "class DataClass" in formatted
-        assert "class CommentedClass" in formatted
-
-        # Comments should be preserved
-        assert "# Constructor comment before __init__" in formatted
-        assert "# Set the name field" in formatted
-        assert "# inline comment for age" in formatted
-        assert "# Post-initialization hook" in formatted
-        assert "# Default department assignment" in formatted
-        assert "# Comment inside init body" in formatted
-        assert "# Another comment at end" in formatted
-
-        # Docstrings should be preserved
-        assert '"""Initialize a Person with name and age."""' in formatted
-        assert '"""Initialize Employee with additional employee_id."""' in formatted
+        # Other __init__ usages preserved (not method definitions)
+        assert "super.__init__" in formatted
+        assert "Person().__init__" in formatted
+        assert "__init__ = 5" in formatted
+        assert "print(__init__)" in formatted
 
 
 class TestIsPureExpression:

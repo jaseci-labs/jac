@@ -92,56 +92,33 @@ class JacAutoLintPass(UniPass) {
 
     """Process ability nodes to convert __init__/__post_init__ to init/postinit."""
     def enter_ability(self: JacAutoLintPass, ability_node: uni.Ability) -> None {
-        if not self.lint_enabled {
+        if not self.lint_enabled or not ability_node.is_method {
             return;
         }
-
-        # Only process if name_ref is a Name (not already a SpecialVarRef)
         if not isinstance(ability_node.name_ref, uni.Name)
         or isinstance(ability_node.name_ref, uni.SpecialVarRef) {
             return;
         }
-
-        name_value = ability_node.name_ref.value;
-
-        if name_value == "__init__" or name_value == "__post_init__" {
-            new_tok = Tok.KW_INIT if name_value == "__init__" else Tok.KW_POST_INIT;
-            tok_value = "init" if name_value == "__init__" else "postinit";
-            # Create a new Name node with the init/postinit token type
-            new_name = uni.Name(
-                orig_src=ability_node.name_ref.orig_src,
-                name=new_tok.value,
-                value=tok_value,
-                line=ability_node.name_ref.line_no,
-                end_line=ability_node.name_ref.end_line,
-                col_start=ability_node.name_ref.c_start,
-                col_end=ability_node.name_ref.c_end,
-                pos_start=ability_node.name_ref.pos_start,
-                pos_end=ability_node.name_ref.pos_end
-            );
-            # Create a SpecialVarRef wrapping the new Name
-            special_ref = uni.SpecialVarRef(var=new_name);
-            # Save old name_ref before updating
-            old_name_ref = ability_node.name_ref;
-            # Replace the name_ref and update the node
-            self.update_ability_name_ref(ability_node, special_ref);
-            # Update the kid list to use the new name_ref
-            # Find and replace the old name_ref in the kid list
+        new_tok: Tok | None = None;
+        if ability_node.name_ref.value == "__init__" {
+            new_tok = Tok.KW_INIT;
+        } elif ability_node.name_ref.value == "__post_init__" {
+            new_tok = Tok.KW_POST_INIT;
+        }
+        if new_tok is not None {
+            old_ref = ability_node.name_ref;
+            old_ref.name = new_tok.value;
+            old_ref.value = new_tok.value;
+            special_ref = uni.SpecialVarRef(var=old_ref);
+            special_ref.parent = ability_node;
+            ability_node.name_ref = special_ref;
+            ability_node.name_spec = special_ref;
             for (idx, kid) in enumerate(ability_node.kid) {
-                if kid is old_name_ref {
+                if kid is old_ref {
                     ability_node.kid[idx] = special_ref;
                     break;
                 }
             }
         }
-    }
-
-    """Helper to update ability name_ref with proper parent linkage."""
-    def update_ability_name_ref(
-        self: JacAutoLintPass, ability: uni.Ability, new_ref: uni.SpecialVarRef
-    ) -> None {
-        new_ref.parent = ability;
-        ability.name_ref = new_ref;
-        ability.name_spec = new_ref;
     }
 }
