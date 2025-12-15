@@ -183,14 +183,19 @@ Unlike traditional npm projects, packages are managed through `config.json`:
 1. **Add Package**: `jac add --cl <package>`
    - Updates `config.json`
    - Regenerates `package.json`
-   - Runs `npm install`
+   - Runs `npm install` for the specific package
 
-2. **Remove Package**: `jac remove --cl <package>`
+2. **Install All Packages**: `jac add --cl` (no package name)
+   - Reads all packages from `config.json`
+   - Regenerates `package.json`
+   - Runs `npm install` to install all configured packages
+
+3. **Remove Package**: `jac remove --cl <package>`
    - Removes from `config.json`
    - Regenerates `package.json`
    - Runs `npm install`
 
-3. **Build/Serve**: Automatically regenerates `package.json` if needed
+4. **Build/Serve**: Automatically regenerates `package.json` if needed
 
 ### Generated Files
 

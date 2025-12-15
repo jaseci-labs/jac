@@ -54,6 +54,8 @@ Install all packages listed in `config.json`:
 jac add --cl
 ```
 
+> **Note**: When you run `jac add --cl` without specifying a package name, it installs all packages listed in the `dependencies` and `devDependencies` sections of your `config.json`. This is useful after manually editing `config.json` or when setting up a project on a new machine.
+
 ## How It Works
 
 ### Configuration-First Approach
@@ -145,10 +147,17 @@ jac add --cl @vitejs/plugin-react@^4.0.0    # Scoped with version
 
 #### What Happens
 
+**When adding a specific package** (`jac add --cl <package>`):
 1. Package is added to `config.json` (dependencies or devDependencies)
 2. `package.json` is regenerated from `config.json`
 3. `npm install` is run to install the package
 4. `package-lock.json` is created/updated
+
+**When installing all packages** (`jac add --cl` without package name):
+1. Reads all packages from `config.json` (both `dependencies` and `devDependencies`)
+2. `package.json` is regenerated from `config.json`
+3. `npm install` is run to install **all** configured packages
+4. `package-lock.json` is created/updated with all packages
 
 ### `jac remove --cl <package>`
 
@@ -201,7 +210,10 @@ After manual edits, run:
 jac add --cl
 ```
 
-This will install all packages listed in `config.json`.
+This will **install all packages** listed in both `dependencies` and `devDependencies` sections of your `config.json`. The command:
+1. Regenerates `package.json` from `config.json`
+2. Runs `npm install` to install all configured packages
+3. Updates `package-lock.json` accordingly
 
 ## Package Version Management
 
@@ -256,10 +268,11 @@ The system correctly parses scoped packages by finding the version separator (`@
 
 The build system automatically regenerates `package.json` from `config.json`:
 
-1. **During `jac add --cl`**: Regenerates before running npm install
-2. **During `jac remove --cl`**: Regenerates before running npm install
-3. **During `jac serve`**: Regenerates if config.json changed
-4. **During `jac build`**: Regenerates before building
+1. **During `jac add --cl <package>`**: Regenerates before running npm install for the specific package
+2. **During `jac add --cl`** (no package): Regenerates and installs **all packages** from `config.json`
+3. **During `jac remove --cl`**: Regenerates before running npm install
+4. **During `jac serve`**: Regenerates if config.json changed
+5. **During `jac build`**: Regenerates before building
 
 ### Package.json Location
 
@@ -338,9 +351,11 @@ Keep packages updated:
 # Check for outdated packages
 npm outdated
 
-# Update in config.json, then reinstall
+# Update versions in config.json, then install all packages
 jac add --cl
 ```
+
+> **Note**: `jac add --cl` (without a package name) installs all packages from `config.json`, making it perfect for syncing dependencies after manual edits or when setting up on a new machine.
 
 ## Troubleshooting
 
