@@ -7,7 +7,7 @@ import tempfile
 import streamlit.web.bootstrap as bootstrap
 
 from jaclang.cli.cmdreg import cmd_registry
-from jaclang.runtimelib.runtime import hookimpl
+from jaclang.pycore.runtime import hookimpl
 
 
 class JacCmd:

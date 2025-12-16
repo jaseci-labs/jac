@@ -5,8 +5,8 @@ import from collections.abc { Callable, Iterator }
 import from contextlib { contextmanager }
 import from types { UnionType }
 import from typing { TYPE_CHECKING }
-import jaclang.compiler.unitree as uni;
-import from jaclang.compiler.utils {
+import jaclang.pycore.unitree as uni;
+import from jaclang.pycore.helpers {
     read_file_with_encoding as read_file_with_encoding
 }
 

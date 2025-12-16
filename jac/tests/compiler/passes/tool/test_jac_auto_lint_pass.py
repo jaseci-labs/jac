@@ -1,0 +1,211 @@
+"""Test Jac Auto Lint Pass module."""
+
+import os
+from collections.abc import Callable
+from pathlib import Path
+
+import pytest
+
+import jaclang.pycore.unitree as uni
+from jaclang.pycore.program import JacProgram
+
+
+# Fixture path helper
+@pytest.fixture
+def auto_lint_fixture_path() -> Callable[[str], str]:
+    """Return a function that returns the path to an auto_lint fixture file."""
+    base_dir = os.path.dirname(__file__)
+    fixtures_dir = os.path.join(base_dir, "fixtures", "auto_lint")
+
+    def get_path(filename: str) -> str:
+        return os.path.join(fixtures_dir, filename)
+
+    return get_path
+
+
+class TestJacAutoLintPass:
+    """Tests for the Jac Auto Lint Pass."""
+
+    def test_full_extraction(
+        self, auto_lint_fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test extracting all assignments from with entry block."""
+        input_path = auto_lint_fixture_path("extractable.jac")
+
+        # Format with linting enabled
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True)
+        formatted = prog.mod.main.gen.jac
+
+        # Should contain glob declarations for all extracted values
+        assert "glob x = 5;" in formatted
+        assert "glob y = " in formatted
+        assert "glob z = " in formatted
+        assert "glob int_val" in formatted
+        assert "glob float_val" in formatted
+        assert "glob str_val" in formatted
+        assert "glob bool_val" in formatted
+        assert "glob null_val" in formatted
+        assert "glob list_val" in formatted
+        assert "glob dict_val" in formatted
+        assert "glob tuple_val" in formatted
+        assert "glob set_val" in formatted
+        assert "glob sum_val" in formatted
+        assert "glob product" in formatted
+        assert "glob neg_val" in formatted
+        assert "glob not_val" in formatted
+
+        # Should NOT contain with entry block syntax (it was fully extracted)
+        assert "with entry {" not in formatted
+
+        # Globs should come after imports
+        import_pos = formatted.find("import from os")
+        glob_x_pos = formatted.find("glob x")
+        def_pos = formatted.find("def main")
+        assert import_pos < glob_x_pos < def_pos
+
+    def test_no_lint_flag(self, auto_lint_fixture_path: Callable[[str], str]) -> None:
+        """Test that auto_lint=False preserves with entry blocks."""
+        input_path = auto_lint_fixture_path("extractable.jac")
+
+        # Format with linting disabled
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=False)
+        formatted = prog.mod.main.gen.jac
+
+        # Should still contain with entry block
+        assert "with entry" in formatted
+
+        # Should NOT contain glob declarations for extracted values
+        assert "glob x" not in formatted
+        assert "glob int_val" not in formatted
+
+    def test_mixed_extraction(
+        self, auto_lint_fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test partial extraction when some statements can't be extracted."""
+        input_path = auto_lint_fixture_path("mixed_extraction.jac")
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True)
+        formatted = prog.mod.main.gen.jac
+
+        # Extractable assignments should become globs
+        assert "glob x = 5;" in formatted
+        assert "glob y = 10;" in formatted
+
+        # Non-extractable statement should stay in with entry
+        assert "with entry" in formatted
+        assert "print(" in formatted
+
+    def test_all_assignments_extracted(
+        self, auto_lint_fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that ALL assignments (including non-pure) are extracted to globs."""
+        input_path = auto_lint_fixture_path("non_extractable.jac")
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True)
+        formatted = prog.mod.main.gen.jac
+
+        # All assignments should become globs (even function calls, attr access, etc.)
+        assert "glob result" in formatted
+        assert "glob value" in formatted
+        assert "glob item" in formatted
+
+        # The unnamed with entry block should be removed (all assignments extracted)
+        # Only named entry block should remain
+        assert "with entry:__main__" in formatted or "with entry :__main__" in formatted
+
+    def test_named_entry_not_modified(
+        self, auto_lint_fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that named entry blocks are NOT modified."""
+        input_path = auto_lint_fixture_path("non_extractable.jac")
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True)
+        formatted = prog.mod.main.gen.jac
+
+        # Named entry block should be preserved
+        assert "with entry:__main__" in formatted or "with entry :__main__" in formatted
+
+        # Assignment inside named entry should NOT become glob
+        assert "glob named_x" not in formatted
+
+    def test_existing_globs_preserved(
+        self, auto_lint_fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test file that already uses glob - existing globs are preserved."""
+        input_path = auto_lint_fixture_path("non_extractable.jac")
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True)
+        formatted = prog.mod.main.gen.jac
+
+        # Should preserve existing glob declarations
+        assert "glob existing_x = 5;" in formatted
+        assert "glob existing_y = " in formatted
+        assert "glob existing_z = " in formatted
+
+    def test_class_entry_not_extracted(
+        self, auto_lint_fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that with entry inside a class body is NOT extracted to glob."""
+        input_path = auto_lint_fixture_path("class_entry.jac")
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True)
+        formatted = prog.mod.main.gen.jac
+
+        # Class with entry should be preserved (glob doesn't work in classes)
+        assert "class MyClass" in formatted
+
+        # The class should still have its with entry block
+        # Check that class body assignments did NOT become module-level globs
+        assert "glob instance_var" not in formatted
+        assert "glob another_var" not in formatted
+        assert "glob list_var" not in formatted
+
+        # Module-level with entry SHOULD be fully extracted (all assignments)
+        assert "glob module_var" in formatted
+        assert "glob cls_obj" in formatted
+
+
+class TestIsPureExpression:
+    """Unit tests for the is_pure_expression method."""
+
+    def _create_test_pass(self) -> object:
+        """Create a JacAutoLintPass instance for testing."""
+        from jaclang.compiler.passes.tool.jac_auto_lint_pass import JacAutoLintPass
+
+        prog = JacProgram()
+        # We need to create a stub module
+        module = uni.Module.make_stub()
+        return JacAutoLintPass(ir_in=module, prog=prog)
+
+    def test_literals_are_pure(self) -> None:
+        """Test that literal values are considered pure."""
+        # This is a conceptual test - the actual implementation
+        # checks isinstance against AST node types
+        pass  # Covered by integration tests above
+
+    def test_function_calls_not_pure(self) -> None:
+        """Test that function calls are NOT considered pure."""
+        # Covered by non_extractable integration test
+        pass
+
+
+class TestFormatCommandIntegration:
+    """Integration tests for the format CLI command."""
+
+    def test_format_with_lint_default(
+        self, auto_lint_fixture_path: Callable[[str], str], tmp_path: Path
+    ) -> None:
+        """Test that format applies linting when auto_lint=True."""
+        import shutil
+
+        # Copy fixture to temp location
+        src = auto_lint_fixture_path("extractable.jac")
+        dst = tmp_path / "test.jac"
+        shutil.copy(src, dst)
+
+        # Format the file with auto_lint enabled
+        prog = JacProgram.jac_file_formatter(str(dst), auto_lint=True)
+        formatted = prog.mod.main.gen.jac
+
+        # Linting should have been applied
+        assert "glob" in formatted

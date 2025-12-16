@@ -15,9 +15,12 @@ import sys
 from collections.abc import Sequence
 from types import ModuleType
 
-from jaclang.settings import settings
-from jaclang.utils.log import logging
-from jaclang.utils.module_resolver import get_jac_search_paths, get_py_search_paths
+from jaclang.pycore.log import logging
+from jaclang.pycore.module_resolver import (
+    get_jac_search_paths,
+    get_py_search_paths,
+)
+from jaclang.pycore.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +79,23 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
             "jaclang.runtimelib.utils",
             "jaclang.runtimelib.server",
             "jaclang.runtimelib.client_bundle",
+            # Compiler passes converted to Jac must use minimal compilation
+            # to avoid circular imports (they're used during compilation itself)
+            "jaclang.compiler.passes.main.sem_def_match_pass",
+            "jaclang.compiler.passes.main.annex_pass",
+            "jaclang.compiler.passes.main.semantic_analysis_pass",
+            "jaclang.compiler.passes.main.def_use_pass",
+            "jaclang.compiler.passes.main.pyjac_ast_link_pass",
+            "jaclang.compiler.passes.main.import_pass",
+            "jaclang.compiler.passes.main.type_checker_pass",
+            "jaclang.compiler.passes.main.def_impl_match_pass",
+            "jaclang.compiler.passes.main.cfg_build_pass",
+            "jaclang.compiler.passes.main.pyast_load_pass",
+            # ECMAScript codegen modules are used by the full codegen schedule,
+            # so compiling them requires a minimal schedule to avoid cycles.
+            "jaclang.compiler.passes.ecmascript.estree",
+            "jaclang.compiler.passes.ecmascript.es_unparse",
+            "jaclang.compiler.passes.ecmascript.esast_gen_pass",
         }
     )
 
@@ -137,9 +157,17 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
                         submodule_search_locations=[candidate_path],
                     )
             # Check for .jac file
-            if os.path.isfile(candidate_path + ".jac"):
+            jac_file = candidate_path + ".jac"
+            if os.path.isfile(jac_file):
+                # For bootstrap modules, prefer .py if it exists alongside .jac
+                # This allows Python versions to be used during bootstrap
+                if fullname in self.MINIMAL_COMPILE_MODULES:
+                    py_file = candidate_path + ".py"
+                    if os.path.isfile(py_file):
+                        # Let Python's standard import handle the .py file
+                        return None
                 return importlib.util.spec_from_file_location(
-                    fullname, candidate_path + ".jac", loader=self
+                    fullname, jac_file, loader=self
                 )
 
         # TODO: We can remove it once python modules are fully supported in jac
@@ -179,7 +207,7 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         module creation from execution. It handles both package (__init__.jac) and
         regular module (.jac/.py) execution.
         """
-        from jaclang.runtimelib.runtime import JacRuntime as Jac
+        from jaclang.pycore.runtime import JacRuntime as Jac
 
         if not module.__spec__ or not module.__spec__.origin:
             raise ImportError(
@@ -205,3 +233,34 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
             raise ImportError(f"No bytecode found for {file_path}")
         # Execute the bytecode directly in the module's namespace
         exec(codeobj, module.__dict__)
+
+    def get_code(self, fullname: str) -> object | None:
+        """Get the code object for a module.
+
+        This method is required by runpy when using `python -m module`.
+        """
+        from jaclang.pycore.runtime import JacRuntime as Jac
+
+        # Find the .jac file for this module
+        paths_to_search = get_jac_search_paths()
+        module_path_parts = fullname.split(".")
+
+        for search_path in paths_to_search:
+            candidate_path = os.path.join(search_path, *module_path_parts)
+            # Check for directory package
+            if os.path.isdir(candidate_path):
+                init_file = os.path.join(candidate_path, "__init__.jac")
+                if os.path.isfile(init_file):
+                    use_minimal = fullname in self.MINIMAL_COMPILE_MODULES
+                    return Jac.program.get_bytecode(
+                        full_target=init_file, minimal=use_minimal
+                    )
+            # Check for .jac file
+            jac_file = candidate_path + ".jac"
+            if os.path.isfile(jac_file):
+                use_minimal = fullname in self.MINIMAL_COMPILE_MODULES
+                return Jac.program.get_bytecode(
+                    full_target=jac_file, minimal=use_minimal
+                )
+
+        return None

@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from jac_client.plugin.vite_client_bundle import ViteClientBundleBuilder
-from jaclang.runtimelib.runtime import JacRuntime as Jac
+from jaclang.pycore.runtime import JacRuntime as Jac
 
 
 @pytest.fixture(autouse=True)

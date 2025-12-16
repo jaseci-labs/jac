@@ -141,7 +141,7 @@ with entry {
 
 import from typing { Any, Awaitable, Callable, Coroutine, Optional, ParamSpec, TypeVar }
 
-import from jaclang.compiler.constant {
+import from jaclang.pycore.constant {
     JacSemTokenModifier as SemTokMod,
     JacSemTokenType as SemTokType,
 }

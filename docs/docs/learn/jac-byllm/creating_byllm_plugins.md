@@ -48,7 +48,7 @@ Create the plugin implementation in `my_byllm_plugin/plugin.py`:
 
 from typing import Callable
 
-from jaclang.runtimelib.runtime import hookimpl
+from jaclang.pycore.runtime import hookimpl
 from byllm.llm import Model
 
 
@@ -143,7 +143,7 @@ import hashlib
 import json
 from typing import Callable, Any
 
-from jaclang.runtimelib.runtime import hookimpl
+from jaclang.pycore.runtime import hookimpl
 from byllm.llm import Model
 
 
@@ -190,7 +190,7 @@ class CachingbyllmRuntime:
 import time
 from typing import Callable
 
-from jaclang.runtimelib.runtime import hookimpl
+from jaclang.pycore.runtime import hookimpl
 from byllm.llm import Model
 
 
@@ -232,7 +232,7 @@ class LoggingbyllmRuntime:
 
 from typing import Callable
 
-from jaclang.runtimelib.runtime import hookimpl
+from jaclang.pycore.runtime import hookimpl
 from byllm.llm import Model
 
 
@@ -400,7 +400,7 @@ jac run your_script.jac
 Check if the plugin is loaded:
 
 ```python
-from jaclang.runtimelib.runtime import plugin_manager
+from jaclang.pycore.runtime import plugin_manager
 
 # List all registered plugins
 for plugin in plugin_manager.get_plugins():

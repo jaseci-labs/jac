@@ -5,9 +5,9 @@ import inspect
 from collections.abc import Callable
 
 from jaclang.compiler.passes.main import PyastBuildPass
-from jaclang.compiler.program import JacProgram
-from jaclang.compiler.unitree import PythonModuleAst, Source
-from jaclang.utils.helpers import pascal_to_snake
+from jaclang.pycore.helpers import pascal_to_snake
+from jaclang.pycore.program import JacProgram
+from jaclang.pycore.unitree import PythonModuleAst, Source
 
 
 def test_synced_to_latest_py_ast() -> None:

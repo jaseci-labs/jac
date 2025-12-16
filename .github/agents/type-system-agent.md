@@ -126,3 +126,14 @@ pytest -n auto jac
 
 - Pyright is an inspiration for approach; we follow similar methods but not 1:1.
 - Pitfalls: none recorded yet; add to release notes and extend this doc when patterns emerge.
+
+# Commands
+
+When I say make PR you should:
+
+- Do a git status and git diff to see changes and understand
+- Make sure in a new branch, if on main, checkout to a new branch.
+- Commit changes with a meaningful message.
+- Push the branch to origin.
+- Open a PR agains upstream main with a meaningful title and description. using `gh` cli tool.
+- Display the PR link in the terminal.

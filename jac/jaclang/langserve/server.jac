@@ -7,13 +7,13 @@ import logging;
 
 import from typing { Optional }
 
-import from jaclang.compiler.constant {
+import from jaclang.pycore.constant {
     JacSemTokenModifier as SemTokMod,
     JacSemTokenType as SemTokType
 }
 
 import from .engine { JacLangServer }
-import from jaclang.settings { settings }
+import from jaclang.pycore.settings { settings }
 
 import lsprotocol.types as lspt;
 

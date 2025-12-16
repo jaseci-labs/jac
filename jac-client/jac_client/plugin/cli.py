@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from jaclang.cli.cmdreg import cmd_registry
-from jaclang.runtimelib.runtime import hookimpl
+from jaclang.pycore.runtime import hookimpl
 
 
 class JacCmd:

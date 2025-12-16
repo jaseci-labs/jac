@@ -4,6 +4,7 @@ import from datetime { UTC, datetime, timedelta }
 import from pathlib { Path }
 import from typing { Any }
 import jwt;
+import os;
 import from fastapi.middleware.cors { CORSMiddleware }
 import from fastapi.responses { HTMLResponse, JSONResponse, Response }
 import from jac_scale.jserver.jfast_api { JFastApiServer }
@@ -13,14 +14,13 @@ import from jac_scale.jserver.jserver {
     JEndPoint,
     ParameterType
 }
-import from jaclang.runtimelib.runtime { JacRuntime as Jac }
+import from jaclang.pycore.runtime { JacRuntime as Jac }
 import from jaclang.runtimelib.server { JacAPIServer as JServer }
 import from jaclang.runtimelib.server { JsonValue }
-with entry {
-    JWT_SECRET = 'supersecretkey';
-    JWT_ALGORITHM = 'HS256';
-    JWT_EXP_DELTA_DAYS = 7;
-}
+
+glob JWT_SECRET = os.getenv('JWT_SECRET', 'supersecretkey');
+glob JWT_ALGORITHM = os.getenv('JWT_ALGORITHM', 'HS256');
+glob JWT_EXP_DELTA_DAYS = os.getenv('JWT_EXP_DELTA_DAYS', 7);
 
 class JacAPIServer(JServer) {
     static def create_jwt_token(username: str) -> str {
@@ -28,7 +28,7 @@ class JacAPIServer(JServer) {
         payload: dict[(str, Any)] = {
             'username': username,
             'exp': (now + timedelta(days=JWT_EXP_DELTA_DAYS)),
-            'iat': now
+            'iat': now.timestamp()
         };
         return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM);
     }
@@ -37,6 +37,26 @@ class JacAPIServer(JServer) {
         try {
             decoded = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM]);
             return decoded['username'];
+        } except Exception {
+            return None;
+        }
+    }
+
+    static def refresh_jwt_token(token: str) -> (str | None) {
+        try {
+            decoded = jwt.decode(
+                token,
+                JWT_SECRET,
+                algorithms=[JWT_ALGORITHM],
+                options={"verify_exp": True}
+            );
+            username = decoded.get('username');
+
+            if not username {
+                return None;
+            }
+
+            return JacAPIServer.create_jwt_token(username);
         } except Exception {
             return None;
         }
@@ -117,6 +137,30 @@ class JacAPIServer(JServer) {
         return JSONResponse(content=res, status_code=201);
     }
 
+    def refresh_token(self: JacAPIServer, token: (str | None) = None) -> JSONResponse {
+        if (not token) {
+            return JSONResponse(
+                status_code=400, content={'error': 'Token is required'}
+            );
+        }
+
+        if token.startswith('Bearer ') {
+            token = token[7:];
+        }
+
+        new_token = self.refresh_jwt_token(token);
+        if (not new_token) {
+            return JSONResponse(
+                status_code=401, content={'error': 'Invalid or expired token'}
+            );
+        }
+
+        return JSONResponse(
+            status_code=200,
+            content={'token': new_token, 'message': 'Token refreshed successfully'}
+        );
+    }
+
     def register_create_user_endpoint(self: JacAPIServer) -> None {
         self.server_impl.add_endpoint(
             JEndPoint(
@@ -145,6 +189,30 @@ class JacAPIServer(JServer) {
                 tags=['User APIs'],
                 summary='Register user API.',
                 description='Endpoint for creating a new user account'
+            )
+        );
+    }
+
+    def register_refresh_token_endpoint(self: JacAPIServer) -> None {
+        self.server_impl.add_endpoint(
+            JEndPoint(
+                method=HTTPMethod.POST,
+                path='/user/refresh-token',
+                callback=self.refresh_token,
+                parameters=[
+                    APIParameter(
+                        name='token',
+                        data_type='string',
+                        required=True,
+                        default=None,
+                        description='JWT token to refresh (with or without Bearer prefix)',
+                        type=ParameterType.BODY
+                    )
+                ],
+                response_model=None,
+                tags=['User APIs'],
+                summary='Refresh JWT token',
+                description='Endpoint for refreshing an existing JWT token. Token must be within the refresh window.'
             )
         );
     }
@@ -342,10 +410,18 @@ class JacAPIServer(JServer) {
     def render_page_callback(self: JacAPIServer) -> Callable[..., HTMLResponse] {
         """Render a page by name with all query parameters.""";
         def callback(page_name: str, **kwargs: JsonValue) -> HTMLResponse {
-            render_payload = self.introspector.render_page(
-                page_name, kwargs, '__guest__'
-            );
-            return HTMLResponse(content=render_payload['html']);
+            try {
+                render_payload = self.introspector.render_page(
+                    page_name, kwargs, '__guest__'
+                );
+                return HTMLResponse(content=render_payload['html']);
+            } except ValueError as exc {
+                return HTMLResponse(content=f"<h1>404 Not Found</h1>", status_code=404);
+            } except RuntimeError as exc {
+                return HTMLResponse(
+                    content=f"<h1>503 Service Unavailable</h1>", status_code=503
+                );
+            }
         }
         return callback;
     }
@@ -437,51 +513,57 @@ class JacAPIServer(JServer) {
 
     """Serve a static file given its path."""
     def serve_static_file(self: JacAPIServer, file_path: str) -> Response {
-        base_path = Path(Jac.base_path_dir) if Jac.base_path_dir else Path.cwd();
-        file_name = Path(file_path).name;
-        dist_file = base_path / 'dist' / file_path;
-        dist_file_simple = base_path / 'dist' / file_name;
-        assets_file = base_path / 'assets' / file_path;
-        assets_file_simple = base_path / 'assets' / file_name;
-        if file_name.endswith('.css') {
-            if dist_file.exists() {
-                css_content = dist_file.read_text(encoding='utf-8');
-                return Response(content=css_content, media_type='text/css');
-            } elif dist_file_simple.exists() {
-                css_content = dist_file_simple.read_text(encoding='utf-8');
-                return Response(content=css_content, media_type='text/css');
-            } elif assets_file.exists() {
-                css_content = assets_file.read_text(encoding='utf-8');
-                return Response(content=css_content, media_type='text/css');
-            } elif assets_file_simple.exists() {
-                css_content = assets_file_simple.read_text(encoding='utf-8');
-                return Response(content=css_content, media_type='text/css');
-            } else {
-                return Response(
-                    status_code=404,
-                    content='CSS file not found',
-                    media_type='text/plain'
-                );
-            }
-        }
-        for candidate_file in [
-            dist_file,
-            dist_file_simple,
-            assets_file,
-            assets_file_simple
-        ] {
-            if (candidate_file.exists() and candidate_file.is_file()) {
-                file_content = candidate_file.read_bytes();
-                (content_type, _) = mimetypes.guess_type(str(candidate_file));
-                if (content_type is None) {
-                    content_type = 'application/octet-stream';
+        try {
+            base_path = Path(Jac.base_path_dir) if Jac.base_path_dir else Path.cwd();
+            file_name = Path(file_path).name;
+            dist_file = base_path / 'dist' / file_path;
+            dist_file_simple = base_path / 'dist' / file_name;
+            assets_file = base_path / 'assets' / file_path;
+            assets_file_simple = base_path / 'assets' / file_name;
+            if file_name.endswith('.css') {
+                if dist_file.exists() {
+                    css_content = dist_file.read_text(encoding='utf-8');
+                    return Response(content=css_content, media_type='text/css');
+                } elif dist_file_simple.exists() {
+                    css_content = dist_file_simple.read_text(encoding='utf-8');
+                    return Response(content=css_content, media_type='text/css');
+                } elif assets_file.exists() {
+                    css_content = assets_file.read_text(encoding='utf-8');
+                    return Response(content=css_content, media_type='text/css');
+                } elif assets_file_simple.exists() {
+                    css_content = assets_file_simple.read_text(encoding='utf-8');
+                    return Response(content=css_content, media_type='text/css');
+                } else {
+                    return Response(
+                        status_code=404,
+                        content='CSS file not found',
+                        media_type='text/plain'
+                    );
                 }
-                return Response(content=file_content, media_type=content_type);
             }
+            for candidate_file in [
+                dist_file,
+                dist_file_simple,
+                assets_file,
+                assets_file_simple
+            ] {
+                if (candidate_file.exists() and candidate_file.is_file()) {
+                    file_content = candidate_file.read_bytes();
+                    (content_type, _) = mimetypes.guess_type(str(candidate_file));
+                    if (content_type is None) {
+                        content_type = 'application/octet-stream';
+                    }
+                    return Response(content=file_content, media_type=content_type);
+                }
+            }
+            return Response(
+                status_code=404,
+                content='Static file not found',
+                media_type='text/plain'
+            );
+        } except Exception as exc {
+            return Response(status_code=500);
         }
-        return Response(
-            status_code=404, content='Static file not found', media_type='text/plain'
-        );
     }
 
     """Register root-level asset serving endpoint for files like /img.png, /logo.svg"""
@@ -630,6 +712,7 @@ class JacAPIServer(JServer) {
         self.register_create_user_endpoint();
         self.register_login_endpoint();
         self.register_page_endpoint();
+        self.register_refresh_token_endpoint();
         self.register_client_js_endpoint();
         self.register_static_file_endpoint();
         self.register_walkers_endpoints();

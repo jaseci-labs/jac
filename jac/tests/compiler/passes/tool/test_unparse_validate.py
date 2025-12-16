@@ -8,7 +8,7 @@ from difflib import unified_diff
 import pytest
 
 from conftest import get_micro_jac_files
-from jaclang.compiler.program import JacProgram
+from jaclang.pycore.program import JacProgram
 
 
 def test_double_unparse(examples_path: Callable[[str], str]) -> None:

@@ -1,14 +1,54 @@
+import contextlib
 import inspect
 import os
-from collections.abc import Callable
+import sys
+from collections.abc import Callable, Generator
 from dataclasses import dataclass
 
 import lsprotocol.types as lspt
 import pytest
 
+from jaclang import JacRuntime as Jac
 from jaclang.langserve.engine import JacLangServer
 from jaclang.vendor.pygls import uris
 from jaclang.vendor.pygls.workspace import Workspace
+
+
+def _clear_jac_modules() -> None:
+    """Clear jac-compiled modules from sys.modules."""
+    jac_modules_to_clear = [
+        k
+        for k in list(sys.modules.keys())
+        if k.startswith("__jac_gen__")
+        or (
+            not k.startswith(("jaclang", "test", "_"))
+            and hasattr(sys.modules.get(k), "__jac_mod__")
+        )
+    ]
+    for mod in jac_modules_to_clear:
+        sys.modules.pop(mod, None)
+
+
+# Track all servers created during a test for cleanup
+_active_servers: list[JacLangServer] = []
+
+
+@pytest.fixture(autouse=True)
+def reset_jac_machine() -> Generator[None, None, None]:
+    """Reset Jac machine before each test to avoid state pollution."""
+    _clear_jac_modules()
+    Jac.reset_machine()
+    _active_servers.clear()
+    yield
+    # Clear type system state from all servers created during the test
+    for server in _active_servers:
+        # Ensure worker thread is stopped to avoid cross-test interference.
+        with contextlib.suppress(Exception):
+            server.shutdown()
+        server.clear_type_system(clear_hub=True)
+    _active_servers.clear()
+    _clear_jac_modules()
+    Jac.reset_machine()
 
 
 @pytest.fixture
@@ -66,6 +106,8 @@ def create_server(
     workspace_root = workspace_path or fixture_path_func("")
     workspace = Workspace(workspace_root, lsp)
     lsp.lsp._workspace = workspace
+    # Track server for cleanup in reset_jac_machine fixture
+    _active_servers.append(lsp)
     return lsp
 
 
@@ -190,20 +232,20 @@ def test_go_to_definition_md_path(fixture_path: Callable[[str], str]) -> None:
             (6, 17, "concurrent/__init__.py:0:0-0:0"),
             (6, 28, "concurrent/futures/__init__.py:0:0-0:0"),
             (7, 17, "typing.py:0:0-0:0"),
-            (9, 18, "compiler/__init__.py:0:0-0:0"),
-            (9, 38, "compiler/unitree.py:0:0-0:0"),
-            (10, 34, "jac/jaclang/__init__.py:13:3-13:22"),
-            (11, 35, "compiler/constant.py:0:0-0:0"),
-            (11, 47, "compiler/constant.py:5:0-34:9"),
-            (13, 47, "compiler/type_system/type_utils.py:0:0-0:0"),
-            (14, 34, "compiler/type_system/__init__.py:0:0-0:0"),
+            (9, 18, "jaclang/pycore/__init__.py:0:0-0:0"),
+            (9, 25, "jaclang/pycore/unitree.py:0:0-0:0"),
+            (10, 34, "jac/jaclang/__init__.py:18:3-18:22"),
+            (11, 35, "jaclang/pycore/constant.py:0:0-0:0"),
+            (11, 47, "jaclang/pycore/constant.py:5:0-34:9"),
+            (13, 47, "jaclang/compiler/type_system/type_utils.jac:0:0-0:0"),
+            (14, 34, "jaclang/compiler/type_system/__init__.py:0:0-0:0"),
             (18, 5, "compiler/type_system/types.jac:47:6-47:14"),  # TypeBase now on line 18
-            (20, 34, "compiler/unitree.py:0:0-0:0"),              # UniScopeNode now on line 20
+            (20, 34, "jaclang/pycore/unitree.py:0:0-0:0"),              # UniScopeNode now on line 20
             # (20, 48, "compiler/unitree.py:335:0-566:11"),
             (22, 22, "tests/langserve/fixtures/circle.jac:7:5-7:8"),  # RAD now on line 22, fixture line changed too
-            (23, 38, "vendor/pygls/uris.py:0:0-0:0"),             # uris now on line 23
-            (24, 52, "vendor/pygls/server.py:351:0-615:13"),      # LanguageServer on line 24
-            (26, 31, "vendor/lsprotocol/types.py:0:0-0:0"),       # lspt now on line 26
+            (23, 38, "jaclang/vendor/pygls/uris.py:0:0-0:0"),             # uris now on line 23
+            (24, 52, "jaclang/vendor/pygls/server.py:351:0-615:13"),      # LanguageServer on line 24
+            (26, 31, "jaclang/vendor/lsprotocol/types.py:0:0-0:0"),       # lspt now on line 26
         ]
         # fmt: on
 
@@ -282,12 +324,15 @@ def test_missing_mod_warning(fixture_path: Callable[[str], str]) -> None:
         import_file = uris.from_fs_path(fixture_path("md_path.jac"))
         lsp.type_check_file(import_file)
 
-        positions = [
+        expected_warnings = [
             "fixtures/md_path.jac, line 21, col 13: Module not found",  # missing_mod
             "fixtures/md_path.jac, line 27, col 8: Module not found",  # nonexistent_module
         ]
-        for idx, expected in enumerate(positions):
-            assert expected in str(lsp.warnings_had[idx])
+        warnings_str = [str(w) for w in lsp.warnings_had]
+        for expected in expected_warnings:
+            assert any(expected in w for w in warnings_str), (
+                f"Expected warning '{expected}' not found in {warnings_str}"
+            )
     finally:
         lsp.shutdown()
 

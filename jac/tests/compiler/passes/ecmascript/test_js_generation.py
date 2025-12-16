@@ -11,7 +11,7 @@ import pytest
 from jaclang.compiler.passes.ecmascript import EsastGenPass
 from jaclang.compiler.passes.ecmascript.es_unparse import es_to_js
 from jaclang.compiler.passes.ecmascript.estree import Node as EsNode
-from jaclang.compiler.program import JacProgram
+from jaclang.pycore.program import JacProgram
 
 
 @pytest.fixture

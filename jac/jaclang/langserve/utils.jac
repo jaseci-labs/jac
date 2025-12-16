@@ -6,11 +6,11 @@ import re;
 import from functools { wraps }
 import from typing { Any, Awaitable, Callable, Coroutine, Optional, ParamSpec, TypeVar }
 
-import jaclang.compiler.unitree as uni;
-import from jaclang.compiler.codeinfo { CodeLocInfo }
-import from jaclang.compiler.constant { SymbolType }
-import from jaclang.compiler.passes.transform { Alert }
-import from jaclang.compiler.unitree { Symbol, UniScopeNode }
+import jaclang.pycore.unitree as uni;
+import from jaclang.pycore.codeinfo { CodeLocInfo }
+import from jaclang.pycore.constant { SymbolType }
+import from jaclang.pycore.passes.transform { Alert }
+import from jaclang.pycore.unitree { Symbol, UniScopeNode }
 import from jaclang.vendor.pygls { uris }
 
 import lsprotocol.types as lspt;

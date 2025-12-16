@@ -8,8 +8,14 @@ import sys
 from dotenv import load_dotenv
 
 from jaclang.cli.cmdreg import CommandPriority, cmd_registry
-from jaclang.runtimelib.runtime import ExecutionContext, hookimpl, plugin_manager
-from jaclang.runtimelib.runtime import JacRuntime as Jac
+from jaclang.pycore.runtime import (
+    ExecutionContext,
+    hookimpl,
+    plugin_manager,
+)
+from jaclang.pycore.runtime import (
+    JacRuntime as Jac,
+)
 
 from .context import JScaleExecutionContext
 from .kubernetes.docker_impl import build_and_push_docker

@@ -7,8 +7,8 @@ import from http.server { BaseHTTPRequestHandler }
 import from pathlib { Path }
 import from typing { Any, Literal, TypeAlias }
 import from jaclang.runtimelib.client_bundle { ClientBundle }
-import from jaclang.runtimelib.runtime { JacRuntime as Jac }
-import from jaclang.runtimelib.runtime { hookimpl }
+import from jaclang.pycore.runtime { JacRuntime as Jac }
+import from jaclang.pycore.runtime { hookimpl }
 import from jaclang.runtimelib.server { ModuleIntrospector }
 import from .vite_client_bundle { ViteClientBundleBuilder }
 

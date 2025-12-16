@@ -1,4 +1,4 @@
-import from jaclang.runtimelib.runtime { JacRuntime }
+import from jaclang { JacRuntime }
 # Dynamically create a node archetype
 glob source_code = """
 node dynamic_node {

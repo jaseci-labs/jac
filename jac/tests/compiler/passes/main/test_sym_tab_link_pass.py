@@ -2,7 +2,7 @@
 
 import os
 
-from jaclang.compiler.program import JacProgram
+from jaclang.pycore.program import JacProgram
 
 
 def test_no_dupl_symbols() -> None:

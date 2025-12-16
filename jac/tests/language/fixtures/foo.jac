@@ -1,4 +1,4 @@
-import from jaclang.runtimelib.runtime { JacRuntime }
+import from jaclang { JacRuntime }
 import from bar { bar_walk }
 # Test runner to initialize the walker
 def test_run {

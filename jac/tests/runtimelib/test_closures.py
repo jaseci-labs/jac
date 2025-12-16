@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from jaclang.runtimelib.runtime import JacRuntime as Jac
+from jaclang import JacRuntime as Jac
 
 
 @pytest.fixture(autouse=True)

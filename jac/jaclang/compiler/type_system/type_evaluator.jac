@@ -12,18 +12,18 @@ import from dataclasses { dataclass }
 import from pathlib { Path }
 import from typing { Callable, TYPE_CHECKING, cast }
 
-import jaclang.compiler.unitree as uni;
-import from jaclang.compiler.parser { TOKEN_MAP }
-import from jaclang.compiler.constant { SymbolType, Tokens as Tok }
+import jaclang.pycore.unitree as uni;
+import from jaclang.pycore.jac_parser { TOKEN_MAP }
+import from jaclang.pycore.constant { SymbolType, Tokens as Tok }
 import from jaclang.compiler.passes.main.pyast_load_pass { PyastBuildPass }
-import from jaclang.compiler.passes.main.sym_tab_build_pass { SymTabBuildPass }
+import from jaclang.pycore.passes.sym_tab_build_pass { SymTabBuildPass }
 import from jaclang.compiler.type_system { types }
 import from jaclang.runtimelib.utils { read_file_with_encoding }
-import from jaclang.settings { settings }
+import from jaclang.pycore.settings { settings }
 
 with entry {
     if TYPE_CHECKING {
-        import from jaclang.compiler.program { JacProgram }
+        import from jaclang.pycore.program { JacProgram }
     }
 }
 
@@ -63,6 +63,8 @@ obj PrefetchedTypes {
     has mapping_class: TypeBase | None = None;
     has template_class: TypeBase | None = None;
     has type_var_class: TypeBase | None = None;
+    # Prefetch from typing.pyi file
+    has protocol_class: TypeBase | None = None;
     # Prefetched from jac_builtins.pyi file
     has root_class: TypeBase | None = None;
 }
@@ -184,6 +186,8 @@ class TypeEvaluator {
     def _prefetch_types(self: TypeEvaluator) {
         get_types_type = lambda  type_name: str  -> types.TypeBase:
             self._get_type_from_module(self.types_module, type_name);
+        get_typing_type = lambda  type_name: str  -> types.TypeBase:
+            self._get_type_from_module(self.typing_module, type_name);
         get_builtin_type = lambda  type_name: str  -> types.TypeBase:
             self._get_type_from_module(self.builtins_module, type_name);
         get_jac_builtin_type = lambda  type_name: str  -> types.TypeBase:
@@ -194,7 +198,7 @@ class TypeEvaluator {
         self.prefetch.none_type_class = get_types_type("NoneType");
         self.prefetch.object_class = get_builtin_type("object");
         self.prefetch.type_class = get_builtin_type("type");
-        # self.prefetch.union_type_class =
+        self.prefetch.union_type_class = get_types_type("UnionType");
         # self.prefetch.awaitable_class =
         # self.prefetch.function_class =
         # self.prefetch.method_class =
@@ -210,6 +214,8 @@ class TypeEvaluator {
         # self.prefetch.supports_keys_and_get_item_class =
         # self.prefetch.mapping_class =
         # self.prefetch.template_class =
+        self.prefetch.protocol_class = get_typing_type("Protocol");
+
         self.prefetch.root_class = get_jac_builtin_type("Root");
         self.prefetch.root_class.shared.is_root_class = True;
     }
@@ -290,11 +296,17 @@ class TypeEvaluator {
     # for the following functions.
     """Import a module from the given path."""
     def _import_module_from_path(self: TypeEvaluator, path: str) -> uni.Module {
+        # -----------------------------------------------------------------------
+        # TODO: Implement stub file resolution properly, this is a ad-hoc mess.
         # FIXME: This is ad-hoc way to override the typeing.py with typeing.pyi file
         # implemented to make it work for now, please revisit this and implement it properly.
         if path.endswith("typing.py") {
             path = TypeEvaluator._TYPING_STUB_FILE_PATH;
         }
+        if path.endswith("abc.py") {
+            path = TypeEvaluator._TYPING_STUB_FILE_PATH;
+        }
+        # -----------------------------------------------------------------------
 
         # Get the module, if it's not loaded yet, compile and get it.
         #
@@ -543,7 +555,12 @@ class TypeEvaluator {
         }
 
         if not isinstance(node_.signature, uni.FuncSignature) {
-            node_.name_spec.type = types.UnknownType();
+            func_type = types.FunctionType(
+                func_name=node_.name_spec.sym_name,
+                return_type=types.UnknownType(),
+                parameters=None,
+            );
+            node_.name_spec.type = func_type;
             return node_.name_spec.type;
         }
 
@@ -692,6 +709,17 @@ class TypeEvaluator {
             return True;
         }
 
+        # If destination is a union type, check if source is compatible with any of the
+        # constituent types.
+        if isinstance(dest_type, types.UnionType) {
+            for union_type in dest_type.types {
+                new_dest_type = self._convert_to_instance(union_type);
+                if self.assign_type(src_type, new_dest_type) {
+                    return True;
+                }
+            }
+        }
+
         if dest_type.is_class_instance() and src_type.is_class_instance() {
             assert isinstance(dest_type, types.ClassType);
             assert isinstance(src_type, types.ClassType);
@@ -728,6 +756,17 @@ class TypeEvaluator {
         return None;
     }
 
+    def is_sub_class(
+        self: TypeEvaluator, super_cls: types.ClassType, sub_cls: types.ClassType
+    ) -> bool {
+        for cls in sub_cls.shared.mro {
+            if cls.shared == super_cls.shared {
+                return True;
+            }
+        }
+        return False;
+    }
+
     """Assign the source class type to the destination class type."""
     def _assign_class(
         self: TypeEvaluator, src_type: types.ClassType, dest_type: types.ClassType
@@ -737,10 +776,8 @@ class TypeEvaluator {
         }
 
         # Check if src class is a subclass of dest class.
-        for base_cls in src_type.shared.mro {
-            if base_cls.shared == dest_type.shared {
-                return True;
-            }
+        if self.is_sub_class(dest_type, src_type) {
+            return True;
         }
 
         # Everything is assignable to an object.
@@ -755,7 +792,18 @@ class TypeEvaluator {
             return True;
         }
 
-        # TODO: Search base classes and everything else pyright is doing.
+        # Check if dest_type is a protocol and src_type implements it.
+        for base_cls in dest_type.shared.base_classes {
+            if base_cls.shared == self.prefetch.protocol_class.shared {
+                if type_utils.class_implements_protocol(src_type, dest_type) {
+                    return True;
+                }
+                # TODO: The dest_class can have other base classes as well, do this
+                # Recursively.
+                break;
+            }
+        }
+
         return False;
     }
 

@@ -4,7 +4,7 @@ import inspect
 
 import pluggy
 
-from jaclang.runtimelib.runtime import (
+from jaclang.pycore.runtime import (
     JacRuntimeImpl,
     JacRuntimeInterface,
     JacRuntimeSpec,

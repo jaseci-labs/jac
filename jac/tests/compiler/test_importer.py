@@ -8,10 +8,10 @@ from collections.abc import Callable
 import pytest
 
 from jaclang import JacRuntime as Jac
+from jaclang import JacRuntimeInterface
 from jaclang.cli import cli
-from jaclang.compiler.program import JacProgram
-from jaclang.runtimelib.runtime import JacRuntimeInterface
-from jaclang.settings import settings
+from jaclang.pycore.program import JacProgram
+from jaclang.pycore.settings import settings
 
 
 @pytest.fixture
@@ -175,6 +175,102 @@ def test_importer_with_submodule_py(fixture_abs_path: Callable[[str], str]) -> N
     assert "pkg_import_lib_py.glob_var_lib" in stdout_value
 
 
+def test_python_dash_m_jac_module(fixture_abs_path: Callable[[str], str]) -> None:
+    """Test running a Jac module using 'python -m module_name'.
+
+    This tests that the JacMetaImporter.get_code() method works correctly
+    when runpy needs to execute a Jac module. Requires jaclang to be
+    auto-imported via a .pth file (e.g., jaclang_hook.pth with 'import jaclang').
+    """
+    import subprocess
+    import tempfile
+
+    # Create a temporary directory with a Jac module
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Ensure JacMetaImporter is registered in the subprocess.
+        #
+        # In some environments (e.g., CI), jaclang may be installed without a
+        # startup hook (.pth) that imports jaclang automatically. Creating a
+        # `sitecustomize.py` in the subprocess working directory guarantees the
+        # importer is registered before `python -m ...` executes.
+        sitecustomize_file = os.path.join(tmpdir, "sitecustomize.py")
+        with open(sitecustomize_file, "w") as f:
+            f.write("import jaclang\n")
+
+        # Create a simple Jac module
+        module_name = "test_dash_m_module"
+        jac_file = os.path.join(tmpdir, f"{module_name}.jac")
+        with open(jac_file, "w") as f:
+            f.write('with entry { "python -m works" :> print; }\n')
+
+        # Run using python -m directly (requires JacMetaImporter to be registered)
+        env = os.environ.copy()
+        env["PYTHONPATH"] = os.pathsep.join(
+            p for p in [tmpdir, env.get("PYTHONPATH")] if p
+        )
+        result = subprocess.run(
+            [sys.executable, "-m", module_name],
+            capture_output=True,
+            text=True,
+            cwd=tmpdir,
+            env=env,
+        )
+
+        # Check that it executed successfully
+        assert result.returncode == 0, f"Failed with stderr: {result.stderr}"
+        assert "python -m works" in result.stdout
+
+
+def test_python_dash_m_jac_package(fixture_abs_path: Callable[[str], str]) -> None:
+    """Test running a Jac package using 'python -m package_name'.
+
+    This tests that the JacMetaImporter.get_code() method works correctly
+    when runpy needs to execute a Jac package's __main__.jac. Requires jaclang
+    to be auto-imported via a .pth file (e.g., jaclang_hook.pth with 'import jaclang').
+    """
+    import subprocess
+    import tempfile
+
+    # Create a temporary directory with a Jac package
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Ensure JacMetaImporter is registered in the subprocess; see
+        # `test_python_dash_m_jac_module` for details.
+        sitecustomize_file = os.path.join(tmpdir, "sitecustomize.py")
+        with open(sitecustomize_file, "w") as f:
+            f.write("import jaclang\n")
+
+        # Create a package directory with __init__.jac and __main__.jac
+        pkg_name = "test_pkg"
+        pkg_dir = os.path.join(tmpdir, pkg_name)
+        os.makedirs(pkg_dir)
+
+        init_file = os.path.join(pkg_dir, "__init__.jac")
+        with open(init_file, "w") as f:
+            f.write("# Package init\n")
+
+        # __main__.jac is needed for `python -m package_name` to work
+        main_file = os.path.join(pkg_dir, "__main__.jac")
+        with open(main_file, "w") as f:
+            f.write('with entry { "package main works" :> print; }\n')
+
+        # Run using python -m directly (requires JacMetaImporter to be registered)
+        env = os.environ.copy()
+        env["PYTHONPATH"] = os.pathsep.join(
+            p for p in [tmpdir, env.get("PYTHONPATH")] if p
+        )
+        result = subprocess.run(
+            [sys.executable, "-m", pkg_name],
+            capture_output=True,
+            text=True,
+            cwd=tmpdir,
+            env=env,
+        )
+
+        # Check that it executed successfully
+        assert result.returncode == 0, f"Failed with stderr: {result.stderr}"
+        assert "package main works" in result.stdout
+
+
 def test_jac_import_py_files(fixture_abs_path: Callable[[str], str]) -> None:
     """Test importing Python files using Jac import system."""
     captured_output = io.StringIO()
@@ -195,10 +291,10 @@ def test_jac_import_py_files(fixture_abs_path: Callable[[str], str]) -> None:
         sys.stdout = sys.__stdout__
         stdout_value = captured_output.getvalue()
         assert "This is main test file for jac import of python files" in stdout_value
-        assert "python_module <jaclang.compiler.unitree.Module object" in str(
+        assert "python_module <jaclang.pycore.unitree.Module object" in str(
             Jac.program.mod.hub
         )
-        assert "jac_module <jaclang.compiler.unitree.Module object" in str(
+        assert "jac_module <jaclang.pycore.unitree.Module object" in str(
             Jac.program.mod.hub
         )
         os.environ["JAC_PYFILE_RAISE"] = "false"
@@ -216,10 +312,10 @@ def test_jac_import_py_files(fixture_abs_path: Callable[[str], str]) -> None:
         sys.stdout = sys.__stdout__
         stdout_value = captured_output.getvalue()
         assert "This is main test file for jac import of python files" in stdout_value
-        assert "python_module <jaclang.compiler.unitree.Module object" not in str(
+        assert "python_module <jaclang.pycore.unitree.Module object" not in str(
             Jac.program.mod.hub
         )
-        assert "jac_module <jaclang.compiler.unitree.Module object" in str(
+        assert "jac_module <jaclang.pycore.unitree.Module object" in str(
             Jac.program.mod.hub
         )
     finally:
