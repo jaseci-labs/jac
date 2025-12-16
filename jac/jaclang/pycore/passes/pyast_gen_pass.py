@@ -2848,18 +2848,14 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
                     )
                 )
             elif isinstance(node.gen.py_ast[0], ast3.Call):
-                # For FilterCompr and AssignCompr, update the relevant argument(s) to use tmp_ref
                 call_node = node.gen.py_ast[0]
-                # Check if this is a filter_on call (FilterCompr)
                 if isinstance(call_node.func, ast3.Attribute) or (
                     isinstance(call_node.func, ast3.Name)
                     and call_node.func.id == "filter_on"
                 ):
-                    # Replace the 'items' keyword argument with tmp_ref
                     for kw in call_node.keywords:
                         if kw.arg == "items":
                             kw.value = tmp_ref
-                # Check if this is an assign_all call (AssignCompr)
                 if (
                     isinstance(call_node.func, ast3.Attribute)
                     or (
@@ -2870,10 +2866,105 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
                     call_node.args[0] = tmp_ref
                 body_expr = cast(ast3.expr, call_node)
             else:
-                # For subscripts and other operations, update reference and use as-is
-                if isinstance(node.gen.py_ast[0], (ast3.Attribute, ast3.Subscript)):
-                    node.gen.py_ast[0].value = tmp_ref
-                body_expr = cast(ast3.expr, node.gen.py_ast[0])
+                if isinstance(node.gen.py_ast[0], ast3.Subscript):
+                    index_expr = node.gen.py_ast[0].slice
+
+                    if isinstance(index_expr, ast3.Slice):
+                        node.gen.py_ast[0].value = tmp_ref
+                        body_expr = cast(ast3.expr, node.gen.py_ast[0])
+                    else:
+                        # To get length: len(__jac_tmp)
+                        len_call = self.sync(
+                            ast3.Call(
+                                func=self.sync(ast3.Name(id="len", ctx=ast3.Load())),
+                                args=[tmp_ref],
+                                keywords=[],
+                            )
+                        )
+
+                        # Positive index check: 0 <= index and < len(__jac_tmp)
+                        positive_check = self.sync(
+                            ast3.BoolOp(
+                                op=self.sync(ast3.And()),
+                                values=[
+                                    self.sync(
+                                        ast3.Compare(
+                                            left=self.sync(ast3.Constant(value=0)),
+                                            ops=[self.sync(ast3.LtE())],
+                                            comparators=[index_expr],
+                                        )
+                                    ),
+                                    self.sync(
+                                        ast3.Compare(
+                                            left=index_expr,
+                                            ops=[self.sync(ast3.Lt())],
+                                            comparators=[len_call],
+                                        )
+                                    ),
+                                ],
+                            )
+                        )
+
+                        # Negative index check: index < 0 and abs(index) <= len(__jac_tmp)
+                        negative_check = self.sync(
+                            ast3.BoolOp(
+                                op=self.sync(ast3.And()),
+                                values=[
+                                    self.sync(
+                                        ast3.Compare(
+                                            left=index_expr,
+                                            ops=[self.sync(ast3.Lt())],
+                                            comparators=[
+                                                self.sync(ast3.Constant(value=0))
+                                            ],
+                                        )
+                                    ),
+                                    self.sync(
+                                        ast3.Compare(
+                                            left=self.sync(
+                                                ast3.Call(
+                                                    func=self.sync(
+                                                        ast3.Name(
+                                                            id="abs", ctx=ast3.Load()
+                                                        )
+                                                    ),
+                                                    args=[index_expr],
+                                                    keywords=[],
+                                                )
+                                            ),
+                                            ops=[self.sync(ast3.LtE())],
+                                            comparators=[len_call],
+                                        )
+                                    ),
+                                ],
+                            )
+                        )
+
+                        # Combined bounds check
+                        bounds_check = self.sync(
+                            ast3.BoolOp(
+                                op=self.sync(ast3.Or()),
+                                values=[positive_check, negative_check],
+                            )
+                        )
+
+                        body_expr = self.sync(
+                            ast3.IfExp(
+                                test=bounds_check,
+                                body=self.sync(
+                                    ast3.Subscript(
+                                        value=tmp_ref,
+                                        slice=index_expr,
+                                        ctx=ast3.Load(),
+                                    )
+                                ),
+                                orelse=none_const,
+                            )
+                        )
+                else:
+                    # Fallback for any other operation type
+                    node.gen.py_ast[0].value = tmp_ref  # type: ignore[attr-defined]
+                    body_expr = cast(ast3.expr, node.gen.py_ast[0])
 
             # Generate: body_expr if (__jac_tmp := target) is not None else None
             node.gen.py_ast = [
