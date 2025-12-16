@@ -136,6 +136,9 @@ def test_core_fixture_emits_expected_constructs(
     for pattern in ["try", "catch (err)", "finally"]:
         assert pattern in js_code
 
+    # Support strings within jsx
+    assert '"\\"Authentication\\" App"' in js_code
+
     assert_balanced_syntax(js_code, core_fixture)
     assert_no_jac_keywords(js_code, core_fixture)
     assert len(js_code) > 200
