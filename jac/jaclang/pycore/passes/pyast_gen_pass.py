@@ -2873,7 +2873,20 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
                         node.gen.py_ast[0].value = tmp_ref
                         body_expr = cast(ast3.expr, node.gen.py_ast[0])
                     else:
-                        # To get length: len(__jac_tmp)
+                        # Store index in temporary to avoid multiple evaluations
+                        index_tmp = self.sync(
+                            ast3.Name(id="__jac_idx", ctx=ast3.Load())
+                        )
+                        index_assign = self.sync(
+                            ast3.NamedExpr(
+                                target=self.sync(
+                                    ast3.Name(id="__jac_idx", ctx=ast3.Store())
+                                ),
+                                value=index_expr,
+                            )
+                        )
+
+                        # len(__jac_tmp)
                         len_call = self.sync(
                             ast3.Call(
                                 func=self.sync(ast3.Name(id="len", ctx=ast3.Load())),
@@ -2882,7 +2895,7 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
                             )
                         )
 
-                        # Positive index check: 0 <= index and < len(__jac_tmp)
+                        # Positive index check: 0 <= __jac_idx < len(__jac_tmp)
                         positive_check = self.sync(
                             ast3.BoolOp(
                                 op=self.sync(ast3.And()),
@@ -2891,12 +2904,12 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
                                         ast3.Compare(
                                             left=self.sync(ast3.Constant(value=0)),
                                             ops=[self.sync(ast3.LtE())],
-                                            comparators=[index_expr],
+                                            comparators=[index_tmp],
                                         )
                                     ),
                                     self.sync(
                                         ast3.Compare(
-                                            left=index_expr,
+                                            left=index_tmp,
                                             ops=[self.sync(ast3.Lt())],
                                             comparators=[len_call],
                                         )
@@ -2905,14 +2918,14 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
                             )
                         )
 
-                        # Negative index check: index < 0 and abs(index) <= len(__jac_tmp)
+                        # Negative index check: __jac_idx < 0 and abs(__jac_idx) <= len(__jac_tmp)
                         negative_check = self.sync(
                             ast3.BoolOp(
                                 op=self.sync(ast3.And()),
                                 values=[
                                     self.sync(
                                         ast3.Compare(
-                                            left=index_expr,
+                                            left=index_tmp,
                                             ops=[self.sync(ast3.Lt())],
                                             comparators=[
                                                 self.sync(ast3.Constant(value=0))
@@ -2928,7 +2941,7 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
                                                             id="abs", ctx=ast3.Load()
                                                         )
                                                     ),
-                                                    args=[index_expr],
+                                                    args=[index_tmp],
                                                     keywords=[],
                                                 )
                                             ),
@@ -2940,11 +2953,19 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
                             )
                         )
 
-                        # Combined bounds check
+                        # Combined bounds check with index assignment
                         bounds_check = self.sync(
                             ast3.BoolOp(
-                                op=self.sync(ast3.Or()),
-                                values=[positive_check, negative_check],
+                                op=self.sync(ast3.And()),
+                                values=[
+                                    index_assign,
+                                    self.sync(
+                                        ast3.BoolOp(
+                                            op=self.sync(ast3.Or()),
+                                            values=[positive_check, negative_check],
+                                        )
+                                    ),
+                                ],
                             )
                         )
 
@@ -2954,7 +2975,7 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
                                 body=self.sync(
                                     ast3.Subscript(
                                         value=tmp_ref,
-                                        slice=index_expr,
+                                        slice=index_tmp,
                                         ctx=ast3.Load(),
                                     )
                                 ),
