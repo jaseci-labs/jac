@@ -59,7 +59,7 @@ cl import from react { useState, useEffect }
 
 cl {
     def Counter() -> any {
-        let [count, setCount] = useState(0);
+        [count, setCount] = useState(0);
 
         useEffect(lambda -> None {
             console.log("Count changed:", count);
@@ -110,7 +110,7 @@ walker read_todos {
 # Frontend: React component
 cl {
     def app() -> any {
-        let [todos, setTodos] = useState([]);
+        [todos, setTodos] = useState([]);
 
         useEffect(lambda -> None {
             async def loadTodos() -> None {

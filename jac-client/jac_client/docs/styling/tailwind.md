@@ -111,7 +111,7 @@ cl {
 Combine static and dynamic classes:
 
 ```jac
-let countColorClass = "text-gray-800" if count == 0 else ("text-green-600" if count > 0 else "text-red-600");
+countColorClass = "text-gray-800" if count == 0 else ("text-green-600" if count > 0 else "text-red-600");
 
 return <div className={"text-6xl font-bold " + countColorClass + " transition-colors duration-300"}>
     {count}

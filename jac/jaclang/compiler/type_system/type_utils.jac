@@ -310,3 +310,19 @@ def lookup_symtab(
     }
     return symtable.lookup(name, deep=True, incl_inner_scope=True);
 }
+
+"""Determine if a class implements a protocol.
+
+This is a placeholder function and should be implemented based on
+the specific requirements for protocol conformance checking.
+"""
+def class_implements_protocol(cls: types.ClassType, proto: types.ClassType) -> bool {
+    cls_ast: uni.Archetype = cls.shared.symbol_table;
+    proto_ast: uni.Archetype = proto.shared.symbol_table;
+
+    # FIXME: For now I'm only checking if method names are equal
+    # However we need to check the full signature compatibility.
+    cls_method_names = {method.sym_name for method in cls_ast.get_methods()};
+    proto_method_names = {method.sym_name for method in proto_ast.get_methods()};
+    return proto_method_names.issubset(cls_method_names);
+}

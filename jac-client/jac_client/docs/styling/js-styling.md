@@ -112,7 +112,7 @@ return <div style={styles.container}>
 Select styles based on state:
 
 ```jac
-let countStyle = styles.countDisplayZero if count == 0 else (styles.countDisplayPositive if count > 0 else styles.countDisplayNegative);
+countStyle = styles.countDisplayZero if count == 0 else (styles.countDisplayPositive if count > 0 else styles.countDisplayNegative);
 
 return <div style={countStyle}>{count}</div>;
 ```
@@ -266,7 +266,7 @@ export const getButtonStyle = (variant) => ({
 Use in Jac:
 
 ```jac
-let buttonStyle = getButtonStyle("primary");
+buttonStyle = getButtonStyle("primary");
 
 return <button style={buttonStyle}>Click Me</button>;
 ```
@@ -346,7 +346,7 @@ cl import from .styles { button, card, container }
 You can combine multiple style objects:
 
 ```jac
-let combinedStyle = {
+combinedStyle = {
     ...styles.base,
     ...styles.button,
     ...(isActive ? styles.active : {})

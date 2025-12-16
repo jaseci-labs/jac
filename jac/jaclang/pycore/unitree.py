@@ -1628,6 +1628,14 @@ class Archetype(
                     has_vars.append(has_)
         return has_vars
 
+    def get_methods(self) -> list[Ability]:
+        body = self._get_impl_resolved_body()
+        methods: list[Ability] = []
+        for node in body:
+            if isinstance(node, Ability) and node.is_method:
+                methods.append(node)
+        return methods
+
     def normalize(self, deep: bool = False) -> bool:
         res = True
         if deep:

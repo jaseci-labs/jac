@@ -165,7 +165,7 @@ return <div>
 3. Use `{}` to insert Jac code
 
    ```jac
-   let name = "Alice";
+    name = "Alice";
    return <h1>Hello, {name}!</h1>;  # Shows: Hello, Alice!
    ```
 

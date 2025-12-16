@@ -103,7 +103,7 @@ cl obj ButtonProps {
 }
 
 // Client global - literal value sent to browser
-cl let API_BASE_URL: str = "https://api.example.com";
+cl API_BASE_URL: str = "https://api.example.com";
 ```
 
 #### Grammar Definition
@@ -194,8 +194,8 @@ cl import from jac:client_runtime {
 cl def LoginForm() {
     async def handleLogin(event: any) {
         event.preventDefault();
-        let username = document.getElementById("username").value;
-        let password = document.getElementById("password").value;
+        username = document.getElementById("username").value;
+        password = document.getElementById("password").value;
 
         success = await jacLogin(username, password);
         if success {
@@ -223,27 +223,27 @@ JSX is fully supported in Jac with grammar defined in [jac.lark:448-473](../jacl
 ```jac
 cl def render_example() {
     // Basic elements
-    let basic = <div>Hello World</div>;
+    basic = <div>Hello World</div>;
 
     // Elements with attributes
-    let with_attrs = <button id="submit" class="btn">Click</button>;
+    with_attrs = <button id="submit" class="btn">Click</button>;
 
     // Expression attributes and children
-    let name = "Alice";
-    let greeting = <h1 data-user={name}>Welcome, {name}!</h1>;
+    name = "Alice";
+    greeting = <h1 data-user={name}>Welcome, {name}!</h1>;
 
     // Spread attributes
-    let props = {"class": "card", "id": "main"};
-    let with_spread = <div {...props}>Content</div>;
+    props = {"class": "card", "id": "main"};
+    with_spread = <div {...props}>Content</div>;
 
     // Fragment syntax
-    let fragment = <>
+    fragment = <>
         <div>First</div>
         <div>Second</div>
     </>;
 
     // Component usage (capitalized names)
-    let component = <Button label="Click Me" />;
+    component = <Button label="Click Me" />;
 
     return <div>{greeting}{component}</div>;
 }
@@ -687,7 +687,7 @@ node User {
 }
 
 // Client-side global configuration
-cl let API_URL: str = "/api";
+cl API_URL: str = "/api";
 
 // Client-side component
 cl obj CardProps {

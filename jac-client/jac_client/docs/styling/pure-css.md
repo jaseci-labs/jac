@@ -58,7 +58,7 @@ cl import ".styles.css";
 
 cl {
     def app() -> any {
-        let [count, setCount] = useState(0);
+        [count, setCount] = useState(0);
 
         return <div className="container">
             <div className="card">
@@ -87,7 +87,7 @@ return <div className="container">
 Dynamically construct class names based on state:
 
 ```jac
-let countClass = "countDisplay " + ("positive" if count > 0 else "negative" if count < 0 else "zero");
+countClass = "countDisplay " + ("positive" if count > 0 else "negative" if count < 0 else "zero");
 
 return <div className={countClass}>{count}</div>;
 ```

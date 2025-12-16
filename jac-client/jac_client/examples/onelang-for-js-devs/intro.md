@@ -35,14 +35,14 @@ Before diving into specific topics, here is a quick overview of the main syntax 
 
     ```javascript
     const name = "Alice";
-    let count = 0;
+    count = 0;
     ```
 
 === "JAC-Client"
 
     ```jac
-    let name = "Alice";
-    let count = 0;
+    name = "Alice";
+    count = 0;
     ```
 
 ### Functions
@@ -64,7 +64,7 @@ Before diving into specific topics, here is a quick overview of the main syntax 
         return "Hello, " + name + "!";
     }
 
-    let double = lambda n: int -> int { return n * 2; };
+    double = lambda n: int -> int { return n * 2; };
     ```
 
 ### Conditionals
@@ -78,7 +78,7 @@ Before diving into specific topics, here is a quick overview of the main syntax 
 === "JAC-Client"
 
     ```jac
-    let status = ("Online") if isOnline else ("Offline");
+    status = ("Online") if isOnline else ("Offline");
     ```
 
 ### Components
@@ -95,7 +95,7 @@ Before diving into specific topics, here is a quick overview of the main syntax 
 
     ```jac
     def Greeting(props: dict) -> any {
-        let name = props.name;
+        name = props.name;
         return <div>Hello, {name}!</div>;
     }
     ```

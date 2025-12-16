@@ -87,7 +87,15 @@ class ClientBundleBuilder {
         return bundle;
     }
 
-    """Process client imports and return import pieces and bundled module names.\n\n        Args:\n            manifest: The client manifest containing import information, or None\n            module_path: Path to the module being processed\n\n        Returns:\n            ProcessedImports containing JavaScript code pieces and bundled module names\n        """
+    """Process client imports and return import pieces and bundled module names.
+
+Args:
+    manifest: The client manifest containing import information, or None
+    module_path: Path to the module being processed
+
+Returns:
+    ProcessedImports containing JavaScript code pieces and bundled module names
+"""
     def _process_imports(
         self: ClientBundleBuilder, manifest: (ClientManifest | None), module_path: Path
     ) -> ProcessedImports {
@@ -159,14 +167,29 @@ class ClientBundleBuilder {
         return ProcessedImports(import_pieces, bundled_module_names);
     }
 
-    """Extract client exports from manifest.\n\n        Args:\n            manifest: The client manifest, or None\n\n        Returns:\n            Sorted list of client export names\n        """
+    """Extract client exports from manifest.
+
+Args:
+    manifest: The client manifest, or None
+
+Returns:
+    Sorted list of client export names
+"""
     def _extract_client_exports(
         self: ClientBundleBuilder, manifest: (ClientManifest | None)
     ) -> list[str] {
         return sorted(<>dict.fromkeys(manifest.exports)) if manifest else [];
     }
 
-    """Extract client globals from manifest and module.\n\n        Args:\n            manifest: The client manifest, or None\n            module: The Python module\n\n        Returns:\n            Dictionary of global names to their values\n        """
+    """Extract client globals from manifest and module.
+
+Args:
+    manifest: The client manifest, or None
+    module: The Python module
+
+Returns:
+    Dictionary of global names to their values
+"""
     def _extract_client_globals(
         self: ClientBundleBuilder,
         manifest: (ClientManifest | None),
@@ -226,7 +249,11 @@ class ClientBundleBuilder {
         );
     }
 
-    """Compile the provided Jac file into JavaScript.\n\n        Returns:\n            Tuple of (js_code, compiled_module) where compiled_module contains the client_manifest\n        """
+    """Compile the provided Jac file into JavaScript.
+
+Returns:
+    Tuple of (js_code, compiled_module) where compiled_module contains the client_manifest
+"""
     def _compile_to_js(
         self: ClientBundleBuilder, source_path: Path
     ) -> tuple[str, Module] {
@@ -247,7 +274,15 @@ class ClientBundleBuilder {
         return ((mod.gen.js or ''), mod);
     }
 
-    """Remove ES6 import statements for modules that are bundled.\n\n        Args:\n            js_code: The JavaScript code\n            bundled_modules: Set of module names that are being bundled\n\n        Returns:\n            JavaScript code with bundled imports removed\n        """
+    """Remove ES6 import statements for modules that are bundled.
+
+Args:
+    js_code: The JavaScript code
+    bundled_modules: Set of module names that are being bundled
+
+Returns:
+    JavaScript code with bundled imports removed
+"""
     static def _strip_import_statements(js_code: str, bundled_modules: set[str]) -> str {
         import re;
         bundled_js_paths = {convert_to_js_import_path(mod) for mod in bundled_modules};
