@@ -1,4 +1,14 @@
-"""ESTree AST Node Definitions for ECMAScript.\n\nThis module provides a complete implementation of the ESTree specification,\nwhich defines the standard AST format for JavaScript and ECMAScript.\n\nThe ESTree specification represents ECMAScript programs as abstract syntax trees\nthat are language-agnostic and can be used for various tools like parsers,\ntranspilers, and code analysis tools.\n\nReference: https://github.com/estree/estree\n"""
+"""ESTree AST Node Definitions for ECMAScript.
+
+This module provides a complete implementation of the ESTree specification,
+which defines the standard AST format for JavaScript and ECMAScript.
+
+The ESTree specification represents ECMAScript programs as abstract syntax trees
+that are language-agnostic and can be used for various tools like parsers,
+transpilers, and code analysis tools.
+
+Reference: https://github.com/estree/estree
+"""
 import from __future__ { annotations }
 import from dataclasses { dataclass, field }
 import from typing { Any, TypeAlias }

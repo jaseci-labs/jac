@@ -850,3 +850,25 @@ def test_union_reassignment(fixture_path: Callable[[str], str]) -> None:
     """,
         program.errors_had[2].pretty_print(),
     )
+
+
+def test_protocol(fixture_path: Callable[[str], str]) -> None:
+    """Test protocol type checking (structural subtyping)."""
+    program = JacProgram()
+    mod = program.compile(fixture_path("checker_protocol.jac"))
+    TypeCheckPass(ir_in=mod, prog=program)
+    assert len(program.errors_had) == 2
+    _assert_error_pretty_found(
+        """
+        len(Foo());  # <-- Error
+            ^^^^^
+    """,
+        program.errors_had[0].pretty_print(),
+    )
+    _assert_error_pretty_found(
+        """
+        run(Foo());  # <-- Error
+            ^^^^^
+    """,
+        program.errors_had[1].pretty_print(),
+    )

@@ -17,14 +17,23 @@ def compare_files(
     fixture_path: Callable[[str], str],
     original_file: str,
     formatted_file: str | None = None,
+    auto_lint: bool = False,
 ) -> None:
-    """Compare the original file with a provided formatted file or a new formatted version."""
+    """Compare the original file with a provided formatted file or a new formatted version.
+
+    Args:
+        fixture_path: Function to get the path to a fixture file.
+        original_file: The original file to compare.
+        formatted_file: Optional expected formatted file to compare against.
+        auto_lint: Whether to apply auto-linting during formatting. Defaults to False
+                   for idempotency tests since we're testing the formatter, not the linter.
+    """
     try:
         original_path = fixture_path(original_file)
         with open(original_path) as file:
             original_file_content = file.read()
         if formatted_file is None:
-            prog = JacProgram.jac_file_formatter(original_path)
+            prog = JacProgram.jac_file_formatter(original_path, auto_lint=auto_lint)
             formatted_content = prog.mod.main.gen.jac
         else:
             with open(fixture_path(formatted_file)) as file:
@@ -90,7 +99,7 @@ def test_archetype(fixture_path: Callable[[str], str]) -> None:
     )
 
 
-def micro_suite_test(filename: str) -> None:
+def micro_suite_test(filename: str, auto_lint: bool = False) -> None:
     """
     Tests the Jac formatter by:
     1. Compiling a given Jac file.
@@ -101,9 +110,14 @@ def micro_suite_test(filename: str) -> None:
     This ensures that the formatting process does not alter the
     syntactic structure of the code.
     Includes a specific token check for 'circle_clean_tests.jac'.
+
+    Args:
+        filename: The path to the Jac file to test.
+        auto_lint: Whether to apply auto-linting during formatting. Defaults to False
+                   for existing tests to maintain backward compatibility.
     """
     code_gen_pure = JacProgram().compile(filename)
-    format_prog = JacProgram.jac_file_formatter(filename)
+    format_prog = JacProgram.jac_file_formatter(filename, auto_lint=auto_lint)
     code_gen_format = format_prog.mod.main.gen.jac
     code_gen_jac = JacProgram().compile(use_str=code_gen_format, file_path=filename)
     if "circle_clean_tests.jac" in filename:
