@@ -2755,6 +2755,116 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
             )
         ]
 
+    def _build_safe_subscript_expr(
+        self, index_expr: ast3.expr, tmp_ref: ast3.Name, none_const: ast3.Constant
+    ) -> ast3.IfExp:
+        """Build a safe subscript expression with bounds checking for both positive and negative indices.
+
+        Generates: __jac_tmp[__jac_idx] if (bounds_check) else None
+        where bounds_check handles both positive (0 <= idx < len) and negative (idx < 0 and abs(idx) <= len) indices.
+        """
+        # Store index in temporary to avoid multiple evaluations
+        index_tmp = self.sync(ast3.Name(id="__jac_idx", ctx=ast3.Load()))
+        index_assign = self.sync(
+            ast3.NamedExpr(
+                target=self.sync(ast3.Name(id="__jac_idx", ctx=ast3.Store())),
+                value=index_expr,
+            )
+        )
+
+        # len(__jac_tmp)
+        len_call = self.sync(
+            ast3.Call(
+                func=self.sync(ast3.Name(id="len", ctx=ast3.Load())),
+                args=[tmp_ref],
+                keywords=[],
+            )
+        )
+
+        # Positive index check: 0 <= __jac_idx < len(__jac_tmp)
+        positive_check = self.sync(
+            ast3.BoolOp(
+                op=self.sync(ast3.And()),
+                values=[
+                    self.sync(
+                        ast3.Compare(
+                            left=self.sync(ast3.Constant(value=0)),
+                            ops=[self.sync(ast3.LtE())],
+                            comparators=[index_tmp],
+                        )
+                    ),
+                    self.sync(
+                        ast3.Compare(
+                            left=index_tmp,
+                            ops=[self.sync(ast3.Lt())],
+                            comparators=[len_call],
+                        )
+                    ),
+                ],
+            )
+        )
+
+        # Negative index check: __jac_idx < 0 and abs(__jac_idx) <= len(__jac_tmp)
+        negative_check = self.sync(
+            ast3.BoolOp(
+                op=self.sync(ast3.And()),
+                values=[
+                    self.sync(
+                        ast3.Compare(
+                            left=index_tmp,
+                            ops=[self.sync(ast3.Lt())],
+                            comparators=[self.sync(ast3.Constant(value=0))],
+                        )
+                    ),
+                    self.sync(
+                        ast3.Compare(
+                            left=self.sync(
+                                ast3.Call(
+                                    func=self.sync(
+                                        ast3.Name(id="abs", ctx=ast3.Load())
+                                    ),
+                                    args=[index_tmp],
+                                    keywords=[],
+                                )
+                            ),
+                            ops=[self.sync(ast3.LtE())],
+                            comparators=[len_call],
+                        )
+                    ),
+                ],
+            )
+        )
+
+        # Combined bounds check with index assignment
+        bounds_check = self.sync(
+            ast3.BoolOp(
+                op=self.sync(ast3.And()),
+                values=[
+                    index_assign,
+                    self.sync(
+                        ast3.BoolOp(
+                            op=self.sync(ast3.Or()),
+                            values=[positive_check, negative_check],
+                        )
+                    ),
+                ],
+            )
+        )
+
+        return self.sync(
+            ast3.IfExp(
+                test=bounds_check,
+                body=self.sync(
+                    ast3.Subscript(
+                        value=tmp_ref,
+                        slice=index_tmp,
+                        ctx=ast3.Load(),
+                    )
+                ),
+                orelse=none_const,
+            )
+        )
+
     def exit_atom_trailer(self, node: uni.AtomTrailer) -> None:
         if node.is_genai:
             node.gen.py_ast = []
@@ -2873,114 +2983,9 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
                         node.gen.py_ast[0].value = tmp_ref
                         body_expr = cast(ast3.expr, node.gen.py_ast[0])
                     else:
-                        # Store index in temporary to avoid multiple evaluations
-                        index_tmp = self.sync(
-                            ast3.Name(id="__jac_idx", ctx=ast3.Load())
-                        )
-                        index_assign = self.sync(
-                            ast3.NamedExpr(
-                                target=self.sync(
-                                    ast3.Name(id="__jac_idx", ctx=ast3.Store())
-                                ),
-                                value=index_expr,
-                            )
-                        )
-
-                        # len(__jac_tmp)
-                        len_call = self.sync(
-                            ast3.Call(
-                                func=self.sync(ast3.Name(id="len", ctx=ast3.Load())),
-                                args=[tmp_ref],
-                                keywords=[],
-                            )
-                        )
-
-                        # Positive index check: 0 <= __jac_idx < len(__jac_tmp)
-                        positive_check = self.sync(
-                            ast3.BoolOp(
-                                op=self.sync(ast3.And()),
-                                values=[
-                                    self.sync(
-                                        ast3.Compare(
-                                            left=self.sync(ast3.Constant(value=0)),
-                                            ops=[self.sync(ast3.LtE())],
-                                            comparators=[index_tmp],
-                                        )
-                                    ),
-                                    self.sync(
-                                        ast3.Compare(
-                                            left=index_tmp,
-                                            ops=[self.sync(ast3.Lt())],
-                                            comparators=[len_call],
-                                        )
-                                    ),
-                                ],
-                            )
-                        )
-
-                        # Negative index check: __jac_idx < 0 and abs(__jac_idx) <= len(__jac_tmp)
-                        negative_check = self.sync(
-                            ast3.BoolOp(
-                                op=self.sync(ast3.And()),
-                                values=[
-                                    self.sync(
-                                        ast3.Compare(
-                                            left=index_tmp,
-                                            ops=[self.sync(ast3.Lt())],
-                                            comparators=[
-                                                self.sync(ast3.Constant(value=0))
-                                            ],
-                                        )
-                                    ),
-                                    self.sync(
-                                        ast3.Compare(
-                                            left=self.sync(
-                                                ast3.Call(
-                                                    func=self.sync(
-                                                        ast3.Name(
-                                                            id="abs", ctx=ast3.Load()
-                                                        )
-                                                    ),
-                                                    args=[index_tmp],
-                                                    keywords=[],
-                                                )
-                                            ),
-                                            ops=[self.sync(ast3.LtE())],
-                                            comparators=[len_call],
-                                        )
-                                    ),
-                                ],
-                            )
-                        )
-
-                        # Combined bounds check with index assignment
-                        bounds_check = self.sync(
-                            ast3.BoolOp(
-                                op=self.sync(ast3.And()),
-                                values=[
-                                    index_assign,
-                                    self.sync(
-                                        ast3.BoolOp(
-                                            op=self.sync(ast3.Or()),
-                                            values=[positive_check, negative_check],
-                                        )
-                                    ),
-                                ],
-                            )
-                        )
-
-                        body_expr = self.sync(
-                            ast3.IfExp(
-                                test=bounds_check,
-                                body=self.sync(
-                                    ast3.Subscript(
-                                        value=tmp_ref,
-                                        slice=index_tmp,
-                                        ctx=ast3.Load(),
-                                    )
-                                ),
-                                orelse=none_const,
-                            )
+                        # For index operations with bounds checking
+                        body_expr = self._build_safe_subscript_expr(
+                            index_expr, tmp_ref, none_const
                         )
                 else:
                     # Fallback for any other operation type
