@@ -32,7 +32,7 @@ def load_env_variables(code_folder: str) -> list {
 }
 
 """\n    Checks if Kubernetes config is configured and the K8s API server is reachable.\n    """
-def check_K8s_status()  -> None {
+def check_K8s_status -> None {
     try {
         config.load_kube_config();
     } except ConfigException {
@@ -68,7 +68,7 @@ def delete_if_exists(
 }
 
 """Delete all K8s resources (deployment, service, etc.) created for the app."""
-def cleanup_K8s_resources()  -> None {
+def cleanup_K8s_resources -> None {
     app_name = os.getenv('APP_NAME', 'jaseci');
     namespace = os.getenv('K8s_NAMESPACE', 'default');
     config.load_kube_config();
@@ -221,7 +221,7 @@ def check_deployment_status(
 }
 
 """Detect if the current connected cluster is AWS or local.\n\n    Returns:\n        'aws' for AWS EKS clusters, 'local' for local/other clusters.\n    """
-def cluster_type()  -> str {
+def cluster_type -> str {
     try {
         import from kubernetes { client }
         v1 = client.CoreV1Api();

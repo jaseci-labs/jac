@@ -15,8 +15,9 @@ import from jaclang.vendor.pygls { uris }
 
 import lsprotocol.types as lspt;
 
-glob P = ParamSpec('P');
-glob T = TypeVar('T', bound=Callable[(P, Coroutine[(Any, Any, Any)])]);
+glob P = ParamSpec('P') , T = TypeVar(
+    'T', bound=Callable[(P, Coroutine[(Any, Any, Any)])]
+);
 
 """Return diagnostics."""
 def gen_diagnostics(
@@ -46,13 +47,13 @@ def debounce(<>wait: float) -> Callable[[T], Callable[(..., Awaitable[None])]] {
     def decorator(fn: T) -> Callable[P, Awaitable[None]] {
         @wraps(fn)
         async def debounced( *args: P.args , **kwargs: P.kwargs)  -> None {
-            async def call_it()  -> None {
+            async def call_it -> None {
                 await fn(*args, _=kwargs);
             }
             if hasattr(debounced, '_task') {
                 debounced._task.cancel();
             }
-            async def debounced_coro()  -> None {
+            async def debounced_coro -> None {
                 try {
                     await asyncio.sleep(<>wait);
                     await call_it();

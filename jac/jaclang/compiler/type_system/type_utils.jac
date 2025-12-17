@@ -8,9 +8,7 @@ import from . { types }
 """Represents a member of a class."""
 class ClassMember {
     """Initialize obviously."""
-    def __init__(
-        self: ClassMember, symbol: Symbol, class_type: types.ClassType
-    ) -> None {
+    def init(self: ClassMember, symbol: Symbol, class_type: types.ClassType) -> None {
         self.symbol = symbol;
         self.class_type = class_type;
         self.is_instance_member = True;
@@ -48,7 +46,7 @@ def compute_mro_linearization(cls: types.ClassType) -> None {
 """Tracks parameter assignments for function calls.\n\n    This class helps in tracking which parameters have been matched\n    with arguments in a function call. It supports positional, named,\n    *args, and **kwargs arguments.\n    """
 class ParamAssignmentTracker {
     """Initialize obviously."""
-    def __init__(self: ParamAssignmentTracker, params: list[types.Parameter]) -> None {
+    def init(self: ParamAssignmentTracker, params: list[types.Parameter]) -> None {
         self.params = params;
         self.curr_param_idx = 0;
         self.matched_params: set[types.Parameter] = <>set();

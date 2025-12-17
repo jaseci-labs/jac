@@ -8,12 +8,11 @@ import types;
 import from importlib.metadata { version as pkg_version }
 import from pathlib { Path }
 import from jaclang.cli.cmdreg { cmd_registry }
-with entry {
-    _runtime_initialized = False;
-}
+
+glob _runtime_initialized = False;
 
 """Initialize Jac runtime once on first use."""
-def _ensure_jac_runtime()  -> None {
+def _ensure_jac_runtime -> None {
     global _runtime_initialized;
     if not _runtime_initialized {
         import from jaclang.pycore.runtime { JacRuntime as Jac }
@@ -24,7 +23,7 @@ def _ensure_jac_runtime()  -> None {
 
 """Generate static parser."""
 @cmd_registry.register
-def gen_parser()  -> str {
+def gen_parser -> str {
     import from jaclang.compiler { gen_all_parsers }
     gen_all_parsers();
     return 'Parser generated.';
@@ -403,7 +402,7 @@ Examples:
     jac lsp
 """
 @cmd_registry.register
-def lsp()  -> None {
+def lsp -> None {
     import from jaclang.langserve.server { run_lang_server }
     run_lang_server();
 }
@@ -884,7 +883,7 @@ def serve(
 }
 
 """Start the command line interface."""
-def start_cli()  -> None {
+def start_cli -> None {
     import from jaclang.pycore.runtime { JacRuntime as Jac }
     Jac.create_cmd();
     cmd_registry.finalize();

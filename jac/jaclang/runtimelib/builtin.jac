@@ -3,6 +3,7 @@ import json;
 import from abc { abstractmethod }
 import from collections.abc { Callable }
 import from typing { TYPE_CHECKING, Any, ClassVar, override }
+
 with entry {
     if TYPE_CHECKING {
         import from enum { IntEnum }
@@ -23,49 +24,49 @@ with entry {
 }
 
 """Lazily get JacRuntimeInterface."""
-def _get_jac()  -> type[JacRuntimeInterface] {
+def _get_jac -> type[JacRuntimeInterface] {
     import from jaclang { JacRuntimeInterface }
     return JacRuntimeInterface;
 }
 
 """Lazily get AccessLevel enum."""
-def _get_access_level()  -> type[AccessLevel] {
+def _get_access_level -> type[AccessLevel] {
     import from jaclang.runtimelib.constructs { AccessLevel }
     return AccessLevel;
 }
 
 """Get jid lazily."""
-def _get_jid()  -> Callable[..., Any] {
+def _get_jid -> Callable[..., Any] {
     return _get_jac().object_ref;
 }
 
 """Get jobj lazily."""
-def _get_jobj()  -> Callable[..., Any] {
+def _get_jobj -> Callable[..., Any] {
     return _get_jac().get_object;
 }
 
 """Get grant lazily."""
-def _get_grant()  -> Callable[..., Any] {
+def _get_grant -> Callable[..., Any] {
     return _get_jac().perm_grant;
 }
 
 """Get revoke lazily."""
-def _get_revoke()  -> Callable[..., Any] {
+def _get_revoke -> Callable[..., Any] {
     return _get_jac().perm_revoke;
 }
 
 """Get allroots lazily."""
-def _get_allroots()  -> Callable[..., Any] {
+def _get_allroots -> Callable[..., Any] {
     return _get_jac().get_all_root;
 }
 
 """Get save lazily."""
-def _get_save()  -> Callable[..., Any] {
+def _get_save -> Callable[..., Any] {
     return _get_jac().save;
 }
 
 """Get commit lazily."""
-def _get_commit()  -> Callable[..., Any] {
+def _get_commit -> Callable[..., Any] {
     return _get_jac().commit;
 }
 
@@ -160,19 +161,17 @@ def _jac_graph_json(file: (str | None) = None) -> str {
     return output;
 }
 
-with entry {
-    __all__ = [
-        'printgraph',
-        'jid',
-        'jobj',
-        'grant',
-        'revoke',
-        'allroots',
-        'save',
-        'commit',
-        'NoPerm',
-        'ReadPerm',
-        'ConnectPerm',
-        'WritePerm'
-    ];
-}
+glob __all__ = [
+    'printgraph',
+    'jid',
+    'jobj',
+    'grant',
+    'revoke',
+    'allroots',
+    'save',
+    'commit',
+    'NoPerm',
+    'ReadPerm',
+    'ConnectPerm',
+    'WritePerm'
+];

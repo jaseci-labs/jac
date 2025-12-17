@@ -10,7 +10,7 @@ import from .vite_bundler { ViteBundler }
 
 class PackageInstaller {
     """Handles installing npm packages by updating config.json."""
-    def __init__(self: PackageInstaller, project_dir: Path) {
+    def init(self: PackageInstaller, project_dir: Path) {
         self.project_dir = project_dir;
         self.config_loader = JacClientConfig(project_dir);
         self.config_file = project_dir / 'config.json';

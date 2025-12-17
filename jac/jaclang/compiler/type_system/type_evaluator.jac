@@ -43,74 +43,64 @@ glob DiagnosticCallback = Callable[
 
 """Types whose definitions are prefetched and cached by the type evaluator."""
 obj PrefetchedTypes {
-    has none_type_class: TypeBase | None = None;
-    has object_class: TypeBase | None = None;
-    has type_class: TypeBase | None = None;
-    has union_type_class: TypeBase | None = None;
-    has awaitable_class: TypeBase | None = None;
-    has function_class: TypeBase | None = None;
-    has method_class: TypeBase | None = None;
-    has tuple_class: TypeBase | None = None;
-    has bool_class: TypeBase | None = None;
-    has int_class: TypeBase | None = None;
-    has float_class: TypeBase | None = None;
-    has str_class: TypeBase | None = None;
-    has dict_class: TypeBase | None = None;
-    has module_type_class: TypeBase | None = None;
-    has typed_dict_class: TypeBase | None = None;
-    has typed_dict_private_class: TypeBase | None = None;
-    has supports_keys_and_get_item_class: TypeBase | None = None;
-    has mapping_class: TypeBase | None = None;
-    has template_class: TypeBase | None = None;
-    has type_var_class: TypeBase | None = None;
-    # Prefetch from typing.pyi file
-    has protocol_class: TypeBase | None = None;
-    # Prefetched from jac_builtins.pyi file
-    has root_class: TypeBase | None = None;
+    has none_type_class: TypeBase | None = None,
+        object_class: TypeBase | None = None,
+        type_class: TypeBase | None = None,
+        union_type_class: TypeBase | None = None,
+        awaitable_class: TypeBase | None = None,
+        function_class: TypeBase | None = None,
+        method_class: TypeBase | None = None,
+        tuple_class: TypeBase | None = None,
+        bool_class: TypeBase | None = None,
+        int_class: TypeBase | None = None,
+        float_class: TypeBase | None = None,
+        str_class: TypeBase | None = None,
+        dict_class: TypeBase | None = None,
+        module_type_class: TypeBase | None = None,
+        typed_dict_class: TypeBase | None = None,
+        typed_dict_private_class: TypeBase | None = None,
+        supports_keys_and_get_item_class: TypeBase | None = None,
+        mapping_class: TypeBase | None = None,
+        template_class: TypeBase | None = None,
+        type_var_class: TypeBase | None = None,
+        # Prefetch from typing.pyi file
+        protocol_class: TypeBase | None = None,
+        # Prefetched from jac_builtins.pyi file
+        root_class: TypeBase | None = None;
 }
 
 """Represents a single entry in the symbol resolution stack."""
 obj SymbolResolutionStackEntry {
-    has symbol: uni.Symbol;
-    # Initially true, it's set to false if a recursion
-    # is detected.
-    has is_result_valid: bool = True;
-    # Some limited forms of recursion are allowed. In these
-    # cases, a partially-constructed type can be registered.
-    has partial_type: TypeBase | None = None;
+    has symbol: uni.Symbol,
+        # Initially true, it's set to false if a recursion
+        # is detected.
+        is_result_valid: bool = True,
+        # Some limited forms of recursion are allowed. In these
+        # cases, a partially-constructed type can be registered.
+        partial_type: TypeBase | None = None;
 }
 
 """Result of matching arguments to parameters."""
 obj MatchArgsToParamsResult {
-    # FIXME: This class implementation is modified from pyright to make it
-    # simple and work for now, however this needs to be revisited and
-    # implemented properly.
-    has arg_params: dict[uni.Expr | uni.KWPair, types.Parameter | None];
-    has overload: types.FunctionType | None = None;
-    has argument_errors: bool = False;
+    has arg_params: dict[(uni.Expr | uni.KWPair, types.Parameter | None)],
+        overload: types.FunctionType | None = None,
+        argument_errors: bool = False;
 }
 
 """Type evaluator for JacLang."""
 class TypeEvaluator {
-    # NOTE: This is done in the binder pass of pyright, however I'm doing this
-    # here, cause this will be the entry point of the type checker and we're not
-    # relying on the binder pass at the moment and we can go back to binder pass
-    # in the future if we needed it.
     has _BUILTINS_STUB_FILE_PATH: str = os.path.join(
-        os.path.dirname(__file__), "../../vendor/typeshed/stdlib/builtins.pyi",
-    );
-
-    has _TYPING_STUB_FILE_PATH: str = os.path.join(
-        os.path.dirname(__file__), "../../vendor/typeshed/stdlib/typing.pyi",
-    );
-
-    has _TYPES_STUB_FILE_PATH: str = os.path.join(
-        os.path.dirname(__file__), "../../vendor/typeshed/stdlib/types.pyi",
-    );
-
-    has _JAC_BUILTINS_STUB_FILE_PATH: str = os.path.join(
-        os.path.dirname(__file__), "jac_builtins.pyi",
-    );
+        os.path.dirname(__file__), "../../vendor/typeshed/stdlib/builtins.pyi"
+    ),
+        _TYPING_STUB_FILE_PATH: str = os.path.join(
+            os.path.dirname(__file__), "../../vendor/typeshed/stdlib/typing.pyi"
+        ),
+        _TYPES_STUB_FILE_PATH: str = os.path.join(
+            os.path.dirname(__file__), "../../vendor/typeshed/stdlib/types.pyi"
+        ),
+        _JAC_BUILTINS_STUB_FILE_PATH: str = os.path.join(
+            os.path.dirname(__file__), "jac_builtins.pyi"
+        );
 
     """Initialize the type evaluator with prefetched types.
 
@@ -122,7 +112,7 @@ class TypeEvaluator {
     in some place then it will not be available in the evaluator, So we
     are prefetching the builtins at the constructor level once.
     """
-    def __init__(self: TypeEvaluator, program: "JacProgram") -> None {
+    def init(self: TypeEvaluator, program: "JacProgram") -> None {
         self.program = program;
         self.symbol_resolution_stack: list[SymbolResolutionStackEntry] = [];
         self.prefetch: PrefetchedTypes = PrefetchedTypes();
@@ -1492,3 +1482,11 @@ class TypeEvaluator {
         );
     }
 }
+# FIXME: This class implementation is modified from pyright to make it
+# simple and work for now, however this needs to be revisited and
+# implemented properly.
+
+# NOTE: This is done in the binder pass of pyright, however I'm doing this
+# here, cause this will be the entry point of the type checker and we're not
+# relying on the binder pass at the moment and we can go back to binder pass
+# in the future if we needed it.

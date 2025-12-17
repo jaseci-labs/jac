@@ -18,7 +18,7 @@ import from jaclang.runtimelib.utils { read_file_with_encoding }
 """Information about a kid."""
 class AstKidInfo {
     """Initialize."""
-    def __init__(
+    def init(
         self: AstKidInfo, name: str, typ: str, <>default: (str | None) = None
     ) -> None {
         self.name = name;
@@ -34,7 +34,7 @@ class UniNodeInfo {
     }
 
     """Initialize."""
-    def __init__(self: UniNodeInfo, cls: type) -> None {
+    def init(self: UniNodeInfo, cls: type) -> None {
         self.cls = cls;
         self.process(cls);
     }
@@ -64,7 +64,7 @@ class UniNodeInfo {
 """Ast tools."""
 class AstTool {
     """Initialize."""
-    def __init__(self: AstTool) -> None {
+    def init(self: AstTool) -> None {
         module = sys.modules[uni.__name__];
         source_code = inspect.getsource(module);
         classes = inspect.getmembers(module, inspect.isclass);

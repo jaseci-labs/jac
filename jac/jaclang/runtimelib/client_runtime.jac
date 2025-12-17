@@ -95,7 +95,7 @@ cl {
         signalData = {"value": initialValue, "subscribers": []};
         __jacReactiveContext.signals.push(signalData);
 
-        def getter()  -> any {
+        def getter -> any {
             __jacTrackDependency(signalData.subscribers);
             return signalData.value;
         }
@@ -117,7 +117,7 @@ cl {
         signalData = {"value": initialState, "subscribers": []};
         __jacReactiveContext.signals.push(signalData);
 
-        def getter()  -> dict {
+        def getter -> dict {
             __jacTrackDependency(signalData.subscribers);
             return signalData.value;
         }
@@ -250,7 +250,7 @@ cl {
     }
 
     # Schedule a flush of pending renders
-    def __jacScheduleFlush()  -> None {
+    def __jacScheduleFlush -> None {
         if not __jacReactiveContext.flushScheduled {
             __jacReactiveContext.flushScheduled = True;
             # Use requestAnimationFrame for batching, fallback to setTimeout
@@ -263,7 +263,7 @@ cl {
     }
 
     # Flush all pending renders
-    def __jacFlushRenders()  -> None {
+    def __jacFlushRenders -> None {
         pending = __jacReactiveContext.pendingRenders;
         __jacReactiveContext.pendingRenders = [];
         __jacReactiveContext.flushScheduled = False;
@@ -304,9 +304,9 @@ cl {
 
     # Route configuration object
     obj RouteConfig {
-        has path: str;
-        has component: any;
-        has guard: any = None;
+        has path: str,
+            component: any,
+            guard: any = None;
     }
 
     # Create a router instance
@@ -337,7 +337,7 @@ cl {
         );
 
         # Render method - returns component for current route
-        def render()  -> any {
+        def render -> any {
             path = currentPath();  # Track dependency!
 
             # Find matching route
@@ -406,12 +406,12 @@ cl {
     }
 
     # Hook to access router in components
-    def useRouter()  -> dict {
+    def useRouter -> dict {
         return __jacReactiveContext.router;
     }
 
     # Internal: Get current hash path
-    def __jacGetHashPath()  -> str {
+    def __jacGetHashPath -> str {
         hash = window.location.hash;
         if hash {
             return hash[1:];  # Remove '#'
@@ -529,11 +529,11 @@ cl {
         return False;
     }
 
-    def jacLogout()  -> None {
+    def jacLogout -> None {
         __removeLocalStorage("jac_token");
     }
 
-    def jacIsLoggedIn()  -> bool {
+    def jacIsLoggedIn -> bool {
         token = __getLocalStorage("jac_token");
         return token != None and token != "";
     }
@@ -586,7 +586,7 @@ cl {
     }
 
     # Internal polyfill for Python-style dict.get on plain JS objects
-    def __jacEnsureObjectGetPolyfill()  -> None {
+    def __jacEnsureObjectGetPolyfill -> None {
         proto = Object.prototype;
         if proto.get {
             return;
@@ -686,7 +686,7 @@ cl {
     }
 
     # Runtime support helpers for client module registration / hydration
-    def __jacGlobalScope()  -> any {
+    def __jacGlobalScope -> any {
         try {
             return globalThis;
         } except Exception { }
@@ -699,7 +699,7 @@ cl {
         return {};
     }
 
-    def __jacEnsureRegistry()  -> dict {
+    def __jacEnsureRegistry -> dict {
         scope = __jacGlobalScope();
         registry = scope.__jacClient;
         if not registry {
@@ -839,7 +839,7 @@ cl {
         }
     }
 
-    def __jacExecuteHydration()  -> None {
+    def __jacExecuteHydration -> None {
         registry = __jacEnsureRegistry();
         defaultModule = registry.lastModule if registry.lastModule else "";
         __jacHydrateFromDom(defaultModule);

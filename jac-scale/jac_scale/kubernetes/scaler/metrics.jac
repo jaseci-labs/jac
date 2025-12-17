@@ -3,7 +3,7 @@ import urllib.request;
 import from kubernetes { client, config, utils }
 import from kubernetes.client.exceptions { ApiException }
 """\n    Installs the Kubernetes metrics-server (if missing)\n    and patches it to use '--kubelet-insecure-tls' for local clusters.\n    """
-def install_and_patch_metrics_server()  -> None {
+def install_and_patch_metrics_server -> None {
     try {
         config.load_kube_config();
     } except Exception {
@@ -53,7 +53,7 @@ def install_and_patch_metrics_server()  -> None {
 }
 
 """\n    Downloads and applies the official metrics-server components YAML from GitHub.\n    """
-def install_metrics_server_yaml()  -> None {
+def install_metrics_server_yaml -> None {
     url = 'https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml';
     print(f"⬇️  Downloading Metrics Server manifest from: {url}");
     with urllib.request.urlopen(url) as response {

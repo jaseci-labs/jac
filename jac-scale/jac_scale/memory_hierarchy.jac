@@ -14,7 +14,7 @@ import from jaclang.runtimelib.memory { Memory }
 glob ID = TypeVar('ID');
 
 obj MultiHierarchyMemory(Memory[(UUID, Anchor)]) {
-    def init()  -> None {
+    def init -> None {
         super.init();
         self.mem = Memory[(UUID, Anchor)]();
         self.redis = RedisDB();
@@ -68,7 +68,7 @@ obj MultiHierarchyMemory(Memory[(UUID, Anchor)]) {
         self.sync(anchors);
     }
 
-    def close() {
+    def close {
         self.commit();
         self.mem.close();
     }
@@ -99,15 +99,15 @@ obj MultiHierarchyMemory(Memory[(UUID, Anchor)]) {
 
 """MongoDB handler."""
 obj MongoDB {
-    has client: (MongoClient | None) = None;
-    has db_name: str = 'jac_db';
-    has collection_name: str = 'anchors';
-    has mongo_url: str = os.environ.get(
-        'MONGODB_URI', 'mongodb://root:rootpassword123@localhost:27017/'
-    );
+    has client: (MongoClient | None) = None,
+        db_name: str = 'jac_db',
+        collection_name: str = 'anchors',
+        mongo_url: str = os.environ.get(
+            'MONGODB_URI', 'mongodb://root:rootpassword123@localhost:27017/'
+        );
 
     """Initialize Mongodb."""
-    def postinit()  -> None {
+    def postinit -> None {
         if (self.client is None) {
             self.client = MongoClient(self.mongo_url);
         }
@@ -300,19 +300,18 @@ obj MongoDB {
 obj RedisDB {
     has redis_url: str = os.environ.get(
         'REDIS_URL', 'redis://:mypassword123@localhost:6379/0'
-    );
-
-    has redis_client: (redis.Redis | None) = None;
+    ),
+        redis_client: (redis.Redis | None) = None;
 
     """Initialize Redis."""
-    def postinit()  -> None {
+    def postinit -> None {
         if (self.redis_client is None) {
             self.redis_client = redis.from_url(self.redis_url);
         }
     }
 
     """Check whether Redis connection is alive and reachable."""
-    def redis_is_available()  -> bool {
+    def redis_is_available -> bool {
         try {
             if (self.redis_client is None) {
                 return False;
@@ -391,18 +390,18 @@ Shelf-based Memory Handler — file-backed key/value storage.
 Uses dbm.dumb on all platforms to avoid gdbm locking issues in Linux.
 """
 obj ShelfDB {
-    has shelf_path: str = os.environ.get('SHELF_DB_PATH', 'anchor_store.db');
-    has _shelf: shelve.Shelf | None = None;
-    has _lock: RLock | None = None;
+    has shelf_path: str = os.environ.get('SHELF_DB_PATH', 'anchor_store.db'),
+        _shelf: shelve.Shelf | None = None,
+        _lock: RLock | None = None;
 
     """Initialize shelf DB on startup."""
-    def postinit() {
+    def postinit {
         self._lock = RLock();
         self._open_shelf();
     }
 
     """Always use dbm.dumb backend to avoid Linux gdbm locking."""
-    def _open_shelf()  -> shelve.Shelf {
+    def _open_shelf -> shelve.Shelf {
         import dbm.dumb;
         if (self._shelf is None) {
             raw_db = dbm.dumb.open(self.shelf_path, 'c');
@@ -412,7 +411,7 @@ obj ShelfDB {
         return self._shelf;
     }
 
-    def _ensure_shelf()  -> shelve.Shelf {
+    def _ensure_shelf -> shelve.Shelf {
         if (self._shelf is None) {
             self._shelf = self._open_shelf();
         }
@@ -420,7 +419,7 @@ obj ShelfDB {
     }
 
     """Cleanly close shelf storage."""
-    def close() {
+    def close {
         self._shelf = self._ensure_shelf();
         if (self._shelf is not None) {
             self._shelf.close();

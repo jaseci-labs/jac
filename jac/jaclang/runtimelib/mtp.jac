@@ -1,9 +1,9 @@
 """Meaning Typed Programming constructs for Jac Language."""
 import from collections.abc { Callable }
 obj MTRuntime {
-    has caller: Callable;
-    has args: dict[int | str, object];
-    has call_params: dict[str, object];
+    has caller: Callable,
+        args: dict[(int | str, object)],
+        call_params: dict[(str, object)];
 
     static def factory(
         caller: Callable, args: dict[int | str, object], call_params: dict[str, object]
@@ -13,12 +13,12 @@ obj MTRuntime {
 }
 
 obj MTIR {
-    has caller: Callable;
-    has args: dict[int | str, object];
-    has call_params: dict[str, object];
+    has caller: Callable,
+        args: dict[(int | str, object)],
+        call_params: dict[(str, object)];
 
     @property
-    def runtime()  -> MTRuntime {
+    def runtime -> MTRuntime {
         return MTRuntime.factory(self.caller, self.args, self.call_params);
     }
 }

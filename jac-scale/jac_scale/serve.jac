@@ -18,9 +18,9 @@ import from jaclang.pycore.runtime { JacRuntime as Jac }
 import from jaclang.runtimelib.server { JacAPIServer as JServer }
 import from jaclang.runtimelib.server { JsonValue }
 
-glob JWT_SECRET = os.getenv('JWT_SECRET', 'supersecretkey');
-glob JWT_ALGORITHM = os.getenv('JWT_ALGORITHM', 'HS256');
-glob JWT_EXP_DELTA_DAYS = os.getenv('JWT_EXP_DELTA_DAYS', 7);
+glob JWT_SECRET = os.getenv('JWT_SECRET', 'supersecretkey') , JWT_ALGORITHM = os.getenv(
+    'JWT_ALGORITHM', 'HS256'
+) , JWT_EXP_DELTA_DAYS = os.getenv('JWT_EXP_DELTA_DAYS', 7);
 
 class JacAPIServer(JServer) {
     static def create_jwt_token(username: str) -> str {
@@ -62,7 +62,7 @@ class JacAPIServer(JServer) {
         }
     }
 
-    def __init__(
+    def init(
         self: JacAPIServer,
         module_name: str,
         session_path: str,
@@ -453,7 +453,7 @@ class JacAPIServer(JServer) {
 
     """Create callback to serve the client.js file."""
     def serve_client_js_callback(self: JacAPIServer) -> Callable[..., Response] {
-        def callback()  -> Response {
+        def callback -> Response {
             try {
                 self.introspector.load();
                 self.introspector.ensure_bundle();
@@ -638,7 +638,7 @@ class JacAPIServer(JServer) {
     """Configure OpenAPI security scheme to only apply to walker endpoints that require auth."""
     def _configure_openapi_security(self: JacAPIServer) -> None {
         import from fastapi.openapi.utils { get_openapi }
-        def custom_openapi()  -> dict[str, Any] {
+        def custom_openapi -> dict[str, Any] {
             if self.server_impl.app.openapi_schema {
                 return self.server_impl.app.openapi_schema;
             }

@@ -5,11 +5,12 @@ with entry {
     if TYPE_CHECKING {
         import jaclang.pycore.unitree as uni;
     }
-    # Define DocType for self-referential typing
-    DocType = Union[
-        ('Doc', 'Text', 'Line', 'Group', 'Indent', 'Concat', 'IfBreak', 'Align')
-    ];
 }
+
+# Define DocType for self-referential typing
+glob DocType = Union[
+    ('Doc', 'Text', 'Line', 'Group', 'Indent', 'Concat', 'IfBreak', 'Align')
+];
 
 """Base class for document parts."""
 class Doc {
@@ -33,9 +34,7 @@ class Doc {
 """Simple text content."""
 class Text(Doc) {
     """Initialize a Text object."""
-    def __init__(
-        self: Text, text: str, source_token: (uni.Token | None) = None
-    ) -> None {
+    def init(self: Text, text: str, source_token: (uni.Token | None) = None) -> None {
         self.text = text;
         self.source_token = source_token;
     }
@@ -57,7 +56,7 @@ class Text(Doc) {
 """Represents a line break that can be preserved or flattened."""
 class Line(Doc) {
     """Initialize a Line object."""
-    def __init__(
+    def init(
         self: Line, hard: bool = False, literal: bool = False, tight: bool = False
     ) -> None {
         self.hard = hard;
@@ -93,7 +92,7 @@ class Line(Doc) {
 """A group that can be printed flat or broken into multiple lines."""
 class Group(Doc) {
     """Initialize a Group object."""
-    def __init__(
+    def init(
         self: Group,
         contents: DocType,
         break_contiguous: bool = False,
@@ -122,7 +121,7 @@ class Group(Doc) {
 """Indented content."""
 class Indent(Doc) {
     """Initialize an Indent object."""
-    def __init__(
+    def init(
         self: Indent, contents: DocType, ast_node: (uni.UniNode | None) = None
     ) -> None {
         self.contents = contents;
@@ -145,7 +144,7 @@ class Indent(Doc) {
 """A sequence of doc parts."""
 class Concat(Doc) {
     """Initialize a Concat object."""
-    def __init__(
+    def init(
         self: Concat, parts: list[DocType], ast_node: (uni.UniNode | None) = None
     ) -> None {
         self.parts = parts;
@@ -168,9 +167,7 @@ class Concat(Doc) {
 """Content that differs based on whether the parent group is broken."""
 class IfBreak(Doc) {
     """Initialize an IfBreak object."""
-    def __init__(
-        self: IfBreak, break_contents: DocType, flat_contents: DocType
-    ) -> None {
+    def init(self: IfBreak, break_contents: DocType, flat_contents: DocType) -> None {
         self.break_contents = break_contents;
         self.flat_contents = flat_contents;
     }
@@ -194,7 +191,7 @@ class IfBreak(Doc) {
 """Alignment relative to the current indentation level."""
 class Align(Doc) {
     """Initialize an Align object."""
-    def __init__(self: Align, contents: DocType, n: (int | None) = None) -> None {
+    def init(self: Align, contents: DocType, n: (int | None) = None) -> None {
         self.contents = contents;
         self.n = n;
     }

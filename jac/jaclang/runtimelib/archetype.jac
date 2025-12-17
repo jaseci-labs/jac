@@ -10,12 +10,10 @@ import from types { UnionType }
 import from typing { Any, ClassVar, TypeAlias, TypeVar }
 import from uuid { UUID, uuid4 }
 import from ..pycore.constant { EdgeDir }
-with entry {
-    logger = getLogger(__name__);
-    TARCH = TypeVar('TARCH', bound='Archetype');
-    TANCH = TypeVar('TANCH', bound='Anchor');
-    T = TypeVar('T');
-}
+
+glob logger = getLogger(__name__) , TARCH = TypeVar('TARCH', bound='Archetype') , TANCH = TypeVar(
+    'TANCH', bound='Anchor'
+) , T = TypeVar('T');
 
 """Access level enum."""
 class AccessLevel(IntEnum) {
@@ -73,9 +71,7 @@ class AnchorReport {
     }
 }
 
-with entry {
-    ObjectSpatialFilter: TypeAlias = 'Callable[[Archetype], bool] | Archetype | list[Archetype] | None';
-}
+glob ObjectSpatialFilter: TypeAlias = 'Callable[[Archetype], bool] | Archetype | list[Archetype] | None';
 
 """Object-Spatial Destination."""
 @dataclass(eq=False, repr=False)
@@ -108,7 +104,7 @@ class ObjectSpatialPath {
     }
 
     """Override Init."""
-    def __init__(
+    def init(
         self: ObjectSpatialPath,
         origin: (NodeArchetype | <>list[NodeArchetype]),
         destinations: (<>list[ObjectSpatialDestination] | None) = None

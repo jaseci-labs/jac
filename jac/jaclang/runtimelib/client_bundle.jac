@@ -7,6 +7,7 @@ import from pathlib { Path }
 import from types { ModuleType }
 import from typing { TYPE_CHECKING, Any, NamedTuple }
 import from jaclang.pycore.module_resolver { convert_to_js_import_path }
+
 with entry {
     if TYPE_CHECKING {
         import from jaclang.pycore.codeinfo { ClientManifest }
@@ -48,7 +49,7 @@ class _CachedBundle {
 """Compile Jac modules and runtime support into a browser-ready bundle."""
 class ClientBundleBuilder {
     """Initialise the builder with an optional override for the runtime path."""
-    def __init__(self: ClientBundleBuilder, runtime_path: (Path | None) = None) -> None {
+    def init(self: ClientBundleBuilder, runtime_path: (Path | None) = None) -> None {
         self.runtime_path = (
             runtime_path or Path(__file__).with_name('client_runtime.jac')
         );

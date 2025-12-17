@@ -23,9 +23,7 @@ import jaclang.pycore.unitree as uni;
 import from jaclang.pycore.passes { Transform, UniPass }
 import from jaclang.pycore.log { logging }
 
-with entry {
-    logger = logging.getLogger(__name__);
-}
+glob logger = logging.getLogger(__name__);
 
 """Jac statically imports Jac modules."""
 class JacImportDepsPass(Transform[(uni.Module, uni.Module)]) {

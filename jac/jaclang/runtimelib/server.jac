@@ -14,15 +14,16 @@ import from typing { TYPE_CHECKING, Any, Literal, TypeAlias, get_type_hints }
 import from urllib.parse { parse_qs, urlparse }
 import from jaclang.runtimelib.client_bundle { ClientBundleError }
 import from jaclang { JacRuntime as Jac }
+
 with entry {
     if TYPE_CHECKING {
         import from jaclang.runtimelib.constructs { Archetype, WalkerArchetype }
     }
-    JsonValue: TypeAlias = None | str | int | float | bool | <>list['JsonValue'] | <>dict[
-        (str, 'JsonValue')
-    ];
-    StatusCode: TypeAlias = Literal[(200, 201, 400, 401, 404, 500, 503)];
 }
+
+glob JsonValue: TypeAlias = None | str | int | float | bool | <>list['JsonValue'] | <>dict[
+    (str, 'JsonValue')
+] , StatusCode: TypeAlias = Literal[(200, 201, 400, 401, 404, 500, 503)];
 
 """Base response container."""
 @dataclass(frozen=True, slots=True)
@@ -114,7 +115,7 @@ class UserManager {
     }
 
     """Initialize user database."""
-    def __post_init__(self: UserManager) -> None {
+    def postinit(self: UserManager) -> None {
         self._db_path = f"{self.session_path}.users.json";
         self._load_db();
     }
@@ -209,7 +210,7 @@ class UserManager {
 """Manages execution contexts for user operations."""
 class ExecutionManager {
     """Initialize execution manager."""
-    def __init__(
+    def init(
         self: ExecutionManager, session_path: str, user_manager: UserManager
     ) -> None {
         self.session_path = session_path;
@@ -313,7 +314,7 @@ class ModuleIntrospector {
     }
 
     """Initialize bundle builder using plugin system."""
-    def __post_init__(self: ModuleIntrospector) -> None {
+    def postinit(self: ModuleIntrospector) -> None {
         self._bundle_builder = Jac.get_client_bundle_builder();
     }
 
@@ -702,7 +703,7 @@ class ResponseBuilder {
 """Base route handler."""
 class RouteHandler {
     """Initialize route handler."""
-    def __init__(
+    def init(
         self: RouteHandler,
         introspector: ModuleIntrospector,
         execution_manager: ExecutionManager,
@@ -816,7 +817,7 @@ class ExecutionHandler(RouteHandler) {
 """REST API Server for Jac programs."""
 class JacAPIServer {
     """Initialize the API server."""
-    def __init__(
+    def init(
         self: JacAPIServer,
         module_name: str,
         session_path: str,

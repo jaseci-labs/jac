@@ -31,7 +31,7 @@ class ViteCompiler {
     }
 
     """Initialize the Vite compiler."""
-    def __init__(
+    def init(
         self: ViteCompiler,
         vite_package_json: Path,
         vite_output_dir: (Path | None) = None,

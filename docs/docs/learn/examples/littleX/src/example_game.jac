@@ -1,30 +1,28 @@
 import from byllm.lib { Model }
 
-glob llm = Model(model_name="gpt-4o");
-
-glob person_record: dict = {};
+glob llm = Model(model_name="gpt-4o") , person_record: dict = {};
 
 obj InventoryItem {
-    has name: str;
-    has price: float;
-    has description: str;
+    has name: str,
+        price: float,
+        description: str;
 }
 
 obj Person {
-    has name: str;
-    has age: int;
-    has hobby: str;
-    has description: str;
-    has money: float;
-    has inventory: list[InventoryItem];
+    has name: str,
+        age: int,
+        hobby: str,
+        description: str,
+        money: float,
+        inventory: list[InventoryItem];
 }
 
 """
 A Chat object contains the person's name and the message.
 """
 obj Chat {
-    has person: str;
-    has message: str;
+    has person: str,
+        message: str;
 }
 
 """
@@ -70,13 +68,13 @@ def make_transaction(
 """
 Generates the player character for a fantacy RPG game.
 """
-def make_player()  -> Person by llm();
+def make_player -> Person by llm();
 
 """
 Generates a random npc person with a name, age, favourite pet and hobby.
 The person should be a fantasy character, like an elf, dwarf, orc, etc.
 """
-def make_random_npc()  -> Person by llm();
+def make_random_npc -> Person by llm();
 
 """
 Generates the next line of dialogue from the given NPC in an ongoing
@@ -92,56 +90,58 @@ def chat_with_player(player: Person, npc: Person, chat_history: list[Chat]) -> C
     method="ReAct", tools=[make_transaction]
 );
 
+glob player = Person(
+    name="Arin",
+    age=24,
+    hobby="swordsmanship",
+    description="A brave and agile warrior skilled with the blade, ready to face any challenge.",
+    money=150.0,
+    inventory=[
+        InventoryItem(
+            name="Iron Sword",
+            description="A sturdy iron sword, balanced and reliable.",
+            price=100.0
+        ),
+        InventoryItem(
+            name="Leather Armor",
+            description="Lightweight armor offering decent protection.",
+            price=75.0
+        ),
+        InventoryItem(
+            name="Healing Potion",
+            description="Restores health when consumed.",
+            price=25.0
+        )
+    ]
+) , npc = Person(
+    name="Thalor",
+    age=137,
+    hobby="herbalism",
+    description="An ancient elf who loves tending to mystical plants and caring for his pet raven.",
+    money=80.0,
+    inventory=[
+        InventoryItem(
+            name="Herb Pouch",
+            description="A collection of rare herbs for potions.",
+            price=40.0
+        ),
+        InventoryItem(
+            name="Raven Feather",
+            description="A magical feather from his pet raven.",
+            price=30.0
+        )
+    ]
+);
+# player = make_player();
+# npc = make_random_npc();
 with entry {
-    player = Person(
-        name="Arin",
-        age=24,
-        hobby="swordsmanship",
-        description="A brave and agile warrior skilled with the blade, ready to face any challenge.",
-        money=150.0,
-        inventory=[
-            InventoryItem(
-                name="Iron Sword",
-                description="A sturdy iron sword, balanced and reliable.",
-                price=100.0
-            ),
-            InventoryItem(
-                name="Leather Armor",
-                description="Lightweight armor offering decent protection.",
-                price=75.0
-            ),
-            InventoryItem(
-                name="Healing Potion",
-                description="Restores health when consumed.",
-                price=25.0
-            )
-        ]
-    );
-    npc = Person(
-        name="Thalor",
-        age=137,
-        hobby="herbalism",
-        description="An ancient elf who loves tending to mystical plants and caring for his pet raven.",
-        money=80.0,
-        inventory=[
-            InventoryItem(
-                name="Herb Pouch",
-                description="A collection of rare herbs for potions.",
-                price=40.0
-            ),
-            InventoryItem(
-                name="Raven Feather",
-                description="A magical feather from his pet raven.",
-                price=30.0
-            )
-        ]
-    );
-    # player = make_player();
-    # npc = make_random_npc();
     person_record[player.name] = player;
     person_record[npc.name] = npc;
+}
 
-    history = [];
+glob history = [];
+
+with entry {
     while True {
         chat = chat_with_player(player, npc, history);
         history.append(chat);

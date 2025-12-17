@@ -4,7 +4,7 @@ import from jaclang.compiler.passes.ecmascript { estree as es }
 """Generate JavaScript code from ESTree AST."""
 class JSCodeGenerator {
     """Initialize the code generator."""
-    def __init__(self: JSCodeGenerator, indent: str = '  ') -> None {
+    def init(self: JSCodeGenerator, indent: str = '  ') -> None {
         self.indent_str = indent;
         self.indent_level = 0;
     }

@@ -16,58 +16,53 @@ import from jaclang.pycore.module_resolver {
     resolve_relative_path
 }
 
-with entry {
-    _T = TypeVar('_T', bound=es.Node);
-    ES_LOGICAL_OPS: dict[(Tok, str)] = {Tok.KW_AND: '&&', Tok.KW_OR: '||'};
-    ES_BINARY_OPS: dict[(Tok, str)] = {
-        Tok.EE: '===',
-        Tok.NE: '!==',
-        Tok.LT: '<',
-        Tok.GT: '>',
-        Tok.LTE: '<=',
-        Tok.GTE: '>=',
-        Tok.PLUS: '+',
-        Tok.MINUS: '-',
-        Tok.STAR_MUL: '*',
-        Tok.DIV: '/',
-        Tok.MOD: '%',
-        Tok.BW_AND: '&',
-        Tok.BW_OR: '|',
-        Tok.BW_XOR: '^',
-        Tok.LSHIFT: '<<',
-        Tok.RSHIFT: '>>'
-    };
-    ES_COMPARISON_OPS: dict[(Tok, str)] = {
-        Tok.EE: '===',
-        Tok.NE: '!==',
-        Tok.LT: '<',
-        Tok.GT: '>',
-        Tok.LTE: '<=',
-        Tok.GTE: '>=',
-        Tok.KW_IN: 'in',
-        Tok.KW_NIN: 'in'
-    };
-    ES_UNARY_OPS: dict[(Tok, str)] = {
-        Tok.MINUS: '-',
-        Tok.PLUS: '+',
-        Tok.NOT: '!',
-        Tok.BW_NOT: '~'
-    };
-    ES_AUG_ASSIGN_OPS: dict[(Tok, str)] = {
-        Tok.ADD_EQ: '+=',
-        Tok.SUB_EQ: '-=',
-        Tok.MUL_EQ: '*=',
-        Tok.DIV_EQ: '/=',
-        Tok.MOD_EQ: '%=',
-        Tok.BW_AND_EQ: '&=',
-        Tok.BW_OR_EQ: '|=',
-        Tok.BW_XOR_EQ: '^=',
-        Tok.LSHIFT_EQ: '<<=',
-        Tok.RSHIFT_EQ: '>>=',
-        Tok.STAR_POW_EQ: '**='
-    };
-    LiteralValue = str | bool | int | float | None;
-}
+glob _T = TypeVar('_T', bound=es.Node) , ES_LOGICAL_OPS: dict[(Tok, str)] = {
+    Tok.KW_AND: '&&',
+    Tok.KW_OR: '||'
+} , ES_BINARY_OPS: dict[(Tok, str)] = {
+    Tok.EE: '===',
+    Tok.NE: '!==',
+    Tok.LT: '<',
+    Tok.GT: '>',
+    Tok.LTE: '<=',
+    Tok.GTE: '>=',
+    Tok.PLUS: '+',
+    Tok.MINUS: '-',
+    Tok.STAR_MUL: '*',
+    Tok.DIV: '/',
+    Tok.MOD: '%',
+    Tok.BW_AND: '&',
+    Tok.BW_OR: '|',
+    Tok.BW_XOR: '^',
+    Tok.LSHIFT: '<<',
+    Tok.RSHIFT: '>>'
+} , ES_COMPARISON_OPS: dict[(Tok, str)] = {
+    Tok.EE: '===',
+    Tok.NE: '!==',
+    Tok.LT: '<',
+    Tok.GT: '>',
+    Tok.LTE: '<=',
+    Tok.GTE: '>=',
+    Tok.KW_IN: 'in',
+    Tok.KW_NIN: 'in'
+} , ES_UNARY_OPS: dict[(Tok, str)] = {
+    Tok.MINUS: '-',
+    Tok.PLUS: '+',
+    Tok.NOT: '!',
+    Tok.BW_NOT: '~'
+} , ES_AUG_ASSIGN_OPS: dict[(Tok, str)] = {
+    Tok.ADD_EQ: '+=',
+    Tok.SUB_EQ: '-=',
+    Tok.MUL_EQ: '*=',
+    Tok.DIV_EQ: '/=',
+    Tok.MOD_EQ: '%=',
+    Tok.BW_AND_EQ: '&=',
+    Tok.BW_OR_EQ: '|=',
+    Tok.BW_XOR_EQ: '^=',
+    Tok.LSHIFT_EQ: '<<=',
+    Tok.RSHIFT_EQ: '>>=',
+    Tok.STAR_POW_EQ: '**='
+} , LiteralValue = str | bool | int | float | None;
 
 """Track declarations within a lexical scope."""
 @dataclass

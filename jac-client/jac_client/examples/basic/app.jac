@@ -1,7 +1,7 @@
 # Pages
 cl import from react { useState, useEffect }
 cl {
-    def app()  -> any {
+    def app -> any {
         [count, setCount] = useState(0);
         useEffect(lambda   -> None{ console.log("Count: ", count);} , [count]);
         return <div>

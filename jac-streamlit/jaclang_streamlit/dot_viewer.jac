@@ -3,9 +3,10 @@ import argparse;
 import os;
 import streamlit as st;
 
+glob parser = argparse.ArgumentParser(description='Visualize DOT file');
+
 with entry {
-    parser = argparse.ArgumentParser(description='Visualize DOT file');
-    parser.add_argument('dot_file', type=str, help='Path to the DOT file');
+    parser.add_argument('dot_file', help='Path to the DOT file');
     try {
         args = parser.parse_args();
     } except SystemExit as e {
@@ -18,6 +19,7 @@ with entry {
 def get_nodes_edges(dot_file: str) -> tuple[dict, list] {
     import pydot;
     import from streamlit_agraph { Edge, Node }
+    ;
     graphs = pydot.graph_from_dot_file(dot_file);
     graph: pydot.Graph = graphs[0];
     node_list: list[pydot.Node] = graph.get_node_list();
@@ -32,9 +34,7 @@ def get_nodes_edges(dot_file: str) -> tuple[dict, list] {
     for e in edge_list {
         _edges.append(
             Edge(
-                source=e.get_source(),
-                target=e.get_destination(),
-                label=e.get_label()
+                source=e.get_source(), target=e.get_destination(), label=e.get_label()
             )
         );
     }
@@ -43,11 +43,14 @@ def get_nodes_edges(dot_file: str) -> tuple[dict, list] {
 
 with entry {
     st.title('Visualize DOT file');
-    selected_dot_file = args.dot_file;
-    vis_opt = st.radio(
-        'Visualization options',
-        ['Use pygraphviz (Static)', 'Use streamlit-agraph (Interactive)']
-    );
+}
+
+glob selected_dot_file = args.dot_file , vis_opt = st.radio(
+    'Visualization options',
+    ['Use pygraphviz (Static)', 'Use streamlit-agraph (Interactive)']
+);
+
+with entry {
     if selected_dot_file {
         if (vis_opt == 'Use pygraphviz (Static)') {
             with open(selected_dot_file) as f {

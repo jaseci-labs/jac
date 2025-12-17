@@ -240,7 +240,7 @@ def random_value_for_type(tp: Any, *, _depth: int = 0, _max_depth: int = 10) -> 
     if origin is dict {
         key_t = get_args(tp)[0] if get_args(tp) else Any;
         val_t = get_args(tp)[1] if len(get_args(tp)) > 1 else Any;
-        def mk_key()  -> Any {
+        def mk_key -> Any {
             k = random_value_for_type(key_t, _depth=_depth + 1, _max_depth=_max_depth);
             try {
                 hash(k);

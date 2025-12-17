@@ -3,6 +3,7 @@ import from abc { ABC }
 import from enum { IntEnum, auto }
 import from pathlib { Path }
 import from typing { TYPE_CHECKING, ClassVar }
+
 with entry {
     if TYPE_CHECKING {
         import from jaclang.pycore.unitree { Expr, Symbol }
@@ -51,7 +52,7 @@ class TypeBase(ABC) {
     }
 
     """Initialize obviously."""
-    def __init__(self: TypeBase, flags: TypeFlags = TypeFlags.Null) -> None {
+    def init(self: TypeBase, flags: TypeFlags = TypeFlags.Null) -> None {
         self.flags: TypeFlags = flags;
     }
 
@@ -62,7 +63,7 @@ class TypeBase(ABC) {
     }
 
     """Return an instance of an unknown type."""
-    static def unknown()  -> UnknownType {
+    static def unknown -> UnknownType {
         return UnknownType();
     }
 
@@ -122,7 +123,7 @@ class ModuleType(TypeBase) {
     }
 
     """Initialize the class."""
-    def __init__(
+    def init(
         self: ModuleType, mod_name: str, file_uri: Path, symbol_table: SymbolTable
     ) -> None {
         super.init();
@@ -139,7 +140,7 @@ class TypeVarType(TypeBase) {
     }
 
     """Initialize obviously."""
-    def __init__(self: TypeVarType) -> None {
+    def init(self: TypeVarType) -> None {
         super.init();
     }
 }
@@ -153,7 +154,7 @@ class ClassType(TypeBase) {
     """Holds the shared details of class type.\n\n        The shared detail of classes will points to the same instance across multiple clones\n        of the same class. This is needed when we do `==` between two classes, if they have the\n        same shared object, that means they both are the same class (with different context).\n        """
     class ClassDetailsShared {
         """Initialize obviously."""
-        def __init__(
+        def init(
             self: ClassDetailsShared,
             class_name: str,
             symbol_table: SymbolTable,
@@ -178,7 +179,7 @@ class ClassType(TypeBase) {
     """Holds the private details of class type.\n\n        The private details of classes will be unique to each class instance.\n        """
     class ClassDetailsPrivate {
         """Initialize obviously."""
-        def __init__(
+        def init(
             self: ClassDetailsPrivate, type_args: (list[TypeBase] | None) = None
         ) -> None {
             self.type_args = type_args or [];
@@ -186,7 +187,7 @@ class ClassType(TypeBase) {
     }
 
     """Initialize the class type."""
-    def __init__(
+    def init(
         self: ClassType,
         shared: ClassType.ClassDetailsShared,
         private: (ClassType.ClassDetailsPrivate | None) = None,
@@ -302,7 +303,7 @@ class ParamKind(IntEnum) {
 """Represents a function parameter."""
 class Parameter {
     """Initialize obviously."""
-    def __init__(
+    def init(
         self: Parameter,
         name: str,
         category: ParameterCategory,
@@ -328,7 +329,7 @@ class FunctionType(TypeBase) {
     }
 
     """Initialize obviously."""
-    def __init__(
+    def init(
         self: FunctionType,
         func_name: str,
         return_type: (TypeBase | None) = None,
@@ -399,7 +400,7 @@ class UnionType(TypeBase) {
     }
 
     """Initialize obviously."""
-    def __init__(self: UnionType, types: list[TypeBase]) -> None {
+    def init(self: UnionType, types: list[TypeBase]) -> None {
         super.init();
 
         # Flatten nested union types

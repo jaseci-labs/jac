@@ -9,17 +9,19 @@ import from typing { TYPE_CHECKING, TypeAlias, TypeVar, cast }
 import jaclang.pycore.unitree as uni;
 import from jaclang.pycore.constant { Tokens as Tok }
 import from jaclang.pycore.passes.uni_pass { Transform }
+
 with entry {
     if TYPE_CHECKING {
         import from jaclang.pycore.program { JacProgram }
     }
-    T = TypeVar('T', bound=uni.UniNode);
 }
+
+glob T = TypeVar('T', bound=uni.UniNode);
 
 """Jac Parser."""
 class PyastBuildPass(Transform[(uni.PythonModuleAst, uni.Module)]) {
     """Initialize parser."""
-    def __init__(
+    def init(
         self: PyastBuildPass,
         ir_in: uni.PythonModuleAst,
         prog: JacProgram,
