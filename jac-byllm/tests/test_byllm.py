@@ -347,3 +347,14 @@ def test_fixtures_image_types(fixture_path: Callable[[str], str]) -> None:
     ]
     for label in expected_labels:
         assert label in stdout_value
+
+
+def test_visit_by_for_routing(fixture_path: Callable[[str], str]) -> None:
+    """Test the visit by functionality for routing."""
+    captured_output = io.StringIO()
+    sys.stdout = captured_output
+    jac_import("math_poem_agents", base_path=fixture_path("./"))
+    sys.stdout = sys.__stdout__
+    stdout_value = captured_output.getvalue()
+    assert "Agentic minds, we hold dear" in stdout_value
+    assert "Math Result: 35" in stdout_value
