@@ -1907,12 +1907,12 @@ class JacByLLM:
         Currently not implemented - raises NotImplementedError.
         The exact execution behavior is not yet defined.
         """
-        from byllm.lib import Model
+        from byllm.lib import MockLLM, Model
 
         lhs_list = lhs if isinstance(lhs, list) else [lhs]
         if all(
             isinstance(element, (NodeArchetype, EdgeArchetype)) for element in lhs_list
-        ) and isinstance(rhs, Model):
+        ) and isinstance(rhs, (Model, MockLLM)):
             return JacByLLM.filter_visitable_by(lhs_list, rhs)
 
         raise NotImplementedError(
