@@ -11,7 +11,9 @@ with entry {
     print("PIL Image");
 }
 
-glob pil_image = PILImage.open(img_file_path) , image = Image(pil_image);
+glob
+    pil_image = PILImage.open(img_file_path),
+    image = Image(pil_image);
 
 with entry {
     print("Image from file path");
@@ -47,13 +49,17 @@ with entry {
     pil_image.save(bytes_buf2, format="PNG");
 }
 
-glob raw_bytes = bytes_buf2.getvalue() , image5 = Image(raw_bytes);
+glob
+    raw_bytes = bytes_buf2.getvalue(),
+    image5 = Image(raw_bytes);
 
 with entry {
     print("Image from memoryview");
 }
 
-glob mv = memoryview(raw_bytes) , image6 = Image(mv);
+glob
+    mv = memoryview(raw_bytes),
+    image6 = Image(mv);
 
 with entry {
     print("Image from data URL");
@@ -65,15 +71,18 @@ with entry {
     pil_image.save(bytes_buf3, format="PNG");
 }
 
-glob b64 = base64.b64encode(bytes_buf3.getvalue()).decode("utf-8") , data_url = "data:image/png;base64," + b64 , image7 = Image(
-    data_url
-);
+glob
+    b64 = base64.b64encode(bytes_buf3.getvalue()).decode("utf-8"),
+    data_url = "data:image/png;base64," + b64,
+    image7 = Image(data_url);
 
 with entry {
     print("Image from PathLike");
 }
 
-glob p = Path(img_file_path) , image8 = Image(p);
+glob
+    p = Path(img_file_path),
+    image8 = Image(p);
 
 with entry {
     print("Image from file-like without getvalue");
@@ -86,15 +95,17 @@ with entry {
     pil_image.save(tmp_buf, format="PNG");
 }
 
-glob reader = io.BufferedReader(io.BytesIO(tmp_buf.getvalue())) , image9 = Image(
-    reader
-);
+glob
+    reader = io.BufferedReader(io.BytesIO(tmp_buf.getvalue())),
+    image9 = Image(reader);
 
 with entry {
     print("Image from bytearray");
 }
 
-glob ba = bytearray(raw_bytes) , image10 = Image(ba);
+glob
+    ba = bytearray(raw_bytes),
+    image10 = Image(ba);
 
 with entry {
     print("Image from gs:// URL");

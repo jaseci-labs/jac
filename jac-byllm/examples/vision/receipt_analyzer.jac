@@ -27,7 +27,9 @@ obj Receipt {
 def get_reciept(reciept_img: Image) -> Receipt by llm();
 def verity_total(reciept: Receipt) -> bool by llm();
 
-glob reciept_img = Image.open("receipt.jpg") , receipt = get_reciept(reciept_img);
+glob
+    reciept_img = Image.open("receipt.jpg"),
+    receipt = get_reciept(reciept_img);
 
 with entry {
     receipt.pp();

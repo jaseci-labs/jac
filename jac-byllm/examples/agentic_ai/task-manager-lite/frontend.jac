@@ -168,10 +168,14 @@ def bootstrap_frontend(token: str) {
     );
 }
 
-glob INSTANCE_URL = "http://localhost:8000" , TEST_USER_EMAIL = "test@mail.com" , TEST_USER_PASSWORD = "password" , response = requests.post(
-    f"{INSTANCE_URL}/user/login",
-    json={"email": TEST_USER_EMAIL, "password": TEST_USER_PASSWORD}
-);
+glob
+    INSTANCE_URL = "http://localhost:8000",
+    TEST_USER_EMAIL = "test@mail.com",
+    TEST_USER_PASSWORD = "password",
+    response = requests.post(
+        f"{INSTANCE_URL}/user/login",
+        json={"email": TEST_USER_EMAIL, "password": TEST_USER_PASSWORD}
+    );
 
 with entry {
     if response.status_code != 200 {

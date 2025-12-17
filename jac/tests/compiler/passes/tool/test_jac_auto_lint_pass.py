@@ -38,7 +38,7 @@ class TestJacAutoLintPass:
 
         # Should contain glob declarations for all extracted values
         # Note: consecutive globs with same modifiers are now combined
-        assert "glob x = 5 ," in formatted
+        assert "glob\n    x = 5," in formatted
         assert "y = " in formatted
         assert "z = " in formatted
         assert "int_val" in formatted

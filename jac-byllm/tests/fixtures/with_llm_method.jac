@@ -6,8 +6,9 @@ class PersonalityIndex {
 
 enum Personality { INTROVERT, EXTROVERT }
 
-glob llm = MockLLM(model_name="mockllm", config={"outputs": [Personality.INTROVERT]}) , personality_examples:
-    dict[(str, Personality | None)] = {Personality.INTROVERT,Personality.EXTROVERT};
+glob
+    llm = MockLLM(model_name="mockllm", config={"outputs": [Personality.INTROVERT]}),
+    personality_examples: dict[(str, Personality | None)] = {Personality.INTROVERT,Personality.EXTROVERT};
 
 obj Person {
     has name: str,
@@ -29,9 +30,11 @@ obj outer {
     }
 }
 
-glob einstein = Person('Albert Einstein', 76) , inner_inst = outer.inner(
-    ["I won noble prize in Physics", "I am popular for my theory of relativity"]
-);
+glob
+    einstein = Person('Albert Einstein', 76),
+    inner_inst = outer.inner(
+        ["I won noble prize in Physics", "I am popular for my theory of relativity"]
+    );
 
 with entry {
     print(inner_inst.get_personality(einstein));
