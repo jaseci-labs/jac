@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from jac_client.plugin.src.vite_bundler import ViteBundler
 from jac_client.plugin.vite_client_bundle import ViteClientBundleBuilder
 from jaclang.pycore.runtime import JacRuntime as Jac
 
@@ -58,9 +59,24 @@ def _copy_ts_support_project(temp_path: Path) -> tuple[Path, Path]:
             "resolve": {},
         },
         "ts": {},
+        "package": {
+            "name": "ts-support",
+            "version": "1.0.0",
+            "description": "Jac application: ts-support",
+            "dependencies": {},
+            "devDependencies": {},
+        },
     }
     with config_json.open("w", encoding="utf-8") as f:
         json.dump(config_data, f, indent=2)
+
+    # Generate package.json from config.json using ViteBundler
+    bundler = ViteBundler(project_dir=temp_path)
+    generated_package_json = bundler.create_package_json()
+
+    # Copy generated package.json to root temporarily for npm install
+    root_package_json = temp_path / "package.json"
+    shutil.copy2(generated_package_json, root_package_json)
 
     # Install dependencies
     result = subprocess.run(
@@ -80,7 +96,8 @@ def _copy_ts_support_project(temp_path: Path) -> tuple[Path, Path]:
     output_dir = temp_path / "dist"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    return temp_path / "package.json", output_dir
+    # Return the root package.json path (like other tests do)
+    return root_package_json, output_dir
 
 
 def test_typescript_fixture_example() -> None:
@@ -115,12 +132,12 @@ def test_typescript_fixture_example() -> None:
         assert len(bundle.code) > 0
 
         # Verify TypeScript file was copied to compiled directory
-        compiled_components = package_json.parent / "compiled" / "components"
+        compiled_components = temp_path / "compiled" / "components"
         compiled_button = compiled_components / "Button.tsx"
         assert compiled_button.exists(), "TypeScript file should be copied to compiled/"
 
         # Verify TypeScript file was copied to build directory
-        build_components = package_json.parent / "build" / "components"
+        build_components = temp_path / "build" / "components"
         build_button = build_components / "Button.tsx"
         assert build_button.exists(), "TypeScript file should be copied to build/"
 

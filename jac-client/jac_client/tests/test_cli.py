@@ -39,20 +39,6 @@ def test_create_jac_app() -> None:
             assert os.path.exists(project_path)
             assert os.path.isdir(project_path)
 
-            # Verify package.json was created and has correct content
-            package_json_path = os.path.join(project_path, "package.json")
-            assert os.path.exists(package_json_path)
-
-            with open(package_json_path) as f:
-                package_data = json.load(f)
-
-            assert package_data["name"] == test_project_name
-            assert package_data["type"] == "module"
-            assert "vite" in package_data["devDependencies"]
-            assert "build" in package_data["scripts"]
-            assert "dev" in package_data["scripts"]
-            assert "preview" in package_data["scripts"]
-
             # Verify app.jac file was created
             app_jac_path = os.path.join(project_path, "app.jac")
             assert os.path.exists(app_jac_path)
@@ -85,20 +71,8 @@ def test_create_jac_app() -> None:
             assert "app.session.dir" in gitignore_content
             assert "app.session.users.json" in gitignore_content
 
-            # Verify node_modules was created (npm install ran)
-            node_modules_path = os.path.join(project_path, "node_modules")
-            assert os.path.exists(node_modules_path)
-
-            # Verify TypeScript files are NOT created
-            tsconfig_path = os.path.join(project_path, "tsconfig.json")
-            assert not os.path.exists(tsconfig_path)
-
             components_dir = os.path.join(project_path, "components")
             assert not os.path.exists(components_dir)
-
-            # Verify package.json does NOT have TypeScript dependencies
-            assert "typescript" not in package_data["devDependencies"]
-            assert "@types/react" not in package_data["devDependencies"]
 
         finally:
             # Return to original directory
@@ -197,21 +171,13 @@ def test_create_jac_app_with_typescript() -> None:
             assert os.path.isdir(project_path)
 
             # Verify package.json was created and has TypeScript dependencies
-            package_json_path = os.path.join(project_path, "package.json")
+            package_json_path = os.path.join(project_path, "config.json")
             assert os.path.exists(package_json_path)
 
             with open(package_json_path) as f:
                 package_data = json.load(f)
 
-            assert package_data["name"] == test_project_name
-            assert package_data["type"] == "module"
-            assert "vite" in package_data["devDependencies"]
-
-            # Verify TypeScript dependencies are present
-            assert "typescript" in package_data["devDependencies"]
-            assert "@types/react" in package_data["devDependencies"]
-            assert "@types/react-dom" in package_data["devDependencies"]
-            assert "@vitejs/plugin-react" in package_data["devDependencies"]
+            assert package_data["package"]["name"] == test_project_name
 
             # Verify tsconfig.json was created
             tsconfig_path = os.path.join(project_path, "tsconfig.json")
@@ -338,6 +304,479 @@ def test_generate_client_config_existing_file() -> None:
             with open(config_path) as f:
                 config_data = json.load(f)
             assert config_data["vite"]["plugins"] == ["existing()"]
+
+        finally:
+            os.chdir(original_cwd)
+
+
+def test_install_without_cl_flag() -> None:
+    """Test add command without --cl flag should fail."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(temp_dir)
+
+            # Run add command without --cl flag
+            result = run(
+                ["jac", "add", "lodash"],
+                capture_output=True,
+                text=True,
+            )
+
+            # Should fail with non-zero exit code
+            assert result.returncode != 0
+            assert "--cl flag is required" in result.stderr
+
+        finally:
+            os.chdir(original_cwd)
+
+
+def test_install_all_packages() -> None:
+    """Test add --cl command installs all packages from config.json."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(temp_dir)
+
+            # Create config.json with some dependencies
+            config_data = {
+                "vite": {
+                    "plugins": [],
+                    "lib_imports": [],
+                    "build": {},
+                    "server": {},
+                    "resolve": {},
+                },
+                "ts": {},
+                "package": {
+                    "name": "test-project",
+                    "version": "1.0.0",
+                    "description": "Test project",
+                    "dependencies": {"lodash": "^4.17.21"},
+                    "devDependencies": {},
+                },
+            }
+            config_path = os.path.join(temp_dir, "config.json")
+            with open(config_path, "w") as f:
+                json.dump(config_data, f)
+
+            # Run add --cl command without package name
+            result = run(
+                ["jac", "add", "--cl"],
+                capture_output=True,
+                text=True,
+            )
+
+            # Should succeed
+            assert result.returncode == 0
+            assert "Installing all packages from config.json" in result.stdout
+            assert "Successfully installed all packages" in result.stdout
+
+        finally:
+            os.chdir(original_cwd)
+
+
+def test_install_package_to_dependencies() -> None:
+    """Test add --cl command adds package to dependencies."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(temp_dir)
+
+            # Create config.json
+            config_data = {
+                "vite": {
+                    "plugins": [],
+                    "lib_imports": [],
+                    "build": {},
+                    "server": {},
+                    "resolve": {},
+                },
+                "ts": {},
+                "package": {
+                    "name": "test-project",
+                    "version": "1.0.0",
+                    "description": "Test project",
+                    "dependencies": {},
+                    "devDependencies": {},
+                },
+            }
+            config_path = os.path.join(temp_dir, "config.json")
+            with open(config_path, "w") as f:
+                json.dump(config_data, f)
+
+            # Run add --cl command with package name
+            result = run(
+                ["jac", "add", "--cl", "lodash"],
+                capture_output=True,
+                text=True,
+            )
+
+            # Should succeed
+            assert result.returncode == 0
+            assert "Added lodash to dependencies" in result.stdout
+
+            # Verify package was added to config.json
+            with open(config_path) as f:
+                updated_config = json.load(f)
+
+            assert "lodash" in updated_config["package"]["dependencies"]
+            assert "lodash" not in updated_config["package"]["devDependencies"]
+
+        finally:
+            os.chdir(original_cwd)
+
+
+def test_install_package_with_version() -> None:
+    """Test add --cl command with specific version."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(temp_dir)
+
+            # Create config.json
+            config_data = {
+                "vite": {
+                    "plugins": [],
+                    "lib_imports": [],
+                    "build": {},
+                    "server": {},
+                    "resolve": {},
+                },
+                "ts": {},
+                "package": {
+                    "name": "test-project",
+                    "version": "1.0.0",
+                    "description": "Test project",
+                    "dependencies": {},
+                    "devDependencies": {},
+                },
+            }
+            config_path = os.path.join(temp_dir, "config.json")
+            with open(config_path, "w") as f:
+                json.dump(config_data, f)
+
+            # Run add --cl command with package and version
+            result = run(
+                ["jac", "add", "--cl", "lodash@^4.17.21"],
+                capture_output=True,
+                text=True,
+            )
+
+            # Should succeed
+            assert result.returncode == 0
+            assert "Added lodash@^4.17.21 to dependencies" in result.stdout
+
+            # Verify package was added with correct version
+            with open(config_path) as f:
+                updated_config = json.load(f)
+
+            assert updated_config["package"]["dependencies"]["lodash"] == "^4.17.21"
+
+        finally:
+            os.chdir(original_cwd)
+
+
+def test_install_package_to_devdependencies() -> None:
+    """Test add --cl -D command adds package to devDependencies."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(temp_dir)
+
+            # Create config.json
+            config_data = {
+                "vite": {
+                    "plugins": [],
+                    "lib_imports": [],
+                    "build": {},
+                    "server": {},
+                    "resolve": {},
+                },
+                "ts": {},
+                "package": {
+                    "name": "test-project",
+                    "version": "1.0.0",
+                    "description": "Test project",
+                    "dependencies": {},
+                    "devDependencies": {},
+                },
+            }
+            config_path = os.path.join(temp_dir, "config.json")
+            with open(config_path, "w") as f:
+                json.dump(config_data, f)
+
+            # Run add --cl -D command
+            run(
+                ["jac", "add", "--cl", "-d", "@types/react"],
+                capture_output=True,
+                text=True,
+            )
+
+            # Verify package was added to devDependencies in config.json
+            # (config.json is updated before npm install, so check it even if npm fails)
+            with open(config_path) as f:
+                updated_config = json.load(f)
+
+            assert "@types/react" in updated_config["package"]["devDependencies"]
+            assert "@types/react" not in updated_config["package"]["dependencies"]
+
+            # Note: npm install might fail in test environment, but config.json should still be updated
+            # The important part is that the package was added to the correct section in config.json
+
+        finally:
+            os.chdir(original_cwd)
+
+
+def test_install_without_config_json() -> None:
+    """Test add --cl command when config.json doesn't exist."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(temp_dir)
+
+            # Run add --cl command without config.json
+            result = run(
+                ["jac", "add", "--cl", "lodash"],
+                capture_output=True,
+                text=True,
+            )
+
+            # Should fail with non-zero exit code
+            assert result.returncode != 0
+            assert "config.json not found" in result.stderr
+
+        finally:
+            os.chdir(original_cwd)
+
+
+def test_uninstall_without_cl_flag() -> None:
+    """Test remove command without --cl flag should fail."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(temp_dir)
+
+            # Run remove command without --cl flag
+            result = run(
+                ["jac", "remove", "lodash"],
+                capture_output=True,
+                text=True,
+            )
+
+            # Should fail with non-zero exit code
+            assert result.returncode != 0
+            assert "--cl flag is required" in result.stderr
+
+        finally:
+            os.chdir(original_cwd)
+
+
+def test_uninstall_without_package_name() -> None:
+    """Test remove --cl command without package name should fail."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(temp_dir)
+
+            # Create config.json
+            config_data = {
+                "vite": {
+                    "plugins": [],
+                    "lib_imports": [],
+                    "build": {},
+                    "server": {},
+                    "resolve": {},
+                },
+                "ts": {},
+                "package": {
+                    "name": "test-project",
+                    "version": "1.0.0",
+                    "description": "Test project",
+                    "dependencies": {},
+                    "devDependencies": {},
+                },
+            }
+            config_path = os.path.join(temp_dir, "config.json")
+            with open(config_path, "w") as f:
+                json.dump(config_data, f)
+
+            # Run remove --cl command without package name
+            result = run(
+                ["jac", "remove", "--cl"],
+                capture_output=True,
+                text=True,
+            )
+
+            # Should fail with non-zero exit code
+            assert result.returncode != 0
+            assert "Package name is required" in result.stderr
+
+        finally:
+            os.chdir(original_cwd)
+
+
+def test_uninstall_package_from_dependencies() -> None:
+    """Test remove --cl command removes package from dependencies."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(temp_dir)
+
+            # Create config.json with a package
+            config_data = {
+                "vite": {
+                    "plugins": [],
+                    "lib_imports": [],
+                    "build": {},
+                    "server": {},
+                    "resolve": {},
+                },
+                "ts": {},
+                "package": {
+                    "name": "test-project",
+                    "version": "1.0.0",
+                    "description": "Test project",
+                    "dependencies": {"lodash": "^4.17.21"},
+                    "devDependencies": {},
+                },
+            }
+            config_path = os.path.join(temp_dir, "config.json")
+            with open(config_path, "w") as f:
+                json.dump(config_data, f)
+
+            # Run remove --cl command
+            result = run(
+                ["jac", "remove", "--cl", "lodash"],
+                capture_output=True,
+                text=True,
+            )
+
+            # Should succeed
+            assert result.returncode == 0
+            assert "Removed lodash from dependencies" in result.stdout
+
+            # Verify package was removed from config.json
+            with open(config_path) as f:
+                updated_config = json.load(f)
+
+            assert "lodash" not in updated_config["package"]["dependencies"]
+
+        finally:
+            os.chdir(original_cwd)
+
+
+def test_uninstall_package_from_devdependencies() -> None:
+    """Test remove --cl -D command removes package from devDependencies."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(temp_dir)
+
+            # Create config.json with a devDependency
+            config_data = {
+                "vite": {
+                    "plugins": [],
+                    "lib_imports": [],
+                    "build": {},
+                    "server": {},
+                    "resolve": {},
+                },
+                "ts": {},
+                "package": {
+                    "name": "test-project",
+                    "version": "1.0.0",
+                    "description": "Test project",
+                    "dependencies": {},
+                    "devDependencies": {"@types/react": "^18.0.0"},
+                },
+            }
+            config_path = os.path.join(temp_dir, "config.json")
+            with open(config_path, "w") as f:
+                json.dump(config_data, f)
+
+            # Run remove --cl -D command
+            result = run(
+                ["jac", "remove", "--cl", "-d", "@types/react"],
+                capture_output=True,
+                text=True,
+            )
+
+            # Should succeed
+            assert result.returncode == 0
+            assert "Removed @types/react from devDependencies" in result.stdout
+
+            # Verify package was removed from config.json
+            with open(config_path) as f:
+                updated_config = json.load(f)
+
+            assert "@types/react" not in updated_config["package"]["devDependencies"]
+
+        finally:
+            os.chdir(original_cwd)
+
+
+def test_uninstall_nonexistent_package() -> None:
+    """Test remove --cl command with non-existent package should fail."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(temp_dir)
+
+            # Create config.json without the package
+            config_data = {
+                "vite": {
+                    "plugins": [],
+                    "lib_imports": [],
+                    "build": {},
+                    "server": {},
+                    "resolve": {},
+                },
+                "ts": {},
+                "package": {
+                    "name": "test-project",
+                    "version": "1.0.0",
+                    "description": "Test project",
+                    "dependencies": {},
+                    "devDependencies": {},
+                },
+            }
+            config_path = os.path.join(temp_dir, "config.json")
+            with open(config_path, "w") as f:
+                json.dump(config_data, f)
+
+            # Run remove --cl command with non-existent package
+            result = run(
+                ["jac", "remove", "--cl", "nonexistent-package"],
+                capture_output=True,
+                text=True,
+            )
+
+            # Should fail with non-zero exit code
+            assert result.returncode != 0
+            assert "not found" in result.stderr.lower()
+
+        finally:
+            os.chdir(original_cwd)
+
+
+def test_uninstall_without_config_json() -> None:
+    """Test remove --cl command when config.json doesn't exist."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(temp_dir)
+
+            # Run remove --cl command without config.json
+            result = run(
+                ["jac", "remove", "--cl", "lodash"],
+                capture_output=True,
+                text=True,
+            )
+
+            # Should fail with non-zero exit code
+            assert result.returncode != 0
+            assert "config.json not found" in result.stderr
 
         finally:
             os.chdir(original_cwd)

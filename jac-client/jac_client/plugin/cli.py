@@ -85,16 +85,6 @@ class JacCmd:
                 original_cwd = os.getcwd()
                 os.chdir(project_path)
 
-                # Initialize npm package
-                print("Initializing npm package...")
-                npm_init_cmd = ["npm", "init", "-y"]
-                subprocess.run(npm_init_cmd, capture_output=True, text=True, check=True)
-
-                # Read the generated package.json
-                package_json_path = os.path.join(project_path, "package.json")
-                with open(package_json_path) as f:
-                    package_data = json.load(f)
-
                 # create compiled folder for transpiled files
                 compiled_folder = os.path.join(project_path, "compiled")
                 os.makedirs(compiled_folder, exist_ok=True)
@@ -107,67 +97,34 @@ class JacCmd:
                 assets_folder = os.path.join(project_path, "assets")
                 os.makedirs(assets_folder, exist_ok=True)
 
-                # Prepare devDependencies
-                dev_dependencies = {
-                    "vite": "^6.4.1",
-                    "@babel/cli": "^7.28.3",
-                    "@babel/core": "^7.28.5",
-                    "@babel/preset-env": "^7.28.5",
-                    "@babel/preset-react": "^7.28.5",
+                # Create config.json with package configuration
+                # Default dependencies and scripts are added during build time, not in config.json
+                config_data = {
+                    "vite": {
+                        "plugins": [],
+                        "lib_imports": [],
+                        "build": {},
+                        "server": {},
+                        "resolve": {},
+                    },
+                    "ts": {},
+                    "package": {
+                        "name": name,
+                        "version": "1.0.0",
+                        "description": f"Jac application: {name}",
+                        "devDependencies": {},
+                        "dependencies": {},
+                    },
                 }
 
-                # Add TypeScript dependencies if requested
-                if use_typescript:
-                    dev_dependencies.update(
-                        {
-                            "@vitejs/plugin-react": "^4.2.1",
-                            "typescript": "^5.3.3",
-                            "@types/react": "^18.2.45",
-                            "@types/react-dom": "^18.2.18",
-                        }
-                    )
+                # Write config.json
+                config_file_path = os.path.join(project_path, "config.json")
+                with open(config_file_path, "w") as f:
+                    json.dump(config_data, f, indent=2)
 
-                # Update package.json with Jac-specific configuration
-                package_data.update(
-                    {
-                        "name": name,
-                        "description": f"Jac application: {name}",
-                        "type": "module",
-                        "scripts": {
-                            "build": "npm run compile && vite build --config .jac-client.configs/vite.config.js",
-                            "dev": "vite dev --config .jac-client.configs/vite.config.js",
-                            "preview": "vite preview --config .jac-client.configs/vite.config.js",
-                            "compile": 'babel compiled --out-dir build --extensions ".jsx,.js" --out-file-extension .js',
-                        },
-                        "devDependencies": dev_dependencies,
-                        "dependencies": {
-                            "react": "^19.2.0",
-                            "react-dom": "^19.2.0",
-                            "react-router-dom": "^6.30.1",
-                        },
-                        "babel": {
-                            "presets": [
-                                [
-                                    "@babel/preset-env",
-                                    {
-                                        "modules": False,
-                                    },
-                                ],
-                                "@babel/preset-react",
-                            ],
-                        },
-                    }
-                )
-
-                # Write updated package.json
-                with open(package_json_path, "w") as f:
-                    json.dump(package_data, f, indent=2)
-
-                print("Installing Vite...")
-                # Install Vite
-                npm_install_cmd = ["npm", "install"]
-                subprocess.run(
-                    npm_install_cmd, capture_output=True, text=True, check=True
+                print("✅ Created config.json with package configuration")
+                print(
+                    "📦 package.json will be generated in .jac-client.configs/ on first build"
                 )
 
                 # Create basic project structure
@@ -441,6 +398,13 @@ compiled/
                         "resolve": {},
                     },
                     "ts": {},
+                    "package": {
+                        "name": "",
+                        "version": "1.0.0",
+                        "description": "",
+                        "dependencies": {},
+                        "devDependencies": {},
+                    },
                 }
 
                 # Write config.json
@@ -454,14 +418,178 @@ compiled/
                 print("  - vite.build: Override build options")
                 print("  - vite.server: Configure dev server")
                 print("  - vite.resolve: Override resolve options")
+                print("  - package.dependencies: Add npm dependencies")
+                print("  - package.devDependencies: Add npm dev dependencies")
+                print("  - package.scripts: Customize npm scripts")
                 print("\nExample for Tailwind CSS:")
                 print('  "vite": {')
                 print('    "plugins": ["tailwindcss()"],')
                 print(
                     '    "lib_imports": ["import tailwindcss from \'@tailwindcss/vite\'"]'
                 )
+                print("  },")
+                print('  "package": {')
+                print('    "devDependencies": {')
+                print('      "@tailwindcss/vite": "^4.1.17"')
+                print("    }")
                 print("  }")
+                print(
+                    "\nNote: package.json will be generated in .jac-client.configs/ on build"
+                )
 
             except Exception as e:
                 print(f"Error creating config.json: {e}", file=sys.stderr)
+                exit(1)
+
+        @cmd_registry.register
+        def add(filepath: str = "", cl: bool = False, d: bool = False) -> None:
+            """Add npm packages to Jac Client projects.
+
+            Adds packages to config.json (dependencies or devDependencies).
+            The --cl flag indicates this is for client-side packages.
+            Use -D flag to add to devDependencies instead of dependencies.
+
+            Args:
+                filepath: Package name to add (e.g., "lodash" or "lodash@^4.17.21")
+                cl: Flag to indicate client-side package installation
+                d: Flag to add to devDependencies (default: dependencies)
+
+            Examples:
+                jac add --cl                    # Install all packages from config.json
+                jac add --cl lodash             # Add specific package
+                jac add --cl -d @types/react    # Add as devDependency
+                jac add --cl lodash@^4.17.21    # Add with specific version
+            """
+            # Note: cl should be detected as boolean, but if not, we check it here
+            if not cl:
+                print(
+                    "Error: --cl flag is required for client package installation",
+                    file=sys.stderr,
+                )
+                print(
+                    "Usage: jac add --cl <package_name>",
+                    file=sys.stderr,
+                )
+                print(
+                    "       jac add --cl -d <package_name>  (for devDependencies)",
+                    file=sys.stderr,
+                )
+                exit(1)
+
+            try:
+                from pathlib import Path
+
+                from jac_client.plugin.src.package_installer import PackageInstaller
+
+                current_dir = Path(os.getcwd())
+                installer = PackageInstaller(current_dir)
+
+                # If no package name provided, install all packages from config.json
+                if not filepath:
+                    print("📦 Installing all packages from config.json...")
+                    installer.install_all()
+                    print("✅ Successfully installed all packages")
+                    return
+
+                # Parse package name and version
+                # Handle scoped packages (e.g., @types/react)
+                # Version separator is @, but @ at start is part of package name
+                if filepath.startswith("@"):
+                    # For scoped packages, find version separator after the scope
+                    # e.g., @types/react@^18.0.0 -> @types/react, ^18.0.0
+                    last_at_index = filepath.rfind("@")
+                    if last_at_index > 0:  # @ found and not at position 0
+                        package_name = filepath[:last_at_index]
+                        package_version = filepath[last_at_index + 1 :]
+                    else:
+                        package_name = filepath
+                        package_version = None
+                else:
+                    # For non-scoped packages, split on first @
+                    package_parts = filepath.split("@", 1)
+                    package_name = package_parts[0]
+                    package_version = (
+                        package_parts[1] if len(package_parts) > 1 else None
+                    )
+
+                # Install the package
+                installer.install_package(
+                    package_name=package_name, version=package_version, is_dev=d
+                )
+
+                dep_type = "devDependencies" if d else "dependencies"
+                version_str = f"@{package_version}" if package_version else ""
+                print(
+                    f"✅ Added {package_name}{version_str} to {dep_type} in config.json"
+                )
+                print("📦 Installing package via npm...")
+                # npm install is handled by PackageInstaller.install_package()
+                print(f"✅ Successfully installed {package_name}{version_str}")
+
+            except Exception as e:
+                print(f"Error adding package: {e}", file=sys.stderr)
+                exit(1)
+
+        @cmd_registry.register
+        def remove(filepath: str, cl: bool = False, d: bool = False) -> None:
+            """Remove npm packages from Jac Client projects.
+
+            Removes packages from config.json (dependencies or devDependencies).
+            The --cl flag indicates this is for client-side packages.
+            Use -D flag to remove from devDependencies instead of dependencies.
+
+            Args:
+                filepath: Package name to remove (required)
+                cl: Flag to indicate client-side package removal
+                d: Flag to remove from devDependencies (default: dependencies)
+
+            Examples:
+                jac remove --cl lodash             # Remove from dependencies
+                jac remove --cl -D @types/react    # Remove from devDependencies
+            """
+            if not cl:
+                print(
+                    "Error: --cl flag is required for client package removal",
+                    file=sys.stderr,
+                )
+                print(
+                    "Usage: jac remove --cl <package_name>",
+                    file=sys.stderr,
+                )
+                print(
+                    "       jac remove --cl -D <package_name>  (for devDependencies)",
+                    file=sys.stderr,
+                )
+                exit(1)
+
+            if not filepath:
+                print(
+                    "Error: Package name is required",
+                    file=sys.stderr,
+                )
+                print(
+                    "Usage: jac remove --cl <package_name>",
+                    file=sys.stderr,
+                )
+                exit(1)
+
+            try:
+                from pathlib import Path
+
+                from jac_client.plugin.src.package_installer import PackageInstaller
+
+                current_dir = Path(os.getcwd())
+                installer = PackageInstaller(current_dir)
+
+                # Uninstall the package
+                installer.uninstall_package(package_name=filepath, is_dev=d)
+
+                dep_type = "devDependencies" if d else "dependencies"
+                print(f"✅ Removed {filepath} from {dep_type} in config.json")
+                print("📦 Updating packages via npm...")
+                # npm install is handled by PackageInstaller.uninstall_package()
+                print(f"✅ Successfully removed {filepath}")
+
+            except Exception as e:
+                print(f"Error removing package: {e}", file=sys.stderr)
                 exit(1)

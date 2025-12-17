@@ -3,6 +3,7 @@ import subprocess;
 import from pathlib { Path }
 import from jaclang.runtimelib.client_bundle { ClientBundleError }
 import from .asset_processor { AssetProcessor }
+import from .vite_bundler { ViteBundler }
 
 """Handles Babel compilation of JavaScript files."""
 class BabelProcessor {
@@ -13,7 +14,34 @@ class BabelProcessor {
 
     """Run Babel compilation (npm run compile)."""
     def compile(self: BabelProcessor) -> None {
+        bundler = ViteBundler(self.project_dir);
+
+        # Ensure root package.json exists temporarily for npm commands
+        bundler._ensure_root_package_json();
+
         try {
+            # Ensure dependencies are installed (check if node_modules exists)
+            node_modules = self.project_dir / 'node_modules';
+            if not node_modules.exists() {
+                try {
+                    subprocess.run(
+                        ['npm', 'install'],
+                        cwd=self.project_dir,
+                        check=True,
+                        capture_output=True,
+                        text=True
+                    );
+                } except subprocess.CalledProcessError as e {
+                    raise ClientBundleError(
+                        f'Failed to install npm dependencies: {e.stderr}'
+                    ) from e ;
+                } except FileNotFoundError {
+                    raise ClientBundleError(
+                        'npm command not found. Ensure Node.js and npm are installed.'
+                    ) from None ;
+                }
+            }
+
             command = ['npm', 'run', 'compile'];
             subprocess.run(
                 command,
@@ -22,12 +50,9 @@ class BabelProcessor {
                 capture_output=True,
                 text=True
             );
-        } except subprocess.CalledProcessError as e {
-            raise ClientBundleError(f"Babel compilation failed: {e.stderr}") from e ;
-        } except FileNotFoundError {
-            raise ClientBundleError(
-                'npm command not found. Ensure Node.js and npm are installed.'
-            ) from None ;
+        } finally {
+            # Always clean up root package.json and move package-lock.json
+            bundler._cleanup_root_package_files();
         }
     }
 
