@@ -60,9 +60,9 @@ class TestJacAutoLintPass:
 
         # Globs should come after imports
         import_pos = formatted.find("import from os")
-        glob_x_pos = formatted.find("glob x")
+        glob_pos = formatted.find("glob\n")
         def_pos = formatted.find("def main")
-        assert import_pos < glob_x_pos < def_pos
+        assert import_pos < glob_pos < def_pos
 
     def test_no_lint_flag(self, auto_lint_fixture_path: Callable[[str], str]) -> None:
         """Test that auto_lint=False preserves with entry blocks."""
@@ -141,7 +141,8 @@ class TestJacAutoLintPass:
 
         # Should preserve existing glob declarations
         # Note: consecutive globs with same modifiers are now combined
-        assert "glob existing_x = 5 ," in formatted
+        # Format is now multiline with all assignments indented
+        assert "glob\n    existing_x = 5," in formatted
         assert "existing_y = " in formatted
         assert "existing_z = " in formatted
 
@@ -165,7 +166,8 @@ class TestJacAutoLintPass:
 
         # Module-level with entry SHOULD be fully extracted (all assignments)
         # Note: consecutive globs with same modifiers are now combined
-        assert "module_var = 100 , cls_obj = MyClass()" in formatted
+        # Format is now multiline with all assignments indented
+        assert "glob\n    module_var = 100,\n    cls_obj = MyClass();" in formatted
 
         # Module-level with entry containing TYPE_CHECKING blocks should extract
         # assignments to glob while keeping if blocks in with entry (since if
@@ -254,13 +256,14 @@ class TestCombineConsecutiveGlob:
 
         # Consecutive glob statements should be combined into one
         # The three separate glob statements become one with commas
-        assert "glob x = 1 , y = 2 , z = 3;" in formatted
+        # Format is now multiline with all assignments indented
+        assert "glob\n    x = 1,\n    y = 2,\n    z = 3;" in formatted
 
         # Public glob statements should be combined separately
-        assert "glob : pub a = 10 , b = 20;" in formatted
+        assert "glob : pub\n    a = 10,\n    b = 20;" in formatted
 
         # Protected glob statements should be combined separately
-        assert "glob : protect c = 100 , d = 200 , e = 300;" in formatted
+        assert "glob : protect\n    c = 100,\n    d = 200,\n    e = 300;" in formatted
 
         # Mixed modifiers should NOT be combined together
         # Each should be its own statement
