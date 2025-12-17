@@ -57,7 +57,12 @@ class ViteCompiler {
             ) ;
         }
         self.vite_package_json = vite_package_json;
-        self.project_dir = vite_package_json.parent;
+        # If package.json is in .jac-client.configs/, go up one level to get project root
+        if (vite_package_json.parent.name == '.jac-client.configs') {
+            self.project_dir = vite_package_json.parent.parent;
+        } else {
+            self.project_dir = vite_package_json.parent;
+        }
         self.runtime_path = runtime_path;
         self.compiled_dir = self.project_dir / 'compiled';
         self.jac_compiler = JacToJSCompiler(

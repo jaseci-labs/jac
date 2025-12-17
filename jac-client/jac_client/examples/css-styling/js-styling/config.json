@@ -1,0 +1,17 @@
+{
+  "vite": {
+    "plugins": [],
+    "lib_imports": [],
+    "build": {},
+    "server": {},
+    "resolve": {}
+  },
+  "ts": {},
+  "package": {
+    "name": "bootstrap-example",
+    "version": "1.0.0",
+    "description": "Jac application: bootstrap-example",
+    "dependencies": {},
+    "devDependencies": {}
+  }
+}

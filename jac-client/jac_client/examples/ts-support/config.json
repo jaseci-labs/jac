@@ -1,0 +1,17 @@
+{
+  "vite": {
+    "plugins": [],
+    "lib_imports": [],
+    "build": {},
+    "server": {},
+    "resolve": {}
+  },
+  "ts": {},
+  "package": {
+    "name": "ts-support",
+    "version": "1.0.0",
+    "description": "Jac application: ts-support",
+    "dependencies": {},
+    "devDependencies": {}
+  }
+}

@@ -118,7 +118,9 @@ nav:
       - TypeScript: "jac-client/working-with-ts.md"
       - Advanced:
         - Introduction: "jac-client/advance/intro.md"
+        - Configuration System Overview: "jac-client/advance/configuration-overview.md"
         - Custom Configuration: "jac-client/advance/custom-config.md"
+        - Package Management: "jac-client/advance/package-management.md"
     - Tooling:
       - Jac Debugger: "learn/debugger.md"
       - Run Jac In Browser: "learn/jac_playground.md"

@@ -20,7 +20,7 @@ Jac supports optional type annotations to document what kind of value a variable
 |---------|--------------|-------------|
 | Type with value | 17-18 | `age: int = 25;` declares and assigns |
 | Type without value | 22-23 | `result: str;` declares for later assignment |
-| Let with type | 27 | `let count: int = 5;` combines declaration and typing |
+| Let with type | 27 | `count: int = 5;` combines declaration and typing |
 
 Lines 17-18 show annotating variables with their types: `age: int = 25` and `name: str = "Alice"`. These annotations serve as documentation and enable type checking tools to catch errors.
 

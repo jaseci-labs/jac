@@ -1,4 +1,4 @@
-"""File covering k8 automation."""
+"""File covering K8s automation."""
 import os;
 import time;
 import from typing { Any }
@@ -8,7 +8,7 @@ import from .database.mongo { mongo_db }
 import from .database.redis { redis_db }
 import from .utils {
     check_deployment_status,
-    check_k8_status,
+    check_K8s_status,
     cluster_type,
     delete_if_exists,
     ensure_namespace_exists,
@@ -17,8 +17,8 @@ import from .utils {
     sync_code_to_pvc
 }
 
-"""Deploy jac application to k8."""
-def deploy_k8(
+"""Deploy jac application to K8s."""
+def deploy_K8s(
     code_folder: str,
     file_name: str = 'none',
     build: bool = False,
@@ -26,20 +26,20 @@ def deploy_k8(
 ) -> None {
     app_name = os.getenv('APP_NAME', 'jaseci');
     image_name = os.getenv('DOCKER_IMAGE_NAME', f"{app_name}:latest");
-    namespace = os.getenv('K8_NAMESPACE', 'default');
-    container_port = int(os.getenv('K8_CONTAINER_PORT', '8000'));
-    node_port = int(os.getenv('K8_NODE_PORT', '30001'));
+    namespace = os.getenv('K8s_NAMESPACE', 'default');
+    container_port = int(os.getenv('K8s_CONTAINER_PORT', '8000'));
+    node_port = int(os.getenv('K8s_NODE_PORT', '30001'));
     docker_username = os.getenv('DOCKER_USERNAME', 'juzailmlwork');
     repository_name = f"{docker_username}/{image_name}";
-    mongodb_enabled = os.getenv('K8_MONGODB', 'true').lower() == 'true';
-    redis_enabled = os.getenv('K8_REDIS', 'true').lower() == 'true';
+    mongodb_enabled = os.getenv('K8s_MONGODB', 'true').lower() == 'true';
+    redis_enabled = os.getenv('K8s_REDIS', 'true').lower() == 'true';
     if not build {
         repository_name = 'python:3.12-slim';
     }
     config.load_kube_config();
     apps_v1 = client.AppsV1Api();
     core_v1 = client.CoreV1Api();
-    check_k8_status();
+    check_K8s_status();
     ensure_namespace_exists(namespace);
     env_list = load_env_variables(code_folder);
     cluster_env = cluster_type();
@@ -120,7 +120,7 @@ def deploy_k8(
         command = [
             'bash',
             '-c',
-            f"export DEBIAN_FRONTEND=noninteractive &&apt-get update &&apt-get install -y git npm nodejs &&git clone --branch jac_scale_examples --single-branch --depth 1 https://github.com/mgtm98/jaseci.git &&cd ./jaseci &&git submodule update --init --recursive &&python -m venv venv &&source venv/bin/activate &&pip install pluggy &&pip install -e ./jac &&pip install -e  ./jac-scale &&pip install jac-client &&jac -V &&cd ../../.. &&jac create_jac_app client_app &&cp -r ./app/* ./client_app &&cd ./client_app &&{install_part}"
+            f"export DEBIAN_FRONTEND=noninteractive &&apt-get update &&apt-get install -y git npm nodejs && rm -rf jaseci && git clone --branch fix-k8-jac-client-unreleased --single-branch https://github.com/juzailmlwork/jaseci.git &&cd ./jaseci &&git checkout 0e115907daa0cd10bab02d655a7c801e44a5e1df &&git submodule update --init --recursive &&python -m venv venv &&source venv/bin/activate &&pip install pluggy &&pip install -e ./jac &&pip install -e  ./jac-scale &&pip install -e ./jac-client &&jac -V &&cd ../../.. &&yes n | jac create_jac_app client_app &&cp -r ./app/* ./client_app &&cd ./client_app && rm -rf node_modules && jac add --cl &&{install_part}"
         ];
         container_config = {
             'name': app_name,

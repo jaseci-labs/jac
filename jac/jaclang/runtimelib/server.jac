@@ -598,12 +598,20 @@ class ModuleIntrospector {
         };
     }
 
-    """Check if authentication is required for a function based on its access level.\n\n        Public functions: no authentication required\n        Protected/Private functions: authentication required\n        """
+    """Check if authentication is required for a function based on its access level.
+
+Public functions: no authentication required
+Protected/Private functions: authentication required
+"""
     def is_auth_required_for_function(self: ModuleIntrospector, func_name: str) -> bool {
         return self._function_access.get(func_name, False);
     }
 
-    """Check if authentication is required for a walker based on its access level.\n\n        Public walkers: no authentication required\n        Protected/Private walkers: authentication required\n        """
+    """Check if authentication is required for a walker based on its access level.
+
+Public walkers: no authentication required
+Protected/Private walkers: authentication required
+"""
     def is_auth_required_for_walker(self: ModuleIntrospector, walker_name: str) -> bool {
         return self._walker_access.get(walker_name, False);
     }

@@ -1,0 +1,25 @@
+{
+  "vite": {
+    "plugins": [],
+    "lib_imports": [],
+    "build": {},
+    "server": {},
+    "resolve": {}
+  },
+  "ts": {},
+  "package": {
+    "name": "littlex-vite-bundler",
+    "version": "1.0.0",
+    "description": "Vite bundler for LittleX Jac application",
+    "dependencies": {
+      "antd": "^5.27.6",
+      "bootstrap": "^5.3.8",
+      "lodash": "^4.17.21",
+      "pluralize": "^8.0.0",
+      "precise-ui": "^2.1.17",
+      "react-animated-components": "^3.0.1",
+      "react-bootstrap": "^2.10.10"
+    },
+    "devDependencies": {}
+  }
+}

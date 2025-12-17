@@ -72,3 +72,19 @@ walker GetTask {
         report here ;
     }
 }
+
+walker : priv PrivateCreateTask {
+    has title: str;
+    has priority: int = 1;
+
+    can create with `root entry {
+        new_task = here ++> Task(title=self.title, priority=self.priority);
+        report {"message": "Private task created", "task": new_task} ;
+    }
+}
+
+walker : pub PublicInfo {
+    can get_info with `root entry {
+        report {"message": "This is a public endpoint", "auth_required": False} ;
+    }
+}

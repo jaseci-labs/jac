@@ -8,15 +8,9 @@ The Jac Client uses a **JSON-based configuration system** that allows you to cus
 
 ## Quick Start
 
-### Creating the Config File
+### Config File Creation
 
-Use the CLI command to create a default `config.json`:
-
-```bash
-jac generate_client_config
-```
-
-This creates a `config.json` file with the proper structure:
+When you create a new Jac Client project using `jac create_jac_app`, a `config.json` file is automatically created with the proper structure:
 
 ```json
 {
@@ -27,7 +21,14 @@ This creates a `config.json` file with the proper structure:
     "server": {},
     "resolve": {}
   },
-  "ts": {}
+  "ts": {},
+  "package": {
+    "name": "",
+    "version": "1.0.0",
+    "description": "",
+    "dependencies": {},
+    "devDependencies": {}
+  }
 }
 ```
 
@@ -52,6 +53,9 @@ This creates a `config.json` file with the proper structure:
 
 - **`vite`**: Vite-specific configuration (plugins, build options, server, resolve)
 - **`ts`**: TypeScript configuration (reserved for future use)
+- **`package`**: npm package configuration (dependencies, devDependencies, scripts)
+
+> **Note**: For package management, see [Package Management](./package-management.md) for detailed documentation on managing dependencies.
 
 ### Vite Configuration Keys
 
@@ -194,21 +198,61 @@ Override module resolution options.
 - `@jac-client/assets` → `compiled/assets`
 - Extensions: `[".mjs", ".js", ".mts", ".ts", ".jsx", ".tsx", ".json"]`
 
+### Package Configuration (`package`)
+
+Manage npm dependencies and package metadata. This section is used to generate `package.json`.
+
+**Format**: JavaScript object
+
+**Keys**:
+
+- `name`: Package name
+- `version`: Package version
+- `description`: Package description
+- `dependencies`: Runtime dependencies (object mapping package names to versions)
+- `devDependencies`: Development dependencies (object mapping package names to versions)
+- `scripts`: npm scripts (optional)
+
+**Example**:
+
+```json
+{
+  "package": {
+    "name": "my-jac-app",
+    "version": "1.0.0",
+    "description": "My Jac application",
+    "dependencies": {
+      "lodash": "^4.17.21"
+    },
+    "devDependencies": {
+      "sass": "^1.77.8"
+    }
+  }
+}
+```
+
+> **Important**: React, React-DOM, React-Router-DOM, Vite, and Babel packages are **automatically added during build time** and should not be included in `config.json`. Only add custom packages that aren't part of the defaults.
+
+**Note**: It's recommended to use the CLI commands (`jac add --cl` and `jac remove --cl`) to manage packages rather than manually editing this section. See [Package Management](./package-management.md) for details.
+
 ## How It Works
 
 ### Configuration Loading
 
-1. **Default Configuration**: The system starts with default settings that include:
+1. **Automatic Creation**: When you create a new project with `jac create_jac_app`, `config.json` is automatically created in the project root.
+
+2. **Default Configuration**: The system starts with default settings that include:
    - Base Vite configuration
    - Required aliases (`@jac-client/utils`, `@jac-client/assets`)
    - TypeScript extensions (if TypeScript is enabled)
    - React plugin (if TypeScript is enabled)
+   - Package configuration structure
 
-2. **User Configuration**: Your `config.json` is loaded and merged with defaults using deep merge.
+3. **User Configuration**: Your `config.json` is loaded and merged with defaults using deep merge.
 
-3. **Config Generation**: The merged configuration is used to generate `vite.config.js` in `.jac-client.configs/` directory.
+4. **Config Generation**: The merged configuration is used to generate `vite.config.js` in `.jac-client.configs/` directory.
 
-4. **Build Execution**: Vite uses the generated config file for bundling.
+5. **Build Execution**: Vite uses the generated config file for bundling.
 
 ### Configuration Workflow
 
@@ -400,9 +444,11 @@ npm run build
 
 ## CLI Command
 
-### Generate Default Config
+### Generate Default Config (Legacy Projects)
 
-Create a default `config.json` file:
+> **Note**: For projects created with Jac Client 0.2.4 or later, `config.json` is automatically created when you run `jac create_jac_app`. This command is only needed for projects created before version 0.2.4.
+
+Create a default `config.json` file for legacy projects:
 
 ```bash
 jac generate_client_config
@@ -414,7 +460,22 @@ jac generate_client_config
 - Fails if `config.json` already exists (prevents overwriting)
 - Provides helpful output with examples
 
+**When to use**:
+
+- Migrating projects created before Jac Client 0.2.4
+- Manually setting up configuration in an existing project
+
 ## Troubleshooting
+
+### Config File Not Found
+
+**Problem**: `config.json` doesn't exist in your project.
+
+**Solution**:
+
+- For new projects: `config.json` is automatically created with `jac create_jac_app`
+- For legacy projects (pre-0.2.4): Run `jac generate_client_config` to create it
+- Ensure you're in the project root directory
 
 ### Config Not Applied
 
@@ -495,6 +556,7 @@ This merges with defaults, so other build options remain unchanged.
 
 ## Related Documentation
 
+- [Package Management](./package-management.md) - Manage npm dependencies through config.json
 - [Architecture Overview](../../../architecture.md) - Detailed system architecture
 - [Tailwind CSS](../styling/tailwind.md) - Example of using config.json for Tailwind
 - [Vite Documentation](https://vitejs.dev/config/) - Full Vite configuration reference

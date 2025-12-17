@@ -1,0 +1,19 @@
+{
+  "vite": {
+    "plugins": [],
+    "lib_imports": [],
+    "build": {},
+    "server": {},
+    "resolve": {}
+  },
+  "ts": {},
+  "package": {
+    "name": "all-in-one",
+    "version": "1.0.0",
+    "description": "Jac application: all-in-one",
+    "dependencies": {
+      "antd": "^6.0.0"
+    },
+    "devDependencies": {}
+  }
+}

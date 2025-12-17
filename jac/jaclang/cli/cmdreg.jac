@@ -8,7 +8,11 @@ import sys;
 import from collections.abc { Callable }
 import from dataclasses { fields as dataclass_fields }
 import from enum { IntEnum }
-"""Priority levels for command registration.\n\n    Higher values take precedence when multiple commands with the same name are registered.\n    This allows plugins to override core commands in a controlled manner.\n    """
+"""Priority levels for command registration.
+
+Higher values take precedence when multiple commands with the same name are registered.
+This allows plugins to override core commands in a controlled manner.
+"""
 class CommandPriority(IntEnum) {
     with entry {
         CORE = 100;
@@ -45,7 +49,14 @@ class Command {
     }
 }
 
-"""Extract parameter descriptions from a function's docstring.\n\n    Args:\n        docstring: The function's docstring\n\n    Returns:\n        A dictionary mapping parameter names to their descriptions\n    """
+"""Extract parameter descriptions from a function's docstring.
+
+Args:
+    docstring: The function's docstring
+
+Returns:
+    A dictionary mapping parameter names to their descriptions
+"""
 def extract_param_descriptions(docstring: str) -> dict[str, str] {
     param_descriptions: dict[(str, str)] = {};
     args_match = re.search('Args:(.*?)(?:\\n\\n|\\Z)', docstring, re.DOTALL);
@@ -169,7 +180,23 @@ class CommandRegistry {
         }
     }
 
-    """Register a command in the registry.\n\n        This method supports both decorator syntax with and without arguments:\n            @cmd_registry.register\n            def my_cmd(): ...\n\n            @cmd_registry.register(priority=CommandPriority.PLUGIN, source="my-plugin")\n            def my_cmd(): ...\n\n        Args:\n            func: The command function to register\n            priority: Priority level for conflict resolution\n            source: Source plugin/module name for introspection\n\n        Returns:\n            The original function (for decorator usage)\n        """
+    """Register a command in the registry.
+
+This method supports both decorator syntax with and without arguments:
+    @cmd_registry.register
+    def my_cmd(): ...
+
+    @cmd_registry.register(priority=CommandPriority.PLUGIN, source="my-plugin")
+    def my_cmd(): ...
+
+Args:
+    func: The command function to register
+    priority: Priority level for conflict resolution
+    source: Source plugin/module name for introspection
+
+Returns:
+    The original function (for decorator usage)
+"""
     def register(
         self: CommandRegistry,
         func: (Callable | None) = None,
@@ -325,7 +352,10 @@ class CommandRegistry {
         self._bind_command_to_argparse(name, winner);
     }
 
-    """Finalize command registration by resolving conflicts and binding to argparse.\n\n        This should be called after all plugins have had a chance to register commands.\n        """
+    """Finalize command registration by resolving conflicts and binding to argparse.
+
+This should be called after all plugins have had a chance to register commands.
+"""
     def finalize(self: CommandRegistry) -> None {
         if self._finalized {
             return;

@@ -30,10 +30,30 @@ def gen_parser()  -> str {
     return 'Parser generated.';
 }
 
-"""Format .jac files with improved code style.\n\n    Applies consistent formatting to Jac code files to improve readability and\n    maintain a standardized code style across your project. Optionally applies\n    automatic linting corrections (e.g., converting with entry blocks to glob\n    declarations where appropriate) when --lint flag is provided.\n\n    Args:\n        paths: One or more paths to .jac files or directories containing .jac files\n        outfile: Optional output file path (only valid when formatting a single file)\n        to_screen: Print formatted code to stdout instead of writing to file\n        lint: Apply auto-linting corrections before formatting (default: False)\n\n    Examples:\n        jac format myfile.jac\n        jac format file1.jac file2.jac file3.jac\n        jac format myproject/\n        jac format myfile.jac --outfile formatted.jac\n        jac format myfile.jac --to_screen\n        jac format myfile.jac --lint\n    """
+"""Format .jac files with improved code style.
+
+Applies consistent formatting to Jac code files to improve readability and
+maintain a standardized code style across your project. Optionally applies
+automatic linting corrections (e.g., converting with entry blocks to glob
+declarations where appropriate) when --fix flag is provided.
+
+Args:
+    paths: One or more paths to .jac files or directories containing .jac files
+    outfile: Optional output file path (only valid when formatting a single file)
+    to_screen: Print formatted code to stdout instead of writing to file
+    fix: Apply auto-linting corrections before formatting (default: False)
+
+Examples:
+    jac format myfile.jac
+    jac format file1.jac file2.jac file3.jac
+    jac format myproject/
+    jac format myfile.jac --outfile formatted.jac
+    jac format myfile.jac --to_screen
+    jac format myfile.jac --fix
+"""
 @cmd_registry.register
 def format(
-    paths: list, outfile: str = '', to_screen: bool = False, lint: bool = False
+    paths: list, outfile: str = '', to_screen: bool = False, fix: bool = False
 ) -> None {
     import from jaclang.pycore.program { JacProgram }
     if isinstance(paths, str) {
@@ -63,7 +83,7 @@ def format(
             return (False, False);
         }
         try {
-            prog = JacProgram.jac_file_formatter(str(path_obj), auto_lint=lint);
+            prog = JacProgram.jac_file_formatter(str(path_obj), auto_lint=fix);
             if prog.errors_had {
                 for error in prog.errors_had {
                     print(f"{error}", file=sys.stderr);
@@ -150,7 +170,23 @@ def proc_file_sess(filename: str, session: str, <>root: (str | None) = None) -> 
     return (base, mod, mach);
 }
 
-"""Run the specified .jac, .jir, or .py file.\n\n    Executes a Jac program file or Python file, loading it into the Jac runtime environment\n    and running its code. Python files are converted to Jac AST for execution.\n\n    Args:\n        filename: Path to the .jac, .jir, or .py file to run\n        session: Optional session identifier for persistent state\n        main: Treat the module as __main__ (default: True)\n        cache: Use cached compilation if available (default: True)\n\n    Examples:\n        jac run myprogram.jac\n        jac run myscript.py\n        jac run myprogram.jac --session mysession\n        jac run myprogram.jac --no-main\n    """
+"""Run the specified .jac, .jir, or .py file.
+
+Executes a Jac program file or Python file, loading it into the Jac runtime environment
+and running its code. Python files are converted to Jac AST for execution.
+
+Args:
+    filename: Path to the .jac, .jir, or .py file to run
+    session: Optional session identifier for persistent state
+    main: Treat the module as __main__ (default: True)
+    cache: Use cached compilation if available (default: True)
+
+Examples:
+    jac run myprogram.jac
+    jac run myscript.py
+    jac run myprogram.jac --session mysession
+    jac run myprogram.jac --no-main
+"""
 @cmd_registry.register
 def run(
     filename: str, session: str = '', main: bool = True, cache: bool = True
@@ -188,7 +224,21 @@ def run(
     mach.close();
 }
 
-"""Get the object with the specified id.\n\n    Retrieves a specific object from a Jac program by its unique identifier.\n    Returns the object's state as a dictionary.\n\n    Args:\n        filename: Path to the .jac or .jir file containing the object\n        id: Unique identifier of the object to retrieve\n        session: Optional session identifier for persistent state\n        main: Treat the module as __main__ (default: True)\n\n    Examples:\n        jac get_object myprogram.jac obj123\n        jac get_object myprogram.jac obj123 --session mysession\n    """
+"""Get the object with the specified id.
+
+Retrieves a specific object from a Jac program by its unique identifier.
+Returns the object's state as a dictionary.
+
+Args:
+    filename: Path to the .jac or .jir file containing the object
+    id: Unique identifier of the object to retrieve
+    session: Optional session identifier for persistent state
+    main: Treat the module as __main__ (default: True)
+
+Examples:
+    jac get_object myprogram.jac obj123
+    jac get_object myprogram.jac obj123 --session mysession
+"""
 @cmd_registry.register
 def get_object(filename: str, id: str, session: str = '', main: bool = True) -> dict {
     _ensure_jac_runtime();
@@ -221,7 +271,19 @@ def get_object(filename: str, id: str, session: str = '', main: bool = True) -> 
     return data;
 }
 
-"""Build the specified .jac file.\n\n    Compiles a Jac source file into a Jac Intermediate Representation (.jir) file,\n    which can be executed more efficiently. Optionally performs type checking.\n\n    Args:\n        filename: Path to the .jac file to build\n        typecheck: Perform type checking during build (default: False)\n\n    Examples:\n        jac build myprogram.jac\n        jac build myprogram.jac --typecheck\n    """
+"""Build the specified .jac file.
+
+Compiles a Jac source file into a Jac Intermediate Representation (.jir) file,
+which can be executed more efficiently. Optionally performs type checking.
+
+Args:
+    filename: Path to the .jac file to build
+    typecheck: Perform type checking during build (default: False)
+
+Examples:
+    jac build myprogram.jac
+    jac build myprogram.jac --typecheck
+"""
 @cmd_registry.register
 def build(filename: str, typecheck: bool = False) -> None {
     import from jaclang.pycore.program { JacProgram }
@@ -244,7 +306,21 @@ def build(filename: str, typecheck: bool = False) -> None {
     }
 }
 
-"""Run type checker for specified .jac files.\n\n    Performs static type analysis on Jac programs to identify potential type errors\n    without executing the code. Useful for catching errors early in development.\n\n    Args:\n        paths: One or more paths to .jac files or directories containing .jac files\n        print_errs: Print detailed error messages (default: True)\n\n    Examples:\n        jac check myprogram.jac\n        jac check file1.jac file2.jac file3.jac\n        jac check myproject/\n        jac check myprogram.jac --no-print_errs\n    """
+"""Run type checker for specified .jac files.
+
+Performs static type analysis on Jac programs to identify potential type errors
+without executing the code. Useful for catching errors early in development.
+
+Args:
+    paths: One or more paths to .jac files or directories containing .jac files
+    print_errs: Print detailed error messages (default: True)
+
+Examples:
+    jac check myprogram.jac
+    jac check file1.jac file2.jac file3.jac
+    jac check myproject/
+    jac check myprogram.jac --no-print_errs
+"""
 @cmd_registry.register
 def check(paths: list, print_errs: bool = True) -> None {
     import from jaclang.pycore.program { JacProgram }
@@ -315,14 +391,42 @@ def check(paths: list, print_errs: bool = True) -> None {
     }
 }
 
-"""Run Jac Language Server Protocol.\n\n    Starts the Jac Language Server that provides IDE features like code completion,\n    error checking, and navigation for Jac files. Used by editor extensions.\n\n    Args:\n        This command takes no parameters.\n\n    Examples:\n        jac lsp\n    """
+"""Run Jac Language Server Protocol.
+
+Starts the Jac Language Server that provides IDE features like code completion,
+error checking, and navigation for Jac files. Used by editor extensions.
+
+Args:
+    This command takes no parameters.
+
+Examples:
+    jac lsp
+"""
 @cmd_registry.register
 def lsp()  -> None {
     import from jaclang.langserve.server { run_lang_server }
     run_lang_server();
 }
 
-"""Run the specified entrypoint function in the given .jac file.\n\n    Executes a specific function within a Jac program, allowing you to target\n    particular functionality without running the entire program. Useful for\n    testing specific components or running specific tasks.\n\n    Args:\n        filename: Path to the .jac or .jir file\n        entrypoint: Name of the function to execute\n        args: Arguments to pass to the entrypoint function\n        session: Optional session identifier for persistent state\n        main: Treat the module as __main__ (default: True)\n        root: Root executor identifier\n        node: Starting node identifier\n\n    Examples:\n        jac enter myprogram.jac main_function arg1 arg2\n        jac enter myprogram.jac process_data --node data_node data.json\n    """
+"""Run the specified entrypoint function in the given .jac file.
+
+Executes a specific function within a Jac program, allowing you to target
+particular functionality without running the entire program. Useful for
+testing specific components or running specific tasks.
+
+Args:
+    filename: Path to the .jac or .jir file
+    entrypoint: Name of the function to execute
+    args: Arguments to pass to the entrypoint function
+    session: Optional session identifier for persistent state
+    main: Treat the module as __main__ (default: True)
+    root: Root executor identifier
+    node: Starting node identifier
+
+Examples:
+    jac enter myprogram.jac main_function arg1 arg2
+    jac enter myprogram.jac process_data --node data_node data.json
+"""
 @cmd_registry.register
 def enter(
     filename: str,
@@ -372,7 +476,30 @@ def enter(
     mach.close();
 }
 
-"""Run the test suite in the specified .jac file or directory.\n\n    Executes test functions in Jac files to verify code correctness. Tests are\n    identified by functions with names starting with \'test_\'. Provides various\n    options to control test execution and reporting.\n\n    Args:\n        filepath: Path to the .jac file or directory containing tests\n        test_name: Run a specific test (without the \'test_\' prefix)\n        filter: Filter test files using Unix shell style patterns\n        xit: Stop running tests as soon as an error is found\n        maxfail: Stop running tests after specified number of failures\n        directory: Run tests from the specified directory\n        verbose: Show detailed test information and results\n\n    Examples:\n        jac test                     # Run all tests in current directory\n        jac test mytest.jac          # Run all tests in mytest.jac\n        jac test --test_name my_test # Run only test_my_test\n        jac test --directory tests/  # Run all tests in tests/ directory\n        jac test --filter "*_unit_*" # Run tests matching the pattern\n        jac test --xit               # Stop on first failure\n        jac test --verbose           # Show detailed output\n    """
+"""Run the test suite in the specified .jac file or directory.
+
+Executes test functions in Jac files to verify code correctness. Tests are
+identified by functions with names starting with 'test_'. Provides various
+options to control test execution and reporting.
+
+Args:
+    filepath: Path to the .jac file or directory containing tests
+    test_name: Run a specific test (without the 'test_' prefix)
+    filter: Filter test files using Unix shell style patterns
+    xit: Stop running tests as soon as an error is found
+    maxfail: Stop running tests after specified number of failures
+    directory: Run tests from the specified directory
+    verbose: Show detailed test information and results
+
+Examples:
+    jac test                     # Run all tests in current directory
+    jac test mytest.jac          # Run all tests in mytest.jac
+    jac test --test_name my_test # Run only test_my_test
+    jac test --directory tests/  # Run all tests in tests/ directory
+    jac test --filter "*_unit_*" # Run tests matching the pattern
+    jac test --xit               # Stop on first failure
+    jac test --verbose           # Show detailed output
+"""
 @cmd_registry.register
 def <>test(
     filepath: str,
@@ -399,7 +526,22 @@ def <>test(
     }
 }
 
-"""Run the specified AST tool with optional arguments.\n\n    Executes specialized tools for working with Jac's Abstract Syntax Tree (AST).\n    These tools help with code analysis, transformation, and debugging.\n\n    Args:\n        tool: Name of the AST tool to run\n        args: Optional arguments to pass to the tool\n\n    Available Tools:\n        list_tools: List all available AST tools\n\n    Examples:\n        jac tool list_tools\n        jac tool <tool_name> [args...]\n    """
+"""Run the specified AST tool with optional arguments.
+
+Executes specialized tools for working with Jac's Abstract Syntax Tree (AST).
+These tools help with code analysis, transformation, and debugging.
+
+Args:
+    tool: Name of the AST tool to run
+    args: Optional arguments to pass to the tool
+
+Available Tools:
+    list_tools: List all available AST tools
+
+Examples:
+    jac tool list_tools
+    jac tool <tool_name> [args...]
+"""
 @cmd_registry.register
 def tool(tool: str, args: (list | None) = None) -> None {
     import from jaclang.utils.lang_tools { AstTool }
@@ -421,7 +563,22 @@ def tool(tool: str, args: (list | None) = None) -> None {
     }
 }
 
-"""Debug the specified .jac file using the Python debugger.\n\n    Runs a Jac program in debug mode, allowing you to set breakpoints, step through\n    code execution, inspect variables, and troubleshoot issues interactively.\n\n    Args:\n        filename: Path to the .jac file to debug\n        main: Treat the module as __main__ (default: True)\n        cache: Use cached compilation if available (default: False)\n\n    Examples:\n        jac debug myprogram.jac\n\n    Note:\n        Add breakpoints in your code using the 'breakpoint()' function.\n    """
+"""Debug the specified .jac file using the Python debugger.
+
+Runs a Jac program in debug mode, allowing you to set breakpoints, step through
+code execution, inspect variables, and troubleshoot issues interactively.
+
+Args:
+    filename: Path to the .jac file to debug
+    main: Treat the module as __main__ (default: True)
+    cache: Use cached compilation if available (default: False)
+
+Examples:
+    jac debug myprogram.jac
+
+Note:
+    Add breakpoints in your code using the 'breakpoint()' function.
+"""
 @cmd_registry.register
 def debug(filename: str, main: bool = True, cache: bool = False) -> None {
     import from jaclang.pycore.program { JacProgram }
@@ -451,7 +608,32 @@ def debug(filename: str, main: bool = True, cache: bool = False) -> None {
     }
 }
 
-"""Generate a DOT graph visualization from a Jac program.\n\n    Creates a visual representation of the node graph in a Jac program using the\n    DOT graph description language. The generated file can be visualized with\n    tools like Graphviz.\n\n    Args:\n        filename: Path to the .jac file to visualize\n        session: Optional session identifier for persistent state\n        initial: Starting node for graph traversal (default: root node)\n        depth: Maximum traversal depth (-1 for unlimited)\n        traverse: Whether to traverse the graph structure (default: False)\n        connection: List of edge types to include in the visualization\n        bfs: Use breadth-first search for traversal (default: False)\n        edge_limit: Maximum number of edges to include (default: 512)\n        node_limit: Maximum number of nodes to include (default: 512)\n        saveto: Output file path for the DOT file (default: <module_name>.dot)\n        to_screen: Print DOT output to stdout instead of saving to file (default: False)\n\n    Examples:\n        jac dot myprogram.jac\n        jac dot myprogram.jac --initial root_node --depth 3\n        jac dot myprogram.jac --traverse --connection edge_type1 edge_type2\n        jac dot myprogram.jac --saveto graph.dot\n        jac dot myprogram.jac --to_screen\n    """
+"""Generate a DOT graph visualization from a Jac program.
+
+Creates a visual representation of the node graph in a Jac program using the
+DOT graph description language. The generated file can be visualized with
+tools like Graphviz.
+
+Args:
+    filename: Path to the .jac file to visualize
+    session: Optional session identifier for persistent state
+    initial: Starting node for graph traversal (default: root node)
+    depth: Maximum traversal depth (-1 for unlimited)
+    traverse: Whether to traverse the graph structure (default: False)
+    connection: List of edge types to include in the visualization
+    bfs: Use breadth-first search for traversal (default: False)
+    edge_limit: Maximum number of edges to include (default: 512)
+    node_limit: Maximum number of nodes to include (default: 512)
+    saveto: Output file path for the DOT file (default: <module_name>.dot)
+    to_screen: Print DOT output to stdout instead of saving to file (default: False)
+
+Examples:
+    jac dot myprogram.jac
+    jac dot myprogram.jac --initial root_node --depth 3
+    jac dot myprogram.jac --traverse --connection edge_type1 edge_type2
+    jac dot myprogram.jac --saveto graph.dot
+    jac dot myprogram.jac --to_screen
+"""
 @cmd_registry.register
 def dot(
     filename: str,
@@ -508,7 +690,18 @@ def dot(
     }
 }
 
-"""Convert a Python file to Jac code.\n\n    Translates Python source code to equivalent Jac code, helping with migration\n    from Python to Jac. The conversion handles basic syntax and structures but\n    may require manual adjustments for complex code.\n\n    Args:\n        filename: Path to the .py file to convert\n\n    Examples:\n        jac py2jac myscript.py > converted.jac\n    """
+"""Convert a Python file to Jac code.
+
+Translates Python source code to equivalent Jac code, helping with migration
+from Python to Jac. The conversion handles basic syntax and structures but
+may require manual adjustments for complex code.
+
+Args:
+    filename: Path to the .py file to convert
+
+Examples:
+    jac py2jac myscript.py > converted.jac
+"""
 @cmd_registry.register
 def py2jac(filename: str) -> None {
     import jaclang.pycore.unitree as uni;
@@ -537,7 +730,19 @@ def py2jac(filename: str) -> None {
     }
 }
 
-"""Convert a Jac file to Python code.\n\n    Translates Jac source code to equivalent Python code. The generated Python\n    uses direct imports from jaclang.lib, making the output clean and suitable\n    for use as a standalone library or for integrating Jac components with\n    Python projects.\n\n    Args:\n        filename: Path to the .jac file to convert\n\n    Examples:\n        jac jac2py myprogram.jac > converted.py\n    """
+"""Convert a Jac file to Python code.
+
+Translates Jac source code to equivalent Python code. The generated Python
+uses direct imports from jaclang.lib, making the output clean and suitable
+for use as a standalone library or for integrating Jac components with
+Python projects.
+
+Args:
+    filename: Path to the .jac file to convert
+
+Examples:
+    jac jac2py myprogram.jac > converted.py
+"""
 @cmd_registry.register
 def jac2py(filename: str) -> None {
     import from jaclang.pycore.program { JacProgram }
@@ -554,7 +759,19 @@ def jac2py(filename: str) -> None {
     }
 }
 
-"""Convert a Jac file to JavaScript code.\n\n    Translates Jac source code to equivalent JavaScript/ECMAScript code using\n    the ESTree AST specification. This allows Jac programs to run in JavaScript\n    environments like Node.js or web browsers.\n\n    Args:\n        filename: Path to the .jac file to convert\n\n    Examples:\n        jac js myprogram.jac > myprogram.js\n        jac js myprogram.jac\n    """
+"""Convert a Jac file to JavaScript code.
+
+Translates Jac source code to equivalent JavaScript/ECMAScript code using
+the ESTree AST specification. This allows Jac programs to run in JavaScript
+environments like Node.js or web browsers.
+
+Args:
+    filename: Path to the .jac file to convert
+
+Examples:
+    jac js myprogram.jac > myprogram.js
+    jac js myprogram.jac
+"""
 @cmd_registry.register
 def js(filename: str) -> None {
     import from jaclang.pycore.program { JacProgram }
@@ -588,7 +805,29 @@ def js(filename: str) -> None {
     }
 }
 
-"""Start a REST API server for the specified .jac file.\n\n    Executes the target module and turns all functions into authenticated REST API\n    endpoints. Function signatures are introspected to create the API interface.\n    Walkers are converted to REST APIs where their fields become the interface,\n    with an additional target_node field for spawning location.\n\n    Each user gets their own persistent root node that persists across runs.\n    Users must create an account and authenticate to access the API.\n\n    Args:\n        filename: Path to the .jac file to serve\n        session: Session identifier for persistent state (default: auto-generated)\n        port: Port to run the server on (default: 8000)\n        main: Treat the module as __main__ (default: True)\n        faux: Perform introspection and print endpoint docs without starting server (default: False)\n\n    Examples:\n        jac serve myprogram.jac\n        jac serve myprogram.jac --port 8080\n        jac serve myprogram.jac --session myapp.session\n        jac serve myprogram.jac --faux\n    """
+"""Start a REST API server for the specified .jac file.
+
+Executes the target module and turns all functions into authenticated REST API
+endpoints. Function signatures are introspected to create the API interface.
+Walkers are converted to REST APIs where their fields become the interface,
+with an additional target_node field for spawning location.
+
+Each user gets their own persistent root node that persists across runs.
+Users must create an account and authenticate to access the API.
+
+Args:
+    filename: Path to the .jac file to serve
+    session: Session identifier for persistent state (default: auto-generated)
+    port: Port to run the server on (default: 8000)
+    main: Treat the module as __main__ (default: True)
+    faux: Perform introspection and print endpoint docs without starting server (default: False)
+
+Examples:
+    jac serve myprogram.jac
+    jac serve myprogram.jac --port 8080
+    jac serve myprogram.jac --session myapp.session
+    jac serve myprogram.jac --faux
+"""
 @cmd_registry.register
 def serve(
     filename: str,

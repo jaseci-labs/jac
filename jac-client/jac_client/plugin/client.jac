@@ -6,11 +6,12 @@ import types;
 import from http.server { BaseHTTPRequestHandler }
 import from pathlib { Path }
 import from typing { Any, Literal, TypeAlias }
-import from jaclang.runtimelib.client_bundle { ClientBundle }
-import from jaclang.pycore.runtime { JacRuntime as Jac }
-import from jaclang.pycore.runtime { hookimpl }
+import from jaclang.runtimelib.client_bundle { ClientBundle, ClientBundleError }
+import from jaclang.runtimelib.runtime { JacRuntime as Jac }
+import from jaclang.runtimelib.runtime { hookimpl }
 import from jaclang.runtimelib.server { ModuleIntrospector }
 import from .vite_client_bundle { ViteClientBundleBuilder }
+import from .src.vite_bundler { ViteBundler }
 
 with entry {
     JsonValue: TypeAlias = None | str | int | float | bool | list['JsonValue'] | dict[
@@ -66,7 +67,31 @@ class JacClient {
     @staticmethod @hookimpl
     static def get_client_bundle_builder()  -> ViteClientBundleBuilder {
         base_path = Path(Jac.base_path_dir);
-        package_json_path = base_path / 'package.json';
+        # package.json should only exist in .jac-client.configs/
+        generated_package_json = base_path / '.jac-client.configs' / 'package.json';
+
+        # Generate package.json if it doesn't exist
+        if not generated_package_json.exists() {
+            # Use ViteBundler to generate package.json from config.json
+            bundler = ViteBundler(base_path);
+            generated_path = bundler.create_package_json();
+            # Verify the file was created and resolve to absolute path
+            if not generated_path.exists() {
+                raise ClientBundleError(
+                    f'Failed to generate package.json at {generated_path}'
+                ) ;
+            }
+            package_json_path = generated_path.resolve();
+        } else {
+            package_json_path = generated_package_json.resolve();
+        }
+
+        # Final verification that package.json exists before creating builder
+        if not package_json_path.exists() {
+            raise ClientBundleError(
+                f'package.json not found at {package_json_path}. Expected at {generated_package_json}'
+            ) ;
+        }
         output_dir = base_path / 'dist';
         runtime_path = Path(__file__).with_name('client_runtime.jac');
         return ViteClientBundleBuilder(

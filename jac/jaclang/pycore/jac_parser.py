@@ -3073,8 +3073,9 @@ class JacParser(Transform[uni.Source, uni.Module]):
             jsx_text: JSX_TEXT | jsx_text_keyword
             """
             if text := self.match_token(Tok.JSX_TEXT):
+                escaped = text.value.replace('"', '\\"').replace("'", "\\'")
                 return uni.JsxText(
-                    value=text,
+                    value=escaped,
                     kid=self.cur_nodes,
                 )
             # Handle keywords that can appear as text in JSX content

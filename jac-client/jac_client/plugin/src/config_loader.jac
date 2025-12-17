@@ -24,7 +24,14 @@ class JacClientConfig {
                 'server': {},
                 'resolve': {}
             },
-            'ts': {}
+            'ts': {},
+            'package': {
+                'name': '',
+                'version': '1.0.0',
+                'description': '',
+                'dependencies': {},
+                'devDependencies': {}
+            }
         };
     }
 
@@ -82,5 +89,11 @@ class JacClientConfig {
     def get_ts_config(self: JacClientConfig) -> dict[str, Any] {
         config = self.load();
         return config.get('ts', {});
+    }
+
+    """Get package.json-specific configuration."""
+    def get_package_config(self: JacClientConfig) -> dict[str, Any] {
+        config = self.load();
+        return config.get('package', {});
     }
 }

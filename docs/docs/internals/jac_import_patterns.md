@@ -165,8 +165,8 @@ cl {
     import from ...config.constants { API_URL }
 
     def MyComponent() {
-        let [count, setCount] = useState(0);
-        let now = DateFns.format(new Date());
+        [count, setCount] = useState(0);
+        now = DateFns.format(new Date());
         axios.get(API_URL);
 
         return count;
@@ -192,8 +192,8 @@ import { formatDate } from "../lib.helpers";
 import { API_URL } from "../../config.constants";
 
 function MyComponent() {
-  let [count, setCount] = useState(0);
-  let now = DateFns.format(new Date());
+  [count, setCount] = useState(0);
+  now = DateFns.format(new Date());
   axios.get(API_URL);
   return count;
 }

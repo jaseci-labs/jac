@@ -1,0 +1,19 @@
+{
+  "vite": {
+    "plugins": [],
+    "lib_imports": [],
+    "build": {},
+    "server": {},
+    "resolve": {}
+  },
+  "ts": {},
+  "package": {
+    "name": "styled-components",
+    "version": "1.0.0",
+    "description": "Jac application: styled-components",
+    "dependencies": {
+      "styled-components": "^6.1.13"
+    },
+    "devDependencies": {}
+  }
+}
