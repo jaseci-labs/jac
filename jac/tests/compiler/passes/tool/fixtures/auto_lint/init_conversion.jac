@@ -36,7 +36,7 @@ obj DataClass {
     has y: int;
     has computed: int;
 
-    def __post_init__(self: DataClass) -> None {
+    def __post_init__()  -> None {
         self.computed = self.x + self.y;
     }
 }
