@@ -11,7 +11,7 @@ import types
 from collections import OrderedDict
 from collections.abc import Callable, Coroutine, Mapping, Sequence
 from concurrent.futures import Future
-from dataclasses import MISSING, dataclass, field
+from dataclasses import MISSING, dataclass, field, fields, is_dataclass
 from functools import wraps
 from inspect import getfile
 from logging import getLogger
@@ -24,6 +24,8 @@ from typing import (
     TypeAlias,
     TypeVar,
     cast,
+    get_args,
+    get_origin,
     get_type_hints,
 )
 from uuid import UUID
@@ -1638,6 +1640,83 @@ class JacBasics:
         setattr(func, "__jac_exit", None)  # noqa:B010
         return func
 
+    @staticmethod
+    def _short_type_name(t: object) -> str:
+        """Return a short, readable type name for annotations."""
+        if t is inspect._empty:
+            return "Any"
+
+        origin = get_origin(t)
+        if origin is not None:
+            name = getattr(origin, "__name__", str(origin).replace("typing.", ""))
+            args = get_args(t)
+            if not args:
+                return name
+            return f"{name}[{','.join(JacBasics._short_type_name(a) for a in args)}]"
+
+        return getattr(t, "__name__", str(t).replace("typing.", ""))
+
+    @staticmethod
+    def _signature_summary(func: Callable) -> str:
+        """Summarize function signature as (T1,T2)->R (drop param names/self)."""
+        try:
+            sig = inspect.signature(func)
+        except (TypeError, ValueError):
+            return ""
+
+        params: list[str] = []
+        for p in sig.parameters.values():
+            if p.name == "self":
+                continue
+            params.append(JacBasics._short_type_name(p.annotation))
+
+        ret = JacBasics._short_type_name(sig.return_annotation)
+        return f"({','.join(params)})->{ret}"
+
+    @staticmethod
+    def _safe_repr(v: object, limit: int = 120) -> str:
+        """Keep repr readable; avoids huge dumps while staying generic."""
+        s = repr(v)
+        return s if len(s) <= limit else s[: limit - 1] + "…"
+
+    @staticmethod
+    def _describe_node(obj: NodeArchetype | EdgeArchetype) -> str:
+        """Single-line description used for LLM routing."""
+        cls = obj.__class__
+
+        # Attributes
+        attrs: list[str] = []
+        if is_dataclass(obj):
+            for f in fields(cls):
+                attrs.append(f"{f.name}={JacBasics._safe_repr(getattr(obj, f.name))}")
+        else:
+            for k, v in vars(obj).items():
+                if k.startswith("_"):
+                    continue
+                attrs.append(f"{k}={JacBasics._safe_repr(v)}")
+
+        # Methods
+        methods: list[str] = []
+        for m_name, func in inspect.getmembers(cls, predicate=inspect.isfunction):
+            if m_name.startswith("__"):
+                continue
+            sig = JacBasics._signature_summary(func)
+            methods.append(f"{m_name}{sig}" if sig else m_name)
+
+        parts = [cls.__name__]
+        if attrs:
+            parts.append("attrs:" + ",".join(attrs))
+        if methods:
+            parts.append("methods:" + ",".join(methods))
+        return " — ".join(parts)
+
+    @staticmethod
+    def _describe_nodes_list(objects: list[NodeArchetype | EdgeArchetype]) -> str:
+        """One object per line, index-friendly for returning list[int]."""
+        return "\n".join(
+            f"{i}) {JacBasics._describe_node(obj)}" for i, obj in enumerate(objects)
+        )
+
 
 class JacClientBundle:
     """Jac Client Bundle Operations - Generic interface for client bundling."""
@@ -1795,12 +1874,14 @@ class JacByLLM:
 
     @staticmethod
     def filter_visitable_by(
-        connected_nodes: list[NodeArchetype], model: object
+        connected_nodes: list[NodeArchetype], model: object, descriptions: str = ""
     ) -> list[NodeArchetype]:
         visitable_list: list = []
 
         @JacByLLM.by(model=model)
-        def _filter_visitable_by(connected_nodes: list[NodeArchetype]) -> list[int]:
+        def _filter_visitable_by(
+            connected_nodes: list[NodeArchetype], descriptions: str = ""
+        ) -> list[int]:
             """
             Determine which connected nodes are visitable using an LLM.
 
@@ -1812,7 +1893,8 @@ class JacByLLM:
             """
             return []
 
-        indexes = _filter_visitable_by(connected_nodes)
+        descriptions = JacBasics._describe_nodes_list(connected_nodes)
+        indexes = _filter_visitable_by(connected_nodes, descriptions)
         for idx in indexes:
             visitable_list.append(connected_nodes[idx])
 
