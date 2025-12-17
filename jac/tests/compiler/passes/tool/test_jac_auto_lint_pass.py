@@ -189,6 +189,71 @@ class TestIsPureExpression:
         pass
 
 
+class TestStaticmethodConversion:
+    """Tests for converting @staticmethod decorator to static keyword."""
+
+    def test_staticmethod_to_static(
+        self, auto_lint_fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that @staticmethod decorator is converted to static keyword."""
+        input_path = auto_lint_fixture_path("staticmethod_decorator.jac")
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True)
+        formatted = prog.mod.main.gen.jac
+
+        # Should use static keyword instead of @staticmethod decorator
+        assert "static def add" in formatted
+        assert "static def multiply" in formatted
+
+        # Should NOT have @staticmethod decorator in code (may be in docstring)
+        # Count occurrences - should only appear in the docstring
+        assert formatted.count("@staticmethod") == 1  # Only in docstring
+        assert "@staticmethod\n" not in formatted  # No decorator usage
+
+        # Instance method should remain unchanged
+        assert "def instance_method" in formatted
+        assert "static def instance_method" not in formatted
+
+    def test_already_static_not_modified(
+        self, auto_lint_fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that methods with static keyword already are not affected."""
+        input_path = auto_lint_fixture_path("staticmethod_decorator.jac")
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True)
+        formatted = prog.mod.main.gen.jac
+
+        # Should still have static keyword
+        assert "static def already_static" in formatted
+
+    def test_multiple_decorators_preserved(
+        self, auto_lint_fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that other decorators are preserved when @staticmethod is removed."""
+        input_path = auto_lint_fixture_path("staticmethod_decorator.jac")
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True)
+        formatted = prog.mod.main.gen.jac
+
+        # Other decorators should be preserved
+        assert "@some_decorator" in formatted
+
+        # Should be static now
+        assert "static def decorated_static" in formatted
+
+    def test_staticmethod_no_lint_preserves_decorator(
+        self, auto_lint_fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that auto_lint=False preserves @staticmethod decorator."""
+        input_path = auto_lint_fixture_path("staticmethod_decorator.jac")
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=False)
+        formatted = prog.mod.main.gen.jac
+
+        # Should still have @staticmethod decorator
+        assert "@staticmethod" in formatted
+
+
 class TestFormatCommandIntegration:
     """Integration tests for the format CLI command."""
 

@@ -2,6 +2,7 @@
 
 This pass applies automatic linting corrections to Jac code, including:
 - Converting `with entry` blocks to `glob` declarations (in-place)
+- Converting `@staticmethod` decorator to `static` keyword
 - (Future) Import organization
 - (Future) Redundant code removal
 """
@@ -85,5 +86,88 @@ class JacAutoLintPass(UniPass) {
         );
         glob_node.normalize(deep=True);
         return glob_node;
+    }
+
+    """Process ability to convert @staticmethod decorator to static keyword."""
+    def enter_ability(self: JacAutoLintPass, <>node: uni.Ability) -> None {
+        if not self.lint_enabled {
+            return;
+        }
+
+        # Check if @staticmethod decorator is present in decorators list
+        if <>node.decorators {
+            has_staticmethod = False;
+            for dec in <>node.decorators {
+                if isinstance(dec, uni.Name) and dec.value == "staticmethod" {
+                    has_staticmethod = True;
+                    break;
+                }
+            }
+            if has_staticmethod {
+                # Set static flag if not already set
+                if not <>node.is_static {
+                    <>node.is_static = True;
+                }
+                # Remove @staticmethod from decorators list
+                new_decorators: list[uni.Expr] = [
+                    dec
+                    for dec in <>node.decorators
+                    if not (isinstance(dec, uni.Name) and dec.value == "staticmethod")
+                ];
+                <>node.decorators = new_decorators if new_decorators else None;
+            }
+        }
+
+        # Surgically remove @staticmethod tokens from kids list
+        # (preserves original tokens for comment associations)
+        if <>node.is_static {
+            self._remove_staticmethod_from_kids(<>node);
+        }
+    }
+
+    """Remove @staticmethod decorator tokens from ability's kid list.
+
+    This preserves original token objects (for comment associations) while
+    removing only the stale @staticmethod decorator tokens.
+    """
+    def _remove_staticmethod_from_kids(
+        self: JacAutoLintPass, <>node: uni.Ability
+    ) -> None {
+        new_kids: list[uni.UniNode] = [];
+        i = 0;
+        kids = <>node.kid;
+        skip_next_ws = False;
+
+        while i < len(kids) {
+            kid = kids[i];
+
+            # Check for @ followed by staticmethod Name
+            if (
+                isinstance(kid, uni.Token) and kid.value == "@" and (i + 1) < len(kids)
+            ) {
+                next_kid = kids[i + 1];
+                if isinstance(next_kid, uni.Name) and next_kid.value == "staticmethod" {
+                    # Skip both @ and staticmethod
+                    i += 2;
+                    skip_next_ws = True;
+                    continue;
+                }
+            }
+
+            # Skip whitespace/newline after removed decorator
+            if skip_next_ws and isinstance(kid, uni.Token) {
+                if kid.name in ("WS", "NL", "NEWLINE") or kid.value in ("\n", " ", "") {
+                    i += 1;
+                    skip_next_ws = False;
+                    continue;
+                }
+            }
+            skip_next_ws = False;
+
+            new_kids.append(kid);
+            i += 1;
+        }
+
+        <>node.kid = new_kids;
     }
 }
