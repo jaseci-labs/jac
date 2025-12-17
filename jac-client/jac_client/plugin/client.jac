@@ -64,7 +64,8 @@ class JacClientModuleIntrospector(ModuleIntrospector) {
 """Jac Client."""
 class JacClient {
     """Get the client bundle builder instance."""
-    @staticmethod @hookimpl
+    @staticmethod
+    @hookimpl
     static def get_client_bundle_builder()  -> ViteClientBundleBuilder {
         base_path = Path(Jac.base_path_dir);
         # package.json should only exist in .jac-client.configs/
@@ -103,7 +104,8 @@ class JacClient {
     }
 
     """Build a client bundle for the supplied module."""
-    @staticmethod @hookimpl
+    @staticmethod
+    @hookimpl
     static def build_client_bundle(
         module: types.ModuleType, force: bool = False
     ) -> ClientBundle {
@@ -112,7 +114,8 @@ class JacClient {
     }
 
     """Get a module introspector for the supplied module."""
-    @staticmethod @hookimpl
+    @staticmethod
+    @hookimpl
     static def get_module_introspector(
         module_name: str, base_path: (str | None)
     ) -> ModuleIntrospector {
@@ -120,7 +123,8 @@ class JacClient {
     }
 
     """Send static file response (images, fonts, etc.)."""
-    @staticmethod @hookimpl
+    @staticmethod
+    @hookimpl
     static def send_static_file(
         handler: BaseHTTPRequestHandler,
         file_path: Path,
