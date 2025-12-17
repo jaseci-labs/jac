@@ -164,6 +164,16 @@ class TestJacAutoLintPass:
         assert "glob module_var" in formatted
         assert "glob cls_obj" in formatted
 
+        # Module-level with entry containing TYPE_CHECKING blocks should extract
+        # assignments to glob while keeping if blocks in with entry (since if
+        # statements cannot be at bare module level in Jac)
+        assert "glob a = 5;" in formatted
+        assert "glob b = 6;" in formatted
+        # The if TYPE_CHECKING blocks must stay inside with entry
+        assert "with entry {\n    if TYPE_CHECKING" in formatted
+        assert "import from math { SupportsFloat }" in formatted
+        assert "import from math { SupportsIndex }" in formatted
+
     def test_init_postinit_conversion(
         self, auto_lint_fixture_path: Callable[[str], str]
     ) -> None:

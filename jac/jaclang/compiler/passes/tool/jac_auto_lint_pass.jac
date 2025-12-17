@@ -35,16 +35,36 @@ class JacAutoLintPass(UniPass) {
 
         for stmt in module.body {
             if isinstance(stmt, uni.ModuleCode) and stmt.name is None {
-                # Unnamed with entry block - transform assignments to globs in-place
+                # Unnamed with entry block - extract module-level constructs
+                # while preserving order for correctness
+                pending_entry_stmts: list = [];
                 for inner_stmt in stmt.body {
+                    # Check if this statement should be extracted to module level
+                    extracted_stmt: uni.UniNode | None = None;
                     if isinstance(inner_stmt, uni.Assignment)
                     and self.can_convert_to_glob(inner_stmt) {
-                        glob_node = self.create_glob_from_assignment(inner_stmt);
-                        new_body.append(glob_node);
-                    } elif not isinstance(inner_stmt, uni.Semi) {
-                        # Keep non-assignment, non-empty statements as-is
-                        new_body.append(inner_stmt);
+                        extracted_stmt = self.create_glob_from_assignment(inner_stmt);
+                    } elif self.is_module_level_construct(inner_stmt) {
+                        extracted_stmt = inner_stmt;
                     }
+
+                    if extracted_stmt is not None {
+                        # Flush pending entry statements first to preserve order
+                        if pending_entry_stmts {
+                            new_body.append(
+                                self.create_entry_block(pending_entry_stmts)
+                            );
+                            pending_entry_stmts = [];
+                        }
+                        new_body.append(extracted_stmt);
+                    } elif not isinstance(inner_stmt, uni.Semi) {
+                        # Accumulate non-module-level statements for with entry
+                        pending_entry_stmts.append(inner_stmt);
+                    }
+                }
+                # Flush any remaining pending entry statements
+                if pending_entry_stmts {
+                    new_body.append(self.create_entry_block(pending_entry_stmts));
                 }
             } else {
                 new_body.append(stmt);
@@ -78,6 +98,23 @@ class JacAutoLintPass(UniPass) {
         return True;
     }
 
+    """Check if a statement is a module-level construct that can be extracted."""
+    def is_module_level_construct(self: JacAutoLintPass, stmt: uni.UniNode) -> bool {
+        # These types can exist at module level and should be extracted
+        return isinstance(
+            stmt,
+            (
+                uni.Import,
+                uni.Archetype,
+                uni.Ability,
+                uni.Enum,
+                uni.GlobalVars,
+                uni.Test,
+                uni.PyInlineCode
+            )
+        );
+    }
+
     """Create a GlobalVars node from an assignment."""
     def create_glob_from_assignment(
         self: JacAutoLintPass, assignment: uni.Assignment
@@ -89,8 +126,17 @@ class JacAutoLintPass(UniPass) {
             kid=[assignment],
             doc=None
         );
-        glob_node.normalize(deep=True);
+        # Normalize shallowly - generates glob keyword but preserves child loc info
+        glob_node.normalize(deep=False);
         return glob_node;
+    }
+
+    """Create a new ModuleCode (with entry) block from a list of statements."""
+    def create_entry_block(self: JacAutoLintPass, stmts: list) -> uni.ModuleCode {
+        entry_block = uni.ModuleCode(name=None, body=stmts, kid=stmts, doc=None);
+        # Normalize shallowly - generates with entry tokens but preserves child loc info
+        entry_block.normalize(deep=False);
+        return entry_block;
     }
 
     """Check if two ArchHas nodes can be combined (same static, access, frozen)."""
