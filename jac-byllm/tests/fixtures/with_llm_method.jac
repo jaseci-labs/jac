@@ -6,7 +6,7 @@ class PersonalityIndex {
 
 enum Personality { INTROVERT, EXTROVERT }
 
-glob llm = MockLLM(model_name="mockllm", outputs=[Personality.INTROVERT],);
+glob llm = MockLLM(model_name="mockllm", config={"outputs": [Personality.INTROVERT]});
 
 glob personality_examples: dict[str, Personality | None] = {Personality.INTROVERT,Personality.EXTROVERT};
 

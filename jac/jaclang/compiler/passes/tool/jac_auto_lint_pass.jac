@@ -3,6 +3,10 @@
 This pass applies automatic linting corrections to Jac code, including:
 - Converting `with entry` blocks to `glob` declarations (in-place)
 - Converting `@staticmethod` decorator to `static` keyword
+- Combining consecutive `has` statements with same modifiers into single statement
+- Converting `def __init__` to `can init` (Jac style)
+- Converting `def __post_init__` to `can postinit` (Jac style)
+- Removing empty parentheses from function/method declarations (def foo() -> def foo)
 - (Future) Import organization
 - (Future) Redundant code removal
 """
@@ -89,16 +93,145 @@ class JacAutoLintPass(UniPass) {
         return glob_node;
     }
 
-    """Process ability to convert @staticmethod decorator to static keyword."""
-    def enter_ability(self: JacAutoLintPass, <>node: uni.Ability) -> None {
+    """Check if two ArchHas nodes can be combined (same static, access, frozen)."""
+    def can_combine_has(
+        self: JacAutoLintPass, has1: uni.ArchHas, has2: uni.ArchHas
+    ) -> bool {
+        # Must have same static modifier
+        if has1.is_static != has2.is_static {
+            return False;
+        }
+
+        # Must have same frozen modifier
+        if has1.is_frozen != has2.is_frozen {
+            return False;
+        }
+
+        # Must have same access modifier
+        access1 = has1.access.tag.name if has1.access else None;
+        access2 = has2.access.tag.name if has2.access else None;
+        if access1 != access2 {
+            return False;
+        }
+
+        return True;
+    }
+
+    """Combine consecutive has statements in a body list."""
+    def combine_consecutive_has(self: JacAutoLintPass, body: list) -> list {
+        if len(body) <= 1 {
+            return body;
+        }
+
+        new_body: list = [];
+        i = 0;
+
+        while i < len(body) {
+            stmt = body[i];
+
+            if isinstance(stmt, uni.ArchHas) {
+                # Start collecting consecutive compatible has statements
+                combined_vars: list = list(stmt.vars);
+                combined_doc = stmt.doc;
+                base_has = stmt;
+                j = i + 1;
+                while j < len(body) {
+                    next_stmt = body[j];
+                    if isinstance(next_stmt, uni.ArchHas)
+                    and self.can_combine_has(base_has, next_stmt) {
+                        # Combine the vars
+                        combined_vars.extend(next_stmt.vars);
+                        j += 1;
+                    } else {
+                        break;
+                    }
+                }
+                # If we combined multiple has statements, create new one
+                if j > i + 1 {
+                    new_has = uni.ArchHas(
+                        is_static=base_has.is_static,
+                        access=base_has.access,
+                        vars=combined_vars,
+                        is_frozen=base_has.is_frozen,
+                        kid=combined_vars,
+                        doc=combined_doc
+                    );
+                    new_has.normalize(deep=True);
+                    new_body.append(new_has);
+                } else {
+                    new_body.append(stmt);
+                }
+                i = j;
+            } else {
+                new_body.append(stmt);
+                i += 1;
+            }
+        }
+
+        return new_body;
+    }
+
+    """Process Archetype to combine consecutive has statements."""
+    def enter_archetype(self: JacAutoLintPass, node: uni.Archetype) -> None {
         if not self.lint_enabled {
             return;
         }
 
-        # Check if @staticmethod decorator is present in decorators list
-        if <>node.decorators {
+        arch = node;
+        if arch.body is not None and isinstance(arch.body, list) {
+            new_body = self.combine_consecutive_has(list(arch.body));
+            if len(new_body) != len(arch.body) {
+                arch.body = new_body;
+                self.recalculate_parents(arch);
+                arch.normalize(deep=False);
+            }
+        }
+    }
+
+    """Process Enum to combine consecutive has statements."""
+    def enter_enum(self: JacAutoLintPass, node: uni.Enum) -> None {
+        if not self.lint_enabled {
+            return;
+        }
+
+        enum_node = node;
+        if enum_node.body is not None and isinstance(enum_node.body, list) {
+            new_body = self.combine_consecutive_has(list(enum_node.body));
+            if len(new_body) != len(enum_node.body) {
+                enum_node.body = new_body;
+                self.recalculate_parents(enum_node);
+                enum_node.normalize(deep=False);
+            }
+        }
+    }
+
+    """Process ImplDef to combine consecutive has statements."""
+    def enter_impl_def(self: JacAutoLintPass, node: uni.ImplDef) -> None {
+        if not self.lint_enabled {
+            return;
+        }
+
+        impl_node = node;
+        if impl_node.body is not None and isinstance(impl_node.body, list) {
+            new_body = self.combine_consecutive_has(list(impl_node.body));
+            if len(new_body) != len(impl_node.body) {
+                impl_node.body = new_body;
+                self.recalculate_parents(impl_node);
+                impl_node.normalize(deep=False);
+            }
+        }
+    }
+
+    """Process ability to convert @staticmethod decorator to static keyword and __init__/__post_init__ to init/postinit."""
+    def enter_ability(self: JacAutoLintPass, ability_node: uni.Ability) -> None {
+        if not self.lint_enabled {
+            return;
+        }
+
+        # Handle @staticmethod decorator conversion
+        if ability_node.decorators {
             has_staticmethod = False;
-            for dec in <>node.decorators {
+            for dec in ability_node.decorators {
                 if isinstance(dec, uni.Name) and dec.value == "staticmethod" {
                     has_staticmethod = True;
                     break;
@@ -106,23 +239,53 @@ class JacAutoLintPass(UniPass) {
             }
             if has_staticmethod {
                 # Set static flag if not already set
-                if not <>node.is_static {
-                    <>node.is_static = True;
+                if not ability_node.is_static {
+                    ability_node.is_static = True;
                 }
                 # Remove @staticmethod from decorators list
                 new_decorators: list[uni.Expr] = [
                     dec
-                    for dec in <>node.decorators
+                    for dec in ability_node.decorators
                     if not (isinstance(dec, uni.Name) and dec.value == "staticmethod")
                 ];
-                <>node.decorators = new_decorators if new_decorators else None;
+                ability_node.decorators = new_decorators if new_decorators else None;
             }
         }
 
         # Surgically remove @staticmethod tokens from kids list
         # (preserves original tokens for comment associations)
-        if <>node.is_static {
-            self._remove_staticmethod_from_kids(<>node);
+        if ability_node.is_static {
+            self._remove_staticmethod_from_kids(ability_node);
+        }
+
+        # Handle __init__ and __post_init__ conversion
+        if not ability_node.is_method {
+            return;
+        }
+        if not isinstance(ability_node.name_ref, uni.Name)
+        or isinstance(ability_node.name_ref, uni.SpecialVarRef) {
+            return;
+        }
+        new_tok: Tok | None = None;
+        if ability_node.name_ref.value == "__init__" {
+            new_tok = Tok.KW_INIT;
+        } elif ability_node.name_ref.value == "__post_init__" {
+            new_tok = Tok.KW_POST_INIT;
+        }
+        if new_tok is not None {
+            old_ref = ability_node.name_ref;
+            old_ref.name = new_tok.value;
+            old_ref.value = new_tok.value;
+            special_ref = uni.SpecialVarRef(var=old_ref);
+            special_ref.parent = ability_node;
+            ability_node.name_ref = special_ref;
+            ability_node.name_spec = special_ref;
+            for (idx, kid) in enumerate(ability_node.kid) {
+                if kid is old_ref {
+                    ability_node.kid[idx] = special_ref;
+                    break;
+                }
+            }
         }
     }
 
@@ -132,11 +295,11 @@ class JacAutoLintPass(UniPass) {
     removing only the @staticmethod decorator tokens and inserting the static keyword.
     """
     def _remove_staticmethod_from_kids(
-        self: JacAutoLintPass, <>node: uni.Ability
+        self: JacAutoLintPass, ability_node: uni.Ability
     ) -> None {
         new_kids: list[uni.UniNode] = [];
         i = 0;
-        kids = <>node.kid;
+        kids = ability_node.kid;
         skip_next_ws = False;
         has_static_kw = False;
         staticmethod_loc: (uni.Name | None) = None;
@@ -183,7 +346,7 @@ class JacAutoLintPass(UniPass) {
                 and isinstance(kid, uni.Token)
                 and kid.name in (Tok.KW_DEF, Tok.KW_CAN)
             ) {
-                static_kw = <>node.gen_token(Tok.KW_STATIC);
+                static_kw = ability_node.gen_token(Tok.KW_STATIC);
                 # Copy location from @staticmethod for comment association
                 if staticmethod_loc {
                     static_kw.line_no = staticmethod_loc.loc.first_line;
@@ -198,6 +361,58 @@ class JacAutoLintPass(UniPass) {
             i += 1;
         }
 
-        <>node.kid = new_kids;
+        ability_node.kid = new_kids;
+    }
+
+    """Remove empty parentheses from function signatures with no parameters.
+
+    This handles both cases:
+    - No params, no return type: Remove the entire signature from the ability
+    - No params, with return type: Remove just LPAREN/RPAREN, keep return type
+    """
+    def exit_ability(self: JacAutoLintPass, ability_node: uni.Ability) -> None {
+        if not self.lint_enabled {
+            return;
+        }
+        sig = ability_node.signature;
+        if not isinstance(sig, uni.FuncSignature) {
+            return;
+        }
+        # Check if signature has any parameters
+        has_params = bool(
+            sig.posonly_params
+            or sig.params
+            or sig.varargs
+            or sig.kwonlyargs
+            or sig.kwargs
+        );
+        if has_params {
+            return;
+        }
+        # No parameters - handle based on whether there's a return type
+        if sig.return_type is None {
+            # No params and no return type - remove signature entirely
+            ability_node.signature = None;
+            # Remove signature from ability's kid list
+            new_kid: list = [];
+            for kid in ability_node.kid {
+                if kid is not sig {
+                    new_kid.append(kid);
+                }
+            }
+            ability_node.kid = new_kid;
+        } else {
+            # Has return type - remove just the parentheses tokens
+            new_kid: list = [];
+            for kid in sig.kid {
+                if isinstance(kid, uni.Token) and kid.name in (Tok.LPAREN, Tok.RPAREN) {
+                    continue;
+                }
+                new_kid.append(kid);
+            }
+            if len(new_kid) != len(sig.kid) and len(new_kid) > 0 {
+                sig.set_kids(nodes=new_kid);
+            }
+        }
     }
 }

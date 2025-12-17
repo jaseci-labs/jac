@@ -1,7 +1,7 @@
 import from byllm.lib { Model }
 import wikipedia;
 
-glob llm = Model(verbose=True, model_name="gpt-4o-mini");
+glob llm = Model(model_name="gpt-4o-mini", config={"verbose": True});
 
 def get_wikipedia_summary(title: str) -> str {
     try {

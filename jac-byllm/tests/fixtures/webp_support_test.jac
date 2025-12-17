@@ -16,14 +16,16 @@ obj Person {
 glob llm = MockLLM(
     # model_name="gpt-4o-mini",
     model_name="mockllm",
-    outputs=[
-        Person(
-            full_name='Albert Einstein',
-            year_of_death='1955',
-            personality=Personality.EXTROVERT,
-        ),
+    config={
+        "outputs": [
+            Person(
+                full_name='Albert Einstein',
+                year_of_death='1955',
+                personality=Personality.EXTROVERT,
+            ),
 
-    ],
+        ]
+    },
 );
 
 def get_person_info(image_content: Image) -> Person by llm();

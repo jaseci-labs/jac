@@ -17,20 +17,23 @@ def run_and_test_python_code(code: str) -> str {
 glob models = {
     "text-gen": MockLLM(
         # model_name="gpt-4o-mini",
-        model_name="mockllm", outputs=["Hello, Alice! It's great to see you!"]
+        model_name="mockllm",
+        config={"outputs": ["Hello, Alice! It's great to see you!"]}
     ),
     "code-gen": MockLLM(
         # model_name="gpt-4o-mini",
         model_name="mockllm",
-        outputs=[
-            MockToolCall(
-                tool=run_and_test_python_code,
-                args={
-                    "code": "name = 'Alice'\nprint(f'Hello, {name}! Welcome to the Python world!')"
-                }
-            ),
-            "name = 'Alice'\nprint(f'Hello, {name}! Welcome to the Python world!')"
-        ],
+        config={
+            "outputs": [
+                MockToolCall(
+                    tool=run_and_test_python_code,
+                    args={
+                        "code": "name = 'Alice'\nprint(f'Hello, {name}! Welcome to the Python world!')"
+                    }
+                ),
+                "name = 'Alice'\nprint(f'Hello, {name}! Welcome to the Python world!')"
+            ]
+        },
     )(
         tools=[run_and_test_python_code]
     ),

@@ -63,8 +63,8 @@ def install_metrics_server_yaml()  -> None {
         tmpfile.write(yaml_content);
         tmpfile.flush();
         print('Applying metrics-server manifest...');
-        k8s_client = client.ApiClient();
-        utils.create_from_yaml(k8s_client, tmpfile.name);
+        K8s_client = client.ApiClient();
+        utils.create_from_yaml(K8s_client, tmpfile.name);
     }
     print('Metrics Server installation applied.');
 }

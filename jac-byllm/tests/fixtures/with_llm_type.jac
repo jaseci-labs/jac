@@ -19,22 +19,24 @@ obj University {
 
 glob llm1 = MockLLM(
     model_name="mockllm",
-    outputs=[Person(name='Albert Einstein', dob='14/03/1879', age=76)],
+    config={"outputs": [Person(name='Albert Einstein', dob='14/03/1879', age=76)]},
 );
 
 glob llm2 = MockLLM(
     model_name="mockllm",
-    outputs=[
-        University.Department(
-            name='Computer Science',
-            head=Person(name='Jason Mars', dob='1994-01-01', age=30)
-        ),
-        University.Department(
-            name='Computer Science',
-            head=Person(name='Jason Mars', dob='1994-01-01', age=30)
-        ),
+    config={
+        "outputs": [
+            University.Department(
+                name='Computer Science',
+                head=Person(name='Jason Mars', dob='1994-01-01', age=30)
+            ),
+            University.Department(
+                name='Computer Science',
+                head=Person(name='Jason Mars', dob='1994-01-01', age=30)
+            ),
 
-    ]
+        ]
+    },
 );
 
 def make_person(name: str) -> Person by llm1();

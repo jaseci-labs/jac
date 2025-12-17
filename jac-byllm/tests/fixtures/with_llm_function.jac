@@ -1,6 +1,6 @@
 import from byllm.lib { MockLLM }
 
-glob llm = MockLLM(model_name="mockllm", outputs=["👤➡️🗼"],);
+glob llm = MockLLM(model_name="mockllm", config={"outputs": ["👤➡️🗼"]});
 
 glob emoji_examples: list[dict[str, str]] = [
     {"input": "I love tp drink pina coladas", "output": "👤❤️🥤🍍🥥"},

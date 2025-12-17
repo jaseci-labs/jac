@@ -164,6 +164,68 @@ class TestJacAutoLintPass:
         assert "glob module_var" in formatted
         assert "glob cls_obj" in formatted
 
+    def test_init_postinit_conversion(
+        self, auto_lint_fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that __init__ and __post_init__ are converted to init/postinit."""
+        input_path = auto_lint_fixture_path("init_conversion.jac")
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True)
+        formatted = prog.mod.main.gen.jac
+
+        # Method definitions converted
+        assert "def __init__" not in formatted
+        assert "def __post_init__" not in formatted
+        assert "def init" in formatted
+        assert "def postinit" in formatted
+
+        # Regular methods unchanged
+        assert "def greet" in formatted
+
+        # Other __init__ usages preserved (not method definitions)
+        assert "super.__init__" in formatted
+        assert "Person().__init__" in formatted
+        assert "__init__ = 5" in formatted
+        assert "print(__init__)" in formatted
+
+
+class TestCombineConsecutiveHas:
+    """Tests for combining consecutive has statements."""
+
+    def test_consecutive_has_combined(
+        self, auto_lint_fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that consecutive has statements with same modifiers are combined."""
+        input_path = auto_lint_fixture_path("consecutive_has.jac")
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True)
+        formatted = prog.mod.main.gen.jac
+
+        # Consecutive has statements should be combined into one
+        # The three separate has statements become one with commas
+        assert "has name: str," in formatted
+        assert "age: int," in formatted
+        assert "email: str;" in formatted
+
+        # Public has statements should be combined separately
+        assert "has : pub address: str," in formatted
+        assert "phone: str;" in formatted
+
+        # Static has statements should be combined
+        assert "static has DEBUG: bool = False," in formatted
+        assert "VERSION: str = " in formatted
+        assert "MAX_RETRIES: int = 3;" in formatted
+
+        # has with different modifiers should NOT be combined with others
+        # city has default value but no access modifier, should stay separate from :pub:
+        assert "has city: str = " in formatted
+
+        # Verify statements were actually combined (count semicolons in has statements)
+        # Before: 6 separate has statements, After: 4 combined has statements
+        person_section = formatted.split("obj Person")[1].split("obj Config")[0]
+        has_count = person_section.count("has ")
+        assert has_count == 3, f"Expected 3 has statements in Person, got {has_count}"
+
 
 class TestIsPureExpression:
     """Unit tests for the is_pure_expression method."""
@@ -274,3 +336,68 @@ class TestFormatCommandIntegration:
 
         # Linting should have been applied
         assert "glob" in formatted
+
+
+class TestRemoveEmptyParens:
+    """Tests for removing empty parentheses from function declarations."""
+
+    def test_empty_parens_removed(
+        self, auto_lint_fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that empty parentheses are removed from function declarations."""
+        input_path = auto_lint_fixture_path("empty_parens.jac")
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True)
+        formatted = prog.mod.main.gen.jac
+
+        # Functions with no params should have parens removed
+        assert "def no_params {" in formatted
+        assert "def no_params()" not in formatted
+
+        # Functions with params should keep parens
+        assert "def with_params(x: int)" in formatted
+
+        # Functions with no params but return type should have parens removed
+        assert "def no_params_with_return -> int" in formatted
+        assert "def no_params_with_return()" not in formatted
+
+        # Functions with params and return type should keep parens
+        assert "def with_params_and_return(" in formatted
+        assert "x: int" in formatted
+
+    def test_method_parens_preserved_when_has_self(
+        self, auto_lint_fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that method parentheses are preserved when they have self parameter."""
+        input_path = auto_lint_fixture_path("empty_parens.jac")
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True)
+        formatted = prog.mod.main.gen.jac
+
+        # Methods with self should keep parens
+        assert "def method_with_self(self: MyClass)" in formatted
+
+        # Methods with self and other params should keep parens
+        assert (
+            "def method_with_params(self: MyClass, a: int, b: int) -> int" in formatted
+        )
+
+    def test_obj_method_parens_removed(
+        self, auto_lint_fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that empty parentheses are removed from obj method declarations."""
+        input_path = auto_lint_fixture_path("empty_parens.jac")
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True)
+        formatted = prog.mod.main.gen.jac
+
+        # obj methods with no params should have parens removed
+        assert "def reset {" in formatted
+        assert "def reset()" not in formatted
+
+        # obj methods with params should keep parens
+        assert "def increment(amount: int)" in formatted
+
+        # obj methods with no params but return type should have parens removed
+        assert "def get_count -> int" in formatted
+        assert "def get_count()" not in formatted

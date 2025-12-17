@@ -37,7 +37,6 @@ obj Message {
     has role: MessageRole;
     has content: str | list[Media];
 
-    """Convert the message to a dictionary."""
     def to_dict()  -> dict[str, object];
 }
 
@@ -46,69 +45,54 @@ obj ToolCallResultMsg(Message) {
     has tool_call_id: str;
     has name: str;  # Function name.
 
-    """Post-initialization to set the role of the message."""
     def postinit()  -> None;
-
-    """Convert the tool call result message to a dictionary."""
     def to_dict()  -> dict[str, object];
 }
 
-"""Tool class for LLM interactions."""
+"""Tool class for LLM interactions.
+
+Wraps a callable function to be used as a tool in LLM interactions.
+Provides JSON schema generation, argument parsing, and invocation capabilities.
+"""
 obj Tool {
     has func: Callable;
     has description: str = "";
     has params_desc: dict[str, str] = None;  # type: ignore
 
-    """Post-initialization to validate the function."""
     def postinit()  -> None;
-
-    """Call the tool function with the provided arguments."""
     def __call__( *args: list , **kwargs: dict)  -> object;
-
-    """Return the name of the tool function."""
     def get_name()  -> str;
-
-    """Get the description of the function."""
     static def get_func_description(func: Callable) -> str;
-
-    """Create a finish tool that returns the final output."""
     static def make_finish_tool(resp_type: type) -> Tool;
-
-    """Check if the tool is a finish tool."""
     def is_finish_tool()  -> bool;
-
-    """Return the JSON schema for the tool function."""
     def get_json_schema()  -> dict[str, object];
-
-    """Parse the arguments from JSON to the function's expected format."""
     def parse_arguments(args_json: dict) -> dict;
 }
 
-"""Tool call class for LLM interactions."""
+"""Tool call class for LLM interactions.
+
+Represents an invocation of a tool with specific arguments.
+Created from LLM responses and can be executed to get results.
+"""
 obj ToolCall {
     has call_id: str;
     has tool: Tool;
     has args: dict;
 
-    """Call the tool with the provided arguments."""
     def __call__()  -> ToolCallResultMsg;
-
-    """Return the string representation of the tool call."""
     def __str__()  -> str;
-
-    """Check if the tool is a finish tool."""
     def is_finish_call()  -> bool;
-
-    """Get the output from the finish tool call."""
     def get_output()  -> object;
 }
 
-"""Mock tool call for testing purposes."""
+"""Mock tool call for testing purposes.
+
+Used with MockLLM to simulate tool calls in tests without actual LLM invocation.
+"""
 obj MockToolCall {
     has tool: Callable;
     has args: dict;
 
-    """Convert the mock tool call to a ToolCall."""
     def to_tool_call()  -> ToolCall;
 }
 
@@ -121,21 +105,28 @@ obj CompletionResult {
 # -----------------------------------------------------------------------------
 # Media content types
 # -----------------------------------------------------------------------------
-"""Base class for message content."""
+"""Base class for message content.
+
+Abstract base for all media types that can be included in LLM messages.
+Subclasses must implement to_dict() for serialization.
+"""
 obj Media {
-    """Convert the content to a dictionary."""
     def to_dict()  -> list[dict];
 }
 
-"""Class representing text content in a message."""
+"""Text content in a message."""
 obj Text(Media) {
     has text: str;
 
-    """Convert the text content to a dictionary."""
     def to_dict()  -> list[dict];
 }
 
-"""Class representing an image."""
+"""Image content in a message.
+
+Supports various input formats including URLs, file paths, bytes, BytesIO,
+os.PathLike, and PIL Image objects. Normalizes input into a data URL or
+leaves remote/data URLs as-is.
+"""
 obj Image(Media) {
     has url:
         (
@@ -145,40 +136,24 @@ obj Image(Media) {
 
     has mime_type: str | None = None;
 
-    """Normalize input into a data URL or leave remote/data URLs as-is.
-
-    Supported inputs:
-    - HTTP(S)/GS URLs (left as-is)
-    - Data URLs (data:...)
-    - Local file paths (opened and encoded to data URL)
-    - Bytes / bytearray / memoryview
-    - File-like objects (BytesIO or any IO[bytes])
-    - os.PathLike
-    - PIL.Image.Image instances
-    """
     def postinit()  -> None;
-
-    """Map a PIL format name to a MIME type with sensible fallbacks."""
     def _format_to_mime(fmt: str | None) -> str;
-
     def _data_url_from_bytes(data: bytes, fmt: str | None) -> str;
-    """Convert the image to a dictionary."""
     def to_dict()  -> list[dict];
 }
 
 # Ref: https://cookbook.openai.com/examples/gpt_with_vision_for_video_understanding
-"""Class representing a video."""
+"""Video content in a message.
+
+Extracts frames at a specified FPS and encodes them as base64 images
+for LLM processing. See OpenAI cookbook for vision with video understanding.
+"""
 obj Video(Media) {
     has path: str;
     has fps: int = 1;
     has _base64frames: list[str] | None = None;
 
-    """Post-initialization to ensure the path is a string."""
     def postinit()  -> None;
-
-    """Load video frames as base64-encoded images."""
     def load_frames()  -> None;
-
-    """Convert the video to a dictionary."""
     def to_dict()  -> list[dict];
 }
