@@ -13,7 +13,6 @@ with entry {
 """Jac's with_llm feature."""
 class JacRuntime {
     """Call JacLLM and return the result."""
-    @staticmethod
     @hookimpl
     static def get_mtir(caller: Callable, args: dict, call_params: dict) -> object {
         import from byllm.mtir { MTIR, MTRuntime }
@@ -21,14 +20,12 @@ class JacRuntime {
     }
 
     """Call JacLLM and return the result."""
-    @staticmethod
     @hookimpl
     static def call_llm(model: Model, mtir: MTRuntime) -> object {
         return model.invoke(mtir=mtir);
     }
 
     """Python library mode decorator for Jac's by llm() syntax."""
-    @staticmethod
     @hookimpl
     static def by(model: Model) -> Callable {
         def _decorator(caller: Callable) -> Callable {
