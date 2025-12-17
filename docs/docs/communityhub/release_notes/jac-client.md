@@ -14,7 +14,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 - **Centralized Babel Configuration**: Moved Babel configuration from separate `.babelrc` files into `package.json`, centralizing project configuration and reducing file clutter in the project root.
 
-- **TypeScript Support**: Added comprehensive TypeScript support for Jac client projects, enabling integration of TypeScript/TSX components alongside Jac code. TypeScript files (`.ts`, `.tsx`) are now automatically copied during the build process and properly handled by Vite bundling. The `jac create_jac_app` CLI now includes an interactive prompt to set up TypeScript support during project creation, automatically configuring `tsconfig.json`, `vite.config.js`, and `package.json` with necessary TypeScript dependencies. [Documentation](https://docs.jaseci.org/jac-client/working-with-ts/)
+- **TypeScript Support (Enabled by Default)**: TypeScript is now automatically supported in all Jac projects by default. No configuration or prompts needed - TypeScript dependencies are automatically included in `package.json` during build time, and `tsconfig.json` is automatically generated during the first build. TypeScript files (`.ts`, `.tsx`) are automatically processed by Vite bundling, enabling seamless integration of TypeScript/TSX components alongside Jac code. The `components/` directory with a sample `Button.tsx` component is created automatically during project setup. [Documentation](https://docs.jaseci.org/jac-client/working-with-ts/)
 
 ## jac-client 0.2.3 (Latest Release)
 
