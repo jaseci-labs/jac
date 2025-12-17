@@ -2,6 +2,7 @@
 
 This pass applies automatic linting corrections to Jac code, including:
 - Converting `with entry` blocks to `glob` declarations (in-place)
+- Combining consecutive `has` statements with same modifiers into single statement
 - (Future) Import organization
 - (Future) Redundant code removal
 """
@@ -85,5 +86,139 @@ class JacAutoLintPass(UniPass) {
         );
         glob_node.normalize(deep=True);
         return glob_node;
+    }
+
+    """Check if two ArchHas nodes can be combined (same static, access, frozen)."""
+    def can_combine_has(
+        self: JacAutoLintPass, has1: uni.ArchHas, has2: uni.ArchHas
+    ) -> bool {
+        # Must have same static modifier
+        if has1.is_static != has2.is_static {
+            return False;
+        }
+
+        # Must have same frozen modifier
+        if has1.is_frozen != has2.is_frozen {
+            return False;
+        }
+
+        # Must have same access modifier
+        access1 = has1.access.tag.name if has1.access else None;
+        access2 = has2.access.tag.name if has2.access else None;
+        if access1 != access2 {
+            return False;
+        }
+
+        return True;
+    }
+
+    """Combine consecutive has statements in a body list."""
+    def combine_consecutive_has(
+        self: JacAutoLintPass, body: list
+    ) -> list {
+        if len(body) <= 1 {
+            return body;
+        }
+
+        new_body: list = [];
+        i = 0;
+
+        while i < len(body) {
+            stmt = body[i];
+
+            if isinstance(stmt, uni.ArchHas) {
+                # Start collecting consecutive compatible has statements
+                combined_vars: list = list(stmt.vars);
+                combined_doc = stmt.doc;
+                base_has = stmt;
+                j = i + 1;
+
+                while j < len(body) {
+                    next_stmt = body[j];
+                    if isinstance(next_stmt, uni.ArchHas)
+                    and self.can_combine_has(base_has, next_stmt) {
+                        # Combine the vars
+                        combined_vars.extend(next_stmt.vars);
+                        j += 1;
+                    } else {
+                        break;
+                    }
+                }
+
+                # If we combined multiple has statements, create new one
+                if j > i + 1 {
+                    new_has = uni.ArchHas(
+                        is_static=base_has.is_static,
+                        access=base_has.access,
+                        vars=combined_vars,
+                        is_frozen=base_has.is_frozen,
+                        kid=combined_vars,
+                        doc=combined_doc
+                    );
+                    new_has.normalize(deep=True);
+                    new_body.append(new_has);
+                } else {
+                    new_body.append(stmt);
+                }
+
+                i = j;
+            } else {
+                new_body.append(stmt);
+                i += 1;
+            }
+        }
+
+        return new_body;
+    }
+
+    """Process Archetype to combine consecutive has statements."""
+    def enter_archetype(self: JacAutoLintPass, node: uni.Archetype) -> None {
+        if not self.lint_enabled {
+            return;
+        }
+
+        arch = node;
+        if arch.body is not None and isinstance(arch.body, list) {
+            new_body = self.combine_consecutive_has(list(arch.body));
+            if len(new_body) != len(arch.body) {
+                arch.body = new_body;
+                self.recalculate_parents(arch);
+                arch.normalize(deep=False);
+            }
+        }
+    }
+
+    """Process Enum to combine consecutive has statements."""
+    def enter_enum(self: JacAutoLintPass, node: uni.Enum) -> None {
+        if not self.lint_enabled {
+            return;
+        }
+
+        enum_node = node;
+        if enum_node.body is not None and isinstance(enum_node.body, list) {
+            new_body = self.combine_consecutive_has(list(enum_node.body));
+            if len(new_body) != len(enum_node.body) {
+                enum_node.body = new_body;
+                self.recalculate_parents(enum_node);
+                enum_node.normalize(deep=False);
+            }
+        }
+    }
+
+    """Process ImplDef to combine consecutive has statements."""
+    def enter_impl_def(self: JacAutoLintPass, node: uni.ImplDef) -> None {
+        if not self.lint_enabled {
+            return;
+        }
+
+        impl_node = node;
+        if impl_node.body is not None and isinstance(impl_node.body, list) {
+            new_body = self.combine_consecutive_has(list(impl_node.body));
+            if len(new_body) != len(impl_node.body) {
+                impl_node.body = new_body;
+                self.recalculate_parents(impl_node);
+                impl_node.normalize(deep=False);
+            }
+        }
     }
 }

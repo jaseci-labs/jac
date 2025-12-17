@@ -165,6 +165,44 @@ class TestJacAutoLintPass:
         assert "glob cls_obj" in formatted
 
 
+class TestCombineConsecutiveHas:
+    """Tests for combining consecutive has statements."""
+
+    def test_consecutive_has_combined(
+        self, auto_lint_fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that consecutive has statements with same modifiers are combined."""
+        input_path = auto_lint_fixture_path("consecutive_has.jac")
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True)
+        formatted = prog.mod.main.gen.jac
+
+        # Consecutive has statements should be combined into one
+        # The three separate has statements become one with commas
+        assert "has name: str," in formatted
+        assert "age: int," in formatted
+        assert "email: str;" in formatted
+
+        # Public has statements should be combined separately
+        assert "has : pub address: str," in formatted
+        assert "phone: str;" in formatted
+
+        # Static has statements should be combined
+        assert "static has DEBUG: bool = False," in formatted
+        assert "VERSION: str = " in formatted
+        assert "MAX_RETRIES: int = 3;" in formatted
+
+        # has with different modifiers should NOT be combined with others
+        # city has default value but no access modifier, should stay separate from :pub:
+        assert "has city: str = " in formatted
+
+        # Verify statements were actually combined (count semicolons in has statements)
+        # Before: 6 separate has statements, After: 4 combined has statements
+        person_section = formatted.split("obj Person")[1].split("obj Config")[0]
+        has_count = person_section.count("has ")
+        assert has_count == 3, f"Expected 3 has statements in Person, got {has_count}"
+
+
 class TestIsPureExpression:
     """Unit tests for the is_pure_expression method."""
 
