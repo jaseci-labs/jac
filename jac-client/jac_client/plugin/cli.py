@@ -51,23 +51,6 @@ class JacCmd:
 
             print(f"Creating new Jac application: {name}")
 
-            # Ask if TypeScript support is needed
-            use_typescript = False
-            while True:
-                ts_input = (
-                    input("Does your project require TypeScript support? (y/n): ")
-                    .strip()
-                    .lower()
-                )
-                if ts_input in ("y", "yes"):
-                    use_typescript = True
-                    break
-                elif ts_input in ("n", "no"):
-                    use_typescript = False
-                    break
-                else:
-                    print("Please enter 'y' for yes or 'n' for no.")
-
             # Create project directory in current working directory
             project_path = os.path.join(os.getcwd(), name)
 
@@ -123,16 +106,12 @@ class JacCmd:
                     json.dump(config_data, f, indent=2)
 
                 print("✅ Created config.json with package configuration")
-                print(
-                    "📦 package.json will be generated in .jac-client.configs/ on first build"
-                )
 
                 # Create basic project structure
                 print("Setting up project structure...")
 
-                # Prepare app.jac content based on TypeScript choice
-                if use_typescript:
-                    main_jac_content = """
+                # Prepare app.jac content with TypeScript support (enabled by default)
+                main_jac_content = """
 # Pages
 cl import from react {useState, useEffect}
 cl import from ".components/Button.tsx" { Button }
@@ -162,68 +141,19 @@ cl {
     }
 }
 """
-                else:
-                    main_jac_content = """
-# Pages
-cl import from react {useState, useEffect}
-cl {
-    def app() -> any {
-        [count, setCount] = useState(0);
-        useEffect(lambda -> None {
-            console.log("Count: ", count);
-        }, [count]);
-        return <div>
-            <h1>Hello, World!</h1>
-            <p>Count: {count}</p>
-            <button onClick={lambda e: any ->  None {setCount(count + 1);}}>Increment</button>
-        </div>;
-    }
-}
-"""
 
                 # Create app.jac file
                 with open(os.path.join(project_path, "app.jac"), "w") as f:
                     f.write(main_jac_content)
 
-                # Note: vite.config.js will be generated automatically in .jac-client.configs/
-                # during the first bundling process (when running jac serve)
+                # Note: vite.config.js and tsconfig.json will be generated automatically
+                # in .jac-client.configs/ during the first bundling process (when running jac serve)
 
-                # Create TypeScript configuration if requested
-                if use_typescript:
-                    tsconfig_content = """{
-  "compilerOptions": {
-    "target": "ES2020",
-    "useDefineForClassFields": true,
-    "lib": ["ES2020", "DOM", "DOM.Iterable"],
-    "module": "ESNext",
-    "skipLibCheck": true,
+                # Create components directory with a sample TypeScript component
+                components_dir = os.path.join(project_path, "components")
+                os.makedirs(components_dir, exist_ok=True)
 
-    /* Bundler mode */
-    "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "noEmit": true,
-    "jsx": "react-jsx",
-
-    /* Linting */
-    "strict": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true
-  },
-  "include": ["components/**/*"],
-  "exclude": ["node_modules", "dist", "build", "compiled"]
-}
-"""
-                    with open(os.path.join(project_path, "tsconfig.json"), "w") as f:
-                        f.write(tsconfig_content)
-
-                    # Create components directory with a sample TypeScript component
-                    components_dir = os.path.join(project_path, "components")
-                    os.makedirs(components_dir, exist_ok=True)
-
-                    button_component_content = """import React from 'react';
+                button_component_content = """import React from 'react';
 
 interface ButtonProps {
   label: string;
@@ -272,12 +202,11 @@ export const Button: React.FC<ButtonProps> = ({
 
 export default Button;
 """
-                    with open(os.path.join(components_dir, "Button.tsx"), "w") as f:
-                        f.write(button_component_content)
+                with open(os.path.join(components_dir, "Button.tsx"), "w") as f:
+                    f.write(button_component_content)
 
                 # Create README.md
-                if use_typescript:
-                    readme_content = f"""# {name}
+                readme_content = f"""# {name}
 
 ## Running Jac Code
 
@@ -294,7 +223,7 @@ jac serve app.jac
 
 ## TypeScript Support
 
-This project includes TypeScript support. You can create TypeScript components in the `components/` directory and import them in your Jac files.
+This project includes TypeScript support by default. You can create TypeScript components in the `components/` directory and import them in your Jac files.
 
 Example:
 ```jac
@@ -303,27 +232,11 @@ cl import from ".components/Button.tsx" {{ Button }}
 
 See `components/Button.tsx` for an example TypeScript component.
 
+The `tsconfig.json` file is automatically generated during build time.
+
 For more information, see the [TypeScript guide](../../docs/working-with-ts.md).
 
 Happy coding with Jac and TypeScript! 🚀
-"""
-                else:
-                    readme_content = f"""# {name}
-
-## Running Jac Code
-
-Make sure node modules are installed:
-```bash
-npm install
-```
-
-To run your Jac code, use the Jac CLI:
-
-```bash
-jac serve app.jac
-```
-
-Happy coding with Jac!
 """
 
                 with open(os.path.join(project_path, "README.md"), "w") as f:
