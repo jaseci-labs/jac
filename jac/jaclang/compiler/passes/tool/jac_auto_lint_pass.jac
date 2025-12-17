@@ -3,6 +3,7 @@
 This pass applies automatic linting corrections to Jac code, including:
 - Converting `with entry` blocks to `glob` declarations (in-place)
 - Combining consecutive `has` statements with same modifiers into single statement
+- Combining consecutive `glob` statements with same modifiers into single statement
 - Converting `def __init__` to `can init` (Jac style)
 - Converting `def __post_init__` to `can postinit` (Jac style)
 - Removing empty parentheses from function/method declarations (def foo() -> def foo)
@@ -69,6 +70,9 @@ class JacAutoLintPass(UniPass) {
                 new_body.append(stmt);
             }
         }
+
+        # Combine consecutive glob statements with same modifiers
+        new_body = self.combine_consecutive_glob(new_body);
 
         module.body = new_body;
         self.recalculate_parents(module);
@@ -162,6 +166,25 @@ class JacAutoLintPass(UniPass) {
         return True;
     }
 
+    """Check if two GlobalVars nodes can be combined (same access, frozen)."""
+    def can_combine_glob(
+        self: JacAutoLintPass, glob1: uni.GlobalVars, glob2: uni.GlobalVars
+    ) -> bool {
+        # Must have same frozen modifier
+        if glob1.is_frozen != glob2.is_frozen {
+            return False;
+        }
+
+        # Must have same access modifier
+        access1 = glob1.access.tag.name if glob1.access else None;
+        access2 = glob2.access.tag.name if glob2.access else None;
+        if access1 != access2 {
+            return False;
+        }
+
+        return True;
+    }
+
     """Combine consecutive has statements in a body list."""
     def combine_consecutive_has(self: JacAutoLintPass, body: list) -> list {
         if len(body) <= 1 {
@@ -203,6 +226,59 @@ class JacAutoLintPass(UniPass) {
                     );
                     new_has.normalize(deep=True);
                     new_body.append(new_has);
+                } else {
+                    new_body.append(stmt);
+                }
+                i = j;
+            } else {
+                new_body.append(stmt);
+                i += 1;
+            }
+        }
+
+        return new_body;
+    }
+
+    """Combine consecutive glob statements in a body list."""
+    def combine_consecutive_glob(self: JacAutoLintPass, body: list) -> list {
+        if len(body) <= 1 {
+            return body;
+        }
+
+        new_body: list = [];
+        i = 0;
+
+        while i < len(body) {
+            stmt = body[i];
+
+            if isinstance(stmt, uni.GlobalVars) {
+                # Start collecting consecutive compatible glob statements
+                combined_assignments: list = list(stmt.assignments);
+                combined_doc = stmt.doc;
+                base_glob = stmt;
+                j = i + 1;
+                while j < len(body) {
+                    next_stmt = body[j];
+                    if isinstance(next_stmt, uni.GlobalVars)
+                    and self.can_combine_glob(base_glob, next_stmt) {
+                        # Combine the assignments
+                        combined_assignments.extend(next_stmt.assignments);
+                        j += 1;
+                    } else {
+                        break;
+                    }
+                }
+                # If we combined multiple glob statements, create new one
+                if j > i + 1 {
+                    new_glob = uni.GlobalVars(
+                        access=base_glob.access,
+                        assignments=combined_assignments,
+                        is_frozen=base_glob.is_frozen,
+                        kid=combined_assignments,
+                        doc=combined_doc
+                    );
+                    new_glob.normalize(deep=True);
+                    new_body.append(new_glob);
                 } else {
                     new_body.append(stmt);
                 }

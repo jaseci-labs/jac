@@ -37,22 +37,23 @@ class TestJacAutoLintPass:
         formatted = prog.mod.main.gen.jac
 
         # Should contain glob declarations for all extracted values
-        assert "glob x = 5;" in formatted
-        assert "glob y = " in formatted
-        assert "glob z = " in formatted
-        assert "glob int_val" in formatted
-        assert "glob float_val" in formatted
-        assert "glob str_val" in formatted
-        assert "glob bool_val" in formatted
-        assert "glob null_val" in formatted
-        assert "glob list_val" in formatted
-        assert "glob dict_val" in formatted
-        assert "glob tuple_val" in formatted
-        assert "glob set_val" in formatted
-        assert "glob sum_val" in formatted
-        assert "glob product" in formatted
-        assert "glob neg_val" in formatted
-        assert "glob not_val" in formatted
+        # Note: consecutive globs with same modifiers are now combined
+        assert "glob x = 5 ," in formatted
+        assert "y = " in formatted
+        assert "z = " in formatted
+        assert "int_val" in formatted
+        assert "float_val" in formatted
+        assert "str_val" in formatted
+        assert "bool_val" in formatted
+        assert "null_val" in formatted
+        assert "list_val" in formatted
+        assert "dict_val" in formatted
+        assert "tuple_val" in formatted
+        assert "set_val" in formatted
+        assert "sum_val" in formatted
+        assert "product" in formatted
+        assert "neg_val" in formatted
+        assert "not_val" in formatted
 
         # Should NOT contain with entry block syntax (it was fully extracted)
         assert "with entry {" not in formatted
@@ -105,9 +106,10 @@ class TestJacAutoLintPass:
         formatted = prog.mod.main.gen.jac
 
         # All assignments should become globs (even function calls, attr access, etc.)
-        assert "glob result" in formatted
-        assert "glob value" in formatted
-        assert "glob item" in formatted
+        # Note: consecutive globs with same modifiers are now combined
+        assert "result = some_function()" in formatted
+        assert "value = obj.attr" in formatted
+        assert "item = arr[0]" in formatted
 
         # The unnamed with entry block should be removed (all assignments extracted)
         # Only named entry block should remain
@@ -138,9 +140,10 @@ class TestJacAutoLintPass:
         formatted = prog.mod.main.gen.jac
 
         # Should preserve existing glob declarations
-        assert "glob existing_x = 5;" in formatted
-        assert "glob existing_y = " in formatted
-        assert "glob existing_z = " in formatted
+        # Note: consecutive globs with same modifiers are now combined
+        assert "glob existing_x = 5 ," in formatted
+        assert "existing_y = " in formatted
+        assert "existing_z = " in formatted
 
     def test_class_entry_not_extracted(
         self, auto_lint_fixture_path: Callable[[str], str]
@@ -161,8 +164,8 @@ class TestJacAutoLintPass:
         assert "glob list_var" not in formatted
 
         # Module-level with entry SHOULD be fully extracted (all assignments)
-        assert "glob module_var" in formatted
-        assert "glob cls_obj" in formatted
+        # Note: consecutive globs with same modifiers are now combined
+        assert "module_var = 100 , cls_obj = MyClass()" in formatted
 
         # Module-level with entry containing TYPE_CHECKING blocks should extract
         # assignments to glob while keeping if blocks in with entry (since if
@@ -235,6 +238,53 @@ class TestCombineConsecutiveHas:
         person_section = formatted.split("obj Person")[1].split("obj Config")[0]
         has_count = person_section.count("has ")
         assert has_count == 3, f"Expected 3 has statements in Person, got {has_count}"
+
+
+class TestCombineConsecutiveGlob:
+    """Tests for combining consecutive glob statements."""
+
+    def test_consecutive_glob_combined(
+        self, auto_lint_fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that consecutive glob statements with same modifiers are combined."""
+        input_path = auto_lint_fixture_path("consecutive_glob.jac")
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True)
+        formatted = prog.mod.main.gen.jac
+
+        # Consecutive glob statements should be combined into one
+        # The three separate glob statements become one with commas
+        assert "glob x = 1 , y = 2 , z = 3;" in formatted
+
+        # Public glob statements should be combined separately
+        assert "glob : pub a = 10 , b = 20;" in formatted
+
+        # Protected glob statements should be combined separately
+        assert "glob : protect c = 100 , d = 200 , e = 300;" in formatted
+
+        # Mixed modifiers should NOT be combined together
+        # Each should be its own statement
+        assert "glob m1 = 1;" in formatted
+        assert "glob : pub m2 = 2;" in formatted
+        assert "glob : protect m3 = 3;" in formatted
+
+        # Non-consecutive globs should NOT be combined
+        assert "glob before = 0;" in formatted
+        assert "glob after = 99;" in formatted
+
+    def test_glob_combining_disabled_without_lint(
+        self, auto_lint_fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that glob combining is disabled when auto_lint=False."""
+        input_path = auto_lint_fixture_path("consecutive_glob.jac")
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=False)
+        formatted = prog.mod.main.gen.jac
+
+        # Without linting, globs should remain separate
+        assert "glob x = 1;" in formatted
+        assert "glob y = 2;" in formatted
+        assert "glob z = 3;" in formatted
 
 
 class TestIsPureExpression:
