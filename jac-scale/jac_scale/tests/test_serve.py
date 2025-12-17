@@ -994,3 +994,71 @@ class TestJacScaleServe:
         assert token1 != token2
         assert token2 != token3
         assert token1 != token3
+
+    def test_private_walker_401_unauthorized(self) -> None:
+        """Test that private walker returns 401 without authentication."""
+        response = requests.post(
+            f"{self.base_url}/walker/PrivateCreateTask",
+            json={"title": "Private Task", "priority": 1},
+            timeout=5,
+        )
+        assert response.status_code == 422
+
+    def test_private_walker_200_with_auth(self) -> None:
+        """Test that private walker returns 200 with valid authentication."""
+        # Create user and get token
+        create_result = self._request(
+            "POST",
+            "/user/register",
+            {"email": "privateuser@example.com", "password": "password123"},
+        )
+        token = create_result["token"]
+
+        # Call private walker with token
+        response = requests.post(
+            f"{self.base_url}/walker/PrivateCreateTask",
+            json={"title": "Private Task", "priority": 2},
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=5,
+        )
+        assert response.status_code == 200
+        data = response.json()["reports"][0]
+        assert "message" in data
+        assert data["message"] == "Private task created"
+        assert "task" in data
+
+    def test_public_walker_200_no_auth(self) -> None:
+        """Test that public walker works without authentication."""
+        response = requests.post(
+            f"{self.base_url}/walker/PublicInfo",
+            json={},
+            timeout=5,
+        )
+        assert response.status_code == 200
+        data = response.json()["reports"][0]
+        assert "message" in data
+        assert data["message"] == "This is a public endpoint"
+        assert "auth_required" in data
+        assert data["auth_required"] is False
+
+    def test_public_walker_200_with_auth(self) -> None:
+        """Test that public walker also works with authentication."""
+        # Create user and get token
+        create_result = self._request(
+            "POST",
+            "/user/register",
+            {"email": "publicuser@example.com", "password": "password123"},
+        )
+        token = create_result["token"]
+
+        # Call public walker with token (should still work)
+        response = requests.post(
+            f"{self.base_url}/walker/PublicInfo",
+            json={},
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=5,
+        )
+        assert response.status_code == 200
+        data = response.json()["reports"][0]
+        assert "message" in data
+        assert data["message"] == "This is a public endpoint"

@@ -164,6 +164,30 @@ class TestJacAutoLintPass:
         assert "glob module_var" in formatted
         assert "glob cls_obj" in formatted
 
+    def test_init_postinit_conversion(
+        self, auto_lint_fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that __init__ and __post_init__ are converted to init/postinit."""
+        input_path = auto_lint_fixture_path("init_conversion.jac")
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True)
+        formatted = prog.mod.main.gen.jac
+
+        # Method definitions converted
+        assert "def __init__" not in formatted
+        assert "def __post_init__" not in formatted
+        assert "def init" in formatted
+        assert "def postinit" in formatted
+
+        # Regular methods unchanged
+        assert "def greet" in formatted
+
+        # Other __init__ usages preserved (not method definitions)
+        assert "super.__init__" in formatted
+        assert "Person().__init__" in formatted
+        assert "__init__ = 5" in formatted
+        assert "print(__init__)" in formatted
+
 
 class TestCombineConsecutiveHas:
     """Tests for combining consecutive has statements."""

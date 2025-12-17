@@ -3,12 +3,15 @@
 This pass applies automatic linting corrections to Jac code, including:
 - Converting `with entry` blocks to `glob` declarations (in-place)
 - Combining consecutive `has` statements with same modifiers into single statement
+- Converting `def __init__` to `can init` (Jac style)
+- Converting `def __post_init__` to `can postinit` (Jac style)
 - (Future) Import organization
 - (Future) Redundant code removal
 """
 
 import jaclang.pycore.unitree as uni;
 import from jaclang.pycore.passes { UniPass }
+import from jaclang.pycore.constant { Tokens as Tok }
 
 """Auto linting pass that applies code style corrections to Jac AST."""
 class JacAutoLintPass(UniPass) {
@@ -218,6 +221,34 @@ class JacAutoLintPass(UniPass) {
                 impl_node.body = new_body;
                 self.recalculate_parents(impl_node);
                 impl_node.normalize(deep=False);
+    """Process ability nodes to convert __init__/__post_init__ to init/postinit."""
+    def enter_ability(self: JacAutoLintPass, ability_node: uni.Ability) -> None {
+        if not self.lint_enabled or not ability_node.is_method {
+            return;
+        }
+        if not isinstance(ability_node.name_ref, uni.Name)
+        or isinstance(ability_node.name_ref, uni.SpecialVarRef) {
+            return;
+        }
+        new_tok: Tok | None = None;
+        if ability_node.name_ref.value == "__init__" {
+            new_tok = Tok.KW_INIT;
+        } elif ability_node.name_ref.value == "__post_init__" {
+            new_tok = Tok.KW_POST_INIT;
+        }
+        if new_tok is not None {
+            old_ref = ability_node.name_ref;
+            old_ref.name = new_tok.value;
+            old_ref.value = new_tok.value;
+            special_ref = uni.SpecialVarRef(var=old_ref);
+            special_ref.parent = ability_node;
+            ability_node.name_ref = special_ref;
+            ability_node.name_spec = special_ref;
+            for (idx, kid) in enumerate(ability_node.kid) {
+                if kid is old_ref {
+                    ability_node.kid[idx] = special_ref;
+                    break;
+                }
             }
         }
     }
