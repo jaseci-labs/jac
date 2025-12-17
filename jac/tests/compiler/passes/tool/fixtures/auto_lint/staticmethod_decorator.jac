@@ -5,7 +5,8 @@ class Calculator {
         return a + b;
     }
 
-    static def multiply(x: int, y: int) -> int {
+    @staticmethod
+    def multiply(x: int, y: int) -> int {
         return x * y;
     }
 
@@ -23,7 +24,8 @@ class Calculator {
 # Test with multiple decorators
 class MultiDecorator {
     @some_decorator
-    @staticmethod static def decorated_static(x: int) -> int {
+    @staticmethod
+    static def decorated_static(x: int) -> int {
         return x;
     }
 }

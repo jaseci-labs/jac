@@ -9,6 +9,7 @@ This pass applies automatic linting corrections to Jac code, including:
 
 import jaclang.pycore.unitree as uni;
 import from jaclang.pycore.passes { UniPass }
+import from jaclang.pycore.constant { Tokens as Tok }
 
 """Auto linting pass that applies code style corrections to Jac AST."""
 class JacAutoLintPass(UniPass) {
@@ -125,10 +126,10 @@ class JacAutoLintPass(UniPass) {
         }
     }
 
-    """Remove @staticmethod decorator tokens from ability's kid list.
+    """Remove @staticmethod decorator tokens and add static keyword to ability's kid list.
 
     This preserves original token objects (for comment associations) while
-    removing only the stale @staticmethod decorator tokens.
+    removing only the @staticmethod decorator tokens and inserting the static keyword.
     """
     def _remove_staticmethod_from_kids(
         self: JacAutoLintPass, <>node: uni.Ability
@@ -137,6 +138,18 @@ class JacAutoLintPass(UniPass) {
         i = 0;
         kids = <>node.kid;
         skip_next_ws = False;
+        has_static_kw = False;
+        staticmethod_loc: (uni.Name | None) = None;
+
+        # First pass: check if static keyword already exists and find @staticmethod location
+        for kid in kids {
+            if isinstance(kid, uni.Token) and kid.name == Tok.KW_STATIC {
+                has_static_kw = True;
+            }
+            if isinstance(kid, uni.Name) and kid.value == "staticmethod" {
+                staticmethod_loc = kid;
+            }
+        }
 
         while i < len(kids) {
             kid = kids[i];
@@ -163,6 +176,23 @@ class JacAutoLintPass(UniPass) {
                 }
             }
             skip_next_ws = False;
+
+            # Insert static keyword before def/can if not already present
+            if (
+                not has_static_kw
+                and isinstance(kid, uni.Token)
+                and kid.name in (Tok.KW_DEF, Tok.KW_CAN)
+            ) {
+                static_kw = <>node.gen_token(Tok.KW_STATIC);
+                # Copy location from @staticmethod for comment association
+                if staticmethod_loc {
+                    static_kw.line_no = staticmethod_loc.loc.first_line;
+                    static_kw.c_start = staticmethod_loc.loc.col_start;
+                    static_kw.c_end = static_kw.c_start + len("static");
+                }
+                new_kids.append(static_kw);
+                has_static_kw = True;
+            }
 
             new_kids.append(kid);
             i += 1;
