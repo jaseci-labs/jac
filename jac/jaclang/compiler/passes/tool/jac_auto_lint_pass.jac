@@ -116,9 +116,7 @@ class JacAutoLintPass(UniPass) {
     }
 
     """Combine consecutive has statements in a body list."""
-    def combine_consecutive_has(
-        self: JacAutoLintPass, body: list
-    ) -> list {
+    def combine_consecutive_has(self: JacAutoLintPass, body: list) -> list {
         if len(body) <= 1 {
             return body;
         }
@@ -135,7 +133,6 @@ class JacAutoLintPass(UniPass) {
                 combined_doc = stmt.doc;
                 base_has = stmt;
                 j = i + 1;
-
                 while j < len(body) {
                     next_stmt = body[j];
                     if isinstance(next_stmt, uni.ArchHas)
@@ -147,7 +144,6 @@ class JacAutoLintPass(UniPass) {
                         break;
                     }
                 }
-
                 # If we combined multiple has statements, create new one
                 if j > i + 1 {
                     new_has = uni.ArchHas(
@@ -163,7 +159,6 @@ class JacAutoLintPass(UniPass) {
                 } else {
                     new_body.append(stmt);
                 }
-
                 i = j;
             } else {
                 new_body.append(stmt);
@@ -221,6 +216,10 @@ class JacAutoLintPass(UniPass) {
                 impl_node.body = new_body;
                 self.recalculate_parents(impl_node);
                 impl_node.normalize(deep=False);
+            }
+        }
+    }
+
     """Process ability nodes to convert __init__/__post_init__ to init/postinit."""
     def enter_ability(self: JacAutoLintPass, ability_node: uni.Ability) -> None {
         if not self.lint_enabled or not ability_node.is_method {
