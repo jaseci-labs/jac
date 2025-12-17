@@ -22,7 +22,9 @@ obj Dog(Animal) {
     }
 }
 
-glob : priv body: int = 2 , m = "hi";
+glob : priv
+    body: int = 2,
+    m = "hi";
 with entry {
     myDog = Dog(breed="Golden Retriever");
     print(" Name: " + myDog.species);

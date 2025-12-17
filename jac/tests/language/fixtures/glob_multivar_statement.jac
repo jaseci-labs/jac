@@ -1,4 +1,6 @@
-glob a: str , b: str;
+glob
+    a: str,
+    b: str;
 glob c: str;
 
 def do() {
