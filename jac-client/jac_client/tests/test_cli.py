@@ -58,6 +58,15 @@ def test_create_jac_app() -> None:
             assert f"# {test_project_name}" in readme_content
             assert "jac serve app.jac" in readme_content
 
+            # Verify config.json was created
+            config_json_path = os.path.join(project_path, "config.json")
+            assert os.path.exists(config_json_path)
+
+            with open(config_json_path) as f:
+                config_data = json.load(f)
+
+            assert config_data["package"]["name"] == test_project_name
+
             # Verify .gitignore was created with correct content
             gitignore_path = os.path.join(project_path, ".gitignore")
             assert os.path.exists(gitignore_path)
@@ -71,8 +80,11 @@ def test_create_jac_app() -> None:
             assert "app.session.dir" in gitignore_content
             assert "app.session.users.json" in gitignore_content
 
+            # Note: TypeScript support is now enabled by default, so components directory
+            # is always created. The test input "n\n" for TypeScript is no longer used.
+            # Verify components directory exists (it's always created now)
             components_dir = os.path.join(project_path, "components")
-            assert not os.path.exists(components_dir)
+            assert os.path.exists(components_dir)
 
         finally:
             # Return to original directory
