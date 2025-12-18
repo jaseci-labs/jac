@@ -26,7 +26,7 @@ walker get_summary {
 """Answer a question based on the provided qusetion parameter."""
 def answer_question(question: str) -> str by llm();
 
+# get_summary() spawn root;
 with entry {
-    # get_summary() spawn root;
     print(answer_question("what's 2 + 2"));
 }

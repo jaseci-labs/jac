@@ -57,7 +57,7 @@ This class implements the JServer interface by:
         app (FastAPI): The underlying FastAPI application instance
 """
 class JFastApiServer(JServer[FastAPI]) {
-    def __init__(
+    def init(
         self: JFastApiServer,
         endpoints: (list[JEndPoint] | None) = None,
         app: (FastAPI | None) = None
@@ -276,7 +276,7 @@ class JFastApiServer(JServer[FastAPI]) {
                     return sync_endpoint_wrapper;
                 }
             } elif inspect.iscoroutinefunction(callback) {
-                async def async_endpoint_wrapper__1()  -> EndpointResponse {
+                async def async_endpoint_wrapper__1 -> EndpointResponse {
                     try {
                         return await callback();
                     } except Exception as e {
@@ -285,7 +285,7 @@ class JFastApiServer(JServer[FastAPI]) {
                 }
                 return async_endpoint_wrapper__1;
             } else {
-                def sync_endpoint_wrapper__1()  -> EndpointResponse {
+                def sync_endpoint_wrapper__1 -> EndpointResponse {
                     try {
                         return callback();
                     } except Exception as e {

@@ -6,9 +6,8 @@ import from shelve { Shelf, open }
 import from typing { Any, Generic, TypeVar, cast }
 import from uuid { UUID }
 import from .archetype { TANCH, Anchor, NodeAnchor, Root }
-with entry {
-    ID = TypeVar('ID');
-}
+
+glob ID = TypeVar('ID');
 
 """Generic Memory Handler."""
 @dataclass
@@ -129,7 +128,7 @@ class ShelfStorage(Memory[(UUID, Anchor)]) {
     }
 
     """Initialize memory handler."""
-    def __init__(self: ShelfStorage, session: (str | None) = None) -> None {
+    def init(self: ShelfStorage, session: (str | None) = None) -> None {
         super.init();
         self.__shelf__ = open(session) if session else None;
     }

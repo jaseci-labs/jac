@@ -5,7 +5,7 @@ import from dataclasses { dataclass }
 """Jac test result class."""
 class JacTestResult(unittest.TextTestResult) {
     """Initialize FailFastTestResult object."""
-    def __init__(
+    def init(
         self: JacTestResult,
         stream: Any,
         descriptions: Any,
@@ -38,7 +38,7 @@ class JacTestResult(unittest.TextTestResult) {
 """Jac test runner class."""
 class JacTextTestRunner(unittest.TextTestRunner) {
     """Initialize JacTextTestRunner object."""
-    def __init__(
+    def init(
         self: JacTextTestRunner, max_failures: (int | None) = None, **kwargs: Any
     ) -> None {
         self.max_failures = max_failures;
@@ -79,7 +79,7 @@ class JacTestCheck {
     }
 
     """Clear the test suite."""
-    static def reset()  -> None {
+    static def reset -> None {
         JacTestCheck.test_case = unittest.TestCase();
         JacTestCheck.test_suite = unittest.TestSuite();
         JacTestCheck.test_suite_path = {};

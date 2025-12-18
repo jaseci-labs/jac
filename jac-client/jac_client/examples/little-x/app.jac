@@ -34,18 +34,18 @@ node Profile {
 }
 
 obj TweetInfo {
-    has username: str;
-    has id: str;
-    has content: str;
-    has embedding: list;
-    has likes: list;
-    has comments: list;
+    has username: str,
+        id: str,
+        content: str,
+        embedding: list,
+        likes: list,
+        comments: list;
 }
 
 node Tweet {
-    has content: str;
-    has embedding: list;
-    has created_at: str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S");
+    has content: str,
+        embedding: list,
+        created_at: str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S");
 
     can update with update_tweet exit {
         self.content = visitor.updated_content;
@@ -80,7 +80,7 @@ node Tweet {
         report comment_node[0] ;
     }
 
-    def get_info()  -> TweetInfo {
+    def get_info -> TweetInfo {
         return TweetInfo(
             username=[self<-:Post:<-][0].username,
             id=jid(self),
@@ -188,8 +188,8 @@ walker update_comment {
 walker remove_comment {}
 
 walker load_feed(visit_profile) {
-    has search_query: str = "";
-    has results: list = [];
+    has search_query: str = "",
+        results: list = [];
 
     can load with Profile entry {
         visit [-->(`?Tweet)];
@@ -206,25 +206,20 @@ walker load_feed(visit_profile) {
 # Client-side UI Components (marked with 'cl' for browser execution)
 # ===================================================================
 
-# Reactive state management
-cl [appState, setAppState] = createState(
-    {"tweets": [], "loading": False}
-);
-
 # Manual routing functions removed - now using reactive createRouter
 
 # Shared data model for client/server
 cl obj ClientTweet {
-    has username: str = "";
-    has id: str = "";
-    has content: str = "";
-    has likes: list = [];
-    has comments: list = [];
+    has username: str = "",
+        id: str = "",
+        content: str = "",
+        likes: list = [],
+        comments: list = [];
 }
 
 cl obj ClientProfile {
-    has username: str = "";
-    has id: str = "";
+    has username: str = "",
+        id: str = "";
 }
 
 # UI Components - Render a single tweet card
@@ -307,7 +302,7 @@ cl def FeedView(tweets: list) -> any {
 }
 
 # Render login form
-cl def LoginForm()  -> any {
+cl def LoginForm -> any {
     suggestions = ['good luck', 'have fun', 'enjoy the ride'];
     randomSuggestion = _.sample(suggestions);
     result = "Good luck with your journey!";
@@ -421,7 +416,7 @@ cl async def handle_login(event: any) -> None {
 }
 
 # Render signup form
-cl def SignupForm()  -> any {
+cl def SignupForm -> any {
     return <div
         class="signup-container"
         style={{
@@ -556,13 +551,13 @@ cl async def handle_signup(event: any) -> None {
 }
 
 # Handle logout
-cl def logout_action()  -> None {
+cl def logout_action -> None {
     jacLogout();
     navigate("/login");
 }
 
 # Main App component with declarative router
-cl def App()  -> any {
+cl def App -> any {
     # Create routes array manually (workaround for JS compiler bug with named args)
     login_route = {
         "path": "/login",
@@ -665,7 +660,7 @@ cl def build_nav_bar(route: str) -> any {
 }
 
 # Home view - simplified for testing reactive routing
-cl def HomeView()  -> any {
+cl def HomeView -> any {
     if not jacIsLoggedIn() {
         navigate("/login");
         return <div></div>;
@@ -687,7 +682,7 @@ cl def HomeView()  -> any {
 }
 
 # Profile view
-cl def ProfileView()  -> any {
+cl def ProfileView -> any {
     if not jacIsLoggedIn() {
         navigate("/login");
         return <div></div>;
@@ -719,6 +714,6 @@ cl def ProfileView()  -> any {
 }
 
 # Main SPA entry point - simplified with reactive routing
-cl def jac_app()  -> any {
+cl def jac_app -> any {
     return App();
 }

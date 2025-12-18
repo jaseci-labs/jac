@@ -32,8 +32,8 @@ cl import from ".components/Card.tsx" { Card }
 # Basic backend walkers
 #
 node Todo {
-    has text: str;
-    has done: bool = False;
+    has text: str,
+        done: bool = False;
 }
 
 walker create_todo {
@@ -59,7 +59,7 @@ walker get_server_message {
 
 cl {
     # Login Page
-    def LoginPage()  -> any {
+    def LoginPage -> any {
         [email, setEmail] = useState("");
         [password, setPassword] = useState("");
         [error, setError] = useState("");
@@ -186,7 +186,7 @@ cl {
     }
 
     # Signup Page
-    def SignupPage()  -> any {
+    def SignupPage -> any {
         [email, setEmail] = useState("");
         [password, setPassword] = useState("");
         [error, setError] = useState("");
@@ -313,7 +313,7 @@ cl {
     }
 
     # Home page demonstrating CSS styling + direct asset usage + basic walkers
-    def Home()  -> any {
+    def Home -> any {
         # Check if user is logged in, redirect if not
         if not jacIsLoggedIn() {
             return <Navigate to="/login" />;
@@ -328,14 +328,14 @@ cl {
         );
 
         # Call simple backend walkers
-        async def handlePing()  -> None {
+        async def handlePing -> None {
             result = root spawn ping_server();
             if result.reports and result.reports.length > 0 {
                 setPingResult(result.reports[0][0]);
             }
         }
 
-        async def loadServerMessage()  -> None {
+        async def loadServerMessage -> None {
             result = root spawn get_server_message();
             if result.reports and result.reports.length > 0 {
                 setServerMessage(result.reports[0][0]);
@@ -343,7 +343,7 @@ cl {
         }
 
         # Create a sample Todo node in the graph with a hardcoded payload
-        async def handleCreateSampleTodo()  -> None {
+        async def handleCreateSampleTodo -> None {
             result = root spawn create_todo(text="Sample todo from all-in-one app");
             if result.reports and result.reports.length > 0 {
                 todo = result.reports[0][0];
@@ -561,7 +561,7 @@ cl {
     }
 
     # Page showing nested imports from different folders
-    def NestedImportsDemo()  -> any {
+    def NestedImportsDemo -> any {
         # Check if user is logged in, redirect if not
         if not jacIsLoggedIn() {
             return <Navigate to="/login" />;
@@ -610,7 +610,7 @@ cl {
     }
 
     # Simple 404 page
-    def NotFound()  -> any {
+    def NotFound -> any {
         return <div
             style={{
                 "padding": "2rem",
@@ -631,7 +631,7 @@ cl {
     }
 
     # Navigation component with active link styling and auth
-    def Navigation()  -> any {
+    def Navigation -> any {
         location = useLocation();
         isLoggedIn = jacIsLoggedIn();
         navigate = useNavigate();
@@ -737,7 +737,7 @@ cl {
     }
 
     # Main app wrapped in Router (same API as with-router/ example)
-    def app()  -> any {
+    def app -> any {
         return <Router>
             <div
                 style={{"fontFamily": "system-ui, -apple-system, sans-serif"}}

@@ -15,23 +15,22 @@ import from .archetype {
 }
 import from .memory { Memory, ShelfStorage }
 import from .mtp { MTIR, MTRuntime }
-with entry {
-    __all__ = [
-        'AccessLevel',
-        'Anchor',
-        'NodeAnchor',
-        'EdgeAnchor',
-        'WalkerAnchor',
-        'Archetype',
-        'NodeArchetype',
-        'EdgeArchetype',
-        'WalkerArchetype',
-        'GenericEdge',
-        'Root',
-        'MTIR',
-        'MTRuntime',
-        'ObjectSpatialFunction',
-        'Memory',
-        'ShelfStorage'
-    ];
-}
+
+glob __all__ = [
+    'AccessLevel',
+    'Anchor',
+    'NodeAnchor',
+    'EdgeAnchor',
+    'WalkerAnchor',
+    'Archetype',
+    'NodeArchetype',
+    'EdgeArchetype',
+    'WalkerArchetype',
+    'GenericEdge',
+    'Root',
+    'MTIR',
+    'MTRuntime',
+    'ObjectSpatialFunction',
+    'Memory',
+    'ShelfStorage'
+];

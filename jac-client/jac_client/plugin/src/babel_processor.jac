@@ -8,7 +8,7 @@ import from .vite_bundler { ViteBundler }
 """Handles Babel compilation of JavaScript files."""
 class BabelProcessor {
     """Initialize the Babel processor."""
-    def __init__(self: BabelProcessor, project_dir: Path) {
+    def init(self: BabelProcessor, project_dir: Path) {
         self.project_dir = project_dir;
     }
 

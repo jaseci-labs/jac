@@ -19,8 +19,8 @@ cl import from "@jac-client/utils" {
 
 # Backend - Todo Node
 node Todo {
-    has text: str;
-    has done: bool = False;
+    has text: str,
+        done: bool = False;
 }
 
 # Backend - Walkers
@@ -53,7 +53,7 @@ walker toggle_todo {
 # Frontend Components
 cl {
     # Navigation
-    def Navigation()  -> any {
+    def Navigation -> any {
         isLoggedIn = jacIsLoggedIn();
         navigate = useNavigate();
 
@@ -138,7 +138,7 @@ cl {
     }
 
     # Login Page
-    def LoginPage()  -> any {
+    def LoginPage -> any {
         [email, setEmail] = useState("");
         [password, setPassword] = useState("");
         [error, setError] = useState("");
@@ -264,7 +264,7 @@ cl {
     }
 
     # Signup Page
-    def SignupPage()  -> any {
+    def SignupPage -> any {
         [email, setEmail] = useState("");
         [password, setPassword] = useState("");
         [error, setError] = useState("");
@@ -558,7 +558,7 @@ cl {
     }
 
     # Todos Page (Protected)
-    def TodosPage()  -> any {
+    def TodosPage -> any {
         # Check if user is logged in, redirect if not
         if not jacIsLoggedIn() {
             return <Navigate to="/login" />;
@@ -570,7 +570,7 @@ cl {
 
         # Load todos on mount
         useEffect(
-            lambda   -> None{ async def loadTodos()  -> None {
+            lambda   -> None{ async def loadTodos -> None {
                 result = root spawn read_todos();
                 setTodos(result.reports if result.reports else []);
             } loadTodos();} ,
@@ -578,7 +578,7 @@ cl {
         );
 
         # Add todo
-        async def addTodo()  -> None {
+        async def addTodo -> None {
             if not input.trim() {
                 return;
             }
@@ -612,7 +612,7 @@ cl {
         }
 
         # Filter todos
-        def getFilteredTodos()  -> list {
+        def getFilteredTodos -> list {
             if filter == "active" {
                 return todos.filter(
                     lambda  todo: any  -> bool{ return not todo.done; }
@@ -677,7 +677,7 @@ cl {
     }
 
     # Home/Landing Page - auto-redirect
-    def HomePage()  -> any {
+    def HomePage -> any {
         if jacIsLoggedIn() {
             return <Navigate to="/todos" />;
         }
@@ -685,7 +685,7 @@ cl {
     }
 
     # Main App with React Router
-    def app()  -> any {
+    def app -> any {
         return <Router>
             <div
                 style={{"fontFamily": "system-ui, sans-serif"}}

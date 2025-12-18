@@ -13,12 +13,11 @@ import from jaclang.runtimelib.server { ModuleIntrospector }
 import from .vite_client_bundle { ViteClientBundleBuilder }
 import from .src.vite_bundler { ViteBundler }
 
-with entry {
+glob
     JsonValue: TypeAlias = None | str | int | float | bool | list['JsonValue'] | dict[
         (str, 'JsonValue')
-    ];
+    ],
     StatusCode: TypeAlias = Literal[(200, 201, 400, 401, 404, 503)];
-}
 
 """Jac Client Module Introspector."""
 class JacClientModuleIntrospector(ModuleIntrospector) {
@@ -64,8 +63,8 @@ class JacClientModuleIntrospector(ModuleIntrospector) {
 """Jac Client."""
 class JacClient {
     """Get the client bundle builder instance."""
-    @staticmethod @hookimpl
-    static def get_client_bundle_builder()  -> ViteClientBundleBuilder {
+    @hookimpl
+    static def get_client_bundle_builder -> ViteClientBundleBuilder {
         base_path = Path(Jac.base_path_dir);
         # package.json should only exist in .jac-client.configs/
         generated_package_json = base_path / '.jac-client.configs' / 'package.json';
@@ -103,7 +102,7 @@ class JacClient {
     }
 
     """Build a client bundle for the supplied module."""
-    @staticmethod @hookimpl
+    @hookimpl
     static def build_client_bundle(
         module: types.ModuleType, force: bool = False
     ) -> ClientBundle {
@@ -112,7 +111,7 @@ class JacClient {
     }
 
     """Get a module introspector for the supplied module."""
-    @staticmethod @hookimpl
+    @hookimpl
     static def get_module_introspector(
         module_name: str, base_path: (str | None)
     ) -> ModuleIntrospector {
@@ -120,7 +119,7 @@ class JacClient {
     }
 
     """Send static file response (images, fonts, etc.)."""
-    @staticmethod @hookimpl
+    @hookimpl
     static def send_static_file(
         handler: BaseHTTPRequestHandler,
         file_path: Path,

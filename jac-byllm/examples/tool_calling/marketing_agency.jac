@@ -55,10 +55,11 @@ def manager(query: str) -> str by llm(
     context=["DONOT SUMMARIZE. MAKE IT DETAILED"]
 );
 
+glob query = "Jaclang is a native superset of python with a focus on AI and ML. Jaclang allows developers to"
+"prototype AI Applications with ease by providing high level abstractions for AIML Usecases."
+"Perform a detailed analysis of the market for Jaclang and provide a detailed report on the market,"
+"demand, demographics and personas for the product.";
+
 with entry {
-    query = "Jaclang is a native superset of python with a focus on AI and ML. Jaclang allows developers to"
-    "prototype AI Applications with ease by providing high level abstractions for AIML Usecases."
-    "Perform a detailed analysis of the market for Jaclang and provide a detailed report on the market,"
-    "demand, demographics and personas for the product.";
     save_output_as_md(manager(query), "marketing_report.md");
 }

@@ -31,7 +31,7 @@ class Command {
     }
 
     """Initialize a Command instance."""
-    def __init__(
+    def init(
         self: Command,
         func: Callable,
         priority: CommandPriority = CommandPriority.CORE,
@@ -105,7 +105,7 @@ class CommandRegistry {
     }
 
     """Initialize a CommandRegistry instance."""
-    def __init__(self: CommandRegistry) -> None {
+    def init(self: CommandRegistry) -> None {
         self.registry = {};
         self.pending_commands = {};
         self._finalized = False;
@@ -374,6 +374,4 @@ This should be called after all plugins have had a chance to register commands.
     }
 }
 
-with entry {
-    cmd_registry = CommandRegistry();
-}
+glob cmd_registry = CommandRegistry();

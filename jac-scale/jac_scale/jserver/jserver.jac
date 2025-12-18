@@ -8,27 +8,27 @@ import from enum { StrEnum }
 glob T = TypeVar('T');
 
 class HTTPMethod(StrEnum) {
-    has GET: str = 'GET';
-    has POST: str = 'POST';
-    has PUT: str = 'PUT';
-    has PATCH: str = 'PATCH';
-    has DELETE: str = 'DELETE';
+    has GET: str = 'GET',
+        POST: str = 'POST',
+        PUT: str = 'PUT',
+        PATCH: str = 'PATCH',
+        DELETE: str = 'DELETE';
 }
 
 class ParameterType(StrEnum) {
-    has QUERY: str = 'query';
-    has PATH: str = 'path';
-    has BODY: str = 'body';
-    has HEADER: str = 'header';
+    has QUERY: str = 'query',
+        PATH: str = 'path',
+        BODY: str = 'body',
+        HEADER: str = 'header';
 }
 
 obj APIParameter {
-    has name: str;
-    has <>type: ParameterType = ParameterType.QUERY;
-    has data_type: str = 'str';
-    has required: bool = True;
-    has <>default: Any = None;
-    has description: str = '';
+    has name: str,
+        <>type: ParameterType = ParameterType.QUERY,
+        data_type: str = 'str',
+        required: bool = True,
+        <>default: Any = None,
+        description: str = '';
 }
 
 """
@@ -47,14 +47,14 @@ Attributes:
     description (str | None): Detailed description of the endpoint
 """
 obj JEndPoint {
-    has method: HTTPMethod;
-    has path: str;
-    has callback: Callable[(..., Any)];
-    has parameters: (list[APIParameter] | None) = None;
-    has response_model: (type[BaseModel] | None) = None;
-    has tags: (list[str] | None) = None;
-    has summary: (str | None) = None;
-    has description: (str | None) = None;
+    has method: HTTPMethod,
+        path: str,
+        callback: Callable[(..., Any)],
+        parameters: (list[APIParameter] | None) = None,
+        response_model: (type[BaseModel] | None) = None,
+        tags: (list[str] | None) = None,
+        summary: (str | None) = None,
+        description: (str | None) = None;
 }
 
 """Abstract base class for server implementations."""
@@ -64,7 +64,7 @@ class JServer(ABC , Generic[T]) {
     Args:
         end_points (list[JEndPoint]): List of endpoint definitions to register
     """
-    def __init__(self: JServer, end_points: list[JEndPoint]) -> None {
+    def init(self: JServer, end_points: list[JEndPoint]) -> None {
         super.init();
         self._endpoints = end_points;
     }

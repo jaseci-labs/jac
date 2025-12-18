@@ -120,7 +120,7 @@ def semantic_tokens_full(
 }
 
 """Run the language server."""
-def run_lang_server()  -> None {
+def run_lang_server -> None {
     server = JacLangServer();
 
     # Register all features

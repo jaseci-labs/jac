@@ -4,26 +4,28 @@ import from collections.abc { Callable }
 import from contextlib { suppress }
 import from typing { TYPE_CHECKING, cast }
 import from jaclang.pycore.runtime { JacClassReferences, JacRuntimeInterface }
+
+glob __all__ = [
+    'Node',
+    'Edge',
+    'Walker',
+    'Obj',
+    'Root',
+    'GenericEdge',
+    'OPath',
+    'DSFunc',
+    'root',
+    'spawn',
+    'visit',
+    'disengage',
+    'connect',
+    'disconnect',
+    'create_j_context',
+    'get_context',
+    'reset_machine'
+];
+
 with entry {
-    __all__ = [
-        'Node',
-        'Edge',
-        'Walker',
-        'Obj',
-        'Root',
-        'GenericEdge',
-        'OPath',
-        'DSFunc',
-        'root',
-        'spawn',
-        'visit',
-        'disengage',
-        'connect',
-        'disconnect',
-        'create_j_context',
-        'get_context',
-        'reset_machine'
-    ];
     if TYPE_CHECKING {
         import from jaclang.pycore.runtime { JacRuntimeInterface as JacRT }
         import from jaclang.runtimelib.archetype { GenericEdge, Root }
@@ -72,7 +74,7 @@ def __getattr__(name: str) -> object {
 }
 
 """Return list of available attributes."""
-def __dir__()  -> list[str] {
+def __dir__ -> list[str] {
     import from jaclang.pycore.runtime { _init_lazy_imports }
     _init_lazy_imports();
     return sorted(
@@ -85,10 +87,10 @@ def __dir__()  -> list[str] {
 }
 
 """Populate the module namespace with class and method references."""
-def _populate_namespace()  -> None {
+def _populate_namespace -> None {
     current_module = sys.modules[__name__];
     class LazyRef {
-        def __init__(self: LazyRef, attr_name: str) -> None {
+        def init(self: LazyRef, attr_name: str) -> None {
             self.attr_name = attr_name;
             self._resolved: (object | None) = None;
         }
@@ -119,8 +121,4 @@ def _populate_namespace()  -> None {
             setattr(current_module, name, LazyRef(name));
         }
     }
-}
-
-with entry {
-    ;
 }

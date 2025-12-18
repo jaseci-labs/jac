@@ -1492,18 +1492,53 @@ class DocIRGenPass(UniPass) {
     """Generate DocIR for global variables."""
     def exit_global_vars(self: DocIRGenPass, <>node: uni.GlobalVars) -> None {
         parts: list[doc.DocType] = [];
+        indent_parts: list[doc.DocType] = [];
+        semi_doc: (doc.DocType | None) = None;
+        has_multiple_assignments = len(<>node.assignments) > 1;
         for i in <>node.kid {
             if (i == <>node.doc) {
                 parts.append(i.gen.doc_ir);
                 parts.append(self.hard_line());
             } elif (isinstance(i, uni.Token) and (i.name == Tok.SEMI)) {
-                parts.pop();
-                parts.append(i.gen.doc_ir);
-                parts.append(self.space());
+                if indent_parts {
+                    indent_parts.pop();
+                } elif parts {
+                    parts.pop();
+                }
+                semi_doc = i.gen.doc_ir;
+            } elif (isinstance(i, uni.Token) and (i.name == Tok.COMMA)) {
+                if has_multiple_assignments {
+                    indent_parts.pop();
+                    indent_parts.append(i.gen.doc_ir);
+                    indent_parts.append(self.hard_line());
+                } else {
+                    parts.pop();
+                    parts.append(i.gen.doc_ir);
+                    parts.append(self.space());
+                }
+            } elif isinstance(i, uni.Assignment) {
+                if has_multiple_assignments {
+                    indent_parts.append(i.gen.doc_ir);
+                    indent_parts.append(self.space());
+                } else {
+                    parts.append(i.gen.doc_ir);
+                    parts.append(self.space());
+                }
             } else {
                 parts.append(i.gen.doc_ir);
                 parts.append(self.space());
             }
+        }
+        if indent_parts {
+            self.trim_trailing_line(indent_parts);
+            parts.append(
+                self.indent(
+                    self.concat([self.hard_line(), *indent_parts]), ast_node=<>node
+                )
+            );
+        }
+        if semi_doc {
+            parts.append(semi_doc);
         }
         <>node.gen.doc_ir = self.group(
             self.concat(parts, ast_node=<>node), ast_node=<>node

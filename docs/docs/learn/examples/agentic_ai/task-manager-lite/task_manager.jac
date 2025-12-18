@@ -4,13 +4,13 @@ import time;
 glob llm = Model(model_name="gpt-4o");
 
 node Task {
-    has task: str = "";
-    has date: str = "";
-    has time: str = "";
+    has task: str = "",
+        date: str = "",
+        time: str = "";
 }
 
 node TaskHandling {
-    def get_current_time()  -> str {
+    def get_current_time -> str {
         return time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime());
     }
 

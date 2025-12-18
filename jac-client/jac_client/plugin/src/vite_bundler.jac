@@ -10,7 +10,7 @@ import from .config_loader { JacClientConfig }
 """Handles Vite bundling operations."""
 class ViteBundler {
     """Initialize the Vite bundler."""
-    def __init__(
+    def init(
         self: ViteBundler,
         project_dir: Path,
         output_dir: Optional[Path] = None,

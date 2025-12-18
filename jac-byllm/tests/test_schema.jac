@@ -35,12 +35,12 @@ test assert_statement_met_expectation_working {
 # Case: Simple object
 # =============================================================================
 obj Person {
-    has name: str;
-    has age: int;
-    has description: str | None;
+    has name: str,
+        age: int,
+        description: str | None;
 }
 
-def generate_random_person()  -> Person by llm();
+def generate_random_person -> Person by llm();
 
 test simple_object {
     person = generate_random_person();
@@ -54,18 +54,18 @@ test simple_object {
 # Case: Nested object
 # =============================================================================
 obj Address {
-    has street: str;
-    has city: str;
-    has zip_code: str;
+    has street: str,
+        city: str,
+        zip_code: str;
 }
 
 obj User {
-    has username: str;
-    has email: str;
-    has address: Address;
+    has username: str,
+        email: str,
+        address: Address;
 }
 
-def generate_random_user()  -> User by llm();
+def generate_random_user -> User by llm();
 
 test nested_object {
     user = generate_random_user();
@@ -80,8 +80,8 @@ test nested_object {
 # Case: Union types + inheritnace
 # =============================================================================
 obj Pet {
-    has name: str;
-    has age: int;
+    has name: str,
+        age: int;
 }
 
 obj Dog(Pet) {
@@ -96,7 +96,7 @@ obj MyPet {
     has pet: Dog | Cat;
 }
 
-def generate_random_pet()  -> MyPet by llm();
+def generate_random_pet -> MyPet by llm();
 
 test union_types_and_inheritance {
     pet = generate_random_pet();
@@ -142,7 +142,7 @@ enum Color {
     Blue,
 }
 
-def get_random_color()  -> Color by llm();
+def get_random_color -> Color by llm();
 
 test enum_case {
     color = get_random_color();
@@ -161,7 +161,7 @@ enum WeatherCondition {
     Windy = "Windy",
 }
 
-def get_random_weather_condition()  -> WeatherCondition by llm();
+def get_random_weather_condition -> WeatherCondition by llm();
 
 test enum_string_case {
     condition = get_random_weather_condition();
@@ -175,9 +175,9 @@ test enum_string_case {
 # Case: Test tool schema
 # =============================================================================
 obj WeatherData {
-    has city: str;
-    has temperature: float;
-    has condition: str;
+    has city: str,
+        temperature: float,
+        condition: str;
 }
 
 def get_weather(city: str) -> WeatherData {
@@ -219,14 +219,14 @@ test tool_functionality {
 # Case: Semstrings attached in schema
 # =============================================================================
 obj Client {
-    has name: str;
-    has major: str;
+    has name: str,
+        major: str;
 }
 
 sem Client. name= "Should always be 'Alice'";
 sem Client. major= "Should always be 'Legal Advisor'";
 
-def generate_client()  -> Client by llm();
+def generate_client -> Client by llm();
 
 test semstrings_attached_in_schema {
     client = generate_client();
@@ -264,7 +264,7 @@ obj ColorContainer {
     has colors: tuple[str, ...];
 }
 
-def generate_random_colors()  -> ColorContainer by llm();
+def generate_random_colors -> ColorContainer by llm();
 
 test annotated_tuple {
     container = generate_random_colors();
@@ -282,7 +282,7 @@ test annotated_tuple {
 # =============================================================================
 # Case: Annotated dictionary
 # =============================================================================
-def generate_random_name_and_age()  -> dict[
+def generate_random_name_and_age -> dict[
     str,
     int
 ] by llm();
@@ -304,7 +304,7 @@ test annotated_dictionary {
 # =============================================================================
 # Case: Recursive dictionary
 # =============================================================================
-def generate_student_data()  -> dict[
+def generate_student_data -> dict[
     str,
     dict[str, int]
 ] by llm();

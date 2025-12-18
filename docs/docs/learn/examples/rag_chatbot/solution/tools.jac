@@ -9,8 +9,8 @@ import from langchain_chroma { Chroma }
 glob SERPER_API_KEY: str = os.getenv('SERPER_API_KEY', '');
 
 obj RagEngine {
-    has file_path: str = "uploads/user_session_123";
-    has chroma_path: str = "chroma";
+    has file_path: str = "uploads/user_session_123",
+        chroma_path: str = "chroma";
 
     def postinit {
         if not os.path.exists(self.file_path) {
@@ -136,8 +136,8 @@ obj RagEngine {
 }
 
 obj WebSearch {
-    has api_key: str = SERPER_API_KEY;
-    has base_url: str = "https://google.serper.dev/search";
+    has api_key: str = SERPER_API_KEY,
+        base_url: str = "https://google.serper.dev/search";
 
     def search(query: str) {
         headers = {"X-API-KEY": self.api_key, "Content-Type": "application/json"};

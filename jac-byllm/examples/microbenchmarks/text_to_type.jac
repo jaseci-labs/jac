@@ -28,10 +28,11 @@ glob llm = Model(
 
 def generate_person(info: str) -> Person by llm();
 
+glob person = generate_person(
+    "Steve Jobs was 56 years old and worked as the CEO of Apple Inc. in California."
+);
+
 with entry {
-    person = generate_person(
-        "Steve Jobs was 56 years old and worked as the CEO of Apple Inc. in California."
-    );
     print(
         f"Person's name is {person.name} and works at {person.employer.employer_name} which is located in {person.employer.location}."
     );

@@ -47,7 +47,7 @@ class CommentInfo {
 
 """Efficient bookkeeping for inline and standalone comments."""
 class CommentStore {
-    def __init__(
+    def init(
         self: CommentStore,
         inline: dict[(int, list[CommentInfo])],
         standalone: list[CommentInfo]
@@ -206,8 +206,9 @@ class CommentInjectionPass(Transform[(uni.Module, uni.Module)]) {
                 if (len(info.token.value) > 50) {
                     comment_preview += '...';
                 }
-                self.log_error(
-                    f"Comment could not be placed and would float to bottom: {comment_preview!r}",
+                self.log_warning(
+                    "Comment could not be placed precisely; emitting near the end of the formatted output: "
+                    f"{comment_preview!r}",
                     node_override=info.token
                 );
             }

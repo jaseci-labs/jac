@@ -10,32 +10,19 @@ import from types { FunctionType, MethodType, UnionType }
 import from typing { Callable, Union, get_args, get_origin, get_type_hints }
 import from pydantic { TypeAdapter }
 
-glob _SCHEMA_OBJECT_WRAPPER = "schema_object_wrapper";
-glob _SCHEMA_DICT_WRAPPER = "schema_dict_wrapper";
+glob
+    _SCHEMA_OBJECT_WRAPPER = "schema_object_wrapper",
+    _SCHEMA_DICT_WRAPPER = "schema_dict_wrapper";
 
 def _type_to_schema(ty: type, title: str = "", desc: str = "") -> dict;
-
 def _name_of_type(ty: type) -> str;
-
-"""Convert a dictionary type to a schema."""
 def _convert_dict_to_schema(ty_dict: type) -> dict;
-
-"""Decode a JSON dictionary to a Python dictionary."""
 def _decode_dict(json_obj: dict) -> dict;
-
-"""Wrap the schema in an object with a type."""
 def _wrap_to_object(schema: dict[str, object]) -> dict[str, object];
-
-"""Unwrap the schema from an object with a type."""
 def _unwrap_from_object(json_obj: dict) -> dict;
-
-"""Return the JSON schema for the response type."""
 def type_to_schema(resp_type: type) -> dict[str, object];
-
-"""Return the JSON schema for the tool type."""
 def tool_to_schema(
     func: Callable, description: str, params_desc: dict[str, str]
 ) -> dict[str, object];
 
-"""Convert a JSON dictionary to an instance of the given type."""
 def json_to_instance(json_obj: dict, ty: type) -> object;

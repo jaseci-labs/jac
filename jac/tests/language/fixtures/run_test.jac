@@ -1,4 +1,6 @@
-glob a = 5 , b = 2;
+glob
+    a = 5,
+    b = 2;
 
 test t1 {
     assert almostEqual(a, 6);
