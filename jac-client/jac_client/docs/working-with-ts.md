@@ -146,4 +146,4 @@ See the complete working example in:
 jac-client/jac_client/examples/ts-support/
 ```
 
-Happy coding with TypeScript and Jac! 🚀
+Happy coding with TypeScript and Jac! 
