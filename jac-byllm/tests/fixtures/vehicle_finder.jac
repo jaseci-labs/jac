@@ -1,6 +1,11 @@
 import from byllm.lib { MockLLM }
 
-glob llm = MockLLM(model_name="mockllm", outputs=[[0, 2]]);
+glob llm: MockLLM = MockLLM(
+    model_name="mockllm",
+    config={
+       "outputs": [[0, 2]]
+    }
+);
 
 node VehicleShowroom {
     can show_vehicles with showroom_visitor entry {

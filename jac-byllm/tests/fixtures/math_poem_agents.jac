@@ -2,7 +2,8 @@ import from byllm.lib { MockLLM }
 
 glob llm: MockLLM = MockLLM(
     model_name="mockllm",
-    outputs=[
+    config={
+       "outputs": [
         [0],
         """In circuits bright, with purpose clear,
         Agentic minds, we hold dear.
@@ -12,6 +13,7 @@ glob llm: MockLLM = MockLLM(
         [1],
         "35"
     ]
+    }
 );
 
 walker supervisor {
