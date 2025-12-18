@@ -55,7 +55,7 @@ def _wait_for_port(
 
 
 def test_all_in_one_app_endpoints() -> None:
-    """Create a Jac app, copy @all-in-one into it, run npm install, then verify endpoints."""
+    """Create a Jac app, copy @all-in-one into it, install packages from config.json, then verify endpoints."""
     print(
         "[DEBUG] Starting test_all_in_one_app_endpoints using jac create_jac_app + @all-in-one"
     )
@@ -125,24 +125,25 @@ def test_all_in_one_app_endpoints() -> None:
                 else:
                     shutil.copy2(src, dst)
 
-            # 3. Run `npm install` inside the project directory so the frontend can build.
-            print("[DEBUG] Running 'npm install' in created Jac app")
-            npm_result = run(
-                ["npm", "install"],
+            # 3. Install packages from config.json using `jac add --cl`
+            # This reads packages from config.json, generates package.json, and runs npm install
+            print("[DEBUG] Running 'jac add --cl' to install packages from config.json")
+            jac_add_result = run(
+                ["jac", "add", "--cl"],
                 cwd=project_path,
                 capture_output=True,
                 text=True,
             )
             print(
-                "[DEBUG] 'npm install' completed "
-                f"returncode={npm_result.returncode}\n"
-                f"STDOUT (truncated to 2000 chars):\n{npm_result.stdout[:2000]}\n"
-                f"STDERR (truncated to 2000 chars):\n{npm_result.stderr[:2000]}\n"
+                "[DEBUG] 'jac add --cl' completed "
+                f"returncode={jac_add_result.returncode}\n"
+                f"STDOUT (truncated to 2000 chars):\n{jac_add_result.stdout[:2000]}\n"
+                f"STDERR (truncated to 2000 chars):\n{jac_add_result.stderr[:2000]}\n"
             )
 
-            if npm_result.returncode != 0:
+            if jac_add_result.returncode != 0:
                 pytest.skip(
-                    "Skipping: npm install failed or npm is not available in PATH."
+                    "Skipping: jac add --cl failed or npm is not available in PATH."
                 )
 
             app_jac_path = os.path.join(project_path, "app.jac")
