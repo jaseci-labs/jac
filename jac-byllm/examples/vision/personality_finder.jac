@@ -12,8 +12,9 @@ obj Person {
 
 def get_person_info(img_of_person: Image) -> Person by llm();
 
+glob person_obj = get_person_info(Image("person.png"));
+
 with entry {
-    person_obj = get_person_info(Image("person.png"));
     print(
         f"{person_obj.full_name} was a {person_obj.personality} person who died in {person_obj.yod}"
     );

@@ -7,7 +7,7 @@ import from jaclang.runtimelib.client_bundle { ClientBundleError }
 """Manages Jac Client configuration from config.json."""
 class JacClientConfig {
     """Initialize config loader."""
-    def __init__(self: JacClientConfig, project_dir: Path) {
+    def init(self: JacClientConfig, project_dir: Path) {
         self.project_dir = project_dir;
         self.configs_dir = project_dir / '.jac-client.configs';
         self.config_file = project_dir / 'config.json';
@@ -24,7 +24,14 @@ class JacClientConfig {
                 'server': {},
                 'resolve': {}
             },
-            'ts': {}
+            'ts': {},
+            'package': {
+                'name': '',
+                'version': '1.0.0',
+                'description': '',
+                'dependencies': {},
+                'devDependencies': {}
+            }
         };
     }
 
@@ -82,5 +89,11 @@ class JacClientConfig {
     def get_ts_config(self: JacClientConfig) -> dict[str, Any] {
         config = self.load();
         return config.get('ts', {});
+    }
+
+    """Get package.json-specific configuration."""
+    def get_package_config(self: JacClientConfig) -> dict[str, Any] {
+        config = self.load();
+        return config.get('package', {});
     }
 }

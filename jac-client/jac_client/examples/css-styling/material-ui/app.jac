@@ -12,7 +12,7 @@ cl import from '@mui/icons-material/Remove' { default as RemoveIcon }
 cl import from '@mui/icons-material/Refresh' { default as RefreshIcon }
 
 cl {
-    def app()  -> any {
+    def app -> any {
         [count, setCount] = useState(0);
 
         useEffect(lambda   -> None{ console.log("Count changed: ", count);} , [count]);

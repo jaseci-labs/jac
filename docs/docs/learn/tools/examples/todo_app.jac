@@ -1,6 +1,6 @@
 import streamlit as st;
 
-def todo_app() {
+def todo_app {
     st.title("📋 Todo App");
     st.write("A simple todo application built with Jac and Streamlit");
 

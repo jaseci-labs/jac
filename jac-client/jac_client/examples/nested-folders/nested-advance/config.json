@@ -1,0 +1,19 @@
+{
+  "vite": {
+    "plugins": [],
+    "lib_imports": [],
+    "build": {},
+    "server": {},
+    "resolve": {}
+  },
+  "ts": {},
+  "package": {
+    "name": "nested-advance",
+    "version": "1.0.0",
+    "description": "Jac application: nested-advance",
+    "dependencies": {
+      "antd": "^6.0.0"
+    },
+    "devDependencies": {}
+  }
+}

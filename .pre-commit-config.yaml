@@ -47,6 +47,7 @@ repos:
         types: [file]
         files: \.jac$
         require_serial: true
+        exclude: (/fixtures/|_err\.jac$|_syntax_err\.jac$|jac-client/jac_client/examples/)
       - id: jac-check
         name: jac-check
         description: Type check Jac files

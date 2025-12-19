@@ -106,16 +106,16 @@ def bootstrap_frontend(token: str) {
     }
 }
 
-with entry {
-    INSTANCE_URL = "http://localhost:8000";
-    TEST_USER_EMAIL = "test@mail.com";
-    TEST_USER_PASSWORD = "password";
-
+glob
+    INSTANCE_URL = "http://localhost:8000",
+    TEST_USER_EMAIL = "test@mail.com",
+    TEST_USER_PASSWORD = "password",
     response = requests.post(
         f"{INSTANCE_URL}/user/login",
         json={"email": TEST_USER_EMAIL, "password": TEST_USER_PASSWORD}
     );
 
+with entry {
     if response.status_code != 200 {
         # Try registering the user if login fails
         response = requests.post(
@@ -129,9 +129,11 @@ with entry {
         );
         assert response.status_code == 200;
     }
+}
 
-    token = response.json()["token"];
+glob token = response.json()["token"];
 
+with entry {
     print("Token:", token);
 
     bootstrap_frontend(token);

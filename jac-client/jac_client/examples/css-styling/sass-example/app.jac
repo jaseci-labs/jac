@@ -3,7 +3,7 @@ cl import from react { useState, useEffect }
 cl import ".styles.scss";
 
 cl {
-    def app()  -> any {
+    def app -> any {
         [count, setCount] = useState(0);
 
         useEffect(lambda   -> None{ console.log("Count changed: ", count);} , [count]);

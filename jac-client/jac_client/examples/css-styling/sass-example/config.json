@@ -1,0 +1,19 @@
+{
+  "vite": {
+    "plugins": [],
+    "lib_imports": [],
+    "build": {},
+    "server": {},
+    "resolve": {}
+  },
+  "ts": {},
+  "package": {
+    "name": "sass-example",
+    "version": "1.0.0",
+    "description": "Jac application: sass-example",
+    "dependencies": {},
+    "devDependencies": {
+      "sass": "^1.77.8"
+    }
+  }
+}

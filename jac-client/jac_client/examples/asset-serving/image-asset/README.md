@@ -90,7 +90,7 @@ Both directories are checked when serving `/static/*` requests.
 **Dynamic Asset Paths:**
 
 ```jac
-let imagePath = `/static/assets/${imageName}.png`;
+imagePath = `/static/assets/${imageName}.png`;
 <img src={imagePath} />
 ```
 

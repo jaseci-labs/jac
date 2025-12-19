@@ -19,7 +19,7 @@ cl import from "@jac-client/utils" {
 
 cl {
     # Navigation Component
-    def Navigation()  -> any {
+    def Navigation -> any {
         isLoggedIn = jacIsLoggedIn();
         navigate = useNavigate();
 
@@ -108,7 +108,7 @@ cl {
     }
 
     # Login Page
-    def LoginPage()  -> any {
+    def LoginPage -> any {
         [email, setEmail] = useState("");
         [password, setPassword] = useState("");
         [error, setError] = useState("");
@@ -234,7 +234,7 @@ cl {
     }
 
     # Signup Page
-    def SignupPage()  -> any {
+    def SignupPage -> any {
         [email, setEmail] = useState("");
         [password, setPassword] = useState("");
         [error, setError] = useState("");
@@ -360,7 +360,7 @@ cl {
     }
 
     # Dashboard Page (Protected Route)
-    def DashboardPage()  -> any {
+    def DashboardPage -> any {
         # Check if user is logged in, redirect if not
         if not jacIsLoggedIn() {
             return <Navigate to="/login" />;
@@ -423,7 +423,7 @@ cl {
     }
 
     # Home/Landing Page - auto-redirect based on auth status
-    def HomePage()  -> any {
+    def HomePage -> any {
         if jacIsLoggedIn() {
             return <Navigate to="/dashboard" />;
         }
@@ -431,7 +431,7 @@ cl {
     }
 
     # Main App with React Router
-    def app()  -> any {
+    def app -> any {
         return <Router>
             <div
                 style={{

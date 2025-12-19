@@ -2,8 +2,8 @@
 cl import from react { useState, useEffect }
 
 node Todo {
-    has text: str;
-    has done: bool = False;
+    has text: str,
+        done: bool = False;
 }
 
 walker create_todo {
@@ -33,13 +33,13 @@ walker read_todos {
 }
 
 cl {
-    def app()  -> any {
+    def app -> any {
         [todos, setTodos] = useState([]);
         [inputValue, setInputValue] = useState("");
         [filter, setFilter] = useState("all");
 
         useEffect(
-            lambda   -> None{ async def loadTodos()  -> None {
+            lambda   -> None{ async def loadTodos -> None {
                 todos = root spawn read_todos();
                 setTodos(todos.reports);
             } loadTodos();} ,
@@ -47,7 +47,7 @@ cl {
         );
 
         # Add a new todo
-        async def addTodo()  -> None {
+        async def addTodo -> None {
             if not inputValue.trim() {
                 return;
             }
@@ -85,14 +85,14 @@ cl {
         }
 
         # Clear all completed todos
-        def clearCompleted()  -> None {
+        def clearCompleted -> None {
             setTodos(
                 todos.filter(lambda  todo: any  -> bool{ return not todo.done; } )
             );
         }
 
         # Filter todos based on current filter
-        def getFilteredTodos()  -> list {
+        def getFilteredTodos -> list {
             if filter == "active" {
                 return todos.filter(
                     lambda  todo: any  -> bool{ return not todo.done; }

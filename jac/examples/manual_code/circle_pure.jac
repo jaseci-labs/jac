@@ -25,7 +25,9 @@ obj Circle(Shape) {
     override def area -> float;
 }
 # Radius of the demo circle
-glob RAD = 5 , c = Circle(radius=RAD);
+glob
+    RAD = 5,
+    c = Circle(radius=RAD);
 
 """Here we run the main program."""
 with entry:__main__ {

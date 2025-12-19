@@ -15,7 +15,7 @@ import from .src { ViteCompiler }
 """Enhanced ClientBundleBuilder that uses Vite for optimized bundling."""
 class ViteClientBundleBuilder(ClientBundleBuilder) {
     """Initialize the Vite-enhanced bundle builder."""
-    def __init__(
+    def init(
         self: ViteClientBundleBuilder,
         runtime_path: (Path | None) = None,
         vite_output_dir: (Path | None) = None,

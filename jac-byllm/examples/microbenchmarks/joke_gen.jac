@@ -26,8 +26,9 @@ obj PunclineJokes {
 
 sem PunclineJokes. joke= 'Jokes with Punchlines';
 
+glob joke_gen = PunclineJokes();
+
 with entry {
-    joke_gen = PunclineJokes();
     for i in range(5) {
         joke_gen.generate();
     }
