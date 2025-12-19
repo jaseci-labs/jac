@@ -11,7 +11,6 @@ A Multiline
 Comment *#
 glob ver = "0.0.1";  # global variable
 
-
 import defs.utils;  # import a module
 import os;  # import a python module
 import defs.mod_defs;  # includes a file

@@ -6,7 +6,7 @@ cl import from react {
 cl import from '@jac-client/utils' { jacSignup, jacLogin, jacLogout, jacIsLoggedIn }
 
 cl {
-    def app()  -> any {
+    def app -> any {
         [isLoggedIn, setIsLoggedIn] = useState(False);
         [isSignup, setIsSignup] = useState(False);
         [username, setUsername] = useState("");
@@ -18,7 +18,7 @@ cl {
         useEffect(lambda   -> None{ setIsLoggedIn(jacIsLoggedIn());} , []);
 
         # Handle login
-        async def handleLogin()  -> None {
+        async def handleLogin -> None {
             setError("");
             if not username.trim() or not password {
                 setError("Please fill in all fields");
@@ -37,7 +37,7 @@ cl {
         }
 
         # Handle signup
-        async def handleSignup()  -> None {
+        async def handleSignup -> None {
             setError("");
             if not username.trim() or not password {
                 setError("Please fill in all fields");
@@ -60,7 +60,7 @@ cl {
         }
 
         # Handle logout
-        def handleLogout()  -> None {
+        def handleLogout -> None {
             jacLogout();
             setIsLoggedIn(False);
             setUsername("");

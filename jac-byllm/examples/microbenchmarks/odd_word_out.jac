@@ -3,9 +3,9 @@ import from byllm.lib { Model }
 glob llm = Model(model_name="gpt-4o");
 
 obj OddWord {
-    has options: list[str];
-    has reasoning: str;
-    has result: str;
+    has options: list[str],
+        reasoning: str,
+        result: str;
 }
 
 glob examples: list[OddWord] = [

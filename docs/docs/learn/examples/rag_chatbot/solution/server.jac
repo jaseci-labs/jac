@@ -5,9 +5,10 @@ import os;
 import base64;
 import mcp_client;
 
-glob rag_engine: RagEngine = RagEngine();
-glob llm = Model(model_name='gpt-4o-mini', verbose=True);
-glob MCP_SERVER_URL: str = os.getenv('MCP_SERVER_URL', 'http://localhost:8899/mcp');
+glob
+    rag_engine: RagEngine = RagEngine(),
+    llm = Model(model_name='gpt-4o-mini', verbose=True),
+    MCP_SERVER_URL: str = os.getenv('MCP_SERVER_URL', 'http://localhost:8899/mcp');
 
 enum ChatType { RAG, QA, IMAGE, VIDEO }
 
@@ -20,10 +21,10 @@ node Chat {
 }
 
 walker infer {
-    has message: str;
-    has chat_history: list[dict];
-    has response: str = "";
-    has file_path: str = "";
+    has message: str,
+        chat_history: list[dict],
+        response: str = "",
+        file_path: str = "";
 
     can init_router with `root entry {
         visit [-->](`?Router) else {
@@ -87,10 +88,10 @@ node QAChat(Chat) {
 }
 
 walker interact {
-    has message: str;
-    has session_id: str;
-    has chat_history: list[dict] = [];
-    has file_path: str = "";
+    has message: str,
+        session_id: str,
+        chat_history: list[dict] = [],
+        file_path: str = "";
 
     can init_session with `root entry {
         visit [-->](`?Session)(?id==self.session_id) else {
@@ -103,10 +104,10 @@ walker interact {
 }
 
 node Session {
-    has id: str;
-    has chat_history: list[dict];
-    has status: int = 1;
-    has file_path: str = "";
+    has id: str,
+        chat_history: list[dict],
+        status: int = 1,
+        file_path: str = "";
 
     can chat with interact entry {
         visitor.chat_history = self.chat_history;
@@ -125,9 +126,9 @@ node Session {
 }
 
 walker upload_file {
-    has file_name: str;
-    has file_data: str;
-    has session_id: str;
+    has file_name: str,
+        file_data: str,
+        session_id: str;
 
     can save_doc with `root entry;
 }

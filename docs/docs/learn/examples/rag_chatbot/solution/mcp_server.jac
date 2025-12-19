@@ -4,12 +4,10 @@ import from mcp.server.fastmcp.tools { Tool }
 import from mcp.server.fastmcp { FastMCP }
 import typing;
 
-glob rag_engine: RagEngine = RagEngine();
-glob web_search: WebSearch = WebSearch();
-
-with entry {
+glob
+    rag_engine: RagEngine = RagEngine(),
+    web_search: WebSearch = WebSearch(),
     mcp = FastMCP(name="RAG-MCP", port=8899);
-}
 
 def resolve_hints(fn: typing.Callable) -> typing.Callable {
     fn.__annotations__ = typing.get_type_hints(fn, include_extras=True);

@@ -63,7 +63,7 @@ class JacAnnexPass(Transform[uni.Module, uni.Module]):
                 path.startswith(f"{self.base_path}.")
                 or os.path.dirname(path) == self.impl_folder
             ):
-                mod = jac_program.compile(file_path=path, no_cgen=True)
+                mod = jac_program.compile(file_path=path, no_cgen=True, minimal=True)
                 if mod:
                     node.impl_mod.append(mod)
 
@@ -71,7 +71,7 @@ class JacAnnexPass(Transform[uni.Module, uni.Module]):
                 path.startswith(f"{self.base_path}.")
                 or os.path.dirname(path) == self.cl_folder
             ):
-                mod = jac_program.compile(file_path=path, no_cgen=True)
+                mod = jac_program.compile(file_path=path, no_cgen=True, minimal=True)
                 if mod:
                     self._mark_client_declarations(mod)
                     node.impl_mod.append(mod)
@@ -84,7 +84,7 @@ class JacAnnexPass(Transform[uni.Module, uni.Module]):
                     or os.path.dirname(path) == self.test_folder
                 )
             ):
-                mod = jac_program.compile(file_path=path, no_cgen=True)
+                mod = jac_program.compile(file_path=path, no_cgen=True, minimal=True)
                 if mod:
                     node.test_mod.append(mod)
 

@@ -3,7 +3,7 @@ cl import from antd { Button }
 cl import from ...ButtonRoot { ButtonRoot }
 cl import from ..ButtonSecondL { ButtonSecondL }
 
-cl def ButtonThirdL()  -> any {
+cl def ButtonThirdL -> any {
     return <div>
         <Button
             type="dashed"

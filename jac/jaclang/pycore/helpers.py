@@ -1,12 +1,16 @@
 """Utility functions and classes for Jac compilation toolchain."""
 
 import dis
+import inspect
 import marshal
 import os
 import pdb
 import re
+from collections.abc import Callable
+from dataclasses import fields, is_dataclass
 from functools import lru_cache
 from traceback import TracebackException
+from typing import get_args, get_origin
 
 from jaclang.pycore.settings import settings
 
@@ -408,3 +412,78 @@ def read_file_with_encoding(file_path: str) -> str:
         f"Could not read file {file_path} with any encoding. "
         f"Report this issue: https://github.com/jaseci-labs/jaseci/issues"
     )
+
+
+def _short_type_name(t: object) -> str:
+    """Return a short, readable type name for annotations."""
+    if t is inspect._empty:
+        return "Any"
+
+    origin = get_origin(t)
+    if origin is not None:
+        name = getattr(origin, "__name__", str(origin).replace("typing.", ""))
+        args = get_args(t)
+        if not args:
+            return name
+        return f"{name}[{','.join(_short_type_name(a) for a in args)}]"
+
+    return getattr(t, "__name__", str(t).replace("typing.", ""))
+
+
+def _signature_summary(func: Callable) -> str:
+    """Summarize function signature as (T1,T2)->R (drop param names/self)."""
+    try:
+        sig = inspect.signature(func)
+    except (TypeError, ValueError):
+        return ""
+
+    params: list[str] = []
+    for p in sig.parameters.values():
+        if p.name == "self":
+            continue
+        params.append(_short_type_name(p.annotation))
+
+    ret = _short_type_name(sig.return_annotation)
+    return f"({','.join(params)})->{ret}"
+
+
+def _safe_repr(v: object, limit: int = 120) -> str:
+    """Keep repr readable; avoids huge dumps while staying generic."""
+    s = repr(v)
+    return s if len(s) <= limit else s[: limit - 1] + "…"
+
+
+def _describe_node(obj: object) -> str:
+    """Single-line description used for LLM routing."""
+    cls = obj.__class__
+
+    # Attributes
+    attrs: list[str] = []
+    if is_dataclass(obj):
+        for f in fields(obj):
+            attrs.append(f"{f.name}={_safe_repr(getattr(obj, f.name))}")
+    else:
+        for k, v in vars(obj).items():
+            if k.startswith("_"):
+                continue
+            attrs.append(f"{k}={_safe_repr(v)}")
+
+    # Methods
+    methods: list[str] = []
+    for m_name, func in inspect.getmembers(cls, predicate=inspect.isfunction):
+        if m_name.startswith("__"):
+            continue
+        sig = _signature_summary(func)
+        methods.append(f"{m_name}{sig}" if sig else m_name)
+
+    parts = [cls.__name__]
+    if attrs:
+        parts.append("attrs:" + ",".join(attrs))
+    if methods:
+        parts.append("methods:" + ",".join(methods))
+    return " — ".join(parts)
+
+
+def _describe_nodes_list(objects: list[object]) -> str:
+    """One object per line, index-friendly for returning list[int]."""
+    return "\n".join(f"{i}) {_describe_node(obj)}" for i, obj in enumerate(objects))

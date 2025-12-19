@@ -12,21 +12,23 @@ glob personality_examples: dict[str, Personality] = {Personality.INTROVERT,Perso
 
 glob llm = MockLLM(
     model_name="mockllm",
-    verbose=True,
-    outputs=[
-        # '[Reasoning] J. Robert Oppenheimer, also known as the "father of the atomic bomb," was a brilliant '
-        # 'theoretical physicist and the director of the Manhattan Project during World War II. He played a crucial '
-        # 'role in developing the first nuclear weapons. However, after witnessing the devastation caused by the '
-        # 'atomic bombs dropped on Hiroshima and Nagasaki, he expressed deep regret and became an advocate for nuclear '
-        # 'disarmament. While he was an exceptional scientist, he was also known for his introspective and philosophical '
-        # 'nature, which suggests an introverted personality.\n'
-        Person(
-            full_name="J. Robert Oppenheimer",
-            yod=1967,
-            personality=Personality.INTROVERT
-        ),
+    config={
+        "verbose": True,
+        "outputs": [
+            # '[Reasoning] J. Robert Oppenheimer, also known as the "father of the atomic bomb," was a brilliant '
+            # 'theoretical physicist and the director of the Manhattan Project during World War II. He played a crucial '
+            # 'role in developing the first nuclear weapons. However, after witnessing the devastation caused by the '
+            # 'atomic bombs dropped on Hiroshima and Nagasaki, he expressed deep regret and became an advocate for nuclear '
+            # 'disarmament. While he was an exceptional scientist, he was also known for his introspective and philosophical '
+            # 'nature, which suggests an introverted personality.\n'
+            Person(
+                full_name="J. Robert Oppenheimer",
+                yod=1967,
+                personality=Personality.INTROVERT
+            ),
 
-    ]
+        ]
+    },
 );
 
 def get_person_info(name: str) -> Person by llm(method="Reason");

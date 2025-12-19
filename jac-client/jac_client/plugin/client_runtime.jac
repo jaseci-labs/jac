@@ -67,7 +67,7 @@ cl {
     glob useParams = reactRouterUseParams;
 
     # useRouter Hook - convenience hook that combines common router utilities
-    def useRouter()  -> dict {
+    def useRouter -> dict {
         navigate = reactRouterUseNavigate();
         location = reactRouterUseLocation();
         params = reactRouterUseParams();
@@ -203,11 +203,11 @@ cl {
         return False;
     }
 
-    def jacLogout()  -> None {
+    def jacLogout -> None {
         __removeLocalStorage("jac_token");
     }
 
-    def jacIsLoggedIn()  -> bool {
+    def jacIsLoggedIn -> bool {
         token = __getLocalStorage("jac_token");
         return token != None and token != "";
     }

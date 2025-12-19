@@ -82,7 +82,7 @@ impl upload_file.save_doc{
 }
 
 """Get available MCP tool names."""
-def list_mcp_tools()  -> list[str] {
+def list_mcp_tools -> list[str] {
     return mcp_client.list_mcp_tools();
 }
 

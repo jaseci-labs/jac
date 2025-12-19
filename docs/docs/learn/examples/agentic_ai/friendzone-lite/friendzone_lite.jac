@@ -6,14 +6,14 @@ import os;
 glob llm = Model(model_name="gemini/gemini-2.5-flash");
 
 obj Response {
-    has follow_up_questions: str;
-    has summary: str;
-    has when: str;
-    has who: List[str];
-    has what: str;
-    has where: List[str];
-    has terminate_conversation: bool;
-    has show_summary: bool;
+    has follow_up_questions: str,
+        summary: str,
+        when: str,
+        who: List[str],
+        what: str,
+        where: List[str],
+        terminate_conversation: bool,
+        show_summary: bool;
 }
 
 sem Response= "Memory details refined using the user's input and prior context.";
@@ -41,20 +41,20 @@ def update_memory_details(
 ) -> Response by llm();
 
 node session {
-    has summary: str = "";
-    has when: str = "";
-    has who: list = [];
-    has where: list = [];
-    has what: str = "";
-    has conversation: list = [];
-    has image_url: str = "";
-    has show_summary: bool = False;
-    has terminate_conversation: bool = False;
+    has summary: str = "",
+        when: str = "",
+        who: list = [],
+        where: list = [],
+        what: str = "",
+        conversation: list = [],
+        image_url: str = "",
+        show_summary: bool = False,
+        terminate_conversation: bool = False;
 }
 
 walker update_session {
-    has image_url: str;
-    has utterance: str = "";
+    has image_url: str,
+        utterance: str = "";
 
     can visit_session with `root entry {
         # Find or create session for this image

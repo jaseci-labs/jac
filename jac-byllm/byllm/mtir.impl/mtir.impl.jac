@@ -1,3 +1,20 @@
+glob
+    SYSTEM_PERSONA = """\
+    This is a task you must complete by returning only the output.
+    Do not include explanations, code, or extra text—only the result.
+    """,
+    INSTRUCTION_TOOL = """
+    Use the tools provided to reach the goal. Call one tool at a time with \
+    proper args—no explanations, no narration. Think step by step, invoking tools \
+    as needed. When done, always call finish_tool(output) to return the final
+    output. Only use tools.
+    """;
+
+"""Create an MTRuntime instance from a callable and its arguments.
+
+Builds the message history with system persona, user input, and any media.
+Prepares tools including the finish_tool for ReAct-style interactions.
+"""
 impl MTRuntime.factory(
     caller: Callable, args: dict[int | str, object], call_params: dict[str, object]
 ) -> MTRuntime {
@@ -78,6 +95,7 @@ impl MTRuntime.factory(
     );
 }
 
+"""Build the parameter dict for the LLM API call."""
 impl MTRuntime.dispatch_params()  -> dict[str, object] {
     params = {
         "messages": self.get_msg_list(),
@@ -91,16 +109,19 @@ impl MTRuntime.dispatch_params()  -> dict[str, object] {
     return params;
 }
 
+"""Add a message to the conversation history."""
 impl MTRuntime.add_message(message: MessageType) -> None {
     self.messages.append(message);
 }
 
+"""Return the messages in a format suitable for LLM API."""
 impl MTRuntime.get_msg_list()  -> list[dict[str, object] | LiteLLMMessage] {
     return [
         msg.to_dict() if isinstance(msg, Message) else msg for msg in self.messages
     ];
 }
 
+"""Parse the LLM response string into the expected return type."""
 impl MTRuntime.parse_response(response: str) -> object {
     # To use validate_json the string should contains quotes.
     #     example: '"The weather at New York is sunny."'
@@ -116,6 +137,7 @@ impl MTRuntime.parse_response(response: str) -> object {
     return response;
 }
 
+"""Get a tool by its function name."""
 impl MTRuntime.get_tool(tool_name: str) -> Tool | None {
     for tool in self.tools {
         if tool.func.__name__ == tool_name {
@@ -125,10 +147,12 @@ impl MTRuntime.get_tool(tool_name: str) -> Tool | None {
     return None;
 }
 
+"""Return the tools as JSON schemas for the LLM API."""
 impl MTRuntime.get_tool_list()  -> list[dict] {
     return [tool.get_json_schema() for tool in self.tools];
 }
 
+"""Return the JSON schema for the response type, if applicable."""
 impl MTRuntime.get_output_schema()  -> dict | None {
     assert (len(self.tools) == 0 or self.get_tool("finish_tool") is not None);  #Finish tool should be present in the tools list.
     if len(self.tools) == 0 and self.resp_type {

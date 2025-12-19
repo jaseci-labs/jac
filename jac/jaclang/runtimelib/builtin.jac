@@ -3,6 +3,7 @@ import json;
 import from abc { abstractmethod }
 import from collections.abc { Callable }
 import from typing { TYPE_CHECKING, Any, ClassVar, override }
+
 with entry {
     if TYPE_CHECKING {
         import from enum { IntEnum }
@@ -22,82 +23,26 @@ with entry {
     }
 }
 
-"""Lazily get JacRuntimeInterface."""
-def _get_jac()  -> type[JacRuntimeInterface] {
-    import from jaclang { JacRuntimeInterface }
-    return JacRuntimeInterface;
-}
+def _get_jac -> type[JacRuntimeInterface];
 
-"""Lazily get AccessLevel enum."""
-def _get_access_level()  -> type[AccessLevel] {
-    import from jaclang.runtimelib.constructs { AccessLevel }
-    return AccessLevel;
-}
+def _get_access_level -> type[AccessLevel];
 
-"""Get jid lazily."""
-def _get_jid()  -> Callable[..., Any] {
-    return _get_jac().object_ref;
-}
+def _get_jid -> Callable[..., Any];
 
-"""Get jobj lazily."""
-def _get_jobj()  -> Callable[..., Any] {
-    return _get_jac().get_object;
-}
+def _get_jobj -> Callable[..., Any];
 
-"""Get grant lazily."""
-def _get_grant()  -> Callable[..., Any] {
-    return _get_jac().perm_grant;
-}
+def _get_grant -> Callable[..., Any];
 
-"""Get revoke lazily."""
-def _get_revoke()  -> Callable[..., Any] {
-    return _get_jac().perm_revoke;
-}
+def _get_revoke -> Callable[..., Any];
 
-"""Get allroots lazily."""
-def _get_allroots()  -> Callable[..., Any] {
-    return _get_jac().get_all_root;
-}
+def _get_allroots -> Callable[..., Any];
 
-"""Get save lazily."""
-def _get_save()  -> Callable[..., Any] {
-    return _get_jac().save;
-}
+def _get_save -> Callable[..., Any];
 
-"""Get commit lazily."""
-def _get_commit()  -> Callable[..., Any] {
-    return _get_jac().commit;
-}
+def _get_commit -> Callable[..., Any];
 
-"""Lazily resolve module-level attributes."""
-def __getattr__(name: str) -> object {
-    if (name == 'NoPerm') {
-        return _get_access_level().NO_ACCESS;
-    } elif (name == 'ReadPerm') {
-        return _get_access_level().READ;
-    } elif (name == 'ConnectPerm') {
-        return _get_access_level().CONNECT;
-    } elif (name == 'WritePerm') {
-        return _get_access_level().WRITE;
-    } elif (name == 'jid') {
-        return _get_jid();
-    } elif (name == 'jobj') {
-        return _get_jobj();
-    } elif (name == 'grant') {
-        return _get_grant();
-    } elif (name == 'revoke') {
-        return _get_revoke();
-    } elif (name == 'allroots') {
-        return _get_allroots();
-    } elif (name == 'save') {
-        return _get_save();
-    } elif (name == 'commit') {
-        return _get_commit();
-    }
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}") ;
-}
+def __getattr__(name: str) -> object;
 
-"""Print the graph in different formats."""
 def printgraph(
     <>node: (NodeArchetype | None) = None,
     depth: int = -1,
@@ -108,71 +53,21 @@ def printgraph(
     node_limit: int = 512,
     file: (str | None) = None,
     format: str = 'dot'
-) -> str {
-    jac = _get_jac();
-    fmt = format.lower();
-    if (fmt == 'json') {
-        return _jac_graph_json(file);
-    }
-    return jac.printgraph(
-        edge_type=edge_type,
-        <>node=(<>node or jac.root()),
-        depth=depth,
-        traverse=traverse,
-        bfs=bfs,
-        edge_limit=edge_limit,
-        node_limit=node_limit,
-        file=file,
-        format=fmt
-    );
-}
+) -> str;
 
-"""Get the graph in json string."""
-def _jac_graph_json(file: (str | None) = None) -> str {
-    import from jaclang.runtimelib.utils { collect_node_connections }
-    jac = _get_jac();
-    visited_nodes: set = <>set();
-    connections: set = <>set();
-    edge_ids: set = <>set();
-    nodes: list[dict] = [];
-    edges: list[dict] = [];
-    <>root = jac.root();
-    collect_node_connections(<>root, visited_nodes, connections, edge_ids);
-    nodes.append({'id': id(<>root), 'label': 'root'});
-    for node_arch in visited_nodes {
-        if (node_arch != <>root) {
-            nodes.append({'id': id(node_arch), 'label': repr(node_arch)});
-        }
-    }
-    for (_, source_node, target_node, edge_arch) in connections {
-        edge_data = {'from': str(id(source_node)), 'to': str(id(target_node))};
-        if (repr(edge_arch) != 'GenericEdge()') {
-            edge_data['label'] = repr(edge_arch);
-        }
-        edges.append(edge_data);
-    }
-    output = json.dumps({'version': '1.0', 'nodes': nodes, 'edges': edges});
-    if file {
-        with open(file, 'w') as f {
-            f.write(output);
-        }
-    }
-    return output;
-}
+def _jac_graph_json(file: (str | None) = None) -> str;
 
-with entry {
-    __all__ = [
-        'printgraph',
-        'jid',
-        'jobj',
-        'grant',
-        'revoke',
-        'allroots',
-        'save',
-        'commit',
-        'NoPerm',
-        'ReadPerm',
-        'ConnectPerm',
-        'WritePerm'
-    ];
-}
+glob __all__ = [
+    'printgraph',
+    'jid',
+    'jobj',
+    'grant',
+    'revoke',
+    'allroots',
+    'save',
+    'commit',
+    'NoPerm',
+    'ReadPerm',
+    'ConnectPerm',
+    'WritePerm'
+];

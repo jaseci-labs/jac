@@ -13,7 +13,7 @@ with entry {
 """Handles compilation of Jac files to JavaScript."""
 class JacToJSCompiler {
     """Initialize the Jac to JS compiler."""
-    def __init__(
+    def init(
         self: JacToJSCompiler,
         compile_to_js_func: Callable[([Path], tuple[(str, (ModuleType | None))])],
         extract_exports_func: Callable[([Any], list[str])],

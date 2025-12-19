@@ -14,7 +14,7 @@ obj Receipt {
         items: list[PurchasedItem],
         total: float;
 
-    def pp()  -> None {
+    def pp -> None {
         print(f"Store: {self.store}");
         print(f"Date: {self.date}");
         for item in self.items {
@@ -27,9 +27,11 @@ obj Receipt {
 def get_reciept(reciept_img: Image) -> Receipt by llm();
 def verity_total(reciept: Receipt) -> bool by llm();
 
-with entry {
-    reciept_img = Image.open("receipt.jpg");
+glob
+    reciept_img = Image.open("receipt.jpg"),
     receipt = get_reciept(reciept_img);
+
+with entry {
     receipt.pp();
     print(f"Total is correct: {verity_total(receipt)}");
 }

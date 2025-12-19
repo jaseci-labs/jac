@@ -19,8 +19,8 @@ from jaclang.pycore.runtime import (
 
 from .context import JScaleExecutionContext
 from .kubernetes.docker_impl import build_and_push_docker
-from .kubernetes.k8 import deploy_k8
-from .kubernetes.utils import cleanup_k8_resources
+from .kubernetes.K8s import deploy_K8s
+from .kubernetes.utils import cleanup_K8s_resources
 from .serve import JacAPIServer
 
 
@@ -46,7 +46,7 @@ class JacCmd:
             base_file_path = os.path.basename(file_path)
             if build:
                 build_and_push_docker(code_folder)
-            deploy_k8(code_folder, base_file_path, build)
+            deploy_K8s(code_folder, base_file_path, build)
 
         @cmd_registry.register
         def destroy(file_path: str) -> None:
@@ -57,7 +57,7 @@ class JacCmd:
             code_folder = os.path.dirname(file_path) or "."
             dotenv_path = os.path.join(code_folder, ".env")
             load_dotenv(dotenv_path)
-            cleanup_k8_resources()
+            cleanup_K8s_resources()
 
         @cmd_registry.register(priority=CommandPriority.PLUGIN, source="jac-scale")
         def serve(
