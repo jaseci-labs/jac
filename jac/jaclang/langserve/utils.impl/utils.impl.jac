@@ -372,7 +372,7 @@ impl debounce(<>wait: float) -> Callable[[T], Callable[(..., Awaitable[None])]] 
             async def call_it -> None {
                 await fn(*args, _=kwargs);
             }
-            if hasattr(debounced, '_task') {
+            if debounced?._task {
                 debounced._task.cancel();
             }
             async def debounced_coro -> None {

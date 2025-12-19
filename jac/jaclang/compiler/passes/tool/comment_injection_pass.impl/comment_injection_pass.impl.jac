@@ -516,7 +516,7 @@ impl CommentInjectionPass._handle_body_comments(
     self: CommentInjectionPass, <>node: uni.UniNode, indent: doc.Indent
 ) -> doc.Indent {
     body: (Sequence[uni.UniNode] | None) = None;
-    if hasattr(<>node, 'body') {
+    if <>node?.body {
         body = <>node.body;
     } elif (isinstance(<>node, uni.JsxElement) and <>node.children) {
         body = <>node.children;
@@ -925,7 +925,7 @@ impl CommentInjectionPass._process(
         ctx = <>node.ast_node if <>node.ast_node else ctx;
         processed_parts = self._inject_into_parts(<>node.parts, ctx);
         if isinstance(ctx, (uni.FuncSignature, uni.FuncCall)) {
-            items = ctx.params if hasattr(ctx, 'params') else [];
+            items = ctx.params if ctx?.params else [];
             processed_parts = self._handle_paren_comments(items, processed_parts);
         }
         if isinstance(
