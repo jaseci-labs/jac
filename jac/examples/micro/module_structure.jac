@@ -46,10 +46,10 @@ def myfunc()  -> None { }  # define a function
 
 
 with entry {
-# module level freestyle code
+    # module level freestyle code
 }
 
 """A test of my functionality"""
 test mytest {
-# test code here
+    # test code here
 }
