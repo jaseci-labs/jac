@@ -117,7 +117,7 @@ class JacParser(Transform[uni.Source, uni.Module]):
                         if isinstance(inner, uni.ClientFacingNode):
                             inner.is_client_decl = True
 
-        client_block = uni.ClientBlock(body=elements, kid=elements)
+        client_block = uni.ClientBlock(body=elements, kid=elements, implicit=True)
         module.body = [client_block]
         module.normalize(deep=False)
         cls._recalculate_parents(module)

@@ -1269,8 +1269,10 @@ class ClientBlock(ElementStmt):
         self,
         body: Sequence[ElementStmt],
         kid: Sequence[UniNode],
+        implicit: bool = False,
     ) -> None:
         self.body = list(body)
+        self.implicit = implicit
         UniNode.__init__(self, kid=kid)
 
     def normalize(self, deep: bool = False) -> bool:
@@ -1279,11 +1281,24 @@ class ClientBlock(ElementStmt):
             for stmt in self.body:
                 res = res and stmt.normalize(deep)
         new_kid: list[UniNode] = []
-        new_kid.append(self.gen_token(Tok.KW_CLIENT))
-        new_kid.append(self.gen_token(Tok.LBRACE))
-        for stmt in self.body:
-            new_kid.append(stmt)
-        new_kid.append(self.gen_token(Tok.RBRACE))
+        parent_mod = self.find_parent_of_type(Module)
+        is_implicit_top_level_cl_module = (
+            self.implicit
+            and parent_mod is not None
+            and parent_mod.loc.mod_path.endswith(".cl.jac")
+            and parent_mod.body == [self]
+        )
+        if is_implicit_top_level_cl_module:
+            if self.body:
+                new_kid.extend(self.body)
+            else:
+                new_kid.append(EmptyToken())
+        else:
+            new_kid.append(self.gen_token(Tok.KW_CLIENT))
+            new_kid.append(self.gen_token(Tok.LBRACE))
+            for stmt in self.body:
+                new_kid.append(stmt)
+            new_kid.append(self.gen_token(Tok.RBRACE))
         self.set_kids(nodes=new_kid)
         return res
 

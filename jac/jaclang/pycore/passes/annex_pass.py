@@ -52,7 +52,7 @@ class JacAnnexPass(Transform[uni.Module, uni.Module]):
 
     def load_annexes(self, jac_program: JacProgram, node: uni.Module) -> None:
         """Parse and attach annex modules to the node."""
-        if node.stub_only or not self.mod_path.endswith(".jac"):
+        if node.stub_only or not self.mod_path.endswith(".jac") or node.annexable_by:
             return
         if not self.mod_path:
             self.log_error("Module path is empty.")
