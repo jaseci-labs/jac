@@ -9,18 +9,18 @@ obj OddWord {
 }
 
 glob examples: list[OddWord] = [
-    OddWord(
-        options=["skirt", "dress", "pen", "jacket"],
-        reasoning="skirt is clothing, dress is clothing, pen is an object, jacket is clothing.",
-        result="pen"
-    ),
-    OddWord(
-        options=["Spain", "France", "German", "England", "Singapore"],
-        reasoning="Spain, France, England, Singapore is a country, German is a language.",
-        result="German"
-    ),
+         OddWord(
+             options=["skirt", "dress", "pen", "jacket"],
+             reasoning="skirt is clothing, dress is clothing, pen is an object, jacket is clothing.",
+             result="pen"
+         ),
+         OddWord(
+             options=["Spain", "France", "German", "England", "Singapore"],
+             reasoning="Spain, France, England, Singapore is a country, German is a language.",
+             result="German"
+         ),
 
-];
+     ];
 
 sem examples= "Examples for Picking Odd Word out (Options, Reasoning, Result)";
 

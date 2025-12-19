@@ -1,6 +1,5 @@
-glob
-    x = 5,
-    y = 2;
+glob x = 5,
+     y = 2;
 
 test a {
     assert almostEqual(5, x);

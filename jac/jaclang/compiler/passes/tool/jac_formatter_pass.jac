@@ -25,6 +25,7 @@ class JacFormatPass(Transform[(uni.Module, uni.Module)]) {
         doc_node: (doc.DocType | None) = None,
         indent_level: int = 0,
         width_remaining: (int | None) = None,
-        is_broken: bool = False
+        is_broken: bool = False,
+        align_spaces: int = 0
     ) -> str;
 }

@@ -18,15 +18,15 @@ def __applyProp(
 
 # Global reactive context for managing signals, effects, and re-renders
 glob __jacReactiveContext = {
-    "signals": [],  # Global signal storage (enables closures)
-    "pendingRenders": [],  # Batched re-renders queue
-    "flushScheduled": False,  # Debounce flag for batching
-    "rootComponent": None,  # Root function to re-render
-    "currentComponent": None,  # Current component ID being rendered
-    "currentEffect": None,  # Current effect for dependency tracking
-    "router": None,  # Global router instance
-    "mountedComponents": {}  # Track which components have mounted (for onMount)
-};
+         "signals": [],  # Global signal storage (enables closures)
+         "pendingRenders": [],  # Batched re-renders queue
+         "flushScheduled": False,  # Debounce flag for batching
+         "rootComponent": None,  # Root function to re-render
+         "currentComponent": None,  # Current component ID being rendered
+         "currentEffect": None,  # Current effect for dependency tracking
+         "router": None,  # Global router instance
+         "mountedComponents": {}  # Track which components have mounted (for onMount)
+     };
 # Create a reactive signal (primitive value)
 # Returns [getter, setter] tuple for reactive primitive value
 def createSignal(

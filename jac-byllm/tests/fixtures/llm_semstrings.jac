@@ -1,5 +1,7 @@
 import from byllm.lib { MockLLM }
-glob llm = MockLLM(model_name="mockllm", config={"outputs": ["120597", "R8@jL3pQ"]});
+glob llm = MockLLM(
+         model_name="mockllm", config={"outputs": ["120597", "R8@jL3pQ"]}
+     );
 
 def generate_password -> str by llm();
 sem generate_password= """\

@@ -32,7 +32,9 @@ obj TestClass {
 }
 
 # Function with unnecessary escaping - should be removed
-def compute(<>input_val: int, <>output_val: int) -> int {
+def compute(
+    <>input_val: int, <>output_val: int
+) -> int {
     <>total = <>input_val + <>output_val;
     return <>total;
 }

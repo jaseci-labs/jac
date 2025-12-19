@@ -15,30 +15,30 @@ def run_and_test_python_code(code: str) -> str {
 }
 
 glob models = {
-    "text-gen": MockLLM(
-        # model_name="gpt-4o-mini",
-        model_name="mockllm",
-        config={"outputs": ["Hello, Alice! It's great to see you!"]}
-    ),
-    "code-gen": MockLLM(
-        # model_name="gpt-4o-mini",
-        model_name="mockllm",
-        config={
-            "outputs": [
-                MockToolCall(
-                    tool=run_and_test_python_code,
-                    args={
-                        "code": "name = 'Alice'\nprint(f'Hello, {name}! Welcome to the Python world!')"
-                    }
-                ),
-                "name = 'Alice'\nprint(f'Hello, {name}! Welcome to the Python world!')"
-            ]
-        },
-    )(
-        tools=[run_and_test_python_code]
-    ),
+         "text-gen": MockLLM(
+             # model_name="gpt-4o-mini",
+             model_name="mockllm",
+             config={"outputs": ["Hello, Alice! It's great to see you!"]}
+         ),
+         "code-gen": MockLLM(
+             # model_name="gpt-4o-mini",
+             model_name="mockllm",
+             config={
+                 "outputs": [
+                     MockToolCall(
+                         tool=run_and_test_python_code,
+                         args={
+                             "code": "name = 'Alice'\nprint(f'Hello, {name}! Welcome to the Python world!')"
+                         }
+                     ),
+                     "name = 'Alice'\nprint(f'Hello, {name}! Welcome to the Python world!')"
+                 ]
+             },
+         )(
+             tools=[run_and_test_python_code]
+         ),
 
-};
+     };
 
 """ Generate a greeting text for the given person's name.  """
 def generate_greeting_text(name: str) -> str by models["text-gen"];

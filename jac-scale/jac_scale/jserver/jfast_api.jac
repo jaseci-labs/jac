@@ -27,8 +27,8 @@ import from pydantic { BaseModel, Field, create_model }
 import from .jserver { APIParameter, HTTPMethod, JEndPoint, JServer, ParameterType }
 
 glob EndpointResponse: TypeAlias = Response | BaseModel | <>dict[(str, object)] | <>list[
-    object
-] | str | <>bytes | None;
+         object
+     ] | str | <>bytes | None;
 
 """
 JFastApiServer: FastAPI implementation of JServer for programmatic endpoint creation.

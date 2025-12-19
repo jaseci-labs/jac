@@ -17,20 +17,20 @@ import from .memory { Memory, ShelfStorage }
 import from .mtp { MTIR, MTRuntime }
 
 glob __all__ = [
-    'AccessLevel',
-    'Anchor',
-    'NodeAnchor',
-    'EdgeAnchor',
-    'WalkerAnchor',
-    'Archetype',
-    'NodeArchetype',
-    'EdgeArchetype',
-    'WalkerArchetype',
-    'GenericEdge',
-    'Root',
-    'MTIR',
-    'MTRuntime',
-    'ObjectSpatialFunction',
-    'Memory',
-    'ShelfStorage'
-];
+         'AccessLevel',
+         'Anchor',
+         'NodeAnchor',
+         'EdgeAnchor',
+         'WalkerAnchor',
+         'Archetype',
+         'NodeArchetype',
+         'EdgeArchetype',
+         'WalkerArchetype',
+         'GenericEdge',
+         'Root',
+         'MTIR',
+         'MTRuntime',
+         'ObjectSpatialFunction',
+         'Memory',
+         'ShelfStorage'
+     ];

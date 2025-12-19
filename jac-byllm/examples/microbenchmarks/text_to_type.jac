@@ -13,24 +13,24 @@ obj Person {
 }
 
 glob llm = Model(
-    # model_name="gpt-4o",
-    model_name="mockllm",
-    print_prompt=True,
-    outputs=[
-        Person(
-            name='Steve Jobs',
-            age=56,
-            employer=Employer(employer_name='Apple Inc.', location='California'),
-            job='CEO'
-        )
-    ]
-);
+         # model_name="gpt-4o",
+         model_name="mockllm",
+         print_prompt=True,
+         outputs=[
+             Person(
+                 name='Steve Jobs',
+                 age=56,
+                 employer=Employer(employer_name='Apple Inc.', location='California'),
+                 job='CEO'
+             )
+         ]
+     );
 
 def generate_person(info: str) -> Person by llm();
 
 glob person = generate_person(
-    "Steve Jobs was 56 years old and worked as the CEO of Apple Inc. in California."
-);
+         "Steve Jobs was 56 years old and worked as the CEO of Apple Inc. in California."
+     );
 
 with entry {
     print(

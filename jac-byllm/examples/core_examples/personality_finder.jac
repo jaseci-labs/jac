@@ -13,9 +13,9 @@ obj Person {
 sem Person. yod= "Year of Death of the person";
 
 glob personality_examples: dict[str, Personality] = {
-    'Albert Einstein': Personality.INTROVERT,
-    'Barack Obama': Personality.EXTROVERT
-};
+         'Albert Einstein': Personality.INTROVERT,
+         'Barack Obama': Personality.EXTROVERT
+     };
 
 def get_person_info(name: str) -> Person by llm(
     reason=True,

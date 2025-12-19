@@ -17,27 +17,27 @@ with entry {
 # FIX: py2jac bug - module-level constants must be declared with glob outside with entry block
 # Otherwise they become Field descriptors when accessed from functions
 glob BINARY_OPERATOR_MAP:
-    dict[str, tuple[str, str]] = {
-    Tok.PLUS: ('__add__', '__radd__'),
-    Tok.MINUS: ('__sub__', '__rsub__'),
-    Tok.STAR_MUL: ('__mul__', '__rmul__'),
-    Tok.FLOOR_DIV: ('__floordiv__', '__rfloordiv__'),
-    Tok.DIV: ('__truediv__', '__rtruediv__'),
-    Tok.MOD: ('__mod__', '__rmod__'),
-    Tok.STAR_POW: ('__pow__', '__rpow__'),
-    Tok.DECOR_OP: ('__matmul__', '__rmatmul__'),
-    Tok.BW_AND: ('__and__', '__rand__'),
-    Tok.BW_OR: ('__or__', '__ror__'),
-    Tok.BW_XOR: ('__xor__', '__rxor__'),
-    Tok.LSHIFT: ('__lshift__', '__rlshift__'),
-    Tok.RSHIFT: ('__rshift__', '__rrshift__'),
-    Tok.EE: ('__eq__', '__eq__'),
-    Tok.NE: ('__ne__', '__ne__'),
-    Tok.LT: ('__lt__', '__gt__'),
-    Tok.LTE: ('__le__', '__ge__'),
-    Tok.GT: ('__gt__', '__lt__'),
-    Tok.GTE: ('__ge__', '__le__')
-};
+         dict[str, tuple[str, str]] = {
+         Tok.PLUS: ('__add__', '__radd__'),
+         Tok.MINUS: ('__sub__', '__rsub__'),
+         Tok.STAR_MUL: ('__mul__', '__rmul__'),
+         Tok.FLOOR_DIV: ('__floordiv__', '__rfloordiv__'),
+         Tok.DIV: ('__truediv__', '__rtruediv__'),
+         Tok.MOD: ('__mod__', '__rmod__'),
+         Tok.STAR_POW: ('__pow__', '__rpow__'),
+         Tok.DECOR_OP: ('__matmul__', '__rmatmul__'),
+         Tok.BW_AND: ('__and__', '__rand__'),
+         Tok.BW_OR: ('__or__', '__ror__'),
+         Tok.BW_XOR: ('__xor__', '__rxor__'),
+         Tok.LSHIFT: ('__lshift__', '__rlshift__'),
+         Tok.RSHIFT: ('__rshift__', '__rrshift__'),
+         Tok.EE: ('__eq__', '__eq__'),
+         Tok.NE: ('__ne__', '__ne__'),
+         Tok.LT: ('__lt__', '__gt__'),
+         Tok.LTE: ('__le__', '__ge__'),
+         Tok.GT: ('__gt__', '__lt__'),
+         Tok.GTE: ('__ge__', '__le__')
+     };
 
 """Return the binary operator's jtype."""
 def get_type_of_binary_operation(

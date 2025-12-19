@@ -12,8 +12,8 @@ import from os { environ }
 
 # Real LLM - change this to your preferred model
 glob llm = Model(
-    model_name="gpt-4o-mini", config={"verbose": True},
-);
+         model_name="gpt-4o-mini", config={"verbose": True},
+     );
 
 """Get the current date and time."""
 def get_current_datetime -> str {

@@ -5,7 +5,8 @@ impl JacFormatPass.format_doc_ir(
     doc_node: (doc.DocType | None) = None,
     indent_level: int = 0,
     width_remaining: (int | None) = None,
-    is_broken: bool = False
+    is_broken: bool = False,
+    align_spaces: int = 0
 ) -> str {
     if (doc_node is None) {
         doc_node = self.ir_in.gen.doc_ir;
@@ -13,11 +14,12 @@ impl JacFormatPass.format_doc_ir(
     if (width_remaining is None) {
         width_remaining = self.MAX_LINE_LENGTH;
     }
+    total_indent = indent_level * self.indent_size + align_spaces;
     if isinstance(doc_node, doc.Text) {
         return doc_node.text;
     } elif isinstance(doc_node, doc.Line) {
         if (is_broken or doc_node.hard) {
-            return ('\n' + (' ' * (indent_level * self.indent_size)));
+            return ('\n' + (' ' * total_indent));
         } elif doc_node.literal {
             return '\n';
         } elif doc_node.tight {
@@ -32,19 +34,31 @@ impl JacFormatPass.format_doc_ir(
             width_remaining=width_remaining
         );
         return self.format_doc_ir(
-            doc_node.contents, indent_level, width_remaining, is_broken=not fits_flat
+            doc_node.contents,
+            indent_level,
+            width_remaining,
+            is_broken=not fits_flat,
+            align_spaces=align_spaces
         );
     } elif isinstance(doc_node, doc.Indent) {
         new_indent_level = indent_level + 1;
         return self.format_doc_ir(
-            doc_node.contents, new_indent_level, width_remaining, is_broken
+            doc_node.contents,
+            new_indent_level,
+            width_remaining,
+            is_broken,
+            align_spaces=align_spaces
         );
     } elif isinstance(doc_node, doc.Concat) {
         result: list[str] = [];
         current_line_budget = width_remaining;
         for part in doc_node.parts {
             part_str = self.format_doc_ir(
-                part, indent_level, current_line_budget, is_broken
+                part,
+                indent_level,
+                current_line_budget,
+                is_broken,
+                align_spaces=align_spaces
             );
             if (part_str.startswith('\n') and result and result[-1].endswith(' ')) {
                 result[-1] = result[-1].rstrip(' ');
@@ -52,12 +66,10 @@ impl JacFormatPass.format_doc_ir(
             result.append(part_str);
             if ('\n' in part_str) {
                 last_line = part_str.splitlines()[-1];
-                full_budget = max(
-                    0, (self.MAX_LINE_LENGTH - (indent_level * self.indent_size))
-                );
-                indent_spaces = ' ' * (indent_level * self.indent_size);
-                if last_line.startswith(indent_spaces) {
-                    used = len(last_line) - len(indent_spaces);
+                full_budget = max(0, (self.MAX_LINE_LENGTH - total_indent));
+                indent_str = ' ' * total_indent;
+                if last_line.startswith(indent_str) {
+                    used = len(last_line) - len(indent_str);
                 } else {
                     used = len(last_line);
                 }
@@ -69,14 +81,19 @@ impl JacFormatPass.format_doc_ir(
         return ''.join(result);
     } elif isinstance(doc_node, doc.IfBreak) {
         branch = doc_node.break_contents if is_broken else doc_node.flat_contents;
-        return self.format_doc_ir(branch, indent_level, width_remaining, is_broken);
-    } elif isinstance(doc_node, doc.Align) {
-        align_spaces = doc_node.n if (doc_node.n is not None) else self.indent_size;
-        extra_levels = align_spaces // self.indent_size;
-        child_indent_level = indent_level + extra_levels;
-        child_width_budget = max(0, (width_remaining - align_spaces));
         return self.format_doc_ir(
-            doc_node.contents, child_indent_level, child_width_budget, is_broken
+            branch, indent_level, width_remaining, is_broken, align_spaces=align_spaces
+        );
+    } elif isinstance(doc_node, doc.Align) {
+        new_align = doc_node.n if (doc_node.n is not None) else self.indent_size;
+        child_align_spaces = align_spaces + new_align;
+        child_width_budget = max(0, (width_remaining - new_align));
+        return self.format_doc_ir(
+            doc_node.contents,
+            indent_level,
+            child_width_budget,
+            is_broken,
+            align_spaces=child_align_spaces
         );
     } else {
         raise ValueError(f"Unknown DocType: {type(doc_node)}") ;

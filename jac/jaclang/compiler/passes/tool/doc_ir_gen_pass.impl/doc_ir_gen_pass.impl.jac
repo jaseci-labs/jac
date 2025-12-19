@@ -931,64 +931,44 @@ impl DocIRGenPass.exit_client_block(
 
 """Generate DocIR for global variables."""
 impl DocIRGenPass.exit_global_vars(self: DocIRGenPass, <>node: uni.GlobalVars) -> None {
-    parts: list[doc.DocType] = [];
-    align_parts: list[doc.DocType] = [];
+    prefix_parts: list[doc.DocType] = [];
+    assignment_parts: list[doc.DocType] = [];
     semi_doc: (doc.DocType | None) = None;
     has_multiple_assignments = len(<>node.assignments) > 1;
-    first_assignment_done = False;
     for i in <>node.kid {
         if (i == <>node.doc) {
-            parts.append(i.gen.doc_ir);
-            parts.append(self.hard_line());
+            prefix_parts.append(i.gen.doc_ir);
+            prefix_parts.append(self.hard_line());
         } elif (isinstance(i, uni.Token) and (i.name == Tok.SEMI)) {
-            if align_parts {
-                align_parts.pop();
-            } elif parts {
-                parts.pop();
+            if assignment_parts {
+                assignment_parts.pop();
             }
             semi_doc = i.gen.doc_ir;
         } elif (isinstance(i, uni.Token) and (i.name == Tok.COMMA)) {
-            if (has_multiple_assignments and first_assignment_done) {
-                align_parts.pop();
-                align_parts.append(i.gen.doc_ir);
-                # Use literal line with 5-space alignment to match "glob " prefix
-                align_parts.append(self.literal_line());
-                align_parts.append(self.text("     "));
+            assignment_parts.pop();
+            assignment_parts.append(i.gen.doc_ir);
+            if has_multiple_assignments {
+                assignment_parts.append(self.hard_line());
             } else {
-                parts.pop();
-                parts.append(i.gen.doc_ir);
-                if has_multiple_assignments {
-                    # After first assignment comma, switch to align_parts
-                    first_assignment_done = True;
-                } else {
-                    parts.append(self.space());
-                }
+                assignment_parts.append(self.space());
             }
         } elif isinstance(i, uni.Assignment) {
-            if (has_multiple_assignments and first_assignment_done) {
-                align_parts.append(i.gen.doc_ir);
-                align_parts.append(self.space());
-            } else {
-                parts.append(i.gen.doc_ir);
-                parts.append(self.space());
-            }
+            assignment_parts.append(i.gen.doc_ir);
+            assignment_parts.append(self.space());
         } else {
-            parts.append(i.gen.doc_ir);
-            parts.append(self.space());
+            prefix_parts.append(i.gen.doc_ir);
+            prefix_parts.append(self.space());
         }
     }
-    if align_parts {
-        self.trim_trailing_line(align_parts);
-        # First aligned assignment starts with newline + 5 spaces
-        parts.append(self.literal_line());
-        parts.append(self.text("     "));
-        parts.append(self.concat(align_parts));
-    }
+    self.trim_trailing_line(assignment_parts);
+    # Wrap all assignments in Align(n=5) for "glob " alignment
+    aligned_assignments = self.align(self.concat(assignment_parts), n=5);
+    prefix_parts.append(aligned_assignments);
     if semi_doc {
-        parts.append(semi_doc);
+        prefix_parts.append(semi_doc);
     }
     <>node.gen.doc_ir = self.group(
-        self.concat(parts, ast_node=<>node), ast_node=<>node
+        self.concat(prefix_parts, ast_node=<>node), ast_node=<>node
     );
 }
 

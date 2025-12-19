@@ -1,9 +1,9 @@
 import from byllm.lib { MockLLM }
 
 glob llm = MockLLM(
-    # model_name="gpt-4o-mini",
-    model_name="mockllm", config={"outputs": ["Average marks for Alice : 86.75"]}
-);
+         # model_name="gpt-4o-mini",
+         model_name="mockllm", config={"outputs": ["Average marks for Alice : 86.75"]}
+     );
 
 obj Student {
     has name: str,

@@ -58,16 +58,16 @@ def printgraph(
 def _jac_graph_json(file: (str | None) = None) -> str;
 
 glob __all__ = [
-    'printgraph',
-    'jid',
-    'jobj',
-    'grant',
-    'revoke',
-    'allroots',
-    'save',
-    'commit',
-    'NoPerm',
-    'ReadPerm',
-    'ConnectPerm',
-    'WritePerm'
-];
+         'printgraph',
+         'jid',
+         'jobj',
+         'grant',
+         'revoke',
+         'allroots',
+         'save',
+         'commit',
+         'NoPerm',
+         'ReadPerm',
+         'ConnectPerm',
+         'WritePerm'
+     ];

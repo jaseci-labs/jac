@@ -37,9 +37,9 @@ import from jaclang.compiler.type_system.types { TypeBase }
 
 # The callback type definition for the diagnostic messages.
 glob DiagnosticCallback = Callable[
-    [uni.UniNode, str, bool],
-    None
-];
+         [uni.UniNode, str, bool],
+         None
+     ];
 
 """Types whose definitions are prefetched and cached by the type evaluator."""
 obj PrefetchedTypes {

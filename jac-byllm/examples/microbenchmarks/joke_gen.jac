@@ -1,9 +1,9 @@
 import from byllm.lib { Model }
 
 glob llm = Model(
-    # model_name="gpt-4o",
-    model_name="gemini/gemini-2.5-flash",
-);
+         # model_name="gpt-4o",
+         model_name="gemini/gemini-2.5-flash",
+     );
 
 obj PunclineJokes {
     has jokes: list[dict] = [

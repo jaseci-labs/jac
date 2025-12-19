@@ -14,27 +14,26 @@ obj Person {
 }
 
 glob llm = MockLLM(
-    # model_name="gpt-4o-mini",
-    model_name="mockllm",
-    config={
-        "outputs": [
-            Person(
-                full_name='Albert Einstein',
-                year_of_death='1955',
-                personality=Personality.EXTROVERT,
-            ),
+         # model_name="gpt-4o-mini",
+         model_name="mockllm",
+         config={
+             "outputs": [
+                 Person(
+                     full_name='Albert Einstein',
+                     year_of_death='1955',
+                     personality=Personality.EXTROVERT,
+                 ),
 
-        ]
-    },
-);
+             ]
+         },
+     );
 
 def get_person_info(image_content: Image) -> Person by llm();
 
-glob
-    person_image = Image(
-        os.path.join(os.path.dirname(__file__), 'webp_image_of_person.webp')
-    ),
-    person_obj = get_person_info(person_image);
+glob person_image = Image(
+         os.path.join(os.path.dirname(__file__), 'webp_image_of_person.webp')
+     ),
+     person_obj = get_person_info(person_image);
 
 with entry {
     print(person_obj);

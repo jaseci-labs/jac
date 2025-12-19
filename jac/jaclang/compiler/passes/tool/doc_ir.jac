@@ -9,8 +9,8 @@ with entry {
 
 # Define DocType for self-referential typing
 glob DocType = Union[
-    ('Doc', 'Text', 'Line', 'Group', 'Indent', 'Concat', 'IfBreak', 'Align')
-];
+         ('Doc', 'Text', 'Line', 'Group', 'Indent', 'Concat', 'IfBreak', 'Align')
+     ];
 
 """Base class for document parts."""
 class Doc {

@@ -5,8 +5,8 @@ import from byllm.llm { Model }
 
 # glob llm = Model(model_name="gpt-4o",verbose=False);
 glob llm = Model(
-    model_name="gemini/gemini-2.0-flash", verbose=False
-);
+         model_name="gemini/gemini-2.0-flash", verbose=False
+     );
 
 """Provide a fun hint if guess is incorrect"""
 def give_hint(guess: int, correct_number: int) -> str by llm();
