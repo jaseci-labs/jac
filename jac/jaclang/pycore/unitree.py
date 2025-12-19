@@ -1269,8 +1269,10 @@ class ClientBlock(ElementStmt):
         self,
         body: Sequence[ElementStmt],
         kid: Sequence[UniNode],
+        implicit: bool = False,
     ) -> None:
         self.body = list(body)
+        self.implicit = implicit
         UniNode.__init__(self, kid=kid)
 
     def normalize(self, deep: bool = False) -> bool:
@@ -1279,11 +1281,24 @@ class ClientBlock(ElementStmt):
             for stmt in self.body:
                 res = res and stmt.normalize(deep)
         new_kid: list[UniNode] = []
-        new_kid.append(self.gen_token(Tok.KW_CLIENT))
-        new_kid.append(self.gen_token(Tok.LBRACE))
-        for stmt in self.body:
-            new_kid.append(stmt)
-        new_kid.append(self.gen_token(Tok.RBRACE))
+        parent_mod = self.find_parent_of_type(Module)
+        is_implicit_top_level_cl_module = (
+            self.implicit
+            and parent_mod is not None
+            and parent_mod.loc.mod_path.endswith(".cl.jac")
+            and parent_mod.body == [self]
+        )
+        if is_implicit_top_level_cl_module:
+            if self.body:
+                new_kid.extend(self.body)
+            else:
+                new_kid.append(EmptyToken())
+        else:
+            new_kid.append(self.gen_token(Tok.KW_CLIENT))
+            new_kid.append(self.gen_token(Tok.LBRACE))
+            for stmt in self.body:
+                new_kid.append(stmt)
+            new_kid.append(self.gen_token(Tok.RBRACE))
         self.set_kids(nodes=new_kid)
         return res
 
@@ -1359,22 +1374,29 @@ class Import(ClientFacingNode, ElementStmt, CodeBlockStmt):
     def __jac_detected(self) -> bool:
         """Check if import is jac."""
         if self.from_loc:
-            if self.from_loc.resolve_relative_path().endswith(".jac"):
+            if self.from_loc.resolve_relative_path().endswith((".jac", ".cl.jac")):
                 return True
             if os.path.isdir(self.from_loc.resolve_relative_path()):
                 if os.path.exists(
                     os.path.join(self.from_loc.resolve_relative_path(), "__init__.jac")
                 ):
                     return True
+                if os.path.exists(
+                    os.path.join(
+                        self.from_loc.resolve_relative_path(), "__init__.cl.jac"
+                    )
+                ):
+                    return True
                 for i in self.items:
                     if isinstance(
                         i, ModuleItem
                     ) and self.from_loc.resolve_relative_path(i.name.value).endswith(
-                        ".jac"
+                        (".jac", ".cl.jac")
                     ):
                         return True
         return any(
-            isinstance(i, ModulePath) and i.resolve_relative_path().endswith(".jac")
+            isinstance(i, ModulePath)
+            and i.resolve_relative_path().endswith((".jac", ".cl.jac"))
             for i in self.items
         )
 
@@ -1459,10 +1481,13 @@ class ModulePath(UniNode):
             runtime_dir = os.path.dirname(jaclang.runtimelib.__file__)
             # Handle both .jac and .js file extensions
             if not (target.endswith(".jac") or target.endswith(".js")):
-                # Try .jac first, then .js
+                # Try .jac first, then .cl.jac, then .js
                 jac_path = os.path.join(runtime_dir, target + ".jac")
                 if os.path.exists(jac_path):
                     return jac_path
+                cl_jac_path = os.path.join(runtime_dir, target + ".cl.jac")
+                if os.path.exists(cl_jac_path):
+                    return cl_jac_path
                 js_path = os.path.join(runtime_dir, target + ".js")
                 if os.path.exists(js_path):
                     return js_path

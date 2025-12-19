@@ -1,4 +1,8 @@
-"""Functions that operate on Type objects.\n\nPyrightReference: packages/pyright-internal/src/analyzer/typeUtils.ts\n"""
+"""
+Functions that operate on Type objects.
+
+PyrightReference: packages/pyright-internal/src/analyzer/typeUtils.ts
+"""
 import from dataclasses { dataclass }
 import from enum { Enum }
 import jaclang.pycore.unitree as uni;
@@ -12,7 +16,13 @@ class ClassMember {
 
 def compute_mro_linearization(cls: types.ClassType) -> None;
 
-"""Tracks parameter assignments for function calls.\n\n    This class helps in tracking which parameters have been matched\n    with arguments in a function call. It supports positional, named,\n    *args, and **kwargs arguments.\n    """
+"""
+Tracks parameter assignments for function calls.
+
+    This class helps in tracking which parameters have been matched
+    with arguments in a function call. It supports positional, named,
+    *args, and **kwargs arguments.
+"""
 class ParamAssignmentTracker {
     def init(self: ParamAssignmentTracker, params: list[types.Parameter]) -> None;
     def lookup_named_parameter(

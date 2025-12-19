@@ -123,7 +123,11 @@ impl ClassType.is_data_class(self: ClassType) -> bool {
     return self.shared.is_data_class;
 }
 
-"""\n        Return true if this class is a builtin class.\n\n        If class_name is provided, also check if the class name matches.\n        """
+"""
+        Return true if this class is a builtin class.
+
+        If class_name is provided, also check if the class name matches.
+"""
 impl ClassType.is_builtin(self: ClassType, class_name: (str | None) = None) -> bool {
     if not self.shared.is_builtin_class {
         return False;

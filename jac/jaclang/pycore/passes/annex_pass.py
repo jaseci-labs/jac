@@ -31,7 +31,10 @@ class JacAnnexPass(Transform[uni.Module, uni.Module]):
     def transform(self, ir_in: uni.Module) -> uni.Module:
         """Initialize JacAnnexPass with the module path."""
         self.mod_path = ir_in.loc.mod_path
-        self.base_path = self.mod_path[:-4]
+        if self.mod_path.endswith(".cl.jac"):
+            self.base_path = self.mod_path[: -len(".cl.jac")]
+        else:
+            self.base_path = self.mod_path[:-4]
         self.impl_folder = self.base_path + ".impl"
         self.test_folder = self.base_path + ".test"
         self.cl_folder = self.base_path + ".cl"
@@ -49,7 +52,7 @@ class JacAnnexPass(Transform[uni.Module, uni.Module]):
 
     def load_annexes(self, jac_program: JacProgram, node: uni.Module) -> None:
         """Parse and attach annex modules to the node."""
-        if node.stub_only or not self.mod_path.endswith(".jac"):
+        if node.stub_only or not self.mod_path.endswith(".jac") or node.annexable_by:
             return
         if not self.mod_path:
             self.log_error("Module path is empty.")
@@ -59,21 +62,20 @@ class JacAnnexPass(Transform[uni.Module, uni.Module]):
             if path == self.mod_path:
                 continue
 
-            if path.endswith(".impl.jac") and (
-                path.startswith(f"{self.base_path}.")
-                or os.path.dirname(path) == self.impl_folder
+            if (
+                path.endswith(".impl.jac")
+                and (
+                    path.startswith(f"{self.base_path}.")
+                    or os.path.dirname(path) == self.impl_folder
+                )
+                or path.endswith(".cl.jac")
+                and (
+                    path.startswith(f"{self.base_path}.")
+                    or os.path.dirname(path) == self.cl_folder
+                )
             ):
                 mod = jac_program.compile(file_path=path, no_cgen=True, minimal=True)
                 if mod:
-                    node.impl_mod.append(mod)
-
-            elif path.endswith(".cl.jac") and (
-                path.startswith(f"{self.base_path}.")
-                or os.path.dirname(path) == self.cl_folder
-            ):
-                mod = jac_program.compile(file_path=path, no_cgen=True, minimal=True)
-                if mod:
-                    self._mark_client_declarations(mod)
                     node.impl_mod.append(mod)
 
             elif (
@@ -87,9 +89,3 @@ class JacAnnexPass(Transform[uni.Module, uni.Module]):
                 mod = jac_program.compile(file_path=path, no_cgen=True, minimal=True)
                 if mod:
                     node.test_mod.append(mod)
-
-    def _mark_client_declarations(self, module: uni.Module) -> None:
-        """Recursively mark client-facing nodes in the module as client declarations."""
-        for child in module.kid:
-            if isinstance(child, uni.ClientFacingNode):
-                child.is_client_decl = True

@@ -130,7 +130,7 @@ def test_build_bundle_with_vite() -> None:
         temp_path = Path(temp_dir)
 
         package_json, output_dir = _create_test_project_with_vite(temp_path)
-        runtime_path = Path(__file__).parent.parent / "plugin" / "client_runtime.jac"
+        runtime_path = Path(__file__).parent.parent / "plugin" / "client_runtime.cl.jac"
         # Initialize the Vite builder
         builder = ViteClientBundleBuilder(
             runtime_path=runtime_path,
@@ -170,7 +170,7 @@ def test_vite_bundle_without_package_json() -> None:
     fixtures_dir = Path(__file__).parent / "fixtures" / "basic-app"
     (module,) = Jac.jac_import("app", str(fixtures_dir))
 
-    runtime_path = Path(__file__).parent.parent / "plugin" / "client_runtime.jac"
+    runtime_path = Path(__file__).parent.parent / "plugin" / "client_runtime.cl.jac"
 
     # Create builder without package.json
     builder = ViteClientBundleBuilder(
@@ -195,7 +195,7 @@ def test_build_bundle_with_antd() -> None:
         package_json, output_dir = _create_test_project_with_vite(
             temp_path, include_antd=True
         )
-        runtime_path = Path(__file__).parent.parent / "plugin" / "client_runtime.jac"
+        runtime_path = Path(__file__).parent.parent / "plugin" / "client_runtime.cl.jac"
 
         # Initialize the Vite builder
         builder = ViteClientBundleBuilder(
@@ -247,7 +247,7 @@ def test_relative_import() -> None:
         package_json, output_dir = _create_test_project_with_vite(
             temp_path, include_antd=True
         )
-        runtime_path = Path(__file__).parent.parent / "plugin" / "client_runtime.jac"
+        runtime_path = Path(__file__).parent.parent / "plugin" / "client_runtime.cl.jac"
 
         # Initialize the Vite builder
         builder = ViteClientBundleBuilder(
@@ -292,7 +292,7 @@ def test_js_import() -> None:
         temp_path = Path(temp_dir)
         # Create project with Vite installed
         package_json, output_dir = _create_test_project_with_vite(temp_path)
-        runtime_path = Path(__file__).parent.parent / "plugin" / "client_runtime.jac"
+        runtime_path = Path(__file__).parent.parent / "plugin" / "client_runtime.cl.jac"
         # Initialize the Vite builder
         builder = ViteClientBundleBuilder(
             runtime_path=runtime_path,
@@ -346,7 +346,7 @@ def test_jsx_fragments_and_spread_props() -> None:
 
         # Create project with Vite installed
         package_json, output_dir = _create_test_project_with_vite(temp_path)
-        runtime_path = Path(__file__).parent.parent / "plugin" / "client_runtime.jac"
+        runtime_path = Path(__file__).parent.parent / "plugin" / "client_runtime.cl.jac"
 
         # Initialize the Vite builder
         builder = ViteClientBundleBuilder(
@@ -395,7 +395,7 @@ def test_spawn_operator() -> None:
 
         # Create project with Vite installed
         package_json, output_dir = _create_test_project_with_vite(temp_path)
-        runtime_path = Path(__file__).parent.parent / "plugin" / "client_runtime.jac"
+        runtime_path = Path(__file__).parent.parent / "plugin" / "client_runtime.cl.jac"
 
         # Initialize the Vite builder
         builder = ViteClientBundleBuilder(
@@ -479,7 +479,7 @@ def test_serve_cl_file() -> None:
 
         # Create project with Vite installed
         package_json, output_dir = _create_test_project_with_vite(temp_path)
-        runtime_path = Path(__file__).parent.parent / "plugin" / "client_runtime.jac"
+        runtime_path = Path(__file__).parent.parent / "plugin" / "client_runtime.cl.jac"
 
         # Initialize the Vite builder
         builder = ViteClientBundleBuilder(

@@ -193,7 +193,12 @@ impl CommentInjectionPass._collapse_duplicate_hard_lines(
     }
 }
 
-"""Return True when the sink already ends with a line break.\n\n        This includes hard lines and tight lines, since tight lines will become\n        line breaks when the containing group breaks (e.g., in multi-line function calls).\n        """
+"""
+Return True when the sink already ends with a line break.
+
+        This includes hard lines and tight lines, since tight lines will become
+        line breaks when the containing group breaks (e.g., in multi-line function calls).
+"""
 impl CommentInjectionPass._ends_with_hard_line(
     self: CommentInjectionPass, sink: Sequence[doc.DocType]
 ) -> bool {
@@ -350,7 +355,12 @@ impl CommentInjectionPass._make_standalone_comment(
     return doc.Concat([doc.Text(comment.value), doc.Line(hard=True)]);
 }
 
-"""Fix spacing for empty regions (bodies/params) that now contain comments.\n\n        When DocIR was generated, empty regions had a Space before the closing\n        delimiter. After injecting comments, we need a hard line instead.\n        """
+"""
+Fix spacing for empty regions (bodies/params) that now contain comments.
+
+        When DocIR was generated, empty regions had a Space before the closing
+        delimiter. After injecting comments, we need a hard line instead.
+"""
 impl CommentInjectionPass._fix_empty_region_spacing(
     self: CommentInjectionPass, parts: list[doc.DocType]
 ) -> list[doc.DocType] {
@@ -382,7 +392,12 @@ impl CommentInjectionPass._fix_empty_region_spacing(
     return result;
 }
 
-"""Handle comments inside empty bodies (e.g., empty if/elif/else blocks).\n\n        For empty bodies, no Indent node is created, so we need to inject comments\n        directly between the { and } tokens at the Concat level.\n        """
+"""
+Handle comments inside empty bodies (e.g., empty if/elif/else blocks).
+
+        For empty bodies, no Indent node is created, so we need to inject comments
+        directly between the { and } tokens at the Concat level.
+"""
 impl CommentInjectionPass._handle_empty_body_comments(
     self: CommentInjectionPass, <>node: uni.UniNode, parts: list[doc.DocType]
 ) -> list[doc.DocType] {
@@ -886,7 +901,11 @@ impl CommentInjectionPass._get_tokens(
     return [];
 }
 
-"""Find opening and closing delimiter tokens and their line numbers.\n\n        Returns: DelimiterInfo if both delimiters found, None otherwise\n        """
+"""
+Find opening and closing delimiter tokens and their line numbers.
+
+        Returns: DelimiterInfo if both delimiters found, None otherwise
+"""
 impl CommentInjectionPass._find_delimiters(
     self: CommentInjectionPass, parts: list[doc.DocType], open_tok: Tok, close_tok: Tok
 ) -> (DelimiterInfo | None) {

@@ -3,7 +3,8 @@
 impl ClientBundleBuilder.init(
     self: ClientBundleBuilder, runtime_path: (Path | None) = None
 ) -> None {
-    self.runtime_path = runtime_path or Path(__file__).with_name('client_runtime.jac');
+    self.runtime_path = runtime_path
+    or Path(__file__).with_name('client_runtime.cl.jac');
     self._cache: dict[(str, _CachedBundle)] = {};
 }
 

@@ -106,7 +106,7 @@ def test_typescript_fixture_example() -> None:
         temp_path = Path(temp_dir)
 
         package_json, output_dir = _copy_ts_support_project(temp_path)
-        runtime_path = Path(__file__).parent.parent / "plugin" / "client_runtime.jac"
+        runtime_path = Path(__file__).parent.parent / "plugin" / "client_runtime.cl.jac"
 
         # Initialize the Vite builder
         builder = ViteClientBundleBuilder(

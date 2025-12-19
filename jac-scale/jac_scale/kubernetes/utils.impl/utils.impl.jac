@@ -197,7 +197,12 @@ impl ensure_pvc_exists(
     core_v1.create_namespaced_persistent_volume_claim(namespace, pvc_body);
 }
 
-"""Detect if the current connected cluster is AWS or local.\n\n    Returns:\n        'aws' for AWS EKS clusters, 'local' for local/other clusters.\n    """
+"""
+Detect if the current connected cluster is AWS or local.
+
+    Returns:
+        'aws' for AWS EKS clusters, 'local' for local/other clusters.
+"""
 impl cluster_type -> str {
     try {
         import from kubernetes { client }
@@ -237,7 +242,12 @@ impl cluster_type -> str {
     }
 }
 
-"""\n    Wait for a service to become available.\n\n    Can work with either NodePort (localhost:node_port) or NLB (AWS Load Balancer URL).\n    If nlb_url is provided, it will be used. Otherwise, localhost:node_port will be used.\n    """
+"""
+    Wait for a service to become available.
+
+    Can work with either NodePort (localhost:node_port) or NLB (AWS Load Balancer URL).
+    If nlb_url is provided, it will be used. Otherwise, localhost:node_port will be used.
+"""
 impl check_deployment_status(
     node_port: int,
     path: str = '/docs',
@@ -299,7 +309,9 @@ impl create_or_update_configmap(
     }
 }
 
-"""\n    Create a tar.gz file from the source directory using only os module.\n    """
+"""
+    Create a tar.gz file from the source directory using only os module.
+"""
 impl create_tarball(source_dir: str, tar_path: str) -> None {
     if not os.path.exists(source_dir) {
         raise FileNotFoundError(f"Source directory not found: {source_dir}") ;
@@ -310,7 +322,10 @@ impl create_tarball(source_dir: str, tar_path: str) -> None {
     }
 }
 
-"""\n    Ensure that a given namespace exists in the Kubernetes cluster.\n    If it doesn't exist and is not 'default', it will be created.\n    """
+"""
+    Ensure that a given namespace exists in the Kubernetes cluster.
+    If it doesn't exist and is not 'default', it will be created.
+"""
 impl ensure_namespace_exists(namespace: str) -> None {
     if (namespace == 'default') {
         return;
@@ -405,7 +420,9 @@ impl delete_if_exists(
     }
 }
 
-"""\n    Checks if Kubernetes config is configured and the K8s API server is reachable.\n    """
+"""
+    Checks if Kubernetes config is configured and the K8s API server is reachable.
+"""
 impl check_K8s_status -> None {
     try {
         config.load_kube_config();
@@ -439,7 +456,13 @@ impl load_env_variables(code_folder: str) -> list {
     return env_list;
 }
 
-"""\n    Print a statement only if debug_only is True.\n\n    Args:\n        statement (str): The message to print.\n        debug_only (bool): If True, print the statement; otherwise, do nothing.\n    """
+"""
+    Print a statement only if debug_only is True.
+
+    Args:
+        statement (str): The message to print.
+        debug_only (bool): If True, print the statement; otherwise, do nothing.
+"""
 impl debug_print(statement: str, debug_only: bool = False) -> None {
     if debug_only {
         print(statement);
