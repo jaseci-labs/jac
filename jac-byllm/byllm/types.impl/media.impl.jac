@@ -85,7 +85,7 @@ impl Image.postinit()  -> None {
         return;
     }
     # File-like object (e.g., BytesIO, IO[bytes])
-    if hasattr(value, "read") and callable(value.read) {
+    if value?.read and callable(value.read) {
         # Safely read without permanently moving the cursor
         stream: IO[bytes] = value;  # type: ignore[assignment]
         pos = None;
@@ -96,10 +96,10 @@ impl Image.postinit()  -> None {
         }
         try {
             # Prefer getvalue if available (e.g., BytesIO)
-            if hasattr(stream, "getvalue") and callable(stream.getvalue) {
+            if stream?.getvalue and callable(stream.getvalue) {
                 raw = stream.getvalue();  # type: ignore[call-arg]
             } else {
-                if hasattr(stream, "seek") {
+                if stream?.seek {
                     with suppress(Exception) {
                         stream.seek(0);
                     }
@@ -110,7 +110,7 @@ impl Image.postinit()  -> None {
             fmt = img.format or "PNG";
             self.url = self._data_url_from_bytes(raw, fmt);
         } finally {
-            if pos is not None and hasattr(stream, "seek") {
+            if pos is not None and stream?.seek {
                 with suppress(Exception) {
                     stream.seek(pos);
                 }
