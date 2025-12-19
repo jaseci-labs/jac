@@ -1359,22 +1359,29 @@ class Import(ClientFacingNode, ElementStmt, CodeBlockStmt):
     def __jac_detected(self) -> bool:
         """Check if import is jac."""
         if self.from_loc:
-            if self.from_loc.resolve_relative_path().endswith(".jac"):
+            if self.from_loc.resolve_relative_path().endswith((".jac", ".cl.jac")):
                 return True
             if os.path.isdir(self.from_loc.resolve_relative_path()):
                 if os.path.exists(
                     os.path.join(self.from_loc.resolve_relative_path(), "__init__.jac")
                 ):
                     return True
+                if os.path.exists(
+                    os.path.join(
+                        self.from_loc.resolve_relative_path(), "__init__.cl.jac"
+                    )
+                ):
+                    return True
                 for i in self.items:
                     if isinstance(
                         i, ModuleItem
                     ) and self.from_loc.resolve_relative_path(i.name.value).endswith(
-                        ".jac"
+                        (".jac", ".cl.jac")
                     ):
                         return True
         return any(
-            isinstance(i, ModulePath) and i.resolve_relative_path().endswith(".jac")
+            isinstance(i, ModulePath)
+            and i.resolve_relative_path().endswith((".jac", ".cl.jac"))
             for i in self.items
         )
 
@@ -1459,10 +1466,13 @@ class ModulePath(UniNode):
             runtime_dir = os.path.dirname(jaclang.runtimelib.__file__)
             # Handle both .jac and .js file extensions
             if not (target.endswith(".jac") or target.endswith(".js")):
-                # Try .jac first, then .js
+                # Try .jac first, then .cl.jac, then .js
                 jac_path = os.path.join(runtime_dir, target + ".jac")
                 if os.path.exists(jac_path):
                     return jac_path
+                cl_jac_path = os.path.join(runtime_dir, target + ".cl.jac")
+                if os.path.exists(cl_jac_path):
+                    return cl_jac_path
                 js_path = os.path.join(runtime_dir, target + ".js")
                 if os.path.exists(js_path):
                     return js_path

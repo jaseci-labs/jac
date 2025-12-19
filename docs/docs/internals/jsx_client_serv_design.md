@@ -47,7 +47,7 @@ graph TD
    - Client metadata is collected in `ClientManifest` (exports, globals, params)
 
 2. **Bundle Generation**: `ClientBundleBuilder` creates the browser bundle:
-   - Compiles [client_runtime.jac](../jaclang/runtimelib/client_runtime.jac) to provide JSX and walker runtime
+   - Compiles [client_runtime.cl.jac](../jaclang/runtimelib/client_runtime.cl.jac) to provide JSX and walker runtime
    - Compiles the application module's client-marked code
    - Generates registration code that exposes functions globally
    - Includes polyfills (e.g., `Object.prototype.get()` for dict-like access)
@@ -138,7 +138,7 @@ cl import from jac:client_runtime {
 
 #### Available Exports from `jac:client_runtime`
 
-The client runtime ([client_runtime.jac](../jaclang/runtimelib/client_runtime.jac)) exports these public functions for use in client code:
+The client runtime ([client_runtime.cl.jac](../jaclang/runtimelib/client_runtime.cl.jac)) exports these public functions for use in client code:
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
@@ -178,9 +178,9 @@ When processing client imports ([esast_gen_pass.py:317-325](../jaclang/compiler/
 
 3. **Manifest tracking** records the import in `ClientManifest.imports`:
    - Key: `"client_runtime"` (from `dot_path_str`)
-   - Value: Resolved path to `client_runtime.jac`
+   - Value: Resolved path to `client_runtime.cl.jac`
 
-4. **Bundle generation** compiles `client_runtime.jac` into the bundle, making these functions available globally
+4. **Bundle generation** compiles `client_runtime.cl.jac` into the bundle, making these functions available globally
 
 #### Example Usage
 
@@ -267,7 +267,7 @@ Jac includes a built-in reactive state management system inspired by modern fram
 
 The reactive system is based on **signals** - reactive containers for values that automatically track their dependencies and notify subscribers when values change.
 
-**Global Reactive Context** ([client_runtime.jac:79-87](../jaclang/runtimelib/client_runtime.jac#L79-L87)):
+**Global Reactive Context** ([client_runtime.cl.jac:79-87](../jaclang/runtimelib/client_runtime.cl.jac#L79-L87)):
 
 ```javascript
 __jacReactiveContext = {
@@ -285,7 +285,7 @@ __jacReactiveContext = {
 
 Creates a reactive signal for primitive values. Returns a `[getter, setter]` tuple.
 
-**Syntax** ([client_runtime.jac:92-110](../jaclang/runtimelib/client_runtime.jac#L92-L110)):
+**Syntax** ([client_runtime.cl.jac:92-110](../jaclang/runtimelib/client_runtime.cl.jac#L92-L110)):
 
 ```jac
 cl import from jac:client_runtime { createSignal }
@@ -316,7 +316,7 @@ cl def Counter() {
 
 Creates a reactive state object with shallow merge semantics. Ideal for managing component state with multiple properties.
 
-**Syntax** ([client_runtime.jac:114-139](../jaclang/runtimelib/client_runtime.jac#L114-L139)):
+**Syntax** ([client_runtime.cl.jac:114-139](../jaclang/runtimelib/client_runtime.cl.jac#L114-L139)):
 
 ```jac
 cl import from jac:client_runtime { createState }
@@ -351,7 +351,7 @@ cl def TodoList() {
 
 Runs a function whenever its reactive dependencies change. Automatically re-executes when any accessed signal/state updates.
 
-**Syntax** ([client_runtime.jac:143-174](../jaclang/runtimelib/client_runtime.jac#L143-L174)):
+**Syntax** ([client_runtime.cl.jac:143-174](../jaclang/runtimelib/client_runtime.cl.jac#L143-L174)):
 
 ```jac
 cl import from jac:client_runtime { createSignal, createEffect }
@@ -400,7 +400,7 @@ Jac includes a declarative routing system built on reactive signals. Routes are 
 
 Creates a router instance with reactive path tracking using URL hash.
 
-**Syntax** ([client_runtime.jac:283-345](../jaclang/runtimelib/client_runtime.jac#L283-L345)):
+**Syntax** ([client_runtime.cl.jac:283-345](../jaclang/runtimelib/client_runtime.cl.jac#L283-L345)):
 
 ```jac
 cl import from jac:client_runtime { createRouter, Route }
@@ -433,7 +433,7 @@ cl def App() {
 
 #### Route Configuration
 
-The `Route` function creates route configuration objects ([client_runtime.jac:348-350](../jaclang/runtimelib/client_runtime.jac#L348-L350)):
+The `Route` function creates route configuration objects ([client_runtime.cl.jac:348-350](../jaclang/runtimelib/client_runtime.cl.jac#L348-L350)):
 
 ```jac
 Route(path, component, guard=None)
@@ -445,7 +445,7 @@ Route(path, component, guard=None)
 
 #### Link Component
 
-Renders navigation links that update the router without full page reload ([client_runtime.jac:353-365](../jaclang/runtimelib/client_runtime.jac#L353-L365)):
+Renders navigation links that update the router without full page reload ([client_runtime.cl.jac:353-365](../jaclang/runtimelib/client_runtime.cl.jac#L353-L365)):
 
 ```jac
 <Link href="/about">About Page</Link>
@@ -463,7 +463,7 @@ Renders navigation links that update the router without full page reload ([clien
 
 #### Programmatic Navigation
 
-Use `navigate()` to change routes from code ([client_runtime.jac:368-378](../jaclang/runtimelib/client_runtime.jac#L368-L378)):
+Use `navigate()` to change routes from code ([client_runtime.cl.jac:368-378](../jaclang/runtimelib/client_runtime.cl.jac#L368-L378)):
 
 ```jac
 cl import from jac:client_runtime { navigate }
@@ -519,7 +519,7 @@ If guard returns `False`, the route renders `AccessDenied` component instead.
 | [es_unparse.py](../jaclang/compiler/passes/ecmascript/es_unparse.py) | JavaScript code generation | Converts ESTree AST to JavaScript source |
 | **Runtime Components** | | |
 | [client_bundle.py](../jaclang/runtimelib/client_bundle.py) | Bundle builder | Compiles runtime + module, generates registration code |
-| [client_runtime.jac](../jaclang/runtimelib/client_runtime.jac) | Client runtime | JSX rendering (`__jacJsx`, `renderJsxTree`), walker spawning (`__jacSpawn`), auth helpers |
+| [client_runtime.cl.jac](../jaclang/runtimelib/client_runtime.cl.jac) | Client runtime | JSX rendering (`__jacJsx`, `renderJsxTree`), walker spawning (`__jacSpawn`), auth helpers |
 | [server.py](../jaclang/runtimelib/server.py) | HTTP server | Serves pages (`/page/<fn>`), bundles (`/static/client.js`), walkers |
 | **Data Structures** | | |
 | [ClientManifest](../jaclang/compiler/codeinfo.py#L15-L25) | Metadata container (in codeinfo.py) | Stores `exports` (function names), `globals` (var names), `params` (arg order), `globals_values` (literal values), `has_client` (bool), `imports` (module mappings) |
@@ -528,7 +528,7 @@ If guard returns `False`, the route renders `AccessDenied` component instead.
 
 The bundle generated by `ClientBundleBuilder` contains (in order):
 
-1. **Polyfills** - Browser compatibility shims (from [client_runtime.jac:227-253](../jaclang/runtimelib/client_runtime.jac#L227-L253)):
+1. **Polyfills** - Browser compatibility shims (from [client_runtime.cl.jac:227-253](../jaclang/runtimelib/client_runtime.cl.jac#L227-L253)):
    The `__jacEnsureObjectGetPolyfill()` function adds a Python-style `.get()` method to `Object.prototype`:
 
    ```javascript
@@ -542,7 +542,7 @@ The bundle generated by `ClientBundleBuilder` contains (in order):
 
    This polyfill is called automatically during module registration and hydration.
 
-2. **Client Runtime** - Compiled from [client_runtime.jac](../jaclang/runtimelib/client_runtime.jac):
+2. **Client Runtime** - Compiled from [client_runtime.cl.jac](../jaclang/runtimelib/client_runtime.cl.jac):
    - **JSX Rendering**: `__jacJsx(tag, props, children)`, `renderJsxTree(node, container)`, `__buildDom(node)`, `__applyProp(element, key, value)`
    - **Reactive System**: `createSignal(initialValue)`, `createState(initialState)`, `createEffect(effectFn)`, `__jacTrackDependency()`, `__jacNotifySubscribers()`
    - **Router System**: `createRouter(routes, defaultRoute)`, `Route(path, component, guard)`, `Link(props)`, `navigate(path)`, `useRouter()`
@@ -616,7 +616,7 @@ HTML template (from [server.py:491-504](../jaclang/runtimelib/server.py#L491-L50
 
 ### Client-Side Execution
 
-On page load in the browser ([client_runtime.jac:726-821](../jaclang/runtimelib/client_runtime.jac#L726-L821)):
+On page load in the browser ([client_runtime.cl.jac:726-821](../jaclang/runtimelib/client_runtime.cl.jac#L726-L821)):
 
 1. **Wait for DOM** - `__jacEnsureHydration()` waits for `DOMContentLoaded`
 2. **Parse payload** - `__jacHydrateFromDom()` extracts `__jac_init__` JSON from script tag
@@ -656,7 +656,7 @@ if value and __isObject(value) and __isFunction(value.then) {
 
 ### JSX Rendering
 
-The `renderJsxTree` function ([client_runtime.jac:8-10](../jaclang/runtimelib/client_runtime.jac#L8-L10)) calls `__buildDom` ([client_runtime.jac:13-54](../jaclang/runtimelib/client_runtime.jac#L13-L54)) to recursively build DOM:
+The `renderJsxTree` function ([client_runtime.cl.jac:8-10](../jaclang/runtimelib/client_runtime.cl.jac#L8-L10)) calls `__buildDom` ([client_runtime.cl.jac:13-54](../jaclang/runtimelib/client_runtime.cl.jac#L13-L54)) to recursively build DOM:
 
 1. **Null/undefined** → Empty text node (`document.createTextNode("")`)
 2. **Primitive values** → Text node with `String(value)`
@@ -667,7 +667,7 @@ The `renderJsxTree` function ([client_runtime.jac:8-10](../jaclang/runtimelib/cl
    - Recursively build and append children
 5. **Return DOM node** → Attach to container via `container.replaceChildren(domNode)`
 
-Event handlers are bound in `__applyProp` ([client_runtime.jac:57-72](../jaclang/runtimelib/client_runtime.jac#L57-L72)):
+Event handlers are bound in `__applyProp` ([client_runtime.cl.jac:57-72](../jaclang/runtimelib/client_runtime.cl.jac#L57-L72)):
 
 - Props starting with `on` (e.g., `onclick`, `onsubmit`) become `addEventListener(eventName, handler)`
   - Event name is extracted by removing `on` prefix and converting to lowercase

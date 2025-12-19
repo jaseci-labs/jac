@@ -50,7 +50,7 @@ Extends the base `ClientBundleBuilder` to provide Vite integration. Key responsi
 1. Module compilation
    ├── Compile root .jac file → JS
    ├── Extract exports & globals from manifest
-   └── Generate client_runtime.js from client_runtime.jac
+   └── Generate client_runtime.js from client_runtime.cl.jac
 
 2. Recursive dependency resolution
    ├── Traverse all .jac/.js imports
