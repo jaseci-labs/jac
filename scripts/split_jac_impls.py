@@ -24,7 +24,7 @@ class ImplChunk:
     doc_text: str
 
 
-DEF_LINE_RE = re.compile(r"^\s*(static\s+def|def)\s+")
+DEF_LINE_RE = re.compile(r"^\s*(async\s+)?(static\s+def|def)\s+")
 DECORATOR_LINE_RE = re.compile(r"^\s*@")
 
 
@@ -40,15 +40,28 @@ def _find_first_def_line(lines: list[str]) -> int | None:
 
 
 def _find_first_body_brace(lines: list[str], start_idx: int) -> tuple[int, int] | None:
+    paren_depth = 0
+    bracket_depth = 0
     for i in range(start_idx, len(lines)):
-        j = lines[i].find("{")
-        if j != -1:
-            return (i, j)
+        line = lines[i]
+        for j, ch in enumerate(line):
+            if ch == "(":
+                paren_depth += 1
+            elif ch == ")":
+                paren_depth = max(paren_depth - 1, 0)
+            elif ch == "[":
+                bracket_depth += 1
+            elif ch == "]":
+                bracket_depth = max(bracket_depth - 1, 0)
+            elif ch == "{" and paren_depth == 0 and bracket_depth == 0:
+                return (i, j)
     return None
 
 
 def _method_name_from_def_line(def_line: str) -> str:
     s = def_line.lstrip(" ")
+    if s.startswith("async "):
+        s = s[len("async ") :]
     if s.startswith("static def "):
         s = s[len("static def ") :]
     elif s.startswith("def "):
@@ -86,6 +99,8 @@ def _make_impl_text(block_lines: list[str], class_name: str | None) -> str:
     first = block_lines[def_idx if class_name is None else def_idx]
     indent = _indent_of(first)
     def_line = first.lstrip(" ")
+    if def_line.startswith("async "):
+        def_line = def_line[len("async ") :]
     if def_line.startswith("static def "):
         rest = def_line[len("static def ") :]
     elif def_line.startswith("def "):
@@ -130,6 +145,10 @@ def _extract_blocks_for_file(path: Path) -> list[ImplChunk]:
 
     def walk(container: object) -> None:
         if isinstance(container, uni.Module):
+            for stmt in container.body:
+                walk(stmt)
+            return
+        if isinstance(container, uni.ClientBlock):
             for stmt in container.body:
                 walk(stmt)
             return
@@ -274,7 +293,7 @@ def should_split(path: Path, min_def_bodies: int, min_lines: int) -> bool:
     bodies = 0
     for line in txt.splitlines():
         s = line.lstrip(" ")
-        if s.startswith("def ") or s.startswith("static def "):
+        if s.startswith(("def ", "static def ", "async def ", "async static def ")):
             if s.rstrip().endswith(";"):
                 continue
             bodies += 1
@@ -282,9 +301,14 @@ def should_split(path: Path, min_def_bodies: int, min_lines: int) -> bool:
 
 
 def split_file(path: Path, dry_run: bool, min_def_bodies: int, min_lines: int) -> bool:
-    base = path.with_suffix("")
+    if path.name.endswith(".cl.jac"):
+        base = Path(str(path)[: -len(".cl.jac")])
+        stem = path.name[: -len(".cl.jac")]
+    else:
+        base = path.with_suffix("")
+        stem = path.stem
     impl_dir = Path(str(base) + ".impl")
-    impl_file = impl_dir / (path.stem + ".impl.jac")
+    impl_file = impl_dir / (stem + ".impl.jac")
 
     if impl_dir.exists():
         return False

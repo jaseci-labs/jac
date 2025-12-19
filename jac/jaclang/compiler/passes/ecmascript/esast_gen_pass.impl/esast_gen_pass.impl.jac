@@ -1655,7 +1655,11 @@ impl EsastGenPass.exit_ability(self: EsastGenPass, <>node: uni.Ability) -> None 
             }
         }
     }
-    inner = self._get_body_inner(<>node);
+    inner = (
+        <>node.body.body
+        if isinstance(<>node.body, uni.ImplDef)
+        else self._get_body_inner(<>node)
+    );
     body_stmts = self._collect_stmt_body(inner);
     body_stmts = self._prepend_hoisted(<>node, body_stmts);
     block = self.sync_loc(es.BlockStatement(body=body_stmts), jac_node=<>node);
@@ -1701,12 +1705,20 @@ impl EsastGenPass.exit_ability(self: EsastGenPass, <>node: uni.Ability) -> None 
 impl EsastGenPass.enter_ability(self: EsastGenPass, <>node: uni.Ability) -> None {
     is_client = getattr(<>node, 'is_client_decl', False);
     self.client_scope_stack.append(is_client);
+    if isinstance(<>node.body, uni.ImplDef) and (<>node.body not in <>node.kid) {
+        <>node.body.parent = <>node;
+        <>node.kid.append(<>node.body);
+    }
 }
 
 """Process enum declaration as an object."""
 impl EsastGenPass.exit_enum(self: EsastGenPass, <>node: uni.Enum) -> None {
     properties: list[(es.Property | es.SpreadElement)] = [];
-    inner = self._get_body_inner(<>node);
+    inner = (
+        <>node.body.body
+        if isinstance(<>node.body, uni.ImplDef)
+        else self._get_body_inner(<>node)
+    );
     if inner {
         for stmt in inner {
             if isinstance(stmt, uni.Assignment) {
@@ -1768,7 +1780,11 @@ impl EsastGenPass.exit_archetype(self: EsastGenPass, <>node: uni.Archetype) -> N
     }
     body_stmts: list[es.MethodDefinition | es.PropertyDefinition | es.StaticBlock] = [];
     has_members: list[uni.ArchHas] = [];
-    inner = self._get_body_inner(<>node);
+    inner = (
+        <>node.body.body
+        if isinstance(<>node.body, uni.ImplDef)
+        else self._get_body_inner(<>node)
+    );
     if inner {
         for stmt in inner {
             if isinstance(stmt, uni.ArchHas) {

@@ -1004,12 +1004,22 @@ class Module(AstDocNode, UniScopeNode):
             or self.loc.mod_path.endswith(".test.jac")
             or self.loc.mod_path.endswith(".cl.jac")
         ):
+
+            def existing_base_path(dir_path: str, stem: str) -> str | None:
+                jac_path = os.path.join(dir_path, f"{stem}.jac")
+                cl_path = os.path.join(dir_path, f"{stem}.cl.jac")
+                if os.path.exists(jac_path) and jac_path != self.loc.mod_path:
+                    return jac_path
+                if os.path.exists(cl_path) and cl_path != self.loc.mod_path:
+                    return cl_path
+                return None
+
             head_mod_name = self.name.split(".")[0]
-            potential_path = os.path.join(
+            potential_path = existing_base_path(
                 os.path.dirname(self.loc.mod_path),
-                f"{head_mod_name}.jac",
+                head_mod_name,
             )
-            if os.path.exists(potential_path) and potential_path != self.loc.mod_path:
+            if potential_path:
                 return potential_path
             annex_dir = os.path.split(os.path.dirname(self.loc.mod_path))[-1]
             if (
@@ -1020,14 +1030,11 @@ class Module(AstDocNode, UniScopeNode):
                 head_mod_name = os.path.split(os.path.dirname(self.loc.mod_path))[
                     -1
                 ].split(".")[0]
-                potential_path = os.path.join(
+                potential_path = existing_base_path(
                     os.path.dirname(os.path.dirname(self.loc.mod_path)),
-                    f"{head_mod_name}.jac",
+                    head_mod_name,
                 )
-                if (
-                    os.path.exists(potential_path)
-                    and potential_path != self.loc.mod_path
-                ):
+                if potential_path:
                     return potential_path
         return None
 
