@@ -141,7 +141,7 @@ def validateAge(age: int) -> None {
 ```jac
 def parseJson(jsonString: str) -> any {
     try {
-        let data = JSON.parse(jsonString);
+        data = JSON.parse(jsonString);
         return data;
     } except Exception as e {
         console.log("Invalid JSON:", (e.toString()));
@@ -155,7 +155,7 @@ def parseJson(jsonString: str) -> any {
 ```jac
 def parseNumber(value: str, defaultVal: int) -> int {
     try {
-        let parsed = parseInt(value);
+        parsed = parseInt(value);
         if isNaN(parsed) {
             raise Exception("Not a number");
         }

@@ -45,10 +45,14 @@ def _candidate_from(base: str, parts: list[str]) -> tuple[str, str] | None:
     if os.path.isdir(candidate):
         if os.path.isfile(os.path.join(candidate, "__init__.jac")):
             return os.path.join(candidate, "__init__.jac"), "jac"
+        if os.path.isfile(os.path.join(candidate, "__init__.cl.jac")):
+            return os.path.join(candidate, "__init__.cl.jac"), "jac"
         if os.path.isfile(os.path.join(candidate, "__init__.py")):
             return os.path.join(candidate, "__init__.py"), "py"
     if os.path.isfile(candidate + ".jac"):
         return candidate + ".jac", "jac"
+    if os.path.isfile(candidate + ".cl.jac"):
+        return candidate + ".cl.jac", "jac"
     if os.path.isfile(candidate + ".py"):
         return candidate + ".py", "py"
     if os.path.isfile(candidate + ".js"):
@@ -126,11 +130,14 @@ def resolve_module(target: str, base_path: str) -> tuple[str, str]:
         if res:
             return res
         target_jac = actual_parts[-1] + ".jac"
+        target_cl_jac = actual_parts[-1] + ".cl.jac"
         target_py = actual_parts[-1] + ".py"
         target_js = actual_parts[-1] + ".js"
         for root, _, files in os.walk(jacpath):
             if target_jac in files:
                 return os.path.join(root, target_jac), "jac"
+            if target_cl_jac in files:
+                return os.path.join(root, target_cl_jac), "jac"
             if target_py in files:
                 return os.path.join(root, target_py), "py"
             if target_js in files:

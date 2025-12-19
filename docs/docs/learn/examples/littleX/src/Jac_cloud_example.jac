@@ -22,8 +22,8 @@ walker get_with_query {
 }
 
 walker get_all_query {
-    has a: str;
-    has b: str;
+    has a: str,
+        b: str;
 
     obj __specs__ {
         static has methods: list = ["get"],
@@ -42,9 +42,9 @@ walker post_path_var {
 }
 
 walker combination1 {
-    has a: str;
-    has b: str;
-    has c: str;
+    has a: str,
+        b: str,
+        c: str;
 
     obj __specs__ {
         static has methods: list = ["post", "get"],
@@ -53,9 +53,9 @@ walker combination1 {
 }
 
 walker combination2 {
-    has a: str;
-    has b: str;
-    has c: str;
+    has a: str,
+        b: str,
+        c: str;
 
     obj __specs__ {
         static has path: str = "/{a}",
@@ -74,9 +74,9 @@ walker combination2 {
 }
 
 walker post_with_file {
-    has single: UploadFile;
-    has multiple: list[UploadFile];
-    has singleOptional: UploadFile | None = None;
+    has single: UploadFile,
+        multiple: list[UploadFile],
+        singleOptional: UploadFile | None = None;
 
     can enter with `root entry {
         print(self.single);
@@ -88,10 +88,10 @@ walker post_with_file {
 }
 
 walker post_with_body_and_file {
-    has val: int;
-    has single: UploadFile;
-    has multiple: list[UploadFile];
-    has optional_val: int = 0;
+    has val: int,
+        single: UploadFile,
+        multiple: list[UploadFile],
+        optional_val: int = 0;
 
     can enter with `root entry {
         print(self.val);

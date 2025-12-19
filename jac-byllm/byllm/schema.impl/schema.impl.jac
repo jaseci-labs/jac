@@ -1,3 +1,8 @@
+"""Convert a Python type to a JSON schema representation.
+
+Handles primitive types, Union types, lists, tuples, sets, dicts,
+dataclasses, enums, and functions.
+"""
 impl _type_to_schema(ty: type, title: str = "", desc: str = "") -> dict {
     title = title.replace("_", " ").title();
     context = ({"title": title} if title else {}) | (
@@ -132,6 +137,7 @@ impl _type_to_schema(ty: type, title: str = "", desc: str = "") -> dict {
     ) ;
 }
 
+"""Get a string name for a type, handling Union types specially."""
 impl _name_of_type(ty: type) -> str {
     if get_origin(ty) in (Union, UnionType) {
         names = [_name_of_type(arg) for arg in get_args(ty)];
@@ -143,6 +149,7 @@ impl _name_of_type(ty: type) -> str {
     return "type";
 }
 
+"""Convert a dictionary type to a schema with key-value array structure."""
 impl _convert_dict_to_schema(ty_dict: type) -> dict {
     if get_origin(ty_dict) is not dict {
         raise ValueError(f"Expected a dictionary type, got {ty_dict}.") ;
@@ -174,6 +181,7 @@ impl _convert_dict_to_schema(ty_dict: type) -> dict {
     };
 }
 
+"""Decode a JSON dictionary from wrapped key-value array format."""
 impl _decode_dict(json_obj: dict) -> dict {
     if not isinstance(json_obj, dict) {
         return json_obj;
@@ -185,6 +193,7 @@ impl _decode_dict(json_obj: dict) -> dict {
     return {key: _decode_dict(value) for (key, value) in json_obj.items()};
 }
 
+"""Wrap a non-object schema in an object wrapper for API compatibility."""
 impl _wrap_to_object(schema: dict[str, object]) -> dict[str, object] {
     if "type" in schema and schema["type"] == "object" {
         return schema;
@@ -199,6 +208,7 @@ impl _wrap_to_object(schema: dict[str, object]) -> dict[str, object] {
     };
 }
 
+"""Unwrap a JSON object from the object wrapper if present."""
 impl _unwrap_from_object(json_obj: dict) -> dict {
     if _SCHEMA_OBJECT_WRAPPER in json_obj {
         return json_obj[_SCHEMA_OBJECT_WRAPPER];
@@ -206,6 +216,7 @@ impl _unwrap_from_object(json_obj: dict) -> dict {
     return json_obj;
 }
 
+"""Return the JSON schema for a response type, formatted for LLM APIs."""
 impl type_to_schema(resp_type: type) -> dict[str, object] {
     type_name = _name_of_type(resp_type);
     schema = _type_to_schema(resp_type, type_name);
@@ -217,6 +228,7 @@ impl type_to_schema(resp_type: type) -> dict[str, object] {
     };
 }
 
+"""Return the JSON schema for a tool function, formatted for LLM APIs."""
 impl tool_to_schema(
     func: Callable, description: str, params_desc: dict[str, str]
 ) -> dict[str, object] {
@@ -244,6 +256,7 @@ impl tool_to_schema(
     };
 }
 
+"""Convert a JSON dictionary to an instance of the given type."""
 impl json_to_instance(json_obj: dict, ty: type) -> object {
     json_obj = _unwrap_from_object(json_obj);
     json_obj = _decode_dict(json_obj);

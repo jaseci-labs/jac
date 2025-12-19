@@ -1794,12 +1794,50 @@ class JacByLLM:
         return _decorator
 
     @staticmethod
-    def by_operator(left: Any, right: Any) -> Any:  # noqa: ANN401
+    def filter_visitable_by(
+        connected_nodes: list[NodeArchetype], model: object, descriptions: str = ""
+    ) -> list[NodeArchetype]:
+        from .helpers import _describe_nodes_list
+
+        visitable_list: list = []
+
+        @JacByLLM.by(model=model)
+        def _filter_visitable_by(
+            connected_nodes: list[NodeArchetype], descriptions: str = ""
+        ) -> list[int]:
+            """
+            Determine which connected nodes are visitable using an LLM.
+
+            The input represents structurally reachable nodes. This function applies
+            semantic reasoning to decide which of those nodes a walker is allowed
+            or intended to visit, returning their indexes in priority order.
+
+            Returns an empty list if no nodes are deemed visitable.
+            """
+            return []
+
+        descriptions = _describe_nodes_list(connected_nodes)
+        indexes = _filter_visitable_by(connected_nodes, descriptions)
+        for idx in indexes:
+            visitable_list.append(connected_nodes[idx])
+
+        return visitable_list
+
+    @staticmethod
+    def by_operator(lhs: Any, rhs: Any) -> Any:  # noqa: ANN401
         """by operator feature for expression composition.
 
         Currently not implemented - raises NotImplementedError.
         The exact execution behavior is not yet defined.
         """
+        from byllm.lib import MockLLM, Model
+
+        lhs_list = lhs if isinstance(lhs, list) else [lhs]
+        if all(
+            isinstance(element, (NodeArchetype, EdgeArchetype)) for element in lhs_list
+        ) and isinstance(rhs, (Model, MockLLM)):
+            return JacByLLM.filter_visitable_by(lhs_list, rhs)
+
         raise NotImplementedError(
             "The 'by' operator is not yet implemented. "
             "This feature is reserved for future use."

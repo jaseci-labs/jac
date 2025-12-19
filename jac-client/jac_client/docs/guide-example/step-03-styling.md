@@ -378,7 +378,7 @@ You can store styles in variables to avoid repetition:
 ```jac
 def app() -> any {
     # Define common button style
-    let buttonStyle = {
+    buttonStyle = {
         "padding": "8px 16px",
         "border": "none",
         "borderRadius": "4px",

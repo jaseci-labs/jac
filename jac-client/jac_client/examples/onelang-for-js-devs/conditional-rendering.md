@@ -14,7 +14,7 @@ The most basic conditional rendering pattern. Return different JSX based on a co
 
     ```jac
     def IfElseExample(props: dict) -> any {
-        let isLoggedIn = props.isLoggedIn;
+        isLoggedIn = props.isLoggedIn;
         if isLoggedIn {
             return <div>Welcome back, User!</div>;
         }
@@ -51,7 +51,7 @@ Inline conditional rendering using Python's ternary syntax.
     ```jac
     # JAC uses Python-style: (value_if_true) if condition else (value_if_false)
     def TernaryExample(props: dict) -> any {
-        let isOnline = props.isOnline;
+        isOnline = props.isOnline;
         return (
             <div>
                 Status: {(<span style={{ color: "green" }}>Online</span>) if isOnline else (<span style={{ color: "red" }}>Offline</span>)}
@@ -100,8 +100,8 @@ For multiple conditions, chain ternary operators.
 
     ```jac
     def ComplexTernaryExample(props: dict) -> any {
-        let condition1 = props.condition1;
-        let condition2 = props.condition2;
+        condition1 = props.condition1;
+        condition2 = props.condition2;
         return (
             <div>
                 {(<span>Condition 1 is true</span>) if condition1 else ((<span>Condition 2 is true</span>) if condition2 else (<span>Both are false</span>))}
@@ -139,8 +139,8 @@ Show something only when a condition is true.
     ```jac
     # JAC uses 'not' instead of '!'
     def LogicalAndExample(props: dict) -> any {
-        let hasNotifications = props.hasNotifications;
-        let count = props.count;
+        hasNotifications = props.hasNotifications;
+        count = props.count;
         return (
             <div>
                 <span>Notifications: </span>
@@ -183,7 +183,7 @@ Provide fallback/default values when a value is falsy.
 
     ```jac
     def LogicalOrExample(props: dict) -> any {
-        let username = props.username;
+        username = props.username;
         return (
             <div>
                 Hello, <strong>{username or "Guest"}</strong>!
@@ -242,7 +242,7 @@ function SwitchExample({ status }) {
 
 ```jac
 def SwitchWorkaround1(props: dict) -> any {
-    let status = props.status;
+    status = props.status;
 
     if status == "success" {
         return <span style={{ color: "green" }}>Success!</span>;
@@ -261,17 +261,17 @@ def SwitchWorkaround1(props: dict) -> any {
 
 ```jac
 def SwitchWorkaround2(props: dict) -> any {
-    let status = props.status;
+    status = props.status;
 
-    let statusConfig = {
+    statusConfig = {
         "success": { "color": "green", "text": "Success!" },
         "error": { "color": "red", "text": "Error occurred" },
         "loading": { "color": "orange", "text": "Loading..." },
         "pending": { "color": "blue", "text": "Pending" }
     };
 
-    let defaultStatus = { "color": "gray", "text": "Unknown status" };
-    let current = statusConfig[status] if status in statusConfig else defaultStatus;
+    defaultStatus = { "color": "gray", "text": "Unknown status" };
+    current = statusConfig[status] if status in statusConfig else defaultStatus;
 
     return <span style={{ color: current["color"] }}>{current["text"]}</span>;
 }
@@ -287,15 +287,15 @@ A powerful alternative to switch statements - map keys to values/components.
 
 ```jac
 def ObjectLookupExample(props: dict) -> any {
-    let theme = props.theme;
-    let themes = {
+    theme = props.theme;
+    themes = {
         "light": { "bg": "#ffffff", "text": "#000000", "name": "Light" },
         "dark": { "bg": "#333333", "text": "#ffffff", "name": "Dark" },
         "sepia": { "bg": "#f4ecd8", "text": "#5c4033", "name": "Sepia" }
     };
 
     # Use 'in' to check if key exists
-    let currentTheme = themes[theme] if theme in themes else themes["light"];
+    currentTheme = themes[theme] if theme in themes else themes["light"];
 
     return (
         <div style={{
@@ -312,7 +312,7 @@ def ObjectLookupExample(props: dict) -> any {
 
 ```jac
 # Check if key exists in dictionary
-let value = dict[key] if key in dict else defaultValue;
+value = dict[key] if key in dict else defaultValue;
 ```
 
 ---
@@ -325,7 +325,7 @@ For complex branching logic, use helper functions.
 
 ```jac
 def MultipleConditionsIfElse(props: dict) -> any {
-    let user = props.user;
+    user = props.user;
 
     # Helper function for complex logic
     def getUserAccess() -> any {
@@ -366,7 +366,7 @@ Return an empty fragment to render nothing.
 
     ```jac
     def RenderNothingExample(props: dict) -> any {
-        let shouldShow = props.shouldShow;
+        shouldShow = props.shouldShow;
         if not shouldShow {
             return <></>;  # Empty fragment - renders nothing
         }
@@ -401,14 +401,14 @@ Build class strings dynamically.
 
 ```jac
 def ConditionalClassesExample(props: dict) -> any {
-    let isActive = props.isActive;
-    let isPrimary = props.isPrimary;
+    isActive = props.isActive;
+    isPrimary = props.isPrimary;
 
     # Build class string with ternary
-    let baseClass = "btn";
-    let activeClass = " active" if isActive else "";
-    let colorClass = " primary" if isPrimary else " secondary";
-    let buttonClasses = baseClass + activeClass + colorClass;
+    baseClass = "btn";
+    activeClass = " active" if isActive else "";
+    colorClass = " primary" if isPrimary else " secondary";
+    buttonClasses = baseClass + activeClass + colorClass;
 
     return (
         <div>
@@ -431,10 +431,10 @@ Apply attributes conditionally.
 
 ```jac
 def ConditionalAttributesExample(props: dict) -> any {
-    let isDisabled = props.isDisabled;
-    let isRequired = props.isRequired;
+    isDisabled = props.isDisabled;
+    isRequired = props.isRequired;
 
-    let placeholder = ("* Enter your name") if isRequired else ("Enter your name");
+    placeholder = ("* Enter your name") if isRequired else ("Enter your name");
 
     return (
         <div>
@@ -463,7 +463,7 @@ Handle empty lists gracefully.
 
 ```jac
 def ListConditionalExample(props: dict) -> any {
-    let items = props.items;
+    items = props.items;
 
     # Check for empty list
     if not items or items.length == 0 {
@@ -503,10 +503,10 @@ Use fragments (`<>...</>`) to group elements without extra DOM nodes.
 
 ```jac
 def FragmentsExample(props: dict) -> any {
-    let user = props.user;
-    let showDetails = props.showDetails;
+    user = props.user;
+    showDetails = props.showDetails;
 
-    let userName = user["name"] if user else "Anonymous";
+    userName = user["name"] if user else "Anonymous";
 
     return (
         <div>
@@ -534,9 +534,9 @@ Handle loading, error, and data states.
 
 ```jac
 def MultipleConditionsExample(props: dict) -> any {
-    let isLoading = props.isLoading;
-    let error = props.error;
-    let data = props.data;
+    isLoading = props.isLoading;
+    error = props.error;
+    data = props.data;
 
     return (
         <div>
@@ -561,8 +561,8 @@ Use `useState` for interactive components.
 cl import from react {useState}
 
 def InteractiveExample(props: dict) -> any {
-    let (isVisible, setIsVisible) = useState(False);
-    let (count, setCount) = useState(0);
+    (isVisible, setIsVisible) = useState(False);
+    (count, setCount) = useState(0);
 
     return (
         <div>
@@ -591,7 +591,7 @@ def InteractiveExample(props: dict) -> any {
 ### Key Points:
 
 - Import `useState` from react: `cl import from react {useState}`
-- Use tuple unpacking: `let (state, setState) = useState(initialValue);`
+- Use tuple unpacking: `(state, setState) = useState(initialValue);`
 - Use `lambda` for inline handlers: `onClick={lambda: setState(newValue)}`
 
 ---
@@ -604,16 +604,16 @@ Map page/state names to content configurations.
 
 ```jac
 def EnumBasedExample(props: dict) -> any {
-    let currentPage = props.currentPage;
+    currentPage = props.currentPage;
 
-    let pageContent = {
+    pageContent = {
         "home": { "title": "Home Page", "content": "Welcome!" },
         "about": { "title": "About Us", "content": "Learn more." },
         "contact": { "title": "Contact", "content": "Get in touch." }
     };
 
-    let defaultPage = { "title": "Not Found", "content": "Page not found." };
-    let page = pageContent[currentPage] if currentPage in pageContent else defaultPage;
+    defaultPage = { "title": "Not Found", "content": "Page not found." };
+    page = pageContent[currentPage] if currentPage in pageContent else defaultPage;
 
     return (
         <div>

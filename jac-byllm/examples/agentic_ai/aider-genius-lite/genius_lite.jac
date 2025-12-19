@@ -5,10 +5,10 @@ glob llm = Model(model_name="gpt-4o-mini");
 
 # Simple task object with semantic annotations
 obj Task {
-    has name: str;
-    has type: str;
-    has details: str;
-    has priority: int = 1;
+    has name: str,
+        type: str,
+        details: str,
+        priority: int = 1;
 }
 
 sem Task= "A specific development task with clear implementation requirements";
@@ -18,10 +18,10 @@ sem Task. details= "Specific implementation instructions";
 sem Task. priority= "Task priority: 1=high, 2=medium, 3=low";
 
 obj CodeResult {
-    has task_name: str = "";
-    has code: str = "";
-    has status: str = "";
-    has feedback: str = "";
+    has task_name: str = "",
+        code: str = "",
+        status: str = "",
+        feedback: str = "";
 }
 
 sem CodeResult= "Result of code generation task";
@@ -37,13 +37,13 @@ def validate_code(code: str, task: Task) -> str by llm(method="Reason");
 
 # Nodes for walker traversal
 node TaskNode {
-    has task: Task = Task(name="", type="", details="", priority=1);
-    has code: str = "";
-    has feedback: str = "";
-    has status: str = "pending";
-    has result: CodeResult = CodeResult();
+    has task: Task = Task(name="", type="", details="", priority=1),
+        code: str = "",
+        feedback: str = "",
+        status: str = "pending",
+        result: CodeResult = CodeResult();
 
-    def process_task() {
+    def process_task {
         print(f"Working on: {self.task.name}");
         self.code = generate_solution(self.task);
         self.feedback = validate_code(self.code, self.task);
@@ -61,7 +61,7 @@ node TaskNode {
 node SummaryNode {
     has results: list[CodeResult] = [];
 
-    def show_summary() {
+    def show_summary {
         output = f"Summary ({len(self.results)} tasks):\n\n";
         for result in self.results {
             status_icon = "SUCCESS" if result.status == "success" else "FAILED";
@@ -84,10 +84,10 @@ node SummaryNode {
 
 # GeniusAgent as a walker
 walker GeniusAgent {
-    has request: str;
-    has tasks: list[Task] = [];
-    has results: list[CodeResult] = [];
-    has current_task_index: int = 0;
+    has request: str,
+        tasks: list[Task] = [],
+        results: list[CodeResult] = [],
+        current_task_index: int = 0;
 
     can start with `root entry {
         print("Genius Lite - AI Coding Assistant");
@@ -163,11 +163,16 @@ walker generate_code {
 }
 
 # Main execution (for testing without frontend)
+glob user_request = "Create a Python calculator with basic math operations";
+
 with entry {
-    user_request = "Create a Python calculator with basic math operations";
     print(f"Demo: {user_request}");
     print("-" * 50);
-    agent = GeniusAgent(request=user_request) spawn root;
+}
+
+glob agent = GeniusAgent(request=user_request) spawn root;
+
+with entry {
     print("\nGenius Lite Demo Complete!");
     print("Features: Task planning, code generation, validation");
 }

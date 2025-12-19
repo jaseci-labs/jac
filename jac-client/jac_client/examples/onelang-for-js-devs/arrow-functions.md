@@ -42,7 +42,7 @@ If you are coming from a React/JavaScript background, this guide will help you u
 
     ```jac
     # Full syntax with body
-    let sayHello = lambda -> None {
+    sayHello = lambda -> None {
         console.log("Hello!");
     };
 
@@ -72,7 +72,7 @@ If you are coming from a React/JavaScript background, this guide will help you u
 
     ```jac
     # Single parameter
-    let double = lambda n: int -> int {
+    double = lambda n: int -> int {
         return n * 2;
     };
 
@@ -104,12 +104,12 @@ If you are coming from a React/JavaScript background, this guide will help you u
 
     ```jac
     # Multiple parameters
-    let add = lambda a: int, b: int -> int {
+    add = lambda a: int, b: int -> int {
         return a + b;
     };
 
     # With handler
-    let handleSelect = lambda id: int, name: str -> None {
+    handleSelect = lambda id: int, name: str -> None {
         setSelected({ "id": id, "name": name });
     };
 
@@ -152,7 +152,7 @@ If you are coming from a React/JavaScript background, this guide will help you u
     <button onClick={lambda: handleClick(id)}>Click</button>
 
     # onChange handler (define handler first)
-    let handleChange = lambda e: any -> None {
+    handleChange = lambda e: any -> None {
         setValue(e.target.value);
     };
     <input onChange={handleChange} />
@@ -275,13 +275,13 @@ When you need to do multiple things or have logic inside an onClick handler:
 
     ```jac
     # useCallback
-    let memoizedCallback = useCallback(
+    memoizedCallback = useCallback(
         lambda -> None { doSomething(a, b); },
         [a, b]
     );
 
     # useMemo
-    let memoizedValue = useMemo(
+    memoizedValue = useMemo(
         lambda -> any { return computeExpensive(a, b); },
         [a, b]
     );
@@ -318,9 +318,9 @@ When you need to do multiple things or have logic inside an onClick handler:
     }
 
     # Use with array methods
-    let names = users.map(getName);
-    let adults = users.filter(isAdult);
-    let listItems = items.map(renderItem);
+    names = users.map(getName);
+    adults = users.filter(isAdult);
+    listItems = items.map(renderItem);
     ```
 
 **Alternative: Inline lambda for .map()**
@@ -361,7 +361,7 @@ This is the pattern React developers use most often - rendering lists directly i
     ```jac
     <div>
         {items.map(lambda item: any -> any {
-            let isSelected = selected and selected["id"] == item["id"];
+            isSelected = selected and selected["id"] == item["id"];
             return (
                 <button
                     key={item["id"]}
@@ -486,8 +486,8 @@ This is the pattern React developers use most often - rendering lists directly i
     ```jac
     # Use async def for async functions
     async def fetchData() {
-        let response = await fetch("/api/data");
-        let data = await response.json();
+        response = await fetch("/api/data");
+        data = await response.json();
         setData(data);
     }
 

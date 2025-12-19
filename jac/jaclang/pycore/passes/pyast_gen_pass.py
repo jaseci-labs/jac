@@ -574,7 +574,7 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
             self.preamble.append(
                 self.sync(
                     ast3.ImportFrom(
-                        module="jaclang.lib",
+                        module="jaclang.pycore.jaclib",
                         names=[
                             self.sync(ast3.alias(name=name, asname=None))
                             for name in sorted(self.jaclib_imports)

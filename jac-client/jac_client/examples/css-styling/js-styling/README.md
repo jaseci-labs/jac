@@ -102,7 +102,7 @@ return <div style={styles.container}>
 Select styles based on state:
 
 ```jac
-let countStyle = styles.countDisplayZero if count == 0 else (styles.countDisplayPositive if count > 0 else styles.countDisplayNegative);
+countStyle = styles.countDisplayZero if count == 0 else (styles.countDisplayPositive if count > 0 else styles.countDisplayNegative);
 
 return <div style={countStyle}>{count}</div>;
 ```

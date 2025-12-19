@@ -14,7 +14,7 @@ cl import from .styled {
 }
 
 cl {
-    def app()  -> any {
+    def app -> any {
         [count, setCount] = useState(0);
 
         useEffect(lambda   -> None{ console.log("Count changed: ", count);} , [count]);

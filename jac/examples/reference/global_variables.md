@@ -10,7 +10,7 @@ Line 5: `let:pub` creates a public module-level variable accessible from other m
 **Let with Access Modifiers (continued)**
 
 Lines 8-9 show more `let` declarations with access control. Line 8: `let:protect` creates a protected variable with restricted access.
-Line 9: `let shared_var` creates a global variable with default visibility.
+Line 9: `shared_var` creates a global variable with default visibility.
 
 **Multiple Variable Declarations**
 

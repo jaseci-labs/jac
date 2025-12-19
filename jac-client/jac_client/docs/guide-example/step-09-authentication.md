@@ -570,8 +570,8 @@ Try adding a "Remember me" message:
 
 ```jac
 def LoginPage() -> any {
-    let [email, setEmail] = useState("");
-    let [password, setPassword] = useState("");
+    [email, setEmail] = useState("");
+    [password, setPassword] = useState("");
 
     # Check if already logged in
     if jacIsLoggedIn() {

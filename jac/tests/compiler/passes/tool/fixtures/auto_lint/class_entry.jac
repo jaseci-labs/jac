@@ -4,6 +4,18 @@ The with entry block inside a class is used for instance initialization,
 NOT module-level globals. These should NOT be extracted to glob since
 glob is a module-level construct that doesn't work inside classes.
 """
+import from typing { TYPE_CHECKING }
+
+with entry {
+    a = 5;
+    if TYPE_CHECKING {
+        import from math { SupportsFloat }
+    }
+    b = 6;
+    if TYPE_CHECKING {
+        import from math { SupportsIndex }
+    }
+}
 
 class MyClass {
     """A class with entry block for initialization."""
