@@ -45,12 +45,11 @@ with entry {
     st.title('Visualize DOT file');
 }
 
-glob
-    selected_dot_file = args.dot_file,
-    vis_opt = st.radio(
-        'Visualization options',
-        ['Use pygraphviz (Static)', 'Use streamlit-agraph (Interactive)']
-    );
+glob selected_dot_file = args.dot_file,
+     vis_opt = st.radio(
+    'Visualization options',
+    ['Use pygraphviz (Static)', 'Use streamlit-agraph (Interactive)']
+);
 
 with entry {
     if selected_dot_file {

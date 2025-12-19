@@ -22,11 +22,10 @@ import from enum { StrEnum }
 import from fastapi_sso.sso.google { GoogleSSO }
 import from jac_scale.utils { generate_random_password }
 
-glob
-    JWT_SECRET = getenv('JWT_SECRET', 'supersecretkey'),
-    JWT_ALGORITHM = getenv('JWT_ALGORITHM', 'HS256'),
-    JWT_EXP_DELTA_DAYS = getenv('JWT_EXP_DELTA_DAYS', 7),
-    SSO_HOST = getenv("SSO_HOST", "http://localhost:8000/sso");
+glob JWT_SECRET = getenv('JWT_SECRET', 'supersecretkey'),
+     JWT_ALGORITHM = getenv('JWT_ALGORITHM', 'HS256'),
+     JWT_EXP_DELTA_DAYS = getenv('JWT_EXP_DELTA_DAYS', 7),
+     SSO_HOST = getenv("SSO_HOST", "http://localhost:8000/sso");
 
 class Platforms(StrEnum) {
     has GOOGLE: str = 'google';

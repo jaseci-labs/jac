@@ -1,8 +1,7 @@
 import from byllm.lib { Model }
 
-glob
-    llm = Model(model_name="gpt-4o"),
-    person_record: dict = {};
+glob llm = Model(model_name="gpt-4o"),
+     person_record: dict = {};
 
 obj InventoryItem {
     has name: str,
@@ -92,50 +91,49 @@ def chat_with_player(player: Person, npc: Person, chat_history: list[Chat]) -> C
     method="ReAct", tools=[make_transaction]
 );
 
-glob
-    player = Person(
-        name="Arin",
-        age=24,
-        hobby="swordsmanship",
-        description="A brave and agile warrior skilled with the blade, ready to face any challenge.",
-        money=150.0,
-        inventory=[
-            InventoryItem(
-                name="Iron Sword",
-                description="A sturdy iron sword, balanced and reliable.",
-                price=100.0
-            ),
-            InventoryItem(
-                name="Leather Armor",
-                description="Lightweight armor offering decent protection.",
-                price=75.0
-            ),
-            InventoryItem(
-                name="Healing Potion",
-                description="Restores health when consumed.",
-                price=25.0
-            )
-        ]
-    ),
-    npc = Person(
-        name="Thalor",
-        age=137,
-        hobby="herbalism",
-        description="An ancient elf who loves tending to mystical plants and caring for his pet raven.",
-        money=80.0,
-        inventory=[
-            InventoryItem(
-                name="Herb Pouch",
-                description="A collection of rare herbs for potions.",
-                price=40.0
-            ),
-            InventoryItem(
-                name="Raven Feather",
-                description="A magical feather from his pet raven.",
-                price=30.0
-            )
-        ]
-    );
+glob player = Person(
+    name="Arin",
+    age=24,
+    hobby="swordsmanship",
+    description="A brave and agile warrior skilled with the blade, ready to face any challenge.",
+    money=150.0,
+    inventory=[
+        InventoryItem(
+            name="Iron Sword",
+            description="A sturdy iron sword, balanced and reliable.",
+            price=100.0
+        ),
+        InventoryItem(
+            name="Leather Armor",
+            description="Lightweight armor offering decent protection.",
+            price=75.0
+        ),
+        InventoryItem(
+            name="Healing Potion",
+            description="Restores health when consumed.",
+            price=25.0
+        )
+    ]
+),
+     npc = Person(
+    name="Thalor",
+    age=137,
+    hobby="herbalism",
+    description="An ancient elf who loves tending to mystical plants and caring for his pet raven.",
+    money=80.0,
+    inventory=[
+        InventoryItem(
+            name="Herb Pouch",
+            description="A collection of rare herbs for potions.",
+            price=40.0
+        ),
+        InventoryItem(
+            name="Raven Feather",
+            description="A magical feather from his pet raven.",
+            price=30.0
+        )
+    ]
+);
 # player = make_player();
 # npc = make_random_npc();
 with entry {

@@ -21,11 +21,10 @@ with entry {
     }
 }
 
-glob
-    JsonValue: TypeAlias = None | str | int | float | bool | <>list['JsonValue'] | <>dict[
-        (str, 'JsonValue')
-    ],
-    StatusCode: TypeAlias = Literal[(200, 201, 400, 401, 404, 500, 503)];
+glob JsonValue: TypeAlias = None | str | int | float | bool | <>list['JsonValue'] | <>dict[
+    (str, 'JsonValue')
+],
+     StatusCode: TypeAlias = Literal[(200, 201, 400, 401, 404, 500, 503)];
 
 """Base response container."""
 @dataclass(frozen=True, slots=True)

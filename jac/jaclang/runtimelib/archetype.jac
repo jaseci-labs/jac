@@ -11,11 +11,10 @@ import from typing { Any, ClassVar, TypeAlias, TypeVar }
 import from uuid { UUID, uuid4 }
 import from ..pycore.constant { EdgeDir }
 
-glob
-    logger = getLogger(__name__),
-    TARCH = TypeVar('TARCH', bound='Archetype'),
-    TANCH = TypeVar('TANCH', bound='Anchor'),
-    T = TypeVar('T');
+glob logger = getLogger(__name__),
+     TARCH = TypeVar('TARCH', bound='Archetype'),
+     TANCH = TypeVar('TANCH', bound='Anchor'),
+     T = TypeVar('T');
 
 """Access level enum."""
 class AccessLevel(IntEnum) {

@@ -5,10 +5,9 @@ import os;
 import base64;
 import mcp_client;
 
-glob
-    rag_engine: RagEngine = RagEngine(),
-    llm = Model(model_name='gpt-4o-mini', verbose=True),
-    MCP_SERVER_URL: str = os.getenv('MCP_SERVER_URL', 'http://localhost:8899/mcp');
+glob rag_engine: RagEngine = RagEngine(),
+     llm = Model(model_name='gpt-4o-mini', verbose=True),
+     MCP_SERVER_URL: str = os.getenv('MCP_SERVER_URL', 'http://localhost:8899/mcp');
 
 enum ChatType { RAG, QA, IMAGE, VIDEO }
 

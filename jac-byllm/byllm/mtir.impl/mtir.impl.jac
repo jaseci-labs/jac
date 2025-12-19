@@ -1,9 +1,8 @@
-glob
-    SYSTEM_PERSONA = """\
+glob SYSTEM_PERSONA = """\
     This is a task you must complete by returning only the output.
     Do not include explanations, code, or extra text—only the result.
     """,
-    INSTRUCTION_TOOL = """
+     INSTRUCTION_TOOL = """
     Use the tools provided to reach the goal. Call one tool at a time with \
     proper args—no explanations, no narration. Think step by step, invoking tools \
     as needed. When done, always call finish_tool(output) to return the final

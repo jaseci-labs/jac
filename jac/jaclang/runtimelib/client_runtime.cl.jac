@@ -102,32 +102,44 @@ async def __jacCallFunction(
     function_name: str, args: dict = {}
 ) -> any;
 # Authentication helpers
-async def jacSignup(username: str, password: str) -> dict;  async def jacLogin(
-    username: str, password: str
-) -> bool;  def jacLogout -> None;  def jacIsLoggedIn -> bool;
+async def jacSignup(username: str, password: str) -> dict;
+async def jacLogin(username: str, password: str) -> bool;
+
+def jacLogout -> None;
+def jacIsLoggedIn -> bool;
 # Browser API shims
-def __getLocalStorage(key: str) -> str;  def __setLocalStorage(
-    key: str, value: str
-) -> None;  def __removeLocalStorage(key: str) -> None;  def __isObject(
-    value: any
-) -> bool;  def __isFunction(value: any) -> bool;  def __objectKeys(obj: any) -> list;
+def __getLocalStorage(key: str) -> str;
+def __setLocalStorage(key: str, value: str) -> None;
+
+def __removeLocalStorage(key: str) -> None;
+def __isObject(value: any) -> bool;
+
+def __isFunction(value: any) -> bool;
+def __objectKeys(obj: any) -> list;
 # Low-level helpers
 def __jacHasOwn(obj: any, key: any) -> bool;
 # Internal polyfill for Python-style dict.get on plain JS objects
 def __jacEnsureObjectGetPolyfill -> None;
 # Common utility helpers
-def __jacGetDocument(scope: any) -> any;  def __jacParseJsonObject(
-    text: str
-) -> any;  def __jacBuildOrderedArgs(order: list, argsDict: dict) -> list;  def __jacResolveRenderer(
-    scope: any
-) -> any;  def __jacResolveTarget(moduleRecord: dict, registry: dict, name: str) -> any;  def __jacSafeCallTarget(
+def __jacGetDocument(scope: any) -> any;
+def __jacParseJsonObject(text: str) -> any;
+
+def __jacBuildOrderedArgs(order: list, argsDict: dict) -> list;
+def __jacResolveRenderer(scope: any) -> any;
+
+def __jacResolveTarget(moduleRecord: dict, registry: dict, name: str) -> any;
+def __jacSafeCallTarget(
     target: any, scope: any, orderedArgs: list, targetName: str
 ) -> dict;
 # Runtime support helpers for client module registration / hydration
-def __jacGlobalScope -> any;  def __jacEnsureRegistry -> dict;  def __jacApplyRender(
-    renderer: any, container: any, node: any
-) -> None;  def __jacHydrateFromDom(defaultModuleName: str) -> None;  def __jacExecuteHydration -> None;  def __jacEnsureHydration(
-    moduleName: str
-) -> None;  def __jacRegisterClientModule(
+def __jacGlobalScope -> any;
+def __jacEnsureRegistry -> dict;
+def __jacApplyRender(renderer: any, container: any, node: any) -> None;
+
+def __jacHydrateFromDom(defaultModuleName: str) -> None;
+def __jacExecuteHydration -> None;
+def __jacEnsureHydration(moduleName: str) -> None;
+
+def __jacRegisterClientModule(
     moduleName: str, clientFunctions: list = [], clientGlobals: dict = {}
 ) -> None;

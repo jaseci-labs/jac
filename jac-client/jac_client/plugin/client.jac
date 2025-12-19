@@ -13,11 +13,10 @@ import from jaclang.runtimelib.server { ModuleIntrospector }
 import from .vite_client_bundle { ViteClientBundleBuilder }
 import from .src.vite_bundler { ViteBundler }
 
-glob
-    JsonValue: TypeAlias = None | str | int | float | bool | list['JsonValue'] | dict[
-        (str, 'JsonValue')
-    ],
-    StatusCode: TypeAlias = Literal[(200, 201, 400, 401, 404, 503)];
+glob JsonValue: TypeAlias = None | str | int | float | bool | list['JsonValue'] | dict[
+    (str, 'JsonValue')
+],
+     StatusCode: TypeAlias = Literal[(200, 201, 400, 401, 404, 503)];
 
 """Jac Client Module Introspector."""
 class JacClientModuleIntrospector(ModuleIntrospector) {
