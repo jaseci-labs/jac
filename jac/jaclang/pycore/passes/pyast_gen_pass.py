@@ -2824,10 +2824,25 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
             node.right.gen.py_ast[0].ctx = ast3.Load()  # type: ignore
 
         if node.is_null_ok:
+            # If target is already a null-safe IfExp with dir() check, extract just the static getattr
+            target_value = node.target.gen.py_ast[0]
+            if (
+                isinstance(target_value, ast3.IfExp)
+                and isinstance(target_value.body, ast3.IfExp)
+                and isinstance(target_value.body.orelse, ast3.Call)
+            ):
+                target_value = self.sync(
+                    ast3.IfExp(
+                        test=target_value.test,
+                        body=target_value.body.orelse,
+                        orelse=target_value.orelse,
+                    )
+                )
+
             walrus_assign = self.sync(
                 ast3.NamedExpr(
                     target=self.sync(ast3.Name(id="__jac_tmp", ctx=ast3.Store())),
-                    value=cast(ast3.expr, node.target.gen.py_ast[0]),
+                    value=cast(ast3.expr, target_value),
                 )
             )
             tmp_ref = self.sync(ast3.Name(id="__jac_tmp", ctx=ast3.Load()))
@@ -2835,38 +2850,65 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
 
             # Determine the body expression based on the operation type
             body_expr: ast3.expr
+
             if isinstance(node.gen.py_ast[0], ast3.Attribute):
+                # Generate: getattr(tmp, name, None) if 'name' in dir() else getattr(tmp, 'name', None)
+                attr_name = node.gen.py_ast[0].attr
                 body_expr = self.sync(
-                    ast3.Call(
-                        func=self.sync(ast3.Name(id="getattr", ctx=ast3.Load())),
-                        args=[
-                            tmp_ref,
-                            self.sync(ast3.Constant(value=node.gen.py_ast[0].attr)),
-                            none_const,
-                        ],
-                        keywords=[],
+                    ast3.IfExp(
+                        test=self.sync(
+                            ast3.Compare(
+                                left=self.sync(ast3.Constant(value=attr_name)),
+                                ops=[self.sync(ast3.In())],
+                                comparators=[
+                                    self.sync(
+                                        ast3.Call(
+                                            func=self.sync(
+                                                ast3.Name(id="dir", ctx=ast3.Load())
+                                            ),
+                                            args=[],
+                                            keywords=[],
+                                        )
+                                    )
+                                ],
+                            )
+                        ),
+                        # If variable exists: getattr(tmp, name, None)
+                        body=self.sync(
+                            ast3.Call(
+                                func=self.sync(
+                                    ast3.Name(id="getattr", ctx=ast3.Load())
+                                ),
+                                args=[
+                                    tmp_ref,
+                                    self.sync(ast3.Name(id=attr_name, ctx=ast3.Load())),
+                                    none_const,
+                                ],
+                                keywords=[],
+                            )
+                        ),
+                        # Otherwise: getattr(tmp, 'name', None)
+                        orelse=self.sync(
+                            ast3.Call(
+                                func=self.sync(
+                                    ast3.Name(id="getattr", ctx=ast3.Load())
+                                ),
+                                args=[
+                                    tmp_ref,
+                                    self.sync(ast3.Constant(value=attr_name)),
+                                    none_const,
+                                ],
+                                keywords=[],
+                            )
+                        ),
                     )
                 )
             elif isinstance(node.gen.py_ast[0], ast3.Call):
-                # For FilterCompr and AssignCompr, update the relevant argument(s) to use tmp_ref
                 call_node = node.gen.py_ast[0]
-                # Check if this is a filter_on call (FilterCompr)
-                if isinstance(call_node.func, ast3.Attribute) or (
-                    isinstance(call_node.func, ast3.Name)
-                    and call_node.func.id == "filter_on"
-                ):
-                    # Replace the 'items' keyword argument with tmp_ref
-                    for kw in call_node.keywords:
-                        if kw.arg == "items":
-                            kw.value = tmp_ref
-                # Check if this is an assign_all call (AssignCompr)
-                if (
-                    isinstance(call_node.func, ast3.Attribute)
-                    or (
-                        isinstance(call_node.func, ast3.Name)
-                        and call_node.func.id == "assign_all"
-                    )
-                ) and call_node.args:
+                for kw in call_node.keywords:
+                    if kw.arg == "items":
+                        kw.value = tmp_ref
+                if call_node.args:
                     call_node.args[0] = tmp_ref
                 body_expr = cast(ast3.expr, call_node)
             else:
