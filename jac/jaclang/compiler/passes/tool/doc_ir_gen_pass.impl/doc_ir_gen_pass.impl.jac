@@ -932,34 +932,42 @@ impl DocIRGenPass.exit_client_block(
 """Generate DocIR for global variables."""
 impl DocIRGenPass.exit_global_vars(self: DocIRGenPass, <>node: uni.GlobalVars) -> None {
     parts: list[doc.DocType] = [];
-    indent_parts: list[doc.DocType] = [];
+    align_parts: list[doc.DocType] = [];
     semi_doc: (doc.DocType | None) = None;
     has_multiple_assignments = len(<>node.assignments) > 1;
+    first_assignment_done = False;
     for i in <>node.kid {
         if (i == <>node.doc) {
             parts.append(i.gen.doc_ir);
             parts.append(self.hard_line());
         } elif (isinstance(i, uni.Token) and (i.name == Tok.SEMI)) {
-            if indent_parts {
-                indent_parts.pop();
+            if align_parts {
+                align_parts.pop();
             } elif parts {
                 parts.pop();
             }
             semi_doc = i.gen.doc_ir;
         } elif (isinstance(i, uni.Token) and (i.name == Tok.COMMA)) {
-            if has_multiple_assignments {
-                indent_parts.pop();
-                indent_parts.append(i.gen.doc_ir);
-                indent_parts.append(self.hard_line());
+            if (has_multiple_assignments and first_assignment_done) {
+                align_parts.pop();
+                align_parts.append(i.gen.doc_ir);
+                # Use literal line with 5-space alignment to match "glob " prefix
+                align_parts.append(self.literal_line());
+                align_parts.append(self.text("     "));
             } else {
                 parts.pop();
                 parts.append(i.gen.doc_ir);
-                parts.append(self.space());
+                if has_multiple_assignments {
+                    # After first assignment comma, switch to align_parts
+                    first_assignment_done = True;
+                } else {
+                    parts.append(self.space());
+                }
             }
         } elif isinstance(i, uni.Assignment) {
-            if has_multiple_assignments {
-                indent_parts.append(i.gen.doc_ir);
-                indent_parts.append(self.space());
+            if (has_multiple_assignments and first_assignment_done) {
+                align_parts.append(i.gen.doc_ir);
+                align_parts.append(self.space());
             } else {
                 parts.append(i.gen.doc_ir);
                 parts.append(self.space());
@@ -969,13 +977,12 @@ impl DocIRGenPass.exit_global_vars(self: DocIRGenPass, <>node: uni.GlobalVars) -
             parts.append(self.space());
         }
     }
-    if indent_parts {
-        self.trim_trailing_line(indent_parts);
-        parts.append(
-            self.indent(
-                self.concat([self.hard_line(), *indent_parts]), ast_node=<>node
-            )
-        );
+    if align_parts {
+        self.trim_trailing_line(align_parts);
+        # First aligned assignment starts with newline + 5 spaces
+        parts.append(self.literal_line());
+        parts.append(self.text("     "));
+        parts.append(self.concat(align_parts));
     }
     if semi_doc {
         parts.append(semi_doc);

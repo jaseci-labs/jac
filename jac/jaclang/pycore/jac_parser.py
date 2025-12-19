@@ -94,10 +94,10 @@ class JacParser(Transform[uni.Source, uni.Module]):
 
     @classmethod
     def _coerce_client_module(cls, module: uni.Module) -> None:
-        """Treat a `.cl.jac` file as an implicit `cl { ... }` module.
+        """Treat a `.cl.jac` file as client code without wrapping in ClientBlock.
 
         This allows authoring client-only modules without sprinkling `cl` in front
-        of every statement. We still mark nodes as client declarations so client
+        of every statement. We mark nodes with is_client_decl=True so client
         codegen logic can reliably detect them.
         """
         elements: list[uni.ElementStmt] = []
@@ -107,8 +107,8 @@ class JacParser(Transform[uni.Source, uni.Module]):
             elif isinstance(stmt, uni.ElementStmt):
                 elements.append(stmt)
 
-        # Match `cl { ... }` behavior: mark only top-level statements as client
-        # declarations, and propagate one level into `with entry` blocks.
+        # Mark all top-level statements as client declarations,
+        # and propagate one level into `with entry` blocks.
         for elem in elements:
             if isinstance(elem, uni.ClientFacingNode):
                 elem.is_client_decl = True
@@ -117,8 +117,8 @@ class JacParser(Transform[uni.Source, uni.Module]):
                         if isinstance(inner, uni.ClientFacingNode):
                             inner.is_client_decl = True
 
-        client_block = uni.ClientBlock(body=elements, kid=elements, implicit=True)
-        module.body = [client_block]
+        # Keep elements as direct module children (no ClientBlock wrapper)
+        module.body = elements
         module.normalize(deep=False)
         cls._recalculate_parents(module)
 
