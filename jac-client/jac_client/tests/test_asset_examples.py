@@ -104,7 +104,7 @@ def test_image_asset_example() -> None:
         package_json, output_dir = _create_test_project_with_vite(
             temp_path, include_assets=True
         )
-        runtime_path = Path(__file__).parent.parent / "plugin" / "client_runtime.jac"
+        runtime_path = Path(__file__).parent.parent / "plugin" / "client_runtime.cl.jac"
 
         # Initialize the Vite builder
         builder = ViteClientBundleBuilder(
@@ -147,7 +147,7 @@ def test_css_with_image_example() -> None:
         package_json, output_dir = _create_test_project_with_vite(
             temp_path, include_assets=True
         )
-        runtime_path = Path(__file__).parent.parent / "plugin" / "client_runtime.jac"
+        runtime_path = Path(__file__).parent.parent / "plugin" / "client_runtime.cl.jac"
 
         # Initialize the Vite builder
         builder = ViteClientBundleBuilder(
@@ -200,7 +200,7 @@ def test_import_alias_example() -> None:
         package_json, output_dir = _create_test_project_with_vite(
             temp_path, include_assets=True
         )
-        runtime_path = Path(__file__).parent.parent / "plugin" / "client_runtime.jac"
+        runtime_path = Path(__file__).parent.parent / "plugin" / "client_runtime.cl.jac"
 
         # Initialize the Vite builder
         builder = ViteClientBundleBuilder(

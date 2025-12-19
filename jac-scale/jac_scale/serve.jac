@@ -4,9 +4,9 @@ import from datetime { UTC, datetime, timedelta }
 import from pathlib { Path }
 import from typing { Any }
 import jwt;
-import os;
+import from os { getenv }
 import from fastapi.middleware.cors { CORSMiddleware }
-import from fastapi.responses { HTMLResponse, JSONResponse, Response }
+import from fastapi.responses { HTMLResponse, JSONResponse, Response, RedirectResponse }
 import from jac_scale.jserver.jfast_api { JFastApiServer }
 import from jac_scale.jserver.jserver {
     APIParameter,
@@ -17,11 +17,25 @@ import from jac_scale.jserver.jserver {
 import from jaclang.pycore.runtime { JacRuntime as Jac }
 import from jaclang.runtimelib.server { JacAPIServer as JServer }
 import from jaclang.runtimelib.server { JsonValue }
+import from jaclang.runtimelib.server { JsonValue }
+import from enum { StrEnum }
+import from fastapi_sso.sso.google { GoogleSSO }
+import from jac_scale.utils { generate_random_password }
 
 glob
-    JWT_SECRET = os.getenv('JWT_SECRET', 'supersecretkey'),
-    JWT_ALGORITHM = os.getenv('JWT_ALGORITHM', 'HS256'),
-    JWT_EXP_DELTA_DAYS = os.getenv('JWT_EXP_DELTA_DAYS', 7);
+    JWT_SECRET = getenv('JWT_SECRET', 'supersecretkey'),
+    JWT_ALGORITHM = getenv('JWT_ALGORITHM', 'HS256'),
+    JWT_EXP_DELTA_DAYS = getenv('JWT_EXP_DELTA_DAYS', 7),
+    SSO_HOST = getenv("SSO_HOST", "http://localhost:8000/sso");
+
+class Platforms(StrEnum) {
+    has GOOGLE: str = 'google';
+}
+
+class Operations(StrEnum) {
+    has LOGIN: str = 'login';
+    has REGISTER: str = 'register';
+}
 
 class JacAPIServer(JServer) {
     static def create_jwt_token(username: str) -> str;
@@ -41,6 +55,19 @@ class JacAPIServer(JServer) {
     def refresh_token(self: JacAPIServer, token: (str | None) = None) -> JSONResponse;
     def register_create_user_endpoint(self: JacAPIServer) -> None;
     def register_refresh_token_endpoint(self: JacAPIServer) -> None;
+    def get_sso(
+        self: JacAPIServer, platform: str, operation: str
+    ) -> (GoogleSSO | None);
+
+    async def sso_initiate(
+        self: JacAPIServer, platform: str, operation: str
+    ) -> Response;
+
+    async def sso_callback(
+        self: JacAPIServer, request: Request, platform: str, operation: str
+    ) -> JSONResponse;
+
+    def register_sso_endpoints(self: JacAPIServer) -> None;
     def create_walker_callback(
         self: JacAPIServer, walker_name: str, has_node_param: bool = False
     ) -> Callable[..., dict[(str, JsonValue)]];

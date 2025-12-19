@@ -12,13 +12,11 @@ This pass applies automatic linting corrections to Jac code, including:
 - (Future) Import organization
 - (Future) Redundant code removal
 """
-
 import keyword;
 import jaclang.pycore.unitree as uni;
 import from jaclang.pycore.passes { UniPass }
 import from jaclang.pycore.constant { Tokens as Tok }
 import from jaclang.pycore.jac_parser { TOKEN_MAP }
-
 """Auto linting pass that applies code style corrections to Jac AST."""
 class JacAutoLintPass(UniPass) {
     """Initialize the pass with linting options."""

@@ -156,6 +156,14 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
                         loader=self,
                         submodule_search_locations=[candidate_path],
                     )
+                init_cl_file = os.path.join(candidate_path, "__init__.cl.jac")
+                if os.path.isfile(init_cl_file):
+                    return importlib.util.spec_from_file_location(
+                        fullname,
+                        init_cl_file,
+                        loader=self,
+                        submodule_search_locations=[candidate_path],
+                    )
             # Check for .jac file
             jac_file = candidate_path + ".jac"
             if os.path.isfile(jac_file):
@@ -168,6 +176,11 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
                         return None
                 return importlib.util.spec_from_file_location(
                     fullname, jac_file, loader=self
+                )
+            cl_jac_file = candidate_path + ".cl.jac"
+            if os.path.isfile(cl_jac_file):
+                return importlib.util.spec_from_file_location(
+                    fullname, cl_jac_file, loader=self
                 )
 
         # TODO: We can remove it once python modules are fully supported in jac
@@ -255,12 +268,24 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
                     return Jac.program.get_bytecode(
                         full_target=init_file, minimal=use_minimal
                     )
+                init_cl_file = os.path.join(candidate_path, "__init__.cl.jac")
+                if os.path.isfile(init_cl_file):
+                    use_minimal = fullname in self.MINIMAL_COMPILE_MODULES
+                    return Jac.program.get_bytecode(
+                        full_target=init_cl_file, minimal=use_minimal
+                    )
             # Check for .jac file
             jac_file = candidate_path + ".jac"
             if os.path.isfile(jac_file):
                 use_minimal = fullname in self.MINIMAL_COMPILE_MODULES
                 return Jac.program.get_bytecode(
                     full_target=jac_file, minimal=use_minimal
+                )
+            cl_jac_file = candidate_path + ".cl.jac"
+            if os.path.isfile(cl_jac_file):
+                use_minimal = fullname in self.MINIMAL_COMPILE_MODULES
+                return Jac.program.get_bytecode(
+                    full_target=cl_jac_file, minimal=use_minimal
                 )
 
         return None

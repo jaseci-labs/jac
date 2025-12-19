@@ -12,7 +12,6 @@ The pass also includes functionality to coalesce basic blocks and generate visua
 import from collections.abc { Sequence }
 import jaclang.pycore.unitree as uni;
 import from jaclang.pycore.passes { UniPass }
-
 """Jac Symbol table build pass."""
 class CFGBuildPass(UniPass) {
     def before_pass(self: CFGBuildPass) -> None;

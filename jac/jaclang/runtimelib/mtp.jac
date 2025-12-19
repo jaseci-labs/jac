@@ -7,9 +7,7 @@ obj MTRuntime {
 
     static def factory(
         caller: Callable, args: dict[int | str, object], call_params: dict[str, object]
-    ) -> MTRuntime {
-        return MTRuntime(caller=caller, args=args, call_params=call_params);
-    }
+    ) -> MTRuntime;
 }
 
 obj MTIR {
@@ -18,7 +16,5 @@ obj MTIR {
         call_params: dict[(str, object)];
 
     @property
-    def runtime -> MTRuntime {
-        return MTRuntime.factory(self.caller, self.args, self.call_params);
-    }
+    def runtime -> MTRuntime;
 }

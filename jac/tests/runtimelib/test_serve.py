@@ -863,7 +863,7 @@ def test_login_form_renders_with_correct_elements(
     )
     assert status_js == 200
 
-    # Verify the bundle has the polyfill setup function (now part of client_runtime.jac)
+    # Verify the bundle has the polyfill setup function (now part of client_runtime.cl.jac)
     assert "__jacEnsureObjectGetPolyfill" in js_body
 
     # Verify the function is in the bundle

@@ -181,7 +181,7 @@ impl ViteCompiler.compile_runtime_utils(self: ViteCompiler) -> tuple[str, list[s
     if not self.runtime_path {
         raise ClientBundleError('Runtime path not set') ;
     }
-    runtime_utils_path = self.runtime_path.parent / 'client_runtime.jac';
+    runtime_utils_path = self.runtime_path.parent / 'client_runtime.cl.jac';
     (runtimeutils_js, mod, runtimeutils_manifest) = self.jac_compiler.compile_module(
         runtime_utils_path
     );

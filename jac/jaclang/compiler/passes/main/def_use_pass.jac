@@ -20,11 +20,9 @@ This pass performs comprehensive symbol resolution by:
 This pass is crucial for type checking, access control validation, and code generation as it
 creates the complete symbol resolution map for the program.
 """
-
 import jaclang.pycore.unitree as uni;
 import from jaclang.pycore.constant { Tokens as Tok }
 import from jaclang.pycore.passes { UniPass }
-
 """Jac Ast build pass."""
 class DefUsePass(UniPass) {
     def enter_archetype(self: DefUsePass, node: uni.Archetype) -> None;

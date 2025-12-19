@@ -98,7 +98,7 @@ def test_nested_advance_example() -> None:
         temp_path = Path(temp_dir)
 
         package_json, output_dir = _create_test_project_with_vite(temp_path)
-        runtime_path = Path(__file__).parent.parent / "plugin" / "client_runtime.jac"
+        runtime_path = Path(__file__).parent.parent / "plugin" / "client_runtime.cl.jac"
 
         # Initialize the Vite builder
         builder = ViteClientBundleBuilder(
@@ -152,7 +152,7 @@ def test_nested_folder_structure_preserved() -> None:
         temp_path = Path(temp_dir)
 
         package_json, output_dir = _create_test_project_with_vite(temp_path)
-        runtime_path = Path(__file__).parent.parent / "plugin" / "client_runtime.jac"
+        runtime_path = Path(__file__).parent.parent / "plugin" / "client_runtime.cl.jac"
 
         # Initialize the Vite builder
         builder = ViteClientBundleBuilder(
@@ -221,7 +221,7 @@ def test_relative_imports_in_compiled_files() -> None:
         temp_path = Path(temp_dir)
 
         package_json, output_dir = _create_test_project_with_vite(temp_path)
-        runtime_path = Path(__file__).parent.parent / "plugin" / "client_runtime.jac"
+        runtime_path = Path(__file__).parent.parent / "plugin" / "client_runtime.cl.jac"
 
         # Initialize the Vite builder
         builder = ViteClientBundleBuilder(
@@ -295,7 +295,7 @@ def test_nested_basic_example() -> None:
         temp_path = Path(temp_dir)
 
         package_json, output_dir = _create_test_project_with_vite(temp_path)
-        runtime_path = Path(__file__).parent.parent / "plugin" / "client_runtime.jac"
+        runtime_path = Path(__file__).parent.parent / "plugin" / "client_runtime.cl.jac"
 
         # Initialize the Vite builder
         builder = ViteClientBundleBuilder(

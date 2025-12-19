@@ -122,7 +122,11 @@ impl ViteBundler.create_tsconfig(self: ViteBundler) -> Path {
     return tsconfig_path;
 }
 
-"""Clean up root package.json and move package-lock.json to .jac-client.configs/.\n\n        Remove root package.json and move package-lock.json to .jac-client.configs/.\n        """
+"""
+Clean up root package.json and move package-lock.json to .jac-client.configs/.
+
+        Remove root package.json and move package-lock.json to .jac-client.configs/.
+"""
 impl ViteBundler._cleanup_root_package_files(self: ViteBundler) -> None {
     root_package_json = self.project_dir / 'package.json';
     root_package_lock = self.project_dir / 'package-lock.json';
@@ -140,7 +144,11 @@ impl ViteBundler._cleanup_root_package_files(self: ViteBundler) -> None {
     }
 }
 
-"""Ensure root package.json exists temporarily for npm commands.\n\n        Create root package.json temporarily if it doesn't exist.\n        """
+"""
+Ensure root package.json exists temporarily for npm commands.
+
+        Create root package.json temporarily if it doesn't exist.
+"""
 impl ViteBundler._ensure_root_package_json(self: ViteBundler) -> None {
     generated_package_json = self.project_dir / '.jac-client.configs' / 'package.json';
     root_package_json = self.project_dir / 'package.json';

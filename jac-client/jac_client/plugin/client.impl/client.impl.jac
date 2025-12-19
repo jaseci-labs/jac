@@ -70,7 +70,7 @@ impl JacClient.get_client_bundle_builder -> ViteClientBundleBuilder {
         ) ;
     }
     output_dir = base_path / 'dist';
-    runtime_path = Path(__file__).with_name('client_runtime.jac');
+    runtime_path = Path(__file__).with_name('client_runtime.cl.jac');
     return ViteClientBundleBuilder(
         runtime_path=runtime_path,
         vite_package_json=package_json_path,

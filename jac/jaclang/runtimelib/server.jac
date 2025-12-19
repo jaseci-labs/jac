@@ -75,6 +75,7 @@ class UserManager {
 
     def validate_token(self: UserManager, token: str) -> (str | None);
     def get_root_id(self: UserManager, username: str) -> (str | None);
+    def get_user(self: UserManager, username: str) -> (dict[(str, str)] | None);
     def close(self: UserManager) -> None;
 }
 
