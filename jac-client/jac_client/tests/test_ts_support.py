@@ -10,7 +10,6 @@ from pathlib import Path
 
 import pytest
 
-from jac_client.plugin.src.vite_bundler import ViteBundler
 from jac_client.plugin.vite_client_bundle import ViteClientBundleBuilder
 from jaclang.pycore.runtime import JacRuntime as Jac
 
@@ -70,34 +69,35 @@ def _copy_ts_support_project(temp_path: Path) -> tuple[Path, Path]:
     with config_json.open("w", encoding="utf-8") as f:
         json.dump(config_data, f, indent=2)
 
-    # Generate package.json from config.json using ViteBundler
-    bundler = ViteBundler(project_dir=temp_path)
-    generated_package_json = bundler.create_package_json()
-
-    # Copy generated package.json to root temporarily for npm install
-    root_package_json = temp_path / "package.json"
-    shutil.copy2(generated_package_json, root_package_json)
-
-    # Install dependencies
+    # Install packages from config.json using jac add --cl
+    # This generates package.json in .jac-client.configs/ and runs npm install
     result = subprocess.run(
-        ["npm", "install"],
+        ["jac", "add", "--cl"],
         cwd=temp_path,
         check=False,
         capture_output=True,
         text=True,
     )
     if result.returncode != 0:
-        error_msg = f"npm install failed with exit code {result.returncode}\n"
+        error_msg = f"jac add --cl failed with exit code {result.returncode}\n"
         error_msg += f"stdout: {result.stdout}\n"
         error_msg += f"stderr: {result.stderr}\n"
         raise RuntimeError(error_msg)
+
+    # Package.json is generated in .jac-client.configs/ directory
+    package_json = temp_path / ".jac-client.configs" / "package.json"
+    if not package_json.exists():
+        raise RuntimeError(
+            f"package.json not generated at {package_json}. "
+            "jac add --cl should have created it."
+        )
 
     # Create output directory (Vite outputs to dist/, not dist/assets/)
     output_dir = temp_path / "dist"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Return the root package.json path (like other tests do)
-    return root_package_json, output_dir
+    # Return the generated package.json path
+    return package_json, output_dir
 
 
 def test_typescript_fixture_example() -> None:

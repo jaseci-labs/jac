@@ -7,7 +7,6 @@ impl ViteBundler.create_package_json(
     configs_dir.mkdir(exist_ok=True);
     package_config = self.config_loader.get_package_config();
     package_json_path = configs_dir / 'package.json';
-    has_ts = self._has_typescript_support();
     name = package_config.get('name', '');
     if (not name and project_name) {
         name = project_name;
@@ -33,18 +32,13 @@ impl ViteBundler.create_package_json(
         '@babel/cli': '^7.28.3',
         '@babel/core': '^7.28.5',
         '@babel/preset-env': '^7.28.5',
-        '@babel/preset-react': '^7.28.5'
+        '@babel/preset-react': '^7.28.5',
+        # TypeScript dependencies are included by default
+        '@vitejs/plugin-react': '^4.2.1',
+        'typescript': '^5.3.3',
+        '@types/react': '^18.2.45',
+        '@types/react-dom': '^18.2.18'
     };
-    if has_ts {
-        dev_dependencies.update(
-            {
-                '@vitejs/plugin-react': '^4.2.1',
-                'typescript': '^5.3.3',
-                '@types/react': '^18.2.45',
-                '@types/react-dom': '^18.2.18'
-            }
-        );
-    }
     user_dev_deps = package_config.get('devDependencies', {});
     dev_dependencies.update(user_dev_deps);
     dependencies = {
@@ -86,7 +80,46 @@ impl ViteBundler.create_package_json(
     with package_json_path.open('w', encoding='utf-8') as f {
         json.dump(package_data, f, indent=2);
     }
+    # Generate tsconfig.json during build time
+    self.create_tsconfig();
     return package_json_path;
+}
+
+"""Create tsconfig.json during build time."""
+impl ViteBundler.create_tsconfig(self: ViteBundler) -> Path {
+    tsconfig_path = self.project_dir / 'tsconfig.json';
+    # Only create if it doesn't exist (user may have customized it)
+    if tsconfig_path.exists() {
+        return tsconfig_path;
+    }
+    tsconfig_content = """{
+  "compilerOptions": {
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+
+    /* Bundler mode */
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+
+    /* Linting */
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["components/**/*"],
+  "exclude": ["node_modules", "dist", "build", "compiled"]
+}
+""";
+    tsconfig_path.write_text(tsconfig_content, encoding='utf-8');
+    return tsconfig_path;
 }
 
 """
@@ -192,7 +225,7 @@ impl ViteBundler.create_vite_config(self: ViteBundler, entry_file: Path) -> Path
     configs_dir.mkdir(exist_ok=True);
     vite_config_data = self.config_loader.get_vite_config();
     config_path = configs_dir / 'vite.config.js';
-    has_ts = self._has_typescript_support();
+    # TypeScript is always enabled by default
     try {
         entry_relative = entry_file.relative_to(self.project_dir).as_posix();
     } except ValueError {
@@ -205,10 +238,9 @@ impl ViteBundler.create_vite_config(self: ViteBundler, entry_file: Path) -> Path
     }
     plugins = [];
     plugin_imports = [];
-    if has_ts {
-        plugin_imports.append('import react from "@vitejs/plugin-react";');
-        plugins.append('    react()');
-    }
+    # TypeScript support is always enabled, so always include React plugin
+    plugin_imports.append('import react from "@vitejs/plugin-react";');
+    plugins.append('    react()');
     lib_imports = vite_config_data.get('lib_imports', []);
     for lib_import in lib_imports {
         if (isinstance(lib_import, str) and lib_import.strip()) {
@@ -223,11 +255,8 @@ impl ViteBundler.create_vite_config(self: ViteBundler, entry_file: Path) -> Path
     }
     plugins_str = ',\n'.join(plugins) if plugins else '';
     imports_str = '\n'.join(plugin_imports) if plugin_imports else '';
-    extensions = ['.mjs', '.js'];
-    if has_ts {
-        extensions.extend(['.mts', '.ts', '.jsx', '.tsx']);
-    }
-    extensions.append('.json');
+    # TypeScript extensions are always included
+    extensions = ['.mjs', '.js', '.mts', '.ts', '.jsx', '.tsx', '.json'];
     extensions_str = ', '.join(f'"{ext}"' for ext in extensions);
     build_config = vite_config_data.get('build', {});
     build_overrides_str = self._format_config_object(build_config, indent=4)
@@ -262,24 +291,24 @@ export default defineConfig({{
   plugins: [{(newline + plugins_str + newline + '  ') if plugins_str else ''}],
   root: projectRoot, // base folder (project root)
   build: {{
-rollupOptions: {{
-  input: path.resolve(projectRoot, "{entry_relative}"), // your compiled entry file
-  output: {{
-    entryFileNames: "client.[hash].js", // name of the final js file
-    assetFileNames: "[name].[ext]",
-  }},
-}},
-outDir: path.resolve(projectRoot, "{output_relative}"), // final bundled output
-emptyOutDir: true,
+    rollupOptions: {{
+      input: path.resolve(projectRoot, "{entry_relative}"), // your compiled entry file
+      output: {{
+        entryFileNames: "client.[hash].js", // name of the final js file
+        assetFileNames: "[name].[ext]",
+      }},
+    }},
+    outDir: path.resolve(projectRoot, "{output_relative}"), // final bundled output
+    emptyOutDir: true,
 {build_overrides_str}
   }},
   publicDir: false,
 {server_section}  resolve: {{
-  alias: {{
-    "@jac-client/utils": path.resolve(projectRoot, "compiled/client_runtime.js"),
-    "@jac-client/assets": path.resolve(projectRoot, "compiled/assets"),
-  }},
-  extensions: [{extensions_str}],
+      alias: {{
+        "@jac-client/utils": path.resolve(projectRoot, "compiled/client_runtime.js"),
+        "@jac-client/assets": path.resolve(projectRoot, "compiled/assets"),
+      }},
+      extensions: [{extensions_str}],
 {resolve_overrides_str}
   }},
 }});
@@ -288,41 +317,10 @@ emptyOutDir: true,
     return config_path;
 }
 
-"""Check if the project has TypeScript support."""
+"""Check if the project has TypeScript support. TypeScript is now enabled by default."""
 impl ViteBundler._has_typescript_support(self: ViteBundler) -> bool {
-    tsconfig_path = self.project_dir / 'tsconfig.json';
-    if tsconfig_path.exists() {
-        return True;
-    }
-    generated_package_json = self.project_dir / '.jac-client.configs' / 'package.json';
-    if generated_package_json.exists() {
-        try {
-            with generated_package_json.open() as f {
-                package_data = json.load(f);
-                dev_deps = package_data.get('devDependencies', {});
-                if ('@vitejs/plugin-react' in dev_deps) {
-                    return True;
-                }
-            }
-        } except (json.JSONDecodeError, KeyError) {
-            ;
-        }
-    }
-    package_json_path = self.project_dir / 'package.json';
-    if package_json_path.exists() {
-        try {
-            with package_json_path.open() as f {
-                package_data = json.load(f);
-                dev_deps = package_data.get('devDependencies', {});
-                if ('@vitejs/plugin-react' in dev_deps) {
-                    return True;
-                }
-            }
-        } except (json.JSONDecodeError, KeyError) {
-            ;
-        }
-    }
-    return False;
+    # TypeScript is always enabled by default
+    return True;
 }
 
 """Read the bundled code and compute its hash."""
@@ -362,6 +360,9 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
     generated_package_json = self.project_dir / '.jac-client.configs' / 'package.json';
     if not generated_package_json.exists() {
         self.create_package_json();
+    } else {
+        # Ensure tsconfig.json exists even if package.json already exists
+        self.create_tsconfig();
     }
     self._ensure_root_package_json();
     try {

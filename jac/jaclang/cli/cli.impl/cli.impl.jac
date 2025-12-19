@@ -273,7 +273,8 @@ impl dot(
     edge_limit: int = 512,
     node_limit: int = 512,
     saveto: str = '',
-    to_screen: bool = False
+    to_screen: bool = False,
+    format: str = 'dot'
 ) -> None {
     _ensure_jac_runtime();
     import from jaclang.pycore.runtime { JacRuntime as Jac }
@@ -292,7 +293,8 @@ impl dot(
                 edge_type=connection,
                 bfs=bfs,
                 edge_limit=edge_limit,
-                node_limit=node_limit
+                node_limit=node_limit,
+                format=format
             );
         } except Exception as e {
             print(f"Error while generating graph: {e}");

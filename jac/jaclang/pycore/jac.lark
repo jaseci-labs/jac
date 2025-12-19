@@ -449,6 +449,7 @@ special_ref: KW_INIT
             | KW_ROOT
             | KW_SUPER
             | KW_SELF
+            | KW_PROPS
             | KW_HERE
             | KW_VISITOR
 
@@ -492,7 +493,7 @@ jsx_text_keyword: KW_TO | KW_AS | KW_FROM | KW_WITH | KW_IF | KW_FOR | KW_BY
                 | KW_FLOW | KW_SKIP | KW_CONTINUE | KW_REPORT | KW_RAISE
                 | KW_DEFAULT | KW_YIELD | KW_EXCEPT | KW_FINALLY | KW_ASSERT
                 | KW_WHILE | KW_STATIC | KW_OVERRIDE | KW_SWITCH | KW_HERE
-                | KW_SELF | KW_SUPER | KW_ROOT | NOT | KW_DELETE | KW_IMPORT
+                | KW_SELF | KW_PROPS | KW_SUPER | KW_ROOT | NOT | KW_DELETE | KW_IMPORT
                 | KW_INCLUDE | KW_ASYNC | KW_AWAIT | KW_SPAWN | KW_LAMBDA
                 | KW_ENUM | KW_OBJECT | KW_ABSTRACT | KW_WALKER | KW_IMPL
                 | KW_SEM | KW_ELIF | KW_DISENGAGE | KW_PRIV | KW_PUB | KW_PROT
@@ -620,6 +621,7 @@ KW_POST_INIT: "postinit"
 KW_HERE: "here"
 KW_VISITOR: "visitor"
 KW_SELF: "self"
+KW_PROPS: "props"
 KW_SUPER: "super"
 KW_ROOT: "root"
 

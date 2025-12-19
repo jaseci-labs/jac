@@ -58,6 +58,15 @@ def test_create_jac_app() -> None:
             assert f"# {test_project_name}" in readme_content
             assert "jac serve app.jac" in readme_content
 
+            # Verify config.json was created
+            config_json_path = os.path.join(project_path, "config.json")
+            assert os.path.exists(config_json_path)
+
+            with open(config_json_path) as f:
+                config_data = json.load(f)
+
+            assert config_data["package"]["name"] == test_project_name
+
             # Verify .gitignore was created with correct content
             gitignore_path = os.path.join(project_path, ".gitignore")
             assert os.path.exists(gitignore_path)
@@ -71,8 +80,11 @@ def test_create_jac_app() -> None:
             assert "app.session.dir" in gitignore_content
             assert "app.session.users.json" in gitignore_content
 
+            # Note: TypeScript support is now enabled by default, so components directory
+            # is always created. The test input "n\n" for TypeScript is no longer used.
+            # Verify components directory exists (it's always created now)
             components_dir = os.path.join(project_path, "components")
-            assert not os.path.exists(components_dir)
+            assert os.path.exists(components_dir)
 
         finally:
             # Return to original directory
@@ -138,7 +150,7 @@ def test_create_jac_app_existing_directory() -> None:
 
 
 def test_create_jac_app_with_typescript() -> None:
-    """Test create-jac-app command with TypeScript support."""
+    """Test create-jac-app command with TypeScript support (enabled by default)."""
     test_project_name = "test-jac-app-ts"
 
     # Create a temporary directory for testing
@@ -148,7 +160,7 @@ def test_create_jac_app_with_typescript() -> None:
             # Change to temp directory
             os.chdir(temp_dir)
 
-            # Run create-jac-app command with 'y' for TypeScript
+            # Run create-jac-app command (TypeScript is enabled by default, no prompt)
             process = Popen(
                 ["jac", "create_jac_app", test_project_name],
                 stdin=PIPE,
@@ -156,7 +168,7 @@ def test_create_jac_app_with_typescript() -> None:
                 stderr=PIPE,
                 text=True,
             )
-            stdout, stderr = process.communicate(input="y\n")
+            stdout, stderr = process.communicate()
             result_code = process.returncode
 
             # Check that command succeeded
@@ -170,24 +182,17 @@ def test_create_jac_app_with_typescript() -> None:
             assert os.path.exists(project_path)
             assert os.path.isdir(project_path)
 
-            # Verify package.json was created and has TypeScript dependencies
-            package_json_path = os.path.join(project_path, "config.json")
-            assert os.path.exists(package_json_path)
+            # Verify config.json was created
+            config_json_path = os.path.join(project_path, "config.json")
+            assert os.path.exists(config_json_path)
 
-            with open(package_json_path) as f:
-                package_data = json.load(f)
+            with open(config_json_path) as f:
+                config_data = json.load(f)
 
-            assert package_data["package"]["name"] == test_project_name
+            assert config_data["package"]["name"] == test_project_name
 
-            # Verify tsconfig.json was created
-            tsconfig_path = os.path.join(project_path, "tsconfig.json")
-            assert os.path.exists(tsconfig_path)
-
-            with open(tsconfig_path) as f:
-                tsconfig_content = f.read()
-
-            assert '"jsx": "react-jsx"' in tsconfig_content
-            assert '"include": ["components/**/*"]' in tsconfig_content
+            # Note: tsconfig.json is now generated during build time, not during project creation
+            # So we don't check for it here - it will be created when the project is built
 
             # Verify components directory and Button.tsx were created
             components_dir = os.path.join(project_path, "components")

@@ -5209,6 +5209,8 @@ class SpecialVarRef(Name):
     def py_resolve_name(self) -> str:
         if self.orig.name == Tok.KW_SELF:
             return "self"
+        if self.orig.name == Tok.KW_PROPS:
+            return "props"
         elif self.orig.name == Tok.KW_SUPER:
             return "super"
         elif self.orig.name == Tok.KW_ROOT:

@@ -441,6 +441,9 @@ jac destroy app.jac
 | `JWT_EXP_DELTA_DAYS` | Number of days until JWT token expires | `7` |
 | `JWT_SECRET` | Secret key used for JWT token signing and verification | `'supersecretkey'` |
 | `JWT_ALGORITHM` | Algorithm used for JWT token encoding/decoding | `'HS256'` |
+| `SSO_HOST` | SSO host URL | `'http://localhost:8000/sso'` |
+| `SSO_GOOGLE_CLIENT_ID` | Google OAuth client ID | - |
+| `SSO_GOOGLE_CLIENT_SECRET` | Google OAuth client secret | - |
 
 ## Deployment Modes
 

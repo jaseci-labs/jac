@@ -279,6 +279,7 @@ class Tokens(str, Enum):
     KW_HERE = "KW_HERE"
     KW_VISITOR = "KW_VISITOR"
     KW_SELF = "KW_SELF"
+    KW_PROPS = "KW_PROPS"
     KW_INIT = "KW_INIT"
     KW_SUPER = "KW_SUPER"
     KW_ROOT = "KW_ROOT"

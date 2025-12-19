@@ -793,14 +793,6 @@ def test_refs_target(
     assert "[c(val=0)]" in stdout_value
 
 
-def test_py_kw_as_name_disallowed():
-    """Basic precedence test."""
-    (prog := JacProgram()).compile(
-        use_str="with entry {print.is.not.True(4-5-4);}", file_path="test.jac"
-    )
-    assert "Python keyword is used as name" in str(prog.errors_had[0].msg)
-
-
 def test_double_format_issue():
     """Basic precedence test."""
     prog = JacProgram().compile("with entry {print(hello);}", "test.jac")

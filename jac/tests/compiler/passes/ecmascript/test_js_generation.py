@@ -168,6 +168,21 @@ def test_advanced_fixture_emits_expected_constructs(
     for pattern in patterns:
         assert pattern in js_code
 
+    # check props transformation
+    assert "function TodoList(props) {" in js_code
+    assert "const {filteredTodos, toggleTodo, deleteTodo} = props;" in js_code
+    assert (
+        '"toggleTodo": toggleTodo, "deleteTodo": props.deleteTodo, "children": props.children'
+        in js_code
+    )
+
+    assert "function PropTodoList(props) {" in js_code
+    assert "const {filteredTodos, toggleTodo, deleteTodo} = props;" in js_code
+    assert (
+        '"toggleTodo": props.toggleTodo, "deleteTodo": props.deleteTodo, "children": props.children}, []);'
+        in js_code
+    )
+
     assert_balanced_syntax(js_code, advanced_fixture)
     assert_no_jac_keywords(js_code, advanced_fixture)
     assert len(js_code) > 150
@@ -650,3 +665,16 @@ cl def format_message(user: str, count: int) -> str {
         assert_balanced_syntax(js_code, temp_path)
     finally:
         os.unlink(temp_path)
+
+
+def test_keyword_variables(fixture_path: Callable[[str], str]) -> None:
+    """Test that the advanced fixture's f-strings generate proper template literals."""
+    advanced_fixture = "advanced_language_features.jac"
+    js_code = compile_fixture_to_js(advanced_fixture, fixture_path)
+
+    assert "function def(from, class) {" in js_code
+    for pattern in [
+        'print("From is:", from);',
+        'print("Class is:", class);',
+    ]:
+        assert pattern in js_code

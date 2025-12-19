@@ -1647,11 +1647,68 @@ impl EsastGenPass.exit_ability(self: EsastGenPass, <>node: uni.Ability) -> None 
         if isinstance(<>node.signature, uni.FuncSignature)
         else [];
     }
+    is_jsx_in_return = False;
+    if isinstance(<>node.body, list) {
+        for stmt in <>node.body {
+            if isinstance(stmt, uni.ReturnStmt) {
+                for i in stmt.kid {
+                    if isinstance(i, uni.JsxElement) {
+                        is_jsx_in_return = True;
+                        break;
+                    }
+                }
+            }
+        }
+    }
     params: list[es.Pattern] = [];
-    if isinstance(<>node.signature, uni.FuncSignature) {
-        for param in <>node.signature.params {
-            if param.gen.es_ast {
-                params.append(cast(es.Pattern, param.gen.es_ast));
+    destructure_stmts: list[es.Statement] = [];
+    destructure_props: list[es.AssignmentProperty | es.RestElement] = [];
+    if isinstance(<>node.signature, uni.FuncSignature) and <>node.signature.params {
+        if is_jsx_in_return
+        and not (
+            len(<>node.signature.params) == 1
+            and <>node.signature.params[0].name.sym_name == 'props'
+        ) {
+            params.append(es.Identifier(name="props"));
+            for param in <>node.signature.params {
+                destructure_props.append(
+                    self.sync_loc(
+                        es.AssignmentProperty(
+                            key=cast(es.Expression, param.gen.es_ast),
+                            value=cast(es.Pattern, param.gen.es_ast),
+                            shorthand=True,
+                        ),
+                        jac_node=param,
+                    )
+                );
+            }
+            destructure_stmts = [
+                self.sync_loc(
+                    es.VariableDeclaration(
+                        declarations=[
+                            self.sync_loc(
+                                es.VariableDeclarator(
+                                    id=self.sync_loc(
+                                        es.ObjectPattern(properties=destructure_props),
+                                        jac_node=<>node,
+                                    ),
+                                    <>init=self.sync_loc(
+                                        es.Identifier(name="props"), jac_node=<>node
+                                    ),
+                                ),
+                                jac_node=<>node,
+                            )
+                        ],
+                        kind="const",
+                    ),
+                    jac_node=<>node,
+                )
+            ];
+        } else {
+            for param in <>node.signature.params {
+                if param.gen.es_ast {
+                    params.append(cast(es.Pattern, param.gen.es_ast));
+                }
             }
         }
     }
@@ -1662,7 +1719,9 @@ impl EsastGenPass.exit_ability(self: EsastGenPass, <>node: uni.Ability) -> None 
     );
     body_stmts = self._collect_stmt_body(inner);
     body_stmts = self._prepend_hoisted(<>node, body_stmts);
-    block = self.sync_loc(es.BlockStatement(body=body_stmts), jac_node=<>node);
+    block = self.sync_loc(
+        es.BlockStatement(body=destructure_stmts + body_stmts), jac_node=<>node
+    );
     func_id = self.sync_loc(
         es.Identifier(name=<>node.name_ref.sym_name), jac_node=<>node.name_ref
     );

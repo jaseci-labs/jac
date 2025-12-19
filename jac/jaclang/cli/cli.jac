@@ -80,7 +80,8 @@ def dot(
     edge_limit: int = 512,
     node_limit: int = 512,
     saveto: str = '',
-    to_screen: bool = False
+    to_screen: bool = False,
+    format: str = 'dot'
 ) -> None;
 
 @cmd_registry.register

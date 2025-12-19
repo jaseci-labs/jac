@@ -142,9 +142,13 @@ impl JFastApiServer._create_endpoint_function(
     }
     param_strs: list[str] = [];
     param_mapping: dict[(str, str)] = {};
+    needs_request = 'request' in sig.parameters;
     if accepts_kwargs {
         param_strs.append('request: Request');
         param_mapping['__request__'] = 'request';
+    } elif needs_request {
+        param_strs.append('request: Request');
+        param_mapping['request'] = 'request';
     }
     body_model: (type[BaseModel] | None) = None;
     if (len(body_params) >= 1) {
@@ -418,8 +422,9 @@ Priority rules:
 """
 impl JFastApiServer._route_priority(
     self: JFastApiServer, endpoint: JEndPoint
-) -> tuple[int, int, str] {
+) -> tuple[int, int, int, str] {
     path = endpoint.path;
+    is_catchall = ':path}' in path;
     param_count = path.count('{');
     segment_count = len(
         [
@@ -428,8 +433,9 @@ impl JFastApiServer._route_priority(
             if seg
         ]
     );
+    catchall_priority = 1 if is_catchall else 0;
     priority = param_count;
-    return (priority, -segment_count, path);
+    return (catchall_priority, priority, -segment_count, path);
 }
 
 """

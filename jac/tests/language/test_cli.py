@@ -440,7 +440,6 @@ def test_graph_coverage() -> None:
         "node",
         "file",
         "edge_type",
-        "format",
     }
     printgraph_params.update({"initial", "saveto", "connection", "session"})
     assert printgraph_params.issubset(graph_params)

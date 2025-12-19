@@ -133,6 +133,17 @@ impl UserManager.get_root_id(self: UserManager, username: str) -> (str | None) {
     return self._users[username]['root_id'] if (username in self._users) else None;
 }
 
+"""Get user data by username."""
+impl UserManager.get_user(
+    self: UserManager, username: str
+) -> (dict[(str, str)] | None) {
+    if (username not in self._users) {
+        return None;
+    }
+    user = self._users[username];
+    return {'email': username, 'token': user['token'], 'root_id': user['root_id']};
+}
+
 """Close and persist user data."""
 impl UserManager.close(self: UserManager) -> None {
     self._persist();

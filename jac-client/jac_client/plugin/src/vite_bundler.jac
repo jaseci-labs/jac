@@ -31,4 +31,6 @@ class ViteBundler {
     def create_package_json(
         self: ViteBundler, project_name: Optional[str] = None
     ) -> Path;
+
+    def create_tsconfig(self: ViteBundler) -> Path;
 }
