@@ -2252,7 +2252,12 @@ impl DocIRGenPass.is_one_line(self: DocIRGenPass, <>node: uni.UniNode) -> bool {
     );
 }
 
-"""\n        Format comprehension with defensive checks.\n\n        Expected structure: [opening, space, expr, space, inner_compr..., space, closing, space]\n        We need to remove spaces adjacent to brackets.\n        """
+"""
+        Format comprehension with defensive checks.
+
+        Expected structure: [opening, space, expr, space, inner_compr..., space, closing, space]
+        We need to remove spaces adjacent to brackets.
+"""
 impl DocIRGenPass.format_comprehension(
     self: DocIRGenPass, parts: list[doc.DocType]
 ) -> doc.DocType {
@@ -2284,7 +2289,14 @@ impl DocIRGenPass.format_comprehension(
     }
 }
 
-"""\n        Format a simple statement with a body block (while/for/try/etc).\n\n        Common pattern for statements that have:\n        - keyword + condition/target\n        - body block\n        - possible trailing elements\n        """
+"""
+        Format a simple statement with a body block (while/for/try/etc).
+
+        Common pattern for statements that have:
+        - keyword + condition/target
+        - body block
+        - possible trailing elements
+"""
 impl DocIRGenPass.format_simple_stmt_with_body(
     self: DocIRGenPass,
     <>node: uni.UniNode,
@@ -2420,7 +2432,14 @@ impl DocIRGenPass.indent(
     return doc.Indent(contents, ast_node=ast_node);
 }
 
-"""\n        Create a Group node.\n\n        Args:\n            contents: The contents to group\n            break_contiguous: If True, break when parent group breaks (currently unused in formatter)\n            ast_node: Optional reference to the AST node this represents\n        """
+"""
+        Create a Group node.
+
+        Args:
+            contents: The contents to group
+            break_contiguous: If True, break when parent group breaks (currently unused in formatter)
+            ast_node: Optional reference to the AST node this represents
+"""
 impl DocIRGenPass.group(
     self: DocIRGenPass,
     contents: doc.DocType,

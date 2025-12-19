@@ -1,4 +1,17 @@
-"""Python AST to Jac AST Conversion Pass for the Jac compiler.\n\nThis pass transforms Python AST nodes into equivalent Jac AST nodes by:\n\n1. Converting Python modules, classes, functions, and expressions to their Jac equivalents\n2. Preserving source location information and symbol relationships\n3. Handling Python-specific constructs and adapting them to Jac's object model\n4. Supporting both standard Python modules and type stub (.pyi) files\n5. Creating appropriate symbol tables and scopes for the converted nodes\n\nThis pass is crucial for Python interoperability, allowing Python code to be imported\nand used within Jac programs while maintaining type information and semantic relationships.\n"""
+"""
+Python AST to Jac AST Conversion Pass for the Jac compiler.
+
+This pass transforms Python AST nodes into equivalent Jac AST nodes by:
+
+1. Converting Python modules, classes, functions, and expressions to their Jac equivalents
+2. Preserving source location information and symbol relationships
+3. Handling Python-specific constructs and adapting them to Jac's object model
+4. Supporting both standard Python modules and type stub (.pyi) files
+5. Creating appropriate symbol tables and scopes for the converted nodes
+
+This pass is crucial for Python interoperability, allowing Python code to be imported
+and used within Jac programs while maintaining type information and semantic relationships.
+"""
 import from __future__ { annotations }
 import ast as py_ast;
 import os;

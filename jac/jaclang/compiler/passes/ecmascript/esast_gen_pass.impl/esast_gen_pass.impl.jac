@@ -2110,7 +2110,12 @@ impl EsastGenPass._build_block_statement(
     return self.sync_loc(es.BlockStatement(body=statements), jac_node=scope_node);
 }
 
-"""Return an existing ESTree node or synthesize a fallback.\n\n        The return type matches the default_factory's return type. This assumes\n        that if node.gen.es_ast exists, it will be compatible with the expected type.\n        """
+"""
+Return an existing ESTree node or synthesize a fallback.
+
+        The return type matches the default_factory's return type. This assumes
+        that if node.gen.es_ast exists, it will be compatible with the expected type.
+"""
 impl EsastGenPass._get_ast_or_default(
     self: EsastGenPass,
     <>node: (uni.UniNode | None),
@@ -2443,7 +2448,12 @@ impl EsastGenPass._register_declaration(self: EsastGenPass, name: str) -> None {
     }
 }
 
-"""Check if a name is declared in the current scope or any parent scope.\n\n        This is essential for proper closure support - we need to avoid re-declaring\n        variables that exist in parent scopes when generating nested functions.\n        """
+"""
+Check if a name is declared in the current scope or any parent scope.
+
+        This is essential for proper closure support - we need to avoid re-declaring
+        variables that exist in parent scopes when generating nested functions.
+"""
 impl EsastGenPass._is_declared_in_any_scope(self: EsastGenPass, name: str) -> bool {
     return <>any((name in scope.declared) for scope in reversed(self.scope_stack));
 }

@@ -1,4 +1,24 @@
-"""ECMAScript AST Generation Pass for the Jac compiler.\n\nThis pass transforms the Jac AST into equivalent ECMAScript AST following\nthe ESTree specification by:\n\n1. Traversing the Jac AST and generating corresponding ESTree nodes\n2. Handling all Jac language constructs and translating them to JavaScript/ECMAScript equivalents:\n   - Classes, functions, and methods\n   - Control flow statements (if/else, loops, try/catch)\n   - Data structures (arrays, objects)\n   - Special Jac features (walkers, abilities, archetypes) converted to JS classes\n   - Data spatial operations converted to appropriate JS patterns\n\n3. Managing imports and module dependencies\n4. Preserving source location information\n5. Generating valid ECMAScript code that can be executed in JavaScript environments\n\nThe output of this pass is a complete ESTree AST representation that can be\nserialized to JavaScript source code or used by JavaScript tooling.\n"""
+"""
+ECMAScript AST Generation Pass for the Jac compiler.
+
+This pass transforms the Jac AST into equivalent ECMAScript AST following
+the ESTree specification by:
+
+1. Traversing the Jac AST and generating corresponding ESTree nodes
+2. Handling all Jac language constructs and translating them to JavaScript/ECMAScript equivalents:
+   - Classes, functions, and methods
+   - Control flow statements (if/else, loops, try/catch)
+   - Data structures (arrays, objects)
+   - Special Jac features (walkers, abilities, archetypes) converted to JS classes
+   - Data spatial operations converted to appropriate JS patterns
+
+3. Managing imports and module dependencies
+4. Preserving source location information
+5. Generating valid ECMAScript code that can be executed in JavaScript environments
+
+The output of this pass is a complete ESTree AST representation that can be
+serialized to JavaScript source code or used by JavaScript tooling.
+"""
 import from __future__ { annotations }
 import json;
 import from collections.abc { Callable, Sequence }

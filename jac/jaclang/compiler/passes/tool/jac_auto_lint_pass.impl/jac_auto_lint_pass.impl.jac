@@ -4,7 +4,6 @@ This handles both cases:
 - No params, no return type: Remove the entire signature from the ability
 - No params, with return type: Remove just LPAREN/RPAREN, keep return type
 """
-
 impl JacAutoLintPass.exit_ability(
     self: JacAutoLintPass, ability_node: uni.Ability
 ) -> None {

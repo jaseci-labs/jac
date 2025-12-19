@@ -3,7 +3,6 @@
 This module provides a LLM class that abstracts LiteLLM and offers
 enhanced functionality and interface for language model operations.
 """
-
 import logging;
 import from loguru { logger }
 import os;

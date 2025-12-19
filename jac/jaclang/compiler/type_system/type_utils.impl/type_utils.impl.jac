@@ -3,7 +3,6 @@
 This is a placeholder function and should be implemented based on
 the specific requirements for protocol conformance checking.
 """
-
 impl class_implements_protocol(cls: types.ClassType, proto: types.ClassType) -> bool {
     cls_ast: uni.Archetype = cls.shared.symbol_table;
     proto_ast: uni.Archetype = proto.shared.symbol_table;
@@ -229,7 +228,12 @@ impl ParamAssignmentTracker.init(
     }
 }
 
-"""Compute the method resolution order (MRO) for a class type.\n\n    This uses the C3 linearization algorithm to compute the MRO.\n    See https://www.python.org/download/releases/2.3/mro/\n    """
+"""
+Compute the method resolution order (MRO) for a class type.
+
+    This uses the C3 linearization algorithm to compute the MRO.
+    See https://www.python.org/download/releases/2.3/mro/
+"""
 impl compute_mro_linearization(cls: types.ClassType) -> None {
     if cls.shared.mro {
         return;
