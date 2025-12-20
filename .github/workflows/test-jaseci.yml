@@ -34,22 +34,7 @@ jobs:
 
   test-packages:
     runs-on: ubuntu-latest
-    services:
-      redis:
-        image: redis
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 6379:6379
     steps:
-    - name: Start MongoDB
-      uses: supercharge/mongodb-github-action@1.10.0
-      with:
-        mongodb-replica-set: test-rs
-
     - name: Check out code
       uses: actions/checkout@v5
       with:
