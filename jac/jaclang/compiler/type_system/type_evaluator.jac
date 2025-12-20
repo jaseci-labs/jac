@@ -62,6 +62,7 @@ obj PrefetchedTypes {
         mapping_class: TypeBase | None = None,
         template_class: TypeBase | None = None,
         type_var_class: TypeBase | None = None,
+        classmethod_class: TypeBase | None = None,
         # Prefetch from typing.pyi file
         protocol_class: TypeBase | None = None,
         any_class: TypeBase | None = None,
@@ -171,6 +172,7 @@ class TypeEvaluator {
         self: TypeEvaluator, super_cls: types.ClassType, sub_cls: types.ClassType
     ) -> bool;
 
+    def _is_ability_classmethod(self: TypeEvaluator, node_: uni.Ability) -> bool;
     def _assign_class(
         self: TypeEvaluator, src_type: types.ClassType, dest_type: types.ClassType
     ) -> bool;

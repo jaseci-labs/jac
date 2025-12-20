@@ -205,6 +205,7 @@ class Parameter {
         param_type: (TypeBase | None),
         default_value: (Expr | None) = None,
         is_self: bool = False,
+        is_cls: bool = False,
         param_kind: ParamKind = ParamKind.NORMAL
     ) -> None;
 }

@@ -128,6 +128,7 @@ impl TypeEvaluator.get_type_of_ability(
                 param_type=param_type,
                 default_value=param.value,
                 is_self=(idx == 0 and self._is_expr_self(param.name)),
+                is_cls=(idx == 0 and self._is_ability_classmethod(node_)),
                 param_kind=_convert_param_kind(param.param_kind),
             )
         );

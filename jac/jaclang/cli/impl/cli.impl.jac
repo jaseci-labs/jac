@@ -772,7 +772,7 @@ impl proc_file_sess(filename: str, session: str, <>root: (str | None) = None) ->
         );
         <>exit(1);
     }
-    mach = JacUtils.create_j_context(session=session, <>root=<>root);
+    mach = Jac.create_j_context(session=session, <>root=<>root);
     Jac.set_context(mach);
     return (base, mod, mach);
 }

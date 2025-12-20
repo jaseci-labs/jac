@@ -874,6 +874,13 @@ def test_protocol(fixture_path: Callable[[str], str]) -> None:
     )
 
 
+def test_classmethod(fixture_path: Callable[[str], str]) -> None:
+    """Test classmethod type checking."""
+    program = JacProgram()
+    mod = program.compile(fixture_path("checker_classmethod.jac"))
+    TypeCheckPass(ir_in=mod, prog=program)
+
+
 def test_any_type_works_with_any_type(fixture_path: Callable[[str], str]) -> None:
     """Test stdlib typing module imports and Any type work correctly."""
     program = JacProgram()

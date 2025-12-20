@@ -211,12 +211,12 @@ impl TypeEvaluator._get_type_of_expression_core(
                 return self._get_type_of_self(expr);
             }
 
-            if symbol := expr.sym_tab.lookup(
-                expr.value, deep=True, incl_inner_scope=True
-            ) {
-                symbol = self.resolve_imported_symbols(symbol);
-                symbol.add_use(expr);
-                return self.get_type_of_symbol(symbol);
+            if scope := expr.find_parent_of_type(uni.UniScopeNode) {
+                if symbol := scope.lookup(expr.value, deep=True, incl_inner_scope=True) {
+                    symbol = self.resolve_imported_symbols(symbol);
+                    symbol.add_use(expr);
+                    return self.get_type_of_symbol(symbol);
+                }
             }
 
         case uni.TypeRef():
@@ -505,6 +505,7 @@ impl TypeEvaluator._prefetch_types(self: TypeEvaluator) {
     self.prefetch.none_type_class = get_types_type("NoneType");
     self.prefetch.object_class = get_builtin_type("object");
     self.prefetch.type_class = get_builtin_type("type");
+    self.prefetch.classmethod_class = get_builtin_type("classmethod");
     self.prefetch.union_type_class = get_types_type("UnionType");
     # self.prefetch.awaitable_class =
     # self.prefetch.function_class =

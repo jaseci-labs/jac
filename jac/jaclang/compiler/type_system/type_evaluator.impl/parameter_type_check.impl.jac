@@ -95,8 +95,11 @@ impl TypeEvaluator.match_args_to_params(
     arg_params: dict[uni.Expr | uni.KWPair, types.Parameter | None] = {};
     argument_errors = False;
     params_to_match = func_type.parameters.copy();
-    # Skip `self` for method calls.
-    if len(func_type.parameters) >= 1 and func_type.parameters[0].is_self {
+    # Skip `self`, 'cls' for method calls.
+    if (
+        len(func_type.parameters) >= 1
+        and (func_type.parameters[0].is_self or func_type.parameters[0].is_cls)
+    ) {
         params_to_match.pop(0);
     }
     # Create a tracker for parameter assignment.
