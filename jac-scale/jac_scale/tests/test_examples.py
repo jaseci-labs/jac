@@ -254,6 +254,8 @@ class JacScaleTestRunner:
         data: dict[str, Any] | None = None,
         use_token: bool = False,
         timeout: int = 10,
+        max_retries: int = 60,
+        retry_interval: float = 2.0,
     ) -> str:
         """Make a raw HTTP request to the server.
 
@@ -263,9 +265,11 @@ class JacScaleTestRunner:
             data: Request body data
             use_token: Whether to include authentication token
             timeout: Request timeout in seconds
+            max_retries: Maximum number of retries for 503 responses
+            retry_interval: Time to wait between retries in seconds
 
         Returns:
-            Response JSON data
+            Response text
         """
         url = f"{self.base_url}{path}"
         headers = {"Content-Type": "application/json"}
@@ -273,14 +277,25 @@ class JacScaleTestRunner:
         if use_token and self.token:
             headers["Authorization"] = f"Bearer {self.token}"
 
-        response = requests.request(
-            method=method,
-            url=url,
-            json=data,
-            headers=headers,
-            timeout=timeout,
-        )
+        for attempt in range(max_retries):
+            response = requests.request(
+                method=method,
+                url=url,
+                json=data,
+                headers=headers,
+                timeout=timeout,
+            )
 
+            if response.status_code == 503:
+                print(
+                    f"[DEBUG] {path} returned 503, retrying ({attempt + 1}/{max_retries})..."
+                )
+                time.sleep(retry_interval)
+                continue
+
+            return response.text
+
+        # Return last response text even if it was 503
         return response.text
 
     def spawn_walker(
