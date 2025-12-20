@@ -13,7 +13,6 @@ import from jaclang.pycore.constant {
 }
 
 import from .engine { JacLangServer }
-import from jaclang.pycore.settings { settings }
 
 import lsprotocol.types as lspt;
 

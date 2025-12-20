@@ -19,7 +19,6 @@ import from jaclang.compiler.passes.main.pyast_load_pass { PyastBuildPass }
 import from jaclang.pycore.passes.sym_tab_build_pass { SymTabBuildPass }
 import from jaclang.compiler.type_system { types }
 import from jaclang.runtimelib.utils { read_file_with_encoding }
-import from jaclang.pycore.settings { settings }
 
 with entry {
     if TYPE_CHECKING {

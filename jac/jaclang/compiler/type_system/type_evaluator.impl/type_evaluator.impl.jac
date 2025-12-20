@@ -526,12 +526,7 @@ impl TypeEvaluator._prefetch_types(self: TypeEvaluator) {
 """Load and return builtins stub module."""
 impl TypeEvaluator._load_stub_module(self: TypeEvaluator, path: str) -> uni.Module {
     if not os.path.exists(path) {
-        if not settings.all_warnings {
-            raise FileNotFoundError(f"Stub file not found at {path}") ;
-        } else {
-            print(f"Warning: Stub file not found at {path}");
-            exit(0);
-        }
+        raise FileNotFoundError(f"Stub file not found at {path}") ;
     }
     file_content = read_file_with_encoding(path);
     uni_source = uni.Source(file_content, path);

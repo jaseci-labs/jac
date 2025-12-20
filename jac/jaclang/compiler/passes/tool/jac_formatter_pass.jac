@@ -6,7 +6,6 @@ import from collections { deque }
 import jaclang.compiler.passes.tool.doc_ir as doc;
 import jaclang.pycore.unitree as uni;
 import from jaclang.pycore.passes { Transform }
-import from jaclang.pycore.settings { settings }
 """JacFormat Pass format Jac code."""
 class JacFormatPass(Transform[(uni.Module, uni.Module)]) {
     def pre_transform(self: JacFormatPass) -> None;

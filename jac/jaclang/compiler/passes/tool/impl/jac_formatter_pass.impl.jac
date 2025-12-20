@@ -175,5 +175,5 @@ impl JacFormatPass._probe_fits(
 """Initialize pass."""
 impl JacFormatPass.pre_transform(self: JacFormatPass) -> None {
     self.indent_size = 4;
-    self.MAX_LINE_LENGTH = settings.max_line_length;
+    self.MAX_LINE_LENGTH = 88;
 }

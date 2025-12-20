@@ -24,7 +24,6 @@ from typing import TYPE_CHECKING
 
 import jaclang.pycore.unitree as uni
 from jaclang.pycore.passes.transform import Transform
-from jaclang.pycore.settings import settings
 
 if TYPE_CHECKING:
     from jaclang.pycore.program import JacProgram
@@ -93,13 +92,9 @@ class JacAnnexPass(Transform[uni.Module, uni.Module]):
                 if mod:
                     node.impl_mod.append(mod)
 
-            elif (
-                path.endswith(".test.jac")
-                and not settings.ignore_test_annex
-                and (
-                    path.startswith(f"{self.base_path}.")
-                    or os.path.dirname(path) == self.test_folder
-                )
+            elif path.endswith(".test.jac") and (
+                path.startswith(f"{self.base_path}.")
+                or os.path.dirname(path) == self.test_folder
             ):
                 mod = jac_program.compile(file_path=path, no_cgen=True, minimal=True)
                 if mod:

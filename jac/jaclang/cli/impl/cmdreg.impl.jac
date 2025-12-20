@@ -12,7 +12,6 @@ impl CommandRegistry.finalize(self: CommandRegistry) -> None {
     if self._finalized {
         return;
     }
-    self._add_settings_arguments();
     for name in <>list(self.pending_commands.keys()) {
         self._resolve_and_bind_command(name);
     }
@@ -194,61 +193,11 @@ impl CommandRegistry.register(
     return _register;
 }
 
-"""Add global settings arguments (lazily loaded)."""
-impl CommandRegistry._add_settings_arguments(self: CommandRegistry) -> None {
-    if self._settings_added {
-        return;
-    }
-    self._settings_added = True;
-    import from jaclang.pycore.settings { Settings as JacSettings }
-    settings_group = self.parser.add_argument_group(
-        'settings',
-        'Override Jac settings (from config/env). Provide only flags you want to change.'
-    );
-    for fld in dataclass_fields(JacSettings) {
-        name = fld.name;
-        opt = f"--{name.replace('_', '-')}";
-        if (fld.type is bool) {
-            settings_group.add_argument(
-                opt,
-                dest=name,
-                action='store_true',
-                <>default=None,
-                help=f"bool - Override setting '{name}' to true"
-            );
-            settings_group.add_argument(
-                f"--no-{name.replace('_', '-')}",
-                dest=name,
-                action='store_false',
-                <>default=None,
-                help=f"bool - Override setting '{name}' to false"
-            );
-        } elif (fld.type is int) {
-            settings_group.add_argument(
-                opt,
-                dest=name,
-                <>type=int,
-                <>default=None,
-                help=f"int - Override setting '{name}'"
-            );
-        } else {
-            settings_group.add_argument(
-                opt,
-                dest=name,
-                <>type=str,
-                <>default=None,
-                help=f"str - Override setting '{name}'"
-            );
-        }
-    }
-}
-
 """Initialize a CommandRegistry instance."""
 impl CommandRegistry.init(self: CommandRegistry) -> None {
     self.registry = {};
     self.pending_commands = {};
     self._finalized = False;
-    self._settings_added = False;
     self.parser = argparse.ArgumentParser(
         prog='jac',
         description='Jac Programming Language CLI - A tool for working with Jac programs',

@@ -12,8 +12,6 @@ from functools import lru_cache
 from traceback import TracebackException
 from typing import get_args, get_origin
 
-from jaclang.pycore.settings import settings
-
 
 @lru_cache(maxsize=256)
 def pascal_to_snake(pascal_string: str) -> str:
@@ -182,7 +180,7 @@ def dump_traceback(e: Exception) -> str:
 
     # Process and print frames, collapsing consecutive internal runtime calls
     seen_runtime_marker: bool = False
-    collapse_internal: bool = not settings.show_internal_stack_errs
+    collapse_internal: bool = True
 
     for idx, frame in enumerate(tb.stack):
         is_internal: bool = is_internal_runtime_frame(frame.filename)

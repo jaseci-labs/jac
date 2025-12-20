@@ -51,7 +51,7 @@ repos:
       - id: jac-check
         name: jac-check
         description: Type check Jac files
-        entry: env PYTHONPATH=jac JACLANG_ALL_WARNINGS=true python -m jaclang check
+        entry: env PYTHONPATH=jac python -m jaclang check --warnonly
         language: system
         types: [file]
         files: \.jac$

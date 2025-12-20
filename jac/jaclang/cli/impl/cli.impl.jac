@@ -15,8 +15,6 @@ impl start_cli -> None {
     }
     args = parser.parse_args();
     cmd_registry.args = args;
-    import from jaclang.pycore.settings { settings }
-    settings.load_command_line_arguments(args);
     if args.version {
         print(f"Jac version {pkg_version('jaclang')}");
         print('Jac path:', __file__);
@@ -539,17 +537,17 @@ without executing the code. Useful for catching errors early in development.
 Args:
 paths: One or more paths to .jac files or directories containing .jac files
 print_errs: Print detailed error messages (default: True)
+warnonly: Treat errors as warnings - report but exit with success (default: False)
 
 Examples:
 jac check myprogram.jac
 jac check file1.jac file2.jac file3.jac
 jac check myproject/
 jac check myprogram.jac --no-print_errs
+jac check myprogram.jac --warnonly
 """
-impl check(paths: list, print_errs: bool = True) -> None {
+impl check(paths: list, print_errs: bool = True, warnonly: bool = False) -> None {
     import from jaclang.pycore.program { JacProgram }
-    import from jaclang.pycore.settings { settings }
-    allwarn = settings.all_warnings;
     if isinstance(paths, str) {
         paths = [paths];
     }
@@ -557,7 +555,7 @@ impl check(paths: list, print_errs: bool = True) -> None {
         path_obj = Path(file_path);
         if not path_obj.exists() {
             print(f"Error: File '{file_path}' does not exist.", file=sys.stderr);
-            return (False, 0 if allwarn else 1, 0);
+            return (False, 1, 0);
         }
         try {
             (err_start, warn_start) = (len(prog.errors_had), len(prog.warnings_had));
@@ -575,7 +573,7 @@ impl check(paths: list, print_errs: bool = True) -> None {
             return ((len(new_errors) == 0), len(new_errors), len(new_warnings));
         } except Exception as e {
             print(f"Error checking '{file_path}': {e}", file=sys.stderr);
-            return (False, 0 if allwarn else 1, 0);
+            return (False, 1, 0);
         }
     }
     total_files = failed_files=total_errors=total_warnings=0;
@@ -603,14 +601,14 @@ impl check(paths: list, print_errs: bool = True) -> None {
         } else {
             print(f"Error: '{path}' is not a .jac file or directory.", file=sys.stderr);
             failed_files += 1;
-            total_errors += 0 if allwarn else 1;
+            total_errors += 1;
         }
     }
     print(
         f"Checked {total_files} '.jac' files: {(total_files - failed_files)} passed, {failed_files} with errors ({total_errors} errors, {total_warnings} warnings).",
         file=sys.stderr if total_errors else sys.stdout
     );
-    if (total_errors > 0) {
+    if (total_errors > 0 and not warnonly) {
         <>exit(1);
     }
 }

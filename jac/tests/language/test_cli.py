@@ -156,53 +156,6 @@ def test_jac_cli_alert_based_runtime_err(fixture_path: Callable[[str], str]) -> 
         assert pattern not in output
 
 
-def test_jac_cli_runtime_err_with_internal_stack(
-    fixture_path: Callable[[str], str],
-) -> None:
-    """Test runtime errors with internal calls shown when setting enabled."""
-    from jaclang.pycore.settings import settings
-
-    original_setting = settings.show_internal_stack_errs
-
-    try:
-        settings.show_internal_stack_errs = True
-
-        captured_output = io.StringIO()
-        sys.stdout = captured_output
-        sys.stderr = captured_output
-
-        with pytest.raises(SystemExit) as excinfo:
-            cli.run(fixture_path("err_runtime.jac"))
-
-        sys.stdout = sys.__stdout__
-        sys.stderr = sys.__stderr__
-
-        assert excinfo.value.code == 1
-
-        output = captured_output.getvalue()
-
-        expected_values = (
-            "Error: list index out of range",
-            "  at bar() ",
-            "  at foo() ",
-            "  at <module> ",
-        )
-        for exp in expected_values:
-            assert exp in output
-
-        internal_call_patterns = (
-            "meta_importer.py",
-            "runtime.py",
-        )
-        for pattern in internal_call_patterns:
-            assert pattern in output
-
-        assert "... [internal runtime calls]" not in output
-
-    finally:
-        settings.show_internal_stack_errs = original_setting
-
-
 def test_jac_impl_err(fixture_path: Callable[[str], str]) -> None:
     """Basic test for pass."""
     if "jaclang.tests.fixtures.err" in sys.modules:
@@ -277,35 +230,6 @@ def test_ast_print(
 
     stdout_value = output.getvalue()
     assert "+-- Token" in stdout_value
-
-
-@pytest.mark.skip(reason="Skipping builtins loading test")
-def test_builtins_loading(
-    fixture_path: Callable[[str], str],
-    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
-) -> None:
-    """Testing for print AstTool."""
-    from jaclang.pycore.settings import settings
-
-    settings.ast_symbol_info_detailed = True
-    with capture_stdout() as output:
-        cli.tool("ir", ["ast", f"{fixture_path('builtins_test.jac')}"])
-
-    stdout_value = output.getvalue()
-    settings.ast_symbol_info_detailed = False
-
-    assert re.search(
-        r"2\:8 \- 2\:12.*BuiltinType - list - .*SymbolPath: builtins.list",
-        stdout_value,
-    )
-    assert re.search(
-        r"15\:5 \- 15\:8.*Name - dir - .*SymbolPath: builtins.dir",
-        stdout_value,
-    )
-    assert re.search(
-        r"13\:12 \- 13\:18.*Name - append - .*SymbolPath: builtins.list.append",
-        stdout_value,
-    )
 
 
 def test_ast_printgraph(

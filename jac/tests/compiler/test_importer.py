@@ -11,7 +11,6 @@ from jaclang import JacRuntime as Jac
 from jaclang import JacRuntimeInterface
 from jaclang.cli import cli
 from jaclang.pycore.program import JacProgram
-from jaclang.pycore.settings import settings
 
 
 @pytest.fixture
@@ -269,54 +268,3 @@ def test_python_dash_m_jac_package(fixture_abs_path: Callable[[str], str]) -> No
         # Check that it executed successfully
         assert result.returncode == 0, f"Failed with stderr: {result.stderr}"
         assert "package main works" in result.stdout
-
-
-def test_jac_import_py_files(fixture_abs_path: Callable[[str], str]) -> None:
-    """Test importing Python files using Jac import system."""
-    captured_output = io.StringIO()
-    sys.stdout = captured_output
-    os.environ["JAC_PYFILE_RAISE"] = "True"
-    settings.load_env_vars()
-    original_cwd = os.getcwd()
-    try:
-        os.chdir(os.path.dirname(fixture_abs_path("jac_import_py_files.py")))
-        Jac.set_base_path(fixture_abs_path("jac_import_py_files.py"))
-        JacRuntimeInterface.attach_program(JacProgram())
-        Jac.jac_import(
-            "jac_import_py_files",
-            base_path=fixture_abs_path("jac_import_py_files.py"),
-            lng="py",
-        )
-        cli.run(fixture_abs_path("jac_import_py_files.py"))
-        sys.stdout = sys.__stdout__
-        stdout_value = captured_output.getvalue()
-        assert "This is main test file for jac import of python files" in stdout_value
-        assert "python_module <jaclang.pycore.unitree.Module object" in str(
-            Jac.program.mod.hub
-        )
-        assert "jac_module <jaclang.pycore.unitree.Module object" in str(
-            Jac.program.mod.hub
-        )
-        os.environ["JAC_PYFILE_RAISE"] = "false"
-        settings.load_env_vars()
-        os.chdir(os.path.dirname(fixture_abs_path("jac_import_py_files.py")))
-        Jac.reset_machine()
-        Jac.set_base_path(fixture_abs_path("jac_import_py_files.py"))
-        JacRuntimeInterface.attach_program(JacProgram())
-        Jac.jac_import(
-            "jac_import_py_files",
-            base_path=fixture_abs_path("jac_import_py_files.py"),
-            lng="py",
-        )
-        cli.run(fixture_abs_path("jac_import_py_files.py"))
-        sys.stdout = sys.__stdout__
-        stdout_value = captured_output.getvalue()
-        assert "This is main test file for jac import of python files" in stdout_value
-        assert "python_module <jaclang.pycore.unitree.Module object" not in str(
-            Jac.program.mod.hub
-        )
-        assert "jac_module <jaclang.pycore.unitree.Module object" in str(
-            Jac.program.mod.hub
-        )
-    finally:
-        os.chdir(original_cwd)

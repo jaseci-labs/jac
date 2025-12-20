@@ -18,9 +18,7 @@ from types import ModuleType
 from jaclang.pycore.log import logging
 from jaclang.pycore.module_resolver import (
     get_jac_search_paths,
-    get_py_search_paths,
 )
-from jaclang.pycore.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -183,30 +181,6 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
                     fullname, cl_jac_file, loader=self
                 )
 
-        # TODO: We can remove it once python modules are fully supported in jac
-        if path is None and settings.pyfile_raise:
-            paths_to_search = (
-                get_jac_search_paths()
-                if settings.pyfile_raise_full
-                else get_py_search_paths()
-            )
-            for search_path in paths_to_search:
-                candidate_path = os.path.join(search_path, *module_path_parts)
-                # Check for directory package
-                if os.path.isdir(candidate_path):
-                    init_file = os.path.join(candidate_path, "__init__.py")
-                    if os.path.isfile(init_file):
-                        return importlib.util.spec_from_file_location(
-                            fullname,
-                            init_file,
-                            loader=self,
-                            submodule_search_locations=[candidate_path],
-                        )
-                # Check for .py file
-                if os.path.isfile(candidate_path + ".py"):
-                    return importlib.util.spec_from_file_location(
-                        fullname, candidate_path + ".py", loader=self
-                    )
         return None
 
     def create_module(self, spec: importlib.machinery.ModuleSpec) -> ModuleType | None:
