@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gc
 import json
 import os
 import shutil
@@ -82,6 +83,8 @@ def _wait_for_endpoint(
         except HTTPError as exc:
             if exc.code == 503:
                 # Service Unavailable - retry
+                # Close the underlying response to release the socket
+                exc.close()
                 last_err = exc
                 print(f"[DEBUG] Endpoint {url} returned 503, retrying...")
                 time.sleep(poll_interval)
@@ -487,6 +490,8 @@ def test_all_in_one_app_endpoints() -> None:
                         print(
                             f"[DEBUG] Expected error for invalid login: {http_err.code} {http_err.reason}"
                         )
+                        # Close the underlying response to release the socket
+                        http_err.close()
                         assert http_err.code in (400, 401, 403), (
                             f"Expected 400/401/403 for invalid login, got {http_err.code}"
                         )
@@ -508,6 +513,13 @@ def test_all_in_one_app_endpoints() -> None:
                             "[DEBUG] Server did not terminate cleanly, killing process"
                         )
                         server.kill()
+                        server.wait(timeout=5)
+                    # Allow time for sockets to fully close and run garbage collection
+                    # to clean up any lingering socket objects before temp dir cleanup
+                    time.sleep(1)
+                    gc.collect()
         finally:
             print(f"[DEBUG] Restoring original working directory to {original_cwd}")
             os.chdir(original_cwd)
+            # Final garbage collection to ensure all resources are released
+            gc.collect()
