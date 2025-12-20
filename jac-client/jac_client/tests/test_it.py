@@ -8,6 +8,7 @@ import shutil
 import socket
 import tempfile
 import time
+from http.client import RemoteDisconnected
 from subprocess import PIPE, Popen, run
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -91,6 +92,11 @@ def _wait_for_endpoint(
             # Connection errors - retry
             last_err = exc
             print(f"[DEBUG] Endpoint {url} connection error: {exc}, retrying...")
+            time.sleep(poll_interval)
+        except RemoteDisconnected as exc:
+            # Server closed connection - retry
+            last_err = exc
+            print(f"[DEBUG] Endpoint {url} remote disconnected: {exc}, retrying...")
             time.sleep(poll_interval)
 
     raise TimeoutError(
@@ -248,7 +254,7 @@ def test_all_in_one_app_endpoints() -> None:
                         f"Body (truncated to 500 chars):\n{page_body[:500]}"
                     )
                     assert "<html" in page_body.lower()
-                except (URLError, HTTPError, TimeoutError) as exc:
+                except (URLError, HTTPError, TimeoutError, RemoteDisconnected) as exc:
                     print(f"[DEBUG] Error while requesting /page/app endpoint: {exc}")
                     pytest.fail(f"Failed to GET /page/app endpoint: {exc}")
 
