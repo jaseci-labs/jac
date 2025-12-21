@@ -7,7 +7,6 @@ import os;
 import secrets;
 import from collections.abc { Callable }
 import from contextlib { suppress }
-import from dataclasses { dataclass, field }
 import from http.server { BaseHTTPRequestHandler, HTTPServer }
 import from pathlib { Path }
 import from typing { TYPE_CHECKING, Any, Literal, TypeAlias, get_type_hints }
@@ -27,16 +26,14 @@ glob JsonValue: TypeAlias = None | str | int | float | bool | <>list['JsonValue'
      StatusCode: TypeAlias = Literal[(200, 201, 400, 401, 404, 500, 503)];
 
 """Base response container."""
-@dataclass(frozen=True, slots=True)
-class Response {
+obj Response {
     has status: StatusCode,
         body: JsonValue,
         content_type: str = 'application/json';
 }
 
 """User authentication data."""
-@dataclass(frozen=True, slots=True)
-class UserData {
+obj UserData {
     has username: str,
         token: str,
         root_id: str;
@@ -49,27 +46,21 @@ class JacSerializer {
 }
 
 """Manage users and their persistent roots."""
-@dataclass(slots=True)
-class UserManager {
+obj UserManager {
     has session_path: str,
-        _users: dict[(str, dict[(str, str)])] = field(
-            default_factory=<>dict, <>init=False
-        ),
-        _tokens: dict[(str, str)] = field(default_factory=<>dict, <>init=False),
-        _db_path: str = field(<>init=False);
+        _users: dict[(str, dict[(str, str)])] = {},
+        _tokens: dict[(str, str)] = {},
+        _db_path: str = "";
 
-    def postinit(self: UserManager) -> None;
-    def _load_db(self: UserManager) -> None;
-    def _persist(self: UserManager) -> None;
-    def create_user(self: UserManager, username: str, password: str) -> dict[str, str];
-    def authenticate(
-        self: UserManager, username: str, password: str
-    ) -> (dict[(str, str)] | None);
-
-    def validate_token(self: UserManager, token: str) -> (str | None);
-    def get_root_id(self: UserManager, username: str) -> (str | None);
-    def get_user(self: UserManager, username: str) -> (dict[(str, str)] | None);
-    def close(self: UserManager) -> None;
+    def postinit -> None;
+    def _load_db -> None;
+    def _persist -> None;
+    def create_user(username: str, password: str) -> dict[str, str];
+    def authenticate(username: str, password: str) -> (dict[(str, str)] | None);
+    def validate_token(token: str) -> (str | None);
+    def get_root_id(username: str) -> (str | None);
+    def get_user(username: str) -> (dict[(str, str)] | None);
+    def close -> None;
 }
 
 """Manages execution contexts for user operations."""
@@ -94,62 +85,39 @@ class ExecutionManager {
 }
 
 """Introspects and caches module metadata."""
-@dataclass(slots=True)
-class ModuleIntrospector {
+obj ModuleIntrospector {
     has module_name: str,
         base_path: (str | None),
-        _module: Any = field(<>default=None, <>init=False),
-        _functions: dict[(str, Callable[(..., Any)])] = field(
-            default_factory=<>dict, <>init=False
-        ),
-        _walkers: dict[(str, type[WalkerArchetype])] = field(
-            default_factory=<>dict, <>init=False
-        ),
-        _client_functions: dict[(str, Callable[(..., Any)])] = field(
-            default_factory=<>dict, <>init=False
-        ),
-        _client_manifest: dict[(str, Any)] = field(
-            default_factory=<>dict, <>init=False
-        ),
-        _bundle: Any = field(<>default=None, <>init=False),
-        _bundle_error: (str | None) = field(<>default=None, <>init=False),
-        _bundle_builder: Any = field(<>default=None, <>init=False),
-        _function_access: dict[(str, bool)] = field(
-            default_factory=<>dict, <>init=False
-        ),
-        _walker_access: dict[(str, bool)] = field(default_factory=<>dict, <>init=False);
+        _module: Any = None,
+        _functions: dict[(str, Callable[(..., Any)])] = {},
+        _walkers: dict[(str, type[WalkerArchetype])] = {},
+        _client_functions: dict[(str, Callable[(..., Any)])] = {},
+        _client_manifest: dict[(str, Any)] = {},
+        _bundle: Any = None,
+        _bundle_error: (str | None) = None,
+        _bundle_builder: Any = None,
+        _function_access: dict[(str, bool)] = {},
+        _walker_access: dict[(str, bool)] = {};
 
-    def postinit(self: ModuleIntrospector) -> None;
-    def load(self: ModuleIntrospector, force_reload: bool = False) -> None;
-    def _load_manifest(self: ModuleIntrospector) -> None;
-    def _extract_access_levels(self: ModuleIntrospector) -> None;
-    def _collect_functions(self: ModuleIntrospector) -> dict[str, Callable[(..., Any)]];
-    def _collect_walkers(self: ModuleIntrospector) -> dict[str, type[WalkerArchetype]];
-    def get_functions(self: ModuleIntrospector) -> dict[str, Callable[(..., Any)]];
-    def get_walkers(self: ModuleIntrospector) -> dict[str, type[WalkerArchetype]];
-    def get_client_functions(
-        self: ModuleIntrospector
-    ) -> dict[str, Callable[(..., Any)]];
-
-    def introspect_callable(
-        self: ModuleIntrospector, func: Callable[(..., Any)]
-    ) -> dict[str, Any];
-
-    def introspect_walker(
-        self: ModuleIntrospector, walker_cls: type[WalkerArchetype]
-    ) -> dict[str, Any];
-
-    def ensure_bundle(self: ModuleIntrospector) -> str;
+    def postinit -> None;
+    def load(force_reload: bool = False) -> None;
+    def _load_manifest -> None;
+    def _extract_access_levels -> None;
+    def _collect_functions -> dict[str, Callable[(..., Any)]];
+    def _collect_walkers -> dict[str, type[WalkerArchetype]];
+    def get_functions -> dict[str, Callable[(..., Any)]];
+    def get_walkers -> dict[str, type[WalkerArchetype]];
+    def get_client_functions -> dict[str, Callable[(..., Any)]];
+    def introspect_callable(func: Callable[(..., Any)]) -> dict[str, Any];
+    def introspect_walker(walker_cls: type[WalkerArchetype]) -> dict[str, Any];
+    def ensure_bundle -> str;
     def render_page(
-        self: ModuleIntrospector,
-        function_name: str,
-        args: dict[(str, Any)],
-        username: str
+        function_name: str, args: dict[(str, Any)], username: str
     ) -> dict[str, Any];
 
-    def is_auth_required_for_function(self: ModuleIntrospector, func_name: str) -> bool;
-    def is_auth_required_for_walker(self: ModuleIntrospector, walker_name: str) -> bool;
-    def _collect_client_globals(self: ModuleIntrospector) -> dict[str, Any];
+    def is_auth_required_for_function(func_name: str) -> bool;
+    def is_auth_required_for_walker(walker_name: str) -> bool;
+    def _collect_client_globals -> dict[str, Any];
 }
 
 """Build and send HTTP responses."""

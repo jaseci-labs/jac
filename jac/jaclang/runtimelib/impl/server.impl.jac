@@ -51,13 +51,13 @@ impl JacSerializer._serialize_archetype(arch: Archetype) -> dict[str, JsonValue]
     return result;
 }
 
-impl UserManager.postinit(self: UserManager) -> None {
+impl UserManager.postinit -> None {
     self._db_path = f"{self.session_path}.users.json";
     self._load_db();
 }
 
 """Load user data from persistent storage."""
-impl UserManager._load_db(self: UserManager) -> None {
+impl UserManager._load_db -> None {
     try {
         with open(self._db_path, encoding='utf-8') as fh {
             data = json.load(fh);
@@ -70,16 +70,14 @@ impl UserManager._load_db(self: UserManager) -> None {
 }
 
 """Save user data to persistent storage."""
-impl UserManager._persist(self: UserManager) -> None {
+impl UserManager._persist -> None {
     with open(self._db_path, 'w', encoding='utf-8') as fh {
         json.dump({'__jac_users__': self._users, '__jac_tokens__': self._tokens}, fh);
     }
 }
 
 """Create a new user with their own root node. Returns dict with user data or error."""
-impl UserManager.create_user(
-    self: UserManager, username: str, password: str
-) -> dict[str, str] {
+impl UserManager.create_user(username: str, password: str) -> dict[str, str] {
     import from jaclang.pycore.constructs { Root }
     if (username in self._users) {
         return {'error': 'User already exists'};
@@ -110,7 +108,7 @@ impl UserManager.create_user(
 
 """Authenticate a user and return their data."""
 impl UserManager.authenticate(
-    self: UserManager, username: str, password: str
+    username: str, password: str
 ) -> (dict[(str, str)] | None) {
     if (username not in self._users) {
         return None;
@@ -124,19 +122,17 @@ impl UserManager.authenticate(
 }
 
 """Validate token and return username."""
-impl UserManager.validate_token(self: UserManager, token: str) -> (str | None) {
+impl UserManager.validate_token(token: str) -> (str | None) {
     return self._tokens.get(token);
 }
 
 """Get user's root node ID."""
-impl UserManager.get_root_id(self: UserManager, username: str) -> (str | None) {
+impl UserManager.get_root_id(username: str) -> (str | None) {
     return self._users[username]['root_id'] if (username in self._users) else None;
 }
 
 """Get user data by username."""
-impl UserManager.get_user(
-    self: UserManager, username: str
-) -> (dict[(str, str)] | None) {
+impl UserManager.get_user(username: str) -> (dict[(str, str)] | None) {
     if (username not in self._users) {
         return None;
     }
@@ -145,7 +141,7 @@ impl UserManager.get_user(
 }
 
 """Close and persist user data."""
-impl UserManager.close(self: UserManager) -> None {
+impl UserManager.close -> None {
     self._persist();
 }
 
@@ -224,14 +220,12 @@ impl ExecutionManager.spawn_walker(
     }
 }
 
-impl ModuleIntrospector.postinit(self: ModuleIntrospector) -> None {
+impl ModuleIntrospector.postinit -> None {
     self._bundle_builder = Jac.get_client_bundle_builder();
 }
 
 """Load module and refresh caches."""
-impl ModuleIntrospector.load(
-    self: ModuleIntrospector, force_reload: bool = False
-) -> None {
+impl ModuleIntrospector.load(force_reload: bool = False) -> None {
     needs_import = force_reload or (self.module_name not in Jac.loaded_modules);
     if (needs_import and self.base_path) {
         Jac.jac_import(
@@ -255,7 +249,7 @@ impl ModuleIntrospector.load(
 }
 
 """Load client manifest from module."""
-impl ModuleIntrospector._load_manifest(self: ModuleIntrospector) -> None {
+impl ModuleIntrospector._load_manifest -> None {
     if not self._module {
         return;
     }
@@ -278,7 +272,7 @@ impl ModuleIntrospector._load_manifest(self: ModuleIntrospector) -> None {
 }
 
 """Extract access level information from module AST."""
-impl ModuleIntrospector._extract_access_levels(self: ModuleIntrospector) -> None {
+impl ModuleIntrospector._extract_access_levels -> None {
     if not self._module {
         return;
     }
@@ -311,9 +305,7 @@ impl ModuleIntrospector._extract_access_levels(self: ModuleIntrospector) -> None
 }
 
 """Collect callable functions from module."""
-impl ModuleIntrospector._collect_functions(
-    self: ModuleIntrospector
-) -> dict[str, Callable[(..., Any)]] {
+impl ModuleIntrospector._collect_functions -> dict[str, Callable[(..., Any)]] {
     if not self._module {
         return {};
     }
@@ -343,9 +335,7 @@ impl ModuleIntrospector._collect_functions(
 }
 
 """Collect walker classes from module."""
-impl ModuleIntrospector._collect_walkers(
-    self: ModuleIntrospector
-) -> dict[str, type[WalkerArchetype]] {
+impl ModuleIntrospector._collect_walkers -> dict[str, type[WalkerArchetype]] {
     import from jaclang.pycore.constructs { WalkerArchetype }
     if not self._module {
         return {};
@@ -365,9 +355,7 @@ impl ModuleIntrospector._collect_walkers(
 }
 
 """Get all functions."""
-impl ModuleIntrospector.get_functions(
-    self: ModuleIntrospector
-) -> dict[str, Callable[(..., Any)]] {
+impl ModuleIntrospector.get_functions -> dict[str, Callable[(..., Any)]] {
     if not self._functions {
         self.load();
     }
@@ -375,9 +363,7 @@ impl ModuleIntrospector.get_functions(
 }
 
 """Get all walkers."""
-impl ModuleIntrospector.get_walkers(
-    self: ModuleIntrospector
-) -> dict[str, type[WalkerArchetype]] {
+impl ModuleIntrospector.get_walkers -> dict[str, type[WalkerArchetype]] {
     if not self._walkers {
         self.load();
     }
@@ -385,9 +371,7 @@ impl ModuleIntrospector.get_walkers(
 }
 
 """Get client-exportable functions."""
-impl ModuleIntrospector.get_client_functions(
-    self: ModuleIntrospector
-) -> dict[str, Callable[(..., Any)]] {
+impl ModuleIntrospector.get_client_functions -> dict[str, Callable[(..., Any)]] {
     if not self._client_functions {
         self.load();
     }
@@ -396,7 +380,7 @@ impl ModuleIntrospector.get_client_functions(
 
 """Get callable signature information."""
 impl ModuleIntrospector.introspect_callable(
-    self: ModuleIntrospector, func: Callable[(..., Any)]
+    func: Callable[(..., Any)]
 ) -> dict[str, Any] {
     try {
         sig = inspect.signature(func);
@@ -424,7 +408,7 @@ impl ModuleIntrospector.introspect_callable(
 
 """Get walker field information."""
 impl ModuleIntrospector.introspect_walker(
-    self: ModuleIntrospector, walker_cls: type[WalkerArchetype]
+    walker_cls: type[WalkerArchetype]
 ) -> dict[str, Any] {
     try {
         sig = inspect.signature(walker_cls.init);
@@ -454,7 +438,7 @@ impl ModuleIntrospector.introspect_walker(
 }
 
 """Ensure client bundle is available and return hash."""
-impl ModuleIntrospector.ensure_bundle(self: ModuleIntrospector) -> str {
+impl ModuleIntrospector.ensure_bundle -> str {
     if not self._module {
         raise RuntimeError('Module not loaded') ;
     }
@@ -474,7 +458,7 @@ impl ModuleIntrospector.ensure_bundle(self: ModuleIntrospector) -> str {
 
 """Render HTML page for client function."""
 impl ModuleIntrospector.render_page(
-    self: ModuleIntrospector, function_name: str, args: dict[(str, Any)], username: str
+    function_name: str, args: dict[(str, Any)], username: str
 ) -> dict[str, Any] {
     self.load();
     available_exports = (
@@ -509,9 +493,7 @@ impl ModuleIntrospector.render_page(
 Public functions: no authentication required
 Protected/Private functions: authentication required
 """
-impl ModuleIntrospector.is_auth_required_for_function(
-    self: ModuleIntrospector, func_name: str
-) -> bool {
+impl ModuleIntrospector.is_auth_required_for_function(func_name: str) -> bool {
     return self._function_access.get(func_name, False);
 }
 
@@ -520,16 +502,12 @@ impl ModuleIntrospector.is_auth_required_for_function(
 Public walkers: no authentication required
 Protected/Private walkers: authentication required
 """
-impl ModuleIntrospector.is_auth_required_for_walker(
-    self: ModuleIntrospector, walker_name: str
-) -> bool {
+impl ModuleIntrospector.is_auth_required_for_walker(walker_name: str) -> bool {
     return self._walker_access.get(walker_name, False);
 }
 
 """Collect client-exposed global values."""
-impl ModuleIntrospector._collect_client_globals(
-    self: ModuleIntrospector
-) -> dict[str, Any] {
+impl ModuleIntrospector._collect_client_globals -> dict[str, Any] {
     if not self._module {
         return {};
     }
