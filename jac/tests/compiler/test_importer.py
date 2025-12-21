@@ -292,10 +292,10 @@ def test_jac_import_py_files(fixture_abs_path: Callable[[str], str]) -> None:
         stdout_value = captured_output.getvalue()
         assert "This is main test file for jac import of python files" in stdout_value
         assert "python_module <jaclang.pycore.unitree.Module object" in str(
-            Jac.program.mod.hub
+            Jac.get_program().mod.hub
         )
         assert "jac_module <jaclang.pycore.unitree.Module object" in str(
-            Jac.program.mod.hub
+            Jac.get_program().mod.hub
         )
         os.environ["JAC_PYFILE_RAISE"] = "false"
         settings.load_env_vars()
@@ -313,10 +313,10 @@ def test_jac_import_py_files(fixture_abs_path: Callable[[str], str]) -> None:
         stdout_value = captured_output.getvalue()
         assert "This is main test file for jac import of python files" in stdout_value
         assert "python_module <jaclang.pycore.unitree.Module object" not in str(
-            Jac.program.mod.hub
+            Jac.get_program().mod.hub
         )
         assert "jac_module <jaclang.pycore.unitree.Module object" in str(
-            Jac.program.mod.hub
+            Jac.get_program().mod.hub
         )
     finally:
         os.chdir(original_cwd)

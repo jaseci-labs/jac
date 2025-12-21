@@ -330,7 +330,7 @@ def test_deep_imports_interp_mode(fixture_path: Callable[[str], str]) -> None:
         JacProgram(),
     )
     Jac.jac_import("deep_import_interp", base_path=fixture_path("./"))
-    assert len(Jac.program.mod.hub.keys()) == 1
+    assert len(Jac.get_program().mod.hub.keys()) == 1
     Jac.set_base_path(fixture_path("./"))
     Jac.attach_program(
         (prog := JacProgram()),
@@ -339,7 +339,7 @@ def test_deep_imports_interp_mode(fixture_path: Callable[[str], str]) -> None:
     Jac.jac_import("deep_import_interp", base_path=fixture_path("./"))
     # Note: hub size can vary depending on whether compiler support modules
     # (e.g., `import_pass.jac` and its annexes) are compiled/registered in this run.
-    assert len(Jac.program.mod.hub.keys()) in {5, 6, 7}
+    assert len(Jac.get_program().mod.hub.keys()) in {5, 6, 7}
 
 
 def test_deep_imports_mods(

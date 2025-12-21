@@ -71,16 +71,10 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
 
     byllm_found: bool = False
 
-    # Modules that require minimal compilation to avoid circular imports.
-    # These are bootstrap-critical modules in runtimelib and compiler.
+    # Compiler passes written in Jac need minimal compilation to avoid
+    # circular imports (they're used by the compiler during compilation itself).
     MINIMAL_COMPILE_MODULES: frozenset[str] = frozenset(
         {
-            "jaclang.runtimelib.builtin",
-            "jaclang.runtimelib.utils",
-            "jaclang.runtimelib.server",
-            "jaclang.runtimelib.client_bundle",
-            # Compiler passes converted to Jac must use minimal compilation
-            # to avoid circular imports (they're used during compilation itself)
             "jaclang.compiler.passes.main.sem_def_match_pass",
             "jaclang.compiler.passes.main.annex_pass",
             "jaclang.compiler.passes.main.semantic_analysis_pass",
@@ -91,8 +85,6 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
             "jaclang.compiler.passes.main.def_impl_match_pass",
             "jaclang.compiler.passes.main.cfg_build_pass",
             "jaclang.compiler.passes.main.pyast_load_pass",
-            # ECMAScript codegen modules are used by the full codegen schedule,
-            # so compiling them requires a minimal schedule to avoid cycles.
             "jaclang.compiler.passes.ecmascript.estree",
             "jaclang.compiler.passes.ecmascript.es_unparse",
             "jaclang.compiler.passes.ecmascript.esast_gen_pass",
@@ -167,13 +159,6 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
             # Check for .jac file
             jac_file = candidate_path + ".jac"
             if os.path.isfile(jac_file):
-                # For bootstrap modules, prefer .py if it exists alongside .jac
-                # This allows Python versions to be used during bootstrap
-                if fullname in self.MINIMAL_COMPILE_MODULES:
-                    py_file = candidate_path + ".py"
-                    if os.path.isfile(py_file):
-                        # Let Python's standard import handle the .py file
-                        return None
                 return importlib.util.spec_from_file_location(
                     fullname, jac_file, loader=self
                 )
@@ -233,8 +218,7 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         # Register module in JacRuntime's tracking
         Jac.load_module(module.__name__, module)
 
-        # Use minimal compilation for bootstrap-critical modules to avoid
-        # circular imports (these modules are needed by the compiler itself)
+        # Use minimal compilation for compiler passes to avoid circular imports
         use_minimal = module.__name__ in self.MINIMAL_COMPILE_MODULES
 
         # Get and execute bytecode
@@ -260,32 +244,31 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         paths_to_search = get_jac_search_paths()
         module_path_parts = fullname.split(".")
 
+        # Use minimal compilation for compiler passes to avoid circular imports
+        use_minimal = fullname in self.MINIMAL_COMPILE_MODULES
+
         for search_path in paths_to_search:
             candidate_path = os.path.join(search_path, *module_path_parts)
             # Check for directory package
             if os.path.isdir(candidate_path):
                 init_file = os.path.join(candidate_path, "__init__.jac")
                 if os.path.isfile(init_file):
-                    use_minimal = fullname in self.MINIMAL_COMPILE_MODULES
                     return Jac.get_program().get_bytecode(
                         full_target=init_file, minimal=use_minimal
                     )
                 init_cl_file = os.path.join(candidate_path, "__init__.cl.jac")
                 if os.path.isfile(init_cl_file):
-                    use_minimal = fullname in self.MINIMAL_COMPILE_MODULES
                     return Jac.get_program().get_bytecode(
                         full_target=init_cl_file, minimal=use_minimal
                     )
             # Check for .jac file
             jac_file = candidate_path + ".jac"
             if os.path.isfile(jac_file):
-                use_minimal = fullname in self.MINIMAL_COMPILE_MODULES
                 return Jac.get_program().get_bytecode(
                     full_target=jac_file, minimal=use_minimal
                 )
             cl_jac_file = candidate_path + ".cl.jac"
             if os.path.isfile(cl_jac_file):
-                use_minimal = fullname in self.MINIMAL_COMPILE_MODULES
                 return Jac.get_program().get_bytecode(
                     full_target=cl_jac_file, minimal=use_minimal
                 )
