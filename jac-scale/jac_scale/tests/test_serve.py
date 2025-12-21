@@ -1,6 +1,7 @@
 """Test for jac-scale serve command and REST API server."""
 
 import contextlib
+import gc
 import glob
 import socket
 import subprocess
@@ -71,6 +72,8 @@ class TestJacScaleServe:
 
         # Give the server a moment to fully release file handles
         time.sleep(0.5)
+        # Run garbage collection to clean up lingering socket objects
+        gc.collect()
 
         # Clean up session files
         cls._cleanup_session_files()
@@ -161,22 +164,39 @@ class TestJacScaleServe:
         data: dict[str, Any] | None = None,
         token: str | None = None,
         timeout: int = 5,
+        max_retries: int = 60,
+        retry_interval: float = 2.0,
     ) -> dict[str, Any]:
-        """Make HTTP request to server and return JSON response."""
+        """Make HTTP request to server and return JSON response.
+
+        Retries on 503 Service Unavailable responses.
+        """
         url = f"{self.base_url}{path}"
         headers = {"Content-Type": "application/json"}
 
         if token:
             headers["Authorization"] = f"Bearer {token}"
 
-        response = requests.request(
-            method=method,
-            url=url,
-            json=data,
-            headers=headers,
-            timeout=timeout,
-        )
+        response = None
+        for attempt in range(max_retries):
+            response = requests.request(
+                method=method,
+                url=url,
+                json=data,
+                headers=headers,
+                timeout=timeout,
+            )
 
+            if response.status_code == 503:
+                print(
+                    f"[DEBUG] {path} returned 503, retrying ({attempt + 1}/{max_retries})..."
+                )
+                time.sleep(retry_interval)
+                continue
+
+            break
+
+        assert response is not None, "No response received"
         json_response: Any = response.json()
 
         # Handle jac-scale's tuple response format [status, body]

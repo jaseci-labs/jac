@@ -1,5 +1,6 @@
 import os
 import time
+from typing import Any
 
 import requests
 from kubernetes import client, config
@@ -7,6 +8,50 @@ from kubernetes.client.exceptions import ApiException
 
 from ..kubernetes.K8s import deploy_K8s
 from ..kubernetes.utils import cleanup_K8s_resources
+
+
+def _request_with_retry(
+    method: str,
+    url: str,
+    json: dict[str, Any] | None = None,
+    timeout: int = 10,
+    max_retries: int = 60,
+    retry_interval: float = 2.0,
+) -> requests.Response:
+    """Make an HTTP request with retry logic for 503 responses.
+
+    Args:
+        method: HTTP method (GET, POST, etc.)
+        url: The URL to request
+        json: JSON payload for the request
+        timeout: Request timeout in seconds
+        max_retries: Maximum number of retries for 503 responses
+        retry_interval: Time to wait between retries in seconds
+
+    Returns:
+        Response object
+    """
+    response = None
+    for attempt in range(max_retries):
+        response = requests.request(
+            method=method,
+            url=url,
+            json=json,
+            timeout=timeout,
+        )
+
+        if response.status_code == 503:
+            print(
+                f"[DEBUG] {url} returned 503, retrying ({attempt + 1}/{max_retries})..."
+            )
+            time.sleep(retry_interval)
+            continue
+
+        return response
+
+    # Return last response even if it was 503
+    assert response is not None, "No response received"
+    return response
 
 
 def test_deploy_todo_app():
@@ -82,21 +127,21 @@ def test_deploy_todo_app():
     )
     assert redis_service.spec.ports[0].port == 6379
 
-    # Send POST request to create a todo
+    # Send POST request to create a todo (with retry for 503)
     try:
         url = f"http://localhost:{node_port}/walker/create_todo"
         payload = {"text": "first-task"}
-        response = requests.post(url, json=payload, timeout=10)
+        response = _request_with_retry("POST", url, json=payload, timeout=10)
         assert response.status_code == 200
         print(f"✓ Successfully created todo at {url}")
         print(f"  Response: {response.json()}")
     except requests.exceptions.RequestException as e:
         print(f"Warning: Could not reach POST {url}: {e}")
 
-    # Send GET request to retrieve the clientpage of todo app
+    # Send GET request to retrieve the clientpage of todo app (with retry for 503)
     try:
         url = f"http://localhost:{node_port}/page/app"
-        response = requests.get(url, timeout=10)
+        response = _request_with_retry("GET", url, timeout=10)
         assert response.status_code == 200
         print(f"✓ Successfully reached app page at {url}")
     except requests.exceptions.RequestException as e:

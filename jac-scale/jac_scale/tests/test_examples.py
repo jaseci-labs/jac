@@ -1,6 +1,7 @@
 """Test for running jac-scale examples and testing their APIs."""
 
 import contextlib
+import gc
 import socket
 import subprocess
 import time
@@ -149,6 +150,9 @@ class JacScaleTestRunner:
             if self.server_process.stderr:
                 self.server_process.stderr.close()
 
+            # Run garbage collection to clean up lingering socket objects
+            gc.collect()
+
         # Clean up session files
         if self.session_file.exists():
             session_dir = self.session_file.parent
@@ -212,8 +216,12 @@ class JacScaleTestRunner:
         data: dict[str, Any] | None = None,
         use_token: bool = False,
         timeout: int = 5,
+        max_retries: int = 60,
+        retry_interval: float = 2.0,
     ) -> dict[str, Any]:
         """Make an HTTP request to the server.
+
+        Retries on 503 Service Unavailable responses.
 
         Args:
             method: HTTP method (GET, POST, etc.)
@@ -221,6 +229,8 @@ class JacScaleTestRunner:
             data: Request body data
             use_token: Whether to include authentication token
             timeout: Request timeout in seconds
+            max_retries: Maximum number of retries for 503 responses
+            retry_interval: Time to wait between retries in seconds
 
         Returns:
             Response JSON data
@@ -231,14 +241,26 @@ class JacScaleTestRunner:
         if use_token and self.token:
             headers["Authorization"] = f"Bearer {self.token}"
 
-        response = requests.request(
-            method=method,
-            url=url,
-            json=data,
-            headers=headers,
-            timeout=timeout,
-        )
+        response = None
+        for attempt in range(max_retries):
+            response = requests.request(
+                method=method,
+                url=url,
+                json=data,
+                headers=headers,
+                timeout=timeout,
+            )
 
+            if response.status_code == 503:
+                print(
+                    f"[DEBUG] {path} returned 503, retrying ({attempt + 1}/{max_retries})..."
+                )
+                time.sleep(retry_interval)
+                continue
+
+            break
+
+        assert response is not None, "No response received"
         json_response: Any = response.json()
 
         # Handle jac-scale's tuple response format [status, body]
