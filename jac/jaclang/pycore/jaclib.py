@@ -10,6 +10,9 @@ names stable because the Jac -> Python code generator emits imports for these.
 
 from __future__ import annotations
 
+from jaclang.pycore.constant import EdgeDir
+from jaclang.pycore.runtime import JacRuntime, JacRuntimeInterface
+
 # Direct imports - no lazy loading needed since runtimelib is now pure Python
 from jaclang.runtimelib.archetype import GenericEdge, Root
 from jaclang.runtimelib.archetype import ObjectSpatialFunction as DSFunc
@@ -18,8 +21,6 @@ from jaclang.runtimelib.constructs import Archetype as Obj
 from jaclang.runtimelib.constructs import EdgeArchetype as Edge
 from jaclang.runtimelib.constructs import NodeArchetype as Node
 from jaclang.runtimelib.constructs import WalkerArchetype as Walker
-from jaclang.pycore.constant import EdgeDir
-from jaclang.pycore.runtime import JacRuntime, JacRuntimeInterface
 
 __all__ = [
     # Archetypes

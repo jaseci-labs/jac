@@ -10,7 +10,9 @@ import sys
 import types
 from collections import OrderedDict
 from collections.abc import Callable, Coroutine, Mapping, Sequence
-from concurrent.futures import Future
+
+# Direct imports from runtimelib (no longer lazy - these are now pure Python)
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import MISSING, dataclass, field
 from functools import wraps
 from inspect import getfile
@@ -31,11 +33,6 @@ from uuid import UUID
 from jaclang.pycore.constant import Constants as Con
 from jaclang.pycore.constant import EdgeDir, colors
 from jaclang.pycore.module_resolver import infer_language
-from jaclang.vendor import pluggy
-
-# Direct imports from runtimelib (no longer lazy - these are now pure Python)
-from concurrent.futures import ThreadPoolExecutor
-
 from jaclang.runtimelib.archetype import (
     GenericEdge,
     ObjectSpatialDestination,
@@ -56,6 +53,7 @@ from jaclang.runtimelib.constructs import (
 )
 from jaclang.runtimelib.memory import Memory, ShelfStorage
 from jaclang.runtimelib.mtp import MTIR, MTRuntime
+from jaclang.vendor import pluggy
 
 if TYPE_CHECKING:
     from http.server import BaseHTTPRequestHandler

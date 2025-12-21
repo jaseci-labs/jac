@@ -5,7 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable, Generator, Iterable
 from dataclasses import dataclass, field
 from pickle import dumps
-from shelve import Shelf, open as shelf_open
+from shelve import Shelf
+from shelve import open as shelf_open
 from typing import Any, Generic, TypeVar, cast
 from uuid import UUID
 

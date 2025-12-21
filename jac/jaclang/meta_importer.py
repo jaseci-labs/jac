@@ -238,7 +238,9 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         use_minimal = module.__name__ in self.MINIMAL_COMPILE_MODULES
 
         # Get and execute bytecode
-        codeobj = Jac.get_program().get_bytecode(full_target=file_path, minimal=use_minimal)
+        codeobj = Jac.get_program().get_bytecode(
+            full_target=file_path, minimal=use_minimal
+        )
         if not codeobj:
             if is_pkg:
                 # Empty package is OK - just register it
