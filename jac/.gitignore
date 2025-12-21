@@ -8,7 +8,7 @@ media
 migrations
 venv
 __jac_gen__/
-__jaccache__/
+.jaccache/
 *.jir
 *.jbc
 

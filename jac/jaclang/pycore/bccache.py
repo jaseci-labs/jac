@@ -2,11 +2,12 @@
 
 This module provides disk-based caching for compiled Jac bytecode,
 similar to Python's __pycache__ mechanism. Cache files are stored
-in __jaccache__/ directories alongside source files.
+in a single .jaccache/ directory in the current working directory.
 """
 
 from __future__ import annotations
 
+import hashlib
 import marshal
 import os
 import sys
@@ -53,33 +54,40 @@ class BytecodeCache:
 
 
 class DiskBytecodeCache(BytecodeCache):
-    """Disk-based bytecode cache using __jaccache__/ directories.
+    """Disk-based bytecode cache using a single .jaccache/ directory.
 
-    Cache files are stored alongside source files in __jaccache__/
-    directories, with filenames that include Python version and
+    Cache files are stored in .jaccache/ in the current working directory,
+    with filenames that include a path hash, Python version, and
     compilation mode to avoid conflicts.
 
     Example:
         source:  /project/src/main.jac
-        cache:   /project/src/__jaccache__/main.cpython-312.jbc
-                 /project/src/__jaccache__/main.cpython-312.minimal.jbc
+        cache:   .jaccache/main.a1b2c3d4.cpython-312.jbc
+                 .jaccache/main.a1b2c3d4.cpython-312.minimal.jbc
     """
 
-    CACHE_DIR: Final[str] = "__jaccache__"
+    CACHE_DIR: Final[str] = ".jaccache"
     EXTENSION: Final[str] = ".jbc"
     MINIMAL_SUFFIX: Final[str] = ".minimal"
 
     def _get_cache_path(self, key: CacheKey) -> Path:
-        """Generate the cache file path for a given key."""
-        source = Path(key.source_path)
-        cache_dir = source.parent / self.CACHE_DIR
+        """Generate the cache file path for a given key.
+
+        Uses a hash of the full source path to ensure uniqueness when
+        files with the same name exist in different directories.
+        """
+        source = Path(key.source_path).resolve()
+        cache_dir = Path.cwd() / self.CACHE_DIR
+
+        # Create a short hash of the full path for uniqueness
+        path_hash = hashlib.sha256(str(source).encode()).hexdigest()[:8]
 
         major, minor = key.python_version
         py_version = f"cpython-{major}{minor}"
         suffix = (
             f"{self.MINIMAL_SUFFIX}{self.EXTENSION}" if key.minimal else self.EXTENSION
         )
-        cache_name = f"{source.stem}.{py_version}{suffix}"
+        cache_name = f"{source.stem}.{path_hash}.{py_version}{suffix}"
 
         return cache_dir / cache_name
 

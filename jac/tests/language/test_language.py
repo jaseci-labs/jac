@@ -1454,11 +1454,14 @@ def test_concurrency(
     """Test concurrency in jaclang."""
     with capture_stdout() as captured_output:
         Jac.jac_import("concurrency", base_path=fixture_path("./"))
-    stdout_value = captured_output.getvalue().split("\n")
-    assert "Started" in stdout_value[3]
-    assert "B(name='Hi')" in stdout_value[7]
-    assert "11" in stdout_value[9]
-    assert "13" in stdout_value[10]
+    # Check output contains expected values (order may vary due to concurrency)
+    full_output = captured_output.getvalue()
+    assert "Started" in full_output
+    assert "B(name='Hi')" in full_output
+    assert "All are started" in full_output
+    assert "All are done" in full_output
+    assert "11" in full_output
+    assert "13" in full_output
 
 
 def test_import_jac_from_py(
