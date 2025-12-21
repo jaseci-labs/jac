@@ -6,7 +6,7 @@ impl JScaleExecutionContext.init(
     <>root: (str | None) = None
 ) -> None {
     import from jac_scale.memory_hierarchy { MultiHierarchyMemory }
-    import from jaclang.runtimelib.constructs { Anchor, NodeAnchor, Root }
+    import from jaclang.pycore.constructs { Anchor, NodeAnchor, Root }
     self.mem: MultiHierarchyMemory = MultiHierarchyMemory();
     self.reports: list[Any] = [];
     self.custom: Any = MISSING;

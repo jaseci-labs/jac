@@ -8,8 +8,8 @@ import from typing { Any, TypeVar, cast }
 import from uuid { UUID }
 import redis;
 import from pymongo { MongoClient, UpdateOne }
-import from jaclang.runtimelib.archetype { TANCH, Anchor }
-import from jaclang.runtimelib.memory { Memory }
+import from jaclang.pycore.archetype { TANCH, Anchor }
+import from jaclang.pycore.memory { Memory }
 
 glob ID = TypeVar('ID');
 

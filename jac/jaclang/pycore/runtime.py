@@ -10,12 +10,15 @@ import sys
 import types
 from collections import OrderedDict
 from collections.abc import Callable, Coroutine, Mapping, Sequence
-from concurrent.futures import Future
+
+# Direct imports from runtimelib (no longer lazy - these are now pure Python)
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import MISSING, dataclass, field
 from functools import wraps
 from inspect import getfile
 from logging import getLogger
 from pathlib import Path
+from shelve import Shelf
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -28,160 +31,37 @@ from typing import (
 )
 from uuid import UUID
 
+from jaclang.pycore.archetype import (
+    GenericEdge,
+    ObjectSpatialDestination,
+    ObjectSpatialFunction,
+    ObjectSpatialPath,
+    Root,
+)
 from jaclang.pycore.constant import Constants as Con
 from jaclang.pycore.constant import EdgeDir, colors
+from jaclang.pycore.constructs import (
+    AccessLevel,
+    Anchor,
+    Archetype,
+    EdgeAnchor,
+    EdgeArchetype,
+    NodeAnchor,
+    NodeArchetype,
+    WalkerAnchor,
+    WalkerArchetype,
+)
+from jaclang.pycore.memory import Memory, ShelfStorage
 from jaclang.pycore.module_resolver import infer_language
+from jaclang.pycore.mtp import MTIR, MTRuntime
 from jaclang.vendor import pluggy
 
-# Flag to track if lazy imports have been initialized
-_lazy_imports_initialized = False
-
-# Type hints for lazy imports - these are only for static type checking
 if TYPE_CHECKING:
-    from concurrent.futures import ThreadPoolExecutor
     from http.server import BaseHTTPRequestHandler
 
     from jaclang.pycore.program import JacProgram
-    from jaclang.runtimelib.archetype import (
-        ObjectSpatialDestination,
-        ObjectSpatialFunction,
-        ObjectSpatialPath,
-    )
     from jaclang.runtimelib.client_bundle import ClientBundle, ClientBundleBuilder
-    from jaclang.runtimelib.constructs import (
-        AccessLevel,
-        Anchor,
-        Archetype,
-        EdgeAnchor,
-        EdgeArchetype,
-        GenericEdge,
-        NodeAnchor,
-        NodeArchetype,
-        Root,
-        WalkerAnchor,
-        WalkerArchetype,
-    )
-    from jaclang.runtimelib.memory import Memory, Shelf, ShelfStorage
-    from jaclang.runtimelib.mtp import MTIR, MTRuntime
     from jaclang.runtimelib.server import ModuleIntrospector
-else:
-    # Module-level placeholders for lazy imports (populated by _init_lazy_imports)
-    AccessLevel = Anchor = Archetype = EdgeAnchor = EdgeArchetype = GenericEdge = None  # type: ignore
-    NodeAnchor = NodeArchetype = Root = WalkerAnchor = WalkerArchetype = None  # type: ignore
-    Memory = Shelf = ShelfStorage = MTRuntime = MTIR = None  # type: ignore
-    _GenericEdge = _Root = ObjectSpatialDestination = ObjectSpatialFunction = (
-        ObjectSpatialPath
-    ) = None  # type: ignore
-
-
-def _init_lazy_imports() -> None:
-    """Initialize lazy imports on first access.
-
-    This function imports the .jac modules and adds them to the module namespace.
-    It's called lazily when runtime functionality is first accessed.
-    """
-    global _lazy_imports_initialized
-    global AccessLevel, Anchor, Archetype, EdgeAnchor, EdgeArchetype, GenericEdge
-    global NodeAnchor, NodeArchetype, Root, WalkerAnchor, WalkerArchetype
-    global Memory, Shelf, ShelfStorage, MTRuntime, MTIR
-    global \
-        _GenericEdge, \
-        _Root, \
-        ObjectSpatialDestination, \
-        ObjectSpatialFunction, \
-        ObjectSpatialPath
-
-    if _lazy_imports_initialized:
-        return
-
-    # Check if we're being called during module initialization (circular import)
-    import sys
-
-    if "jaclang.runtimelib.constructs" in sys.modules:
-        mod = sys.modules["jaclang.runtimelib.constructs"]
-        if not hasattr(mod, "AccessLevel"):
-            # Module is being loaded, skip initialization to avoid circular import
-            return
-
-    try:
-        from jaclang.runtimelib.archetype import (
-            GenericEdge as _GenericEdge,
-        )
-        from jaclang.runtimelib.archetype import (
-            ObjectSpatialDestination,
-            ObjectSpatialFunction,
-            ObjectSpatialPath,
-        )
-        from jaclang.runtimelib.archetype import (
-            Root as _Root,
-        )
-        from jaclang.runtimelib.constructs import (
-            AccessLevel,
-            Anchor,
-            Archetype,
-            EdgeAnchor,
-            EdgeArchetype,
-            GenericEdge,
-            NodeAnchor,
-            NodeArchetype,
-            Root,
-            WalkerAnchor,
-            WalkerArchetype,
-        )
-        from jaclang.runtimelib.memory import Memory, Shelf, ShelfStorage
-        from jaclang.runtimelib.mtp import MTIR, MTRuntime
-
-        _lazy_imports_initialized = True
-    except ImportError:
-        # If we get an import error during circular import, just skip
-        # The imports will be retried later
-        pass
-
-
-class _LazyProgramDescriptor:
-    """Descriptor for lazy JacProgram instantiation.
-
-    This delays importing the compiler module until the program is actually needed,
-    allowing more modules to be converted to Jac (since they won't be in the
-    eager import chain).
-    """
-
-    _instance: JacProgram | None = None
-
-    def __get__(self, obj: object, objtype: type | None = None) -> JacProgram:
-        """Lazily create and return JacProgram instance."""
-        if _LazyProgramDescriptor._instance is None:
-            from jaclang.pycore.program import JacProgram
-
-            _LazyProgramDescriptor._instance = JacProgram()
-        return _LazyProgramDescriptor._instance
-
-    def __set__(self, obj: object, value: JacProgram) -> None:
-        """Set the JacProgram instance."""
-        _LazyProgramDescriptor._instance = value
-
-
-class _LazyThreadPoolDescriptor:
-    """Descriptor for lazy ThreadPoolExecutor instantiation.
-
-    This delays importing concurrent.futures until the pool is actually needed,
-    allowing more modules to be converted to Jac.
-    """
-
-    _instance: ThreadPoolExecutor | None = None
-
-    def __get__(self, obj: object, objtype: type | None = None) -> ThreadPoolExecutor:
-        """Lazily create and return ThreadPoolExecutor instance."""
-        if _LazyThreadPoolDescriptor._instance is None:
-            from concurrent.futures import ThreadPoolExecutor
-
-            _LazyThreadPoolDescriptor._instance = ThreadPoolExecutor()
-        return _LazyThreadPoolDescriptor._instance
-
-    def __set__(self, obj: object, value: ThreadPoolExecutor) -> None:
-        """Set the ThreadPoolExecutor instance."""
-        _LazyThreadPoolDescriptor._instance = value
-
 
 plugin_manager = pluggy.PluginManager("jac")
 hookspec = pluggy.HookspecMarker("jac")
@@ -205,7 +85,6 @@ class ExecutionContext:
         root: str | None = None,
     ) -> None:
         """Initialize JacRuntime."""
-        _init_lazy_imports()  # Ensure lazy imports are loaded
         self.mem: Memory = ShelfStorage(session)
         self.reports: list[Any] = []
         self.custom: Any = MISSING
@@ -519,10 +398,16 @@ class JacWalker:
             | list[EdgeArchetype]
             | NodeArchetype
             | EdgeArchetype
+            | ObjectSpatialPath
         ),
         insert_loc: int = -1,
     ) -> bool:  # noqa: ANN401
         """Jac's visit stmt feature."""
+        # Resolve ObjectSpatialPath to list of nodes/edges
+        if isinstance(expr, ObjectSpatialPath):
+            expr.from_visit = True
+            expr = JacRuntimeInterface.refs(expr)
+
         if isinstance(walker, WalkerArchetype):
             """Walker visits node."""
             wanch = walker.__jac__
@@ -808,85 +693,18 @@ class JacWalker:
         return True
 
 
-class _JacClassReferencesMeta(type):
-    """Metaclass for JacClassReferences to enable lazy class attribute loading."""
-
-    def __getattr__(cls, name: str) -> type:
-        """Lazily load class references to avoid bootstrap dependency."""
-        # Import from archetype module
-        if name == "DSFunc":
-            from jaclang.runtimelib.archetype import ObjectSpatialFunction
-
-            cls.DSFunc = ObjectSpatialFunction
-            return ObjectSpatialFunction
-        elif name == "OPath":
-            from jaclang.runtimelib.archetype import ObjectSpatialPath
-
-            cls.OPath = ObjectSpatialPath
-            return ObjectSpatialPath
-        elif name == "Root":
-            from jaclang.runtimelib.archetype import Root as _Root
-
-            cls.Root = _Root
-            return _Root
-        elif name == "GenericEdge":
-            from jaclang.runtimelib.archetype import GenericEdge as _GenericEdge
-
-            cls.GenericEdge = _GenericEdge
-            return _GenericEdge
-        # Import from constructs module
-        elif name == "Obj":
-            from jaclang.runtimelib.constructs import Archetype
-
-            cls.Obj = Archetype
-            return Archetype
-        elif name == "Node":
-            from jaclang.runtimelib.constructs import NodeArchetype
-
-            cls.Node = NodeArchetype
-            return NodeArchetype
-        elif name == "Edge":
-            from jaclang.runtimelib.constructs import EdgeArchetype
-
-            cls.Edge = EdgeArchetype
-            return EdgeArchetype
-        elif name == "Walker":
-            from jaclang.runtimelib.constructs import WalkerArchetype
-
-            cls.Walker = WalkerArchetype
-            return WalkerArchetype
-        raise AttributeError(f"JacClassReferences has no attribute '{name}'")
-
-
-class JacClassReferences(metaclass=_JacClassReferencesMeta):
-    """Default Classes References with lazy loading."""
+class JacClassReferences:
+    """Default Classes References - direct class attributes (no lazy loading)."""
 
     TYPE_CHECKING: bool = TYPE_CHECKING
-    if TYPE_CHECKING:
-        from jaclang.runtimelib.archetype import (
-            ObjectSpatialFunction as DSFunc,
-        )
-        from jaclang.runtimelib.archetype import (
-            ObjectSpatialPath as OPath,
-        )
-        from jaclang.runtimelib.archetype import (
-            Root,
-        )
-        from jaclang.runtimelib.constructs import (
-            Archetype as Obj,
-        )
-        from jaclang.runtimelib.constructs import (
-            EdgeArchetype as Edge,
-        )
-        from jaclang.runtimelib.constructs import (
-            GenericEdge,
-        )
-        from jaclang.runtimelib.constructs import (
-            NodeArchetype as Node,
-        )
-        from jaclang.runtimelib.constructs import (
-            WalkerArchetype as Walker,
-        )
+    DSFunc = ObjectSpatialFunction
+    OPath = ObjectSpatialPath
+    Root = Root
+    GenericEdge = GenericEdge
+    Obj = Archetype
+    Node = NodeArchetype
+    Edge = EdgeArchetype
+    Walker = WalkerArchetype
 
 
 class JacBuiltin:
@@ -1057,10 +875,10 @@ class JacBasics:
     @staticmethod
     def make_archetype(cls: type[Archetype]) -> type[Archetype]:
         """Create a obj archetype."""
-        entries: OrderedDict[str, JacRuntimeInterface.DSFunc] = OrderedDict(
+        entries: OrderedDict[str, ObjectSpatialFunction] = OrderedDict(
             (fn.name, fn) for fn in cls._jac_entry_funcs_
         )
-        exits: OrderedDict[str, JacRuntimeInterface.DSFunc] = OrderedDict(
+        exits: OrderedDict[str, ObjectSpatialFunction] = OrderedDict(
             (fn.name, fn) for fn in cls._jac_exit_funcs_
         )
         for func in cls.__dict__.values():
@@ -1160,9 +978,8 @@ class JacBasics:
         if lng is None:
             lng = infer_language(target, base_path)
 
-        # JacRuntime.program is lazy - accessing it will create if needed
-        # This check ensures the program exists before we use it
-        _ = JacRuntime.program
+        # Ensure the program exists before we use it
+        _ = JacRuntime.get_program()
 
         # Compute the module name
         # Convert relative imports (e.g., ".foo") to absolute
@@ -2079,7 +1896,6 @@ class JacRuntimeInterface(
     JacByLLM,
     JacResponseBuilder,
     JacUtils,
-    metaclass=_JacClassReferencesMeta,
 ):
     """Jac Feature."""
 
@@ -2184,7 +2000,6 @@ def generate_plugin_helpers(
     proxy_namespace.update(proxy_methods)
 
     # Use the original class's metaclass when creating the proxy class
-    # This preserves custom metaclasses like _JacClassReferencesMeta
     original_metaclass: type = cast(type, type(plugin_class))
     proxy_cls = original_metaclass(
         f"{plugin_class.__name__}", (object,), proxy_namespace
@@ -2203,10 +2018,19 @@ class JacRuntime(JacRuntimeInterface):
     """Jac Machine State."""
 
     base_path_dir: str = os.getcwd()
-    program: JacProgram = _LazyProgramDescriptor()  # type: ignore[assignment]
-    pool: ThreadPoolExecutor = _LazyThreadPoolDescriptor()  # type: ignore[assignment]
+    program: JacProgram | None = None
+    pool: ThreadPoolExecutor = ThreadPoolExecutor()
     exec_ctx: ExecutionContext | None = None
     loaded_modules: dict[str, types.ModuleType] = {}
+
+    @classmethod
+    def get_program(cls) -> JacProgram:
+        """Get or create the JacProgram instance."""
+        if cls.program is None:
+            from jaclang.pycore.program import JacProgram
+
+            cls.program = JacProgram()
+        return cls.program
 
     @staticmethod
     def set_base_path(base_path: str) -> None:
@@ -2223,8 +2047,6 @@ class JacRuntime(JacRuntimeInterface):
     @staticmethod
     def reset_machine() -> None:
         """Reset the machine."""
-        from jaclang.pycore.program import JacProgram
-
         # Remove Jac modules from sys.modules, but skip special module names
         # that Python relies on (like __main__, __mp_main__, etc.)
         # Also skip runtime library modules (archetype, constructs, memory, mtp)
@@ -2233,10 +2055,10 @@ class JacRuntime(JacRuntimeInterface):
             "__main__",
             "__mp_main__",
             "builtins",
-            "jaclang.runtimelib.archetype",
-            "jaclang.runtimelib.constructs",
-            "jaclang.runtimelib.memory",
-            "jaclang.runtimelib.mtp",
+            "jaclang.pycore.archetype",
+            "jaclang.pycore.constructs",
+            "jaclang.pycore.memory",
+            "jaclang.pycore.mtp",
             "jaclang.runtimelib.test",
             "jaclang.compiler.passes.tool.doc_ir",
             # Keep language server + type-system modules stable across resets.
@@ -2256,9 +2078,9 @@ class JacRuntime(JacRuntimeInterface):
                 sys.modules.pop(i.__name__, None)
         JacRuntime.loaded_modules.clear()
         JacRuntime.base_path_dir = os.getcwd()
-        JacRuntime.program = JacProgram()
-        from concurrent.futures import ThreadPoolExecutor
+        from jaclang.pycore.program import JacProgram
 
+        JacRuntime.program = JacProgram()
         JacRuntime.pool = ThreadPoolExecutor()
         if JacRuntime.exec_ctx is not None:
             JacRuntime.exec_ctx.mem.close()

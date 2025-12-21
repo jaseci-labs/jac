@@ -1,7 +1,7 @@
 """Serialize objects to JSON-compatible format."""
 
 impl JacSerializer.serialize(<>obj: object) -> JsonValue {
-    import from jaclang.runtimelib.constructs { Archetype }
+    import from jaclang.pycore.constructs { Archetype }
     if ((<>obj is None) or isinstance(<>obj, (str, int, float, bool))) {
         return <>obj;
     }
@@ -30,7 +30,7 @@ impl JacSerializer.serialize(<>obj: object) -> JsonValue {
 
 """Serialize Archetype instances."""
 impl JacSerializer._serialize_archetype(arch: Archetype) -> dict[str, JsonValue] {
-    import from jaclang.runtimelib.constructs { NodeArchetype, WalkerArchetype }
+    import from jaclang.pycore.constructs { NodeArchetype, WalkerArchetype }
     result: dict[(str, JsonValue)] = {
         '_jac_type': <>type(arch).__name__,
         '_jac_id': arch.__jac__.id.hex,
@@ -80,7 +80,7 @@ impl UserManager._persist(self: UserManager) -> None {
 impl UserManager.create_user(
     self: UserManager, username: str, password: str
 ) -> dict[str, str] {
-    import from jaclang.runtimelib.constructs { Root }
+    import from jaclang.pycore.constructs { Root }
     if (username in self._users) {
         return {'error': 'User already exists'};
     }
@@ -192,7 +192,7 @@ impl ExecutionManager.spawn_walker(
     fields: dict[(str, Any)],
     username: str
 ) -> dict[str, JsonValue] {
-    import from jaclang.runtimelib.constructs { NodeArchetype }
+    import from jaclang.pycore.constructs { NodeArchetype }
     root_id = self.user_manager.get_root_id(username);
     if not root_id {
         return {'error': 'User not found'};
@@ -283,7 +283,7 @@ impl ModuleIntrospector._extract_access_levels(self: ModuleIntrospector) -> None
         return;
     }
     import jaclang.pycore.unitree as uni;
-    import from jaclang.runtimelib.constructs { WalkerArchetype }
+    import from jaclang.pycore.constructs { WalkerArchetype }
     self._function_access = {};
     self._walker_access = {};
     mod_path = getattr(self._module, '__file__', None);
@@ -346,7 +346,7 @@ impl ModuleIntrospector._collect_functions(
 impl ModuleIntrospector._collect_walkers(
     self: ModuleIntrospector
 ) -> dict[str, type[WalkerArchetype]] {
-    import from jaclang.runtimelib.constructs { WalkerArchetype }
+    import from jaclang.pycore.constructs { WalkerArchetype }
     if not self._module {
         return {};
     }
