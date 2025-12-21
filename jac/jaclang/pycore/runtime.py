@@ -875,10 +875,10 @@ class JacBasics:
     @staticmethod
     def make_archetype(cls: type[Archetype]) -> type[Archetype]:
         """Create a obj archetype."""
-        entries: OrderedDict[str, JacRuntimeInterface.DSFunc] = OrderedDict(
+        entries: OrderedDict[str, ObjectSpatialFunction] = OrderedDict(
             (fn.name, fn) for fn in cls._jac_entry_funcs_
         )
-        exits: OrderedDict[str, JacRuntimeInterface.DSFunc] = OrderedDict(
+        exits: OrderedDict[str, ObjectSpatialFunction] = OrderedDict(
             (fn.name, fn) for fn in cls._jac_exit_funcs_
         )
         for func in cls.__dict__.values():

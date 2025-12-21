@@ -367,7 +367,7 @@ class Archetype:
         """Create default anchor."""
         return Anchor(archetype=self)
 
-    def __init_subclass__(cls, **kwargs: Any) -> None:
+    def __init_subclass__(cls, **kwargs: object) -> None:
         """Configure subclasses."""
         super().__init_subclass__(**kwargs)
         if not cls.__dict__.get("__jac_base__", False):

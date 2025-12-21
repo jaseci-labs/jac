@@ -6,7 +6,7 @@ import marshal
 import os
 import pdb
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import fields, is_dataclass
 from functools import lru_cache
 from traceback import TracebackException
@@ -484,6 +484,6 @@ def _describe_node(obj: object) -> str:
     return " — ".join(parts)
 
 
-def _describe_nodes_list(objects: list[object]) -> str:
+def _describe_nodes_list(objects: Sequence[object]) -> str:
     """One object per line, index-friendly for returning list[int]."""
     return "\n".join(f"{i}) {_describe_node(obj)}" for i, obj in enumerate(objects))
