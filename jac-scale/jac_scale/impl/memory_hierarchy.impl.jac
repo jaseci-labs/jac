@@ -195,7 +195,7 @@ Faster bulk commit:
 - Respect write and connect access
 """
 impl MongoDB.commit_bulk(anchors: Iterable[Anchor]) -> None {
-    import from jaclang.runtimelib.archetype { NodeAnchor }
+    import from jaclang.pycore.archetype { NodeAnchor }
     import from jaclang.pycore.runtime { JacRuntimeInterface as Jac }
     ops: list = [];
     for anc in anchors {
@@ -277,7 +277,7 @@ Save anchor to MongoDB, exactly like ShelfStorage:
 - Respect write and connect access
 """
 impl MongoDB.<>set(anchor: Anchor) -> None {
-    import from jaclang.runtimelib.archetype { NodeAnchor }
+    import from jaclang.pycore.archetype { NodeAnchor }
     import from jaclang.pycore.runtime { JacRuntimeInterface as Jac }
     _id = self._to_uuid(anchor.id);
     try {
