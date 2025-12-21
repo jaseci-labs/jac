@@ -12,7 +12,7 @@ import from jaclang.pycore.helpers {
 
 with entry {
     if TYPE_CHECKING {
-        import from jaclang.runtimelib.constructs { NodeArchetype }
+        import from jaclang.pycore.constructs { NodeArchetype }
     }
 }
 

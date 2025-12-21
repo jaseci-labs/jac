@@ -10,7 +10,7 @@ from shelve import open as shelf_open
 from typing import Any, Generic, TypeVar, cast
 from uuid import UUID
 
-from jaclang.runtimelib.archetype import TANCH, Anchor, NodeAnchor, Root
+from jaclang.pycore.archetype import TANCH, Anchor, NodeAnchor, Root
 
 ID = TypeVar("ID")
 
@@ -112,7 +112,7 @@ class ShelfStorage(Memory[UUID, Anchor]):
     def __init__(self, session: str | None = None) -> None:
         """Initialize memory handler."""
         super().__init__()
-        self.__shelf__ = shelf_open(session) if session else None
+        self.__shelf__ = shelf_open(session) if session else None  # noqa: SIM115
 
     def commit(self, anchor: Anchor | None = None) -> None:
         """Commit all data from memory to datasource."""

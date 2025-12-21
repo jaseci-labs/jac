@@ -7,7 +7,7 @@ import from typing { TYPE_CHECKING, Any, ClassVar, override }
 with entry {
     if TYPE_CHECKING {
         import from enum { IntEnum }
-        import from jaclang.runtimelib.constructs { AccessLevel, NodeArchetype }
+        import from jaclang.pycore.constructs { AccessLevel, NodeArchetype }
         import from jaclang { JacRuntimeInterface }
         jid: Callable[(..., Any)];
         jobj: Callable[(..., Any)];

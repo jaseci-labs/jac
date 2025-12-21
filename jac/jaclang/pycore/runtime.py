@@ -18,6 +18,7 @@ from functools import wraps
 from inspect import getfile
 from logging import getLogger
 from pathlib import Path
+from shelve import Shelf
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -30,17 +31,16 @@ from typing import (
 )
 from uuid import UUID
 
-from jaclang.pycore.constant import Constants as Con
-from jaclang.pycore.constant import EdgeDir, colors
-from jaclang.pycore.module_resolver import infer_language
-from jaclang.runtimelib.archetype import (
+from jaclang.pycore.archetype import (
     GenericEdge,
     ObjectSpatialDestination,
     ObjectSpatialFunction,
     ObjectSpatialPath,
     Root,
 )
-from jaclang.runtimelib.constructs import (
+from jaclang.pycore.constant import Constants as Con
+from jaclang.pycore.constant import EdgeDir, colors
+from jaclang.pycore.constructs import (
     AccessLevel,
     Anchor,
     Archetype,
@@ -51,13 +51,13 @@ from jaclang.runtimelib.constructs import (
     WalkerAnchor,
     WalkerArchetype,
 )
-from jaclang.runtimelib.memory import Memory, ShelfStorage
-from jaclang.runtimelib.mtp import MTIR, MTRuntime
+from jaclang.pycore.memory import Memory, ShelfStorage
+from jaclang.pycore.module_resolver import infer_language
+from jaclang.pycore.mtp import MTIR, MTRuntime
 from jaclang.vendor import pluggy
 
 if TYPE_CHECKING:
     from http.server import BaseHTTPRequestHandler
-    from shelve import Shelf
 
     from jaclang.pycore.program import JacProgram
     from jaclang.runtimelib.client_bundle import ClientBundle, ClientBundleBuilder
@@ -2055,10 +2055,10 @@ class JacRuntime(JacRuntimeInterface):
             "__main__",
             "__mp_main__",
             "builtins",
-            "jaclang.runtimelib.archetype",
-            "jaclang.runtimelib.constructs",
-            "jaclang.runtimelib.memory",
-            "jaclang.runtimelib.mtp",
+            "jaclang.pycore.archetype",
+            "jaclang.pycore.constructs",
+            "jaclang.pycore.memory",
+            "jaclang.pycore.mtp",
             "jaclang.runtimelib.test",
             "jaclang.compiler.passes.tool.doc_ir",
             # Keep language server + type-system modules stable across resets.

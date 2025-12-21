@@ -17,7 +17,7 @@ import from jaclang { JacRuntime as Jac }
 
 with entry {
     if TYPE_CHECKING {
-        import from jaclang.runtimelib.constructs { Archetype, WalkerArchetype }
+        import from jaclang.pycore.constructs { Archetype, WalkerArchetype }
     }
 }
 

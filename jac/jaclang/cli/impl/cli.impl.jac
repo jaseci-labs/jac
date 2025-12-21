@@ -478,7 +478,7 @@ impl enter(
 ) -> None {
     _ensure_jac_runtime();
     import from jaclang.pycore.runtime { JacRuntime as Jac }
-    import from jaclang.runtimelib.constructs { WalkerArchetype }
+    import from jaclang.pycore.constructs { WalkerArchetype }
     (base, mod, mach) = proc_file_sess(filename, session, <>root);
     if filename.endswith('.jac') {
         ret_module = Jac.jac_import(

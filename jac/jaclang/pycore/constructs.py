@@ -1,6 +1,6 @@
 """Core constructs for Jac Language - re-exports."""
 
-from jaclang.runtimelib.archetype import (
+from jaclang.pycore.archetype import (
     AccessLevel,
     Anchor,
     Archetype,
@@ -14,8 +14,8 @@ from jaclang.runtimelib.archetype import (
     WalkerAnchor,
     WalkerArchetype,
 )
-from jaclang.runtimelib.memory import Memory, ShelfStorage
-from jaclang.runtimelib.mtp import MTIR, MTRuntime
+from jaclang.pycore.memory import Memory, ShelfStorage
+from jaclang.pycore.mtp import MTIR, MTRuntime
 
 __all__ = [
     "AccessLevel",
