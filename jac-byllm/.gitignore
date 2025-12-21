@@ -1,6 +1,5 @@
 # Jaclang
 __jac_gen__/
-.jac_mypy_cache/
 temp*
 
 # Byte-compiled / optimized / DLL files

@@ -16,6 +16,11 @@ from jaclang.compiler.passes.main import (
     SymTabBuildPass,
     Transform,
 )
+from jaclang.pycore.bccache import (
+    BytecodeCache,
+    CacheKey,
+    get_bytecode_cache,
+)
 from jaclang.pycore.helpers import read_file_with_encoding
 from jaclang.pycore.jac_parser import JacParser
 from jaclang.pycore.tsparser import TypeScriptParser
@@ -121,13 +126,20 @@ class JacProgram:
     def __init__(
         self,
         main_mod: uni.ProgramModule | None = None,
+        bytecode_cache: BytecodeCache | None = None,
     ) -> None:
-        """Initialize the JacProgram object."""
+        """Initialize the JacProgram object.
+
+        Args:
+            main_mod: Optional main module to initialize with.
+            bytecode_cache: Optional custom bytecode cache. If None, uses default.
+        """
         self.mod: uni.ProgramModule = main_mod if main_mod else uni.ProgramModule()
         self.py_raise_map: dict[str, str] = {}
         self.errors_had: list[Alert] = []
         self.warnings_had: list[Alert] = []
         self.type_evaluator: TypeEvaluator | None = None
+        self._bytecode_cache: BytecodeCache = bytecode_cache or get_bytecode_cache()
 
     def get_type_evaluator(self) -> TypeEvaluator:
         """Return the type evaluator."""
@@ -166,16 +178,33 @@ class JacProgram:
     ) -> types.CodeType | None:
         """Get the bytecode for a specific module.
 
+        This method implements a three-tier caching strategy:
+        1. In-memory cache (mod.hub) - fastest, within current process
+        2. Disk cache (__jaccache__/) - persists across restarts
+        3. Full compilation - slowest, only when cache misses
+
         Args:
             full_target: The full path to the module file.
             minimal: If True, use minimal compilation (no JS/type analysis).
                      This avoids circular imports for bootstrap-critical modules.
         """
+        # Tier 1: Check in-memory cache (mod.hub)
         if full_target in self.mod.hub and self.mod.hub[full_target].gen.py_bytecode:
             codeobj = self.mod.hub[full_target].gen.py_bytecode
             return marshal.loads(codeobj) if isinstance(codeobj, bytes) else None
+
+        # Tier 2: Check disk cache (__jaccache__/)
+        cache_key = CacheKey.for_source(full_target, minimal)
+        cached_code = self._bytecode_cache.get(cache_key)
+        if cached_code is not None:
+            return cached_code
+
+        # Tier 3: Compile and cache bytecode
         result = self.compile(file_path=full_target, minimal=minimal)
-        return marshal.loads(result.gen.py_bytecode) if result.gen.py_bytecode else None
+        if result.gen.py_bytecode:
+            self._bytecode_cache.put(cache_key, result.gen.py_bytecode)
+            return marshal.loads(result.gen.py_bytecode)
+        return None
 
     def parse_str(
         self, source_str: str, file_path: str, cancel_token: Event | None = None

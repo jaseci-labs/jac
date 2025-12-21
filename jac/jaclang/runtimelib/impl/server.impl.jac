@@ -256,6 +256,10 @@ impl ModuleIntrospector._load_manifest -> None {
     mod_path = getattr(self._module, '__file__', None);
     if mod_path {
         mod = Jac.program.mod.hub.get(mod_path);
+        # If module not in hub, compile it to get the manifest
+        if not mod {
+            mod = Jac.program.compile(mod_path);
+        }
         if (mod and mod.gen.client_manifest) {
             manifest = mod.gen.client_manifest;
             self._client_manifest = {
@@ -285,6 +289,10 @@ impl ModuleIntrospector._extract_access_levels -> None {
         return;
     }
     mod_ast = Jac.program.mod.hub.get(mod_path);
+    # If module not in hub, compile it to get the AST
+    if not mod_ast {
+        mod_ast = Jac.program.compile(mod_path);
+    }
     if not mod_ast {
         return;
     }

@@ -20,7 +20,11 @@ impl ClientBundleBuilder.build(
     module_path = module.__file__.replace('.py', '.jac');
     source_path = Path(module_path).resolve();
     import from jaclang { JacRuntime as Jac }
+    # Ensure module is compiled so we have the manifest for cache signature
     mod = Jac.program.mod.hub.get(str(source_path));
+    if not mod {
+        (_, mod) = self._compile_to_js(source_path);
+    }
     manifest = mod.gen.client_manifest if mod else None;
     bundle_paths = [source_path];
     if (manifest and manifest.imports) {
@@ -158,12 +162,12 @@ impl ClientBundleBuilder._compile_bundle(
     self: ClientBundleBuilder, module: ModuleType, module_path: Path
 ) -> ClientBundle {
     import from jaclang { JacRuntime as Jac }
-    mod = Jac.program.mod.hub.get(str(module_path));
-    manifest = mod.gen.client_manifest if mod else None;
+    # First compile to ensure module is in hub and get JS code + manifest
+    (module_js, compiled_mod) = self._compile_to_js(module_path);
+    manifest = compiled_mod.gen.client_manifest if compiled_mod else None;
     (import_pieces, bundled_module_names) = self._process_imports(
         manifest, module_path
     );
-    (module_js, _) = self._compile_to_js(module_path);
     module_js = self._strip_import_statements(module_js, bundled_module_names);
     client_exports = self._extract_client_exports(manifest);
     client_globals_map = self._extract_client_globals(manifest, module);

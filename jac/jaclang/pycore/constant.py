@@ -93,7 +93,6 @@ class Constants(StrEnum):
     ROOT = "root"
     VISITOR = "visitor"
     JAC_CHECK = "_check"
-    JAC_MYPY_CACHE = ".jac_mypy_cache"
     SUPER_ROOT_UUID = "00000000-0000-0000-0000-000000000000"
 
     def __str__(self) -> str:

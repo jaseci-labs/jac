@@ -53,7 +53,6 @@ demo.jac
 
 # Mypy files #
 .mypy_cache*
-.jac_mypy_cache*
 
 
 # Jaclang session files
