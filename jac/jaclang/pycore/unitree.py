@@ -36,7 +36,7 @@ from jaclang.pycore.constant import (
     JacSemTokenType as SemTokType,
 )
 from jaclang.pycore.constant import Tokens as Tok
-from jaclang.pycore.module_resolver import resolve_relative_path
+from jaclang.pycore.modresolver import resolve_relative_path
 
 if TYPE_CHECKING:
     from jaclang.compiler.type_system.types import TypeBase

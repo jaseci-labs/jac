@@ -31,7 +31,7 @@ import from jaclang.pycore.constant { SymbolType }
 import from jaclang.pycore.constant { Tokens as Tok }
 import from jaclang.pycore.passes.ast_gen { BaseAstGenPass }
 import from jaclang.pycore.passes.ast_gen.jsx_processor { EsJsxProcessor }
-import from jaclang.pycore.module_resolver {
+import from jaclang.pycore.modresolver {
     convert_to_js_import_path,
     resolve_relative_path
 }

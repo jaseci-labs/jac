@@ -6,7 +6,7 @@ import from dataclasses { dataclass }
 import from pathlib { Path }
 import from types { ModuleType }
 import from typing { TYPE_CHECKING, Any, NamedTuple }
-import from jaclang.pycore.module_resolver { convert_to_js_import_path }
+import from jaclang.pycore.modresolver { convert_to_js_import_path }
 
 with entry {
     if TYPE_CHECKING {

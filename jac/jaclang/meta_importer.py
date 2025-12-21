@@ -16,7 +16,7 @@ from collections.abc import Sequence
 from types import ModuleType
 
 from jaclang.pycore.log import logging
-from jaclang.pycore.module_resolver import (
+from jaclang.pycore.modresolver import (
     get_jac_search_paths,
 )
 

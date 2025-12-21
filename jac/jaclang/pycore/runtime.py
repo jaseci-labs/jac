@@ -52,7 +52,7 @@ from jaclang.pycore.constructs import (
     WalkerArchetype,
 )
 from jaclang.pycore.memory import Memory, ShelfStorage
-from jaclang.pycore.module_resolver import infer_language
+from jaclang.pycore.modresolver import infer_language
 from jaclang.pycore.mtp import MTIR, MTRuntime
 from jaclang.vendor import pluggy
 
