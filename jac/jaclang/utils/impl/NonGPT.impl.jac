@@ -317,7 +317,7 @@ impl _choose_from(seq: Any) -> Any {
 
 """Unwrap NewType to get the underlying type."""
 impl _unwrap_newtype(tp: Any) -> Any {
-    if hasattr(tp, '__supertype__') {
+    if tp?.__supertype__ {
         return tp.__supertype__;
     }
     return tp;
@@ -355,18 +355,14 @@ impl _is_namedtuple(tp: Any) -> bool {
     return (
         isinstance(tp, type)
         and issubclass(tp, tuple)
-        and hasattr(tp, '_fields')
-        and hasattr(tp, '__annotations__')
+        and tp?._fields
+        and tp?.__annotations__
     );
 }
 
 """Check if type is a TypedDict."""
 impl _is_typed_dict(tp: Any) -> bool {
-    return (
-        isinstance(tp, type)
-        and hasattr(tp, '__annotations__')
-        and hasattr(tp, '__required_keys__')
-    );
+    return (isinstance(tp, type) and tp?.__annotations__ and tp?.__required_keys__);
 }
 
 """Generate a random string of given length."""

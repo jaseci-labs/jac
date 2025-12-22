@@ -61,7 +61,7 @@ impl CommandRegistry._bind_command_to_argparse(
     first = True;
     for (param_name, param) in cmd.sig.parameters.items() {
         type_name = param.annotation.__name__
-        if hasattr(param.annotation, '__name__')
+        if param.annotation?.__name__
         else str(param.annotation);
         docstring_param_descriptions = extract_param_descriptions(doc);
         if (param_name in docstring_param_descriptions) {
