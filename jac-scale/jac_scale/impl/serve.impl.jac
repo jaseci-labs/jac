@@ -636,8 +636,8 @@ impl JacAPIServer.init(
         allow_headers=['*']
     );
     self.SUPPORTED_PLATFORMS: dict = {};
-    # Load SSO config from jac.toml (already includes env var overrides)
-    sso_config = _sso_config;
+    # Load SSO config fresh (not from cached global) to support env var overrides at runtime
+    sso_config = get_scale_config().get_sso_config();
     for platform in Platforms {
         key = platform.lower();
         platform_config = sso_config.get(key, {});
