@@ -2,8 +2,8 @@
 
 # ===== Node and Edge Definitions =====
 node Person {
-    has name: str;
-    has age: int = 0;
+    has name: str,
+        age: int = 0;
 }
 
 node City {

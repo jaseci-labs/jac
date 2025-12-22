@@ -13,12 +13,13 @@ edge Family {
     }
 }
 
+# Susan has a friend connection to John's
+glob p1 = Person(name="John"),
+     p2 = Person(name="Susan"),
+     p3 = Person(name="Mike"),
+     p4 = Person(name="Alice");
+
 with entry {
-    # Susan has a friend connection to John's
-    p1 = Person(name="John");
-    p2 = Person(name="Susan");
-    p3 = Person(name="Mike");
-    p4 = Person(name="Alice");
     root ++> p1;
     p1 +>: Friend :+> p2;
     p2 +>: Family :+> [p1, p3];
@@ -45,7 +46,8 @@ walker FriendFinder {
     }
 }
 
+glob result = FriendFinder() spawn root;
+
 with entry {
-    result = FriendFinder() spawn root;
     print(result);
 }

@@ -16,8 +16,8 @@ class ClassicAnimal {
 
 # Object archetype with has declarations (implicit self in methods)
 obj Animal {
-    has species: str = "Unknown";
-    has age: int = 0;
+    has species: str = "Unknown",
+        age: int = 0;
 
     def make_sound {
         print(f"{self.species} makes a sound");
@@ -26,8 +26,8 @@ obj Animal {
 
 # Object archetype (implicit self in methods)
 obj Domesticated {
-    has owner: str = "None";
-    has trained: bool = False;
+    has owner: str = "None",
+        trained: bool = False;
 
     def train {  # No self parameter - it's implicit in obj
         self.trained = True;
@@ -41,8 +41,8 @@ obj Mammal {
 
 # Node with multiple inheritance
 node Pet(Animal , Domesticated , Mammal) {
-    has name: str = "Unnamed";
-    has favorite_toy: str = "ball";
+    has name: str = "Unnamed",
+        favorite_toy: str = "ball";
 
     def play {
         print(f"{self.name} plays with {self.favorite_toy}");
@@ -55,8 +55,8 @@ node Pet(Animal , Domesticated , Mammal) {
 
 # Edge with public access modifier and method
 edge : pub Relationship {
-    has strength: int = 5;
-    has since: int = 2020;
+    has strength: int = 5,
+        since: int = 2020;
 
     def strengthen {
         self.strength += 1;
@@ -76,8 +76,8 @@ edge Ownership {
 
 # Walker with inheritance chain (Person -> Caretaker -> Veterinarian)
 walker Person(Animal) {
-    has name: str = "Person";
-    has visited_count: int = 0;
+    has name: str = "Person",
+        visited_count: int = 0;
 
     can greet with `root entry {
         print(f"{self.name}: Starting walk from root");
@@ -145,8 +145,8 @@ edge SpecialEdge;
 
 # Implementation blocks for forward declarations
 impl AnimalNode{
-    has animal_type: str = "wild";
-    has habitat: str = "forest";
+    has animal_type: str = "wild",
+        habitat: str = "forest";
     def describe {
         print(f"AnimalNode: {self.animal_type} in {self.habitat}");
     }
@@ -202,15 +202,27 @@ with entry {
     print("=== 1. Basic Archetypes ===");
 
     print("\n--- Class with Init Constructor (Python-style explicit self) ---");
-    classic = ClassicAnimal("Cat", 3, "Whiskers");
+}
+
+glob classic = ClassicAnimal("Cat", 3, "Whiskers");
+
+with entry {
     classic.describe();
-    classic2 = ClassicAnimal("Bird", 1);
+}
+
+glob classic2 = ClassicAnimal("Bird", 1);
+
+with entry {
     classic2.describe();
 
     print("\n--- Object with Has Declarations (implicit self) ---");
-    # Demonstrate that obj has variables are instance variables (not class variables)
-    animal1 = Animal();
-    animal2 = Animal();
+}
+
+# Demonstrate that obj has variables are instance variables (not class variables)
+glob animal1 = Animal(),
+     animal2 = Animal();
+
+with entry {
     print(
         f"Before assignment - animal1.species: {animal1.species}, animal2.species: {animal2.species}"
     );
@@ -222,14 +234,21 @@ with entry {
     );
     print("Note: Each obj instance has its own copy of the variable");
     animal1.make_sound();
+}
 
-    dom = Domesticated();
+glob dom = Domesticated();
+
+with entry {
     dom.owner = "Alice";
     dom.trained = True;
     print(f"Owner: {dom.owner}, Trained: {dom.trained}");
 
     print("\n=== 2. Multiple Inheritance ===");
-    pet1 = Pet();
+}
+
+glob pet1 = Pet();
+
+with entry {
     pet1.name = "Buddy";
     pet1.species = "Dog";
     pet1.owner = "Bob";
@@ -238,32 +257,54 @@ with entry {
     print(f"Warm blooded: {pet1.warm_blooded}");
 
     print("\n=== 3. Edge Methods ===");
-    rel = Relationship();
+}
+
+glob rel = Relationship();
+
+with entry {
     rel.strength = 8;
     rel.strengthen();
 
     print("\n=== 4. Walker Inheritance ===");
-    pet2 = Pet();
+}
+
+glob pet2 = Pet();
+
+with entry {
     pet2.name = "Max";
     pet2.species = "Cat";
     root ++> pet1 ++> pet2;
+}
 
-    person = Person();
+glob person = Person();
+
+with entry {
     person.name = "Alice";
     person.species = "Human";
     root spawn person;
     print(f"Alice visited {person.visited_count} pets");
+}
 
-    vet = Veterinarian();
+glob vet = Veterinarian();
+
+with entry {
     vet.name = "Dr.Smith";
     vet.specialty = "canine";
     vet.species = "Human";
     root spawn vet;
 
     print("\n=== 5. Edge Abilities ===");
-    owner = Pet();
+}
+
+glob owner = Pet();
+
+with entry {
     owner.name = "Owner";
-    owned = Pet();
+}
+
+glob owned = Pet();
+
+with entry {
     owned.name = "Owned";
     root ++> owner +>: Ownership(duration_years=3) :+> owned;
     root spawn OwnershipWalker();
@@ -274,18 +315,30 @@ with entry {
     );
 
     print("\n=== 7. Forward Declarations ===");
-    animal_node = AnimalNode();
+}
+
+glob animal_node = AnimalNode();
+
+with entry {
     animal_node.animal_type = "lion";
     animal_node.describe();
     print(f"Edge weight: {SpecialEdge().get_weight()}");
 
     root ++> animal_node;
-    spec = SpecializedWalker();
+}
+
+glob spec = SpecializedWalker();
+
+with entry {
     spec.specialization = "wildlife";
     animal_node spawn spec;
 
     print("\n=== 8. Decorators ===");
-    decorated = DecoratedNode();
+}
+
+glob decorated = DecoratedNode();
+
+with entry {
     decorated.name = "Deco";
     print(f"Decorated: {decorated.special_attr}");
 

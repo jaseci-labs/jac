@@ -47,7 +47,6 @@ node level {
     can exit_game with game exit;
 }
 
-'''Run the game'''
 with entry {
     root spawn game();
 }

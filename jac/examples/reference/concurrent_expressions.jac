@@ -15,18 +15,22 @@ def slow_task(n: int) -> int {
     return n * 2;
 }
 
+# Flow - start concurrent execution (returns future/task)
+glob task1 = flow compute(
+         5, 10
+     ) ,
+     task2 = flow compute(3, 7) ,
+     task3 = flow slow_task(42) ;
+
 with entry {
-    # Flow - start concurrent execution (returns future/task)
-    task1 = flow compute(5, 10) ;
-    task2 = flow compute(3, 7) ;
-    task3 = flow slow_task(42) ;
-
     print("All tasks started concurrently");
+}
 
-    # Wait - wait for task completion and get result
-    result1 = wait task1 ;
-    result2 = wait task2 ;
-    result3 = wait task3 ;
+# Wait - wait for task completion and get result
+glob result1 = wait task1 ,
+     result2 = wait task2 ,
+     result3 = wait task3 ;
 
+with entry {
     print(f"Results: {result1}, {result2}, {result3}");
 }

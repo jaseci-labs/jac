@@ -64,8 +64,8 @@ walker RootWalker {
 # In 'class', methods require explicit self with type annotation: def init(self: MyClass, ...)
 # This example uses 'obj' with implicit self.
 obj Configured {
-    has value: int;
-    has doubled: int = 0;
+    has value: int,
+        doubled: int = 0;
 
     def init(value: int) {
         self.value = value;
@@ -77,27 +77,37 @@ obj Configured {
     }
 }
 
+# Test self
+glob c = Counter();
+
 with entry {
-    # Test self
-    c = Counter();
     c.increment();
     c.increment();
+}
 
-    # Test super
-    d = Dog();
+# Test super
+glob d = Dog();
+
+with entry {
     d.speak();
+}
 
-    # Test here and visitor
-    task = Task(name="test");
-    inter = Interactive();
+# Test here and visitor
+glob task = Task(name="test"),
+     inter = Interactive();
+
+with entry {
     root ++> task;
     task ++> inter;
     root spawn TaskWalker();
 
     # Test root
     root spawn RootWalker();
+}
 
-    # Test init/postinit
-    cfg = Configured(value=10);
+# Test init/postinit
+glob cfg = Configured(value=10);
+
+with entry {
     print(f"value={cfg.value}, doubled={cfg.doubled}");
 }

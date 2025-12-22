@@ -1,6 +1,7 @@
 # For Statements
+
+# Basic for-in loop
 with entry {
-    # Basic for-in loop
     for x in [1, 2, 3] {
         print(x);
     }
@@ -61,9 +62,12 @@ with entry {
     for char in "abc" {
         print(char);
     }
+}
 
-    # For-in over dictionary keys
-    d = {"a": 1, "b": 2};
+# For-in over dictionary keys
+glob d = {"a": 1, "b": 2};
+
+with entry {
     for key in d {
         print(key);
     }

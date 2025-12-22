@@ -27,10 +27,10 @@ import from byllm.types {
 import from byllm.config_loader { get_byllm_config }
 
 # Load configuration purely from jac.toml
-glob _byllm_config = get_byllm_config();
-glob _litellm_config = _byllm_config.get_litellm_config();
-glob _model_config = _byllm_config.get_model_config();
-glob _call_params_config = _byllm_config.get_call_params_config();
+glob _byllm_config = get_byllm_config(),
+     _litellm_config = _byllm_config.get_litellm_config(),
+     _model_config = _byllm_config.get_model_config(),
+     _call_params_config = _byllm_config.get_call_params_config();
 
 # Configure LiteLLM based on jac.toml settings
 # Note: LiteLLM reads this env var directly, so we set it based on config

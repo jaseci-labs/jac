@@ -13,8 +13,8 @@ import from jaclang.pycore.memory { Memory }
 import from jac_scale.config_loader { get_scale_config }
 
 # Load database configuration from jac.toml with env var overrides
-glob _db_config = get_scale_config().get_database_config();
-glob ID = TypeVar('ID');
+glob _db_config = get_scale_config().get_database_config(),
+     ID = TypeVar('ID');
 
 obj MultiHierarchyMemory(Memory[(UUID, Anchor)]) {
     def init -> None;

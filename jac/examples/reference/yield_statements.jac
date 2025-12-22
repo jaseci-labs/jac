@@ -40,8 +40,8 @@ def yield_with_expression {
     yield x + 5;
 }
 
+# Basic yield
 with entry {
-    # Basic yield
     print("simple_generator:");
     for val in simple_generator() {
         print(val);

@@ -27,7 +27,8 @@ walker Reporter {
     }
 }
 
+glob w = Reporter();
+
 with entry {
-    w = Reporter();
     root spawn w;
 }

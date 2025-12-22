@@ -25,9 +25,8 @@ import from jac_scale.config_loader { get_scale_config }
 
 # Load configuration from jac.toml with env var overrides
 glob _jwt_config = get_scale_config().get_jwt_config(),
-     _sso_config = get_scale_config().get_sso_config();
-
-glob JWT_SECRET = _jwt_config['secret'],
+     _sso_config = get_scale_config().get_sso_config(),
+     JWT_SECRET = _jwt_config['secret'],
      JWT_ALGORITHM = _jwt_config['algorithm'],
      JWT_EXP_DELTA_DAYS = _jwt_config['exp_delta_days'],
      SSO_HOST = _sso_config['host'];
@@ -37,8 +36,8 @@ class Platforms(StrEnum) {
 }
 
 class Operations(StrEnum) {
-    has LOGIN: str = 'login';
-    has REGISTER: str = 'register';
+    has LOGIN: str = 'login',
+        REGISTER: str = 'register';
 }
 
 class JacAPIServer(JServer) {

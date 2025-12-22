@@ -42,13 +42,10 @@ impl travelor.say_hello{
 def myablty -> int { }  # define a data spacial freestyle ability
 
 
-def myfunc()  -> None { }  # define a function
+def myfunc -> None { }  # define a function
 
 
-with entry {
-    # module level freestyle code
-}
-
+# module level freestyle code
 """A test of my functionality"""
 test mytest {
     # test code here

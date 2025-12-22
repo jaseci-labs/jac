@@ -2,11 +2,11 @@
 
 glob age = 25,
      temperature = 98.6,
-     name = "John Doe";
-glob fruits = ["apple", "banana", "orange"];
-glob person = {"name": "Alice", "age": 30, "city": "New York"};
+     name = "John Doe",
+     fruits = ["apple", "banana", "orange"],
+     person = {"name": "Alice", "age": 30, "city": "New York"};
 
-def print_globs()  -> None {
+def print_globs -> None {
     global fruits,age;
     age = 30;
     fruits = ["pear", "grape", "kiwi"];

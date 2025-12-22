@@ -34,8 +34,8 @@ def conditional_raise(value: int) {
     }
 }
 
+# Basic raise
 with entry {
-    # Basic raise
     try {
         raise_exception();
     } except ValueError as e {

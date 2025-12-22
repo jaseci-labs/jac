@@ -27,26 +27,27 @@ obj ShellCmd(cmd.Cmd) {
     def do_quit(arg: str) -> bool;
 }
 
+glob interface = Interface();
+@interface.register
+def function_one(a: int, b: str, c: bool = False) {
+    print(f"Function One -> a: {a}, b: {b}, c: {c}");
+}
+
+@interface.register
+def function_two(x: float, y: float) {
+    print(f"Function Two -> x: {x}, y: {y}");
+}
+
+@interface.register
+def function_three(name: str, age: int, country: str = 'Unknown') {
+    print(f"Function Three -> name: {name}, age: {age}, country: {country}");
+}
+# Run CLI or Shell mode
+# interface.run_from_cli()
 with entry {
-    interface = Interface();
-    @interface.register
-    def function_one(a: int, b: str, c: bool = False) {
-        print(f"Function One -> a: {a}, b: {b}, c: {c}");
-    }
-
-    @interface.register
-    def function_two(x: float, y: float) {
-        print(f"Function Two -> x: {x}, y: {y}");
-    }
-
-    @interface.register
-    def function_three(name: str, age: int, country: str = 'Unknown') {
-        print(f"Function Three -> name: {name}, age: {age}, country: {country}");
-    }
-    # Run CLI or Shell mode
-    # interface.run_from_cli()
     interface.run_shell();
 }
+
 #***Implementation***#
 impl Interface.register(func: callable) -> callable {
     self.functions.append(func);

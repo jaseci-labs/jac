@@ -125,8 +125,8 @@ walker BasicDisengage {
 
 # Disengage based on walker state
 walker ConditionalDisengage {
-    has max_visits: int = 2;
-    has visit_count: int = 0;
+    has max_visits: int = 2,
+        visit_count: int = 0;
 
     can start with `root entry {
         print("ConditionalDisengage: starting");
@@ -150,8 +150,8 @@ walker ConditionalDisengage {
 
 # Search for target and disengage when found
 walker SearchWalker {
-    has target_name: str;
-    has found: bool = False;
+    has target_name: str,
+        found: bool = False;
 
     can search with `root entry {
         print(f"SearchWalker: searching for {self.target_name}");
@@ -216,9 +216,9 @@ walker ImmediateStop {
 
 # Complex traversal with both visit and disengage
 walker ComplexTraversal {
-    has depth: int = 0;
-    has max_depth: int = 2;
-    has nodes_visited: list[str] = [];
+    has depth: int = 0,
+        max_depth: int = 2,
+        nodes_visited: list[str] = [];
 
     can start with `root entry {
         print("ComplexTraversal: starting from root");
@@ -244,15 +244,16 @@ walker ComplexTraversal {
 # ========================================
 # GRAPH SETUP AND WALKER EXECUTION
 # ========================================
-with entry {
-    # Build graph structure
-    alice = Person(name="Alice");
-    bob = Person(name="Bob");
-    charlie = Person(name="Charlie");
-    diana = Person(name="Diana");
-    eve = Person(name="Eve");
 
-    # Create graph connections
+# Build graph structure
+glob alice = Person(name="Alice"),
+     bob = Person(name="Bob"),
+     charlie = Person(name="Charlie"),
+     diana = Person(name="Diana"),
+     eve = Person(name="Eve");
+
+# Create graph connections
+with entry {
     root ++> alice;
     alice ++> bob;
     alice ++> charlie;
@@ -286,7 +287,11 @@ with entry {
     root spawn ConditionalDisengage();
 
     print("\n=== Search Walker ===");
-    w = root spawn SearchWalker(target_name="Charlie");
+}
+
+glob w = root spawn SearchWalker(target_name="Charlie");
+
+with entry {
     print(f"Found: {w.found}");
 
     print("\n=== Multi Visit ===");
@@ -296,6 +301,10 @@ with entry {
     root spawn ImmediateStop();
 
     print("\n=== Complex Traversal ===");
-    ct = root spawn ComplexTraversal();
+}
+
+glob ct = root spawn ComplexTraversal();
+
+with entry {
     print(f"Nodes visited: {ct.nodes_visited}");
 }

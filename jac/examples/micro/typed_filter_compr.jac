@@ -6,8 +6,9 @@ node MyObj2 {
     has a: int;
 }
 
+glob my_list = [];
+
 with entry {
-    my_list = [];
     for i = 0 to i < 10 by i += 1 {
         my_list.append(MyObj(a=i));
         my_list.append(MyObj2(a=i + 2));

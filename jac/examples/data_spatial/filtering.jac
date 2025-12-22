@@ -16,10 +16,11 @@ edge b {}
 
 edge c {}
 
+glob Start = A(5),
+     Intermediate = B(10),
+     End = C(25);
+
 with entry {
-    Start = A(5);
-    Intermediate = B(10);
-    End = C(25);
     root +>: a :+> Start;
     Start +>: b :+> Intermediate +>: c :+> C(15);
     Start +>: b :+> A(20) +>: a :+> End;

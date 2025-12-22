@@ -18,7 +18,7 @@ import from jaclang.project.config { JacConfig }
 class JacClientPluginConfig {
     """Return plugin metadata."""
     @hookimpl
-    static def get_plugin_metadata()  -> dict[str, Any] {
+    static def get_plugin_metadata -> dict[str, Any] {
         return {
             "name": "client",
             "version": "1.0.0",
@@ -28,7 +28,7 @@ class JacClientPluginConfig {
 
     """Return the plugin's configuration schema for [plugins.client]."""
     @hookimpl
-    static def get_config_schema()  -> dict[str, Any] {
+    static def get_config_schema -> dict[str, Any] {
         return {
             "section": "client",
             "options": {
@@ -75,7 +75,7 @@ class JacClientPluginConfig {
 
     """Register npm as a dependency type for [dependencies.npm]."""
     @hookimpl
-    static def register_dependency_type()  -> dict[str, Any] {
+    static def register_dependency_type -> dict[str, Any] {
         return {
             "name": "npm",
             "dev_name": "npm.dev",

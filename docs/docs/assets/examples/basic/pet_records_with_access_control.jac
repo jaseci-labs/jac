@@ -1,16 +1,15 @@
 obj PetRecord {
-    # Public - anyone can access
-    has : pub name: str;
-    has : pub species: str;
+    has : pub name: str,
+        species: str;
     # Private - only this class
-    has : priv owner_contact: str;
-    has : priv microchip_id: str;
+    has : priv owner_contact: str,
+        microchip_id: str;
     # Protected - only this class and subclasses
-    has : protect medical_history: list[str] = [];
-    has : protect last_checkup: str = "";
+    has : protect medical_history: list[str] = [],
+        last_checkup: str = "";
 
     # Public method
-    def : pub get_basic_info()  -> str {
+    def : pub get_basic_info -> str {
         return f"{self.name} is a {self.species}";
     }
 
@@ -43,38 +42,46 @@ obj VetRecord(PetRecord) {
         self.vet_notes = note;
     }
 
-    def : pub get_medical_summary()  -> str {
+    def : pub get_medical_summary -> str {
         # Can access protected data
         record_count = len(self.medical_history);
         return f"{self.name} has {record_count} medical records";
     }
 }
 
-with entry {
-    # Create a pet record
-    pet = PetRecord(
-        name="Fluffy",
-        species="cat",
-        owner_contact="owner@example.com",
-        microchip_id="123456789"
-    );
+# Create a pet record
+glob pet = PetRecord(
+         name="Fluffy",
+         species="cat",
+         owner_contact="owner@example.com",
+         microchip_id="123456789"
+     );
 
-    # Public access works
+# Public access works
+with entry {
     print(pet.get_basic_info());
     print(f"Pet name: {pet.name}");
+}
 
-    # Update contact through public method
-    success = pet.update_owner_contact("new_owner@example.com");
+# Update contact through public method
+glob success = pet.update_owner_contact(
+         "new_owner@example.com"
+     );
+
+with entry {
     print(f"Contact updated: {success}");
+}
 
-    # Vet record with access to protected methods
-    vet_record = VetRecord(
-        name="Rex",
-        species="dog",
-        owner_contact="owner2@example.com",
-        microchip_id="987654321"
-    );
+# Vet record with access to protected methods
+glob vet_record = VetRecord(
+         name="Rex",
+         species="dog",
+         owner_contact="owner2@example.com",
+         microchip_id="987654321"
+     );
 
+with entry {
     vet_record.add_vet_note("Annual checkup - healthy");
     print(vet_record.get_medical_summary());
 }
+# Public - anyone can access

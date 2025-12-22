@@ -1,6 +1,7 @@
 # Bitwise Expressions
+
+# Bitwise OR
 with entry {
-    # Bitwise OR
     print(5 | 3);
     print(12 | 7);
 
@@ -32,8 +33,11 @@ with entry {
     # Chained operations
     print(15 & 7 | 8);
     print(5 << 1 >> 1);
+}
 
-    # Complex expression
-    result = (12 | 5) & (7 ^ 3);
+# Complex expression
+glob result = (12 | 5) & (7 ^ 3);
+
+with entry {
     print(result);
 }

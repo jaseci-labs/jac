@@ -13,7 +13,7 @@ import from jaclang.pycore.runtime { hookimpl }
 class JacScalePluginConfig {
     """Return plugin metadata."""
     @hookimpl
-    static def get_plugin_metadata()  -> dict[str, Any] {
+    static def get_plugin_metadata -> dict[str, Any] {
         return {
             "name": "scale",
             "version": "0.1.0",
@@ -23,7 +23,7 @@ class JacScalePluginConfig {
 
     """Return the plugin's configuration schema for [plugins.scale]."""
     @hookimpl
-    static def get_config_schema()  -> dict[str, Any] {
+    static def get_config_schema -> dict[str, Any] {
         return {
             "section": "scale",
             "options": {

@@ -45,6 +45,7 @@ repos:
         entry: env PYTHONPATH=jac python -m jaclang format
         language: system
         types: [file]
+        args: [--fix]
         files: \.jac$
         require_serial: true
         exclude: (/fixtures/|_err\.jac$|_syntax_err\.jac$|jac-client/jac_client/examples/)

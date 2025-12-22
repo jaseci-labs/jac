@@ -31,4 +31,4 @@ glob _scale_config_instance: (JacScaleConfig | None) = None;
 def get_scale_config(project_dir: (Path | None) = None) -> JacScaleConfig;
 
 """Reset the global config instance (useful for testing)."""
-def reset_scale_config()  -> None;
+def reset_scale_config -> None;

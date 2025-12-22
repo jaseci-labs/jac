@@ -8,8 +8,9 @@ edge b {}
 
 edge c {}
 
+glob Start = MyNode(5);
+
 with entry {
-    Start = MyNode(5);
     root +>: a :+> Start;
     Start +>: b :+> MyNode(10) +>: c :+> MyNode(15);
     Start +>: b :+> MyNode(20) +>: a :+> MyNode(25);

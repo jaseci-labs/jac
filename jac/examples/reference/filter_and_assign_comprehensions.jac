@@ -161,37 +161,50 @@ walker ComprehensionDemo {
 # ===== Additional Comprehension Patterns =====
 with entry {
     print("=== 12. Filter Comprehension Comparison Operators ===");
-    nums = [TestObj(x=i) for i in range(10)];
+}
 
-    equal_five = nums(?x==5);
-    not_five = nums(?x!=5);
-    greater = nums(?x>5);
-    greater_eq = nums(?x>=5);
-    less = nums(?x<5);
-    less_eq = nums(?x<=5);
+glob nums = [TestObj(x=i) for i in range(10)],
+     equal_five = nums(?x==5),
+     not_five = nums(?x!=5),
+     greater = nums(?x>5),
+     greater_eq = nums(?x>=5),
+     less = nums(?x<5),
+     less_eq = nums(?x<=5);
 
+with entry {
     print(f"x==5: {len(equal_five)}, x!=5: {len(not_five)}");
     print(f"x>5: {len(greater)}, x>=5: {len(greater_eq)}");
     print(f"x<5: {len(less)}, x<=5: {len(less_eq)}");
 
     print("\n=== 13. Assign with Multiple Attributes ===");
-    people = [Person(name=f"Person{i}") for i in range(5)];
+}
+
+glob people = [Person(name=f"Person{i}") for i in range(5)];
+
+with entry {
     people(=age=25,score=100);
     print(f"Assigned age=25, score=100 to {len(people)} people");
     print(f"First person: age={people[0].age}, score={people[0].score}");
 
     print("\n=== 14. Empty Collection Handling ===");
-    empty = [];
-    filtered_empty = empty(?x>5);
-    assigned_empty = empty(=x=10);
+}
+
+glob empty = [],
+     filtered_empty = empty(?x>5),
+     assigned_empty = empty(=x=10);
+
+with entry {
     print(f"Filter on empty: {len(filtered_empty)}");
     print(f"Assign on empty: {len(assigned_empty)}");
 
     print("\n=== 15. Comprehension Return Values ===");
-    original = [TestObj(x=i) for i in range(3)];
-    filtered = original(?x>0);
-    assigned = original(=y=50);
+}
 
+glob original = [TestObj(x=i) for i in range(3)],
+     filtered = original(?x>0),
+     assigned = original(=y=50);
+
+with entry {
     print(f"Original list: {len(original)} items");
     print(f"Filtered returns: {len(filtered)} items (new list)");
     print(f"Assigned returns: {len(assigned)} items (same list, modified)");

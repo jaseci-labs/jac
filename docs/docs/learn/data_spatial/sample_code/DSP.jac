@@ -55,6 +55,4 @@ walker test_walker {
     }
 }
 
-with entry {
-    wlk_obj = root spawn test_walker(walker_id=381);  # print(wlk_obj);
-}
+glob wlk_obj = root spawn test_walker(walker_id=381);  # print(wlk_obj);

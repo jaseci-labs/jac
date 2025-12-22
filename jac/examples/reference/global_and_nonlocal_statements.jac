@@ -1,6 +1,6 @@
 # Global and Nonlocal Statements
-glob x = "global x";
-glob a = 1,
+glob x = "global x",
+     a = 1,
      b = 2;
 
 def test_global {

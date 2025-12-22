@@ -29,4 +29,4 @@ glob _byllm_config_instance: (JacByllmConfig | None) = None;
 def get_byllm_config(project_dir: (Path | None) = None) -> JacByllmConfig;
 
 """Reset the global config instance (useful for testing)."""
-def reset_byllm_config()  -> None;
+def reset_byllm_config -> None;
