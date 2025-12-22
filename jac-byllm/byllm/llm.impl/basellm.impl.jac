@@ -157,7 +157,7 @@ impl BaseLLM.dispatch_streaming(mtir: MTRuntime) -> Generator[str, None, None] {
     self.api_base = params.pop("api_base", DEFAULT_BASE_URL);
     response = self.model_call_with_stream(params);
     for chunk in response {
-        if chunk?.choices and chunk?.choices?[0].delta {
+        if chunk?.choices and chunk?.choices?[0]?.delta {
             delta = chunk.choices[0].delta;
             yield delta.content or "";
         }
