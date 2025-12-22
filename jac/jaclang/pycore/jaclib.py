@@ -53,6 +53,7 @@ __all__ = [
     "arefs",
     "filter_on",
     "assign_all",
+    "safe_subscript",
     "build_edge",
     "destroy",
     "get_mtir",
@@ -91,6 +92,7 @@ jac_test = JacRuntimeInterface.jac_test
 jsx = JacRuntimeInterface.jsx
 log_report = JacRuntimeInterface.log_report
 refs = JacRuntimeInterface.refs
+safe_subscript = JacRuntimeInterface.safe_subscript
 sem = JacRuntimeInterface.sem
 on_entry = JacRuntimeInterface.on_entry
 on_exit = JacRuntimeInterface.on_exit

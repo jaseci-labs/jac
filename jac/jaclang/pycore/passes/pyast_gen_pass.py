@@ -2848,18 +2848,14 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
                     )
                 )
             elif isinstance(node.gen.py_ast[0], ast3.Call):
-                # For FilterCompr and AssignCompr, update the relevant argument(s) to use tmp_ref
                 call_node = node.gen.py_ast[0]
-                # Check if this is a filter_on call (FilterCompr)
                 if isinstance(call_node.func, ast3.Attribute) or (
                     isinstance(call_node.func, ast3.Name)
                     and call_node.func.id == "filter_on"
                 ):
-                    # Replace the 'items' keyword argument with tmp_ref
                     for kw in call_node.keywords:
                         if kw.arg == "items":
                             kw.value = tmp_ref
-                # Check if this is an assign_all call (AssignCompr)
                 if (
                     isinstance(call_node.func, ast3.Attribute)
                     or (
@@ -2870,10 +2866,21 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
                     call_node.args[0] = tmp_ref
                 body_expr = cast(ast3.expr, call_node)
             else:
-                # For subscripts and other operations, update reference and use as-is
-                if isinstance(node.gen.py_ast[0], (ast3.Attribute, ast3.Subscript)):
-                    node.gen.py_ast[0].value = tmp_ref
-                body_expr = cast(ast3.expr, node.gen.py_ast[0])
+                if isinstance(node.gen.py_ast[0], ast3.Subscript):
+                    # Use safe_subscript helper that handles all cases safely
+                    index_expr = node.gen.py_ast[0].slice
+
+                    body_expr = self.sync(
+                        ast3.Call(
+                            func=self.jaclib_obj("safe_subscript"),
+                            args=[tmp_ref, index_expr],
+                            keywords=[],
+                        )
+                    )
+                else:
+                    # Fallback for any other operation type
+                    node.gen.py_ast[0].value = tmp_ref  # type: ignore[attr-defined]
+                    body_expr = cast(ast3.expr, node.gen.py_ast[0])
 
             # Generate: body_expr if (__jac_tmp := target) is not None else None
             node.gen.py_ast = [

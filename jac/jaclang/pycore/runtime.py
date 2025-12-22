@@ -1351,6 +1351,14 @@ class JacBasics:
         return target
 
     @staticmethod
+    def safe_subscript(obj: Any, key: Any) -> Any:  # noqa: ANN401
+        """Jac's safe subscript feature."""
+        try:
+            return obj[key]
+        except (KeyError, IndexError, TypeError):
+            return None
+
+    @staticmethod
     def root() -> Root:
         """Jac's root getter."""
         return JacRuntime.get_context().get_root()
