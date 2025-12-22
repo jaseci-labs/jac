@@ -151,10 +151,10 @@ def test_all_in_one_app_endpoints() -> None:
             )
 
             # If the currently installed `jac` CLI does not support `create_jac_app`,
-            # skip this integration test instead of failing the whole suite.
+            # fail the test instead of skipping it.
             if returncode != 0 and "invalid choice: 'create_jac_app'" in stderr:
-                pytest.skip(
-                    "Skipping: installed `jac` CLI does not support `create_jac_app`."
+                pytest.fail(
+                    "Test failed: installed `jac` CLI does not support `create_jac_app`."
                 )
 
             assert returncode == 0, (
@@ -195,8 +195,10 @@ def test_all_in_one_app_endpoints() -> None:
             )
 
             if jac_add_result.returncode != 0:
-                pytest.skip(
-                    "Skipping: jac add --cl failed or npm is not available in PATH."
+                pytest.fail(
+                    f"Test failed: jac add --cl failed or npm is not available in PATH.\n"
+                    f"STDOUT:\n{jac_add_result.stdout}\n"
+                    f"STDERR:\n{jac_add_result.stderr}\n"
                 )
 
             app_jac_path = os.path.join(project_path, "app.jac")
