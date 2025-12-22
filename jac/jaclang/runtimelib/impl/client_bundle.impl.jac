@@ -12,7 +12,7 @@ impl ClientBundleBuilder.init(
 impl ClientBundleBuilder.build(
     self: ClientBundleBuilder, module: ModuleType, force: bool = False
 ) -> ClientBundle {
-    if (not module?.__file__ or not module.__file__) {
+    if not module?.__file__ {
         raise ClientBundleError(
             f"Module '{module.__name__}' has no __file__ attribute"
         ) ;
