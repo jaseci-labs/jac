@@ -1844,6 +1844,12 @@ def test_safe_call_operator(
     assert "None" in stdout_value[3]
     assert "3" in stdout_value[4]
     assert "None" in stdout_value[5]
+    assert "3" in stdout_value[6]
+    assert "None" in stdout_value[7]
+    assert "[2, 3]" in stdout_value[8]
+    assert "[]" in stdout_value[9]
+    assert "None" in stdout_value[10]
+    assert "None" in stdout_value[11]
 
 
 def test_anonymous_ability_execution(
