@@ -2,8 +2,9 @@
 
 This delegates to the core JacConfig for all configuration operations,
 reading from [plugins.scale] for jwt, sso, database, kubernetes, and server config.
+
+Configuration is loaded purely from jac.toml - no environment variable fallbacks.
 """
-import os;
 import from jaclang.project.config { JacConfig }
 import from pathlib { Path }
 import from typing { Any }
@@ -36,109 +37,72 @@ def _get_jac_config(self: JacScaleConfig) -> JacConfig {
     return self._jac_config;
 }
 
-"""Get JWT configuration."""
+"""Get JWT configuration from jac.toml."""
 impl JacScaleConfig.get_jwt_config(self: JacScaleConfig) -> dict[str, Any] {
     config = self.load();
     jwt_config = config.get('jwt', {});
-    # Also check environment variables as overrides
     return {
-        'secret': os.environ.get(
-            'JWT_SECRET', jwt_config.get('secret', 'supersecretkey')
-        ),
-        'algorithm': os.environ.get(
-            'JWT_ALGORITHM', jwt_config.get('algorithm', 'HS256')
-        ),
-        'exp_delta_days': int(
-            os.environ.get('JWT_EXP_DELTA_DAYS', jwt_config.get('exp_delta_days', 7))
-        )
+        'secret': jwt_config.get('secret', 'supersecretkey'),
+        'algorithm': jwt_config.get('algorithm', 'HS256'),
+        'exp_delta_days': int(jwt_config.get('exp_delta_days', 7))
     };
 }
 
-"""Get SSO configuration."""
+"""Get SSO configuration from jac.toml."""
 impl JacScaleConfig.get_sso_config(self: JacScaleConfig) -> dict[str, Any] {
     config = self.load();
     sso_config = config.get('sso', {});
     google_config = sso_config.get('google', {});
     return {
-        'host': os.environ.get(
-            'SSO_HOST', sso_config.get('host', 'http://localhost:8000/sso')
-        ),
+        'host': sso_config.get('host', 'http://localhost:8000/sso'),
         'google': {
-            'client_id': os.environ.get(
-                'SSO_GOOGLE_CLIENT_ID', google_config.get('client_id', '')
-            ),
-            'client_secret': os.environ.get(
-                'SSO_GOOGLE_CLIENT_SECRET', google_config.get('client_secret', '')
-            )
+            'client_id': google_config.get('client_id', ''),
+            'client_secret': google_config.get('client_secret', '')
         }
     };
 }
 
-"""Get database configuration."""
+"""Get database configuration from jac.toml."""
 impl JacScaleConfig.get_database_config(self: JacScaleConfig) -> dict[str, Any] {
     config = self.load();
     db_config = config.get('database', {});
     return {
-        'mongodb_uri': os.environ.get(
-            'MONGODB_URI',
-            db_config.get(
-                'mongodb_uri', 'mongodb://root:rootpassword123@localhost:27017/'
-            )
+        'mongodb_uri': db_config.get(
+            'mongodb_uri', 'mongodb://root:rootpassword123@localhost:27017/'
         ),
-        'redis_url': os.environ.get(
-            'REDIS_URL',
-            db_config.get('redis_url', 'redis://:mypassword123@localhost:6379/0')
+        'redis_url': db_config.get(
+            'redis_url', 'redis://:mypassword123@localhost:6379/0'
         ),
-        'shelf_db_path': os.environ.get(
-            'SHELF_DB_PATH', db_config.get('shelf_db_path', 'anchor_store.db')
-        )
+        'shelf_db_path': db_config.get('shelf_db_path', 'anchor_store.db')
     };
 }
 
-"""Get Kubernetes configuration."""
+"""Get Kubernetes configuration from jac.toml."""
 impl JacScaleConfig.get_kubernetes_config(self: JacScaleConfig) -> dict[str, Any] {
     config = self.load();
     k8s_config = config.get('kubernetes', {});
-    app_name = os.environ.get('APP_NAME', k8s_config.get('app_name', 'jaseci'));
+    app_name = k8s_config.get('app_name', 'jaseci');
     default_image = f"{app_name}:latest";
     return {
         'app_name': app_name,
-        'docker_image_name': os.environ.get(
-            'DOCKER_IMAGE_NAME', k8s_config.get('docker_image_name', default_image)
-        ),
-        'docker_username': os.environ.get(
-            'DOCKER_USERNAME', k8s_config.get('docker_username', '')
-        ),
-        'docker_password': os.environ.get(
-            'DOCKER_PASSWORD', k8s_config.get('docker_password', '')
-        ),
-        'namespace': os.environ.get(
-            'K8s_NAMESPACE', k8s_config.get('namespace', 'default')
-        ),
-        'container_port': int(
-            os.environ.get(
-                'K8s_CONTAINER_PORT', k8s_config.get('container_port', 8000)
-            )
-        ),
-        'node_port': int(
-            os.environ.get('K8s_NODE_PORT', k8s_config.get('node_port', 30001))
-        ),
-        'mongodb_enabled': os.environ.get(
-            'K8s_MONGODB', str(k8s_config.get('mongodb_enabled', True))
-        ).lower() == 'true',
-        'redis_enabled': os.environ.get(
-            'K8s_REDIS', str(k8s_config.get('redis_enabled', True))
-        ).lower() == 'true'
+        'docker_image_name': k8s_config.get('docker_image_name', default_image),
+        'docker_username': k8s_config.get('docker_username', ''),
+        'docker_password': k8s_config.get('docker_password', ''),
+        'namespace': k8s_config.get('namespace', 'default'),
+        'container_port': int(k8s_config.get('container_port', 8000)),
+        'node_port': int(k8s_config.get('node_port', 30001)),
+        'mongodb_enabled': bool(k8s_config.get('mongodb_enabled', True)),
+        'redis_enabled': bool(k8s_config.get('redis_enabled', True))
     };
 }
 
-"""Get server configuration."""
+"""Get server configuration from jac.toml."""
 impl JacScaleConfig.get_server_config(self: JacScaleConfig) -> dict[str, Any] {
     config = self.load();
     server_config = config.get('server', {});
     return {
-        'port': int(os.environ.get('SERVER_PORT', server_config.get('port', 8000))),
-        'host': os.environ.get('SERVER_HOST', server_config.get('host', '0.0.0.0'))
+        'port': int(server_config.get('port', 8000)),
+        'host': server_config.get('host', '0.0.0.0')
     };
 }
 

@@ -24,12 +24,20 @@ import from byllm.types {
     Message,
     MessageRole
 }
-# This will prevent LiteLLM from fetching pricing information from
-# the bellow URL every time we import the litellm and use a cached
-# local json file. Maybe we we should conditionally enable this.
-# https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json
+import from byllm.config_loader { get_byllm_config }
+
+# Load configuration purely from jac.toml
+glob _byllm_config = get_byllm_config();
+glob _litellm_config = _byllm_config.get_litellm_config();
+glob _model_config = _byllm_config.get_model_config();
+glob _call_params_config = _byllm_config.get_call_params_config();
+
+# Configure LiteLLM based on jac.toml settings
+# Note: LiteLLM reads this env var directly, so we set it based on config
 with entry {
-    os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True";
+    if _litellm_config['local_cost_map'] {
+        os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True";
+    }
 }
 
 glob DEFAULT_BASE_URL = "http://localhost:4000",

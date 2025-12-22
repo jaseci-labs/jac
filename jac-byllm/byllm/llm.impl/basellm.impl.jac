@@ -47,18 +47,22 @@ Builds the parameter dict including model name, messages, tools,
 response format, and call parameters like temperature and max_tokens.
 """
 impl BaseLLM.make_model_params(mtir: MTRuntime) -> dict {
+    # Use call_params from config as defaults, then override with instance call_params
+    default_temp = _call_params_config.get("temperature", 0.7);
+    default_max_tokens = _call_params_config.get("max_tokens");
     params = {
         "model": self.model_name,
         "api_base": (
             self.config.get("base_url")
             or self.config.get("host")
             or self.config.get("api_base")
+            or _model_config.get("base_url")
         ),
         "messages": mtir.get_msg_list(),
         "tools": mtir.get_tool_list() or None,
         "response_format": mtir.get_output_schema(),
-        "temperature": self.call_params.get("temperature", 0.7),
-        "max_tokens": self.call_params.get("max_tokens"),
+        "temperature": self.call_params.get("temperature", default_temp),
+        "max_tokens": self.call_params.get("max_tokens", default_max_tokens),
 
     };
     return params;
@@ -68,7 +72,9 @@ impl BaseLLM.make_model_params(mtir: MTRuntime) -> dict {
 impl BaseLLM.log_info(message: str) -> None {
     # FIXME: The logger.info will not always log so for now I'm printing to stdout
     # remove and log properly.
-    if bool(self.config.get("verbose", False)) {
+    # Check instance config first, then fall back to global config
+    verbose = self.config.get("verbose", _model_config.get("verbose", False));
+    if bool(verbose) {
         logger.info(message);
     }
 }
