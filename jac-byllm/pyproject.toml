@@ -17,7 +17,7 @@ dependencies = [
 
 [project.entry-points."jac"]
 byllm = "byllm.plugin:JacRuntime"
-plugin_config = "byllm.plugin_config:JacByllmPluginConfig"
+byllm_plugin_config = "byllm.plugin_config:JacByllmPluginConfig"
 
 [project.optional-dependencies]
 dev = [

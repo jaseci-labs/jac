@@ -22,7 +22,7 @@ dependencies = [
 
 [project.entry-points."jac"]
 scale = "jac_scale.plugin:JacCmd"
-plugin_config = "jac_scale.plugin_config:JacScalePluginConfig"
+scale_plugin_config = "jac_scale.plugin_config:JacScalePluginConfig"
 
 [tool.setuptools.packages.find]
 include = ["jac_scale*"]
