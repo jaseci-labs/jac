@@ -10,7 +10,41 @@ import pytest
 from fastapi import Request
 from fastapi.responses import JSONResponse, RedirectResponse
 
+from jac_scale.config_loader import reset_scale_config
 from jac_scale.serve import JacAPIServer, Operations, Platforms
+
+
+def mock_sso_config_with_credentials() -> dict:
+    """Return mock SSO config with Google credentials configured."""
+    return {
+        "host": "http://localhost:8000/sso",
+        "google": {
+            "client_id": "test_client_id",
+            "client_secret": "test_client_secret",
+        },
+    }
+
+
+def mock_sso_config_without_credentials() -> dict:
+    """Return mock SSO config without credentials."""
+    return {
+        "host": "http://localhost:8000/sso",
+        "google": {
+            "client_id": "",
+            "client_secret": "",
+        },
+    }
+
+
+def mock_sso_config_partial_credentials() -> dict:
+    """Return mock SSO config with only client_id (no secret)."""
+    return {
+        "host": "http://localhost:8000/sso",
+        "google": {
+            "client_id": "test_id",
+            "client_secret": "",
+        },
+    }
 
 
 @dataclass
@@ -63,26 +97,33 @@ class MockGoogleSSO:
         pass
 
 
+class MockScaleConfig:
+    """Mock JacScaleConfig for testing."""
+
+    def __init__(self, sso_config: dict | None = None):
+        self._sso_config = sso_config or mock_sso_config_with_credentials()
+
+    def get_sso_config(self) -> dict:
+        return self._sso_config
+
+
 class TestJacAPIServerSSO:
     """Test SSO functionality in JacAPIServer."""
 
     def setup_method(self) -> None:
         """Setup for each test method."""
+        # Reset config singleton to ensure fresh config
+        reset_scale_config()
+
         # Mock the server components
         self.mock_server_impl = Mock()
         self.mock_user_manager = Mock()
         self.mock_introspector = Mock()
         self.mock_execution_manager = Mock()
 
-        # Create JacAPIServer instance with mocked components
-        with patch.dict(
-            "os.environ",
-            {
-                "SSO_GOOGLE_CLIENT_ID": "test_client_id",
-                "SSO_GOOGLE_CLIENT_SECRET": "test_client_secret",
-                "SSO_HOST": "http://localhost:8000/sso",
-            },
-        ):
+        # Create JacAPIServer instance with mocked config (jac.toml approach)
+        mock_config = MockScaleConfig(mock_sso_config_with_credentials())
+        with patch("jac_scale.serve.get_scale_config", return_value=mock_config):
             self.server = JacAPIServer(
                 module_name="test_module",
                 session_path="/tmp/test_session.db",
@@ -114,9 +155,11 @@ class TestJacAPIServerSSO:
         assert sso is None
 
     def test_get_sso_with_unconfigured_platform(self) -> None:
-        """Test get_sso returns None when platform credentials are not configured."""
-        # Create server without SSO credentials
-        with patch.dict("os.environ", {}, clear=True):
+        """Test get_sso returns None when platform credentials are not configured in jac.toml."""
+        reset_scale_config()
+        # Mock config without credentials (simulating empty [plugins.scale.sso] in jac.toml)
+        mock_config = MockScaleConfig(mock_sso_config_without_credentials())
+        with patch("jac_scale.serve.get_scale_config", return_value=mock_config):
             server = JacAPIServer(
                 module_name="test_module",
                 session_path="/tmp/test_session.db",
@@ -126,7 +169,7 @@ class TestJacAPIServerSSO:
             assert sso is None
 
     def test_get_sso_redirect_uri_format(self) -> None:
-        """Test get_sso creates correct redirect URI."""
+        """Test get_sso creates correct redirect URI based on jac.toml SSO host."""
         with patch("jac_scale.serve.GoogleSSO") as mock_sso:
             self.server.get_sso(Platforms.GOOGLE.value, Operations.LOGIN.value)
 
@@ -494,15 +537,20 @@ class TestJacAPIServerSSO:
         assert Operations.REGISTER.value == "register"
         assert len(list(Operations)) == 2
 
-    def test_supported_platforms_initialization_with_credentials(self) -> None:
-        """Test SUPPORTED_PLATFORMS initialization when credentials are provided."""
-        with patch.dict(
-            "os.environ",
+    def test_supported_platforms_initialization_with_jac_toml_credentials(self) -> None:
+        """Test SUPPORTED_PLATFORMS initialization when credentials are in jac.toml."""
+        reset_scale_config()
+        # Mock config with credentials (simulating [plugins.scale.sso.google] in jac.toml)
+        mock_config = MockScaleConfig(
             {
-                "SSO_GOOGLE_CLIENT_ID": "test_id",
-                "SSO_GOOGLE_CLIENT_SECRET": "test_secret",
-            },
-        ):
+                "host": "http://localhost:8000/sso",
+                "google": {
+                    "client_id": "toml_test_id",
+                    "client_secret": "toml_test_secret",
+                },
+            }
+        )
+        with patch("jac_scale.serve.get_scale_config", return_value=mock_config):
             server = JacAPIServer(
                 module_name="test_module",
                 session_path="/tmp/test_session.db",
@@ -510,14 +558,20 @@ class TestJacAPIServerSSO:
             )
 
             assert "google" in server.SUPPORTED_PLATFORMS
-            assert server.SUPPORTED_PLATFORMS["google"]["client_id"] == "test_id"
+            assert server.SUPPORTED_PLATFORMS["google"]["client_id"] == "toml_test_id"
             assert (
-                server.SUPPORTED_PLATFORMS["google"]["client_secret"] == "test_secret"
+                server.SUPPORTED_PLATFORMS["google"]["client_secret"]
+                == "toml_test_secret"
             )
 
-    def test_supported_platforms_initialization_without_credentials(self) -> None:
-        """Test SUPPORTED_PLATFORMS initialization when credentials are missing."""
-        with patch.dict("os.environ", {}, clear=True):
+    def test_supported_platforms_initialization_without_jac_toml_credentials(
+        self,
+    ) -> None:
+        """Test SUPPORTED_PLATFORMS initialization when credentials are missing from jac.toml."""
+        reset_scale_config()
+        # Mock config without credentials (simulating empty sso section in jac.toml)
+        mock_config = MockScaleConfig(mock_sso_config_without_credentials())
+        with patch("jac_scale.serve.get_scale_config", return_value=mock_config):
             server = JacAPIServer(
                 module_name="test_module",
                 session_path="/tmp/test_session.db",
@@ -527,16 +581,14 @@ class TestJacAPIServerSSO:
             assert "google" not in server.SUPPORTED_PLATFORMS
             assert len(server.SUPPORTED_PLATFORMS) == 0
 
-    def test_supported_platforms_initialization_with_partial_credentials(self) -> None:
-        """Test SUPPORTED_PLATFORMS initialization with only client_id."""
-        with patch.dict(
-            "os.environ",
-            {
-                "SSO_GOOGLE_CLIENT_ID": "test_id",
-                # CLIENT_SECRET is missing
-            },
-            clear=True,
-        ):
+    def test_supported_platforms_initialization_with_partial_jac_toml_credentials(
+        self,
+    ) -> None:
+        """Test SUPPORTED_PLATFORMS initialization with only client_id in jac.toml."""
+        reset_scale_config()
+        # Mock config with partial credentials (only client_id, no secret)
+        mock_config = MockScaleConfig(mock_sso_config_partial_credentials())
+        with patch("jac_scale.serve.get_scale_config", return_value=mock_config):
             server = JacAPIServer(
                 module_name="test_module",
                 session_path="/tmp/test_session.db",
