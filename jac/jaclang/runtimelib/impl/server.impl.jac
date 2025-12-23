@@ -14,7 +14,7 @@ impl JacSerializer.serialize(<>obj: object) -> JsonValue {
     if isinstance(<>obj, Archetype) {
         return JacSerializer._serialize_archetype(<>obj);
     }
-    if hasattr(<>obj, '__dict__') {
+    if <>obj?.__dict__ {
         with suppress(Exception) {
             return JacSerializer.serialize(
                 {

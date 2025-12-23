@@ -117,7 +117,7 @@ impl CommandRegistry._bind_command_to_argparse(
             if isinstance(param.annotation, str)
             else param.annotation;
             if annotation is list
-            or (hasattr(annotation, '__origin__') and annotation.__origin__ is list) {
+            or (annotation?.__origin__ and annotation.__origin__ is list) {
                 cmd_parser.add_argument(
                     f"{param_name}", <>default=param.default, nargs='*', help=arg_msg
                 );

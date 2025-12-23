@@ -259,11 +259,7 @@ impl CFGBuildPass.get_code_block_sequence(
     self: CFGBuildPass, <>node: (uni.UniNode | None)
 ) -> (list[uni.UniCFGNode] | None) {
     sequence: list[uni.UniCFGNode] = [];
-    if (
-        (<>node is not None)
-        and hasattr(<>node, 'body')
-        and isinstance(<>node.body, Sequence)
-    ) {
+    if ((<>node is not None) and <>node?.body and isinstance(<>node.body, Sequence)) {
         for bbs in <>node.body {
             if isinstance(bbs, uni.UniCFGNode) {
                 sequence.append(bbs);

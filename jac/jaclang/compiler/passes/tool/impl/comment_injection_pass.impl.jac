@@ -531,7 +531,7 @@ impl CommentInjectionPass._handle_body_comments(
     self: CommentInjectionPass, <>node: uni.UniNode, indent: doc.Indent
 ) -> doc.Indent {
     body: (Sequence[uni.UniNode] | None) = None;
-    if hasattr(<>node, 'body') {
+    if <>node?.body {
         body = <>node.body;
     } elif (isinstance(<>node, uni.JsxElement) and <>node.children) {
         body = <>node.children;
