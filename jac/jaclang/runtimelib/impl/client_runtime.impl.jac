@@ -25,7 +25,7 @@ impl __buildDom(node: any) -> any {
         return __buildDom(tag(props));
     }
     # Create element
-    element = document.createElement(tag if tag else "div");
+    element = document.createElement(tag or "div");
     # Apply properties
     props = node.get("props", {});
     for key in __objectKeys(props) {
@@ -649,14 +649,14 @@ impl __jacHydrateFromDom(defaultModuleName: str) -> None {
     if not initEl or not rootEl {
         return;
     }
-    dataset = initEl.dataset if initEl.dataset else None;
+    dataset = initEl.dataset or None;
     if dataset and dataset.jacHydrated == "true" {
         return;
     }
     if dataset {
         dataset.jacHydrated = "true";
     }
-    payloadText = initEl.textContent if initEl.textContent else "{}";
+    payloadText = initEl.textContent or "{}";
     payload = __jacParseJsonObject(payloadText);
     if not payload {
         return;
@@ -665,11 +665,11 @@ impl __jacHydrateFromDom(defaultModuleName: str) -> None {
     if not targetName {
         return;
     }
-    fallbackModule = defaultModuleName if defaultModuleName else "";
+    fallbackModule = defaultModuleName or "";
     moduleCandidate = payload.get("module");
-    moduleName = moduleCandidate if moduleCandidate else fallbackModule;
+    moduleName = moduleCandidate or fallbackModule;
     registry = __jacEnsureRegistry();
-    modulesStore = registry.modules if registry.modules else {};
+    modulesStore = registry.modules or {};
     moduleRecord = modulesStore[moduleName]
     if __jacHasOwn(modulesStore, moduleName)
     else None;
@@ -720,7 +720,7 @@ impl __jacHydrateFromDom(defaultModuleName: str) -> None {
 
 impl __jacExecuteHydration -> None {
     registry = __jacEnsureRegistry();
-    defaultModule = registry.lastModule if registry.lastModule else "";
+    defaultModule = registry.lastModule or "";
     __jacHydrateFromDom(defaultModule);
 }
 
@@ -728,15 +728,15 @@ impl __jacEnsureHydration(moduleName: str) -> None {
     __jacEnsureObjectGetPolyfill();
     registry = __jacEnsureRegistry();
     registry.lastModule = moduleName;
-    existingHydration = registry.__hydration if registry.__hydration else None;
-    hydration = existingHydration if existingHydration else {"registered": False};
+    existingHydration = registry.__hydration or None;
+    hydration = existingHydration or {"registered": False};
     registry.__hydration = hydration;
     scope = __jacGlobalScope();
     documentRef = __jacGetDocument(scope);
     if not documentRef {
         return;
     }
-    alreadyRegistered = hydration.registered if hydration.registered else False;
+    alreadyRegistered = hydration.registered or False;
     if not alreadyRegistered {
         hydration.registered = True;
         documentRef.addEventListener(
@@ -775,7 +775,7 @@ impl __jacRegisterClientModule(
     }
     moduleGlobals = {};
     globalNames = [];
-    globalsMap = clientGlobals if clientGlobals else {};
+    globalsMap = clientGlobals or {};
     for gName in __objectKeys(globalsMap) {
         globalNames.push(gName);
         defaultValue = globalsMap[gName];
@@ -788,11 +788,11 @@ impl __jacRegisterClientModule(
         }
         registry.globals[gName] = scope[gName];
     }
-    modulesStore = registry.modules if registry.modules else {};
+    modulesStore = registry.modules or {};
     existingRecord = modulesStore[moduleName]
     if __jacHasOwn(modulesStore, moduleName)
     else None;
-    moduleRecord = existingRecord if existingRecord else {};
+    moduleRecord = existingRecord or {};
     moduleRecord.moduleFunctions = moduleFunctions;
     moduleRecord.moduleGlobals = moduleGlobals;
     moduleRecord.functions = registeredFunctions;

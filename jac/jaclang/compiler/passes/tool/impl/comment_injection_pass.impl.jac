@@ -941,10 +941,10 @@ impl CommentInjectionPass._process(
     self: CommentInjectionPass, ctx: uni.UniNode, <>node: doc.DocType
 ) -> doc.DocType {
     if isinstance(<>node, doc.Concat) {
-        ctx = <>node.ast_node if <>node.ast_node else ctx;
+        ctx = <>node.ast_node or ctx;
         processed_parts = self._inject_into_parts(<>node.parts, ctx);
         if isinstance(ctx, (uni.FuncSignature, uni.FuncCall)) {
-            items = ctx?.params if ctx?.params else [];
+            items = ctx?.params or [];
             processed_parts = self._handle_paren_comments(items, processed_parts);
         }
         if isinstance(
@@ -963,7 +963,7 @@ impl CommentInjectionPass._process(
         processed_parts = self._fix_empty_region_spacing(processed_parts);
         return doc.Concat(processed_parts, ast_node=ctx);
     } elif isinstance(<>node, doc.Group) {
-        ctx = <>node.ast_node if <>node.ast_node else ctx;
+        ctx = <>node.ast_node or ctx;
         return doc.Group(
             self._process(ctx, <>node.contents),
             <>node.break_contiguous,
@@ -971,7 +971,7 @@ impl CommentInjectionPass._process(
             ast_node=ctx
         );
     } elif isinstance(<>node, doc.Indent) {
-        ctx = <>node.ast_node if <>node.ast_node else ctx;
+        ctx = <>node.ast_node or ctx;
         has_body = (
             <>node.ast_node
             and (

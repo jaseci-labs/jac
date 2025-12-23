@@ -159,7 +159,7 @@ impl serve(
         mach.close();
         <>exit(1);
     }
-    session_path = session if session else os.path.join(base, f"{mod}.session");
+    session_path = session or os.path.join(base, f"{mod}.session");
     server = JacAPIServer(
         module_name=mod, session_path=session_path, port=port, base_path=base
     );
@@ -370,7 +370,7 @@ impl dot(
         if to_screen {
             print(graph);
         } else {
-            file_name = saveto if saveto else f"{mod}.dot";
+            file_name = saveto or f"{mod}.dot";
             with open(file_name, 'w') as file {
                 file.write(graph);
             }
@@ -403,7 +403,7 @@ impl debug(filename: str, main: bool = True, cache: bool = False) -> None {
     import from jaclang.pycore.program { JacProgram }
     import from jaclang.pycore.helpers { debugger as db }
     (base, mod) = os.path.split(filename);
-    base = base if base else './';
+    base = base or './';
     mod = mod[:-4];
     if filename.endswith('.jac') {
         bytecode = JacProgram().compile(filename).gen.py_bytecode;
@@ -817,10 +817,10 @@ impl proc_file_sess(filename: str, session: str, <>root: (str | None) = None) ->
     import from jaclang.pycore.runtime { JacRuntime as Jac }
     import from jaclang.pycore.runtime { JacUtils }
     if (session == '') {
-        session = cmd_registry?.args.session if cmd_registry?.args?.session else '';
+        session = cmd_registry?.args?.session or '';
     }
     (base, mod) = os.path.split(filename);
-    base = base if base else './';
+    base = base or './';
     if (filename.endswith('.jac') or filename.endswith('.jir')) {
         mod = mod[:-4];
     } elif filename.endswith('.py') {
@@ -991,7 +991,7 @@ impl create(name: str = '', force: bool = False) -> None {
         <>exit(1);
     }
     # Determine project name
-    project_name = name if name else cwd.name;
+    project_name = name or cwd.name;
     # Create jac.toml
     toml_path = cwd / "jac.toml";
     if toml_path.exists() and not force {
@@ -1233,7 +1233,7 @@ impl add(
     # Handle Python/Jac dependencies
     for pkg_spec in packages {
         (name, version) = resolver.parse_spec(pkg_spec);
-        version_str = version if version else ">=0.0.0";
+        version_str = version or ">=0.0.0";
 
         print(f"Adding {name}{version_str}...");
 

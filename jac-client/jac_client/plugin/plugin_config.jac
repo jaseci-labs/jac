@@ -104,7 +104,7 @@ def _npm_install_handler(
     project_dir = config.project_root;
 
     # Add to config (core JacConfig handles this)
-    package_version = version if version else "latest";
+    package_version = version or "latest";
     config.add_dependency(package_name, package_version, dev=is_dev, dep_type="npm");
     config.save();
 

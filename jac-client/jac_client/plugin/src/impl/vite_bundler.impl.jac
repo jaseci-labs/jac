@@ -120,8 +120,8 @@ impl ViteBundler.create_tsconfig(self: ViteBundler) -> Path {
     # Merge compiler options (user overrides defaults)
     merged_compiler_options = {** default_compiler_options, ** user_compiler_options};
     # For include/exclude, use user values if provided, otherwise defaults
-    merged_include = user_include if user_include else default_include;
-    merged_exclude = user_exclude if user_exclude else default_exclude;
+    merged_include = user_include or default_include;
+    merged_exclude = user_exclude or default_exclude;
     tsconfig_data = {
         'compilerOptions': merged_compiler_options,
         'include': merged_include,

@@ -145,7 +145,7 @@ impl JacAutoLintPass.enter_ability(
                 for dec in ability_node.decorators
                 if not (isinstance(dec, uni.Name) and dec.value == "staticmethod")
             ];
-            ability_node.decorators = new_decorators if new_decorators else None;
+            ability_node.decorators = new_decorators or None;
         }
     }
     # Surgically remove @staticmethod tokens from kids list
@@ -838,15 +838,107 @@ impl JacAutoLintPass._get_trailer_key(
     }
 }
 
-"""Propagate null-safe access within IfElseExpr.
+"""Check if two expressions are structurally identical by comparing their unparsed form."""
+impl JacAutoLintPass._exprs_are_identical(
+    self: JacAutoLintPass, expr1: uni.Expr, expr2: uni.Expr
+) -> bool {
+    try {
+        return expr1.unparse() == expr2.unparse();
+    } except Exception {
+        return False;
+    }
+}
+
+"""Convert IfElseExpr to BoolExpr with or when value equals condition.
+
+Transforms: x?.attr if x?.attr else default -> x?.attr or default
+This only applies when the value and condition are identical expressions.
+"""
+impl JacAutoLintPass._convert_ternary_to_or(
+    self: JacAutoLintPass, if_else_node: uni.IfElseExpr
+) -> bool {
+    # Check if value and condition are identical
+    if not self._exprs_are_identical(if_else_node.value, if_else_node.condition) {
+        return False;
+    }
+    # Create a BoolExpr with 'or' operator: value or else_value
+    or_expr = uni.BoolExpr(
+        op=uni.Token(
+            orig_src=if_else_node.loc.orig_src,
+            name=Tok.KW_OR,
+            value="or",
+            line=if_else_node.loc.first_line,
+            end_line=if_else_node.loc.first_line,
+            col_start=0,
+            col_end=2,
+            pos_start=0,
+            pos_end=2
+        ),
+        values=[if_else_node.value, if_else_node.else_value],
+        kid=[if_else_node.value, if_else_node.else_value]
+    );
+    or_expr.normalize(deep=False);
+    # Replace in parent
+    parent = if_else_node.parent;
+    if parent is None {
+        return False;
+    }
+    or_expr.parent = parent;
+    # Update parent's reference to this node
+    if parent?.kid and parent?.kid {
+        new_kids: list = [];
+        for kid in parent.kid {
+            if kid is if_else_node {
+                new_kids.append(or_expr);
+            } else {
+                new_kids.append(kid);
+            }
+        }
+        parent.kid = new_kids;
+    }
+    # Also update specific parent attributes that might reference this node
+    if isinstance(parent, uni.Assignment) {
+        if parent.value is if_else_node {
+            parent.value = or_expr;
+        }
+    } elif isinstance(parent, uni.IfElseExpr) {
+        if parent.value is if_else_node {
+            parent.value = or_expr;
+        } elif parent.condition is if_else_node {
+            parent.condition = or_expr;
+        } elif parent.else_value is if_else_node {
+            parent.else_value = or_expr;
+        }
+    } elif isinstance(parent, uni.BoolExpr) {
+        new_values: list = [];
+        for val in parent.values {
+            if val is if_else_node {
+                new_values.append(or_expr);
+            } else {
+                new_values.append(val);
+            }
+        }
+        parent.values = new_values;
+    }
+    return True;
+}
+
+"""Propagate null-safe access within IfElseExpr and simplify ternary to or.
 
 When an expression contains both null-safe and regular accesses for the same
 object and attribute, convert the regular accesses to null-safe.
+
+Also converts patterns like: x?.attr if x?.attr else default -> x?.attr or default
 """
 impl JacAutoLintPass.exit_if_else_expr(
     self: JacAutoLintPass, if_else_node: uni.IfElseExpr
 ) -> None {
     if not self.lint_enabled {
+        return;
+    }
+    # First, try to convert identical ternary to or expression
+    # Pattern: x?.attr if x?.attr else default -> x?.attr or default
+    if self._convert_ternary_to_or(if_else_node) {
         return;
     }
     # Collect all AtomTrailers in this expression

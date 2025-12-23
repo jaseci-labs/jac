@@ -11,6 +11,7 @@ This pass applies automatic linting corrections to Jac code, including:
 - Removing unnecessary angle bracket escaping from names that are not actual keywords
 - Converting hasattr(obj, "attr") to null-safe access
 - Propagating null-safe access consistency
+- Simplifying ternary expressions (x if x else default -> x or default)
 - (Future) Import organization
 - (Future) Redundant code removal
 """
@@ -76,6 +77,14 @@ class JacAutoLintPass(UniPass) {
     def _get_trailer_key(
         self: JacAutoLintPass, trailer: uni.AtomTrailer
     ) -> (str | None);
+
+    def _exprs_are_identical(
+        self: JacAutoLintPass, expr1: uni.Expr, expr2: uni.Expr
+    ) -> bool;
+
+    def _convert_ternary_to_or(
+        self: JacAutoLintPass, if_else_node: uni.IfElseExpr
+    ) -> bool;
 
     def exit_if_else_expr(self: JacAutoLintPass, if_else_node: uni.IfElseExpr) -> None;
     def exit_bool_expr(self: JacAutoLintPass, bool_node: uni.BoolExpr) -> None;

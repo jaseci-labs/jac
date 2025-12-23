@@ -193,8 +193,7 @@ impl EsastGenPass.exit_await_expr(self: EsastGenPass, <>node: uni.AwaitExpr) -> 
     argument = cast(
         es.Expression,
         <>node.target.gen.es_ast
-        if <>node.target.gen.es_ast
-        else self.sync_loc(es.Identifier(name='undefined'), jac_node=<>node.target)
+        or self.sync_loc(es.Identifier(name='undefined'), jac_node=<>node.target)
     );
     await_expr = self.sync_loc(es.AwaitExpression(argument=argument), jac_node=<>node);
     <>node.gen.es_ast = await_expr;
@@ -205,20 +204,17 @@ impl EsastGenPass.exit_if_else_expr(self: EsastGenPass, <>node: uni.IfElseExpr) 
     <>test = cast(
         es.Expression,
         <>node.condition.gen.es_ast
-        if <>node.condition.gen.es_ast
-        else self.sync_loc(es.Identifier(name='condition'), jac_node=<>node.condition)
+        or self.sync_loc(es.Identifier(name='condition'), jac_node=<>node.condition)
     );
     consequent = cast(
         es.Expression,
         <>node.value.gen.es_ast
-        if <>node.value.gen.es_ast
-        else self.sync_loc(es.Identifier(name='value'), jac_node=<>node.value)
+        or self.sync_loc(es.Identifier(name='value'), jac_node=<>node.value)
     );
     alternate = cast(
         es.Expression,
         <>node.else_value.gen.es_ast
-        if <>node.else_value.gen.es_ast
-        else self.sync_loc(es.Identifier(name='alternate'), jac_node=<>node.else_value)
+        or self.sync_loc(es.Identifier(name='alternate'), jac_node=<>node.else_value)
     );
     cond_expr = self.sync_loc(
         es.ConditionalExpression(
@@ -257,9 +253,7 @@ impl EsastGenPass.exit_f_string(self: EsastGenPass, <>node: uni.FString) -> None
             }
             expr = cast(
                 es.Expression,
-                part.gen.es_ast
-                if part.gen.es_ast
-                else self.sync_loc(es.Literal(value=''), jac_node=part)
+                part.gen.es_ast or self.sync_loc(es.Literal(value=''), jac_node=part)
             );
             expressions.append(expr);
             if is_last {
@@ -298,8 +292,7 @@ impl EsastGenPass.exit_formatted_value(
     self: EsastGenPass, <>node: uni.FormattedValue
 ) -> None {
     expr = <>node.format_part.gen.es_ast
-    if <>node.format_part.gen.es_ast
-    else self.sync_loc(es.Literal(value=''), jac_node=<>node.format_part);
+    or self.sync_loc(es.Literal(value=''), jac_node=<>node.format_part);
     <>node.gen.es_ast = expr;
 }
 
@@ -441,14 +434,12 @@ impl EsastGenPass.exit_dict_val(self: EsastGenPass, <>node: uni.DictVal) -> None
         key = cast(
             es.Expression,
             kv_pair.key.gen.es_ast
-            if kv_pair.key.gen.es_ast
-            else self.sync_loc(es.Literal(value='key'), jac_node=kv_pair.key)
+            or self.sync_loc(es.Literal(value='key'), jac_node=kv_pair.key)
         );
         value = cast(
             es.Expression,
             kv_pair.value.gen.es_ast
-            if kv_pair.value.gen.es_ast
-            else self.sync_loc(es.Literal(value=None), jac_node=kv_pair.value)
+            or self.sync_loc(es.Literal(value=None), jac_node=kv_pair.value)
         );
         prop = self.sync_loc(
             es.Property(key=key, value=value, kind='init'), jac_node=kv_pair
@@ -562,8 +553,7 @@ impl EsastGenPass.exit_lambda_expr(self: EsastGenPass, <>node: uni.LambdaExpr) -
         body_expr = cast(
             es.Expression,
             <>node.body.gen.es_ast
-            if <>node.body.gen.es_ast
-            else self.sync_loc(es.Literal(value=None), jac_node=<>node.body)
+            or self.sync_loc(es.Literal(value=None), jac_node=<>node.body)
         );
         arrow_func = self.sync_loc(
             es.ArrowFunctionExpression(params=params, body=body_expr, async_=False),
@@ -580,8 +570,7 @@ impl EsastGenPass.exit_atom_trailer(
     <>obj = cast(
         es.Expression,
         <>node.target.gen.es_ast
-        if <>node.target.gen.es_ast
-        else self.sync_loc(es.Identifier(name='obj'), jac_node=<>node.target)
+        or self.sync_loc(es.Identifier(name='obj'), jac_node=<>node.target)
     );
     if (<>node.right and <>node.right.gen.es_ast) {
         if isinstance(<>node.right, uni.Name) {
@@ -810,8 +799,7 @@ impl EsastGenPass.exit_func_call(self: EsastGenPass, <>node: uni.FuncCall) -> No
         }
     }
     callee = <>node.target.gen.es_ast
-    if <>node.target.gen.es_ast
-    else self.sync_loc(es.Identifier(name='func'), jac_node=<>node.target);
+    or self.sync_loc(es.Identifier(name='func'), jac_node=<>node.target);
     if (
         isinstance(callee, es.MemberExpression)
         and isinstance(callee.property, es.Identifier)
@@ -1065,8 +1053,7 @@ impl EsastGenPass._convert_assignment_target(
             key_expr = cast(
                 es.Expression,
                 kv.key.gen.es_ast
-                if kv.key.gen.es_ast
-                else self.sync_loc(es.Identifier(name='key'), jac_node=kv.key)
+                or self.sync_loc(es.Identifier(name='key'), jac_node=kv.key)
             );
             (value_pattern, _, _) = self._convert_assignment_target(kv.value);
             assignment = self.sync_loc(
@@ -1089,9 +1076,7 @@ impl EsastGenPass._convert_assignment_target(
     }
     left = cast(
         (es.Pattern | es.Expression),
-        target.gen.es_ast
-        if target.gen.es_ast
-        else self.sync_loc(es.Identifier(name='temp'), jac_node=target)
+        target.gen.es_ast or self.sync_loc(es.Identifier(name='temp'), jac_node=target)
     );
     reference = cast(es.Expression, left) if isinstance(left, es.Node) else None;
     return (left, reference, None);
@@ -2049,7 +2034,7 @@ impl EsastGenPass.exit_import(self: EsastGenPass, <>node: uni.Import) -> None {
                     es.Identifier(
                         name=item.alias.sym_name if item.alias else item.name.sym_name
                     ),
-                    jac_node=item.alias if item.alias else item.name
+                    jac_node=item.alias or item.name
                 );
                 specifiers.append(
                     self.sync_loc(
@@ -2160,7 +2145,7 @@ impl EsastGenPass.exit_module(self: EsastGenPass, <>node: uni.Module) -> None {
             }
         }
     }
-    target_body = client_items if client_items else fallback_items;
+    target_body = client_items or fallback_items;
     body.extend(self._flatten_ast_list(target_body));
     body.extend(self.exports);
     program = self.sync_loc(

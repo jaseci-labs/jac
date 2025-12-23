@@ -57,7 +57,7 @@ impl AstTool.ir(self: AstTool, args: list[str]) -> str {
     }
     if file_name.endswith(('.jac', '.py')) {
         [base, mod] = os.path.split(file_name);
-        base = base if base else './';
+        base = base or './';
         if file_name.endswith('.py') {
             file_source = read_file_with_encoding(file_name);
             parsed_ast = py_ast.parse(file_source);

@@ -163,7 +163,7 @@ impl JacLangServer.get_node_info(
             sym_node = sym_node.name_of;
         }
         access = (sym_node.sym.access.value + ' ') if sym_node.sym else None;
-        node_info = f"'('{(access if access else '')}{sym_node.sym_category.value}') '{sym_node.sym_name}";
+        node_info = f"'('{(access or '')}{sym_node.sym_category.value}') '{sym_node.sym_name}";
         if sym_node.name_spec.clean_type {
             node_info += f"': '{sym_node.name_spec.clean_type}";
         }
@@ -422,9 +422,7 @@ impl JacLangServer.type_check_file(
                 # to display diagnostic , it need URI starts with "file://"
             ),
             utils.gen_diagnostics(
-                (annex_view if annex_view else fs_path),
-                self.errors_had,
-                self.warnings_had
+                (annex_view or fs_path), self.errors_had, self.warnings_had
             )
         );
         if annex_view {

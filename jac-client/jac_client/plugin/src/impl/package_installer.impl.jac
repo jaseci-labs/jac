@@ -88,7 +88,7 @@ impl PackageInstaller.install_package(
         ) ;
     }
     # Add package with version (default to latest if not specified)
-    package_version = version if version else 'latest';
+    package_version = version or 'latest';
     # Use JacClientConfig to add the dependency
     self.config_loader.add_dependency(package_name, package_version, is_dev);
     # Save the updated config

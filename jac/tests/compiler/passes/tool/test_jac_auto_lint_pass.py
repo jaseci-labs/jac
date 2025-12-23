@@ -524,15 +524,13 @@ class TestHasattrConversion:
         assert 'hasattr(instance, "name")' not in formatted
         assert "hasattr(instance, 'value')" not in formatted
 
-        # The if-else expressions should use null-safe access in condition
-        assert (
-            "if instance?.value else" in formatted
-            or "instance?.value else 0" in formatted
-        )
-
-        # Both the value AND condition should be converted for matching patterns
+        # The if-else expressions with hasattr should be converted to or expressions
         # Pattern: obj.attr if hasattr(obj, "attr") else default
-        # Should become: obj?.attr if obj?.attr else default
+        # Step 1: becomes obj?.attr if obj?.attr else default
+        # Step 2: becomes obj?.attr or default (ternary-to-or optimization)
+        assert "instance?.value or 0" in formatted
+        assert 'instance?.name or "default"' in formatted
+
         # Check that we don't have "instance.value if" (non-null-safe value with null-safe condition)
         assert "instance.value if instance?.value" not in formatted
         assert "instance.name if instance?.name" not in formatted
@@ -562,3 +560,43 @@ class TestHasattrConversion:
         assert "hasattr(instance" in formatted
         # No null-safe conversions should happen
         assert "instance?." not in formatted
+
+
+class TestTernaryToOrConversion:
+    """Tests for converting x if x else default to x or default."""
+
+    def test_ternary_to_or(self, auto_lint_fixture_path: Callable[[str], str]) -> None:
+        """Test that identical ternary expressions are converted to or."""
+        input_path = auto_lint_fixture_path("ternary_to_or.jac")
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True)
+        formatted = prog.mod.main.gen.jac
+
+        # Basic ternary with identical value and condition should be converted
+        assert "instance.value or 0" in formatted
+        assert "instance.value if instance.value else 0" not in formatted
+
+        # Null-safe ternary should be converted
+        assert 'instance?.name or "default"' in formatted
+        assert 'instance?.name if instance?.name else "default"' not in formatted
+
+        # Different value and condition should NOT be converted
+        assert "if instance.name else" in formatted
+
+        # Null-safe with int default should be converted
+        assert (
+            "instance?.value or -1" in formatted
+            or "instance?.value or (- 1)" in formatted
+        )
+
+    def test_ternary_no_lint_preserves(
+        self, auto_lint_fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that auto_lint=False preserves ternary expressions."""
+        input_path = auto_lint_fixture_path("ternary_to_or.jac")
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=False)
+        formatted = prog.mod.main.gen.jac
+
+        # Without linting, ternary should remain (may be multi-line in formatted output)
+        assert "if instance.value" in formatted and "else 0" in formatted
