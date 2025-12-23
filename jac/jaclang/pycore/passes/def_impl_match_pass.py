@@ -132,6 +132,12 @@ class DeclImplMatchPass(Transform[uni.Module, uni.Module]):
             )
             valid_decl.sym_tab.names_in_scope = sym.decl.name_of.sym_tab.names_in_scope
 
+            # Re-resolve symbols in the impl body now that symbol tables are synchronized.
+            # This is necessary because impl files are compiled before being linked to their
+            # base module, so symbol resolution during initial compilation fails for symbols
+            # like 'self' and archetype members.
+            self._resolve_impl_body_symbols(sym.decl.name_of)
+
         # Process kid scopes recursively
         for source_scope in source_sym_tab.kid_scope:
             # If source and target are the same, process within the same scope
@@ -173,3 +179,29 @@ class DeclImplMatchPass(Transform[uni.Module, uni.Module]):
                             loc_in_kid = par.kid.index(params_decl[idx])
                             par.kid[loc_in_kid] = params_defn[idx]
                         params_decl[idx] = params_defn[idx]
+
+    def _resolve_impl_body_symbols(self, impl_def: uni.ImplDef) -> None:
+        """Re-resolve symbols in an impl body after symbol table synchronization.
+
+        When impl files are compiled, they don't have access to the base module's
+        symbols (like 'self' or archetype members). After DeclImplMatchPass links
+        the impl to its declaration and synchronizes symbol tables, we need to
+        re-traverse the impl body to resolve these symbols.
+        """
+        # Get all Name nodes that aren't part of an AtomTrailer (standalone names)
+        for name_node in impl_def.get_all_sub_nodes(uni.Name):
+            # Skip if already resolved or if part of AtomTrailer (handled separately)
+            if name_node.sym is not None:
+                continue
+            if isinstance(name_node.parent, uni.AtomTrailer):
+                continue
+            # Try to resolve the symbol
+            if name_node.sym_tab:
+                name_node.sym_tab.use_lookup(name_node)
+
+        # Get all AtomTrailer nodes (for chains like self.attr)
+        for trailer_node in impl_def.get_all_sub_nodes(uni.AtomTrailer):
+            chain = trailer_node.as_attr_list
+            # Only re-resolve if the first element in the chain is unresolved
+            if chain and chain[0].sym is None and trailer_node.sym_tab:
+                trailer_node.sym_tab.chain_use_lookup(chain)
