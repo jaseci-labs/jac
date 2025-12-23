@@ -2,6 +2,7 @@
 
 This file tests the auto-lint rule that converts:
 - hasattr(obj, "attr") -> obj?.attr
+- obj.attr if hasattr(obj, "attr") else default -> obj?.attr if obj?.attr else default
 """
 
 obj SomeClass {

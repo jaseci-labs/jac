@@ -530,6 +530,13 @@ class TestHasattrConversion:
             or "instance?.value else 0" in formatted
         )
 
+        # Both the value AND condition should be converted for matching patterns
+        # Pattern: obj.attr if hasattr(obj, "attr") else default
+        # Should become: obj?.attr if obj?.attr else default
+        # Check that we don't have "instance.value if" (non-null-safe value with null-safe condition)
+        assert "instance.value if instance?.value" not in formatted
+        assert "instance.name if instance?.name" not in formatted
+
         # Binary expressions with hasattr should be converted
         assert (
             "instance?.value and" in formatted
