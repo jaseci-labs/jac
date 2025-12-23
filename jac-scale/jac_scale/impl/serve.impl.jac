@@ -565,12 +565,21 @@ impl JacAPIServer.refresh_token(
 impl JacAPIServer.create_user(
     self: JacAPIServer, email: str, password: str
 ) -> JSONResponse {
-    res = self.user_manager.create_user(email, password);
-    if ('error' in res) {
-        return JSONResponse(content=res, status_code=400);
+    import traceback;
+    try {
+        res = self.user_manager.create_user(email, password);
+        if ('error' in res) {
+            return JSONResponse(content=res, status_code=400);
+        }
+        res['token'] = self.create_jwt_token(email);
+        return JSONResponse(content=res, status_code=201);
+    } except Exception as e {
+        error_trace = traceback.format_exc();
+        print(f"Error in create_user: {e}\n{error_trace}");
+        return JSONResponse(
+            status_code=500, content={'error': f"Registration failed: {e}"}
+        );
     }
-    res['token'] = self.create_jwt_token(email);
-    return JSONResponse(content=res, status_code=201);
 }
 
 impl JacAPIServer.register_login_endpoint(self: JacAPIServer) -> None {
