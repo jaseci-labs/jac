@@ -19,6 +19,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Support output format for dot command**: Output format for dot command is supported. Example Usage: `jac dot filename.jac --format json`
 - **Shared `impl/` Folder for Annex Discovery**: Impl files can now be organized in a shared `impl/` folder within the same directory as the target module. For example, `impl/foo.impl.jac` will be discovered and attached to `foo.jac`, alongside the existing discovery methods (same directory and module-specific `.impl/` folders).
 - **Unified Plugin Configuration System**: Introduced a standardized configuration interface for Jac plugins through `jac.toml`. Plugins can now register configuration schemas via `get_plugin_metadata()` and `get_config_schema()` hooks, with settings defined under `[plugins.<plugin_name>]` sections. This replaces environment variable-based configuration with a centralized, type-safe approach. Applied to jac-client, jac-scale and jac-byllm plugins.
+- **Auto-Lint: hasattr to Null-Safe Conversion**: The `jac format --fix` command now automatically converts `hasattr(obj, "attr")` patterns to null-safe access syntax (`obj?.attr`). This applies to hasattr calls in conditionals, boolean expressions (`and`/`or`), and ternary expressions, producing cleaner and more idiomatic Jac code.
 
 ## jaclang 0.9.3 (Latest Release)
 
