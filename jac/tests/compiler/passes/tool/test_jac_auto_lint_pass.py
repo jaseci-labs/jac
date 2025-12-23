@@ -501,3 +501,57 @@ class TestRemoveEmptyParens:
         # obj methods with no params but return type should have parens removed
         assert "def get_count -> int" in formatted
         assert "def get_count()" not in formatted
+
+
+class TestHasattrConversion:
+    """Tests for converting hasattr(obj, 'attr') to obj?.attr."""
+
+    def test_hasattr_to_null_ok(
+        self, auto_lint_fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that hasattr(obj, 'attr') is converted to obj?.attr."""
+        input_path = auto_lint_fixture_path("hasattr_conversion.jac")
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True)
+        formatted = prog.mod.main.gen.jac
+
+        # Basic hasattr in if-else should be converted
+        assert "instance?.value" in formatted
+        assert "instance?.name" in formatted
+
+        # hasattr calls should be replaced with null-safe access
+        assert 'hasattr(instance, "value")' not in formatted
+        assert 'hasattr(instance, "name")' not in formatted
+        assert "hasattr(instance, 'value')" not in formatted
+
+        # The if-else expressions should use null-safe access in condition
+        assert (
+            "if instance?.value else" in formatted
+            or "instance?.value else 0" in formatted
+        )
+
+        # Binary expressions with hasattr should be converted
+        assert (
+            "instance?.value and" in formatted
+            or "?.value and instance.value" in formatted
+        )
+
+        # Variable attribute name should NOT be converted (attr_name is a variable)
+        assert "hasattr(instance, attr_name)" in formatted
+
+        # Regular function call that looks like hasattr should NOT be converted
+        assert "hasattr_lookalike(instance" in formatted
+
+    def test_hasattr_no_lint_preserves(
+        self, auto_lint_fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that auto_lint=False preserves hasattr calls."""
+        input_path = auto_lint_fixture_path("hasattr_conversion.jac")
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=False)
+        formatted = prog.mod.main.gen.jac
+
+        # Without linting, hasattr should remain
+        assert "hasattr(instance" in formatted
+        # No null-safe conversions should happen
+        assert "instance?." not in formatted

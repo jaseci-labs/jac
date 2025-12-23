@@ -9,6 +9,7 @@ This pass applies automatic linting corrections to Jac code, including:
 - Converting `def __post_init__` to `can postinit` (Jac style)
 - Removing empty parentheses from function/method declarations (def foo() -> def foo)
 - Removing unnecessary <> from names that are not actual keywords
+- Converting hasattr(obj, "attr") to null-safe access (obj?.attr)
 - (Future) Import organization
 - (Future) Redundant code removal
 """
@@ -54,4 +55,8 @@ class JacAutoLintPass(UniPass) {
     def enter_name(self: JacAutoLintPass, <>node: uni.Name) -> None;
     def enter_special_var_ref(self: JacAutoLintPass, <>node: uni.SpecialVarRef) -> None;
     def enter_builtin_type(self: JacAutoLintPass, <>node: uni.BuiltinType) -> None;
+    def exit_func_call(self: JacAutoLintPass, node: uni.FuncCall) -> None;
+    def _convert_hasattr_to_null_ok(
+        self: JacAutoLintPass, node: uni.FuncCall
+    ) -> (uni.AtomTrailer | None);
 }

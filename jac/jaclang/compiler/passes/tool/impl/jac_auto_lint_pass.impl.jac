@@ -566,3 +566,157 @@ impl JacAutoLintPass.enter_builtin_type(
         }
     }
 }
+
+"""Convert hasattr(obj, "attr") to null-safe access (obj?.attr).
+
+This helper checks if a FuncCall is a hasattr call with exactly two arguments:
+- First arg: any expression (the object)
+- Second arg: a string literal (the attribute name)
+
+If valid, creates and returns an AtomTrailer with is_null_ok=True.
+Returns None if the call doesn't match the hasattr pattern.
+"""
+impl JacAutoLintPass._convert_hasattr_to_null_ok(
+    self: JacAutoLintPass, node: uni.FuncCall
+) -> (uni.AtomTrailer | None) {
+    # Check if target is a Name with value "hasattr"
+    if not isinstance(node.target, uni.Name) {
+        return None;
+    }
+    if node.target.value != "hasattr" {
+        return None;
+    }
+    # Must have exactly 2 parameters
+    if len(node.params) != 2 {
+        return None;
+    }
+    obj_expr = node.params[0];
+    attr_expr = node.params[1];
+    # Second parameter must be a string literal
+    # Handle both String and MultiString (which wraps String)
+    attr_value: str | None = None;
+    string_node: uni.String | None = None;
+    if isinstance(attr_expr, uni.String) {
+        attr_value = attr_expr.value;
+        string_node = attr_expr;
+    } elif isinstance(attr_expr, uni.MultiString) {
+        # MultiString contains a list of String/FString
+        # For hasattr, we only handle simple single strings
+        if len(attr_expr.strings) == 1 and isinstance(attr_expr.strings[0], uni.String) {
+            attr_value = attr_expr.strings[0].value;
+            string_node = attr_expr.strings[0];
+        }
+    }
+    if attr_value is None or string_node is None {
+        return None;
+    }
+    # Extract attribute name from string (remove quotes)
+    if (attr_value.startswith('"') and attr_value.endswith('"'))
+    or (attr_value.startswith("'") and attr_value.endswith("'")) {
+        attr_name = attr_value[1:-1];
+    } else {
+        return None;
+    }
+    # Create a Name node for the attribute using the string node's location info
+    attr_name_node = uni.Name(
+        orig_src=string_node.loc.orig_src,
+        name=Tok.NAME.name,
+        value=attr_name,
+        line=string_node.loc.first_line,
+        end_line=string_node.loc.last_line,
+        col_start=string_node.loc.col_start,
+        col_end=string_node.loc.col_end,
+        pos_start=string_node.loc.pos_start,
+        pos_end=string_node.loc.pos_end,
+        is_kwesc=False
+    );
+    # Create the null-safe AtomTrailer: obj?.attr
+    null_ok_access = uni.AtomTrailer(
+        target=obj_expr,
+        right=attr_name_node,
+        is_attr=True,
+        is_null_ok=True,
+        kid=[obj_expr, attr_name_node]
+    );
+    null_ok_access.normalize(deep=False);
+    return null_ok_access;
+}
+
+"""Process FuncCall to convert hasattr(obj, "attr") to obj?.attr.
+
+This replaces hasattr calls in the parent node's children with
+the equivalent null-safe access expression.
+"""
+impl JacAutoLintPass.exit_func_call(self: JacAutoLintPass, node: uni.FuncCall) -> None {
+    if not self.lint_enabled {
+        return;
+    }
+    # Try to convert hasattr to null-safe access
+    replacement = self._convert_hasattr_to_null_ok(node);
+    if replacement is None {
+        return;
+    }
+    # Replace this node in its parent
+    parent = node.parent;
+    if parent is None {
+        return;
+    }
+    replacement.parent = parent;
+    # Find and replace in parent's children
+    # Handle different parent types that might contain this FuncCall
+    if isinstance(parent, uni.IfElseExpr) {
+        if parent.condition is node {
+            parent.condition = replacement;
+        } elif parent.value is node {
+            parent.value = replacement;
+        } elif parent.else_value is node {
+            parent.else_value = replacement;
+        }
+        parent.normalize(deep=False);
+    } elif isinstance(parent, uni.BinaryExpr) {
+        if parent.left is node {
+            parent.left = replacement;
+        } elif parent.right is node {
+            parent.right = replacement;
+        }
+        parent.normalize(deep=False);
+    } elif isinstance(parent, uni.BoolExpr) {
+        # BoolExpr has a values list (for 'and'/'or' expressions)
+        new_values: list = [];
+        for val in parent.values {
+            if val is node {
+                new_values.append(replacement);
+            } else {
+                new_values.append(val);
+            }
+        }
+        parent.values = new_values;
+        parent.normalize(deep=False);
+    } elif isinstance(parent, uni.UnaryExpr) {
+        if parent.operand is node {
+            parent.operand = replacement;
+        }
+        parent.normalize(deep=False);
+    } elif isinstance(parent, uni.IfStmt) {
+        if parent.condition is node {
+            parent.condition = replacement;
+        }
+        parent.normalize(deep=False);
+    } elif isinstance(parent, uni.WhileStmt) {
+        if parent.condition is node {
+            parent.condition = replacement;
+        }
+        parent.normalize(deep=False);
+    } else {
+        # For other parent types, update kid list manually
+        new_kids: list = [];
+        for kid in parent.kid {
+            if kid is node {
+                new_kids.append(replacement);
+            } else {
+                new_kids.append(kid);
+            }
+        }
+        parent.kid = new_kids;
+    }
+}
