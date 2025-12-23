@@ -134,12 +134,17 @@ impl JacLangServer.get_definition(
             return make_location(parent.body.sym.decl);
         }
     }
-    if not node_selected or not node_selected.type {
-        return None;
+    ####################################################################
+    ##         Fallback: use symbol resolution if available           ##
+    ####################################################################
+    # Even if type is not available, we can still navigate using the symbol
+    # reference. This is important for symbols resolved in impl bodies where
+    # type inference may not have run yet.
+    if node_selected.sym and node_selected.sym.defn {
+        try {
+            return make_location(node_selected.sym.defn[0]);
+        } except Exception { }
     }
-    try {
-        return make_location(node_selected.sym.defn[0]);
-    } except Exception { }
     return None;
 }
 

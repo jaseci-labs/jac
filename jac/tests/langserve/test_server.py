@@ -418,3 +418,50 @@ def test_go_to_def_import_star(
             )
     finally:
         lsp.shutdown()
+
+
+def test_go_to_definition_impl_body_self_attr(
+    passes_main_fixture_abs_path: Callable[[str], str],
+) -> None:
+    """Test go-to-definition for self.attr in impl bodies navigates to has declaration.
+
+    This tests the fix for symbol resolution in .impl.jac files, where clicking on
+    'self.count' in an impl body should navigate to the 'has count' declaration
+    in the base .jac file.
+    """
+    lsp = create_server(None, lambda x: "")
+    try:
+        impl_file = uris.from_fs_path(
+            passes_main_fixture_abs_path("impl_symbol_resolution.impl.jac")
+        )
+        lsp.type_check_file(impl_file)
+
+        # fmt: off
+        # Test positions in impl_symbol_resolution.impl.jac (1-indexed for test input):
+        # Line 5: `    return self.count;`
+        #         - 'count' starts at column 17
+        # Line 9: `    return f"{self.name}: {self.count}";`
+        #         - 'name' is at column 21, 'count' is at column 34
+        #
+        # Expected targets in impl_symbol_resolution.jac (0-indexed in LSP output):
+        # Line 3 (0-indexed): `    has count: int = 0,` -> count at 3:8-3:13
+        # Line 4 (0-indexed): `        name: str = "default";` -> name at 4:8-4:12
+        positions = [
+            # (impl_line, impl_char, expected_target)
+            (5, 17, "impl_symbol_resolution.jac:3:8-3:13"),   # count in `return self.count`
+            (9, 21, "impl_symbol_resolution.jac:4:8-4:12"),   # name in f-string
+            (9, 34, "impl_symbol_resolution.jac:3:8-3:13"),   # count in f-string
+        ]
+        # fmt: on
+
+        for line, char, expected in positions:
+            result = lsp.get_definition(impl_file, lspt.Position(line - 1, char - 1))
+            assert result is not None, (
+                f"Expected definition at line {line}, char {char}, got None"
+            )
+            assert expected in str(result), (
+                f"Expected '{expected}' in definition for line {line}, char {char}, "
+                f"got: {result}"
+            )
+    finally:
+        lsp.shutdown()
