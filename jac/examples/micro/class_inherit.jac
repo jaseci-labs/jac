@@ -2,11 +2,11 @@
 
 obj Parent {
     def init {
-        # Parent initialization
+    # Parent initialization
     }
 
     def speak -> None {
-        # Parent speaking
+    # Parent speaking
     }
 }
 
