@@ -18,7 +18,7 @@ import defs.mod_defs;  # includes a file
 obj mytype {}  # define a new type
 
 
-node mynode(this , that) {}  # define a new node
+node mynode(this, that) {}  # define a new node
 
 
 edge parent {}  # define a new edge

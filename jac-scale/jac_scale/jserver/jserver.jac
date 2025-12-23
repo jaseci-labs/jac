@@ -58,7 +58,7 @@ obj JEndPoint {
 }
 
 """Abstract base class for server implementations."""
-class JServer(ABC , Generic[T]) {
+class JServer(ABC, Generic[T]) {
     def init(self: JServer, end_points: list[JEndPoint]) -> None;
     def get_endpoints(self: JServer) -> list[JEndPoint];
     def add_endpoint(self: JServer, endpoint: JEndPoint) -> None;

@@ -55,7 +55,7 @@ obj CompletionItem {
 }
 
 """The kind of a completion entry."""
-class CompletionItemKind(int , Enum) {
+class CompletionItemKind(int, Enum) {
     with entry {
         Text = 1;
         Method = 2;

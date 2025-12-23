@@ -31,7 +31,7 @@ obj Dad(Parent) {
     }
 }
 
-obj Child(Mom , Dad) {  #Child inherits from Mom and Dad
+obj Child(Mom, Dad) {  #Child inherits from Mom and Dad
     def speak -> None {
         # Child initialization
         Mom.speak();

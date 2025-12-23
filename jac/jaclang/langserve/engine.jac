@@ -38,7 +38,7 @@ class Task {
 }
 
 """Jac Language Server, manages JacProgram and LSP."""
-class JacLangServer(JacProgram , LanguageServer) {
+class JacLangServer(JacProgram, LanguageServer) {
     def init(self: JacLangServer) -> None;
     def dispatcher(self: JacLangServer) -> None;
     @property

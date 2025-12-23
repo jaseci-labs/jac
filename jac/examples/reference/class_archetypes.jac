@@ -40,7 +40,7 @@ obj Mammal {
 }
 
 # Node with multiple inheritance
-node Pet(Animal , Domesticated , Mammal) {
+node Pet(Animal, Domesticated, Mammal) {
     has name: str = "Unnamed",
         favorite_toy: str = "ball";
 

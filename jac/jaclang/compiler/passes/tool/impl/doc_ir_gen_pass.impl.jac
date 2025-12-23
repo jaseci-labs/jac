@@ -1985,6 +1985,10 @@ impl DocIRGenPass.exit_archetype(self: DocIRGenPass, <>node: uni.Archetype) -> N
             parts.pop();
             parts.append(i.gen.doc_ir);
             parts.append(self.space());
+        } elif (isinstance(i, uni.Token) and (i.name == Tok.COMMA)) {
+            parts.pop();
+            parts.append(i.gen.doc_ir);
+            parts.append(self.space());
         } elif (not in_body and isinstance(i, uni.Token) and (i.name == Tok.DECOR_OP)) {
             parts.append(i.gen.doc_ir);
         } else {
