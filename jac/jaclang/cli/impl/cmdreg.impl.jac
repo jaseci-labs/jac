@@ -60,7 +60,7 @@ impl CommandRegistry._bind_command_to_argparse(
     );
     first = True;
     for (param_name, param) in cmd.sig.parameters.items() {
-        type_name = param.annotation.__name__
+        type_name = param.annotation?.__name__
         if param.annotation?.__name__
         else str(param.annotation);
         docstring_param_descriptions = extract_param_descriptions(doc);
@@ -117,7 +117,7 @@ impl CommandRegistry._bind_command_to_argparse(
             if isinstance(param.annotation, str)
             else param.annotation;
             if annotation is list
-            or (annotation?.__origin__ and annotation.__origin__ is list) {
+            or (annotation?.__origin__ and annotation?.__origin__ is list) {
                 cmd_parser.add_argument(
                     f"{param_name}", <>default=param.default, nargs='*', help=arg_msg
                 );

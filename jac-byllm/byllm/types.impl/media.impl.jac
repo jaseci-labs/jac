@@ -85,7 +85,7 @@ impl Image.postinit()  -> None {
         return;
     }
     # File-like object (e.g., BytesIO, IO[bytes])
-    if value?.read and callable(value.read) {
+    if value?.read and callable(value?.read) {
         # Safely read without permanently moving the cursor
         stream: IO[bytes] = value;  # type: ignore[assignment]
         pos = None;
@@ -96,7 +96,7 @@ impl Image.postinit()  -> None {
         }
         try {
             # Prefer getvalue if available (e.g., BytesIO)
-            if stream?.getvalue and callable(stream.getvalue) {
+            if stream?.getvalue and callable(stream?.getvalue) {
                 raw = stream.getvalue();  # type: ignore[call-arg]
             } else {
                 if stream?.seek {

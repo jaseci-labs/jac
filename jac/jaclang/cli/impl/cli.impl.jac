@@ -817,7 +817,7 @@ impl proc_file_sess(filename: str, session: str, <>root: (str | None) = None) ->
     import from jaclang.pycore.runtime { JacRuntime as Jac }
     import from jaclang.pycore.runtime { JacUtils }
     if (session == '') {
-        session = cmd_registry.args.session if cmd_registry?.args?.session else '';
+        session = cmd_registry?.args.session if cmd_registry?.args?.session else '';
     }
     (base, mod) = os.path.split(filename);
     base = base if base else './';

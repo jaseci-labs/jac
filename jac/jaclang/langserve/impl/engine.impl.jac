@@ -5,7 +5,7 @@ impl JacLangServer.shutdown(self: JacLangServer) -> None {
     }
     self._shutdown_called = True;
     try {
-        if self?.worker_thread and self.worker_thread.is_alive() {
+        if self?.worker_thread and self?.worker_thread.is_alive() {
             self.queue.put(None);  # Signal the worker thread to exit
             self.worker_thread.join();  # Wait for the worker thread to finish
         }
