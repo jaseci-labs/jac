@@ -33,7 +33,6 @@ _LAZY_PASSES = {
     "PyJacAstLinkPass": ".pyjac_ast_link_pass",
     "SemDefMatchPass": ".sem_def_match_pass",
     "TypeCheckPass": ".type_checker_pass",
-    "DefUsePass": ".def_use_pass",
 }
 
 # Cache for lazily loaded passes
@@ -41,7 +40,6 @@ _lazy_cache: dict[str, type] = {}
 
 if TYPE_CHECKING:
     from .cfg_build_pass import CFGBuildPass as CFGBuildPass
-    from .def_use_pass import DefUsePass as DefUsePass
     from .import_pass import JacImportDepsPass as JacImportDepsPass
     from .pyast_load_pass import PyastBuildPass as PyastBuildPass
     from .pyjac_ast_link_pass import PyJacAstLinkPass as PyJacAstLinkPass
@@ -115,5 +113,4 @@ __all__ = [
     "PyBytecodeGenPass",
     "CFGBuildPass",
     "PyJacAstLinkPass",
-    "DefUsePass",
 ]

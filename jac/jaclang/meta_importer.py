@@ -76,7 +76,6 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
             "jaclang.compiler.passes.main.sem_def_match_pass",
             "jaclang.compiler.passes.main.annex_pass",
             "jaclang.compiler.passes.main.semantic_analysis_pass",
-            "jaclang.compiler.passes.main.def_use_pass",
             "jaclang.compiler.passes.main.pyjac_ast_link_pass",
             "jaclang.compiler.passes.main.import_pass",
             "jaclang.compiler.passes.main.type_checker_pass",

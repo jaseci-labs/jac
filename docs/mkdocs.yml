@@ -209,9 +209,6 @@ nav:
       - Jac-Client: "communityhub/release_notes/jac-client.md"
     - Breaking Changes: "communityhub/breaking_changes.md"
     - Leaderboard: "communityhub/top_contributors.md"
-    - Fun Stuff:
-      - Project Ideas:
-        - "communityhub/fun/static_fx.md"
     - Internals:
       - JSX 'Project OneLang' Design Doc: "internals/jsx_client_serv_design.md"
       - Jac Client Import Patterns Proposal: "internals/jac_import_patterns.md"
