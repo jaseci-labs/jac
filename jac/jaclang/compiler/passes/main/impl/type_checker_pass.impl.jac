@@ -148,6 +148,55 @@ impl TypeCheckPass.exit_ability(self: TypeCheckPass, <>node: uni.Ability) -> Non
     }
 }
 
+"""Exit an impl def node - ensure parameter type annotations are evaluated."""
+impl TypeCheckPass.exit_impl_def(self: TypeCheckPass, <>node: uni.ImplDef) -> None {
+    # For impl blocks, process type annotation Name nodes to enable hover/go-to-definition.
+    # Directly traverse the FuncSignature's params to find type annotations.
+    if isinstance(<>node.spec, uni.FuncSignature) {
+        sig = <>node.spec;
+        all_params = (
+            list(sig.posonly_params) + list(sig.params) + (
+                [sig.varargs] if sig.varargs else []
+            ) + list(sig.kwonlyargs) + ([sig.kwargs] if sig.kwargs else [])
+        );
+        for param in all_params {
+            # Process the type annotation - access via tag directly
+            if param.type_tag and isinstance(param.type_tag, uni.SubTag) {
+                tag = param.type_tag.tag;
+                if isinstance(tag, uni.Name) {
+                    # Try to resolve the symbol from the module scope if not already resolved
+                    if tag.sym is None {
+                        # Try to find the symbol from all loaded modules
+                        symbol: uni.Symbol | None = None;
+                        # Check all modules in the program hub
+                        for (path, mod) in self.prog.mod.hub.items() {
+                            if symbol := mod.lookup(
+                                tag.value, deep=True, incl_inner_scope=True
+                            ) {
+                                break;
+                            }
+                        }
+                        if symbol {
+                            symbol = self.evaluator.resolve_imported_symbols(symbol);
+                            symbol.add_use(tag);
+                            tag.sym = symbol;
+                            if symbol.decl and symbol.decl.name_of {
+                                tag.name_of = symbol.decl.name_of;
+                            }
+                        }
+                    }
+                    # Also call evaluator for full type processing
+                    self.evaluator.get_type_of_expression(tag);
+                }
+            }
+        }
+        # Also process return type annotation
+        if sig.return_type and isinstance(sig.return_type, uni.Name) {
+            self.evaluator.get_type_of_expression(sig.return_type);
+        }
+    }
+}
+
 impl TypeCheckPass._insert_builtin_symbols(self: TypeCheckPass) -> None {
     if (self.ir_in == self.evaluator.builtins_module) {
         return;

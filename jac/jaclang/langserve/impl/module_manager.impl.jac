@@ -19,10 +19,11 @@ impl ModuleManager.update(
 ) -> None {
     self.program.mod.hub[file_path] = build;
     if update_annexed {
-        self.sem_managers[file_path] = SemTokManager(ir=build);
-        for (p, mod) in self.program.mod.hub.items() {
+        hub = self.program.mod.hub;
+        self.sem_managers[file_path] = SemTokManager(ir=build, hub=hub);
+        for (p, mod) in hub.items() {
             if p != file_path {
-                self.sem_managers[p] = SemTokManager(ir=mod);
+                self.sem_managers[p] = SemTokManager(ir=mod, hub=hub);
             }
         }
     }

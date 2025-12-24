@@ -421,18 +421,18 @@ def test_go_to_def_import_star(
 
 
 def test_hover_self_type_annotation_in_stub(fixture_path: Callable[[str], str]) -> None:
-    """Test hover on self type annotations in method stubs with impl files.
+    """Test hover on self type annotations in method stubs and impl files.
 
     When a method stub has its implementation in a separate .impl.jac file,
     the signature params get linked to the impl file. This test verifies that
-    hover still works on the type annotation in the declaration file.
+    hover works on type annotations in both the declaration and impl files.
     """
     lsp = create_server(None, fixture_path)
     try:
         test_file = uris.from_fs_path(fixture_path("stub_hover.jac"))
         lsp.type_check_file(test_file)
 
-        # Test hover on MyServer in: def process(self: MyServer, data: str) -> str;
+        # Test hover on MyServer in declaration: def process(self: MyServer, data: str) -> str;
         # Line 6 (0-indexed: 5), MyServer starts at column 22
         hover = lsp.get_hover_info(test_file, lspt.Position(5, 24))
         assert hover is not None, "Hover should return info for self type annotation"
@@ -440,12 +440,22 @@ def test_hover_self_type_annotation_in_stub(fixture_path: Callable[[str], str]) 
             f"Hover should show MyServer info, got: {hover.contents.value}"
         )
 
-        # Test hover on MyServer in: def handle(self: MyServer, request: int) -> None;
+        # Test hover on MyServer in declaration: def handle(self: MyServer, request: int) -> None;
         # Line 7 (0-indexed: 6), MyServer starts at column 21
         hover2 = lsp.get_hover_info(test_file, lspt.Position(6, 23))
         assert hover2 is not None, "Hover should return info for self type annotation"
         assert "MyServer" in hover2.contents.value, (
             f"Hover should show MyServer info, got: {hover2.contents.value}"
+        )
+
+        # Test hover on MyServer in impl file: impl MyServer.handle(self: MyServer, ...)
+        # Line 7 (0-indexed: 6), MyServer in self type annotation starts at column 27
+        impl_file = uris.from_fs_path(fixture_path("stub_hover.impl.jac"))
+        lsp.type_check_file(impl_file)
+        hover3 = lsp.get_hover_info(impl_file, lspt.Position(6, 29))
+        assert hover3 is not None, "Hover should return info for self type in impl file"
+        assert "MyServer" in hover3.contents.value, (
+            f"Hover should show MyServer info in impl, got: {hover3.contents.value}"
         )
     finally:
         lsp.shutdown()

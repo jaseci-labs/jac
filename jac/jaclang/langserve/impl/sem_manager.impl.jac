@@ -327,17 +327,98 @@ impl SemTokManager.update_sem_tokens(
 impl SemTokManager.gen_sem_tok_node(
     ir: uni.Module
 ) -> List[Tuple[(lspt.Position, int, int, uni.AstSymbolNode)]] {
+    import from jaclang.pycore.constant { JacSemTokenType }
     tokens: List[Tuple[(lspt.Position, int, int, uni.AstSymbolNode)]] = [];
-    for nd in ir._in_mod_nodes {
-        if isinstance(nd, uni.NameAtom) and nd.sem_token {
+    seen_locs: dict = {};  # Track (line, col) to avoid duplicates
+    hub = self.hub;
+    # Helper to resolve symbol from hub if not already set
+    def resolve_symbol(nd: uni.NameAtom) -> None {
+        if nd.sym is None and nd?.value {
+            # Try to find the symbol from all loaded modules in the hub
+            for (path, mod) in hub.items() {
+                if symbol := mod.lookup(nd.value, deep=True, incl_inner_scope=True) {
+                    # Resolve imported symbols if needed
+                    if symbol?.via_import and symbol?.via_import {
+                        if symbol.decl and symbol.decl?.name_of {
+                            if isinstance(symbol.decl.name_of, uni.ModuleItem) {
+                                if symbol.decl.name_of.sym {
+                                    symbol = symbol.decl.name_of.sym;
+                                }
+                            }
+                        }
+                    }
+                    symbol.add_use(nd);
+                    nd.sym = symbol;
+                    if symbol.decl and symbol.decl.name_of {
+                        nd.name_of = symbol.decl.name_of;
+                    }
+                    # Also set sem_token based on symbol type
+                    if nd.sem_token is None and symbol.decl and symbol.decl.name_of {
+                        decl = symbol.decl.name_of;
+                        if isinstance(decl, (uni.Architype, uni.Enum)) {
+                            nd.sem_token = (JacSemTokenType.CLASS, 0);
+                        } elif isinstance(decl, uni.Ability) {
+                            nd.sem_token = (JacSemTokenType.FUNCTION, 0);
+                        } elif isinstance(decl, uni.HasVar) {
+                            nd.sem_token = (JacSemTokenType.PROPERTY, 0);
+                        } else {
+                            nd.sem_token = (JacSemTokenType.VARIABLE, 0);
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+    }
+    # Helper to add a token
+    def add_token(nd: uni.NameAtom) -> None {
+        # Try to resolve symbol if not set
+        resolve_symbol(nd);
+        if nd.sem_token {
             (line, col_start, col_end) = (
                 (nd.loc.first_line - 1),
                 (nd.loc.col_start - 1),
                 (nd.loc.col_end - 1)
             );
-            length = col_end - col_start;
-            pos = lspt.Position(line, col_start);
-            tokens += [(pos, col_end, length, nd)];
+            loc_key = (line, col_start);
+            if loc_key not in seen_locs {
+                seen_locs[loc_key] = True;
+                length = col_end - col_start;
+                pos = lspt.Position(line, col_start);
+                tokens.append((pos, col_end, length, nd));
+            }
+        }
+    }
+    # Process all NameAtom nodes in _in_mod_nodes
+    for nd in ir._in_mod_nodes {
+        if isinstance(nd, uni.NameAtom) {
+            add_token(nd);
+        }
+    }
+    # Also extract type annotation Name nodes from ImplDef specs
+    # These may not be in _in_mod_nodes directly
+    for nd in ir._in_mod_nodes {
+        if isinstance(nd, uni.ImplDef) {
+            if isinstance(nd.spec, uni.FuncSignature) {
+                sig = nd.spec;
+                all_params = (
+                    list(sig.posonly_params) + list(sig.params) + (
+                        [sig.varargs] if sig.varargs else []
+                    ) + list(sig.kwonlyargs) + ([sig.kwargs] if sig.kwargs else [])
+                );
+                for param in all_params {
+                    if param.type_tag and isinstance(param.type_tag, uni.SubTag) {
+                        tag = param.type_tag.tag;
+                        if isinstance(tag, uni.NameAtom) {
+                            add_token(tag);
+                        }
+                    }
+                }
+                # Also check return type
+                if sig.return_type and isinstance(sig.return_type, uni.NameAtom) {
+                    add_token(sig.return_type);
+                }
+            }
         }
     }
     return tokens;
@@ -345,26 +426,114 @@ impl SemTokManager.gen_sem_tok_node(
 
 """Return semantic tokens."""
 impl SemTokManager.gen_sem_tokens(ir: uni.Module) -> list[int] {
+    import from jaclang.pycore.constant { JacSemTokenType }
     tokens = [];
     (prev_line, prev_col) = (0, 0);
-    for nd in ir._in_mod_nodes {
-        if isinstance(nd, uni.NameAtom) and nd.sem_token {
+    seen_locs: dict = {};  # Track (line, col) to avoid duplicates
+    hub = self.hub;
+    # Helper to resolve symbol from hub if not already set
+    def resolve_symbol(nd: uni.NameAtom) -> None {
+        if nd.sym is None and nd?.value {
+            # Try to find the symbol from all loaded modules in the hub
+            for (path, mod) in hub.items() {
+                if symbol := mod.lookup(nd.value, deep=True, incl_inner_scope=True) {
+                    # Resolve imported symbols if needed
+                    if symbol?.via_import and symbol?.via_import {
+                        if symbol.decl and symbol.decl?.name_of {
+                            if isinstance(symbol.decl.name_of, uni.ModuleItem) {
+                                if symbol.decl.name_of.sym {
+                                    symbol = symbol.decl.name_of.sym;
+                                }
+                            }
+                        }
+                    }
+                    symbol.add_use(nd);
+                    nd.sym = symbol;
+                    if symbol.decl and symbol.decl.name_of {
+                        nd.name_of = symbol.decl.name_of;
+                    }
+                    # Also set sem_token based on symbol type
+                    if nd.sem_token is None and symbol.decl and symbol.decl.name_of {
+                        decl = symbol.decl.name_of;
+                        if isinstance(decl, (uni.Architype, uni.Enum)) {
+                            nd.sem_token = (JacSemTokenType.CLASS, 0);
+                        } elif isinstance(decl, uni.Ability) {
+                            nd.sem_token = (JacSemTokenType.FUNCTION, 0);
+                        } elif isinstance(decl, uni.HasVar) {
+                            nd.sem_token = (JacSemTokenType.PROPERTY, 0);
+                        } else {
+                            nd.sem_token = (JacSemTokenType.VARIABLE, 0);
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+    }
+    def add_token(nd: uni.NameAtom) -> None {
+        # Try to resolve symbol if not set
+        resolve_symbol(nd);
+        if nd.sem_token {
             (line, col_start, col_end) = (
                 (nd.loc.first_line - 1),
                 (nd.loc.col_start - 1),
                 (nd.loc.col_end - 1)
             );
-            length = col_end - col_start;
-            tokens += [
-                (line - prev_line),
-                col_start if line != prev_line else (col_start - prev_col),
-                length,
-                *nd.sem_token
-            ];
-            (prev_line, prev_col) = (line, col_start);
+            loc_key = (line, col_start);
+            if loc_key not in seen_locs {
+                seen_locs[loc_key] = True;
+                length = col_end - col_start;
+                tokens.append(
+                    (line, col_start, length, nd.sem_token[0], nd.sem_token[1])
+                );
+            }
         }
     }
-    return tokens;
+    for nd in ir._in_mod_nodes {
+        if isinstance(nd, uni.NameAtom) {
+            add_token(nd);
+        }
+    }
+    # Also extract type annotation Name nodes from ImplDef specs
+    for nd in ir._in_mod_nodes {
+        if isinstance(nd, uni.ImplDef) {
+            if isinstance(nd.spec, uni.FuncSignature) {
+                sig = nd.spec;
+                all_params = (
+                    list(sig.posonly_params) + list(sig.params) + (
+                        [sig.varargs] if sig.varargs else []
+                    ) + list(sig.kwonlyargs) + ([sig.kwargs] if sig.kwargs else [])
+                );
+                for param in all_params {
+                    if param.type_tag and isinstance(param.type_tag, uni.SubTag) {
+                        tag = param.type_tag.tag;
+                        if isinstance(tag, uni.NameAtom) {
+                            add_token(tag);
+                        }
+                    }
+                }
+                # Also check return type
+                if sig.return_type and isinstance(sig.return_type, uni.NameAtom) {
+                    add_token(sig.return_type);
+                }
+            }
+        }
+    }
+    # Sort by (line, col) and convert to delta format
+    tokens.sort(key=lambda  x: Any: (x[0], x[1]));
+    result = [];
+    (prev_line, prev_col) = (0, 0);
+    for (line, col_start, length, tok_type, tok_mod) in tokens {
+        result += [
+            (line - prev_line),
+            col_start if line != prev_line else (col_start - prev_col),
+            length,
+            tok_type,
+            tok_mod
+        ];
+        (prev_line, prev_col) = (line, col_start);
+    }
+    return result;
 }
 
 """Initialize semantic token manager."""

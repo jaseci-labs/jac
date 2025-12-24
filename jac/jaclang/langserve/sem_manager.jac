@@ -13,6 +13,7 @@ import lsprotocol.types as lspt;
 """Semantic Token Manager class."""
 obj SemTokManager {
     has ir: uni.Module,
+        hub: dict = {},
         sem_tokens: List[int] = [],
         static_sem_tokens: List[Tuple[(lspt.Position, int, int, uni.AstSymbolNode)]] = [];
 
