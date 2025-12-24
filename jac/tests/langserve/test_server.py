@@ -440,16 +440,16 @@ def test_stub_impl_hover_and_goto_def(fixture_path: Callable[[str], str]) -> Non
         # ================================================================
 
         # Hover on MyServer in: def process(self: MyServer, data: str) -> str;
-        # Line 9 (0-indexed: 8), MyServer starts at column 22
-        hover = lsp.get_hover_info(test_file, lspt.Position(8, 24))
+        # Line 13 (0-indexed: 12), MyServer starts at column 22
+        hover = lsp.get_hover_info(test_file, lspt.Position(12, 24))
         assert hover is not None, "Hover should return info for self type annotation"
         assert "MyServer" in hover.contents.value, (
             f"Hover should show MyServer info, got: {hover.contents.value}"
         )
 
         # Hover on MyServer in: def handle(self: MyServer, request: int) -> None;
-        # Line 10 (0-indexed: 9), MyServer starts at column 21
-        hover2 = lsp.get_hover_info(test_file, lspt.Position(9, 23))
+        # Line 14 (0-indexed: 13), MyServer starts at column 21
+        hover2 = lsp.get_hover_info(test_file, lspt.Position(13, 23))
         assert hover2 is not None, "Hover should return info for self type annotation"
         assert "MyServer" in hover2.contents.value, (
             f"Hover should show MyServer info, got: {hover2.contents.value}"
@@ -460,9 +460,9 @@ def test_stub_impl_hover_and_goto_def(fixture_path: Callable[[str], str]) -> Non
         # ================================================================
 
         # Hover on MyServer in impl file: impl MyServer.handle(self: MyServer, ...)
-        # Line 13 (0-indexed: 12), MyServer in self type annotation starts at column 27
+        # Line 15 (0-indexed: 14), MyServer in self type annotation starts at column 27
         lsp.type_check_file(impl_file)
-        hover3 = lsp.get_hover_info(impl_file, lspt.Position(12, 29))
+        hover3 = lsp.get_hover_info(impl_file, lspt.Position(14, 29))
         assert hover3 is not None, "Hover should return info for self type in impl file"
         assert "MyServer" in hover3.contents.value, (
             f"Hover should show MyServer info in impl, got: {hover3.contents.value}"
@@ -472,41 +472,73 @@ def test_stub_impl_hover_and_goto_def(fixture_path: Callable[[str], str]) -> Non
         # Test go-to-definition from stub to impl
         # ================================================================
 
-        # Goto def on 'init' stub (line 8, col 10) -> should go to impl line 3
+        # Goto def on 'init' stub (line 12, col 10) -> should go to impl line 5
         # def init(self: MyServer, name: str) -> None;
-        defn = lsp.get_definition(test_file, lspt.Position(7, 10))
+        defn = lsp.get_definition(test_file, lspt.Position(11, 10))
         assert defn is not None, "Definition should be found for init stub"
         assert impl_file_path in defn.uri, (
             f"Definition should point to impl file, got: {defn.uri}"
         )
-        assert defn.range.start.line == 2, (
-            f"Definition should be at line 3 (0-indexed: 2), got: {defn.range.start.line}"
+        assert defn.range.start.line == 4, (
+            f"Definition should be at line 5 (0-indexed: 4), got: {defn.range.start.line}"
         )
 
-        # Goto def on 'process' stub (line 9, col 10) -> should go to impl line 9
+        # Goto def on 'process' stub (line 13, col 10) -> should go to impl line 11
         # def process(self: MyServer, data: str) -> str;
-        defn2 = lsp.get_definition(test_file, lspt.Position(8, 10))
+        defn2 = lsp.get_definition(test_file, lspt.Position(12, 10))
         assert defn2 is not None, "Definition should be found for process stub"
         assert impl_file_path in defn2.uri, (
             f"Definition should point to impl file, got: {defn2.uri}"
         )
-        assert defn2.range.start.line == 8, (
-            f"Definition should be at line 9 (0-indexed: 8), got: {defn2.range.start.line}"
+        assert defn2.range.start.line == 10, (
+            f"Definition should be at line 11 (0-indexed: 10), got: {defn2.range.start.line}"
         )
 
         # ================================================================
         # Test go-to-definition for static field access (MyServer._counter)
         # ================================================================
 
-        # Goto def on '_counter' in 'MyServer._counter' (line 5, col 31)
-        # Should go to static has declaration in stub file (line 6)
-        defn3 = lsp.get_definition(impl_file, lspt.Position(4, 33))
+        # Goto def on '_counter' in 'MyServer._counter' (line 7, col 31)
+        # Should go to static has declaration in stub file (line 10)
+        defn3 = lsp.get_definition(impl_file, lspt.Position(6, 33))
         assert defn3 is not None, "Definition should be found for static field _counter"
         assert "stub_hover.jac" in defn3.uri, (
             f"Definition should point to declaration file, got: {defn3.uri}"
         )
-        assert defn3.range.start.line == 5, (
-            f"Definition should be at line 6 (0-indexed: 5), got: {defn3.range.start.line}"
+        assert defn3.range.start.line == 9, (
+            f"Definition should be at line 10 (0-indexed: 9), got: {defn3.range.start.line}"
+        )
+
+        # ================================================================
+        # Test hover and go-to-definition for Python type methods in impl bodies
+        # This tests the fix for type resolution in impl bodies where
+        # Python type methods (like Thread.start) should be properly resolved.
+        # ================================================================
+
+        # Hover on 'start' in 'self.worker.start()' (line 23, col 17)
+        # Line 23 (0-indexed: 22): `    self.worker.start();`
+        # 'start' starts at column 17 (0-indexed: 16)
+        hover_start = lsp.get_hover_info(impl_file, lspt.Position(22, 17))
+        assert hover_start is not None, (
+            "Hover should return info for Thread.start method in impl body"
+        )
+
+        # Hover on 'worker' in 'self.worker.start()' (line 23, col 10)
+        hover_worker = lsp.get_hover_info(impl_file, lspt.Position(22, 10))
+        assert hover_worker is not None, (
+            "Hover should return info for worker field in impl body"
+        )
+        assert "Thread" in hover_worker.contents.value, (
+            f"Hover should show Thread type, got: {hover_worker.contents.value}"
+        )
+
+        # Go-to-definition on 'start' should go to Python threading module
+        defn_start = lsp.get_definition(impl_file, lspt.Position(22, 17))
+        assert defn_start is not None, (
+            "Definition should be found for Thread.start method"
+        )
+        assert "threading" in defn_start.uri, (
+            f"Definition should point to threading module, got: {defn_start.uri}"
         )
 
     finally:
