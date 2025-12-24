@@ -237,6 +237,12 @@ class TypeEvaluator {
     def _create_dataclass_init_method(
         self: TypeEvaluator, class_type: types.ClassType
     ) -> types.FunctionType;
+
+    def _validate_constructor_method(
+        self: TypeEvaluator,
+        expr: uni.FuncCall,
+        method_type: TypeBase
+    ) -> bool;
 }
 # FIXME: This class implementation is modified from pyright to make it
 # simple and work for now, however this needs to be revisited and

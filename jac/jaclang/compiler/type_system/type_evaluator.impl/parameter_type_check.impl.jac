@@ -77,22 +77,25 @@ impl TypeEvaluator.validate_call_args(
         isinstance(caller_type, types.ClassType)
         and caller_type.is_instantiable_class()
     ) {
-        # TODO: validate args for __init__()
+        validated = False;
 
-        # If it has __init__ method, try to call it.
-        if init_method := self._lookup_class_member(caller_type, "__init__") {
-            init_fn_type = self.get_type_of_symbol(init_method.symbol);
-            if isinstance(init_fn_type, types.FunctionType) {
-                arg_param_match = self.match_args_to_params(expr, init_fn_type);
-                if not arg_param_match.argument_errors {
-                    self.validate_arg_types(arg_param_match);
-                }
-            }
-        } elif caller_type.is_data_class() {
-            init_fn_type = self._create_dataclass_init_method(caller_type);
-            arg_param_match = self.match_args_to_params(expr, init_fn_type);
-            if not arg_param_match.argument_errors {
-                self.validate_arg_types(arg_param_match);
+        # Try __new__ first (Python builtins like str, int define constructors here)
+        if new_method := self._lookup_class_member(caller_type, "__new__") {
+            validated = self._validate_constructor_method(
+                expr, self.get_type_of_symbol(new_method.symbol)
+            );
+        }
+
+        # Fall back to __init__ if __new__ didn't have meaningful params
+        if not validated {
+            if init_method := self._lookup_class_member(caller_type, "__init__") {
+                self._validate_constructor_method(
+                    expr, self.get_type_of_symbol(init_method.symbol)
+                );
+            } elif caller_type.is_data_class() {
+                self._validate_constructor_method(
+                    expr, self._create_dataclass_init_method(caller_type)
+                );
             }
         }
         return caller_type.clone_as_instance();
@@ -175,4 +178,43 @@ impl TypeEvaluator.match_args_to_params(
     return MatchArgsToParamsResult(
         arg_params=arg_params, argument_errors=argument_errors
     );
+}
+
+"""
+Validate constructor method arguments. Handles both FunctionType and OverloadedType.
+Returns True if validation was performed (method has meaningful parameters), False otherwise.
+"""
+impl TypeEvaluator._validate_constructor_method(
+    self: TypeEvaluator,
+    expr: uni.FuncCall,
+    method_type: TypeBase
+) -> bool {
+    if isinstance(method_type, types.FunctionType) {
+        # Only validate if method has params beyond self/cls
+        if len(method_type.parameters) > 1 {
+            arg_param_match = self.match_args_to_params(expr, method_type);
+            if not arg_param_match.argument_errors {
+                self.validate_arg_types(arg_param_match);
+            }
+            return True;
+        }
+        return False;
+    }
+    if isinstance(method_type, types.OverloadedType) {
+        # Try each overload until one matches
+        for overload in method_type.overloads {
+            arg_param_match = self.match_args_to_params(
+                expr, overload, checking_overload=True
+            );
+            if not arg_param_match.argument_errors {
+                if self.validate_arg_types(arg_param_match, checking_overload=True) {
+                    return True;
+                }
+            }
+        }
+        # Overloaded methods always count as "validated" to prevent
+        # falling back to inherited object.__init__ with no params
+        return True;
+    }
+    return False;
 }

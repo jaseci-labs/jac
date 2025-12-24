@@ -30,4 +30,5 @@ class TypeCheckPass(UniPass) {
     def exit_formatted_value(self: TypeCheckPass, <>node: uni.FormattedValue) -> None;
     def exit_edge_ref_trailer(self: TypeCheckPass, <>node: uni.EdgeRefTrailer) -> None;
     def exit_special_var_ref(self: TypeCheckPass, <>node: uni.SpecialVarRef) -> None;
+    def exit_name(self: TypeCheckPass, <>node: uni.Name) -> None;
 }

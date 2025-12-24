@@ -6,6 +6,14 @@ impl TypeCheckPass.exit_special_var_ref(
     self.evaluator.get_type_of_expression(<>node);
 }
 
+"""Handle name nodes to ensure symbol resolution for all variable references."""
+impl TypeCheckPass.exit_name(self: TypeCheckPass, <>node: uni.Name) -> None {
+    # Skip if already resolved or if part of a construct that handles its own resolution
+    if <>node.sym is None {
+        self.evaluator.get_type_of_expression(<>node);
+    }
+}
+
 """Handle the edge reference trailer node."""
 impl TypeCheckPass.exit_edge_ref_trailer(
     self: TypeCheckPass, <>node: uni.EdgeRefTrailer
