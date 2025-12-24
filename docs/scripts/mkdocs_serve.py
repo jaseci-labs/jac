@@ -243,15 +243,14 @@ def serve_with_watch() -> None:
     """Serve MkDocs site and watch for file changes to trigger rebuilds."""
     port = 8000
     root_dir = os.path.dirname(os.path.dirname(__file__))
-    yml_dir = os.path.abspath(os.path.join(root_dir, ".."))
-    site_dir = os.path.join(yml_dir, "site")
+    site_dir = os.path.join(root_dir, "site")
     ignore_paths = [
         os.path.join(root_dir, "docs", "assets"),
         os.path.join(root_dir, "docs", "playground", "jaclang.zip"),
     ]
 
     print("Initial build of MkDocs site...")
-    subprocess.run(["mkdocs", "build"], check=True, cwd=yml_dir)
+    subprocess.run(["mkdocs", "build"], check=True, cwd=root_dir)
     reload_queue.put_nowait("reload")
 
     # Set up file watcher
