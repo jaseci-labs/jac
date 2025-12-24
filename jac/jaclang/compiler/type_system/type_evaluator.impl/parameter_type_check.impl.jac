@@ -79,10 +79,16 @@ impl TypeEvaluator.validate_call_args(
     ) {
         validated = False;
         # Try __new__ first (Python builtins like str, int define constructors here)
+        # Skip __new__ from object since it accepts anything (*args, **kwargs)
         if new_method := self._lookup_class_member(caller_type, "__new__") {
-            validated = self._validate_constructor_method(
-                expr, self.get_type_of_symbol(new_method.symbol)
-            );
+            # Only validate __new__ if it's not from object (the base class)
+            # object.__new__ accepts (*args, **kwargs) which matches anything
+            is_from_object = new_method.class_type.shared.class_name == "object";
+            if not is_from_object {
+                validated = self._validate_constructor_method(
+                    expr, self.get_type_of_symbol(new_method.symbol)
+                );
+            }
         }
         # Fall back to __init__ if __new__ didn't have meaningful params
         if not validated {
@@ -186,8 +192,15 @@ impl TypeEvaluator._validate_constructor_method(
     self: TypeEvaluator, expr: uni.FuncCall, method_type: TypeBase
 ) -> bool {
     if isinstance(method_type, types.FunctionType) {
-        # Only validate if method has params beyond self/cls
-        if len(method_type.parameters) > 1 {
+        # Check if method has meaningful params to validate.
+        # In Jac, self is not included in the parameter list, so we check > 0.
+        # In Python stubs, self/cls is included, so we check > 1.
+        has_params = len(method_type.parameters) > 0;
+        if has_params and method_type.parameters[0].is_self {
+            # Skip self/cls parameter if present (Python stubs)
+            has_params = len(method_type.parameters) > 1;
+        }
+        if has_params {
             arg_param_match = self.match_args_to_params(expr, method_type);
             if not arg_param_match.argument_errors {
                 self.validate_arg_types(arg_param_match);

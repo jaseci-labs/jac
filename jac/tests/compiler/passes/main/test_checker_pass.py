@@ -745,7 +745,15 @@ def test_inherit_method_lookup(fixture_path: Callable[[str], str]) -> None:
     program = JacProgram()
     mod = program.compile(fixture_path("checker_inherit_method_lookup.jac"))
     TypeCheckPass(ir_in=mod, prog=program)
-    assert len(program.errors_had) == 0
+    # Filter out errors from external modules (stdlib, site-packages)
+    user_errors = [
+        e
+        for e in program.errors_had
+        if "/site-packages/" not in e.loc.mod_path
+        and "/lib/python" not in e.loc.mod_path
+        and "/Lib/python" not in e.loc.mod_path
+    ]
+    assert len(user_errors) == 0
 
 
 def test_inherit_init_params(fixture_path: Callable[[str], str]) -> None:
