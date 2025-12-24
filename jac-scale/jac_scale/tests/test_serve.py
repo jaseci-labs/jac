@@ -602,19 +602,32 @@ class TestJacScaleServe:
 
     def test_user_isolation(self) -> None:
         """Test that users have isolated graph spaces."""
+        import uuid
+
+        # Use unique emails to avoid conflicts with previous test runs
+        unique_id = uuid.uuid4().hex[:8]
+        email1 = f"isolate1_{unique_id}@example.com"
+        email2 = f"isolate2_{unique_id}@example.com"
+
         # Create two users
         user1 = self._request(
             "POST",
             "/user/register",
-            {"email": "isolate1@example.com", "password": "pass1"},
+            {"email": email1, "password": "pass1"},
         )
         user2 = self._request(
             "POST",
             "/user/register",
-            {"email": "isolate2@example.com", "password": "pass2"},
+            {"email": email2, "password": "pass2"},
         )
 
-        print(user1)
+        print(f"user1: {user1}")
+        print(f"user2: {user2}")
+        # Both users should be created successfully (no error, has root_id)
+        assert "error" not in user1, f"user1 creation failed: {user1}"
+        assert "error" not in user2, f"user2 creation failed: {user2}"
+        assert "root_id" in user1, f"user1 missing root_id: {user1}"
+        assert "root_id" in user2, f"user2 missing root_id: {user2}"
         # Users should have different root IDs
         assert user1["root_id"] != user2["root_id"]
 
