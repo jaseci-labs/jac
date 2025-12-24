@@ -101,7 +101,9 @@ class SymTabBuildPass(UniPass):
 
         # The left side of walrus operator is the variable being assigned
         if isinstance(node.left, uni.Name):
-            if (sym := node.left.sym_tab.lookup(node.left.sym_name, deep=False)) is None:
+            if (
+                sym := node.left.sym_tab.lookup(node.left.sym_name, deep=False)
+            ) is None:
                 node.left.sym_tab.def_insert(node.left, single_decl="walrus var")
             else:
                 sym.add_use(node.left.name_spec)

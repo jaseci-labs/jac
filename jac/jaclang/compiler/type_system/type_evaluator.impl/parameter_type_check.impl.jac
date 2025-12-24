@@ -78,14 +78,12 @@ impl TypeEvaluator.validate_call_args(
         and caller_type.is_instantiable_class()
     ) {
         validated = False;
-
         # Try __new__ first (Python builtins like str, int define constructors here)
         if new_method := self._lookup_class_member(caller_type, "__new__") {
             validated = self._validate_constructor_method(
                 expr, self.get_type_of_symbol(new_method.symbol)
             );
         }
-
         # Fall back to __init__ if __new__ didn't have meaningful params
         if not validated {
             if init_method := self._lookup_class_member(caller_type, "__init__") {
@@ -185,9 +183,7 @@ Validate constructor method arguments. Handles both FunctionType and OverloadedT
 Returns True if validation was performed (method has meaningful parameters), False otherwise.
 """
 impl TypeEvaluator._validate_constructor_method(
-    self: TypeEvaluator,
-    expr: uni.FuncCall,
-    method_type: TypeBase
+    self: TypeEvaluator, expr: uni.FuncCall, method_type: TypeBase
 ) -> bool {
     if isinstance(method_type, types.FunctionType) {
         # Only validate if method has params beyond self/cls
