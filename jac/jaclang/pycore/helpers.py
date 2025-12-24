@@ -83,7 +83,7 @@ def extract_headings(file_path: str) -> dict[str, tuple[int, int]]:
 def auto_generate_refs() -> str:
     """Auto generate lang reference for docs."""
     file_path = os.path.join(
-        os.path.split(os.path.dirname(__file__))[0], "../pycore/jac.lark"
+        os.path.split(os.path.dirname(__file__))[0], "pycore/jac.lark"
     )
     result = extract_headings(file_path)
 
