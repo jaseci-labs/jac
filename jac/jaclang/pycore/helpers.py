@@ -87,7 +87,7 @@ def auto_generate_refs() -> str:
     )
     result = extract_headings(file_path)
 
-    # Create the reference subdirectory if it doesn't exist
+    # Create the reference subdirectory if it doesn't exist.
     docs_ref_dir = os.path.join(
         os.path.split(os.path.dirname(__file__))[0], "../../docs/docs/learn/jac_ref"
     )
