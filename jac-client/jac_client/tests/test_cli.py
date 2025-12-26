@@ -7,7 +7,7 @@ from subprocess import PIPE, Popen, run
 
 
 def test_create_jac_app() -> None:
-    """Test create-jac-app command."""
+    """Test jac create --cl command."""
     test_project_name = "test-jac-app"
 
     # Create a temporary directory for testing
@@ -17,9 +17,9 @@ def test_create_jac_app() -> None:
             # Change to temp directory
             os.chdir(temp_dir)
 
-            # Run create-jac-app command
+            # Run jac create --cl command
             process = Popen(
-                ["jac", "create_jac_app", test_project_name],
+                ["jac", "create", "--cl", test_project_name],
                 stdin=PIPE,
                 stdout=PIPE,
                 stderr=PIPE,
@@ -30,23 +30,21 @@ def test_create_jac_app() -> None:
 
             # Check that command succeeded
             assert result_code == 0
-            assert (
-                f"Successfully created Jac application '{test_project_name}'!" in stdout
-            )
+            assert f"Project '{test_project_name}' created successfully!" in stdout
 
             # Verify project directory was created
             project_path = os.path.join(temp_dir, test_project_name)
             assert os.path.exists(project_path)
             assert os.path.isdir(project_path)
 
-            # Verify app.jac file was created
-            app_jac_path = os.path.join(project_path, "app.jac")
+            # Verify src/app.jac file was created
+            app_jac_path = os.path.join(project_path, "src", "app.jac")
             assert os.path.exists(app_jac_path)
 
             with open(app_jac_path) as f:
                 app_jac_content = f.read()
 
-            assert "app()" in app_jac_content
+            assert "def app()" in app_jac_content
 
             # Verify README.md was created
             readme_path = os.path.join(project_path, "README.md")
@@ -56,7 +54,7 @@ def test_create_jac_app() -> None:
                 readme_content = f.read()
 
             assert f"# {test_project_name}" in readme_content
-            assert "jac serve app.jac" in readme_content
+            assert "jac serve src/app.jac" in readme_content
 
             # Verify jac.toml was created
             jac_toml_path = os.path.join(project_path, "jac.toml")
@@ -75,13 +73,9 @@ def test_create_jac_app() -> None:
                 gitignore_content = f.read()
 
             assert "node_modules" in gitignore_content
-            assert "app.session.bak" in gitignore_content
-            assert "app.session.dat" in gitignore_content
-            assert "app.session.dir" in gitignore_content
-            assert "app.session.users.json" in gitignore_content
 
-            # Verify components directory exists
-            components_dir = os.path.join(project_path, "components")
+            # Verify src/components directory exists
+            components_dir = os.path.join(project_path, "src", "components")
             assert os.path.exists(components_dir)
 
         finally:
@@ -90,7 +84,7 @@ def test_create_jac_app() -> None:
 
 
 def test_create_jac_app_invalid_name() -> None:
-    """Test create-jac-app command with invalid project name."""
+    """Test jac create --cl command with invalid project name."""
     with tempfile.TemporaryDirectory() as temp_dir:
         original_cwd = os.getcwd()
         try:
@@ -98,7 +92,7 @@ def test_create_jac_app_invalid_name() -> None:
 
             # Test with invalid name containing spaces
             result = run(
-                ["jac", "create_jac_app", "invalid name with spaces"],
+                ["jac", "create", "--cl", "invalid name with spaces"],
                 capture_output=True,
                 text=True,
             )
@@ -115,7 +109,7 @@ def test_create_jac_app_invalid_name() -> None:
 
 
 def test_create_jac_app_existing_directory() -> None:
-    """Test create-jac-app command when directory already exists."""
+    """Test jac create --cl command when directory already exists."""
     test_project_name = "existing-test-app"
 
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -128,7 +122,7 @@ def test_create_jac_app_existing_directory() -> None:
 
             # Try to create app with same name
             process = Popen(
-                ["jac", "create_jac_app", test_project_name],
+                ["jac", "create", "--cl", test_project_name],
                 stdin=PIPE,
                 stdout=PIPE,
                 stderr=PIPE,
@@ -146,7 +140,7 @@ def test_create_jac_app_existing_directory() -> None:
 
 
 def test_create_jac_app_with_typescript() -> None:
-    """Test create-jac-app command with TypeScript support (enabled by default)."""
+    """Test jac create --cl command with TypeScript support (enabled by default)."""
     test_project_name = "test-jac-app-ts"
 
     # Create a temporary directory for testing
@@ -156,9 +150,9 @@ def test_create_jac_app_with_typescript() -> None:
             # Change to temp directory
             os.chdir(temp_dir)
 
-            # Run create-jac-app command (TypeScript is enabled by default)
+            # Run jac create --cl command (TypeScript is enabled by default)
             process = Popen(
-                ["jac", "create_jac_app", test_project_name],
+                ["jac", "create", "--cl", test_project_name],
                 stdin=PIPE,
                 stdout=PIPE,
                 stderr=PIPE,
@@ -169,9 +163,7 @@ def test_create_jac_app_with_typescript() -> None:
 
             # Check that command succeeded
             assert result_code == 0
-            assert (
-                f"Successfully created Jac application '{test_project_name}'!" in stdout
-            )
+            assert f"Project '{test_project_name}' created successfully!" in stdout
 
             # Verify project directory was created
             project_path = os.path.join(temp_dir, test_project_name)
@@ -187,8 +179,8 @@ def test_create_jac_app_with_typescript() -> None:
 
             assert config_data["project"]["name"] == test_project_name
 
-            # Verify components directory and Button.tsx were created
-            components_dir = os.path.join(project_path, "components")
+            # Verify src/components directory and Button.tsx were created
+            components_dir = os.path.join(project_path, "src", "components")
             assert os.path.exists(components_dir)
             assert os.path.isdir(components_dir)
 
@@ -201,15 +193,15 @@ def test_create_jac_app_with_typescript() -> None:
             assert "interface ButtonProps" in button_content
             assert "export const Button" in button_content
 
-            # Verify app.jac includes TypeScript import
-            app_jac_path = os.path.join(project_path, "app.jac")
+            # Verify src/app.jac includes TypeScript import
+            app_jac_path = os.path.join(project_path, "src", "app.jac")
             assert os.path.exists(app_jac_path)
 
             with open(app_jac_path) as f:
                 app_jac_content = f.read()
 
             assert (
-                'cl import from ".components/Button.tsx" { Button }' in app_jac_content
+                'cl import from "./components/Button.tsx" { Button }' in app_jac_content
             )
             assert "<Button" in app_jac_content
 
