@@ -110,7 +110,7 @@ def _wait_for_endpoint(
 def test_all_in_one_app_endpoints() -> None:
     """Create a Jac app, copy @all-in-one into it, install packages from jac.toml, then verify endpoints."""
     print(
-        "[DEBUG] Starting test_all_in_one_app_endpoints using jac create_jac_app + @all-in-one"
+        "[DEBUG] Starting test_all_in_one_app_endpoints using jac create --cl + @all-in-one"
     )
 
     # Resolve the path to jac_client/examples/all-in-one relative to this test file.
@@ -131,34 +131,33 @@ def test_all_in_one_app_endpoints() -> None:
             print(f"[DEBUG] Changed working directory to {temp_dir}")
 
             # 1. Create a new Jac app via CLI (requires jac + jac-client plugin installed)
-            # Note: We provide "n\n" for TypeScript support since all-in-one already has TS configured
-            print(f"[DEBUG] Running 'jac create_jac_app {app_name}'")
+            print(f"[DEBUG] Running 'jac create --cl {app_name}'")
             process = Popen(
-                ["jac", "create_jac_app", app_name],
+                ["jac", "create", "--cl", app_name],
                 stdin=PIPE,
                 stdout=PIPE,
                 stderr=PIPE,
                 text=True,
             )
-            stdout, stderr = process.communicate(input="n\n")
+            stdout, stderr = process.communicate()
             returncode = process.returncode
 
             print(
-                "[DEBUG] 'jac create_jac_app' completed "
+                "[DEBUG] 'jac create --cl' completed "
                 f"returncode={returncode}\n"
                 f"STDOUT:\n{stdout}\n"
                 f"STDERR:\n{stderr}\n"
             )
 
-            # If the currently installed `jac` CLI does not support `create_jac_app`,
+            # If the currently installed `jac` CLI does not support `create --cl`,
             # fail the test instead of skipping it.
-            if returncode != 0 and "invalid choice: 'create_jac_app'" in stderr:
+            if returncode != 0 and "unrecognized arguments: --cl" in stderr:
                 pytest.fail(
-                    "Test failed: installed `jac` CLI does not support `create_jac_app`."
+                    "Test failed: installed `jac` CLI does not support `create --cl`."
                 )
 
             assert returncode == 0, (
-                f"jac create_jac_app failed\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}\n"
+                f"jac create --cl failed\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}\n"
             )
 
             project_path = os.path.join(temp_dir, app_name)
