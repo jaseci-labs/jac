@@ -765,21 +765,44 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
             );
             if (is_static_path or is_asset_file) {
                 try {
-                    base_path = Path(Jac.base_path_dir)
-                    if Jac.base_path_dir
-                    else Path.cwd();
+                    # Find project root (where jac.toml is) instead of using base_path_dir
+                    # base_path_dir might be src/ when serving src/app.jac, but we need project root
+                    import from jaclang.project.config { find_project_root }
+                    base_path_dir = Path(Jac.base_path_dir) if Jac.base_path_dir else Path.cwd();
+                    project_root_result = find_project_root(base_path_dir);
+                    if project_root_result {
+                        (base_path, _) = project_root_result;
+                    } else {
+                        # Fallback to base_path_dir if no project root found
+                        base_path = base_path_dir;
+                    }
                     if is_static_path {
                         relative_path = path[8:];
                     } else {
                         relative_path = path[1:];
                     }
                     file_name = Path(relative_path).name;
+                    # Check multiple locations for CSS files
+                    # 1. .client-build/dist/ (new structure)
+                    client_build_dist_file = base_path / '.client-build' / 'dist' / relative_path;
+                    client_build_dist_file_simple = base_path / '.client-build' / 'dist' / file_name;
+                    # 2. dist/ (legacy structure)
                     dist_file = base_path / 'dist' / relative_path;
                     dist_file_simple = base_path / 'dist' / file_name;
+                    # 3. assets/ (static assets)
                     assets_file = base_path / 'assets' / relative_path;
                     assets_file_simple = base_path / 'assets' / file_name;
                     if path.endswith('.css') {
-                        if dist_file.exists() {
+                        # Check .client-build/dist/ first (jac-client)
+                        if client_build_dist_file.exists() {
+                            css_content = client_build_dist_file.read_text(encoding='utf-8');
+                            Jac.send_css(self, css_content);
+                            return;
+                        } elif client_build_dist_file_simple.exists() {
+                            css_content = client_build_dist_file_simple.read_text(encoding='utf-8');
+                            Jac.send_css(self, css_content);
+                            return;
+                        } elif dist_file.exists() {
                             css_content = dist_file.read_text(encoding='utf-8');
                             Jac.send_css(self, css_content);
                             return;
@@ -803,6 +826,8 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                         }
                     }
                     for candidate_file in [
+                        client_build_dist_file,
+                        client_build_dist_file_simple,
                         dist_file,
                         dist_file_simple,
                         assets_file,

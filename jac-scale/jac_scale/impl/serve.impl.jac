@@ -143,14 +143,37 @@ impl JacAPIServer.register_root_asset_endpoint(self: JacAPIServer) -> None {
 """Serve a static file given its path."""
 impl JacAPIServer.serve_static_file(self: JacAPIServer, file_path: str) -> Response {
     try {
-        base_path = Path(Jac.base_path_dir) if Jac.base_path_dir else Path.cwd();
+        # Find project root (where jac.toml is) instead of using base_path_dir
+        # base_path_dir might be src/ when serving src/app.jac, but we need project root
+        import from jaclang.project.config { find_project_root }
+        base_path_dir = Path(Jac.base_path_dir) if Jac.base_path_dir else Path.cwd();
+        project_root_result = find_project_root(base_path_dir);
+        if project_root_result {
+            (base_path, _) = project_root_result;
+        } else {
+            # Fallback to base_path_dir if no project root found
+            base_path = base_path_dir;
+        }
         file_name = Path(file_path).name;
+        # Check multiple locations for files
+        # 1. .client-build/dist/ (Jac-client build output)
+        client_build_dist_file = base_path / '.client-build' / 'dist' / file_path;
+        client_build_dist_file_simple = base_path / '.client-build' / 'dist' / file_name;
+        # 2. dist/ (jac core build output)
         dist_file = base_path / 'dist' / file_path;
         dist_file_simple = base_path / 'dist' / file_name;
+        # 3. assets/ (static assets)
         assets_file = base_path / 'assets' / file_path;
         assets_file_simple = base_path / 'assets' / file_name;
         if file_name.endswith('.css') {
-            if dist_file.exists() {
+            # Check .client-build/dist/ first (jac-client)
+            if client_build_dist_file.exists() {
+                css_content = client_build_dist_file.read_text(encoding='utf-8');
+                return Response(content=css_content, media_type='text/css');
+            } elif client_build_dist_file_simple.exists() {
+                css_content = client_build_dist_file_simple.read_text(encoding='utf-8');
+                return Response(content=css_content, media_type='text/css');
+            } elif dist_file.exists() {
                 css_content = dist_file.read_text(encoding='utf-8');
                 return Response(content=css_content, media_type='text/css');
             } elif dist_file_simple.exists() {
@@ -171,6 +194,8 @@ impl JacAPIServer.serve_static_file(self: JacAPIServer, file_path: str) -> Respo
             }
         }
         for candidate_file in [
+            client_build_dist_file,
+            client_build_dist_file_simple,
             dist_file,
             dist_file_simple,
             assets_file,
