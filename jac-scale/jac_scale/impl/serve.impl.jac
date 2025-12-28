@@ -85,7 +85,17 @@ impl JacAPIServer.serve_root_asset(self: JacAPIServer, file_path: str) -> Respon
     if file_path.startswith(('page/', 'walker/', 'function/', 'user/', 'static/')) {
         return Response(status_code=404, content='Not found', media_type='text/plain');
     }
-    base_path = Path(Jac.base_path_dir) if Jac.base_path_dir else Path.cwd();
+    # Find project root (where jac.toml is) instead of using base_path_dir
+    # base_path_dir might be src/ when serving src/app.jac, but we need project root
+    import from jaclang.project.config { find_project_root }
+    base_path_dir = Path(Jac.base_path_dir) if Jac.base_path_dir else Path.cwd();
+    project_root_result = find_project_root(base_path_dir);
+    if project_root_result {
+        (base_path, _) = project_root_result;
+    } else {
+        # Fallback to base_path_dir if no project root found
+        base_path = base_path_dir;
+    }
     file_name = Path(file_path).name;
     candidates = [
         base_path / 'dist' / file_path,
@@ -93,6 +103,8 @@ impl JacAPIServer.serve_root_asset(self: JacAPIServer, file_path: str) -> Respon
         base_path / 'assets' / file_path,
         base_path / 'assets' / file_name,
         base_path / 'public' / file_path,
+        base_path / 'src' / file_path,
+        base_path / 'src' / file_name,
         (base_path / file_path)
     ];
     for candidate_file in candidates {

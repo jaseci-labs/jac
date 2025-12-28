@@ -10,6 +10,8 @@ from typing import Any
 
 import requests
 
+from jaclang.project.config import find_project_root
+
 JacClientExamples = (
     Path(__file__).parent.parent.parent.parent
     / "jac-client"
@@ -55,10 +57,15 @@ class JacScaleTestRunner:
         Args:
             timeout: Maximum time to wait for server to start (in seconds)
         """
-        example_dir = self.example_file.parent
+        # Find project root (where jac.toml is) using jaclang's find_project_root
+        project_root_result = find_project_root(self.example_file.parent)
+        if project_root_result:
+            example_dir, _ = project_root_result
+        else:
+            example_dir = self.example_file.parent
 
-        # Clean up directories before starting
-        dirs_to_clean = ["build", "dist", "node_modules", "src"]
+        # Clean up directories before starting (don't clean src - it contains source files)
+        dirs_to_clean = ["build", "dist", "node_modules", ".client-build"]
         for dir_name in dirs_to_clean:
             dir_path = example_dir / dir_name
             if dir_path.exists():
@@ -68,7 +75,7 @@ class JacScaleTestRunner:
                     check=False,
                 )
 
-        # Setup npm dependencies and src directory if needed
+        # Setup npm dependencies if needed
         if self.setup_npm:
             print(f"Setting up example directory: {example_dir}")
 
@@ -82,12 +89,6 @@ class JacScaleTestRunner:
             if npm_install.returncode != 0:
                 print(f"npm install warning: {npm_install.stderr}")
 
-            # Create src directory
-            subprocess.run(
-                ["mkdir", "src"],
-                cwd=example_dir,
-                check=True,
-            )
             print("Example directory setup complete")
 
         cmd = [
@@ -163,9 +164,19 @@ class JacScaleTestRunner:
                     with contextlib.suppress(Exception):
                         file.unlink()
 
-        # Clean up directories after stopping
-        example_dir = self.example_file.parent
-        dirs_to_clean = ["build", "dist", "node_modules", "src", "package-lock.json"]
+        # Clean up directories after stopping (don't clean src - it contains source files)
+        project_root_result = find_project_root(self.example_file.parent)
+        if project_root_result:
+            example_dir, _ = project_root_result
+        else:
+            example_dir = self.example_file.parent
+        dirs_to_clean = [
+            "build",
+            "dist",
+            "node_modules",
+            ".client-build",
+            "package-lock.json",
+        ]
         for dir_name in dirs_to_clean:
             dir_path = example_dir / dir_name
             if dir_path.exists():
@@ -377,7 +388,7 @@ class TestJacClientExamples:
     def test_all_in_one(self) -> None:
         """Test a custom example file."""
         # Point to your example file
-        example_file = JacClientExamples / "all-in-one" / "app.jac"
+        example_file = JacClientExamples / "all-in-one" / "src" / "app.jac"
         with JacScaleTestRunner(
             example_file, session_name="custom_test", setup_npm=True
         ) as runner:
@@ -396,7 +407,9 @@ class TestJacClientExamples:
     def test_js_styling(self) -> None:
         """Test JS and styling example file."""
         # Point to your example file
-        example_file = JacClientExamples / "css-styling" / "js-styling" / "app.jac"
+        example_file = (
+            JacClientExamples / "css-styling" / "js-styling" / "src" / "app.jac"
+        )
         with JacScaleTestRunner(
             example_file, session_name="js_styling_test", setup_npm=True
         ) as runner:
@@ -405,7 +418,9 @@ class TestJacClientExamples:
 
     def test_material_ui(self) -> None:
         """Test Material-UI styling example."""
-        example_file = JacClientExamples / "css-styling" / "material-ui" / "app.jac"
+        example_file = (
+            JacClientExamples / "css-styling" / "material-ui" / "src" / "app.jac"
+        )
         with JacScaleTestRunner(
             example_file, session_name="material_ui_test", setup_npm=True
         ) as runner:
@@ -413,7 +428,9 @@ class TestJacClientExamples:
 
     def test_pure_css(self) -> None:
         """Test Pure CSS example."""
-        example_file = JacClientExamples / "css-styling" / "pure-css" / "app.jac"
+        example_file = (
+            JacClientExamples / "css-styling" / "pure-css" / "src" / "app.jac"
+        )
         with JacScaleTestRunner(
             example_file, session_name="pure_css_test", setup_npm=True
         ) as runner:
@@ -424,7 +441,7 @@ class TestJacClientExamples:
     def test_styled_components(self) -> None:
         """Test Styled Components example."""
         example_file = (
-            JacClientExamples / "css-styling" / "styled-components" / "app.jac"
+            JacClientExamples / "css-styling" / "styled-components" / "src" / "app.jac"
         )
         with JacScaleTestRunner(
             example_file, session_name="styled_components_test", setup_npm=True
