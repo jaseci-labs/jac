@@ -286,7 +286,7 @@ class JacScaleTestRunner:
         path: str,
         data: dict[str, Any] | None = None,
         use_token: bool = False,
-        timeout: int = 10,
+        timeout: int = 120,
         max_retries: int = 60,
         retry_interval: float = 2.0,
     ) -> str:
@@ -298,7 +298,7 @@ class JacScaleTestRunner:
             data: Request body data
             use_token: Whether to include authentication token
             timeout: Request timeout in seconds
-            max_retries: Maximum number of retries for 503 responses
+            max_retries: Maximum number of retries for 503 responses and timeouts
             retry_interval: Time to wait between retries in seconds
 
         Returns:
@@ -310,26 +310,36 @@ class JacScaleTestRunner:
         if use_token and self.token:
             headers["Authorization"] = f"Bearer {self.token}"
 
+        response = None
         for attempt in range(max_retries):
-            response = requests.request(
-                method=method,
-                url=url,
-                json=data,
-                headers=headers,
-                timeout=timeout,
-            )
+            try:
+                response = requests.request(
+                    method=method,
+                    url=url,
+                    json=data,
+                    headers=headers,
+                    timeout=timeout,
+                )
 
-            if response.status_code == 503:
+                if response.status_code == 503:
+                    print(
+                        f"[DEBUG] {path} returned 503, retrying ({attempt + 1}/{max_retries})..."
+                    )
+                    time.sleep(retry_interval)
+                    continue
+
+                return response.text
+            except requests.exceptions.Timeout:
                 print(
-                    f"[DEBUG] {path} returned 503, retrying ({attempt + 1}/{max_retries})..."
+                    f"[DEBUG] {path} timed out, retrying ({attempt + 1}/{max_retries})..."
                 )
                 time.sleep(retry_interval)
                 continue
 
+        # Return last response text even if it was 503, or error message if all timeouts
+        if response is not None:
             return response.text
-
-        # Return last response text even if it was 503
-        return response.text
+        return f"Request failed after {max_retries} retries (all timeouts)"
 
     def spawn_walker(
         self, walker_name: str, **kwargs: dict[str, Any]
