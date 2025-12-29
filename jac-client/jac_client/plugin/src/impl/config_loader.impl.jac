@@ -51,15 +51,10 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, Any] {
     client_config = jac_config.get_plugin_config('client');
     # Get npm dependencies from [dependencies.npm]
     npm_deps = jac_config.get_plugin_deps('npm');
-    npm_dev_deps = npm_deps.get('dev', {})
-    if isinstance(npm_deps.get('dev'), dict)
+    # Get npm dev dependencies from [dev-dependencies.npm]
+    npm_dev_deps = jac_config.dev_dependencies.get('npm', {})
+    if isinstance(jac_config.dev_dependencies.get('npm'), dict)
     else {};
-    # Filter out 'dev' key from regular deps
-    regular_deps = {
-        k: v
-        for (k, v) in npm_deps.items()
-        if k != 'dev'
-    };
     # Build user config in the expected internal format
     user_config: dict[str, Any] = {
         'vite': client_config.get('vite', {}),
@@ -68,7 +63,7 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, Any] {
             'name': jac_config.project.name,
             'version': jac_config.project.version,
             'description': jac_config.project.description,
-            'dependencies': regular_deps,
+            'dependencies': npm_deps,
             'devDependencies': npm_dev_deps
         }
     };

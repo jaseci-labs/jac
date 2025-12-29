@@ -29,27 +29,8 @@ impl ViteBundler.create_package_json(
     if not name {
         name = self.project_dir.name or 'jac-app';
     }
-    dev_dependencies = {
-        'vite': '^6.4.1',
-        '@babel/cli': '^7.28.3',
-        '@babel/core': '^7.28.5',
-        '@babel/preset-env': '^7.28.5',
-        '@babel/preset-react': '^7.28.5',
-        # TypeScript dependencies are included by default
-        '@vitejs/plugin-react': '^4.2.1',
-        'typescript': '^5.3.3',
-        '@types/react': '^18.2.45',
-        '@types/react-dom': '^18.2.18'
-    };
-    user_dev_deps = package_config.get('devDependencies', {});
-    dev_dependencies.update(user_dev_deps);
-    dependencies = {
-        'react': '^19.2.0',
-        'react-dom': '^19.2.0',
-        'react-router-dom': '^6.30.1'
-    };
-    user_deps = package_config.get('dependencies', {});
-    dependencies.update(user_deps);
+    dependencies = package_config.get('dependencies', {});
+    dev_dependencies = package_config.get('devDependencies', {});
     scripts = {
         'build': 'npm run compile && vite build --config .client-build/.jac-client.configs/vite.config.js',
         'dev': 'vite dev --config .client-build/.jac-client.configs/vite.config.js',
