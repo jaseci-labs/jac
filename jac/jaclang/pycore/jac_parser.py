@@ -249,12 +249,12 @@ class JacParser(Transform[uni.Source, uni.Module]):
                 and e.token.type in (Tok.NAME.name, Tok.JSX_NAME.name)
             ):
                 self.log_error(
-                    f'"{last_tok.value}" is not supported',
-                    self.lark_token_to_uni(last_tok),
+                    "The 'new' keyword is not supported in Jac",
+                    self.error_to_token(e),
                 )
                 self.log_error(
                     "Use `Reflect.construct()` method to create new instances",
-                    self.lark_token_to_uni(last_tok),
+                    self.error_to_token(e),
                 )
                 return True
 
@@ -280,18 +280,6 @@ class JacParser(Transform[uni.Source, uni.Module]):
         if isinstance(e, jl.UnexpectedToken):
             return f"Unexpected token '{e.token.value}'"
         return "Syntax Error"
-
-    def lark_token_to_uni(self, tok: jl.Token) -> uni.Token:
-        """Convert lark token to uni token."""
-        error_tok = uni.EmptyToken()
-        error_tok.orig_src = self.ir_in
-        error_tok.line_no = tok.line
-        error_tok.end_line = tok.end_line or tok.line
-        error_tok.c_start = tok.column
-        error_tok.c_end = tok.end_column or (tok.column + len(tok.value))
-        error_tok.pos_start = tok.start_pos or 0
-        error_tok.pos_end = tok.end_pos or (error_tok.pos_start + len(tok.value))
-        return error_tok
 
     def error_to_token(self, e: jl.UnexpectedInput) -> uni.Token:
         """Convert error to token."""
