@@ -53,7 +53,7 @@ impl JacSerializer._serialize_archetype(arch: Archetype) -> dict[str, JsonValue]
 
 impl UserManager.postinit -> None {
     import from threading { Lock }
-    from collections import defaultdict;
+    import from collections { defaultdict }
     # Use per-user locks for better concurrency
     # Only blocks when the SAME username is being created concurrently
     # Threading locks work in both sync and async contexts (though not optimal for async)
