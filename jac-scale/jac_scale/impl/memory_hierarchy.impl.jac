@@ -91,11 +91,12 @@ impl ShelfDB._open_shelf -> shelve.Shelf {
 
 """Initialize shelf DB on startup."""
 impl ShelfDB.postinit{
+    import from jac_scale.memory_hierarchy { _shelf_locks }
     # Use a global lock per shelf path to ensure thread safety across all instances
-    if (self.shelf_path not in ShelfDB._global_locks) {
-        ShelfDB._global_locks[self.shelf_path] = RLock();
+    if (self.shelf_path not in _shelf_locks) {
+        _shelf_locks[self.shelf_path] = RLock();
     }
-    self._lock = ShelfDB._global_locks[self.shelf_path];
+    self._lock = _shelf_locks[self.shelf_path];
     self._open_shelf();
 }
 
