@@ -244,8 +244,7 @@ class JacParser(Transform[uni.Source, uni.Module]):
             # Check for 'new' keyword pattern (e.g., "new ClassName(...)")
             if (
                 last_tok
-                and last_tok.type == Tok.NAME.name
-                and last_tok.value == "new"  # Specifically check for "new" keyword
+                and last_tok.value == "new"
                 and e.token.type in (Tok.NAME.name, Tok.JSX_NAME.name)
             ):
                 self.log_error(
@@ -253,7 +252,7 @@ class JacParser(Transform[uni.Source, uni.Module]):
                     self.error_to_token(e),
                 )
                 self.log_error(
-                    "Use `Reflect.construct()` method to create new instances",
+                    "Use `Reflect.construct(target, argumentsList)` method to create new instances",
                     self.error_to_token(e),
                 )
                 return True
