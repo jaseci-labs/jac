@@ -51,7 +51,8 @@ obj UserManager {
         _users: dict[(str, dict[(str, str)])] = {},
         _tokens: dict[(str, str)] = {},
         _db_path: str = "",
-        _lock: Any = None;
+        _user_locks: Any = None,
+        _persist_lock: Any = None;
 
     def postinit -> None;
     def _load_db -> None;

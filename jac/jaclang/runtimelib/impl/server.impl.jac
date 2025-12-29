@@ -53,7 +53,12 @@ impl JacSerializer._serialize_archetype(arch: Archetype) -> dict[str, JsonValue]
 
 impl UserManager.postinit -> None {
     import from threading { Lock }
-    self._lock = Lock();
+    from collections import defaultdict;
+    # Use per-user locks for better concurrency
+    # Only blocks when the SAME username is being created concurrently
+    # Threading locks work in both sync and async contexts (though not optimal for async)
+    self._user_locks = defaultdict(Lock);
+    self._persist_lock = Lock();  # Separate lock for file writes
     self._db_path = f"{self.session_path}.users.json";
     self._load_db();
 }
@@ -81,7 +86,9 @@ impl UserManager._persist -> None {
 """Create a new user with their own root node. Returns dict with user data or error."""
 impl UserManager.create_user(username: str, password: str) -> dict[str, str] {
     import from jaclang.pycore.constructs { Root }
-    with self._lock {
+    # Per-user lock: only blocks if the SAME username is being created concurrently
+    # Different usernames can be created in parallel
+    with self._user_locks[username] {
         if (username in self._users) {
             return {'error': 'User already exists'};
         }
@@ -105,7 +112,10 @@ impl UserManager.create_user(username: str, password: str) -> dict[str, str] {
             'root_id': root_id
         };
         self._tokens[token] = username;
-        self._persist();
+        # Use separate persist lock to avoid holding user lock during file I/O
+        with self._persist_lock {
+            self._persist();
+        }
         return {'username': username, 'token': token, 'root_id': root_id};
     }
 }
@@ -150,7 +160,7 @@ impl UserManager.get_user(username: str) -> (dict[(str, str)] | None) {
 
 """Close and persist user data."""
 impl UserManager.close -> None {
-    with self._lock {
+    with self._persist_lock {
         self._persist();
     }
 }
