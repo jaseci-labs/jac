@@ -50,7 +50,8 @@ obj UserManager {
     has session_path: str,
         _users: dict[(str, dict[(str, str)])] = {},
         _tokens: dict[(str, str)] = {},
-        _db_path: str = "";
+        _db_path: str = "",
+        _lock: Any = None;
 
     def postinit -> None;
     def _load_db -> None;
