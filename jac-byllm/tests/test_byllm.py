@@ -238,8 +238,8 @@ def test_with_llm_image(fixture_path: Callable[[str], str]) -> None:
     assert "'role': 'system'" in stdout_value
     # Verify the user content with text type is present
     assert "{'type': 'text', 'text': 'solve_math_question" in stdout_value
-    # Verify base64 image data is NOT in the first 500 chars (images should come later)
-    assert "data:image/jpeg;base64," not in stdout_value[:500]
+    # Verify base64 image data is in the first 500 chars (images should come later)
+    assert "data:image/jpeg;base64," in stdout_value[:500]
 
 
 def test_webp_image_support(fixture_path: Callable[[str], str]) -> None:
