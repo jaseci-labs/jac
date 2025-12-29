@@ -50,7 +50,7 @@ Extends the base `ClientBundleBuilder` to provide Vite integration. Key responsi
 1. Module compilation
    ├── Compile root .jac file → JS
    ├── Extract exports & globals from manifest
-   └── Generate client_runtime.js from client_runtime.jac
+   └── Generate client_runtime.js from client_runtime.cl.jac
 
 2. Recursive dependency resolution
    ├── Traverse all .jac/.js imports
@@ -94,21 +94,25 @@ Given the following source structure:
 
 ```
 nested-basic/
-├── app.jac                    (root module)
-├── buttonroot.jac
-└── components/
-    └── button.jac
+├── src/
+│   ├── app.jac                (root module)
+│   ├── buttonroot.jac
+│   └── components/
+│       └── button.jac
+└── jac.toml                   (entry-point = "src/app.jac")
 ```
 
 The compiled output in `compiled/` will be:
 
 ```
 compiled/
-├── app.js                     (from app.jac)
-├── buttonroot.js              (from buttonroot.jac)
+├── app.js                     (from src/app.jac)
+├── buttonroot.js              (from src/buttonroot.jac)
 └── components/
-    └── button.js              (from components/button.jac)
+    └── button.js              (from src/components/button.jac)
 ```
+
+**Note**: The `src/` directory is the `source_root`, so files are compiled to `compiled/` maintaining relative structure but without the `src/` prefix.
 
 #### Benefits
 
@@ -185,19 +189,30 @@ The `JacClientModuleIntrospector.render_page()` method:
 The `JacAPIServer` handles CSS file requests:
 
 - **Route**: `/static/*.css` (e.g., `/static/main.css`)
-- **Handler**: Reads CSS file from `dist/` directory
+- **Handler**: Reads CSS file from build output directory
 - **Response**: Serves with `text/css` content type
-- **Location**: `{base_path}/dist/{filename}.css`
+- **Locations checked** (in order):
+  1. `{base_path}/.client-build/dist/{filename}.css` (new structure)
+  2. `{base_path}/dist/{filename}.css` (legacy structure)
+  3. `{base_path}/assets/{filename}.css` (static assets)
 
-**Implementation** (`server.py`):
+**Implementation** (`server.impl.jac`):
 
-```python
-# CSS files from dist directory
-if path.startswith("/static/") and path.endswith(".css"):
-    css_file = base_path / "dist" / Path(path).name
-    if css_file.exists():
-        css_content = css_file.read_text(encoding="utf-8")
-        ResponseBuilder.send_css(self, css_content)
+```jac
+# CSS files from .client-build/dist/ (new) or dist/ (legacy)
+if path.endswith('.css') {
+    # Check .client-build/dist/ first (new structure)
+    if client_build_dist_file.exists() {
+        css_content = client_build_dist_file.read_text(encoding='utf-8');
+        Jac.send_css(self, css_content);
+        return;
+    } elif dist_file.exists() {
+        # Fallback to legacy dist/ location
+        css_content = dist_file.read_text(encoding='utf-8');
+        Jac.send_css(self, css_content);
+        return;
+    }
+}
 ```
 
 #### CSS File Flow
@@ -211,11 +226,11 @@ Babel: compiled/app.js → build/app.js (preserves import)
   ↓
 _copy_asset_files: compiled/styles.css → build/styles.css
   ↓
-Vite: Processes CSS import, extracts to dist/main.css
+Vite: Processes CSS import, extracts to .client-build/dist/main.css
   ↓
 HTML: <link href="/static/main.css?hash=..."/>
   ↓
-Server: Serves from dist/main.css
+Server: Serves from .client-build/dist/main.css (or dist/main.css for legacy)
 ```
 
 ### Key Design Decisions
@@ -227,6 +242,122 @@ Server: Serves from dist/main.css
 - **Temp directory isolation**: Builds in `vite_package_json.parent/compiled/` to avoid conflicts
 - **Folder structure preservation**: Nested folder structures are preserved in `compiled/` directory, similar to TypeScript transpilation, ensuring relative imports work correctly
 - **CSS asset handling**: CSS files are copied after Babel compilation to ensure Vite can resolve imports, then extracted to separate files for optimal loading
+
+### Package Management System
+
+The Jac Client uses a **configuration-driven package management system** that abstracts npm package management into `config.json`, automatically generating `package.json` during the build process.
+
+#### Package Configuration in config.json
+
+The `package` section in `config.json` contains only the essential package metadata that developers need to manage:
+
+```json
+{
+  "package": {
+    "name": "my-app",
+    "version": "1.0.0",
+    "description": "My Jac application",
+    "dependencies": {},
+    "devDependencies": {}
+  }
+}
+```
+
+**Key Design Principles:**
+
+- **Minimal Configuration**: Only `name`, `version`, `description`, `dependencies`, and `devDependencies` are stored in `config.json`
+- **Build-Time Generation**: All other `package.json` fields (scripts, babel config, `type: 'module'`, etc.) are automatically generated during build
+- **Default Dependencies**: Core dependencies (React, Vite, Babel) are automatically included and merged with user-defined dependencies
+
+#### Package.json Generation
+
+The `package.json` file is dynamically generated from `config.json` by `ViteBundler.create_package_json()`:
+
+1. **Location**: Generated in `.jac-client.configs/package.json` (primary location)
+2. **Temporary Root Copy**: Also copied to project root temporarily for npm commands
+3. **Auto-Generated Fields**:
+   - `type: 'module'` (always included)
+   - `scripts` (build, dev, preview, compile)
+   - `babel` configuration
+   - Default dependencies (React, Vite, Babel)
+   - Default devDependencies (Vite plugins, TypeScript types if needed)
+
+4. **Merged Fields**:
+   - User-defined `dependencies` merged with defaults
+   - User-defined `devDependencies` merged with defaults
+   - User-defined `scripts` merged with defaults
+
+#### Package Installation Workflow
+
+The `jac install --cl` command manages npm packages through `config.json`:
+
+```
+1. Developer runs: jac install --cl lodash
+   ↓
+2. PackageInstaller updates config.json (adds lodash to dependencies)
+   ↓
+3. ViteBundler.create_package_json() generates package.json from config.json
+   ↓
+4. package.json copied to project root (npm requires it there)
+   ↓
+5. npm install runs (installs all packages from package.json)
+   ↓
+6. package-lock.json moved to .jac-client.configs/
+   ↓
+7. Root package.json removed (keeps only .jac-client.configs/package.json)
+```
+
+#### File Lifecycle
+
+**During Build/Install:**
+
+- `.jac-client.configs/package.json` - Generated from `config.json` (source of truth)
+- `package.json` (root) - Temporary copy for npm commands
+- `package-lock.json` (root) - Generated by npm, then moved to `.jac-client.configs/`
+
+**After Build/Install:**
+
+- `.jac-client.configs/package.json` - Persisted (generated file)
+- `.jac-client.configs/package-lock.json` - Persisted (lock file)
+- `package.json` (root) - Removed (not needed after npm install)
+- `config.json` (root) - Source configuration (committed to git)
+
+#### CLI Commands
+
+**Install Package:**
+
+```bash
+jac install --cl lodash              # Add to dependencies
+jac install --cl -D @types/react     # Add to devDependencies
+jac install --cl lodash@^4.17.21     # Install with specific version
+```
+
+**Install All Packages:**
+
+```bash
+jac install --cl                     # Install all packages from config.json
+```
+
+**Uninstall Package:**
+
+```bash
+jac uninstall --cl lodash            # Remove from dependencies
+jac uninstall --cl -D @types/react  # Remove from devDependencies
+```
+
+**Project Creation:**
+
+```bash
+jac create --cl my-app            # Creates jac.toml with organized folder structure
+```
+
+#### Benefits
+
+- **Clean Project Root**: No `package.json` clutter in project root
+- **Version Control Friendly**: Only `config.json` needs to be committed
+- **Simplified Configuration**: Developers only manage essential package info
+- **Automatic Defaults**: Build tools and scripts are automatically configured
+- **npm Compatibility**: Temporary root `package.json` ensures npm commands work correctly
 
 ### Configuration System
 
@@ -245,7 +376,14 @@ The `config.json` file uses a hierarchical structure with predefined keys for di
     "server": {},
     "resolve": {}
   },
-  "ts": {}
+  "ts": {},
+  "package": {
+    "name": "my-app",
+    "version": "1.0.0",
+    "description": "My Jac application",
+    "dependencies": {},
+    "devDependencies": {}
+  }
 }
 ```
 
@@ -268,6 +406,38 @@ The `config.json` file uses a hierarchical structure with predefined keys for di
    - Config is regenerated on each build to reflect latest changes
 
 #### Configuration Keys
+
+##### `package.*`
+
+Package configuration for npm dependencies. See [Package Management Architecture](./package_management.md) for detailed documentation.
+
+**Fields**:
+
+- `package.name`: Project name (auto-populated from project filename)
+- `package.version`: Project version (default: "1.0.0")
+- `package.description`: Project description
+- `package.dependencies`: Runtime npm packages
+- `package.devDependencies`: Development npm packages
+
+**Example**:
+
+```json
+{
+  "package": {
+    "name": "my-app",
+    "version": "1.0.0",
+    "description": "My Jac application",
+    "dependencies": {
+      "lodash": "^4.17.21"
+    },
+    "devDependencies": {
+      "@types/react": "^18.2.45"
+    }
+  }
+}
+```
+
+**Note**: Other `package.json` fields (scripts, babel, type) are automatically generated during build.
 
 ##### `vite.plugins`
 
@@ -391,11 +561,47 @@ export default defineConfig({
    ↓
 3. Config merged with defaults (deep merge)
    ↓
-4. ViteBundler generates vite.config.js in .jac-client.configs/
+4. ViteBundler generates:
+   ├── vite.config.js in .jac-client.configs/
+   └── package.json in .jac-client.configs/ (from package section)
    ↓
-5. Vite uses generated config for bundling
+5. package.json copied to root (temporary, for npm commands)
    ↓
-6. Generated config is gitignored (config.json is committed)
+6. Vite uses generated configs for bundling
+   ↓
+7. Generated configs are gitignored (config.json is committed)
+```
+
+**Package Management Workflow**:
+
+```
+1. Developer runs: jac install --cl lodash
+   ↓
+2. PackageInstaller updates config.json (package.dependencies)
+   ↓
+3. ViteBundler generates package.json from config.json
+   ↓
+4. npm install runs (installs packages)
+   ↓
+5. package-lock.json moved to .jac-client.configs/
+   ↓
+6. Root package.json removed (keeps only .jac-client.configs/)
+```
+
+**Uninstall Workflow**:
+
+```
+1. Developer runs: jac uninstall --cl lodash
+   ↓
+2. PackageInstaller removes package from config.json
+   ↓
+3. ViteBundler regenerates package.json from updated config.json
+   ↓
+4. npm install runs (removes package from node_modules)
+   ↓
+5. package-lock.json moved to .jac-client.configs/
+   ↓
+6. Root package.json removed (keeps only .jac-client.configs/)
 ```
 
 #### Benefits

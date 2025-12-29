@@ -6,9 +6,9 @@ Every Jac client project **must** have an `app.jac` file. This file serves as th
 
 ### Entry Point for the Build System
 
-When you run `jac serve app.jac`, the build system:
+When you run `jac serve src/app.jac` (or `jac serve` which reads from `jac.toml`), the build system:
 
-1. Compiles `app.jac` to JavaScript
+1. Compiles `src/app.jac` to JavaScript
 2. Generates an entry file (`compiled/main.js`) that imports your `app` function:
 
    ```javascript
@@ -57,7 +57,8 @@ cl {
 
 1. **File must be named `app.jac`**
    - The build system specifically looks for this filename
-   - Located at the root of your project
+   - Located in the `src/` directory of your project (standard structure)
+   - Can be at project root if using legacy structure
 
 2. **Must contain `app()` function**
    - Function name must be exactly `app`
@@ -107,21 +108,38 @@ Your project structure should look like this:
 
 ```
 my-app/
-├── app.jac              #  Required entry point
-├── package.json
-├── vite.config.js
-└── ...
+├── jac.toml             # Project configuration (entry-point = "src/app.jac")
+├── src/                 # Source files directory
+│   ├── app.jac          # Required entry point
+│   └── components/      # Optional: Reusable components
+├── assets/              # Static assets (images, fonts, etc.)
+└── build/               # Build output (generated)
 ```
 
 ## Running Your App
 
-To start your application:
+To start your application, you can use either:
+
+**Option 1: Specify the file path**
 
 ```bash
-jac serve app.jac
+jac serve src/app.jac
 ```
 
-This command compiles `app.jac`, creates the build entry point, and serves your app at `http://localhost:8000/page/app`.
+**Option 2: Use jac.toml entry-point (recommended)**
+
+```bash
+jac serve
+```
+
+The `jac serve` command (without arguments) reads the `entry-point` from `jac.toml`:
+
+```toml
+[project]
+entry-point = "src/app.jac"
+```
+
+Both commands compile `src/app.jac`, create the build entry point, and serve your app at `http://localhost:8000/page/app`.
 
 ---
 

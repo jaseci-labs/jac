@@ -1,74 +1,74 @@
 import datetime;
 
 obj Metadata {
-    has brand: str;
-    has model_number: str;
-    has release_date: str;
-    has echo_friendly: bool;
-    has digital_download: bool;
+    has brand: str,
+        model_number: str,
+        release_date: str,
+        echo_friendly: bool,
+        digital_download: bool;
 }
 
 obj Gift {
-    has is_gift_eligible: bool;
-    has gift_wrap_price: float;
-    has gift_message_allowed: bool;
+    has is_gift_eligible: bool,
+        gift_wrap_price: float,
+        gift_message_allowed: bool;
 }
 
 obj Inventory {
-    has stock_level: int;
-    has backorder_allowed: bool;
-    has estimated_restock_date: str;
+    has stock_level: int,
+        backorder_allowed: bool,
+        estimated_restock_date: str;
 }
 
 obj Discounts {
-    has discount_rate: float;
-    has eligible_coupons: list[str];
-    has bulk_discount_threshold: int;
-    has bulk_discount_amount: float;
+    has discount_rate: float,
+        eligible_coupons: list[str],
+        bulk_discount_threshold: int,
+        bulk_discount_amount: float;
 }
 
 obj Shipping {
-    has weight: float;
-    has dimensions: tuple;
-    has is_fragile: bool;
-    has shipping_class: str;
-    has origin_location: str;
+    has weight: float,
+        dimensions: tuple,
+        is_fragile: bool,
+        shipping_class: str,
+        origin_location: str;
 }
 
 obj CoreInfo {
-    has id: str;
-    has name: str;
-    has category: str;
-    has price: float;
-    has quantity: int;
-    has tags: list[str] = [];
+    has id: str,
+        name: str,
+        category: str,
+        price: float,
+        quantity: int,
+        tags: list[str] = [];
 }
 
 obj Pricing {
-    has tax_rate: float = 0;
-    has price: float = 0;
-    has discount_rate: float = 0;
-    has final_price: float = 0;
+    has tax_rate: float = 0,
+        price: float = 0,
+        discount_rate: float = 0,
+        final_price: float = 0;
 }
 
 node Item {
-    has core_info: CoreInfo;
-    has shipping: Shipping;
-    has discount: Discounts;
-    has inventory: Inventory;
-    has gift_option: Gift;
-    has metadata: Metadata;
-    has pricing: Pricing;
+    has core_info: CoreInfo,
+        shipping: Shipping,
+        discount: Discounts,
+        inventory: Inventory,
+        gift_option: Gift,
+        metadata: Metadata,
+        pricing: Pricing;
 }
 
 walker create_item {
-    has core_info: CoreInfo;
-    has shipping: Shipping;
-    has discount: Discounts;
-    has inventory: Inventory;
-    has gift_option: Gift;
-    has metadata: Metadata;
-    has tax_rate: float;
+    has core_info: CoreInfo,
+        shipping: Shipping,
+        discount: Discounts,
+        inventory: Inventory,
+        gift_option: Gift,
+        metadata: Metadata,
+        tax_rate: float;
 
     can create with `root entry {
         final_price = self.core_info.price * (

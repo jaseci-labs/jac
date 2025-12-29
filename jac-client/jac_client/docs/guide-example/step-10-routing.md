@@ -72,12 +72,12 @@ async def handleLogin(e: any) -> None {
     e.preventDefault();
     setError("");
 
-    if not email or not password {
+    if not username or not password {
         setError("Please fill in all fields");
         return;
     }
 
-    success = await jacLogin(email, password);
+    success = await jacLogin(username, password);
     if success {
         window.location.href = "/page/app#/todos";  # Navigate to todos
     } else {
@@ -94,12 +94,12 @@ async def handleSignup(e: any) -> None {
     e.preventDefault();
     setError("");
 
-    if not email or not password {
+    if not username or not password {
         setError("Please fill in all fields");
         return;
     }
 
-    result = await jacSignup(email, password);
+    result = await jacSignup(username, password);
     if result["success"] {
         window.location.href = "/page/app#/todos";  # Navigate to todos
     } else {
@@ -358,7 +358,7 @@ def TodosPage() -> any {
 navigate = useNavigate();
 
 async def handleLogin() -> None {
-    success = await jacLogin(email, password);
+    success = await jacLogin(username, password);
     if success {
         navigate("/todos");  # Navigate programmatically
     }

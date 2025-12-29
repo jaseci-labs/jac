@@ -1,43 +1,43 @@
 # Basic node for representing teachers
 node Teacher {
-    has name: str;
-    has subject: str;
-    has years_experience: int;
-    has email: str;
+    has name: str,
+        subject: str,
+        years_experience: int,
+        email: str;
 }
 
 # Basic node for representing students
 node Student {
-    has name: str;
-    has age: int;
-    has grade_level: int;
-    has student_id: str;
+    has name: str,
+        age: int,
+        grade_level: int,
+        student_id: str;
 }
 
 node Classroom {
-    has room_number: str;
-    has capacity: int;
-    has has_projector: bool = True;
+    has room_number: str,
+        capacity: int,
+        has_projector: bool = True;
 }
 
 # Edge for student enrollment
 edge EnrolledIn {
-    has enrollment_date: str;
-    has grade: str = "Not Assigned";
-    has attendance_rate: float = 100.0;
+    has enrollment_date: str,
+        grade: str = "Not Assigned",
+        attendance_rate: float = 100.0;
 }
 
 # Edge for teaching assignments
 edge Teaches {
-    has start_date: str;
-    has schedule: str;  # "MWF 9:00-10:00"
-    has is_primary: bool = True;
+    has start_date: str,
+        schedule: str,
+        is_primary: bool = True;
 }
 
 # Edge for friendship between students
 edge FriendsWith {
-    has since: str;
-    has closeness: int = 5;  # 1-10 scale
+    has since: str,
+        closeness: int = 5;
 }
 
 walker ClassroomExplorer {
@@ -66,8 +66,8 @@ walker ClassroomExplorer {
 }
 
 walker StudentAnalyzer {
-    has high_performers: list = [];
-    has needs_help: list = [];
+    has high_performers: list = [],
+        needs_help: list = [];
 
     can analyze with Student entry {
         # Find enrollment information
@@ -115,29 +115,25 @@ walker StudentAnalyzer {
     }
 }
 
+# Create the main classroom
+glob science_lab = root ++> Classroom(
+         room_number="Lab-A", capacity=24, has_projector=True
+     ),
+     dr_smith = science_lab +>: Teaches(
+         start_date="2024-08-01", schedule="TR 10:00-11:30"
+     ) :+> Teacher(
+         name="Dr. Smith",
+         subject="Chemistry",
+         years_experience=12,
+         email="smith@school.edu"
+     ),
+     students = [
+         ("Charlie", 17, 11, "S003"),
+         ("Diana", 16, 11, "S004"),
+         ("Eve", 17, 11, "S005")
+     ];
+
 with entry {
-    # Create the main classroom
-    science_lab = root ++> Classroom(
-        room_number="Lab-A", capacity=24, has_projector=True
-    );
-
-    # Create teacher and connect to classroom
-    dr_smith = science_lab +>: Teaches(
-        start_date="2024-08-01", schedule="TR 10:00-11:30"
-    ) :+> Teacher(
-        name="Dr. Smith",
-        subject="Chemistry",
-        years_experience=12,
-        email="smith@school.edu"
-    );
-
-    # Create students and enroll them
-    students = [
-        ("Charlie", 17, 11, "S003"),
-        ("Diana", 16, 11, "S004"),
-        ("Eve", 17, 11, "S005")
-    ];
-
     for (name, age, grade, id) in students {
         student = science_lab +>: EnrolledIn(
             enrollment_date="2024-08-15", attendance_rate=92.0
@@ -149,17 +145,19 @@ with entry {
     print(f"Created classroom {science_lab[0].room_number} with {dr_smith[0].name}");
 }
 
+# Find all classrooms and explore them
+glob classrooms = [root-->(`?Classroom)];
+
 with entry {
-    # Find all classrooms and explore them
-    classrooms = [root-->(`?Classroom)];
     for classroom in classrooms {
         classroom spawn ClassroomExplorer();
     }
 }
 
+# Analyze all students
+glob students = [root-->-->(`?Student)];  # Find all students in the graph
+
 with entry {
-    # Analyze all students
-    students = [root-->-->(`?Student)];  # Find all students in the graph
     if students {
         analyzer = StudentAnalyzer();
         for student in students {
@@ -167,3 +165,10 @@ with entry {
         }
     }
 }
+# "MWF 9:00-10:00"
+
+# 1-10 scale
+
+# Create teacher and connect to classroom
+
+# Create students and enroll them

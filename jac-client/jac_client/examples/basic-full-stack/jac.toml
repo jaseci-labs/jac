@@ -1,0 +1,10 @@
+[project]
+name = "basic-full-stack"
+version = "1.0.0"
+description = "Jac client application: basic-full-stack"
+entry-point = "src/app.jac"
+
+[plugins.client]
+# Vite bundler configuration (optional overrides)
+# vite.plugins = []
+# vite.build = {}

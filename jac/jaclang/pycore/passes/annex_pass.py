@@ -1,95 +1,53 @@
 """Annex module loading pass for the Jac compiler.
 
 This pass handles the discovery, loading, and attachment of annex modules to their base modules.
-Annex modules are specialized extension files (.impl.jac and .test.jac) that provide
-implementations or tests for a base module. The pass:
+Annex modules are specialized extension files (.impl.jac, .test.jac, .cl.jac) that provide
+implementations or tests for a base module.
 
-1. Identifies annex files related to the current module
-2. Compiles these annex modules
-3. Attaches them to the appropriate base module
-4. Maintains proper relationships between base modules and their annexes
+Annex files are discovered from:
+- Same directory: foo.impl.jac for foo.jac
+- Module-specific folder: foo.impl/bar.impl.jac for foo.jac
+- Shared folder: impl/foo.impl.jac, test/foo.test.jac, cl/foo.cl.jac
 
 This enables the separation of interface and implementation, as well as test code organization.
 """
 
 from __future__ import annotations
 
-import os
 from typing import TYPE_CHECKING
 
 import jaclang.pycore.unitree as uni
+from jaclang.pycore.bccache import discover_annex_files
 from jaclang.pycore.passes.transform import Transform
-from jaclang.pycore.settings import settings
 
 if TYPE_CHECKING:
     from jaclang.pycore.program import JacProgram
 
 
 class JacAnnexPass(Transform[uni.Module, uni.Module]):
-    """Handles loading and attaching of annex files (.impl.jac and .test.jac)."""
+    """Handles loading and attaching of annex files (.impl.jac, .test.jac, .cl.jac)."""
 
     def transform(self, ir_in: uni.Module) -> uni.Module:
-        """Initialize JacAnnexPass with the module path."""
-        self.mod_path = ir_in.loc.mod_path
-        self.base_path = self.mod_path[:-4]
-        self.impl_folder = self.base_path + ".impl"
-        self.test_folder = self.base_path + ".test"
-        self.cl_folder = self.base_path + ".cl"
-        self.directory = os.path.dirname(self.mod_path) or os.getcwd()
-        self.load_annexes(jac_program=self.prog, node=ir_in)
+        """Load and attach annex modules to the given module."""
+        mod_path = ir_in.loc.mod_path
+        if ir_in.stub_only or not mod_path.endswith(".jac") or ir_in.annexable_by:
+            return ir_in
+
+        self._load_annexes(self.prog, ir_in, mod_path)
         return ir_in
 
-    def find_annex_paths(self) -> list[str]:
-        """Return list of .impl.jac and .test.jac files related to base module."""
-        paths = [os.path.join(self.directory, f) for f in os.listdir(self.directory)]
-        for folder in [self.impl_folder, self.test_folder, self.cl_folder]:
-            if os.path.exists(folder):
-                paths += [os.path.join(folder, f) for f in os.listdir(folder)]
-        return paths
-
-    def load_annexes(self, jac_program: JacProgram, node: uni.Module) -> None:
+    def _load_annexes(
+        self, jac_program: JacProgram, node: uni.Module, mod_path: str
+    ) -> None:
         """Parse and attach annex modules to the node."""
-        if node.stub_only or not self.mod_path.endswith(".jac"):
-            return
-        if not self.mod_path:
-            self.log_error("Module path is empty.")
-            return
+        for path in discover_annex_files(mod_path, ".impl.jac"):
+            if mod := jac_program.compile(file_path=path, no_cgen=True, minimal=True):
+                node.impl_mod.append(mod)
 
-        for path in self.find_annex_paths():
-            if path == self.mod_path:
-                continue
+        for path in discover_annex_files(mod_path, ".cl.jac"):
+            if mod := jac_program.compile(file_path=path, no_cgen=True, minimal=True):
+                node.impl_mod.append(mod)
 
-            if path.endswith(".impl.jac") and (
-                path.startswith(f"{self.base_path}.")
-                or os.path.dirname(path) == self.impl_folder
-            ):
-                mod = jac_program.compile(file_path=path, no_cgen=True)
-                if mod:
-                    node.impl_mod.append(mod)
-
-            elif path.endswith(".cl.jac") and (
-                path.startswith(f"{self.base_path}.")
-                or os.path.dirname(path) == self.cl_folder
-            ):
-                mod = jac_program.compile(file_path=path, no_cgen=True)
-                if mod:
-                    self._mark_client_declarations(mod)
-                    node.impl_mod.append(mod)
-
-            elif (
-                path.endswith(".test.jac")
-                and not settings.ignore_test_annex
-                and (
-                    path.startswith(f"{self.base_path}.")
-                    or os.path.dirname(path) == self.test_folder
-                )
-            ):
-                mod = jac_program.compile(file_path=path, no_cgen=True)
-                if mod:
-                    node.test_mod.append(mod)
-
-    def _mark_client_declarations(self, module: uni.Module) -> None:
-        """Recursively mark client-facing nodes in the module as client declarations."""
-        for child in module.kid:
-            if isinstance(child, uni.ClientFacingNode):
-                child.is_client_decl = True
+        for path in discover_annex_files(mod_path, ".test.jac"):
+            if mod := jac_program.compile(file_path=path, no_cgen=True, minimal=True):
+                node.test_mod.append(mod)

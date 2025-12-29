@@ -89,10 +89,10 @@ cl {
     def LoginForm() -> any {
         async def handleLogin(e: any) -> None {
             e.preventDefault();
-            email = document.getElementById("email").value;
+            username = document.getElementById("username").value;
             password = document.getElementById("password").value;
 
-            success = await jacLogin(email, password);
+            success = await jacLogin(username, password);
 
             if success {
                 navigate("/dashboard");
@@ -102,7 +102,7 @@ cl {
         }
 
         return <form onSubmit={handleLogin}>
-            <input id="email" type="email" placeholder="Email" />
+            <input id="username" type="text" placeholder="Username" />
             <input id="password" type="password" placeholder="Password" />
             <button type="submit">Login</button>
         </form>;
@@ -119,10 +119,10 @@ cl {
     def SignupForm() -> any {
         async def handleSignup(e: any) -> None {
             e.preventDefault();
-            email = document.getElementById("email").value;
+            username = document.getElementById("username").value;
             password = document.getElementById("password").value;
 
-            result = await jacSignup(email, password);
+            result = await jacSignup(username, password);
 
             if result.success {
                 alert("Account created successfully!");
@@ -133,7 +133,7 @@ cl {
         }
 
         return <form onSubmit={handleSignup}>
-            <input id="email" type="email" placeholder="Email" />
+            <input id="username" type="text" placeholder="Username" />
             <input id="password" type="password" placeholder="Password" />
             <button type="submit">Sign Up</button>
         </form>;
@@ -278,10 +278,10 @@ cl {
 
         async def handleLogin(e: any) -> None {
             e.preventDefault();
-            email = document.getElementById("email").value;
+            username = document.getElementById("username").value;
             password = document.getElementById("password").value;
 
-            success = await jacLogin(email, password);
+            success = await jacLogin(username, password);
 
             if success {
                 navigate("/dashboard");
@@ -295,9 +295,9 @@ cl {
             {error and <p style={{"color": "red"}}>{error}</p>}
             <form onSubmit={handleLogin}>
                 <input
-                    id="email"
-                    type="email"
-                    placeholder="Email"
+                    id="username"
+                    type="text"
+                    placeholder="Username"
                     style={{"width": "100%", "padding": "10px", "marginBottom": "10px"}}
                 />
                 <input
@@ -966,7 +966,7 @@ cl def ValidationForm() -> any {
 
     return <form>
         <input
-            type="email"
+            type="text"
             onBlur={lambda e: any -> None {
                 if not emailValidator.validate(e.target.value) {
                     alert("Invalid email");

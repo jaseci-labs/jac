@@ -1,6 +1,6 @@
 import from byllm.lib { Model }
 
-glob llm = Model(verbose=True, model_name="gpt-4o-mini");
+glob llm = Model(model_name="gpt-4o-mini", config={"verbose": True});
 
 enum Personality { INTROVERT, EXTROVERT, AMBIVERT }
 
@@ -13,9 +13,9 @@ obj Person {
 sem Person. yod= "Year of Death of the person";
 
 glob personality_examples: dict[str, Personality] = {
-    'Albert Einstein': Personality.INTROVERT,
-    'Barack Obama': Personality.EXTROVERT
-};
+         'Albert Einstein': Personality.INTROVERT,
+         'Barack Obama': Personality.EXTROVERT
+     };
 
 def get_person_info(name: str) -> Person by llm(
     reason=True,
@@ -23,8 +23,9 @@ def get_person_info(name: str) -> Person by llm(
     incl_info={"personality_examples": personality_examples}
 );
 
+glob person_obj = get_person_info('Martin Luther King Jr.');
+
 with entry {
-    person_obj = get_person_info('Martin Luther King Jr.');
     print(
         f"{person_obj.full_name} was a {person_obj.personality} person who died in {person_obj.yod}"
     );

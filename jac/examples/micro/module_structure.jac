@@ -11,7 +11,6 @@ A Multiline
 Comment *#
 glob ver = "0.0.1";  # global variable
 
-
 import defs.utils;  # import a module
 import os;  # import a python module
 import defs.mod_defs;  # includes a file
@@ -19,7 +18,7 @@ import defs.mod_defs;  # includes a file
 obj mytype {}  # define a new type
 
 
-node mynode(this , that) {}  # define a new node
+node mynode(this, that) {}  # define a new node
 
 
 edge parent {}  # define a new edge
@@ -43,14 +42,11 @@ impl travelor.say_hello{
 def myablty -> int { }  # define a data spacial freestyle ability
 
 
-def myfunc()  -> None { }  # define a function
+def myfunc -> None { }  # define a function
 
 
-with entry {
-    # module level freestyle code
-}
-
+# module level freestyle code
 """A test of my functionality"""
 test mytest {
-    # test code here
+# test code here
 }

@@ -29,12 +29,14 @@ pip install jac-client
 ### Create a New App
 
 ```bash
-jac create_jac_app my-app
+jac create --cl my-app
 cd my-app
-jac serve app.jac
+jac serve src/app.jac
 ```
 
 Visit `http://localhost:8000/page/app` to see your app!
+
+> **Note**: The `--cl` flag creates a client-side project with an organized folder structure. Without `--cl`, `jac create` creates a standard Jac project.
 
 ---
 

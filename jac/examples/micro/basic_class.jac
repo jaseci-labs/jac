@@ -9,12 +9,13 @@ obj Person {
         self.age = age;
     }
 
-    def : pub greet()  -> None {  # public is default if `pub` is not specified
+    def : pub greet -> None {  # public is default if `pub` is not specified
         print("Hello, my name is ", self.name, " and I'm ", self.age, " years old.");
     }
 }
 
+glob my_guy = Person("John", 42);
+
 with entry {
-    my_guy = Person("John", 42);
     my_guy.greet();
 }

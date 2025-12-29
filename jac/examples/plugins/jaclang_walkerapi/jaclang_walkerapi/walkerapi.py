@@ -1,5 +1,5 @@
 from jaclang.runtimelib.default import hookimpl
-from jaclang.runtimelib.constructs import (  # type: ignore[attr-defined]
+from jaclang.pycore.constructs import (  # type: ignore[attr-defined]
     Archetype,
     ObjectSpatialFunction,
     WalkerArchetype,

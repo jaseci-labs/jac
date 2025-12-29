@@ -41,18 +41,18 @@ node Profile {
 }
 
 obj TweetInfo {
-    has username: str;
-    has id: str;
-    has content: str;
-    has embedding: list;
-    has likes: list;
-    has comments: list;
+    has username: str,
+        id: str,
+        content: str,
+        embedding: list,
+        likes: list,
+        comments: list;
 }
 
 node Tweet {
-    has content: str;
-    has embedding: list;
-    has created_at: str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S");
+    has content: str,
+        embedding: list,
+        created_at: str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S");
 
     can update with update_tweet exit {
         self.content = visitor.updated_content;
@@ -87,7 +87,7 @@ node Tweet {
         report comment_node[0] ;
     }
 
-    def get_info()  -> TweetInfo {
+    def get_info -> TweetInfo {
         return TweetInfo(
             username=[self<-:Post:<-][0].username,
             id=jid(self),
@@ -204,8 +204,8 @@ walker update_comment {
 walker remove_comment {}
 
 walker load_feed(visit_profile) {
-    has search_query: str = "";
-    has results: list = [];
+    has search_query: str = "",
+        results: list = [];
 
     can load with Profile entry {
         visit [-->(`?Tweet)];

@@ -13,10 +13,10 @@ In this first step, you'll create your Jac project and understand the basic file
 Open your terminal and run:
 
 ```bash
-jac create_jac_app todo-app
+jac create --cl todo-app
 ```
 
-This creates a new directory called `todo-app` with everything you need.
+This creates a new directory called `todo-app` with an organized project structure.
 
 ### Step 1.2: Navigate to Your Project
 
@@ -30,17 +30,20 @@ Your project now has these files:
 
 ```
 todo-app/
-├── app.jac           # Your main application file (we'll work here!)
-├── package.json      # Node.js dependencies (auto-managed)
-├── vite.config.js    # Build configuration (you can ignore this)
-└── README.md         # Basic instructions
+├── jac.toml              # Project configuration
+├── src/                  # Source files
+│   ├── app.jac           # Your main application file (we'll work here!)
+│   └── components/       # Reusable components
+│       └── Button.tsx    # Example TypeScript component
+├── assets/               # Static assets
+└── build/                # Build output (generated)
 ```
 
-**Important**: We'll write ALL our code in `app.jac` - that's it!
+**Important**: We'll write our main code in `src/app.jac`!
 
 ### Step 1.4: Create Your First App
 
-Open `app.jac` in your code editor and replace everything with this:
+Open `src/app.jac` in your code editor and replace everything with this:
 
 ```jac
 cl {
@@ -58,7 +61,7 @@ cl {
 In your terminal, run:
 
 ```bash
-jac serve app.jac
+jac serve src/app.jac
 ```
 
 You'll see output like:
@@ -171,7 +174,7 @@ return <div>
 
 ### How `jac serve` Works
 
-When you run `jac serve app.jac`:
+When you run `jac serve src/app.jac`:
 
 1. **Jac compiler** reads your `.jac` file
 2. **Frontend code** (inside `cl`) → Compiled to JavaScript
@@ -222,7 +225,7 @@ pip install jac-client
 **Solution**: Use a different port:
 
 ```bash
-jac serve app.jac --port 8080
+jac serve src/app.jac --port 8080
 ```
 
 Then visit `http://localhost:8080/page/app`
@@ -240,7 +243,7 @@ Then visit `http://localhost:8080/page/app`
 **Solution**:
 
 - Stop the server (Ctrl+C)
-- Restart: `jac serve app.jac`
+- Restart: `jac serve src/app.jac`
 - Refresh browser
 
 ---

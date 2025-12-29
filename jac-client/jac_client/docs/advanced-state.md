@@ -127,7 +127,7 @@ cl {
         # Good: Related data in one object
         [user, setUser] = useState({
             "name": "",
-            "email": "",
+            "username": "",
             "avatar": ""
         });
 

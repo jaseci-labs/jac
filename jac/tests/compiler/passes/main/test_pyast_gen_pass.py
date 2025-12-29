@@ -10,7 +10,7 @@ import pytest
 
 import jaclang.pycore.unitree as uni
 from conftest import check_pass_ast_complete, get_micro_jac_files
-from jaclang.compiler.passes.main import PyastGenPass
+from jaclang.pycore.passes import PyastGenPass
 from jaclang.pycore.program import JacProgram
 
 

@@ -92,6 +92,22 @@ class SymTabBuildPass(UniPass):
                 else:
                     sym.add_use(i.name_spec)
 
+    def exit_binary_expr(self, node: uni.BinaryExpr) -> None:
+        """Handle walrus operator (:=) assignments."""
+        from jaclang.pycore.constant import Tokens as Tok
+
+        if not (isinstance(node.op, uni.Token) and node.op.name == Tok.WALRUS_EQ):
+            return
+
+        # The left side of walrus operator is the variable being assigned
+        if isinstance(node.left, uni.Name):
+            if (
+                sym := node.left.sym_tab.lookup(node.left.sym_name, deep=False)
+            ) is None:
+                node.left.sym_tab.def_insert(node.left, single_decl="walrus var")
+            else:
+                sym.add_use(node.left.name_spec)
+
     def enter_test(self, node: uni.Test) -> None:
         self.push_scope_and_link(node)
         import unittest

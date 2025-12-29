@@ -1,21 +1,29 @@
 # If Statements
+
+# Basic if statement
+glob x = 10;
+
 with entry {
-    # Basic if statement
-    x = 10;
     if x > 5 {
         print("x is greater than 5");
     }
+}
 
-    # If-else statement
-    age = 18;
+# If-else statement
+glob age = 18;
+
+with entry {
     if age >= 18 {
         print("adult");
     } else {
         print("minor");
     }
+}
 
-    # If-elif-else chain
-    score = 85;
+# If-elif-else chain
+glob score = 85;
+
+with entry {
     if score >= 90 {
         print("A");
     } elif score >= 80 {
@@ -25,9 +33,12 @@ with entry {
     } else {
         print("F");
     }
+}
 
-    # Multiple elif chains
-    value = 15;
+# Multiple elif chains
+glob value = 15;
+
+with entry {
     if value < 5 {
         print("very low");
     } elif value < 10 {
@@ -39,10 +50,13 @@ with entry {
     } else {
         print("very high");
     }
+}
 
-    # Nested if statements
-    a = 15;
-    b = 20;
+# Nested if statements
+glob a = 15,
+     b = 20;
+
+with entry {
     if a > 10 {
         print("a > 10");
         if b > 15 {
@@ -69,15 +83,21 @@ with entry {
     if (a > 5 and b > 10) or (a < 20) {
         print("complex expression true");
     }
+}
 
-    # Chained comparisons
-    temp = 25;
+# Chained comparisons
+glob temp = 25;
+
+with entry {
     if 20 <= temp <= 30 {
         print("comfortable temperature");
     }
+}
 
-    # Membership tests
-    fruits = ["apple", "banana"];
+# Membership tests
+glob fruits = ["apple", "banana"];
+
+with entry {
     if "apple" in fruits {
         print("apple found");
     }
@@ -85,9 +105,12 @@ with entry {
     if "grape" not in fruits {
         print("grape not found");
     }
+}
 
-    # Identity tests
-    val = None;
+# Identity tests
+glob val = None;
+
+with entry {
     if val is None {
         print("val is None");
     }

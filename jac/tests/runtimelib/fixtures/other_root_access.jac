@@ -1,5 +1,5 @@
 import from jaclang { JacRuntime as Jac }
-import from jaclang.runtimelib.archetype { Anchor }
+import from jaclang.pycore.archetype { Anchor }
 import from uuid { UUID }
 
 node A {

@@ -2,8 +2,8 @@
 
 # ===== Part 1: Node and Walker Setup =====
 node Task {
-    has name: str;
-    has priority: int = 0;
+    has name: str,
+        priority: int = 0;
 }
 
 walker SimpleWalker {
@@ -68,8 +68,8 @@ walker BreadthFirst {
 
 # ===== Part 5: Walker Return Values =====
 walker DataCollector {
-    has collected: list = [];
-    has sum: int = 0;
+    has collected: list = [],
+        sum: int = 0;
 
     can start with `root entry {
         visit [-->];
@@ -113,9 +113,9 @@ walker SubWalker {
 
 # ===== Part 7: Walker Construction and Spawn Patterns =====
 walker ConstructedWalker {
-    has label: str;
-    has max_visits: int = 5;
-    has visits: int = 0;
+    has label: str,
+        max_visits: int = 5,
+        visits: int = 0;
 
     can start with `root entry {
         print(f"ConstructedWalker '{self.label}' starting");
@@ -150,8 +150,8 @@ walker Counter {
 }
 
 walker Analyzer {
-    has high_priority: int = 0;
-    has low_priority: int = 0;
+    has high_priority: int = 0,
+        low_priority: int = 0;
 
     can start with `root entry {
         visit [-->];
@@ -177,19 +177,22 @@ walker SyntaxDemo {
 # ===== Execution and Tests =====
 with entry {
     print("=== 1. Building Test Graph ===");
-    # Build tree structure:
-    #     root
-    #      |
-    #    Task1 (p=10)
-    #    /   \
-    # Task2  Task3 (p=3)
-    #  (p=5)   |
-    #          Task4 (p=8)
-    task1 = Task(name="Task1", priority=10);
-    task2 = Task(name="Task2", priority=5);
-    task3 = Task(name="Task3", priority=3);
-    task4 = Task(name="Task4", priority=8);
+}
 
+# Build tree structure:
+#     root
+#      |
+#    Task1 (p=10)
+#    /   \
+# Task2  Task3 (p=3)
+#  (p=5)   |
+#          Task4 (p=8)
+glob task1 = Task(name="Task1", priority=10),
+     task2 = Task(name="Task2", priority=5),
+     task3 = Task(name="Task3", priority=3),
+     task4 = Task(name="Task4", priority=8);
+
+with entry {
     root ++> task1;
     task1 ++> task2;
     task1 ++> task3;
@@ -208,14 +211,22 @@ with entry {
     root spawn :> DepthFirst;
 
     print("\n=== 4. Breadth-First Spatial Call (|>) ===");
-    # Breadth-first traversal: goes level by level
-    # Expected: Task1, Task2, Task3, Task4
-    walker_bf = root spawn |> BreadthFirst;
+}
+
+# Breadth-first traversal: goes level by level
+# Expected: Task1, Task2, Task3, Task4
+glob walker_bf = root spawn |> BreadthFirst;
+
+with entry {
     print(f"  Order visited: {walker_bf.order}");
 
     print("\n=== 5. Walker Return Values ===");
-    # Walker instance is returned, can access state
-    collector = root spawn DataCollector();
+}
+
+# Walker instance is returned, can access state
+glob collector = root spawn DataCollector();
+
+with entry {
     print(f"  Collected: {collector.collected}");
     print(f"  Sum of priorities: {collector.sum}");
 
@@ -224,15 +235,24 @@ with entry {
     root spawn NodeSpawner();
 
     print("\n=== 7. Walker Construction with Arguments ===");
-    # Create walker with initial state
-    w1 = root spawn ConstructedWalker(label="Alpha", max_visits=2);
+}
+
+# Create walker with initial state
+glob w1 = root spawn ConstructedWalker(
+         label="Alpha", max_visits=2
+     );
+
+with entry {
     print(f"  Walker visited {w1.visits} tasks");
 
     print("\n=== 8. Multiple Walkers on Same Graph ===");
-    # Different walkers can analyze same graph structure
-    counter = root spawn Counter();
-    analyzer = root spawn Analyzer();
+}
 
+# Different walkers can analyze same graph structure
+glob counter = root spawn Counter(),
+     analyzer = root spawn Analyzer();
+
+with entry {
     print(f"  Counter: {counter.total} tasks");
     print(
         f"  Analyzer: {analyzer.high_priority} high, {analyzer.low_priority} low priority"
@@ -250,19 +270,25 @@ with entry {
 
     # Variation 4: Walker-first syntax (less common)
     SyntaxDemo() spawn root;
+}
 
-    # Variation 5: With constructed walker
-    demo = SyntaxDemo();
+# Variation 5: With constructed walker
+glob demo = SyntaxDemo();
+
+with entry {
     root spawn demo;
 
     print("\n=== 10. Traversal Strategy Comparison ===");
-    # Build a deeper tree to see difference
-    a = Task(name="A", priority=1);
-    b = Task(name="B", priority=2);
-    c = Task(name="C", priority=3);
-    d = Task(name="D", priority=4);
-    e = Task(name="E", priority=5);
+}
 
+# Build a deeper tree to see difference
+glob a = Task(name="A", priority=1),
+     b = Task(name="B", priority=2),
+     c = Task(name="C", priority=3),
+     d = Task(name="D", priority=4),
+     e = Task(name="E", priority=5);
+
+with entry {
     root ++> a;
     a ++> b;
     a ++> c;
@@ -274,11 +300,19 @@ with entry {
     print("                     \\-> C\n");
 
     print("  Depth-first (:>):");
-    df = root spawn :> SimpleWalker;
+}
+
+glob df = root spawn :> SimpleWalker;
+
+with entry {
     print(f"    Visited: {df.visited_names}");
 
     print("\n  Breadth-first (|>):");
-    bf = root spawn |> SimpleWalker;
+}
+
+glob bf = root spawn |> SimpleWalker;
+
+with entry {
     print(f"    Visited: {bf.visited_names}");
 
     print("\n✓ Object spatial calls demonstrated!");

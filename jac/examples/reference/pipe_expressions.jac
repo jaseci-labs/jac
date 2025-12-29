@@ -12,18 +12,17 @@ def add_ten(x: int) -> int {
     return x + 10;
 }
 
+# Basic forward pipe: value |> function
+glob result1 = 5 |> square,
+     result2 = 3 |> add_ten |> double |> square,
+     total = [1, 2, 3, 4, 5] |> sum,
+     result3 = 10 |> (lambda  n: int: n * 3);
+
 with entry {
-    # Basic forward pipe: value |> function
-    result1 = 5 |> square;
-
-    # Chained forward pipes
-    result2 = 3 |> add_ten |> double |> square;
-
-    # Pipe with built-in functions
-    total = [1, 2, 3, 4, 5] |> sum;
-
-    # Pipe to lambda
-    result3 = 10 |> (lambda  n: int: n * 3);
-
     print(result1, result2, total, result3);
 }
+# Chained forward pipes
+
+# Pipe with built-in functions
+
+# Pipe to lambda

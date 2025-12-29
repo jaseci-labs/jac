@@ -1,0 +1,10 @@
+[project]
+name = "little-x"
+version = "1.0.0"
+description = "Jac client application: little-x"
+entry-point = "src/app.jac"
+
+[plugins.client]
+# Vite bundler configuration (optional overrides)
+# vite.plugins = []
+# vite.build = {}

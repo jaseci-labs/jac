@@ -18,14 +18,14 @@ node Magazine(Media) {
 }
 
 node Electronics(Product) {
-    has name: str;
-    has warranty_years: int;
+    has name: str,
+        warranty_years: int;
 }
 
 # Inheritance chain for customers
 walker Customer {
-    has name: str;
-    has total_spent: float = 0.0;
+    has name: str,
+        total_spent: float = 0.0;
 }
 
 walker RegularCustomer(Customer) {
@@ -38,8 +38,8 @@ walker VIPCustomer(Customer) {
 
 # Walker that processes different item types
 walker ShoppingCart {
-    has items_count: int = 0;
-    has total: float = 0.0;
+    has items_count: int = 0,
+        total: float = 0.0;
 
     can start with `root entry {
         # Create diverse inventory
@@ -113,30 +113,46 @@ node Checkout {
     }
 }
 
+# Demo 1: ShoppingCart walker uses typed context blocks with inheritance
 with entry {
-    # Demo 1: ShoppingCart walker uses typed context blocks with inheritance
     print("=== Demo 1: Product Inheritance Chain ===");
     print("Hierarchy: Product -> Media -> Book/Magazine");
     print("            Product -> Electronics\n");
-    cart = ShoppingCart();
+}
+
+glob cart = ShoppingCart();
+
+with entry {
     root spawn cart;
     print(f"\nCart: {cart.items_count} items, Total: ${cart.total}\n");
 
     # Demo 2: Checkout node uses typed context blocks with customer inheritance
     print("=== Demo 2: Customer Inheritance Chain ===");
     print("Hierarchy: Customer -> RegularCustomer/VIPCustomer\n");
+}
 
-    checkout = root ++> Checkout();
+glob checkout = root ++> Checkout(),
+     base_customer = Customer(name="Charlie", total_spent=50.00);
 
-    # Base type Customer
-    base_customer = Customer(name="Charlie", total_spent=50.00);
+with entry {
     checkout spawn base_customer;
+}
 
-    # Subtype RegularCustomer
-    regular = RegularCustomer(name="Alice", total_spent=89.97, loyalty_points=150);
+# Subtype RegularCustomer
+glob regular = RegularCustomer(
+         name="Alice", total_spent=89.97, loyalty_points=150
+     );
+
+with entry {
     checkout spawn regular;
+}
 
-    # Subtype VIPCustomer
-    vip = VIPCustomer(name="Bob", total_spent=89.97, vip_discount=0.15);
+# Subtype VIPCustomer
+glob vip = VIPCustomer(
+         name="Bob", total_spent=89.97, vip_discount=0.15
+     );
+
+with entry {
     checkout spawn vip;
 }
+# Base type Customer

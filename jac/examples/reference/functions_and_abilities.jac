@@ -150,18 +150,18 @@ walker BasicWalker {
 
 # ===== Part 9: Walker Abilities with Typed Node Context =====
 node Person {
-    has name: str;
-    has age: int = 0;
+    has name: str,
+        age: int = 0;
 }
 
 node City {
-    has name: str;
-    has population: int = 0;
+    has name: str,
+        population: int = 0;
 }
 
 walker TypedWalker {
-    has people_visited: int = 0;
-    has cities_visited: int = 0;
+    has people_visited: int = 0,
+        cities_visited: int = 0;
 
     # Ability triggered when visiting root
     can start with `root entry {
@@ -215,8 +215,8 @@ walker MultiAbilityWalker {
 
 # ===== Part 11: Node Abilities =====
 node InteractivePerson {
-    has name: str;
-    has greeted: bool = False;
+    has name: str,
+        greeted: bool = False;
 
     # Node ability triggered when TypedWalker visits
     can greet_typed with TypedWalker entry {
@@ -272,8 +272,8 @@ walker StaticAbilityWalker {
 
 # ===== Part 15: Ability Execution and Control Flow =====
 walker ControlFlowWalker {
-    has max_depth: int = 2;
-    has current_depth: int = 0;
+    has max_depth: int = 2,
+        current_depth: int = 0;
 
     can traverse with Person entry {
         print(f"  Depth {self.current_depth}: {here.name}");
@@ -295,25 +295,41 @@ walker ControlFlowWalker {
 # ===== Execution and Tests =====
 with entry {
     print("=== 1. Basic Functions ===");
-    math = BasicMath();
+}
+
+glob math = BasicMath();
+
+with entry {
     print(f"add(5, 3) = {math.add(5, 3)}");
     print(f"get_default() = {math.get_default()}");
     print(f"multiply(4, 7) = {math.multiply(4, 7)}");
 
     print("\n=== 2. Static and Access Modifiers ===");
     print(f"Calculator.square(5) = {Calculator.square(5)}");
-    calc = Calculator();
+}
+
+glob calc = Calculator();
+
+with entry {
     print(f"calc.public_method(10) = {calc.public_method(10)}");
 
     print("\n=== 3. Abstract Methods ===");
-    concrete = ConcreteCalculator();
+}
+
+glob concrete = ConcreteCalculator();
+
+with entry {
     print(f"compute(10, 3) = {concrete.compute(10, 3)}");
     print(f"process(2.5) = {concrete.process(2.5)}");
     print(f"aggregate(1,2,3,4,5) = {concrete.aggregate(1, 2, 3, 4, 5)}");
     print(f"configure(x=1,y=2) = {concrete.configure(x=1, y=2)}");
 
     print("\n=== 4. Variadic Parameters ===");
-    v = Variadic();
+}
+
+glob v = Variadic();
+
+with entry {
     print(f"sum_all(1,2,3,4,5) = {v.sum_all(1, 2, 3, 4, 5)}");
     print(f"collect_options(a=1,b=2) = {v.collect_options(a=1, b=2)}");
     print(f"combined(10, 20, 30, x=1, y=2) = {v.combined(10, 20, 30, x=1, y=2)}");
@@ -322,12 +338,15 @@ with entry {
     root spawn BasicWalker();
 
     print("\n=== 6. Walker Abilities with Typed Node Context ===");
-    # Build graph: root -> alice (Person) -> nyc (City)
-    #                 \\-> bob (Person)
-    alice = Person(name="Alice", age=30);
-    bob = Person(name="Bob", age=25);
-    nyc = City(name="NYC", population=8000000);
+}
 
+# Build graph: root -> alice (Person) -> nyc (City)
+#                 \\-> bob (Person)
+glob alice = Person(name="Alice", age=30),
+     bob = Person(name="Bob", age=25),
+     nyc = City(name="NYC", population=8000000);
+
+with entry {
     root ++> alice;
     root ++> bob;
     alice ++> nyc;
@@ -338,10 +357,13 @@ with entry {
     root spawn MultiAbilityWalker();
 
     print("\n=== 8. Node Abilities ===");
-    # Create InteractivePerson nodes
-    charlie = InteractivePerson(name="Charlie");
-    diana = InteractivePerson(name="Diana");
+}
 
+# Create InteractivePerson nodes
+glob charlie = InteractivePerson(name="Charlie"),
+     diana = InteractivePerson(name="Diana");
+
+with entry {
     root ++> charlie;
     charlie ++> diana;
 
@@ -349,12 +371,15 @@ with entry {
     print(f"Charlie greeted: {charlie.greeted}");
 
     print("\n=== 9. Ability Execution and Control Flow ===");
-    # Build chain for depth test
-    person1 = Person(name="P1", age=20);
-    person2 = Person(name="P2", age=21);
-    person3 = Person(name="P3", age=22);
-    person4 = Person(name="P4", age=23);
+}
 
+# Build chain for depth test
+glob person1 = Person(name="P1", age=20),
+     person2 = Person(name="P2", age=21),
+     person3 = Person(name="P3", age=22),
+     person4 = Person(name="P4", age=23);
+
+with entry {
     root ++> person1;
     person1 ++> person2;
     person2 ++> person3;

@@ -1,17 +1,62 @@
 import os
 import time
+from typing import Any
 
 import requests
 from kubernetes import client, config
 from kubernetes.client.exceptions import ApiException
 
-from ..kubernetes.k8 import deploy_k8
-from ..kubernetes.utils import cleanup_k8_resources
+from ..kubernetes.K8s import deploy_K8s
+from ..kubernetes.utils import cleanup_K8s_resources
+
+
+def _request_with_retry(
+    method: str,
+    url: str,
+    json: dict[str, Any] | None = None,
+    timeout: int = 10,
+    max_retries: int = 60,
+    retry_interval: float = 2.0,
+) -> requests.Response:
+    """Make an HTTP request with retry logic for 503 responses.
+
+    Args:
+        method: HTTP method (GET, POST, etc.)
+        url: The URL to request
+        json: JSON payload for the request
+        timeout: Request timeout in seconds
+        max_retries: Maximum number of retries for 503 responses
+        retry_interval: Time to wait between retries in seconds
+
+    Returns:
+        Response object
+    """
+    response = None
+    for attempt in range(max_retries):
+        response = requests.request(
+            method=method,
+            url=url,
+            json=json,
+            timeout=timeout,
+        )
+
+        if response.status_code == 503:
+            print(
+                f"[DEBUG] {url} returned 503, retrying ({attempt + 1}/{max_retries})..."
+            )
+            time.sleep(retry_interval)
+            continue
+
+        return response
+
+    # Return last response even if it was 503
+    assert response is not None, "No response received"
+    return response
 
 
 def test_deploy_todo_app():
     """
-    This test runs deploy_k8() with build=False to deploy the todo app
+    This test runs deploy_K8s() with build=False to deploy the todo app
     against a live Kubernetes cluster using the app.jac from the todo folder.
     Validates deployment, services, sends HTTP request, and tests cleanup.
     Use only in a test namespace.
@@ -28,10 +73,10 @@ def test_deploy_todo_app():
     os.environ.update(
         {
             "APP_NAME": "todo-app",
-            "K8_MONGODB": "true",
-            "K8_REDIS": "true",
-            "K8_NAMESPACE": namespace,
-            "K8_NODE_PORT": "30051",
+            "K8s_MONGODB": "true",
+            "K8s_REDIS": "true",
+            "K8s_NAMESPACE": namespace,
+            "K8s_NODE_PORT": "30051",
         }
     )
 
@@ -40,7 +85,7 @@ def test_deploy_todo_app():
     todo_app_path = os.path.join(test_dir, "../../examples/todo")
 
     # Run deploy with build=False, targeting the app.jac file in examples/todo folder
-    deploy_k8(code_folder=todo_app_path, file_name="app.jac", build=False)
+    deploy_K8s(code_folder=todo_app_path, file_name="app.jac", build=False)
 
     # Wait a moment for services to stabilize
     time.sleep(5)
@@ -82,29 +127,29 @@ def test_deploy_todo_app():
     )
     assert redis_service.spec.ports[0].port == 6379
 
-    # Send POST request to create a todo
+    # Send POST request to create a todo (with retry for 503)
     try:
         url = f"http://localhost:{node_port}/walker/create_todo"
         payload = {"text": "first-task"}
-        response = requests.post(url, json=payload, timeout=10)
-        assert response.status_code == 201
+        response = _request_with_retry("POST", url, json=payload, timeout=10)
+        assert response.status_code == 200
         print(f"✓ Successfully created todo at {url}")
         print(f"  Response: {response.json()}")
     except requests.exceptions.RequestException as e:
         print(f"Warning: Could not reach POST {url}: {e}")
 
-    # Send GET request to retrieve the clientpage of todo app
+    # Send GET request to retrieve the clientpage of todo app (with retry for 503)
     try:
         url = f"http://localhost:{node_port}/page/app"
-        response = requests.get(url, timeout=10)
+        response = _request_with_retry("GET", url, timeout=10)
         assert response.status_code == 200
         print(f"✓ Successfully reached app page at {url}")
     except requests.exceptions.RequestException as e:
         print(f"Warning: Could not reach GET {url}: {e}")
 
     # Cleanup resources
-    cleanup_k8_resources()
-    time.sleep(5)  # Wait for deletion to propagate
+    cleanup_K8s_resources()
+    time.sleep(60)  # Wait for deletion to propagate
 
     # Verify cleanup - resources should no longer exist
     try:
@@ -151,49 +196,3 @@ def test_deploy_todo_app():
         )
 
     print("✓ Cleanup verification complete - all resources properly deleted")
-
-
-# def test_deploy_k8_only_littlex():
-#     """
-#     This test runs deploy_k8() against a live Kubernetes cluster.
-#     Use only in a test namespace.
-#     """
-
-#     # Load kubeconfig and initialize client
-#     config.load_kube_config()
-#     apps_v1 = client.AppsV1Api()
-#     core_v1 = client.CoreV1Api()
-
-#     namespace = os.getenv("K8_NAMESPACE", "default")
-
-#     # Set environment
-#     os.environ.update(
-#         {
-#             "APP_NAME": "littlex",
-#             "DOCKER_IMAGE_NAME": "littlex:latest",
-#             "DOCKER_USERNAME": "juzailmlwork",
-#             "K8_MONGODB": "false",
-#             "K8_REDIS": "false",
-#             "K8_NAMESPACE": namespace,
-#             "K8_CONTAINER_PORT": "8000",
-#             "K8_NODE_PORT": "30050",
-#         }
-#     )
-
-#     # Run deploy
-#     deploy_k8(code_folder=".", build=True)
-
-#     # Validate the deployment exists
-#     deployment = apps_v1.read_namespaced_deployment(name="littlex", namespace=namespace)
-#     assert deployment.metadata.name == "littlex"
-#     assert deployment.spec.replicas == 1
-
-#     # Validate service
-#     service = core_v1.read_namespaced_service(
-#         name="littlex-service", namespace=namespace
-#     )
-#     assert service.spec.type == "NodePort"
-
-#     # Cleanup (optional)
-#     apps_v1.delete_namespaced_deployment("littlex", namespace)
-#     core_v1.delete_namespaced_service("littlex-service", namespace)

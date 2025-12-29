@@ -9,15 +9,23 @@ from threading import Event
 from typing import TYPE_CHECKING
 
 import jaclang.pycore.unitree as uni
-from jaclang.compiler.passes.main import (
-    Alert,
-    PyastGenPass,
-    PyBytecodeGenPass,
-    SymTabBuildPass,
-    Transform,
+from jaclang.pycore.bccache import (
+    BytecodeCache,
+    CacheKey,
+    get_bytecode_cache,
 )
 from jaclang.pycore.helpers import read_file_with_encoding
 from jaclang.pycore.jac_parser import JacParser
+from jaclang.pycore.passes import (
+    Alert,
+    DeclImplMatchPass,
+    JacAnnexPass,
+    PyastGenPass,
+    PyBytecodeGenPass,
+    SemanticAnalysisPass,
+    SymTabBuildPass,
+    Transform,
+)
 from jaclang.pycore.tsparser import TypeScriptParser
 
 if TYPE_CHECKING:
@@ -27,19 +35,12 @@ if TYPE_CHECKING:
 # Lazy schedule getters - enables converting analysis passes to Jac
 def get_symtab_ir_sched() -> list[type[Transform[uni.Module, uni.Module]]]:
     """Return symbol table build schedule with lazy imports."""
-    from jaclang.compiler.passes.main import DeclImplMatchPass
-
     return [SymTabBuildPass, DeclImplMatchPass]
 
 
 def get_ir_gen_sched() -> list[type[Transform[uni.Module, uni.Module]]]:
     """Return full IR generation schedule with lazy imports."""
-    from jaclang.compiler.passes.main import (
-        CFGBuildPass,
-        DeclImplMatchPass,
-        SemanticAnalysisPass,
-        SemDefMatchPass,
-    )
+    from jaclang.compiler.passes.main import CFGBuildPass, SemDefMatchPass
 
     return [
         SymTabBuildPass,
@@ -71,8 +72,6 @@ def get_minimal_ir_gen_sched() -> list[type[Transform[uni.Module, uni.Module]]]:
     This schedule is used for bootstrap-critical modules that need basic
     semantic analysis but don't need full control flow analysis.
     """
-    from jaclang.compiler.passes.main import DeclImplMatchPass, SemanticAnalysisPass
-
     return [SymTabBuildPass, DeclImplMatchPass, SemanticAnalysisPass]
 
 
@@ -121,13 +120,20 @@ class JacProgram:
     def __init__(
         self,
         main_mod: uni.ProgramModule | None = None,
+        bytecode_cache: BytecodeCache | None = None,
     ) -> None:
-        """Initialize the JacProgram object."""
+        """Initialize the JacProgram object.
+
+        Args:
+            main_mod: Optional main module to initialize with.
+            bytecode_cache: Optional custom bytecode cache. If None, uses default.
+        """
         self.mod: uni.ProgramModule = main_mod if main_mod else uni.ProgramModule()
         self.py_raise_map: dict[str, str] = {}
         self.errors_had: list[Alert] = []
         self.warnings_had: list[Alert] = []
         self.type_evaluator: TypeEvaluator | None = None
+        self._bytecode_cache: BytecodeCache = bytecode_cache or get_bytecode_cache()
 
     def get_type_evaluator(self) -> TypeEvaluator:
         """Return the type evaluator."""
@@ -152,30 +158,47 @@ class JacProgram:
         # Clear the type evaluator (will be recreated lazily if needed)
         self.type_evaluator = None
 
-        # Clear .type attributes from all Expr nodes in all modules
-        for mod in self.mod.hub.values():
-            for node in mod.get_all_sub_nodes(uni.Expr, brute_force=True):
-                node.type = None
-
-        # Optionally clear the entire module hub
+        # Optionally clear the entire module hub (skip node traversal if clearing hub)
         if clear_hub:
             self.mod.hub.clear()
+        else:
+            # Clear .type attributes from all Expr nodes in all modules
+            for mod in self.mod.hub.values():
+                for node in mod.get_all_sub_nodes(uni.Expr, brute_force=True):
+                    node.type = None
 
     def get_bytecode(
         self, full_target: str, minimal: bool = False
     ) -> types.CodeType | None:
         """Get the bytecode for a specific module.
 
+        This method implements a three-tier caching strategy:
+        1. In-memory cache (mod.hub) - fastest, within current process
+        2. Disk cache (__jaccache__/) - persists across restarts
+        3. Full compilation - slowest, only when cache misses
+
         Args:
             full_target: The full path to the module file.
             minimal: If True, use minimal compilation (no JS/type analysis).
                      This avoids circular imports for bootstrap-critical modules.
         """
+        # Tier 1: Check in-memory cache (mod.hub)
         if full_target in self.mod.hub and self.mod.hub[full_target].gen.py_bytecode:
             codeobj = self.mod.hub[full_target].gen.py_bytecode
             return marshal.loads(codeobj) if isinstance(codeobj, bytes) else None
+
+        # Tier 2: Check disk cache (__jaccache__/)
+        cache_key = CacheKey.for_source(full_target, minimal)
+        cached_code = self._bytecode_cache.get(cache_key)
+        if cached_code is not None:
+            return cached_code
+
+        # Tier 3: Compile and cache bytecode
         result = self.compile(file_path=full_target, minimal=minimal)
-        return marshal.loads(result.gen.py_bytecode) if result.gen.py_bytecode else None
+        if result.gen.py_bytecode:
+            self._bytecode_cache.put(cache_key, result.gen.py_bytecode)
+            return marshal.loads(result.gen.py_bytecode)
+        return None
 
     def parse_str(
         self, source_str: str, file_path: str, cancel_token: Event | None = None
@@ -216,8 +239,6 @@ class JacProgram:
         if self.mod.main.stub_only:
             self.mod = uni.ProgramModule(mod)
         self.mod.hub[mod.loc.mod_path] = mod
-        from jaclang.compiler.passes.main import JacAnnexPass
-
         JacAnnexPass(ir_in=mod, prog=self)
         return mod
 
@@ -280,7 +301,7 @@ class JacProgram:
         self, file_path: str, use_str: str | None = None, type_check: bool = False
     ) -> uni.Module:
         """Convert a Jac file to an AST."""
-        from jaclang.compiler.passes.main import JacImportDepsPass, SemanticAnalysisPass
+        from jaclang.compiler.passes.main import JacImportDepsPass
 
         mod_targ = self.compile(file_path, use_str, type_check=type_check)
         JacImportDepsPass(ir_in=mod_targ, prog=self)

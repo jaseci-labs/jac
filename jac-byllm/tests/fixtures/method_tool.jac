@@ -9,15 +9,21 @@ node Calculator {
     # Defining the model here cause we need the reference to self.
     def eval_expr(expression: str) -> str by MockLLM(
         model_name="mockllm",
-        outputs=[MockToolCall(tool=self.add, args={"num1": 12, "num2": 34}), "46"],
-        verbose=False,
+        config={
+            "outputs": [
+                MockToolCall(tool=self.add, args={"num1": 12, "num2": 34}),
+                "46"
+            ],
+            "verbose": False
+        },
     )(
         tools=[self.add]
     );
 }
 
+glob calc = Calculator(),
+     result = calc.eval_expr("What is 12 + 34?");
+
 with entry {
-    calc = Calculator();
-    result = calc.eval_expr("What is 12 + 34?");
     print(f"Result: {result}");
 }

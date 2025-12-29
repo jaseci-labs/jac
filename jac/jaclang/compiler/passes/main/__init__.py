@@ -1,28 +1,12 @@
 """Collection of passes for Jac IR.
 
 This module uses lazy imports to enable converting passes to Jac.
-Bootstrap-critical passes are loaded eagerly from pycore, while analysis passes
-that can be deferred are loaded lazily via __getattr__.
+The .jac passes are loaded lazily via __getattr__ to avoid circular imports.
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-
-# Bootstrap-critical passes - all Python passes live in pycore
-from jaclang.pycore.passes import (
-    Alert,
-    BaseTransform,
-    DeclImplMatchPass,
-    JacAnnexPass,
-    PyastGenPass,
-    PyBytecodeGenPass,
-    SemanticAnalysisPass,
-    SymTabBuildPass,
-    SymTabLinkPass,
-    Transform,
-    UniPass,
-)
 
 # Passes that are imported lazily to allow .jac conversion
 # These are loaded on first access via __getattr__
@@ -33,7 +17,6 @@ _LAZY_PASSES = {
     "PyJacAstLinkPass": ".pyjac_ast_link_pass",
     "SemDefMatchPass": ".sem_def_match_pass",
     "TypeCheckPass": ".type_checker_pass",
-    "DefUsePass": ".def_use_pass",
 }
 
 # Cache for lazily loaded passes
@@ -41,7 +24,6 @@ _lazy_cache: dict[str, type] = {}
 
 if TYPE_CHECKING:
     from .cfg_build_pass import CFGBuildPass as CFGBuildPass
-    from .def_use_pass import DefUsePass as DefUsePass
     from .import_pass import JacImportDepsPass as JacImportDepsPass
     from .pyast_load_pass import PyastBuildPass as PyastBuildPass
     from .pyjac_ast_link_pass import PyJacAstLinkPass as PyJacAstLinkPass
@@ -98,22 +80,10 @@ def __getattr__(name: str) -> type:
 
 
 __all__ = [
-    "Alert",
-    "BaseTransform",
-    "Transform",
-    "UniPass",
-    "JacAnnexPass",
-    "JacImportDepsPass",
-    "TypeCheckPass",
-    "SymTabBuildPass",
-    "SymTabLinkPass",
-    "SemanticAnalysisPass",
-    "DeclImplMatchPass",
-    "SemDefMatchPass",
-    "PyastBuildPass",
-    "PyastGenPass",
-    "PyBytecodeGenPass",
     "CFGBuildPass",
+    "JacImportDepsPass",
+    "PyastBuildPass",
     "PyJacAstLinkPass",
-    "DefUsePass",
+    "SemDefMatchPass",
+    "TypeCheckPass",
 ]

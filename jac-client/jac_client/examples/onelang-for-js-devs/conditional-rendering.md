@@ -514,7 +514,7 @@ def FragmentsExample(props: dict) -> any {
             {showDetails and user and (
                 <>
                     <br />
-                    <span>Email: {user["email"]}</span>
+                    <span>Username: {user["username"]}</span>
                     <br />
                     <span>Phone: {user["phone"]}</span>
                 </>

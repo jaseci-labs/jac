@@ -20,8 +20,8 @@ impl NumberNode.process{
     print(f"Processing node with value: {self.value}");
 }
 
+# spawn operator: walker spawn starting_node
 with entry {
-    # spawn operator: walker spawn starting_node
     Counter() spawn root;
 
     # Also valid: starting_node spawn walker

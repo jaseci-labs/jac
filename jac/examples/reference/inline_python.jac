@@ -44,12 +44,19 @@ obj DataProcessor {
 
 with entry {
     print("\n=== 2. Python Methods in Object ===");
-    processor = DataProcessor(data=[1, -2, 3, 4, -5, 6]);
-    processed = processor.process();
-    print(f"Processed data: {processed}");
+}
 
-    stats = processor.analyze();
-    mean_val = round(stats['mean'], 2);
+glob processor = DataProcessor(data=[1, -2, 3, 4, -5, 6]),
+     processed = processor.process();
+
+with entry {
+    print(f"Processed data: {processed}");
+}
+
+glob stats = processor.analyze(),
+     mean_val = round(stats['mean'], 2);
+
+with entry {
     print(f"Statistics: mean={mean_val}, sum={stats['sum']}");
 }
 
@@ -68,13 +75,19 @@ def python_process_dict(jac_dict):
 
 with entry {
     print("\n=== 3. Python Processing Jac Data ===");
+}
 
-    jac_list = [1, 2, 3, 4, 5];
-    squared = python_process_list(jac_list);
+glob jac_list = [1, 2, 3, 4, 5],
+     squared = python_process_list(jac_list);
+
+with entry {
     print(f"Squared: {squared}");
+}
 
-    jac_dict = {"a": 10, "b": 20, "c": 30};
-    doubled = python_process_dict(jac_dict);
+glob jac_dict = {"a": 10, "b": 20, "c": 30},
+     doubled = python_process_dict(jac_dict);
+
+with entry {
     print(f"Doubled dict: {doubled}");
 }
 
@@ -99,20 +112,26 @@ def math_operations(x):
 
 with entry {
     print("\n=== 4. Python Libraries ===");
+}
 
-    data = {"name": "Jac", "version": 1.0, "features": ["OSP", "Python interop"]};
-    json_str = format_json(data);
+glob data = {"name": "Jac", "version": 1.0, "features": ["OSP", "Python interop"]},
+     json_str = format_json(data);
+
+with entry {
     print(f"JSON output:\n{json_str}");
+}
 
-    math_result = math_operations(16);
-    log_val = round(math_result['log'], 2);
+glob math_result = math_operations(16),
+     log_val = round(math_result['log'], 2);
+
+with entry {
     print(f"Math: sqrt={math_result['sqrt']}, log={log_val}");
 }
 
 # ===== Part 5: Python in Node with State =====
 node MathNode {
-    has value: float = 0.0;
-    has computed: dict = {};
+    has value: float = 0.0,
+        computed: dict = {};
 
     ::py::
     def compute_all(self):
@@ -132,9 +151,12 @@ node MathNode {
 
 with entry {
     print("\n=== 5. Python in Nodes ===");
+}
 
-    math_node = MathNode(value=9.0);
-    results = math_node.compute_all();
+glob math_node = MathNode(value=9.0),
+     results = math_node.compute_all();
+
+with entry {
     print(f"Node value: {math_node.value}");
     print(f"Computed: square={results['square']}, cube={results['cube']}");
 }
@@ -158,8 +180,11 @@ obj Counter {
 
 with entry {
     print("\n=== 6. Python Methods Accessing Jac State ===");
+}
 
-    counter = Counter();
+glob counter = Counter();
+
+with entry {
     counter.increment(5);
     counter.increment(3);
     print(f"Counter after increments: {counter.count}");
@@ -200,14 +225,20 @@ obj Calculator {
 
 with entry {
     print("\n=== 7. Mixed Jac/Python Methods ===");
+}
 
-    calc = Calculator();
+glob calc = Calculator();
+
+with entry {
     calc.add_jac(10);
     calc.add_python(20);
     calc.add_jac(30);
+}
 
-    stats = calc.get_stats();
-    avg_val = round(stats['avg'], 1);
+glob stats = calc.get_stats(),
+     avg_val = round(stats['avg'], 1);
+
+with entry {
     print(f"Stats: avg={avg_val}, total={stats['total']}, count={stats['count']}");
 }
 

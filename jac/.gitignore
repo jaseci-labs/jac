@@ -8,7 +8,9 @@ media
 migrations
 venv
 __jac_gen__/
+.jaccache/
 *.jir
+*.jbc
 
 # Distribution / packaging
 .Python
@@ -50,7 +52,6 @@ out.txt
 
 # Mypy files #
 .mypy_cache*
-.jac_mypy_cache*
 
 # Generated parsers (built during pip install)
 jaclang/pycore/lark_jac_parser.py

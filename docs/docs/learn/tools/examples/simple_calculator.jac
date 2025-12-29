@@ -1,6 +1,6 @@
 import streamlit as st;
 
-def simple_calculator() {
+def simple_calculator {
     st.title("🧮 Simple Calculator");
     st.write("A basic calculator built with Jac and Streamlit");
 

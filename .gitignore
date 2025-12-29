@@ -8,7 +8,9 @@ media
 migrations
 venv
 __jac_gen__/
+.jaccache/
 *.jir
+*.jbc
 
 # Distribution / packaging
 .Python
@@ -30,7 +32,7 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
-.venv
+.venv/
 
 # Others #
 .coverage
@@ -53,7 +55,6 @@ demo.jac
 
 # Mypy files #
 .mypy_cache*
-.jac_mypy_cache*
 
 
 # Jaclang session files

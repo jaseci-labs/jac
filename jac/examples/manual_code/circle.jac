@@ -42,9 +42,8 @@ obj Circle(Shape) {
     }
 }
 
-with entry {
-    c = Circle(RAD);
-}
+glob c = Circle(RAD);
+
 # Global also works here
 with entry:__main__ {
     # To run the program functionality

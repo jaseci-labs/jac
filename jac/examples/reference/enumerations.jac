@@ -91,8 +91,12 @@ def get_status_message(status: Status) -> str {
 
 with entry {
     print("\n=== 5. Enum Comparison and Type Safety ===");
-    s1 = Status.ACTIVE;
-    s2 = Status.ACTIVE;
+}
+
+glob s1 = Status.ACTIVE,
+     s2 = Status.ACTIVE;
+
+with entry {
     print(f"  Status.ACTIVE == Status.ACTIVE: {s1 == s2}");
     print(f"  Status message: {get_status_message(Status.PENDING)}");
 }
@@ -112,11 +116,18 @@ with entry {
 # ===== Enum in Data Structures =====
 with entry {
     print("\n=== 7. Enum in Data Structures ===");
-    # List and dict with enums
-    colors = [Color.RED, Color.GREEN, Color.BLUE];
-    print(f"  List: {[c.name for c in colors]}");
+}
 
-    role_perms = {Role.ADMIN: "Full", Role.USER: "Limited", Role.GUEST: "Read"};
+# List and dict with enums
+glob colors = [Color.RED, Color.GREEN, Color.BLUE];
+
+with entry {
+    print(f"  List: {[c.name for c in colors]}");
+}
+
+glob role_perms = {Role.ADMIN: "Full", Role.USER: "Limited", Role.GUEST: "Read"};
+
+with entry {
     for item in role_perms.items() {
         print(f"  Dict: {item[0].name} = {item[1]}");
     }
@@ -124,14 +135,20 @@ with entry {
 
 # ===== OSP Integration: Enum in Node Attributes =====
 node Task {
-    has title: str = "Task";
-    has priority: Priority = Priority.MEDIUM;
-    has status: Status = Status.PENDING;
+    has title: str = "Task",
+        priority: Priority = Priority.MEDIUM,
+        status: Status = Status.PENDING;
 }
 
 with entry {
     print("\n=== 8. Enum in Node Attributes (OSP) ===");
-    task = Task(title="Build feature", priority=Priority.HIGH, status=Status.ACTIVE);
+}
+
+glob task = Task(
+         title="Build feature", priority=Priority.HIGH, status=Status.ACTIVE
+     );
+
+with entry {
     print(f"  Task: {task.title}");
     print(f"  Priority: {task.priority.name} ({task.priority.value})");
     print(f"  Status: {task.status.name}");
@@ -139,8 +156,8 @@ with entry {
 
 # ===== OSP Integration: Enum in Walker Logic =====
 walker TaskFilter {
-    has target_priority: Priority = Priority.HIGH;
-    has matched: list = [];
+    has target_priority: Priority = Priority.HIGH,
+        matched: list = [];
 
     can traverse with `root entry {
         visit [-->];
@@ -162,10 +179,13 @@ walker TaskFilter {
 
 with entry {
     print("\n=== 9. Enum in Walker Logic (OSP) ===");
-    task1 = Task(title="Critical Bug", priority=Priority.HIGH);
-    task2 = Task(title="Documentation", priority=Priority.LOW);
-    task3 = Task(title="Security Patch", priority=Priority.HIGH);
+}
 
+glob task1 = Task(title="Critical Bug", priority=Priority.HIGH),
+     task2 = Task(title="Documentation", priority=Priority.LOW),
+     task3 = Task(title="Security Patch", priority=Priority.HIGH);
+
+with entry {
     root ++> task1;
     root ++> task2;
     root ++> task3;

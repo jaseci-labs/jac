@@ -2,8 +2,8 @@
 # BACKEND: Data Models and Walkers
 # ============================================================================
 node Todo {
-    has text: str;
-    has done: bool = False;
+    has text: str,
+        done: bool = False;
 }
 
 walker create_todo {
@@ -23,12 +23,12 @@ cl import from react {
 }
 
 cl {
-    def app()  -> any {
+    def app -> any {
         [todos, setTodos] = useState([]);
         [input, setInput] = useState("");
 
         # Event Handler
-        async def addTodo()  -> None {
+        async def addTodo -> None {
             if not input.trim() {
                 return;
             }

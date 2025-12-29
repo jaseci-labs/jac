@@ -65,7 +65,7 @@ Run any example:
 ```bash
 cd jac-client/jac_client/examples/nested-folders/<example-name>
 npm install
-jac serve app.jac
+jac serve src/app.jac
 ```
 
 ## Related Documentation

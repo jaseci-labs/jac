@@ -6,30 +6,29 @@ Demonstrates byLLM character generation, conversation, and transaction systems
 import from byllm.lib { Model }
 import from os { get_terminal_size }
 
-glob llm = Model(model_name="gpt-4o");
-
-glob person_record: dict = {};
+glob llm = Model(model_name="gpt-4o"),
+     person_record: dict = {};
 
 obj InventoryItem {
-    has name: str;
-    has price: float;
+    has name: str,
+        price: float;
 }
 
 obj Person {
-    has name: str;
-    has age: int;
-    has hobby: str;
-    has description: str;
-    has money: float;
-    has inventory: list[InventoryItem];
+    has name: str,
+        age: int,
+        hobby: str,
+        description: str,
+        money: float,
+        inventory: list[InventoryItem];
 }
 
 """
 A Chat object contains the person's name and the message.
 """
 obj Chat {
-    has person: str;
-    has message: str;
+    has person: str,
+        message: str;
 }
 
 """
@@ -75,13 +74,13 @@ def make_transaction(
 """
 Generates the player character for a fantasy RPG game.
 """
-def make_player()  -> Person by llm();
+def make_player -> Person by llm();
 
 """
 Generates a random npc person with a name, age, favourite pet and hobby.
 The person should be a fantasy character, like an elf, dwarf, orc, etc.
 """
-def make_random_npc()  -> Person by llm();
+def make_random_npc -> Person by llm();
 
 """
 Generates the next line of dialogue from the given NPC in an ongoing
@@ -97,12 +96,12 @@ def chat_with_player(player: Person, npc: Person, chat_history: list[Chat]) -> C
     tools=[make_transaction]
 );
 
-def clear_screen() {
+def clear_screen {
     # ANSI escape sequence to clear screen and move cursor to top-left
     print("\033[2J\033[H", end="");
 }
 
-def print_inventory_table() {
+def print_inventory_table {
     # Get terminal dimensions
     terminal_size = get_terminal_size();
     terminal_width = terminal_size.columns;
@@ -156,7 +155,7 @@ def print_inventory_table() {
 
 }
 
-def display_chat_history() {
+def display_chat_history {
     # Get terminal dimensions
     terminal_size = get_terminal_size();
     terminal_width = terminal_size.columns;
@@ -245,7 +244,7 @@ def print_speech_bubble_inline(speaker: str, message: str, is_npc: bool = True) 
     print("");  # Add spacing between messages
 }
 
-def render_ui() {
+def render_ui {
     # Get terminal dimensions
     terminal_size = get_terminal_size();
     terminal_width = terminal_size.columns;
@@ -268,22 +267,24 @@ def render_ui() {
     }
 }
 
+# Example hardcoded characters (commented out for AI generation)
+# player = Person(name="Arin", age=24, hobby="swordsmanship", description="A brave and agile warrior skilled with the blade, ready to face any challenge.", money=150.0, inventory=[InventoryItem(name="Iron Sword", description="A sturdy iron sword, balanced and reliable.", price=100.0), InventoryItem(name="Leather Armor", description="Lightweight armor offering decent protection.", price=75.0), InventoryItem(name="Healing Potion", description="Restores health when consumed.", price=25.0)]);
+# npc = Person(name="Thalor", age=137, hobby="herbalism", description="An ancient elf who loves tending to mystical plants and caring for his pet raven.", money=80.0, inventory=[InventoryItem(name="Herb Pouch", description="A collection of rare herbs for potions.", price=40.0), InventoryItem(name="Raven Feather", description="A magical feather from his pet raven.", price=30.0)]);
+
+# Generate AI-powered characters
+glob player = make_player(),
+     npc = make_random_npc();
+
 with entry {
-    # Example hardcoded characters (commented out for AI generation)
-    # player = Person(name="Arin", age=24, hobby="swordsmanship", description="A brave and agile warrior skilled with the blade, ready to face any challenge.", money=150.0, inventory=[InventoryItem(name="Iron Sword", description="A sturdy iron sword, balanced and reliable.", price=100.0), InventoryItem(name="Leather Armor", description="Lightweight armor offering decent protection.", price=75.0), InventoryItem(name="Healing Potion", description="Restores health when consumed.", price=25.0)]);
-    # npc = Person(name="Thalor", age=137, hobby="herbalism", description="An ancient elf who loves tending to mystical plants and caring for his pet raven.", money=80.0, inventory=[InventoryItem(name="Herb Pouch", description="A collection of rare herbs for potions.", price=40.0), InventoryItem(name="Raven Feather", description="A magical feather from his pet raven.", price=30.0)]);
-
-    # Generate AI-powered characters
-    player = make_player();
-    npc = make_random_npc();
-
     person_record[player.name] = player;
     person_record[npc.name] = npc;
+}
 
-    history = [];
-    chat_display_history = [];  # Store chat messages for display
+glob history = [],
+     chat_display_history = [];
 
-    # Initial screen render
+# Initial screen render
+with entry {
     render_ui();
 
     while True {
@@ -312,3 +313,4 @@ with entry {
         }
     }
 }
+# Store chat messages for display

@@ -15,22 +15,19 @@ obj Wall {
 obj Map {
     has level: Level,
         walls: list[Wall],
-        small_obstacles: list[Position];
-
-    has enemies: list[Position];
-    has player_pos: Position;
+        small_obstacles: list[Position],
+        enemies: list[Position],
+        player_pos: Position;
 }
 
 obj Level {
     has name: str,
-        difficulty: int;
-
-    has width: int,
+        difficulty: int,
+        width: int,
         height: int,
         num_wall: int,
-        num_enemies: int;
-
-    has time_countdown: int,
+        num_enemies: int,
+        time_countdown: int,
         n_retries_allowed: int;
 }
 
@@ -98,8 +95,9 @@ def get_map(map: Map) -> str {
     return [''.join(row) for row in map_tiles];
 }
 
+glob level_manager = LevelManager();
+
 with entry {
-    level_manager = LevelManager();
     for i in range(2) {
         (new_level, new_level_map) = level_manager.get_next_level();
         print(new_level);

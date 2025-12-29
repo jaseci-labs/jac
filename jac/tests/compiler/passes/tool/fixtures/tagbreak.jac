@@ -438,13 +438,13 @@ def x(
 }
 
 def gg() {
-    #1234
+#1234
 }
 
 obj A {
     # 123
     def x() {
-        # 123
+    # 123
     }
 }
 
@@ -482,14 +482,14 @@ def test_match_comments(x: int) {
 def generate_greeting_code(name: str) -> str by models["code-gen"];
 
 glob llm = MockLLM(
-    # model_name="gpt-4o-mini",
-    model_name="mockllm",
-    outputs=[
-        Person(
-            full_name='Albert Einstein',
-            year_of_death='1955',
-            personality=Personality.EXTROVERT,
-        ),
+         # model_name="gpt-4o-mini",
+         model_name="mockllm",
+         outputs=[
+             Person(
+                 full_name='Albert Einstein',
+                 year_of_death='1955',
+                 personality=Personality.EXTROVERT,
+             ),
 
-    ],
-);
+         ],
+     );

@@ -1,0 +1,25 @@
+{
+  "plugins": {
+    "default": ["react"],
+    "imports": {
+      "react": "import react from \"@vitejs/plugin-react\";"
+    }
+  },
+  "extensions": [".mjs", ".js", ".mts", ".ts", ".jsx", ".tsx", ".json"],
+  "build": {
+    "rollupOptions": {
+      "output": {
+        "entryFileNames": "client.[hash].js",
+        "assetFileNames": "[name].[ext]"
+      }
+    },
+    "emptyOutDir": true
+  },
+  "publicDir": false,
+  "resolve": {
+    "alias": {
+      "@jac-client/utils": "compiled/client_runtime.js",
+      "@jac-client/assets": "compiled/assets"
+    }
+  }
+}

@@ -3,9 +3,9 @@ node test_node {
 }
 
 walker test_walker {
-    has visited_nodes: list = [];
-    has entry_count: int = 0;
-    has exit_count: int = 0;
+    has visited_nodes: list = [],
+        entry_count: int = 0,
+        exit_count: int = 0;
 
     can traverse with `root entry {
         visit [-->](`?test_node);
@@ -31,6 +31,10 @@ with entry {
     for i in range(10) {
         root ++> (next := test_node(value=i));
     }
-    wlk_obj = root spawn test_walker();
+}
+
+glob wlk_obj = root spawn test_walker();
+
+with entry {
     print(wlk_obj);
 }

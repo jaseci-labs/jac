@@ -24,9 +24,8 @@ Object for the player with type pygame.sprite.Sprite
 obj Player(pygame.sprite.Sprite) {
     has game: Game,
         x: int,
-        y: int;
-
-    has _layer: int = PLAYER_LAYER,
+        y: int,
+        _layer: int = PLAYER_LAYER,
         width: int = TILESIZE,
         height: int = TILESIZE,
         x_change: int = 0,
@@ -48,9 +47,8 @@ Object for enemies with type pygame.sprite.Sprite
 obj Enemy(pygame.sprite.Sprite) {
     has game: Game,
         x: int,
-        y: int;
-
-    has _layer: int = ENEMY_LAYER,
+        y: int,
+        _layer: int = ENEMY_LAYER,
         width: inr = TILESIZE,
         height: int = TILESIZE,
         x_change: int = 0,
@@ -71,9 +69,8 @@ Object for blocks (Walls) with type pygame.sprite.Sprite
 obj Block(pygame.sprite.Sprite) {
     has game: Game,
         x: int,
-        y: int;
-
-    has _layer: int = BLOCK_LAYER,
+        y: int,
+        _layer: int = BLOCK_LAYER,
         width: int = TILESIZE,
         height: int = TILESIZE;
 
@@ -86,9 +83,8 @@ Object for ground with type pygame.sprite.Sprite
 obj Ground(pygame.sprite.Sprite) {
     has game: Game,
         x: int,
-        y: int;
-
-    has _layer: int = GROUND_LAYER,
+        y: int,
+        _layer: int = GROUND_LAYER,
         width: int = TILESIZE,
         height: int = TILESIZE;
 
@@ -101,9 +97,8 @@ Object class for attacks by the player
 obj Attack(pygame.sprite.Sprite) {
     has game: Game,
         x: int,
-        y: int;
-
-    has _layer: int = ATTACK_LAYER,
+        y: int,
+        _layer: int = ATTACK_LAYER,
         width: int = TILESIZE,
         height: int = TILESIZE,
         animation_loop: float = 0;

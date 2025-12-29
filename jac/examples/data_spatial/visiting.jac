@@ -4,9 +4,10 @@ node MyNode {
 
 edge a {}
 
+glob Start = MyNode("Start"),
+     End = MyNode("End");
+
 with entry {
-    Start = MyNode("Start");
-    End = MyNode("End");
     root <+: a :<+ Start;
     root +>: a :+> End;
 
