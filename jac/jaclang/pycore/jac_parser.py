@@ -241,13 +241,12 @@ class JacParser(Transform[uni.Source, uni.Module]):
                 iparser.feed_token(jl.Token(Tok.NAME.name, "recover_name_token"))
                 return feed_current_token(iparser, e.token)
 
-            # Check if last token was a NAME and current token is NAME/JSX_NAME
-            # This pattern suggests statement separation issue
+            # Check for 'new' keyword pattern (e.g., "new ClassName(...)")
             if (
                 last_tok
                 and last_tok.type == Tok.NAME.name
+                and last_tok.value == "new"  # Specifically check for "new" keyword
                 and e.token.type in (Tok.NAME.name, Tok.JSX_NAME.name)
-                and Tok.LPAREN.name in e.accepts  # Would accept function call
             ):
                 self.log_error(
                     f'"{last_tok.value}" is not supported',
