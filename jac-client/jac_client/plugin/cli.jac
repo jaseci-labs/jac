@@ -451,15 +451,30 @@ def _install_default_packages(project_path: pathlib.Path) -> None {
         # Always copy the generated package.json to .client-build/ for npm install
         shutil.copy2(configs_package_json, build_package_json);
 
-        # Run npm install in .client-build/ directory
+        # Read and display packages being installed
+        import json;
+        with open(configs_package_json, 'r') as f {
+            pkg_data = json.load(f);
+        }
+        deps = pkg_data.get('dependencies', {});
+        dev_deps = pkg_data.get('devDependencies', {});
+        if deps {
+            print("  Dependencies:");
+            for (name, version) in deps.items() {
+                print(f"    - {name}@{version}");
+            }
+        }
+        if dev_deps {
+            print("  Dev dependencies:");
+            for (name, version) in dev_deps.items() {
+                print(f"    - {name}@{version}");
+            }
+        }
+        print("\nRunning npm install...");
+
+        # Run npm install in .client-build/ directory (stream output for visibility)
         try {
-            subprocess.run(
-                ['npm', 'install'],
-                cwd=build_dir,
-                check=True,
-                capture_output=True,
-                text=True
-            );
+            subprocess.run(['npm', 'install', '--progress'], cwd=build_dir, check=True);
 
             # Move package-lock.json to .jac-client.configs/ if it was created
             build_package_lock = build_dir / 'package-lock.json';
@@ -475,7 +490,10 @@ def _install_default_packages(project_path: pathlib.Path) -> None {
 
             print("Default packages installed successfully");
         } except subprocess.CalledProcessError as e {
-            print(f"Warning: Failed to install packages: {e.stderr}", file=sys.stderr);
+            print(
+                f"Warning: Failed to install packages (exit code {e.returncode})",
+                file=sys.stderr
+            );
             print("You can install packages later with: jac add --cl", file=sys.stderr);
         } except FileNotFoundError {
             print(

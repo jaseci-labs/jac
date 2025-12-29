@@ -203,64 +203,15 @@ impl JacConfig.is_valid -> bool {
 }
 
 impl JacConfig.create_default_toml(project_name: str) -> str {
-    return f'''  # jac.toml - Jac Project Configuration
-
-
-[project]
+    return f'''[project]
 name = "{project_name}"
 version = "0.1.0"
 description = "A Jac project"
-authors = []
-license = "MIT"
-entry-point = "main.jac"
-
-#===============================================================================
-# DEPENDENCIES
-#===============================================================================
+entry-point = "{project_name}.jac"
 
 [dependencies]
-# Jac plugins and Python dependencies
-# jac-byllm = ">=0.4.8"
-# requests = ">=2.28.0"
 
 [dev-dependencies]
-# Development dependencies
-# pytest = ">=8.2.1"
-
-#===============================================================================
-# COMMAND DEFAULTS
-#===============================================================================
-
-[run]
-main = true
-cache = true
-
-[build]
-typecheck = false
-
-[test]
-verbose = false
-fail_fast = false
-
-[serve]
-port = 8000
-
-#===============================================================================
-# CACHE SETTINGS
-#===============================================================================
-
-[cache]
-enabled = true
-dir = ".jac_cache"
-
-#===============================================================================
-# CUSTOM SCRIPTS
-#===============================================================================
-
-[scripts]
-dev = "jac run main.jac"
-build = "jac build main.jac --typecheck"
-test = "jac test"
 ''';
 }
 
