@@ -215,4 +215,3 @@ jobs:
     - name: Run SSO tests
       run: |
         pytest -x jac-scale/jac_scale/tests/test_sso.py
-
