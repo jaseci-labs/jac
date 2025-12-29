@@ -6,13 +6,13 @@ edge b {
     has value: int = 20;
 }
 
-with entry {
-    node_1 = a(value=5);
-    node_2 = a();
-    node_3 = a(value=15);
-    node_4 = a(value=20);
-    node_5 = a(value=25);
+glob node_1 = a(value=5),
+     node_2 = a(),
+     node_3 = a(value=15),
+     node_4 = a(value=20),
+     node_5 = a(value=25);
 
+with entry {
     root ++> node_1;
     node_1 +>: edge_1 := b(value=5) :+> node_2;
     node_1 +>: edge_2 := b(value=10) :+> node_3;

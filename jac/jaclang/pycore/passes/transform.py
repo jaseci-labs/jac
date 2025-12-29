@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Generic, TypeVar
 
 from jaclang.pycore.codeinfo import CodeLocInfo
 from jaclang.pycore.log import logging
-from jaclang.pycore.settings import settings
 from jaclang.pycore.unitree import UniNode
 
 if TYPE_CHECKING:
@@ -103,10 +102,6 @@ class BaseTransform(ABC, Generic[T_in, T_out]):
         start_time = time.time()
         ir_out = self.transform(ir_in=ir_in)
         self.time_taken = time.time() - start_time
-        if settings.pass_timer:
-            self.log_info(
-                f"Time taken in {self.__class__.__name__}: {self.time_taken:.4f} seconds"
-            )
         return ir_out
 
     def pre_transform(self) -> None:
@@ -147,9 +142,6 @@ class Transform(BaseTransform[T, R]):
 
     def log_error(self, msg: str, node_override: UniNode | None = None) -> None:
         """Pass Error."""
-        if settings.all_warnings:
-            self.log_warning(msg, node_override)
-            return
         alrt = Alert(
             msg,
             self.cur_node.loc if not node_override else node_override.loc,

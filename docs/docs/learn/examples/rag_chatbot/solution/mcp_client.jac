@@ -4,16 +4,17 @@ import mcp;
 import os;
 import from mcp.client { streamable_http }
 
+glob logger = logging.getLogger(__name__);
+
 with entry {
-    logger = logging.getLogger(__name__);
     logger.setLevel(logging.INFO);
     logging.basicConfig(level=logging.INFO);
 }
 
 glob MCP_SERVER_URL = os.getenv('MCP_SERVER_URL', 'http://localhost:8899/mcp');
 
-def list_mcp_tools()  -> list[dict] {
-    async def _list()  -> list {
+def list_mcp_tools -> list[dict] {
+    async def _list -> list {
         async with streamable_http.streamablehttp_client(MCP_SERVER_URL) as (
             read,
             write,
@@ -34,7 +35,7 @@ def list_mcp_tools()  -> list[dict] {
 }
 
 def call_mcp_tool(name: str, arguments: dict) -> str {
-    async def _call()  -> str {
+    async def _call -> str {
         async with streamable_http.streamablehttp_client(MCP_SERVER_URL) as (
             read,
             write,

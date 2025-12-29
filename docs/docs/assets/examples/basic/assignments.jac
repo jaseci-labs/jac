@@ -1,6 +1,7 @@
+glob a = b=16,
+     c = 18;
+
 with entry {
-    a = b=16;
-    c = 18;
     print(a, b, c);
     a >>= 2;
     print(a);

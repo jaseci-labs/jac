@@ -295,7 +295,7 @@ cl {
 
         return <div>
             <h1>{profile.username}</h1>
-            <p>{profile.email}</p>
+            <p>{profile.bio}</p>
         </div>;
     }
 }

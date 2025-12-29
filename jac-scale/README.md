@@ -27,7 +27,7 @@ Whether you're developing locally with `jac serve` or deploying to production wi
 
 ## Prerequisites
 
-- kubenetes(K8) installed
+- kubenetes(K8s) installed
   - [Minikube Kubernetes](https://minikube.sigs.k8s.io/docs/start/?arch=%2Fwindows%2Fx86-64%2Fstable%2F.exe+download/) (for Windows/Linux)
   - [Docker Desktop with Kubernetes](https://www.docker.com/resources/kubernetes-and-docker/) (alternative for Windows - easier setup)
 
@@ -180,9 +180,9 @@ jac serve main.jac
 
 To use `jac scale`, you need Kubernetes installed on your machine.
 
-**Option A: MicroK8 (Windows/Linux/Mac)**
+**Option A: MicroK8s (Windows/Linux/Mac)**
 
-- [Official MicroK8 installation guide](https://microk8s.io/)
+- [Official MicroK8s installation guide](https://microk8s.io/)
 - [ubunutu installation guide](https://www.digitalocean.com/community/tutorials/how-to-setup-a-microk8s-kubernetes-cluster-on-ubuntu-22-04)
 
 **Option B: Docker Desktop with Kubernetes (Windows - Recommended)**
@@ -432,15 +432,18 @@ jac destroy app.jac
 | `APP_NAME` | Name of your JAC application | `jaseci` |
 | `DOCKER_USERNAME` | DockerHub username for pushing the image | - |
 | `DOCKER_PASSWORD` | DockerHub password or access token | - |
-| `K8_NAMESPACE` | Kubernetes namespace to deploy the application | `default` |
-| `K8_NODE_PORT` | Port in which your local kubernetes application will run on| `30001` |
-| `K8_MONGODB` | Whether MongoDB is needed (`True`/`False`) | `True` |
-| `K8_REDIS` | Whether Redis is needed (`True`/`False`) | `True` |
+| `K8s_NAMESPACE` | Kubernetes namespace to deploy the application | `default` |
+| `K8s_NODE_PORT` | Port in which your local kubernetes application will run on| `30001` |
+| `K8s_MONGODB` | Whether MongoDB is needed (`True`/`False`) | `True` |
+| `K8s_REDIS` | Whether Redis is needed (`True`/`False`) | `True` |
 | `MONGODB_URI` | URL of MongoDB database | - |
 | `REDIS_URL` | URL of Redis database | - |
 | `JWT_EXP_DELTA_DAYS` | Number of days until JWT token expires | `7` |
 | `JWT_SECRET` | Secret key used for JWT token signing and verification | `'supersecretkey'` |
 | `JWT_ALGORITHM` | Algorithm used for JWT token encoding/decoding | `'HS256'` |
+| `SSO_HOST` | SSO host URL | `'http://localhost:8000/sso'` |
+| `SSO_GOOGLE_CLIENT_ID` | Google OAuth client ID | - |
+| `SSO_GOOGLE_CLIENT_SECRET` | Google OAuth client secret | - |
 
 ## Deployment Modes
 
@@ -524,9 +527,9 @@ When you run `jac scale`, the following steps are executed:
 
 ## Architecture
 
-### k8 pods structure
+### K8s pods structure
 
-![k8 pod structure](assets/jac-scale-architecture.svg)
+![K8s pod structure](assets/jac-scale-architecture.svg)
 
 ## Troubleshooting
 

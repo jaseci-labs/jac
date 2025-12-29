@@ -1,21 +1,29 @@
 """Same functionality 3 white space styles."""
 
-with entry {  # very pythonic
-    a = "hello";
-    b = len(a);
+glob a = "hello",
+     b = len(a);
+
+with entry {
     print(b);
 }
 
-with entry {  # a bit more Jac like
-    a = "hello" |> len;
+glob a = "hello" |> len;
+
+with entry {
     a |> print;
 }
 
 with entry {
     "hello" |> len |> print;
-}  # more concise
-
+}
 
 with entry {
     print(len("hello"));
-}  # same, but no pipe
+}
+# very pythonic
+
+# a bit more Jac like
+
+# more concise
+
+# same, but no pipe

@@ -21,8 +21,8 @@ impl compute(x: int, y: int) -> int {
 
 # Implement object
 impl Vehicle{
-    has name: str = "Car";
-    has speed: int = 0;
+    has name: str = "Car",
+        speed: int = 0;
     def accelerate {
         self.speed += 10;
     }
@@ -52,14 +52,18 @@ impl Calculator.get_result -> float {
     return self.total;
 }
 
-with entry {
-    # Test implementations
-    result = compute(5, 3);
-    v = Vehicle();
-    v.accelerate();
-    p = Priority.HIGH;
+# Test implementations
+glob result = compute(5, 3),
+     v = Vehicle();
 
-    calc = Calculator();
+with entry {
+    v.accelerate();
+}
+
+glob p = Priority.HIGH,
+     calc = Calculator();
+
+with entry {
     calc.add(10.5);
     calc.multiply(2.0);
     calc.subtract(5.0);

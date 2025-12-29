@@ -1,6 +1,7 @@
 # Try Statements
+
+# Basic try-except
 with entry {
-    # Basic try-except
     try {
         x = 5 / 0;
     } except Exception {

@@ -9,15 +9,16 @@ obj Game {
 }
 
 obj GuessTheNumberGame(Game) {
-    has attempts: int = 10;
-    has correct_number: int = random.randint(1, 10);
+    has attempts: int = 10,
+        correct_number: int = random.randint(1, 10);
 
     override def play;
     def process_guess(guess: int);
 }
 
 # Run the game
+glob game = GuessTheNumberGame();
+
 with entry {
-    game = GuessTheNumberGame();
     game.play();
 }

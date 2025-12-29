@@ -1,0 +1,13 @@
+[project]
+name = "tailwind-example"
+version = "1.0.0"
+description = "Jac client application: tailwind-example"
+entry-point = "src/app.jac"
+
+[plugins.client.vite]
+plugins = ["tailwindcss()"]
+lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
+
+[dependencies.npm]
+"@tailwindcss/vite" = "^4.1.17"
+tailwindcss = "^4.1.17"

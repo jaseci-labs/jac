@@ -13,20 +13,18 @@ obj Wall {
 }
 
 obj Map_tiles {
-    has level: Level;
-    has walls: list[Wall],
-        small_obstacles: list[Position];
-
-    has enemies: list[Position];
-    has player_pos: Position;
+    has level: Level,
+        walls: list[Wall],
+        small_obstacles: list[Position],
+        enemies: list[Position],
+        player_pos: Position;
 }
 
 obj Level {
     has name: int,
         difficulty: int,
-        time: int;
-
-    has width: int,
+        time: int,
+        width: int,
         height: int,
         num_wall: int,
         num_enemies: int;

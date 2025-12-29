@@ -9,10 +9,11 @@ When Jac compiles your files, it preserves the folder structure in the `compiled
 ```
 Source Structure:              Compiled Structure:
 my-app/                        compiled/
-├── app.jac        →          ├── app.js
-├── ButtonRoot.jac  →          ├── ButtonRoot.js
-└── level1/                    └── level1/
-    ├── ButtonSecondL.jac →        ├── ButtonSecondL.js
+├── src/                       ├── app.js
+│   ├── app.jac        →      ├── ButtonRoot.js
+│   ├── ButtonRoot.jac  →     └── level1/
+│   └── level1/                    ├── ButtonSecondL.js
+    ├── ButtonSecondL.jac →
     ├── Card.jac          →        ├── Card.js
     └── level2/                    └── level2/
         └── ButtonThirdL.jac →         └── ButtonThirdL.js
@@ -111,13 +112,15 @@ Here's a complete example demonstrating nested folder imports:
 
 ```
 nested-advance/
-├── app.jac                    # Root entry point
-├── ButtonRoot.jac            # Root level button
-└── level1/
-    ├── ButtonSecondL.jac     # Second level button
-    ├── Card.jac              # Card component (imports from root and level2)
-    └── level2/
-        └── ButtonThirdL.jac  # Third level button
+├── src/
+│   ├── app.jac                # Root entry point
+│   ├── ButtonRoot.jac        # Root level button
+│   └── level1/
+│       ├── ButtonSecondL.jac # Second level button
+│       ├── Card.jac          # Card component (imports from root and level2)
+│       └── level2/
+│           └── ButtonThirdL.jac  # Third level button
+└── jac.toml                  # entry-point = "src/app.jac"
 ```
 
 **app.jac:**
@@ -298,15 +301,16 @@ cl import from ..todos.TodoList { TodoList }
 ### Pattern 3: Mixed Structure
 
 ```
-app.jac                    # Root entry
-components/
-├── ui/
-│   └── Button.jac
-utils/
-├── helpers/
-│   └── format.jac
-hooks/
-└── useCounter.jac
+src/
+├── app.jac                # Root entry
+├── components/
+│   └── ui/
+│       └── Button.jac
+├── utils/
+│   └── helpers/
+│       └── format.jac
+└── hooks/
+    └── useCounter.jac
 ```
 
 **Usage:**
@@ -353,7 +357,7 @@ Run any example:
 ```bash
 cd jac-client/jac_client/examples/nested-folders/<example-name>
 npm install
-jac serve app.jac
+jac serve src/app.jac
 ```
 
 ## Related Documentation

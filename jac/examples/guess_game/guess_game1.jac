@@ -51,7 +51,8 @@ class GuessTheNumberGame(Game) {
     }
 }
 
+glob game = GuessTheNumberGame();
+
 with entry {
-    game = GuessTheNumberGame();
     game.play();
 }

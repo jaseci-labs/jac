@@ -4,7 +4,7 @@ Semstrings (semantic strings) provide explicit semantic context for AI models in
 
 **LLM Model Setup**
 
-Line 3 imports the `Model` class from the `byllm` module. Line 5 creates a global LLM instance using `let llm = Model(...)`, configuring it with:
+Line 3 imports the `Model` class from the `byllm` module. Line 5 creates a global LLM instance using `llm = Model(...)`, configuring it with:
 
 - Model name: `"mockllm"` (for testing; production uses real LLM services)
 - Mock outputs: `["SecureP@ss1"]` (predefined response for testing)

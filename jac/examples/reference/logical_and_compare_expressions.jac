@@ -1,17 +1,21 @@
 # Logical and Compare Expressions
+
+# Comparison operators
 with entry {
-    # Comparison operators
     print(5 > 4);
     print(5 >= 5);
     print(3 < 10);
     print(3 <= 3);
     print(5 == 5);
     print(5 != 3);
+}
 
-    # Identity operators
-    a = [1, 2, 3];
-    b = [1, 2, 3];
-    c = a;
+# Identity operators
+glob a = [1, 2, 3],
+     b = [1, 2, 3],
+     c = a;
+
+with entry {
     print(a is b);
     print(a is c);
     print(a is not b);
@@ -34,9 +38,12 @@ with entry {
     # Logical NOT
     print(not True);
     print(not False);
+}
 
-    # Chained comparisons
-    x = 15;
+# Chained comparisons
+glob x = 15;
+
+with entry {
     print(10 < x < 20);
     print(0 <= x <= 100);
     print(x > 20 or x < 5);

@@ -5,7 +5,7 @@ import from streamlit.testing.v1 { AppTest }
 """Jac Streamlit App Test."""
 class JacAppTest(AppTest) {
     """Initialize Jac Streamlit App Test."""
-    def __init__(self: JacAppTest, *args: list, **kwargs: dict) -> None {
+    def init(self: JacAppTest, *args: list, **kwargs: dict) -> None {
         super().__init__(*args, **kwargs);
     }
 

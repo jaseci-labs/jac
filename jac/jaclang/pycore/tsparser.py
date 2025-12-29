@@ -13,8 +13,8 @@ from typing import TYPE_CHECKING, Protocol, TypeAlias, TypeVar, cast
 
 import jaclang.pycore.lark_ts_parser as ts_lark
 import jaclang.pycore.unitree as uni
-from jaclang.compiler.passes.main import BaseTransform, Transform
 from jaclang.pycore.constant import TsTokens as Tok
+from jaclang.pycore.passes import BaseTransform, Transform
 from jaclang.vendor.lark.lexer import Token as LarkToken
 
 if TYPE_CHECKING:

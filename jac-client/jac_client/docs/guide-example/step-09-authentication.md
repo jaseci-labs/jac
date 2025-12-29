@@ -32,7 +32,7 @@ Add this component:
 
 ```jac
 def LoginPage() -> any {
-    [email, setEmail] = useState("");
+    [username, setUsername] = useState("");
     [password, setPassword] = useState("");
     [error, setError] = useState("");
 
@@ -40,12 +40,12 @@ def LoginPage() -> any {
         e.preventDefault();
         setError("");
 
-        if not email or not password {
+        if not username or not password {
             setError("Please fill in all fields");
             return;
         }
 
-        success = await jacLogin(email, password);
+        success = await jacLogin(username, password);
         if success {
             console.log("Login successful!");
         } else {
@@ -53,8 +53,8 @@ def LoginPage() -> any {
         }
     }
 
-    def handleEmailChange(e: any) -> None {
-        setEmail(e.target.value);
+    def handleUsernameChange(e: any) -> None {
+        setUsername(e.target.value);
     }
 
     def handlePasswordChange(e: any) -> None {
@@ -90,9 +90,9 @@ def LoginPage() -> any {
             <form onSubmit={handleLogin}>
                 <input
                     type="text"
-                    value={email}
-                    onChange={handleEmailChange}
-                    placeholder="Email"
+                    value={username}
+                    onChange={handleUsernameChange}
+                    placeholder="Username"
                     style={{
                         "width": "100%",
                         "padding": "8px",
@@ -151,7 +151,7 @@ Add this component:
 
 ```jac
 def SignupPage() -> any {
-    [email, setEmail] = useState("");
+    [username, setUsername] = useState("");
     [password, setPassword] = useState("");
     [error, setError] = useState("");
 
@@ -159,12 +159,12 @@ def SignupPage() -> any {
         e.preventDefault();
         setError("");
 
-        if not email or not password {
+        if not username or not password {
             setError("Please fill in all fields");
             return;
         }
 
-        result = await jacSignup(email, password);
+        result = await jacSignup(username, password);
         if result["success"] {
             console.log("Signup successful!");
         } else {
@@ -172,8 +172,8 @@ def SignupPage() -> any {
         }
     }
 
-    def handleEmailChange(e: any) -> None {
-        setEmail(e.target.value);
+    def handleUsernameChange(e: any) -> None {
+        setUsername(e.target.value);
     }
 
     def handlePasswordChange(e: any) -> None {
@@ -209,9 +209,9 @@ def SignupPage() -> any {
             <form onSubmit={handleSignup}>
                 <input
                     type="text"
-                    value={email}
-                    onChange={handleEmailChange}
-                    placeholder="Email"
+                    value={username}
+                    onChange={handleUsernameChange}
+                    placeholder="Username"
                     style={{
                         "width": "100%",
                         "padding": "8px",
@@ -284,7 +284,7 @@ def app() -> any {
 }
 ```
 
-**Create an account!** Enter an email and password, then click "Sign Up". Check the browser console - you should see "Signup successful!"
+**Create an account!** Enter a username and password, then click "Sign Up". Check the browser console - you should see "Signup successful!"
 
 ### Step 9.5: Protect Your Todo Page
 
@@ -327,16 +327,16 @@ Authentication = Proving who you are
 **Real-world analogy:**
 
 - **ID card** - You show it to prove your identity
-- **Email/Password** - Same thing, but digital!
+- **Username/Password** - Same thing, but digital!
 
 ### Jac's Built-in Auth Functions
 
 ```jac
 # 1. Sign up a new user
-result = await jacSignup(email, password);
+result = await jacSignup(username, password);
 
 # 2. Log in an existing user
-success = await jacLogin(email, password);
+success = await jacLogin(username, password);
 
 # 3. Log out
 jacLogout();
@@ -534,8 +534,8 @@ await jacLogin("alice", "password123");
 
 **Check:**
 
-- Is the email already taken? Try a different one
-- Are email/password not empty?
+- Is the username already taken? Try a different one
+- Are username/password not empty?
 - Check browser console for errors
 
 ### Issue: Login says "Invalid credentials"
@@ -543,8 +543,8 @@ await jacLogin("alice", "password123");
 **Check:**
 
 - Did you create an account first?
-- Is the email/password correct?
-- Emails are case-sensitive!
+- Is the username/password correct?
+- Usernames are case-sensitive!
 
 ### Issue: jacIsLoggedIn() always returns false
 
@@ -556,7 +556,7 @@ await jacLogin("alice", "password123");
 
 ### Issue: Can't create multiple accounts
 
-**Solution:** Each email can only be used once. Try different emails:
+**Solution:** Each username can only be used once. Try different usernames:
 
 - alice, bob, carol
 - user1, user2, user3
@@ -570,8 +570,8 @@ Try adding a "Remember me" message:
 
 ```jac
 def LoginPage() -> any {
-    let [email, setEmail] = useState("");
-    let [password, setPassword] = useState("");
+    [username, setUsername] = useState("");
+    [password, setPassword] = useState("");
 
     # Check if already logged in
     if jacIsLoggedIn() {

@@ -48,7 +48,8 @@ obj GuessTheNumberGame(Game) {
 }
 
 # Run the game
+glob game = GuessTheNumberGame();
+
 with entry {
-    game = GuessTheNumberGame();
     game.play();
 }

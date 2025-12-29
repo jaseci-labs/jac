@@ -1,0 +1,10 @@
+[project]
+name = "pure-css"
+version = "1.0.0"
+description = "Jac client application: pure-css"
+entry-point = "src/app.jac"
+
+[plugins.client]
+# Vite bundler configuration (optional overrides)
+# vite.plugins = []
+# vite.build = {}

@@ -1,11 +1,15 @@
 # Assert Statements
+
+# Basic assert
 with entry {
-    # Basic assert
     assert True;
     print("assertion passed");
+}
 
-    # Assert with expression
-    x = 10;
+# Assert with expression
+glob x = 10;
+
+with entry {
     assert x > 5;
     print("x > 5");
 

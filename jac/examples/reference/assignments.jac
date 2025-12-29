@@ -1,33 +1,54 @@
 # Assignments
+
+# Simple assignment
+glob x = 10;
+
 with entry {
-    # Simple assignment
-    x = 10;
     print(x);
+}
 
-    # Chain assignment
-    a = b=c=20;
+# Chain assignment
+glob a = b=c=20;
+
+with entry {
     print(f"{a} {b} {c}");
+}
 
-    # Let keyword
-    value = 100;
+# Let keyword
+glob value = 100;
+
+with entry {
     print(value);
+}
 
-    # Type annotation with value
-    age: int = 25;
-    name: str = "Alice";
+# Type annotation with value
+glob age: int = 25,
+     name: str = "Alice";
+
+with entry {
     print(f"{age} {name}");
 
     # Type annotation without initial value
     result: str;
-    result = "computed";
+}
+
+glob result = "computed";
+
+with entry {
     print(result);
+}
 
-    # Let with type
-    count: int = 5;
+# Let with type
+glob count: int = 5;
+
+with entry {
     print(count);
+}
 
-    # Augmented arithmetic assignments
-    num = 10;
+# Augmented arithmetic assignments
+glob num = 10;
+
+with entry {
     num += 5;
     num -= 3;
     num *= 2;
@@ -36,9 +57,12 @@ with entry {
     num **= 2;
     num //= 3;
     print(num);
+}
 
-    # Augmented bitwise assignments
-    bits = 12;
+# Augmented bitwise assignments
+glob bits = 12;
+
+with entry {
     bits &= 7;
     bits |= 3;
     bits ^= 5;

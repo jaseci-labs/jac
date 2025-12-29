@@ -216,7 +216,7 @@ def test_bundle_size_reasonable():
 
 def test_import_path_conversion():
     """Test that Jac-style import paths are converted to JS paths."""
-    from jaclang.pycore.module_resolver import convert_to_js_import_path
+    from jaclang.pycore.modresolver import convert_to_js_import_path
 
     # Test single dot (current directory)
     assert convert_to_js_import_path(".module") == "./module.js"

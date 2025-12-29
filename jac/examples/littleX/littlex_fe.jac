@@ -17,16 +17,16 @@ cl {
 
     # Shared data model for client/server
     obj ClientTweet {
-        has username: str = "";
-        has id: str = "";
-        has content: str = "";
-        has likes: list = [];
-        has comments: list = [];
+        has username: str = "",
+            id: str = "",
+            content: str = "",
+            likes: list = [],
+            comments: list = [];
     }
 
     obj ClientProfile {
-        has username: str = "";
-        has id: str = "";
+        has username: str = "",
+            id: str = "";
     }
 
     # UI Components - Render a single tweet card
@@ -111,7 +111,7 @@ cl {
     }
 
     # Render login form
-    def LoginForm()  -> any {
+    def LoginForm -> any {
         return <div
             class="login-container"
             style={{
@@ -206,7 +206,7 @@ cl {
     }
 
     # Render signup form
-    def SignupForm()  -> any {
+    def SignupForm -> any {
         return <div
             class="signup-container"
             style={{
@@ -338,13 +338,13 @@ cl {
     }
 
     # Handle logout
-    def logout_action()  -> None {
+    def logout_action -> None {
         jacLogout();
         navigate("/login");
     }
 
     # Main App component with declarative router
-    def App()  -> any {
+    def App -> any {
         # Create routes array manually (workaround for JS compiler bug with named args)
         login_route = {
             "path": "/login",
@@ -441,7 +441,7 @@ cl {
     }
 
     # Home view - simplified for testing reactive routing
-    def HomeView()  -> any {
+    def HomeView -> any {
         if not jacIsLoggedIn() {
             navigate("/login");
             return <div></div>;
@@ -467,7 +467,7 @@ cl {
     }
 
     # Profile view
-    def ProfileView()  -> any {
+    def ProfileView -> any {
         if not jacIsLoggedIn() {
             navigate("/login");
             return <div></div>;

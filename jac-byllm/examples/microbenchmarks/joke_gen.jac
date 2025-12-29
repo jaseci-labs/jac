@@ -1,9 +1,9 @@
 import from byllm.lib { Model }
 
 glob llm = Model(
-    # model_name="gpt-4o",
-    model_name="gemini/gemini-2.5-flash",
-);
+         # model_name="gpt-4o",
+         model_name="gemini/gemini-2.5-flash",
+     );
 
 obj PunclineJokes {
     has jokes: list[dict] = [
@@ -26,8 +26,9 @@ obj PunclineJokes {
 
 sem PunclineJokes. joke= 'Jokes with Punchlines';
 
+glob joke_gen = PunclineJokes();
+
 with entry {
-    joke_gen = PunclineJokes();
     for i in range(5) {
         joke_gen.generate();
     }

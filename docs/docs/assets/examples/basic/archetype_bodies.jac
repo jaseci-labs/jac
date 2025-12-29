@@ -14,8 +14,9 @@ obj Car {
     }
 }
 
+glob car = Car("Toyota", "Camry", 2020);
+
 with entry {
-    car = Car("Toyota", "Camry", 2020);
     car.display_car_info();
     print("Number of wheels:", Car.get_wheels());
 }

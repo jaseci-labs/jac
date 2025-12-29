@@ -1,6 +1,7 @@
 # Control Statements
+
+# Break - exits loop
 with entry {
-    # Break - exits loop
     for i in range(10) {
         if i > 3 {
             break;
@@ -15,9 +16,12 @@ with entry {
         }
         print(j);
     }
+}
 
-    # Break in while loop
-    count = 0;
+# Break in while loop
+glob count = 0;
+
+with entry {
     while True {
         count += 1;
         if count > 3 {
@@ -25,9 +29,12 @@ with entry {
         }
         print(count);
     }
+}
 
-    # Continue in while loop
-    n = 0;
+# Continue in while loop
+glob n = 0;
+
+with entry {
     while n < 5 {
         n += 1;
         if n % 2 == 0 {
@@ -35,15 +42,17 @@ with entry {
         }
         print(n);
     }
+}
 
-    # Skip (Jac-specific, used in walker contexts)
-    walker SkipWalker {
-        can process with entry {
-            skip;
-        }
+# Skip (Jac-specific, used in walker contexts)
+walker SkipWalker {
+    can process with entry {
+        skip;
     }
+}
 
-    # Nested loops with break
+# Nested loops with break
+with entry {
     for x in range(3) {
         for y in range(3) {
             if x == y == 1 {

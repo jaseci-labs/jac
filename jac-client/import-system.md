@@ -128,16 +128,16 @@ This document provides a comprehensive checklist of all import patterns needed i
 
 | JavaScript Pattern | Jac Pattern | Status | Generated JavaScript | Notes |
 |-------------------|-------------|--------|---------------------|-------|
-| `const mod = await import('./module')` |  `let mod = await cl.import(".module")` |  Not Implemented | `const mod = await import("./module");` | Async dynamic import |
+| `const mod = await import('./module')` |  `mod = await cl.import(".module")` |  Not Implemented | `const mod = await import("./module");` | Async dynamic import |
 | `import('./lazy').then(m => m.default)` |  `cl.import(".lazy").then((m) => m.default)` |  Not Implemented | `import("./lazy").then(m => m.default);` | Promise-based import |
-| `const { Component } = await import('./Comp')` |  `let { Component } = await cl.import(".Comp")` |  Not Implemented | `const { Component } = await import("./Comp");` | Destructured dynamic import |
+| `const { Component } = await import('./Comp')` |  `{ Component } = await cl.import(".Comp")` |  Not Implemented | `const { Component } = await import("./Comp");` | Destructured dynamic import |
 
 ### 4.2 Conditional Imports
 
 | JavaScript Pattern | Jac Pattern | Status | Generated JavaScript | Notes |
 |-------------------|-------------|--------|---------------------|-------|
 | `if (dev) { await import('./devTools') }` |  `if dev { await cl.import(".devTools") }` |  Not Implemented | `if (dev) { await import("./devTools"); }` | Conditional dynamic import |
-| `const mod = await import(isDev ? './dev' : './prod')` |  `let mod = await cl.import(isDev ? ".dev" : ".prod")` |  Not Implemented | `const mod = await import(isDev ? "./dev" : "./prod");` | Ternary dynamic import |
+| `const mod = await import(isDev ? './dev' : './prod')` |  `mod = await cl.import(isDev ? ".dev" : ".prod")` |  Not Implemented | `const mod = await import(isDev ? "./dev" : "./prod");` | Ternary dynamic import |
 
 ---
 

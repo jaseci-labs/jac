@@ -4,7 +4,7 @@ obj GradeBook {
     def add_student(name: str) -> None;
     def add_grade(student: str, grade: int) -> None;
     def get_average(student: str) -> float;
-    def get_all_averages()  -> dict[str, float];
+    def get_all_averages -> dict[str, float];
 }
 
 impl GradeBook.add_student(name: str) -> None {
@@ -47,11 +47,11 @@ impl GradeBook.get_all_averages()  -> dict[str, float] {
     return averages;
 }
 
-with entry {
-    # Create gradebook
-    gradebook = GradeBook();
+# Create gradebook
+glob gradebook = GradeBook();
 
-    # Add students
+# Add students
+with entry {
     gradebook.add_student("Alice");
     gradebook.add_student("Bob");
 
@@ -60,9 +60,12 @@ with entry {
     gradebook.add_grade("Alice", 92);
     gradebook.add_grade("Bob", 85);
     gradebook.add_grade("Bob", 79);
+}
 
-    # Get results
-    all_averages = gradebook.get_all_averages();
+# Get results
+glob all_averages = gradebook.get_all_averages();
+
+with entry {
     for (student, avg) in all_averages.items() {
         letter = "A" if avg >= 90 else "B" if avg >= 80 else "C" if avg >= 70 else "F";
         print(f"{student}: {avg} ({letter})");

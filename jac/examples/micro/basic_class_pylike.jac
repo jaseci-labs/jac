@@ -9,7 +9,7 @@ obj rson {
         self.age = age;
     }
 
-    def greet()  -> None {
+    def greet -> None {
         print("Hello, my name is ", self.name, " and I'm ", self.age, " years old.");
     }
 }

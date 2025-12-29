@@ -42,9 +42,9 @@ obj Vehicle {
 
 }
 
-with entry {
-    v1 = Vehicle(name="Car", year=2020);
-    v2 = Vehicle(name="Truck", year=2021);
+glob v1 = Vehicle(name="Car", year=2020),
+     v2 = Vehicle(name="Truck", year=2021);
 
+with entry {
     print(v1.display(), v2.display(), Vehicle.get_count());
 }

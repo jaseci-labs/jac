@@ -1,10 +1,8 @@
 #-------------------------------------------------------------------------------
 # Message Implementations
 #-------------------------------------------------------------------------------
-impl Message.to_dict()  -> dict[
-    str,
-    object
-] {
+"""Convert the message to a dictionary for LLM API calls."""
+impl Message.to_dict()  -> dict[str, object] {
     if isinstance(self.content, str) {
         return {"role": self.role.value, "content": self.content,};
     }
@@ -18,10 +16,12 @@ impl Message.to_dict()  -> dict[
 #-------------------------------------------------------------------------------
 # ToolCallResult Implementations
 #-------------------------------------------------------------------------------
+"""Set the role to TOOL for tool call result messages."""
 impl ToolCallResultMsg.postinit()  -> None {
     self.role = MessageRole.TOOL;  # Maybe this should be an assertion?
 }
 
+"""Convert the tool call result message to a dictionary."""
 impl ToolCallResultMsg.to_dict()  -> dict[str, object] {
     return {
         "role": self.role.value,

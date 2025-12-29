@@ -175,4 +175,53 @@ cl {
             "async_helper": gather_async
         };
     }
+
+    def TodoList(filteredTodos: any, toggleTodo: any, deleteTodo: any) -> any {
+        if filteredTodos.length == 0 {
+            return <div
+                style={{"padding": "20px", "textAlign": "center", "color": "#999"}}
+            >
+                No todos yet. Add one above!
+            </div>;
+        }
+
+        return <div>
+            {filteredTodos.map(
+                lambda  todo: any  -> any{ return <TodoItem
+                    key={todo._jac_id}
+                    todo={todo}
+                    toggleTodo={toggleTodo}
+                    deleteTodo={props.deleteTodo}
+                    children={props.children}
+                />; }
+            )}
+        </div>;
+    }
+
+    def PropTodoList(props: any) -> any {
+        if props.filteredTodos.length == 0 {
+            return <div
+                style={{"padding": "20px", "textAlign": "center", "color": "#999"}}
+            >
+                No todos yet. Add one above!
+            </div>;
+        }
+
+        return <div>
+            {props.filteredTodos.map(
+                lambda  todo: any  -> any{ return <TodoItem
+                    key={todo._jac_id}
+                    todo={todo}
+                    toggleTodo={props.toggleTodo}
+                    deleteTodo={props.deleteTodo}
+                    children={props.children}
+                />; }
+            )}
+        </div>;
+    }
+
+    def <>def(<>from: str, <>class: str) -> str {
+        print("From is:", <>from);
+        print("Class is:", <>class);
+    }
 }

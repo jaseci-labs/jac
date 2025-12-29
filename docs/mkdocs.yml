@@ -118,10 +118,13 @@ nav:
       - TypeScript: "jac-client/working-with-ts.md"
       - Advanced:
         - Introduction: "jac-client/advance/intro.md"
+        - Configuration System Overview: "jac-client/advance/configuration-overview.md"
         - Custom Configuration: "jac-client/advance/custom-config.md"
+        - Package Management: "jac-client/advance/package-management.md"
     - Tooling:
       - Jac Debugger: "learn/debugger.md"
       - Run Jac In Browser: "learn/jac_playground.md"
+      - Project Configuration (jac.toml): "learn/tools/project_config.md"
       - "learn/tools/cli.md"
       - "learn/tools/jac_serve.md"
       - "learn/tools/streamlit.md"
@@ -206,9 +209,6 @@ nav:
       - Jac-Client: "communityhub/release_notes/jac-client.md"
     - Breaking Changes: "communityhub/breaking_changes.md"
     - Leaderboard: "communityhub/top_contributors.md"
-    - Fun Stuff:
-      - Project Ideas:
-        - "communityhub/fun/static_fx.md"
     - Internals:
       - JSX 'Project OneLang' Design Doc: "internals/jsx_client_serv_design.md"
       - Jac Client Import Patterns Proposal: "internals/jac_import_patterns.md"

@@ -60,10 +60,10 @@ This guide covers array and list methods for developers familiar with JavaScript
 
     ```jac
     # Get even numbers
-    let evens = numbers.filter(lambda n: int -> bool { return n % 2 == 0; });
+    evens = numbers.filter(lambda n: int -> bool { return n % 2 == 0; });
 
     # Filter active users
-    let activeUsers = users.filter(lambda u: dict -> bool { return u["active"]; });
+    activeUsers = users.filter(lambda u: dict -> bool { return u["active"]; });
     ```
 
 ---
@@ -92,20 +92,20 @@ This guide covers array and list methods for developers familiar with JavaScript
 === "JAC-Client"
 
     ```jac
-    let users = [
+    users = [
         { "name": "Alice", "age": 25 },
         { "name": "Bob", "age": 17 },
         { "name": "Charlie", "age": 30 }
     ];
 
     # Find first adult
-    let adult = users.find(lambda u: dict -> bool { return u["age"] >= 18; });
+    adult = users.find(lambda u: dict -> bool { return u["age"] >= 18; });
 
     # Check if any minor exists
-    let hasMinor = users.some(lambda u: dict -> bool { return u["age"] < 18; });  # True
+    hasMinor = users.some(lambda u: dict -> bool { return u["age"] < 18; });  # True
 
     # Check if all are adults
-    let allAdults = users.every(lambda u: dict -> bool { return u["age"] >= 18; });  # False
+    allAdults = users.every(lambda u: dict -> bool { return u["age"] >= 18; });  # False
     ```
 
 ---
@@ -124,9 +124,9 @@ This guide covers array and list methods for developers familiar with JavaScript
 === "JAC-Client"
 
     ```jac
-    let prices = [29.99, 9.99, 49.99];
+    prices = [29.99, 9.99, 49.99];
 
-    let total = prices.reduce(lambda acc: float, price: float -> float {
+    total = prices.reduce(lambda acc: float, price: float -> float {
         return acc + price;
     }, 0);
     # Result: 89.97
@@ -155,15 +155,15 @@ This guide covers array and list methods for developers familiar with JavaScript
 === "JAC-Client"
 
     ```jac
-    let products = [
+    products = [
         { "name": "Laptop", "price": 999, "inStock": True },
         { "name": "Mouse", "price": 29, "inStock": True },
         { "name": "Keyboard", "price": 79, "inStock": False }
     ];
 
     # Get names of in-stock products
-    let available = products.filter(lambda p: dict -> bool { return p["inStock"]; });
-    let availableNames = available.map(lambda p: dict -> str { return p["name"]; });
+    available = products.filter(lambda p: dict -> bool { return p["inStock"]; });
+    availableNames = available.map(lambda p: dict -> str { return p["name"]; });
     # Result: ["Laptop", "Mouse"]
     ```
 
@@ -188,7 +188,7 @@ This guide covers array and list methods for developers familiar with JavaScript
 === "JAC-Client"
 
     ```jac
-    let (items, setItems) = useState(["A", "B", "C"]);
+    (items, setItems) = useState(["A", "B", "C"]);
 
     # Add item
     setItems(items.concat(["D"]));
@@ -219,7 +219,7 @@ This guide covers array and list methods for developers familiar with JavaScript
 === "JAC-Client"
 
     ```jac
-    let numbers = [42, 8, 15, 23, 4];
+    numbers = [42, 8, 15, 23, 4];
 
     # Sort ascending
     numbers.sort(lambda a: int, b: int -> int { return a - b; });  # [4, 8, 15, 23, 42]
@@ -228,7 +228,7 @@ This guide covers array and list methods for developers familiar with JavaScript
     numbers.sort(lambda a: int, b: int -> int { return b - a; });  # [42, 23, 15, 8, 4]
 
     # Safe sort (copy first)
-    let sorted = numbers.slice().sort(lambda a: int, b: int -> int { return a - b; });
+    sorted = numbers.slice().sort(lambda a: int, b: int -> int { return a - b; });
     ```
 
 ---
@@ -254,17 +254,17 @@ This guide covers array and list methods for developers familiar with JavaScript
 === "JAC-Client"
 
     ```jac
-    let original = [1, 2, 3, 4, 5];
+    original = [1, 2, 3, 4, 5];
 
     # Copy array
-    let copy = [*original];
+    copy = [*original];
 
     # Slice (start, end)
-    let first3 = original.slice(0, 3);  # [1, 2, 3]
-    let last2 = original.slice(-2);     # [4, 5]
+    first3 = original.slice(0, 3);  # [1, 2, 3]
+    last2 = original.slice(-2);     # [4, 5]
 
     # Merge arrays
-    let merged = [*original, *[6, 7, 8]];
+    merged = [*original, *[6, 7, 8]];
     ```
 
 ---
@@ -286,7 +286,7 @@ This guide covers array and list methods for developers familiar with JavaScript
 === "JAC-Client"
 
     ```jac
-    let colors = ["red", "green", "blue"];
+    colors = ["red", "green", "blue"];
 
     colors.includes("red");    # True
     colors.includes("pink");   # False

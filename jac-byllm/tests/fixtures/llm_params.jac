@@ -8,17 +8,20 @@ sem get_live_wind_speed= """Get the current wind speed of a given city.""";
 
 def get_wind_speed_report(city: str) -> str by MockLLM(
     model_name="mockllm",
-    outputs=[
-        MockToolCall(tool=get_live_wind_speed, args={"city": "Puttalam"}),
-        "The current wind speed in Puttalam is about 18-22 km/h."
-    ],
-    show_params=True,
-    verbose=True,
+    config={
+        "outputs": [
+            MockToolCall(tool=get_live_wind_speed, args={"city": "Puttalam"}),
+            "The current wind speed in Puttalam is about 18-22 km/h."
+        ],
+        "show_params": True,
+        "verbose": True
+    },
 )(
     tools=[get_live_wind_speed]
 );
 
+glob result = get_wind_speed_report("Puttalam");
+
 with entry {
-    result = get_wind_speed_report("Puttalam");
     print(result);
 }

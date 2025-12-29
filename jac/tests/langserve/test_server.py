@@ -239,7 +239,7 @@ def test_go_to_definition_md_path(fixture_path: Callable[[str], str]) -> None:
             (11, 47, "jaclang/pycore/constant.py:5:0-34:9"),
             (13, 47, "jaclang/compiler/type_system/type_utils.jac:0:0-0:0"),
             (14, 34, "jaclang/compiler/type_system/__init__.py:0:0-0:0"),
-            (18, 5, "compiler/type_system/types.jac:47:6-47:14"),  # TypeBase now on line 18
+            (18, 5, "compiler/type_system/types.jac:67:6-67:14"),  # TypeBase now on line 18
             (20, 34, "jaclang/pycore/unitree.py:0:0-0:0"),              # UniScopeNode now on line 20
             # (20, 48, "compiler/unitree.py:335:0-566:11"),
             (22, 22, "tests/langserve/fixtures/circle.jac:7:5-7:8"),  # RAD now on line 22, fixture line changed too
@@ -415,6 +415,178 @@ def test_go_to_def_import_star(
         for line, char, expected in positions:
             assert expected in str(
                 lsp.get_definition(import_star_file, lspt.Position(line - 1, char - 1))
+            )
+    finally:
+        lsp.shutdown()
+
+
+def test_stub_impl_hover_and_goto_def(fixture_path: Callable[[str], str]) -> None:
+    """Test hover and go-to-definition on method stubs and impl files.
+
+    This tests:
+    1. Hover on type annotations (self: MyServer) in method stubs works
+    2. Hover on type annotations in impl files works
+    3. Go-to-definition on method stubs (init, process) navigates to impl file
+    """
+    lsp = create_server(None, fixture_path)
+    try:
+        test_file = uris.from_fs_path(fixture_path("stub_hover.jac"))
+        impl_file_path = fixture_path("stub_hover.impl.jac")
+        impl_file = uris.from_fs_path(impl_file_path)
+        lsp.type_check_file(test_file)
+
+        # ================================================================
+        # Test hover on type annotations in stub file
+        # ================================================================
+
+        # Hover on MyServer in: def process(self: MyServer, data: str) -> str;
+        # Line 13 (0-indexed: 12), MyServer starts at column 22
+        hover = lsp.get_hover_info(test_file, lspt.Position(12, 24))
+        assert hover is not None, "Hover should return info for self type annotation"
+        assert "MyServer" in hover.contents.value, (
+            f"Hover should show MyServer info, got: {hover.contents.value}"
+        )
+
+        # Hover on MyServer in: def handle(self: MyServer, request: int) -> None;
+        # Line 14 (0-indexed: 13), MyServer starts at column 21
+        hover2 = lsp.get_hover_info(test_file, lspt.Position(13, 23))
+        assert hover2 is not None, "Hover should return info for self type annotation"
+        assert "MyServer" in hover2.contents.value, (
+            f"Hover should show MyServer info, got: {hover2.contents.value}"
+        )
+
+        # ================================================================
+        # Test hover on type annotations in impl file
+        # ================================================================
+
+        # Hover on MyServer in impl file: impl MyServer.handle(self: MyServer, ...)
+        # Line 15 (0-indexed: 14), MyServer in self type annotation starts at column 27
+        lsp.type_check_file(impl_file)
+        hover3 = lsp.get_hover_info(impl_file, lspt.Position(14, 29))
+        assert hover3 is not None, "Hover should return info for self type in impl file"
+        assert "MyServer" in hover3.contents.value, (
+            f"Hover should show MyServer info in impl, got: {hover3.contents.value}"
+        )
+
+        # ================================================================
+        # Test go-to-definition from stub to impl
+        # ================================================================
+
+        # Goto def on 'init' stub (line 12, col 10) -> should go to impl line 5
+        # def init(self: MyServer, name: str) -> None;
+        defn = lsp.get_definition(test_file, lspt.Position(11, 10))
+        assert defn is not None, "Definition should be found for init stub"
+        assert impl_file_path in defn.uri, (
+            f"Definition should point to impl file, got: {defn.uri}"
+        )
+        assert defn.range.start.line == 4, (
+            f"Definition should be at line 5 (0-indexed: 4), got: {defn.range.start.line}"
+        )
+
+        # Goto def on 'process' stub (line 13, col 10) -> should go to impl line 11
+        # def process(self: MyServer, data: str) -> str;
+        defn2 = lsp.get_definition(test_file, lspt.Position(12, 10))
+        assert defn2 is not None, "Definition should be found for process stub"
+        assert impl_file_path in defn2.uri, (
+            f"Definition should point to impl file, got: {defn2.uri}"
+        )
+        assert defn2.range.start.line == 10, (
+            f"Definition should be at line 11 (0-indexed: 10), got: {defn2.range.start.line}"
+        )
+
+        # ================================================================
+        # Test go-to-definition for static field access (MyServer._counter)
+        # ================================================================
+
+        # Goto def on '_counter' in 'MyServer._counter' (line 7, col 31)
+        # Should go to static has declaration in stub file (line 10)
+        defn3 = lsp.get_definition(impl_file, lspt.Position(6, 33))
+        assert defn3 is not None, "Definition should be found for static field _counter"
+        assert "stub_hover.jac" in defn3.uri, (
+            f"Definition should point to declaration file, got: {defn3.uri}"
+        )
+        assert defn3.range.start.line == 9, (
+            f"Definition should be at line 10 (0-indexed: 9), got: {defn3.range.start.line}"
+        )
+
+        # ================================================================
+        # Test hover and go-to-definition for Python type methods in impl bodies
+        # This tests the fix for type resolution in impl bodies where
+        # Python type methods (like Thread.start) should be properly resolved.
+        # ================================================================
+
+        # Hover on 'start' in 'self.worker.start()' (line 23, col 17)
+        # Line 23 (0-indexed: 22): `    self.worker.start();`
+        # 'start' starts at column 17 (0-indexed: 16)
+        hover_start = lsp.get_hover_info(impl_file, lspt.Position(22, 17))
+        assert hover_start is not None, (
+            "Hover should return info for Thread.start method in impl body"
+        )
+
+        # Hover on 'worker' in 'self.worker.start()' (line 23, col 10)
+        hover_worker = lsp.get_hover_info(impl_file, lspt.Position(22, 10))
+        assert hover_worker is not None, (
+            "Hover should return info for worker field in impl body"
+        )
+        assert "Thread" in hover_worker.contents.value, (
+            f"Hover should show Thread type, got: {hover_worker.contents.value}"
+        )
+
+        # Go-to-definition on 'start' should go to Python threading module
+        defn_start = lsp.get_definition(impl_file, lspt.Position(22, 17))
+        assert defn_start is not None, (
+            "Definition should be found for Thread.start method"
+        )
+        assert "threading" in defn_start.uri, (
+            f"Definition should point to threading module, got: {defn_start.uri}"
+        )
+
+    finally:
+        lsp.shutdown()
+
+
+def test_go_to_definition_impl_body_self_attr(
+    passes_main_fixture_abs_path: Callable[[str], str],
+) -> None:
+    """Test go-to-definition for self.attr in impl bodies navigates to has declaration.
+
+    This tests the fix for symbol resolution in .impl.jac files, where clicking on
+    'self.count' in an impl body should navigate to the 'has count' declaration
+    in the base .jac file.
+    """
+    lsp = create_server(None, lambda x: "")
+    try:
+        impl_file = uris.from_fs_path(
+            passes_main_fixture_abs_path("impl_symbol_resolution.impl.jac")
+        )
+        lsp.type_check_file(impl_file)
+
+        # fmt: off
+        # Test positions in impl_symbol_resolution.impl.jac (1-indexed for test input):
+        # Line 5: `    return self.count;`
+        #         - 'count' starts at column 17
+        # Line 9: `    return f"{self.name}: {self.count}";`
+        #         - 'name' is at column 21, 'count' is at column 34
+        #
+        # Expected targets in impl_symbol_resolution.jac (0-indexed in LSP output):
+        # Line 3 (0-indexed): `    has count: int = 0,` -> count at 3:8-3:13
+        # Line 4 (0-indexed): `        name: str = "default";` -> name at 4:8-4:12
+        positions = [
+            # (impl_line, impl_char, expected_target)
+            (5, 17, "impl_symbol_resolution.jac:3:8-3:13"),   # count in `return self.count`
+            (9, 21, "impl_symbol_resolution.jac:4:8-4:12"),   # name in f-string
+            (9, 34, "impl_symbol_resolution.jac:3:8-3:13"),   # count in f-string
+        ]
+        # fmt: on
+
+        for line, char, expected in positions:
+            result = lsp.get_definition(impl_file, lspt.Position(line - 1, char - 1))
+            assert result is not None, (
+                f"Expected definition at line {line}, char {char}, got None"
+            )
+            assert expected in str(result), (
+                f"Expected '{expected}' in definition for line {line}, char {char}, "
+                f"got: {result}"
             )
     finally:
         lsp.shutdown()

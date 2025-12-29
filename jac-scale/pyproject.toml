@@ -16,11 +16,13 @@ dependencies = [
     "redis>=7.1.0,<8.0.0",
     "fastapi>=0.121.3,<0.122.0",
     "uvicorn>=0.38.0,<0.39.0",
-    "pyjwt"
+    "pyjwt",
+    "fastapi-sso>=0.18.0,<1.0.0"
 ]
 
 [project.entry-points."jac"]
 scale = "jac_scale.plugin:JacCmd"
+scale_plugin_config = "jac_scale.plugin_config:JacScalePluginConfig"
 
 [tool.setuptools.packages.find]
 include = ["jac_scale*"]

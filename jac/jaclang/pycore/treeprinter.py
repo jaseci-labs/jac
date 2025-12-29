@@ -8,7 +8,6 @@ import html
 from typing import TYPE_CHECKING
 
 import jaclang.pycore.unitree as uni
-from jaclang.pycore.settings import settings
 
 if TYPE_CHECKING:
     from jaclang.pycore.unitree import UniNode, UniScopeNode
@@ -199,7 +198,7 @@ def print_ast_tree(
     """Recursively print ast tree."""
     from jaclang.pycore.unitree import AstSymbolNode, Token
 
-    print_py_raise: bool = settings.print_py_raised_ast
+    print_py_raise: bool = False
 
     def __node_repr_in_tree(node: UniNode) -> str:
         access = (
@@ -217,13 +216,6 @@ def print_ast_tree(
 
         if isinstance(node, Token) and isinstance(node, AstSymbolNode):
             out = f"{node.__class__.__name__} - {node.value} - Type: {node.expr_type}, {access} {sym_table_link}"
-            if settings.ast_symbol_info_detailed:
-                symbol = (
-                    node.sym.sym_dotted_name
-                    if node.sym
-                    else "<No Symbol is associated with this node>"
-                )
-                out += f", SymbolPath: {symbol}"
             return out
         elif isinstance(node, Token):
             return f"{node.__class__.__name__} - {node.value}, {access}"
@@ -249,13 +241,6 @@ def print_ast_tree(
             return out
         elif isinstance(node, AstSymbolNode):
             out = f"{node.__class__.__name__} - {node.sym_name} - Type: {node.expr_type}, {access} {sym_table_link}"
-            if settings.ast_symbol_info_detailed:
-                symbol = (
-                    node.sym.sym_dotted_name
-                    if node.sym
-                    else "<No Symbol is associated with this node>"
-                )
-                out += f" SymbolPath: {symbol}"
             return out
         elif isinstance(node, uni.Expr):
             return f"{node.__class__.__name__} - Type: {node.expr_type}"
@@ -454,11 +439,7 @@ def get_symtab_tree_str(
     depth: int | None = None,
 ) -> str:
     """Recursively print symbol table tree."""
-    if (
-        root is None
-        or depth == 0
-        or (settings.filter_sym_builtins and root.name in dir(builtins))
-    ):
+    if root is None or depth == 0 or root.name in dir(builtins):
         return ""
 
     level_markers = level_markers or []
@@ -511,7 +492,7 @@ def printgraph_symtab_tree(node: UniScopeNode) -> str:
         dot_lines.append(f"{gen_node_id(node)} {gen_node_parameters(node)};")
         for kid_node in node.kid:
             if kid_node:
-                if settings.filter_sym_builtins and kid_node.name in dir(builtins):
+                if kid_node.name in dir(builtins):
                     continue
                 dot_lines.append(f"{gen_node_id(node)}  -> {gen_node_id(kid_node)};")
                 gen_dot_graph(kid_node)

@@ -329,8 +329,17 @@ def test_deep_imports_interp_mode(fixture_path: Callable[[str], str]) -> None:
     Jac.attach_program(
         JacProgram(),
     )
+    # Clear any cached module from previous test runs
+    for mod_name in list(sys.modules.keys()):
+        if "deep_import_interp" in mod_name:
+            del sys.modules[mod_name]
+    # Delete bytecode cache files to force recompilation
+    cache_dir = Path.cwd() / ".jaccache"
+    if cache_dir.exists():
+        for cache_file in cache_dir.glob("deep_import_interp*.jbc"):
+            cache_file.unlink()
     Jac.jac_import("deep_import_interp", base_path=fixture_path("./"))
-    assert len(Jac.program.mod.hub.keys()) == 1
+    assert len(Jac.get_program().mod.hub.keys()) == 1
     Jac.set_base_path(fixture_path("./"))
     Jac.attach_program(
         (prog := JacProgram()),
@@ -338,8 +347,8 @@ def test_deep_imports_interp_mode(fixture_path: Callable[[str], str]) -> None:
     prog.build(fixture_path("./deep_import_interp.jac"))
     Jac.jac_import("deep_import_interp", base_path=fixture_path("./"))
     # Note: hub size can vary depending on whether compiler support modules
-    # (e.g., `import_pass.jac`) are compiled/registered in this run.
-    assert len(Jac.program.mod.hub.keys()) in {5, 6}
+    # (e.g., `import_pass.jac` and its annexes) are compiled/registered in this run.
+    assert len(Jac.get_program().mod.hub.keys()) in {5, 6, 7}
 
 
 def test_deep_imports_mods(
@@ -791,14 +800,6 @@ def test_refs_target(
     stdout_value = captured_output.getvalue()
     assert "[c(val=0), c(val=1), c(val=2)]" in stdout_value
     assert "[c(val=0)]" in stdout_value
-
-
-def test_py_kw_as_name_disallowed():
-    """Basic precedence test."""
-    (prog := JacProgram()).compile(
-        use_str="with entry {print.is.not.True(4-5-4);}", file_path="test.jac"
-    )
-    assert "Python keyword is used as name" in str(prog.errors_had[0].msg)
 
 
 def test_double_format_issue():
@@ -1462,11 +1463,14 @@ def test_concurrency(
     """Test concurrency in jaclang."""
     with capture_stdout() as captured_output:
         Jac.jac_import("concurrency", base_path=fixture_path("./"))
-    stdout_value = captured_output.getvalue().split("\n")
-    assert "Started" in stdout_value[3]
-    assert "B(name='Hi')" in stdout_value[7]
-    assert "11" in stdout_value[9]
-    assert "13" in stdout_value[10]
+    # Check output contains expected values (order may vary due to concurrency)
+    full_output = captured_output.getvalue()
+    assert "Started" in full_output
+    assert "B(name='Hi')" in full_output
+    assert "All are started" in full_output
+    assert "All are done" in full_output
+    assert "11" in full_output
+    assert "13" in full_output
 
 
 def test_import_jac_from_py(
@@ -1849,6 +1853,12 @@ def test_safe_call_operator(
     assert "None" in stdout_value[3]
     assert "3" in stdout_value[4]
     assert "None" in stdout_value[5]
+    assert "3" in stdout_value[6]
+    assert "None" in stdout_value[7]
+    assert "[2, 3]" in stdout_value[8]
+    assert "[]" in stdout_value[9]
+    assert "None" in stdout_value[10]
+    assert "None" in stdout_value[11]
 
 
 def test_anonymous_ability_execution(

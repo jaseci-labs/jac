@@ -11,7 +11,7 @@ This module demonstrates all 9 top-level statement types from the grammar:
 | Statement Type | Lines | Example |
 |---------------|-------|---------|
 | Import | 8 | `import math;` |
-| Global Variable | 11 | `let global_value: int = 42;` |
+| Global Variable | 11 | `global_value: int = 42;` |
 | Archetype | 14-16 | `obj MyObject { ... }` |
 | Implementation | 19-23 | `impl MyObject { ... }` |
 | Semstring | 26 | `sem MyObject.value = "...";` |
@@ -27,7 +27,7 @@ The `import math;` statement makes Python's math module available. Jac supports 
 
 **2. Global Variables (Line 11)**
 
-`let global_value: int = 42;` declares a module-level variable using the `let` keyword. Global variables can have access modifiers (`:priv`, `:pub`, `:protect`) and type annotations.
+`global_value: int = 42;` declares a module-level variable using the `let` keyword. Global variables can have access modifiers (`:priv`, `:pub`, `:protect`) and type annotations.
 
 **3. Archetypes (Lines 14-16)**
 

@@ -1,0 +1,10 @@
+[project]
+name = "css-with-image"
+version = "1.0.0"
+description = "Jac client application: css-with-image"
+entry-point = "src/app.jac"
+
+[plugins.client]
+# Vite bundler configuration (optional overrides)
+# vite.plugins = []
+# vite.build = {}
