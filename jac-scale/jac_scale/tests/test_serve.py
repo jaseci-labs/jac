@@ -6,6 +6,7 @@ import glob
 import socket
 import subprocess
 import time
+import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -142,7 +143,7 @@ class TestJacScaleServe:
 
     @classmethod
     def _cleanup_session_files(cls) -> None:
-        """Delete session files including user database files."""
+        """Delete session files including user database files and anchor_store.db."""
         if cls.session_file.exists():
             session_dir = cls.session_file.parent
             prefix = cls.session_file.name
@@ -151,6 +152,16 @@ class TestJacScaleServe:
                 if file.name.startswith(prefix):
                     with contextlib.suppress(Exception):
                         file.unlink()
+
+        # Clean up anchor_store.db files created by ShelfDB in cwd
+        for pattern in [
+            "anchor_store.db.dat",
+            "anchor_store.db.bak",
+            "anchor_store.db.dir",
+        ]:
+            for anchor_file in glob.glob(pattern):
+                with contextlib.suppress(Exception):
+                    Path(anchor_file).unlink()
 
         session_pattern = str(cls.fixtures_dir / "test_serve_*.session*")
         for file_path in glob.glob(session_pattern):
@@ -566,12 +577,14 @@ class TestJacScaleServe:
 
     def test_call_function_with_defaults(self) -> None:
         """Test calling function with default parameters."""
-        # Create user
+        # Create user with unique username to avoid conflicts
+        username = f"defuser_{uuid.uuid4().hex[:8]}"
         create_result = self._request(
             "POST",
             "/user/register",
-            {"username": "defuser", "password": "pass"},
+            {"username": username, "password": "pass"},
         )
+        assert "token" in create_result, f"Registration failed: {create_result}"
         token = create_result["token"]
 
         # Call greet without name (should use default)
@@ -608,8 +621,6 @@ class TestJacScaleServe:
 
     def test_user_isolation(self) -> None:
         """Test that users have isolated graph spaces."""
-        import uuid
-
         # Use unique emails to avoid conflicts with previous test runs
         unique_id = uuid.uuid4().hex[:8]
         username1 = f"isolate1_{unique_id}"
