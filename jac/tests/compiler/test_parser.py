@@ -265,6 +265,25 @@ def test_new_keyword_errors(fixture_path: Callable[[str], str]) -> None:
         assert expected in pretty
 
 
+def test_pass_keyword_errors(fixture_path: Callable[[str], str]) -> None:
+    """Parse param syntax jac file."""
+    captured_output = io.StringIO()
+    sys.stdout = captured_output
+    prog = JacProgram()
+    prog.compile(fixture_path("pass_keyword_errors.jac"))
+    sys.stdout = sys.__stdout__
+    assert len(prog.errors_had) == 4
+    expected_substrings = [
+        "'pass' is not supported. Jac allows empty blocks instead",
+        "'pass' is not supported. Jac allows empty blocks instead",
+        "'pass' is not supported. Jac allows empty blocks instead",
+        "'pass' is not supported. Jac allows empty blocks instead",
+    ]
+    for alrt, expected in zip(prog.errors_had, expected_substrings, strict=True):
+        pretty = alrt.pretty_print()
+        assert expected in pretty
+
+
 def test_multiple_syntax_errors(fixture_path: Callable[[str], str]) -> None:
     """Parse param syntax jac file."""
     captured_output = io.StringIO()
