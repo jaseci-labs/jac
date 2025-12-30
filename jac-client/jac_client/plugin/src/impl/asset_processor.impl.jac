@@ -41,9 +41,7 @@ impl AssetProcessor.copy_python_files(
     copy_recursive(src_dir, dest_dir);
 }
 
-
 """Copy JavaScript files (.js, .jsx) from source to destination recursively."""
-
 impl AssetProcessor.copy_javascript_files(
     self: AssetProcessor,
     src_dir: Path,
@@ -54,7 +52,7 @@ impl AssetProcessor.copy_javascript_files(
         return;
     }
     dest_dir.mkdir(parents=True, exist_ok=True);
-    js_extensions = {'.js', '.jsx'};
+    js_extensions = {'.js','.jsx'};
     def copy_recursive(
         source: Path, destination: Path, base: (Path | None) = None
     ) -> None {
@@ -85,9 +83,7 @@ impl AssetProcessor.copy_javascript_files(
     copy_recursive(src_dir, dest_dir);
 }
 
-
 """Copy TypeScript files (.ts, .tsx) from source to destination recursively."""
-
 impl AssetProcessor.copy_typescript_files(
     self: AssetProcessor,
     src_dir: Path,
