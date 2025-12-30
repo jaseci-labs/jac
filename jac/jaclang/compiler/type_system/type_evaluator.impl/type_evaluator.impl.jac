@@ -300,6 +300,17 @@ impl TypeEvaluator._get_type_of_symbol(
         # This actually defined in the function getTypeForDeclaration();
         # Pyright has DeclarationType.Variable.
         case uni.Name():
+            # ---- Handle SepcialForm in typing.pyi ----
+            # NOTE: This is different from pyright, that does get the same logic in
+            # getTypeOfAnnotation() which we don't have.
+            if node_.loc.mod_path == self._TYPING_STUB_FILE_PATH {
+                match node_.sym_name {
+                    case "Final":
+                        return self.prefetch.final_class;
+
+                }
+            }
+
             # ---- Handle simple assignment: var = <expr> ----
             if isinstance(node_.parent, uni.Assignment) {
                 if node_.parent.type_tag is not None {
@@ -377,6 +388,15 @@ impl TypeEvaluator._get_type_of_symbol(
 impl TypeEvaluator._assign_class(
     self: TypeEvaluator, src_type: types.ClassType, dest_type: types.ClassType
 ) -> bool {
+    # If the type is Final[T], unwrap it to T.
+    # TODO: We can actually check if the Final type is modified and
+    # prevent that, but for now just unwrap it.
+    if dest_type.shared == self.prefetch.final_class.shared {
+        dest_type = dest_type.private.type_args[0];
+    }
+    if src_type.shared == self.prefetch.final_class.shared {
+        src_type = src_type.private.type_args[0];
+    }
     if src_type.shared == dest_type.shared {
         return True;
     }
@@ -573,8 +593,10 @@ impl TypeEvaluator._prefetch_types(self: TypeEvaluator) {
     # self.prefetch.template_class =
     self.prefetch.protocol_class = get_typing_type("Protocol");
     self.prefetch.any_class = get_typing_type("Any");
+    # Prefetched Jaclang builtin types
     self.prefetch.root_class = get_jac_builtin_type("Root");
     self.prefetch.root_class.shared.is_root_class = True;
+    self.prefetch.final_class = get_jac_builtin_type("Final");
     self.prefetch.node_class = get_jac_builtin_type("Node");
     self.prefetch.walker_class = get_jac_builtin_type("Walker");
 }

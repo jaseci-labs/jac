@@ -67,6 +67,7 @@ obj PrefetchedTypes {
         protocol_class: TypeBase | None = None,
         any_class: TypeBase | None = None,
         # Prefetched from jac_builtins.pyi file
+        final_class: TypeBase | None = None,
         root_class: TypeBase | None = None,
         node_class: TypeBase | None = None,
         walker_class: TypeBase | None = None;
@@ -103,6 +104,19 @@ class TypeEvaluator {
         ),
         _JAC_BUILTINS_STUB_FILE_PATH: str = os.path.join(
             os.path.dirname(__file__), "jac_builtins.pyi"
+        ),
+        _SPECIAL_FORM_CLASS_NAMES: tuple[(str, ...)] = (
+            "Union",
+            "Protocol",
+            "Callable",
+            "Type",
+            "NoReturn",
+            "ClassVar",
+            "Optional",
+            "Tuple",
+            "Final",
+            "Literal",
+            "TypedDict"
         );
 
     def init(self: TypeEvaluator, program: "JacProgram") -> None;
