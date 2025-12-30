@@ -749,6 +749,10 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                 return;
             }
             is_static_path = path.startswith('/static/');
+            import from jaclang.project.config { get_config };
+            config = get_config();
+            assets_config = config.get_plugin_config("client").get("assets", {});
+            extensions = set(assets_config.get("extensions", []));
             is_asset_file = (
                 not is_static_path
                 and (path != '/')
@@ -760,7 +764,7 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                 and not path.startswith('/walkers')
                 and not path.startswith('/protected')
                 and (
-                    Path(path).suffix in {'.js','.py','.png','.jpg','.jpeg','.gif','.webp','.svg','.ico','.woff','.woff2','.ttf','.otf','.eot','.mp4','.webm','.mp3','.wav','.css'}
+                    Path(path).suffix in extensions or {'.png','.jpg','.jpeg','.gif','.webp','.svg','.ico','.woff','.woff2','.ttf','.otf','.eot','.mp4','.webm','.mp3','.wav','.css'}
                 )
             );
             if (is_static_path or is_asset_file) {
