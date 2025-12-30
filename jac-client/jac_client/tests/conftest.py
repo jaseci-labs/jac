@@ -274,7 +274,7 @@ entry-point = "app.jac"
 
 [dependencies.npm]{deps_section}
 
-[dependencies.npm.dev]{dev_deps_section}
+[dev-dependencies.npm]{dev_deps_section}
 """
     config_path = path / "jac.toml"
     config_path.write_text(content)

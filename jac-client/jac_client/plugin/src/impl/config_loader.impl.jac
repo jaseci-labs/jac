@@ -52,8 +52,10 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, Any] {
     # Get npm dependencies from [dependencies.npm]
     npm_deps = jac_config.get_plugin_deps('npm');
     # Get npm dev dependencies from [dev-dependencies.npm]
-    npm_dev_deps = jac_config.dev_dependencies.get('npm', {})
-    if isinstance(jac_config.dev_dependencies.get('npm'), dict)
+    # These are stored in plugin_dependencies["npm"]["dev"] after parsing
+    npm_plugin_deps = jac_config.plugin_dependencies.get('npm', {});
+    npm_dev_deps = npm_plugin_deps.get('dev', {})
+    if isinstance(npm_plugin_deps.get('dev'), dict)
     else {};
     # Build user config in the expected internal format
     user_config: dict[str, Any] = {

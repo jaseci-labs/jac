@@ -183,7 +183,13 @@ impl JacConfig.apply_profile(profile_name: str) -> None {
 }
 
 impl JacConfig.get_plugin_deps(dep_type: str) -> dict[str, Any] {
-    return self.plugin_dependencies.get(dep_type, {});
+    deps = self.plugin_dependencies.get(dep_type, {});
+    # Filter out the "dev" key which holds dev dependencies
+    return {
+        k: v
+        for (k, v) in deps.items()
+        if k != "dev"
+    };
 }
 
 impl JacConfig.get_plugin_config(plugin_name: str) -> dict[str, Any] {
@@ -482,7 +488,18 @@ impl _parse_toml_data(
         }
     }
     if "dev-dependencies" in data {
-        config.dev_dependencies = data["dev-dependencies"];
+        dev_deps = data["dev-dependencies"];
+        for (key, value) in dev_deps.items() {
+            if isinstance(value, str) {
+                config.dev_dependencies[key] = value;
+            } elif isinstance(value, dict) {
+                # Handle plugin dev dependencies like [dev-dependencies.npm]
+                if key not in config.plugin_dependencies {
+                    config.plugin_dependencies[key] = {};
+                }
+                config.plugin_dependencies[key]["dev"] = value;
+            }
+        }
     }
     if "run" in data {
         run_data = data["run"];
