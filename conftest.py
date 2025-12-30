@@ -12,10 +12,10 @@ from pathlib import Path
 import pytest
 
 import jaclang
-from jaclang.runtimelib.utils import read_file_with_encoding
 
 # Import fixed file lists for deterministic test discovery
 from jac.tests.fixtures_list import MICRO_JAC_FILES
+from jaclang.runtimelib.utils import read_file_with_encoding
 
 _JACLANG_DIR = Path(jaclang.__file__).parent
 _PROJECT_ROOT = Path(__file__).parent
