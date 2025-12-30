@@ -30,5 +30,4 @@ class AssetProcessor {
         dest_dir: Path,
         preserve_structure: bool = True
     ) -> None;
-    
 }

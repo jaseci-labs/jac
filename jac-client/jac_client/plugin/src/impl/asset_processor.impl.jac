@@ -42,12 +42,10 @@ impl AssetProcessor.copy_configured_assets(
     if extensions {
         copy_recursive(src_dir, dest_dir);
     }
-    return;
+    return; 
 }
 
-
 """Copy TypeScript files (.ts, .tsx) from source to destination recursively."""
-
 impl AssetProcessor.copy_typescript_files(
     self: AssetProcessor,
     src_dir: Path,
