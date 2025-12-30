@@ -231,6 +231,15 @@ class JacParser(Transform[uni.Source, uni.Module]):
                 if e.token_history and len(e.token_history) >= 1
                 else None
             )
+
+            # Check for unsupported 'pass' keyword
+            if e.token and e.token.value == "pass":
+                self.log_error(
+                    "'pass' is not supported. Jac allows empty blocks instead",
+                    self.error_to_token(e),
+                )
+                return True
+
             # If last token is DOT and we expect a NAME, insert a NAME token
             if (
                 last_tok
@@ -1426,6 +1435,12 @@ class JacParser(Transform[uni.Source, uni.Module]):
                     kid=[expr],
                 )
             elif isinstance(kid[0], uni.Expr):
+                # Check for standalone 'pass' statement
+                if isinstance(kid[0], uni.Name) and kid[0].value == "pass":
+                    self.parse_ref.log_error(
+                        "'pass' is not supported. Jac allows empty blocks instead",
+                        node_override=kid[0],
+                    )
                 return uni.ExprStmt(
                     expr=kid[0],
                     in_fstring=False,
