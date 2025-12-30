@@ -246,6 +246,25 @@ def test_param_syntax(lang_fixture_abs_path: Callable[[str], str]) -> None:
     assert len(prog.errors_had) == 8
 
 
+def test_new_keyword_errors(fixture_path: Callable[[str], str]) -> None:
+    """Parse param syntax jac file."""
+    captured_output = io.StringIO()
+    sys.stdout = captured_output
+    prog = JacProgram()
+    prog.compile(fixture_path("new_keyword_errors.jac"))
+    sys.stdout = sys.__stdout__
+    assert len(prog.errors_had) == 4
+    expected_substrings = [
+        "The 'new' keyword is not supported in Jac",
+        "Use `Reflect.construct(target, argumentsList)` method to create new instances",
+        "The 'new' keyword is not supported in Jac",
+        "Use `Reflect.construct(target, argumentsList)` method to create new instances",
+    ]
+    for alrt, expected in zip(prog.errors_had, expected_substrings, strict=True):
+        pretty = alrt.pretty_print()
+        assert expected in pretty
+
+
 def test_multiple_syntax_errors(fixture_path: Callable[[str], str]) -> None:
     """Parse param syntax jac file."""
     captured_output = io.StringIO()

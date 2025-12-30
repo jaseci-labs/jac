@@ -924,3 +924,17 @@ def test_dict_pop(fixture_path: Callable[[str], str]) -> None:
     """,
         program.errors_had[2].pretty_print(),
     )
+
+
+def test_final_type_checking(fixture_path: Callable[[str], str]) -> None:
+    program = JacProgram()
+    mod = program.compile(fixture_path("checker_final.jac"))
+    TypeCheckPass(ir_in=mod, prog=program)
+    assert len(program.errors_had) == 1
+    _assert_error_pretty_found(
+        """
+        z: str = x; # <-- Error: incompatible types
+        ^^^^^^^^^^
+    """,
+        program.errors_had[0].pretty_print(),
+    )
