@@ -232,8 +232,8 @@ class JacParser(Transform[uni.Source, uni.Module]):
                 else None
             )
 
-            # Check for unsupported 'pass' keyword
-            if e.token and e.token.value == "pass":
+            # Check for unsupported 'pass' keyword in member bodies (obj/class/node/walker/edge)
+            if e.token and e.token.value == "pass" and Tok.RBRACE.name in e.accepts:
                 self.log_error(
                     "'pass' is not supported. Jac allows empty blocks instead",
                     self.error_to_token(e),
