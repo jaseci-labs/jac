@@ -157,6 +157,14 @@ class TestJacScaleServe:
             with contextlib.suppress(Exception):
                 Path(file_path).unlink()
 
+        # Clean up .client-build directory created during serve
+        client_build_dir = cls.fixtures_dir / ".client-build"
+        if client_build_dir.exists():
+            import shutil
+
+            with contextlib.suppress(Exception):
+                shutil.rmtree(client_build_dir)
+
     def _request(
         self,
         method: str,
