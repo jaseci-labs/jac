@@ -47,7 +47,7 @@ impl ViteCompiler.copy_root_assets(self: ViteCompiler) -> None {
     }
     # Copy configured_asset files from root assets/ to build assets/ (bypassing compiled)
     build_assets_dir = self.project_dir / '.client-build' / 'build' / 'assets';
-    if (root_assets_dir.exists() and root_assets_dir.is_dir()){
+    if (root_assets_dir.exists() and root_assets_dir.is_dir()) {
         self.asset_processor.copy_configured_assets(root_assets_dir, build_assets_dir);
     }
 }
