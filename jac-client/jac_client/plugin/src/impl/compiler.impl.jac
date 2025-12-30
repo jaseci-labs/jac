@@ -44,6 +44,10 @@ impl ViteCompiler.copy_root_assets(self: ViteCompiler) -> None {
     compiled_assets_dir = self.compiled_dir / 'assets';
     if (root_assets_dir.exists() and root_assets_dir.is_dir()) {
         self.asset_processor.copy_assets(root_assets_dir, compiled_assets_dir);
+        # Copy JS and PY files from root assets to build assets (bypassing compiled)
+        build_assets_dir = self.project_dir / '.client-build' / 'build' / 'assets';
+        self.asset_processor.copy_javascript_files(root_assets_dir, build_assets_dir);
+        self.asset_processor.copy_python_files(root_assets_dir, build_assets_dir);
     }
 }
 

@@ -22,4 +22,19 @@ class AssetProcessor {
         dest_dir: Path,
         preserve_structure: bool = True
     ) -> None;
+
+    def copy_javascript_files(
+        self: AssetProcessor,
+        src_dir: Path,
+        dest_dir: Path,
+        preserve_structure: bool = True
+    ) -> None;
+
+    def copy_python_files(
+        self: AssetProcessor,
+        src_dir: Path,
+        dest_dir: Path,
+        preserve_structure: bool = True
+    ) -> None;
+    
 }
