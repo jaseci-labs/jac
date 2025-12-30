@@ -751,7 +751,8 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
             is_static_path = path.startswith('/static/');
             import from jaclang.project.config { get_config };
             config = get_config();
-            assets_config = config.get_plugin_config("client").get("assets", {});
+            client_cfg = config.get_plugin_config("client") if config else None;
+            assets_config =client_cfg.get("assets", {}) if client_cfg else {};
             extensions = set(assets_config.get("extensions", []));
             is_asset_file = (
                 not is_static_path
