@@ -2,6 +2,7 @@
 import contextlib;
 import shutil;
 import from pathlib { Path }
+import from jaclang.project.config { get_config }
 
 """Handles copying of asset files (CSS, images, fonts, etc.) between directories."""
 class AssetProcessor {
@@ -23,14 +24,7 @@ class AssetProcessor {
         preserve_structure: bool = True
     ) -> None;
 
-    def copy_javascript_files(
-        self: AssetProcessor,
-        src_dir: Path,
-        dest_dir: Path,
-        preserve_structure: bool = True
-    ) -> None;
-
-    def copy_python_files(
+    def copy_configured_assets(
         self: AssetProcessor,
         src_dir: Path,
         dest_dir: Path,
