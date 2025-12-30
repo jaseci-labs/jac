@@ -753,7 +753,7 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
             ;
             config = get_config();
             client_cfg = config.get_plugin_config("client") if config else None;
-            assets_config =client_cfg.get("assets", {}) if client_cfg else {};
+            assets_config = client_cfg.get("assets", {}) if client_cfg else {};
             extensions = set(assets_config.get("extensions", []));
             is_asset_file = (
                 not is_static_path
