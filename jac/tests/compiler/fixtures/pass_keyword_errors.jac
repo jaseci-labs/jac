@@ -1,3 +1,28 @@
+obj MyObj {
+    has x: int = 0;
+    pass
+}
+
+class MyClass {
+    def __init__(self: MyClass) {
+        pass;
+    }
+    pass
+}
+
+node MyNode {
+    has y: float = 0.0;
+    pass
+}
+
+walker MyWalker {
+    pass
+}
+
+edge MyEdge {
+    pass
+}
+
 def foo() {
     pass;
 }
@@ -5,11 +30,13 @@ def foo() {
 with entry {
 
     if True {
+        print("Hello");
         pass;
     }
 
     for i in [1, 2, 3] {
-         pass;
+        print(i);
+        pass;
     }
 
     try {

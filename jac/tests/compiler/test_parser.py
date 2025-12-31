@@ -272,8 +272,14 @@ def test_pass_keyword_errors(fixture_path: Callable[[str], str]) -> None:
     prog = JacProgram()
     prog.compile(fixture_path("pass_keyword_errors.jac"))
     sys.stdout = sys.__stdout__
-    assert len(prog.errors_had) == 4
+    assert len(prog.errors_had) == 10
     expected_substrings = [
+        "'pass' is not supported. Jac allows empty blocks instead",
+        "'pass' is not supported. Jac allows empty blocks instead",
+        "'pass' is not supported. Jac allows empty blocks instead",
+        "'pass' is not supported. Jac allows empty blocks instead",
+        "'pass' is not supported. Jac allows empty blocks instead",
+        "'pass' is not supported. Jac allows empty blocks instead",
         "'pass' is not supported. Jac allows empty blocks instead",
         "'pass' is not supported. Jac allows empty blocks instead",
         "'pass' is not supported. Jac allows empty blocks instead",
