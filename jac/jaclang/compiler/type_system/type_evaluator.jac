@@ -181,7 +181,11 @@ class TypeEvaluator {
 
     # TODO: This should take an argument list as parameter.
     def get_type_of_magic_method_call(
-        self: TypeEvaluator, obj_type: TypeBase, method_name: str
+        self: TypeEvaluator,
+        obj_type: TypeBase,
+        method_name: str,
+        arg_nodes: list[uni.Expr],
+        node_for_error: uni.Expr | None = None,
     ) -> TypeBase | None;
 
     def is_sub_class(
@@ -242,7 +246,8 @@ class TypeEvaluator {
 
     def match_args_to_params(
         self: TypeEvaluator,
-        expr: uni.FuncCall,
+        arg_nodes: list[uni.Expr | uni.KWPair],
+        node_for_error: uni.Expr | None,
         func_type: types.FunctionType,
         checking_overload: bool = False,
     ) -> MatchArgsToParamsResult;

@@ -4,7 +4,7 @@ cl import from .level1.ButtonSecondL { ButtonSecondL }
 cl import from .level1.level2.ButtonThirdL { ButtonThirdL }
 cl import from .level1.Card { Card }
 
-cl def app -> any {
+cl def:pub app -> any {
     return <div
         style={{padding: "20px"}}
     >

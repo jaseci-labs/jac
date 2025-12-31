@@ -5,7 +5,7 @@ cl import from ..ButtonRoot {
 }
 cl import from .level2.ButtonThirdL { ButtonThirdL }
 
-cl def Card -> any {
+cl def:pub Card -> any {
     return <div
         style={{
             border: "2px solid #007bff",

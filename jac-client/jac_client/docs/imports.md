@@ -1,5 +1,19 @@
 # Imports in Jac: Working with Modules and Libraries
 
+> **️ Version Compatibility Warning**
+>
+> **For jac-client < 0.2.4:**
+>
+> - All `def` functions are **automatically exported** - no `:pub` needed
+> - You **cannot export variables** (globals) - only functions can be imported
+> - When importing functions, they don't need to be marked with `:pub` in the source file
+>
+> **For jac-client >= 0.2.4:**
+>
+> - Functions and variables **must be explicitly exported** with `:pub` to be importable
+> - Only functions/variables marked with `:pub` can be imported
+> - This documentation assumes version 0.2.4 or later
+
 Learn how to import third-party libraries, other Jac files, and JavaScript modules in your Jac applications.
 
 ---
@@ -790,7 +804,7 @@ cl import from .module_name {
 ```jac
 """Button component."""
 
-cl def CustomButton(props: dict) -> any {
+cl def:pub CustomButton(props: dict) -> any {
     return <button
         style={{
             "padding": "10px 20px",
@@ -806,7 +820,7 @@ cl def CustomButton(props: dict) -> any {
     </button>;
 }
 
-cl def PrimaryButton(props: dict) -> any {
+cl def:pub PrimaryButton(props: dict) -> any {
     return <button
         style={{
             "padding": "10px 20px",
@@ -833,7 +847,7 @@ cl import from .button {
     PrimaryButton
 }
 
-cl def App() -> any {
+cl def:pub App() -> any {
     return <div>
         <CustomButton onClick={lambda -> None { console.log("Clicked!"); }}>
             Custom Button
@@ -844,7 +858,7 @@ cl def App() -> any {
     </div>;
 }
 
-cl def jac_app() -> any {
+cl def:pub jac_app() -> any {
     return App();
 }
 ```
@@ -903,7 +917,7 @@ cl import from .utils {
     MessageFormatter
 }
 
-cl def JsImportTest() -> any {
+cl def:pub JsImportTest() -> any {
     greeting = formatMessage("Jac");
     sum = calculateSum(5, 3);
     formatter = MessageFormatter("JS");
@@ -918,7 +932,7 @@ cl def JsImportTest() -> any {
     </div>;
 }
 
-cl def jac_app() -> any {
+cl def:pub jac_app() -> any {
     return JsImportTest();
 }
 ```
@@ -1150,5 +1164,9 @@ Type errors with imported functions
 - **Jac Files**: Import with `cl import from .module_name`
 - **JavaScript Files**: Import with `cl import from .filename`
 - **Best Practices**: Organize imports, import only what you need, document exports
+
+## Related Documentation
+
+- [Exporting Functions and Variables](exporting-functions-and-variables.md) - Learn how to export functions and variables for import
 
 Imports in Jac make it easy to use third-party libraries and organize your code!

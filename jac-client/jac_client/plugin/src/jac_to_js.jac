@@ -31,6 +31,5 @@ class JacToJSCompiler {
         self: JacToJSCompiler, manifest: (ClientManifest | None), module: ModuleType
     ) -> dict[str, Any];
 
-    def generate_export_block(self: JacToJSCompiler, exports: list[str]) -> str;
     def add_runtime_imports(self: JacToJSCompiler, js_code: str) -> str;
 }

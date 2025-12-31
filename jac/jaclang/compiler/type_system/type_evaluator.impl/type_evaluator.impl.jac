@@ -159,7 +159,9 @@ impl TypeEvaluator._get_type_of_expression_core(
                     return base_type.specialize_generics(type_args);
                 }
                 # Regular <expr>[<expr>] case, we need to call __getitem__()
-                return self.get_type_of_magic_method_call(base_type, "__getitem__")
+                return self.get_type_of_magic_method_call(
+                    base_type, "__getitem__", [expr.right], expr
+                )
                 or types.UnknownType();
             }
 
@@ -264,7 +266,42 @@ impl TypeEvaluator._get_type_of_expression_core(
                             expr.name_of = symbol.decl.name_of;
                         }
                     }
-                    return self.get_type_of_symbol(symbol);
+                    # Check for function overloads
+                    symbol_type = self.get_type_of_symbol(symbol);
+                    if isinstance(symbol_type, types.FunctionType) {
+                        overloaded_ty: types.OverloadedType | None = None;
+                        overloaded_fns: list[types.FunctionType] = [symbol_type];
+                        # Find the scope where the symbol is defined to check for overloads
+                        symbol_scope: uni.UniScopeNode | None = symbol.parent_tab;
+                        if symbol_scope is None {
+                            # If parent_tab is None, try to find the scope from the declaration
+                            if symbol.decl
+                            and symbol.decl.find_parent_of_type(uni.UniScopeNode) {
+                                symbol_scope = symbol.decl.find_parent_of_type(
+                                    uni.UniScopeNode
+                                );
+                            }
+                        }
+                        # Check if there are overloads in the symbol's scope
+                        if symbol_scope
+                        and expr.value in symbol_scope.names_in_scope_overload {
+                            for overload_symbol in symbol_scope.names_in_scope_overload[
+                                expr.value
+                            ] {
+                                overload_type = self.get_type_of_symbol(
+                                    overload_symbol
+                                );
+                                if isinstance(overload_type, types.FunctionType) {
+                                    overloaded_fns.append(overload_type);
+                                }
+                            }
+                        }
+                        if len(overloaded_fns) > 1 {
+                            overloaded_ty = types.OverloadedType(overloaded_fns);
+                        }
+                        return overloaded_ty or symbol_type;
+                    }
+                    return symbol_type;
                 }
             }
 
@@ -349,16 +386,26 @@ impl TypeEvaluator._get_type_of_symbol(
             # ---- Handle member assignment: for <name> in <expr> ----
             if isinstance(node_.parent, uni.InForStmt) {
                 collection_type = self.get_type_of_expression(node_.parent.collection);
-                # FIXME: This is the proper way to do it however Iterator[T] cannot be
-                # resolved as a generic type because of the definition. So I'm doing this ad-hoc
-                # way, will come back and have to fix it properly.
-                #
-                # iter_type = self.get_type_of_magic_method_call(collection_type, "__iter__");
-                #
                 iter_type = self.get_type_of_magic_method_call(
-                    collection_type, "__getitem__"
+                    collection_type, "__iter__", [], node_.parent,
                 );
-                return iter_type or types.UnknownType();
+                # TODO: Ensure the iter_type is an Iterator[T].
+                # The iter_tpe should be Iterator[T] and the return type should be T.
+                if isinstance(iter_type, types.ClassType)
+                and isinstance(collection_type, types.ClassType) {
+                    if len(iter_type.private.type_args) == 1 {
+                        specialized = iter_type.specialize_generics(
+                            collection_type.private.type_args
+                        );
+                        if len(specialized.private.type_args) == 1 {
+                            iterable_type = specialized.private.type_args[0];
+                            if isinstance(iterable_type, types.ClassType) {
+                                return iterable_type.clone_as_instance();
+                            }
+                        }
+                    }
+                }
+                return types.UnknownType();
             }
 
             if isinstance(node_.parent, uni.ModulePath) {
@@ -444,7 +491,11 @@ impl TypeEvaluator.is_sub_class(
 
 """Return the effective return type of a magic method call."""
 impl TypeEvaluator.get_type_of_magic_method_call(
-    self: TypeEvaluator, obj_type: TypeBase, method_name: str
+    self: TypeEvaluator,
+    obj_type: TypeBase,
+    method_name: str,
+    arg_nodes: list[uni.Expr],
+    node_for_error: uni.Expr | None = None,
 ) -> TypeBase | None {
     if obj_type.category == types.TypeCategory.Class {
         # TODO: getTypeOfBoundMember() <-- Implement this if needed, for the simple case
@@ -455,8 +506,32 @@ impl TypeEvaluator.get_type_of_magic_method_call(
         assert isinstance(obj_type, types.ClassType);  # <-- To make typecheck happy.
         if member := self._lookup_class_member(obj_type, method_name) {
             member_ty = self.get_type_of_symbol(member.symbol);
+            # This list contains all functions including the overloads.
+            overloaded_fns: list[types.FunctionType] = [];
             if isinstance(member_ty, types.FunctionType) {
-                return member_ty.specialize(obj_type).return_type;
+                member_ty = member_ty.specialize(obj_type);
+                overloaded_fns.append(member_ty);
+                # Validate arguments for each overloaded function.
+                for fn in overloaded_fns {
+                    arg_param_match = self.match_args_to_params(
+                        arg_nodes, node_for_error, fn, checking_overload=True
+                    );
+                    if not arg_param_match.argument_errors {
+                        if self.validate_arg_types(
+                            arg_param_match, checking_overload=True
+                        ) {
+                            return fn.return_type or types.UnknownType();
+                        }
+                    }
+                }
+                # If we reached here, none of the overloads matched.
+                if node_for_error {
+                    self.add_diagnostic(
+                        node_for_error,
+                        f'No matching overload found for method "{method_name}" with the given arguments',
+                    );
+                }
+                return types.UnknownType();
             }
             # If we reached here, magic method is not a function.
             # 1. recursively check __call__() on the type, TODO

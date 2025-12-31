@@ -212,7 +212,7 @@ def HomePage() -> any {
 Now, update your `app` function to use the router:
 
 ```jac
-def app() -> any {
+def:pub app() -> any {
     return <Router>
         <div style={{"fontFamily": "system-ui, sans-serif"}}>
             <Navigation />
