@@ -3,7 +3,7 @@ cl import from react { useState, useEffect }
 cl import from .styles { default as styles }
 
 cl {
-    def app -> any {
+    def:pub app -> any {
         [count, setCount] = useState(0);
 
         useEffect(lambda   -> None{ console.log("Count changed: ", count);} , [count]);

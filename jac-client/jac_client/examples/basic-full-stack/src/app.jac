@@ -33,7 +33,7 @@ walker read_todos {
 }
 
 cl {
-    def app -> any {
+    def:pub app -> any {
         [todos, setTodos] = useState([]);
         [inputValue, setInputValue] = useState("");
         [filter, setFilter] = useState("all");
