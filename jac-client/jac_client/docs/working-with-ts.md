@@ -1,5 +1,19 @@
 # Working with TypeScript in Jac
 
+> **️ Version Compatibility Warning**
+>
+> **For jac-client < 0.2.4:**
+>
+> - All `def` functions are **automatically exported** - no `:pub` needed
+> - You **cannot export variables** (globals)
+>
+> **For jac-client >= 0.2.4:**
+>
+> - Functions and variables **must be explicitly exported** with `:pub` to be importable
+> - This documentation assumes version 0.2.4 or later
+
+## TypeScript as Last Resort
+
 > **️ Warning: TypeScript as Last Resort**
 >
 > **Always prefer writing code in Jac when possible.** TypeScript support is provided for cases where you need to:

@@ -147,15 +147,26 @@ def _npm_remove_handler(
 """Regenerate package.json from jac.toml and run npm install."""
 def _regenerate_and_install(project_dir: Path) -> None {
     import from jac_client.plugin.src.vite_bundler { ViteBundler }
+    import shutil;
 
     bundler = ViteBundler(project_dir);
     bundler.create_package_json();
-    bundler._ensure_root_package_json();
+
+    # Install to .client-build/ directory where babel processor expects it
+    build_dir = project_dir / '.client-build';
+    build_dir.mkdir(exist_ok=True);
+
+    # Copy package.json to .client-build/ for npm install
+    configs_package_json = build_dir / '.jac-client.configs' / 'package.json';
+    build_package_json = build_dir / 'package.json';
+    if configs_package_json.exists() {
+        shutil.copy2(configs_package_json, build_package_json);
+    }
 
     try {
         subprocess.run(
             ["npm", "install"],
-            cwd=project_dir,
+            cwd=build_dir,
             check=True,
             capture_output=True,
             text=True
@@ -167,6 +178,18 @@ def _regenerate_and_install(project_dir: Path) -> None {
             "npm command not found. Ensure Node.js and npm are installed."
         ) from None ;
     } finally {
-        bundler._cleanup_root_package_files();
+        # Clean up temporary package.json
+        if build_package_json.exists() {
+            build_package_json.unlink();
+        }
+        # Move package-lock.json to .jac-client.configs/ if it exists
+        build_package_lock = build_dir / 'package-lock.json';
+        if build_package_lock.exists() {
+            configs_package_lock = build_dir / '.jac-client.configs' / 'package-lock.json';
+            if configs_package_lock.exists() {
+                configs_package_lock.unlink();
+            }
+            build_package_lock.rename(configs_package_lock);
+        }
     }
 }

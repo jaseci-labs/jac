@@ -1,5 +1,16 @@
 # Routing in Jac: Building Multi-Page Applications
 
+> **️ Version Compatibility Warning**
+>
+> **For jac-client < 0.2.4:**
+>
+> - All `def` functions are **automatically exported** - no `:pub` needed
+>
+> **For jac-client >= 0.2.4:**
+>
+> - Functions **must be explicitly exported** with `:pub` to be importable
+> - This documentation assumes version 0.2.4 or later
+
 Learn how to create multi-page applications with client-side routing using Jac's declarative routing API.
 
 ---

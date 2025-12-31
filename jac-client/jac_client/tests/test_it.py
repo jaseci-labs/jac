@@ -64,14 +64,15 @@ def _wait_for_endpoint(
 ) -> bytes:
     """Block until an HTTP endpoint returns a successful response or timeout.
 
-    Retries on 503 Service Unavailable and connection errors.
+    Retries on 503 Service Unavailable (temporary) and connection errors.
+    Fails immediately on 500 Internal Server Error (permanent errors like compilation failures).
 
     Returns:
         The response body as bytes.
 
     Raises:
         TimeoutError: if the endpoint does not return success within timeout.
-        HTTPError: if the endpoint returns a non-retryable error.
+        HTTPError: if the endpoint returns a non-retryable error (e.g., 500).
     """
     deadline = time.time() + timeout
     last_err: Exception | None = None
@@ -82,12 +83,18 @@ def _wait_for_endpoint(
                 return resp.read()
         except HTTPError as exc:
             if exc.code == 503:
-                # Service Unavailable - retry
+                # Service Unavailable - retry (temporary condition, e.g., compilation in progress)
                 # Close the underlying response to release the socket
                 exc.close()
                 last_err = exc
                 print(f"[DEBUG] Endpoint {url} returned 503, retrying...")
                 time.sleep(poll_interval)
+            elif exc.code == 500:
+                # Internal Server Error - do not retry (permanent error, e.g., compilation failure)
+                # Close the underlying response to release the socket
+                exc.close()
+                # Re-raise immediately - 500 indicates a permanent error that won't resolve by retrying
+                raise
             else:
                 # Other HTTP errors should not be retried
                 raise
@@ -240,8 +247,9 @@ def test_all_in_one_app_endpoints() -> None:
                     pytest.fail(f"Failed to GET root endpoint: {exc}")
 
                 # "/page/app" – main page is loading
-                # Note: This endpoint may return 503 while the page is being compiled,
-                # so we use _wait_for_endpoint to retry until it's ready.
+                # Note: This endpoint may return 503 (temporary) while the page is being compiled,
+                # or 500 (permanent) if there's a compilation error. We use _wait_for_endpoint
+                # to retry on 503 until it's ready, but it will fail immediately on 500.
                 try:
                     print(
                         "[DEBUG] Sending GET request to /page/app endpoint (with retry)"

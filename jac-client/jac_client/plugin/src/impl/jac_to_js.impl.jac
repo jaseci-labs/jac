@@ -5,16 +5,6 @@ impl JacToJSCompiler.add_runtime_imports(self: JacToJSCompiler, js_code: str) ->
     return f"{jac_jsx_import}\n{js_code}";
 }
 
-"""Generate an ES module export block."""
-impl JacToJSCompiler.generate_export_block(
-    self: JacToJSCompiler, exports: list[str]
-) -> str {
-    if not exports {
-        return '';
-    }
-    return f"export {{ {', '.join(exports)} }};\n";
-}
-
 """Extract client globals from manifest and module."""
 impl JacToJSCompiler.extract_globals(
     self: JacToJSCompiler, manifest: (ClientManifest | None), module: ModuleType

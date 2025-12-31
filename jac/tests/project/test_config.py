@@ -492,7 +492,6 @@ temperature = 0.5
         assert 'name = "my-awesome-project"' in content
         assert "[project]" in content
         assert "[dependencies]" in content
-        assert "[scripts]" in content
 
 
 class TestGlobalConfig:

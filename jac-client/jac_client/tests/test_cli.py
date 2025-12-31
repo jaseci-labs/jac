@@ -419,7 +419,7 @@ entry-point = "app.jac"
 
 [dependencies.npm]{deps_section}
 
-[dependencies.npm.dev]{dev_deps_section}
+[dev-dependencies.npm]{dev_deps_section}
 """
     config_path = os.path.join(temp_dir, "jac.toml")
     with open(config_path, "w") as f:

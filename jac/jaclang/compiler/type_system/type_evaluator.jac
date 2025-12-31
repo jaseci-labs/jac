@@ -67,6 +67,7 @@ obj PrefetchedTypes {
         protocol_class: TypeBase | None = None,
         any_class: TypeBase | None = None,
         # Prefetched from jac_builtins.pyi file
+        final_class: TypeBase | None = None,
         root_class: TypeBase | None = None,
         node_class: TypeBase | None = None,
         walker_class: TypeBase | None = None;
@@ -103,6 +104,19 @@ class TypeEvaluator {
         ),
         _JAC_BUILTINS_STUB_FILE_PATH: str = os.path.join(
             os.path.dirname(__file__), "jac_builtins.pyi"
+        ),
+        _SPECIAL_FORM_CLASS_NAMES: tuple[(str, ...)] = (
+            "Union",
+            "Protocol",
+            "Callable",
+            "Type",
+            "NoReturn",
+            "ClassVar",
+            "Optional",
+            "Tuple",
+            "Final",
+            "Literal",
+            "TypedDict"
         );
 
     def init(self: TypeEvaluator, program: "JacProgram") -> None;
@@ -167,7 +181,11 @@ class TypeEvaluator {
 
     # TODO: This should take an argument list as parameter.
     def get_type_of_magic_method_call(
-        self: TypeEvaluator, obj_type: TypeBase, method_name: str
+        self: TypeEvaluator,
+        obj_type: TypeBase,
+        method_name: str,
+        arg_nodes: list[uni.Expr],
+        node_for_error: uni.Expr | None = None,
     ) -> TypeBase | None;
 
     def is_sub_class(
@@ -228,7 +246,8 @@ class TypeEvaluator {
 
     def match_args_to_params(
         self: TypeEvaluator,
-        expr: uni.FuncCall,
+        arg_nodes: list[uni.Expr | uni.KWPair],
+        node_for_error: uni.Expr | None,
         func_type: types.FunctionType,
         checking_overload: bool = False,
     ) -> MatchArgsToParamsResult;

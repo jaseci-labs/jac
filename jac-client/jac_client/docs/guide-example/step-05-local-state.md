@@ -16,7 +16,7 @@ Let's try using a normal variable to track todos:
 cl {
     # ... (keep all your components from Step 4)
 
-    def app() -> any {
+    def:pub app() -> any {
         # Try using a normal variable
         todos = [
             {"text": "Learn Jac", "done": false},
@@ -45,7 +45,7 @@ To make data interactive, we need `useState`. First, import it:
 cl import from react {useState}
 
 cl {
-    def app() -> any {
+    def:pub app() -> any {
         # Create state with useState
         [todos, setTodos] = useState([]);
 
@@ -102,7 +102,7 @@ cl {
         </div>;
     }
 
-    def app() -> any {
+    def:pub app() -> any {
         # State for input field
         [input, setInput] = useState("");
 
@@ -158,7 +158,7 @@ cl {
         </div>;
     }
 
-    def app() -> any {
+    def:pub app() -> any {
         # State for todos
         [todos, setTodos] = useState([
             {"text": "Learn Jac basics", "done": false},
@@ -242,7 +242,7 @@ cl {
         </div>;
     }
 
-    def app() -> any {
+    def:pub app() -> any {
         [todos, setTodos] = useState([
             {"text": "Learn Jac basics", "done": false},
             {"text": "Build a todo app", "done": true}
@@ -293,7 +293,7 @@ class TodoApp:
 
 ```jac
 # Jac with React
-def app() -> any {
+def:pub app() -> any {
     [todos, setTodos] = useState([]);  # This is state
 
     # When you call setTodos(), React automatically updates the UI!
@@ -335,7 +335,7 @@ def app() -> any {
 **Without useState (doesn't work):**
 
 ```jac
-def app() -> any {
+def:pub app() -> any {
     count = 0;  # Normal variable
 
     # Button click would change count, but UI won't update!
@@ -346,7 +346,7 @@ def app() -> any {
 **With useState (works!):**
 
 ```jac
-def app() -> any {
+def:pub app() -> any {
     [count, setCount] = useState(0);  # State
 
     # When setCount is called, React re-renders the component!
@@ -359,7 +359,7 @@ def app() -> any {
 You can have multiple pieces of state:
 
 ```jac
-def app() -> any {
+def:pub app() -> any {
     [todos, setTodos] = useState([]);
     [input, setInput] = useState("");
     [filter, setFilter] = useState("all");

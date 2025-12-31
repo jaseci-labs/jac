@@ -67,8 +67,12 @@ def get_type_of_binary_operation(
         }
         (magic, rmagic) = BINARY_OPERATOR_MAP[expr.op.name];
         return (
-            evaluator.get_type_of_magic_method_call(left_type, magic)
-            or evaluator.get_type_of_magic_method_call(right_type, rmagic)
+            evaluator.get_type_of_magic_method_call(
+                left_type, magic, [expr.right], expr
+            )
+            or evaluator.get_type_of_magic_method_call(
+                right_type, rmagic, [expr.left], expr
+            )
             or jtypes.UnknownType()
         );
     }

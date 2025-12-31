@@ -8,6 +8,6 @@ cl def RelativeImport -> any {
     </div>;
 }
 
-cl def app -> any {
+cl def:pub app -> any {
     return <RelativeImport />;
 }

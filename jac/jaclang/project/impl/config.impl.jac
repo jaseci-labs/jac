@@ -183,7 +183,13 @@ impl JacConfig.apply_profile(profile_name: str) -> None {
 }
 
 impl JacConfig.get_plugin_deps(dep_type: str) -> dict[str, Any] {
-    return self.plugin_dependencies.get(dep_type, {});
+    deps = self.plugin_dependencies.get(dep_type, {});
+    # Filter out the "dev" key which holds dev dependencies
+    return {
+        k: v
+        for (k, v) in deps.items()
+        if k != "dev"
+    };
 }
 
 impl JacConfig.get_plugin_config(plugin_name: str) -> dict[str, Any] {
@@ -203,64 +209,15 @@ impl JacConfig.is_valid -> bool {
 }
 
 impl JacConfig.create_default_toml(project_name: str) -> str {
-    return f'''  # jac.toml - Jac Project Configuration
-
-
-[project]
+    return f'''[project]
 name = "{project_name}"
 version = "0.1.0"
 description = "A Jac project"
-authors = []
-license = "MIT"
-entry-point = "main.jac"
-
-#===============================================================================
-# DEPENDENCIES
-#===============================================================================
+entry-point = "{project_name}.jac"
 
 [dependencies]
-# Jac plugins and Python dependencies
-# jac-byllm = ">=0.4.8"
-# requests = ">=2.28.0"
 
 [dev-dependencies]
-# Development dependencies
-# pytest = ">=8.2.1"
-
-#===============================================================================
-# COMMAND DEFAULTS
-#===============================================================================
-
-[run]
-main = true
-cache = true
-
-[build]
-typecheck = false
-
-[test]
-verbose = false
-fail_fast = false
-
-[serve]
-port = 8000
-
-#===============================================================================
-# CACHE SETTINGS
-#===============================================================================
-
-[cache]
-enabled = true
-dir = ".jac_cache"
-
-#===============================================================================
-# CUSTOM SCRIPTS
-#===============================================================================
-
-[scripts]
-dev = "jac run main.jac"
-build = "jac build main.jac --typecheck"
-test = "jac test"
 ''';
 }
 
@@ -531,7 +488,18 @@ impl _parse_toml_data(
         }
     }
     if "dev-dependencies" in data {
-        config.dev_dependencies = data["dev-dependencies"];
+        dev_deps = data["dev-dependencies"];
+        for (key, value) in dev_deps.items() {
+            if isinstance(value, str) {
+                config.dev_dependencies[key] = value;
+            } elif isinstance(value, dict) {
+                # Handle plugin dev dependencies like [dev-dependencies.npm]
+                if key not in config.plugin_dependencies {
+                    config.plugin_dependencies[key] = {};
+                }
+                config.plugin_dependencies[key]["dev"] = value;
+            }
+        }
     }
     if "run" in data {
         run_data = data["run"];

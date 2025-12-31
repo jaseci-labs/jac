@@ -30,7 +30,7 @@ jobs:
         pip install pytest-xdist
 
     - name: Run Jac core tests
-      run: pytest -x jac -n auto --ignore=jac/tests/langserve/
+      run: pytest -x jac -n auto
 
   test-client:
     runs-on: ubuntu-latest
@@ -58,7 +58,7 @@ jobs:
         echo "TEST_ENV=true" >> $GITHUB_ENV
 
     - name: Run package tests
-      run: pytest -x jac-client
+      run: pytest -x jac-client -n auto
 
   test-packages:
     runs-on: ubuntu-latest
@@ -88,31 +88,6 @@ jobs:
 
     - name: Run package tests
       run: pytest -x jac-byllm jac-streamlit
-
-  test-langserve:
-    runs-on: ubuntu-latest
-    steps:
-    - name: Check out code
-      uses: actions/checkout@v5
-      with:
-        submodules: true
-
-    - name: Set up Python 3.12
-      uses: actions/setup-python@v3
-      with:
-        python-version: 3.12
-
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e jac
-        pip install pytest
-        pip install pytest-xdist
-
-    - name: Run language server tests
-      run: | # work-around for github CI
-        pytest -x jac/tests/langserve/test_server.py
-        pytest -x jac/tests/langserve/server_test/test_lang_serve.py
 
   test-scale:
     runs-on: ubuntu-latest
@@ -147,3 +122,56 @@ jobs:
     - name: Run SSO tests
       run: |
         pytest -x jac-scale/jac_scale/tests/test_sso.py
+
+  test-scale-k8s:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v5
+        with:
+          submodules: true
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.12
+
+      - name: Install Jaseci scale package
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e jac
+          pip install -e jac-scale
+          pip install pytest
+          pip install pytest-asyncio
+
+      - name: Check for Kubernetes changes
+        id: k8s-changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            k8s:
+              - 'jac-scale/jac_scale/kubernetes/**'
+
+      - name: Install Kind (Kubernetes in Docker)
+        if: steps.k8s-changes.outputs.k8s == 'true'
+        run: |
+          curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.25.0/kind-linux-amd64
+          chmod +x ./kind
+          sudo mv ./kind /usr/local/bin/kind
+          kind version
+
+      - name: Create Kubernetes cluster with Kind
+        if: steps.k8s-changes.outputs.k8s == 'true'
+        run: |
+          kind create cluster --name jaseci-test --wait 60s
+          kubectl cluster-info
+          kubectl get nodes
+
+      - name: Run K8 tests
+        if: steps.k8s-changes.outputs.k8s == 'true'
+        run: |
+          pytest -v jac-scale/jac_scale/tests/test_deploy_k8.py
+
+      - name: Delete Kind cluster
+        if: always() && steps.k8s-changes.outputs.k8s == 'true'
+        run: kind delete cluster --name jaseci-test

@@ -1,6 +1,6 @@
 cl import from antd { Button }
 
-cl def CustomButtonRoot -> any {
+cl def:pub CustomButtonRoot -> any {
     return <Button>
         Click Me
     </Button>;
