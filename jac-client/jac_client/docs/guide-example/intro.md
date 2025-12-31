@@ -1,12 +1,14 @@
 # Building a Full-Stack Todo App with Jac: Complete Walkthrough
 
 > **⚠️ Version Compatibility Warning**
-> 
+>
 > **For jac-client < 0.2.4:**
+>
 > - All `def` functions are **automatically exported** - no `:pub` needed
 > - You **cannot export variables** (globals) - only functions can be exported
-> 
+>
 > **For jac-client >= 0.2.4:**
+>
 > - Functions and variables **must be explicitly exported** with `:pub`
 > - The `app()` function must be `def:pub app()` to be accessible
 > - This guide assumes version 0.2.4 or later

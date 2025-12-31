@@ -1,13 +1,15 @@
 # Exporting Functions and Variables
 
 > **⚠️ Version Compatibility Warning**
-> 
+>
 > **For jac-client < 0.2.4:**
+>
 > - The `:pub` modifier is **not supported**
 > - All `def` functions are **automatically exported** (no need to mark them)
 > - You **cannot export variables** (globals) - only functions can be exported
-> 
+>
 > **For jac-client >= 0.2.4:**
+>
 > - You **must explicitly export** functions and variables using `:pub`
 > - Functions and variables are **private by default** and won't be available for import unless marked with `:pub`
 > - This documentation applies to version 0.2.4 and later
@@ -191,6 +193,7 @@ cl {
 ### When to Use Private
 
 Use private functions/variables for:
+
 - Internal helper functions
 - Implementation details
 - Functions only used within the same file
@@ -199,6 +202,7 @@ Use private functions/variables for:
 ### When to Use Public
 
 Use public functions/variables for:
+
 - Components that will be imported
 - Utility functions shared across files
 - Configuration constants
@@ -372,4 +376,3 @@ cl {
 - [File System Organization](file-system/intro.md) - Organize your exports across files
 - [Nested Folder Imports](file-system/nested-imports.md) - Import from nested directories
 - [The `app.jac` Entry Point](file-system/app.jac.md) - Understanding the main entry point
-

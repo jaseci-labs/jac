@@ -1,13 +1,15 @@
 # Imports in Jac: Working with Modules and Libraries
 
 > **⚠️ Version Compatibility Warning**
-> 
+>
 > **For jac-client < 0.2.4:**
+>
 > - All `def` functions are **automatically exported** - no `:pub` needed
 > - You **cannot export variables** (globals) - only functions can be imported
 > - When importing functions, they don't need to be marked with `:pub` in the source file
-> 
+>
 > **For jac-client >= 0.2.4:**
+>
 > - Functions and variables **must be explicitly exported** with `:pub` to be importable
 > - Only functions/variables marked with `:pub` can be imported
 > - This documentation assumes version 0.2.4 or later

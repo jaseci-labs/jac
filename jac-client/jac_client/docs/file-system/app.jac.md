@@ -1,11 +1,13 @@
 # The `app.jac` Entry Point
 
 > **⚠️ Version Compatibility Warning**
-> 
+>
 > **For jac-client < 0.2.4:**
+>
 > - The `app()` function is **automatically exported** - no `:pub` needed
-> 
+>
 > **For jac-client >= 0.2.4:**
+>
 > - The `app()` function **must be exported** with `:pub` (e.g., `def:pub app()`)
 
 Every Jac client project **must** have an `app.jac` file. This file serves as the entry point for your application and is required for the build system to work correctly.
