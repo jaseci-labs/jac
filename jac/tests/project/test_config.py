@@ -76,8 +76,9 @@ class TestFindProjectRoot:
         result = find_project_root(temp_project)
         assert result is not None
         project_root, toml_path = result
-        assert project_root == temp_project
-        assert toml_path == temp_project / "jac.toml"
+        # Resolve both paths to handle symlinks (e.g., /var -> /private/var on macOS)
+        assert project_root.resolve() == temp_project.resolve()
+        assert toml_path.resolve() == (temp_project / "jac.toml").resolve()
 
     def test_find_project_in_parent_dir(self, temp_project: Path) -> None:
         """Test finding jac.toml in parent directory."""
@@ -87,8 +88,9 @@ class TestFindProjectRoot:
         result = find_project_root(subdir)
         assert result is not None
         project_root, toml_path = result
-        assert project_root == temp_project
-        assert toml_path == temp_project / "jac.toml"
+        # Resolve both paths to handle symlinks (e.g., /var -> /private/var on macOS)
+        assert project_root.resolve() == temp_project.resolve()
+        assert toml_path.resolve() == (temp_project / "jac.toml").resolve()
 
     def test_no_project_found(self, temp_dir: Path) -> None:
         """Test when no jac.toml exists."""
