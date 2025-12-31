@@ -1,6 +1,6 @@
 # Working with TypeScript in Jac
 
-> **⚠️ Version Compatibility Warning**
+> **️ Version Compatibility Warning**
 >
 > **For jac-client < 0.2.4:**
 >

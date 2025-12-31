@@ -1,6 +1,6 @@
 # Routing in Jac: Building Multi-Page Applications
 
-> **⚠️ Version Compatibility Warning**
+> **️ Version Compatibility Warning**
 >
 > **For jac-client < 0.2.4:**
 >

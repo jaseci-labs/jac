@@ -1,6 +1,6 @@
 # Building a Full-Stack Todo App with Jac: Complete Walkthrough
 
-> **⚠️ Version Compatibility Warning**
+> **️ Version Compatibility Warning**
 >
 > **For jac-client < 0.2.4:**
 >

@@ -1,6 +1,6 @@
 # Exporting Functions and Variables
 
-> **⚠️ Version Compatibility Warning**
+> **️ Version Compatibility Warning**
 >
 > **For jac-client < 0.2.4:**
 >
@@ -95,7 +95,7 @@ cl {
         "secondary": "#6b7280",
         "success": "#10b981"
     };
-    
+
     glob:pub CONFIG: dict = {
         "api": {
             "baseUrl": "https://api.example.com",
@@ -119,12 +119,12 @@ cl {
             "primary": {"backgroundColor": "#3b82f6", "color": "white"},
             "secondary": {"backgroundColor": "#6b7280", "color": "white"}
         };
-        
+
         return <button style={styles.get(variant, styles["primary"])}>
             {label}
         </button>;
     }
-    
+
     # Export a constant
     glob:pub BUTTON_VARIANTS: list = ["primary", "secondary", "danger"];
 }
@@ -182,7 +182,7 @@ cl {
     def helperFunction() -> str {
         return "This is private";
     }
-    
+
     # Public function - can be imported
     def:pub publicFunction() -> str {
         return "This is public";
@@ -248,14 +248,14 @@ cl {
 ```jac
 cl {
     glob:pub BUTTON_SIZES: list = ["small", "medium", "large"];
-    
+
     def:pub Button(label: str, size: str = "medium") -> any {
         sizeStyles = {
             "small": {"padding": "0.5rem", "fontSize": "0.875rem"},
             "medium": {"padding": "0.75rem", "fontSize": "1rem"},
             "large": {"padding": "1rem", "fontSize": "1.125rem"}
         };
-        
+
         return <button style={sizeStyles.get(size, sizeStyles["medium"])}>
             {label}
         </button>;
@@ -272,11 +272,11 @@ cl {
     def:pub formatDate(date: any) -> str {
         return date.toLocaleDateString();
     }
-    
+
     def:pub capitalize(text: str) -> str {
         return text[0].upper() + text[1:];
     }
-    
+
     # Private helper - not exported
     def _validateInput(input: str) -> bool {
         return input and len(input) > 0;
@@ -293,7 +293,7 @@ cl {
     glob:pub API_BASE_URL: str = "https://api.example.com";
     glob:pub API_VERSION: str = "v1";
     glob:pub TIMEOUT: int = 5000;
-    
+
     glob:pub ENDPOINTS: dict = {
         "users": "/users",
         "todos": "/todos",
