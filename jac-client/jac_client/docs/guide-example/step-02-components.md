@@ -23,7 +23,7 @@ cl {
         </div>;
     }
 
-    def app() -> any {
+    def:pub app() -> any {
         return <div>
             <h1>My Todos</h1>
             <TodoItem />
@@ -49,7 +49,7 @@ cl {
         </div>;
     }
 
-    def app() -> any {
+    def:pub app() -> any {
         return <div>
             <h1>My Todos</h1>
             <TodoItem text="Learn Jac basics" done={false} />
@@ -104,7 +104,7 @@ cl {
     }
 
     # Main app - combines all components
-    def app() -> any {
+    def:pub app() -> any {
         return <div>
             <h1>My Todos</h1>
             <TodoInput />
@@ -287,7 +287,7 @@ def TodoList() -> any {
 }
 
 # App uses TodoList
-def app() -> any {
+def:pub app() -> any {
     return <div>
         <h1>My Todos</h1>
         <TodoList />
@@ -400,7 +400,7 @@ def TodoStats(props: any) -> any {
 }
 
 # Use it in app
-def app() -> any {
+def:pub app() -> any {
     return <div>
         <h1>My Todos</h1>
         <TodoStats total={3} completed={1} />

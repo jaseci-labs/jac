@@ -134,7 +134,7 @@ cl {
 Update your `useEffect` to load todos from the backend:
 
 ```jac
-def app() -> any {
+def:pub app() -> any {
     [todos, setTodos] = useState([]);
     [input, setInput] = useState("");
     [filter, setFilter] = useState("all");
@@ -386,7 +386,7 @@ walker create_todo {
 
 # Frontend (runs in browser)
 cl {
-    def app() -> any {
+    def:pub app() -> any {
         # This code runs in the browser
         result = root spawn create_todo(text="Todo");
     }

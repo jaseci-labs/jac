@@ -49,7 +49,7 @@ cl {
         </div>;
     }
 
-    def app() -> any {
+    def:pub app() -> any {
         [input, setInput] = useState("");
 
         return <div style={{
@@ -113,7 +113,7 @@ cl {
         </div>;
     }
 
-    def app() -> any {
+    def:pub app() -> any {
         [todos, setTodos] = useState([]);
         [input, setInput] = useState("");
 
@@ -268,7 +268,7 @@ cl {
         </div>;
     }
 
-    def app() -> any {
+    def:pub app() -> any {
         [todos, setTodos] = useState([]);
         [input, setInput] = useState("");
 
@@ -406,7 +406,7 @@ cl {
         </div>;
     }
 
-    def app() -> any {
+    def:pub app() -> any {
         [todos, setTodos] = useState([]);
         [input, setInput] = useState("");
         [filter, setFilter] = useState("all");
@@ -539,7 +539,7 @@ This lets children trigger parent behavior!
 ### Updating State in Event Handlers
 
 ```jac
-def app() -> any {
+def:pub app() -> any {
     [count, setCount] = useState(0);
 
     def increment() -> None {
