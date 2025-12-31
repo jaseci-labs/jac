@@ -1,6 +1,6 @@
-"""Copy configured asset files (based on jac.toml configuration) from source to destination recursively."""
+"""Copy custom asset files (based on jac.toml configuration) from source to destination recursively."""
 
-impl AssetProcessor.copy_configured_assets(
+impl AssetProcessor.copy_custom_asset_types(
     self: AssetProcessor,
     src_dir: Path,
     dest_dir: Path,
@@ -20,7 +20,7 @@ impl AssetProcessor.copy_configured_assets(
             base = source;
         }
         for item in source.iterdir() {
-            if (item.is_file() and (item.suffix.lower() in extensions)) {
+            if (item.is_file() and (item.suffix.lower() in custom_asset_extensions)) {
                 if preserve_structure {
                     relative_path = item.relative_to(base);
                     dest_file = destination / relative_path;
@@ -38,8 +38,8 @@ impl AssetProcessor.copy_configured_assets(
     }
     config = get_config();
     assets_config = config.get_plugin_config("client").get("assets", {});
-    extensions = set(assets_config.get("extensions", []));
-    if extensions {
+    custom_asset_extensions = set(assets_config.get("custom_extensions", []));
+    if custom_asset_extensions {
         copy_recursive(src_dir, dest_dir);
     }
     return;

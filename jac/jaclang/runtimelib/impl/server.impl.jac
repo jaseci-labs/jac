@@ -754,7 +754,7 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
             config = get_config();
             client_cfg = config.get_plugin_config("client") if config else None;
             assets_config = client_cfg.get("assets", {}) if client_cfg else {};
-            extensions = set(assets_config.get("extensions", []));
+            custom_asset_extensions = set(assets_config.get("custom_extensions", []));
             is_asset_file = (
                 not is_static_path
                 and (path != '/')
@@ -766,7 +766,7 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                 and not path.startswith('/walkers')
                 and not path.startswith('/protected')
                 and (
-                    Path(path).suffix in extensions
+                    Path(path).suffix in custom_asset_extensions
                     or {'.png','.jpg','.jpeg','.gif','.webp','.svg','.ico','.woff','.woff2','.ttf','.otf','.eot','.mp4','.webm','.mp3','.wav','.css'}
                 )
             );

@@ -24,7 +24,7 @@ class AssetProcessor {
         preserve_structure: bool = True
     ) -> None;
 
-    def copy_configured_assets(
+    def copy_custom_asset_types(
         self: AssetProcessor,
         src_dir: Path,
         dest_dir: Path,
