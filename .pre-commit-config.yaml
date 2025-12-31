@@ -36,7 +36,7 @@ repos:
           - --config-file=mypy.ini
           - --explicit-package-bases
         additional_dependencies: [types-PyYAML, types-requests]
-        exclude: (/fixtures/|lark_jac_parser\.py|lark_ts_parser\.py|/vendor/|/scripts/|jac/examples/reference|/tests/)
+        exclude: (/fixtures/|lark_jac_parser\.py|lark_ts_parser\.py|/vendor/|/scripts/|jac/examples/reference)
   - repo: local
     hooks:
       - id: jac-format
