@@ -195,7 +195,6 @@ jobs:
         pip install -e jac
         pip install pytest
         pip install pytest-xdist
-        pip install PyYAML
 
     - name: Run documentation validation tests
       run: pytest -v docs/tests/test_validate_md_files.py
