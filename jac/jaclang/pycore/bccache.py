@@ -200,7 +200,7 @@ class DiskBytecodeCache(BytecodeCache):
                     # If we can't stat an impl file, invalidate cache to be safe
                     return False
 
-            # For user files (not jaclang modules), check if compiler changed
+            # For user files (not jaclang modules), check if compiler changed.
             return (
                 "jaclang" in key.source_path or cache_mtime > _get_jaclang_max_mtime()
             )
