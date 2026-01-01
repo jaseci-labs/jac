@@ -201,11 +201,10 @@ class DiskBytecodeCache(BytecodeCache):
                     return False
 
             # For user files (not jaclang modules), check if compiler changed
-            if "jaclang" not in key.source_path:
-                if cache_mtime <= _get_jaclang_max_mtime():
-                    return False
-
-            return True
+            return not (
+                "jaclang" not in key.source_path
+                and cache_mtime <= _get_jaclang_max_mtime()
+            )
         except OSError:
             return False
 
