@@ -232,10 +232,19 @@ class JacParser(Transform[uni.Source, uni.Module]):
                 else None
             )
 
-            # Check for unsupported 'pass' keyword in member bodies (obj/class/node/walker/edge)
-            if e.token and e.token.value == "pass" and Tok.RBRACE.name in e.accepts:
+            # Check for unsupported 'pass' keyword in code blocks
+            if (
+                e.token
+                and e.token.value == "pass"
+                and (Tok.RBRACE.name in e.accepts or Tok.SEMI.name in e.accepts)
+            ):
                 self.log_error(
-                    "'pass' is not supported. Jac allows empty blocks instead",
+                    "'pass' is a keyword not allowed in jac",
+                    self.error_to_token(e),
+                )
+
+                self.log_error(
+                    "If need an empty code block, simply leave it empty.",
                     self.error_to_token(e),
                 )
                 return True
@@ -1435,12 +1444,6 @@ class JacParser(Transform[uni.Source, uni.Module]):
                     kid=[expr],
                 )
             elif isinstance(kid[0], uni.Expr):
-                # Check for standalone 'pass' statement
-                if isinstance(kid[0], uni.Name) and kid[0].value == "pass":
-                    self.parse_ref.log_error(
-                        "'pass' is not supported. Jac allows empty blocks instead",
-                        node_override=kid[0],
-                    )
                 return uni.ExprStmt(
                     expr=kid[0],
                     in_fstring=False,
@@ -3803,6 +3806,19 @@ class JacParser(Transform[uni.Source, uni.Module]):
             )
             if isinstance(ret, uni.Name) and token.type == Tok.KWESC_NAME:
                 ret.is_kwesc = True
+
+            # Check for unsupported 'pass' keyword
+            if isinstance(ret, uni.Name) and token.value == "pass":
+                self.parse_ref.log_error(
+                    "'pass' is a keyword not allowed in jac",
+                    node_override=ret,
+                )
+
+                self.parse_ref.log_error(
+                    "If need an empty code block, simply leave it empty",
+                    node_override=ret,
+                )
+
             self.terminals.append(ret)
             return ret
 

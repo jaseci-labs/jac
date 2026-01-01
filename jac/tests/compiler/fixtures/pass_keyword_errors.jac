@@ -44,4 +44,7 @@ with entry {
     } except Exception{
         pass;
     }
+
+    pass = 10;
+    my_list = [1, 2, pass];
 }
