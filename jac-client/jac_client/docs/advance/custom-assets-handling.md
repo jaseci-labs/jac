@@ -4,7 +4,7 @@ Configure custom asset types for your Jac Client build process to support Web Wo
 
 ## Overview
 
-By default, Jac Client handles common asset types like images, fonts, and CSS files. With custom asset configuration, you can extend this to include any file type, such as `.js`, `.py`, `.wasm`, or `.json`. 
+By default, Jac Client handles common asset types like images, fonts, and CSS files. With custom asset configuration, you can extend this to include any file type, such as `.js`, `.py`, `.wasm`, or `.json`.
 
 ## Quick Start
 
@@ -86,21 +86,21 @@ Custom assets are copied to `.client-build/build/assets/` and served from their 
 
 ## Use Cases
 
-1. **Web Workers with Python Backend**: Enable multi-threaded processing using JavaScript Web Workers with Python via Pyodide. 
+1. **Web Workers with Python Backend**: Enable multi-threaded processing using JavaScript Web Workers with Python via Pyodide.
 
 ```toml
 [plugins.client.assets]
 custom_extensions = [".js", ".py"]
 ```
 
-2. **Configuration Files**: Serve JSON configuration files as static assets.
+1. **Configuration Files**: Serve JSON configuration files as static assets.
 
 ```toml
 [plugins.client.assets]
 custom_extensions = [". json"]
 ```
 
-3. **WebAssembly Modules**: Serve `.wasm` files for high-performance computations.
+1. **WebAssembly Modules**: Serve `.wasm` files for high-performance computations.
 
 ```toml
 [plugins.client.assets]
@@ -113,4 +113,5 @@ custom_extensions = [". wasm"]
 - [Custom Configuration](./custom-config.md) - Vite and TypeScript configuration
 - [Package Management](./package-management.md) - Manage npm dependencies
 - [All-in-One Example](https://github.com/jaseci-labs/jaseci/tree/main/jac-client/jac_client/examples/all-in-one) - Working example with Web Workers
+
 ---
