@@ -13,8 +13,25 @@ import os
 import sys
 import types
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Final
+
+
+@lru_cache(maxsize=1)
+def _get_jaclang_max_mtime() -> float:
+    """Get the latest mtime of any jaclang source files."""
+    try:
+        import jaclang
+
+        root = Path(jaclang.__file__).parent
+        return max(
+            (f.stat().st_mtime for ext in ("*.py", "*.jac") for f in root.rglob(ext)
+             if "vendor" not in f.parts and "__pycache__" not in f.parts),
+            default=0.0
+        )
+    except (ImportError, AttributeError, OSError):
+        return 0.0
 
 
 def discover_annex_files(source_path: str, suffix: str = ".impl.jac") -> list[str]:
@@ -156,6 +173,7 @@ class DiskBytecodeCache(BytecodeCache):
         - The cache file exists
         - The cache is newer than the source file
         - The cache is newer than all impl files associated with the source
+        - The cache is newer than all jaclang source files (compiler changes)
         """
         if not cache_path.exists():
             return False
@@ -176,6 +194,11 @@ class DiskBytecodeCache(BytecodeCache):
                         return False
                 except OSError:
                     # If we can't stat an impl file, invalidate cache to be safe
+                    return False
+
+            # For user files (not jaclang modules), check if compiler changed
+            if "jaclang" not in key.source_path:
+                if cache_mtime <= _get_jaclang_max_mtime():
                     return False
 
             return True
