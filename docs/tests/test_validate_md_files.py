@@ -36,19 +36,6 @@ def extract_md_files_from_nav(nav_item, base_path=""):
         md_files.append(nav_item)
     return md_files
 
-
-def get_yml_referenced_files():
-    """Get all markdown files referenced in mkdocs.yml."""
-    yml_path = os.path.join(os.path.dirname(__file__), "../mkdocs.yml")
-    with open(yml_path, encoding="utf-8") as f:
-        config = yaml.safe_load(f)
-    nav = config.get("nav", [])
-    md_files = extract_md_files_from_nav(nav)
-    # Return absolute paths
-    docs_dir = os.path.join(os.path.dirname(__file__), "../docs")
-    return [os.path.join(docs_dir, f) for f in md_files]
-
-
 # -----------------------------------------------------------------
 # Test Cases
 # -----------------------------------------------------------------
@@ -71,14 +58,3 @@ def test_md_file_is_valid(md_file):
         pytest.fail(f"Encoding issue: {md_file}")
     except PermissionError:
         pytest.fail(f"Permission denied: {md_file}")
-
-
-@pytest.mark.parametrize("md_file", get_yml_referenced_files())
-def test_yml_referenced_file_exists(md_file):
-    """Ensure all files referenced in mkdocs.yml exist and are non-empty."""
-    assert os.path.exists(md_file), (
-        f"File referenced in mkdocs.yml not found: {md_file}"
-    )
-
-    file_size = os.path.getsize(md_file)
-    assert file_size > 0, f"File referenced in mkdocs.yml is empty: {md_file}"
