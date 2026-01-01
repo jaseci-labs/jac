@@ -367,7 +367,7 @@ cl {
             return (lambda -> None {
                 workerRef.current.terminate();
             });
-        }, []); 
+        }, []);
         handleClick = lambda -> None {
             workerRef.current.postMessage("");
         };
