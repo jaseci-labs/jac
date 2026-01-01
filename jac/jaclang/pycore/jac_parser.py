@@ -344,6 +344,19 @@ class JacParser(Transform[uni.Source, uni.Module]):
                 self.parse_ref.node_list.append(node)
             return node
 
+        def _check_pass_in_expr(self, expr: uni.Expr) -> None:
+            """Check if 'pass' keyword is used in an expression (recursively)."""
+            if isinstance(expr, uni.Name) and expr.sym_name == "pass":
+                self.parse_ref.log_error(
+                    "'pass' is not allowed as a variable name in jac",
+                    node_override=expr,
+                )
+            elif hasattr(expr, "kid") and expr.kid:
+                # Recursively check all child nodes
+                for child in expr.kid:
+                    if isinstance(child, (uni.Expr, uni.Name)):
+                        self._check_pass_in_expr(child)
+
         def _call_userfunc(
             self, tree: jl.Tree, new_children: None | list[uni.UniNode] = None
         ) -> uni.UniNode:
@@ -1274,6 +1287,11 @@ class JacParser(Transform[uni.Source, uni.Module]):
             name = self.consume(uni.Name)
             type_tag = self.consume(uni.SubTag)
             value = self.consume(uni.Expr) if self.match_token(Tok.EQ) else None
+
+            self._check_pass_in_expr(
+                name
+            )  # Check if 'pass' is used as a parameter name
+
             return uni.ParamVar(
                 name=name,
                 type_tag=type_tag,
@@ -1444,6 +1462,26 @@ class JacParser(Transform[uni.Source, uni.Module]):
                     kid=[expr],
                 )
             elif isinstance(kid[0], uni.Expr):
+                # Check if this is a 'pass' statement (pass;) in a code block
+                if (
+                    isinstance(kid[0], uni.Name)
+                    and kid[0].sym_name == "pass"
+                    and len(kid) >= 2
+                    and isinstance(kid[1], uni.Token)
+                    and kid[1].name == Tok.SEMI.name
+                ):
+                    self.parse_ref.log_error(
+                        "'pass' is a keyword not allowed in jac",
+                        node_override=kid[0],
+                    )
+
+                    self.parse_ref.log_error(
+                        "If need an empty code block, simply leave it empty.",
+                        node_override=kid[0],
+                    )
+                else:
+                    # Check if 'pass' is used in the expression
+                    self._check_pass_in_expr(kid[0])
                 return uni.ExprStmt(
                     expr=kid[0],
                     in_fstring=False,
@@ -1742,6 +1780,11 @@ class JacParser(Transform[uni.Source, uni.Module]):
             """
             self.consume_token(Tok.KW_RETURN)
             expr = self.match(uni.Expr)
+
+            # Check if 'pass' is used in return expression
+            if expr:
+                self._check_pass_in_expr(expr)
+
             return uni.ReturnStmt(
                 expr=expr,
                 kid=self.cur_nodes,
@@ -1842,6 +1885,14 @@ class JacParser(Transform[uni.Source, uni.Module]):
                 value = self.consume(uni.Expr) if self.match_token(Tok.EQ) else None
 
             valid_assignees = [i for i in assignees if isinstance(i, (uni.Expr))]
+
+            # Check if 'pass' is being used as a variable name
+            for assignee in valid_assignees:
+                self._check_pass_in_expr(assignee)
+            # Also check the value being assigned
+            if value:
+                self._check_pass_in_expr(value)
+
             if is_aug:
                 return uni.Assignment(
                     target=valid_assignees,
@@ -3806,18 +3857,6 @@ class JacParser(Transform[uni.Source, uni.Module]):
             )
             if isinstance(ret, uni.Name) and token.type == Tok.KWESC_NAME:
                 ret.is_kwesc = True
-
-            # Check for unsupported 'pass' keyword
-            if isinstance(ret, uni.Name) and token.value == "pass":
-                self.parse_ref.log_error(
-                    "'pass' is a keyword not allowed in jac",
-                    node_override=ret,
-                )
-
-                self.parse_ref.log_error(
-                    "If need an empty code block, simply leave it empty",
-                    node_override=ret,
-                )
 
             self.terminals.append(ret)
             return ret
