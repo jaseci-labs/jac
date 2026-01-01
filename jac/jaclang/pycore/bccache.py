@@ -19,7 +19,7 @@ from typing import Final
 
 
 @lru_cache(maxsize=1)
-def _get_jaclang_max_mtime() -> float:
+def _get_jaclang_last_mtime() -> float:
     """Get the latest mtime of any jaclang source files."""
     try:
         import jaclang
@@ -202,7 +202,7 @@ class DiskBytecodeCache(BytecodeCache):
 
             # For user files (not jaclang modules), check if compiler changed.
             return (
-                "jaclang" in key.source_path or cache_mtime > _get_jaclang_max_mtime()
+                "jaclang" in key.source_path or cache_mtime > _get_jaclang_last_mtime()
             )
         except OSError:
             return False
