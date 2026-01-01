@@ -62,7 +62,7 @@ custom_extensions = [".js", ".py", ".wasm", ".json"]
 - Media: `.mp4`, `.webm`, `.mp3`, `.wav`
 - Styles: `.css`
 
-Custom extensions are **additive**—they don't replace default types.
+Custom extensions are **additive**, they don't replace default types.
 
 ## How It Works
 
