@@ -16,7 +16,7 @@ def test_explicit_type_annotation_in_assignment(
 ) -> None:
     """Test explicit type annotation in assignment."""
     program = JacProgram()
-    program.build(fixture_path("type_annotation_assignment.jac"), type_check=True)
+    program.compile(fixture_path("type_annotation_assignment.jac"), type_check=True)
     assert len(program.errors_had) == 2
     _assert_error_pretty_found(
         """
@@ -807,7 +807,7 @@ def test_jac_importing_ts(fixture_path: Callable[[str], str]) -> None:
     """Test Jac module importing from TypeScript."""
     path = fixture_path("ts_imports/main.jac")
     program = JacProgram()
-    mod = program.build(path, type_check=True)
+    mod = program.compile(path, type_check=True)
     # The main.jac imports TypeScript/JS modules - verify it compiles
     assert mod is not None
 

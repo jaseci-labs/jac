@@ -14,7 +14,7 @@ from jaclang.pycore.program import JacProgram
 
 def test_pygen_jac_cli(fixture_path: Callable[[str], str]) -> None:
     """Basic test for pass."""
-    (out := JacProgram()).build(fixture_path("base.jac"))
+    (out := JacProgram()).compile(fixture_path("base.jac"))
     assert not out.errors_had
     mod = out.mod.hub[fixture_path("impl/imps.jac")]
     assert "56" in str(mod.to_dict())
@@ -35,7 +35,7 @@ def test_import_auto_impl(fixture_path: Callable[[str], str]) -> None:
 
 def test_import_include_auto_impl(fixture_path: Callable[[str], str]) -> None:
     """Basic test for pass."""
-    (prog := JacProgram()).build(fixture_path("incautoimpl.jac"))
+    (prog := JacProgram()).compile(fixture_path("incautoimpl.jac"))
     num_modules = len(list(prog.mod.hub.values())[1].impl_mod) + 1
     mod_names = [i.name for i in list(prog.mod.hub.values())[1].impl_mod]
     assert num_modules == 7
@@ -50,7 +50,7 @@ def test_import_include_auto_impl(fixture_path: Callable[[str], str]) -> None:
 
 def test_annexalbe_by_discovery(fixture_path: Callable[[str], str]) -> None:
     """Basic test for pass."""
-    (prog := JacProgram()).build(fixture_path("incautoimpl.jac"))
+    (prog := JacProgram()).compile(fixture_path("incautoimpl.jac"))
     count = 0
     all_mods = prog.mod.hub.values()
     # Annex modules
@@ -68,7 +68,7 @@ def test_annexalbe_by_discovery(fixture_path: Callable[[str], str]) -> None:
 
 def test_annexable_by_shared_folder(fixture_path: Callable[[str], str]) -> None:
     """Test annexable_by correctly discovers base file from shared impl/ folder."""
-    (prog := JacProgram()).build(fixture_path("autoimpl.jac"))
+    (prog := JacProgram()).compile(fixture_path("autoimpl.jac"))
     main_mod = list(prog.mod.hub.values())[0]
 
     # Find the shared folder impl module
@@ -97,7 +97,7 @@ def test_cl_annex_marked_client(fixture_path: Callable[[str], str]) -> None:
 @pytest.mark.skip(reason="TODO: Fix when we have the type checker")
 def test_py_raise_map(fixture_path: Callable[[str], str]) -> None:
     """Basic test for pass."""
-    (build := JacProgram()).build(fixture_path("py_imp_test.jac"))
+    (build := JacProgram()).compile(fixture_path("py_imp_test.jac"))
     p = {
         "math": r"jaclang/vendor/mypy/typeshed/stdlib/math.pyi$",
         "pygame_mock": r"pygame_mock/__init__.pyi$",
@@ -120,7 +120,7 @@ def test_py_raise_map(fixture_path: Callable[[str], str]) -> None:
 @pytest.mark.skip(reason="TODO: Fix when we have the type checker")
 def test_py_raised_mods(fixture_path: Callable[[str], str]) -> None:
     """Basic test for pass."""
-    (prog := JacProgram()).build(fixture_path("py_imp_test.jac"))
+    (prog := JacProgram()).compile(fixture_path("py_imp_test.jac"))
     for i in list(
         filter(
             lambda x: x.is_raised_from_py,
@@ -164,7 +164,7 @@ def test_circular_import(fixture_path: Callable[[str], str]) -> None:
 
 def test_ts_module_import(fixture_path: Callable[[str], str]) -> None:
     """Test importing TypeScript modules in cl imports."""
-    (prog := JacProgram()).build(fixture_path("ts_imports/main.jac"), type_check=True)
+    (prog := JacProgram()).compile(fixture_path("ts_imports/main.jac"), type_check=True)
     # Verify TS/JS modules are loaded into the module hub
     assert len(prog.errors_had) == 0
 

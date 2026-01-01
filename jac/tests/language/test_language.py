@@ -323,7 +323,10 @@ def test_deep_imports(
     assert stdout_value.split("\n")[0] == "one level deeperslHello World!"
 
 
-def test_deep_imports_interp_mode(fixture_path: Callable[[str], str]) -> None:
+def test_deep_imports_interp_mode(
+    fixture_path: Callable[[str], str],
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
     """Parse micro jac file."""
     Jac.set_base_path(fixture_path("./"))
     Jac.attach_program(
@@ -338,17 +341,20 @@ def test_deep_imports_interp_mode(fixture_path: Callable[[str], str]) -> None:
     if cache_dir.exists():
         for cache_file in cache_dir.glob("deep_import_interp*.jbc"):
             cache_file.unlink()
-    Jac.jac_import("deep_import_interp", base_path=fixture_path("./"))
+
+    with capture_stdout() as captured_output:
+        Jac.jac_import("deep_import_interp", base_path=fixture_path("./"))
+    stdout_value = captured_output.getvalue()
     assert len(Jac.get_program().mod.hub.keys()) == 1
+    assert "one level deeperslHello World!" in stdout_value
+
     Jac.set_base_path(fixture_path("./"))
     Jac.attach_program(
         (prog := JacProgram()),
     )
-    prog.build(fixture_path("./deep_import_interp.jac"))
-    Jac.jac_import("deep_import_interp", base_path=fixture_path("./"))
-    # Note: hub size can vary depending on whether compiler support modules
-    # (e.g., `import_pass.jac` and its annexes) are compiled/registered in this run.
-    assert len(Jac.get_program().mod.hub.keys()) in {5, 6, 7}
+    prog.compile(fixture_path("./deep_import_interp.jac"))
+    # as we use jac_import, only main module should be in the hub
+    assert len(Jac.get_program().mod.hub.keys()) == 1
 
 
 def test_deep_imports_mods(
