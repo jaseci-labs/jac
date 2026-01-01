@@ -1,8 +1,10 @@
 """Unit tests for validating Markdown documentation files."""
 
 import os
+
 import pytest
 import yaml
+
 
 # -----------------------------------------------------------------
 # Utility Functions
@@ -38,7 +40,7 @@ def extract_md_files_from_nav(nav_item, base_path=""):
 def get_yml_referenced_files():
     """Get all markdown files referenced in mkdocs.yml."""
     yml_path = os.path.join(os.path.dirname(__file__), "../mkdocs.yml")
-    with open(yml_path, "r", encoding="utf-8") as f:
+    with open(yml_path, encoding="utf-8") as f:
         config = yaml.safe_load(f)
     nav = config.get("nav", [])
     md_files = extract_md_files_from_nav(nav)
@@ -59,7 +61,7 @@ def test_md_file_is_valid(md_file):
     assert file_size > 0, f"Empty file: {md_file}"
 
     try:
-        with open(md_file, "r", encoding="utf-8") as f:
+        with open(md_file, encoding="utf-8") as f:
             content = f.read().strip()
             assert content, f"No content: {md_file}"
             non_empty_lines = [line for line in content.splitlines() if line.strip()]
@@ -74,7 +76,9 @@ def test_md_file_is_valid(md_file):
 @pytest.mark.parametrize("md_file", get_yml_referenced_files())
 def test_yml_referenced_file_exists(md_file):
     """Ensure all files referenced in mkdocs.yml exist and are non-empty."""
-    assert os.path.exists(md_file), f"File referenced in mkdocs.yml not found: {md_file}"
+    assert os.path.exists(md_file), (
+        f"File referenced in mkdocs.yml not found: {md_file}"
+    )
 
     file_size = os.path.getsize(md_file)
     assert file_size > 0, f"File referenced in mkdocs.yml is empty: {md_file}"
