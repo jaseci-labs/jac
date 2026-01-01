@@ -119,6 +119,22 @@ impl CommandRegistry._bind_command_to_argparse(
                 cmd_parser.add_argument(
                     f"{param_name}", <>default=param.default, nargs='*', help=arg_msg
                 );
+            } elif (annotation is bool) {
+                # Handle bool as first param with default as a flag, not positional
+                cmd_parser.add_argument(
+                    f"-{shorthand}",
+                    f"--{param_name}",
+                    <>default=param.default,
+                    action='store_true',
+                    help=arg_msg
+                );
+                cmd_parser.add_argument(
+                    f"-n{shorthand}",
+                    f"--no-{param_name}",
+                    dest=param_name,
+                    action='store_false',
+                    help=f"Compliment of {arg_msg}"
+                );
             } else {
                 cmd_parser.add_argument(
                     f"{param_name}",

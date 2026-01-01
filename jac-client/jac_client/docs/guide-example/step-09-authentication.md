@@ -269,7 +269,7 @@ def SignupPage() -> any {
 For now, update your `app()` function to show the login page:
 
 ```jac
-def app() -> any {
+def:pub app() -> any {
     return <LoginPage />;
 }
 ```
@@ -279,7 +279,7 @@ def app() -> any {
 Change it to show signup:
 
 ```jac
-def app() -> any {
+def:pub app() -> any {
     return <SignupPage />;
 }
 ```

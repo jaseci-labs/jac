@@ -1398,3 +1398,83 @@ impl script(name: str = '', list_scripts: bool = False) -> None {
         <>exit(1);
     }
 }
+
+"""List all installed Jac plugins.
+
+Shows all plugins registered with the Jac runtime, including those loaded via
+setuptools entry points in the 'jac' group. Plugins can extend CLI commands,
+add dependency types, and provide runtime hooks.
+
+Args:
+    verbose: Show detailed plugin information including module path and hooks
+
+Examples:
+    jac plugins
+    jac plugins --verbose
+"""
+impl plugins(verbose: bool = False) -> None {
+    import from jaclang.pycore.runtime { plugin_manager }
+    import from jaclang.cli.cmdreg { cmd_registry }
+    # Get all registered plugins
+    plugin_list = plugin_manager.list_name_plugin();
+    if not plugin_list {
+        print("No Jac plugins installed.");
+        return;
+    }
+    print(f"Installed Jac plugins ({len(plugin_list)}):\n");
+    for (name, plugin) in plugin_list {
+        plugin_type = type(plugin);
+        plugin_name = plugin_type?.__name__ or str(plugin_type);
+        print(f"  {name}");
+
+        if verbose {
+            # Show module info
+            module = getattr(plugin_type, '__module__', 'unknown');
+            print(f"    Class: {plugin_name}");
+            print(f"    Module: {module}");
+            # Show implemented hooks
+            hooks = [];
+            for attr_name in dir(plugin) {
+                if not attr_name.startswith('_') {
+                    attr = getattr(plugin, attr_name, None);
+                    if callable(attr)
+                    and attr?.__wrapped__
+                    or (hasattr(plugin_manager.hook, attr_name)) {
+                        # Check if plugin implements this hook
+                        try {
+                            hook = getattr(plugin_manager.hook, attr_name, None);
+                            if hook is not None {
+                                impls = hook.get_hookimpls();
+                                for impl in impls {
+                                    if impl.plugin is plugin {
+                                        hooks.append(attr_name);
+                                        break;
+                                    }
+                                }
+                            }
+                        } except Exception {
+                            pass;
+                        }
+                    }
+                }
+            }
+            if hooks {
+                print(f"    Hooks: {', '.join(sorted(hooks))}");
+            }
+            print();
+        }
+    }
+    # Show commands registered by plugins
+    plugin_commands = [];
+    for (cmd_name, command) in cmd_registry.registry.items() {
+        if command?.source and command?.source and command?.source != 'core' {
+            plugin_commands.append((cmd_name, command.source));
+        }
+    }
+    if plugin_commands {
+        print("\nPlugin-provided commands:");
+        for (cmd_name, source) in sorted(plugin_commands) {
+            print(f"  {cmd_name} (from {source})");
+        }
+    }
+}

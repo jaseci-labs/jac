@@ -121,6 +121,11 @@ nav:
         - Configuration System Overview: "jac-client/advance/configuration-overview.md"
         - Custom Configuration: "jac-client/advance/custom-config.md"
         - Package Management: "jac-client/advance/package-management.md"
+    - Jac Scale:
+      - Getting Started: "jac-scale/README.md"
+      - Quickstart: "jac-scale/quickstart.md"
+      - Configuration: "jac-scale/configuration.md"
+      - Roadmap: "jac-scale/roadmap.md"
     - Tooling:
       - Jac Debugger: "learn/debugger.md"
       - Run Jac In Browser: "learn/jac_playground.md"

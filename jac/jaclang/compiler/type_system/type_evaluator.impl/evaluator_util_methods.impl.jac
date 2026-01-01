@@ -78,6 +78,16 @@ impl TypeEvaluator._convert_to_instance(
     return jtype;
 }
 
+impl TypeEvaluator._get_enclosing_class(
+    self: TypeEvaluator, node_: uni.UniNode
+) -> uni.Archetype | None {
+    impl_ := node_.find_parent_of_type(uni.ImplDef);
+    if impl_ and isinstance(impl_.decl_link, uni.Archetype) {
+        return impl_.decl_link;
+    }
+    return node_.find_parent_of_type(uni.Archetype);
+}
+
 """Get the enclosing method (ability) of the given node."""
 impl TypeEvaluator._get_enclosing_method(
     self: TypeEvaluator, node: uni.UniNode
@@ -136,7 +146,11 @@ impl TypeEvaluator.resolve_imported_symbols(
         mod_item = sym.decl.find_parent_of_type(uni.ModuleItem);
         assert (mod_item is not None);
         self.get_type_of_module(mod_item.from_mod_path);
-        return (mod_item.name.sym or sym);
+        # Check if mod_item.name is a Name and has a sym attribute before accessing it
+        if isinstance(mod_item.name, uni.Name) and mod_item.name.sym {
+            return mod_item.name.sym;
+        }
+        return sym;
     }
     return sym;
 }

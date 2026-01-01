@@ -39,7 +39,7 @@ cl import from react {useState, useEffect}
 cl {
     # ... (keep all your components from step 6)
 
-    def app() -> any {
+    def:pub app() -> any {
         [todos, setTodos] = useState([]);
         [input, setInput] = useState("");
         [filter, setFilter] = useState("all");
@@ -66,7 +66,7 @@ cl import from react {useState, useEffect}
 cl {
     # ... (keep all components)
 
-    def app() -> any {
+    def:pub app() -> any {
         [todos, setTodos] = useState([]);
         [input, setInput] = useState("");
         [filter, setFilter] = useState("all");
@@ -104,7 +104,7 @@ cl import from react {useState, useEffect}
 cl {
     # ... (keep all components)
 
-    def app() -> any {
+    def:pub app() -> any {
         [todos, setTodos] = useState([]);
         [input, setInput] = useState("");
         [filter, setFilter] = useState("all");
@@ -182,7 +182,7 @@ class TodoApp:
         self.load_from_database()  # Side effect: reads from DB
 
 # Jac
-def app() -> any {
+def:pub app() -> any {
     useEffect(lambda -> None {
         # Load data
     }, []);
@@ -233,7 +233,7 @@ useEffect(lambda -> None {
 You can use multiple `useEffect` hooks for different purposes:
 
 ```jac
-def app() -> any {
+def:pub app() -> any {
     [todos, setTodos] = useState([]);
 
     # Effect 1: Load data once

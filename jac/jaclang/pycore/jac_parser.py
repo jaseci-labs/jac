@@ -241,6 +241,22 @@ class JacParser(Transform[uni.Source, uni.Module]):
                 iparser.feed_token(jl.Token(Tok.NAME.name, "recover_name_token"))
                 return feed_current_token(iparser, e.token)
 
+            # Check for 'new' keyword pattern (e.g., "new ClassName(...)")
+            if (
+                last_tok
+                and last_tok.value == "new"
+                and e.token.type in (Tok.NAME.name, Tok.JSX_NAME.name)
+            ):
+                self.log_error(
+                    "The 'new' keyword is not supported in Jac",
+                    self.error_to_token(e),
+                )
+                self.log_error(
+                    "Use `Reflect.construct(target, argumentsList)` method to create new instances",
+                    self.error_to_token(e),
+                )
+                return True
+
             # We're calling try_feed_missing_token twice here because the first missing
             # will be reported as such and we don't for the consequent missing token.
             if tk := try_feed_missing_token(iparser):

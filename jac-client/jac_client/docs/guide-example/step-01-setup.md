@@ -47,7 +47,7 @@ Open `src/app.jac` in your code editor and replace everything with this:
 
 ```jac
 cl {
-    def app() -> any {
+    def:pub app() -> any {
         return <div>
             <h1>Hello, Jac!</h1>
             <p>My first full-stack app</p>
@@ -111,7 +111,7 @@ Think of it like this:
 This is your **main entry point** - the function that Jac calls first.
 
 ```jac
-def app() -> any {
+def:pub app() -> any {
     return <div>...</div>;
 }
 ```
@@ -130,7 +130,7 @@ if __name__ == "__main__":
     run_app()
 
 # Jac
-def app() -> any {
+def:pub app() -> any {
     # Start here
 }
 ```
@@ -254,7 +254,7 @@ Before moving on, try changing the text:
 
 ```jac
 cl {
-    def app() -> any {
+    def:pub app() -> any {
         return <div>
             <h1>My Todo App</h1>
             <p>Built with Jac</p>
