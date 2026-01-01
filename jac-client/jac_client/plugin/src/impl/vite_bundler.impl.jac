@@ -399,7 +399,6 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
         # Ensure tsconfig.json exists even if package.json already exists
         self.create_tsconfig();
     }
-    self._ensure_root_package_json();
     try {
         build_dir = self.project_dir / '.client-build';
         node_modules = build_dir / 'node_modules';

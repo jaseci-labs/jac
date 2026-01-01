@@ -1,5 +1,6 @@
-"""Send static file response (images, fonts, etc.)."""
+import from jaclang.project.config { get_config }
 
+"""Send static file response (images, fonts, etc.)."""
 impl JacClient.send_static_file(
     handler: BaseHTTPRequestHandler, file_path: Path, content_type: (str | None) = None
 ) -> None {
@@ -21,6 +22,7 @@ impl JacClient.send_static_file(
         handler.send_header('Content-Length', str(len(file_content)));
         handler.send_header('Cache-Control', 'public, max-age=3600');
         ResponseBuilder._add_cors_headers(handler);
+        ResponseBuilder._add_custom_headers(handler);
         handler.end_headers();
         handler.wfile.write(file_content);
     } except Exception as exc {

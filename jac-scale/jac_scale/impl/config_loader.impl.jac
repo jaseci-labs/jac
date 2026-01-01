@@ -8,6 +8,7 @@ This file only implements plugin-specific methods.
 """
 import from pathlib { Path }
 import from typing { Any }
+import os;
 
 """Get the plugin section name for scale."""
 impl JacScaleConfig.get_plugin_name(self: JacScaleConfig) -> str {
@@ -36,7 +37,18 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
             'container_port': 8000,
             'node_port': 30001,
             'mongodb_enabled': True,
-            'redis_enabled': True
+            'redis_enabled': True,
+            # Resource requests/limits
+            'cpu_request': None,
+            'cpu_limit': None,
+            'memory_request': None,
+            'memory_limit': None,
+            # Probe timings
+            'readiness_initial_delay': 10,
+            'readiness_period': 20,
+            'liveness_initial_delay': 10,
+            'liveness_period': 20,
+            'liveness_failure_threshold': 80
         },
         'server': {'port': 8000, 'host': '0.0.0.0'}
     };
@@ -88,6 +100,16 @@ impl JacScaleConfig.get_kubernetes_config(self: JacScaleConfig) -> dict[str, Any
     k8s_config = config.get('kubernetes', {});
     app_name = k8s_config.get('app_name', 'jaseci');
     default_image = f"{app_name}:latest";
+    # Start with file config and apply environment overrides for resource/probe settings
+    cpu_request = k8s_config.get('cpu_request', None);
+    cpu_limit = k8s_config.get('cpu_limit', None);
+    memory_request = k8s_config.get('memory_request', None);
+    memory_limit = k8s_config.get('memory_limit', None);
+    readiness_initial_delay = int(k8s_config.get('readiness_initial_delay', 10));
+    readiness_period = int(k8s_config.get('readiness_period', 20));
+    liveness_initial_delay = int(k8s_config.get('liveness_initial_delay', 10));
+    liveness_period = int(k8s_config.get('liveness_period', 20));
+    liveness_failure_threshold = int(k8s_config.get('liveness_failure_threshold', 80));
     return {
         'app_name': app_name,
         'docker_image_name': k8s_config.get('docker_image_name', default_image),
@@ -97,7 +119,16 @@ impl JacScaleConfig.get_kubernetes_config(self: JacScaleConfig) -> dict[str, Any
         'container_port': int(k8s_config.get('container_port', 8000)),
         'node_port': int(k8s_config.get('node_port', 30001)),
         'mongodb_enabled': bool(k8s_config.get('mongodb_enabled', True)),
-        'redis_enabled': bool(k8s_config.get('redis_enabled', True))
+        'redis_enabled': bool(k8s_config.get('redis_enabled', True)),
+        'cpu_request': cpu_request,
+        'cpu_limit': cpu_limit,
+        'memory_request': memory_request,
+        'memory_limit': memory_limit,
+        'readiness_initial_delay': readiness_initial_delay,
+        'readiness_period': readiness_period,
+        'liveness_initial_delay': liveness_initial_delay,
+        'liveness_period': liveness_period,
+        'liveness_failure_threshold': liveness_failure_threshold
     };
 }
 

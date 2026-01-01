@@ -183,6 +183,18 @@ noUnusedParameters = false
 include = ["components/**/*", "lib/**/*", "types/**/*"]
 ```
 
+### Response Configuration
+
+#### Configure Custom Headers
+
+Custom headers can be added by using an enviornmental variable and mentioning the custom headers.
+
+```toml
+[environments.response.headers]
+"Cross-Origin-Opener-Policy" = "same-origin"
+"Cross-Origin-Embedder-Policy" = "require-corp"
+```
+
 ## How It Works
 
 ### Configuration Workflow

@@ -242,6 +242,23 @@ def test_all_in_one_app_endpoints() -> None:
                         assert resp_root.status == 200
                         assert '"Jac API Server"' in root_body
                         assert '"endpoints"' in root_body
+
+                        # Verify custom headers from jac.toml are present
+                        assert (
+                            resp_root.headers.get("Cross-Origin-Opener-Policy")
+                            == "same-origin"
+                        ), (
+                            "Expected Cross-Origin-Opener-Policy header to be 'same-origin'"
+                        )
+                        assert (
+                            resp_root.headers.get("Cross-Origin-Embedder-Policy")
+                            == "require-corp"
+                        ), (
+                            "Expected Cross-Origin-Embedder-Policy header to be 'require-corp'"
+                        )
+                        print(
+                            "[DEBUG] Custom headers verified: COOP and COEP are present"
+                        )
                 except (URLError, HTTPError) as exc:
                     print(f"[DEBUG] Error while requesting root endpoint: {exc}")
                     pytest.fail(f"Failed to GET root endpoint: {exc}")
@@ -339,6 +356,34 @@ def test_all_in_one_app_endpoints() -> None:
                         f"[DEBUG] Error while requesting /static/assets/burger.png: {exc}"
                     )
                     pytest.fail("Failed to GET /static/assets/burger.png")
+
+                # "/workers/worker.js" – worker script is served
+                try:
+                    print(
+                        "[DEBUG] Sending GET request to /workers/worker.js (with retry)"
+                    )
+                    worker_js_bytes = _wait_for_endpoint(
+                        "http://127.0.0.1:8000/workers/worker.js",
+                        timeout=60.0,
+                        poll_interval=2.0,
+                        request_timeout=20.0,
+                    )
+                    worker_js_body = worker_js_bytes.decode("utf-8", errors="ignore")
+                    print(
+                        "[DEBUG] Received response from /workers/worker.js\n"
+                        f"Body (truncated to 500 chars):\n{worker_js_body[:500]}"
+                    )
+                    assert len(worker_js_body.strip()) > 0, (
+                        "Worker JS should not be empty"
+                    )
+                    assert (
+                        "postMessage" in worker_js_body or "onmessage" in worker_js_body
+                    ), "Worker JS should contain a message handler"
+                except (URLError, HTTPError, TimeoutError, RemoteDisconnected) as exc:
+                    print(f"[DEBUG] Error while requesting /workers/worker.js: {exc}")
+                    pytest.fail(
+                        f"Failed to GET /workers/worker.js after retries: {exc}"
+                    )
 
                 # "/walker/get_server_message" – walkers are integrated and up and running
                 try:
