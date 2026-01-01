@@ -17,22 +17,6 @@ def get_md_files():
     return md_files
 
 
-def extract_md_files_from_nav(nav_item, base_path=""):
-    """Recursively extract markdown file paths from mkdocs nav structure."""
-    md_files = []
-    if isinstance(nav_item, dict):
-        for key, value in nav_item.items():
-            if isinstance(value, str) and value.endswith(".md"):
-                md_files.append(value)
-            elif isinstance(value, (list, dict)):
-                md_files.extend(extract_md_files_from_nav(value, base_path))
-    elif isinstance(nav_item, list):
-        for item in nav_item:
-            md_files.extend(extract_md_files_from_nav(item, base_path))
-    elif isinstance(nav_item, str) and nav_item.endswith(".md"):
-        md_files.append(nav_item)
-    return md_files
-
 # -----------------------------------------------------------------
 # Test Cases
 # -----------------------------------------------------------------
