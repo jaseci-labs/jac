@@ -19,7 +19,7 @@ self.onmessage = async (event) => {
     self.pyodide.globals.set();
 
     // Call Python function
-    const result = self.pyodide.runPython(`handle_message()`);  
+    const result = self.pyodide.runPython(`handle_message()`);
 
     // Send result back to React
     self.postMessage(result);
