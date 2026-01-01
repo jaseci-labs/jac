@@ -1,5 +1,15 @@
 # The `app.jac` Entry Point
 
+> **️ Version Compatibility Warning**
+>
+> **For jac-client < 0.2.4:**
+>
+> - The `app()` function is **automatically exported** - no `:pub` needed
+>
+> **For jac-client >= 0.2.4:**
+>
+> - The `app()` function **must be exported** with `:pub` (e.g., `def:pub app()`)
+
 Every Jac client project **must** have an `app.jac` file. This file serves as the entry point for your application and is required for the build system to work correctly.
 
 ## Why `app.jac` is Required
@@ -33,7 +43,7 @@ Every `app.jac` file must contain:
 
 ```jac
 cl {
-    def app() -> any {
+    def:pub app() -> any {
         return <div>
             {/* Your application UI */}
         </div>;
@@ -45,7 +55,7 @@ cl {
 
 ```jac
 cl {
-    def app() -> any {
+    def:pub app() -> any {
         return <div>
             <h1>Hello, World!</h1>
         </div>;
@@ -62,6 +72,7 @@ cl {
 
 2. **Must contain `app()` function**
    - Function name must be exactly `app`
+   - Must be exported with `:pub` (e.g., `def:pub app()`)
    - Must be defined inside a `cl { }` block
    - Must return JSX (HTML-like syntax)
 
@@ -88,6 +99,17 @@ cl {
 #  WRONG - Function named 'main' instead of 'app'
 cl {
     def main() -> any {
+        return <div>App</div>;
+    }
+}
+```
+
+**Not exported:**
+
+```jac
+#  WRONG - app() not exported with :pub
+cl {
+    def app() -> any {
         return <div>App</div>;
     }
 }
@@ -143,4 +165,9 @@ Both commands compile `src/app.jac`, create the build entry point, and serve you
 
 ---
 
-**Remember**: `app.jac` with `app()` function is **required** for every Jac client project. Without it, your application cannot start!
+**Remember**: `app.jac` with `app()` function (exported with `:pub`) is **required** for every Jac client project. Without it, your application cannot start!
+
+## Related Documentation
+
+- [Exporting Functions and Variables](../exporting-functions-and-variables.md) - Learn how to export functions with `:pub`
+- [Import System](../imports.md) - Import exported functions from other files

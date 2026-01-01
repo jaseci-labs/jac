@@ -25,3 +25,5 @@ import from jaclang.vendor.pygls.server { LanguageServer }
 
 import lsprotocol.types as lspt;
 import nonexistent_module;
+
+include jaclang.pycore.log;

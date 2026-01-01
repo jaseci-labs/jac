@@ -737,7 +737,7 @@ cl {
     }
 
     # Main app wrapped in Router (same API as with-router/ example)
-    def app -> any {
+    def:pub app -> any {
         return <Router>
             <div
                 style={{"fontFamily": "system-ui, -apple-system, sans-serif"}}

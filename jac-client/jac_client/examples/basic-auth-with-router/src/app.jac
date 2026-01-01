@@ -431,7 +431,7 @@ cl {
     }
 
     # Main App with React Router
-    def app -> any {
+    def:pub app -> any {
         return <Router>
             <div
                 style={{

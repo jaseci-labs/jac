@@ -277,7 +277,7 @@ cl {
     }
 
     # Main App Component with React Router HashRouter
-    def app -> any {
+    def:pub app -> any {
         return <Router>
             <div
                 style={{"fontFamily": "system-ui, -apple-system, sans-serif"}}

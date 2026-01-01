@@ -18,6 +18,7 @@ from jaclang.pycore.jac_parser import JacParser
 from jaclang.pycore.program import JacProgram
 from jaclang.pycore.unitree import Source
 from jaclang.runtimelib.utils import read_file_with_encoding
+from tests.fixtures_list import MICRO_JAC_FILES
 
 
 @pytest.fixture
@@ -642,12 +643,10 @@ def _sanitize_test_name(name: str) -> str:
     return name
 
 
-for filename in [
-    os.path.normpath(os.path.join(root, name))
-    for root, _, files in os.walk(os.path.dirname(os.path.dirname(jaclang.__file__)))
-    for name in files
-    if name.endswith(".jac") and "err" not in name
-]:
+# Use fixed file list for deterministic test discovery
+# To add new test files, update MICRO_JAC_FILES in tests/fixtures_list.py
+_base_dir = os.path.dirname(os.path.dirname(jaclang.__file__))
+for filename in [os.path.normpath(os.path.join(_base_dir, f)) for f in MICRO_JAC_FILES]:
     test_name = f"test_micro_{_sanitize_test_name(filename)}"
     # Create the test function dynamically
     exec(f"""

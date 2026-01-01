@@ -13,9 +13,9 @@ import from 'react-router-dom' {
     useParams as reactRouterUseParams
 }
 
-def __jacJsx(tag: any, props: dict = {}, children: any = []) -> any;
+def : pub __jacJsx(tag: any, props: dict = {}, children: any = []) -> any;
 
-glob Router = ReactRouterHashRouter,
+glob : pub Router = ReactRouterHashRouter,
      Routes = ReactRouterRoutes,
      Route = ReactRouterRoute,
      Link = ReactRouterLink,
@@ -24,15 +24,15 @@ glob Router = ReactRouterHashRouter,
      useLocation = reactRouterUseLocation,
      useParams = reactRouterUseParams;
 
-def useRouter -> dict;
-def navigate(path: str) -> None;
-async def __jacSpawn(left: str, right: str = "", fields: dict = {}) -> any;
-def jacSpawn(left: str, right: str = "", fields: dict = {}) -> any;
-async def __jacCallFunction(function_name: str, args: dict = {}) -> any;
-async def jacSignup(username: str, password: str) -> dict;
-async def jacLogin(username: str, password: str) -> bool;
-def jacLogout -> None;
-def jacIsLoggedIn -> bool;
-def __getLocalStorage(key: str) -> str;
-def __setLocalStorage(key: str, value: str) -> None;
-def __removeLocalStorage(key: str) -> None;
+def : pub useRouter -> dict;
+def : pub navigate(path: str) -> None;
+async def : pub __jacSpawn(left: str, right: str = "", fields: dict = {}) -> any;
+def : pub jacSpawn(left: str, right: str = "", fields: dict = {}) -> any;
+async def : pub __jacCallFunction(function_name: str, args: dict = {}) -> any;
+async def : pub jacSignup(username: str, password: str) -> dict;
+async def : pub jacLogin(username: str, password: str) -> bool;
+def : pub jacLogout -> None;
+def : pub jacIsLoggedIn -> bool;
+def : pub __getLocalStorage(key: str) -> str;
+def : pub __setLocalStorage(key: str, value: str) -> None;
+def : pub __removeLocalStorage(key: str) -> None;

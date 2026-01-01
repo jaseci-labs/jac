@@ -1,6 +1,7 @@
 """Shared pytest fixtures for the tests directory."""
 
 import contextlib
+import glob
 import inspect
 import io
 import os
@@ -127,3 +128,23 @@ def pytest_unconfigure(config: pytest.Config) -> None:
         with contextlib.suppress(ValueError):
             plugin_manager.register(plugin, name=name)
     _external_plugins.clear()
+
+
+def _cleanup_shelf_db_files() -> None:
+    """Remove anchor_store.db files that may be created by jac-scale plugin."""
+    for pattern in [
+        "anchor_store.db.dat",
+        "anchor_store.db.bak",
+        "anchor_store.db.dir",
+    ]:
+        for file in glob.glob(pattern):
+            with contextlib.suppress(Exception):
+                Path(file).unlink()
+
+
+@pytest.fixture(autouse=True)
+def cleanup_plugin_artifacts():
+    """Clean up files created by external plugins before and after each test."""
+    _cleanup_shelf_db_files()
+    yield
+    _cleanup_shelf_db_files()
