@@ -1464,9 +1464,9 @@ class JacParser(Transform[uni.Source, uni.Module]):
             elif isinstance(kid[0], uni.Expr):
                 # Check if this is a 'pass' statement (pass;) in a code block
                 if (
-                    isinstance(kid[0], uni.Name)
+                    len(kid) >= 2
+                    and isinstance(kid[0], uni.Name)
                     and kid[0].sym_name == "pass"
-                    and len(kid) >= 2
                     and isinstance(kid[1], uni.Token)
                     and kid[1].name == Tok.SEMI.name
                 ):
@@ -1480,7 +1480,7 @@ class JacParser(Transform[uni.Source, uni.Module]):
                         node_override=kid[0],
                     )
                 else:
-                    # Check if 'pass' is used in the expression
+                    # Check if 'pass' is used in the expression (ex: print(pass); )
                     self._check_pass_in_expr(kid[0])
                 return uni.ExprStmt(
                     expr=kid[0],
