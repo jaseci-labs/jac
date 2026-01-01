@@ -744,7 +744,7 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                     server.introspector.ensure_bundle();
                     Jac.send_javascript(self, server.introspector._bundle.code);
                 } except RuntimeError as exc {
-                    Jac.send_json(self, 503, {'error': str(exc)});
+                    Jac.send_json(self, 500, {'error': str(exc)});
                 }
                 return;
             }
@@ -894,7 +894,7 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                 } except ValueError as exc {
                     Jac.send_json(self, 404, {'error': str(exc)});
                 } except RuntimeError as exc {
-                    Jac.send_json(self, 503, {'error': str(exc)});
+                    Jac.send_json(self, 500, {'error': str(exc)});
                 }
                 return;
             }

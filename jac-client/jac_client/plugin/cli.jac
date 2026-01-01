@@ -25,7 +25,8 @@ class JacCmd {
             name: str = 'main',
             force: bool = False,
             cl: bool = False,
-            skip: bool = False
+            skip: bool = False,
+            verbose: bool = False
         ) -> None {
             """Initialize a new Jac project.
 
@@ -37,18 +38,20 @@ class JacCmd {
                 force: Overwrite existing jac.toml if present
                 cl: Include client-side (frontend) setup
                 skip: Skip installing default packages (only for --cl projects)
+                verbose: Show detailed output during package installation
 
             Examples:
                 jac create
                 jac create myapp
                 jac create --cl myapp
                 jac create --cl --skip myapp
+                jac create --cl --verbose myapp
                 jac create --force
             """;
             cwd = pathlib.Path(os.getcwd());
 
             if cl {
-                _create_client_project(cwd, name, force, skip);
+                _create_client_project(cwd, name, force, skip, verbose);
             } else {
                 _create_core_project(cwd, name, force);
             }
@@ -117,7 +120,11 @@ with entry {{
 
 """Create a client-side Jac project with organized folder structure."""
 def _create_client_project(
-    cwd: pathlib.Path, name: str, force: bool, skip: bool = False
+    cwd: pathlib.Path,
+    name: str,
+    force: bool,
+    skip: bool = False,
+    verbose: bool = False
 ) -> None {
     project_name = name or cwd.name;
 
@@ -176,6 +183,22 @@ name = "{project_name}"
 version = "1.0.0"
 description = "Jac client application: {project_name}"
 entry-point = "src/app.jac"
+
+[dependencies.npm]
+react = "^19.2.0"
+react-dom = "^19.2.0"
+react-router-dom = "^6.30.1"
+
+[dev-dependencies.npm]
+vite = "^6.4.1"
+"@babel/cli" = "^7.28.3"
+"@babel/core" = "^7.28.5"
+"@babel/preset-env" = "^7.28.5"
+"@babel/preset-react" = "^7.28.5"
+"@vitejs/plugin-react" = "^4.2.1"
+typescript = "^5.3.3"
+"@types/react" = "^18.2.45"
+"@types/react-dom" = "^18.2.18"
 
 [plugins.client]
 # Vite bundler configuration (optional overrides)
@@ -332,7 +355,7 @@ jac add --cl react-router-dom
     # Install default packages unless --skip is specified
     if not skip {
         print("\nInstalling default packages...");
-        _install_default_packages(project_path);
+        _install_default_packages(project_path, verbose);
     }
 
     print(f"\nProject '{project_name}' created successfully!");
@@ -409,7 +432,9 @@ def _create_gitignore(project_path: pathlib.Path, client: bool = False) -> None 
 }
 
 """Install default npm packages in .client-build directory."""
-def _install_default_packages(project_path: pathlib.Path) -> None {
+def _install_default_packages(
+    project_path: pathlib.Path, verbose: bool = False
+) -> None {
     import from jac_client.plugin.src.vite_bundler { ViteBundler }
 
     try {
@@ -451,15 +476,48 @@ def _install_default_packages(project_path: pathlib.Path) -> None {
         # Always copy the generated package.json to .client-build/ for npm install
         shutil.copy2(configs_package_json, build_package_json);
 
+        # Read package data for verbose output
+        import json;
+        with open(configs_package_json, 'r') as f {
+            pkg_data = json.load(f);
+        }
+        deps = pkg_data.get('dependencies', {});
+        dev_deps = pkg_data.get('devDependencies', {});
+
+        if verbose {
+            # Verbose mode: show detailed package list and stream npm output
+            if deps {
+                print("  Dependencies:");
+                for (name, version) in deps.items() {
+                    print(f"    - {name}@{version}");
+                }
+            }
+            if dev_deps {
+                print("  Dev dependencies:");
+                for (name, version) in dev_deps.items() {
+                    print(f"    - {name}@{version}");
+                }
+            }
+            print("\nRunning npm install...");
+        }
+
         # Run npm install in .client-build/ directory
         try {
-            subprocess.run(
-                ['npm', 'install'],
-                cwd=build_dir,
-                check=True,
-                capture_output=True,
-                text=True
-            );
+            if verbose {
+                # Stream output for visibility in verbose mode
+                subprocess.run(
+                    ['npm', 'install', '--progress'], cwd=build_dir, check=True
+                );
+            } else {
+                # Quiet mode: capture output
+                subprocess.run(
+                    ['npm', 'install'],
+                    cwd=build_dir,
+                    check=True,
+                    capture_output=True,
+                    text=True
+                );
+            }
 
             # Move package-lock.json to .jac-client.configs/ if it was created
             build_package_lock = build_dir / 'package-lock.json';
@@ -475,7 +533,16 @@ def _install_default_packages(project_path: pathlib.Path) -> None {
 
             print("Default packages installed successfully");
         } except subprocess.CalledProcessError as e {
-            print(f"Warning: Failed to install packages: {e.stderr}", file=sys.stderr);
+            if verbose {
+                print(
+                    f"Warning: Failed to install packages (exit code {e.returncode})",
+                    file=sys.stderr
+                );
+            } else {
+                print(
+                    f"Warning: Failed to install packages: {e.stderr}", file=sys.stderr
+                );
+            }
             print("You can install packages later with: jac add --cl", file=sys.stderr);
         } except FileNotFoundError {
             print(

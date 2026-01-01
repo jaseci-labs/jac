@@ -1,4 +1,4 @@
-cl def SubmitButton -> any {
+cl def:pub SubmitButton -> any {
     return <button
         type="submit"
         style={{

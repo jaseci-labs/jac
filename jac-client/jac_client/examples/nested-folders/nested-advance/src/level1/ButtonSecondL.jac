@@ -2,7 +2,7 @@
 cl import from antd { Button }
 cl import from ..ButtonRoot { ButtonRoot }
 
-cl def ButtonSecondL -> any {
+cl def:pub ButtonSecondL -> any {
     return <div>
         <Button
             type="default"
