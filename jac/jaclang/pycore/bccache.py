@@ -26,9 +26,13 @@ def _get_jaclang_max_mtime() -> float:
 
         root = Path(jaclang.__file__).parent
         return max(
-            (f.stat().st_mtime for ext in ("*.py", "*.jac") for f in root.rglob(ext)
-             if "vendor" not in f.parts and "__pycache__" not in f.parts),
-            default=0.0
+            (
+                f.stat().st_mtime
+                for ext in ("*.py", "*.jac")
+                for f in root.rglob(ext)
+                if "vendor" not in f.parts and "__pycache__" not in f.parts
+            ),
+            default=0.0,
         )
     except (ImportError, AttributeError, OSError):
         return 0.0
