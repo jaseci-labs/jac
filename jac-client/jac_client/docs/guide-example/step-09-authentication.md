@@ -570,7 +570,6 @@ Try adding a "Remember me" message:
 
 ```jac
 def LoginPage() -> any {
-
     [username, setUsername] = useState("");
     [password, setPassword] = useState("");
 
