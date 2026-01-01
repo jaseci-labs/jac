@@ -924,3 +924,100 @@ def test_dict_pop(fixture_path: Callable[[str], str]) -> None:
     """,
         program.errors_had[2].pretty_print(),
     )
+
+
+def test_final_type_checking(fixture_path: Callable[[str], str]) -> None:
+    program = JacProgram()
+    mod = program.compile(fixture_path("checker_final.jac"))
+    TypeCheckPass(ir_in=mod, prog=program)
+    assert len(program.errors_had) == 1
+    _assert_error_pretty_found(
+        """
+        z: str = x; # <-- Error: incompatible types
+        ^^^^^^^^^^
+    """,
+        program.errors_had[0].pretty_print(),
+    )
+
+
+def test_list_iteration_type_checking(fixture_path: Callable[[str], str]) -> None:
+    """Test that list iteration correctly types the loop variable."""
+    program = JacProgram()
+    mod = program.compile(fixture_path("checker_list_iteration.jac"))
+    TypeCheckPass(ir_in=mod, prog=program)
+    assert len(program.errors_had) == 1
+    _assert_error_pretty_found(
+        """
+        y: str = i;  # <-- Error
+        ^^^^^^^^^^^
+    """,
+        program.errors_had[0].pretty_print(),
+    )
+
+
+def test_overload_decorator(fixture_path: Callable[[str], str]) -> None:
+    """Test that @overload decorator works correctly for method and magic method overloads."""
+    program = JacProgram()
+    mod = program.compile(fixture_path("checker_overload.jac"))
+    TypeCheckPass(ir_in=mod, prog=program)
+    # Expect 3 errors: __pow__ with float**float, do_something with str, and __add__ with str
+    assert len(program.errors_had) == 3
+
+    # Find the specific errors we care about
+    error_messages = [err.pretty_print() for err in program.errors_had]
+
+    # Check for do_something("hello") error
+    do_something_error = next(
+        (err for err in error_messages if "do_something" in err and "hello" in err),
+        None,
+    )
+    assert do_something_error is not None, (
+        'Expected error for foo.do_something("hello")'
+    )
+    _assert_error_pretty_found(
+        """
+        foo.do_something("hello");  # <-- Error
+        ^^^^^^^^^^^^^^^^^^^^^^^^^
+    """,
+        do_something_error,
+    )
+
+    # Check for __add__("hello") error
+    add_error = next(
+        (err for err in error_messages if "__add__" in err and "hello" in err),
+        None,
+    )
+    assert add_error is not None, 'Expected error for foo + "hello"'
+    _assert_error_pretty_found(
+        """
+        foo + "hello";  # <-- Error
+        ^^^^^^^^^^^^^
+    """,
+        add_error,
+    )
+
+
+def test_function_overload_decorator(fixture_path: Callable[[str], str]) -> None:
+    """Test that @overload decorator works correctly for top-level function overloads."""
+    program = JacProgram()
+    mod = program.compile(fixture_path("checker_function_overload.jac"))
+    TypeCheckPass(ir_in=mod, prog=program)
+    # Expect 1 error: cast("hello") with no matching overload
+    assert len(program.errors_had) == 1
+
+    # Find the specific error we care about
+    error_messages = [err.pretty_print() for err in program.errors_had]
+
+    # Check for cast("hello") error
+    cast_error = next(
+        (err for err in error_messages if "cast" in err and "hello" in err),
+        None,
+    )
+    assert cast_error is not None, 'Expected error for cast("hello")'
+    _assert_error_pretty_found(
+        """
+        z: str = cast("hello");  # <-- Error
+              ^^^^^^^^^^^^^
+    """,
+        cast_error,
+    )

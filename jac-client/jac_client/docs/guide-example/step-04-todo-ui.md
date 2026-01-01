@@ -133,7 +133,7 @@ cl {
     }
 
     # Main App
-    def app() -> any {
+    def:pub app() -> any {
         return <div style={{
             "maxWidth": "600px",
             "margin": "20px auto",
@@ -440,7 +440,7 @@ def TodoList() -> any {
 **3. Add a header:**
 
 ```jac
-def app() -> any {
+def:pub app() -> any {
     return <div>
         # Add a header
         <div style={{

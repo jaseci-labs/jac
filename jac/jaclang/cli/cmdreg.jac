@@ -50,7 +50,6 @@ class CommandRegistry {
         _finalized: bool;
 
     def init(self: CommandRegistry) -> None;
-    def _add_settings_arguments(self: CommandRegistry) -> None;
     def register(
         self: CommandRegistry,
         func: (Callable | None) = None,

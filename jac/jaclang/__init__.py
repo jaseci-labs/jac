@@ -1,5 +1,6 @@
 """The Jac Programming Language."""
 
+import os
 import sys
 
 from jaclang.meta_importer import JacMetaImporter
@@ -23,6 +24,10 @@ from jaclang.pycore.runtime import (
 sys.modules.setdefault("jaclang.runtimelib.runtime", _runtime_mod)
 
 plugin_manager.register(JacRuntimeImpl)
-plugin_manager.load_setuptools_entrypoints("jac")
+
+# Load external plugins unless JAC_DISABLE_PLUGINS is set
+# This is needed for subprocess-based tests that spawn new jac processes
+if not os.environ.get("JAC_DISABLE_PLUGINS"):
+    plugin_manager.load_setuptools_entrypoints("jac")
 
 __all__ = ["JacRuntimeInterface", "JacRuntime"]

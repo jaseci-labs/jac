@@ -1,6 +1,7 @@
 """Shared pytest fixtures for the tests directory."""
 
 import contextlib
+import glob
 import inspect
 import io
 import os
@@ -87,3 +88,63 @@ def lang_fixture_path() -> Callable[[str], str]:
         return str(file_path.resolve())
 
     return _lang_fixture_path
+
+
+# Store unregistered plugins globally for session-level management
+_external_plugins: list = []
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Disable external plugins at the start of the test session.
+
+    External plugins (jac-scale, jac-client, etc.) are disabled during tests
+    to ensure a clean test environment without MongoDB connections or other
+    plugin-specific dependencies.
+
+    Also sets JAC_DISABLE_PLUGINS env var for subprocess-based tests.
+    """
+    from jaclang.pycore.runtime import JacRuntimeImpl, plugin_manager
+
+    # Set env var for subprocess-based tests that spawn new jac processes
+    os.environ["JAC_DISABLE_PLUGINS"] = "1"
+
+    global _external_plugins
+    for name, plugin in list(plugin_manager.list_name_plugin()):
+        if plugin is JacRuntimeImpl or name == "JacRuntimeImpl":
+            continue
+        _external_plugins.append((name, plugin))
+        plugin_manager.unregister(plugin=plugin, name=name)
+
+
+def pytest_unconfigure(config: pytest.Config) -> None:
+    """Re-register external plugins at the end of the test session."""
+    from jaclang.pycore.runtime import plugin_manager
+
+    # Remove env var
+    os.environ.pop("JAC_DISABLE_PLUGINS", None)
+
+    global _external_plugins
+    for name, plugin in _external_plugins:
+        with contextlib.suppress(ValueError):
+            plugin_manager.register(plugin, name=name)
+    _external_plugins.clear()
+
+
+def _cleanup_shelf_db_files() -> None:
+    """Remove anchor_store.db files that may be created by jac-scale plugin."""
+    for pattern in [
+        "anchor_store.db.dat",
+        "anchor_store.db.bak",
+        "anchor_store.db.dir",
+    ]:
+        for file in glob.glob(pattern):
+            with contextlib.suppress(Exception):
+                Path(file).unlink()
+
+
+@pytest.fixture(autouse=True)
+def cleanup_plugin_artifacts():
+    """Clean up files created by external plugins before and after each test."""
+    _cleanup_shelf_db_files()
+    yield
+    _cleanup_shelf_db_files()

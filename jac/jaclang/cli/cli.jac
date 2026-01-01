@@ -126,6 +126,9 @@ def remove(packages: list = [], dev: bool = False, cl: bool = False) -> None;
 @cmd_registry.register
 def script(name: str = '', list_scripts: bool = False) -> None;
 
+@cmd_registry.register
+def plugins(verbose: bool = False) -> None;
+
 def start_cli -> None;
 
 with entry:__main__ {

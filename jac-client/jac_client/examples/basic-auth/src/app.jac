@@ -6,7 +6,7 @@ cl import from react {
 cl import from '@jac-client/utils' { jacSignup, jacLogin, jacLogout, jacIsLoggedIn }
 
 cl {
-    def app -> any {
+    def:pub app -> any {
         [isLoggedIn, setIsLoggedIn] = useState(False);
         [isSignup, setIsSignup] = useState(False);
         [username, setUsername] = useState("");
