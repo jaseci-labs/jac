@@ -70,19 +70,11 @@ def test_deploy_todo_app():
     namespace = "todo-app"
 
     # Set environment
-    os.environ.update(
-        {
-            "APP_NAME": "todo-app",
-            "K8s_MONGODB": "true",
-            "K8s_REDIS": "true",
-            "K8s_NAMESPACE": namespace,
-            "K8s_NODE_PORT": "30051",
-        }
-    )
+    os.environ.update({"APP_NAME": "todo-app", "K8s_NAMESPACE": namespace})
 
     # Resolve the absolute path to the todo app folder
     test_dir = os.path.dirname(os.path.abspath(__file__))
-    todo_app_path = os.path.join(test_dir, "../../examples/todo")
+    todo_app_path = os.path.join(test_dir, "../../examples/todo/src")
 
     # Run deploy with build=False, targeting the app.jac file in examples/todo folder
     deploy_K8s(code_folder=todo_app_path, file_name="app.jac", build=False)

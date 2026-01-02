@@ -1,6 +1,6 @@
 """Test for base classes."""
 
-import from impl.imps { test_glob as mine }
+include impl.imps;
 # import impl.imps;
 obj Test {
     def init;
@@ -8,5 +8,5 @@ obj Test {
 }
 
 with entry {
-    print(f"{mine}");
+    print(f"{test_glob}");
 }

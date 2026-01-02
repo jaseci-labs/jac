@@ -13,7 +13,7 @@ def test_no_dupl_symbols() -> None:
         "symtab_link_tests",
         "no_dupls.jac",
     )
-    mod = JacProgram().build(file_path)
+    mod = JacProgram().compile(file_path)
     assert len(mod.sym_tab.names_in_scope.values()) == 3
 
     for i in ["[Symbol(a,", "Symbol(Man,", "Symbol(p,"]:

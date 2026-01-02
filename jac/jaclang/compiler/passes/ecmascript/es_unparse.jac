@@ -4,7 +4,7 @@ ECMAScript/JavaScript code generation from ESTree AST.
 This module provides functionality to convert ESTree AST nodes back to
 JavaScript source code (unparsing).
 """
-import from __future__ { annotations }
+
 import from jaclang.compiler.passes.ecmascript { estree as es }
 """Generate JavaScript code from ESTree AST."""
 class JSCodeGenerator {
