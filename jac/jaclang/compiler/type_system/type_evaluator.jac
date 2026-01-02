@@ -266,6 +266,10 @@ class TypeEvaluator {
     def _validate_constructor_method(
         self: TypeEvaluator, expr: uni.FuncCall, method_type: TypeBase
     ) -> bool;
+
+    def _collect_method_overloads(
+        self: TypeEvaluator, class_member: type_utils.ClassMember
+    ) -> TypeBase;
 }
 # FIXME: This class implementation is modified from pyright to make it
 # simple and work for now, however this needs to be revisited and

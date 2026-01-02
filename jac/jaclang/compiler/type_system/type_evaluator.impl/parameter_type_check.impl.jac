@@ -86,19 +86,7 @@ impl TypeEvaluator.validate_call_args(
             is_from_object = new_method.class_type.shared.class_name == "object";
             if not is_from_object {
                 # Collect all overloads for __new__
-                method_type = self.get_type_of_symbol(new_method.symbol);
-                if isinstance(method_type, types.FunctionType) and len(new_method.overloads) > 0 {
-                    overloaded_fns: list[types.FunctionType] = [method_type];
-                    for overload in new_method.overloads {
-                        overload_type = self.get_type_of_symbol(overload);
-                        if isinstance(overload_type, types.FunctionType) {
-                            overloaded_fns.append(overload_type);
-                        }
-                    }
-                    if len(overloaded_fns) > 1 {
-                        method_type = types.OverloadedType(overloaded_fns);
-                    }
-                }
+                method_type = self._collect_method_overloads(new_method);
                 validated = self._validate_constructor_method(expr, method_type);
             }
         }
@@ -106,19 +94,7 @@ impl TypeEvaluator.validate_call_args(
         if not validated {
             if init_method := self._lookup_class_member(caller_type, "__init__") {
                 # Collect all overloads for __init__
-                method_type = self.get_type_of_symbol(init_method.symbol);
-                if isinstance(method_type, types.FunctionType) and len(init_method.overloads) > 0 {
-                    overloaded_fns: list[types.FunctionType] = [method_type];
-                    for overload in init_method.overloads {
-                        overload_type = self.get_type_of_symbol(overload);
-                        if isinstance(overload_type, types.FunctionType) {
-                            overloaded_fns.append(overload_type);
-                        }
-                    }
-                    if len(overloaded_fns) > 1 {
-                        method_type = types.OverloadedType(overloaded_fns);
-                    }
-                }
+                method_type = self._collect_method_overloads(init_method);
                 self._validate_constructor_method(expr, method_type);
             } elif caller_type.is_data_class() {
                 self._validate_constructor_method(
@@ -257,4 +233,27 @@ impl TypeEvaluator._validate_constructor_method(
         return True;
     }
     return False;
+}
+
+"""
+Collect all overloads for a class member and return an OverloadedType if multiple exist.
+If only one overload exists, returns the single FunctionType.
+"""
+impl TypeEvaluator._collect_method_overloads(
+    self: TypeEvaluator, class_member: type_utils.ClassMember
+) -> TypeBase {
+    method_type = self.get_type_of_symbol(class_member.symbol);
+    if isinstance(method_type, types.FunctionType) and len(class_member.overloads) > 0 {
+        overloaded_fns: list[types.FunctionType] = [method_type];
+        for overload in class_member.overloads {
+            overload_type = self.get_type_of_symbol(overload);
+            if isinstance(overload_type, types.FunctionType) {
+                overloaded_fns.append(overload_type);
+            }
+        }
+        if len(overloaded_fns) > 1 {
+            return types.OverloadedType(overloaded_fns);
+        }
+    }
+    return method_type;
 }
