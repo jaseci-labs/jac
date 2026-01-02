@@ -19,11 +19,6 @@ enum CommandPriority {
 
 """Represents a command in the command line interface."""
 obj Command {
-    has func: Callable,
-        sig: inspect.Signature,
-        priority: CommandPriority,
-        source: str;
-
     def init(
         func: Callable,
         priority: CommandPriority = CommandPriority.CORE,
@@ -37,13 +32,6 @@ def extract_param_descriptions(docstring: str) -> dict[str, str];
 
 """Registry for managing commands in the command line interface."""
 obj CommandRegistry {
-    has registry: dict[(str, Command)],
-        pending_commands: dict[(str, list[Command])],
-        sub_parsers: argparse._SubParsersAction,
-        parser: argparse.ArgumentParser,
-        args: argparse.Namespace,
-        _finalized: bool;
-
     def init -> None;
     def register(
         func: (Callable | None) = None,
