@@ -557,7 +557,8 @@ impl TypeEvaluator.assign_type(
         }
     }
     # Everything is assignable to object or Any.
-    if isinstance(dest_type, types.ClassType) and (
+    if isinstance(dest_type, types.ClassType)
+    and (
         dest_type.is_builtin("object")
         or dest_type.shared == self.prefetch.any_class.shared
     ) {
