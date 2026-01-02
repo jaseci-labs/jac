@@ -26,7 +26,7 @@ obj JacAutoLintPass(UniPass) {
     """Initialize the pass with linting options."""
     has lint_enabled: bool = True;
 
-    def init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) -> None;
+    def init(ir_in: uni.Module, prog: Any) -> None;
     def enter_module(node: uni.Module) -> None;
     def can_convert_to_glob(assignment: uni.Assignment) -> bool;
     def is_module_level_construct(stmt: uni.UniNode) -> bool;

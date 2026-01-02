@@ -1,8 +1,6 @@
 """Initialize the JacAutoLintPass."""
-impl JacAutoLintPass.init(
-    ir_in: uni.Module, prog: Any, cancel_token: Any = None
-) -> None {
-    super.init(ir_in, prog, cancel_token);
+impl JacAutoLintPass.init(ir_in: uni.Module, prog: Any) -> None {
+    super.init(ir_in, prog);
 }
 
 """Remove empty parentheses from function signatures with no parameters.
