@@ -1021,3 +1021,38 @@ def test_function_overload_decorator(fixture_path: Callable[[str], str]) -> None
     """,
         cast_error,
     )
+
+
+def test_walrus_operator(fixture_path: Callable[[str], str]) -> None:
+    """Test walrus operator (:=) type checking."""
+    program = JacProgram()
+    mod = program.compile(fixture_path("checker_walrus_operator.jac"))
+    TypeCheckPass(ir_in=mod, prog=program)
+    # Expect 5 errors: multiple type assignment errors with walrus operator
+    assert len(program.errors_had) == 5
+
+    expected_errors = [
+        """
+        glob result3: str = result1;
+        ^^^^^^^^^^^^^^^^^^^^^^
+        """,
+        """
+        glob result4: str = z;
+        ^^^^^^^^^^^^^^^^
+        """,
+        """
+        y = "hello";
+        ^^^^^^^^^^^^
+        """,
+        """
+        p: AnotherNode = n;
+        ^^^^^^^^^^^^^^^^^^^
+        """,
+        """
+        a = AnotherNode();
+        ^^^^^^^^^^^^^^^^^^
+        """,
+    ]
+
+    for i, expected in enumerate(expected_errors):
+        _assert_error_pretty_found(expected, program.errors_had[i].pretty_print())

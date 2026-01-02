@@ -383,6 +383,17 @@ impl TypeEvaluator._get_type_of_symbol(
                 }
             }
 
+            # ---- Handle walrus assignment: (x := <expr>) ----
+            if (
+                isinstance(node_.parent, uni.BinaryExpr)
+                and isinstance(node_.parent.op, uni.Token)
+                and node_.parent.op.name == "WALRUS_EQ"
+                and node_.parent.left is node_
+            ) {
+                # The left side of walrus gets the type from the right side
+                return self.get_type_of_expression(node_.parent.right);
+            }
+
             # ---- Handle member assignment: for <name> in <expr> ----
             if isinstance(node_.parent, uni.InForStmt) {
                 collection_type = self.get_type_of_expression(node_.parent.collection);
