@@ -225,10 +225,10 @@ def Complex() -> any {
 # Return multiple elements without a wrapper
 def Fragment() -> any {
     return (
-        <>
+        <Frament>
             <h1>Title</h1>
             <p>Description</p>
-        </>
+        </Fragment>
     );
 }
 ```
@@ -238,7 +238,7 @@ def Fragment() -> any {
 ```jac
 def MaybeShow(visible: bool) -> any {
     if not visible {
-        return <></>;  # Return empty fragment
+        return <Frament></Fragment>;  # Return empty fragment
     }
 
     return <div>Content</div>;
@@ -332,8 +332,8 @@ cl {
 | Entry point      | `App()`              | `app()`                |
 | Wrap code        | N/A                  | `cl { }`               |
 | Export           | `export function`    | `def:pub`              |
-| Fragment         | `<></>`              | `<></>`                |
-| Return null      | `return null`        | `return <></>`         |
+| Fragment         | `<Frament></Fragment>`              | `<Frament></Fragment>`                |
+| Return null      | `return null`        | `return <Frament></Fragment>`         |
 
 ---
 
