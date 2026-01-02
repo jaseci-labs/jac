@@ -179,5 +179,3 @@ jobs:
       - name: Delete Kind cluster
         if: always() && steps.k8s-changes.outputs.k8s == 'true'
         run: kind delete cluster --name jaseci-test
-
-
