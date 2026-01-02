@@ -80,11 +80,13 @@ Jaseci uses two primary branches with different purposes:
 ### When to Target Each Branch
 
 **Target `stable` for:**
+
 - Hotfixes for critical bugs reported from production/PyPI packages
 - Security patches
 - Critical fixes that need to be released immediately
 
 **Target `main` for:**
+
 - New features
 - Bugfixes (non-critical)
 - Experimental changes
@@ -99,7 +101,7 @@ When you need to fix a critical issue reported from the stable/PyPI version:
    ```bash
    # Fetch latest changes
    git fetch upstream
-   
+
    # Checkout and create branch from stable
    git checkout upstream/stable
    git checkout -b hotfix/description-of-fix
@@ -145,7 +147,7 @@ For new features, non-critical bugfixes, and experimental work:
    ```bash
    # Fetch latest changes
    git fetch upstream
-   
+
    # Checkout and create branch from main
    git checkout upstream/main
    git checkout -b feature/your-feature-name
@@ -192,11 +194,13 @@ For new features, non-critical bugfixes, and experimental work:
 Version numbers are managed in `pyproject.toml` files for each package. The version format follows [Semantic Versioning](https://semver.org/) (MAJOR.MINOR.PATCH).
 
 **Version Format: `X.Y.Z`**
+
 - **X (MAJOR)**: Breaking changes that are incompatible with previous versions
 - **Y (MINOR)**: New features that are backward compatible
 - **Z (PATCH)**: Bug fixes that are backward compatible
 
 **Packages that require version updates:**
+
 - `jac/pyproject.toml` (jaclang)
 - `jac-client/pyproject.toml` (jac-cloud)
 - `jac-byllm/pyproject.toml` (byllm)
@@ -218,6 +222,7 @@ When submitting a hotfix to the `stable` branch, **you must bump the PATCH versi
 **Version Update Rule**: `X.Y.Z` → `X.Y.(Z+1)`
 
 Examples:
+
 - `0.9.3` → `0.9.4` (PATCH increment)
 - `1.2.0` → `1.2.1` (PATCH increment)
 - `2.0.5` → `2.0.6` (PATCH increment)
@@ -229,9 +234,11 @@ Examples:
    - Increment **only the PATCH (Z)** component
    - MINOR (Y) and MAJOR (X) remain unchanged
    - Example: If fixing a bug in jaclang, update `jac/pyproject.toml`:
+
      ```toml
      version = "0.9.4"  # was 0.9.3 (PATCH: 3 → 4)
      ```
+
 3. **If jaclang version is bumped**, also update the jaclang requirement in dependent packages:
    - Update `jac-client/pyproject.toml` dependencies if it requires a specific jaclang version
    - Update `jac-byllm/pyproject.toml` dependencies if it requires a specific jaclang version
