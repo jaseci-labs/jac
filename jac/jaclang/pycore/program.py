@@ -301,10 +301,7 @@ class JacProgram:
         self, file_path: str, use_str: str | None = None, type_check: bool = False
     ) -> uni.Module:
         """Convert a Jac file to an AST."""
-        from jaclang.compiler.passes.main import JacImportDepsPass
-
         mod_targ = self.compile(file_path, use_str, type_check=type_check)
-        JacImportDepsPass(ir_in=mod_targ, prog=self)
         SemanticAnalysisPass(ir_in=mod_targ, prog=self)
         return mod_targ
 

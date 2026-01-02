@@ -13,6 +13,17 @@ import from kubernetes.config.config_exception { ConfigException }
 import from requests.exceptions { RequestException }
 def debug_print(statement: str, debug_only: bool = False) -> None;
 
+def parse_cpu_quantity(quantity: str) -> float;
+
+def parse_memory_quantity(quantity: str) -> float;
+
+def validate_resource_limits(
+    cpu_request: (str | None),
+    cpu_limit: (str | None),
+    memory_request: (str | None),
+    memory_limit: (str | None)
+) -> None;
+
 def load_env_variables(code_folder: str) -> list;
 
 def check_K8s_status -> None;

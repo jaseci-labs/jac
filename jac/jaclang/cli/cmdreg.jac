@@ -1,5 +1,5 @@
 """Common code for command line interface tool for the Jac language."""
-import from __future__ { annotations }
+
 import argparse;
 import inspect;
 import os;

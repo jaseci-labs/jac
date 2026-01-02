@@ -1,7 +1,7 @@
 #
 # Combined example: auth + routing + CSS styling + asset serving + nested folder imports
 #
-cl import from react { useState, useEffect }
+cl import from react { useState, useEffect, useRef }
 cl import from "@jac-client/utils" {
     Router,
     Routes,
@@ -354,6 +354,24 @@ cl {
 
         useEffect(lambda   -> None{ loadServerMessage();} , []);
 
+        # Initialize a Web Worker and handle message-based communication
+        workerRef = useRef(null);
+        [message, setMessage] = useState("");
+
+        useEffect(lambda -> None {
+            workerRef.current = Reflect.construct(Worker, ["/workers/worker.js"]);
+            workerRef.current.onmessage = lambda event: any -> None {
+                console.log("Message received from worker:", event.data);
+                setMessage(event.data);
+            };
+            return (lambda -> None {
+                workerRef.current.terminate();
+            });
+        }, []);
+        handleClick = lambda -> None {
+            workerRef.current.postMessage("");
+        };
+
         return <div
             style={{
                 "padding": "2rem",
@@ -554,6 +572,50 @@ cl {
                         style={{"marginTop": "0.5rem", "color": "#111827"}}
                     >
                         {lastTodoMessage}
+                    </p>
+                )}
+            </div>
+            <div
+                style={{"marginTop": "2rem"}}
+            >
+                <h3>
+                    Web Worker
+                </h3>
+                <p>
+                    This demonstrates how to communicate with a
+                    {" "}
+                    <strong>Python backend worker</strong>
+                    {" "}
+                    using Web Workers for asynchronous processing.
+                </p>
+                <p
+                    style={{"fontSize": "0.9rem", "color": "#666", "marginTop": "0.5rem"}}
+                >
+                    File:
+                    {" "}
+                    <code>
+                        worker.py
+                    </code>
+                    {" "}
+                    — Runs in a separate thread to avoid blocking the UI.
+                </p>
+                <button
+                    onClick={lambda -> None { handleClick(); }}
+                    style={{
+                        "padding": "0.5rem 1.2rem",
+                        "marginRight": "0.75rem",
+                        "backgroundColor": "#d73bf6ff",
+                        "color": "white",
+                        "border": "none",
+                        "borderRadius": "6px",
+                        "cursor": "pointer"
+                    }}
+                >
+                    Call Python Worker
+                </button>
+                {message && (
+                    <p style={{ marginTop: "1rem", fontWeight: "bold" }}>
+                    {message}
                     </p>
                 )}
             </div>
