@@ -9,7 +9,7 @@ import pytest
 # Utility Functions
 # -----------------------------------------------------------------
 def get_md_files() -> list[str]:
-    """Retrieve all Markdown files in the docs directory."""
+    """Retrieve all Markdown files in the docs directory"""
     docs_dir = os.path.join(os.path.dirname(__file__), "../docs")
     md_files = []
     for root, _, files in os.walk(docs_dir):
@@ -24,7 +24,7 @@ def get_md_files() -> list[str]:
 # -----------------------------------------------------------------
 @pytest.mark.parametrize("md_file", get_md_files())
 def test_md_file_is_valid(md_file: str) -> None:
-    """Ensure all Markdown files in the docs directory are valid."""
+    """Ensure all Markdown files in the docs directory are valid"""
     assert os.path.exists(md_file), f"File not found: {md_file}"
 
     file_size = os.path.getsize(md_file)
