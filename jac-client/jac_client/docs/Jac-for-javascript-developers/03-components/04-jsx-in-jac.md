@@ -308,10 +308,10 @@ Always provide unique keys:
 ### Empty Fragment
 
 ```jac
-<>
+<Fragment>
     <h1>Title</h1>
     <p>Description</p>
-</>
+</Fragment>
 ```
 
 ### Return Nothing
@@ -319,7 +319,7 @@ Always provide unique keys:
 ```jac
 def MaybeRender(show: bool) -> any {
     if not show {
-        return <></>;  # Empty fragment
+        return <Fragment></Fragment>;  # Empty fragment
     }
 
     return <div>Content</div>;
@@ -411,7 +411,7 @@ if isDisabled {
 | AND render    | `{x && <Y />}`        | `{x and <Y />}`          |
 | OR default    | `{x \|\| "default"}`  | `{x or "default"}`       |
 | Event handler | `onClick={() => {}}`  | `onClick={lambda: fn()}` |
-| Empty return  | `return null`         | `return <></>`           |
+| Empty return  | `return null`         | `return <Fragment></Fragment>`           |
 | Comments      | `{/* comment */}`     | `{# comment #}`          |
 
 ---
@@ -419,3 +419,4 @@ if isDisabled {
 ## Next Section
 
 - [State and Hooks](../04-state-and-hooks/01-useState.md) - useState, useEffect, and more
+
