@@ -14,15 +14,14 @@ import jaclang.pycore.unitree as uni;
 import from jaclang.pycore.passes.transform { Transform }
 import from jaclang.pycore.unitree { Symbol, UniScopeNode }
 """Jac Semantic definition match pass."""
-class SemDefMatchPass(Transform[(uni.Module, uni.Module)]) {
-    def transform(self: SemDefMatchPass, ir_in: uni.Module) -> uni.Module;
+obj SemDefMatchPass(Transform[(uni.Module, uni.Module)]) {
+    def init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) -> None;
+    def transform(ir_in: uni.Module) -> uni.Module;
     def find_symbol_from_dotted_name(
-        self: SemDefMatchPass, dotted_name: str, target_sym_tab: UniScopeNode
+        dotted_name: str, target_sym_tab: UniScopeNode
     ) -> (Symbol | None);
 
     def connect_sems(
-        self: SemDefMatchPass,
-        source_sym_tab: UniScopeNode,
-        target_sym_tab: UniScopeNode
+        source_sym_tab: UniScopeNode, target_sym_tab: UniScopeNode
     ) -> None;
 }
