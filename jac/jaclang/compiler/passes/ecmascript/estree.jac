@@ -9,7 +9,6 @@ transpilers, and code analysis tools.
 
 Reference: https://github.com/estree/estree
 """
-import from __future__ { annotations }
 import from typing { Any, TypeAlias }
 import from typing { Literal as TypingLiteral }
 

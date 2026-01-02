@@ -600,3 +600,41 @@ class TestTernaryToOrConversion:
 
         # Without linting, ternary should remain (may be multi-line in formatted output)
         assert "if instance.value" in formatted and "else 0" in formatted
+
+
+class TestRemoveFutureAnnotations:
+    """Tests for removing `import from __future__ { annotations }`."""
+
+    def test_future_annotations_removed(
+        self, auto_lint_fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that `import from __future__ { annotations }` is removed."""
+        input_path = auto_lint_fixture_path("future_annotations.jac")
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True)
+        formatted = prog.mod.main.gen.jac
+
+        # The __future__ annotations import statement should be removed
+        # (note: __future__ may still appear in the docstring, so check import statement)
+        assert "import from __future__" not in formatted
+
+        # Other imports should be preserved
+        assert "import from os" in formatted
+
+        # Rest of the code should be preserved
+        assert "obj Person" in formatted
+        assert "def greet" in formatted
+        assert "def main" in formatted
+
+    def test_future_annotations_preserved_without_lint(
+        self, auto_lint_fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that auto_lint=False preserves __future__ annotations import."""
+        input_path = auto_lint_fixture_path("future_annotations.jac")
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=False)
+        formatted = prog.mod.main.gen.jac
+
+        # Without linting, __future__ import should remain
+        assert "__future__" in formatted
+        assert "annotations" in formatted
