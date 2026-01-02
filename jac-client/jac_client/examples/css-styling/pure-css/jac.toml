@@ -8,5 +8,3 @@ entry-point = "src/app.jac"
 # Vite bundler configuration (optional overrides)
 # vite.plugins = []
 # vite.build = {}
-
-
