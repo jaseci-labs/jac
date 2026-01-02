@@ -245,4 +245,4 @@ for i=0 to i<10 by i+=1 {
 
 ## Next
 
-- [Array Methods](04-array-methods.md) - map, filter, find, reduce
+- [Array Methods](./04-array-methods.md) - map, filter, find, reduce

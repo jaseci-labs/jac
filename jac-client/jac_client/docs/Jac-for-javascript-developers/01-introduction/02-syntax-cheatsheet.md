@@ -141,9 +141,9 @@ cl import from react { useState }
 
 ### Return Nothing
 
-| JavaScript    | Jac            |
-| ------------- | -------------- |
-| `return null` | `return <></>` |
+| JavaScript    | Jac                            |
+| ------------- | ------------------------------ |
+| `return null` | `return <Fragment></Fragment>` |
 
 ---
 
@@ -365,7 +365,7 @@ try {
 | Comment        | `// text`                       | `# text`                           |
 | Import         | `import { x } from 'lib'`       | `cl import from lib { x }`         |
 | Export         | `export function fn()`          | `def:pub fn() -> any {}`           |
-| Return null    | `return null`                   | `return <></>`                     |
+| Return null    | `return null`                   | `return <Fragment></Fragment>`     |
 
 ---
 

@@ -145,7 +145,3 @@ cl {
 | Export enum     | `enum:pub Name { }`                |
 
 ---
-
-## Next
-
-- [Project Structure](../10-project-structure/) - File organization

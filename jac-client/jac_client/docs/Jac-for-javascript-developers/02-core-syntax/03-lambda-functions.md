@@ -441,4 +441,4 @@ lambda -> None { doSomething(); }
 
 ## Next
 
-- [Operators](04-operators.md) - and/or/not and comparisons
+- [Operators](./04-operators.md) - and/or/not and comparisons

@@ -324,4 +324,4 @@ if items.length {  # truthy if length > 0
 
 ## Next
 
-- [Functions](02-functions.md) - Learn function syntax
+- [Functions](./02-functions.md) - Learn function syntax

@@ -368,4 +368,4 @@ def List(items: list, renderItem: any) -> any {
 
 ## Next
 
-- [JSX in JAC](04-jsx-in-jac.md) - JSX syntax differences
+- [JSX in JAC](./04-jsx-in-jac.md) - JSX syntax differences

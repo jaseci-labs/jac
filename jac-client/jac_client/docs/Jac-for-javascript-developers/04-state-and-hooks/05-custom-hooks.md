@@ -465,4 +465,4 @@ cl {
 
 ## Next Section
 
-- [Event Handling](../05-event-handling/) - Click, form, keyboard events
+- [Event Handling](../05-event-handling/01-click-events.md) - Click, form, keyboard events

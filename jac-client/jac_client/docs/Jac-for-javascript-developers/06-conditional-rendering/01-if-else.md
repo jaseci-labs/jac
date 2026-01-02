@@ -224,4 +224,4 @@ def MaybeShow(props: dict) -> any {
 
 ## Next
 
-- [Ternary Operator](02-ternary.md) - Python-style conditionals
+- [Ternary Operator](./02-ternary.md) - Python-style conditionals

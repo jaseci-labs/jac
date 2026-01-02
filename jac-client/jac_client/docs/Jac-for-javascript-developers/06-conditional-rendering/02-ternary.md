@@ -260,4 +260,4 @@ def StatusIcon(props: dict) -> any {
 
 ## Next
 
-- [Logical Operators](03-logical-operators.md) - and/or patterns
+- [Logical Operators](./03-logical-operators.md) - and/or patterns

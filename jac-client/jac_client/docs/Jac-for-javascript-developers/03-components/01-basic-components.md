@@ -339,4 +339,4 @@ cl {
 
 ## Next
 
-- [Props](02-props.md) - Passing data to components
+- [Props](./02-props.md) - Passing data to components

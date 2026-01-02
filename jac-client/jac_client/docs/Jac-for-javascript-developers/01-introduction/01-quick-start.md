@@ -286,9 +286,9 @@ cl {
 
 Now that you've built your first components:
 
-1. **[Syntax Cheatsheet](03-syntax-cheatsheet.md)** - Quick reference for all syntax
-2. **[Core Syntax](../02-core-syntax/)** - Deep dive into syntax differences
-3. **[Components](../03-components/)** - Learn component patterns
+1. **[Syntax Cheatsheet](./02-syntax-cheatsheet.md)** - Quick reference for all syntax
+2. **[Core Syntax](../02-core-syntax/01-variables-and-types.md)** - Deep dive into syntax differences
+3. **[Components](../03-components/01-basic-components.md)** - Learn component patterns
 
 ---
 

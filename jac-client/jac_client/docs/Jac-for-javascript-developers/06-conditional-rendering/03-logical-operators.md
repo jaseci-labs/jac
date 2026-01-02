@@ -340,4 +340,4 @@ def ItemList(props: dict) -> any {
 
 ## Next
 
-- [Advanced Patterns](04-advanced-patterns.md) - Object lookup, fragments
+- [Advanced Patterns](./04-advanced-patterns.md) - Object lookup, fragments

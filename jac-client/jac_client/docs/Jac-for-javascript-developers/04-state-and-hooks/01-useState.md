@@ -391,4 +391,4 @@ def Controls(onIncrement: any, onDecrement: any) -> any {
 
 ## Next
 
-- [useEffect](02-useEffect.md) - Side effects and lifecycle
+- [useEffect](./02-useEffect.md) - Side effects and lifecycle

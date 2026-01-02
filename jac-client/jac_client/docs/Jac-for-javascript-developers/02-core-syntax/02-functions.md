@@ -354,4 +354,4 @@ def Counter() -> any {
 
 ## Next
 
-- [Lambda Functions](03-lambda-functions.md) - Arrow function equivalent (most important!)
+- [Lambda Functions](./03-lambda-functions.md) - Arrow function equivalent (most important!)

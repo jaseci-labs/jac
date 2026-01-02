@@ -318,4 +318,4 @@ def CategoryList() -> any {
 
 ## Next Section
 
-- [Exception Handling](../08-exception-handling/) - try/except
+- [Exception Handling](../08-exception-handling/index.md) - try/except

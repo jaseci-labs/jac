@@ -453,4 +453,4 @@ def UserList(users: list) -> any {
 
 ## Next Section
 
-- [Components](../03-components/) - Learn component patterns
+- [Components](../03-components/01-basic-components.md) - Learn component patterns

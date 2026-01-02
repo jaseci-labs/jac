@@ -345,4 +345,4 @@ def Dashboard(user: dict, settings: dict) -> any {
 
 ## Next Section
 
-- [Lists and Loops](../07-lists-and-loops/) - For loops, array methods
+- [Lists and Loops](../07-lists-and-loops/01-for-loops.md) - For loops, array methods

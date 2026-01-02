@@ -337,4 +337,4 @@ def GlobalKeyListener() -> any {
 
 ## Next Section
 
-- [Conditional Rendering](../06-conditional-rendering/) - if/else, ternary, and/or
+- [Conditional Rendering](../06-conditional-rendering/01-if-else.md) - if/else, ternary, and/or

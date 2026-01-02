@@ -243,4 +243,4 @@ def NumberList() -> any {
 
 ## Next
 
-- [For-In Loops](02-for-in-loops.md) - Array iteration
+- [For-In Loops](./02-for-in-loops.md) - Array iteration

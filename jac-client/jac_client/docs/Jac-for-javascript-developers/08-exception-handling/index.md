@@ -145,4 +145,4 @@ def SafeComponent() -> any {
 
 ## Next
 
-- [Imports and Exports](../09-imports-and-exports/) - Module system
+- [Imports and Exports](../09-imports-and-exports/index.md) - Module system

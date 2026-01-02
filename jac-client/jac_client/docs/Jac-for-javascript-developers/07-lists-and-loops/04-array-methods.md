@@ -311,4 +311,4 @@ sorted = arr.sort(compare);
 
 ## Next
 
-- [Rendering Lists](05-rendering-lists.md) - Lists in JSX
+- [Rendering Lists](./05-rendering-lists.md) - Lists in JSX
