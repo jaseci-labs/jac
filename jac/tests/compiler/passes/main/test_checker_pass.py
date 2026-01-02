@@ -1021,3 +1021,12 @@ def test_function_overload_decorator(fixture_path: Callable[[str], str]) -> None
     """,
         cast_error,
     )
+
+
+def test_builtin_new_overloads(fixture_path: Callable[[str], str]) -> None:
+    """Test that overloaded __new__ methods work correctly for built-in types like range, int, str."""
+    program = JacProgram()
+    mod = program.compile(fixture_path("checker_builtin_new_overloads.jac"))
+    TypeCheckPass(ir_in=mod, prog=program)
+    # Expect no errors - all valid calls to overloaded __new__ methods
+    assert len(program.errors_had) == 0

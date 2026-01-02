@@ -85,17 +85,41 @@ impl TypeEvaluator.validate_call_args(
             # object.__new__ accepts (*args, **kwargs) which matches anything
             is_from_object = new_method.class_type.shared.class_name == "object";
             if not is_from_object {
-                validated = self._validate_constructor_method(
-                    expr, self.get_type_of_symbol(new_method.symbol)
-                );
+                # Collect all overloads for __new__
+                method_type = self.get_type_of_symbol(new_method.symbol);
+                if isinstance(method_type, types.FunctionType) and len(new_method.overloads) > 0 {
+                    overloaded_fns: list[types.FunctionType] = [method_type];
+                    for overload in new_method.overloads {
+                        overload_type = self.get_type_of_symbol(overload);
+                        if isinstance(overload_type, types.FunctionType) {
+                            overloaded_fns.append(overload_type);
+                        }
+                    }
+                    if len(overloaded_fns) > 1 {
+                        method_type = types.OverloadedType(overloaded_fns);
+                    }
+                }
+                validated = self._validate_constructor_method(expr, method_type);
             }
         }
         # Fall back to __init__ if __new__ didn't have meaningful params
         if not validated {
             if init_method := self._lookup_class_member(caller_type, "__init__") {
-                self._validate_constructor_method(
-                    expr, self.get_type_of_symbol(init_method.symbol)
-                );
+                # Collect all overloads for __init__
+                method_type = self.get_type_of_symbol(init_method.symbol);
+                if isinstance(method_type, types.FunctionType) and len(init_method.overloads) > 0 {
+                    overloaded_fns: list[types.FunctionType] = [method_type];
+                    for overload in init_method.overloads {
+                        overload_type = self.get_type_of_symbol(overload);
+                        if isinstance(overload_type, types.FunctionType) {
+                            overloaded_fns.append(overload_type);
+                        }
+                    }
+                    if len(overloaded_fns) > 1 {
+                        method_type = types.OverloadedType(overloaded_fns);
+                    }
+                }
+                self._validate_constructor_method(expr, method_type);
             } elif caller_type.is_data_class() {
                 self._validate_constructor_method(
                     expr, self._create_dataclass_init_method(caller_type)
