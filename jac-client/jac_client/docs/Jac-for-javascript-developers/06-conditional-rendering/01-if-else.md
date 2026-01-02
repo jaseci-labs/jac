@@ -174,12 +174,12 @@ def ItemCard(props: dict) -> any {
     item = props["item"];
 
     # Build content conditionally
-    badge = <></>;
+    badge = <Fragment></Fragment>;
     if item["isNew"] {
         badge = <span style={{ "color": "green" }}>NEW</span>;
     }
 
-    discount = <></>;
+    discount = <Fragment></Fragment>;
     if item["discount"] > 0 {
         discount = <span style={{ "color": "red" }}>{item["discount"]}% OFF</span>;
     }
@@ -202,7 +202,7 @@ Use empty fragment to return nothing:
 ```jac
 def MaybeShow(props: dict) -> any {
     if not props["visible"] {
-        return <></>;  # Return nothing
+        return <Fragment></Fragment>;  # Return nothing
     }
 
     return <div>Visible content</div>;
@@ -213,12 +213,12 @@ def MaybeShow(props: dict) -> any {
 
 ## Summary
 
-| Pattern        | Use Case                           |
-| -------------- | ---------------------------------- |
-| Early return   | Check for null/invalid state first |
-| If/elif/else   | Multiple exclusive conditions      |
-| Guard clauses  | Check permissions/validation       |
-| Empty fragment | Return nothing: `return <></>`     |
+| Pattern        | Use Case                                       |
+| -------------- | ---------------------------------------------- |
+| Early return   | Check for null/invalid state first             |
+| If/elif/else   | Multiple exclusive conditions                  |
+| Guard clauses  | Check permissions/validation                   |
+| Empty fragment | Return nothing: `return <Fragment></Fragment>` |
 
 ---
 
