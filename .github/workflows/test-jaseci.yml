@@ -90,7 +90,7 @@ jobs:
       run: pytest -x jac-byllm jac-streamlit
 
     - name: Run documentation validation tests
-      run: pytest -v docs/tests/test_validate_md_files.py
+      run: pytest -q -x docs/tests/test_validate_md_files.py
 
   test-scale:
     runs-on: ubuntu-latest
