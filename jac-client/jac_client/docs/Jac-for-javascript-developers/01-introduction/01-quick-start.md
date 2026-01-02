@@ -1,6 +1,6 @@
 # Quick Start Guide
 
-Build your first JAC-Client component in minutes.
+Build your first Jac component in minutes.
 
 ---
 
@@ -286,21 +286,21 @@ cl {
 
 Now that you've built your first components:
 
-1. **[Syntax Cheatsheet](03-syntax-cheatsheet.md)** - Quick reference for all syntax
-2. **[Core Syntax](../02-core-syntax/)** - Deep dive into syntax differences
-3. **[Components](../03-components/)** - Learn component patterns
+1. **[Syntax Cheatsheet](./02-syntax-cheatsheet.md)** - Quick reference for all syntax
+2. **[Core Syntax](../02-core-syntax/01-variables-and-types.md)** - Deep dive into syntax differences
+3. **[Components](../03-components/01-basic-components.md)** - Learn component patterns
 
 ---
 
 ## Common Beginner Mistakes
 
-| Mistake | Fix |
-|---------|-----|
-| Using `const` or `let` | Just assign: `x = 5` |
-| Using `=>` for functions | Use `lambda: expr` or `lambda -> Type {}` |
-| Using `? :` for ternary | Use `(a) if condition else (b)` |
-| Using `true`/`false` | Use `True`/`False` |
-| Using `null` | Use `None` |
-| Using `&&` | Use `and` |
-| Using `!` | Use `not` |
-| Using unquoted object keys | Quote all keys: `{ "key": value }` |
+| Mistake                    | Fix                                       |
+| -------------------------- | ----------------------------------------- |
+| Using `const` or `let`     | Just assign: `x = 5`                      |
+| Using `=>` for functions   | Use `lambda: expr` or `lambda -> Type {}` |
+| Using `? :` for ternary    | Use `(a) if condition else (b)`           |
+| Using `true`/`false`       | Use `True`/`False`                        |
+| Using `null`               | Use `None`                                |
+| Using `&&`                 | Use `and`                                 |
+| Using `!`                  | Use `not`                                 |
+| Using unquoted object keys | Quote all keys: `{ "key": value }`        |

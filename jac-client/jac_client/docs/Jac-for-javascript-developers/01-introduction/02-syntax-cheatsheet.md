@@ -1,43 +1,43 @@
 # Syntax Cheatsheet
 
-Quick reference for all JAC-Client syntax. Print it, bookmark it, keep it handy!
+Quick reference for all Jac syntax. Print it, bookmark it, keep it handy!
 
 ---
 
 ## Variables
 
-| JavaScript | JAC-Client |
-|-----------|------------|
-| `const name = "John"` | `name = "John"` |
-| `let count = 0` | `count = 0` |
-| `const arr = [1, 2, 3]` | `arr = [1, 2, 3]` |
-| `const obj = { a: 1 }` | `obj = { "a": 1 }` |
+| JavaScript              | Jac                |
+| ----------------------- | ------------------ |
+| `const name = "John"`   | `name = "John"`    |
+| `let count = 0`         | `count = 0`        |
+| `const arr = [1, 2, 3]` | `arr = [1, 2, 3]`  |
+| `const obj = { a: 1 }`  | `obj = { "a": 1 }` |
 
 ---
 
 ## Data Types
 
-| Type | JavaScript | JAC-Client |
-|------|-----------|------------|
-| Boolean true | `true` | `True` |
-| Boolean false | `false` | `False` |
-| Null | `null` | `None` |
-| Undefined | `undefined` | `None` |
-| String | `"hello"` | `"hello"` |
-| Number | `42` | `42` |
-| Array | `[1, 2, 3]` | `[1, 2, 3]` |
-| Object | `{ key: val }` | `{ "key": val }` |
+| Type          | JavaScript     | Jac              |
+| ------------- | -------------- | ---------------- |
+| Boolean true  | `true`         | `True`           |
+| Boolean false | `false`        | `False`          |
+| Null          | `null`         | `None`           |
+| Undefined     | `undefined`    | `None`           |
+| String        | `"hello"`      | `"hello"`        |
+| Number        | `42`           | `42`             |
+| Array         | `[1, 2, 3]`    | `[1, 2, 3]`      |
+| Object        | `{ key: val }` | `{ "key": val }` |
 
 ---
 
 ## Functions
 
-| Pattern | JavaScript | JAC-Client |
-|---------|-----------|------------|
-| Basic | `function greet() {}` | `def greet() -> any {}` |
-| With params | `function add(a, b) {}` | `def add(a: int, b: int) -> int {}` |
-| No return | `function log() {}` | `def log() -> None {}` |
-| Async | `async function fn() {}` | `async def fn() {}` |
+| Pattern     | JavaScript               | Jac                                 |
+| ----------- | ------------------------ | ----------------------------------- |
+| Basic       | `function greet() {}`    | `def greet() -> any {}`             |
+| With params | `function add(a, b) {}`  | `def add(a: int, b: int) -> int {}` |
+| No return   | `function log() {}`      | `def log() -> None {}`              |
+| Async       | `async function fn() {}` | `async def fn() {}`                 |
 
 ---
 
@@ -45,14 +45,14 @@ Quick reference for all JAC-Client syntax. Print it, bookmark it, keep it handy!
 
 This is the **biggest syntax change**!
 
-| Pattern | JavaScript | JAC-Client |
-|---------|-----------|------------|
-| No params | `() => {}` | `lambda -> None {}` |
-| No params (short) | `() => doIt()` | `lambda: doIt()` |
-| One param | `(x) => {}` | `lambda x: any -> None {}` |
-| Two params | `(a, b) => {}` | `lambda a: any, b: any -> None {}` |
-| With return | `(x) => x * 2` | `lambda x: int -> int { return x * 2; }` |
-| Event handler | `(e) => {}` | `lambda e: any -> None {}` |
+| Pattern           | JavaScript     | Jac                                      |
+| ----------------- | -------------- | ---------------------------------------- |
+| No params         | `() => {}`     | `lambda -> None {}`                      |
+| No params (short) | `() => doIt()` | `lambda: doIt()`                         |
+| One param         | `(x) => {}`    | `lambda x: any -> None {}`               |
+| Two params        | `(a, b) => {}` | `lambda a: any, b: any -> None {}`       |
+| With return       | `(x) => x * 2` | `lambda x: int -> int { return x * 2; }` |
+| Event handler     | `(e) => {}`    | `lambda e: any -> None {}`               |
 
 ### Common Patterns
 
@@ -74,11 +74,11 @@ onClick={lambda -> None {
 
 ## State (useState)
 
-| JavaScript | JAC-Client |
-|-----------|------------|
-| `const [x, setX] = useState(0)` | `[x, setX] = useState(0)` |
-| `const [name, setName] = useState("")` | `[name, setName] = useState("")` |
-| `const [on, setOn] = useState(false)` | `[on, setOn] = useState(False)` |
+| JavaScript                               | Jac                                |
+| ---------------------------------------- | ---------------------------------- |
+| `const [x, setX] = useState(0)`          | `[x, setX] = useState(0)`          |
+| `const [name, setName] = useState("")`   | `[name, setName] = useState("")`   |
+| `const [on, setOn] = useState(false)`    | `[on, setOn] = useState(False)`    |
 | `const [items, setItems] = useState([])` | `[items, setItems] = useState([])` |
 
 ```jac
@@ -93,10 +93,10 @@ cl import from react { useState }
 
 ## Effects (useEffect)
 
-| Pattern | JavaScript | JAC-Client |
-|---------|-----------|------------|
-| On mount | `useEffect(() => {}, [])` | `useEffect(lambda -> None {}, [])` |
-| On change | `useEffect(() => {}, [dep])` | `useEffect(lambda -> None {}, [dep])` |
+| Pattern      | JavaScript                                 | Jac                                                           |
+| ------------ | ------------------------------------------ | ------------------------------------------------------------- |
+| On mount     | `useEffect(() => {}, [])`                  | `useEffect(lambda -> None {}, [])`                            |
+| On change    | `useEffect(() => {}, [dep])`               | `useEffect(lambda -> None {}, [dep])`                         |
 | With cleanup | `useEffect(() => { return () => {} }, [])` | `useEffect(lambda -> None { return lambda -> None {}; }, [])` |
 
 ---
@@ -105,8 +105,8 @@ cl import from react { useState }
 
 ### Ternary (Python Style!)
 
-| JavaScript | JAC-Client |
-|-----------|------------|
+| JavaScript          | Jac                         |
+| ------------------- | --------------------------- |
 | `condition ? a : b` | `(a) if condition else (b)` |
 
 ```jac
@@ -122,11 +122,11 @@ cl import from react { useState }
 
 ### Logical Operators
 
-| Operator | JavaScript | JAC-Client |
-|----------|-----------|------------|
-| AND | `&&` | `and` |
-| OR | `\|\|` | `or` |
-| NOT | `!` | `not` |
+| Operator | JavaScript | Jac   |
+| -------- | ---------- | ----- |
+| AND      | `&&`       | `and` |
+| OR       | `\|\|`     | `or`  |
+| NOT      | `!`        | `not` |
 
 ```jac
 # AND - Show if true
@@ -141,9 +141,9 @@ cl import from react { useState }
 
 ### Return Nothing
 
-| JavaScript | JAC-Client |
-|-----------|------------|
-| `return null` | `return <></>` |
+| JavaScript    | Jac                            |
+| ------------- | ------------------------------ |
+| `return null` | `return <Fragment></Fragment>` |
 
 ---
 
@@ -151,8 +151,8 @@ cl import from react { useState }
 
 ### For Loop (Counter-based)
 
-| JavaScript | JAC-Client |
-|-----------|------------|
+| JavaScript               | Jac                      |
+| ------------------------ | ------------------------ |
 | `for(let i=0; i<5; i++)` | `for i=0 to i<5 by i+=1` |
 
 ```jac
@@ -179,8 +179,8 @@ for i=5 to i>=0 by i-=1 {
 
 ### For-In Loop (Iterate Array)
 
-| JavaScript | JAC-Client |
-|-----------|------------|
+| JavaScript           | Jac                 |
+| -------------------- | ------------------- |
 | `for(item of items)` | `for item in items` |
 
 ```jac
@@ -193,8 +193,8 @@ for fruit in fruits {
 
 ### While Loop
 
-| JavaScript | JAC-Client |
-|-----------|------------|
+| JavaScript         | Jac               |
+| ------------------ | ----------------- |
 | `while(condition)` | `while condition` |
 
 ```jac
@@ -236,11 +236,11 @@ total = prices.reduce(lambda acc: int, x: int -> int { return acc + x; }, 0);
 
 ## Objects/Dictionaries
 
-| Pattern | JavaScript | JAC-Client |
-|---------|-----------|------------|
-| Create | `{ key: value }` | `{ "key": value }` |
-| Access | `obj.key` | `obj["key"]` |
-| Spread | `{...obj}` | `{**obj}` |
+| Pattern | JavaScript       | Jac                |
+| ------- | ---------------- | ------------------ |
+| Create  | `{ key: value }` | `{ "key": value }` |
+| Access  | `obj.key`        | `obj["key"]`       |
+| Spread  | `{...obj}`       | `{**obj}`          |
 
 ```jac
 # Create - keys MUST be quoted
@@ -257,11 +257,11 @@ newUser = { **user, "age": 26 };
 
 ## Imports
 
-| JavaScript | JAC-Client |
-|-----------|------------|
-| `import { x } from 'lib'` | `cl import from lib { x }` |
+| JavaScript                   | Jac                           |
+| ---------------------------- | ----------------------------- |
+| `import { x } from 'lib'`    | `cl import from lib { x }`    |
 | `import { x, y } from 'lib'` | `cl import from lib { x, y }` |
-| `import './style.css'` | `cl import "./style.css"` |
+| `import './style.css'`       | `cl import "./style.css"`     |
 
 ```jac
 # React hooks
@@ -281,11 +281,11 @@ cl import from .utils { formatDate }
 
 Use `:pub` annotation to export:
 
-| JavaScript | JAC-Client |
-|-----------|------------|
+| JavaScript             | Jac                      |
+| ---------------------- | ------------------------ |
 | `export function fn()` | `def:pub fn() -> any {}` |
-| `export const x = 5` | `glob:pub x: int = 5` |
-| `export class Foo` | `obj:pub Foo {}` |
+| `export const x = 5`   | `glob:pub x: int = 5`    |
+| `export class Foo`     | `obj:pub Foo {}`         |
 
 ```jac
 # Export function
@@ -313,9 +313,9 @@ enum:pub Status {
 
 ## Exception Handling
 
-| JavaScript | JAC-Client |
-|-----------|------------|
-| `try { } catch(e) { }` | `try { } except { }` |
+| JavaScript                         | Jac                              |
+| ---------------------------------- | -------------------------------- |
+| `try { } catch(e) { }`             | `try { } except { }`             |
 | `try { } catch(e) { } finally { }` | `try { } except { } finally { }` |
 
 ```jac
@@ -332,40 +332,40 @@ try {
 
 ## Comments
 
-| JavaScript | JAC-Client |
-|-----------|------------|
-| `// comment` | `# comment` |
+| JavaScript    | Jac           |
+| ------------- | ------------- |
+| `// comment`  | `# comment`   |
 | `/* multi */` | `# each line` |
 
 ---
 
 ## Quick Reference Table
 
-| Category | JavaScript | JAC-Client |
-|----------|-----------|------------|
-| Variable | `const x = 5` | `x = 5` |
-| State | `const [x, setX] = useState(0)` | `[x, setX] = useState(0)` |
-| Function | `function fn() {}` | `def fn() -> any {}` |
-| Arrow (none) | `() => {}` | `lambda -> None {}` |
-| Arrow (short) | `() => doIt()` | `lambda: doIt()` |
-| Arrow (params) | `(a, b) => {}` | `lambda a: any, b: any -> None {}` |
-| Ternary | `a ? b : c` | `(b) if a else (c)` |
-| AND | `&&` | `and` |
-| OR | `\|\|` | `or` |
-| NOT | `!x` | `not x` |
-| True | `true` | `True` |
-| False | `false` | `False` |
-| Null | `null` | `None` |
-| Object | `{ key: val }` | `{ "key": val }` |
-| Access | `obj.key` | `obj["key"]` |
-| Spread | `{...obj}` | `{**obj}` |
-| For | `for(let i=0; i<5; i++)` | `for i=0 to i<5 by i+=1` |
-| For-of | `for(x of arr)` | `for x in arr` |
-| Try/Catch | `try {} catch {}` | `try {} except {}` |
-| Comment | `// text` | `# text` |
-| Import | `import { x } from 'lib'` | `cl import from lib { x }` |
-| Export | `export function fn()` | `def:pub fn() -> any {}` |
-| Return null | `return null` | `return <></>` |
+| Category       | JavaScript                      | Jac                                |
+| -------------- | ------------------------------- | ---------------------------------- |
+| Variable       | `const x = 5`                   | `x = 5`                            |
+| State          | `const [x, setX] = useState(0)` | `[x, setX] = useState(0)`          |
+| Function       | `function fn() {}`              | `def fn() -> any {}`               |
+| Arrow (none)   | `() => {}`                      | `lambda -> None {}`                |
+| Arrow (short)  | `() => doIt()`                  | `lambda: doIt()`                   |
+| Arrow (params) | `(a, b) => {}`                  | `lambda a: any, b: any -> None {}` |
+| Ternary        | `a ? b : c`                     | `(b) if a else (c)`                |
+| AND            | `&&`                            | `and`                              |
+| OR             | `\|\|`                          | `or`                               |
+| NOT            | `!x`                            | `not x`                            |
+| True           | `true`                          | `True`                             |
+| False          | `false`                         | `False`                            |
+| Null           | `null`                          | `None`                             |
+| Object         | `{ key: val }`                  | `{ "key": val }`                   |
+| Access         | `obj.key`                       | `obj["key"]`                       |
+| Spread         | `{...obj}`                      | `{**obj}`                          |
+| For            | `for(let i=0; i<5; i++)`        | `for i=0 to i<5 by i+=1`           |
+| For-of         | `for(x of arr)`                 | `for x in arr`                     |
+| Try/Catch      | `try {} catch {}`               | `try {} except {}`                 |
+| Comment        | `// text`                       | `# text`                           |
+| Import         | `import { x } from 'lib'`       | `cl import from lib { x }`         |
+| Export         | `export function fn()`          | `def:pub fn() -> any {}`           |
+| Return null    | `return null`                   | `return <Fragment></Fragment>`     |
 
 ---
 

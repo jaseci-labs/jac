@@ -1,6 +1,6 @@
 # Operators
 
-Learn how operators work in JAC-Client, including the key differences from JavaScript.
+Learn how operators work in Jac, including the key differences from JavaScript.
 
 ---
 
@@ -8,27 +8,30 @@ Learn how operators work in JAC-Client, including the key differences from JavaS
 
 ### AND, OR, NOT
 
-| JavaScript | JAC-Client |
-|-----------|------------|
-| `&&` | `and` |
-| `\|\|` | `or` |
-| `!` | `not` |
+| JavaScript | Jac   |
+| ---------- | ----- |
+| `&&`       | `and` |
+| `\|\|`     | `or`  |
+| `!`        | `not` |
 
-**JavaScript:**
+=== "JavaScript"
 
-```javascript
-if (a && b) { }
-if (a || b) { }
-if (!a) { }
-```
+    ```javascript
+    if (a && b) {
+    }
+    if (a || b) {
+    }
+    if (!a) {
+    }
+    ```
 
-**JAC-Client:**
+=== "Jac"
 
-```jac
-if a and b { }
-if a or b { }
-if not a { }
-```
+    ```jac
+    if a and b { }
+    if a or b { }
+    if not a { }
+    ```
 
 ### In Conditionals
 
@@ -77,34 +80,36 @@ if (isLoggedIn and hasPermission) or isAdmin {
 
 ### Equality
 
-| JavaScript | JAC-Client | Notes |
-|-----------|------------|-------|
-| `===` | `==` | Equality check |
-| `!==` | `!=` | Inequality check |
-| `==` | `==` | Same as `===` in JAC |
+| JavaScript | Jac  | Notes                |
+| ---------- | ---- | -------------------- |
+| `===`      | `==` | Equality check       |
+| `!==`      | `!=` | Inequality check     |
+| `==`       | `==` | Same as `===` in JAC |
 
-**JavaScript:**
+=== "JavaScript"
 
-```javascript
-if (a === b) { }
-if (a !== b) { }
-```
+    ```javascript
+    if (a === b) {
+    }
+    if (a !== b) {
+    }
+    ```
 
-**JAC-Client:**
+=== "Jac"
 
-```jac
-if a == b { }
-if a != b { }
-```
+    ```jac
+    if a == b { }
+    if a != b { }
+    ```
 
 ### Comparison
 
-| Operator | Meaning |
-|----------|---------|
-| `<` | Less than |
-| `>` | Greater than |
-| `<=` | Less than or equal |
-| `>=` | Greater than or equal |
+| Operator | Meaning               |
+| -------- | --------------------- |
+| `<`      | Less than             |
+| `>`      | Greater than          |
+| `<=`     | Less than or equal    |
+| `>=`     | Greater than or equal |
 
 ```jac
 if age >= 18 {
@@ -126,13 +131,13 @@ if price <= maxPrice {
 
 Same as JavaScript:
 
-| Operator | Meaning |
-|----------|---------|
-| `+` | Addition |
-| `-` | Subtraction |
-| `*` | Multiplication |
-| `/` | Division |
-| `%` | Modulo (remainder) |
+| Operator | Meaning            |
+| -------- | ------------------ |
+| `+`      | Addition           |
+| `-`      | Subtraction        |
+| `*`      | Multiplication     |
+| `/`      | Division           |
+| `%`      | Modulo (remainder) |
 
 ```jac
 sum = a + b
@@ -150,34 +155,34 @@ count = count - 1
 
 ### No `++` or `--` Operators
 
-**JavaScript:**
+=== "JavaScript"
 
-```javascript
-count++;
-count--;
-```
+    ```javascript
+    count++;
+    count--;
+    ```
 
-**JAC-Client:**
+=== "Jac"
 
-```jac
-count = count + 1
-count = count - 1
+    ```jac
+    count = count + 1
+    count = count - 1
 
-# Or in for loops
-for i=0 to i<10 by i+=1 { }
-```
+    # Or in for loops
+    for i=0 to i<10 by i+=1 { }
+    ```
 
 ---
 
 ## Assignment Operators
 
-| Operator | Meaning |
-|----------|---------|
-| `=` | Assign |
-| `+=` | Add and assign |
-| `-=` | Subtract and assign |
-| `*=` | Multiply and assign |
-| `/=` | Divide and assign |
+| Operator | Meaning             |
+| -------- | ------------------- |
+| `=`      | Assign              |
+| `+=`     | Add and assign      |
+| `-=`     | Subtract and assign |
+| `*=`     | Multiply and assign |
+| `/=`     | Divide and assign   |
 
 ```jac
 count = 0
@@ -206,17 +211,17 @@ message = "Count: " + count.toString()
 
 ### No Template Literals
 
-**JavaScript:**
+=== "JavaScript"
 
-```javascript
-const message = `Hello, ${name}!`;
-```
+    ```javascript
+    const message = `Hello, ${name}!`;
+    ```
 
-**JAC-Client:**
+=== "Jac"
 
-```jac
-message = "Hello, " + name + "!"
-```
+    ```jac
+    message = "Hello, " + name + "!"
+    ```
 
 ---
 
@@ -224,17 +229,17 @@ message = "Hello, " + name + "!"
 
 This is one of the **biggest differences** from JavaScript.
 
-**JavaScript:**
+=== "JavaScript"
 
-```javascript
-result = condition ? valueIfTrue : valueIfFalse;
-```
+    ```javascript
+    result = condition ? valueIfTrue : valueIfFalse;
+    ```
 
-**JAC-Client:**
+=== "Jac"
 
-```jac
-result = (valueIfTrue) if condition else (valueIfFalse)
-```
+    ```jac
+    result = (valueIfTrue) if condition else (valueIfFalse)
+    ```
 
 ### Examples
 
@@ -256,21 +261,21 @@ price = (originalPrice * 0.9) if hasDiscount else (originalPrice)
 
 ## Nullish Coalescing
 
-**JavaScript:**
+=== "JavaScript"
 
-```javascript
-const value = data ?? "default";
-```
+    ```javascript
+    const value = data ?? "default";
+    ```
 
-**JAC-Client:**
+=== "Jac"
 
-```jac
-# Use explicit None check
-value = data if data != None else "default"
+    ```jac
+    # Use explicit None check
+    value = data if data != None else "default"
 
-# Or use 'or' for falsy values
-value = data or "default"
-```
+    # Or use 'or' for falsy values
+    value = data or "default"
+    ```
 
 **Note:** `or` treats empty string, 0, and False as falsy. Use explicit None check when needed.
 
@@ -278,29 +283,29 @@ value = data or "default"
 
 ## Optional Chaining Alternative
 
-**JavaScript:**
+=== "JavaScript"
 
-```javascript
-const city = user?.address?.city;
-```
+    ```javascript
+    const city = user?.address?.city;
+    ```
 
-**JAC-Client:**
+=== "Jac"
 
-```jac
-# Manual checking
-if user != None and user["address"] != None {
-    city = user["address"]["city"];
-} else {
-    city = None;
-}
+    ```jac
+    # Manual checking
+    if user != None and user["address"] != None {
+        city = user["address"]["city"];
+    } else {
+        city = None;
+    }
 
-# Or with try/except
-try {
-    city = user["address"]["city"];
-} except {
-    city = None;
-}
-```
+    # Or with try/except
+    try {
+        city = user["address"]["city"];
+    } except {
+        city = None;
+    }
+    ```
 
 ---
 
@@ -350,21 +355,21 @@ result = a or b and c       # b and c first, then or a
 
 ## Summary
 
-| Category | JavaScript | JAC-Client |
-|----------|-----------|------------|
-| AND | `&&` | `and` |
-| OR | `\|\|` | `or` |
-| NOT | `!` | `not` |
-| Equality | `===` | `==` |
-| Inequality | `!==` | `!=` |
-| Ternary | `a ? b : c` | `(b) if a else (c)` |
-| Increment | `++` | `+= 1` |
-| Decrement | `--` | `-= 1` |
-| Template | `` `${x}` `` | `"" + x` |
-| Nullish | `??` | `if x != None else` |
+| Category   | JavaScript   | Jac                 |
+| ---------- | ------------ | ------------------- |
+| AND        | `&&`         | `and`               |
+| OR         | `\|\|`       | `or`                |
+| NOT        | `!`          | `not`               |
+| Equality   | `===`        | `==`                |
+| Inequality | `!==`        | `!=`                |
+| Ternary    | `a ? b : c`  | `(b) if a else (c)` |
+| Increment  | `++`         | `+= 1`              |
+| Decrement  | `--`         | `-= 1`              |
+| Template   | `` `${x}` `` | `"" + x`            |
+| Nullish    | `??`         | `if x != None else` |
 
 ---
 
 ## Next
 
-- [Control Flow](05-control-flow.md) - if/elif/else and loops
+- [Control Flow](./05-control-flow.md) - if/elif/else and loops

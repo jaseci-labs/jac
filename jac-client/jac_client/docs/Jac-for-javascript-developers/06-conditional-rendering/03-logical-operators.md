@@ -1,16 +1,16 @@
 # Logical Operators
 
-Learn how to use `and`, `or`, and `not` for conditional rendering in JAC-Client.
+Learn how to use `and`, `or`, and `not` for conditional rendering in Jac.
 
 ---
 
 ## Quick Reference
 
-| JavaScript | JAC-Client |
-|-----------|------------|
-| `&&` | `and` |
-| `\|\|` | `or` |
-| `!` | `not` |
+| JavaScript | Jac   |
+| ---------- | ----- |
+| `&&`       | `and` |
+| `\|\|`     | `or`  |
+| `!`        | `not` |
 
 ---
 
@@ -21,10 +21,12 @@ Show content only when condition is true:
 ### JavaScript
 
 ```jsx
-{isLoggedIn && <Dashboard />}
+{
+  isLoggedIn && <Dashboard />;
+}
 ```
 
-### JAC-Client
+### Jac
 
 ```jac
 {isLoggedIn and <Dashboard />}
@@ -65,10 +67,12 @@ Provide default/fallback values:
 ### JavaScript
 
 ```jsx
-{username || "Guest"}
+{
+  username || "Guest";
+}
 ```
 
-### JAC-Client
+### Jac
 
 ```jac
 {username or "Guest"}
@@ -107,10 +111,12 @@ Negate a condition:
 ### JavaScript
 
 ```jsx
-{!isLoading && <Content />}
+{
+  !isLoading && <Content />;
+}
 ```
 
-### JAC-Client
+### Jac
 
 ```jac
 {not isLoading and <Content />}
@@ -323,15 +329,15 @@ def ItemList(props: dict) -> any {
 
 ## Summary
 
-| Pattern | JavaScript | JAC-Client |
-|---------|-----------|------------|
-| Show if true | `{x && <Y />}` | `{x and <Y />}` |
-| Default value | `{x \|\| "default"}` | `{x or "default"}` |
-| Show if false | `{!x && <Y />}` | `{not x and <Y />}` |
-| Combined | `{x && y && <Z />}` | `{x and y and <Z />}` |
+| Pattern       | JavaScript           | Jac                   |
+| ------------- | -------------------- | --------------------- |
+| Show if true  | `{x && <Y />}`       | `{x and <Y />}`       |
+| Default value | `{x \|\| "default"}` | `{x or "default"}`    |
+| Show if false | `{!x && <Y />}`      | `{not x and <Y />}`   |
+| Combined      | `{x && y && <Z />}`  | `{x and y and <Z />}` |
 
 ---
 
 ## Next
 
-- [Advanced Patterns](04-advanced-patterns.md) - Object lookup, fragments
+- [Advanced Patterns](./04-advanced-patterns.md) - Object lookup, fragments

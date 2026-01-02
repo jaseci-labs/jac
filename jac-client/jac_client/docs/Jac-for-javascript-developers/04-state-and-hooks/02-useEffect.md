@@ -1,28 +1,28 @@
 # useEffect Hook
 
-Learn how to handle side effects in JAC-Client components.
+Learn how to handle side effects in Jac components.
 
 ---
 
 ## Basic Syntax
 
-### JavaScript/React vs JAC-Client
+### JavaScript/React vs Jac
 
-**JavaScript/React:**
+=== "JavaScript"
 
-```javascript
-useEffect(() => {
-  console.log("Effect ran");
-}, [dependency]);
-```
+    ```javascript
+    useEffect(() => {
+      console.log("Effect ran");
+    }, [dependency]);
+    ```
 
-**JAC-Client:**
+=== "Jac"
 
-```jac
-useEffect(lambda -> None {
-    console.log("Effect ran");
-}, [dependency]);
-```
+    ```jac
+    useEffect(lambda -> None {
+        console.log("Effect ran");
+    }, [dependency]);
+    ```
 
 ---
 
@@ -52,21 +52,21 @@ cl {
 
 Empty dependency array runs only on mount:
 
-**JavaScript:**
+=== "JavaScript"
 
-```javascript
+    ```javascript
 useEffect(() => {
   console.log("Mounted");
 }, []);
-```
+    ```
 
-**JAC-Client:**
+=== "Jac"
 
-```jac
+    ```jac
 useEffect(lambda -> None {
     console.log("Component mounted");
 }, []);
-```
+    ```
 
 ### On Dependency Change
 
@@ -104,7 +104,7 @@ useEffect(() => {
 }, []);
 ```
 
-### JAC-Client
+### Jac
 
 ```jac
 useEffect(lambda -> None {
@@ -400,15 +400,15 @@ def Search() -> any {
 
 ## Summary
 
-| Pattern | JavaScript | JAC-Client |
-|---------|-----------|------------|
-| Basic effect | `useEffect(() => {})` | `useEffect(lambda -> None {})` |
-| With deps | `useEffect(() => {}, [dep])` | `useEffect(lambda -> None {}, [dep])` |
-| On mount | `useEffect(() => {}, [])` | `useEffect(lambda -> None {}, [])` |
-| Cleanup | `return () => cleanup()` | `return lambda -> None { cleanup(); }` |
+| Pattern      | JavaScript                   | Jac                                    |
+| ------------ | ---------------------------- | -------------------------------------- |
+| Basic effect | `useEffect(() => {})`        | `useEffect(lambda -> None {})`         |
+| With deps    | `useEffect(() => {}, [dep])` | `useEffect(lambda -> None {}, [dep])`  |
+| On mount     | `useEffect(() => {}, [])`    | `useEffect(lambda -> None {}, [])`     |
+| Cleanup      | `return () => cleanup()`     | `return lambda -> None { cleanup(); }` |
 
 ---
 
 ## Next
 
-- [useCallback & useMemo](03-useCallback-useMemo.md) - Performance optimization
+- [useCallback & useMemo](./03-useCallback-useMemo.md) - Performance optimization

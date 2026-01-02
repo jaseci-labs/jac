@@ -1,6 +1,6 @@
 # Custom Hooks
 
-Learn how to create reusable custom hooks in JAC-Client.
+Learn how to create reusable custom hooks in Jac.
 
 ---
 
@@ -26,7 +26,7 @@ function useCounter(initialValue = 0) {
 }
 ```
 
-### JAC-Client
+### Jac
 
 ```jac
 def useCounter(initialValue: int = 0) -> dict {
@@ -451,18 +451,18 @@ cl {
 
 ## Summary
 
-| Hook | Purpose |
-|------|---------|
-| useCounter | Counter with increment/decrement |
-| useToggle | Boolean toggle |
-| useInput | Form input state |
-| useLocalStorage | Persist to localStorage |
-| useFetch | Data fetching |
-| useDebounce | Debounced value |
-| useWindowSize | Window dimensions |
+| Hook            | Purpose                          |
+| --------------- | -------------------------------- |
+| useCounter      | Counter with increment/decrement |
+| useToggle       | Boolean toggle                   |
+| useInput        | Form input state                 |
+| useLocalStorage | Persist to localStorage          |
+| useFetch        | Data fetching                    |
+| useDebounce     | Debounced value                  |
+| useWindowSize   | Window dimensions                |
 
 ---
 
 ## Next Section
 
-- [Event Handling](../05-event-handling/) - Click, form, keyboard events
+- [Event Handling](../05-event-handling/01-click-events.md) - Click, form, keyboard events

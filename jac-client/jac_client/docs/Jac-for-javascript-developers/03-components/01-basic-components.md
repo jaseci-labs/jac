@@ -1,38 +1,38 @@
 # Basic Components
 
-Learn how to create and use components in JAC-Client.
+Learn how to create and use components in Jac.
 
 ---
 
 ## Component Basics
 
-### JavaScript/React vs JAC-Client
+### JavaScript/React vs Jac
 
-**JavaScript/React:**
+=== "JavaScript"
 
-```jsx
-function Greeting() {
-  return <h1>Hello, World!</h1>;
-}
-
-export default function App() {
-  return <Greeting />;
-}
-```
-
-**JAC-Client:**
-
-```jac
-cl {
-    def Greeting() -> any {
-        return <h1>Hello, World!</h1>;
+    ```jsx
+    function Greeting() {
+      return <h1>Hello, World!</h1>;
     }
 
-    def app() -> any {
-        return <Greeting />;
+    export default function App() {
+      return <Greeting />;
     }
-}
-```
+    ```
+
+=== "Jac"
+
+    ```jac
+    cl {
+        def Greeting() -> any {
+            return <h1>Hello, World!</h1>;
+        }
+
+        def app() -> any {
+            return <Greeting />;
+        }
+    }
+    ```
 
 ### Key Differences
 
@@ -45,7 +45,7 @@ cl {
 
 ## The `app()` Entry Point
 
-Every JAC-Client project must have an `app()` function:
+Every Jac project must have an `app()` function:
 
 ```jac
 cl {
@@ -225,10 +225,10 @@ def Complex() -> any {
 # Return multiple elements without a wrapper
 def Fragment() -> any {
     return (
-        <>
+        <Frament>
             <h1>Title</h1>
             <p>Description</p>
-        </>
+        </Fragment>
     );
 }
 ```
@@ -238,7 +238,7 @@ def Fragment() -> any {
 ```jac
 def MaybeShow(visible: bool) -> any {
     if not visible {
-        return <></>;  # Return empty fragment
+        return <Frament></Fragment>;  # Return empty fragment
     }
 
     return <div>Content</div>;
@@ -326,17 +326,17 @@ cl {
 
 ## Summary
 
-| Pattern | JavaScript | JAC-Client |
-|---------|-----------|------------|
+| Pattern          | JavaScript           | Jac                    |
+| ---------------- | -------------------- | ---------------------- |
 | Define component | `function Comp() {}` | `def Comp() -> any {}` |
-| Entry point | `App()` | `app()` |
-| Wrap code | N/A | `cl { }` |
-| Export | `export function` | `def:pub` |
-| Fragment | `<></>` | `<></>` |
-| Return null | `return null` | `return <></>` |
+| Entry point      | `App()`              | `app()`                |
+| Wrap code        | N/A                  | `cl { }`               |
+| Export           | `export function`    | `def:pub`              |
+| Fragment         | `<Frament></Fragment>`              | `<Frament></Fragment>`                |
+| Return null      | `return null`        | `return <Frament></Fragment>`         |
 
 ---
 
 ## Next
 
-- [Props](02-props.md) - Passing data to components
+- [Props](./02-props.md) - Passing data to components

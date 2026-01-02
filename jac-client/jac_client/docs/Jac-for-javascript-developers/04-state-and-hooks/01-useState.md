@@ -1,26 +1,26 @@
 # useState Hook
 
-Learn how to manage component state in JAC-Client.
+Learn how to manage component state in Jac.
 
 ---
 
 ## Basic Syntax
 
-### JavaScript/React vs JAC-Client
+### JavaScript/React vs Jac
 
-**JavaScript/React:**
+=== "JavaScript"
 
-```javascript
-const [count, setCount] = useState(0);
-const [name, setName] = useState("");
-```
+    ```javascript
+    const [count, setCount] = useState(0);
+    const [name, setName] = useState("");
+    ```
 
-**JAC-Client:**
+=== "Jac"
 
-```jac
-[count, setCount] = useState(0);
-[name, setName] = useState("");
-```
+    ```jac
+    [count, setCount] = useState(0);
+    [name, setName] = useState("");
+    ```
 
 **Key Difference:** No `const` or `let` keyword needed.
 
@@ -378,17 +378,17 @@ def Controls(onIncrement: any, onDecrement: any) -> any {
 
 ## Summary
 
-| Pattern | JavaScript | JAC-Client |
-|---------|-----------|------------|
-| Declare state | `const [x, setX] = useState(0)` | `[x, setX] = useState(0)` |
-| Update state | `setX(newValue)` | `setX(newValue)` |
-| Toggle | `setX(!x)` | `setX(not x)` |
-| Add to array | `setArr([...arr, item])` | `setArr(arr.concat([item]))` |
-| Update object | `setObj({...obj, key: val})` | `setObj({ **obj, "key": val })` |
-| Initial boolean | `useState(false)` | `useState(False)` |
+| Pattern         | JavaScript                      | Jac                             |
+| --------------- | ------------------------------- | ------------------------------- |
+| Declare state   | `const [x, setX] = useState(0)` | `[x, setX] = useState(0)`       |
+| Update state    | `setX(newValue)`                | `setX(newValue)`                |
+| Toggle          | `setX(!x)`                      | `setX(not x)`                   |
+| Add to array    | `setArr([...arr, item])`        | `setArr(arr.concat([item]))`    |
+| Update object   | `setObj({...obj, key: val})`    | `setObj({ **obj, "key": val })` |
+| Initial boolean | `useState(false)`               | `useState(False)`               |
 
 ---
 
 ## Next
 
-- [useEffect](02-useEffect.md) - Side effects and lifecycle
+- [useEffect](./02-useEffect.md) - Side effects and lifecycle

@@ -1,6 +1,6 @@
 # Imports and Exports
 
-JAC-Client module system for importing npm packages, local files, and utilities.
+Jac module system for importing npm packages, local files, and utilities.
 
 ---
 
@@ -45,12 +45,12 @@ cl import from .components.ui.card { Card }
 
 ---
 
-## @jac-client/utils
+## @Jac/utils
 
 Built-in utilities:
 
 ```jac
-cl import from @jac-client/utils {
+cl import from @Jac/utils {
     jacLogin,
     jacSignup,
     jacLogout,
@@ -135,17 +135,13 @@ cl {
 
 ## Summary
 
-| Type | Syntax |
-|------|--------|
-| Import npm | `cl import from package { items }` |
-| Import local | `cl import from .path { items }` |
-| Export function | `def:pub name() -> type { }` |
-| Export variable | `glob:pub name = value` |
-| Export class | `obj:pub Name { }` |
-| Export enum | `enum:pub Name { }` |
+| Type            | Syntax                             |
+| --------------- | ---------------------------------- |
+| Import npm      | `cl import from package { items }` |
+| Import local    | `cl import from .path { items }`   |
+| Export function | `def:pub name() -> type { }`       |
+| Export variable | `glob:pub name = value`            |
+| Export class    | `obj:pub Name { }`                 |
+| Export enum     | `enum:pub Name { }`                |
 
 ---
-
-## Next
-
-- [Project Structure](../10-project-structure/) - File organization

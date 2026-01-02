@@ -1,32 +1,36 @@
 # Props
 
-Learn how to pass and use props in JAC-Client components.
+Learn how to pass and use props in Jac components.
 
 ---
 
 ## Props Basics
 
-### JavaScript/React vs JAC-Client
+### JavaScript/React vs Jac
 
-**JavaScript/React:**
+=== "JavaScript"
 
-```jsx
-function Greeting({ name, age }) {
-  return <p>Hello, {name}! You are {age}.</p>;
-}
+    ```jsx
+    function Greeting({ name, age }) {
+      return (
+        <p>
+          Hello, {name}! You are {age}.
+        </p>
+      );
+    }
 
-<Greeting name="John" age={25} />
-```
+    <Greeting name="John" age={25} />;
+    ```
 
-**JAC-Client:**
+=== "Jac"
 
-```jac
-def Greeting(name: str, age: int) -> any {
-    return <p>Hello, {name}! You are {age}.</p>;
-}
+    ```jac
+    def Greeting(name: str, age: int) -> any {
+        return <p>Hello, {name}! You are {age}.</p>;
+    }
 
-<Greeting name="John" age={25} />
-```
+    <Greeting name="John" age={25} />
+    ```
 
 ### Key Points
 
@@ -423,20 +427,20 @@ cl {
 
 ## Summary
 
-| Pattern | JavaScript | JAC-Client |
-|---------|-----------|------------|
-| Define props | `function Comp({ name })` | `def Comp(name: str)` |
-| Access prop | `name` | `name` |
-| Default value | `name = "Guest"` | `name or "Guest"` |
-| Pass string | `name="John"` | `name="John"` |
-| Pass number | `age={25}` | `age={25}` |
-| Pass boolean | `active={true}` | `active={True}` |
-| Pass function | `onClick={() => {}}` | `onClick={lambda: fn()}` |
-| Pass array | `items={[...]}` | `items={[...]}` |
-| Pass object | `user={{...}}` | `user={{...}}` |
+| Pattern       | JavaScript                | Jac                      |
+| ------------- | ------------------------- | ------------------------ |
+| Define props  | `function Comp({ name })` | `def Comp(name: str)`    |
+| Access prop   | `name`                    | `name`                   |
+| Default value | `name = "Guest"`          | `name or "Guest"`        |
+| Pass string   | `name="John"`             | `name="John"`            |
+| Pass number   | `age={25}`                | `age={25}`               |
+| Pass boolean  | `active={true}`           | `active={True}`          |
+| Pass function | `onClick={() => {}}`      | `onClick={lambda: fn()}` |
+| Pass array    | `items={[...]}`           | `items={[...]}`          |
+| Pass object   | `user={{...}}`            | `user={{...}}`           |
 
 ---
 
 ## Next
 
-- [Children](03-children.md) - Component composition
+- [Children](./03-children.md) - Component composition

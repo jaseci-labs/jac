@@ -1,6 +1,6 @@
 # For-In Loops
 
-Learn how to iterate over arrays in JAC-Client.
+Learn how to iterate over arrays in Jac.
 
 ---
 
@@ -14,7 +14,7 @@ for (const item of items) {
 }
 ```
 
-### JAC-Client
+### Jac
 
 ```jac
 for item in items {
@@ -268,16 +268,16 @@ def UserList() -> any {
 
 ## Summary
 
-| Pattern | Syntax |
-|---------|--------|
-| Basic | `for item in items { }` |
+| Pattern           | Syntax                               |
+| ----------------- | ------------------------------------ |
+| Basic             | `for item in items { }`              |
 | Access properties | `for user in users { user["name"] }` |
-| Break | `break` |
-| Continue | `continue` |
-| With index | Use counter-based loop |
+| Break             | `break`                              |
+| Continue          | `continue`                           |
+| With index        | Use counter-based loop               |
 
 ---
 
 ## Next
 
-- [While Loops](03-while-loops.md)
+- [While Loops](./03-while-loops.md)

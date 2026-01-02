@@ -1,6 +1,6 @@
 # Keyboard Events
 
-Learn how to handle keyboard events in JAC-Client.
+Learn how to handle keyboard events in Jac.
 
 ---
 
@@ -308,33 +308,33 @@ def GlobalKeyListener() -> any {
 
 ## Common Key Codes
 
-| Key | e.key Value |
-|-----|-------------|
-| Enter | `"Enter"` |
-| Escape | `"Escape"` |
-| Space | `" "` |
-| Tab | `"Tab"` |
-| Backspace | `"Backspace"` |
-| Delete | `"Delete"` |
-| Arrow Up | `"ArrowUp"` |
-| Arrow Down | `"ArrowDown"` |
-| Arrow Left | `"ArrowLeft"` |
+| Key         | e.key Value    |
+| ----------- | -------------- |
+| Enter       | `"Enter"`      |
+| Escape      | `"Escape"`     |
+| Space       | `" "`          |
+| Tab         | `"Tab"`        |
+| Backspace   | `"Backspace"`  |
+| Delete      | `"Delete"`     |
+| Arrow Up    | `"ArrowUp"`    |
+| Arrow Down  | `"ArrowDown"`  |
+| Arrow Left  | `"ArrowLeft"`  |
 | Arrow Right | `"ArrowRight"` |
 
 ---
 
 ## Summary
 
-| Pattern | Syntax |
-|---------|--------|
-| Key down | `onKeyDown={lambda e: any -> None { handleKey(e); }}` |
-| Key up | `onKeyUp={lambda e: any -> None { handleKey(e); }}` |
-| Check key | `if e.key == "Enter" { }` |
-| Modifier | `if e.ctrlKey and e.key == "s" { }` |
-| Prevent default | `e.preventDefault()` |
+| Pattern         | Syntax                                                |
+| --------------- | ----------------------------------------------------- |
+| Key down        | `onKeyDown={lambda e: any -> None { handleKey(e); }}` |
+| Key up          | `onKeyUp={lambda e: any -> None { handleKey(e); }}`   |
+| Check key       | `if e.key == "Enter" { }`                             |
+| Modifier        | `if e.ctrlKey and e.key == "s" { }`                   |
+| Prevent default | `e.preventDefault()`                                  |
 
 ---
 
 ## Next Section
 
-- [Conditional Rendering](../06-conditional-rendering/) - if/else, ternary, and/or
+- [Conditional Rendering](../06-conditional-rendering/01-if-else.md) - if/else, ternary, and/or

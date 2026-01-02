@@ -1,6 +1,6 @@
-# Control Flow
+xxaa# Control Flow
 
-Learn if/elif/else statements and loop syntax in JAC-Client.
+Learn if/elif/else statements and loop syntax in Jac.
 
 ---
 
@@ -8,29 +8,29 @@ Learn if/elif/else statements and loop syntax in JAC-Client.
 
 ### Basic Syntax
 
-**JavaScript:**
+=== "JavaScript"
 
-```javascript
-if (condition) {
-  // code
-} else if (other) {
-  // code
-} else {
-  // code
-}
-```
+    ```javascript
+    if (condition) {
+      // code
+    } else if (other) {
+      // code
+    } else {
+      // code
+    }
+    ```
 
-**JAC-Client:**
+=== "Jac"
 
-```jac
-if condition {
-    # code
-} elif other {
-    # code
-} else {
-    # code
-}
-```
+    ```jac
+    if condition {
+        # code
+    } elif other {
+        # code
+    } else {
+        # code
+    }
+    ```
 
 ### Key Differences
 
@@ -91,21 +91,21 @@ if (age >= 18 and hasLicense) or isExempt {
 
 ### Counter-Based For Loop
 
-**JavaScript:**
+=== "JavaScript"
 
-```javascript
-for (let i = 0; i < 5; i++) {
-  console.log(i);
-}
-```
+    ```javascript
+    for (let i = 0; i < 5; i++) {
+      console.log(i);
+    }
+    ```
 
-**JAC-Client:**
+=== "Jac"
 
-```jac
-for i=0 to i<5 by i+=1 {
-    console.log(i);
-}
-```
+    ```jac
+    for i=0 to i<5 by i+=1 {
+        console.log(i);
+    }
+    ```
 
 ### Syntax: `for init to condition by increment`
 
@@ -150,21 +150,21 @@ for i=0 to i<5 by i+=1 {
 
 ## For-In Loops (Iterate Arrays)
 
-**JavaScript:**
+=== "JavaScript"
 
-```javascript
-for (const item of items) {
-  console.log(item);
-}
-```
+    ```javascript
+    for (const item of items) {
+      console.log(item);
+    }
+    ```
 
-**JAC-Client:**
+=== "Jac"
 
-```jac
-for item in items {
-    console.log(item);
-}
-```
+    ```jac
+    for item in items {
+        console.log(item);
+    }
+    ```
 
 ### Examples
 
@@ -218,21 +218,21 @@ for i=0 to i<items.length by i+=1 {
 
 ## While Loops
 
-**JavaScript:**
+=== "JavaScript"
 
-```javascript
-while (condition) {
-  // code
-}
-```
+    ```javascript
+    while (condition) {
+      // code
+    }
+    ```
 
-**JAC-Client:**
+=== "Jac"
 
-```jac
-while condition {
-    # code
-}
-```
+    ```jac
+    while condition {
+        # code
+    }
+    ```
 
 ### Examples
 
@@ -319,63 +319,66 @@ for row in matrix {
 
 ## No `range()` Function
 
-**Python:**
+=== "Python"
 
-```python
-for i in range(5):
-    print(i)
-```
+    ```python
+    for i in range(5):
+        print(i)
+    ```
 
-**JAC-Client:**
+=== "Jac"
 
-```jac
-# range() does NOT work!
-# Use counter-based for loop instead
-for i=0 to i<5 by i+=1 {
-    console.log(i);
-}
-```
+    ```jac
+    # range() does NOT work!
+    # Use counter-based for loop instead
+    for i=0 to i<5 by i+=1 {
+        console.log(i);
+    }
+    ```
 
 ---
 
 ## Switch/Case Alternative
 
-JAC-Client doesn't have switch/case. Use if/elif/else or object lookup:
+Jac doesn't have switch/case. Use if/elif/else or object lookup:
 
-**JavaScript:**
+=== "JavaScript"
 
-```javascript
-switch (action) {
-  case 'add': return handleAdd();
-  case 'delete': return handleDelete();
-  default: return handleDefault();
-}
-```
+    ```javascript
+    switch (action) {
+      case "add":
+        return handleAdd();
+      case "delete":
+        return handleDelete();
+      default:
+        return handleDefault();
+    }
+    ```
 
-**JAC-Client:**
+=== "Jac"
 
-```jac
-# Option 1: If/elif/else
-if action == "add" {
-    handleAdd();
-} elif action == "delete" {
-    handleDelete();
-} else {
-    handleDefault();
-}
+    ```jac
+    # Option 1: If/elif/else
+    if action == "add" {
+        handleAdd();
+    } elif action == "delete" {
+        handleDelete();
+    } else {
+        handleDefault();
+    }
 
-# Option 2: Object lookup
-handlers = {
-    "add": handleAdd,
-    "delete": handleDelete
-};
+    # Option 2: Object lookup
+    handlers = {
+        "add": handleAdd,
+        "delete": handleDelete
+    };
 
-if action in handlers {
-    handlers[action]();
-} else {
-    handleDefault();
-}
-```
+    if action in handlers {
+        handlers[action]();
+    } else {
+        handleDefault();
+    }
+    ```
 
 ---
 
@@ -435,19 +438,19 @@ def UserList(users: list) -> any {
 
 ## Summary
 
-| Pattern | JavaScript | JAC-Client |
-|---------|-----------|------------|
-| If | `if (cond) {}` | `if cond {}` |
-| Else if | `else if` | `elif` |
+| Pattern     | JavaScript               | Jac                      |
+| ----------- | ------------------------ | ------------------------ |
+| If          | `if (cond) {}`           | `if cond {}`             |
+| Else if     | `else if`                | `elif`                   |
 | For counter | `for(let i=0; i<5; i++)` | `for i=0 to i<5 by i+=1` |
-| For-of/in | `for(x of arr)` | `for x in arr` |
-| While | `while(cond) {}` | `while cond {}` |
-| Break | `break` | `break` |
-| Continue | `continue` | `continue` |
-| Switch | `switch(x) { case: }` | Use if/elif/else |
+| For-of/in   | `for(x of arr)`          | `for x in arr`           |
+| While       | `while(cond) {}`         | `while cond {}`          |
+| Break       | `break`                  | `break`                  |
+| Continue    | `continue`               | `continue`               |
+| Switch      | `switch(x) { case: }`    | Use if/elif/else         |
 
 ---
 
 ## Next Section
 
-- [Components](../03-components/) - Learn component patterns
+- [Components](../03-components/01-basic-components.md) - Learn component patterns

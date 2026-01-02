@@ -1,12 +1,12 @@
 # Advanced Conditional Patterns
 
-Learn advanced techniques for conditional rendering in JAC-Client.
+Learn advanced techniques for conditional rendering in Jac.
 
 ---
 
 ## Object Lookup (Switch Alternative)
 
-JAC-Client doesn't have switch statements. Use object lookup instead:
+Jac doesn't have switch statements. Use object lookup instead:
 
 ### JavaScript Switch
 
@@ -23,7 +23,7 @@ switch (status) {
 }
 ```
 
-### JAC-Client Object Lookup
+### Jac Object Lookup
 
 ```jac
 def StatusIcon(status: str) -> any {
@@ -345,4 +345,4 @@ def Dashboard(user: dict, settings: dict) -> any {
 
 ## Next Section
 
-- [Lists and Loops](../07-lists-and-loops/) - For loops, array methods
+- [Lists and Loops](../07-lists-and-loops/01-for-loops.md) - For loops, array methods

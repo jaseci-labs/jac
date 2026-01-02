@@ -1,6 +1,6 @@
 # Rendering Lists
 
-Learn how to render lists in JAC-Client JSX.
+Learn how to render lists in Jac JSX.
 
 ---
 
@@ -306,16 +306,16 @@ def CategoryList() -> any {
 
 ## Summary
 
-| Pattern | When to Use |
-|---------|-------------|
-| Helper function | Cleaner, reusable render logic |
-| Inline lambda | Simple, one-off rendering |
-| Filter then map | Conditional list rendering |
-| Empty state check | Handle no items gracefully |
-| Unique keys | Always for dynamic lists |
+| Pattern           | When to Use                    |
+| ----------------- | ------------------------------ |
+| Helper function   | Cleaner, reusable render logic |
+| Inline lambda     | Simple, one-off rendering      |
+| Filter then map   | Conditional list rendering     |
+| Empty state check | Handle no items gracefully     |
+| Unique keys       | Always for dynamic lists       |
 
 ---
 
 ## Next Section
 
-- [Exception Handling](../08-exception-handling/) - try/except
+- [Exception Handling](../08-exception-handling/index.md) - try/except

@@ -1,36 +1,36 @@
 # Functions
 
-Learn how to define and use functions in JAC-Client.
+Learn how to define and use functions in Jac.
 
 ---
 
 ## Basic Function Syntax
 
-### JavaScript vs JAC-Client
+### JavaScript vs Jac
 
-**JavaScript:**
+=== "JavaScript"
 
-```javascript
-function greet() {
-  return "Hello!";
-}
+    ```javascript
+    function greet() {
+      return "Hello!";
+    }
 
-function add(a, b) {
-  return a + b;
-}
-```
+    function add(a, b) {
+      return a + b;
+    }
+    ```
 
-**JAC-Client:**
+=== "Jac"
 
-```jac
-def greet() -> str {
-    return "Hello!";
-}
+    ```jac
+    def greet() -> str {
+        return "Hello!";
+    }
 
-def add(a: int, b: int) -> int {
-    return a + b;
-}
-```
+    def add(a: int, b: int) -> int {
+        return a + b;
+    }
+    ```
 
 ### Key Differences
 
@@ -194,25 +194,25 @@ def TodoList() -> any {
 
 ## Async Functions
 
-### JavaScript vs JAC-Client
+### JavaScript vs Jac
 
-**JavaScript:**
+=== "JavaScript"
 
-```javascript
-async function fetchData() {
-  const response = await fetch('/api/data');
-  return response.json();
-}
-```
+    ```javascript
+    async function fetchData() {
+      const response = await fetch("/api/data");
+      return response.json();
+    }
+    ```
 
-**JAC-Client:**
+=== "Jac"
 
-```jac
-async def fetchData() {
-    response = await fetch("/api/data");
-    return response.json();
-}
-```
+    ```jac
+    async def fetchData() {
+        response = await fetch("/api/data");
+        return response.json();
+    }
+    ```
 
 ### Async in Components
 
@@ -341,17 +341,17 @@ def Counter() -> any {
 
 ## Summary
 
-| Pattern | JavaScript | JAC-Client |
-|---------|-----------|------------|
-| Basic function | `function fn() {}` | `def fn() -> any {}` |
-| With return type | N/A | `def fn() -> str {}` |
-| Parameters | `function fn(a, b)` | `def fn(a: int, b: int)` |
-| No return | `function fn() {}` | `def fn() -> None {}` |
-| Async | `async function fn()` | `async def fn()` |
-| Export | `export function fn()` | `def:pub fn() -> any {}` |
+| Pattern          | JavaScript             | Jac                      |
+| ---------------- | ---------------------- | ------------------------ |
+| Basic function   | `function fn() {}`     | `def fn() -> any {}`     |
+| With return type | N/A                    | `def fn() -> str {}`     |
+| Parameters       | `function fn(a, b)`    | `def fn(a: int, b: int)` |
+| No return        | `function fn() {}`     | `def fn() -> None {}`    |
+| Async            | `async function fn()`  | `async def fn()`         |
+| Export           | `export function fn()` | `def:pub fn() -> any {}` |
 
 ---
 
 ## Next
 
-- [Lambda Functions](03-lambda-functions.md) - Arrow function equivalent (most important!)
+- [Lambda Functions](./03-lambda-functions.md) - Arrow function equivalent (most important!)

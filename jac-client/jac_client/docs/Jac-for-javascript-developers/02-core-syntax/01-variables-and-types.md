@@ -1,50 +1,50 @@
 # Variables and Types
 
-Learn how variables and data types work in JAC-Client.
+Learn how variables and data types work in Jac.
 
 ---
 
 ## Variables - No `let` or `const`
 
-In JAC-Client, you don't need `let`, `const`, or `var`. Just assign directly:
+In Jac, you don't need `let`, `const`, or `var`. Just assign directly:
 
-**JavaScript:**
+=== "JavaScript"
 
-```javascript
-const name = "John";
-let count = 0;
-const isActive = true;
-var legacy = "old";
-```
+    ```javascript
+    const name = "John";
+    let count = 0;
+    const isActive = true;
+    var legacy = "old";
+    ```
 
-**JAC-Client:**
+=== "Jac"
 
-```jac
-name = "John"
-count = 0
-isActive = True
-legacy = "old"
-```
+    ```jac
+    name = "John"
+    count = 0
+    isActive = True
+    legacy = "old"
+    ```
 
 ### State Variables
 
 Same pattern for React state:
 
-**JavaScript:**
+=== "JavaScript"
 
-```javascript
-const [count, setCount] = useState(0);
-const [name, setName] = useState("");
-const [items, setItems] = useState([]);
-```
+    ```javascript
+    const [count, setCount] = useState(0);
+    const [name, setName] = useState("");
+    const [items, setItems] = useState([]);
+    ```
 
-**JAC-Client:**
+=== "Jac"
 
-```jac
-[count, setCount] = useState(0);
-[name, setName] = useState("");
-[items, setItems] = useState([]);
-```
+    ```jac
+    [count, setCount] = useState(0);
+    [name, setName] = useState("");
+    [items, setItems] = useState([]);
+    ```
 
 ---
 
@@ -52,35 +52,35 @@ const [items, setItems] = useState([]);
 
 ### Booleans - Capitalized!
 
-**JavaScript:**
+=== "JavaScript"
 
-```javascript
-const isActive = true;
-const isHidden = false;
-```
+    ```javascript
+    const isActive = true;
+    const isHidden = false;
+    ```
 
-**JAC-Client:**
+=== "Jac"
 
-```jac
-isActive = True
-isHidden = False
-```
+    ```jac
+    isActive = True
+    isHidden = False
+    ```
 
 ### Null - Use `None`
 
-**JavaScript:**
+=== "JavaScript"
 
-```javascript
-const data = null;
-const user = undefined;
-```
+    ```javascript
+    const data = null;
+    const user = undefined;
+    ```
 
-**JAC-Client:**
+=== "Jac"
 
-```jac
-data = None
-user = None  # undefined is also None
-```
+    ```jac
+    data = None
+    user = None  # undefined is also None
+    ```
 
 ### Checking for None
 
@@ -99,7 +99,7 @@ if data != None {
 
 ## Type Annotations
 
-JAC-Client supports optional type annotations:
+Jac supports optional type annotations:
 
 ```jac
 # Basic types
@@ -118,16 +118,16 @@ data: any = someValue
 
 ### Common Types
 
-| Type | Description | Example |
-|------|-------------|---------|
-| `str` | String | `"hello"` |
-| `int` | Integer | `42` |
-| `float` | Decimal | `3.14` |
-| `bool` | Boolean | `True`, `False` |
-| `list` | Array | `[1, 2, 3]` |
-| `dict` | Object/Dictionary | `{ "key": "value" }` |
-| `any` | Any type | Flexible |
-| `None` | No type/null | `None` |
+| Type    | Description       | Example              |
+| ------- | ----------------- | -------------------- |
+| `str`   | String            | `"hello"`            |
+| `int`   | Integer           | `42`                 |
+| `float` | Decimal           | `3.14`               |
+| `bool`  | Boolean           | `True`, `False`      |
+| `list`  | Array             | `[1, 2, 3]`          |
+| `dict`  | Object/Dictionary | `{ "key": "value" }` |
+| `any`   | Any type          | Flexible             |
+| `None`  | No type/null      | `None`               |
 
 ---
 
@@ -135,39 +135,39 @@ data: any = someValue
 
 ### Key Difference: Quoted Keys
 
-In JAC-Client, object keys **must be quoted strings**:
+In Jac, object keys **must be quoted strings**:
 
-**JavaScript:**
+=== "JavaScript"
 
-```javascript
-const user = { name: "John", age: 25 };
-const style = { padding: "10px", margin: "5px" };
-```
+    ```javascript
+    const user = { name: "John", age: 25 };
+    const style = { padding: "10px", margin: "5px" };
+    ```
 
-**JAC-Client:**
+=== "Jac"
 
-```jac
-user = { "name": "John", "age": 25 }
-style = { "padding": "10px", "margin": "5px" }
-```
+    ```jac
+    user = { "name": "John", "age": 25 }
+    style = { "padding": "10px", "margin": "5px" }
+    ```
 
 ### Property Access - Bracket Notation
 
 Use bracket notation to access properties:
 
-**JavaScript:**
+=== "JavaScript"
 
-```javascript
-const name = user.name;
-const age = user.age;
-```
+    ```javascript
+    const name = user.name;
+    const age = user.age;
+    ```
 
-**JAC-Client:**
+=== "Jac"
 
-```jac
-name = user["name"]
-age = user["age"]
-```
+    ```jac
+    name = user["name"]
+    age = user["age"]
+    ```
 
 **Note:** Dot notation (`user.name`) may work but bracket notation is recommended.
 
@@ -212,49 +212,49 @@ combined = numbers.concat([7, 8, 9])
 
 ### No Spread Operator for Arrays
 
-**JavaScript:**
+=== "JavaScript"
 
-```javascript
-const newArr = [...arr, 4, 5];
-```
+    ```javascript
+    const newArr = [...arr, 4, 5];
+    ```
 
-**JAC-Client:**
+=== "Jac"
 
-```jac
-newArr = arr.concat([4, 5])
-```
+    ```jac
+    newArr = arr.concat([4, 5])
+    ```
 
 ### Object Spread Uses `**`
 
-**JavaScript:**
+=== "JavaScript"
 
-```javascript
-const newObj = { ...obj, newKey: "value" };
-```
+    ```javascript
+    const newObj = { ...obj, newKey: "value" };
+    ```
 
-**JAC-Client:**
+=== "Jac"
 
-```jac
-newObj = { **obj, "newKey": "value" }
-```
+    ```jac
+    newObj = { **obj, "newKey": "value" }
+    ```
 
 ---
 
 ## String Interpolation
 
-JAC-Client uses string concatenation:
+Jac uses string concatenation:
 
-**JavaScript:**
+=== "JavaScript"
 
-```javascript
-const message = `Hello, ${name}! You are ${age} years old.`;
-```
+    ```javascript
+    const message = `Hello, ${name}! You are ${age} years old.`;
+    ```
 
-**JAC-Client:**
+=== "Jac"
 
-```jac
-message = "Hello, " + name + "! You are " + age.toString() + " years old."
-```
+    ```jac
+    message = "Hello, " + name + "! You are " + age.toString() + " years old."
+    ```
 
 ---
 
@@ -307,21 +307,21 @@ if items.length {  # truthy if length > 0
 
 ## Summary
 
-| Concept | JavaScript | JAC-Client |
-|---------|-----------|------------|
-| Variable declaration | `const x = 5` | `x = 5` |
-| Boolean true | `true` | `True` |
-| Boolean false | `false` | `False` |
-| Null | `null` | `None` |
-| Object creation | `{ key: val }` | `{ "key": val }` |
-| Property access | `obj.key` | `obj["key"]` |
-| Object spread | `{...obj}` | `{**obj}` |
-| Array spread | `[...arr]` | `arr.concat([])` |
-| Template string | `` `${var}` `` | `"" + var` |
-| Type annotation | TypeScript | `name: str = "x"` |
+| Concept              | JavaScript     | Jac               |
+| -------------------- | -------------- | ----------------- |
+| Variable declaration | `const x = 5`  | `x = 5`           |
+| Boolean true         | `true`         | `True`            |
+| Boolean false        | `false`        | `False`           |
+| Null                 | `null`         | `None`            |
+| Object creation      | `{ key: val }` | `{ "key": val }`  |
+| Property access      | `obj.key`      | `obj["key"]`      |
+| Object spread        | `{...obj}`     | `{**obj}`         |
+| Array spread         | `[...arr]`     | `arr.concat([])`  |
+| Template string      | `` `${var}` `` | `"" + var`        |
+| Type annotation      | TypeScript     | `name: str = "x"` |
 
 ---
 
 ## Next
 
-- [Functions](02-functions.md) - Learn function syntax
+- [Functions](./02-functions.md) - Learn function syntax

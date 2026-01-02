@@ -1,6 +1,6 @@
 # For Loops
 
-Learn counter-based for loops in JAC-Client.
+Learn counter-based for loops in Jac.
 
 ---
 
@@ -14,7 +14,7 @@ for (let i = 0; i < 5; i++) {
 }
 ```
 
-### JAC-Client
+### Jac
 
 ```jac
 for i=0 to i<5 by i+=1 {
@@ -190,22 +190,22 @@ def isPrime(n: int) -> bool {
 
 ## No `range()` Function!
 
-**Python:**
+=== "Python"
 
-```python
-for i in range(5):
-    print(i)
-```
+    ```python
+    for i in range(5):
+        print(i)
+    ```
 
-**JAC-Client:**
+=== "Jac"
 
-```jac
-# range() does NOT work!
-# Use for loop instead:
-for i=0 to i<5 by i+=1 {
-    console.log(i);
-}
-```
+    ```jac
+    # range() does NOT work!
+    # Use for loop instead:
+    for i=0 to i<5 by i+=1 {
+        console.log(i);
+    }
+    ```
 
 ---
 
@@ -231,16 +231,16 @@ def NumberList() -> any {
 
 ## Summary
 
-| Pattern | Syntax |
-|---------|--------|
-| Basic | `for i=0 to i<5 by i+=1` |
+| Pattern      | Syntax                     |
+| ------------ | -------------------------- |
+| Basic        | `for i=0 to i<5 by i+=1`   |
 | Custom start | `for i=10 to i<20 by i+=1` |
-| Custom step | `for i=0 to i<10 by i+=2` |
-| Countdown | `for i=5 to i>=0 by i-=1` |
-| Inclusive | `for i=1 to i<=5 by i+=1` |
+| Custom step  | `for i=0 to i<10 by i+=2`  |
+| Countdown    | `for i=5 to i>=0 by i-=1`  |
+| Inclusive    | `for i=1 to i<=5 by i+=1`  |
 
 ---
 
 ## Next
 
-- [For-In Loops](02-for-in-loops.md) - Array iteration
+- [For-In Loops](./02-for-in-loops.md) - Array iteration

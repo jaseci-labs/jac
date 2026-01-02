@@ -1,6 +1,6 @@
 # useCallback & useMemo
 
-Learn performance optimization hooks in JAC-Client.
+Learn performance optimization hooks in Jac.
 
 ---
 
@@ -10,24 +10,24 @@ Learn performance optimization hooks in JAC-Client.
 
 Memoizes a function to prevent unnecessary re-creation on every render.
 
-### JavaScript/React vs JAC-Client
+### JavaScript/React vs Jac
 
-**JavaScript/React:**
+=== "JavaScript"
 
-```javascript
-const handleClick = useCallback(() => {
-  setCount(count + 1);
-}, [count]);
-```
+    ```javascript
+    const handleClick = useCallback(() => {
+      setCount(count + 1);
+    }, [count]);
+    ```
 
-**JAC-Client:**
+=== "Jac"
 
-```jac
-handleClick = useCallback(
-    lambda -> None { setCount(count + 1); },
-    [count]
-);
-```
+    ```jac
+    handleClick = useCallback(
+        lambda -> None { setCount(count + 1); },
+        [count]
+    );
+    ```
 
 ---
 
@@ -143,30 +143,30 @@ def Form() -> any {
 
 Memoizes a computed value to prevent expensive recalculations.
 
-### JavaScript/React vs JAC-Client
+### JavaScript/React vs Jac
 
-**JavaScript/React:**
+=== "JavaScript"
 
-```javascript
-const total = useMemo(() => {
-  return items.reduce((sum, item) => sum + item.price, 0);
-}, [items]);
-```
+    ```javascript
+    const total = useMemo(() => {
+      return items.reduce((sum, item) => sum + item.price, 0);
+    }, [items]);
+    ```
 
-**JAC-Client:**
+=== "Jac"
 
-```jac
-total = useMemo(
-    lambda -> float {
-        sum = 0;
-        for item in items {
-            sum = sum + item["price"];
-        }
-        return sum;
-    },
-    [items]
-);
-```
+    ```jac
+    total = useMemo(
+        lambda -> float {
+            sum = 0;
+            for item in items {
+                sum = sum + item["price"];
+            }
+            return sum;
+        },
+        [items]
+    );
+    ```
 
 ---
 
@@ -426,13 +426,13 @@ def Dashboard() -> any {
 
 ## Summary
 
-| Hook | Purpose | Syntax |
-|------|---------|--------|
-| useCallback | Memoize function | `useCallback(lambda -> Type {}, [deps])` |
-| useMemo | Memoize value | `useMemo(lambda -> Type { return val; }, [deps])` |
+| Hook        | Purpose          | Syntax                                            |
+| ----------- | ---------------- | ------------------------------------------------- |
+| useCallback | Memoize function | `useCallback(lambda -> Type {}, [deps])`          |
+| useMemo     | Memoize value    | `useMemo(lambda -> Type { return val; }, [deps])` |
 
 ---
 
 ## Next
 
-- [useRef](04-useRef.md) - References and DOM access
+- [useRef](./04-useRef.md) - References and DOM access
