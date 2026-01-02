@@ -12,7 +12,7 @@ This pass transforms Python AST nodes into equivalent Jac AST nodes by:
 This pass is crucial for Python interoperability, allowing Python code to be imported
 and used within Jac programs while maintaining type information and semantic relationships.
 """
-import from __future__ { annotations }
+
 import ast as py_ast;
 import os;
 import re;

@@ -450,6 +450,10 @@ impl JacAutoLintPass.enter_module(self: JacAutoLintPass, node: uni.Module) -> No
     # Transform module body in-place
     new_body: list = [];
     for stmt in module.body {
+        # Remove `import from __future__ { annotations }` - not needed in Jac
+        if self._is_future_annotations_import(stmt) {
+            continue;
+        }
         if isinstance(stmt, uni.ModuleCode) and stmt.name is None {
             # Unnamed with entry block - extract module-level constructs
             # while preserving order for correctness
@@ -1020,4 +1024,43 @@ impl JacAutoLintPass.exit_bool_expr(
     if changed {
         bool_node.normalize(deep=True);
     }
+}
+
+"""Check if a statement is an `import from __future__ { annotations }` import.
+
+This import is not needed in Jac since Jac already uses deferred annotation
+evaluation by default. Removing it cleans up code converted from Python.
+"""
+impl JacAutoLintPass._is_future_annotations_import(
+    self: JacAutoLintPass, stmt: uni.UniNode
+) -> bool {
+    if not isinstance(stmt, uni.Import) {
+        return False;
+    }
+    import_node = stmt;
+    # Must be a "from X import Y" style import (has from_loc)
+    if import_node.from_loc is None {
+        return False;
+    }
+    # Check if from_loc path is "__future__"
+    from_path = import_node.from_loc.path;
+    if from_path is None or len(from_path) != 1 {
+        return False;
+    }
+    first_path = from_path[0];
+    if not isinstance(first_path, uni.Name) {
+        return False;
+    }
+    if first_path.value != "__future__" {
+        return False;
+    }
+    # Check if items contain "annotations"
+    for item in import_node.items {
+        if isinstance(item, uni.ModuleItem) {
+            if isinstance(item.name, uni.Name) and item.name.value == "annotations" {
+                return True;
+            }
+        }
+    }
+    return False;
 }

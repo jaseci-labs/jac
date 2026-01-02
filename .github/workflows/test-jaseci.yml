@@ -113,7 +113,7 @@ jobs:
 
     - name: Run Backend tests
       run: |
-        pytest -x jac-scale/jac_scale/tests/test_serve.py
+        pytest -x -vv -s jac-scale/jac_scale/tests/test_serve.py
 
     - name: Run jac-client examples
       run: |
@@ -170,7 +170,8 @@ jobs:
       - name: Run K8 tests
         if: steps.k8s-changes.outputs.k8s == 'true'
         run: |
-          pytest -v jac-scale/jac_scale/tests/test_deploy_k8.py
+          pytest -v jac-scale/jac_scale/tests/test_deploy_k8s.py
+          pytest -v jac-scale/jac_scale/tests/test_k8s_utils.py
 
       - name: Delete Kind cluster
         if: always() && steps.k8s-changes.outputs.k8s == 'true'

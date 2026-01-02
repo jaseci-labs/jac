@@ -1,5 +1,93 @@
-"""Stage the application code inside the PVC using a transient helper pod."""
+import os;
+import pathlib;
 
+impl parse_cpu_quantity(quantity: str) -> float {
+    trimmed = quantity.strip();
+    if (trimmed == '') {
+        raise ValueError('CPU quantity cannot be empty.') ;
+    }
+    lower = trimmed.lower();
+    if lower.endswith('m') {
+        value = lower[:-1].strip();
+        if (value == '') {
+            raise ValueError(
+                f"CPU quantity '{quantity}' is missing a numeric component."
+            ) ;
+        }
+        return float(value) / 1000.0;
+    }
+    return float(trimmed);
+}
+
+impl parse_memory_quantity(quantity: str) -> float {
+    trimmed = quantity.strip();
+    if (trimmed == '') {
+        raise ValueError('Memory quantity cannot be empty.') ;
+    }
+    suffixes = [
+        ('EI', float(1024 ** 6)),
+        ('PI', float(1024 ** 5)),
+        ('TI', float(1024 ** 4)),
+        ('GI', float(1024 ** 3)),
+        ('MI', float(1024 ** 2)),
+        ('KI', float(1024)),
+        ('E', float(10 ** 18)),
+        ('P', float(10 ** 15)),
+        ('T', float(10 ** 12)),
+        ('G', float(10 ** 9)),
+        ('M', float(10 ** 6)),
+        ('K', float(10 ** 3))
+    ];
+    upper = trimmed.upper();
+    for (unit, multiplier) in suffixes {
+        if upper.endswith(unit) {
+            number_part = trimmed[:(-len(unit))].strip();
+            if (number_part == '') {
+                raise ValueError(
+                    f"Memory quantity '{quantity}' is missing a numeric component."
+                ) ;
+            }
+            return float(number_part) * multiplier;
+        }
+    }
+    return float(trimmed);
+}
+
+impl validate_resource_limits(
+    cpu_request: (str | None),
+    cpu_limit: (str | None),
+    memory_request: (str | None),
+    memory_limit: (str | None)
+) -> None {
+    if (cpu_request and cpu_limit) {
+        try {
+            cpu_request_value = parse_cpu_quantity(cpu_request);
+            cpu_limit_value = parse_cpu_quantity(cpu_limit);
+        } except ValueError as exc {
+            raise ValueError(f"Invalid CPU quantity: {exc}") ;
+        }
+        if (cpu_limit_value < cpu_request_value) {
+            raise ValueError(
+                f"K8s_CPU_LIMIT ({cpu_limit}) must not be lower than K8s_CPU_REQUEST ({cpu_request})."
+            ) ;
+        }
+    }
+    if (memory_request and memory_limit) {
+        try {
+            memory_request_value = parse_memory_quantity(memory_request);
+            memory_limit_value = parse_memory_quantity(memory_limit);
+        } except ValueError as exc {
+            raise ValueError(f"Invalid memory quantity: {exc}") ;
+        }
+        if (memory_limit_value < memory_request_value) {
+            raise ValueError(
+                f"K8s_MEMORY_LIMIT ({memory_limit}) must not be lower than K8s_MEMORY_REQUEST ({memory_request})."
+            ) ;
+        }
+    }
+}
+
+"""Stage the application code inside the PVC using a transient helper pod."""
 impl sync_code_to_pvc(
     core_v1: client.CoreV1Api,
     namespace: str,
@@ -11,6 +99,8 @@ impl sync_code_to_pvc(
     import tempfile;
     import from pathlib { Path }
     sync_pod_name = f"{app_name}-code-sync";
+    parent_dir = pathlib.Path(code_folder).parent;
+    toml_path = os.path.join(parent_dir, 'jac.toml');
     pod_body = {
         'apiVersion': 'v1',
         'kind': 'Pod',
@@ -81,6 +171,19 @@ impl sync_code_to_pvc(
                 'tar -xzf /tmp/jaseci-code.tar.gz -C /data/workspace && rm -f /tmp/jaseci-code.tar.gz'
             ]
         );
+
+        if os.path.isfile(toml_path) {
+            run_kubectl_command(
+                [
+                    'cp',
+                    '-n',
+                    namespace,
+                    "jac.toml",
+                    f"{sync_pod_name}:/data/workspace/jac.toml"
+                ],
+                cwd=parent_dir
+            );
+        }
     } finally {
         temp_tar_path.unlink(missing_ok=True);
         try {

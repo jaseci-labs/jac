@@ -19,7 +19,7 @@ the ESTree specification by:
 The output of this pass is a complete ESTree AST representation that can be
 serialized to JavaScript source code or used by JavaScript tooling.
 """
-import from __future__ { annotations }
+
 import json;
 import from collections.abc { Callable, Sequence }
 import from dataclasses { dataclass, field }

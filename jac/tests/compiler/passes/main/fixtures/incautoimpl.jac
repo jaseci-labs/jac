@@ -1,4 +1,4 @@
-import autoimpl;
+include autoimpl;
 
 with entry {
     foo();

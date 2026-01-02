@@ -12,6 +12,7 @@ This pass applies automatic linting corrections to Jac code, including:
 - Converting hasattr(obj, "attr") to null-safe access
 - Propagating null-safe access consistency
 - Simplifying ternary expressions (x if x else default -> x or default)
+- Removing `import from __future__ { annotations }` (not needed in Jac)
 - (Future) Import organization
 - (Future) Redundant code removal
 """
@@ -88,4 +89,5 @@ class JacAutoLintPass(UniPass) {
 
     def exit_if_else_expr(self: JacAutoLintPass, if_else_node: uni.IfElseExpr) -> None;
     def exit_bool_expr(self: JacAutoLintPass, bool_node: uni.BoolExpr) -> None;
+    def _is_future_annotations_import(self: JacAutoLintPass, stmt: uni.UniNode) -> bool;
 }

@@ -218,7 +218,7 @@ cl import from ".components/Button.tsx" { Button }
 
 # Client-side component
 cl {
-    def app() -> any {
+    def:pub app() -> any {
         [count, setCount] = useState(0);
 
         useEffect(lambda -> None {
