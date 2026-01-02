@@ -1,12 +1,12 @@
 # Functions
 
-Learn how to define and use functions in JAC-Client.
+Learn how to define and use functions in Jac.
 
 ---
 
 ## Basic Function Syntax
 
-### JavaScript vs JAC-Client
+### JavaScript vs Jac
 
 **JavaScript:**
 
@@ -20,7 +20,7 @@ function add(a, b) {
 }
 ```
 
-**JAC-Client:**
+**Jac:**
 
 ```jac
 def greet() -> str {
@@ -194,18 +194,18 @@ def TodoList() -> any {
 
 ## Async Functions
 
-### JavaScript vs JAC-Client
+### JavaScript vs Jac
 
 **JavaScript:**
 
 ```javascript
 async function fetchData() {
-  const response = await fetch('/api/data');
+  const response = await fetch("/api/data");
   return response.json();
 }
 ```
 
-**JAC-Client:**
+**Jac:**
 
 ```jac
 async def fetchData() {
@@ -341,14 +341,14 @@ def Counter() -> any {
 
 ## Summary
 
-| Pattern | JavaScript | JAC-Client |
-|---------|-----------|------------|
-| Basic function | `function fn() {}` | `def fn() -> any {}` |
-| With return type | N/A | `def fn() -> str {}` |
-| Parameters | `function fn(a, b)` | `def fn(a: int, b: int)` |
-| No return | `function fn() {}` | `def fn() -> None {}` |
-| Async | `async function fn()` | `async def fn()` |
-| Export | `export function fn()` | `def:pub fn() -> any {}` |
+| Pattern          | JavaScript             | Jac                      |
+| ---------------- | ---------------------- | ------------------------ |
+| Basic function   | `function fn() {}`     | `def fn() -> any {}`     |
+| With return type | N/A                    | `def fn() -> str {}`     |
+| Parameters       | `function fn(a, b)`    | `def fn(a: int, b: int)` |
+| No return        | `function fn() {}`     | `def fn() -> None {}`    |
+| Async            | `async function fn()`  | `async def fn()`         |
+| Export           | `export function fn()` | `def:pub fn() -> any {}` |
 
 ---
 

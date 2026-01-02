@@ -1,6 +1,6 @@
 # If/Else Rendering
 
-Learn conditional rendering with if/else in JAC-Client.
+Learn conditional rendering with if/else in Jac.
 
 ---
 
@@ -213,12 +213,12 @@ def MaybeShow(props: dict) -> any {
 
 ## Summary
 
-| Pattern | Use Case |
-|---------|----------|
-| Early return | Check for null/invalid state first |
-| If/elif/else | Multiple exclusive conditions |
-| Guard clauses | Check permissions/validation |
-| Empty fragment | Return nothing: `return <></>` |
+| Pattern        | Use Case                           |
+| -------------- | ---------------------------------- |
+| Early return   | Check for null/invalid state first |
+| If/elif/else   | Multiple exclusive conditions      |
+| Guard clauses  | Check permissions/validation       |
+| Empty fragment | Return nothing: `return <></>`     |
 
 ---
 

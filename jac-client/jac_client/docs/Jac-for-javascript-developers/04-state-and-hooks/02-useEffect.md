@@ -1,12 +1,12 @@
 # useEffect Hook
 
-Learn how to handle side effects in JAC-Client components.
+Learn how to handle side effects in Jac components.
 
 ---
 
 ## Basic Syntax
 
-### JavaScript/React vs JAC-Client
+### JavaScript/React vs Jac
 
 **JavaScript/React:**
 
@@ -16,7 +16,7 @@ useEffect(() => {
 }, [dependency]);
 ```
 
-**JAC-Client:**
+**Jac:**
 
 ```jac
 useEffect(lambda -> None {
@@ -60,7 +60,7 @@ useEffect(() => {
 }, []);
 ```
 
-**JAC-Client:**
+**Jac:**
 
 ```jac
 useEffect(lambda -> None {
@@ -104,7 +104,7 @@ useEffect(() => {
 }, []);
 ```
 
-### JAC-Client
+### Jac
 
 ```jac
 useEffect(lambda -> None {
@@ -400,12 +400,12 @@ def Search() -> any {
 
 ## Summary
 
-| Pattern | JavaScript | JAC-Client |
-|---------|-----------|------------|
-| Basic effect | `useEffect(() => {})` | `useEffect(lambda -> None {})` |
-| With deps | `useEffect(() => {}, [dep])` | `useEffect(lambda -> None {}, [dep])` |
-| On mount | `useEffect(() => {}, [])` | `useEffect(lambda -> None {}, [])` |
-| Cleanup | `return () => cleanup()` | `return lambda -> None { cleanup(); }` |
+| Pattern      | JavaScript                   | Jac                                    |
+| ------------ | ---------------------------- | -------------------------------------- |
+| Basic effect | `useEffect(() => {})`        | `useEffect(lambda -> None {})`         |
+| With deps    | `useEffect(() => {}, [dep])` | `useEffect(lambda -> None {}, [dep])`  |
+| On mount     | `useEffect(() => {}, [])`    | `useEffect(lambda -> None {}, [])`     |
+| Cleanup      | `return () => cleanup()`     | `return lambda -> None { cleanup(); }` |
 
 ---
 

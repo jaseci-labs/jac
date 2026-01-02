@@ -1,6 +1,6 @@
 # Array Methods
 
-Learn map, filter, find, reduce and other array methods in JAC-Client.
+Learn map, filter, find, reduce and other array methods in Jac.
 
 ---
 
@@ -11,10 +11,10 @@ Transform each element in an array.
 ### JavaScript
 
 ```javascript
-const doubled = numbers.map(n => n * 2);
+const doubled = numbers.map((n) => n * 2);
 ```
 
-### JAC-Client
+### Jac
 
 ```jac
 # Use helper function (recommended)
@@ -38,10 +38,10 @@ Keep only elements that match a condition.
 ### JavaScript
 
 ```javascript
-const evens = numbers.filter(n => n % 2 === 0);
+const evens = numbers.filter((n) => n % 2 === 0);
 ```
 
-### JAC-Client
+### Jac
 
 ```jac
 evens = numbers.filter(lambda n: int -> bool { return n % 2 == 0; });
@@ -62,10 +62,10 @@ Find the first element that matches.
 ### JavaScript
 
 ```javascript
-const user = users.find(u => u.id === targetId);
+const user = users.find((u) => u.id === targetId);
 ```
 
-### JAC-Client
+### Jac
 
 ```jac
 user = users.find(lambda u: dict -> bool { return u["id"] == targetId; });
@@ -80,10 +80,10 @@ Check if any element matches.
 ### JavaScript
 
 ```javascript
-const hasAdmin = users.some(u => u.role === 'admin');
+const hasAdmin = users.some((u) => u.role === "admin");
 ```
 
-### JAC-Client
+### Jac
 
 ```jac
 hasAdmin = users.some(lambda u: dict -> bool { return u["role"] == "admin"; });
@@ -98,10 +98,10 @@ Check if all elements match.
 ### JavaScript
 
 ```javascript
-const allActive = users.every(u => u.active);
+const allActive = users.every((u) => u.active);
 ```
 
-### JAC-Client
+### Jac
 
 ```jac
 allActive = users.every(lambda u: dict -> bool { return u["active"]; });
@@ -119,7 +119,7 @@ Reduce array to a single value.
 const sum = numbers.reduce((acc, n) => acc + n, 0);
 ```
 
-### JAC-Client
+### Jac
 
 ```jac
 sum = numbers.reduce(
@@ -298,14 +298,14 @@ sorted = arr.sort(compare);
 
 ## Summary
 
-| Method | Purpose | Callback |
-|--------|---------|----------|
-| map | Transform | `(item, index) -> newItem` |
-| filter | Keep matching | `(item) -> bool` |
-| find | First match | `(item) -> bool` |
-| some | Any match | `(item) -> bool` |
-| every | All match | `(item) -> bool` |
-| reduce | Accumulate | `(acc, item) -> newAcc` |
+| Method | Purpose       | Callback                   |
+| ------ | ------------- | -------------------------- |
+| map    | Transform     | `(item, index) -> newItem` |
+| filter | Keep matching | `(item) -> bool`           |
+| find   | First match   | `(item) -> bool`           |
+| some   | Any match     | `(item) -> bool`           |
+| every  | All match     | `(item) -> bool`           |
+| reduce | Accumulate    | `(acc, item) -> newAcc`    |
 
 ---
 

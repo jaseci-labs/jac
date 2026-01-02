@@ -9,10 +9,10 @@ This is one of the **biggest differences** from JavaScript. The ternary syntax u
 ### JavaScript
 
 ```javascript
-condition ? valueIfTrue : valueIfFalse
+condition ? valueIfTrue : valueIfFalse;
 ```
 
-### JAC-Client
+### Jac
 
 ```jac
 (valueIfTrue) if condition else (valueIfFalse)
@@ -244,10 +244,10 @@ def StatusIcon(props: dict) -> any {
 
 ## Summary
 
-| JavaScript | JAC-Client |
-|-----------|------------|
-| `a ? b : c` | `(b) if a else (c)` |
-| `x ? "yes" : "no"` | `("yes") if x else ("no")` |
+| JavaScript          | Jac                         |
+| ------------------- | --------------------------- |
+| `a ? b : c`         | `(b) if a else (c)`         |
+| `x ? "yes" : "no"`  | `("yes") if x else ("no")`  |
 | `x ? <A /> : <B />` | `(<A />) if x else (<B />)` |
 
 **Key Rules:**

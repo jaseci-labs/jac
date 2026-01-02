@@ -1,19 +1,19 @@
 # Lambda Functions
 
-This is the **most important syntax difference** from JavaScript. Master lambdas and you've mastered JAC-Client.
+This is the **most important syntax difference** from JavaScript. Master lambdas and you've mastered Jac.
 
 ---
 
 ## Quick Reference
 
-| Pattern | JavaScript | JAC-Client |
-|---------|-----------|------------|
-| No params | `() => {}` | `lambda -> None {}` |
-| No params (short) | `() => doIt()` | `lambda: doIt()` |
-| One param | `(x) => {}` | `lambda x: any -> None {}` |
-| Two params | `(a, b) => {}` | `lambda a: any, b: any -> None {}` |
-| With return | `(x) => x * 2` | `lambda x: int -> int { return x * 2; }` |
-| Event handler | `(e) => {}` | `lambda e: any -> None {}` |
+| Pattern           | JavaScript     | Jac                                      |
+| ----------------- | -------------- | ---------------------------------------- |
+| No params         | `() => {}`     | `lambda -> None {}`                      |
+| No params (short) | `() => doIt()` | `lambda: doIt()`                         |
+| One param         | `(x) => {}`    | `lambda x: any -> None {}`               |
+| Two params        | `(a, b) => {}` | `lambda a: any, b: any -> None {}`       |
+| With return       | `(x) => x * 2` | `lambda x: int -> int { return x * 2; }` |
+| Event handler     | `(e) => {}`    | `lambda e: any -> None {}`               |
 
 ---
 
@@ -29,7 +29,7 @@ onClick={() => console.log("clicked")}
 onClick={() => handleClick()}
 ```
 
-**JAC-Client:**
+**Jac:**
 
 ```jac
 onClick={lambda: setCount(count + 1)}
@@ -55,7 +55,7 @@ onClick={() => {
 }}
 ```
 
-**JAC-Client:**
+**Jac:**
 
 ```jac
 onClick={lambda -> None {
@@ -78,7 +78,7 @@ onChange={(e) => setName(e.target.value)}
 onSelect={(id) => selectItem(id)}
 ```
 
-**JAC-Client:**
+**Jac:**
 
 ```jac
 onChange={lambda e: any -> None { setName(e.target.value); }}
@@ -94,7 +94,7 @@ onDrag={(x, y) => setPosition(x, y)}
 calculate((a, b) => a + b)
 ```
 
-**JAC-Client:**
+**Jac:**
 
 ```jac
 onDrag={lambda x: int, y: int -> None { setPosition(x, y); }}
@@ -110,12 +110,12 @@ calculate(lambda a: int, b: int -> int { return a + b; })
 **JavaScript:**
 
 ```javascript
-numbers.map(n => n * 2)
-numbers.filter(n => n > 0)
-numbers.find(n => n === target)
+numbers.map((n) => n * 2);
+numbers.filter((n) => n > 0);
+numbers.find((n) => n === target);
 ```
 
-**JAC-Client:**
+**Jac:**
 
 ```jac
 # Option 1: Use helper function (recommended)
@@ -428,14 +428,14 @@ lambda -> None { doSomething(); }
 
 ## Summary
 
-| Use Case | Syntax |
-|----------|--------|
-| Simple click | `lambda: handler()` |
-| With event | `lambda e: any -> None { ... }` |
-| Multiple statements | `lambda -> None { a(); b(); }` |
-| Return value | `lambda x: int -> int { return x * 2; }` |
-| Map callback | `def fn(item: any, index: int) -> any { ... }` |
-| Filter callback | `lambda x: any -> bool { return condition; }` |
+| Use Case            | Syntax                                         |
+| ------------------- | ---------------------------------------------- |
+| Simple click        | `lambda: handler()`                            |
+| With event          | `lambda e: any -> None { ... }`                |
+| Multiple statements | `lambda -> None { a(); b(); }`                 |
+| Return value        | `lambda x: int -> int { return x * 2; }`       |
+| Map callback        | `def fn(item: any, index: int) -> any { ... }` |
+| Filter callback     | `lambda x: any -> bool { return condition; }`  |
 
 ---
 

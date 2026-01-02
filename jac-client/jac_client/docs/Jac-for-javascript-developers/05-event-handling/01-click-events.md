@@ -1,12 +1,12 @@
 # Click Events
 
-Learn how to handle click events in JAC-Client.
+Learn how to handle click events in Jac.
 
 ---
 
 ## Basic Click Handler
 
-### JavaScript/React vs JAC-Client
+### JavaScript/React vs Jac
 
 **JavaScript/React:**
 
@@ -15,7 +15,7 @@ Learn how to handle click events in JAC-Client.
 <button onClick={handleClick}>Click</button>
 ```
 
-**JAC-Client:**
+**Jac:**
 
 ```jac
 <button onClick={lambda: handleClick()}>Click</button>
@@ -323,14 +323,14 @@ def DisabledButton() -> any {
 
 ## Summary
 
-| Pattern | Syntax |
-|---------|--------|
-| Simple click | `onClick={lambda: fn()}` |
-| With event | `onClick={lambda e: any -> None { fn(e); }}` |
-| Multiple actions | `onClick={lambda -> None { a(); b(); }}` |
-| Pass parameter | `onClick={lambda: fn(value)}` |
-| Toggle | `onClick={lambda: setState(not state)}` |
-| Prevent default | `e.preventDefault()` |
+| Pattern          | Syntax                                       |
+| ---------------- | -------------------------------------------- |
+| Simple click     | `onClick={lambda: fn()}`                     |
+| With event       | `onClick={lambda e: any -> None { fn(e); }}` |
+| Multiple actions | `onClick={lambda -> None { a(); b(); }}`     |
+| Pass parameter   | `onClick={lambda: fn(value)}`                |
+| Toggle           | `onClick={lambda: setState(not state)}`      |
+| Prevent default  | `e.preventDefault()`                         |
 
 ---
 

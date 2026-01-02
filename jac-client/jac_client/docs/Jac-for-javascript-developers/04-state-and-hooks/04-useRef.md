@@ -1,12 +1,12 @@
 # useRef Hook
 
-Learn how to use references for DOM access and mutable values in JAC-Client.
+Learn how to use references for DOM access and mutable values in Jac.
 
 ---
 
 ## Basic Syntax
 
-### JavaScript/React vs JAC-Client
+### JavaScript/React vs Jac
 
 **JavaScript/React:**
 
@@ -15,7 +15,7 @@ const inputRef = useRef(null);
 inputRef.current.focus();
 ```
 
-**JAC-Client:**
+**Jac:**
 
 ```jac
 inputRef = useRef(None);
@@ -279,12 +279,12 @@ def MultiInputForm() -> any {
 
 ## Ref vs State
 
-| Feature | useRef | useState |
-|---------|--------|----------|
-| Re-renders on change | No | Yes |
-| Persists across renders | Yes | Yes |
-| Access value | `.current` | Direct |
-| Use case | DOM, timers, previous values | UI state |
+| Feature                 | useRef                       | useState |
+| ----------------------- | ---------------------------- | -------- |
+| Re-renders on change    | No                           | Yes      |
+| Persists across renders | Yes                          | Yes      |
+| Access value            | `.current`                   | Direct   |
+| Use case                | DOM, timers, previous values | UI state |
 
 ### When to Use useRef
 
@@ -350,13 +350,13 @@ def MeasuredBox() -> any {
 
 ## Summary
 
-| Pattern | Syntax |
-|---------|--------|
-| Create ref | `myRef = useRef(None)` |
+| Pattern       | Syntax                  |
+| ------------- | ----------------------- |
+| Create ref    | `myRef = useRef(None)`  |
 | Attach to DOM | `<input ref={myRef} />` |
-| Access DOM | `myRef.current.focus()` |
-| Store value | `myRef.current = value` |
-| Read value | `value = myRef.current` |
+| Access DOM    | `myRef.current.focus()` |
+| Store value   | `myRef.current = value` |
+| Read value    | `value = myRef.current` |
 
 ---
 

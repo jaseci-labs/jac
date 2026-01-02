@@ -1,6 +1,6 @@
 # Children and Composition
 
-Learn how to compose components and pass children in JAC-Client.
+Learn how to compose components and pass children in Jac.
 
 ---
 
@@ -16,10 +16,10 @@ function Card({ children }) {
 <Card>
   <h1>Title</h1>
   <p>Content</p>
-</Card>
+</Card>;
 ```
 
-### JAC-Client
+### Jac
 
 ```jac
 def Card(children: any) -> any {
@@ -262,7 +262,7 @@ def withLoading(WrappedComponent: any) -> any {
     return WithLoadingComponent;
 }
 
-# Note: This pattern is less common in JAC-Client
+# Note: This pattern is less common in Jac
 # Prefer composition with children instead
 ```
 
@@ -355,14 +355,14 @@ def List(items: list, renderItem: any) -> any {
 
 ## Summary
 
-| Pattern | Description |
-|---------|-------------|
-| `children: any` | Children passed as direct parameter |
-| `props.children` | Alternative access via props |
-| Named slots | Pass components as separate props |
-| Wrapper components | Use children for content |
-| Conditional render | Show/hide based on parameters |
-| Composition | Build complex from simple |
+| Pattern            | Description                         |
+| ------------------ | ----------------------------------- |
+| `children: any`    | Children passed as direct parameter |
+| `props.children`   | Alternative access via props        |
+| Named slots        | Pass components as separate props   |
+| Wrapper components | Use children for content            |
+| Conditional render | Show/hide based on parameters       |
+| Composition        | Build complex from simple           |
 
 ---
 

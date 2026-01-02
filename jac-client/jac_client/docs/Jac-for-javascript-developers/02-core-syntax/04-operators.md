@@ -1,6 +1,6 @@
 # Operators
 
-Learn how operators work in JAC-Client, including the key differences from JavaScript.
+Learn how operators work in Jac, including the key differences from JavaScript.
 
 ---
 
@@ -8,21 +8,24 @@ Learn how operators work in JAC-Client, including the key differences from JavaS
 
 ### AND, OR, NOT
 
-| JavaScript | JAC-Client |
-|-----------|------------|
-| `&&` | `and` |
-| `\|\|` | `or` |
-| `!` | `not` |
+| JavaScript | Jac   |
+| ---------- | ----- |
+| `&&`       | `and` |
+| `\|\|`     | `or`  |
+| `!`        | `not` |
 
 **JavaScript:**
 
 ```javascript
-if (a && b) { }
-if (a || b) { }
-if (!a) { }
+if (a && b) {
+}
+if (a || b) {
+}
+if (!a) {
+}
 ```
 
-**JAC-Client:**
+**Jac:**
 
 ```jac
 if a and b { }
@@ -77,20 +80,22 @@ if (isLoggedIn and hasPermission) or isAdmin {
 
 ### Equality
 
-| JavaScript | JAC-Client | Notes |
-|-----------|------------|-------|
-| `===` | `==` | Equality check |
-| `!==` | `!=` | Inequality check |
-| `==` | `==` | Same as `===` in JAC |
+| JavaScript | Jac  | Notes                |
+| ---------- | ---- | -------------------- |
+| `===`      | `==` | Equality check       |
+| `!==`      | `!=` | Inequality check     |
+| `==`       | `==` | Same as `===` in JAC |
 
 **JavaScript:**
 
 ```javascript
-if (a === b) { }
-if (a !== b) { }
+if (a === b) {
+}
+if (a !== b) {
+}
 ```
 
-**JAC-Client:**
+**Jac:**
 
 ```jac
 if a == b { }
@@ -99,12 +104,12 @@ if a != b { }
 
 ### Comparison
 
-| Operator | Meaning |
-|----------|---------|
-| `<` | Less than |
-| `>` | Greater than |
-| `<=` | Less than or equal |
-| `>=` | Greater than or equal |
+| Operator | Meaning               |
+| -------- | --------------------- |
+| `<`      | Less than             |
+| `>`      | Greater than          |
+| `<=`     | Less than or equal    |
+| `>=`     | Greater than or equal |
 
 ```jac
 if age >= 18 {
@@ -126,13 +131,13 @@ if price <= maxPrice {
 
 Same as JavaScript:
 
-| Operator | Meaning |
-|----------|---------|
-| `+` | Addition |
-| `-` | Subtraction |
-| `*` | Multiplication |
-| `/` | Division |
-| `%` | Modulo (remainder) |
+| Operator | Meaning            |
+| -------- | ------------------ |
+| `+`      | Addition           |
+| `-`      | Subtraction        |
+| `*`      | Multiplication     |
+| `/`      | Division           |
+| `%`      | Modulo (remainder) |
 
 ```jac
 sum = a + b
@@ -157,7 +162,7 @@ count++;
 count--;
 ```
 
-**JAC-Client:**
+**Jac:**
 
 ```jac
 count = count + 1
@@ -171,13 +176,13 @@ for i=0 to i<10 by i+=1 { }
 
 ## Assignment Operators
 
-| Operator | Meaning |
-|----------|---------|
-| `=` | Assign |
-| `+=` | Add and assign |
-| `-=` | Subtract and assign |
-| `*=` | Multiply and assign |
-| `/=` | Divide and assign |
+| Operator | Meaning             |
+| -------- | ------------------- |
+| `=`      | Assign              |
+| `+=`     | Add and assign      |
+| `-=`     | Subtract and assign |
+| `*=`     | Multiply and assign |
+| `/=`     | Divide and assign   |
 
 ```jac
 count = 0
@@ -212,7 +217,7 @@ message = "Count: " + count.toString()
 const message = `Hello, ${name}!`;
 ```
 
-**JAC-Client:**
+**Jac:**
 
 ```jac
 message = "Hello, " + name + "!"
@@ -230,7 +235,7 @@ This is one of the **biggest differences** from JavaScript.
 result = condition ? valueIfTrue : valueIfFalse;
 ```
 
-**JAC-Client:**
+**Jac:**
 
 ```jac
 result = (valueIfTrue) if condition else (valueIfFalse)
@@ -262,7 +267,7 @@ price = (originalPrice * 0.9) if hasDiscount else (originalPrice)
 const value = data ?? "default";
 ```
 
-**JAC-Client:**
+**Jac:**
 
 ```jac
 # Use explicit None check
@@ -284,7 +289,7 @@ value = data or "default"
 const city = user?.address?.city;
 ```
 
-**JAC-Client:**
+**Jac:**
 
 ```jac
 # Manual checking
@@ -350,18 +355,18 @@ result = a or b and c       # b and c first, then or a
 
 ## Summary
 
-| Category | JavaScript | JAC-Client |
-|----------|-----------|------------|
-| AND | `&&` | `and` |
-| OR | `\|\|` | `or` |
-| NOT | `!` | `not` |
-| Equality | `===` | `==` |
-| Inequality | `!==` | `!=` |
-| Ternary | `a ? b : c` | `(b) if a else (c)` |
-| Increment | `++` | `+= 1` |
-| Decrement | `--` | `-= 1` |
-| Template | `` `${x}` `` | `"" + x` |
-| Nullish | `??` | `if x != None else` |
+| Category   | JavaScript   | Jac                 |
+| ---------- | ------------ | ------------------- |
+| AND        | `&&`         | `and`               |
+| OR         | `\|\|`       | `or`                |
+| NOT        | `!`          | `not`               |
+| Equality   | `===`        | `==`                |
+| Inequality | `!==`        | `!=`                |
+| Ternary    | `a ? b : c`  | `(b) if a else (c)` |
+| Increment  | `++`         | `+= 1`              |
+| Decrement  | `--`         | `-= 1`              |
+| Template   | `` `${x}` `` | `"" + x`            |
+| Nullish    | `??`         | `if x != None else` |
 
 ---
 

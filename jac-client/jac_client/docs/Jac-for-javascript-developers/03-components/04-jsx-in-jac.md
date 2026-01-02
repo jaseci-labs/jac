@@ -1,12 +1,12 @@
 # JSX in JAC
 
-Learn the differences between JSX in JavaScript/React and JAC-Client.
+Learn the differences between JSX in JavaScript/React and Jac.
 
 ---
 
 ## JSX Basics
 
-JSX works mostly the same in JAC-Client as in React, with a few key differences.
+JSX works mostly the same in Jac as in React, with a few key differences.
 
 ### Same as React
 
@@ -101,7 +101,7 @@ Object keys must be quoted strings:
 <div style={{ padding: "10px", backgroundColor: "#fff" }}>
 ```
 
-**JAC-Client:**
+**Jac:**
 
 ```jac
 <div style={{ "padding": "10px", "backgroundColor": "#fff" }}>
@@ -404,15 +404,15 @@ if isDisabled {
 
 ## Summary
 
-| Feature | React | JAC-Client |
-|---------|-------|------------|
-| Style keys | `{ padding: "10px" }` | `{ "padding": "10px" }` |
-| Ternary | `a ? b : c` | `(b) if a else (c)` |
-| AND render | `{x && <Y />}` | `{x and <Y />}` |
-| OR default | `{x \|\| "default"}` | `{x or "default"}` |
-| Event handler | `onClick={() => {}}` | `onClick={lambda: fn()}` |
-| Empty return | `return null` | `return <></>` |
-| Comments | `{/* comment */}` | `{# comment #}` |
+| Feature       | React                 | Jac                      |
+| ------------- | --------------------- | ------------------------ |
+| Style keys    | `{ padding: "10px" }` | `{ "padding": "10px" }`  |
+| Ternary       | `a ? b : c`           | `(b) if a else (c)`      |
+| AND render    | `{x && <Y />}`        | `{x and <Y />}`          |
+| OR default    | `{x \|\| "default"}`  | `{x or "default"}`       |
+| Event handler | `onClick={() => {}}`  | `onClick={lambda: fn()}` |
+| Empty return  | `return null`         | `return <></>`           |
+| Comments      | `{/* comment */}`     | `{# comment #}`          |
 
 ---
 

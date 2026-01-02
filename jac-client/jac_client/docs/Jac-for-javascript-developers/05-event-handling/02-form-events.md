@@ -1,6 +1,6 @@
 # Form Events
 
-Learn how to handle form events in JAC-Client.
+Learn how to handle form events in Jac.
 
 ---
 
@@ -14,7 +14,7 @@ Learn how to handle form events in JAC-Client.
 <input onChange={(e) => setName(e.target.value)} />
 ```
 
-**JAC-Client:**
+**Jac:**
 
 ```jac
 <input onChange={lambda e: any -> None { setName(e.target.value); }} />
@@ -394,13 +394,13 @@ def FormWithObject() -> any {
 
 ## Summary
 
-| Event | Usage |
-|-------|-------|
-| onChange | `onChange={lambda e: any -> None { setValue(e.target.value); }}` |
+| Event    | Usage                                                                |
+| -------- | -------------------------------------------------------------------- |
+| onChange | `onChange={lambda e: any -> None { setValue(e.target.value); }}`     |
 | onSubmit | `onSubmit={lambda e: any -> None { e.preventDefault(); submit(); }}` |
-| onFocus | `onFocus={lambda: setFocused(True)}` |
-| onBlur | `onBlur={lambda: setFocused(False)}` |
-| Checkbox | `onChange={lambda: setChecked(not checked)}` |
+| onFocus  | `onFocus={lambda: setFocused(True)}`                                 |
+| onBlur   | `onBlur={lambda: setFocused(False)}`                                 |
+| Checkbox | `onChange={lambda: setChecked(not checked)}`                         |
 
 ---
 

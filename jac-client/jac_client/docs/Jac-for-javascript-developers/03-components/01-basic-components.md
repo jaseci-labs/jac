@@ -1,12 +1,12 @@
 # Basic Components
 
-Learn how to create and use components in JAC-Client.
+Learn how to create and use components in Jac.
 
 ---
 
 ## Component Basics
 
-### JavaScript/React vs JAC-Client
+### JavaScript/React vs Jac
 
 **JavaScript/React:**
 
@@ -20,7 +20,7 @@ export default function App() {
 }
 ```
 
-**JAC-Client:**
+**Jac:**
 
 ```jac
 cl {
@@ -45,7 +45,7 @@ cl {
 
 ## The `app()` Entry Point
 
-Every JAC-Client project must have an `app()` function:
+Every Jac project must have an `app()` function:
 
 ```jac
 cl {
@@ -326,14 +326,14 @@ cl {
 
 ## Summary
 
-| Pattern | JavaScript | JAC-Client |
-|---------|-----------|------------|
+| Pattern          | JavaScript           | Jac                    |
+| ---------------- | -------------------- | ---------------------- |
 | Define component | `function Comp() {}` | `def Comp() -> any {}` |
-| Entry point | `App()` | `app()` |
-| Wrap code | N/A | `cl { }` |
-| Export | `export function` | `def:pub` |
-| Fragment | `<></>` | `<></>` |
-| Return null | `return null` | `return <></>` |
+| Entry point      | `App()`              | `app()`                |
+| Wrap code        | N/A                  | `cl { }`               |
+| Export           | `export function`    | `def:pub`              |
+| Fragment         | `<></>`              | `<></>`                |
+| Return null      | `return null`        | `return <></>`         |
 
 ---
 

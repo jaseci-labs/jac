@@ -6,11 +6,11 @@ JAC uses Python-style `try/except` instead of JavaScript's `try/catch`.
 
 ## Syntax Comparison
 
-| JavaScript | JAC-Client |
-|------------|------------|
+| JavaScript             | Jac                                 |
+| ---------------------- | ----------------------------------- |
 | `try { } catch(e) { }` | `try { } except Exception as e { }` |
-| `throw new Error()` | `raise Exception()` |
-| `finally { }` | `finally { }` |
+| `throw new Error()`    | `raise Exception()`                 |
+| `finally { }`          | `finally { }`                       |
 
 ---
 
@@ -133,13 +133,13 @@ def SafeComponent() -> any {
 
 ## Summary
 
-| Pattern | Syntax |
-|---------|--------|
-| Basic | `try { } except Exception as e { }` |
-| Generic | `try { } except { }` |
-| With finally | `try { } except { } finally { }` |
-| Raise error | `raise Exception("message")` |
-| Re-raise | `raise e` |
+| Pattern      | Syntax                              |
+| ------------ | ----------------------------------- |
+| Basic        | `try { } except Exception as e { }` |
+| Generic      | `try { } except { }`                |
+| With finally | `try { } except { } finally { }`    |
+| Raise error  | `raise Exception("message")`        |
+| Re-raise     | `raise e`                           |
 
 ---
 

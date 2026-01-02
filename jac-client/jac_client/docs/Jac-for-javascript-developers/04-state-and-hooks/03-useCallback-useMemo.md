@@ -1,6 +1,6 @@
 # useCallback & useMemo
 
-Learn performance optimization hooks in JAC-Client.
+Learn performance optimization hooks in Jac.
 
 ---
 
@@ -10,7 +10,7 @@ Learn performance optimization hooks in JAC-Client.
 
 Memoizes a function to prevent unnecessary re-creation on every render.
 
-### JavaScript/React vs JAC-Client
+### JavaScript/React vs Jac
 
 **JavaScript/React:**
 
@@ -20,7 +20,7 @@ const handleClick = useCallback(() => {
 }, [count]);
 ```
 
-**JAC-Client:**
+**Jac:**
 
 ```jac
 handleClick = useCallback(
@@ -143,7 +143,7 @@ def Form() -> any {
 
 Memoizes a computed value to prevent expensive recalculations.
 
-### JavaScript/React vs JAC-Client
+### JavaScript/React vs Jac
 
 **JavaScript/React:**
 
@@ -153,7 +153,7 @@ const total = useMemo(() => {
 }, [items]);
 ```
 
-**JAC-Client:**
+**Jac:**
 
 ```jac
 total = useMemo(
@@ -426,10 +426,10 @@ def Dashboard() -> any {
 
 ## Summary
 
-| Hook | Purpose | Syntax |
-|------|---------|--------|
-| useCallback | Memoize function | `useCallback(lambda -> Type {}, [deps])` |
-| useMemo | Memoize value | `useMemo(lambda -> Type { return val; }, [deps])` |
+| Hook        | Purpose          | Syntax                                            |
+| ----------- | ---------------- | ------------------------------------------------- |
+| useCallback | Memoize function | `useCallback(lambda -> Type {}, [deps])`          |
+| useMemo     | Memoize value    | `useMemo(lambda -> Type { return val; }, [deps])` |
 
 ---
 

@@ -1,6 +1,6 @@
 # While Loops
 
-Learn while loop syntax in JAC-Client.
+Learn while loop syntax in Jac.
 
 ---
 
@@ -14,7 +14,7 @@ while (condition) {
 }
 ```
 
-### JAC-Client
+### Jac
 
 ```jac
 while condition {
@@ -233,13 +233,13 @@ for i=0 to i<10 by i+=1 {
 
 ## Summary
 
-| Pattern | Syntax |
-|---------|--------|
-| Basic | `while condition { }` |
-| Infinite | `while True { }` |
-| Break | `break` |
-| Continue | `continue` |
-| Multiple conditions | `while a and b { }` |
+| Pattern             | Syntax                |
+| ------------------- | --------------------- |
+| Basic               | `while condition { }` |
+| Infinite            | `while True { }`      |
+| Break               | `break`               |
+| Continue            | `continue`            |
+| Multiple conditions | `while a and b { }`   |
 
 ---
 

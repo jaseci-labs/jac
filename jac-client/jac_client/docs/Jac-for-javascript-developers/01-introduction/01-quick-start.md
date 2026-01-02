@@ -1,6 +1,6 @@
 # Quick Start Guide
 
-Build your first JAC-Client component in minutes.
+Build your first Jac component in minutes.
 
 ---
 
@@ -294,13 +294,13 @@ Now that you've built your first components:
 
 ## Common Beginner Mistakes
 
-| Mistake | Fix |
-|---------|-----|
-| Using `const` or `let` | Just assign: `x = 5` |
-| Using `=>` for functions | Use `lambda: expr` or `lambda -> Type {}` |
-| Using `? :` for ternary | Use `(a) if condition else (b)` |
-| Using `true`/`false` | Use `True`/`False` |
-| Using `null` | Use `None` |
-| Using `&&` | Use `and` |
-| Using `!` | Use `not` |
-| Using unquoted object keys | Quote all keys: `{ "key": value }` |
+| Mistake                    | Fix                                       |
+| -------------------------- | ----------------------------------------- |
+| Using `const` or `let`     | Just assign: `x = 5`                      |
+| Using `=>` for functions   | Use `lambda: expr` or `lambda -> Type {}` |
+| Using `? :` for ternary    | Use `(a) if condition else (b)`           |
+| Using `true`/`false`       | Use `True`/`False`                        |
+| Using `null`               | Use `None`                                |
+| Using `&&`                 | Use `and`                                 |
+| Using `!`                  | Use `not`                                 |
+| Using unquoted object keys | Quote all keys: `{ "key": value }`        |

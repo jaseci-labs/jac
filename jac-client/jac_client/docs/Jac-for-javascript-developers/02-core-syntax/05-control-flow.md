@@ -1,6 +1,6 @@
 # Control Flow
 
-Learn if/elif/else statements and loop syntax in JAC-Client.
+Learn if/elif/else statements and loop syntax in Jac.
 
 ---
 
@@ -20,7 +20,7 @@ if (condition) {
 }
 ```
 
-**JAC-Client:**
+**Jac:**
 
 ```jac
 if condition {
@@ -99,7 +99,7 @@ for (let i = 0; i < 5; i++) {
 }
 ```
 
-**JAC-Client:**
+**Jac:**
 
 ```jac
 for i=0 to i<5 by i+=1 {
@@ -158,7 +158,7 @@ for (const item of items) {
 }
 ```
 
-**JAC-Client:**
+**Jac:**
 
 ```jac
 for item in items {
@@ -226,7 +226,7 @@ while (condition) {
 }
 ```
 
-**JAC-Client:**
+**Jac:**
 
 ```jac
 while condition {
@@ -326,7 +326,7 @@ for i in range(5):
     print(i)
 ```
 
-**JAC-Client:**
+**Jac:**
 
 ```jac
 # range() does NOT work!
@@ -340,19 +340,22 @@ for i=0 to i<5 by i+=1 {
 
 ## Switch/Case Alternative
 
-JAC-Client doesn't have switch/case. Use if/elif/else or object lookup:
+Jac doesn't have switch/case. Use if/elif/else or object lookup:
 
 **JavaScript:**
 
 ```javascript
 switch (action) {
-  case 'add': return handleAdd();
-  case 'delete': return handleDelete();
-  default: return handleDefault();
+  case "add":
+    return handleAdd();
+  case "delete":
+    return handleDelete();
+  default:
+    return handleDefault();
 }
 ```
 
-**JAC-Client:**
+**Jac:**
 
 ```jac
 # Option 1: If/elif/else
@@ -435,16 +438,16 @@ def UserList(users: list) -> any {
 
 ## Summary
 
-| Pattern | JavaScript | JAC-Client |
-|---------|-----------|------------|
-| If | `if (cond) {}` | `if cond {}` |
-| Else if | `else if` | `elif` |
+| Pattern     | JavaScript               | Jac                      |
+| ----------- | ------------------------ | ------------------------ |
+| If          | `if (cond) {}`           | `if cond {}`             |
+| Else if     | `else if`                | `elif`                   |
 | For counter | `for(let i=0; i<5; i++)` | `for i=0 to i<5 by i+=1` |
-| For-of/in | `for(x of arr)` | `for x in arr` |
-| While | `while(cond) {}` | `while cond {}` |
-| Break | `break` | `break` |
-| Continue | `continue` | `continue` |
-| Switch | `switch(x) { case: }` | Use if/elif/else |
+| For-of/in   | `for(x of arr)`          | `for x in arr`           |
+| While       | `while(cond) {}`         | `while cond {}`          |
+| Break       | `break`                  | `break`                  |
+| Continue    | `continue`               | `continue`               |
+| Switch      | `switch(x) { case: }`    | Use if/elif/else         |
 
 ---
 
