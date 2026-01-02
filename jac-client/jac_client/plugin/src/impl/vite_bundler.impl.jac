@@ -49,8 +49,8 @@ impl ViteBundler.create_package_json(
     # Merge user dependencies from TOML with defaults (user can override)
     user_dependencies = package_config.get('dependencies', {});
     user_dev_dependencies = package_config.get('devDependencies', {});
-    dependencies = {**default_dependencies, **user_dependencies};
-    dev_dependencies = {**default_dev_dependencies, **user_dev_dependencies};
+    dependencies = {** default_dependencies, ** user_dependencies};
+    dev_dependencies = {** default_dev_dependencies, ** user_dev_dependencies};
     scripts = {
         'build': 'npm run compile && vite build --config .client-build/.jac-client.configs/vite.config.js',
         'dev': 'vite dev --config .client-build/.jac-client.configs/vite.config.js',
