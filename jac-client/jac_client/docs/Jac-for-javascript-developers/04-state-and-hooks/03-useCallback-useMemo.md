@@ -12,22 +12,22 @@ Memoizes a function to prevent unnecessary re-creation on every render.
 
 ### JavaScript/React vs Jac
 
-**JavaScript/React:**
+=== "JavaScript"
 
-```javascript
-const handleClick = useCallback(() => {
-  setCount(count + 1);
-}, [count]);
-```
+    ```javascript
+    const handleClick = useCallback(() => {
+      setCount(count + 1);
+    }, [count]);
+    ```
 
-**Jac:**
+=== "Jac"
 
-```jac
-handleClick = useCallback(
-    lambda -> None { setCount(count + 1); },
-    [count]
-);
-```
+    ```jac
+    handleClick = useCallback(
+        lambda -> None { setCount(count + 1); },
+        [count]
+    );
+    ```
 
 ---
 
@@ -145,28 +145,28 @@ Memoizes a computed value to prevent expensive recalculations.
 
 ### JavaScript/React vs Jac
 
-**JavaScript/React:**
+=== "JavaScript"
 
-```javascript
-const total = useMemo(() => {
-  return items.reduce((sum, item) => sum + item.price, 0);
-}, [items]);
-```
+    ```javascript
+    const total = useMemo(() => {
+      return items.reduce((sum, item) => sum + item.price, 0);
+    }, [items]);
+    ```
 
-**Jac:**
+=== "Jac"
 
-```jac
-total = useMemo(
-    lambda -> float {
-        sum = 0;
-        for item in items {
-            sum = sum + item["price"];
-        }
-        return sum;
-    },
-    [items]
-);
-```
+    ```jac
+    total = useMemo(
+        lambda -> float {
+            sum = 0;
+            for item in items {
+                sum = sum + item["price"];
+            }
+            return sum;
+        },
+        [items]
+    );
+    ```
 
 ---
 

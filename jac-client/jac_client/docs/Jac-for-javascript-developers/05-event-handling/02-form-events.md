@@ -8,17 +8,17 @@ Learn how to handle form events in Jac.
 
 ### Basic Input
 
-**JavaScript/React:**
+=== "JavaScript"
 
-```jsx
-<input onChange={(e) => setName(e.target.value)} />
-```
+    ```jsx
+    <input onChange={(e) => setName(e.target.value)} />
+    ```
 
-**Jac:**
+=== "Jac"
 
-```jac
-<input onChange={lambda e: any -> None { setName(e.target.value); }} />
-```
+    ```jac
+    <input onChange={lambda e: any -> None { setName(e.target.value); }} />
+    ```
 
 ---
 

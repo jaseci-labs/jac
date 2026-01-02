@@ -14,24 +14,24 @@ Learn how operators work in Jac, including the key differences from JavaScript.
 | `\|\|`     | `or`  |
 | `!`        | `not` |
 
-**JavaScript:**
+=== "JavaScript"
 
-```javascript
-if (a && b) {
-}
-if (a || b) {
-}
-if (!a) {
-}
-```
+    ```javascript
+    if (a && b) {
+    }
+    if (a || b) {
+    }
+    if (!a) {
+    }
+    ```
 
-**Jac:**
+=== "Jac"
 
-```jac
-if a and b { }
-if a or b { }
-if not a { }
-```
+    ```jac
+    if a and b { }
+    if a or b { }
+    if not a { }
+    ```
 
 ### In Conditionals
 
@@ -86,21 +86,21 @@ if (isLoggedIn and hasPermission) or isAdmin {
 | `!==`      | `!=` | Inequality check     |
 | `==`       | `==` | Same as `===` in JAC |
 
-**JavaScript:**
+=== "JavaScript"
 
-```javascript
-if (a === b) {
-}
-if (a !== b) {
-}
-```
+    ```javascript
+    if (a === b) {
+    }
+    if (a !== b) {
+    }
+    ```
 
-**Jac:**
+=== "Jac"
 
-```jac
-if a == b { }
-if a != b { }
-```
+    ```jac
+    if a == b { }
+    if a != b { }
+    ```
 
 ### Comparison
 
@@ -155,22 +155,22 @@ count = count - 1
 
 ### No `++` or `--` Operators
 
-**JavaScript:**
+=== "JavaScript"
 
-```javascript
-count++;
-count--;
-```
+    ```javascript
+    count++;
+    count--;
+    ```
 
-**Jac:**
+=== "Jac"
 
-```jac
-count = count + 1
-count = count - 1
+    ```jac
+    count = count + 1
+    count = count - 1
 
-# Or in for loops
-for i=0 to i<10 by i+=1 { }
-```
+    # Or in for loops
+    for i=0 to i<10 by i+=1 { }
+    ```
 
 ---
 
@@ -211,17 +211,17 @@ message = "Count: " + count.toString()
 
 ### No Template Literals
 
-**JavaScript:**
+=== "JavaScript"
 
-```javascript
-const message = `Hello, ${name}!`;
-```
+    ```javascript
+    const message = `Hello, ${name}!`;
+    ```
 
-**Jac:**
+=== "Jac"
 
-```jac
-message = "Hello, " + name + "!"
-```
+    ```jac
+    message = "Hello, " + name + "!"
+    ```
 
 ---
 
@@ -229,17 +229,17 @@ message = "Hello, " + name + "!"
 
 This is one of the **biggest differences** from JavaScript.
 
-**JavaScript:**
+=== "JavaScript"
 
-```javascript
-result = condition ? valueIfTrue : valueIfFalse;
-```
+    ```javascript
+    result = condition ? valueIfTrue : valueIfFalse;
+    ```
 
-**Jac:**
+=== "Jac"
 
-```jac
-result = (valueIfTrue) if condition else (valueIfFalse)
-```
+    ```jac
+    result = (valueIfTrue) if condition else (valueIfFalse)
+    ```
 
 ### Examples
 
@@ -261,21 +261,21 @@ price = (originalPrice * 0.9) if hasDiscount else (originalPrice)
 
 ## Nullish Coalescing
 
-**JavaScript:**
+=== "JavaScript"
 
-```javascript
-const value = data ?? "default";
-```
+    ```javascript
+    const value = data ?? "default";
+    ```
 
-**Jac:**
+=== "Jac"
 
-```jac
-# Use explicit None check
-value = data if data != None else "default"
+    ```jac
+    # Use explicit None check
+    value = data if data != None else "default"
 
-# Or use 'or' for falsy values
-value = data or "default"
-```
+    # Or use 'or' for falsy values
+    value = data or "default"
+    ```
 
 **Note:** `or` treats empty string, 0, and False as falsy. Use explicit None check when needed.
 
@@ -283,29 +283,29 @@ value = data or "default"
 
 ## Optional Chaining Alternative
 
-**JavaScript:**
+=== "JavaScript"
 
-```javascript
-const city = user?.address?.city;
-```
+    ```javascript
+    const city = user?.address?.city;
+    ```
 
-**Jac:**
+=== "Jac"
 
-```jac
-# Manual checking
-if user != None and user["address"] != None {
-    city = user["address"]["city"];
-} else {
-    city = None;
-}
+    ```jac
+    # Manual checking
+    if user != None and user["address"] != None {
+        city = user["address"]["city"];
+    } else {
+        city = None;
+    }
 
-# Or with try/except
-try {
-    city = user["address"]["city"];
-} except {
-    city = None;
-}
-```
+    # Or with try/except
+    try {
+        city = user["address"]["city"];
+    } except {
+        city = None;
+    }
+    ```
 
 ---
 

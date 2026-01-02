@@ -8,43 +8,43 @@ Learn how variables and data types work in Jac.
 
 In Jac, you don't need `let`, `const`, or `var`. Just assign directly:
 
-**JavaScript:**
+=== "JavaScript"
 
-```javascript
-const name = "John";
-let count = 0;
-const isActive = true;
-var legacy = "old";
-```
+    ```javascript
+    const name = "John";
+    let count = 0;
+    const isActive = true;
+    var legacy = "old";
+    ```
 
-**Jac:**
+=== "Jac"
 
-```jac
-name = "John"
-count = 0
-isActive = True
-legacy = "old"
-```
+    ```jac
+    name = "John"
+    count = 0
+    isActive = True
+    legacy = "old"
+    ```
 
 ### State Variables
 
 Same pattern for React state:
 
-**JavaScript:**
+=== "JavaScript"
 
-```javascript
-const [count, setCount] = useState(0);
-const [name, setName] = useState("");
-const [items, setItems] = useState([]);
-```
+    ```javascript
+    const [count, setCount] = useState(0);
+    const [name, setName] = useState("");
+    const [items, setItems] = useState([]);
+    ```
 
-**Jac:**
+=== "Jac"
 
-```jac
-[count, setCount] = useState(0);
-[name, setName] = useState("");
-[items, setItems] = useState([]);
-```
+    ```jac
+    [count, setCount] = useState(0);
+    [name, setName] = useState("");
+    [items, setItems] = useState([]);
+    ```
 
 ---
 
@@ -52,35 +52,35 @@ const [items, setItems] = useState([]);
 
 ### Booleans - Capitalized!
 
-**JavaScript:**
+=== "JavaScript"
 
-```javascript
-const isActive = true;
-const isHidden = false;
-```
+    ```javascript
+    const isActive = true;
+    const isHidden = false;
+    ```
 
-**Jac:**
+=== "Jac"
 
-```jac
-isActive = True
-isHidden = False
-```
+    ```jac
+    isActive = True
+    isHidden = False
+    ```
 
 ### Null - Use `None`
 
-**JavaScript:**
+=== "JavaScript"
 
-```javascript
-const data = null;
-const user = undefined;
-```
+    ```javascript
+    const data = null;
+    const user = undefined;
+    ```
 
-**Jac:**
+=== "Jac"
 
-```jac
-data = None
-user = None  # undefined is also None
-```
+    ```jac
+    data = None
+    user = None  # undefined is also None
+    ```
 
 ### Checking for None
 
@@ -137,37 +137,37 @@ data: any = someValue
 
 In Jac, object keys **must be quoted strings**:
 
-**JavaScript:**
+=== "JavaScript"
 
-```javascript
-const user = { name: "John", age: 25 };
-const style = { padding: "10px", margin: "5px" };
-```
+    ```javascript
+    const user = { name: "John", age: 25 };
+    const style = { padding: "10px", margin: "5px" };
+    ```
 
-**Jac:**
+=== "Jac"
 
-```jac
-user = { "name": "John", "age": 25 }
-style = { "padding": "10px", "margin": "5px" }
-```
+    ```jac
+    user = { "name": "John", "age": 25 }
+    style = { "padding": "10px", "margin": "5px" }
+    ```
 
 ### Property Access - Bracket Notation
 
 Use bracket notation to access properties:
 
-**JavaScript:**
+=== "JavaScript"
 
-```javascript
-const name = user.name;
-const age = user.age;
-```
+    ```javascript
+    const name = user.name;
+    const age = user.age;
+    ```
 
-**Jac:**
+=== "Jac"
 
-```jac
-name = user["name"]
-age = user["age"]
-```
+    ```jac
+    name = user["name"]
+    age = user["age"]
+    ```
 
 **Note:** Dot notation (`user.name`) may work but bracket notation is recommended.
 
@@ -212,31 +212,31 @@ combined = numbers.concat([7, 8, 9])
 
 ### No Spread Operator for Arrays
 
-**JavaScript:**
+=== "JavaScript"
 
-```javascript
-const newArr = [...arr, 4, 5];
-```
+    ```javascript
+    const newArr = [...arr, 4, 5];
+    ```
 
-**Jac:**
+=== "Jac"
 
-```jac
-newArr = arr.concat([4, 5])
-```
+    ```jac
+    newArr = arr.concat([4, 5])
+    ```
 
 ### Object Spread Uses `**`
 
-**JavaScript:**
+=== "JavaScript"
 
-```javascript
-const newObj = { ...obj, newKey: "value" };
-```
+    ```javascript
+    const newObj = { ...obj, newKey: "value" };
+    ```
 
-**Jac:**
+=== "Jac"
 
-```jac
-newObj = { **obj, "newKey": "value" }
-```
+    ```jac
+    newObj = { **obj, "newKey": "value" }
+    ```
 
 ---
 
@@ -244,17 +244,17 @@ newObj = { **obj, "newKey": "value" }
 
 Jac uses string concatenation:
 
-**JavaScript:**
+=== "JavaScript"
 
-```javascript
-const message = `Hello, ${name}! You are ${age} years old.`;
-```
+    ```javascript
+    const message = `Hello, ${name}! You are ${age} years old.`;
+    ```
 
-**Jac:**
+=== "Jac"
 
-```jac
-message = "Hello, " + name + "! You are " + age.toString() + " years old."
-```
+    ```jac
+    message = "Hello, " + name + "! You are " + age.toString() + " years old."
+    ```
 
 ---
 

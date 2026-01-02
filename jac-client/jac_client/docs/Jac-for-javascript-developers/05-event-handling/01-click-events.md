@@ -8,18 +8,18 @@ Learn how to handle click events in Jac.
 
 ### JavaScript/React vs Jac
 
-**JavaScript/React:**
+=== "JavaScript"
 
-```jsx
-<button onClick={() => handleClick()}>Click</button>
-<button onClick={handleClick}>Click</button>
-```
+    ```jsx
+    <button onClick={() => handleClick()}>Click</button>
+    <button onClick={handleClick}>Click</button>
+    ```
 
-**Jac:**
+=== "Jac"
 
-```jac
-<button onClick={lambda: handleClick()}>Click</button>
-```
+    ```jac
+    <button onClick={lambda: handleClick()}>Click</button>
+    ```
 
 ---
 

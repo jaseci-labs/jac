@@ -8,21 +8,21 @@ Learn how to handle side effects in Jac components.
 
 ### JavaScript/React vs Jac
 
-**JavaScript/React:**
+=== "JavaScript"
 
-```javascript
-useEffect(() => {
-  console.log("Effect ran");
-}, [dependency]);
-```
+    ```javascript
+    useEffect(() => {
+      console.log("Effect ran");
+    }, [dependency]);
+    ```
 
-**Jac:**
+=== "Jac"
 
-```jac
-useEffect(lambda -> None {
-    console.log("Effect ran");
-}, [dependency]);
-```
+    ```jac
+    useEffect(lambda -> None {
+        console.log("Effect ran");
+    }, [dependency]);
+    ```
 
 ---
 
@@ -52,21 +52,21 @@ cl {
 
 Empty dependency array runs only on mount:
 
-**JavaScript:**
+=== "JavaScript"
 
-```javascript
+    ```javascript
 useEffect(() => {
   console.log("Mounted");
 }, []);
-```
+    ```
 
-**Jac:**
+=== "Jac"
 
-```jac
+    ```jac
 useEffect(lambda -> None {
     console.log("Component mounted");
 }, []);
-```
+    ```
 
 ### On Dependency Change
 

@@ -8,31 +8,31 @@ Learn how to create and use components in Jac.
 
 ### JavaScript/React vs Jac
 
-**JavaScript/React:**
+=== "JavaScript"
 
-```jsx
-function Greeting() {
-  return <h1>Hello, World!</h1>;
-}
-
-export default function App() {
-  return <Greeting />;
-}
-```
-
-**Jac:**
-
-```jac
-cl {
-    def Greeting() -> any {
-        return <h1>Hello, World!</h1>;
+    ```jsx
+    function Greeting() {
+      return <h1>Hello, World!</h1>;
     }
 
-    def app() -> any {
-        return <Greeting />;
+    export default function App() {
+      return <Greeting />;
     }
-}
-```
+    ```
+
+=== "Jac"
+
+    ```jac
+    cl {
+        def Greeting() -> any {
+            return <h1>Hello, World!</h1>;
+        }
+
+        def app() -> any {
+            return <Greeting />;
+        }
+    }
+    ```
 
 ### Key Differences
 

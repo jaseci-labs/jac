@@ -8,29 +8,29 @@ Learn how to pass and use props in Jac components.
 
 ### JavaScript/React vs Jac
 
-**JavaScript/React:**
+=== "JavaScript"
 
-```jsx
-function Greeting({ name, age }) {
-  return (
-    <p>
-      Hello, {name}! You are {age}.
-    </p>
-  );
-}
+    ```jsx
+    function Greeting({ name, age }) {
+      return (
+        <p>
+          Hello, {name}! You are {age}.
+        </p>
+      );
+    }
 
-<Greeting name="John" age={25} />;
-```
+    <Greeting name="John" age={25} />;
+    ```
 
-**Jac:**
+=== "Jac"
 
-```jac
-def Greeting(name: str, age: int) -> any {
-    return <p>Hello, {name}! You are {age}.</p>;
-}
+    ```jac
+    def Greeting(name: str, age: int) -> any {
+        return <p>Hello, {name}! You are {age}.</p>;
+    }
 
-<Greeting name="John" age={25} />
-```
+    <Greeting name="John" age={25} />
+    ```
 
 ### Key Points
 

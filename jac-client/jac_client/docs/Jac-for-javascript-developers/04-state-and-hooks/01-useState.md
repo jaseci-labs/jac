@@ -8,19 +8,19 @@ Learn how to manage component state in Jac.
 
 ### JavaScript/React vs Jac
 
-**JavaScript/React:**
+=== "JavaScript"
 
-```javascript
-const [count, setCount] = useState(0);
-const [name, setName] = useState("");
-```
+    ```javascript
+    const [count, setCount] = useState(0);
+    const [name, setName] = useState("");
+    ```
 
-**Jac:**
+=== "Jac"
 
-```jac
-[count, setCount] = useState(0);
-[name, setName] = useState("");
-```
+    ```jac
+    [count, setCount] = useState(0);
+    [name, setName] = useState("");
+    ```
 
 **Key Difference:** No `const` or `let` keyword needed.
 

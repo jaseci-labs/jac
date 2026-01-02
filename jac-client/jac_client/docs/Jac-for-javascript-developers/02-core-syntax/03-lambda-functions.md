@@ -21,21 +21,21 @@ This is the **most important syntax difference** from JavaScript. Master lambdas
 
 For single expressions, use the short form:
 
-**JavaScript:**
+=== "JavaScript"
 
-```javascript
-onClick={() => setCount(count + 1)}
-onClick={() => console.log("clicked")}
-onClick={() => handleClick()}
-```
+    ```javascript
+    onClick={() => setCount(count + 1)}
+    onClick={() => console.log("clicked")}
+    onClick={() => handleClick()}
+    ```
 
-**Jac:**
+=== "Jac"
 
-```jac
-onClick={lambda: setCount(count + 1)}
-onClick={lambda: console.log("clicked")}
-onClick={lambda: handleClick()}
-```
+    ```jac
+    onClick={lambda: setCount(count + 1)}
+    onClick={lambda: console.log("clicked")}
+    onClick={lambda: handleClick()}
+    ```
 
 This is the **most common pattern** you'll use.
 
@@ -45,25 +45,25 @@ This is the **most common pattern** you'll use.
 
 For multiple statements, use the full form:
 
-**JavaScript:**
+=== "JavaScript"
 
-```javascript
-onClick={() => {
-  setCount(count + 1);
-  console.log("incremented");
-  trackEvent("click");
-}}
-```
+    ```javascript
+    onClick={() => {
+      setCount(count + 1);
+      console.log("incremented");
+      trackEvent("click");
+    }}
+    ```
 
-**Jac:**
+=== "Jac"
 
-```jac
-onClick={lambda -> None {
-    setCount(count + 1);
-    console.log("incremented");
-    trackEvent("click");
-}}
-```
+    ```jac
+    onClick={lambda -> None {
+        setCount(count + 1);
+        console.log("incremented");
+        trackEvent("click");
+    }}
+    ```
 
 ---
 
@@ -71,35 +71,35 @@ onClick={lambda -> None {
 
 ### Single Parameter
 
-**JavaScript:**
+=== "JavaScript"
 
-```javascript
-onChange={(e) => setName(e.target.value)}
-onSelect={(id) => selectItem(id)}
-```
+    ```javascript
+    onChange={(e) => setName(e.target.value)}
+    onSelect={(id) => selectItem(id)}
+    ```
 
-**Jac:**
+=== "Jac"
 
-```jac
-onChange={lambda e: any -> None { setName(e.target.value); }}
-onSelect={lambda id: int -> None { selectItem(id); }}
-```
+    ```jac
+    onChange={lambda e: any -> None { setName(e.target.value); }}
+    onSelect={lambda id: int -> None { selectItem(id); }}
+    ```
 
 ### Multiple Parameters
 
-**JavaScript:**
+=== "JavaScript"
 
-```javascript
-onDrag={(x, y) => setPosition(x, y)}
-calculate((a, b) => a + b)
-```
+    ```javascript
+    onDrag={(x, y) => setPosition(x, y)}
+    calculate((a, b) => a + b)
+    ```
 
-**Jac:**
+=== "Jac"
 
-```jac
-onDrag={lambda x: int, y: int -> None { setPosition(x, y); }}
-calculate(lambda a: int, b: int -> int { return a + b; })
-```
+    ```jac
+    onDrag={lambda x: int, y: int -> None { setPosition(x, y); }}
+    calculate(lambda a: int, b: int -> int { return a + b; })
+    ```
 
 ---
 
@@ -107,27 +107,27 @@ calculate(lambda a: int, b: int -> int { return a + b; })
 
 ### For Array Methods
 
-**JavaScript:**
+=== "JavaScript"
 
-```javascript
-numbers.map((n) => n * 2);
-numbers.filter((n) => n > 0);
-numbers.find((n) => n === target);
-```
+    ```javascript
+    numbers.map((n) => n * 2);
+    numbers.filter((n) => n > 0);
+    numbers.find((n) => n === target);
+    ```
 
-**Jac:**
+=== "Jac"
 
-```jac
-# Option 1: Use helper function (recommended)
-def double(n: int, index: int) -> int {
-    return n * 2;
-}
-numbers.map(double)
+    ```jac
+    # Option 1: Use helper function (recommended)
+    def double(n: int, index: int) -> int {
+        return n * 2;
+    }
+    numbers.map(double)
 
-# Option 2: Inline lambda
-numbers.filter(lambda n: int -> bool { return n > 0; })
-numbers.find(lambda n: int -> bool { return n == target; })
-```
+    # Option 2: Inline lambda
+    numbers.filter(lambda n: int -> bool { return n > 0; })
+    numbers.find(lambda n: int -> bool { return n == target; })
+    ```
 
 **Important:** For `map`, the callback receives `(item, index)` - both parameters are required.
 

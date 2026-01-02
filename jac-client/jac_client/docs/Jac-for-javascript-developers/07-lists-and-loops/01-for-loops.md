@@ -190,22 +190,22 @@ def isPrime(n: int) -> bool {
 
 ## No `range()` Function!
 
-**Python:**
+=== "Python"
 
-```python
-for i in range(5):
-    print(i)
-```
+    ```python
+    for i in range(5):
+        print(i)
+    ```
 
-**Jac:**
+=== "Jac"
 
-```jac
-# range() does NOT work!
-# Use for loop instead:
-for i=0 to i<5 by i+=1 {
-    console.log(i);
-}
-```
+    ```jac
+    # range() does NOT work!
+    # Use for loop instead:
+    for i=0 to i<5 by i+=1 {
+        console.log(i);
+    }
+    ```
 
 ---
 

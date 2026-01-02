@@ -8,19 +8,19 @@ Learn how to use references for DOM access and mutable values in Jac.
 
 ### JavaScript/React vs Jac
 
-**JavaScript/React:**
+=== "JavaScript"
 
-```javascript
-const inputRef = useRef(null);
-inputRef.current.focus();
-```
+    ```javascript
+    const inputRef = useRef(null);
+    inputRef.current.focus();
+    ```
 
-**Jac:**
+=== "Jac"
 
-```jac
-inputRef = useRef(None);
-inputRef.current.focus();
-```
+    ```jac
+    inputRef = useRef(None);
+    inputRef.current.focus();
+    ```
 
 ---
 

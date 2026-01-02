@@ -8,29 +8,29 @@ Learn how to define and use functions in Jac.
 
 ### JavaScript vs Jac
 
-**JavaScript:**
+=== "JavaScript"
 
-```javascript
-function greet() {
-  return "Hello!";
-}
+    ```javascript
+    function greet() {
+      return "Hello!";
+    }
 
-function add(a, b) {
-  return a + b;
-}
-```
+    function add(a, b) {
+      return a + b;
+    }
+    ```
 
-**Jac:**
+=== "Jac"
 
-```jac
-def greet() -> str {
-    return "Hello!";
-}
+    ```jac
+    def greet() -> str {
+        return "Hello!";
+    }
 
-def add(a: int, b: int) -> int {
-    return a + b;
-}
-```
+    def add(a: int, b: int) -> int {
+        return a + b;
+    }
+    ```
 
 ### Key Differences
 
@@ -196,23 +196,23 @@ def TodoList() -> any {
 
 ### JavaScript vs Jac
 
-**JavaScript:**
+=== "JavaScript"
 
-```javascript
-async function fetchData() {
-  const response = await fetch("/api/data");
-  return response.json();
-}
-```
+    ```javascript
+    async function fetchData() {
+      const response = await fetch("/api/data");
+      return response.json();
+    }
+    ```
 
-**Jac:**
+=== "Jac"
 
-```jac
-async def fetchData() {
-    response = await fetch("/api/data");
-    return response.json();
-}
-```
+    ```jac
+    async def fetchData() {
+        response = await fetch("/api/data");
+        return response.json();
+    }
+    ```
 
 ### Async in Components
 
