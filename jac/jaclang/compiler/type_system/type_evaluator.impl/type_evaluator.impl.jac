@@ -451,15 +451,6 @@ impl TypeEvaluator._assign_class(
     if self.is_sub_class(dest_type, src_type) {
         return True;
     }
-    # Everything is assignable to an object.
-    if (
-        dest_type.is_builtin("object")
-        or dest_type.shared == self.prefetch.any_class.shared
-    ) {
-        # TODO: Invariance not handled yet
-        # invariant contexts to avoid list[int] <: list[object] errors.
-        return True;
-    }
     # Integers can be used where floats are expected.
     if src_type.is_builtin("int") and dest_type.is_builtin("float") {
         return True;
@@ -564,6 +555,13 @@ impl TypeEvaluator.assign_type(
                 return True;
             }
         }
+    }
+    # Everything is assignable to object or Any.
+    if isinstance(dest_type, types.ClassType) and (
+        dest_type.is_builtin("object")
+        or dest_type.shared == self.prefetch.any_class.shared
+    ) {
+        return True;
     }
     if dest_type.is_class_instance() and src_type.is_class_instance() {
         assert isinstance(dest_type, types.ClassType);

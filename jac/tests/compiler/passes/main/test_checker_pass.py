@@ -1021,3 +1021,12 @@ def test_function_overload_decorator(fixture_path: Callable[[str], str]) -> None
     """,
         cast_error,
     )
+
+
+def test_object_type_assignment(fixture_path: Callable[[str], str]) -> None:
+    """Test that assigning node types and instances to object type works correctly."""
+    program = JacProgram()
+    mod = program.compile(fixture_path("object_type_assignment.jac"))
+    TypeCheckPass(ir_in=mod, prog=program)
+    # Should have no errors - both node class and node instance should be assignable to object
+    assert len(program.errors_had) == 0
