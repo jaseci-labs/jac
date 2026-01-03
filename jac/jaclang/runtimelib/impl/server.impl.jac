@@ -785,8 +785,10 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                 and not path.startswith('/walkers')
                 and not path.startswith('/protected')
                 and (
-                    Path(path).suffix in custom_asset_extensions
-                    or {'.png','.jpg','.jpeg','.gif','.webp','.svg','.ico','.woff','.woff2','.ttf','.otf','.eot','.mp4','.webm','.mp3','.wav','.css'}
+                    Path(path).suffix in (
+                        custom_asset_extensions
+                        or {'.png','.jpg','.jpeg','.gif','.webp','.svg','.ico','.woff','.woff2','.ttf','.otf','.eot','.mp4','.webm','.mp3','.wav','.css'}
+                    )
                 )
             );
             if (is_static_path or is_asset_file) {

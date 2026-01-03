@@ -1056,3 +1056,12 @@ def test_walrus_operator(fixture_path: Callable[[str], str]) -> None:
 
     for i, expected in enumerate(expected_errors):
         _assert_error_pretty_found(expected, program.errors_had[i].pretty_print())
+
+
+def test_builtin_constructors(fixture_path: Callable[[str], str]) -> None:
+    """Test that builtin constructors (set(), list(), dict()) work correctly."""
+    program = JacProgram()
+    mod = program.compile(fixture_path("checker_builtin_constructors.jac"))
+    TypeCheckPass(ir_in=mod, prog=program)
+    # All constructors should work without errors
+    assert len(program.errors_had) == 0

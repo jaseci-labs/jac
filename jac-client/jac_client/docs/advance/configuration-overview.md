@@ -113,13 +113,7 @@ sass = "^1.77.8"
 
 ### Default Configuration
 
-The system starts with sensible defaults. **Default npm packages are automatically added during build time**:
-
-**Automatically Added Packages:**
-
-- **Dependencies**: `react`, `react-dom`, `react-router-dom`
-- **DevDependencies**: `vite`, `@babel/cli`, `@babel/core`, `@babel/preset-env`, `@babel/preset-react`
-- **TypeScript** (always included): `typescript`, `@types/react`, `@types/react-dom`, `@vitejs/plugin-react`
+The system starts with sensible defaults.
 
 **Default Vite Config Structure:**
 

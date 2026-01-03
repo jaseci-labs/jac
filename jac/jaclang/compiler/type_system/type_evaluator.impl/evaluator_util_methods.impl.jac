@@ -211,6 +211,10 @@ impl TypeEvaluator.add_diagnostic(
 impl TypeEvaluator._is_ability_classmethod(
     self: TypeEvaluator, node_: uni.Ability
 ) -> bool {
+    # __new__ is always a classmethod in Python, even without @classmethod decorator
+    if node_.name_spec and node_.name_spec.sym_name == "__new__" {
+        return True;
+    }
     if node_.decorators {
         for decorator in node_.decorators {
             decor_type = self.get_type_of_expression(decorator);

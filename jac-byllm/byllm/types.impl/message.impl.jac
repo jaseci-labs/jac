@@ -9,8 +9,8 @@ impl Message.to_dict()  -> dict[str, object] {
     media_contents = [];
     for media in self.content {
         media_contents.extend(media.to_dict());
-        return {"role": self.role.value, "content": media_contents,};
     }
+    return {"role": self.role.value, "content": media_contents,};
 }
 
 #-------------------------------------------------------------------------------
