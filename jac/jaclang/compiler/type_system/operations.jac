@@ -141,5 +141,14 @@ def get_type_of_binary_operation(
             return right_type;
         }
     }
+    #  walrus assignment
+    if isinstance(expr.op, uni.Token) and expr.op.name == Tok.WALRUS_EQ {
+        # Walrus operator: (x := expr) assigns right to left and returns right's type
+        if isinstance(expr.left, uni.Name) and expr.left.sym {
+            expr.left.sym.type = right_type;
+            expr.left.type = right_type;
+        }
+        return right_type;
+    }
     return jtypes.UnknownType();
 }

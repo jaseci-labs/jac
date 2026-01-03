@@ -84,12 +84,6 @@ sass = "^1.77.8"
 - **Runtime dependencies**: `[dependencies.npm]` section
 - **Dev dependencies**: `[dependencies.npm.dev]` section
 
-**Default packages are automatically added during build time:**
-
-- **Dependencies**: `react`, `react-dom`, `react-router-dom`
-- **DevDependencies**: `vite`, `@babel/cli`, `@babel/core`, `@babel/preset-env`, `@babel/preset-react`
-- **TypeScript packages** (if detected): `typescript`, `@types/react`, `@types/react-dom`, `@vitejs/plugin-react`
-
 ### Example jac.toml
 
 ```toml

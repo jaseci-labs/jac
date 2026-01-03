@@ -203,7 +203,8 @@ impl TypeEvaluator._validate_constructor_method(
         # In Jac, self is not included in the parameter list, so we check > 0.
         # In Python stubs, self/cls is included, so we check > 1.
         has_params = len(method_type.parameters) > 0;
-        if has_params and method_type.parameters[0].is_self {
+        if has_params
+        and (method_type.parameters[0].is_self or method_type.parameters[0].is_cls) {
             # Skip self/cls parameter if present (Python stubs)
             has_params = len(method_type.parameters) > 1;
         }
@@ -227,6 +228,12 @@ impl TypeEvaluator._validate_constructor_method(
                     return True;
                 }
             }
+        }
+        # If none of the overloads matched, emit a diagnostic using the first overload
+        if method_type.overloads {
+            self.match_args_to_params(
+                expr.params, expr, method_type.overloads[0], checking_overload=False
+            );
         }
         # Overloaded methods always count as "validated" to prevent
         # falling back to inherited object.__init__ with no params

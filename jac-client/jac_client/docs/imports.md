@@ -484,8 +484,10 @@ Jac supports importing any npm package that's compatible with ES modules. This i
 Before importing third-party libraries, you need:
 
 1. **Node.js** installed (for npm)
-2. **package.json** in your project root
-3. **Vite** configured in your project (automatically set up with `jac create_jac_app`)
+2. **package.json** in your project root (automatically generated from `jac.toml`)
+3. **Vite** configured in your project (automatically set up with `jac create --cl`)
+
+> **Recommended**: Use `jac add --cl <package>` to add packages. This automatically updates `jac.toml` and regenerates `package.json`.
 
 ### Why Third-Party Libraries?
 

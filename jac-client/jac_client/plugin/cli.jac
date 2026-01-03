@@ -184,22 +184,6 @@ version = "1.0.0"
 description = "Jac client application: {project_name}"
 entry-point = "src/app.jac"
 
-[dependencies.npm]
-react = "^19.2.0"
-react-dom = "^19.2.0"
-react-router-dom = "^6.30.1"
-
-[dev-dependencies.npm]
-vite = "^6.4.1"
-"@babel/cli" = "^7.28.3"
-"@babel/core" = "^7.28.5"
-"@babel/preset-env" = "^7.28.5"
-"@babel/preset-react" = "^7.28.5"
-"@vitejs/plugin-react" = "^4.2.1"
-typescript = "^5.3.3"
-"@types/react" = "^18.2.45"
-"@types/react-dom" = "^18.2.18"
-
 [plugins.client]
 # Vite bundler configuration (optional overrides)
 # vite.plugins = []
