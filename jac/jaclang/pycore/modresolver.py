@@ -45,8 +45,6 @@ def _candidate_from(base: str, parts: list[str]) -> tuple[str, str] | None:
     if os.path.isdir(candidate):
         if os.path.isfile(os.path.join(candidate, "__init__.jac")):
             return os.path.join(candidate, "__init__.jac"), "jac"
-        if os.path.isfile(os.path.join(candidate, "__init__.cl.jac")):
-            return os.path.join(candidate, "__init__.cl.jac"), "jac"
         if os.path.isfile(os.path.join(candidate, "__init__.py")):
             return os.path.join(candidate, "__init__.py"), "py"
     if os.path.isfile(candidate + ".jac"):

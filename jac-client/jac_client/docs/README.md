@@ -72,7 +72,7 @@ This command will:
 - Set up an organized project structure with `src/` folder
 - Create a starter `src/app.jac` file with a sample component
 - Include a sample TypeScript component
-- **Automatically install default npm packages** (React, TypeScript, Vite, etc.) in the `.client-build/` directory
+- **Automatically install npm packages** in the `.client-build/` directory
 
 #### Skipping Package Installation
 

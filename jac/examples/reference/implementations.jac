@@ -11,7 +11,7 @@ obj Calculator {
     def add(value: float);
     def subtract(value: float);
     def multiply(value: float);
-    def get_result -> float;
+    def get_result()  -> float;
 }
 
 # Implement function
@@ -36,19 +36,19 @@ impl Priority{
 }
 
 # Implement object methods
-impl Calculator.add(value: float) {
+impl Calculator.add(value: float){
     self.total += value;
 }
 
-impl Calculator.subtract(value: float) {
+impl Calculator.subtract(value: float){
     self.total -= value;
 }
 
-impl Calculator.multiply(value: float) {
+impl Calculator.multiply(value: float){
     self.total *= value;
 }
 
-impl Calculator.get_result -> float {
+impl Calculator.get_result()  -> float {
     return self.total;
 }
 

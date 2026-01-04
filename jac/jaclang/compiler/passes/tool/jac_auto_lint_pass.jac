@@ -13,6 +13,8 @@ This pass applies automatic linting corrections to Jac code, including:
 - Propagating null-safe access consistency
 - Simplifying ternary expressions (x if x else default -> x or default)
 - Removing `import from __future__ { annotations }` (not needed in Jac)
+- Fixing signature mismatches between declarations and implementations
+- Removing trailing semicolons from `import from X { ... }` style imports
 - (Future) Import organization
 - (Future) Redundant code removal
 """
@@ -24,8 +26,31 @@ import from jaclang.pycore.jac_parser { TOKEN_MAP }
 """Auto linting pass that applies code style corrections to Jac AST."""
 obj JacAutoLintPass(UniPass) {
     """Initialize the pass with linting options."""
-    has lint_enabled: bool = True;
+    with entry {
+        lint_enabled: bool = True;
+        main_module: uni.Module | None = None;
+    }
 
+    def enter_module(node: uni.Module) -> None;
+    def can_convert_to_glob(assignment: uni.Assignment) -> bool;
+    def is_module_level_construct(stmt: uni.UniNode) -> bool;
+    def create_glob_from_assignment(assignment: uni.Assignment) -> uni.GlobalVars;
+    def create_entry_block(stmts: list) -> uni.ModuleCode;
+    def can_combine_has(has1: uni.ArchHas, has2: uni.ArchHas) -> bool;
+    def can_combine_glob(glob1: uni.GlobalVars, glob2: uni.GlobalVars) -> bool;
+    def combine_consecutive_has(body: list) -> list;
+    def combine_consecutive_glob(body: list) -> list;
+    def enter_archetype(node: uni.Archetype) -> None;
+    def enter_enum(node: uni.Enum) -> None;
+    def enter_impl_def(node: uni.ImplDef) -> None;
+    def enter_ability(ability_node: uni.Ability) -> None;
+    def _remove_staticmethod_from_kids(ability_node: uni.Ability) -> None;
+    def exit_ability(ability_node: uni.Ability) -> None;
+    def enter_name(<>node: uni.Name) -> None;
+    def enter_special_var_ref(<>node: uni.SpecialVarRef) -> None;
+    def enter_builtin_type(<>node: uni.BuiltinType) -> None;
+    def exit_func_call(node: uni.FuncCall) -> None;
+    def _convert_hasattr_to_null_ok(node: uni.FuncCall) -> (uni.AtomTrailer | None);
     def init(ir_in: uni.Module, prog: Any) -> None;
     def enter_module(node: uni.Module) -> None;
     def can_convert_to_glob(assignment: uni.Assignment) -> bool;
@@ -59,4 +84,6 @@ obj JacAutoLintPass(UniPass) {
     def exit_if_else_expr(if_else_node: uni.IfElseExpr) -> None;
     def exit_bool_expr(bool_node: uni.BoolExpr) -> None;
     def _is_future_annotations_import(stmt: uni.UniNode) -> bool;
+    def _fix_impl_signature_mismatch(impl_node: uni.ImplDef) -> None;
+    def enter_import(import_node: uni.Import) -> None;
 }

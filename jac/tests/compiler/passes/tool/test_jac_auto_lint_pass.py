@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pytest
 
-import jaclang.pycore.unitree as uni
 from jaclang.pycore.program import JacProgram
 
 
@@ -288,30 +287,6 @@ class TestCombineConsecutiveGlob:
         assert "glob x = 1;" in formatted
         assert "glob y = 2;" in formatted
         assert "glob z = 3;" in formatted
-
-
-class TestIsPureExpression:
-    """Unit tests for the is_pure_expression method."""
-
-    def _create_test_pass(self) -> object:
-        """Create a JacAutoLintPass instance for testing."""
-        from jaclang.compiler.passes.tool.jac_auto_lint_pass import JacAutoLintPass
-
-        prog = JacProgram()
-        # We need to create a stub module
-        module = uni.Module.make_stub()
-        return JacAutoLintPass(ir_in=module, prog=prog)
-
-    def test_literals_are_pure(self) -> None:
-        """Test that literal values are considered pure."""
-        # This is a conceptual test - the actual implementation
-        # checks isinstance against AST node types
-        pass  # Covered by integration tests above
-
-    def test_function_calls_not_pure(self) -> None:
-        """Test that function calls are NOT considered pure."""
-        # Covered by non_extractable integration test
-        pass
 
 
 class TestStaticmethodConversion:
@@ -600,6 +575,88 @@ class TestTernaryToOrConversion:
 
         # Without linting, ternary should remain (may be multi-line in formatted output)
         assert "if instance.value" in formatted and "else 0" in formatted
+
+
+class TestSignatureMismatchFix:
+    """Tests for fixing signature mismatches between decls and impls."""
+
+    def test_signature_mismatch_fixed(
+        self, auto_lint_fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that impl signatures are fixed to match declarations."""
+        input_path = auto_lint_fixture_path("sig_mismatch.jac")
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True)
+
+        # Verify impl module is discovered
+        assert len(prog.mod.main.impl_mod) == 1, "Should have one impl module"
+
+        # Check the impl signatures were fixed by examining the AST
+        impl_mod = prog.mod.main.impl_mod[0]
+        impl_output = impl_mod.unparse()
+
+        # add should have x, y params (from decl), not a, b
+        assert "add(x: int, y: int)" in impl_output, (
+            f"add should have x, y params from decl, got: {impl_output}"
+        )
+
+        # multiply should have a, b params (from decl)
+        assert "multiply(a: int, b: int)" in impl_output, (
+            f"multiply should have a, b params from decl, got: {impl_output}"
+        )
+
+        # no_change should remain unchanged (already matches)
+        assert "no_change(val: int)" in impl_output, (
+            f"no_change should have val param, got: {impl_output}"
+        )
+
+
+class TestRemoveImportSemicolons:
+    """Tests for removing semicolons from import from {} style imports.
+
+    When `import from X { ... };` appears inside a function/ability body,
+    the semicolon is parsed as a separate Semi statement. This lint rule
+    removes those standalone semicolons that follow import from {} statements.
+    """
+
+    def test_import_from_semicolons_removed(
+        self, auto_lint_fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that semicolons are removed from import from {} style imports."""
+        input_path = auto_lint_fixture_path("import_semicolon.jac")
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True)
+        formatted = prog.mod.main.gen.jac
+
+        # import from {} style imports inside functions should NOT have semicolons
+        # The semicolons (which become standalone Semi statements) should be removed
+        assert "import from typing { List }" in formatted
+        assert "import from sys { argv }" in formatted
+
+        # There should be no standalone semicolons after these imports
+        # Check that we don't have "}\n    ;" pattern (import followed by semicolon)
+        assert "}\n    ;" not in formatted
+
+        # Statement-level imports should still have semicolons
+        assert "import json;" in formatted
+        assert "import math;" in formatted
+
+        # Other code should be preserved
+        assert "obj MyClass" in formatted
+        assert "def main" in formatted
+
+    def test_import_semicolons_preserved_without_lint(
+        self, auto_lint_fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that auto_lint=False preserves import semicolons."""
+        input_path = auto_lint_fixture_path("import_semicolon.jac")
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=False)
+        formatted = prog.mod.main.gen.jac
+
+        # Without linting, standalone semicolons should remain
+        assert "import from typing" in formatted
+        assert ";" in formatted  # Semicolons should still be present
 
 
 class TestRemoveFutureAnnotations:

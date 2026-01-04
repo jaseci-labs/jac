@@ -2,7 +2,9 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking_changes.md) page.
 
-## jaclang 0.9.4 (Unreleased)
+## jaclang 0.9.5 (Unreleased)
+
+## jaclang 0.9.4 (Latest Release)
 
 - **`let` Keyword Removed**: The `let` keyword has been removed from Jaclang. Variable declarations now use direct assignment syntax (e.g., `x = 10` instead of `let x = 10`), aligning with Python's approach to variable binding.
 - **Py2Jac Robustness Improvements**: Improved reliability of Python-to-Jac conversion with better handling of f-strings (smart quote switching, no keyword escaping in interpolations), match pattern class names, attribute access formatting (no extra spaces around dots), and nested docstrings in classes and functions.
@@ -23,9 +25,10 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Auto-Lint: hasattr to Null-Safe Conversion**: The `jac format --fix` command now automatically converts `hasattr(obj, "attr")` patterns to null-safe access syntax (`obj?.attr`). This applies to hasattr calls in conditionals, boolean expressions (`and`/`or`), and ternary expressions. Additionally, patterns like `obj.attr if hasattr(obj, "attr") else default` are fully converted to `obj?.attr if obj?.attr else default`, ensuring consistent null-safe access throughout the expression.
 - **Auto-Lint: Ternary to Or Expression Simplification**: The auto-lint pass now simplifies redundant ternary expressions where the value and condition are identical. Patterns like `x if x else default` are automatically converted to the more concise `x or default`. This works with any expression type including null-safe access (e.g., `obj?.attr if obj?.attr else fallback` becomes `obj?.attr or fallback`).
 - **Improved Null-Safe Subscript Operator `?[]`**: The null-safe subscript operator now safely handles invalid subscripts in addition to None containers (e.g., `list?[10]` returns `None` instead of raising an error; `dict?["missing"]` returns `None` for missing keys). This applies to all subscriptable types and makes `?[]` a fully safe access operator, preventing index and key errors.
+- **Support cl File without Main File**: Developers can write only cl file without main jac files whenever main file is not required.
 - **Support Custom headers to Response**: Custom headers can be added by using an enviornmental variable `[environments.response.headers]` and mentioning the custom headers (Ex: `"Cross-Origin-Opener-Policy" = "same-origin"`).
 
-## jaclang 0.9.3 (Latest Release)
+## jaclang 0.9.3
 
 - **Fixed JSX Text Parsing for Keywords**: Fixed a parser issue where keywords like `to`, `as`, `in`, `is`, `for`, `if`, etc. appearing as text content within JSX elements would cause parse errors. The grammar now correctly recognizes these common English words as valid JSX text content.
 - **Support iter for statement**: Iter for statement is supported in order to utilize traditional for loop in javascript.

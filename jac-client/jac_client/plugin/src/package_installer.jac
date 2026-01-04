@@ -22,5 +22,5 @@ class PackageInstaller {
         self: PackageInstaller, package_name: str, is_dev: bool = False
     ) -> None;
 
-    def list_packages(self: PackageInstaller) -> dict[str, dict[str, str]];
+    def list_packages(self: PackageInstaller) -> dict[str, dict[(str, str)]];
 }

@@ -35,7 +35,7 @@ obj DependencyRegistry {
         _flag_map: dict[str, str] = {};
 
     """Register a new dependency type from plugin hook data."""
-    def register(dep_type_info: dict[str, Any]) -> None;
+    def register(dep_type_info: dict[(str, Any)]) -> None;
 
     """Get dependency type by name (e.g., 'npm')."""
     def get_by_name(name: str) -> DependencyType | None;
