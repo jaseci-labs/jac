@@ -336,7 +336,7 @@ const projectRoot = path.resolve(__dirname, "../../..");
 
 export default defineConfig({{
   plugins: [{(newline + plugins_str + newline + '  ') if plugins_str else ''}],
-  root: buildDir, // base folder (.client-build/) so vite can find node_modules
+  root: buildDir, // base folder (.jac/client/) so vite can find node_modules
     build: {{
     rollupOptions: {{
       input: path.resolve(buildDir, "{entry_relative}"), // your compiled entry file
@@ -423,7 +423,7 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
                 shutil.copy2(configs_package_json, build_package_json);
             }
             try {
-                # Install to .client-build/node_modules
+                # Install to .jac/client/node_modules
                 subprocess.run(
                     ['npm', 'install'],
                     cwd=build_dir,
