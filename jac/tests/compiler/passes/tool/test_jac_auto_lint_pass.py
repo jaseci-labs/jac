@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+import jaclang.pycore.unitree as uni
 from jaclang.pycore.program import JacProgram
 
 
@@ -801,6 +802,43 @@ class TestNestedClassSignatureFix:
             f"(matching process decl), got: {process_params}. "
             f"Original impl had [wrong]."
         )
+
+    def test_signature_mismatch_fixed_via_formatter(
+        self, auto_lint_fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that jac_file_formatter with auto_lint=True fixes impl signatures.
+
+        This validates the full formatter pipeline discovers impl modules and
+        fixes signature mismatches (requires JacAnnexPass and SymTabBuildPass).
+        """
+        input_path = auto_lint_fixture_path("sig_mismatch.jac")
+
+        # Use the full formatter pipeline with auto_lint=True
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True)
+
+        # Verify impl module was discovered
+        assert len(prog.mod.main.impl_mod) == 1, "Should discover impl module"
+
+        # Check impl signatures were fixed
+        impl_mod = prog.mod.main.impl_mod[0]
+        for stmt in impl_mod.body:
+            if isinstance(stmt, uni.ImplDef) and isinstance(
+                stmt.spec, uni.FuncSignature
+            ):
+                sig_str = stmt.spec.unparse()
+                target_str = ".".join([t.sym_name for t in stmt.target])
+                if "add" in target_str:
+                    # Should have x, y params (from decl), not a, b
+                    assert "x" in sig_str, f"add should have x param, got: {sig_str}"
+                    assert "y" in sig_str, f"add should have y param, got: {sig_str}"
+                elif "multiply" in target_str:
+                    # Should have a, b params (from decl)
+                    assert "a" in sig_str, (
+                        f"multiply should have a param, got: {sig_str}"
+                    )
+                    assert "b" in sig_str, (
+                        f"multiply should have b param, got: {sig_str}"
+                    )
 
 
 class TestRemoveImportSemicolons:
