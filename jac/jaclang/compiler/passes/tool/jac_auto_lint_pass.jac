@@ -26,10 +26,8 @@ import from jaclang.pycore.jac_parser { TOKEN_MAP }
 """Auto linting pass that applies code style corrections to Jac AST."""
 obj JacAutoLintPass(UniPass) {
     """Initialize the pass with linting options."""
-    with entry {
-        lint_enabled: bool = True;
+    has lint_enabled: bool = True,
         main_module: uni.Module | None = None;
-    }
 
     def enter_module(node: uni.Module) -> None;
     def can_convert_to_glob(assignment: uni.Assignment) -> bool;
