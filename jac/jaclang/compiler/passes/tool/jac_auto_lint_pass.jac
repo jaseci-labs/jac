@@ -96,5 +96,6 @@ class JacAutoLintPass(UniPass) {
     def _fix_impl_signature_mismatch(
         self: JacAutoLintPass, impl_node: uni.ImplDef
     ) -> None;
+
     def enter_import(self: JacAutoLintPass, import_node: uni.Import) -> None;
 }

@@ -649,6 +649,8 @@ class TestSignatureMismatchFix:
                     assert "b" in sig_str, (
                         f"multiply should have b param, got: {sig_str}"
                     )
+
+
 class TestRemoveImportSemicolons:
     """Tests for removing semicolons from import from {} style imports.
 
