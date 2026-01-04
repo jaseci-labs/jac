@@ -65,7 +65,7 @@ class JacScaleTestRunner:
             example_dir = self.example_file.parent
 
         # Clean up directories before starting (don't clean src - it contains source files)
-        dirs_to_clean = ["build", "dist", "node_modules", ".client-build"]
+        dirs_to_clean = ["build", "dist", "node_modules", ".jac"]
         for dir_name in dirs_to_clean:
             dir_path = example_dir / dir_name
             if dir_path.exists():
@@ -174,7 +174,7 @@ class JacScaleTestRunner:
             "build",
             "dist",
             "node_modules",
-            ".client-build",
+            ".jac",
             "package-lock.json",
         ]
         for dir_name in dirs_to_clean:
