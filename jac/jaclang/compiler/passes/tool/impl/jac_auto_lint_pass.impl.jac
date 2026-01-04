@@ -190,12 +190,14 @@ impl JacAutoLintPass.enter_impl_def(self: JacAutoLintPass, node: uni.ImplDef) ->
         return;
     }
     impl_node = node;
+    # Fix signature mismatch between decl and impl
+    self._fix_impl_signature_mismatch(impl_node);
+    # Combine consecutive has statements
     if impl_node.body is not None and isinstance(impl_node.body, list) {
         new_body = self.combine_consecutive_has(list(impl_node.body));
         if len(new_body) != len(impl_node.body) {
             impl_node.body = new_body;
             self.recalculate_parents(impl_node);
-            impl_node.normalize(deep=False);
         }
     }
 }
@@ -447,6 +449,14 @@ impl JacAutoLintPass.enter_module(self: JacAutoLintPass, node: uni.Module) -> No
         return;
     }
     module = node;
+    # Store main module reference (first module, not impl modules)
+    if self.main_module is None {
+        self.main_module = module;
+        # Process impl modules after setting main_module
+        for impl_mod in module.impl_mod {
+            self.traverse(impl_mod);
+        }
+    }
     # Transform module body in-place
     new_body: list = [];
     for stmt in module.body {
@@ -1063,4 +1073,92 @@ impl JacAutoLintPass._is_future_annotations_import(
         }
     }
     return False;
+}
+
+"""Fix signature mismatch between declaration and implementation.
+
+When an impl's signature doesn't match its declaration, copy the declaration's
+signature to the implementation to ensure consistency.
+
+This works by looking up the declaration via symbol table since decl_link may
+not be set yet when this pass runs during formatting.
+"""
+impl JacAutoLintPass._fix_impl_signature_mismatch(
+    self: JacAutoLintPass, impl_node: uni.ImplDef
+) -> None {
+    # First try decl_link (if DeclImplMatchPass has already run)
+    decl: uni.Ability | None = None;
+    if isinstance(impl_node.decl_link, uni.Ability) {
+        decl = impl_node.decl_link;
+    } else {
+        # Look up the declaration via symbol table
+        # impl_node.target is a sequence like [Calculator, add]
+        if not impl_node.target or len(impl_node.target) < 2 {
+            return;
+        }
+        # Get the archetype name and ability name
+        arch_name = impl_node.target[0].sym_name if impl_node.target[0] else None;
+        ability_name = impl_node.target[-1].sym_name if impl_node.target[-1] else None;
+        if not arch_name or not ability_name {
+            return;
+        }
+        # Use the stored main_module reference
+        if self.main_module is None or not self.main_module.sym_tab {
+            return;
+        }
+        # Look up archetype
+        arch_sym = self.main_module.sym_tab.lookup(arch_name);
+        if not arch_sym or not arch_sym.decl {
+            return;
+        }
+        arch_node = arch_sym.decl.name_of;
+        if not isinstance(arch_node, uni.Archetype) or not arch_node.body {
+            return;
+        }
+        # Find the ability in the archetype
+        for member in arch_node.body {
+            if isinstance(member, uni.Ability) {
+                if member.name_ref and member.name_ref.sym_name == ability_name {
+                    decl = member;
+                    break;
+                }
+            }
+        }
+    }
+    if decl is None or decl.signature is None {
+        return;
+    }
+    if not isinstance(impl_node.spec, uni.FuncSignature) {
+        return;
+    }
+    # Compare signatures using unparse
+    decl_sig_str: str = "";
+    impl_sig_str: str = "";
+    try {
+        decl_sig_str = decl.signature.unparse();
+        impl_sig_str = impl_node.spec.unparse();
+    } except Exception {
+        return;
+    }
+    # If signatures match, nothing to do
+    if decl_sig_str == impl_sig_str {
+        return;
+    }
+    # Copy the declaration's signature to the impl
+    import copy;
+    new_sig = copy.deepcopy(decl.signature);
+    new_sig.parent = impl_node;
+    # Update impl_node's spec and kid list
+    old_spec = impl_node.spec;
+    impl_node.spec = new_sig;
+    # Replace old spec in kid list with new sig
+    new_kids: list = [];
+    for kid in impl_node.kid {
+        if kid is old_spec {
+            new_kids.append(new_sig);
+        } else {
+            new_kids.append(kid);
+        }
+    }
+    impl_node.kid = new_kids;
 }

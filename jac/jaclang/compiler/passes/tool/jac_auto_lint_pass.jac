@@ -13,6 +13,7 @@ This pass applies automatic linting corrections to Jac code, including:
 - Propagating null-safe access consistency
 - Simplifying ternary expressions (x if x else default -> x or default)
 - Removing `import from __future__ { annotations }` (not needed in Jac)
+- Fixing signature mismatches between declarations and implementations
 - (Future) Import organization
 - (Future) Redundant code removal
 """
@@ -26,6 +27,7 @@ class JacAutoLintPass(UniPass) {
     """Initialize the pass with linting options."""
     with entry {
         lint_enabled: bool = True;
+        main_module: uni.Module | None = None;
     }
 
     def enter_module(self: JacAutoLintPass, node: uni.Module) -> None;
@@ -90,4 +92,7 @@ class JacAutoLintPass(UniPass) {
     def exit_if_else_expr(self: JacAutoLintPass, if_else_node: uni.IfElseExpr) -> None;
     def exit_bool_expr(self: JacAutoLintPass, bool_node: uni.BoolExpr) -> None;
     def _is_future_annotations_import(self: JacAutoLintPass, stmt: uni.UniNode) -> bool;
+    def _fix_impl_signature_mismatch(
+        self: JacAutoLintPass, impl_node: uni.ImplDef
+    ) -> None;
 }
