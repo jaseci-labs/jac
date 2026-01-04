@@ -769,7 +769,7 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
             }
             is_static_path = path.startswith('/static/');
             import from jaclang.project.config { get_config }
-            ;
+
             config = get_config();
             client_cfg = config.get_plugin_config("client") if config else None;
             assets_config = client_cfg.get("assets", {}) if client_cfg else {};

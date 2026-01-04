@@ -14,6 +14,7 @@ This pass applies automatic linting corrections to Jac code, including:
 - Simplifying ternary expressions (x if x else default -> x or default)
 - Removing `import from __future__ { annotations }` (not needed in Jac)
 - Fixing signature mismatches between declarations and implementations
+- Removing trailing semicolons from `import from X { ... }` style imports
 - (Future) Import organization
 - (Future) Redundant code removal
 """
@@ -95,4 +96,5 @@ class JacAutoLintPass(UniPass) {
     def _fix_impl_signature_mismatch(
         self: JacAutoLintPass, impl_node: uni.ImplDef
     ) -> None;
+    def enter_import(self: JacAutoLintPass, import_node: uni.Import) -> None;
 }

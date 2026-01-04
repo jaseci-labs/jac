@@ -19,7 +19,7 @@ with entry {
 def get_nodes_edges(dot_file: str) -> tuple[dict, list] {
     import pydot;
     import from streamlit_agraph { Edge, Node }
-    ;
+
     graphs = pydot.graph_from_dot_file(dot_file);
     graph: pydot.Graph = graphs[0];
     node_list: list[pydot.Node] = graph.get_node_list();
