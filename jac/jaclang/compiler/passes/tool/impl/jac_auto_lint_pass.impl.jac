@@ -1161,6 +1161,8 @@ impl JacAutoLintPass._fix_impl_signature_mismatch(
         }
     }
     impl_node.kid = new_kids;
+}
+
 """Remove standalone semicolons after `import from X { ... }` inside code blocks.
 
 When users write `import from X { ... };` inside a function/ability, the semicolon
