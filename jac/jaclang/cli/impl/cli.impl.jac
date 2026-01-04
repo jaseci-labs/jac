@@ -910,9 +910,7 @@ impl format(paths: list, to_screen: bool = False, fix: bool = False) -> None {
             }
             return (True, changed);
         } except Exception as e {
-            import traceback;
             print(f"Error formatting '{file_path}': {e}", file=sys.stderr);
-            traceback.print_exc();
             return (False, False);
         }
     }

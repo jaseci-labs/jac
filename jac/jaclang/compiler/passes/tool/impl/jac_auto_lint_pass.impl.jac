@@ -1,9 +1,4 @@
-"""Remove empty parentheses from function signatures with no parameters.
-
-This handles both cases:
-- No params, no return type: Remove the entire signature from the ability
-- No params, with return type: Remove just LPAREN/RPAREN, keep return type
-"""
+"""Remove empty parentheses from function signatures with no parameters."""
 impl JacAutoLintPass.exit_ability(
     self: JacAutoLintPass, ability_node: uni.Ability
 ) -> None {
@@ -14,38 +9,7 @@ impl JacAutoLintPass.exit_ability(
     if not isinstance(sig, uni.FuncSignature) {
         return;
     }
-    # Check if signature has any parameters
-    has_params = bool(
-        sig.posonly_params or sig.params or sig.varargs or sig.kwonlyargs or sig.kwargs
-    );
-    if has_params {
-        return;
-    }
-    # No parameters - handle based on whether there's a return type
-    if sig.return_type is None {
-        # No params and no return type - remove signature entirely
-        ability_node.signature = None;
-        # Remove signature from ability's kid list
-        new_kid: list = [];
-        for kid in ability_node.kid {
-            if kid is not sig {
-                new_kid.append(kid);
-            }
-        }
-        ability_node.kid = new_kid;
-    } else {
-        # Has return type - remove just the parentheses tokens
-        new_kid: list = [];
-        for kid in sig.kid {
-            if isinstance(kid, uni.Token) and kid.name in (Tok.LPAREN, Tok.RPAREN) {
-                continue;
-            }
-            new_kid.append(kid);
-        }
-        if len(new_kid) != len(sig.kid) and len(new_kid) > 0 {
-            sig.set_kids(nodes=new_kid);
-        }
-    }
+    self._remove_empty_parens_from_sig(ability_node, sig, "signature");
 }
 
 """Remove @staticmethod decorator tokens and add static keyword to ability's kid list.
@@ -202,12 +166,7 @@ impl JacAutoLintPass.enter_impl_def(self: JacAutoLintPass, node: uni.ImplDef) ->
     }
 }
 
-"""Remove empty parentheses from impl signatures with no parameters.
-
-This handles both cases:
-- No params, no return type: Remove the entire signature from the impl
-- No params, with return type: Remove just LPAREN/RPAREN, keep return type
-"""
+"""Remove empty parentheses from impl signatures with no parameters."""
 impl JacAutoLintPass.exit_impl_def(self: JacAutoLintPass, <>node: uni.ImplDef) -> None {
     if not self.lint_enabled {
         return;
@@ -216,42 +175,7 @@ impl JacAutoLintPass.exit_impl_def(self: JacAutoLintPass, <>node: uni.ImplDef) -
     if not isinstance(spec, uni.FuncSignature) {
         return;
     }
-    # Only remove parens if signature has no params at all
-    has_params = (
-        len(spec.params) > 0
-        or len(spec.posonly_params) > 0
-        or spec.varargs is not None
-        or len(spec.kwonlyargs) > 0
-        or spec.kwargs is not None
-    );
-    if has_params {
-        return;
-    }
-    # No params - check if there's a return type
-    if spec.return_type is None {
-        # No return type either - remove the entire signature
-        <>node.spec = None;
-        # Remove signature from impl's kid list
-        new_kid: list = [];
-        for kid in <>node.kid {
-            if kid is not spec {
-                new_kid.append(kid);
-            }
-        }
-        <>node.kid = new_kid;
-    } else {
-        # Has return type - remove just the parentheses tokens
-        new_kid: list = [];
-        for kid in spec.kid {
-            if isinstance(kid, uni.Token) and kid.name in (Tok.LPAREN, Tok.RPAREN) {
-                continue;
-            }
-            new_kid.append(kid);
-        }
-        if len(new_kid) != len(spec.kid) and len(new_kid) > 0 {
-            spec.set_kids(nodes=new_kid);
-        }
-    }
+    self._remove_empty_parens_from_sig(<>node, spec, "spec");
 }
 
 """Process Enum to combine consecutive has statements."""
@@ -295,7 +219,7 @@ impl JacAutoLintPass.combine_consecutive_glob(
     if len(body) <= 1 {
         return body;
     }
-    new_body: list = [];
+    new_body: list[uni.UniNode] = [];
     i = 0;
     while i < len(body) {
         stmt = body[i];
@@ -345,7 +269,7 @@ impl JacAutoLintPass.combine_consecutive_has(self: JacAutoLintPass, body: list) 
     if len(body) <= 1 {
         return body;
     }
-    new_body: list = [];
+    new_body: list[uni.UniNode] = [];
     i = 0;
     while i < len(body) {
         stmt = body[i];
@@ -510,7 +434,7 @@ impl JacAutoLintPass.enter_module(self: JacAutoLintPass, node: uni.Module) -> No
         }
     }
     # Transform module body in-place
-    new_body: list = [];
+    new_body: list[uni.UniNode] = [];
     for stmt in module.body {
         # Remove `import from __future__ { annotations }` - not needed in Jac
         if self._is_future_annotations_import(stmt) {
@@ -519,7 +443,7 @@ impl JacAutoLintPass.enter_module(self: JacAutoLintPass, node: uni.Module) -> No
         if isinstance(stmt, uni.ModuleCode) and stmt.name is None {
             # Unnamed with entry block - extract module-level constructs
             # while preserving order for correctness
-            pending_entry_stmts: list = [];
+            pending_entry_stmts: list[uni.UniNode] = [];
             for inner_stmt in stmt.body {
                 # Check if this statement should be extracted to module level
                 extracted_stmt: uni.UniNode | None = None;
@@ -766,22 +690,7 @@ impl JacAutoLintPass.exit_func_call(self: JacAutoLintPass, node: uni.FuncCall) -
     # Extract obj and attr from the hasattr call for pattern matching
     obj_expr = node.params[0];
     attr_expr = node.params[1];
-    attr_name: str | None = None;
-    if isinstance(attr_expr, uni.String) {
-        attr_val = attr_expr.value;
-        if (attr_val.startswith('"') and attr_val.endswith('"'))
-        or (attr_val.startswith("'") and attr_val.endswith("'")) {
-            attr_name = attr_val[1:-1];
-        }
-    } elif isinstance(attr_expr, uni.MultiString) {
-        if len(attr_expr.strings) == 1 and isinstance(attr_expr.strings[0], uni.String) {
-            attr_val = attr_expr.strings[0].value;
-            if (attr_val.startswith('"') and attr_val.endswith('"'))
-            or (attr_val.startswith("'") and attr_val.endswith("'")) {
-                attr_name = attr_val[1:-1];
-            }
-        }
-    }
+    attr_name = self._extract_string_literal_value(attr_expr);
     # Replace this node in its parent
     parent = node.parent;
     if parent is None {
@@ -816,7 +725,7 @@ impl JacAutoLintPass.exit_func_call(self: JacAutoLintPass, node: uni.FuncCall) -
         parent.normalize(deep=False);
     } elif isinstance(parent, uni.BoolExpr) {
         # BoolExpr has a values list (for 'and'/'or' expressions)
-        new_values: list = [];
+        new_values: list[uni.Expr] = [];
         for val in parent.values {
             if val is node {
                 new_values.append(replacement);
@@ -843,7 +752,7 @@ impl JacAutoLintPass.exit_func_call(self: JacAutoLintPass, node: uni.FuncCall) -
         parent.normalize(deep=False);
     } else {
         # For other parent types, update kid list manually
-        new_kids: list = [];
+        new_kids: list[uni.UniNode] = [];
         for kid in parent.kid {
             if kid is node {
                 new_kids.append(replacement);
@@ -862,7 +771,7 @@ impl JacAutoLintPass._collect_atom_trailers(
     if isinstance(uni_node, uni.AtomTrailer) {
         results.append(uni_node);
     }
-    if uni_node?.kid and uni_node?.kid {
+    if uni_node?.kid {
         for kid in uni_node.kid {
             if kid is not None {
                 self._collect_atom_trailers(kid, results);
@@ -1011,8 +920,8 @@ impl JacAutoLintPass._convert_ternary_to_or(
     }
     or_expr.parent = parent;
     # Update parent's reference to this node
-    if parent?.kid and parent?.kid {
-        new_kids: list = [];
+    if parent?.kid {
+        new_kids: list[uni.UniNode] = [];
         for kid in parent.kid {
             if kid is if_else_node {
                 new_kids.append(or_expr);
@@ -1036,7 +945,7 @@ impl JacAutoLintPass._convert_ternary_to_or(
             parent.else_value = or_expr;
         }
     } elif isinstance(parent, uni.BoolExpr) {
-        new_values: list = [];
+        new_values: list[uni.Expr] = [];
         for val in parent.values {
             if val is if_else_node {
                 new_values.append(or_expr);
@@ -1068,7 +977,7 @@ impl JacAutoLintPass.exit_if_else_expr(
         return;
     }
     # Collect all AtomTrailers in this expression
-    trailers: list = [];
+    trailers: list[uni.AtomTrailer] = [];
     self._collect_atom_trailers(if_else_node, trailers);
     if len(trailers) < 2 {
         return;
@@ -1114,7 +1023,7 @@ impl JacAutoLintPass.exit_bool_expr(
         return;
     }
     # Collect all AtomTrailers in this expression
-    trailers: list = [];
+    trailers: list[uni.AtomTrailer] = [];
     self._collect_atom_trailers(bool_node, trailers);
     if len(trailers) < 2 {
         return;
@@ -1285,7 +1194,7 @@ impl JacAutoLintPass._fix_impl_signature_mismatch(
     old_spec = impl_node.spec;
     impl_node.spec = new_sig;
     # Replace old spec in kid list with new sig
-    new_kids: list = [];
+    new_kids: list[uni.UniNode] = [];
     for kid in impl_node.kid {
         if kid is old_spec {
             new_kids.append(new_sig);
@@ -1371,4 +1280,86 @@ impl JacAutoLintPass.enter_import(
             if k is not semi
         ];
     }
+}
+
+"""Remove empty parentheses from a function signature with no parameters.
+
+This is a shared helper used by both exit_ability and exit_impl_def.
+Handles both cases:
+- No params, no return type: Remove the entire signature
+- No params, with return type: Remove just LPAREN/RPAREN, keep return type
+
+Args:
+    target_node: The parent node (Ability or ImplDef)
+    sig: The FuncSignature to modify
+    sig_attr: The attribute name on the node that holds the signature
+              ("signature" for Ability, "spec" for ImplDef)
+"""
+impl JacAutoLintPass._remove_empty_parens_from_sig(
+    self: JacAutoLintPass,
+    target_node: uni.UniNode,
+    sig: uni.FuncSignature,
+    sig_attr: str
+) -> None {
+    # Check if signature has any parameters
+    has_params = bool(
+        sig.posonly_params or sig.params or sig.varargs or sig.kwonlyargs or sig.kwargs
+    );
+    if has_params {
+        return;
+    }
+    # No parameters - handle based on whether there's a return type
+    if sig.return_type is None {
+        # No params and no return type - remove signature entirely
+        setattr(target_node, sig_attr, None);
+        # Remove signature from target_node's kid list
+        new_kid: list[uni.UniNode] = [];
+        for kid in target_node.kid {
+            if kid is not sig {
+                new_kid.append(kid);
+            }
+        }
+        target_node.kid = new_kid;
+    } else {
+        # Has return type - remove just the parentheses tokens
+        new_kid: list[uni.UniNode] = [];
+        for kid in sig.kid {
+            if isinstance(kid, uni.Token) and kid.name in (Tok.LPAREN, Tok.RPAREN) {
+                continue;
+            }
+            new_kid.append(kid);
+        }
+        if len(new_kid) != len(sig.kid) and len(new_kid) > 0 {
+            sig.set_kids(nodes=new_kid);
+        }
+    }
+}
+
+"""Extract the string value from a String or MultiString expression.
+
+Returns the unquoted string value, or None if the expression is not a simple string literal.
+Used by hasattr conversion to extract attribute names.
+"""
+impl JacAutoLintPass._extract_string_literal_value(
+    self: JacAutoLintPass, expr: uni.Expr
+) -> (str | None) {
+    attr_value: str | None = None;
+    if isinstance(expr, uni.String) {
+        attr_value = expr.value;
+    } elif isinstance(expr, uni.MultiString) {
+        # MultiString contains a list of String/FString
+        # For hasattr, we only handle simple single strings
+        if len(expr.strings) == 1 and isinstance(expr.strings[0], uni.String) {
+            attr_value = expr.strings[0].value;
+        }
+    }
+    if attr_value is None {
+        return None;
+    }
+    # Remove quotes from string value
+    if (attr_value.startswith('"') and attr_value.endswith('"'))
+    or (attr_value.startswith("'") and attr_value.endswith("'")) {
+        return attr_value[1:-1];
+    }
+    return None;
 }

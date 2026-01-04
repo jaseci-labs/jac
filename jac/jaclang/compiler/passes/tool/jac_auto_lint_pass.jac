@@ -104,4 +104,14 @@ class JacAutoLintPass(UniPass) {
     ) -> bool;
 
     def enter_import(self: JacAutoLintPass, import_node: uni.Import) -> None;
+    def _remove_empty_parens_from_sig(
+        self: JacAutoLintPass,
+        target_node: uni.UniNode,
+        sig: uni.FuncSignature,
+        sig_attr: str
+    ) -> None;
+
+    def _extract_string_literal_value(
+        self: JacAutoLintPass, expr: uni.Expr
+    ) -> (str | None);
 }
