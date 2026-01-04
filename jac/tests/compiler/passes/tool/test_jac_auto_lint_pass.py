@@ -602,6 +602,54 @@ class TestTernaryToOrConversion:
         assert "if instance.value" in formatted and "else 0" in formatted
 
 
+class TestRemoveImportSemicolons:
+    """Tests for removing semicolons from import from {} style imports.
+
+    When `import from X { ... };` appears inside a function/ability body,
+    the semicolon is parsed as a separate Semi statement. This lint rule
+    removes those standalone semicolons that follow import from {} statements.
+    """
+
+    def test_import_from_semicolons_removed(
+        self, auto_lint_fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that semicolons are removed from import from {} style imports."""
+        input_path = auto_lint_fixture_path("import_semicolon.jac")
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True)
+        formatted = prog.mod.main.gen.jac
+
+        # import from {} style imports inside functions should NOT have semicolons
+        # The semicolons (which become standalone Semi statements) should be removed
+        assert "import from typing { List }" in formatted
+        assert "import from sys { argv }" in formatted
+
+        # There should be no standalone semicolons after these imports
+        # Check that we don't have "}\n    ;" pattern (import followed by semicolon)
+        assert "}\n    ;" not in formatted
+
+        # Statement-level imports should still have semicolons
+        assert "import json;" in formatted
+        assert "import math;" in formatted
+
+        # Other code should be preserved
+        assert "obj MyClass" in formatted
+        assert "def main" in formatted
+
+    def test_import_semicolons_preserved_without_lint(
+        self, auto_lint_fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that auto_lint=False preserves import semicolons."""
+        input_path = auto_lint_fixture_path("import_semicolon.jac")
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=False)
+        formatted = prog.mod.main.gen.jac
+
+        # Without linting, standalone semicolons should remain
+        assert "import from typing" in formatted
+        assert ";" in formatted  # Semicolons should still be present
+
+
 class TestRemoveFutureAnnotations:
     """Tests for removing `import from __future__ { annotations }`."""
 

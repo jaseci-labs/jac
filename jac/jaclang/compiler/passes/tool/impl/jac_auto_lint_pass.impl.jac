@@ -1064,3 +1064,40 @@ impl JacAutoLintPass._is_future_annotations_import(
     }
     return False;
 }
+
+"""Remove standalone semicolons after `import from X { ... }` inside code blocks.
+
+When users write `import from X { ... };` inside a function/ability, the semicolon
+is parsed as a separate Semi statement. This removes those unnecessary semicolons.
+"""
+impl JacAutoLintPass.enter_import(
+    self: JacAutoLintPass, import_node: uni.Import
+) -> None {
+    if not self.lint_enabled or import_node.from_loc is None {
+        return;
+    }
+    parent = import_node.parent;
+    if parent is None or not parent?.body or not isinstance(parent?.body, list) {
+        return;
+    }
+    # Find if this import is followed by a Semi statement
+    body = parent.body;
+    try {
+        idx = body.index(import_node);
+    } except ValueError {
+        return;
+    }
+    if idx + 1 < len(body) and isinstance(body[idx + 1], uni.Semi) {
+        semi = body[idx + 1];
+        parent.body = [
+            s
+            for s in body
+            if s is not semi
+        ];
+        parent.kid = [
+            k
+            for k in parent.kid
+            if k is not semi
+        ];
+    }
+}
