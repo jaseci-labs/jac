@@ -143,7 +143,7 @@ obj JacConfig {
     static def load(toml_path: Path) -> JacConfig;
     static def from_toml_str(toml_str: str, toml_path: Path | None = None) -> JacConfig;
     def apply_env_interpolation -> None;
-    def apply_cli_overrides(args: dict[str, Any]) -> None;
+    def apply_cli_overrides(args: dict[(str, Any)]) -> None;
     def apply_profile(profile_name: str) -> None;
     def get_plugin_deps(dep_type: str) -> dict[str, Any];
     def get_plugin_config(plugin_name: str) -> dict[str, Any];

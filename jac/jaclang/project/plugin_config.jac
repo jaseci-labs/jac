@@ -51,7 +51,7 @@ class PluginConfigBase {
     def load(self: PluginConfigBase) -> dict[str, Any];
     def get_jac_config(self: PluginConfigBase) -> JacConfig;
     def get_section(
-        self: PluginConfigBase, section: str, defaults: dict[str, Any] | None = None
+        self: PluginConfigBase, section: str, defaults: dict[(str, Any)] | None = None
     ) -> dict[str, Any];
 
     def invalidate(self: PluginConfigBase) -> None;

@@ -4,7 +4,7 @@ obj GradeBook {
     def add_student(name: str) -> None;
     def add_grade(student: str, grade: int) -> None;
     def get_average(student: str) -> float;
-    def get_all_averages -> dict[str, float];
+    def get_all_averages()  -> dict[str, float];
 }
 
 impl GradeBook.add_student(name: str) -> None {

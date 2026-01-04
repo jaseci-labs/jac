@@ -16,8 +16,9 @@ obj MyPrinter {
 
 }
 
+impl MyPrinter.my_print(messag: str) -> str
 # Definition
-impl MyPrinter.my_print(message: str) -> str {
+{
     output = f"from me: {message}";
     print("from me: {message}");
     return output;
