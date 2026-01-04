@@ -105,7 +105,7 @@ impl JacConfig.apply_env_interpolation -> None {
     self.environments = _interpolate_recursive(self.environments);
 }
 
-impl JacConfig.apply_cli_overrides(args: dict[str, Any]) -> None {
+impl JacConfig.apply_cli_overrides(args: dict[(str, Any)]) -> None {
     if args.get("session") {
         self.run.session = args["session"];
     }

@@ -52,3 +52,25 @@ obj Counter {
         return self.count;
     }
 }
+
+# Declarations with impl blocks to test impl empty parens removal
+obj Calculator {
+    def compute -> int;
+    def process(x: int) -> int;
+    def run;
+}
+
+# Impl with no params and return type - parens should be removed
+impl Calculator.compute() -> int {
+    return 42;
+}
+
+# Impl with params - parens should stay
+impl Calculator.process(x: int) -> int {
+    return x * 2;
+}
+
+# Impl with no params and no return type - parens should be removed
+impl Calculator.run() {
+    print("running");
+}

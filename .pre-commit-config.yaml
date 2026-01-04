@@ -42,7 +42,7 @@ repos:
       - id: jac-format
         name: jac-format
         description: Format Jac files with consistent code style
-        entry: env PYTHONPATH=jac python -m jaclang format
+        entry: env PYTHONPATH=jac python3 -m jaclang format
         language: system
         types: [file]
         args: [--fix]
@@ -52,7 +52,7 @@ repos:
       - id: jac-check
         name: jac-check
         description: Type check Jac files
-        entry: env PYTHONPATH=jac python -m jaclang check --warnonly
+        entry: env PYTHONPATH=jac python3 -m jaclang check --warnonly
         language: system
         types: [file]
         files: \.jac$

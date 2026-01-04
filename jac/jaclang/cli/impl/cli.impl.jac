@@ -853,7 +853,6 @@ declarations where appropriate) when --fix flag is provided.
 
 Args:
 paths: One or more paths to .jac files or directories containing .jac files
-outfile: Optional output file path (only valid when formatting a single file)
 to_screen: Print formatted code to stdout instead of writing to file
 fix: Apply auto-linting corrections before formatting (default: False)
 
@@ -861,28 +860,17 @@ Examples:
 jac format myfile.jac
 jac format file1.jac file2.jac file3.jac
 jac format myproject/
-jac format myfile.jac --outfile formatted.jac
 jac format myfile.jac --to_screen
 jac format myfile.jac --fix
 """
-impl format(
-    paths: list, outfile: str = '', to_screen: bool = False, fix: bool = False
-) -> None {
+impl format(paths: list, to_screen: bool = False, fix: bool = False) -> None {
     import from jaclang.pycore.program { JacProgram }
     if isinstance(paths, str) {
         paths = [paths];
     }
-    if (outfile and (len(paths) > 1)) {
-        print('Error: --outfile can only be used with a single file.', file=sys.stderr);
-        <>exit(1);
-    }
     def write_formatted_code(code: str, target_path: str) -> None {
         if to_screen {
             print(code);
-        } elif outfile {
-            with open(outfile, 'w') as f {
-                f.write(code);
-            }
         } else {
             with open(target_path, 'w') as f {
                 f.write(code);
@@ -903,13 +891,28 @@ impl format(
                 }
                 return (False, False);
             }
+            # Write main module
             formatted_code = prog.mod.main.gen.jac;
             original_code = prog.mod.main.source.code;
             changed = formatted_code != original_code;
             write_formatted_code(formatted_code, str(path_obj));
+
+            # Write impl modules (.impl.jac, .cl.jac files)
+            # The format passes already processed them, just need to write
+            for impl_mod in prog.mod.main.impl_mod {
+                impl_path = impl_mod.loc.mod_path;
+                impl_formatted = impl_mod.gen.jac;
+                impl_original = impl_mod.source.code;
+                if (impl_formatted != impl_original) {
+                    write_formatted_code(impl_formatted, impl_path);
+                    changed = True;
+                }
+            }
             return (True, changed);
         } except Exception as e {
+            import traceback;
             print(f"Error formatting '{file_path}': {e}", file=sys.stderr);
+            traceback.print_exc();
             return (False, False);
         }
     }

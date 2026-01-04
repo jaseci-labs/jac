@@ -202,6 +202,58 @@ impl JacAutoLintPass.enter_impl_def(self: JacAutoLintPass, node: uni.ImplDef) ->
     }
 }
 
+"""Remove empty parentheses from impl signatures with no parameters.
+
+This handles both cases:
+- No params, no return type: Remove the entire signature from the impl
+- No params, with return type: Remove just LPAREN/RPAREN, keep return type
+"""
+impl JacAutoLintPass.exit_impl_def(self: JacAutoLintPass, <>node: uni.ImplDef) -> None {
+    if not self.lint_enabled {
+        return;
+    }
+    spec = <>node.spec;
+    if not isinstance(spec, uni.FuncSignature) {
+        return;
+    }
+    # Only remove parens if signature has no params at all
+    has_params = (
+        len(spec.params) > 0
+        or len(spec.posonly_params) > 0
+        or spec.varargs is not None
+        or len(spec.kwonlyargs) > 0
+        or spec.kwargs is not None
+    );
+    if has_params {
+        return;
+    }
+    # No params - check if there's a return type
+    if spec.return_type is None {
+        # No return type either - remove the entire signature
+        <>node.spec = None;
+        # Remove signature from impl's kid list
+        new_kid: list = [];
+        for kid in <>node.kid {
+            if kid is not spec {
+                new_kid.append(kid);
+            }
+        }
+        <>node.kid = new_kid;
+    } else {
+        # Has return type - remove just the parentheses tokens
+        new_kid: list = [];
+        for kid in spec.kid {
+            if isinstance(kid, uni.Token) and kid.name in (Tok.LPAREN, Tok.RPAREN) {
+                continue;
+            }
+            new_kid.append(kid);
+        }
+        if len(new_kid) != len(spec.kid) and len(new_kid) > 0 {
+            spec.set_kids(nodes=new_kid);
+        }
+    }
+}
+
 """Process Enum to combine consecutive has statements."""
 impl JacAutoLintPass.enter_enum(self: JacAutoLintPass, node: uni.Enum) -> None {
     if not self.lint_enabled {
@@ -676,17 +728,8 @@ impl JacAutoLintPass._is_matching_attr_access(
         return False;
     }
     # The target must match the object expression
-    # For simple names, compare the values
-    if isinstance(obj_expr, uni.Name) and isinstance(trailer.target, uni.Name) {
-        return obj_expr.value == trailer.target.value;
-    }
-    # For more complex expressions, we'd need deeper comparison
-    # For now, use string comparison of unparsed expressions
-    try {
-        return obj_expr.unparse() == trailer.target.unparse();
-    } except Exception {
-        return False;
-    }
+    # Use structural comparison to avoid corrupting locations via unparse()
+    return self._exprs_are_identical(obj_expr, trailer.target);
 }
 
 """Convert an AtomTrailer to use null-safe access.
@@ -828,6 +871,34 @@ impl JacAutoLintPass._collect_atom_trailers(
     }
 }
 
+"""Build a string key from an expression without calling unparse().
+
+This avoids triggering normalize() which corrupts token locations.
+Returns None if the expression is too complex to build a key from.
+"""
+impl JacAutoLintPass._expr_to_key(
+    self: JacAutoLintPass, expr: uni.Expr
+) -> (str | None) {
+    if isinstance(expr, uni.Name) {
+        return expr.value;
+    }
+    if isinstance(expr, uni.AtomTrailer) {
+        if expr.is_attr and isinstance(expr.right, uni.Name) {
+            target_key = self._expr_to_key(expr.target);
+            if target_key is not None {
+                null_ok = "?" if expr.is_null_ok else "";
+                return f"{target_key}{null_ok}.{expr.right.value}";
+            }
+        }
+        return None;
+    }
+    if isinstance(expr, uni.SpecialVarRef) {
+        return expr.name.value if expr.name else None;
+    }
+    # For other expression types, return None (too complex)
+    return None;
+}
+
 """Get a unique key for an AtomTrailer based on its target and attribute.
 
 Returns a string like "obj.attr" that can be used to identify matching accesses.
@@ -843,24 +914,65 @@ impl JacAutoLintPass._get_trailer_key(
         return None;
     }
     attr_name = trailer.right.value;
-    # Get the target as a string
-    try {
-        target_str = trailer.target.unparse();
-        return f"{target_str}.{attr_name}";
-    } except Exception {
-        return None;
+    # Build key from target without calling unparse()
+    target_key = self._expr_to_key(trailer.target);
+    if target_key is not None {
+        null_ok = "?" if trailer.is_null_ok else "";
+        return f"{target_key}{null_ok}.{attr_name}";
     }
+    return None;
 }
 
-"""Check if two expressions are structurally identical by comparing their unparsed form."""
+"""Check if two expressions are structurally identical without calling unparse().
+
+This avoids triggering normalize() which corrupts token locations.
+"""
 impl JacAutoLintPass._exprs_are_identical(
     self: JacAutoLintPass, expr1: uni.Expr, expr2: uni.Expr
 ) -> bool {
-    try {
-        return expr1.unparse() == expr2.unparse();
-    } except Exception {
+    # Same object reference
+    if expr1 is expr2 {
+        return True;
+    }
+    # Must be same type
+    if type(expr1) != type(expr2) {
         return False;
     }
+    # Compare Names by value
+    if isinstance(expr1, uni.Name) and isinstance(expr2, uni.Name) {
+        return expr1.value == expr2.value;
+    }
+    # Compare AtomTrailers recursively
+    if isinstance(expr1, uni.AtomTrailer) and isinstance(expr2, uni.AtomTrailer) {
+        if expr1.is_attr != expr2.is_attr {
+            return False;
+        }
+        if expr1.is_null_ok != expr2.is_null_ok {
+            return False;
+        }
+        if not self._exprs_are_identical(expr1.target, expr2.target) {
+            return False;
+        }
+        if isinstance(expr1.right, uni.Name) and isinstance(expr2.right, uni.Name) {
+            return expr1.right.value == expr2.right.value;
+        }
+        return self._exprs_are_identical(expr1.right, expr2.right);
+    }
+    # Compare SpecialVarRef
+    if isinstance(expr1, uni.SpecialVarRef) and isinstance(expr2, uni.SpecialVarRef) {
+        if expr1.name and expr2.name {
+            return expr1.name.value == expr2.name.value;
+        }
+        return expr1.name is None and expr2.name is None;
+    }
+    # For other types, use key comparison as fallback
+    key1 = self._expr_to_key(expr1);
+    key2 = self._expr_to_key(expr2);
+    if key1 is not None and key2 is not None {
+        return key1 == key2;
+    }
+    # Cannot safely compare - assume not identical
+    return False;
 }
 
 """Convert IfElseExpr to BoolExpr with or when value equals condition.
@@ -1082,6 +1194,9 @@ signature to the implementation to ensure consistency.
 
 This works by looking up the declaration via symbol table since decl_link may
 not be set yet when this pass runs during formatting.
+
+Supports nested classes: for `impl OuterClass.InnerClass.method`, it navigates
+through OuterClass -> InnerClass -> method to find the correct declaration.
 """
 impl JacAutoLintPass._fix_impl_signature_mismatch(
     self: JacAutoLintPass, impl_node: uni.ImplDef
@@ -1092,22 +1207,23 @@ impl JacAutoLintPass._fix_impl_signature_mismatch(
         decl = impl_node.decl_link;
     } else {
         # Look up the declaration via symbol table
-        # impl_node.target is a sequence like [Calculator, add]
+        # impl_node.target is a sequence like [Calculator, add] or
+        # [OuterClass, InnerClass, method] for nested classes
         if not impl_node.target or len(impl_node.target) < 2 {
             return;
         }
-        # Get the archetype name and ability name
-        arch_name = impl_node.target[0].sym_name if impl_node.target[0] else None;
+        # Get the root archetype name and ability name (last element)
+        root_arch_name = impl_node.target[0].sym_name if impl_node.target[0] else None;
         ability_name = impl_node.target[-1].sym_name if impl_node.target[-1] else None;
-        if not arch_name or not ability_name {
+        if not root_arch_name or not ability_name {
             return;
         }
         # Use the stored main_module reference
         if self.main_module is None or not self.main_module.sym_tab {
             return;
         }
-        # Look up archetype
-        arch_sym = self.main_module.sym_tab.lookup(arch_name);
+        # Look up root archetype
+        arch_sym = self.main_module.sym_tab.lookup(root_arch_name);
         if not arch_sym or not arch_sym.decl {
             return;
         }
@@ -1115,7 +1231,29 @@ impl JacAutoLintPass._fix_impl_signature_mismatch(
         if not isinstance(arch_node, uni.Archetype) or not arch_node.body {
             return;
         }
-        # Find the ability in the archetype
+        # Navigate through nested classes if target has more than 2 elements
+        # e.g., [OuterClass, InnerClass, method] -> navigate OuterClass -> InnerClass
+        for i in range(1, len(impl_node.target) - 1) {
+            nested_name = impl_node.target[i].sym_name if impl_node.target[i] else None;
+            if not nested_name {
+                return;
+            }
+            # Find the nested class in the current archetype's body
+            found_nested = False;
+            for member in arch_node.body {
+                if isinstance(member, uni.Archetype) {
+                    if member.name_spec and member.name_spec.sym_name == nested_name {
+                        arch_node = member;
+                        found_nested = True;
+                        break;
+                    }
+                }
+            }
+            if not found_nested or not arch_node.body {
+                return;
+            }
+        }
+        # Find the ability in the (possibly nested) archetype
         for member in arch_node.body {
             if isinstance(member, uni.Ability) {
                 if member.name_ref and member.name_ref.sym_name == ability_name {
@@ -1131,17 +1269,12 @@ impl JacAutoLintPass._fix_impl_signature_mismatch(
     if not isinstance(impl_node.spec, uni.FuncSignature) {
         return;
     }
-    # Compare signatures using unparse
-    decl_sig_str: str = "";
-    impl_sig_str: str = "";
-    try {
-        decl_sig_str = decl.signature.unparse();
-        impl_sig_str = impl_node.spec.unparse();
-    } except Exception {
-        return;
-    }
-    # If signatures match, nothing to do
-    if decl_sig_str == impl_sig_str {
+    # Compare signatures structurally without calling unparse/normalize
+    # (unparse triggers normalize which corrupts token locations)
+    decl_sig = decl.signature;
+    impl_sig = impl_node.spec;
+    # Check if signatures match (if they do, return early)
+    if self._signatures_match(decl_sig, impl_sig) {
         return;
     }
     # Copy the declaration's signature to the impl
@@ -1161,6 +1294,46 @@ impl JacAutoLintPass._fix_impl_signature_mismatch(
         }
     }
     impl_node.kid = new_kids;
+}
+
+"""Check if two FuncSignatures match structurally without calling unparse().
+
+Compares parameter counts and names to determine if signatures are equivalent.
+"""
+impl JacAutoLintPass._signatures_match(
+    self: JacAutoLintPass, decl_sig: uni.FuncSignature, impl_sig: uni.FuncSignature
+) -> bool {
+    # Compare parameter counts first
+    if (
+        len(decl_sig.params) != len(impl_sig.params)
+        or len(decl_sig.posonly_params) != len(impl_sig.posonly_params)
+        or len(decl_sig.kwonlyargs) != len(impl_sig.kwonlyargs)
+        or (decl_sig.varargs is None) != (impl_sig.varargs is None)
+        or (decl_sig.kwargs is None) != (impl_sig.kwargs is None)
+        or (decl_sig.return_type is None) != (impl_sig.return_type is None)
+    ) {
+        return False;
+    }
+    # Check parameter names match
+    for (i, decl_param) in enumerate(decl_sig.params) {
+        impl_param = impl_sig.params[i];
+        if decl_param.name.value != impl_param.name.value {
+            return False;
+        }
+    }
+    for (i, decl_param) in enumerate(decl_sig.posonly_params) {
+        impl_param = impl_sig.posonly_params[i];
+        if decl_param.name.value != impl_param.name.value {
+            return False;
+        }
+    }
+    for (i, decl_param) in enumerate(decl_sig.kwonlyargs) {
+        impl_param = impl_sig.kwonlyargs[i];
+        if decl_param.name.value != impl_param.name.value {
+            return False;
+        }
+    }
+    return True;
 }
 
 """Remove standalone semicolons after `import from X { ... }` inside code blocks.
