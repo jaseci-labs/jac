@@ -10,7 +10,7 @@ import redis;
 import from pymongo { MongoClient, UpdateOne }
 import from pymongo.errors { ConnectionFailure }
 import from jaclang.pycore.archetype { TANCH, Anchor }
-import from jaclang.pycore.memory { Memory }
+import from jaclang.runtimelib.memory { Memory }
 import from jac_scale.config_loader { get_scale_config }
 
 # Load database configuration from jac.toml with env var overrides
