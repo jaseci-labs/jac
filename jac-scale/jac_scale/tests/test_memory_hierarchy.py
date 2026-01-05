@@ -25,6 +25,9 @@ class TestMemoryHierarchy:
     base_url: str
     port: int
 
+    redis_client: redis.Redis
+    mongo_client: MongoClient
+
     redis_container: RedisContainer
     mongo_container: MongoDbContainer
     server: subprocess.Popen[str] | None = None
@@ -63,12 +66,6 @@ class TestMemoryHierarchy:
         os.environ["MONGODB_URI"] = mongo_uri
         os.environ["REDIS_URL"] = redis_url
 
-        # verify there are no additional mongo dbs
-        system_dbs = {"admin", "config", "local"}
-
-        initial_dbs = set(cls.mongo_client.list_database_names()) - system_dbs
-        #assert not initial_dbs, "there exists other databases in the initial stage"
-
         assert "jac_db" not in cls.mongo_client.list_database_names()
 
         # setting up
@@ -89,7 +86,6 @@ class TestMemoryHierarchy:
             if db_name not in system_dbs:
                 cls.mongo_client.drop_database(db_name)
 
-        
         cls.mongo_container.stop()
         cls.redis_container.stop()
 
@@ -150,28 +146,24 @@ class TestMemoryHierarchy:
         assert res.status_code == 200
         return res.json()
 
-
-
     # TODO: delete method in jac serve is not working as expected. will be fixed in a separate PR and a test case will be added
-        
-
 
     def test_read_and_write(self) -> None:
-
-        db  = self.mongo_client["jac_db"]
+        db = self.mongo_client["jac_db"]
         collection = db["anchors"]
 
         mongo_doc_initial_count = collection.count_documents({})
-        assert mongo_doc_initial_count == 2 # the initial docs is two, because super root, guest_user
+        assert (
+            mongo_doc_initial_count == 2
+        )  # the initial docs is two, because super root, guest_user
 
         # Register a user
         token = self._register("reader", "pass123")
 
         mongo_doc_after_user_creation_count = collection.count_documents({})
-        assert mongo_doc_after_user_creation_count == 3 # the initial docs is three, because super root, guest_user and the created user
-
-
-
+        assert (
+            mongo_doc_after_user_creation_count == 3
+        )  # the initial docs is three, because super root, guest_user and the created user
 
         redis_size_before_task_creation = self.redis_client.dbsize()
 
@@ -181,16 +173,16 @@ class TestMemoryHierarchy:
             {"id": 204, "title": "Task 204"},
         ]
 
-        
-
         redis_size_after_task_creation = self.redis_client.dbsize()
 
         for task_payload in created_tasks:
             self._post("/walker/CreateTask", task_payload, token)
-        
+
         mongo_doc_count_after_task_creation = collection.count_documents({})
 
-        assert mongo_doc_count_after_task_creation == 7 # the previous 3 and two anchors (1 node + 1 edge) for each task 
+        assert (
+            mongo_doc_count_after_task_creation == 7
+        )  # the previous 3 and two anchors (1 node + 1 edge) for each task
 
         assert redis_size_after_task_creation == redis_size_before_task_creation
 
@@ -198,6 +190,6 @@ class TestMemoryHierarchy:
 
         redis_size_after_task_read = self.redis_client.dbsize()
 
-        assert redis_size_after_task_read == 5 # this is 5 because super root, guest user, created user and the two task nodes
-
-        
+        assert (
+            redis_size_after_task_read == 5
+        )  # this is 5 because super root, guest user, created user and the two task nodes

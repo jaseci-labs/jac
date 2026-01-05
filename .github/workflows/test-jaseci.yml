@@ -147,6 +147,8 @@ jobs:
           pip install -e jac-scale
           pip install pytest
           pip install pytest-asyncio
+          pip install testcontainers[mongodb]
+          pip install testcontainers[redis]
 
       - name: Check for Kubernetes changes
         id: k8s-changes
