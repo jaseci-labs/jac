@@ -4,6 +4,9 @@ version = "1.0.0"
 description = "Jac client application: js-styling"
 entry-point = "src/app.jac"
 
+[dependencies.npm]
+jac-client-node = "latest"
+
 [plugins.client]
 # Vite bundler configuration (optional overrides)
 # vite.plugins = []

@@ -14,6 +14,7 @@ custom_extensions = [".py", ".js"]
 
 [dependencies.npm]
 antd = "^6.0.0"
+jac-client-node = "latest"
 
 [environments.response.headers]
 "Cross-Origin-Opener-Policy" = "same-origin"

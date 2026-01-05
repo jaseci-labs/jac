@@ -184,6 +184,9 @@ version = "1.0.0"
 description = "Jac client application: {project_name}"
 entry-point = "src/app.jac"
 
+[dependencies.npm]
+jac-client-node = "latest"
+
 [plugins.client]
 # Vite bundler configuration (optional overrides)
 # vite.plugins = []
