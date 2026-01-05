@@ -245,10 +245,7 @@ def test_create_jac_app_with_typescript() -> None:
                     package_data = json.load(f)
 
                 # Verify default dependencies are in package.json
-                assert "react" in package_data.get("dependencies", {})
-                assert "react-dom" in package_data.get("dependencies", {})
-                assert "vite" in package_data.get("devDependencies", {})
-                assert "typescript" in package_data.get("devDependencies", {})
+                assert "jac-client-node" in package_data.get("dependencies", {})
 
         finally:
             # Return to original directory
