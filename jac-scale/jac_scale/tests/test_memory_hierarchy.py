@@ -149,8 +149,6 @@ class TestMemoryHierarchy:
         assert res.status_code == 200
         return res.json()
 
-    def _redis_snapshot(self) -> set[str]:
-        return set(self.redis_client.keys("anchor:*"))
 
     def _redis_contains_task(self) -> bool:
         for key in self.redis_client.keys("anchor:*"):
