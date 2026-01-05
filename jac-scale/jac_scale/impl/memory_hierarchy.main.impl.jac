@@ -15,14 +15,16 @@ impl MultiHierarchyMemory.remove(anchor: Anchor) {
 }
 
 impl MultiHierarchyMemory.sync(anchors: Iterable[Anchor]) -> None {
-    if self.redis_available {
-        self.redis.commit(keys=anchors);
-    }
-    if self.mongo_available {
-        self.mongo.commit(keys=anchors);
-    } elif self.shelf {
-        self.shelf.commit(keys=anchors);
-    }
+    try {
+        if self.redis_available {
+            self.redis.commit(keys=anchors);
+        }
+        if self.mongo_available {
+            self.mongo.commit(keys=anchors);
+        } elif self.shelf {
+            self.shelf.commit(keys=anchors);
+        }
+    } except Exception { }
 }
 
 impl MultiHierarchyMemory.close{
@@ -37,54 +39,58 @@ impl MultiHierarchyMemory.close{
 }
 
 impl MultiHierarchyMemory.commit(anchor: (Anchor | None) = None) {
-    gc = self.mem.get_gc();
-    memory = self.mem.get_mem();
-    if (anchor) {
-        if (anchor in gc) {
+    try {
+        gc = self.mem.get_gc();
+        memory = self.mem.get_mem();
+        if (anchor) {
+            if (anchor in gc) {
+                self.delete(anchor);
+                self.mem.remove_from_gc(anchor);
+            } else {
+                if (self.mongo_available) {
+                    self.mongo.set(anchor);
+                } elif (self.shelf) {
+                    self.shelf.set(anchor);
+                }
+            }
+            return;
+        }
+        for anchor in gc {
             self.delete(anchor);
             self.mem.remove_from_gc(anchor);
-        } else {
-            if (self.mongo_available) {
-                self.mongo.set(anchor);
-            } elif (self.shelf) {
-                self.shelf.set(anchor);
-            }
         }
-        return;
-    }
-    for anchor in gc {
-        self.delete(anchor);
-        self.mem.remove_from_gc(anchor);
-    }
-    anchors = <>set(memory.values());
-    self.sync(anchors);
+        anchors = <>set(memory.values());
+        self.sync(anchors);
+    } except Exception { }
 }
 
 impl MultiHierarchyMemory.find_by_id(id: UUID) -> (Anchor | None) {
-    if (anchor := self.mem.find_by_id(id)) {
-        return anchor;
-    }
-    if (self.redis_available) {
-        if (anchor := self.redis.find_by_id(id)) {
-            self.mem.set(anchor);
+    try {
+        if (anchor := self.mem.find_by_id(id)) {
             return anchor;
         }
-    }
-    if (self.mongo_available) {
-        if (anchor := self.mongo.find_by_id(id)) {
-            self.mem.set(anchor);
-            if (self.redis_available) {
-                self.redis.set(anchor);
+        if (self.redis_available) {
+            if (anchor := self.redis.find_by_id(id)) {
+                self.mem.set(anchor);
+                return anchor;
             }
-            return anchor;
         }
-    } elif self.shelf {
-        if (anchor := self.shelf.find_by_id(id)) {
-            self.mem.set(anchor);
-            return anchor;
+        if (self.mongo_available) {
+            if (anchor := self.mongo.find_by_id(id)) {
+                self.mem.set(anchor);
+                if (self.redis_available) {
+                    self.redis.set(anchor);
+                }
+                return anchor;
+            }
+        } elif self.shelf {
+            if (anchor := self.shelf.find_by_id(id)) {
+                self.mem.set(anchor);
+                return anchor;
+            }
         }
-    }
-    return None;
+        return None;
+    } except Exception { }
 }
 
 impl MultiHierarchyMemory.init -> None {
