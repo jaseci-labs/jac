@@ -1,17 +1,16 @@
+import contextlib
+import gc
+import os
 import socket
 import subprocess
+import time
+from pathlib import Path
+
 import redis
 import requests
 from pymongo import MongoClient
-import contextlib
-import time
-import gc
-import requests
-import os
-
-from pathlib import Path
-from testcontainers.redis import RedisContainer
 from testcontainers.mongodb import MongoDbContainer
+from testcontainers.redis import RedisContainer
 
 
 def get_free_port() -> int:
@@ -148,12 +147,11 @@ class TestMemoryHierarchy:
         assert res.status_code == 200
         return res.json()
 
-
     def test_write(self) -> None:
         token = self._register("akindu", "pass123")
 
         system_dbs = {"admin", "config", "local"}
-        
+
         print(f"0 - printing redis db size: {self.redis_client.dbsize()}")
         redis_size_before_task_creation = self.redis_client.dbsize()
 
@@ -180,8 +178,11 @@ class TestMemoryHierarchy:
         print(f"2 - printing redis db size: {self.redis_client.dbsize()}")
         redis_size_after_task_deletion = self.redis_client.dbsize()
 
-        assert redis_size_before_task_creation == redis_size_after_task_creation == redis_size_after_task_deletion
-
+        assert (
+            redis_size_before_task_creation
+            == redis_size_after_task_creation
+            == redis_size_after_task_deletion
+        )
 
     def test_read(self) -> None:
         # Register a user
@@ -206,5 +207,3 @@ class TestMemoryHierarchy:
 
         assert redis_size_before_task_creation == redis_size_after_task_creation
         assert redis_size_after_task_read > redis_size_after_task_creation
-
-        
