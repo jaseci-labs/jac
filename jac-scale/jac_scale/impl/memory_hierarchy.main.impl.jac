@@ -65,32 +65,30 @@ impl MultiHierarchyMemory.commit(anchor: (Anchor | None) = None) {
 }
 
 impl MultiHierarchyMemory.find_by_id(id: UUID) -> (Anchor | None) {
-    try {
-        if (anchor := self.mem.find_by_id(id)) {
+    if (anchor := self.mem.find_by_id(id)) {
+        return anchor;
+    }
+    if (self.redis_available) {
+        if (anchor := self.redis.find_by_id(id)) {
+            self.mem.set(anchor);
             return anchor;
         }
-        if (self.redis_available) {
-            if (anchor := self.redis.find_by_id(id)) {
-                self.mem.set(anchor);
-                return anchor;
+    }
+    if (self.mongo_available) {
+        if (anchor := self.mongo.find_by_id(id)) {
+            self.mem.set(anchor);
+            if (self.redis_available) {
+                self.redis.set(anchor);
             }
+            return anchor;
         }
-        if (self.mongo_available) {
-            if (anchor := self.mongo.find_by_id(id)) {
-                self.mem.set(anchor);
-                if (self.redis_available) {
-                    self.redis.set(anchor);
-                }
-                return anchor;
-            }
-        } elif self.shelf {
-            if (anchor := self.shelf.find_by_id(id)) {
-                self.mem.set(anchor);
-                return anchor;
-            }
+    } elif self.shelf {
+        if (anchor := self.shelf.find_by_id(id)) {
+            self.mem.set(anchor);
+            return anchor;
         }
-        return None;
-    } except Exception { }
+    }
+    return None;
 }
 
 impl MultiHierarchyMemory.init -> None {
