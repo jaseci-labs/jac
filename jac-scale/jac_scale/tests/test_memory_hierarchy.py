@@ -16,6 +16,9 @@ import requests
 import os
 import pickle
 
+from testcontainers.redis import RedisContainer
+from testcontainers.mongodb import MongoDbContainer
+
 
 def get_free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -229,35 +232,15 @@ class TestMemoryHierarchy:
             token
         )
 
-    # def test_read(self) -> None:
-    #     # Register a user
-    #     token = self._register("reader", "pass123")
+    def test_read(self) -> None:
+        # Register a user
+        token = self._register("reader", "pass123")
 
-    #     # Create tasks
-    #     created_tasks = [
-    #         {"id": 203, "title": "Task 203"},
-    #         {"id": 204, "title": "Task 204"},
-    #     ]
+        # Create tasks
+        created_tasks = [
+            {"id": 203, "title": "Task 203"},
+            {"id": 204, "title": "Task 204"},
+        ]
 
-    #     for task_payload in created_tasks:
-    #         self._post("/walker/CreateTask", task_payload, token)
-
-    #     # --- Test GetAllTasks ---
-    #     response = self._post("/walker/GetAllTasks", {}, token)
-    
-    #     # Extract tasks from Jac reports
-    #     all_tasks = response["reports"][0]  # reports is a list of lists
-    
-    #     assert len(all_tasks) == len(created_tasks), "Number of tasks returned doesn't match"
-
-    #     # tasks should be stored in redis now
-    #     assert self._redis_contains_task(), "tasks not in redis"
-
-
-
-
-
-
-
-
-   
+        for task_payload in created_tasks:
+            self._post("/walker/CreateTask", task_payload, token)
