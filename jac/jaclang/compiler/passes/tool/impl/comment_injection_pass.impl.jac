@@ -1,8 +1,11 @@
-"""Remove redundant line breaks after inline comments."""
+"""Initialize CommentInjectionPass."""
 
-impl CommentInjectionPass._remove_redundant_lines(
-    self: CommentInjectionPass, <>node: doc.DocType
-) -> doc.DocType {
+impl CommentInjectionPass.init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) {
+    super.init(ir_in, prog, cancel_token);
+}
+
+"""Remove redundant line breaks after inline comments."""
+impl CommentInjectionPass._remove_redundant_lines(<>node: doc.DocType) -> doc.DocType {
     if isinstance(<>node, doc.Concat) {
         new_parts = [];
         i = 0;
@@ -112,7 +115,7 @@ impl CommentInjectionPass._remove_redundant_lines(
 
 """Remove the trailing hard line from the last inline comment in the node."""
 impl CommentInjectionPass._remove_trailing_line_from_inline_comment(
-    self: CommentInjectionPass, <>node: doc.DocType
+    <>node: doc.DocType
 ) -> doc.DocType {
     if (isinstance(<>node, doc.Concat) and (len(<>node.parts) == 3)) {
         (first, second, third) = <>node.parts;
@@ -150,9 +153,7 @@ impl CommentInjectionPass._remove_trailing_line_from_inline_comment(
 }
 
 """Check if a node ends with an inline comment that has a hard line break."""
-impl CommentInjectionPass._ends_with_inline_comment_line(
-    self: CommentInjectionPass, <>node: doc.DocType
-) -> bool {
+impl CommentInjectionPass._ends_with_inline_comment_line(<>node: doc.DocType) -> bool {
     if (isinstance(<>node, doc.Concat) and (len(<>node.parts) == 3)) {
         (first, second, third) = <>node.parts;
         if (
@@ -180,7 +181,7 @@ impl CommentInjectionPass._ends_with_inline_comment_line(
 
 """Ensure we never end up with consecutive hard lines from injection."""
 impl CommentInjectionPass._collapse_duplicate_hard_lines(
-    self: CommentInjectionPass, sink: list[doc.DocType]
+    sink: list[doc.DocType]
 ) -> None {
     while (
         (len(sink) >= 2)
@@ -199,9 +200,7 @@ Return True when the sink already ends with a line break.
         This includes hard lines and tight lines, since tight lines will become
         line breaks when the containing group breaks (e.g., in multi-line function calls).
 """
-impl CommentInjectionPass._ends_with_hard_line(
-    self: CommentInjectionPass, sink: Sequence[doc.DocType]
-) -> bool {
+impl CommentInjectionPass._ends_with_hard_line(sink: Sequence[doc.DocType]) -> bool {
     if not sink {
         return False;
     }
@@ -220,7 +219,7 @@ impl CommentInjectionPass._ends_with_hard_line(
 
 """Remove the trailing hard line from a comment Concat."""
 impl CommentInjectionPass._strip_trailing_line_from_comment(
-    self: CommentInjectionPass, comment: doc.DocType
+    comment: doc.DocType
 ) -> doc.DocType {
     if (
         isinstance(comment, doc.Concat)
@@ -234,9 +233,7 @@ impl CommentInjectionPass._strip_trailing_line_from_comment(
 }
 
 """Check if a doc part is a comment (inline or standalone) with a hard line."""
-impl CommentInjectionPass._is_comment_with_line(
-    self: CommentInjectionPass, part: doc.DocType
-) -> bool {
+impl CommentInjectionPass._is_comment_with_line(part: doc.DocType) -> bool {
     if isinstance(part, doc.Concat) {
         if (len(part.parts) == 2) {
             return self._is_standalone_comment(part);
@@ -256,9 +253,7 @@ impl CommentInjectionPass._is_comment_with_line(
 }
 
 """Check if a doc part is a standalone comment."""
-impl CommentInjectionPass._is_standalone_comment(
-    self: CommentInjectionPass, part: doc.DocType
-) -> bool {
+impl CommentInjectionPass._is_standalone_comment(part: doc.DocType) -> bool {
     if (isinstance(part, doc.Concat) and (len(part.parts) == 2)) {
         (first, second) = part.parts;
         return (
@@ -271,9 +266,7 @@ impl CommentInjectionPass._is_standalone_comment(
 }
 
 """Check whether the given doc part begins with a line break."""
-impl CommentInjectionPass._starts_with_line(
-    self: CommentInjectionPass, part: doc.DocType
-) -> bool {
+impl CommentInjectionPass._starts_with_line(part: doc.DocType) -> bool {
     if isinstance(part, doc.Line) {
         return True;
     }
@@ -303,7 +296,6 @@ impl CommentInjectionPass._starts_with_line(
 
 """Append standalone comments to sink while preserving vertical spacing."""
 impl CommentInjectionPass._emit_standalone_comments(
-    self: CommentInjectionPass,
     sink: list[doc.DocType],
     comments: Sequence[CommentInfo],
     *,
@@ -339,7 +331,7 @@ impl CommentInjectionPass._emit_standalone_comments(
 
 """Create inline comment DocIR."""
 impl CommentInjectionPass._make_inline_comment(
-    self: CommentInjectionPass, comment: uni.CommentToken, add_line: bool = True
+    comment: uni.CommentToken, add_line: bool = True
 ) -> doc.DocType {
     parts: list[doc.DocType] = [doc.Text('  '), doc.Text(comment.value)];
     if add_line {
@@ -350,7 +342,7 @@ impl CommentInjectionPass._make_inline_comment(
 
 """Create standalone comment DocIR."""
 impl CommentInjectionPass._make_standalone_comment(
-    self: CommentInjectionPass, comment: uni.CommentToken
+    comment: uni.CommentToken
 ) -> doc.DocType {
     return doc.Concat([doc.Text(comment.value), doc.Line(hard=True)]);
 }
@@ -362,7 +354,7 @@ Fix spacing for empty regions (bodies/params) that now contain comments.
         delimiter. After injecting comments, we need a hard line instead.
 """
 impl CommentInjectionPass._fix_empty_region_spacing(
-    self: CommentInjectionPass, parts: list[doc.DocType]
+    parts: list[doc.DocType]
 ) -> list[doc.DocType] {
     result: list[doc.DocType] = [];
     i: int = 0;
@@ -399,7 +391,7 @@ Handle comments inside empty bodies (e.g., empty if/elif/else blocks).
         directly between the { and } tokens at the Concat level.
 """
 impl CommentInjectionPass._handle_empty_body_comments(
-    self: CommentInjectionPass, <>node: uni.UniNode, parts: list[doc.DocType]
+    <>node: uni.UniNode, parts: list[doc.DocType]
 ) -> list[doc.DocType] {
     if not self._comments {
         return parts;
@@ -464,9 +456,7 @@ impl CommentInjectionPass._handle_empty_body_comments(
 
 """Handle comment injection within parenthesized regions (params/args)."""
 impl CommentInjectionPass._handle_paren_comments(
-    self: CommentInjectionPass,
-    items: (Sequence[uni.UniNode] | None),
-    parts: list[doc.DocType]
+    items: (Sequence[uni.UniNode] | None), parts: list[doc.DocType]
 ) -> list[doc.DocType] {
     if not self._comments {
         return parts;
@@ -528,7 +518,7 @@ impl CommentInjectionPass._handle_paren_comments(
 
 """Handle comment injection within bodies (functions, classes, etc)."""
 impl CommentInjectionPass._handle_body_comments(
-    self: CommentInjectionPass, <>node: uni.UniNode, indent: doc.Indent
+    <>node: uni.UniNode, indent: doc.Indent
 ) -> doc.Indent {
     body: (Sequence[uni.UniNode] | None) = None;
     if <>node?.body {
@@ -765,11 +755,7 @@ impl CommentInjectionPass._handle_body_comments(
 
 """Inject standalone comments using token line spans, generically."""
 impl CommentInjectionPass._inject_standalone_by_spans(
-    self: CommentInjectionPass,
-    parts: list[doc.DocType],
-    ctx: uni.UniNode,
-    *,
-    drain_after: bool = False
+    parts: list[doc.DocType], ctx: uni.UniNode, *, drain_after: bool = False
 ) -> list[doc.DocType] {
     if not self._comments {
         return parts;
@@ -820,7 +806,7 @@ impl CommentInjectionPass._inject_standalone_by_spans(
 
 """Inject inline comments after their anchor tokens."""
 impl CommentInjectionPass._inject_into_parts(
-    self: CommentInjectionPass, parts: list[doc.DocType], ctx: uni.UniNode
+    parts: list[doc.DocType], ctx: uni.UniNode
 ) -> list[doc.DocType] {
     result: list[doc.DocType] = [];
     for (index, part) in enumerate(parts) {
@@ -852,7 +838,7 @@ impl CommentInjectionPass._inject_into_parts(
 
 """Return the first and last line covered by a DocIR node."""
 impl CommentInjectionPass._doc_line_span(
-    self: CommentInjectionPass, <>node: doc.DocType
+    <>node: doc.DocType
 ) -> tuple[(int | None), (int | None)] {
     tokens = [
         t
@@ -877,9 +863,7 @@ impl CommentInjectionPass._doc_line_span(
 }
 
 """Extract source tokens from a DocIR node (visitor pattern)."""
-impl CommentInjectionPass._get_tokens(
-    self: CommentInjectionPass, <>node: doc.DocType
-) -> list[uni.Token] {
+impl CommentInjectionPass._get_tokens(<>node: doc.DocType) -> list[uni.Token] {
     if isinstance(<>node, doc.Text) {
         return [<>node.source_token] if <>node.source_token else [];
     } elif isinstance(<>node, (doc.Concat, doc.Group, doc.Indent, doc.Align)) {
@@ -907,7 +891,7 @@ Find opening and closing delimiter tokens and their line numbers.
         Returns: DelimiterInfo if both delimiters found, None otherwise
 """
 impl CommentInjectionPass._find_delimiters(
-    self: CommentInjectionPass, parts: list[doc.DocType], open_tok: Tok, close_tok: Tok
+    parts: list[doc.DocType], open_tok: Tok, close_tok: Tok
 ) -> (DelimiterInfo | None) {
     open_idx: (int | None) = None;
     open_line: (int | None) = None;
@@ -938,7 +922,7 @@ impl CommentInjectionPass._find_delimiters(
 
 """Main recursive processor with type-specific handling."""
 impl CommentInjectionPass._process(
-    self: CommentInjectionPass, ctx: uni.UniNode, <>node: doc.DocType
+    ctx: uni.UniNode, <>node: doc.DocType
 ) -> doc.DocType {
     if isinstance(<>node, doc.Concat) {
         ctx = <>node.ast_node or ctx;
@@ -999,9 +983,7 @@ impl CommentInjectionPass._process(
 }
 
 """Inject comments using token-level precision."""
-impl CommentInjectionPass.transform(
-    self: CommentInjectionPass, ir_in: uni.Module
-) -> uni.Module {
+impl CommentInjectionPass.transform(ir_in: uni.Module) -> uni.Module {
     self._comments: (CommentStore | None) = None;
     if isinstance(ir_in, uni.Module) {
         self._comments = CommentStore.from_module(ir_in);
@@ -1041,7 +1023,7 @@ impl CommentInjectionPass.transform(
 }
 
 """Return comments we never placed (should be rare)."""
-impl CommentStore.drain_unattached(self: CommentStore) -> list[CommentInfo] {
+impl CommentStore.drain_unattached -> list[CommentInfo] {
     leftovers: list[CommentInfo] = [];
     for bucket in self._inline.values() {
         for info in bucket {
@@ -1060,9 +1042,7 @@ impl CommentStore.drain_unattached(self: CommentStore) -> list[CommentInfo] {
 }
 
 """Drain standalone comments that occur on or after start_line."""
-impl CommentStore.take_standalone_after(
-    self: CommentStore, start_line: int
-) -> list[CommentInfo] {
+impl CommentStore.take_standalone_after(start_line: int) -> list[CommentInfo] {
     idx = bisect_left(self._standalone_lines, start_line);
     result: list[CommentInfo] = [];
     while (idx < len(self._standalone)) {
@@ -1077,7 +1057,7 @@ impl CommentStore.take_standalone_after(
 
 """Return standalone comments within [start_line, end_line)."""
 impl CommentStore.take_standalone_between(
-    self: CommentStore, start_line: int, end_line: int
+    start_line: int, end_line: int
 ) -> list[CommentInfo] {
     if (start_line >= end_line) {
         return [];
@@ -1098,7 +1078,7 @@ impl CommentStore.take_standalone_between(
 }
 
 """Return inline comments attached to a given token in source order."""
-impl CommentStore.take_inline(self: CommentStore, token_id: int) -> list[CommentInfo] {
+impl CommentStore.take_inline(token_id: int) -> list[CommentInfo] {
     matches = [];
     for info in self._inline.get(token_id, []) {
         if self._mark_used(info) {
@@ -1108,7 +1088,7 @@ impl CommentStore.take_inline(self: CommentStore, token_id: int) -> list[Comment
     return matches;
 }
 
-impl CommentStore._mark_used(self: CommentStore, info: CommentInfo) -> bool {
+impl CommentStore._mark_used(info: CommentInfo) -> bool {
     if (info.index in self._used) {
         return False;
     }
@@ -1117,7 +1097,7 @@ impl CommentStore._mark_used(self: CommentStore, info: CommentInfo) -> bool {
 }
 
 """Build a comment store by analysing module tokens once."""
-impl CommentStore.from_module(cls: Any, module: uni.Module) -> CommentStore {
+impl CommentStore.from_module(module: uni.Module) -> CommentStore {
     items: list[tuple[(str, int, (uni.Token | uni.CommentToken))]] = [];
     for token in module.src_terminals {
         if not isinstance(token, uni.CommentToken) {
@@ -1165,13 +1145,11 @@ impl CommentStore.from_module(cls: Any, module: uni.Module) -> CommentStore {
         collection.sort(key=lambda  c: Any: (c.first_line, c.index));
     }
     standalone.sort(key=lambda  c: Any: (c.first_line, c.index));
-    return cls(_inline=inline, _standalone=standalone);
+    return CommentStore(_inline=inline, _standalone=standalone);
 }
 
 impl CommentStore.init(
-    self: CommentStore,
-    _inline: dict[(int, list[CommentInfo])],
-    _standalone: list[CommentInfo]
+    _inline: dict[(int, list[CommentInfo])], _standalone: list[CommentInfo]
 ) -> None {
     self._inline = _inline;
     self._standalone = _standalone;
@@ -1180,10 +1158,7 @@ impl CommentStore.init(
 }
 
 impl CommentInfo.init(
-    self: CommentInfo,
-    index: int,
-    token: uni.CommentToken,
-    anchor_token_id: (int | None)
+    index: int, token: uni.CommentToken, anchor_token_id: (int | None)
 ) -> None {
     self.index = index;
     self.token = token;
@@ -1191,16 +1166,16 @@ impl CommentInfo.init(
 }
 
 """Return the final line this comment occupies."""
-impl CommentInfo.last_line(self: CommentInfo) -> int {
+impl CommentInfo.last_line -> int {
     return self.token.loc.last_line;
 }
 
 """Return the starting line for quick range comparisons."""
-impl CommentInfo.first_line(self: CommentInfo) -> int {
+impl CommentInfo.first_line -> int {
     return self.token.loc.first_line;
 }
 
 """Return True when the comment attaches to a token on the same line."""
-impl CommentInfo.is_inline(self: CommentInfo) -> bool {
+impl CommentInfo.is_inline -> bool {
     return (self.anchor_token_id is not None);
 }

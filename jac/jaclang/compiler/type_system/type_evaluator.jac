@@ -8,10 +8,8 @@ PyrightReference:
 
 import ast as py_ast;
 import os;
-import from dataclasses { dataclass }
 import from pathlib { Path }
 import from typing { Callable, TYPE_CHECKING, cast }
-
 import jaclang.pycore.unitree as uni;
 import from jaclang.pycore.jac_parser { TOKEN_MAP }
 import from jaclang.pycore.constant { SymbolType, Tokens as Tok }
@@ -92,81 +90,34 @@ obj MatchArgsToParamsResult {
 }
 
 """Type evaluator for JacLang."""
-class TypeEvaluator {
-    has _BUILTINS_STUB_FILE_PATH: str = os.path.join(
-        os.path.dirname(__file__), "../../vendor/typeshed/stdlib/builtins.pyi"
-    ),
-        _TYPING_STUB_FILE_PATH: str = os.path.join(
-            os.path.dirname(__file__), "../../vendor/typeshed/stdlib/typing.pyi"
-        ),
-        _TYPES_STUB_FILE_PATH: str = os.path.join(
-            os.path.dirname(__file__), "../../vendor/typeshed/stdlib/types.pyi"
-        ),
-        _JAC_BUILTINS_STUB_FILE_PATH: str = os.path.join(
-            os.path.dirname(__file__), "jac_builtins.pyi"
-        ),
-        _SPECIAL_FORM_CLASS_NAMES: tuple[(str, ...)] = (
-            "Union",
-            "Protocol",
-            "Callable",
-            "Type",
-            "NoReturn",
-            "ClassVar",
-            "Optional",
-            "Tuple",
-            "Final",
-            "Literal",
-            "TypedDict"
-        );
-
-    def init(self: TypeEvaluator, program: "JacProgram") -> None;
-    def _load_stub_module(self: TypeEvaluator, path: str) -> uni.Module;
-    def _get_type_from_module(
-        self: TypeEvaluator, module: uni.Module, name: str
-    ) -> TypeBase;
-
-    def _prefetch_types(self: TypeEvaluator);
-    def get_none_type(self: TypeEvaluator) -> TypeBase;
-    def add_diagnostic(
-        self: TypeEvaluator, node: uni.UniNode, message: str, warning: bool = False
-    ) -> None;
-
+obj TypeEvaluator {
+    def init(program: "JacProgram") -> None;
+    def _load_stub_module(path: str) -> uni.Module;
+    def _get_type_from_module(module: uni.Module, name: str) -> TypeBase;
+    def _prefetch_types;
+    def get_none_type -> TypeBase;
+    def add_diagnostic(node: uni.UniNode, message: str, warning: bool = False) -> None;
     # -------------------------------------------------------------------------
     # Symbol resolution stack
     # -------------------------------------------------------------------------
-    def get_index_of_symbol_resolution(
-        self: TypeEvaluator, symbol: uni.Symbol
-    ) -> int | None;
-
-    def push_symbol_resolution(self: TypeEvaluator, symbol: uni.Symbol) -> bool;
-    def pop_symbol_resolution(self: TypeEvaluator, symbol: uni.Symbol) -> bool;
+    def get_index_of_symbol_resolution(symbol: uni.Symbol) -> int | None;
+    def push_symbol_resolution(symbol: uni.Symbol) -> bool;
+    def pop_symbol_resolution(symbol: uni.Symbol) -> bool;
     # Pyright equivalent function name = getEffectiveTypeOfSymbol.
-    def get_type_of_symbol(self: TypeEvaluator, symbol: uni.Symbol) -> TypeBase;
+    def get_type_of_symbol(symbol: uni.Symbol) -> TypeBase;
     # NOTE: This function doesn't exists in pyright, however it exists as a helper function
     # for the following functions.
-    def _import_module_from_path(self: TypeEvaluator, path: str) -> uni.Module;
-    def get_type_of_module(
-        self: TypeEvaluator, node_: uni.ModulePath
-    ) -> types.TypeBase;
-
-    def get_type_of_module_item(
-        self: TypeEvaluator, node_: uni.ModuleItem
-    ) -> types.TypeBase;
-
-    def _extract_type_params(
-        self: TypeEvaluator, node_: uni.Archetype
-    ) -> list[types.TypeVarType];
-
-    def get_type_of_class(self: TypeEvaluator, node_: uni.Archetype) -> types.ClassType;
-    def get_type_of_ability(self: TypeEvaluator, node_: uni.Ability) -> TypeBase;
-    def get_type_of_string(
-        self: TypeEvaluator, node: uni.String | uni.MultiString
-    ) -> TypeBase;
-
-    def get_type_of_int(self: TypeEvaluator, node: uni.Int) -> TypeBase;
-    def get_type_of_float(self: TypeEvaluator, node: uni.Float) -> TypeBase;
+    def _import_module_from_path(path: str) -> uni.Module;
+    def get_type_of_module(node_: uni.ModulePath) -> types.TypeBase;
+    def get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeBase;
+    def _extract_type_params(node_: uni.Archetype) -> list[types.TypeVarType];
+    def get_type_of_class(node_: uni.Archetype) -> types.ClassType;
+    def get_type_of_ability(node_: uni.Ability) -> TypeBase;
+    def get_type_of_string(node: uni.String | uni.MultiString) -> TypeBase;
+    def get_type_of_int(node: uni.Int) -> TypeBase;
+    def get_type_of_float(node: uni.Float) -> TypeBase;
     # Pyright equivalent function name = getTypeOfExpression();
-    def get_type_of_expression(self: TypeEvaluator, node_: uni.Expr) -> TypeBase;
+    def get_type_of_expression(node_: uni.Expr) -> TypeBase;
     # Comments from pyright:
     # // Determines if the source type can be assigned to the dest type.
     # // If constraint are provided, type variables within the destType are
@@ -175,28 +126,18 @@ class TypeEvaluator {
     # // and added to the map.
     #
     # dest_type = src_type;
-    def assign_type(
-        self: TypeEvaluator, src_type: TypeBase, dest_type: TypeBase
-    ) -> bool;
-
+    def assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool;
     # TODO: This should take an argument list as parameter.
     def get_type_of_magic_method_call(
-        self: TypeEvaluator,
         obj_type: TypeBase,
         method_name: str,
         arg_nodes: list[uni.Expr],
         node_for_error: uni.Expr | None = None
     ) -> TypeBase | None;
 
-    def is_sub_class(
-        self: TypeEvaluator, super_cls: types.ClassType, sub_cls: types.ClassType
-    ) -> bool;
-
-    def _is_ability_classmethod(self: TypeEvaluator, node_: uni.Ability) -> bool;
-    def _assign_class(
-        self: TypeEvaluator, src_type: types.ClassType, dest_type: types.ClassType
-    ) -> bool;
-
+    def is_sub_class(super_cls: types.ClassType, sub_cls: types.ClassType) -> bool;
+    def _is_ability_classmethod(node_: uni.Ability) -> bool;
+    def _assign_class(src_type: types.ClassType, dest_type: types.ClassType) -> bool;
     # This function is a combination of the bellow pyright functions.
     #  - getDeclaredTypeOfSymbol
     #  - getTypeForDeclaration
@@ -205,67 +146,50 @@ class TypeEvaluator {
     # Pyright is actually have some duplicate logic for handling declared
     # type and inferred type, we're going to unify them (if it's required
     # in the future, we can refactor this).
-    def _get_type_of_symbol(self: TypeEvaluator, symbol: uni.Symbol) -> TypeBase;
+    def _get_type_of_symbol(symbol: uni.Symbol) -> TypeBase;
     # Pyright equivalent function name = getTypeOfExpressionCore();
-    def _get_type_of_expression_core(self: TypeEvaluator, expr: uni.Expr) -> TypeBase;
+    def _get_type_of_expression_core(expr: uni.Expr) -> TypeBase;
     # -----------------------------------------------------------------------------
     # Helper functions
     # -----------------------------------------------------------------------------
     def _set_module_item_symbol_and_type(
-        self: TypeEvaluator, node_: uni.ModuleItem, sym: uni.Symbol
+        node_: uni.ModuleItem, sym: uni.Symbol
     ) -> TypeBase;
 
-    def resolve_imported_symbols(self: TypeEvaluator, sym: uni.Symbol) -> uni.Symbol;
-    def _set_symbol_to_expr(
-        self: TypeEvaluator, expr: uni.Expr, sym: uni.Symbol
-    ) -> TypeBase;
-
-    def _is_expr_self(self: TypeEvaluator, expr: uni.Expr) -> bool;
-    def _get_enclosing_function(
-        self: TypeEvaluator, node: uni.UniNode
-    ) -> uni.Ability | None;
-
-    def _get_enclosing_method(
-        self: TypeEvaluator, node: uni.UniNode
-    ) -> uni.Ability | None;
-
-    def _get_enclosing_class(
-        self: TypeEvaluator, node: uni.UniNode
-    ) -> uni.Archetype | None;
-
-    def _get_type_of_self(self: TypeEvaluator, node_: uni.SpecialVarRef) -> TypeBase;
-    def _get_type_of_root(self: TypeEvaluator, node_: uni.SpecialVarRef) -> TypeBase;
-    def _convert_to_instance(self: TypeEvaluator, jtype: TypeBase) -> TypeBase;
+    def resolve_imported_symbols(sym: uni.Symbol) -> uni.Symbol;
+    def _set_symbol_to_expr(expr: uni.Expr, sym: uni.Symbol) -> TypeBase;
+    def _is_expr_self(expr: uni.Expr) -> bool;
+    def _get_enclosing_function(node: uni.UniNode) -> uni.Ability | None;
+    def _get_enclosing_method(node: uni.UniNode) -> uni.Ability | None;
+    def _get_enclosing_class(node: uni.UniNode) -> uni.Archetype | None;
+    def _get_type_of_self(node_: uni.SpecialVarRef) -> TypeBase;
+    def _get_type_of_root(node_: uni.SpecialVarRef) -> TypeBase;
+    def _convert_to_instance(jtype: TypeBase) -> TypeBase;
     def _lookup_class_member(
-        self: TypeEvaluator, base_type: types.ClassType, member: str
+        base_type: types.ClassType, member: str
     ) -> type_utils.ClassMember | None;
 
     def _lookup_object_member(
-        self: TypeEvaluator, base_type: types.ClassType, member: str
+        base_type: types.ClassType, member: str
     ) -> type_utils.ClassMember | None;
 
     def match_args_to_params(
-        self: TypeEvaluator,
         arg_nodes: list[uni.Expr | uni.KWPair],
         node_for_error: uni.Expr | None,
         func_type: types.FunctionType,
         checking_overload: bool = False
     ) -> MatchArgsToParamsResult;
 
-    def validate_call_args(self: TypeEvaluator, expr: uni.FuncCall) -> TypeBase;
+    def validate_call_args(expr: uni.FuncCall) -> TypeBase;
     def validate_arg_types(
-        self: TypeEvaluator,
-        args: MatchArgsToParamsResult,
-        checking_overload: bool = False
+        args: MatchArgsToParamsResult, checking_overload: bool = False
     ) -> None;
 
     def _create_dataclass_init_method(
-        self: TypeEvaluator, class_type: types.ClassType
+        class_type: types.ClassType
     ) -> types.FunctionType;
 
-    def _validate_constructor_method(
-        self: TypeEvaluator, expr: uni.FuncCall, method_type: TypeBase
-    ) -> bool;
+    def _validate_constructor_method(expr: uni.FuncCall, method_type: TypeBase) -> bool;
 }
 # FIXME: This class implementation is modified from pyright to make it
 # simple and work for now, however this needs to be revisited and

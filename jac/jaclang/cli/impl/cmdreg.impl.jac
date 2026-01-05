@@ -1,6 +1,6 @@
 """Get the Command instance for a given command name."""
 
-impl CommandRegistry.get(self: CommandRegistry, name: str) -> (Command | None) {
+impl CommandRegistry.get(name: str) -> (Command | None) {
     return self.registry.get(name);
 }
 
@@ -8,7 +8,7 @@ impl CommandRegistry.get(self: CommandRegistry, name: str) -> (Command | None) {
 
 This should be called after all plugins have had a chance to register commands.
 """
-impl CommandRegistry.finalize(self: CommandRegistry) -> None {
+impl CommandRegistry.finalize -> None {
     if self._finalized {
         return;
     }
@@ -20,9 +20,7 @@ impl CommandRegistry.finalize(self: CommandRegistry) -> None {
 }
 
 """Resolve command conflicts by priority and bind to argparse."""
-impl CommandRegistry._resolve_and_bind_command(
-    self: CommandRegistry, name: str
-) -> None {
+impl CommandRegistry._resolve_and_bind_command(name: str) -> None {
     if (name not in self.pending_commands) {
         return;
     }
@@ -30,7 +28,7 @@ impl CommandRegistry._resolve_and_bind_command(
     if not commands {
         return;
     }
-    commands.sort(key=lambda  c: Any: c.priority, reverse=True);
+    commands.sort(key=lambda  c: Any: c.priority.value, reverse=True);
     winner = commands[0];
     if ((len(commands) > 1) and os.getenv('JAC_CLI_VERBOSE')) {
         conflicts = [f"{c.source} (priority={c.priority})" for c in commands[1:]];
@@ -46,9 +44,7 @@ impl CommandRegistry._resolve_and_bind_command(
 }
 
 """Bind a command to argparse subparser."""
-impl CommandRegistry._bind_command_to_argparse(
-    self: CommandRegistry, name: str, cmd: Command
-) -> None {
+impl CommandRegistry._bind_command_to_argparse(name: str, cmd: Command) -> None {
     func = cmd.func;
     doc = func.__doc__ or '';
     brief_desc = doc.split('\n\n')[0].strip();
@@ -193,7 +189,6 @@ Returns:
 The original function (for decorator usage)
 """
 impl CommandRegistry.register(
-    self: CommandRegistry,
     func: (Callable | None) = None,
     *,
     priority: (int | CommandPriority) = CommandPriority.CORE,
@@ -219,7 +214,7 @@ impl CommandRegistry.register(
 }
 
 """Initialize a CommandRegistry instance."""
-impl CommandRegistry.init(self: CommandRegistry) -> None {
+impl CommandRegistry.init -> None {
     self.registry = {};
     self.pending_commands = {};
     self._finalized = False;
@@ -289,13 +284,12 @@ impl extract_param_descriptions(docstring: str) -> dict[str, str] {
 }
 
 """Call the associated function with the specified arguments and keyword arguments."""
-impl Command.call(self: Command, *args: list, **kwargs: dict) -> str {
+impl Command.call( *args: list , **kwargs: dict)  -> str {
     return self.func(*args, **kwargs);
 }
 
 """Initialize a Command instance."""
 impl Command.init(
-    self: Command,
     func: Callable,
     priority: CommandPriority = CommandPriority.CORE,
     source: str = 'core'

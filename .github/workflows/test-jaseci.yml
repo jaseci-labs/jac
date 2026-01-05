@@ -60,7 +60,7 @@ jobs:
     - name: Run package tests
       run: pytest -x jac-client -n auto
 
-  test-packages:
+  test-packages-and-docs:
     runs-on: ubuntu-latest
     steps:
     - name: Check out code
@@ -88,6 +88,9 @@ jobs:
 
     - name: Run package tests
       run: pytest -x jac-byllm jac-streamlit
+
+    - name: Run documentation validation tests
+      run: pytest -q -x docs/tests/test_validate_md_files.py
 
   test-scale:
     runs-on: ubuntu-latest

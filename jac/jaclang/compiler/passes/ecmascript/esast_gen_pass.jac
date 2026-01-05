@@ -22,7 +22,6 @@ serialized to JavaScript source code or used by JavaScript tooling.
 
 import json;
 import from collections.abc { Callable, Sequence }
-import from dataclasses { dataclass, field }
 import from typing { Any, TypeVar, cast }
 import jaclang.compiler.passes.ecmascript.estree as es;
 import jaclang.pycore.unitree as uni;
@@ -88,16 +87,14 @@ glob _T = TypeVar('_T', bound=es.Node),
      LiteralValue = str | bool | int | float | None;
 
 """Track declarations within a lexical scope."""
-@dataclass
-class ScopeInfo {
+obj ScopeInfo {
     has <>node: uni.UniScopeNode,
-        declared: set[str] = field(default_factory=<>set),
-        hoisted: list[es.Statement] = field(default_factory=<>list);
+        declared: set[str] = set(),
+        hoisted: list[es.Statement] = [];
 }
 
 """Container for processed assignment targets."""
-@dataclass
-class AssignmentTargetInfo {
+obj AssignmentTargetInfo {
     has <>node: uni.Expr,
         left: (es.Pattern | es.Expression),
         reference: (es.Expression | None),
@@ -107,197 +104,161 @@ class AssignmentTargetInfo {
 }
 
 """Describes the walker-side of a spawn expression."""
-@dataclass
-class SpawnWalkerInfo {
+obj SpawnWalkerInfo {
     has call_node: uni.FuncCall,
         walker_name: str,
         fields_object: es.ObjectExpression;
 }
 
 """Describes the target-side of a spawn expression."""
-@dataclass
-class SpawnTargetInfo {
+obj SpawnTargetInfo {
     has <>node: uni.Expr,
         expression: es.Expression;
 }
 
 """Deconstructed spawn expression ready for runtime lowering."""
-@dataclass
-class SpawnCallParts {
+obj SpawnCallParts {
     has <>walker: SpawnWalkerInfo,
         target: SpawnTargetInfo;
 }
 
 """Jac to ECMAScript AST transpilation pass."""
-class EsastGenPass(BaseAstGenPass[es.Statement]) {
-    def before_pass(self: EsastGenPass) -> None;
-    def enter_node(self: EsastGenPass, <>node: uni.UniNode) -> None;
-    def exit_node(self: EsastGenPass, <>node: uni.UniNode) -> None;
-    def sync_loc(
-        self: EsastGenPass, es_node: _T, jac_node: (uni.UniNode | None) = None
-    ) -> _T;
-
-    def _push_scope(self: EsastGenPass, <>node: uni.UniScopeNode) -> None;
-    def _pop_scope(self: EsastGenPass, <>node: uni.UniScopeNode) -> None;
-    def _current_scope(self: EsastGenPass) -> (ScopeInfo | None);
-    def _is_declared_in_current_scope(self: EsastGenPass, name: str) -> bool;
-    def _is_declared_in_any_scope(self: EsastGenPass, name: str) -> bool;
-    def _register_declaration(self: EsastGenPass, name: str) -> None;
-    def _ensure_identifier_declared(
-        self: EsastGenPass, name: str, jac_node: uni.UniNode
-    ) -> None;
-
+obj EsastGenPass(BaseAstGenPass[es.Statement]) {
+    def init(ir_in: uni.Module, prog: Any, cancel_token: (Any | None) = None) -> None;
+    def before_pass -> None;
+    def enter_node(<>node: uni.UniNode) -> None;
+    def exit_node(<>node: uni.UniNode) -> None;
+    def sync_loc(es_node: _T, jac_node: (uni.UniNode | None) = None) -> _T;
+    def _push_scope(<>node: uni.UniScopeNode) -> None;
+    def _pop_scope(<>node: uni.UniScopeNode) -> None;
+    def _current_scope -> (ScopeInfo | None);
+    def _is_declared_in_current_scope(name: str) -> bool;
+    def _is_declared_in_any_scope(name: str) -> bool;
+    def _register_declaration(name: str) -> None;
+    def _ensure_identifier_declared(name: str, jac_node: uni.UniNode) -> None;
     def _prepend_hoisted(
-        self: EsastGenPass, <>node: uni.UniScopeNode, statements: list[es.Statement]
+        <>node: uni.UniScopeNode, statements: list[es.Statement]
     ) -> list[es.Statement];
 
-    def _is_in_client_scope(self: EsastGenPass) -> bool;
+    def _is_in_client_scope -> bool;
     def _strip_spawn_await(
-        self: EsastGenPass, node_expr: uni.Expr, es_expr: es.Expression
+        node_expr: uni.Expr, es_expr: es.Expression
     ) -> tuple[uni.Expr, es.Expression];
 
-    def _resolve_expr_symbol(self: EsastGenPass, expr: uni.Expr) -> (uni.Symbol | None);
-    def search_sym_in_main_mod(
-        self: EsastGenPass, expr: uni.Expr
-    ) -> (uni.Symbol | None);
-
-    def get_main_mod(self: EsastGenPass) -> uni.Module;
-    def _collect_walker_field_names(
-        self: EsastGenPass, walker_symbol: (uni.Symbol | None)
-    ) -> list[str];
-
+    def _resolve_expr_symbol(expr: uni.Expr) -> (uni.Symbol | None);
+    def search_sym_in_main_mod(expr: uni.Expr) -> (uni.Symbol | None);
+    def get_main_mod -> uni.Module;
+    def _collect_walker_field_names(walker_symbol: (uni.Symbol | None)) -> list[str];
     def _expr_from_node(
-        self: EsastGenPass,
-        <>node: (uni.UniNode | None),
-        <>default: LiteralValue = None
+        <>node: (uni.UniNode | None), <>default: LiteralValue = None
     ) -> es.Expression;
 
     def _build_spawn_arg_object(
-        self: EsastGenPass, call_node: uni.FuncCall, walker_symbol: (uni.Symbol | None)
+        call_node: uni.FuncCall, walker_symbol: (uni.Symbol | None)
     ) -> es.ObjectExpression;
 
     def _resolve_spawn_walker(
-        self: EsastGenPass, expr: uni.Expr, es_expr: es.Expression
+        expr: uni.Expr, es_expr: es.Expression
     ) -> (SpawnWalkerInfo | None);
 
-    def _is_root_reference(self: EsastGenPass, expr: uni.Expr) -> bool;
+    def _is_root_reference(expr: uni.Expr) -> bool;
     def _resolve_spawn_target(
-        self: EsastGenPass, expr: uni.Expr, es_expr: es.Expression
+        expr: uni.Expr, es_expr: es.Expression
     ) -> SpawnTargetInfo;
 
     def _prepare_spawn_call(
-        self: EsastGenPass,
-        <>node: uni.BinaryExpr,
-        left_expr: es.Expression,
-        right_expr: es.Expression
+        <>node: uni.BinaryExpr, left_expr: es.Expression, right_expr: es.Expression
     ) -> (SpawnCallParts | None);
 
     def _build_spawn_runtime_call(
-        self: EsastGenPass, <>node: uni.BinaryExpr, parts: SpawnCallParts
+        <>node: uni.BinaryExpr, parts: SpawnCallParts
     ) -> es.AwaitExpression;
 
-    def _collect_stmt_body(
-        self: EsastGenPass, body: (Sequence[uni.UniNode] | None)
-    ) -> list[es.Statement];
-
+    def _collect_stmt_body(body: (Sequence[uni.UniNode] | None)) -> list[es.Statement];
     def _get_ast_or_default(
-        self: EsastGenPass,
         <>node: (uni.UniNode | None),
         default_factory: Callable[([(uni.UniNode | None)], _T)]
     ) -> _T;
 
     def _build_block_statement(
-        self: EsastGenPass,
-        scope_node: uni.UniScopeNode,
-        body_nodes: (Sequence[uni.UniNode] | None)
+        scope_node: uni.UniScopeNode, body_nodes: (Sequence[uni.UniNode] | None)
     ) -> es.BlockStatement;
 
-    def exit_module(self: EsastGenPass, <>node: uni.Module) -> None;
-    def populate_client_manifest(self: EsastGenPass, <>node: uni.Module) -> None;
-    def _populate_client_manifest(self: EsastGenPass, <>node: uni.Module) -> None;
-    def exit_sub_tag(self: EsastGenPass, <>node: uni.SubTag[uni.T]) -> None;
-    def exit_import(self: EsastGenPass, <>node: uni.Import) -> None;
-    def exit_archetype(self: EsastGenPass, <>node: uni.Archetype) -> None;
-    def exit_enum(self: EsastGenPass, <>node: uni.Enum) -> None;
-    def enter_ability(self: EsastGenPass, <>node: uni.Ability) -> None;
-    def exit_ability(self: EsastGenPass, <>node: uni.Ability) -> None;
-    def exit_func_signature(self: EsastGenPass, <>node: uni.FuncSignature) -> None;
-    def exit_param_var(self: EsastGenPass, <>node: uni.ParamVar) -> None;
-    def exit_arch_has(self: EsastGenPass, <>node: uni.ArchHas) -> None;
-    def exit_has_var(self: EsastGenPass, <>node: uni.HasVar) -> None;
-    def exit_jsx_element(self: EsastGenPass, <>node: uni.JsxElement) -> None;
-    def exit_jsx_element_name(self: EsastGenPass, <>node: uni.JsxElementName) -> None;
-    def exit_jsx_spread_attribute(
-        self: EsastGenPass, <>node: uni.JsxSpreadAttribute
-    ) -> None;
-
-    def exit_jsx_normal_attribute(
-        self: EsastGenPass, <>node: uni.JsxNormalAttribute
-    ) -> None;
-
-    def exit_jsx_text(self: EsastGenPass, <>node: uni.JsxText) -> None;
-    def exit_jsx_expression(self: EsastGenPass, <>node: uni.JsxExpression) -> None;
-    def exit_if_stmt(self: EsastGenPass, <>node: uni.IfStmt) -> None;
-    def exit_else_if(self: EsastGenPass, <>node: uni.ElseIf) -> None;
-    def exit_else_stmt(self: EsastGenPass, <>node: uni.ElseStmt) -> None;
-    def exit_while_stmt(self: EsastGenPass, <>node: uni.WhileStmt) -> None;
-    def exit_iter_for_stmt(self: EsastGenPass, <>node: uni.IterForStmt) -> None;
-    def exit_in_for_stmt(self: EsastGenPass, <>node: uni.InForStmt) -> None;
-    def exit_try_stmt(self: EsastGenPass, <>node: uni.TryStmt) -> None;
-    def exit_except(self: EsastGenPass, <>node: uni.Except) -> None;
-    def exit_finally_stmt(self: EsastGenPass, <>node: uni.FinallyStmt) -> None;
-    def exit_raise_stmt(self: EsastGenPass, <>node: uni.RaiseStmt) -> None;
-    def exit_assert_stmt(self: EsastGenPass, <>node: uni.AssertStmt) -> None;
-    def exit_return_stmt(self: EsastGenPass, <>node: uni.ReturnStmt) -> None;
-    def exit_ctrl_stmt(self: EsastGenPass, <>node: uni.CtrlStmt) -> None;
-    def exit_expr_stmt(self: EsastGenPass, <>node: uni.ExprStmt) -> None;
-    def exit_switch_stmt(self: EsastGenPass, <>node: uni.SwitchStmt) -> None;
-    def exit_switch_case(self: EsastGenPass, <>node: uni.SwitchCase) -> None;
-    def exit_binary_expr(self: EsastGenPass, <>node: uni.BinaryExpr) -> None;
-    def exit_bool_expr(self: EsastGenPass, <>node: uni.BoolExpr) -> None;
-    def exit_compare_expr(self: EsastGenPass, <>node: uni.CompareExpr) -> None;
-    def exit_unary_expr(self: EsastGenPass, <>node: uni.UnaryExpr) -> None;
+    def exit_module(<>node: uni.Module) -> None;
+    def populate_client_manifest(<>node: uni.Module) -> None;
+    def _populate_client_manifest(<>node: uni.Module) -> None;
+    def exit_sub_tag(<>node: uni.SubTag[uni.T]) -> None;
+    def exit_import(<>node: uni.Import) -> None;
+    def exit_archetype(<>node: uni.Archetype) -> None;
+    def exit_enum(<>node: uni.Enum) -> None;
+    def enter_ability(<>node: uni.Ability) -> None;
+    def exit_ability(<>node: uni.Ability) -> None;
+    def exit_func_signature(<>node: uni.FuncSignature) -> None;
+    def exit_param_var(<>node: uni.ParamVar) -> None;
+    def exit_arch_has(<>node: uni.ArchHas) -> None;
+    def exit_has_var(<>node: uni.HasVar) -> None;
+    def exit_jsx_element(<>node: uni.JsxElement) -> None;
+    def exit_jsx_element_name(<>node: uni.JsxElementName) -> None;
+    def exit_jsx_spread_attribute(<>node: uni.JsxSpreadAttribute) -> None;
+    def exit_jsx_normal_attribute(<>node: uni.JsxNormalAttribute) -> None;
+    def exit_jsx_text(<>node: uni.JsxText) -> None;
+    def exit_jsx_expression(<>node: uni.JsxExpression) -> None;
+    def exit_if_stmt(<>node: uni.IfStmt) -> None;
+    def exit_else_if(<>node: uni.ElseIf) -> None;
+    def exit_else_stmt(<>node: uni.ElseStmt) -> None;
+    def exit_while_stmt(<>node: uni.WhileStmt) -> None;
+    def exit_iter_for_stmt(<>node: uni.IterForStmt) -> None;
+    def exit_in_for_stmt(<>node: uni.InForStmt) -> None;
+    def exit_try_stmt(<>node: uni.TryStmt) -> None;
+    def exit_except(<>node: uni.Except) -> None;
+    def exit_finally_stmt(<>node: uni.FinallyStmt) -> None;
+    def exit_raise_stmt(<>node: uni.RaiseStmt) -> None;
+    def exit_assert_stmt(<>node: uni.AssertStmt) -> None;
+    def exit_return_stmt(<>node: uni.ReturnStmt) -> None;
+    def exit_ctrl_stmt(<>node: uni.CtrlStmt) -> None;
+    def exit_expr_stmt(<>node: uni.ExprStmt) -> None;
+    def exit_switch_stmt(<>node: uni.SwitchStmt) -> None;
+    def exit_switch_case(<>node: uni.SwitchCase) -> None;
+    def exit_binary_expr(<>node: uni.BinaryExpr) -> None;
+    def exit_bool_expr(<>node: uni.BoolExpr) -> None;
+    def exit_compare_expr(<>node: uni.CompareExpr) -> None;
+    def exit_unary_expr(<>node: uni.UnaryExpr) -> None;
     def _convert_assignment_target(
-        self: EsastGenPass, target: uni.UniNode
+        target: uni.UniNode
     ) -> tuple[(es.Pattern | es.Expression), (es.Expression | None), (str | None)];
 
-    def _collect_pattern_names(
-        self: EsastGenPass, target: uni.UniNode
-    ) -> list[tuple[(str, uni.Name)]];
-
-    def _is_name_first_definition(self: EsastGenPass, name_node: uni.Name) -> bool;
-    def exit_assignment(self: EsastGenPass, <>node: uni.Assignment) -> None;
-    def exit_func_call(self: EsastGenPass, <>node: uni.FuncCall) -> None;
-    def exit_index_slice(self: EsastGenPass, <>node: uni.IndexSlice) -> None;
-    def exit_special_var_ref(self: EsastGenPass, <>node: uni.SpecialVarRef) -> None;
-    def exit_atom_trailer(self: EsastGenPass, <>node: uni.AtomTrailer) -> None;
-    def exit_lambda_expr(self: EsastGenPass, <>node: uni.LambdaExpr) -> None;
-    def exit_atom_unit(self: EsastGenPass, <>node: uni.AtomUnit) -> None;
-    def exit_list_val(self: EsastGenPass, <>node: uni.ListVal) -> None;
-    def exit_set_val(self: EsastGenPass, <>node: uni.SetVal) -> None;
-    def exit_tuple_val(self: EsastGenPass, <>node: uni.TupleVal) -> None;
-    def exit_dict_val(self: EsastGenPass, <>node: uni.DictVal) -> None;
-    def exit_k_v_pair(self: EsastGenPass, <>node: uni.KVPair) -> None;
-    def exit_inner_compr(self: EsastGenPass, <>node: uni.InnerCompr) -> None;
-    def exit_bool(self: EsastGenPass, <>node: uni.Bool) -> None;
-    def exit_int(self: EsastGenPass, <>node: uni.Int) -> None;
-    def exit_float(self: EsastGenPass, <>node: uni.Float) -> None;
-    def exit_multi_string(self: EsastGenPass, <>node: uni.MultiString) -> None;
-    def exit_string(self: EsastGenPass, <>node: uni.String) -> None;
-    def exit_formatted_value(self: EsastGenPass, <>node: uni.FormattedValue) -> None;
-    def exit_f_string(self: EsastGenPass, <>node: uni.FString) -> None;
-    def exit_if_else_expr(self: EsastGenPass, <>node: uni.IfElseExpr) -> None;
-    def exit_await_expr(self: EsastGenPass, <>node: uni.AwaitExpr) -> None;
-    def exit_null(self: EsastGenPass, <>node: uni.Null) -> None;
-    def exit_name(self: EsastGenPass, <>node: uni.Name) -> None;
-    def exit_global_vars(self: EsastGenPass, <>node: uni.GlobalVars) -> None;
-    def exit_non_local_stmt(self: EsastGenPass, <>node: uni.NonLocalStmt) -> None;
-    def exit_module_code(self: EsastGenPass, <>node: uni.ModuleCode) -> None;
-    def exit_client_block(self: EsastGenPass, <>node: uni.ClientBlock) -> None;
-    def exit_test(self: EsastGenPass, <>node: uni.Test) -> None;
-    def exit_token(self: EsastGenPass, <>node: uni.Token) -> None;
-    def exit_semi(self: EsastGenPass, <>node: uni.Semi) -> None;
-    def _literal_value(
-        self: EsastGenPass, expr: (uni.UniNode | None)
-    ) -> (object | None);
+    def _collect_pattern_names(target: uni.UniNode) -> list[tuple[(str, uni.Name)]];
+    def _is_name_first_definition(name_node: uni.Name) -> bool;
+    def exit_assignment(<>node: uni.Assignment) -> None;
+    def exit_func_call(<>node: uni.FuncCall) -> None;
+    def exit_index_slice(<>node: uni.IndexSlice) -> None;
+    def exit_special_var_ref(<>node: uni.SpecialVarRef) -> None;
+    def exit_atom_trailer(<>node: uni.AtomTrailer) -> None;
+    def exit_lambda_expr(<>node: uni.LambdaExpr) -> None;
+    def exit_atom_unit(<>node: uni.AtomUnit) -> None;
+    def exit_list_val(<>node: uni.ListVal) -> None;
+    def exit_set_val(<>node: uni.SetVal) -> None;
+    def exit_tuple_val(<>node: uni.TupleVal) -> None;
+    def exit_dict_val(<>node: uni.DictVal) -> None;
+    def exit_k_v_pair(<>node: uni.KVPair) -> None;
+    def exit_inner_compr(<>node: uni.InnerCompr) -> None;
+    def exit_bool(<>node: uni.Bool) -> None;
+    def exit_int(<>node: uni.Int) -> None;
+    def exit_float(<>node: uni.Float) -> None;
+    def exit_multi_string(<>node: uni.MultiString) -> None;
+    def exit_string(<>node: uni.String) -> None;
+    def exit_formatted_value(<>node: uni.FormattedValue) -> None;
+    def exit_f_string(<>node: uni.FString) -> None;
+    def exit_if_else_expr(<>node: uni.IfElseExpr) -> None;
+    def exit_await_expr(<>node: uni.AwaitExpr) -> None;
+    def exit_null(<>node: uni.Null) -> None;
+    def exit_name(<>node: uni.Name) -> None;
+    def exit_global_vars(<>node: uni.GlobalVars) -> None;
+    def exit_non_local_stmt(<>node: uni.NonLocalStmt) -> None;
+    def exit_module_code(<>node: uni.ModuleCode) -> None;
+    def exit_client_block(<>node: uni.ClientBlock) -> None;
+    def exit_test(<>node: uni.Test) -> None;
+    def exit_token(<>node: uni.Token) -> None;
+    def exit_semi(<>node: uni.Semi) -> None;
+    def _literal_value(expr: (uni.UniNode | None)) -> (object | None);
 }
