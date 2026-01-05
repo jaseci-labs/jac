@@ -95,7 +95,7 @@ impl MTRuntime.factory(
 }
 
 """Build the parameter dict for the LLM API call."""
-impl MTRuntime.dispatch_params()  -> dict[str, object] {
+impl MTRuntime.dispatch_params -> dict[str, object] {
     params = {
         "messages": self.get_msg_list(),
         "tools": self.get_tool_list() or None,
@@ -114,7 +114,7 @@ impl MTRuntime.add_message(message: MessageType) -> None {
 }
 
 """Return the messages in a format suitable for LLM API."""
-impl MTRuntime.get_msg_list()  -> list[dict[str, object] | LiteLLMMessage] {
+impl MTRuntime.get_msg_list -> list[dict[str, object] | LiteLLMMessage] {
     return [
         msg.to_dict() if isinstance(msg, Message) else msg for msg in self.messages
     ];
@@ -147,12 +147,12 @@ impl MTRuntime.get_tool(tool_name: str) -> Tool | None {
 }
 
 """Return the tools as JSON schemas for the LLM API."""
-impl MTRuntime.get_tool_list()  -> list[dict] {
+impl MTRuntime.get_tool_list -> list[dict] {
     return [tool.get_json_schema() for tool in self.tools];
 }
 
 """Return the JSON schema for the response type, if applicable."""
-impl MTRuntime.get_output_schema()  -> dict | None {
+impl MTRuntime.get_output_schema -> dict | None {
     assert (len(self.tools) == 0 or self.get_tool("finish_tool") is not None);  #Finish tool should be present in the tools list.
     if len(self.tools) == 0 and self.resp_type {
         if self.resp_type is str {

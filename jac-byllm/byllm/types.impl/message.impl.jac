@@ -2,27 +2,27 @@
 # Message Implementations
 #-------------------------------------------------------------------------------
 """Convert the message to a dictionary for LLM API calls."""
-impl Message.to_dict()  -> dict[str, object] {
+impl Message.to_dict -> dict[str, object] {
     if isinstance(self.content, str) {
         return {"role": self.role.value, "content": self.content,};
     }
     media_contents = [];
     for media in self.content {
         media_contents.extend(media.to_dict());
-        return {"role": self.role.value, "content": media_contents,};
     }
+    return {"role": self.role.value, "content": media_contents,};
 }
 
 #-------------------------------------------------------------------------------
 # ToolCallResult Implementations
 #-------------------------------------------------------------------------------
 """Set the role to TOOL for tool call result messages."""
-impl ToolCallResultMsg.postinit()  -> None {
+impl ToolCallResultMsg.postinit -> None {
     self.role = MessageRole.TOOL;  # Maybe this should be an assertion?
 }
 
 """Convert the tool call result message to a dictionary."""
-impl ToolCallResultMsg.to_dict()  -> dict[str, object] {
+impl ToolCallResultMsg.to_dict -> dict[str, object] {
     return {
         "role": self.role.value,
         "content": self.content,

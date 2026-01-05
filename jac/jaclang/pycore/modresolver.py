@@ -45,8 +45,6 @@ def _candidate_from(base: str, parts: list[str]) -> tuple[str, str] | None:
     if os.path.isdir(candidate):
         if os.path.isfile(os.path.join(candidate, "__init__.jac")):
             return os.path.join(candidate, "__init__.jac"), "jac"
-        if os.path.isfile(os.path.join(candidate, "__init__.cl.jac")):
-            return os.path.join(candidate, "__init__.cl.jac"), "jac"
         if os.path.isfile(os.path.join(candidate, "__init__.py")):
             return os.path.join(candidate, "__init__.py"), "py"
     if os.path.isfile(candidate + ".jac"):
@@ -114,9 +112,10 @@ def resolve_module(target: str, base_path: str) -> tuple[str, str]:
 
     # If not found in any typeshed directory, but typeshed is configured,
     # return a stub .pyi path for type checking.
-    stub_pyi_path = os.path.join(typeshed_paths[0], *actual_parts) + ".pyi"
-    if os.path.isfile(stub_pyi_path):
-        return stub_pyi_path, "pyi"
+    if typeshed_paths:
+        stub_pyi_path = os.path.join(typeshed_paths[0], *actual_parts) + ".pyi"
+        if os.path.isfile(stub_pyi_path):
+            return stub_pyi_path, "pyi"
     base_dir = base_path if os.path.isdir(base_path) else os.path.dirname(base_path)
     for _ in range(max(level - 1, 0)):
         base_dir = os.path.dirname(base_dir)

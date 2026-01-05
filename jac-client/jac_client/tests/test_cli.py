@@ -80,7 +80,7 @@ def test_create_jac_app() -> None:
 
             # Verify default packages installation (package.json should be generated)
             package_json_path = os.path.join(
-                project_path, ".client-build", ".jac-client.configs", "package.json"
+                project_path, ".jac", "client", "configs", "package.json"
             )
             # Note: packages may or may not be installed depending on npm availability
             # but package.json should be generated with default packages
@@ -234,7 +234,7 @@ def test_create_jac_app_with_typescript() -> None:
 
             # Verify default packages installation (package.json should be generated)
             package_json_path = os.path.join(
-                project_path, ".client-build", ".jac-client.configs", "package.json"
+                project_path, ".jac", "client", "configs", "package.json"
             )
             # Note: packages may or may not be installed depending on npm availability
             # but package.json should be generated with default packages
@@ -334,7 +334,7 @@ def test_create_jac_app_installs_default_packages() -> None:
 
             # Verify package.json was generated (even if npm install failed)
             package_json_path = os.path.join(
-                project_path, ".client-build", ".jac-client.configs", "package.json"
+                project_path, ".jac", "client", "configs", "package.json"
             )
             # package.json should be generated with default packages
             if os.path.exists(package_json_path):

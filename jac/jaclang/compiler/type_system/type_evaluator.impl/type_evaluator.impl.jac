@@ -383,6 +383,17 @@ impl TypeEvaluator._get_type_of_symbol(
                 }
             }
 
+            # ---- Handle walrus assignment: (x := <expr>) ----
+            if (
+                isinstance(node_.parent, uni.BinaryExpr)
+                and isinstance(node_.parent.op, uni.Token)
+                and node_.parent.op.name == "WALRUS_EQ"
+                and node_.parent.left is node_
+            ) {
+                # The left side of walrus gets the type from the right side
+                return self.get_type_of_expression(node_.parent.right);
+            }
+
             # ---- Handle member assignment: for <name> in <expr> ----
             if isinstance(node_.parent, uni.InForStmt) {
                 collection_type = self.get_type_of_expression(node_.parent.collection);
@@ -449,15 +460,6 @@ impl TypeEvaluator._assign_class(
     }
     # Check if src class is a subclass of dest class.
     if self.is_sub_class(dest_type, src_type) {
-        return True;
-    }
-    # Everything is assignable to an object.
-    if (
-        dest_type.is_builtin("object")
-        or dest_type.shared == self.prefetch.any_class.shared
-    ) {
-        # TODO: Invariance not handled yet
-        # invariant contexts to avoid list[int] <: list[object] errors.
         return True;
     }
     # Integers can be used where floats are expected.
@@ -564,6 +566,14 @@ impl TypeEvaluator.assign_type(
                 return True;
             }
         }
+    }
+    # Everything is assignable to object or Any.
+    if isinstance(dest_type, types.ClassType)
+    and (
+        dest_type.is_builtin("object")
+        or dest_type.shared == self.prefetch.any_class.shared
+    ) {
+        return True;
     }
     if dest_type.is_class_instance() and src_type.is_class_instance() {
         assert isinstance(dest_type, types.ClassType);

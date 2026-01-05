@@ -206,7 +206,7 @@ Custom headers can be added by using an enviornmental variable and mentioning th
    ↓
 3. Config merged with defaults (deep merge)
    ↓
-4. ViteBundler generates vite.config.js in .jac-client.configs/
+4. ViteBundler generates vite.config.js in .jac/client/configs/
    ↓
 5. Vite uses generated config for bundling
    ↓
@@ -215,7 +215,7 @@ Custom headers can be added by using an enviornmental variable and mentioning th
 
 ### Generated Config Location
 
-The generated `vite.config.js` is created in `.jac-client.configs/vite.config.js`. This directory is gitignored - only `jac.toml` should be committed.
+The generated `vite.config.js` is created in `.jac/client/configs/vite.config.js`. The `.jac/` directory is gitignored - only `jac.toml` should be committed.
 
 ## Examples
 
@@ -303,7 +303,7 @@ lib_imports = ["import myPlugin from 'my-plugin'"]
 ### 3. Version Control
 
 - **Commit**: `jac.toml` (your customizations)
-- **Don't commit**: `.jac-client.configs/` (generated files)
+- **Don't commit**: `.jac/` (all generated build artifacts)
 
 ### 4. Test After Changes
 
@@ -333,7 +333,7 @@ jac serve src/app.jac
 
 - Verify the plugin is installed: `jac add --cl --dev <plugin-package>`
 - Check that the import statement matches the plugin package name
-- Check the generated `vite.config.js` in `.jac-client.configs/`
+- Check the generated `vite.config.js` in `.jac/client/configs/`
 
 ### TOML Syntax Errors
 

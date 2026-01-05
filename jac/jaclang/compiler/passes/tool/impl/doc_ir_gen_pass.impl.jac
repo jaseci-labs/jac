@@ -2118,6 +2118,13 @@ impl DocIRGenPass.exit_module(self: DocIRGenPass, <>node: uni.Module) -> None {
         first_kid = False;
     }
     <>node.gen.doc_ir = self.concat(parts, ast_node=<>node);
+    # Traverse impl modules (includes .impl.jac and .cl.jac files)
+    # Only do this for the main module (not annex modules themselves)
+    if <>node.annexable_by is None {
+        for impl_mod in <>node.impl_mod {
+            self.traverse(impl_mod);
+        }
+    }
 }
 
 """Recursively remove all space nodes from a doc_ir tree."""

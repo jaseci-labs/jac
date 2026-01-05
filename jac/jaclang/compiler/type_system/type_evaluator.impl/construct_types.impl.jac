@@ -121,14 +121,40 @@ impl TypeEvaluator.get_type_of_ability(
             param_type = self._convert_to_instance(param_type_cls);
         }
 
+        # For Python stub methods, check if first parameter is named 'self' or 'cls'
+        # In addition to the Jac-specific checks
+        # Note: For static methods, 'self' is just a regular parameter, not special
+        is_self_param = (
+            idx == 0
+            and (
+                self._is_expr_self(param.name)
+                or (
+                    isinstance(param.name, uni.Name)
+                    and param.name.value == "self"
+                    and node_.signature
+                    and not node_.signature.is_static
+                )
+            )
+        );
+        is_cls_param = (
+            idx == 0
+            and (
+                self._is_ability_classmethod(node_)
+                or (
+                    isinstance(param.name, uni.Name)
+                    and param.name.value == "cls"
+                    and node_.name_spec.sym_name == "__new__"
+                )
+            )
+        );
         parameters.append(
             types.Parameter(
                 name=param.name.value,
                 category=_get_param_category(param),
                 param_type=param_type,
                 default_value=param.value,
-                is_self=(idx == 0 and self._is_expr_self(param.name)),
-                is_cls=(idx == 0 and self._is_ability_classmethod(node_)),
+                is_self=is_self_param,
+                is_cls=is_cls_param,
                 param_kind=_convert_param_kind(param.param_kind),
             )
         );
