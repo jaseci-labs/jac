@@ -1,5 +1,4 @@
 impl MongoDB.commit(anchor: (TANCH | None) = None, keys: Iterable[Anchor] = []) -> None {
-    print(f"inside commit in mongo db");
     if anchor {
         self.set(anchor);
         return;
@@ -168,7 +167,6 @@ impl MongoDB._to_uuid(id: (UUID | str)) -> UUID {
 impl MongoDB.mongo_is_available()  -> bool {
     client = None;
     if (self.mongo_url) {
-        print(f"printing mongo url: {self.mongo_url}");
         try {
             client = MongoClient(self.mongo_url);
 

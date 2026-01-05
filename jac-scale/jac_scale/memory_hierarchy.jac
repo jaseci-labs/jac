@@ -23,7 +23,7 @@ obj MultiHierarchyMemory(Memory[(UUID, Anchor)]) {
     def commit(anchor: (Anchor | None) = None);
     def close;
     def sync(anchors: Iterable[Anchor]) -> None;
-    def delete(anchor: Anchor);
+    def remove(anchor: Anchor);
     def <>set(anchor: TANCH);
 }
 
@@ -62,6 +62,7 @@ obj RedisDB {
     def remove(anchor: Anchor) -> None;
     def find_by_id(id: UUID) -> (Anchor | None);
     def commit(anchor: (Anchor | None) = None, keys: Iterable[Anchor] = []) -> None;
+    def redis_key_exists(id: UUID) -> bool;
 }
 
 """
