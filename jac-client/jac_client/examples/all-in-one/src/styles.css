@@ -1,3 +1,5 @@
+
+
 /* Ledgerly - Modern Budget Planner Styles */
 /* Inspired by ClickUp's clean, modern design */
 
@@ -54,6 +56,10 @@
     --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
     --transition-base: 200ms cubic-bezier(0.4, 0, 0.2, 1);
     --transition-slow: 300ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+body {
+    background-image: url('background.png');
+    /* other styles */
 }
 
 /* ===== Global Styles ===== */
