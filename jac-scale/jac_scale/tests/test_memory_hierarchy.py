@@ -150,13 +150,9 @@ class TestMemoryHierarchy:
 
     def test_read_and_write(self) -> None:
         db = self.mongo_client["jac_db"]
-        db = self.mongo_client["jac_db"]
         collection = db["anchors"]
 
         mongo_doc_initial_count = collection.count_documents({})
-        assert (
-            mongo_doc_initial_count == 2
-        )  # the initial docs is two, because super root, guest_user
         assert (
             mongo_doc_initial_count == 2
         )  # the initial docs is two, because super root, guest_user
@@ -165,9 +161,6 @@ class TestMemoryHierarchy:
         token = self._register("reader", "pass123")
 
         mongo_doc_after_user_creation_count = collection.count_documents({})
-        assert (
-            mongo_doc_after_user_creation_count == 3
-        )  # the initial docs is three, because super root, guest_user and the created user
         assert (
             mongo_doc_after_user_creation_count == 3
         )  # the initial docs is three, because super root, guest_user and the created user
@@ -197,9 +190,6 @@ class TestMemoryHierarchy:
 
         redis_size_after_task_read = self.redis_client.dbsize()
 
-        assert (
-            redis_size_after_task_read == 5
-        )  # this is 5 because super root, guest user, created user and the two task nodes
         assert (
             redis_size_after_task_read == 5
         )  # this is 5 because super root, guest user, created user and the two task nodes
