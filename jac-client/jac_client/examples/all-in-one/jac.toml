@@ -1,0 +1,22 @@
+[project]
+name = "all-in-one"
+version = "1.0.0"
+description = "Budget Planner - All-in-One JAC Example"
+entry-point = "src/app.jac"
+
+[plugins.client.vite]
+plugins = ["tailwindcss()"]
+lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
+
+[dependencies.npm]
+react = "^18.2.0"
+react-dom = "^18.2.0"
+react-router-dom = "^6.22.0"
+recharts = "latest"
+tailwindcss = "latest"
+
+[dependencies.npm.dev]
+"@types/react" = "^18.2.0"
+"@types/react-dom" = "^18.2.0"
+"@types/recharts" = "latest"
+"@tailwindcss/vite" = "^4.1.17"
