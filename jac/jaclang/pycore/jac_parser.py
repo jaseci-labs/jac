@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import keyword
 import os
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -39,6 +40,87 @@ TOKEN_MAP.update({
     "BW_XOR_EQ": "^=", "BW_NOT_EQ": "~=", "LSHIFT_EQ": "<<=",
 })
 # fmt: on
+
+# Python keywords that are also valid in Jac (can be used in both contexts)
+JAC_KEYWORDS = {
+    "abs",
+    "class",
+    "obj",
+    "enum",
+    "node",
+    "visit",
+    "spawn",
+    "with",
+    "lambda",
+    "entry",
+    "exit",
+    "import",
+    "include",
+    "from",
+    "as",
+    "edge",
+    "walker",
+    "async",
+    "await",
+    "flow",
+    "wait",
+    "test",
+    "impl",
+    "sem",
+    "assert",
+    "if",
+    "elif",
+    "else",
+    "for",
+    "to",
+    "by",
+    "while",
+    "continue",
+    "break",
+    "disengage",
+    "yield",
+    "skip",
+    "report",
+    "return",
+    "del",
+    "try",
+    "except",
+    "finally",
+    "raise",
+    "in",
+    "is",
+    "priv",
+    "pub",
+    "protect",
+    "has",
+    "glob",
+    "can",
+    "def",
+    "static",
+    "override",
+    "match",
+    "switch",
+    "case",
+    "default",
+    "cl",
+    "init",
+    "postinit",
+    "here",
+    "visitor",
+    "self",
+    "props",
+    "super",
+    "root",
+    "or",
+    "and",
+    "not",
+    "True",
+    "False",
+    "None",
+}
+
+# Python keywords that should NOT be used as names in Jac
+PYTHON_ONLY_KEYWORDS = set(keyword.kwlist) - JAC_KEYWORDS
 
 
 @dataclass
@@ -344,18 +426,20 @@ class JacParser(Transform[uni.Source, uni.Module]):
                 self.parse_ref.node_list.append(node)
             return node
 
-        def _check_pass_in_expr(self, expr: uni.Expr) -> None:
-            """Check if 'pass' keyword is used in an expression (recursively)."""
-            if isinstance(expr, uni.Name) and expr.sym_name == "pass":
+        def _check_python_keywords_in_expr(
+            self, expr: uni.Expr, context: str = "identifier"
+        ) -> None:
+            """Check if Python-only keywords are used as names in expressions (recursively)."""
+            if isinstance(expr, uni.Name) and expr.sym_name in PYTHON_ONLY_KEYWORDS:
                 self.parse_ref.log_error(
-                    "'pass' is not allowed as a variable name in jac",
+                    f"'{expr.sym_name}' is a keyword not allowed as {context} in jac",
                     node_override=expr,
                 )
             elif hasattr(expr, "kid") and expr.kid:
                 # Recursively check all child nodes
                 for child in expr.kid:
                     if isinstance(child, (uni.Expr, uni.Name)):
-                        self._check_pass_in_expr(child)
+                        self._check_python_keywords_in_expr(child, context)
 
         def _call_userfunc(
             self, tree: jl.Tree, new_children: None | list[uni.UniNode] = None
@@ -1072,6 +1156,11 @@ class JacParser(Transform[uni.Source, uni.Module]):
             self.consume_token(Tok.KW_CAN)
             access = self.match(uni.SubTag)
             name = self.match(uni.NameAtom)
+
+            # Check if ability name is a Python reserved keyword
+            if name:
+                self._check_python_keywords_in_expr(name, context="an ability name")  # type: ignore[arg-type]
+
             signature = self.consume(uni.EventSignature)
 
             # Handle block_tail
@@ -1112,6 +1201,10 @@ class JacParser(Transform[uni.Source, uni.Module]):
             self.consume_token(Tok.KW_DEF)
             access = self.match(uni.SubTag)
             name = self.consume(uni.NameAtom)
+
+            # Check if function name is a Python reserved keyword
+            self._check_python_keywords_in_expr(name, context="a function name")  # type: ignore[arg-type]
+
             signature = self.match(uni.FuncSignature)
 
             # Handle block_tail
@@ -1288,9 +1381,9 @@ class JacParser(Transform[uni.Source, uni.Module]):
             type_tag = self.consume(uni.SubTag)
             value = self.consume(uni.Expr) if self.match_token(Tok.EQ) else None
 
-            self._check_pass_in_expr(
-                name
-            )  # Check if 'pass' is used as a parameter name
+            self._check_python_keywords_in_expr(
+                name, "a parameter name"
+            )  # Check if Python keywords are used as parameter names
 
             return uni.ParamVar(
                 name=name,
@@ -1480,8 +1573,8 @@ class JacParser(Transform[uni.Source, uni.Module]):
                         node_override=kid[0],
                     )
                 else:
-                    # Check if 'pass' is used in the expression (ex: print(pass); )
-                    self._check_pass_in_expr(kid[0])
+                    # Check if Python keywords are used in the expression (ex: print(pass); )
+                    self._check_python_keywords_in_expr(kid[0], "an identifier")
                 return uni.ExprStmt(
                     expr=kid[0],
                     in_fstring=False,
@@ -1781,9 +1874,9 @@ class JacParser(Transform[uni.Source, uni.Module]):
             self.consume_token(Tok.KW_RETURN)
             expr = self.match(uni.Expr)
 
-            # Check if 'pass' is used in return expression
+            # Check if Python keywords are used in return expression
             if expr:
-                self._check_pass_in_expr(expr)
+                self._check_python_keywords_in_expr(expr, "an identifier")
 
             return uni.ReturnStmt(
                 expr=expr,
@@ -1886,12 +1979,12 @@ class JacParser(Transform[uni.Source, uni.Module]):
 
             valid_assignees = [i for i in assignees if isinstance(i, (uni.Expr))]
 
-            # Check if 'pass' is being used as a variable name
+            # Check if Python keywords are being used as variable names
             for assignee in valid_assignees:
-                self._check_pass_in_expr(assignee)
+                self._check_python_keywords_in_expr(assignee, "a variable name")
             # Also check the value being assigned
             if value:
-                self._check_pass_in_expr(value)
+                self._check_python_keywords_in_expr(value, "an identifier")
 
             if is_aug:
                 return uni.Assignment(

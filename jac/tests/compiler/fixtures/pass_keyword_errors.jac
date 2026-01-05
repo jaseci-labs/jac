@@ -23,16 +23,7 @@ edge MyEdge {
     pass
 }
 
-def foo(pass: int) -> int {
-    return pass + 1;
-}
-
 with entry {
-
-    my_list = [1, 2, pass];
-    pass = 10;
-    x = pass;
-    print(pass);
     pass;
 
     if True {
@@ -51,4 +42,16 @@ with entry {
         pass;
     }
 
+    pass = 10;
+    my_list = [1, 2, pass];
+    x = pass;
+    print(pass);
+
+}
+
+def foo(pass: int) -> int {
+    return pass + 1;
+}
+
+def pass() -> None {
 }
