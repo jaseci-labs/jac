@@ -100,10 +100,8 @@ impl MultiHierarchyMemory.init -> None {
     self.shelf: (ShelfDB | None) = None;
     self.redis_available = self.redis.redis_is_available();
     self.mongo_available = self.mongo.mongo_is_available();
-
     # print(f"redis available: {self.redis_available}")
     # print(f"mongo status: {self.mongo_available}")
-
     if (not self.redis_available and not self.mongo_available) {
         self.shelf = ShelfDB();
     }

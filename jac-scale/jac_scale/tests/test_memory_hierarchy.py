@@ -1,6 +1,7 @@
 import contextlib
 import gc
 import os
+import pickle
 import socket
 import subprocess
 import time
@@ -54,9 +55,7 @@ class TestMemoryHierarchy:
         redis_url = f"redis://{redis_host}:{redis_port}/0"
 
         cls.redis_client = redis.Redis(
-            host=redis_host,
-            port=int(redis_port),
-            decode_responses=False
+            host=redis_host, port=int(redis_port), decode_responses=False
         )
         print(f"redis db size: {cls.redis_client.dbsize()}")
 
@@ -74,14 +73,10 @@ class TestMemoryHierarchy:
         os.environ["redis_url"] = redis_url
 
         # verify there are no additional mongo dbs
-        system_dbs = {
-            "admin",
-            "config",
-            "local"
-        }
+        system_dbs = {"admin", "config", "local"}
 
         initial_dbs = set(cls.mongo_client.list_database_names()) - system_dbs
-        assert (not initial_dbs), "there exists other databases in the initial stage"
+        assert not initial_dbs, "there exists other databases in the initial stage"
 
         # setting up
         cls.port = get_free_port()
@@ -103,7 +98,6 @@ class TestMemoryHierarchy:
 
         cls.mongo_container.stop()
         cls.redis_container.stop()
-
 
         time.sleep(0.5)
         gc.collect()
@@ -141,8 +135,8 @@ class TestMemoryHierarchy:
         raise RuntimeError(
             f"jac serve failed to start\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}"
         )
-        
-    def _register(self, username: str, password: str="password123") -> str:
+
+    def _register(self, username: str, password: str = "password123") -> str:
         res = requests.post(
             f"{self.base_url}/user/register",
             json={"username": username, "password": password},
@@ -160,10 +154,10 @@ class TestMemoryHierarchy:
         )
         assert res.status_code == 200
         return res.json()
-    
+
     def _redis_snapshot(self) -> set[str]:
         return set(self.redis_client.keys("anchor:*"))
-    
+
     def _redis_contains_task(self) -> bool:
         for key in self.redis_client.keys("anchor:*"):
             raw = self.redis_client.get(key)
@@ -177,60 +171,27 @@ class TestMemoryHierarchy:
         return False
 
     def test_write(self) -> None:
+        token = self._register("akindu", "pass123")
 
-        token = self._register("akindu", "pass123")        
-       
-        system_dbs = {
-            "admin",
-            "config",
-            "local"
-        }
-
+        system_dbs = {"admin", "config", "local"}
 
         # create tasks
-        self._post(
-            "/walker/CreateTask",
-            {
-                "id" : 1,
-                "title" : "Task 1"
-            },
-            token
-        )
-        
-        self._post(
-            "/walker/CreateTask",
-            {
-                "id" : 2,
-                "title" : "Task 2"
-            },
-            token
-        )
+        self._post("/walker/CreateTask", {"id": 1, "title": "Task 1"}, token)
+
+        self._post("/walker/CreateTask", {"id": 2, "title": "Task 2"}, token)
 
         # checking whether new data bases are created
         current_dbs = set(self.mongo_client.list_database_names())
         new_user_dbs = current_dbs - system_dbs
-        
+
         assert new_user_dbs, "user dbs are not created"
         assert len(current_dbs) > len(system_dbs)
 
-
         assert not self._redis_contains_task(), "Task objects leaked into Redis"
 
-        self._post(
-            "/walker/DeleteTask",
-            {
-                "id" : 1
-            },
-            token
-        )
+        self._post("/walker/DeleteTask", {"id": 1}, token)
 
-        self._post(
-            "/walker/DeleteTask",
-            {
-                "id" : 2
-            },
-            token
-        )
+        self._post("/walker/DeleteTask", {"id": 2}, token)
 
     def test_read(self) -> None:
         # Register a user

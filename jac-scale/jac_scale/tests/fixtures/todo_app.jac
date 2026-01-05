@@ -16,7 +16,7 @@ walker CreateTask {
 
 walker GetAllTasks {
     can read with `root entry{
-        tasks = [-->]; 
+        tasks = [-->];
         report tasks;
     }
 }
