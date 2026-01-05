@@ -72,7 +72,7 @@ impl ShelfDB.close{
 
 impl ShelfDB._ensure_shelf -> shelve.Shelf {
     if (self._shelf is None) {
-                # Ensure parent directory exists
+        # Ensure parent directory exists
         import os;
         parent_dir = os.path.dirname(self.shelf_path);
         if parent_dir {

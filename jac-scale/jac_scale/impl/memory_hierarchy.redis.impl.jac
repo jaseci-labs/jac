@@ -1,6 +1,6 @@
 """Commit behaves like MongoDB but also syncs Redis."""
 
-impl RedisDB.redis_key_exists(id: UUID) -> bool{
+impl RedisDB.redis_key_exists(id: UUID) -> bool {
     try {
         return bool(self.redis_client.exists(self._redis_key(id)));
     } except Exception {
@@ -11,14 +11,12 @@ impl RedisDB.redis_key_exists(id: UUID) -> bool{
 impl RedisDB.commit(
     anchor: (Anchor | None) = None, keys: Iterable[Anchor] = []
 ) -> None {
-
     if (anchor) {
         if (self.redis_key_exists(anchor.id)) {
             self.set(anchor);
         }
         return;
     }
-
     for anc in keys {
         if (self.redis_key_exists(anc.id)) {
             self.set(anc);
