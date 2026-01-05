@@ -16,7 +16,7 @@ impl Attack.collide{
     hits = pygame.sprite.spritecollide(self, self.game.enemies, True);
 }
 # Anminate the attacks.
-impl Attack.animate() {
+impl Attack.animate{
     direction = self.game.player.facing;
     right_animations = [
         self.game.attack_spritesheet.get_sprite(0, 64, self.width, self.height),

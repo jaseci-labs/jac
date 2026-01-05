@@ -76,7 +76,17 @@ impl TypeEvaluator._convert_to_instance(jtype: TypeBase) -> TypeBase {
     return jtype;
 }
 
-impl TypeEvaluator._get_enclosing_class(node_: uni.UniNode) -> uni.Archetype | None {
+impl TypeEvaluator._get_enclosing_class
+# If the symbol is from a module item, we need to resolve it to the actual symbol.
+
+# Check if mod_item.name is a Name and has a sym attribute before accessing it
+
+# Cache the type.
+
+# __new__ is always a classmethod in Python, even without @classmethod decorator
+(
+    node: uni.UniNode
+) -> uni.Archetype | None {
     impl_ := node_.find_parent_of_type(uni.ImplDef);
     if impl_ and isinstance(impl_.decl_link, uni.Archetype) {
         return impl_.decl_link;
@@ -130,11 +140,9 @@ impl TypeEvaluator.resolve_imported_symbols(sym: uni.Symbol) -> uni.Symbol {
     if (
         isinstance(sym.decl, uni.Name) and sym.decl.find_parent_of_type(uni.ModuleItem)
     ) {
-        # If the symbol is from a module item, we need to resolve it to the actual symbol.
         mod_item = sym.decl.find_parent_of_type(uni.ModuleItem);
         assert (mod_item is not None);
         self.get_type_of_module(mod_item.from_mod_path);
-        # Check if mod_item.name is a Name and has a sym attribute before accessing it
         if isinstance(mod_item.name, uni.Name) and mod_item.name.sym {
             return mod_item.name.sym;
         }
@@ -151,7 +159,6 @@ impl TypeEvaluator._set_module_item_symbol_and_type(
     if node_.alias {
         node_.alias.sym = sym;
     }
-    # Cache the type.
     node_.name.type = self.get_type_of_symbol(sym);
     return node_.name.type;
 }
@@ -197,7 +204,6 @@ impl TypeEvaluator.add_diagnostic(
 }
 
 impl TypeEvaluator._is_ability_classmethod(node_: uni.Ability) -> bool {
-    # __new__ is always a classmethod in Python, even without @classmethod decorator
     if node_.name_spec and node_.name_spec.sym_name == "__new__" {
         return True;
     }

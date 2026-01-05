@@ -18,7 +18,7 @@ impl CoalesceBBPass.init(
 }
 
 """Generate dot graph for CFG."""
-impl CoalesceBBPass.printgraph_cfg()  -> str {
+impl CoalesceBBPass.printgraph_cfg -> str {
     cfg: dict = {};
     dot = 'digraph G {\n';
     for (key, bb) in self.basic_blocks.items() {
@@ -123,7 +123,7 @@ impl CoalesceBBPass.get_bb(<>node: uni.UniCFGNode) -> list[uni.UniCFGNode] {
 }
 
 """Before pass."""
-impl CoalesceBBPass.before_pass()  -> None {
+impl CoalesceBBPass.before_pass -> None {
     self.basic_blocks: dict = {};
     self.bb_counter: int = 0;
 }
@@ -133,7 +133,7 @@ impl CFGBuildPass.init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) -
 }
 
 """After pass."""
-impl CFGBuildPass.after_pass()  -> None {
+impl CFGBuildPass.after_pass -> None {
     if self.to_connect {
         for <>node in self.to_connect {
             if isinstance(<>node, uni.UniCFGNode) {
@@ -335,7 +335,7 @@ impl CFGBuildPass.push_loop_stack(loop_header: uni.UniCFGNode) -> None {
 }
 
 """Before pass."""
-impl CFGBuildPass.before_pass()  -> None {
+impl CFGBuildPass.before_pass -> None {
     self.while_loop_stack: list[list[uni.UniCFGNode]] = [];
     self.for_loop_stack: list[list[uni.UniCFGNode]] = [];
     self.ability_stack: list[list[uni.UniCFGNode]] = [];

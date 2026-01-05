@@ -1,5 +1,20 @@
-"""Compile module and dependencies, then bundle with Vite."""
+"""Get the client build directory from project config."""
+impl ViteCompiler._get_client_dir(self: ViteCompiler) -> Path {
+    # Try to get from project config
+    try {
+        import from jaclang.project.config { get_config }
+        config = get_config();
+        if config is not None {
+            return config.get_client_dir();
+        }
+    } except ImportError {
+        pass;
+    }
+    # Fallback to default
+    return self.project_dir / '.jac' / 'client';
+}
 
+"""Compile module and dependencies, then bundle with Vite."""
 impl ViteCompiler.compile_and_bundle(
     self: ViteCompiler, module: ModuleType, module_path: Path
 ) -> tuple[str, str, list[str], list[str]] {
@@ -18,12 +33,11 @@ impl ViteCompiler.compile_and_bundle(
     self.copy_root_assets();
     self.create_entry_file();
     self.babel_processor.compile();
+    client_dir = self._get_client_dir();
     self.babel_processor.copy_assets_after_compile(
-        self.compiled_dir,
-        (self.project_dir / '.client-build' / 'build'),
-        self.asset_processor
+        self.compiled_dir, (client_dir / 'build'), self.asset_processor
     );
-    entry_file = self.project_dir / '.client-build' / 'build' / 'main.js';
+    entry_file = client_dir / 'build' / 'main.js';
     self.vite_bundler.build(entry_file=entry_file);
     (bundle_code, bundle_hash) = self.vite_bundler.read_bundle();
     client_exports = sorted(collected_exports);
@@ -46,7 +60,7 @@ impl ViteCompiler.copy_root_assets(self: ViteCompiler) -> None {
         self.asset_processor.copy_assets(root_assets_dir, compiled_assets_dir);
     }
     # Copy configured_asset files from root assets/ to build assets/ (bypassing compiled)
-    build_assets_dir = self.project_dir / '.client-build' / 'build' / 'assets';
+    build_assets_dir = self._get_client_dir() / 'build' / 'assets';
     if (root_assets_dir.exists() and root_assets_dir.is_dir()) {
         self.asset_processor.copy_custom_asset_types(root_assets_dir, build_assets_dir);
     }
@@ -228,19 +242,21 @@ impl ViteCompiler.init(
         ) ;
     }
     self.vite_package_json = vite_package_json;
-    # If package.json is in .client-build/.jac-client.configs/, go up two levels to get project root
+    # Detect project root: package.json may be in .jac/client/configs/ or project root
     if (
-        vite_package_json.parent.name == '.jac-client.configs'
-        and vite_package_json.parent.parent.name == '.client-build'
+        vite_package_json.parent.name == 'configs'
+        and vite_package_json.parent.parent.name == 'client'
+        and vite_package_json.parent.parent.parent.name == '.jac'
     ) {
-        self.project_dir = vite_package_json.parent.parent.parent;
-    } elif (vite_package_json.parent.name == '.jac-client.configs') {
+        # .jac/client/configs/package.json -> go up 3 levels to project root
+        self.project_dir = vite_package_json.parent.parent.parent.parent;
+    } elif (vite_package_json.parent.name == 'configs') {
         self.project_dir = vite_package_json.parent.parent;
     } else {
         self.project_dir = vite_package_json.parent;
     }
     self.runtime_path = runtime_path;
-    self.compiled_dir = self.project_dir / '.client-build' / 'compiled';
+    self.compiled_dir = self._get_client_dir() / 'compiled';
     self.jac_compiler = JacToJSCompiler(
         compile_to_js_func, extract_exports_func, extract_globals_func
     );

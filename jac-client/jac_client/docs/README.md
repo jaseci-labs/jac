@@ -72,7 +72,7 @@ This command will:
 - Set up an organized project structure with `src/` folder
 - Create a starter `src/app.jac` file with a sample component
 - Include a sample TypeScript component
-- **Automatically install npm packages** in the `.client-build/` directory
+- **Automatically install npm packages** in the `.jac/client/` directory
 
 #### Skipping Package Installation
 
@@ -94,7 +94,7 @@ jac create --cl --skip todo-app
 jac add --cl <package-name>
 ```
 
-Or you can manually run `npm install` in the `.client-build/` directory after the project is created.
+Or you can manually run `npm install` in the `.jac/client/configs/` directory after the project is created.
 
 **What gets created:**
 

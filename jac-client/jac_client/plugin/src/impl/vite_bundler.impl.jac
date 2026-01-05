@@ -1,11 +1,26 @@
-"""Create package.json from config.json during bundling."""
+"""Get the client build directory from project config."""
+impl ViteBundler._get_client_dir(self: ViteBundler) -> Path {
+    # Try to get from project config
+    try {
+        import from jaclang.project.config { get_config }
+        config = get_config();
+        if config is not None {
+            return config.get_client_dir();
+        }
+    } except ImportError {
+        pass;
+    }
+    # Fallback to default
+    return self.project_dir / '.jac' / 'client';
+}
 
+"""Create package.json from config.json during bundling."""
 impl ViteBundler.create_package_json(
     self: ViteBundler, project_name: Optional[str] = None
 ) -> Path {
-    build_dir = self.project_dir / '.client-build';
-    build_dir.mkdir(exist_ok=True);
-    configs_dir = build_dir / '.jac-client.configs';
+    build_dir = self._get_client_dir();
+    build_dir.mkdir(parents=True, exist_ok=True);
+    configs_dir = build_dir / 'configs';
     configs_dir.mkdir(exist_ok=True);
     package_config = self.config_loader.get_package_config();
     package_json_path = configs_dir / 'package.json';
@@ -52,9 +67,9 @@ impl ViteBundler.create_package_json(
     dependencies = {** default_dependencies, ** user_dependencies};
     dev_dependencies = {** default_dev_dependencies, ** user_dev_dependencies};
     scripts = {
-        'build': 'npm run compile && vite build --config .client-build/.jac-client.configs/vite.config.js',
-        'dev': 'vite dev --config .client-build/.jac-client.configs/vite.config.js',
-        'preview': 'vite preview --config .client-build/.jac-client.configs/vite.config.js',
+        'build': 'npm run compile && vite build --config .jac/client/configs/vite.config.js',
+        'dev': 'vite dev --config .jac/client/configs/vite.config.js',
+        'preview': 'vite preview --config .jac/client/configs/vite.config.js',
         'compile': 'babel compiled --out-dir build --extensions ".jsx,.js" --out-file-extension .js'
     };
     user_scripts = package_config.get('scripts', {});
@@ -90,9 +105,9 @@ impl ViteBundler.create_package_json(
 
 """Create tsconfig.json during build time, merging user config from jac.toml."""
 impl ViteBundler.create_tsconfig(self: ViteBundler) -> Path {
-    build_dir = self.project_dir / '.client-build';
-    build_dir.mkdir(exist_ok=True);
-    configs_dir = build_dir / '.jac-client.configs';
+    build_dir = self._get_client_dir();
+    build_dir.mkdir(parents=True, exist_ok=True);
+    configs_dir = build_dir / 'configs';
     configs_dir.mkdir(exist_ok=True);
     tsconfig_path = configs_dir / 'tsconfig.json';
     # Default tsconfig settings
@@ -114,7 +129,7 @@ impl ViteBundler.create_tsconfig(self: ViteBundler) -> Path {
         'noFallthroughCasesInSwitch': True
     };
     default_include = ['components/**/*'];
-    default_exclude = ['.client-build'];
+    default_exclude = ['.jac'];
     # Get user config from [plugins.client.ts] in jac.toml
     user_ts_config = self.config_loader.get_ts_config();
     user_compiler_options = user_ts_config.get('compilerOptions', {});
@@ -130,21 +145,21 @@ impl ViteBundler.create_tsconfig(self: ViteBundler) -> Path {
         'include': merged_include,
         'exclude': merged_exclude
     };
-    # Write the config to .client-build/.jac-client.configs/tsconfig.json (no root config file)
+    # Write the config to .jac/client/configs/tsconfig.json (no root config file)
     tsconfig_path.write_text(json.dumps(tsconfig_data, indent=2), encoding='utf-8');
     return tsconfig_path;
 }
 
 """
-Clean up root package.json and move package-lock.json to .jac-client.configs/.
+Clean up root package.json and move package-lock.json to configs/.
 
-        Remove root package.json and move package-lock.json to .jac-client.configs/.
+        Remove root package.json and move package-lock.json to configs/.
 """
 impl ViteBundler._cleanup_root_package_files(self: ViteBundler) -> None {
     root_package_json = self.project_dir / 'package.json';
     root_package_lock = self.project_dir / 'package-lock.json';
-    build_dir = self.project_dir / '.client-build';
-    configs_dir = build_dir / '.jac-client.configs';
+    build_dir = self._get_client_dir();
+    configs_dir = build_dir / 'configs';
     configs_package_lock = configs_dir / 'package-lock.json';
     if root_package_lock.exists() {
         configs_dir.mkdir(exist_ok=True);
@@ -164,7 +179,7 @@ Ensure root package.json exists temporarily for npm commands.
         Create root package.json temporarily if it doesn't exist.
 """
 impl ViteBundler._ensure_root_package_json(self: ViteBundler) -> None {
-    generated_package_json = self.project_dir / '.client-build' / '.jac-client.configs' / 'package.json';
+    generated_package_json = self._get_client_dir() / 'configs' / 'package.json';
     root_package_json = self.project_dir / 'package.json';
     if not generated_package_json.exists() {
         self.create_package_json();
@@ -235,51 +250,28 @@ impl ViteBundler._get_plugin_var_name(self: ViteBundler, plugin_name: str) -> st
 
 """Create vite.config.js from config.json during bundling."""
 impl ViteBundler.create_vite_config(self: ViteBundler, entry_file: Path) -> Path {
-    build_dir = self.project_dir / '.client-build';
-    build_dir.mkdir(exist_ok=True);
-    configs_dir = build_dir / '.jac-client.configs';
+    build_dir = self._get_client_dir();
+    build_dir.mkdir(parents=True, exist_ok=True);
+    configs_dir = build_dir / 'configs';
     configs_dir.mkdir(exist_ok=True);
     vite_config_data = self.config_loader.get_vite_config();
     config_path = configs_dir / 'vite.config.js';
     # TypeScript is always enabled by default
-    build_dir = self.project_dir / '.client-build';
     try {
-        # Entry file path relative to .client-build/ (not project root)
+        # Entry file path relative to client build dir (not project root)
         entry_relative = entry_file.relative_to(build_dir).as_posix();
     } except ValueError {
-        # Fallback: try relative to project_dir and strip .client-build/ prefix
-        try {
-            entry_relative_full = entry_file.relative_to(self.project_dir).as_posix();
-            prefix = '.client-build/';
-            if entry_relative_full.startswith(prefix) {
-                # Remove '.client-build/' prefix (15 characters)
-                entry_relative = entry_relative_full[15:];
-            } else {
-                entry_relative = entry_relative_full;
-            }
-        } except ValueError {
-            entry_relative = entry_file.as_posix();
-        }
+        # Fallback: use absolute path
+        entry_relative = entry_file.as_posix();
     }
     try {
-        # Output dir path relative to .client-build/ (not project root)
+        # Output dir path relative to client build dir (not project root)
         output_relative = self.output_dir.relative_to(build_dir).as_posix();
     } except ValueError {
-        # Fallback: try relative to project_dir and strip .client-build/ prefix
-        try {
-            output_relative_full = self.output_dir.relative_to(self.project_dir).as_posix();
-            prefix = '.client-build/';
-            if output_relative_full.startswith(prefix) {
-                # Remove '.client-build/' prefix (15 characters)
-                output_relative = output_relative_full[15:];
-            } else {
-                output_relative = output_relative_full;
-            }
-        } except ValueError {
-            output_relative = self.output_dir.as_posix();
-        }
+        # Fallback: use absolute path
+        output_relative = self.output_dir.as_posix();
     }
-    # Calculate compiled directory path for aliases (relative to .client-build/)
+    # Calculate compiled directory path for aliases (relative to client build dir)
     if entry_relative.endswith('/build/main.js') {
         compiled_utils_relative = entry_relative[:-13] + '/compiled/client_runtime.js';
         compiled_assets_relative = entry_relative[:-13] + '/compiled/assets';
@@ -333,9 +325,9 @@ impl ViteBundler.create_vite_config(self: ViteBundler, entry_file: Path) -> Path
 import path from "path";
 import {{ fileURLToPath }} from "url";
 {imports_section}const __dirname = path.dirname(fileURLToPath(import.meta.url));
-// Config is in .jac-client.configs/ inside .client-build/, so go up one level to .client-build/, then up one more to project root
+// Config is in configs/ inside .jac/client/, so go up one level to .jac/client/, then up two more to project root
 const buildDir = path.resolve(__dirname, "..");
-const projectRoot = path.resolve(__dirname, "../..");
+const projectRoot = path.resolve(__dirname, "../../..");
 
 /**
  * Vite configuration generated from config.json (in project root)
@@ -344,7 +336,7 @@ const projectRoot = path.resolve(__dirname, "../..");
 
 export default defineConfig({{
   plugins: [{(newline + plugins_str + newline + '  ') if plugins_str else ''}],
-  root: buildDir, // base folder (.client-build/) so vite can find node_modules
+  root: buildDir, // base folder (.jac/client/) so vite can find node_modules
     build: {{
     rollupOptions: {{
       input: path.resolve(buildDir, "{entry_relative}"), // your compiled entry file
@@ -409,10 +401,10 @@ impl ViteBundler.find_bundle(self: ViteBundler) -> Optional[Path] {
     return None;
 }
 
-"""Run Vite build with generated config in .client-build/.jac-client.configs/."""
+"""Run Vite build with generated config in .jac/client/configs/."""
 impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> None {
     self.output_dir.mkdir(parents=True, exist_ok=True);
-    generated_package_json = self.project_dir / '.client-build' / '.jac-client.configs' / 'package.json';
+    generated_package_json = self._get_client_dir() / 'configs' / 'package.json';
     if not generated_package_json.exists() {
         self.create_package_json();
     } else {
@@ -420,18 +412,18 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
         self.create_tsconfig();
     }
     try {
-        build_dir = self.project_dir / '.client-build';
+        build_dir = self._get_client_dir();
         node_modules = build_dir / 'node_modules';
         if not node_modules.exists() {
-            # Temporarily copy package.json to .client-build/ for npm install
+            # Temporarily copy package.json to client build dir for npm install
             build_package_json = build_dir / 'package.json';
-            configs_package_json = build_dir / '.jac-client.configs' / 'package.json';
+            configs_package_json = build_dir / 'configs' / 'package.json';
             if configs_package_json.exists() and not build_package_json.exists() {
                 import shutil;
                 shutil.copy2(configs_package_json, build_package_json);
             }
             try {
-                # Install to .client-build/node_modules
+                # Install to .jac/client/node_modules
                 subprocess.run(
                     ['npm', 'install'],
                     cwd=build_dir,
@@ -449,27 +441,24 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
                 ) ;
             }
         }
-        build_dir = self.project_dir / '.client-build';
         if self.config_path {
             # Make config path relative to build_dir (where vite runs from)
-            config_str = str(self.config_path);
-            if '.client-build' in config_str {
-                # Config is in .client-build/, make it relative to build_dir
+            try {
                 config_rel = self.config_path.relative_to(build_dir);
                 command = ['npx', 'vite', 'build', '--config', str(config_rel)];
-            } else {
-                # Config is outside .client-build/, use absolute path
+            } except ValueError {
+                # Config is outside client build dir, use absolute path
                 command = ['npx', 'vite', 'build', '--config', str(self.config_path)];
             }
         } elif entry_file {
             generated_config = self.create_vite_config(entry_file);
-            # Config is in .client-build/.jac-client.configs/, make it relative to build_dir
+            # Config is in configs/, make it relative to build_dir
             config_rel = generated_config.relative_to(build_dir);
             command = ['npx', 'vite', 'build', '--config', str(config_rel)];
         } else {
             command = ['npm', 'run', 'build'];
         }
-        # Run vite from .client-build/ directory so it can find node_modules
+        # Run vite from client build directory so it can find node_modules
         result = subprocess.run(
             command, cwd=build_dir, check=False, capture_output=True, text=True
         );
@@ -480,15 +469,15 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
             ) from None ;
         }
     } finally {
-        # Clean up temporary package.json in .client-build/
+        # Clean up temporary package.json in client build dir
         build_package_json = build_dir / 'package.json';
         if build_package_json.exists() {
             build_package_json.unlink();
         }
-        # Move package-lock.json to .jac-client.configs/ if it exists
+        # Move package-lock.json to configs/ if it exists
         build_package_lock = build_dir / 'package-lock.json';
         if build_package_lock.exists() {
-            configs_package_lock = build_dir / '.jac-client.configs' / 'package-lock.json';
+            configs_package_lock = build_dir / 'configs' / 'package-lock.json';
             if configs_package_lock.exists() {
                 configs_package_lock.unlink();
             }
@@ -506,8 +495,9 @@ impl ViteBundler.init(
     config_path: Optional[Path] = None
 ) {
     self.project_dir = project_dir;
-    self.output_dir = output_dir or (project_dir / '.client-build' / 'dist');
     self.minify = minify;
     self.config_path = config_path;
     self.config_loader = JacClientConfig(project_dir);
+    # Set output_dir after config_loader is initialized so _get_client_dir works
+    self.output_dir = output_dir or (self._get_client_dir() / 'dist');
 }

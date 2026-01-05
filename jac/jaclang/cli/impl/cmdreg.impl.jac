@@ -8,7 +8,7 @@ impl CommandRegistry.get(name: str) -> (Command | None) {
 
 This should be called after all plugins have had a chance to register commands.
 """
-impl CommandRegistry.finalize()  -> None {
+impl CommandRegistry.finalize -> None {
     if self._finalized {
         return;
     }
@@ -214,7 +214,7 @@ impl CommandRegistry.register(
 }
 
 """Initialize a CommandRegistry instance."""
-impl CommandRegistry.init()  -> None {
+impl CommandRegistry.init -> None {
     self.registry = {};
     self.pending_commands = {};
     self._finalized = False;

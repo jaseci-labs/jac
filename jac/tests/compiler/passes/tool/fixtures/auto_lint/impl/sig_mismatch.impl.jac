@@ -14,3 +14,8 @@ impl Calculator.no_change(val: int) -> int {
     # This one matches the declaration
     return val;
 }
+
+impl Calculator.reset(value: int) -> None {
+    # Wrong signature: has param but decl has none
+    self.value = 0;
+}

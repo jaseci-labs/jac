@@ -6,7 +6,7 @@ impl Align.treeprint(level: int = 0) -> str {
 }
 
 """Return a string representation of the Align object."""
-impl Align.__str__()  -> str {
+impl Align.__str__ -> str {
     return f"Align({self.n}, {self.contents})";
 }
 
@@ -21,7 +21,7 @@ impl IfBreak.treeprint(level: int = 0) -> str {
 }
 
 """Return a string representation of the IfBreak object."""
-impl IfBreak.__str__()  -> str {
+impl IfBreak.__str__ -> str {
     return f"IfBreak({self.break_contents}, {self.flat_contents})";
 }
 
@@ -33,7 +33,7 @@ impl Concat.treeprint(level: int = 0) -> str {
 }
 
 """Return a string representation of the Concat object."""
-impl Concat.__str__()  -> str {
+impl Concat.__str__ -> str {
     return f"Concat({self.parts})";
 }
 
@@ -45,7 +45,7 @@ impl Indent.treeprint(level: int = 0) -> str {
 }
 
 """Return a string representation of the Indent object."""
-impl Indent.__str__()  -> str {
+impl Indent.__str__ -> str {
     return f"Indent({self.contents})";
 }
 
@@ -57,7 +57,7 @@ impl Group.treeprint(level: int = 0) -> str {
 }
 
 """Return a string representation of the Group object."""
-impl Group.__str__()  -> str {
+impl Group.__str__ -> str {
     return f"Group({self.contents})";
 }
 
@@ -74,7 +74,7 @@ impl Line.treeprint(level: int = 0) -> str {
 }
 
 """Return a string representation of the Line object."""
-impl Line.__str__()  -> str {
+impl Line.__str__ -> str {
     attrs: list[str] = [];
     if self.hard {
         attrs.append('hard');
@@ -94,7 +94,7 @@ impl Text.treeprint(level: int = 0) -> str {
 }
 
 """Return a string representation of the Text object."""
-impl Text.__str__()  -> str {
+impl Text.__str__ -> str {
     return f'Text("{self.text}")';
 }
 
@@ -105,11 +105,11 @@ impl Doc.treeprint(level: int = 0) -> str {
 }
 
 """Return a string representation of the Doc object."""
-impl Doc.__repr__()  -> str {
+impl Doc.__repr__ -> str {
     return self.treeprint();
 }
 
 """Return a string representation of the Doc object."""
-impl Doc.__str__()  -> str {
+impl Doc.__str__ -> str {
     return self.__class__.__name__;
 }

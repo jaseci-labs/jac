@@ -2377,7 +2377,7 @@ impl EsastGenPass._collect_walker_field_names(
 }
 
 """Get the main module of the program."""
-impl EsastGenPass.get_main_mod()  -> uni.Module {
+impl EsastGenPass.get_main_mod -> uni.Module {
     main_mod_path = self.ir_in.annexable_by or self.ir_in.loc.mod_path;
     mod = self.prog.mod.hub.get(main_mod_path);
     if not isinstance(mod, uni.Module) {
@@ -2430,7 +2430,7 @@ impl EsastGenPass._strip_spawn_await(
 }
 
 """Check if we're currently in a client-side function."""
-impl EsastGenPass._is_in_client_scope()  -> bool {
+impl EsastGenPass._is_in_client_scope -> bool {
     return <>any(self.client_scope_stack);
 }
 
@@ -2490,7 +2490,7 @@ impl EsastGenPass._is_declared_in_current_scope(name: str) -> bool {
 }
 
 """Get the scope currently being populated."""
-impl EsastGenPass._current_scope()  -> (ScopeInfo | None) {
+impl EsastGenPass._current_scope -> (ScopeInfo | None) {
     return self.scope_stack[-1] if self.scope_stack else None;
 }
 
@@ -2559,7 +2559,7 @@ impl EsastGenPass.enter_node(<>node: uni.UniNode) -> None {
 }
 
 """Initialize the pass."""
-impl EsastGenPass.before_pass()  -> None {
+impl EsastGenPass.before_pass -> None {
     import from jaclang.pycore.codeinfo { ClientManifest }
     self.child_passes: list[EsastGenPass] = self._init_child_passes(EsastGenPass);
     self.imports: list[es.ImportDeclaration] = [];

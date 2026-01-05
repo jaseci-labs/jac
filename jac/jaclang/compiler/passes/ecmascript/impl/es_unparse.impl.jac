@@ -665,7 +665,7 @@ impl JSCodeGenerator.generate(<>node: (es.Node | None)) -> str {
 }
 
 """Get current indentation."""
-impl JSCodeGenerator.indent(self: JSCodeGenerator) -> str {
+impl JSCodeGenerator.indent -> str {
     return (self.indent_str * self.indent_level);
 }
 

@@ -2064,6 +2064,13 @@ impl DocIRGenPass.exit_module(<>node: uni.Module) -> None {
         first_kid = False;
     }
     <>node.gen.doc_ir = self.concat(parts, ast_node=<>node);
+    # Traverse impl modules (includes .impl.jac and .cl.jac files)
+    # Only do this for the main module (not annex modules themselves)
+    if <>node.annexable_by is None {
+        for impl_mod in <>node.impl_mod {
+            self.traverse(impl_mod);
+        }
+    }
 }
 
 """Recursively remove all space nodes from a doc_ir tree."""
@@ -2362,17 +2369,17 @@ impl DocIRGenPass.group(
 }
 
 """Create a literal line break."""
-impl DocIRGenPass.literal_line(self: DocIRGenPass) -> doc.Line {
+impl DocIRGenPass.literal_line -> doc.Line {
     return doc.Line(literal=True);
 }
 
 """Create a tight line break."""
-impl DocIRGenPass.tight_line(self: DocIRGenPass) -> doc.Line {
+impl DocIRGenPass.tight_line -> doc.Line {
     return doc.Line(tight=True);
 }
 
 """Create a hard line break."""
-impl DocIRGenPass.hard_line(self: DocIRGenPass) -> doc.Line {
+impl DocIRGenPass.hard_line -> doc.Line {
     return doc.Line(hard=True);
 }
 
@@ -2382,7 +2389,7 @@ impl DocIRGenPass.line(hard: bool = False, literal: bool = False) -> doc.Line {
 }
 
 """Create a space node."""
-impl DocIRGenPass.space(self: DocIRGenPass) -> doc.Text {
+impl DocIRGenPass.space -> doc.Text {
     return doc.Text(' ');
 }
 

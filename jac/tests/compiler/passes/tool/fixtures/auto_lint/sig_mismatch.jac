@@ -6,4 +6,5 @@ obj Calculator {
     def add(x: int, y: int) -> int;
     def multiply(a: int, b: int) -> int;
     def no_change(val: int) -> int;
+    def reset -> None;
 }

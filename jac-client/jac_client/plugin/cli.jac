@@ -175,7 +175,7 @@ def _create_client_project(
     assets_dir = project_path / "assets";
     assets_dir.mkdir(parents=True, exist_ok=True);
 
-    (project_path / ".client-build").mkdir(parents=True, exist_ok=True);
+    (project_path / ".jac" / "client").mkdir(parents=True, exist_ok=True);
 
     toml_path = project_path / "jac.toml";
     toml_content = f'''[project]
@@ -382,8 +382,8 @@ def _create_gitignore(project_path: pathlib.Path, client: bool = False) -> None 
                 "# Node.js",
                 "node_modules/",
                 "",
-                "# Jac Client",
-                ".client-build/",
+                "# Jac build artifacts",
+                ".jac/",
                 "*.session",
                 "*.session.*"
             ]
@@ -415,7 +415,7 @@ def _create_gitignore(project_path: pathlib.Path, client: bool = False) -> None 
     }
 }
 
-"""Install default npm packages in .client-build directory."""
+"""Install default npm packages in .jac/client directory."""
 def _install_default_packages(
     project_path: pathlib.Path, verbose: bool = False
 ) -> None {
@@ -441,13 +441,13 @@ def _install_default_packages(
         # Generate package.json with default packages (defaults are added automatically)
         bundler.create_package_json(project_name=project_name);
 
-        # Ensure .client-build directory exists
-        build_dir = project_path / '.client-build';
-        build_dir.mkdir(parents=True, exist_ok=True);
+        # Ensure .jac/client directory exists
+        client_dir = bundler._get_client_dir();
+        client_dir.mkdir(parents=True, exist_ok=True);
 
-        # Copy package.json to .client-build/ for npm install
-        configs_package_json = build_dir / '.jac-client.configs' / 'package.json';
-        build_package_json = build_dir / 'package.json';
+        # Copy package.json to .jac/client/ for npm install
+        configs_package_json = client_dir / 'configs' / 'package.json';
+        build_package_json = client_dir / 'package.json';
 
         if not configs_package_json.exists() {
             print(
@@ -457,7 +457,7 @@ def _install_default_packages(
             return;
         }
 
-        # Always copy the generated package.json to .client-build/ for npm install
+        # Always copy the generated package.json to .jac/client/ for npm install
         shutil.copy2(configs_package_json, build_package_json);
 
         # Read package data for verbose output
@@ -485,27 +485,27 @@ def _install_default_packages(
             print("\nRunning npm install...");
         }
 
-        # Run npm install in .client-build/ directory
+        # Run npm install in .jac/client/ directory
         try {
             if verbose {
                 # Stream output for visibility in verbose mode
                 subprocess.run(
-                    ['npm', 'install', '--progress'], cwd=build_dir, check=True
+                    ['npm', 'install', '--progress'], cwd=client_dir, check=True
                 );
             } else {
                 # Quiet mode: capture output
                 subprocess.run(
                     ['npm', 'install'],
-                    cwd=build_dir,
+                    cwd=client_dir,
                     check=True,
                     capture_output=True,
                     text=True
                 );
             }
 
-            # Move package-lock.json to .jac-client.configs/ if it was created
-            build_package_lock = build_dir / 'package-lock.json';
-            configs_dir = build_dir / '.jac-client.configs';
+            # Move package-lock.json to configs/ if it was created
+            build_package_lock = client_dir / 'package-lock.json';
+            configs_dir = client_dir / 'configs';
             configs_package_lock = configs_dir / 'package-lock.json';
             if build_package_lock.exists() {
                 configs_dir.mkdir(parents=True, exist_ok=True);
@@ -535,7 +535,7 @@ def _install_default_packages(
             );
             print("You can install packages later with: jac add --cl", file=sys.stderr);
         } finally {
-            # Clean up temporary package.json in .client-build/
+            # Clean up temporary package.json in .jac/client/
             if build_package_json.exists() {
                 build_package_json.unlink();
             }

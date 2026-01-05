@@ -1074,3 +1074,12 @@ def test_builtin_constructors(fixture_path: Callable[[str], str]) -> None:
     TypeCheckPass(ir_in=mod, prog=program)
     # All constructors should work without errors
     assert len(program.errors_had) == 0
+
+
+def test_union_type_annotation(fixture_path: Callable[[str], str]) -> None:
+    """Test union type annotation with None (e.g., int | None)."""
+    program = JacProgram()
+    mod = program.compile(fixture_path("checker_union_type_annotation.jac"))
+    TypeCheckPass(ir_in=mod, prog=program)
+    # Should have no errors - int | None annotation should be valid
+    assert len(program.errors_had) == 0

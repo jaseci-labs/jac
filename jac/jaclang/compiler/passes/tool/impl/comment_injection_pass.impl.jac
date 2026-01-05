@@ -1012,11 +1012,18 @@ impl CommentInjectionPass.transform(ir_in: uni.Module) -> uni.Module {
         processed = doc.Concat(sink);
     }
     ir_in.gen.doc_ir = self._remove_redundant_lines(processed);
+    # Process impl modules (includes .impl.jac and .cl.jac files)
+    # Only do this for the main module (not annex modules themselves)
+    if ir_in.annexable_by is None {
+        for impl_mod in ir_in.impl_mod {
+            self.transform(impl_mod);
+        }
+    }
     return ir_in;
 }
 
 """Return comments we never placed (should be rare)."""
-impl CommentStore.drain_unattached()  -> list[CommentInfo] {
+impl CommentStore.drain_unattached -> list[CommentInfo] {
     leftovers: list[CommentInfo] = [];
     for bucket in self._inline.values() {
         for info in bucket {
@@ -1159,16 +1166,16 @@ impl CommentInfo.init(
 }
 
 """Return the final line this comment occupies."""
-impl CommentInfo.last_line()  -> int {
+impl CommentInfo.last_line -> int {
     return self.token.loc.last_line;
 }
 
 """Return the starting line for quick range comparisons."""
-impl CommentInfo.first_line()  -> int {
+impl CommentInfo.first_line -> int {
     return self.token.loc.first_line;
 }
 
 """Return True when the comment attaches to a token on the same line."""
-impl CommentInfo.is_inline()  -> bool {
+impl CommentInfo.is_inline -> bool {
     return (self.anchor_token_id is not None);
 }

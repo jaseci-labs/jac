@@ -59,9 +59,19 @@ def get_type_of_binary_operation(
         #
         # TODO: Pyright checks if the types support '__or__' and '__ror__' before returning UnionType
         # If they support, we can treat them as binary operands, instead of Union types.
+        def is_annotation_type(ty: jtypes.TypeBase) -> bool {
+            if ty.is_instantiable() or isinstance(ty, jtypes.UnionType) {
+                return True;
+            }
+            # Althought None is not a valid class, it can be used as a class in the type annotation.
+            if isinstance(ty, jtypes.ClassType) {
+                return ty.shared == evaluator.prefetch.none_type_class.shared;
+            }
+            return False;
+        }
         if expr.op.name == Tok.BW_OR {
             # TODO: Handle None instance used
-            if left_type.is_instantiable() and right_type.is_instantiable() {
+            if is_annotation_type(left_type) and is_annotation_type(right_type) {
                 return jtypes.UnionType([left_type, right_type]);
             }
         }

@@ -4,6 +4,10 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.9.5 (Unreleased)
 
+- **Consolidated Build Artifacts Directory**: All Jac project build artifacts are now organized under a single `.jac/` directory instead of being scattered across the project root. This includes bytecode cache (`.jac/cache/`), Python packages (`.jac/packages/`), client build artifacts (`.jac/client/`), and runtime data like ShelfDB (`.jac/data/`). The base directory is configurable via `[build].dir` in `jac.toml`. This simplifies `.gitignore` to a single entry and provides cleaner project structures.
+- **Format Command Auto-Formats Related Files**: The `jac format` command now automatically formats all associated annex files (`.impl.jac` and `.cl.jac`) when formatting a main `.jac` file. The format passes traverse impl modules in a single pass, and all related files are written together, ensuring consistent formatting across module boundaries.
+- **Auto-Lint: Empty Parentheses Removal for Impl Blocks**: The `jac format --fix` command now removes unnecessary empty parentheses from `impl` block signatures, matching the existing behavior for function declarations. For example, `impl Foo.bar() -> int` becomes `impl Foo.bar -> int`.
+
 ## jaclang 0.9.4 (Latest Release)
 
 - **`let` Keyword Removed**: The `let` keyword has been removed from Jaclang. Variable declarations now use direct assignment syntax (e.g., `x = 10` instead of `let x = 10`), aligning with Python's approach to variable binding.

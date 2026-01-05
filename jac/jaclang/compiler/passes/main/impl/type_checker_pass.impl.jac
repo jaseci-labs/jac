@@ -242,7 +242,7 @@ impl TypeCheckPass.exit_impl_def(<>node: uni.ImplDef) -> None {
     }
 }
 
-impl TypeCheckPass._insert_builtin_symbols()  -> None {
+impl TypeCheckPass._insert_builtin_symbols -> None {
     if (self.ir_in == self.evaluator.builtins_module) {
         return;
     }
@@ -265,7 +265,7 @@ impl TypeCheckPass._add_diagnostic(
 }
 
 """Initialize the checker pass."""
-impl TypeCheckPass.before_pass()  -> None {
+impl TypeCheckPass.before_pass -> None {
     self.evaluator = self.prog.get_type_evaluator();
     self.evaluator.diagnostic_callback = self._add_diagnostic;
     self._insert_builtin_symbols();

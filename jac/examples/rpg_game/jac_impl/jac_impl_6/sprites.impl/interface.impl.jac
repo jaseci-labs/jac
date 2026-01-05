@@ -10,7 +10,9 @@ impl Button.postinit{
     self.image.blit(self.text, self.text_rect);
 }
 # Determine if thebutton is pressed.
-impl Button.is_pressed(pos: tuple, pressed: tuple) {
+impl Button.is_pressed(
+    pos: tuple, pressed: tuple
+) -> bool {
     if self.rect.collidepoint(pos) {
         if pressed[0] {
             return True;

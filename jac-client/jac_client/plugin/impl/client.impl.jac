@@ -57,12 +57,13 @@ impl JacClient.get_client_bundle_builder -> ViteClientBundleBuilder {
         # Fallback to base_path_dir if no project root found
         base_path = base_path_dir;
     }
-    # package.json should only exist in .client-build/.jac-client.configs/
-    generated_package_json = base_path / '.client-build' / '.jac-client.configs' / 'package.json';
+    # Use ViteBundler to get the client directory
+    bundler = ViteBundler(base_path);
+    client_dir = bundler._get_client_dir();
+    # package.json should only exist in .jac/client/configs/
+    generated_package_json = client_dir / 'configs' / 'package.json';
     # Generate package.json if it doesn't exist
     if not generated_package_json.exists() {
-        # Use ViteBundler to generate package.json from config.json
-        bundler = ViteBundler(base_path);
         generated_path = bundler.create_package_json();
         # Verify the file was created and resolve to absolute path
         if not generated_path.exists() {
@@ -80,7 +81,7 @@ impl JacClient.get_client_bundle_builder -> ViteClientBundleBuilder {
             f'package.json not found at {package_json_path}. Expected at {generated_package_json}'
         ) ;
     }
-    output_dir = base_path / '.client-build' / 'dist';
+    output_dir = client_dir / 'dist';
     runtime_path = Path(__file__).with_name('client_runtime.cl.jac');
     return ViteClientBundleBuilder(
         runtime_path=runtime_path,
@@ -106,7 +107,7 @@ impl JacClientModuleIntrospector.render_page(
         raise ValueError(f"Client function '{function_name}' not found") ;
     }
     bundle_hash = self.ensure_bundle();
-    import from jaclang.project.config { find_project_root }
+    import from jaclang.project.config { find_project_root, get_config }
     # Find project root by looking for jac.toml (base_path_dir might be src/ for entry files)
     base_path_dir = Path(Jac.base_path_dir);
     project_root_result = find_project_root(base_path_dir);
@@ -116,7 +117,13 @@ impl JacClientModuleIntrospector.render_page(
         # Fallback to base_path_dir if no project root found
         base_path = base_path_dir;
     }
-    dist_dir = base_path / '.client-build' / 'dist';
+    # Get client directory from config or use default
+    config = get_config();
+    if config is not None {
+        dist_dir = config.get_client_dir() / 'dist';
+    } else {
+        dist_dir = base_path / '.jac' / 'client' / 'dist';
+    }
     css_link = '';
     css_file = dist_dir / 'main.css';
     if css_file.exists() {

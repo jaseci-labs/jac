@@ -5,7 +5,7 @@ obj Spritesheet {
     def get_sprite(x: int, y: int, width: int, height: int) -> pygame.Surface;
 }
 
-impl Spritesheet.init(file: str){
+impl Spritesheet.init(file: str) {
     self.sheet = pygame.image.load(file).convert();
 }
 

@@ -206,7 +206,7 @@ impl TypeEvaluator._get_type_from_module(module: uni.Module, name: str) -> TypeB
     return types.UnknownType();
 }
 
-impl TypeEvaluator.get_none_type()  -> TypeBase {
+impl TypeEvaluator.get_none_type -> TypeBase {
     if self.prefetch and self.prefetch.none_type_class {
         return self.prefetch.none_type_class;
     }
