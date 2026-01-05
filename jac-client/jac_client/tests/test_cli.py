@@ -91,9 +91,7 @@ def test_create_jac_app() -> None:
                     package_data = json.load(f)
 
                 # Verify default dependencies are in package.json
-                assert "react" in package_data.get("dependencies", {})
-                assert "react-dom" in package_data.get("dependencies", {})
-                assert "vite" in package_data.get("devDependencies", {})
+                assert "jac-client-node" in package_data.get("dependencies", {})
 
         finally:
             # Return to original directory
@@ -340,17 +338,8 @@ def test_create_jac_app_installs_default_packages() -> None:
                 with open(package_json_path) as f:
                     package_data = json.load(f)
 
-                # Verify default dependencies are in package.json
-                deps = package_data.get("dependencies", {})
-                dev_deps = package_data.get("devDependencies", {})
-
-                assert "react" in deps
-                assert "react-dom" in deps
-                assert "react-router-dom" in deps
-                assert "vite" in dev_deps
-                assert "@babel/core" in dev_deps
-                assert "typescript" in dev_deps
-                assert "@types/react" in dev_deps
+                # Verify default dependencies are in package.
+                assert "jac-client-node" in package_data.get("dependencies", {})
 
         finally:
             # Return to original directory
