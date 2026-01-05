@@ -108,7 +108,7 @@ def npm_cache_dir() -> Generator[Path, None, None]:
     """Session-scoped fixture that provides a directory with npm packages installed.
 
     This runs npm install once per test session and provides the path to the
-    .jac-client.configs directory containing node_modules.
+    .jac/client/configs directory containing node_modules.
     """
     global _npm_cache_dir
 
@@ -156,13 +156,14 @@ def vite_project_dir(npm_cache_dir: Path, tmp_path: Path) -> Path:
     jac_toml = tmp_path / "jac.toml"
     jac_toml.write_text(_get_minimal_jac_toml())
 
-    # Copy .jac-client.configs directory (contains package.json)
-    source_configs = npm_cache_dir / ".jac-client.configs"
-    dest_configs = tmp_path / ".jac-client.configs"
+    # Copy .jac/client/configs directory (contains package.json)
+    source_configs = npm_cache_dir / ".jac" / "client" / "configs"
+    dest_configs = tmp_path / ".jac" / "client" / "configs"
     if source_configs.exists():
+        dest_configs.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(source_configs, dest_configs, symlinks=True)
 
-    # Copy node_modules from project root (npm installs there, not in .jac-client.configs)
+    # Copy node_modules from project root (npm installs there, not in .jac/client/configs)
     source_node_modules = npm_cache_dir / "node_modules"
     dest_node_modules = tmp_path / "node_modules"
     if source_node_modules.exists():
@@ -195,10 +196,11 @@ antd = "^6.0.0"
     jac_toml = tmp_path / "jac.toml"
     jac_toml.write_text(jac_toml_content)
 
-    # Copy base .jac-client.configs first for faster install
-    source_configs = npm_cache_dir / ".jac-client.configs"
-    dest_configs = tmp_path / ".jac-client.configs"
+    # Copy base .jac/client/configs first for faster install
+    source_configs = npm_cache_dir / ".jac" / "client" / "configs"
+    dest_configs = tmp_path / ".jac" / "client" / "configs"
     if source_configs.exists():
+        dest_configs.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(source_configs, dest_configs, symlinks=True)
 
     # Copy base node_modules for faster install (npm will add antd on top)

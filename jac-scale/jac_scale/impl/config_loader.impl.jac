@@ -152,7 +152,7 @@ impl get_scale_config(project_dir: Path | None = None) -> JacScaleConfig {
 }
 
 """Reset the global config instance (useful for testing)."""
-impl reset_scale_config()  -> None {
+impl reset_scale_config -> None {
     global _scale_config_instance;
     _scale_config_instance = None;
 }

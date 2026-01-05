@@ -80,7 +80,7 @@ class JacClientPluginConfig {
             "name": "npm",
             "dev_name": "npm.dev",
             "cli_flag": "--cl",
-            "install_dir": ".client-build/.jac-client.configs",
+            "install_dir": ".jac/client/configs",
             "install_handler": _npm_install_handler,
             "install_all_handler": _npm_install_all_handler,
             "remove_handler": _npm_remove_handler
@@ -152,13 +152,13 @@ def _regenerate_and_install(project_dir: Path) -> None {
     bundler = ViteBundler(project_dir);
     bundler.create_package_json();
 
-    # Install to .client-build/ directory where babel processor expects it
-    build_dir = project_dir / '.client-build';
-    build_dir.mkdir(exist_ok=True);
+    # Install to .jac/client/ directory where babel processor expects it
+    client_dir = bundler._get_client_dir();
+    client_dir.mkdir(parents=True, exist_ok=True);
 
-    # Copy package.json to .client-build/ for npm install
-    configs_package_json = build_dir / '.jac-client.configs' / 'package.json';
-    build_package_json = build_dir / 'package.json';
+    # Copy package.json to .jac/client/ for npm install
+    configs_package_json = client_dir / 'configs' / 'package.json';
+    build_package_json = client_dir / 'package.json';
     if configs_package_json.exists() {
         shutil.copy2(configs_package_json, build_package_json);
     }
@@ -166,7 +166,7 @@ def _regenerate_and_install(project_dir: Path) -> None {
     try {
         subprocess.run(
             ["npm", "install"],
-            cwd=build_dir,
+            cwd=client_dir,
             check=True,
             capture_output=True,
             text=True
@@ -182,10 +182,10 @@ def _regenerate_and_install(project_dir: Path) -> None {
         if build_package_json.exists() {
             build_package_json.unlink();
         }
-        # Move package-lock.json to .jac-client.configs/ if it exists
-        build_package_lock = build_dir / 'package-lock.json';
+        # Move package-lock.json to configs/ if it exists
+        build_package_lock = client_dir / 'package-lock.json';
         if build_package_lock.exists() {
-            configs_package_lock = build_dir / '.jac-client.configs' / 'package-lock.json';
+            configs_package_lock = client_dir / 'configs' / 'package-lock.json';
             if configs_package_lock.exists() {
                 configs_package_lock.unlink();
             }

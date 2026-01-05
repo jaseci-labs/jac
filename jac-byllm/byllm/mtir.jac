@@ -43,12 +43,14 @@ obj MTRuntime {
         call_params: dict[(str, object)];
 
     static def factory(
-        caller: Callable, args: dict[int | str, object], call_params: dict[str, object]
+        caller: Callable,
+        args: dict[(int | str, object)],
+        call_params: dict[(str, object)]
     ) -> MTRuntime;
 
     def dispatch_params -> dict[str, object];
     def add_message(message: MessageType) -> None;
-    def get_msg_list -> list[dict[str, object] | LiteLLMMessage];
+    def get_msg_list -> list[dict[(str, object)] | LiteLLMMessage];
     def parse_response(response: str) -> object;
     def get_tool(tool_name: str) -> Tool | None;
     def get_tool_list -> list[dict];

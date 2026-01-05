@@ -82,7 +82,7 @@ Custom extensions are **additive**, they don't replace default types.
 6. Assets accessible via /path/to/asset.ext
 ```
 
-Custom assets are copied to `.client-build/build/assets/` and served from their relative paths.
+Custom assets are copied to `.jac/client/build/assets/` and served from their relative paths.
 
 ## Use Cases
 

@@ -161,24 +161,26 @@ class DeclImplMatchPass(Transform[uni.Module, uni.Module]):
             params_decl = valid_decl.signature.params
             params_defn = sym.decl.name_of.spec.params
 
-            if params_decl and params_defn:
-                # Check if the parameter count is matched.
-                if len(params_defn) != len(params_decl):
-                    self.log_error(
-                        f"Parameter count mismatch for ability {sym.sym_name}.",
-                        sym.decl.name_of.name_spec,
-                    )
-                    self.log_error(
-                        f"From the declaration of {valid_decl.name_spec.sym_name}.",
-                        valid_decl.name_spec,
-                    )
-                else:
-                    # Copy the parameter names from the declaration to the definition.
-                    for idx in range(len(params_defn)):
-                        if (par := params_decl[idx].parent) is not None:
-                            loc_in_kid = par.kid.index(params_decl[idx])
-                            par.kid[loc_in_kid] = params_defn[idx]
-                        params_decl[idx] = params_defn[idx]
+            decl_count = len(params_decl) if params_decl else 0
+            defn_count = len(params_defn) if params_defn else 0
+
+            # Check if the parameter count is matched.
+            if defn_count != decl_count:
+                self.log_error(
+                    f"Parameter count mismatch for ability {sym.sym_name}.",
+                    sym.decl.name_of.name_spec,
+                )
+                self.log_error(
+                    f"From the declaration of {valid_decl.name_spec.sym_name}.",
+                    valid_decl.name_spec,
+                )
+            elif params_decl and params_defn:
+                # Copy the parameter names from the declaration to the definition.
+                for idx in range(len(params_defn)):
+                    if (par := params_decl[idx].parent) is not None:
+                        loc_in_kid = par.kid.index(params_decl[idx])
+                        par.kid[loc_in_kid] = params_defn[idx]
+                    params_decl[idx] = params_defn[idx]
 
     def _resolve_impl_body_symbols(self, impl_def: uni.ImplDef) -> None:
         """Re-resolve symbols in an impl body after symbol table synchronization.

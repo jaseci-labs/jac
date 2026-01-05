@@ -95,7 +95,7 @@ class JacScalePluginConfig {
                         },
                         "shelf_db_path": {
                             "type": "string",
-                            "default": "anchor_store.db",
+                            "default": ".jac/data/anchor_store.db",
                             "description": "File-based storage path for ShelfDB fallback"
                         }
                     }

@@ -6,6 +6,86 @@ This page documents significant breaking changes in Jac and Jaseci that may affe
 
 MTLLM library is now deprecated and replaced by the byLLM package. In all place where `mtllm` was used before can be replaced with `byllm`.
 
+### Version 0.9.5
+
+#### 1. Build Artifacts Consolidated to `.jac/` Directory
+
+All Jac project build artifacts are now organized under a single `.jac/` directory instead of being scattered across the project root. This is a breaking change for existing projects.
+
+**Before (v0.9.4 and earlier):**
+
+```
+my-project/
+├── jac.toml
+├── main.jac
+├── .jaccache/                    # Bytecode cache
+├── packages/                     # Python packages
+├── .client-build/                # Client build artifacts (jac-client)
+├── .jac-client.configs/          # Client config files (jac-client)
+└── anchor_store.db.*             # ShelfDB files (jac-scale)
+```
+
+**After (v0.9.5+):**
+
+```
+my-project/
+├── jac.toml
+├── main.jac
+└── .jac/                         # All build artifacts
+    ├── cache/                    # Bytecode cache
+    ├── packages/                 # Python packages
+    ├── client/                   # Client build artifacts
+    │   ├── configs/              # Generated config files
+    │   ├── build/                # Build output
+    │   └── dist/                 # Distribution files
+    └── data/                     # Runtime data (ShelfDB)
+```
+
+**Migration Steps:**
+
+1. Delete old artifact directories from your project root:
+
+   ```bash
+   rm -rf .jaccache packages .client-build .jac-client.configs anchor_store.db.*
+   ```
+
+2. Update `.gitignore` (simplified):
+
+   ```gitignore
+   # Before
+   .jaccache/
+   packages/
+   .client-build/
+   .jac-client.configs/
+   *.db
+
+   # After
+   .jac/
+   ```
+
+3. If using custom `shelf_db_path` in jac-scale config, update the path:
+
+   ```toml
+   [plugins.scale.database]
+   shelf_db_path = ".jac/data/anchor_store.db"
+   ```
+
+4. Optionally configure a custom base directory in `jac.toml`:
+
+   ```toml
+   [build]
+   dir = ".custom-build"  # Defaults to ".jac"
+   ```
+
+**Key Changes:**
+
+- Bytecode cache moved from `.jaccache/` to `.jac/cache/`
+- Python packages moved from `packages/` to `.jac/packages/`
+- Client build artifacts moved from `.client-build/` to `.jac/client/`
+- Client configs moved from `.jac-client.configs/` to `.jac/client/configs/`
+- ShelfDB files moved to `.jac/data/`
+- New `[build].dir` config option allows customizing the base directory
+
 ### Version 0.9.4
 
 #### 1. `let` Keyword Removed - Use Direct Assignment
