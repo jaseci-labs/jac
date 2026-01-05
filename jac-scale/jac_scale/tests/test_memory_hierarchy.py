@@ -1,17 +1,16 @@
+import contextlib
+import gc
+import os
 import socket
 import subprocess
+import time
+from pathlib import Path
+
 import redis
 import requests
 from pymongo import MongoClient
-import contextlib
-import time
-import gc
-import requests
-import os
-
-from pathlib import Path
-from testcontainers.redis import RedisContainer
 from testcontainers.mongodb import MongoDbContainer
+from testcontainers.redis import RedisContainer
 
 
 def get_free_port() -> int:
@@ -61,8 +60,8 @@ class TestMemoryHierarchy:
         mongo_uri = cls.mongo_container.get_connection_url()
         cls.mongo_client = MongoClient(mongo_uri)
 
-        os.environ["mongodb_uri"] = mongo_uri
-        os.environ["redis_url"] = redis_url
+        os.environ["MONGODB_URI"] = mongo_uri
+        os.environ["REDIS_URL"] = redis_url
 
         # verify there are no additional mongo dbs
         system_dbs = {"admin", "config", "local"}

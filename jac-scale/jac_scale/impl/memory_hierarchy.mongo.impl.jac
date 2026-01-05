@@ -164,7 +164,7 @@ impl MongoDB._to_uuid(id: (UUID | str)) -> UUID {
     return id;
 }
 
-impl MongoDB.mongo_is_available()  -> bool {
+impl MongoDB.mongo_is_available -> bool {
     client = None;
     if (self.mongo_url) {
         try {
