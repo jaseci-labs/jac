@@ -8,7 +8,6 @@ import time
 import gc
 import requests
 import os
-import pickle
 
 from pathlib import Path
 from testcontainers.redis import RedisContainer
@@ -150,22 +149,13 @@ class TestMemoryHierarchy:
         return res.json()
 
 
-    def _redis_contains_task(self) -> bool:
-        for key in self.redis_client.keys("anchor:*"):
-            raw = self.redis_client.get(key)
-            try:
-                obj = pickle.loads(raw)
-                print(obj.archetype.__class__.__name__)
-                if obj.archetype.__class__.__name__ == "Task":
-                    return True
-            except Exception:
-                pass
-        return False
-
     def test_write(self) -> None:
         token = self._register("akindu", "pass123")
 
         system_dbs = {"admin", "config", "local"}
+        
+        print(f"0 - printing redis db size: {self.redis_client.dbsize()}")
+        redis_size_before_task_creation = self.redis_client.dbsize()
 
         # create tasks
         self._post("/walker/CreateTask", {"id": 1, "title": "Task 1"}, token)
@@ -174,20 +164,30 @@ class TestMemoryHierarchy:
 
         # checking whether new data bases are created
         current_dbs = set(self.mongo_client.list_database_names())
+        print(f"Current databases: {current_dbs}")
         new_user_dbs = current_dbs - system_dbs
 
         assert new_user_dbs, "user dbs are not created"
         assert len(current_dbs) > len(system_dbs)
 
-        assert not self._redis_contains_task(), "Task objects leaked into Redis"
+        print(f"1 - printing redis db size: {self.redis_client.dbsize()}")
+        redis_size_after_task_creation = self.redis_client.dbsize()
 
         self._post("/walker/DeleteTask", {"id": 1}, token)
 
         self._post("/walker/DeleteTask", {"id": 2}, token)
 
+        print(f"2 - printing redis db size: {self.redis_client.dbsize()}")
+        redis_size_after_task_deletion = self.redis_client.dbsize()
+
+        assert redis_size_before_task_creation == redis_size_after_task_creation == redis_size_after_task_deletion
+
+
     def test_read(self) -> None:
         # Register a user
         token = self._register("reader", "pass123")
+
+        redis_size_before_task_creation = self.redis_client.dbsize()
 
         # Create tasks
         created_tasks = [
@@ -195,5 +195,16 @@ class TestMemoryHierarchy:
             {"id": 204, "title": "Task 204"},
         ]
 
+        redis_size_after_task_creation = self.redis_client.dbsize()
+
         for task_payload in created_tasks:
             self._post("/walker/CreateTask", task_payload, token)
+
+        self._post("/walker/GetAllTasks", {}, token)
+
+        redis_size_after_task_read = self.redis_client.dbsize()
+
+        assert redis_size_before_task_creation == redis_size_after_task_creation
+        assert redis_size_after_task_read > redis_size_after_task_creation
+
+        

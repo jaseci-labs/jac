@@ -16,9 +16,9 @@ impl MultiHierarchyMemory.delete(anchor: Anchor) {
 }
 
 impl MultiHierarchyMemory.sync(anchors: Iterable[Anchor]) -> None {
-    if self.redis_available {
-        self.redis.commit(keys=anchors);
-    }
+    # if self.redis_available {
+    #     self.redis.commit(keys=anchors);
+    # }
     if self.mongo_available {
         self.mongo.commit(keys=anchors);
     } elif self.shelf {
@@ -65,25 +65,30 @@ impl MultiHierarchyMemory.commit(anchor: (Anchor | None) = None) {
 }
 
 impl MultiHierarchyMemory.find_by_id(id: UUID) -> (Anchor | None) {
+    print("inside find_by_id in memory hierarchy");
     if (anchor := self.mem.find_by_id(id)) {
         return anchor;
     }
     if (self.redis_available) {
         if (anchor := self.redis.find_by_id(id)) {
+            print(f"found in redis");
             self.mem.set(anchor);
             return anchor;
         }
     }
     if (self.mongo_available) {
         if (anchor := self.mongo.find_by_id(id)) {
+            print(f"found in mongo");
             self.mem.set(anchor);
             if (self.redis_available) {
+                print(f"caching in redis");
                 self.redis.set(anchor);
             }
             return anchor;
         }
     } elif self.shelf {
         if (anchor := self.shelf.find_by_id(id)) {
+            print(f"found in shelf");
             self.mem.set(anchor);
             return anchor;
         }
@@ -100,8 +105,6 @@ impl MultiHierarchyMemory.init -> None {
     self.shelf: (ShelfDB | None) = None;
     self.redis_available = self.redis.redis_is_available();
     self.mongo_available = self.mongo.mongo_is_available();
-    # print(f"redis available: {self.redis_available}")
-    # print(f"mongo status: {self.mongo_available}")
     if (not self.redis_available and not self.mongo_available) {
         self.shelf = ShelfDB();
     }
