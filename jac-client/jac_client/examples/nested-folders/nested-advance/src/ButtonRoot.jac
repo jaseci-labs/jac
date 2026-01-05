@@ -1,7 +1,7 @@
 # Root Level Button
 cl import from antd { Button }
 
-cl def ButtonRoot -> any {
+cl def:pub ButtonRoot -> any {
     return <Button
         type="primary"
         size="large"

@@ -8,6 +8,7 @@ This module provides session-scoped fixtures to optimize test execution by:
 
 from __future__ import annotations
 
+import contextlib
 import os
 import shutil
 import subprocess
@@ -20,6 +21,38 @@ from unittest.mock import patch
 import pytest
 
 from jaclang.pycore.runtime import JacRuntime as Jac
+from jaclang.pycore.runtime import JacRuntimeImpl, plugin_manager
+
+# Store unregistered plugins globally for session-level management
+_external_plugins: list = []
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Disable jac-scale plugin at the start of the test session.
+
+    jac-scale plugin is disabled during tests to avoid MongoDB connections
+    and other jac-scale specific dependencies. jac-client plugin is kept
+    enabled since we're testing it.
+    """
+    global _external_plugins
+    for name, plugin in list(plugin_manager.list_name_plugin()):
+        # Keep core runtime and jac-client plugins
+        if plugin is JacRuntimeImpl or name == "JacRuntimeImpl":
+            continue
+        if "client" in name.lower() or "JacClient" in str(type(plugin)):
+            continue
+        # Disable jac-scale and other external plugins
+        _external_plugins.append((name, plugin))
+        plugin_manager.unregister(plugin=plugin, name=name)
+
+
+def pytest_unconfigure(config: pytest.Config) -> None:
+    """Re-register external plugins at the end of the test session."""
+    global _external_plugins
+    for name, plugin in _external_plugins:
+        with contextlib.suppress(ValueError):
+            plugin_manager.register(plugin, name=name)
+    _external_plugins.clear()
 
 
 def _get_jac_command() -> list[str]:
@@ -75,7 +108,7 @@ def npm_cache_dir() -> Generator[Path, None, None]:
     """Session-scoped fixture that provides a directory with npm packages installed.
 
     This runs npm install once per test session and provides the path to the
-    .jac-client.configs directory containing node_modules.
+    .jac/client/configs directory containing node_modules.
     """
     global _npm_cache_dir
 
@@ -123,13 +156,14 @@ def vite_project_dir(npm_cache_dir: Path, tmp_path: Path) -> Path:
     jac_toml = tmp_path / "jac.toml"
     jac_toml.write_text(_get_minimal_jac_toml())
 
-    # Copy .jac-client.configs directory (contains package.json)
-    source_configs = npm_cache_dir / ".jac-client.configs"
-    dest_configs = tmp_path / ".jac-client.configs"
+    # Copy .jac/client/configs directory (contains package.json)
+    source_configs = npm_cache_dir / ".jac" / "client" / "configs"
+    dest_configs = tmp_path / ".jac" / "client" / "configs"
     if source_configs.exists():
+        dest_configs.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(source_configs, dest_configs, symlinks=True)
 
-    # Copy node_modules from project root (npm installs there, not in .jac-client.configs)
+    # Copy node_modules from project root (npm installs there, not in .jac/client/configs)
     source_node_modules = npm_cache_dir / "node_modules"
     dest_node_modules = tmp_path / "node_modules"
     if source_node_modules.exists():
@@ -162,10 +196,11 @@ antd = "^6.0.0"
     jac_toml = tmp_path / "jac.toml"
     jac_toml.write_text(jac_toml_content)
 
-    # Copy base .jac-client.configs first for faster install
-    source_configs = npm_cache_dir / ".jac-client.configs"
-    dest_configs = tmp_path / ".jac-client.configs"
+    # Copy base .jac/client/configs first for faster install
+    source_configs = npm_cache_dir / ".jac" / "client" / "configs"
+    dest_configs = tmp_path / ".jac" / "client" / "configs"
     if source_configs.exists():
+        dest_configs.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(source_configs, dest_configs, symlinks=True)
 
     # Copy base node_modules for faster install (npm will add antd on top)
@@ -241,7 +276,7 @@ entry-point = "app.jac"
 
 [dependencies.npm]{deps_section}
 
-[dependencies.npm.dev]{dev_deps_section}
+[dev-dependencies.npm]{dev_deps_section}
 """
     config_path = path / "jac.toml"
     config_path.write_text(content)

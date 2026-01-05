@@ -586,15 +586,19 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
             )
 
         merged_body = self._merge_module_bodies(node)
-        body_items: list[ast3.AST | list[ast3.AST] | None] = [*self.preamble]
-        body_items.extend(item.gen.py_ast for item in merged_body)
+        body_items: list[ast3.AST | list[ast3.AST] | None] = []
 
+        # If there's a docstring, it must come first (before __future__ imports)
         if node.doc:
             doc_stmt = self.sync(
                 ast3.Expr(value=cast(ast3.expr, node.doc.gen.py_ast[0])),
                 jac_node=node.doc,
             )
-            body_items.insert(0, doc_stmt)
+            body_items.append(doc_stmt)
+
+        # Add preamble (which includes __future__ imports) after docstring
+        body_items.extend(self.preamble)
+        body_items.extend(item.gen.py_ast for item in merged_body)
 
         new_body = self._flatten_ast_list(body_items)
         node.gen.py_ast = [
@@ -724,6 +728,14 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
 
     def exit_import(self, node: uni.Import) -> None:
         """Exit import node."""
+        # Skip __future__ imports as we always add them in the preamble
+        # This prevents duplicate __future__ imports which cause SyntaxError
+        if node.from_loc and node.from_loc.path:
+            module_parts = [p.value for p in node.from_loc.path if hasattr(p, "value")]
+            if module_parts == ["__future__"]:
+                node.gen.py_ast = []
+                return
+
         py_nodes: list[ast3.AST] = []
         if node.doc:
             py_nodes.append(

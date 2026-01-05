@@ -8,3 +8,5 @@ entry-point = "src/app.jac"
 # Vite bundler configuration (optional overrides)
 # vite.plugins = []
 # vite.build = {}
+
+# Default packages are automatically included (react, react-dom, react-router-dom, vite, @babel/*, typescript, @types/*, @vitejs/plugin-react)

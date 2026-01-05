@@ -1,5 +1,17 @@
 # Nested Folder Imports
 
+> **️ Version Compatibility Warning**
+>
+> **For jac-client < 0.2.4:**
+>
+> - All `def` functions are **automatically exported** - no `:pub` needed
+> - You **cannot export variables** (globals)
+>
+> **For jac-client >= 0.2.4:**
+>
+> - Functions **must be explicitly exported** with `:pub` to be importable
+> - This documentation assumes version 0.2.4 or later
+
 Jac preserves folder structure during compilation, similar to TypeScript transpilation. This allows you to organize code in nested folders and use relative imports across multiple directory levels.
 
 ## Folder Structure Preservation
@@ -139,7 +151,7 @@ cl import from .level1.Card {
     Card
 }
 
-cl def app() -> any {
+cl def:pub app() -> any {
     return <div>
         <ButtonRoot />
         <ButtonSecondL />
@@ -156,7 +168,7 @@ cl import from ..ButtonRoot {
     ButtonRoot
 }
 
-cl def ButtonSecondL() -> any {
+cl def:pub ButtonSecondL() -> any {
     return <div>
         <Button>Second Level</Button>
         <ButtonRoot />
@@ -175,7 +187,7 @@ cl import from .level2.ButtonThirdL {
     ButtonThirdL
 }
 
-cl def Card() -> any {
+cl def:pub Card() -> any {
     return <div>
         <ButtonRoot />
         <ButtonThirdL />
@@ -193,7 +205,7 @@ cl import from ..ButtonSecondL {
     ButtonSecondL
 }
 
-cl def ButtonThirdL() -> any {
+cl def:pub ButtonThirdL() -> any {
     return <div>
         <Button>Third Level</Button>
         <ButtonRoot />
@@ -364,4 +376,5 @@ jac serve src/app.jac
 
 - [Backend/Frontend Separation](backend-frontend.md)
 - [Import System](../imports.md)
+- [Exporting Functions and Variables](../exporting-functions-and-variables.md)
 - [File System Organization](intro.md)

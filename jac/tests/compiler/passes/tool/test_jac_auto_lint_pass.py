@@ -1,6 +1,9 @@
 """Test Jac Auto Lint Pass module."""
 
+import contextlib
 import os
+import shutil
+import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
@@ -290,30 +293,6 @@ class TestCombineConsecutiveGlob:
         assert "glob z = 3;" in formatted
 
 
-class TestIsPureExpression:
-    """Unit tests for the is_pure_expression method."""
-
-    def _create_test_pass(self) -> object:
-        """Create a JacAutoLintPass instance for testing."""
-        from jaclang.compiler.passes.tool.jac_auto_lint_pass import JacAutoLintPass
-
-        prog = JacProgram()
-        # We need to create a stub module
-        module = uni.Module.make_stub()
-        return JacAutoLintPass(ir_in=module, prog=prog)
-
-    def test_literals_are_pure(self) -> None:
-        """Test that literal values are considered pure."""
-        # This is a conceptual test - the actual implementation
-        # checks isinstance against AST node types
-        pass  # Covered by integration tests above
-
-    def test_function_calls_not_pure(self) -> None:
-        """Test that function calls are NOT considered pure."""
-        # Covered by non_extractable integration test
-        pass
-
-
 class TestStaticmethodConversion:
     """Tests for converting @staticmethod decorator to static keyword."""
 
@@ -399,6 +378,47 @@ class TestFormatCommandIntegration:
 
         # Linting should have been applied
         assert "glob" in formatted
+
+    def test_format_auto_formats_impl_files(
+        self, auto_lint_fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that CLI format command writes both main and impl files."""
+        from jaclang.cli import cli
+
+        # Copy fixture files to temp directory
+        fixture_dir = os.path.dirname(auto_lint_fixture_path("sig_mismatch.jac"))
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Copy main file
+            main_src = auto_lint_fixture_path("sig_mismatch.jac")
+            main_dst = os.path.join(tmpdir, "sig_mismatch.jac")
+            shutil.copy2(main_src, main_dst)
+
+            # Copy impl file (create impl subdirectory)
+            impl_dir = os.path.join(tmpdir, "impl")
+            os.makedirs(impl_dir)
+            impl_src = os.path.join(fixture_dir, "impl", "sig_mismatch.impl.jac")
+            impl_dst = os.path.join(impl_dir, "sig_mismatch.impl.jac")
+            shutil.copy2(impl_src, impl_dst)
+
+            # Read original impl content (has wrong param names)
+            with open(impl_dst) as f:
+                original_impl = f.read()
+            assert "impl Calculator.add(a: int, b: int)" in original_impl
+
+            # Run CLI format command with --fix
+            # format exits 1 when files change (for pre-commit usage)
+            with contextlib.suppress(SystemExit):
+                cli.format([main_dst], fix=True)
+
+            # Read the updated impl file
+            with open(impl_dst) as f:
+                updated_impl = f.read()
+
+            # The impl file should have been fixed: param names changed from a,b to x,y
+            assert "impl Calculator.add(x: int, y: int)" in updated_impl, (
+                f"Impl file should have been updated with fixed params.\n"
+                f"Got: {updated_impl}"
+            )
 
 
 class TestRemoveUnnecessaryEscape:
@@ -502,6 +522,29 @@ class TestRemoveEmptyParens:
         assert "def get_count -> int" in formatted
         assert "def get_count()" not in formatted
 
+    def test_impl_empty_parens_removed(
+        self, auto_lint_fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that empty parentheses are removed from impl blocks."""
+        input_path = auto_lint_fixture_path("empty_parens.jac")
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True)
+        formatted = prog.mod.main.gen.jac
+
+        # Impl with no params but return type - parens should be removed
+        assert "impl Calculator.compute -> int" in formatted
+        assert "impl Calculator.compute()" not in formatted
+
+        # Impl with params - parens should stay
+        assert "impl Calculator.process(x: int)" in formatted
+
+        # Impl with no params and no return type - parens should be removed
+        # Note: formatter may or may not add space before {
+        assert (
+            "impl Calculator.run{" in formatted or "impl Calculator.run {" in formatted
+        )
+        assert "impl Calculator.run()" not in formatted
+
 
 class TestHasattrConversion:
     """Tests for converting hasattr(obj, 'attr') to obj?.attr."""
@@ -600,3 +643,246 @@ class TestTernaryToOrConversion:
 
         # Without linting, ternary should remain (may be multi-line in formatted output)
         assert "if instance.value" in formatted and "else 0" in formatted
+
+
+class TestSignatureMismatchFix:
+    """Tests for fixing signature mismatches between decls and impls."""
+
+    def test_signature_mismatch_fixed(
+        self, auto_lint_fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that impl signatures are fixed to match declarations."""
+
+        input_path = auto_lint_fixture_path("sig_mismatch.jac")
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True)
+
+        # Verify impl module is discovered
+        assert len(prog.mod.main.impl_mod) == 1, "Should have one impl module"
+
+        # Check the impl signatures were fixed by examining the AST nodes directly
+        impl_mod = prog.mod.main.impl_mod[0]
+
+        # Helper to get param names from an ImplDef
+        def get_impl_params(impl_def: uni.ImplDef) -> list[str]:
+            if isinstance(impl_def.spec, uni.FuncSignature):
+                return [p.name.value for p in impl_def.spec.params]
+            return []
+
+        # Find all impl definitions by name
+        impl_defs: dict[str, uni.ImplDef] = {}
+        for stmt in impl_mod.body:
+            if isinstance(stmt, uni.ImplDef):
+                # Get the method name (last part of target)
+                method_name = stmt.target[-1].sym_name
+                impl_defs[method_name] = stmt
+
+        # add should have x, y params (from decl), not a, b
+        assert "add" in impl_defs, "add impl not found"
+        add_params = get_impl_params(impl_defs["add"])
+        assert add_params == ["x", "y"], (
+            f"add should have x, y params from decl, got: {add_params}"
+        )
+
+        # multiply should have a, b params (from decl)
+        assert "multiply" in impl_defs, "multiply impl not found"
+        multiply_params = get_impl_params(impl_defs["multiply"])
+        assert multiply_params == ["a", "b"], (
+            f"multiply should have a, b params from decl, got: {multiply_params}"
+        )
+
+        # no_change should remain unchanged (already matches)
+        assert "no_change" in impl_defs, "no_change impl not found"
+        no_change_params = get_impl_params(impl_defs["no_change"])
+        assert no_change_params == ["val"], (
+            f"no_change should have val param, got: {no_change_params}"
+        )
+
+        # reset should have no params (impl had extra param that should be removed)
+        assert "reset" in impl_defs, "reset impl not found"
+        reset_params = get_impl_params(impl_defs["reset"])
+        assert reset_params == [], (
+            f"reset should have no params from decl, got: {reset_params}"
+        )
+
+
+class TestNestedClassSignatureFix:
+    """Tests for fixing nested class impl signatures.
+
+    The auto-lint should properly fix nested class impl signatures to match
+    their nested class declarations, NOT the parent class declarations.
+    For example, `impl OuterClass.InnerClass.init` should be fixed to match
+    `InnerClass.init`, NOT `OuterClass.init`.
+    """
+
+    def test_nested_class_impl_signature_fixed(
+        self, auto_lint_fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that nested class impl signatures are fixed to match their declarations.
+
+        The impl file has intentionally wrong signatures:
+        - OuterClass.InnerClass.init has (self, a, b) but decl has (self, name)
+        - OuterClass.AnotherInner.init has (self, foo) but decl has (self, x, y, *, z=0)
+        - OuterClass.process has (wrong) but decl has (data)
+
+        This is a regression test for a bug where the auto-lint would look up
+        declarations using only the first and last elements of the target path,
+        e.g., for `impl OuterClass.InnerClass.init`, it would look up
+        `OuterClass.init` instead of `OuterClass.InnerClass.init`.
+        """
+
+        input_path = auto_lint_fixture_path("nested_class_sig.jac")
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True)
+
+        # Verify impl module is discovered
+        assert len(prog.mod.main.impl_mod) == 1, "Should have one impl module"
+
+        impl_mod = prog.mod.main.impl_mod[0]
+
+        # Helper to get the full target path as a string
+        def get_target_path(impl_def: uni.ImplDef) -> str:
+            return ".".join(t.sym_name for t in impl_def.target if t)
+
+        # Helper to get param names from an ImplDef
+        def get_impl_params(impl_def: uni.ImplDef) -> list[str]:
+            if isinstance(impl_def.spec, uni.FuncSignature):
+                return [p.name.value for p in impl_def.spec.params]
+            return []
+
+        # Find all impl definitions by full target path
+        impl_defs: dict[str, uni.ImplDef] = {}
+        for stmt in impl_mod.body:
+            if isinstance(stmt, uni.ImplDef):
+                target_path = get_target_path(stmt)
+                impl_defs[target_path] = stmt
+
+        # OuterClass.__init__ should have: self, shared, private (already correct)
+        assert "OuterClass.__init__" in impl_defs, "OuterClass.__init__ impl not found"
+        outer_init_params = get_impl_params(impl_defs["OuterClass.__init__"])
+        assert outer_init_params == ["self", "shared", "private"], (
+            f"OuterClass.__init__ should have [self, shared, private], got: {outer_init_params}"
+        )
+
+        # OuterClass.InnerClass.__init__ should be FIXED from (self, a, b) to (self, name)
+        # NOT: (self, shared, private) which would happen if bug exists
+        assert "OuterClass.InnerClass.__init__" in impl_defs, (
+            "OuterClass.InnerClass.__init__ impl not found"
+        )
+        inner_init_params = get_impl_params(impl_defs["OuterClass.InnerClass.__init__"])
+        assert inner_init_params == ["self", "name"], (
+            f"OuterClass.InnerClass.__init__ should be FIXED to [self, name] "
+            f"(matching InnerClass.init decl), got: {inner_init_params}. "
+            f"Original impl had [self, a, b]. "
+            f"If you got [self, shared, private], the bug is that auto-lint looked up "
+            f"OuterClass.__init__ instead of InnerClass.__init__."
+        )
+
+        # OuterClass.AnotherInner.__init__ should be FIXED from (self, foo) to (self, x, y)
+        # (plus kwonly z, but we only check positional params here)
+        assert "OuterClass.AnotherInner.__init__" in impl_defs, (
+            "OuterClass.AnotherInner.__init__ impl not found"
+        )
+        another_init_params = get_impl_params(
+            impl_defs["OuterClass.AnotherInner.__init__"]
+        )
+        assert another_init_params == ["self", "x", "y"], (
+            f"OuterClass.AnotherInner.__init__ should be FIXED to [self, x, y] "
+            f"(matching AnotherInner.init decl), got: {another_init_params}. "
+            f"Original impl had [self, foo]."
+        )
+
+        # OuterClass.process should be FIXED from (wrong) to (data)
+        assert "OuterClass.process" in impl_defs, "OuterClass.process impl not found"
+        process_params = get_impl_params(impl_defs["OuterClass.process"])
+        assert process_params == ["data"], (
+            f"OuterClass.process should be FIXED to [data] "
+            f"(matching process decl), got: {process_params}. "
+            f"Original impl had [wrong]."
+        )
+
+
+class TestRemoveImportSemicolons:
+    """Tests for removing semicolons from import from {} style imports.
+
+    When `import from X { ... };` appears inside a function/ability body,
+    the semicolon is parsed as a separate Semi statement. This lint rule
+    removes those standalone semicolons that follow import from {} statements.
+    """
+
+    def test_import_from_semicolons_removed(
+        self, auto_lint_fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that semicolons are removed from import from {} style imports."""
+        input_path = auto_lint_fixture_path("import_semicolon.jac")
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True)
+        formatted = prog.mod.main.gen.jac
+
+        # import from {} style imports inside functions should NOT have semicolons
+        # The semicolons (which become standalone Semi statements) should be removed
+        assert "import from typing { List }" in formatted
+        assert "import from sys { argv }" in formatted
+
+        # There should be no standalone semicolons after these imports
+        # Check that we don't have "}\n    ;" pattern (import followed by semicolon)
+        assert "}\n    ;" not in formatted
+
+        # Statement-level imports should still have semicolons
+        assert "import json;" in formatted
+        assert "import math;" in formatted
+
+        # Other code should be preserved
+        assert "obj MyClass" in formatted
+        assert "def main" in formatted
+
+    def test_import_semicolons_preserved_without_lint(
+        self, auto_lint_fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that auto_lint=False preserves import semicolons."""
+        input_path = auto_lint_fixture_path("import_semicolon.jac")
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=False)
+        formatted = prog.mod.main.gen.jac
+
+        # Without linting, standalone semicolons should remain
+        assert "import from typing" in formatted
+        assert ";" in formatted  # Semicolons should still be present
+
+
+class TestRemoveFutureAnnotations:
+    """Tests for removing `import from __future__ { annotations }`."""
+
+    def test_future_annotations_removed(
+        self, auto_lint_fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that `import from __future__ { annotations }` is removed."""
+        input_path = auto_lint_fixture_path("future_annotations.jac")
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True)
+        formatted = prog.mod.main.gen.jac
+
+        # The __future__ annotations import statement should be removed
+        # (note: __future__ may still appear in the docstring, so check import statement)
+        assert "import from __future__" not in formatted
+
+        # Other imports should be preserved
+        assert "import from os" in formatted
+
+        # Rest of the code should be preserved
+        assert "obj Person" in formatted
+        assert "def greet" in formatted
+        assert "def main" in formatted
+
+    def test_future_annotations_preserved_without_lint(
+        self, auto_lint_fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that auto_lint=False preserves __future__ annotations import."""
+        input_path = auto_lint_fixture_path("future_annotations.jac")
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=False)
+        formatted = prog.mod.main.gen.jac
+
+        # Without linting, __future__ import should remain
+        assert "__future__" in formatted
+        assert "annotations" in formatted

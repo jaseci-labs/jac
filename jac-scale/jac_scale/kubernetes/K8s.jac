@@ -14,6 +14,7 @@ import from .utils {
     ensure_namespace_exists,
     ensure_pvc_exists,
     load_env_variables,
+    validate_resource_limits,
     sync_code_to_pvc
 }
 import from jac_scale.config_loader { get_scale_config }

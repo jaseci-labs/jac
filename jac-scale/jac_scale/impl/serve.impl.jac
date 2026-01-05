@@ -168,9 +168,9 @@ impl JacAPIServer.serve_static_file(self: JacAPIServer, file_path: str) -> Respo
         }
         file_name = Path(file_path).name;
         # Check multiple locations for files
-        # 1. .client-build/dist/ (Jac-client build output)
-        client_build_dist_file = base_path / '.client-build' / 'dist' / file_path;
-        client_build_dist_file_simple = base_path / '.client-build' / 'dist' / file_name;
+        # 1. .jac/client/dist/ (Jac-client build output)
+        client_build_dist_file = base_path / '.jac' / 'client' / 'dist' / file_path;
+        client_build_dist_file_simple = base_path / '.jac' / 'client' / 'dist' / file_name;
         # 2. dist/ (jac core build output)
         dist_file = base_path / 'dist' / file_path;
         dist_file_simple = base_path / 'dist' / file_name;
@@ -178,7 +178,7 @@ impl JacAPIServer.serve_static_file(self: JacAPIServer, file_path: str) -> Respo
         assets_file = base_path / 'assets' / file_path;
         assets_file_simple = base_path / 'assets' / file_name;
         if file_name.endswith('.css') {
-            # Check .client-build/dist/ first (jac-client)
+            # Check .jac/client/dist/ first (jac-client)
             if client_build_dist_file.exists() {
                 css_content = client_build_dist_file.read_text(encoding='utf-8');
                 return Response(content=css_content, media_type='text/css');
@@ -329,6 +329,7 @@ impl JacAPIServer.render_page_callback(
         } except ValueError as exc {
             return HTMLResponse(content=f"<h1>404 Not Found</h1>", status_code=404);
         } except RuntimeError as exc {
+            print(f"Error rendering page '{page_name}': {exc}");
             return HTMLResponse(
                 content=f"<h1>503 Service Unavailable</h1>", status_code=503
             );

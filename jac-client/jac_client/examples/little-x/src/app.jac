@@ -557,7 +557,7 @@ cl def logout_action -> None {
 }
 
 # Main App component with declarative router
-cl def App -> any {
+cl def:pub App -> any {
     # Create routes array manually (workaround for JS compiler bug with named args)
     login_route = {
         "path": "/login",
@@ -714,6 +714,6 @@ cl def ProfileView -> any {
 }
 
 # Main SPA entry point - simplified with reactive routing
-cl def jac_app -> any {
+cl def:pub jac_app -> any {
     return App();
 }

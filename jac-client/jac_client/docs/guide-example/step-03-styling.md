@@ -48,7 +48,7 @@ cl {
         </div>;
     }
 
-    def app() -> any {
+    def:pub app() -> any {
         return <div style=  {{"padding": "20px"}}>
             <h1>My Todos</h1>
             <TodoItem text="Learn Jac basics" done={true} />
@@ -94,7 +94,7 @@ cl {
         </div>;
     }
 
-    def app() -> any {
+    def:pub app() -> any {
         return <div style={{"padding": "20px"}}>
             <h1>My Todos</h1>
             <TodoInput />
@@ -149,7 +149,7 @@ cl {
         </div>;
     }
 
-    def app() -> any {
+    def:pub app() -> any {
         return <div style={{"padding": "20px"}}>
             <h1>My Todos</h1>
             <TodoFilters />
@@ -376,7 +376,7 @@ Flexbox is a powerful layout system. Here are the basics:
 You can store styles in variables to avoid repetition:
 
 ```jac
-def app() -> any {
+def:pub app() -> any {
     # Define common button style
     buttonStyle = {
         "padding": "8px 16px",
@@ -449,7 +449,7 @@ def app() -> any {
 Try adding a container with centered content:
 
 ```jac
-def app() -> any {
+def:pub app() -> any {
     return <div style={{
         "maxWidth": "600px",
         "margin": "0 auto",

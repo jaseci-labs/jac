@@ -64,14 +64,15 @@ def _wait_for_endpoint(
 ) -> bytes:
     """Block until an HTTP endpoint returns a successful response or timeout.
 
-    Retries on 503 Service Unavailable and connection errors.
+    Retries on 503 Service Unavailable (temporary) and connection errors.
+    Fails immediately on 500 Internal Server Error (permanent errors like compilation failures).
 
     Returns:
         The response body as bytes.
 
     Raises:
         TimeoutError: if the endpoint does not return success within timeout.
-        HTTPError: if the endpoint returns a non-retryable error.
+        HTTPError: if the endpoint returns a non-retryable error (e.g., 500).
     """
     deadline = time.time() + timeout
     last_err: Exception | None = None
@@ -82,12 +83,18 @@ def _wait_for_endpoint(
                 return resp.read()
         except HTTPError as exc:
             if exc.code == 503:
-                # Service Unavailable - retry
+                # Service Unavailable - retry (temporary condition, e.g., compilation in progress)
                 # Close the underlying response to release the socket
                 exc.close()
                 last_err = exc
                 print(f"[DEBUG] Endpoint {url} returned 503, retrying...")
                 time.sleep(poll_interval)
+            elif exc.code == 500:
+                # Internal Server Error - do not retry (permanent error, e.g., compilation failure)
+                # Close the underlying response to release the socket
+                exc.close()
+                # Re-raise immediately - 500 indicates a permanent error that won't resolve by retrying
+                raise
             else:
                 # Other HTTP errors should not be retried
                 raise
@@ -235,13 +242,31 @@ def test_all_in_one_app_endpoints() -> None:
                         assert resp_root.status == 200
                         assert '"Jac API Server"' in root_body
                         assert '"endpoints"' in root_body
+
+                        # Verify custom headers from jac.toml are present
+                        assert (
+                            resp_root.headers.get("Cross-Origin-Opener-Policy")
+                            == "same-origin"
+                        ), (
+                            "Expected Cross-Origin-Opener-Policy header to be 'same-origin'"
+                        )
+                        assert (
+                            resp_root.headers.get("Cross-Origin-Embedder-Policy")
+                            == "require-corp"
+                        ), (
+                            "Expected Cross-Origin-Embedder-Policy header to be 'require-corp'"
+                        )
+                        print(
+                            "[DEBUG] Custom headers verified: COOP and COEP are present"
+                        )
                 except (URLError, HTTPError) as exc:
                     print(f"[DEBUG] Error while requesting root endpoint: {exc}")
                     pytest.fail(f"Failed to GET root endpoint: {exc}")
 
                 # "/page/app" – main page is loading
-                # Note: This endpoint may return 503 while the page is being compiled,
-                # so we use _wait_for_endpoint to retry until it's ready.
+                # Note: This endpoint may return 503 (temporary) while the page is being compiled,
+                # or 500 (permanent) if there's a compilation error. We use _wait_for_endpoint
+                # to retry on 503 until it's ready, but it will fail immediately on 500.
                 try:
                     print(
                         "[DEBUG] Sending GET request to /page/app endpoint (with retry)"
@@ -331,6 +356,34 @@ def test_all_in_one_app_endpoints() -> None:
                         f"[DEBUG] Error while requesting /static/assets/burger.png: {exc}"
                     )
                     pytest.fail("Failed to GET /static/assets/burger.png")
+
+                # "/workers/worker.js" – worker script is served
+                try:
+                    print(
+                        "[DEBUG] Sending GET request to /workers/worker.js (with retry)"
+                    )
+                    worker_js_bytes = _wait_for_endpoint(
+                        "http://127.0.0.1:8000/workers/worker.js",
+                        timeout=60.0,
+                        poll_interval=2.0,
+                        request_timeout=20.0,
+                    )
+                    worker_js_body = worker_js_bytes.decode("utf-8", errors="ignore")
+                    print(
+                        "[DEBUG] Received response from /workers/worker.js\n"
+                        f"Body (truncated to 500 chars):\n{worker_js_body[:500]}"
+                    )
+                    assert len(worker_js_body.strip()) > 0, (
+                        "Worker JS should not be empty"
+                    )
+                    assert (
+                        "postMessage" in worker_js_body or "onmessage" in worker_js_body
+                    ), "Worker JS should contain a message handler"
+                except (URLError, HTTPError, TimeoutError, RemoteDisconnected) as exc:
+                    print(f"[DEBUG] Error while requesting /workers/worker.js: {exc}")
+                    pytest.fail(
+                        f"Failed to GET /workers/worker.js after retries: {exc}"
+                    )
 
                 # "/walker/get_server_message" – walkers are integrated and up and running
                 try:

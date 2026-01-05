@@ -2,7 +2,7 @@
 cl import from react { useState, useEffect }
 cl import ".global.css";
 cl {
-    def app -> any {
+    def:pub app -> any {
         [count, setCount] = useState(0);
 
         useEffect(lambda   -> None{ console.log("Count changed: ", count);} , [count]);

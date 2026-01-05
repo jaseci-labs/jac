@@ -1,5 +1,5 @@
 """Validate the function and extract its type annotations and description."""
-impl Tool.postinit()  -> None {
+impl Tool.postinit -> None {
     annotations = get_type_hints(self.func);
     with suppress(Exception) {
         self.func.__annotations__ = annotations;
@@ -30,7 +30,7 @@ impl Tool.__call__( *args: list , **kwargs: dict)  -> object {
 }
 
 """Return the name of the tool function."""
-impl Tool.get_name()  -> str {
+impl Tool.get_name -> str {
     return self.func.__name__;
 }
 
@@ -58,12 +58,12 @@ impl Tool.make_finish_tool(resp_type: type) -> Tool {
 }
 
 """Check if the tool is a finish tool."""
-impl Tool.is_finish_tool()  -> bool {
+impl Tool.is_finish_tool -> bool {
     return self.get_name() == "finish_tool";
 }
 
 """Return the JSON schema for the tool function."""
-impl Tool.get_json_schema()  -> dict[str, object] {
+impl Tool.get_json_schema -> dict[str, object] {
     return tool_to_schema(self.func, self.description, self.params_desc);
 }
 

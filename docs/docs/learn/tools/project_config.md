@@ -197,9 +197,18 @@ Bytecode cache configuration:
 
 ```toml
 [cache]
-enabled = true          # Enable caching
-dir = ".jac_cache"      # Cache directory
+enabled = true          # Enable bytecode caching
+
+[build]
+dir = ".jac"            # Base directory for all build artifacts (cache, packages, client, data)
 ```
+
+All build artifacts are organized under the `[build].dir` directory (default `.jac/`):
+
+- `.jac/cache/` - Bytecode cache files
+- `.jac/packages/` - Installed Python packages
+- `.jac/client/` - Client-side build artifacts
+- `.jac/data/` - Runtime data (databases, sessions)
 
 ### [scripts] Section
 
@@ -394,12 +403,14 @@ fail_fast = false
 port = 8000
 
 #===============================================================================
-# CACHE SETTINGS
+# BUILD AND CACHE SETTINGS
 #===============================================================================
+
+[build]
+dir = ".jac"             # All build artifacts go here (.jac/cache, .jac/packages, etc.)
 
 [cache]
 enabled = true
-dir = ".jac_cache"
 
 #===============================================================================
 # PLUGINS

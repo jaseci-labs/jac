@@ -246,6 +246,37 @@ def test_cli_js_command_outputs_js(fixture_path: Callable[[str], str]) -> None:
     assert "function add" in result.stdout
 
 
+def test_cl_only_js_command_outputs_js(
+    fixture_path: Callable[[str], str],
+) -> None:
+    """jac js CLI with cl only file should emit JavaScript."""
+    core_fixture = "cl_only.cl.jac"
+    fixture_file_path = fixture_path(core_fixture)
+    env = os.environ.copy()
+    project_root = str(Path(__file__).resolve().parents[4])
+    existing = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = f"{project_root}:{existing}" if existing else project_root
+
+    result = subprocess.run(
+        [
+            "python3",
+            "-m",
+            "jaclang.cli.cli",
+            "js",
+            fixture_file_path,
+        ],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert result.returncode == 0, (
+        f"CLI failed to compile cl only file: {result.stderr}"
+    )
+    assert len(result.stdout) > 0
+    assert "function greet(name) {" in result.stdout
+
+
 def test_empty_file_generates_minimal_js() -> None:
     """Ensure an empty Jac file generates a minimal JavaScript stub."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as tmp:
@@ -678,3 +709,13 @@ def test_keyword_variables(fixture_path: Callable[[str], str]) -> None:
         'print("Class is:", class);',
     ]:
         assert pattern in js_code
+
+
+def test_separated_files(fixture_path: Callable[[str], str]) -> None:
+    """Test features functionality with separated files."""
+    advanced_fixture = "separated.jac"
+    js_code = compile_fixture_to_js(advanced_fixture, fixture_path)
+
+    # Check the spawned walker function is present
+    assert "let response = await __jacSpawn(" in js_code
+    assert '__jacSpawn("create_todo", "", {"text": input.trim()});' in js_code

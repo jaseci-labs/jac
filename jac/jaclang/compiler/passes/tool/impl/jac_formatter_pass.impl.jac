@@ -65,7 +65,8 @@ impl JacFormatPass.format_doc_ir(
             }
             result.append(part_str);
             if ('\n' in part_str) {
-                last_line = part_str.splitlines()[-1];
+                lines = part_str.splitlines();
+                last_line = lines[-1] if lines else '';
                 full_budget = max(0, (self.MAX_LINE_LENGTH - total_indent));
                 indent_str = ' ' * total_indent;
                 if last_line.startswith(indent_str) {
@@ -108,6 +109,14 @@ impl JacFormatPass.transform(self: JacFormatPass, ir_in: uni.Module) -> uni.Modu
         lines.pop();
     }
     ir_in.gen.jac = ('\n'.join(lines) + '\n') if lines else '';
+    # Process impl modules (includes .impl.jac and .cl.jac files)
+    # Only do this for the main module (not annex modules themselves)
+    if ir_in.annexable_by is None {
+        for impl_mod in ir_in.impl_mod {
+            # Create a new formatter instance for each impl module
+            JacFormatPass(ir_in=impl_mod, prog=self.prog);
+        }
+    }
     return ir_in;
 }
 

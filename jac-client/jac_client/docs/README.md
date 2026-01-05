@@ -1,5 +1,18 @@
 # Todo App - Beginner's Guide to Building with Jac
 
+> **️ Version Compatibility Warning**
+>
+> **For jac-client < 0.2.4:**
+>
+> - All `def` functions are **automatically exported** - no `:pub` needed
+> - You **cannot export variables** (globals) - only functions can be exported
+>
+> **For jac-client >= 0.2.4:**
+>
+> - Functions and variables **must be explicitly exported** with `:pub`
+> - The `app()` function must be `def:pub app()` to be accessible
+> - This guide assumes version 0.2.4 or later
+
 Welcome to the Todo App example! This guide will walk you through building a full-stack web application with Jac, from setup to deployment. Jac simplifies web development by eliminating the need for separate frontend and backend technologies, HTTP clients, and complex build configurations.
 
 ---
@@ -59,7 +72,7 @@ This command will:
 - Set up an organized project structure with `src/` folder
 - Create a starter `src/app.jac` file with a sample component
 - Include a sample TypeScript component
-- **Automatically install default npm packages** (React, TypeScript, Vite, etc.) in the `.client-build/` directory
+- **Automatically install npm packages** in the `.jac/client/` directory
 
 #### Skipping Package Installation
 
@@ -81,7 +94,7 @@ jac create --cl --skip todo-app
 jac add --cl <package-name>
 ```
 
-Or you can manually run `npm install` in the `.client-build/` directory after the project is created.
+Or you can manually run `npm install` in the `.jac/client/configs/` directory after the project is created.
 
 **What gets created:**
 
@@ -161,7 +174,7 @@ cl {
         </ul>;
     }
 
-    def app() -> any {
+    def:pub app() -> any {
         [todos, setTodos] = useState([]);
 
         useEffect(lambda -> None {

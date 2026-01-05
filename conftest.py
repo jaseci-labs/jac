@@ -12,6 +12,9 @@ from pathlib import Path
 import pytest
 
 import jaclang
+
+# Import fixed file lists for deterministic test discovery
+from jac.tests.fixtures_list import MICRO_JAC_FILES
 from jaclang.runtimelib.utils import read_file_with_encoding
 
 _JACLANG_DIR = Path(jaclang.__file__).parent
@@ -94,14 +97,13 @@ def capture_stdout() -> Callable[[], AbstractContextManager[io.StringIO]]:
 
 
 def get_micro_jac_files() -> list[str]:
-    """Get all .jac files for micro suite testing."""
+    """Get all .jac files for micro suite testing.
+
+    Uses a fixed list of files from fixtures_list.py for deterministic testing.
+    To add new test files, update MICRO_JAC_FILES in jac/tests/fixtures_list.py.
+    """
     base_dir = _JACLANG_DIR.parent
-    return [
-        os.path.normpath(os.path.join(root, name))
-        for root, _, files in os.walk(base_dir)
-        for name in files
-        if name.endswith(".jac") and "err" not in name
-    ]
+    return [os.path.normpath(os.path.join(base_dir, f)) for f in MICRO_JAC_FILES]
 
 
 _AST_EXCLUDED = {

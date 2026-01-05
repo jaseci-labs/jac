@@ -16,7 +16,7 @@ def test_explicit_type_annotation_in_assignment(
 ) -> None:
     """Test explicit type annotation in assignment."""
     program = JacProgram()
-    program.build(fixture_path("type_annotation_assignment.jac"), type_check=True)
+    program.compile(fixture_path("type_annotation_assignment.jac"), type_check=True)
     assert len(program.errors_had) == 2
     _assert_error_pretty_found(
         """
@@ -807,7 +807,7 @@ def test_jac_importing_ts(fixture_path: Callable[[str], str]) -> None:
     """Test Jac module importing from TypeScript."""
     path = fixture_path("ts_imports/main.jac")
     program = JacProgram()
-    mod = program.build(path, type_check=True)
+    mod = program.compile(path, type_check=True)
     # The main.jac imports TypeScript/JS modules - verify it compiles
     assert mod is not None
 
@@ -938,3 +938,148 @@ def test_final_type_checking(fixture_path: Callable[[str], str]) -> None:
     """,
         program.errors_had[0].pretty_print(),
     )
+
+
+def test_list_iteration_type_checking(fixture_path: Callable[[str], str]) -> None:
+    """Test that list iteration correctly types the loop variable."""
+    program = JacProgram()
+    mod = program.compile(fixture_path("checker_list_iteration.jac"))
+    TypeCheckPass(ir_in=mod, prog=program)
+    assert len(program.errors_had) == 1
+    _assert_error_pretty_found(
+        """
+        y: str = i;  # <-- Error
+        ^^^^^^^^^^^
+    """,
+        program.errors_had[0].pretty_print(),
+    )
+
+
+def test_overload_decorator(fixture_path: Callable[[str], str]) -> None:
+    """Test that @overload decorator works correctly for method and magic method overloads."""
+    program = JacProgram()
+    mod = program.compile(fixture_path("checker_overload.jac"))
+    TypeCheckPass(ir_in=mod, prog=program)
+    # Expect 3 errors: __pow__ with float**float, do_something with str, and __add__ with str
+    assert len(program.errors_had) == 3
+
+    # Find the specific errors we care about
+    error_messages = [err.pretty_print() for err in program.errors_had]
+
+    # Check for do_something("hello") error
+    do_something_error = next(
+        (err for err in error_messages if "do_something" in err and "hello" in err),
+        None,
+    )
+    assert do_something_error is not None, (
+        'Expected error for foo.do_something("hello")'
+    )
+    _assert_error_pretty_found(
+        """
+        foo.do_something("hello");  # <-- Error
+        ^^^^^^^^^^^^^^^^^^^^^^^^^
+    """,
+        do_something_error,
+    )
+
+    # Check for __add__("hello") error
+    add_error = next(
+        (err for err in error_messages if "__add__" in err and "hello" in err),
+        None,
+    )
+    assert add_error is not None, 'Expected error for foo + "hello"'
+    _assert_error_pretty_found(
+        """
+        foo + "hello";  # <-- Error
+        ^^^^^^^^^^^^^
+    """,
+        add_error,
+    )
+
+
+def test_function_overload_decorator(fixture_path: Callable[[str], str]) -> None:
+    """Test that @overload decorator works correctly for top-level function overloads."""
+    program = JacProgram()
+    mod = program.compile(fixture_path("checker_function_overload.jac"))
+    TypeCheckPass(ir_in=mod, prog=program)
+    # Expect 1 error: cast("hello") with no matching overload
+    assert len(program.errors_had) == 1
+
+    # Find the specific error we care about
+    error_messages = [err.pretty_print() for err in program.errors_had]
+
+    # Check for cast("hello") error
+    cast_error = next(
+        (err for err in error_messages if "cast" in err and "hello" in err),
+        None,
+    )
+    assert cast_error is not None, 'Expected error for cast("hello")'
+    _assert_error_pretty_found(
+        """
+        z: str = cast("hello");  # <-- Error
+              ^^^^^^^^^^^^^
+    """,
+        cast_error,
+    )
+
+
+def test_object_type_assignment(fixture_path: Callable[[str], str]) -> None:
+    """Test that assigning node types and instances to object type works correctly."""
+    program = JacProgram()
+    mod = program.compile(fixture_path("object_type_assignment.jac"))
+    TypeCheckPass(ir_in=mod, prog=program)
+    # Should have no errors - both node class and node instance should be assignable to object
+    assert len(program.errors_had) == 0
+
+
+def test_walrus_operator(fixture_path: Callable[[str], str]) -> None:
+    """Test walrus operator (:=) type checking."""
+    program = JacProgram()
+    mod = program.compile(fixture_path("checker_walrus_operator.jac"))
+    TypeCheckPass(ir_in=mod, prog=program)
+    # Expect 5 errors: multiple type assignment errors with walrus operator
+    assert len(program.errors_had) == 5
+
+    expected_errors = [
+        """
+        glob result3: str = result1;
+        ^^^^^^^^^^^^^^^^^^^^^^
+        """,
+        """
+        glob result4: str = z;
+        ^^^^^^^^^^^^^^^^
+        """,
+        """
+        y = "hello";
+        ^^^^^^^^^^^^
+        """,
+        """
+        p: AnotherNode = n;
+        ^^^^^^^^^^^^^^^^^^^
+        """,
+        """
+        a = AnotherNode();
+        ^^^^^^^^^^^^^^^^^^
+        """,
+    ]
+
+    for i, expected in enumerate(expected_errors):
+        _assert_error_pretty_found(expected, program.errors_had[i].pretty_print())
+
+
+def test_builtin_constructors(fixture_path: Callable[[str], str]) -> None:
+    """Test that builtin constructors (set(), list(), dict()) work correctly."""
+    program = JacProgram()
+    mod = program.compile(fixture_path("checker_builtin_constructors.jac"))
+    TypeCheckPass(ir_in=mod, prog=program)
+    # All constructors should work without errors
+    assert len(program.errors_had) == 0
+
+
+def test_union_type_annotation(fixture_path: Callable[[str], str]) -> None:
+    """Test union type annotation with None (e.g., int | None)."""
+    program = JacProgram()
+    mod = program.compile(fixture_path("checker_union_type_annotation.jac"))
+    TypeCheckPass(ir_in=mod, prog=program)
+    # Should have no errors - int | None annotation should be valid
+    assert len(program.errors_had) == 0

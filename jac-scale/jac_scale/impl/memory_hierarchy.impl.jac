@@ -82,6 +82,12 @@ impl ShelfDB._ensure_shelf -> shelve.Shelf {
 impl ShelfDB._open_shelf -> shelve.Shelf {
     import dbm.dumb;
     if (self._shelf is None) {
+        # Ensure parent directory exists
+        import os;
+        parent_dir = os.path.dirname(self.shelf_path);
+        if parent_dir {
+            os.makedirs(parent_dir, exist_ok=True);
+        }
         raw_db = dbm.dumb.open(self.shelf_path, 'c');
         db_as_mapping = cast(MutableMapping[(<>bytes, <>bytes)], raw_db);
         self._shelf = shelve.Shelf(db_as_mapping, writeback=False);

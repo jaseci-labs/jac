@@ -76,7 +76,7 @@ impl get_byllm_config(project_dir: Path | None = None) -> JacByllmConfig {
 }
 
 """Reset the global config instance (useful for testing)."""
-impl reset_byllm_config()  -> None {
+impl reset_byllm_config -> None {
     global _byllm_config_instance;
     _byllm_config_instance = None;
 }

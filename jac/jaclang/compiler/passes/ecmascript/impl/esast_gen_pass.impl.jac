@@ -2413,7 +2413,12 @@ impl EsastGenPass._collect_walker_field_names(
 
 """Get the main module of the program."""
 impl EsastGenPass.get_main_mod(self: EsastGenPass) -> uni.Module {
-    return self.prog.mod.main;
+    main_mod_path = self.ir_in.annexable_by or self.ir_in.loc.mod_path;
+    mod = self.prog.mod.hub.get(main_mod_path);
+    if not isinstance(mod, uni.Module) {
+        self.log_error('Expected main module to be a Module node.');
+    }
+    return mod;
 }
 
 """Search for a symbol in the main module."""
@@ -2423,7 +2428,8 @@ impl EsastGenPass.search_sym_in_main_mod(
     if not isinstance(expr, uni.Name) {
         return None;
     }
-    return self.get_main_mod().lookup(expr.sym_name);
+    main_mod = self.get_main_mod();
+    return main_mod and main_mod.lookup(expr.sym_name);
 }
 
 """Resolve a symbol from an expression (handles dotted access)."""

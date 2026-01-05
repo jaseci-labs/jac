@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast as py_ast
+import os
 from pathlib import Path
 
 import pytest
@@ -11,23 +12,17 @@ import jaclang
 import jaclang.pycore.unitree as ast
 from jaclang.compiler.passes.main import PyastBuildPass
 from jaclang.pycore.program import JacProgram
+from tests.fixtures_list import JACLANG_PYTHON_FILES
 
 
 def get_jaclang_python_files() -> list[str]:
-    """Return all jaclang package .py files we expect to parse."""
-    base = Path(jaclang.__file__).parent
-    files: list[str] = []
-    # Auto-generated parser files that are too large for py2jac conversion
-    skip_files = {"jac_parser.py", "jac_lark.py"}
-    for path in base.rglob("*.py"):
-        if "__pycache__" in path.parts:
-            continue
-        if "vendor" in path.parts:
-            continue
-        if path.name in skip_files:
-            continue
-        files.append(str(path))
-    return sorted(files)
+    """Return all jaclang package .py files we expect to parse.
+
+    Uses a fixed list of files from fixtures_list.py for deterministic testing.
+    To add new test files, update JACLANG_PYTHON_FILES in tests/fixtures_list.py.
+    """
+    base_dir = Path(jaclang.__file__).parent.parent
+    return sorted([os.path.normpath(base_dir / f) for f in JACLANG_PYTHON_FILES])
 
 
 @pytest.mark.parametrize("filename", get_jaclang_python_files())

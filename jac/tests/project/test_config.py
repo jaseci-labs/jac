@@ -76,8 +76,9 @@ class TestFindProjectRoot:
         result = find_project_root(temp_project)
         assert result is not None
         project_root, toml_path = result
-        assert project_root == temp_project
-        assert toml_path == temp_project / "jac.toml"
+        # Resolve both paths to handle symlinks (e.g., /var -> /private/var on macOS)
+        assert project_root.resolve() == temp_project.resolve()
+        assert toml_path.resolve() == (temp_project / "jac.toml").resolve()
 
     def test_find_project_in_parent_dir(self, temp_project: Path) -> None:
         """Test finding jac.toml in parent directory."""
@@ -87,8 +88,9 @@ class TestFindProjectRoot:
         result = find_project_root(subdir)
         assert result is not None
         project_root, toml_path = result
-        assert project_root == temp_project
-        assert toml_path == temp_project / "jac.toml"
+        # Resolve both paths to handle symlinks (e.g., /var -> /private/var on macOS)
+        assert project_root.resolve() == temp_project.resolve()
+        assert toml_path.resolve() == (temp_project / "jac.toml").resolve()
 
     def test_no_project_found(self, temp_dir: Path) -> None:
         """Test when no jac.toml exists."""
@@ -434,14 +436,49 @@ class TestJacConfigDependencyManagement:
 class TestJacConfigMethods:
     """Tests for other JacConfig methods."""
 
+    def test_get_build_dir_default(self) -> None:
+        """Test default build dir is .jac."""
+        config = JacConfig()
+        config.project_root = Path("/home/user/myproject")
+
+        build_dir = config.get_build_dir()
+
+        assert build_dir == Path("/home/user/myproject/.jac")
+
+    def test_get_build_dir_custom(self) -> None:
+        """Test custom build dir from jac.toml."""
+        toml_str = """
+[project]
+name = "test"
+version = "0.1.0"
+
+[build]
+dir = ".build"
+"""
+        config = JacConfig.from_toml_str(toml_str)
+        config.project_root = Path("/home/user/myproject")
+
+        build_dir = config.get_build_dir()
+
+        assert build_dir == Path("/home/user/myproject/.build")
+
+    def test_get_cache_dir(self) -> None:
+        """Test cache dir is build_dir/cache."""
+        config = JacConfig()
+        config.project_root = Path("/home/user/myproject")
+
+        cache_dir = config.get_cache_dir()
+
+        assert cache_dir == Path("/home/user/myproject/.jac/cache")
+
     def test_get_packages_dir(self) -> None:
-        """Test getting packages directory."""
+        """Test packages dir is build_dir/packages."""
         config = JacConfig()
         config.project_root = Path("/home/user/myproject")
 
         packages_dir = config.get_packages_dir()
 
-        assert packages_dir == Path("/home/user/myproject/packages")
+        assert packages_dir == Path("/home/user/myproject/.jac/packages")
 
     def test_get_packages_dir_no_root(self) -> None:
         """Test getting packages directory with no project root."""
@@ -450,7 +487,43 @@ class TestJacConfigMethods:
 
         packages_dir = config.get_packages_dir()
 
-        assert packages_dir == Path.cwd() / "packages"
+        assert packages_dir == Path.cwd() / ".jac" / "packages"
+
+    def test_get_data_dir(self) -> None:
+        """Test data dir is build_dir/data."""
+        config = JacConfig()
+        config.project_root = Path("/home/user/myproject")
+
+        data_dir = config.get_data_dir()
+
+        assert data_dir == Path("/home/user/myproject/.jac/data")
+
+    def test_get_client_dir(self) -> None:
+        """Test client dir is build_dir/client."""
+        config = JacConfig()
+        config.project_root = Path("/home/user/myproject")
+
+        client_dir = config.get_client_dir()
+
+        assert client_dir == Path("/home/user/myproject/.jac/client")
+
+    def test_all_dirs_use_custom_build_dir(self) -> None:
+        """Test all artifact dirs use custom build dir."""
+        toml_str = """
+[project]
+name = "test"
+
+[build]
+dir = ".custom-build"
+"""
+        config = JacConfig.from_toml_str(toml_str)
+        config.project_root = Path("/project")
+
+        assert config.get_build_dir() == Path("/project/.custom-build")
+        assert config.get_cache_dir() == Path("/project/.custom-build/cache")
+        assert config.get_packages_dir() == Path("/project/.custom-build/packages")
+        assert config.get_data_dir() == Path("/project/.custom-build/data")
+        assert config.get_client_dir() == Path("/project/.custom-build/client")
 
     def test_is_valid(self, temp_project: Path) -> None:
         """Test checking if config is valid."""
@@ -492,7 +565,6 @@ temperature = 0.5
         assert 'name = "my-awesome-project"' in content
         assert "[project]" in content
         assert "[dependencies]" in content
-        assert "[scripts]" in content
 
 
 class TestGlobalConfig:

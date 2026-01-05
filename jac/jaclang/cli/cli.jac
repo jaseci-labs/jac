@@ -17,9 +17,7 @@ def _ensure_jac_runtime -> None;
 def gen_parser -> str;
 
 @cmd_registry.register
-def format(
-    paths: list, outfile: str = '', to_screen: bool = False, fix: bool = False
-) -> None;
+def format(paths: list, to_screen: bool = False, fix: bool = False) -> None;
 
 def proc_file_sess(filename: str, session: str, <>root: (str | None) = None) -> tuple;
 

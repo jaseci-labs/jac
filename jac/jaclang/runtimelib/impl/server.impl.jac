@@ -1,5 +1,6 @@
-"""Serialize objects to JSON-compatible format."""
+import from jaclang.project.config { get_config }
 
+"""Serialize objects to JSON-compatible format."""
 impl JacSerializer.serialize(<>obj: object) -> JsonValue {
     import from jaclang.pycore.constructs { Archetype }
     if ((<>obj is None) or isinstance(<>obj, (str, int, float, bool))) {
@@ -531,6 +532,7 @@ impl ResponseBuilder.send_json(
     handler.send_response(status);
     handler.send_header('Content-Type', 'application/json');
     ResponseBuilder._add_cors_headers(handler);
+    ResponseBuilder._add_custom_headers(handler);
     handler.end_headers();
     handler.wfile.write(json.dumps(data).encode());
 }
@@ -544,6 +546,7 @@ impl ResponseBuilder.send_html(
     handler.send_header('Content-Type', 'text/html; charset=utf-8');
     handler.send_header('Content-Length', str(len(payload)));
     ResponseBuilder._add_cors_headers(handler);
+    ResponseBuilder._add_custom_headers(handler);
     handler.end_headers();
     handler.wfile.write(payload);
 }
@@ -558,6 +561,7 @@ impl ResponseBuilder.send_javascript(
     handler.send_header('Content-Length', str(len(payload)));
     handler.send_header('Cache-Control', 'no-cache');
     ResponseBuilder._add_cors_headers(handler);
+    ResponseBuilder._add_custom_headers(handler);
     handler.end_headers();
     handler.wfile.write(payload);
 }
@@ -570,6 +574,7 @@ impl ResponseBuilder.send_css(handler: BaseHTTPRequestHandler, css: str) -> None
     handler.send_header('Content-Length', str(len(payload)));
     handler.send_header('Cache-Control', 'no-cache');
     ResponseBuilder._add_cors_headers(handler);
+    ResponseBuilder._add_custom_headers(handler);
     handler.end_headers();
     handler.wfile.write(payload);
 }
@@ -579,6 +584,19 @@ impl ResponseBuilder._add_cors_headers(handler: BaseHTTPRequestHandler) -> None 
     handler.send_header('Access-Control-Allow-Origin', '*');
     handler.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     handler.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+}
+
+"""Add security headers to response."""
+impl ResponseBuilder._add_custom_headers(handler: BaseHTTPRequestHandler) -> None {
+    config = get_config();
+    if config
+    and config.environments
+    and "response" in config.environments
+    and "headers" in config.environments["response"] {
+        for (header_name, header_value) in config.environments["response"]["headers"].items() {
+            handler.send_header(header_name, header_value);
+        }
+    }
 }
 
 """Create new user."""
@@ -731,6 +749,7 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
         def do_OPTIONS(self: JacRequestHandler) -> None {
             self.send_response(200);
             ResponseBuilder._add_cors_headers(self);
+            ResponseBuilder._add_custom_headers(self);
             self.end_headers();
         }
 
@@ -744,11 +763,17 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                     server.introspector.ensure_bundle();
                     Jac.send_javascript(self, server.introspector._bundle.code);
                 } except RuntimeError as exc {
-                    Jac.send_json(self, 503, {'error': str(exc)});
+                    Jac.send_json(self, 500, {'error': str(exc)});
                 }
                 return;
             }
             is_static_path = path.startswith('/static/');
+            import from jaclang.project.config { get_config }
+
+            config = get_config();
+            client_cfg = config.get_plugin_config("client") if config else None;
+            assets_config = client_cfg.get("assets", {}) if client_cfg else {};
+            custom_asset_extensions = set(assets_config.get("custom_extensions", []));
             is_asset_file = (
                 not is_static_path
                 and (path != '/')
@@ -760,7 +785,10 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                 and not path.startswith('/walkers')
                 and not path.startswith('/protected')
                 and (
-                    Path(path).suffix in {'.png','.jpg','.jpeg','.gif','.webp','.svg','.ico','.woff','.woff2','.ttf','.otf','.eot','.mp4','.webm','.mp3','.wav','.css'}
+                    Path(path).suffix in (
+                        custom_asset_extensions
+                        or {'.png','.jpg','.jpeg','.gif','.webp','.svg','.ico','.woff','.woff2','.ttf','.otf','.eot','.mp4','.webm','.mp3','.wav','.css'}
+                    )
                 )
             );
             if (is_static_path or is_asset_file) {
@@ -785,9 +813,9 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                     }
                     file_name = Path(relative_path).name;
                     # Check multiple locations for CSS files
-                    # 1. .client-build/dist/ (new structure)
-                    client_build_dist_file = base_path / '.client-build' / 'dist' / relative_path;
-                    client_build_dist_file_simple = base_path / '.client-build' / 'dist' / file_name;
+                    # 1. .jac/client/dist/ (standardized structure)
+                    client_build_dist_file = base_path / '.jac' / 'client' / 'dist' / relative_path;
+                    client_build_dist_file_simple = base_path / '.jac' / 'client' / 'dist' / file_name;
                     # 2. dist/ (legacy structure)
                     dist_file = base_path / 'dist' / relative_path;
                     dist_file_simple = base_path / 'dist' / file_name;
@@ -795,7 +823,7 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                     assets_file = base_path / 'assets' / relative_path;
                     assets_file_simple = base_path / 'assets' / file_name;
                     if path.endswith('.css') {
-                        # Check .client-build/dist/ first (jac-client)
+                        # Check .jac/client/dist/ first (jac-client)
                         if client_build_dist_file.exists() {
                             css_content = client_build_dist_file.read_text(
                                 encoding='utf-8'
@@ -894,7 +922,7 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                 } except ValueError as exc {
                     Jac.send_json(self, 404, {'error': str(exc)});
                 } except RuntimeError as exc {
-                    Jac.send_json(self, 503, {'error': str(exc)});
+                    Jac.send_json(self, 500, {'error': str(exc)});
                 }
                 return;
             }

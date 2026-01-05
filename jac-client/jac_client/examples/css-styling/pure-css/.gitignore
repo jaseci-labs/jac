@@ -4,4 +4,4 @@ app.session.dat
 app.session.dir
 app.session.users.json
 compiled/
-.jac-client.configs/
+.jac/

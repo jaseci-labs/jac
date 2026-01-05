@@ -17,21 +17,21 @@ impl BabelProcessor.compile(self: BabelProcessor) -> None {
     bundler._ensure_root_package_json();
     try {
         # Ensure dependencies are installed (check if node_modules exists)
-        build_dir = self.project_dir / '.client-build';
-        node_modules = build_dir / 'node_modules';
+        client_dir = bundler._get_client_dir();
+        node_modules = client_dir / 'node_modules';
         if not node_modules.exists() {
-            # Temporarily copy package.json to .client-build/ for npm install
-            build_package_json = build_dir / 'package.json';
-            configs_package_json = build_dir / '.jac-client.configs' / 'package.json';
+            # Temporarily copy package.json to .jac/client/ for npm install
+            build_package_json = client_dir / 'package.json';
+            configs_package_json = client_dir / 'configs' / 'package.json';
             if configs_package_json.exists() and not build_package_json.exists() {
                 import shutil;
                 shutil.copy2(configs_package_json, build_package_json);
             }
             try {
-                # Install to .client-build/node_modules
+                # Install to .jac/client/node_modules
                 subprocess.run(
                     ['npm', 'install'],
-                    cwd=build_dir,
+                    cwd=client_dir,
                     check=True,
                     capture_output=True,
                     text=True
@@ -47,27 +47,27 @@ impl BabelProcessor.compile(self: BabelProcessor) -> None {
             }
         }
 
-        # Temporarily copy package.json to .client-build/ for npm run compile
-        build_package_json = build_dir / 'package.json';
-        configs_package_json = build_dir / '.jac-client.configs' / 'package.json';
+        # Temporarily copy package.json to .jac/client/ for npm run compile
+        build_package_json = client_dir / 'package.json';
+        configs_package_json = client_dir / 'configs' / 'package.json';
         if configs_package_json.exists() and not build_package_json.exists() {
             import shutil;
             shutil.copy2(configs_package_json, build_package_json);
         }
         command = ['npm', 'run', 'compile'];
         subprocess.run(
-            command, cwd=build_dir, check=True, capture_output=True, text=True
+            command, cwd=client_dir, check=True, capture_output=True, text=True
         );
     } finally {
-        # Clean up temporary package.json in .client-build/
-        build_package_json = build_dir / 'package.json';
+        # Clean up temporary package.json in .jac/client/
+        build_package_json = client_dir / 'package.json';
         if build_package_json.exists() {
             build_package_json.unlink();
         }
-        # Move package-lock.json to .jac-client.configs/ if it exists
-        build_package_lock = build_dir / 'package-lock.json';
+        # Move package-lock.json to configs/ if it exists
+        build_package_lock = client_dir / 'package-lock.json';
         if build_package_lock.exists() {
-            configs_package_lock = build_dir / '.jac-client.configs' / 'package-lock.json';
+            configs_package_lock = client_dir / 'configs' / 'package-lock.json';
             if configs_package_lock.exists() {
                 configs_package_lock.unlink();
             }
