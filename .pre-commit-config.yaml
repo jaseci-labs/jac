@@ -5,6 +5,12 @@ exclude: |
         ^jac/jaclang/pycore/lark_ts_parser\.py$|
         ^$
     )
+
+# Skip jac-check on pre-commit.ci - it times out (180s limit) due to cold cache.
+# Type checking should run in GitHub Actions instead where we control caching.
+ci:
+  skip: [jac-check]
+
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
