@@ -27,6 +27,9 @@ scale_plugin_config = "jac_scale.plugin_config:JacScalePluginConfig"
 [tool.setuptools.packages.find]
 include = ["jac_scale*"]
 
+[tool.setuptools.package-data]
+"*" = ["*.jac", ".impl/*.jac", ".cl/*.jac"]
+
 [build-system]
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"

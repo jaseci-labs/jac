@@ -14,7 +14,6 @@ from jaclang.pycore.archetype import (
     WalkerAnchor,
     WalkerArchetype,
 )
-from jaclang.pycore.memory import Memory, ShelfStorage
 from jaclang.pycore.mtp import MTIR, MTRuntime
 
 __all__ = [
@@ -32,6 +31,4 @@ __all__ = [
     "MTIR",
     "MTRuntime",
     "ObjectSpatialFunction",
-    "Memory",
-    "ShelfStorage",
 ]

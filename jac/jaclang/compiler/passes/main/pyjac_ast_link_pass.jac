@@ -18,21 +18,19 @@ import from collections.abc { Sequence }
 import jaclang.pycore.unitree as uni;
 import from jaclang.pycore.passes { UniPass }
 """Link jac ast to python ast nodes."""
-class PyJacAstLinkPass(UniPass) {
-    def link_jac_py_nodes(
-        self: PyJacAstLinkPass, jac_node: uni.UniNode, py_nodes: list[ast3.AST]
-    ) -> None;
-
-    def exit_module_path(self: PyJacAstLinkPass, <>node: uni.ModulePath) -> None;
-    def exit_archetype(self: PyJacAstLinkPass, <>node: uni.Archetype) -> None;
-    def exit_enum(self: PyJacAstLinkPass, <>node: uni.Enum) -> None;
-    def exit_ability(self: PyJacAstLinkPass, <>node: uni.Ability) -> None;
-    def exit_impl_def(self: PyJacAstLinkPass, <>node: uni.ImplDef) -> None;
-    def exit_param_var(self: PyJacAstLinkPass, <>node: uni.ParamVar) -> None;
-    def exit_except(self: PyJacAstLinkPass, <>node: uni.Except) -> None;
-    def exit_expr_as_item(self: PyJacAstLinkPass, <>node: uni.ExprAsItem) -> None;
-    def exit_global_stmt(self: PyJacAstLinkPass, <>node: uni.GlobalStmt) -> None;
-    def exit_non_local_stmt(self: PyJacAstLinkPass, <>node: uni.NonLocalStmt) -> None;
-    def exit_k_w_pair(self: PyJacAstLinkPass, <>node: uni.KWPair) -> None;
-    def exit_atom_trailer(self: PyJacAstLinkPass, <>node: uni.AtomTrailer) -> None;
+obj PyJacAstLinkPass(UniPass) {
+    def init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) -> None;
+    def link_jac_py_nodes(jac_node: uni.UniNode, py_nodes: list[ast3.AST]) -> None;
+    def exit_module_path(<>node: uni.ModulePath) -> None;
+    def exit_archetype(<>node: uni.Archetype) -> None;
+    def exit_enum(<>node: uni.Enum) -> None;
+    def exit_ability(<>node: uni.Ability) -> None;
+    def exit_impl_def(<>node: uni.ImplDef) -> None;
+    def exit_param_var(<>node: uni.ParamVar) -> None;
+    def exit_except(<>node: uni.Except) -> None;
+    def exit_expr_as_item(<>node: uni.ExprAsItem) -> None;
+    def exit_global_stmt(<>node: uni.GlobalStmt) -> None;
+    def exit_non_local_stmt(<>node: uni.NonLocalStmt) -> None;
+    def exit_k_w_pair(<>node: uni.KWPair) -> None;
+    def exit_atom_trailer(<>node: uni.AtomTrailer) -> None;
 }
