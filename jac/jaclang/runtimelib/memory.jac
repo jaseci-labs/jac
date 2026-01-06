@@ -1,51 +1,290 @@
-"""Memory management for Jac Language."""
+"""Memory Hierarchy for Jac Language.
 
+This module defines the complete memory hierarchy:
+
+Abstract Interfaces:
+- Memory: Base interface for all memory operations
+- CacheMemory: Extends Memory with ephemeral cache operations (L2)
+- PersistentMemory: Extends Memory with durable storage operations (L3)
+
+Concrete Implementations:
+- VolatileMemory: Simple dict-based, no persistence (L1)
+- LocalCacheMemory: In-process cache with TTL support (L2)
+- ShelfMemory: File-based persistent memory using shelve (L3)
+- TieredMemory: Composes L1 + L2 + L3 with write-through semantics
+
+jac-scale extends this to override L2 (Redis) and L3 (database).
+"""
+
+import logging;
+import shelve;
 import from collections.abc { Callable, Generator, Iterable }
-import from dataclasses { dataclass, field }
-import from typing { Generic, TypeVar, cast }
+import from pickle { dumps }
 import from uuid { UUID }
 
-import from jaclang.pycore.archetype { TANCH, Root }
+import from jaclang.pycore.archetype { Anchor, NodeAnchor, Root }
 
-glob ID = TypeVar('ID'),
-     __all__ = ['Memory'];
+glob logger = logging.getLogger(__name__),
+     __all__ = [
+         'Memory',
+         'CacheMemory',
+         'PersistentMemory',
+         'VolatileMemory',
+         'LocalCacheMemory',
+         'ShelfMemory',
+         'TieredMemory'
+     ];
 
-"""Generic Memory Handler.
+# =============================================================================
+# Abstract Interfaces
+# =============================================================================
+"""Base Memory Interface.
 
-Implements DataBackend protocol for L1 caching in the storage hierarchy.
-Provides additional query and filtering capabilities beyond the base protocol.
+All memory implementations (volatile, cache, persistent, tiered) implement this interface.
+This enables ExecutionContext to work with any memory type transparently.
 """
-@dataclass
-class Memory(Generic[ID, TANCH]) {
-    has __mem__: dict[(ID | UUID), TANCH] = field(default_factory=dict),
-        __gc__: set[TANCH] = field(default_factory=set);
+obj Memory {
+    """Check if the memory is available and operational."""
+    def is_available -> bool abs;
 
-    def is_available(self: Memory) -> bool;
-    def get(self: Memory, id: ID) -> (TANCH | None);
-    def put(self: Memory, data: TANCH) -> None;
-    def delete(self: Memory, id: ID) -> None;
-    def close(self: Memory) -> None;
-    def is_cached(self: Memory, id: ID) -> bool;
+    """Retrieve an anchor by its UUID."""
+    def get(id: UUID) -> (Anchor | None) abs;
+
+    """Store an anchor."""
+    def put(anchor: Anchor) -> None abs;
+
+    """Remove an anchor by ID."""
+    def delete(id: UUID) -> None abs;
+
+    """Close the memory and release resources."""
+    def close -> None abs;
+
+    """Check if an anchor is currently in memory."""
+    def has(id: UUID) -> bool abs;
+
+    """Query all anchors with optional filter."""
     def query(
-        self: Memory, filter: (Callable[[TANCH], bool] | None) = None
-    ) -> Generator[TANCH, None, None];
+        filter: (Callable[[Anchor], bool] | None) = None
+    ) -> Generator[Anchor, None, None] abs;
 
-    def all_root(self: Memory) -> Generator[Root, None, None];
+    """Get all root anchors."""
+    def get_roots -> Generator[Root, None, None] abs;
+
+    """Find anchors by IDs with optional filter."""
     def find(
-        self: Memory,
-        ids: (ID | Iterable[ID]),
-        filter: (Callable[[TANCH], TANCH] | None) = None
-    ) -> Generator[TANCH, None, None];
+        ids: (UUID | Iterable[UUID]),
+        filter: (Callable[[Anchor], Anchor] | None) = None
+    ) -> Generator[Anchor, None, None] abs;
+
+    """Find one anchor by ID(s) with optional filter."""
+    def find_one(
+        ids: (UUID | Iterable[UUID]),
+        filter: (Callable[[Anchor], Anchor] | None) = None
+    ) -> (Anchor | None) abs;
+
+    """Commit/sync pending changes. For write-through this flushes to durable storage."""
+    def commit(anchor: (Anchor | None) = None) -> None abs;
+}
+
+"""Cache Memory Interface.
+
+Extends Memory with operations specific to ephemeral caching.
+Cache backends are expected to be fast but data loss is acceptable.
+Used for L2 (local or distributed cache like Redis) in the tiered hierarchy.
+"""
+obj CacheMemory(Memory) {
+    """Check if a key exists in the cache without loading the value."""
+    def exists(id: UUID) -> bool abs;
+
+    """Store an anchor only if it already exists in the cache."""
+    def put_if_exists(anchor: Anchor) -> bool abs;
+
+    """Invalidate a cache entry by ID."""
+    def invalidate(id: UUID) -> None abs;
+}
+
+"""Persistent Memory Interface.
+
+Extends Memory with operations specific to durable storage.
+Implementations must guarantee data durability after sync().
+"""
+obj PersistentMemory(Memory) {
+    """Flush pending writes to durable storage."""
+    def sync -> None abs;
+
+    """Bulk store multiple anchors efficiently."""
+    def bulk_put(anchors: Iterable[Anchor]) -> None abs;
+}
+
+# =============================================================================
+# Concrete Implementations
+# =============================================================================
+"""Volatile Memory - Simple in-memory storage with no persistence.
+
+This is the L1 tier in a tiered memory hierarchy. All data is lost when
+the process exits. Used as the fast cache layer in TieredMemory.
+"""
+obj VolatileMemory(Memory) {
+    has __mem__: dict[UUID, Anchor] = {},
+        __gc__: set[Anchor] = {};
+
+    def postinit -> None;
+    def is_available -> bool;
+    def get(id: UUID) -> (Anchor | None);
+    def put(anchor: Anchor) -> None;
+    def delete(id: UUID) -> None;
+    def close -> None;
+    def has(id: UUID) -> bool;
+    def query(
+        filter: (Callable[[Anchor], bool] | None) = None
+    ) -> Generator[Anchor, None, None];
+
+    def get_roots -> Generator[Root, None, None];
+    def find(
+        ids: (UUID | Iterable[UUID]),
+        filter: (Callable[[Anchor], Anchor] | None) = None
+    ) -> Generator[Anchor, None, None];
 
     def find_one(
-        self: Memory,
-        ids: (ID | Iterable[ID]),
-        filter: (Callable[[TANCH], TANCH] | None) = None
-    ) -> (TANCH | None);
+        ids: (UUID | Iterable[UUID]),
+        filter: (Callable[[Anchor], Anchor] | None) = None
+    ) -> (Anchor | None);
 
-    def commit(self: Memory, anchor: (TANCH | None) = None) -> None;
-    def get_gc(self: Memory) -> list[TANCH];
-    def remove_from_gc(self: Memory, anchor: TANCH) -> None;
-    def get_mem(self: Memory) -> dict[(ID | UUID), TANCH];
-    def remove_from_mem(self: Memory, anchor: (ID | UUID)) -> None;
+    def commit(anchor: (Anchor | None) = None) -> None;
+    # Additional methods for garbage collection tracking
+    def get_gc -> list[Anchor];
+    def remove_from_gc(anchor: Anchor) -> None;
+    def get_mem -> dict[UUID, Anchor];
+}
+
+"""Local Cache Memory - In-process cache implementing CacheMemory interface.
+
+This is the default L2 tier in a tiered memory hierarchy. Similar to VolatileMemory
+but implements the CacheMemory interface with exists/put_if_exists/invalidate.
+jac-scale overrides this with Redis-based distributed cache.
+"""
+obj LocalCacheMemory(CacheMemory) {
+    has __mem__: dict[UUID, Anchor] = {},
+        __gc__: set[Anchor] = {};
+
+    def postinit -> None;
+    # Memory interface
+    def is_available -> bool;
+    def get(id: UUID) -> (Anchor | None);
+    def put(anchor: Anchor) -> None;
+    def delete(id: UUID) -> None;
+    def close -> None;
+    def has(id: UUID) -> bool;
+    def query(
+        filter: (Callable[[Anchor], bool] | None) = None
+    ) -> Generator[Anchor, None, None];
+
+    def get_roots -> Generator[Root, None, None];
+    def find(
+        ids: (UUID | Iterable[UUID]),
+        filter: (Callable[[Anchor], Anchor] | None) = None
+    ) -> Generator[Anchor, None, None];
+
+    def find_one(
+        ids: (UUID | Iterable[UUID]),
+        filter: (Callable[[Anchor], Anchor] | None) = None
+    ) -> (Anchor | None);
+
+    def commit(anchor: (Anchor | None) = None) -> None;
+    # CacheMemory interface
+    def exists(id: UUID) -> bool;
+    def put_if_exists(anchor: Anchor) -> bool;
+    def invalidate(id: UUID) -> None;
+    # Additional methods
+    def get_gc -> list[Anchor];
+    def remove_from_gc(anchor: Anchor) -> None;
+    def get_mem -> dict[UUID, Anchor];
+}
+
+"""Shelf-based Persistent Memory.
+
+Uses Python's shelve module for file-based durable storage.
+Maintains an in-memory cache for fast reads with write-through to shelf.
+"""
+obj ShelfMemory(PersistentMemory) {
+    has path: str,
+        __mem__: dict[UUID, Anchor] = {},
+        __gc__: set[Anchor] = {},
+        __shelf__: (shelve.Shelf | None) = None;
+
+    def init(path: str) -> None;
+    # Memory interface
+    def is_available -> bool;
+    def get(id: UUID) -> (Anchor | None);
+    def put(anchor: Anchor) -> None;
+    def delete(id: UUID) -> None;
+    def close -> None;
+    def has(id: UUID) -> bool;
+    def query(
+        filter: (Callable[[Anchor], bool] | None) = None
+    ) -> Generator[Anchor, None, None];
+
+    def get_roots -> Generator[Root, None, None];
+    def find(
+        ids: (UUID | Iterable[UUID]),
+        filter: (Callable[[Anchor], Anchor] | None) = None
+    ) -> Generator[Anchor, None, None];
+
+    def find_one(
+        ids: (UUID | Iterable[UUID]),
+        filter: (Callable[[Anchor], Anchor] | None) = None
+    ) -> (Anchor | None);
+
+    def commit(anchor: (Anchor | None) = None) -> None;
+    # PersistentMemory interface
+    def sync -> None;
+    def bulk_put(anchors: Iterable[Anchor]) -> None;
+    # Additional methods
+    def get_gc -> list[Anchor];
+    def remove_from_gc(anchor: Anchor) -> None;
+    def get_mem -> dict[UUID, Anchor];
+}
+
+"""Tiered Memory - Composes L1 volatile + L2 cache + L3 persistent with write-through.
+
+This is the main memory abstraction used by ExecutionContext. It provides:
+- Fast reads via L1 with L2/L3 fallback and automatic promotion
+- Write-through to all tiers with access control
+- Configurable tiers (L2 and L3 are optional)
+
+jac-scale extends this by providing Redis-based L2 and database L3.
+"""
+obj TieredMemory(Memory) {
+    has l1: VolatileMemory,
+        l2: (CacheMemory | None) = None,
+        l3: (PersistentMemory | None) = None;
+
+    def init(session: (str | None) = None, use_cache: bool = False) -> None;
+    # Memory interface
+    def is_available -> bool;
+    def get(id: UUID) -> (Anchor | None);
+    def put(anchor: Anchor) -> None;
+    def delete(id: UUID) -> None;
+    def close -> None;
+    def has(id: UUID) -> bool;
+    def query(
+        filter: (Callable[[Anchor], bool] | None) = None
+    ) -> Generator[Anchor, None, None];
+
+    def get_roots -> Generator[Root, None, None];
+    def find(
+        ids: (UUID | Iterable[UUID]),
+        filter: (Callable[[Anchor], Anchor] | None) = None
+    ) -> Generator[Anchor, None, None];
+
+    def find_one(
+        ids: (UUID | Iterable[UUID]),
+        filter: (Callable[[Anchor], Anchor] | None) = None
+    ) -> (Anchor | None);
+
+    def commit(anchor: (Anchor | None) = None) -> None;
+    # Additional methods for compatibility
+    def get_gc -> list[Anchor];
+    def remove_from_gc(anchor: Anchor) -> None;
+    def get_mem -> dict[UUID, Anchor];
 }

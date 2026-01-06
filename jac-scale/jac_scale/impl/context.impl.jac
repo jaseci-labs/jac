@@ -5,10 +5,10 @@ impl JScaleExecutionContext.init(
     session: (str | None) = None,
     <>root: (str | None) = None
 ) -> None {
-    import from jac_scale.memory_hierarchy { MemoryOrchestrator }
+    import from jac_scale.memory_hierarchy { ScaleTieredMemory }
     import from jaclang.pycore.constructs { Anchor, NodeAnchor, Root }
-    # Pass session to MemoryOrchestrator for proper storage isolation
-    self.mem: MemoryOrchestrator = MemoryOrchestrator(session=session);
+    # Pass session to ScaleTieredMemory for proper storage isolation
+    self.mem = ScaleTieredMemory(session=session);
     self.reports: list[Any] = [];
     self.custom: Any = MISSING;
     system_root_anchor: (Anchor | None) = self.mem.get(UUID(Con.SUPER_ROOT_UUID));

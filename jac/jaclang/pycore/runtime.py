@@ -854,7 +854,7 @@ class JacBasics:
         deleted_ids: set[UUID] = set()
         # Get anchors from persistence if available, otherwise from memory
         # Convert to list to avoid modifying during iteration
-        persistence = mem.persistence
+        persistence = mem.l3
         if persistence and isinstance(getattr(persistence, "__shelf__", None), Shelf):
             anchors = list(persistence.__shelf__.values())
         else:
@@ -1386,7 +1386,7 @@ class JacBasics:
     def get_all_root() -> list[Root]:
         """Get all the roots."""
         jmem = JacRuntimeInterface.get_context().mem
-        return list(jmem.all_root())
+        return list(jmem.get_roots())
 
     @staticmethod
     def build_edge(

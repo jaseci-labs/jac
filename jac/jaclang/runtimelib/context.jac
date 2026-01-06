@@ -6,18 +6,18 @@ import from uuid { UUID }
 
 import from jaclang.pycore.archetype { Anchor, NodeAnchor, Root }
 import from jaclang.pycore.constant { Constants as Con }
-import from jaclang.runtimelib.storage { ShelfStorage, MemoryOrchestrator }
+import from jaclang.runtimelib.memory { Memory, TieredMemory }
 
 glob __all__ = ['ExecutionContext'];
 
 """Execution Context.
 
-The `mem` field is a MemoryOrchestrator that provides a unified interface to all
-storage tiers (L1 memory, L2 cache, L3 persistence). The orchestrator handles
-read-through caching and write-through persistence internally.
+The `mem` field is a Memory implementation (typically TieredMemory) that provides
+a unified interface to all storage tiers. TieredMemory handles read-through
+caching and write-through persistence with access control internally.
 """
 class ExecutionContext {
-    has mem: MemoryOrchestrator,
+    has mem: Memory,
         reports: list[Any],
         custom: Any,
         system_root: NodeAnchor,

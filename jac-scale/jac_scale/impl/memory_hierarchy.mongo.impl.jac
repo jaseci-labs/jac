@@ -1,24 +1,33 @@
 """MongoDB PersistenceBackend Implementation."""
+import logging;
+import from collections.abc { Callable, Generator, Iterable }
+import from pickle { dumps, loads }
+import from typing { Any, cast }
+import from uuid { UUID }
 import from pymongo { MongoClient, UpdateOne }
 import from pymongo.errors { ConnectionFailure }
-import from uuid { UUID }
-import from typing { Any }
-import from collections.abc { Iterable }
-import from jaclang.pycore.archetype { Anchor }
-import logging;
-import from jaclang.runtimelib.storage { AnchorMergeStrategy }
+import from jaclang.pycore.archetype { Anchor, NodeAnchor, Root }
 import from jaclang.runtimelib.utils { storage_key, to_uuid }
 
 glob logger = logging.getLogger(__name__);
 
+"""Post-initialization: connect to MongoDB and init mutable defaults."""
 impl MongoBackend.postinit -> None {
+    self.__mem__ = {};
+    self.__gc__ = set();
     if self.client is None and self.mongo_url {
-        self.client = MongoClient(self.mongo_url);
-        self.db = self.client[self.db_name];
-        self.collection = self.db[self.collection_name];
+        try {
+            self.client = MongoClient(self.mongo_url);
+            self.db = self.client[self.db_name];
+            self.collection = self.db[self.collection_name];
+        } except Exception as e {
+            logger.debug(f"MongoDB connection failed: {e}");
+            self.client = None;
+        }
     }
 }
 
+"""Check if MongoDB is available and connected."""
 impl MongoBackend.is_available -> bool {
     if not self.mongo_url {
         return False;
@@ -42,78 +51,57 @@ impl MongoBackend.is_available -> bool {
     }
 }
 
+"""Get anchor by UUID from MongoDB."""
 impl MongoBackend.get(id: UUID) -> (Anchor | None) {
+    if self.client is None {
+        return None;
+    }
     _id = to_uuid(id);
-    db_obj = self.collection.find_one({'_id': str(_id)});
-    if db_obj {
-        return self._load_anchor(db_obj);
+    try {
+        db_obj = self.collection.find_one({'_id': str(_id)});
+        if db_obj {
+            return self._load_anchor(db_obj);
+        }
+    } except Exception as e {
+        logger.debug(f"MongoDB get failed: {e}");
     }
     return None;
 }
 
+"""Store anchor in MongoDB."""
 impl MongoBackend.put(anchor: Anchor) -> None {
-    if not AnchorMergeStrategy.needs_persist(anchor) {
+    if self.client is None or not anchor.persistent {
         return;
     }
     _id = to_uuid(anchor.id);
-    # Load existing anchor for merge
-    db_doc = self.collection.find_one({'_id': str(_id)});
-    stored_anchor = self._load_anchor(db_doc) if db_doc else None;
-    # Merge with access control
-    final_anchor = AnchorMergeStrategy.merge(anchor, stored_anchor);
-    # Serialize
-    data_blob = AnchorMergeStrategy.serialize(final_anchor);
-    if data_blob is None {
+    try {
+        # Serialize
+        data_blob = dumps(anchor);
+        # Upsert to MongoDB
+        self.collection.update_one(
+            {'_id': str(_id)},
+            {'$set': {'data': data_blob, 'type': type(anchor).__name__}},
+            upsert=True
+        );
+    } except Exception as e {
+        logger.debug(f"MongoDB put failed: {e}");
+    }
+}
+
+"""Delete anchor from MongoDB."""
+impl MongoBackend.delete(id: UUID) -> None {
+    if self.client is None {
         return;
     }
-    # Upsert to MongoDB
-    self.collection.update_one(
-        {'_id': str(_id)},
-        {'$set': {'data': data_blob, 'type': <>type(final_anchor).__name__}},
-        upsert=True
-    );
-}
-
-impl MongoBackend.delete(id: UUID) -> None {
     _id = to_uuid(id);
-    self.collection.delete_one({'_id': str(_id)});
-}
-
-impl MongoBackend.bulk_put(anchors: Iterable[Anchor]) -> None {
-    ops: list = [];
-    for anchor in anchors {
-        if not AnchorMergeStrategy.needs_persist(anchor) {
-            continue;
-        }
-
-        _id = to_uuid(anchor.id);
-
-        # Load existing anchor for merge
-        db_doc = self.collection.find_one({'_id': str(_id)});
-        stored_anchor = self._load_anchor(db_doc) if db_doc else None;
-
-        # Merge with access control
-        final_anchor = AnchorMergeStrategy.merge(anchor, stored_anchor);
-
-        # Serialize
-        data_blob = AnchorMergeStrategy.serialize(final_anchor);
-        if data_blob is None {
-            continue;
-        }
-
-        ops.append(
-            UpdateOne(
-                {'_id': str(_id)},
-                {'$set': {'data': data_blob, 'type': <>type(final_anchor).__name__}},
-                upsert=True
-            )
-        );
-    }
-    if ops {
-        self.collection.bulk_write(ops);
+    try {
+        self.collection.delete_one({'_id': str(_id)});
+    } except Exception as e {
+        logger.debug(f"MongoDB delete failed: {e}");
     }
 }
 
+"""Close MongoDB connection."""
 impl MongoBackend.close -> None {
     if self.client {
         try {
@@ -123,12 +111,151 @@ impl MongoBackend.close -> None {
         }
         self.client = None;
     }
+    self.__mem__.clear();
+    self.__gc__.clear();
 }
 
+"""Check if an anchor exists in MongoDB."""
+impl MongoBackend.has(id: UUID) -> bool {
+    if self.client is None {
+        return False;
+    }
+    _id = to_uuid(id);
+    try {
+        return self.collection.count_documents({'_id': str(_id)}, limit=1) > 0;
+    } except Exception {
+        return False;
+    }
+}
+
+"""Query all anchors with optional filter."""
+impl MongoBackend.query(
+    filter: (Callable[[Anchor], bool] | None) = None
+) -> Generator[Anchor, None, None] {
+    if self.client is None {
+        return;
+    }
+    try {
+        for doc in self.collection.find() {
+            if (anchor := self._load_anchor(doc)) {
+                if filter is None or filter(anchor) {
+                    yield anchor;
+                }
+            }
+        }
+    } except Exception as e {
+        logger.debug(f"MongoDB query failed: {e}");
+    }
+}
+
+"""Get all root anchors."""
+impl MongoBackend.get_roots -> Generator[Root, None, None] {
+    for anchor in self.query() {
+        if isinstance(anchor.archetype, Root) {
+            yield cast(Root, anchor.archetype);
+        }
+    }
+}
+
+"""Find anchors by IDs with optional filter."""
+impl MongoBackend.find(
+    ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
+) -> Generator[Anchor, None, None] {
+    id_list = [ids] if isinstance(ids, UUID) else list(ids);
+    for id in id_list {
+        if (anchor := self.get(id)) {
+            if filter is None or filter(anchor) {
+                yield anchor;
+            }
+        }
+    }
+}
+
+"""Find one anchor by ID(s) with optional filter."""
+impl MongoBackend.find_one(
+    ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
+) -> (Anchor | None) {
+    id_list = [ids] if isinstance(ids, UUID) else list(ids);
+    for id in id_list {
+        if (anchor := self.get(id)) {
+            if filter is None or filter(anchor) {
+                return anchor;
+            }
+        }
+    }
+    return None;
+}
+
+"""Commit - no-op for MongoDB (writes are immediate)."""
+impl MongoBackend.commit(anchor: (Anchor | None) = None) -> None {
+    pass;
+}
+
+# PersistentMemory specific methods
+"""Sync - flush any pending writes."""
+impl MongoBackend.sync -> None {
+    # MongoDB writes are immediate, nothing to sync
+    pass;
+}
+
+"""Bulk store multiple anchors."""
+impl MongoBackend.bulk_put(anchors: Iterable[Anchor]) -> None {
+    if self.client is None {
+        return;
+    }
+    ops: list = [];
+    for anchor in anchors {
+        if not anchor.persistent {
+            continue;
+        }
+        _id = to_uuid(anchor.id);
+        try {
+            data_blob = dumps(anchor);
+            ops.append(
+                UpdateOne(
+                    {'_id': str(_id)},
+                    {'$set': {'data': data_blob, 'type': type(anchor).__name__}},
+                    upsert=True
+                )
+            );
+        } except Exception as e {
+            logger.debug(f"MongoDB bulk_put serialization failed: {e}");
+        }
+    }
+    if ops {
+        try {
+            self.collection.bulk_write(ops);
+        } except Exception as e {
+            logger.debug(f"MongoDB bulk_write failed: {e}");
+        }
+    }
+}
+
+"""Get garbage collection list."""
+impl MongoBackend.get_gc -> list[Anchor] {
+    return list(self.__gc__);
+}
+
+"""Remove anchor from garbage collection list."""
+impl MongoBackend.remove_from_gc(anchor: Anchor) -> None {
+    self.__gc__.discard(anchor);
+}
+
+"""Get the underlying memory dict."""
+impl MongoBackend.get_mem -> dict[UUID, Anchor] {
+    return self.__mem__;
+}
+
+"""Load anchor from raw MongoDB document."""
 impl MongoBackend._load_anchor(raw: dict[(str, Any)]) -> (Anchor | None) {
     if 'data' not in raw {
         return None;
     }
-    data: bytes = raw['data'];
-    return AnchorMergeStrategy.deserialize(data);
+    try {
+        data: bytes = raw['data'];
+        return loads(data);
+    } except Exception as e {
+        logger.debug(f"MongoDB _load_anchor failed: {e}");
+        return None;
+    }
 }

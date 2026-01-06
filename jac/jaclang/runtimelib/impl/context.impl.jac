@@ -6,18 +6,17 @@ import from uuid { UUID }
 
 import from jaclang.pycore.archetype { Anchor, NodeAnchor, Root }
 import from jaclang.pycore.constant { Constants as Con }
-import from jaclang.runtimelib.storage { ShelfStorage, MemoryOrchestrator }
+import from jaclang.runtimelib.memory { TieredMemory }
 
 """Initialize ExecutionContext."""
 impl ExecutionContext.init(
     self: ExecutionContext, session: (str | None) = None, <>root: (str | None) = None
 ) -> None {
-    # Create MemoryOrchestrator with optional persistence
-    persistence = ShelfStorage(session) if session else None;
-    self.mem = MemoryOrchestrator(persistence);
+    # Create TieredMemory with optional persistence
+    self.mem = TieredMemory(session=session);
     self.reports = [];
     self.custom = MISSING;
-    # Try to load system root from storage (orchestrator handles L1/L3 lookup)
+    # Try to load system root from storage (TieredMemory handles L1/L3 lookup)
     system_root = cast((NodeAnchor | None), self.mem.get(UUID(Con.SUPER_ROOT_UUID)));
     # Create system root if not found
     if not isinstance(system_root, NodeAnchor) {
@@ -34,7 +33,7 @@ impl ExecutionContext.init(
 """Get anchor by ID or raise error."""
 impl ExecutionContext._get_anchor(self: ExecutionContext, anchor_id: str) -> NodeAnchor {
     id = UUID(anchor_id);
-    # Orchestrator handles L1/L3 lookup with read-through caching
+    # TieredMemory handles L1/L3 lookup with read-through caching
     anchor = self.mem.get(id);
     if not isinstance(anchor, NodeAnchor) {
         raise ValueError(f"Invalid anchor id {anchor_id} !") ;
@@ -51,7 +50,7 @@ impl ExecutionContext.set_entry_node(
 
 """Close current ExecutionContext."""
 impl ExecutionContext.close(self: ExecutionContext) -> None {
-    # Orchestrator handles syncing memory to persistence and closing all backends
+    # TieredMemory handles syncing to persistence and closing all tiers
     self.mem.close();
 }
 
