@@ -23,29 +23,20 @@ class Memory(Generic[ID, TANCH]) {
     def query(
         self: Memory, filter: (Callable[[TANCH], bool] | None) = None
     ) -> Generator[TANCH, None, None];
-<<<<<<< HEAD
-=======
 
->>>>>>> e5ab14dc0 (lint)
     def all_root(self: Memory) -> Generator[Root, None, None];
     def find(
         self: Memory,
         ids: (ID | Iterable[ID]),
         filter: (Callable[[TANCH], TANCH] | None) = None
     ) -> Generator[TANCH, None, None];
-<<<<<<< HEAD
-=======
 
->>>>>>> e5ab14dc0 (lint)
     def find_one(
         self: Memory,
         ids: (ID | Iterable[ID]),
         filter: (Callable[[TANCH], TANCH] | None) = None
     ) -> (TANCH | None);
-<<<<<<< HEAD
-=======
 
->>>>>>> e5ab14dc0 (lint)
     def find_by_id(self: Memory, id: ID) -> (TANCH | None);
     def set(self: Memory, data: TANCH) -> None;
     def remove(self: Memory, ids: (ID | Iterable[ID])) -> None;
@@ -62,24 +53,19 @@ class ShelfStorage(Memory[UUID, Anchor]) {
     has __shelf__: (shelve.Shelf[Anchor] | None) = None;
 
     def init(self: ShelfStorage, session: (str | None) = None) -> None;
+    def init(self: ShelfStorage, session: (str | None) = None) -> None;
     def commit(self: ShelfStorage, anchor: (Anchor | None) = None) -> None;
     def close(self: ShelfStorage) -> None;
     def sync_mem_to_db(self: ShelfStorage, keys: Iterable[UUID]) -> None;
     def query(
         self: ShelfStorage, filter: (Callable[[Anchor], bool] | None) = None
     ) -> Generator[Any, None, None];
-<<<<<<< HEAD
-=======
 
->>>>>>> e5ab14dc0 (lint)
     def find(
         self: ShelfStorage,
         ids: (UUID | Iterable[UUID]),
         filter: (Callable[[Anchor], Anchor] | None) = None
     ) -> Generator[Anchor, None, None];
-<<<<<<< HEAD
-=======
 
->>>>>>> e5ab14dc0 (lint)
     def find_by_id(self: ShelfStorage, id: UUID) -> (Anchor | None);
 }
