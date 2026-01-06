@@ -132,8 +132,10 @@ class JacScaleTestRunner:
                 time.sleep(0.2)
 
         if not server_ready:
-            self.stop_server()
-            raise RuntimeError(f"Server failed to start after {timeout} seconds")
+            stdout, stderr = self.server_process.communicate(timeout=5)
+            raise RuntimeError(
+                f"Server failed to become ready.\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}"
+            )
 
     def stop_server(self) -> None:
         """Stop the jac-scale server and clean up session files."""

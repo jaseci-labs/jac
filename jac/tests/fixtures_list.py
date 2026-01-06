@@ -631,7 +631,6 @@ JACLANG_PYTHON_FILES: list[str] = [
     "jaclang/pycore/lark_jac_parser.py",
     "jaclang/pycore/lark_ts_parser.py",
     "jaclang/pycore/log.py",
-    "jaclang/pycore/memory.py",
     "jaclang/pycore/modresolver.py",
     "jaclang/pycore/mtp.py",
     "jaclang/pycore/passes/__init__.py",

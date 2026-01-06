@@ -1,7 +1,10 @@
+"""Initialize the JacAutoLintPass."""
+impl JacAutoLintPass.init(ir_in: uni.Module, prog: Any) -> None {
+    super.init(ir_in, prog);
+}
+
 """Remove empty parentheses from function signatures with no parameters."""
-impl JacAutoLintPass.exit_ability(
-    self: JacAutoLintPass, ability_node: uni.Ability
-) -> None {
+impl JacAutoLintPass.exit_ability(ability_node: uni.Ability) -> None {
     if not self.lint_enabled {
         return;
     }
@@ -17,9 +20,7 @@ impl JacAutoLintPass.exit_ability(
 This preserves original token objects (for comment associations) while
 removing only the @staticmethod decorator tokens and inserting the static keyword.
 """
-impl JacAutoLintPass._remove_staticmethod_from_kids(
-    self: JacAutoLintPass, ability_node: uni.Ability
-) -> None {
+impl JacAutoLintPass._remove_staticmethod_from_kids(ability_node: uni.Ability) -> None {
     new_kids: list[uni.UniNode] = [];
     i = 0;
     kids = ability_node.kid;
@@ -83,9 +84,7 @@ impl JacAutoLintPass._remove_staticmethod_from_kids(
 }
 
 """Process ability to convert @staticmethod decorator to static keyword and __init__/__post_init__ to init/postinit."""
-impl JacAutoLintPass.enter_ability(
-    self: JacAutoLintPass, ability_node: uni.Ability
-) -> None {
+impl JacAutoLintPass.enter_ability(ability_node: uni.Ability) -> None {
     if not self.lint_enabled {
         return;
     }
@@ -149,7 +148,7 @@ impl JacAutoLintPass.enter_ability(
 }
 
 """Process ImplDef to combine consecutive has statements."""
-impl JacAutoLintPass.enter_impl_def(self: JacAutoLintPass, node: uni.ImplDef) -> None {
+impl JacAutoLintPass.enter_impl_def(node: uni.ImplDef) -> None {
     if not self.lint_enabled {
         return;
     }
@@ -167,7 +166,7 @@ impl JacAutoLintPass.enter_impl_def(self: JacAutoLintPass, node: uni.ImplDef) ->
 }
 
 """Remove empty parentheses from impl signatures with no parameters."""
-impl JacAutoLintPass.exit_impl_def(self: JacAutoLintPass, <>node: uni.ImplDef) -> None {
+impl JacAutoLintPass.exit_impl_def(<>node: uni.ImplDef) -> None {
     if not self.lint_enabled {
         return;
     }
@@ -179,7 +178,7 @@ impl JacAutoLintPass.exit_impl_def(self: JacAutoLintPass, <>node: uni.ImplDef) -
 }
 
 """Process Enum to combine consecutive has statements."""
-impl JacAutoLintPass.enter_enum(self: JacAutoLintPass, node: uni.Enum) -> None {
+impl JacAutoLintPass.enter_enum(node: uni.Enum) -> None {
     if not self.lint_enabled {
         return;
     }
@@ -195,9 +194,7 @@ impl JacAutoLintPass.enter_enum(self: JacAutoLintPass, node: uni.Enum) -> None {
 }
 
 """Process Archetype to combine consecutive has statements."""
-impl JacAutoLintPass.enter_archetype(
-    self: JacAutoLintPass, node: uni.Archetype
-) -> None {
+impl JacAutoLintPass.enter_archetype(node: uni.Archetype) -> None {
     if not self.lint_enabled {
         return;
     }
@@ -213,9 +210,7 @@ impl JacAutoLintPass.enter_archetype(
 }
 
 """Combine consecutive glob statements in a body list."""
-impl JacAutoLintPass.combine_consecutive_glob(
-    self: JacAutoLintPass, body: list
-) -> list {
+impl JacAutoLintPass.combine_consecutive_glob(body: list) -> list {
     if len(body) <= 1 {
         return body;
     }
@@ -265,7 +260,7 @@ impl JacAutoLintPass.combine_consecutive_glob(
 }
 
 """Combine consecutive has statements in a body list."""
-impl JacAutoLintPass.combine_consecutive_has(self: JacAutoLintPass, body: list) -> list {
+impl JacAutoLintPass.combine_consecutive_has(body: list) -> list {
     if len(body) <= 1 {
         return body;
     }
@@ -317,7 +312,7 @@ impl JacAutoLintPass.combine_consecutive_has(self: JacAutoLintPass, body: list) 
 
 """Check if two GlobalVars nodes can be combined (same access, frozen)."""
 impl JacAutoLintPass.can_combine_glob(
-    self: JacAutoLintPass, glob1: uni.GlobalVars, glob2: uni.GlobalVars
+    glob1: uni.GlobalVars, glob2: uni.GlobalVars
 ) -> bool {
     # Must have same frozen modifier
     if glob1.is_frozen != glob2.is_frozen {
@@ -333,9 +328,7 @@ impl JacAutoLintPass.can_combine_glob(
 }
 
 """Check if two ArchHas nodes can be combined (same static, access, frozen)."""
-impl JacAutoLintPass.can_combine_has(
-    self: JacAutoLintPass, has1: uni.ArchHas, has2: uni.ArchHas
-) -> bool {
+impl JacAutoLintPass.can_combine_has(has1: uni.ArchHas, has2: uni.ArchHas) -> bool {
     # Must have same static modifier
     if has1.is_static != has2.is_static {
         return False;
@@ -354,9 +347,7 @@ impl JacAutoLintPass.can_combine_has(
 }
 
 """Create a new ModuleCode (with entry) block from a list of statements."""
-impl JacAutoLintPass.create_entry_block(
-    self: JacAutoLintPass, stmts: list
-) -> uni.ModuleCode {
+impl JacAutoLintPass.create_entry_block(stmts: list) -> uni.ModuleCode {
     entry_block = uni.ModuleCode(name=None, body=stmts, kid=stmts, doc=None);
     # Normalize shallowly - generates with entry tokens but preserves child loc info
     entry_block.normalize(deep=False);
@@ -365,7 +356,7 @@ impl JacAutoLintPass.create_entry_block(
 
 """Create a GlobalVars node from an assignment."""
 impl JacAutoLintPass.create_glob_from_assignment(
-    self: JacAutoLintPass, assignment: uni.Assignment
+    assignment: uni.Assignment
 ) -> uni.GlobalVars {
     glob_node = uni.GlobalVars(
         access=None,
@@ -380,9 +371,7 @@ impl JacAutoLintPass.create_glob_from_assignment(
 }
 
 """Check if a statement is a module-level construct that can be extracted."""
-impl JacAutoLintPass.is_module_level_construct(
-    self: JacAutoLintPass, stmt: uni.UniNode
-) -> bool {
+impl JacAutoLintPass.is_module_level_construct(stmt: uni.UniNode) -> bool {
     # These types can exist at module level and should be extracted
     return isinstance(
         stmt,
@@ -399,9 +388,7 @@ impl JacAutoLintPass.is_module_level_construct(
 }
 
 """Check if an assignment can be converted to glob."""
-impl JacAutoLintPass.can_convert_to_glob(
-    self: JacAutoLintPass, assignment: uni.Assignment
-) -> bool {
+impl JacAutoLintPass.can_convert_to_glob(assignment: uni.Assignment) -> bool {
     # Must have a value (not just declaration)
     if assignment.value is None {
         return False;
@@ -420,7 +407,7 @@ impl JacAutoLintPass.can_convert_to_glob(
 }
 
 """Process module to transform with entry blocks in-place."""
-impl JacAutoLintPass.enter_module(self: JacAutoLintPass, node: uni.Module) -> None {
+impl JacAutoLintPass.enter_module(node: uni.Module) -> None {
     if not self.lint_enabled {
         return;
     }
@@ -490,7 +477,7 @@ Names only need angle bracket escaping if they conflict with:
 This also handles SpecialVarRef where the underlying name should
 never have angle bracket escaping since it's already recognized as a special keyword.
 """
-impl JacAutoLintPass.enter_name(self: JacAutoLintPass, <>node: uni.Name) -> None {
+impl JacAutoLintPass.enter_name(<>node: uni.Name) -> None {
     if not self.lint_enabled {
         return;
     }
@@ -517,9 +504,7 @@ SpecialVarRef wraps special keywords like init, postinit, self, super,
 root, here, visitor. The underlying Name should never have angle bracket escaping
 since these are already recognized as special tokens in the grammar.
 """
-impl JacAutoLintPass.enter_special_var_ref(
-    self: JacAutoLintPass, <>node: uni.SpecialVarRef
-) -> None {
+impl JacAutoLintPass.enter_special_var_ref(<>node: uni.SpecialVarRef) -> None {
     if not self.lint_enabled {
         return;
     }
@@ -541,9 +526,7 @@ BuiltinType represents built-in types like str, int, float, bool, etc.
 These should never have angle bracket escaping since they are recognized as
 built-in type tokens in the grammar.
 """
-impl JacAutoLintPass.enter_builtin_type(
-    self: JacAutoLintPass, <>node: uni.BuiltinType
-) -> None {
+impl JacAutoLintPass.enter_builtin_type(<>node: uni.BuiltinType) -> None {
     if not self.lint_enabled {
         return;
     }
@@ -567,7 +550,7 @@ If valid, creates and returns an AtomTrailer with is_null_ok=True.
 Returns None if the call doesn't match the hasattr pattern.
 """
 impl JacAutoLintPass._convert_hasattr_to_null_ok(
-    self: JacAutoLintPass, node: uni.FuncCall
+    node: uni.FuncCall
 ) -> (uni.AtomTrailer | None) {
     # Check if target is a Name with value "hasattr"
     if not isinstance(node.target, uni.Name) {
@@ -638,7 +621,7 @@ Returns True if the AtomTrailer represents obj.attr where obj matches
 the given object expression and attr matches the given attribute name.
 """
 impl JacAutoLintPass._is_matching_attr_access(
-    self: JacAutoLintPass, trailer: uni.AtomTrailer, obj_expr: uni.Expr, attr_name: str
+    trailer: uni.AtomTrailer, obj_expr: uni.Expr, attr_name: str
 ) -> bool {
     # Must be an attribute access (not subscript)
     if not trailer.is_attr {
@@ -661,9 +644,7 @@ impl JacAutoLintPass._is_matching_attr_access(
 Takes an existing obj.attr AtomTrailer and converts it to use null-safe access
 by setting is_null_ok=True and re-normalizing.
 """
-impl JacAutoLintPass._make_null_ok(
-    self: JacAutoLintPass, trailer: uni.AtomTrailer
-) -> None {
+impl JacAutoLintPass._make_null_ok(trailer: uni.AtomTrailer) -> None {
     if not trailer.is_null_ok {
         trailer.is_null_ok = True;
         trailer.normalize(deep=False);
@@ -678,7 +659,7 @@ the equivalent null-safe access expression.
 For IfElseExpr patterns like obj.attr if hasattr(obj, "attr") else default,
 this also converts the value expression to use null-safe access.
 """
-impl JacAutoLintPass.exit_func_call(self: JacAutoLintPass, node: uni.FuncCall) -> None {
+impl JacAutoLintPass.exit_func_call(node: uni.FuncCall) -> None {
     if not self.lint_enabled {
         return;
     }
@@ -766,7 +747,7 @@ impl JacAutoLintPass.exit_func_call(self: JacAutoLintPass, node: uni.FuncCall) -
 
 """Recursively collect all AtomTrailer nodes from a subtree."""
 impl JacAutoLintPass._collect_atom_trailers(
-    self: JacAutoLintPass, uni_node: uni.UniNode, results: list
+    uni_node: uni.UniNode, results: list
 ) -> None {
     if isinstance(uni_node, uni.AtomTrailer) {
         results.append(uni_node);
@@ -785,9 +766,7 @@ impl JacAutoLintPass._collect_atom_trailers(
 This avoids triggering normalize() which corrupts token locations.
 Returns None if the expression is too complex to build a key from.
 """
-impl JacAutoLintPass._expr_to_key(
-    self: JacAutoLintPass, expr: uni.Expr
-) -> (str | None) {
+impl JacAutoLintPass._expr_to_key(expr: uni.Expr) -> (str | None) {
     if isinstance(expr, uni.Name) {
         return expr.value;
     }
@@ -813,9 +792,7 @@ impl JacAutoLintPass._expr_to_key(
 Returns a string like "obj.attr" that can be used to identify matching accesses.
 Returns None if the trailer is not a simple attribute access.
 """
-impl JacAutoLintPass._get_trailer_key(
-    self: JacAutoLintPass, trailer: uni.AtomTrailer
-) -> (str | None) {
+impl JacAutoLintPass._get_trailer_key(trailer: uni.AtomTrailer) -> (str | None) {
     if not trailer.is_attr {
         return None;
     }
@@ -836,9 +813,7 @@ impl JacAutoLintPass._get_trailer_key(
 
 This avoids triggering normalize() which corrupts token locations.
 """
-impl JacAutoLintPass._exprs_are_identical(
-    self: JacAutoLintPass, expr1: uni.Expr, expr2: uni.Expr
-) -> bool {
+impl JacAutoLintPass._exprs_are_identical(expr1: uni.Expr, expr2: uni.Expr) -> bool {
     # Same object reference
     if expr1 is expr2 {
         return True;
@@ -889,9 +864,7 @@ impl JacAutoLintPass._exprs_are_identical(
 Transforms: x?.attr if x?.attr else default -> x?.attr or default
 This only applies when the value and condition are identical expressions.
 """
-impl JacAutoLintPass._convert_ternary_to_or(
-    self: JacAutoLintPass, if_else_node: uni.IfElseExpr
-) -> bool {
+impl JacAutoLintPass._convert_ternary_to_or(if_else_node: uni.IfElseExpr) -> bool {
     # Check if value and condition are identical
     if not self._exprs_are_identical(if_else_node.value, if_else_node.condition) {
         return False;
@@ -965,9 +938,7 @@ object and attribute, convert the regular accesses to null-safe.
 
 Also converts patterns like: x?.attr if x?.attr else default -> x?.attr or default
 """
-impl JacAutoLintPass.exit_if_else_expr(
-    self: JacAutoLintPass, if_else_node: uni.IfElseExpr
-) -> None {
+impl JacAutoLintPass.exit_if_else_expr(if_else_node: uni.IfElseExpr) -> None {
     if not self.lint_enabled {
         return;
     }
@@ -1016,9 +987,7 @@ impl JacAutoLintPass.exit_if_else_expr(
 When an expression contains both null-safe and regular accesses for the same
 object and attribute, convert the regular accesses to null-safe.
 """
-impl JacAutoLintPass.exit_bool_expr(
-    self: JacAutoLintPass, bool_node: uni.BoolExpr
-) -> None {
+impl JacAutoLintPass.exit_bool_expr(bool_node: uni.BoolExpr) -> None {
     if not self.lint_enabled {
         return;
     }
@@ -1062,9 +1031,7 @@ impl JacAutoLintPass.exit_bool_expr(
 This import is not needed in Jac since Jac already uses deferred annotation
 evaluation by default. Removing it cleans up code converted from Python.
 """
-impl JacAutoLintPass._is_future_annotations_import(
-    self: JacAutoLintPass, stmt: uni.UniNode
-) -> bool {
+impl JacAutoLintPass._is_future_annotations_import(stmt: uni.UniNode) -> bool {
     if not isinstance(stmt, uni.Import) {
         return False;
     }
@@ -1107,9 +1074,7 @@ not be set yet when this pass runs during formatting.
 Supports nested classes: for `impl OuterClass.InnerClass.method`, it navigates
 through OuterClass -> InnerClass -> method to find the correct declaration.
 """
-impl JacAutoLintPass._fix_impl_signature_mismatch(
-    self: JacAutoLintPass, impl_node: uni.ImplDef
-) -> None {
+impl JacAutoLintPass._fix_impl_signature_mismatch(impl_node: uni.ImplDef) -> None {
     # First try decl_link (if DeclImplMatchPass has already run)
     decl: uni.Ability | None = None;
     if isinstance(impl_node.decl_link, uni.Ability) {
@@ -1210,7 +1175,7 @@ impl JacAutoLintPass._fix_impl_signature_mismatch(
 Compares parameter counts and names to determine if signatures are equivalent.
 """
 impl JacAutoLintPass._signatures_match(
-    self: JacAutoLintPass, decl_sig: uni.FuncSignature, impl_sig: uni.FuncSignature
+    decl_sig: uni.FuncSignature, impl_sig: uni.FuncSignature
 ) -> bool {
     # Compare parameter counts first
     if (
@@ -1250,9 +1215,7 @@ impl JacAutoLintPass._signatures_match(
 When users write `import from X { ... };` inside a function/ability, the semicolon
 is parsed as a separate Semi statement. This removes those unnecessary semicolons.
 """
-impl JacAutoLintPass.enter_import(
-    self: JacAutoLintPass, import_node: uni.Import
-) -> None {
+impl JacAutoLintPass.enter_import(import_node: uni.Import) -> None {
     if not self.lint_enabled or import_node.from_loc is None {
         return;
     }
@@ -1296,10 +1259,7 @@ Args:
               ("signature" for Ability, "spec" for ImplDef)
 """
 impl JacAutoLintPass._remove_empty_parens_from_sig(
-    self: JacAutoLintPass,
-    target_node: uni.UniNode,
-    sig: uni.FuncSignature,
-    sig_attr: str
+    target_node: uni.UniNode, sig: uni.FuncSignature, sig_attr: str
 ) -> None {
     # Check if signature has any parameters
     has_params = bool(
@@ -1340,9 +1300,7 @@ impl JacAutoLintPass._remove_empty_parens_from_sig(
 Returns the unquoted string value, or None if the expression is not a simple string literal.
 Used by hasattr conversion to extract attribute names.
 """
-impl JacAutoLintPass._extract_string_literal_value(
-    self: JacAutoLintPass, expr: uni.Expr
-) -> (str | None) {
+impl JacAutoLintPass._extract_string_literal_value(expr: uni.Expr) -> (str | None) {
     attr_value: str | None = None;
     if isinstance(expr, uni.String) {
         attr_value = expr.value;

@@ -14,12 +14,11 @@ from collections.abc import Callable, Coroutine, Iterator, Mapping, Sequence
 # Direct imports from runtimelib (no longer lazy - these are now pure Python)
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import contextmanager, suppress
-from dataclasses import MISSING, dataclass, field
+from dataclasses import dataclass, field
 from functools import wraps
 from inspect import getfile
 from logging import getLogger
 from pathlib import Path
-from shelve import Shelf
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -39,7 +38,6 @@ from jaclang.pycore.archetype import (
     ObjectSpatialPath,
     Root,
 )
-from jaclang.pycore.constant import Constants as Con
 from jaclang.pycore.constant import EdgeDir, colors
 from jaclang.pycore.constructs import (
     AccessLevel,
@@ -52,7 +50,6 @@ from jaclang.pycore.constructs import (
     WalkerAnchor,
     WalkerArchetype,
 )
-from jaclang.pycore.memory import Memory, ShelfStorage
 from jaclang.pycore.modresolver import infer_language
 from jaclang.pycore.mtp import MTIR, MTRuntime
 from jaclang.vendor import pluggy
@@ -62,6 +59,7 @@ if TYPE_CHECKING:
 
     from jaclang.pycore.program import JacProgram
     from jaclang.runtimelib.client_bundle import ClientBundle, ClientBundleBuilder
+    from jaclang.runtimelib.context import ExecutionContext
     from jaclang.runtimelib.server import ModuleIntrospector
 
 plugin_manager = pluggy.PluginManager("jac")
@@ -75,50 +73,6 @@ JsonValue: TypeAlias = (
     None | str | int | float | bool | list["JsonValue"] | dict[str, "JsonValue"]
 )
 StatusCode: TypeAlias = Literal[200, 201, 400, 401, 404, 500, 503]
-
-
-class ExecutionContext:
-    """Execution Context."""
-
-    def __init__(
-        self,
-        session: str | None = None,
-        root: str | None = None,
-    ) -> None:
-        """Initialize JacRuntime."""
-        self.mem: Memory = ShelfStorage(session)
-        self.reports: list[Any] = []
-        self.custom: Any = MISSING
-        system_root = self.mem.find_by_id(UUID(Con.SUPER_ROOT_UUID))
-        if not isinstance(system_root, NodeAnchor):
-            system_root = cast(NodeAnchor, Root().__jac__)
-            system_root.id = UUID(Con.SUPER_ROOT_UUID)
-            self.mem.set(system_root)
-        self.system_root: NodeAnchor = system_root
-        self.entry_node = self.root_state = (
-            self._get_anchor(root) if root else self.system_root
-        )
-
-    def _get_anchor(self, anchor_id: str) -> NodeAnchor:
-        """Get anchor by ID or raise error."""
-        anchor = self.mem.find_by_id(UUID(anchor_id))
-        if not isinstance(anchor, NodeAnchor):
-            raise ValueError(f"Invalid anchor id {anchor_id} !")
-        return anchor
-
-    def set_entry_node(self, entry_node: str | None) -> None:
-        """Override entry node."""
-        self.entry_node = (
-            self._get_anchor(entry_node) if entry_node else self.root_state
-        )
-
-    def close(self) -> None:
-        """Close current ExecutionContext."""
-        self.mem.close()
-
-    def get_root(self) -> Root:
-        """Get current root."""
-        return cast(Root, self.root_state.archetype)
 
 
 class JacAccessValidation:
@@ -839,6 +793,10 @@ class JacBasics:
     @staticmethod
     def reset_graph(root: Root | None = None) -> int:
         """Purge current or target graph."""
+        from shelve import Shelf
+
+        from jaclang.runtimelib.memory import ShelfStorage
+
         ctx = JacRuntimeInterface.get_context()
         mem = cast(ShelfStorage, ctx.mem)
         ranchor = root.__jac__ if root else ctx.root_state
@@ -1678,6 +1636,8 @@ class JacUtils:
         session: str | None = None, root: str | None = None
     ) -> ExecutionContext:
         """Hook for initialization or custom greeting logic."""
+        from jaclang.runtimelib.context import ExecutionContext
+
         return ExecutionContext(session=session, root=root)
 
     @staticmethod
@@ -2145,8 +2105,9 @@ class JacRuntime(JacRuntimeInterface):
             "builtins",
             "jaclang.pycore.archetype",
             "jaclang.pycore.constructs",
-            "jaclang.pycore.memory",
             "jaclang.pycore.mtp",
+            "jaclang.runtimelib.memory",
+            "jaclang.runtimelib.context",
             "jaclang.runtimelib.test",
             "jaclang.compiler.passes.tool.doc_ir",
             # Keep language server + type-system modules stable across resets.

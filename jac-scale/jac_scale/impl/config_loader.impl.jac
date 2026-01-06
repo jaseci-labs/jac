@@ -24,8 +24,8 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
             'google': {'client_id': '', 'client_secret': ''}
         },
         'database': {
-            'mongodb_uri': 'mongodb://root:rootpassword123@localhost:27017/',
-            'redis_url': 'redis://:mypassword123@localhost:6379/0',
+            'mongodb_uri': None,
+            'redis_url': None,
             'shelf_db_path': 'anchor_store.db'
         },
         'kubernetes': {
@@ -84,12 +84,8 @@ impl JacScaleConfig.get_database_config(self: JacScaleConfig) -> dict[str, Any] 
     config = self.load();
     db_config = config.get('database', {});
     return {
-        'mongodb_uri': db_config.get(
-            'mongodb_uri', 'mongodb://root:rootpassword123@localhost:27017/'
-        ),
-        'redis_url': db_config.get(
-            'redis_url', 'redis://:mypassword123@localhost:6379/0'
-        ),
+        'mongodb_uri': os.environ.get('MONGODB_URI') or db_config.get('mongodb_uri'),
+        'redis_url': os.environ.get('REDIS_URL') or db_config.get('redis_url'),
         'shelf_db_path': db_config.get('shelf_db_path', 'anchor_store.db')
     };
 }

@@ -5,7 +5,8 @@ import pickle;
 import sys;
 import from dotenv { load_dotenv }
 import from jaclang.cli.cmdreg { CommandPriority, cmd_registry }
-import from jaclang.pycore.runtime { ExecutionContext, hookimpl, plugin_manager }
+import from jaclang.pycore.runtime { hookimpl, plugin_manager }
+import from jaclang.runtimelib.context { ExecutionContext }
 import from jaclang.pycore.runtime { JacRuntime as Jac }
 import from .context { JScaleExecutionContext }
 import from .kubernetes.docker_impl { build_and_push_docker }
