@@ -4,13 +4,13 @@ import from dataclasses { MISSING }
 import from typing { Any, cast }
 import from uuid { UUID }
 
-import from jaclang.pycore.archetype { NodeAnchor, Root }
+import from jaclang.pycore.archetype { Anchor, NodeAnchor, Root }
 import from jaclang.pycore.constant { Constants as Con }
 import from jaclang.runtimelib.memory { Memory, ShelfStorage }
 
 """Initialize ExecutionContext."""
 impl ExecutionContext.__init__(
-    self: ExecutionContext, session: (str | None) = None, root: (str | None) = None
+    self: ExecutionContext, session: (str | None) = None, <>root: (str | None) = None
 ) -> None {
     self.mem = ShelfStorage(session);
     self.reports = [];
@@ -23,7 +23,7 @@ impl ExecutionContext.__init__(
     }
     self.system_root = system_root;
     self.entry_node = self.root_state=(
-        self._get_anchor(root) if root else self.system_root
+        self._get_anchor(<>root) if <>root else self.system_root
     );
 }
 

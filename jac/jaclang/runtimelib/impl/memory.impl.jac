@@ -20,19 +20,29 @@ impl Memory.is_cached(self: Memory, id: ID) -> bool {
 }
 
 """Find anchors from memory with filter."""
-impl Memory.query(self: Memory, filter: (Callable[[TANCH], bool] | None) = None) -> Generator[TANCH, None, None] {
-    return (anchor for anchor in self.__mem__.values() if not filter or filter(anchor));
+impl Memory.query(
+    self: Memory, filter: (Callable[[TANCH], bool] | None) = None
+) -> Generator[TANCH, None, None] {
+    return (
+        anchor
+        for anchor in self.__mem__.values()
+        if not filter or filter(anchor)
+    );
 }
 
 """Get all the roots."""
 impl Memory.all_root(self: Memory) -> Generator[Root, None, None] {
-    for anchor in self.query(lambda anchor: TANCH -> bool { isinstance(anchor.archetype, Root) }) {
+    for anchor in self.query(lambda  anchor: bool: isinstance(anchor.archetype, Root)) {
         yield cast(Root, anchor.archetype);
     }
 }
 
 """Find anchors from memory by ids with filter."""
-impl Memory.find(self: Memory, ids: (ID | Iterable[ID]), filter: (Callable[[TANCH], TANCH] | None) = None) -> Generator[TANCH, None, None] {
+impl Memory.find(
+    self: Memory,
+    ids: (ID | Iterable[ID]),
+    filter: (Callable[[TANCH], TANCH] | None) = None
+) -> Generator[TANCH, None, None] {
     if not isinstance(ids, Iterable) {
         ids = [ids];
     }
@@ -44,7 +54,11 @@ impl Memory.find(self: Memory, ids: (ID | Iterable[ID]), filter: (Callable[[TANC
 }
 
 """Find one anchor from memory by ids with filter."""
-impl Memory.find_one(self: Memory, ids: (ID | Iterable[ID]), filter: (Callable[[TANCH], TANCH] | None) = None) -> (TANCH | None) {
+impl Memory.find_one(
+    self: Memory,
+    ids: (ID | Iterable[ID]),
+    filter: (Callable[[TANCH], TANCH] | None) = None
+) -> (TANCH | None) {
     return next(self.find(ids, filter), None);
 }
 
@@ -138,7 +152,6 @@ impl ShelfStorage.close(self: ShelfStorage) -> None {
 """Manually sync memory to db."""
 impl ShelfStorage.sync_mem_to_db(self: ShelfStorage, keys: Iterable[UUID]) -> None {
     import from jaclang { JacRuntimeInterface as Jac }
-
     if isinstance(self.__shelf__, shelve.Shelf) {
         for key in keys {
             d = self.__mem__.get(key);
@@ -180,7 +193,9 @@ impl ShelfStorage.sync_mem_to_db(self: ShelfStorage, keys: Iterable[UUID]) -> No
 }
 
 """Find anchors from memory with filter."""
-impl ShelfStorage.query(self: ShelfStorage, filter: (Callable[[Anchor], bool] | None) = None) -> Generator[Any, None, None] {
+impl ShelfStorage.query(
+    self: ShelfStorage, filter: (Callable[[Anchor], bool] | None) = None
+) -> Generator[Any, None, None] {
     if isinstance(self.__shelf__, shelve.Shelf) {
         for anchor in self.__shelf__.values() {
             if not filter or filter(anchor) {
@@ -191,12 +206,20 @@ impl ShelfStorage.query(self: ShelfStorage, filter: (Callable[[Anchor], bool] | 
             }
         }
     } else {
-        yield from (anchor for anchor in self.__mem__.values() if not filter or filter(anchor));
+        yield from (
+            anchor
+            for anchor in self.__mem__.values()
+            if not filter or filter(anchor)
+        );
     }
 }
 
 """Find anchors from datasource by ids with filter."""
-impl ShelfStorage.find(self: ShelfStorage, ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None) -> Generator[Anchor, None, None] {
+impl ShelfStorage.find(
+    self: ShelfStorage,
+    ids: (UUID | Iterable[UUID]),
+    filter: (Callable[[Anchor], Anchor] | None) = None
+) -> Generator[Anchor, None, None] {
     if not isinstance(ids, Iterable) {
         ids = [ids];
     }
@@ -208,7 +231,7 @@ impl ShelfStorage.find(self: ShelfStorage, ids: (UUID | Iterable[UUID]), filter:
                 and id not in self.__gc__
                 and (_anchor := self.__shelf__.get(str(id)))
             ) {
-                self.__mem__[id] = anchor = _anchor;
+                self.__mem__[id] = anchor=_anchor;
             }
             if anchor and (not filter or filter(anchor)) {
                 yield anchor;

@@ -4,7 +4,7 @@ import from dataclasses { MISSING }
 import from typing { Any, cast }
 import from uuid { UUID }
 
-import from jaclang.pycore.archetype { NodeAnchor, Root }
+import from jaclang.pycore.archetype { Anchor, NodeAnchor, Root }
 import from jaclang.pycore.constant { Constants as Con }
 import from jaclang.runtimelib.memory { Memory, ShelfStorage }
 
@@ -12,7 +12,7 @@ glob __all__ = ['ExecutionContext'];
 
 """Execution Context."""
 class ExecutionContext {
-    has mem: Memory,
+    has mem: Memory[UUID, Anchor],
         reports: list[Any],
         custom: Any,
         system_root: NodeAnchor,
@@ -20,7 +20,9 @@ class ExecutionContext {
         root_state: NodeAnchor;
 
     def init(
-        self: ExecutionContext, session: (str | None) = None, root: (str | None) = None
+        self: ExecutionContext,
+        session: (str | None) = None,
+        <>root: (str | None) = None
     ) -> None;
 
     def _get_anchor(self: ExecutionContext, anchor_id: str) -> NodeAnchor;
