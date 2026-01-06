@@ -48,7 +48,7 @@ Before publishing, ensure your `package.json` has all required fields:
 ```json
 {
   "name": "jac-client-node",
-  "version": "1.0.0",
+  "version": "1.0.3",
   "description": "Default dependencies for Jac-client",
   "license": "MIT",
   "repository": {
@@ -103,7 +103,7 @@ After publishing, users can install the packages in their `jac. toml`:
 
 ```toml
 [dependencies.npm]
-"jac-client-node" = "1.0.0"
+"jac-client-node" = "1.0.3"
 
 [dependencies.npm.dev]
 "@jac-client/dev-deps" = "1.0.0"
@@ -149,7 +149,7 @@ Once published, users can install the packages in their Jac client projects:
 
 ```toml
 [dependencies.npm]
-"jac-client-node" = "1.0.0"
+"jac-client-node" = "1.0.3"
 
 [dependencies.npm.dev]
 "@jac-client/dev-deps" = "1.0.0"
