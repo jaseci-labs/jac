@@ -1,6 +1,6 @@
 """Initialize obviously."""
 
-impl UnionType.init(self: UnionType, types: list[TypeBase]) -> None {
+impl UnionType.init(types: list[TypeBase]) -> None {
     super.init();
     # Flatten nested union types
     flattened_types: list[TypeBase] = [];
@@ -16,7 +16,7 @@ impl UnionType.init(self: UnionType, types: list[TypeBase]) -> None {
 
 """Return the index of the given type variable in the class type."""
 impl FunctionType._index_of_type_param(
-    self: FunctionType, class_type: ClassType, type_var: TypeVarType
+    class_type: ClassType, type_var: TypeVarType
 ) -> int {
     for (idx, type_param) in enumerate(class_type.shared.type_params) {
         if (type_param is type_var) {
@@ -27,7 +27,7 @@ impl FunctionType._index_of_type_param(
 }
 
 """Specialize the function type based on the given class type."""
-impl FunctionType.specialize(self: FunctionType, class_type: ClassType) -> FunctionType {
+impl FunctionType.specialize(class_type: ClassType) -> FunctionType {
     clone = FunctionType(
         func_name=self.func_name,
         return_type=self.return_type,
@@ -67,7 +67,6 @@ impl FunctionType.specialize(self: FunctionType, class_type: ClassType) -> Funct
 
 """Initialize obviously."""
 impl FunctionType.init(
-    self: FunctionType,
     func_name: str,
     return_type: (TypeBase | None) = None,
     parameters: (list[Parameter] | None) = None,
@@ -79,34 +78,12 @@ impl FunctionType.init(
     self.parameters = parameters or [];
 }
 
-impl OverloadedType.init(self: OverloadedType, overloads: list[FunctionType]) -> None {
+impl OverloadedType.postinit -> None {
     super.init();
-    self.overloads = overloads;
-}
-
-"""Initialize obviously."""
-impl Parameter.init(
-    self: Parameter,
-    name: str,
-    category: ParameterCategory,
-    param_type: (TypeBase | None),
-    default_value: (Expr | None) = None,
-    is_self: bool = False,
-    is_cls: bool = False,
-    param_kind: ParamKind = ParamKind.NORMAL
-) -> None {
-    super.init();
-    self.name = name;
-    self.category = category;
-    self.default_value = default_value;
-    self.param_type = param_type;
-    self.is_self = is_self;
-    self.is_cls = is_cls;
-    self.param_kind: ParamKind = param_kind;
 }
 
 """Return true if this class is the built-in Node type."""
-impl ClassType.is_node_type(self: ClassType) -> bool {
+impl ClassType.is_node_type -> bool {
     import jaclang.pycore.unitree as uni;
     import from jaclang.pycore.constant { SymbolType }
     if self.shared.is_root_class {
@@ -118,7 +95,7 @@ impl ClassType.is_node_type(self: ClassType) -> bool {
 }
 
 """Return true if this class is the built-in Edge type."""
-impl ClassType.is_edge_type(self: ClassType) -> bool {
+impl ClassType.is_edge_type -> bool {
     import jaclang.pycore.unitree as uni;
     import from jaclang.pycore.constant { SymbolType }
     arch = self.shared.symbol_table;
@@ -127,12 +104,12 @@ impl ClassType.is_edge_type(self: ClassType) -> bool {
 }
 
 """Return true if this class is a data class."""
-impl ClassType.is_data_class(self: ClassType) -> bool {
+impl ClassType.is_data_class -> bool {
     return self.shared.is_data_class;
 }
 
 """Return true if this class is an enum class."""
-impl ClassType.is_enum_class(self: ClassType) -> bool {
+impl ClassType.is_enum_class -> bool {
     return self.shared.is_enum_class;
 }
 
@@ -141,7 +118,7 @@ impl ClassType.is_enum_class(self: ClassType) -> bool {
 
         If class_name is provided, also check if the class name matches.
 """
-impl ClassType.is_builtin(self: ClassType, class_name: (str | None) = None) -> bool {
+impl ClassType.is_builtin(class_name: (str | None) = None) -> bool {
     if not self.shared.is_builtin_class {
         return False;
     }
@@ -153,7 +130,7 @@ impl ClassType.is_builtin(self: ClassType, class_name: (str | None) = None) -> b
 
 """Lookup a member in the class type."""
 impl ClassType.lookup_member_symbol(
-    self: ClassType, member: str, r_overloaded: list | None = None
+    member: str, r_overloaded: list | None = None
 ) -> (Symbol | None) {
     for cls in self.shared.mro {
         members = cls.shared.symbol_table.names_in_scope;
@@ -169,19 +146,17 @@ impl ClassType.lookup_member_symbol(
 }
 
 """Return the symbol representing the class."""
-impl ClassType.get_class_symbol(self: ClassType) -> Symbol {
+impl ClassType.get_class_symbol -> Symbol {
     return self.shared.symbol_table.name.sym;
 }
 
 """Return a new class type specialized with the given type arguments."""
-impl ClassType.specialize_generics(
-    self: ClassType, type_args: list[TypeBase]
-) -> ClassType {
+impl ClassType.specialize_generics(type_args: list[TypeBase]) -> ClassType {
     new_private = ClassType.ClassDetailsPrivate(type_args=type_args);
     return ClassType(self.shared, private=new_private, flags=self.flags);
 }
 
-impl ClassType.clone_as_class(self: ClassType) -> ClassType {
+impl ClassType.clone_as_class -> ClassType {
     if not self.is_instance() {
         return self;
     }
@@ -194,7 +169,7 @@ impl ClassType.clone_as_class(self: ClassType) -> ClassType {
 }
 
 """Clone this class type as an instance type."""
-impl ClassType.clone_as_instance(self: ClassType) -> ClassType {
+impl ClassType.clone_as_instance -> ClassType {
     if self.is_instance() {
         return self;
     }
@@ -208,13 +183,12 @@ impl ClassType.clone_as_instance(self: ClassType) -> ClassType {
 }
 
 """Return a string representation of the class type."""
-impl ClassType.__str__(self: ClassType) -> str {
+impl ClassType.__str__ -> str {
     return f"<class {self.shared.class_name}>";
 }
 
 """Initialize the class type."""
 impl ClassType.init(
-    self: ClassType,
     shared: ClassType.ClassDetailsShared,
     private: (ClassType.ClassDetailsPrivate | None) = None,
     flags: TypeFlags = TypeFlags.Null
@@ -225,15 +199,12 @@ impl ClassType.init(
 }
 
 """Initialize obviously."""
-impl ClassType.ClassDetailsPrivate.init(
-    self: ClassType.ClassDetailsPrivate, type_args: (list[TypeBase] | None) = None
-) -> None {
-    self.type_args = type_args or [];
+impl ClassType.ClassDetailsPrivate.postinit -> None {
+    self.type_args = self.type_args or [];
 }
 
 """Initialize obviously."""
 impl ClassType.ClassDetailsShared.init(
-    self: ClassType.ClassDetailsShared,
     class_name: str,
     symbol_table: SymbolTable,
     *,
@@ -256,37 +227,27 @@ impl ClassType.ClassDetailsShared.init(
 }
 
 """Initialize obviously."""
-impl TypeVarType.init(self: TypeVarType) -> None {
+impl TypeVarType.init -> None {
     super.init();
-}
-
-"""Initialize the class."""
-impl ModuleType.init(
-    self: ModuleType, mod_name: str, file_uri: Path, symbol_table: SymbolTable
-) -> None {
-    super.init();
-    self.mod_name = mod_name;
-    self.file_uri = file_uri;
-    self.symbol_table = symbol_table;
 }
 
 """Return whether the class is an instance."""
-impl TypeBase.is_class_instance(self: TypeBase) -> bool {
+impl TypeBase.is_class_instance -> bool {
     return ((self.category == TypeCategory.Class) and self.is_instance());
 }
 
 """Return whether the class can be instantiated."""
-impl TypeBase.is_instantiable_class(self: TypeBase) -> bool {
+impl TypeBase.is_instantiable_class -> bool {
     return ((self.category == TypeCategory.Class) and self.is_instantiable());
 }
 
 """Return whether the type is an instance."""
-impl TypeBase.is_instance(self: TypeBase) -> bool {
+impl TypeBase.is_instance -> bool {
     return bool((self.flags & TypeFlags.Instance));
 }
 
 """Return whether the type is instantiable."""
-impl TypeBase.is_instantiable(self: TypeBase) -> bool {
+impl TypeBase.is_instantiable -> bool {
     return bool((self.flags & TypeFlags.Instantiable));
 }
 
@@ -296,17 +257,17 @@ impl TypeBase.unknown -> UnknownType {
 }
 
 """Returns the category of the type."""
-impl TypeBase.category(self: TypeBase) -> TypeCategory {
+impl TypeBase.category -> TypeCategory {
     return self.CATEGORY;
 }
 
 """Initialize obviously."""
-impl TypeBase.init(self: TypeBase, flags: TypeFlags = TypeFlags.Null) -> None {
+impl TypeBase.init(flags: TypeFlags = TypeFlags.Null) -> None {
     self.flags: TypeFlags = flags;
 }
 
 """Return true if this type is UnknownType, AnyType, TypeVarType, or object."""
-impl TypeBase.is_any_type(self: TypeBase) -> bool {
+impl TypeBase.is_any_type -> bool {
     # Check for UnknownType, AnyType, or TypeVarType using category
     if self.category in (TypeCategory.Unknown, TypeCategory.Any, TypeCategory.TypeVar) {
         return True;
