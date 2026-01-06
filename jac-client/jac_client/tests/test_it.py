@@ -385,39 +385,16 @@ def test_all_in_one_app_endpoints() -> None:
                         f"Failed to GET /workers/worker.js after retries: {exc}"
                     )
 
-                # "/walker/get_server_message" – walkers are integrated and up and running
-                try:
-                    print("[DEBUG] Sending GET request to /walker/get_server_message")
-                    with urlopen(
-                        "http://127.0.0.1:8000/walker/get_server_message",
-                        timeout=20,
-                    ) as resp_walker:
-                        walker_body = resp_walker.read().decode(
-                            "utf-8", errors="ignore"
-                        )
-                        print(
-                            "[DEBUG] Received response from /walker/get_server_message\n"
-                            f"Status: {resp_walker.status}\n"
-                            f"Body (truncated to 500 chars):\n{walker_body[:500]}"
-                        )
-                        assert resp_walker.status == 200
-                        assert "get_server_message" in walker_body
-                except (URLError, HTTPError) as exc:
-                    print(
-                        f"[DEBUG] Error while requesting /walker/get_server_message: {exc}"
-                    )
-                    pytest.fail("Failed to GET /walker/get_server_message")
-
-                # POST /walker/create_todo – create a Todo via walker HTTP API
+                # POST /walker/create_test_data – create test data via walker HTTP API
                 try:
                     print(
-                        "[DEBUG] Sending POST request to /walker/create_todo endpoint"
+                        "[DEBUG] Sending POST request to /walker/create_test_data endpoint"
                     )
                     payload = {
-                        "text": "Sample todo from all-in-one app",
+                        "message": "Test message from all-in-one app",
                     }
                     req = Request(
-                        "http://127.0.0.1:8000/walker/create_todo",
+                        "http://127.0.0.1:8000/walker/create_test_data",
                         data=json.dumps(payload).encode("utf-8"),
                         headers={"Content-Type": "application/json"},
                         method="POST",
@@ -427,16 +404,47 @@ def test_all_in_one_app_endpoints() -> None:
                             "utf-8", errors="ignore"
                         )
                         print(
-                            "[DEBUG] Received response from /walker/create_todo\n"
+                            "[DEBUG] Received response from /walker/create_test_data\n"
                             f"Status: {resp_create.status}\n"
                             f"Body (truncated to 500 chars):\n{create_body[:500]}"
                         )
                         assert resp_create.status == 200
-                        # Basic sanity check: created Todo text should appear in the response payload.
-                        assert "Sample todo from all-in-one app" in create_body
+                        # Basic sanity check: created TestData message should appear in the response payload.
+                        assert "Test message from all-in-one app" in create_body
                 except (URLError, HTTPError) as exc:
-                    print(f"[DEBUG] Error while requesting /walker/create_todo: {exc}")
-                    pytest.fail("Failed to POST /walker/create_todo")
+                    print(f"[DEBUG] Error while requesting /walker/create_test_data: {exc}")
+                    pytest.fail("Failed to POST /walker/create_test_data")
+
+                # POST /walker/test_string_methods – test string manipulation via walker HTTP API
+                try:
+                    print(
+                        "[DEBUG] Sending POST request to /walker/test_string_methods endpoint"
+                    )
+                    payload = {
+                        "input_text": "hello world test",
+                    }
+                    req = Request(
+                        "http://127.0.0.1:8000/walker/test_string_methods",
+                        data=json.dumps(payload).encode("utf-8"),
+                        headers={"Content-Type": "application/json"},
+                        method="POST",
+                    )
+                    with urlopen(req, timeout=20) as resp_string:
+                        string_body = resp_string.read().decode(
+                            "utf-8", errors="ignore"
+                        )
+                        print(
+                            "[DEBUG] Received response from /walker/test_string_methods\n"
+                            f"Status: {resp_string.status}\n"
+                            f"Body (truncated to 500 chars):\n{string_body[:500]}"
+                        )
+                        assert resp_string.status == 200
+                        # Verify string manipulation results
+                        assert "HELLO WORLD TEST" in string_body  # uppercase result
+                        assert "hello world test" in string_body  # original/lowercase
+                except (URLError, HTTPError) as exc:
+                    print(f"[DEBUG] Error while requesting /walker/test_string_methods: {exc}")
+                    pytest.fail("Failed to POST /walker/test_string_methods")
 
                 # POST /user/register – register a new user
                 test_username = "test_user"

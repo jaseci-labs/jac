@@ -18,7 +18,7 @@ cl import from .pages.FeaturesTest { FeaturesTest }
 cl import from .context.BudgetContext { BudgetProvider }
 
 # Global styles
-cl import ".styles.css";
+cl import ".main.css";
 
 
 cl def:pub app() -> any {
