@@ -20,3 +20,10 @@ tailwindcss = "latest"
 "@types/react-dom" = "^18.2.0"
 "@types/recharts" = "latest"
 "@tailwindcss/vite" = "^4.1.17"
+
+[plugins.client.assets]
+custom_extensions = [".py", ".js"]
+
+[environments.response.headers]
+"Cross-Origin-Opener-Policy" = "same-origin"
+"Cross-Origin-Embedder-Policy" = "require-corp"
