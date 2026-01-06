@@ -11,10 +11,8 @@ import from jaclang.runtimelib.utils { storage_key, to_uuid }
 
 glob logger = logging.getLogger(__name__);
 
-"""Post-initialization: connect to MongoDB and init mutable defaults."""
+"""Post-initialization: connect to MongoDB."""
 impl MongoBackend.postinit -> None {
-    self.__mem__ = {};
-    self.__gc__ = set();
     if self.client is None and self.mongo_url {
         try {
             self.client = MongoClient(self.mongo_url);
@@ -75,9 +73,7 @@ impl MongoBackend.put(anchor: Anchor) -> None {
     }
     _id = to_uuid(anchor.id);
     try {
-        # Serialize
         data_blob = dumps(anchor);
-        # Upsert to MongoDB
         self.collection.update_one(
             {'_id': str(_id)},
             {'$set': {'data': data_blob, 'type': type(anchor).__name__}},
@@ -111,8 +107,6 @@ impl MongoBackend.close -> None {
         }
         self.client = None;
     }
-    self.__mem__.clear();
-    self.__gc__.clear();
 }
 
 """Check if an anchor exists in MongoDB."""
@@ -191,10 +185,9 @@ impl MongoBackend.commit(anchor: (Anchor | None) = None) -> None {
     pass;
 }
 
-# PersistentMemory specific methods
-"""Sync - flush any pending writes."""
+# PersistentMemory-specific methods
+"""Sync - no-op for MongoDB (writes are immediate)."""
 impl MongoBackend.sync -> None {
-    # MongoDB writes are immediate, nothing to sync
     pass;
 }
 
@@ -229,21 +222,6 @@ impl MongoBackend.bulk_put(anchors: Iterable[Anchor]) -> None {
             logger.debug(f"MongoDB bulk_write failed: {e}");
         }
     }
-}
-
-"""Get garbage collection list."""
-impl MongoBackend.get_gc -> list[Anchor] {
-    return list(self.__gc__);
-}
-
-"""Remove anchor from garbage collection list."""
-impl MongoBackend.remove_from_gc(anchor: Anchor) -> None {
-    self.__gc__.discard(anchor);
-}
-
-"""Get the underlying memory dict."""
-impl MongoBackend.get_mem -> dict[UUID, Anchor] {
-    return self.__mem__;
 }
 
 """Load anchor from raw MongoDB document."""

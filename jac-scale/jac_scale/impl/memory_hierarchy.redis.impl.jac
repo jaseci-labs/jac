@@ -3,17 +3,14 @@ import redis;
 import logging;
 import from collections.abc { Callable, Generator, Iterable }
 import from pickle { dumps, loads }
-import from typing { cast }
 import from uuid { UUID }
 import from jaclang.pycore.archetype { Anchor, Root }
 import from jaclang.runtimelib.utils { storage_key, to_uuid }
 
 glob logger = logging.getLogger(__name__);
 
-"""Post-initialization: connect to Redis and init mutable defaults."""
+"""Post-initialization: connect to Redis."""
 impl RedisBackend.postinit -> None {
-    self.__mem__ = {};
-    self.__gc__ = set();
     if self.redis_url and self.redis_client is None {
         try {
             self.redis_client = redis.from_url(self.redis_url);
@@ -101,8 +98,6 @@ impl RedisBackend.close -> None {
         }
         self.redis_client = None;
     }
-    self.__mem__.clear();
-    self.__gc__.clear();
 }
 
 """Check if an anchor is in the cache."""
@@ -110,19 +105,19 @@ impl RedisBackend.has(id: UUID) -> bool {
     return self.exists(id);
 }
 
-"""Query all anchors - not supported for distributed cache, returns empty."""
+"""Query all anchors - not supported for distributed cache."""
 impl RedisBackend.query(
     filter: (Callable[[Anchor], bool] | None) = None
 ) -> Generator[Anchor, None, None] {
-    # Redis doesn't support iteration efficiently, yield nothing
+    # Redis doesn't support iteration efficiently
     return;
-    yield ;  # Make this a generator
+    yield ;
 }
 
 """Get all root anchors - not supported for distributed cache."""
 impl RedisBackend.get_roots -> Generator[Root, None, None] {
     return;
-    yield ;  # Make this a generator
+    yield ;
 }
 
 """Find anchors by IDs with optional filter."""
@@ -159,7 +154,7 @@ impl RedisBackend.commit(anchor: (Anchor | None) = None) -> None {
     pass;
 }
 
-# CacheMemory specific methods
+# CacheMemory-specific methods
 """Check if key exists in cache."""
 impl RedisBackend.exists(id: UUID) -> bool {
     if self.redis_client is None {
@@ -173,7 +168,7 @@ impl RedisBackend.exists(id: UUID) -> bool {
     }
 }
 
-"""Store anchor only if it already exists in cache. Returns True if stored."""
+"""Store anchor only if it already exists in cache."""
 impl RedisBackend.put_if_exists(anchor: Anchor) -> bool {
     if self.redis_client is None {
         return False;
@@ -188,19 +183,4 @@ impl RedisBackend.put_if_exists(anchor: Anchor) -> bool {
 """Remove an entry from cache."""
 impl RedisBackend.invalidate(id: UUID) -> None {
     self.delete(id);
-}
-
-"""Get garbage collection list."""
-impl RedisBackend.get_gc -> list[Anchor] {
-    return list(self.__gc__);
-}
-
-"""Remove anchor from garbage collection list."""
-impl RedisBackend.remove_from_gc(anchor: Anchor) -> None {
-    self.__gc__.discard(anchor);
-}
-
-"""Get the underlying memory dict (local cache)."""
-impl RedisBackend.get_mem -> dict[UUID, Anchor] {
-    return self.__mem__;
 }
