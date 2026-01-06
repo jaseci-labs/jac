@@ -41,84 +41,26 @@ TOKEN_MAP.update({
 })
 # fmt: on
 
-# Python keywords that are also valid in Jac (can be used in both contexts)
-JAC_KEYWORDS = {
-    "abs",
-    "class",
-    "obj",
-    "enum",
-    "node",
-    "visit",
-    "spawn",
-    "with",
-    "lambda",
-    "entry",
-    "exit",
-    "import",
-    "include",
-    "from",
-    "as",
-    "edge",
-    "walker",
-    "async",
-    "await",
-    "flow",
-    "wait",
-    "test",
-    "impl",
-    "sem",
-    "assert",
-    "if",
-    "elif",
-    "else",
-    "for",
-    "to",
-    "by",
-    "while",
-    "continue",
-    "break",
-    "disengage",
-    "yield",
-    "skip",
-    "report",
-    "return",
-    "del",
-    "try",
-    "except",
-    "finally",
-    "raise",
-    "in",
-    "is",
-    "priv",
-    "pub",
-    "protect",
-    "has",
-    "glob",
-    "can",
-    "def",
-    "static",
-    "override",
-    "match",
-    "switch",
-    "case",
-    "default",
-    "cl",
-    "init",
-    "postinit",
-    "here",
-    "visitor",
-    "self",
-    "props",
-    "super",
-    "root",
-    "or",
-    "and",
-    "not",
-    "True",
-    "False",
-    "None",
-}
 
+def _extract_jac_keywords() -> set[str]:
+    """Extract Jac keywords from TOKEN_MAP."""
+    keywords = set()
+
+    # Iterate through all KW_* tokens
+    for tok_name in dir(Tok):
+        if (
+            not (tok_name.startswith("KW_") or tok_name in ("NULL", "NOT"))
+            or tok_name not in TOKEN_MAP
+        ):
+            continue
+        else:
+            keywords.add(TOKEN_MAP[tok_name])
+    keywords.update(["or", "and", "False", "True"])
+
+    return keywords
+
+
+JAC_KEYWORDS = _extract_jac_keywords()
 # Python keywords that should NOT be used as names in Jac
 PYTHON_ONLY_KEYWORDS = set(keyword.kwlist) - JAC_KEYWORDS
 
