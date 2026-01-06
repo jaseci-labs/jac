@@ -6,15 +6,15 @@ import from uuid { UUID }
 
 import from jaclang.pycore.archetype { Anchor, NodeAnchor, Root }
 import from jaclang.pycore.constant { Constants as Con }
-import from jaclang.runtimelib.storage { ShelfStorage, StorageOrchestrator }
+import from jaclang.runtimelib.storage { ShelfStorage, MemoryOrchestrator }
 
 """Initialize ExecutionContext."""
 impl ExecutionContext.init(
     self: ExecutionContext, session: (str | None) = None, <>root: (str | None) = None
 ) -> None {
-    # Create StorageOrchestrator with optional persistence
+    # Create MemoryOrchestrator with optional persistence
     persistence = ShelfStorage(session) if session else None;
-    self.mem = StorageOrchestrator(persistence);
+    self.mem = MemoryOrchestrator(persistence);
     self.reports = [];
     self.custom = MISSING;
     # Try to load system root from storage (orchestrator handles L1/L3 lookup)

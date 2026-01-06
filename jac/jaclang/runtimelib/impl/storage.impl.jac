@@ -1,4 +1,4 @@
-"""Storage implementations for ShelfStorage and StorageOrchestrator."""
+"""Storage implementations for ShelfStorage and MemoryOrchestrator."""
 
 import logging;
 import shelve;
@@ -205,8 +205,8 @@ impl ShelfStorage.load_all(memory: dict[UUID, Anchor]) -> None {
 }
 
 """Initialize with Memory and optional persistence backend."""
-impl StorageOrchestrator.init(
-    self: StorageOrchestrator, persistence: (PersistenceBackend | None) = None
+impl MemoryOrchestrator.init(
+    self: MemoryOrchestrator, persistence: (PersistenceBackend | None) = None
 ) -> None {
     import from jaclang.runtimelib.storage { PersistenceBackend }
     self.memory = Memory[(UUID, Anchor)]();
@@ -214,7 +214,7 @@ impl StorageOrchestrator.init(
 }
 
 """Retrieve anchor with read-through caching. L1 -> L3."""
-impl StorageOrchestrator.get(self: StorageOrchestrator, id: UUID) -> (Anchor | None) {
+impl MemoryOrchestrator.get(self: MemoryOrchestrator, id: UUID) -> (Anchor | None) {
     # L1: Check in-memory cache
     if (anchor := self.memory.get(id)) {
         return anchor;
@@ -231,19 +231,27 @@ impl StorageOrchestrator.get(self: StorageOrchestrator, id: UUID) -> (Anchor | N
 }
 
 """Store anchor in L1 memory cache."""
-impl StorageOrchestrator.put(self: StorageOrchestrator, anchor: Anchor) -> None {
+impl MemoryOrchestrator.put(self: MemoryOrchestrator, anchor: Anchor) -> None {
     self.memory.put(anchor);
 }
 
-"""Remove anchor by ID from all tiers."""
-impl StorageOrchestrator.delete(self: StorageOrchestrator, id: UUID) -> None {
+"""Remove anchor by ID from L1 memory (persistence deletion happens on close via GC)."""
+impl MemoryOrchestrator.delete(self: MemoryOrchestrator, id: UUID) -> None {
+    # Ensure anchor is in L1 memory before deleting (so it can be tracked for GC)
+    # This handles the case where we delete an edge that's only in persistence
+    if not self.memory.is_cached(id) and self.persistence {
+        if (anchor := self.persistence.get(id)) {
+            self.memory.put(anchor);
+        }
+    }
+    # Now delete from L1 memory and add to GC set
+    # Persistence deletion happens on close() via sync_from_memory
     self.memory.delete(id);
-    self._delete_from_backends(id);
 }
 
 """Commit changes to persistence layer."""
-impl StorageOrchestrator.commit(
-    self: StorageOrchestrator, anchor: (Anchor | None) = None
+impl MemoryOrchestrator.commit(
+    self: MemoryOrchestrator, anchor: (Anchor | None) = None
 ) -> None {
     try {
         gc = self.memory.get_gc();
@@ -271,7 +279,7 @@ impl StorageOrchestrator.commit(
 }
 
 """Commit pending changes and close all backends."""
-impl StorageOrchestrator.close(self: StorageOrchestrator) -> None {
+impl MemoryOrchestrator.close(self: MemoryOrchestrator) -> None {
     import from jaclang.runtimelib.storage { ShelfStorage }
     # Use sync_from_memory for ShelfStorage (handles merge strategy)
     if isinstance(self.persistence, ShelfStorage) {
@@ -287,25 +295,25 @@ impl StorageOrchestrator.close(self: StorageOrchestrator) -> None {
 }
 
 """Get garbage collection list from memory."""
-impl StorageOrchestrator.get_gc(self: StorageOrchestrator) -> list[Anchor] {
+impl MemoryOrchestrator.get_gc(self: MemoryOrchestrator) -> list[Anchor] {
     return self.memory.get_gc();
 }
 
 """Remove anchor from garbage collection list."""
-impl StorageOrchestrator.remove_from_gc(
-    self: StorageOrchestrator, anchor: Anchor
+impl MemoryOrchestrator.remove_from_gc(
+    self: MemoryOrchestrator, anchor: Anchor
 ) -> None {
     self.memory.remove_from_gc(anchor);
 }
 
 """Get memory dict."""
-impl StorageOrchestrator.get_mem(self: StorageOrchestrator) -> dict[(UUID, Anchor)] {
+impl MemoryOrchestrator.get_mem(self: MemoryOrchestrator) -> dict[(UUID, Anchor)] {
     return self.memory.get_mem();
 }
 
 """Sync anchors to persistence backend."""
-impl StorageOrchestrator._sync_to_backends(
-    self: StorageOrchestrator, anchors: Iterable[Anchor]
+impl MemoryOrchestrator._sync_to_backends(
+    self: MemoryOrchestrator, anchors: Iterable[Anchor]
 ) -> None {
     anchor_list = list(anchors);
     try {
@@ -319,8 +327,8 @@ impl StorageOrchestrator._sync_to_backends(
 }
 
 """Delete anchor from persistence backend."""
-impl StorageOrchestrator._delete_from_backends(
-    self: StorageOrchestrator, id: UUID
+impl MemoryOrchestrator._delete_from_backends(
+    self: MemoryOrchestrator, id: UUID
 ) -> None {
     try {
         if self.persistence {
@@ -332,32 +340,32 @@ impl StorageOrchestrator._delete_from_backends(
 }
 
 """Check if storage is available."""
-impl StorageOrchestrator.is_available(self: StorageOrchestrator) -> bool {
+impl MemoryOrchestrator.is_available(self: MemoryOrchestrator) -> bool {
     return self.memory.is_available();
 }
 
 """Check if an anchor is cached in L1 memory."""
-impl StorageOrchestrator.is_cached(self: StorageOrchestrator, id: UUID) -> bool {
+impl MemoryOrchestrator.is_cached(self: MemoryOrchestrator, id: UUID) -> bool {
     return self.memory.is_cached(id);
 }
 
 """Query anchors from L1 memory with optional filter."""
-impl StorageOrchestrator.query(
-    self: StorageOrchestrator, filter: (Callable[[Anchor], bool] | None) = None
+impl MemoryOrchestrator.query(
+    self: MemoryOrchestrator, filter: (Callable[[Anchor], bool] | None) = None
 ) -> Generator[Anchor, None, None] {
     return self.memory.query(filter);
 }
 
 """Get all root anchors from L1 memory."""
-impl StorageOrchestrator.all_root(
-    self: StorageOrchestrator
+impl MemoryOrchestrator.all_root(
+    self: MemoryOrchestrator
 ) -> Generator[Root, None, None] {
     return self.memory.all_root();
 }
 
 """Find anchors by IDs from L1 memory with optional filter."""
-impl StorageOrchestrator.find(
-    self: StorageOrchestrator,
+impl MemoryOrchestrator.find(
+    self: MemoryOrchestrator,
     ids: (UUID | Iterable[UUID]),
     filter: (Callable[[Anchor], Anchor] | None) = None
 ) -> Generator[Anchor, None, None] {
@@ -365,8 +373,8 @@ impl StorageOrchestrator.find(
 }
 
 """Find one anchor by IDs from L1 memory with optional filter."""
-impl StorageOrchestrator.find_one(
-    self: StorageOrchestrator,
+impl MemoryOrchestrator.find_one(
+    self: MemoryOrchestrator,
     ids: (UUID | Iterable[UUID]),
     filter: (Callable[[Anchor], Anchor] | None) = None
 ) -> (Anchor | None) {
@@ -374,8 +382,6 @@ impl StorageOrchestrator.find_one(
 }
 
 """Remove anchor from L1 memory."""
-impl StorageOrchestrator.remove_from_mem(
-    self: StorageOrchestrator, anchor: UUID
-) -> None {
+impl MemoryOrchestrator.remove_from_mem(self: MemoryOrchestrator, anchor: UUID) -> None {
     self.memory.remove_from_mem(anchor);
 }

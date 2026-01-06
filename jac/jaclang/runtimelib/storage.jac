@@ -26,7 +26,7 @@ glob logger = logging.getLogger(__name__),
          'PersistenceBackend',
          'AnchorMergeStrategy',
          'ShelfStorage',
-         'StorageOrchestrator'
+         'MemoryOrchestrator'
      ];
 
 """
@@ -125,46 +125,46 @@ Uses pure composition - contains a Memory instance rather than inheriting.
 Provides a Memory-compatible interface so ExecutionContext can use it as its single
 storage abstraction.
 """
-class StorageOrchestrator {
+class MemoryOrchestrator {
     has memory: Memory[(UUID, Anchor)],
         persistence: (PersistenceBackend | None) = None;
 
     def init(
-        self: StorageOrchestrator, persistence: (PersistenceBackend | None) = None
+        self: MemoryOrchestrator, persistence: (PersistenceBackend | None) = None
     ) -> None;
 
     # Core storage operations (with read-through caching)
-    def is_available(self: StorageOrchestrator) -> bool;
-    def get(self: StorageOrchestrator, id: UUID) -> (Anchor | None);
-    def put(self: StorageOrchestrator, anchor: Anchor) -> None;
-    def delete(self: StorageOrchestrator, id: UUID) -> None;
-    def close(self: StorageOrchestrator) -> None;
+    def is_available(self: MemoryOrchestrator) -> bool;
+    def get(self: MemoryOrchestrator, id: UUID) -> (Anchor | None);
+    def put(self: MemoryOrchestrator, anchor: Anchor) -> None;
+    def delete(self: MemoryOrchestrator, id: UUID) -> None;
+    def close(self: MemoryOrchestrator) -> None;
     # Memory-compatible query interface
-    def is_cached(self: StorageOrchestrator, id: UUID) -> bool;
+    def is_cached(self: MemoryOrchestrator, id: UUID) -> bool;
     def query(
-        self: StorageOrchestrator, filter: (Callable[[Anchor], bool] | None) = None
+        self: MemoryOrchestrator, filter: (Callable[[Anchor], bool] | None) = None
     ) -> Generator[Anchor, None, None];
 
-    def all_root(self: StorageOrchestrator) -> Generator[Root, None, None];
+    def all_root(self: MemoryOrchestrator) -> Generator[Root, None, None];
     def find(
-        self: StorageOrchestrator,
+        self: MemoryOrchestrator,
         ids: (UUID | Iterable[UUID]),
         filter: (Callable[[Anchor], Anchor] | None) = None
     ) -> Generator[Anchor, None, None];
 
     def find_one(
-        self: StorageOrchestrator,
+        self: MemoryOrchestrator,
         ids: (UUID | Iterable[UUID]),
         filter: (Callable[[Anchor], Anchor] | None) = None
     ) -> (Anchor | None);
 
     # Commit and garbage collection
-    def commit(self: StorageOrchestrator, anchor: (Anchor | None) = None) -> None;
-    def get_gc(self: StorageOrchestrator) -> list[Anchor];
-    def remove_from_gc(self: StorageOrchestrator, anchor: Anchor) -> None;
-    def get_mem(self: StorageOrchestrator) -> dict[(UUID, Anchor)];
-    def remove_from_mem(self: StorageOrchestrator, anchor: UUID) -> None;
+    def commit(self: MemoryOrchestrator, anchor: (Anchor | None) = None) -> None;
+    def get_gc(self: MemoryOrchestrator) -> list[Anchor];
+    def remove_from_gc(self: MemoryOrchestrator, anchor: Anchor) -> None;
+    def get_mem(self: MemoryOrchestrator) -> dict[(UUID, Anchor)];
+    def remove_from_mem(self: MemoryOrchestrator, anchor: UUID) -> None;
     # Internal backend coordination
-    def _sync_to_backends(self: StorageOrchestrator, anchors: Iterable[Anchor]) -> None;
-    def _delete_from_backends(self: StorageOrchestrator, id: UUID) -> None;
+    def _sync_to_backends(self: MemoryOrchestrator, anchors: Iterable[Anchor]) -> None;
+    def _delete_from_backends(self: MemoryOrchestrator, id: UUID) -> None;
 }

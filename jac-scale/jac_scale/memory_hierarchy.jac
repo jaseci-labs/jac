@@ -6,7 +6,7 @@ This module provides a multi-tiered storage system:
 - L2: Optional distributed cache (Redis via CacheBackend)
 - L3: Persistent storage (MongoDB or Shelf via PersistenceBackend)
 
-The StorageOrchestrator manages data flow between tiers with:
+The MemoryOrchestrator manages data flow between tiers with:
 - Read-through caching (L3 -> L2 -> L1 on miss)
 - Write-through persistence (L1 -> L3 with optional L2 update)
 """
@@ -28,7 +28,7 @@ import from jaclang.runtimelib.storage {
     CacheBackend,
     PersistenceBackend,
     AnchorMergeStrategy,
-    StorageOrchestrator as BaseStorageOrchestrator
+    MemoryOrchestrator as BaseMemoryOrchestrator
 }
 import from jaclang.runtimelib.utils { storage_key, to_uuid }
 import from jac_scale.config_loader { get_scale_config }
@@ -106,9 +106,9 @@ obj ShelfBackend(PersistenceBackend) {
 }
 
 """
-Storage Orchestrator - manages multi-tier storage hierarchy.
+Memory Orchestrator - manages multi-tier storage hierarchy.
 
-Extends the base StorageOrchestrator from jac-core with:
+Extends the base MemoryOrchestrator from jac-core with:
 - L2: Distributed cache (optional, Redis)
 
 Coordinates data access across:
@@ -116,7 +116,7 @@ Coordinates data access across:
 - L2: Distributed cache (optional, Redis)
 - L3: Persistent storage (MongoDB or Shelf)
 """
-obj StorageOrchestrator(BaseStorageOrchestrator) {
+obj MemoryOrchestrator(BaseMemoryOrchestrator) {
     has cache: (CacheBackend | None) = None,
         _cache_available: bool = False,
         _persistence_type: str = 'none';

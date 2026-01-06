@@ -801,20 +801,28 @@ class JacBasics:
         ranchor = root.__jac__ if root else ctx.root_state
 
         deleted_count = 0
+        deleted_ids: set[UUID] = set()
         # Get anchors from persistence if available, otherwise from memory
+        # Convert to list to avoid modifying during iteration
         persistence = mem.persistence
         if persistence and isinstance(getattr(persistence, "__shelf__", None), Shelf):
-            anchors = persistence.__shelf__.values()
+            anchors = list(persistence.__shelf__.values())
         else:
-            anchors = mem.get_mem().values()
+            anchors = list(mem.get_mem().values())
 
+        # Direct bulk deletion - skip destroy/detach logic since we're purging everything
         for anchor in anchors:
             if anchor == ranchor or anchor.root != ranchor.id:
                 continue
+            deleted_ids.add(anchor.id)
+            mem.delete(anchor.id)
+            deleted_count += 1
 
-            if loaded_anchor := mem.get(anchor.id):
-                deleted_count += 1
-                JacRuntimeInterface.destroy([loaded_anchor])
+        # Clean up root anchor's edges that reference deleted edge anchors
+        ranchor.edges = [e for e in ranchor.edges if e.id not in deleted_ids]
+
+        # Persist root anchor changes so next session sees cleaned up edges
+        mem.commit(ranchor)
 
         return deleted_count
 
@@ -1410,7 +1418,7 @@ class JacBasics:
                     case _:
                         pass
 
-                JacRuntimeInterface.get_context().mem.remove_from_mem(anchor.id)
+                JacRuntimeInterface.get_context().mem.delete(anchor.id)
 
     @staticmethod
     def on_entry(func: Callable) -> Callable:

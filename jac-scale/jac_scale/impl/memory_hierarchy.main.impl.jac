@@ -1,11 +1,11 @@
-"""StorageOrchestrator Implementation - Multi-tier storage coordination."""
+"""MemoryOrchestrator Implementation - Multi-tier storage coordination."""
 import from uuid { UUID }
 import from collections.abc { Iterable }
 import from jaclang.pycore.archetype { Anchor }
 import from jaclang.runtimelib.storage { logger }
 
-"""Initialize StorageOrchestrator with multi-tier storage."""
-impl StorageOrchestrator.init -> None {
+"""Initialize MemoryOrchestrator with multi-tier storage."""
+impl MemoryOrchestrator.init -> None {
     # L2: Try to initialize Redis cache
     redis_backend = RedisBackend();
     self._cache_available = redis_backend.is_available();
@@ -33,7 +33,7 @@ impl StorageOrchestrator.init -> None {
 }
 
 """Retrieve anchor with read-through caching. L1 -> L2 -> L3."""
-impl StorageOrchestrator.get(id: UUID) -> (Anchor | None) {
+impl MemoryOrchestrator.get(id: UUID) -> (Anchor | None) {
     # L1: Check in-memory cache
     if (anchor := self.memory.get(id)) {
         return anchor;
@@ -62,7 +62,7 @@ impl StorageOrchestrator.get(id: UUID) -> (Anchor | None) {
 }
 
 """Commit changes to persistence layer."""
-impl StorageOrchestrator.commit(anchor: (Anchor | None) = None) -> None {
+impl MemoryOrchestrator.commit(anchor: (Anchor | None) = None) -> None {
     try {
         gc = self.memory.get_gc();
 
@@ -93,7 +93,7 @@ impl StorageOrchestrator.commit(anchor: (Anchor | None) = None) -> None {
 }
 
 """Commit pending changes and close all backends."""
-impl StorageOrchestrator.close -> None {
+impl MemoryOrchestrator.close -> None {
     self.commit();
     self.memory.close();
     if self.cache {
@@ -105,7 +105,7 @@ impl StorageOrchestrator.close -> None {
 }
 
 """Sync anchors to cache and persistence backends."""
-impl StorageOrchestrator._sync_to_backends(anchors: Iterable[Anchor]) -> None {
+impl MemoryOrchestrator._sync_to_backends(anchors: Iterable[Anchor]) -> None {
     anchor_list = list(anchors);
     try {
         # Update cache for existing keys only
@@ -125,7 +125,7 @@ impl StorageOrchestrator._sync_to_backends(anchors: Iterable[Anchor]) -> None {
 }
 
 """Delete anchor from all backend tiers."""
-impl StorageOrchestrator._delete_from_backends(id: UUID) -> None {
+impl MemoryOrchestrator._delete_from_backends(id: UUID) -> None {
     try {
         if self._cache_available and self.cache {
             self.cache.delete(id);
