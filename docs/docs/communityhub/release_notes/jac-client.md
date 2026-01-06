@@ -6,6 +6,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.2.4 (Latest Release)
 
+- **`jac-client-node` and `@jac-client/dev-deps` npm packages**: Introduced the new npm libraries  to centralize and abstract default dependencies for Jac client applications. These two package includes React, Vite, Babel, TypeScript, and other essential dependencies.
+
 - **Explicit Export Requirement**: Functions and variables must now be explicitly exported using the `:pub` modifier to be available for import. In previous versions (< 0.2.4), all `def` functions were automatically exported and variables (globals) could not be exported. Starting with 0.2.4, functions and variables are private by default and must be marked with `:pub` to be importable. This provides better control over module APIs and prevents accidental exports. The `app()` function in your entry file must be exported as `def:pub app()`. [Breaking Change - See Migration Guide]
 
 - **Authentication API Update**: Updated authentication functions (`jacLogin` and `jacSignup`) to use `email` instead of `username` for user identification. This change aligns with standard authentication practices and improves security. All authentication examples and documentation have been updated to reflect this change. The `/user/register` and `/user/login` endpoints now accept `email` in the request payload. End-to-end tests have been added to verify authentication endpoint functionality. [Breaking Change - See Migration Guide]

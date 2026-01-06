@@ -1,0 +1,16 @@
+{
+  "name": "@jac-client/dev-deps",
+  "version": "1.0.0",
+  "description": "Default devDependencies for Jac client projects",
+  "dependencies": {
+    "vite": "^6.4.1",
+    "@babel/cli": "^7.28.3",
+    "@babel/core": "^7.28.5",
+    "@babel/preset-env": "^7.28.5",
+    "@babel/preset-react": "^7.28.5",
+    "@vitejs/plugin-react": "^4.2.1",
+    "typescript": "^5.3.3",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0"
+  }
+}
