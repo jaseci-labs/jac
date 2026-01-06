@@ -788,13 +788,8 @@ class JacBasics:
             anchor = anchor.__jac__
 
         ctx = JacRuntimeInterface.get_context()
-        if ctx.persistence:
-            if anchor:
-                # Commit single anchor to persistence
-                ctx.persistence.put(anchor)
-            else:
-                # Sync all memory to persistence
-                ctx.persistence.sync_from_memory(ctx.mem.get_mem(), ctx.mem.get_gc())
+        # Orchestrator handles commit to all storage backends
+        ctx.mem.commit(anchor)
 
     @staticmethod
     def reset_graph(root: Root | None = None) -> int:
@@ -807,7 +802,7 @@ class JacBasics:
 
         deleted_count = 0
         # Get anchors from persistence if available, otherwise from memory
-        persistence = ctx.persistence
+        persistence = mem.persistence
         if persistence and isinstance(getattr(persistence, "__shelf__", None), Shelf):
             anchors = persistence.__shelf__.values()
         else:
@@ -1415,7 +1410,7 @@ class JacBasics:
                     case _:
                         pass
 
-                JacRuntimeInterface.get_context().mem.remove(anchor.id)
+                JacRuntimeInterface.get_context().mem.remove_from_mem(anchor.id)
 
     @staticmethod
     def on_entry(func: Callable) -> Callable:

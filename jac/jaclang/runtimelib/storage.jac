@@ -11,7 +11,7 @@ different backends can be composed (e.g., Memory + Redis + MongoDB).
 
 import logging;
 import shelve;
-import from collections.abc { Iterable }
+import from collections.abc { Callable, Generator, Iterable }
 import from pickle { dumps, loads }
 import from uuid { UUID }
 import from typing { Any }
@@ -122,7 +122,8 @@ This is the base class providing L1 (Memory) + L3 (Persistence) coordination.
 jac-scale extends this to add L2 (distributed cache like Redis).
 
 Uses pure composition - contains a Memory instance rather than inheriting.
-Implements a DataBackend-compatible interface for drop-in compatibility.
+Provides a Memory-compatible interface so ExecutionContext can use it as its single
+storage abstraction.
 """
 class StorageOrchestrator {
     has memory: Memory[(UUID, Anchor)],
@@ -132,14 +133,38 @@ class StorageOrchestrator {
         self: StorageOrchestrator, persistence: (PersistenceBackend | None) = None
     ) -> None;
 
+    # Core storage operations (with read-through caching)
+    def is_available(self: StorageOrchestrator) -> bool;
     def get(self: StorageOrchestrator, id: UUID) -> (Anchor | None);
     def put(self: StorageOrchestrator, anchor: Anchor) -> None;
     def delete(self: StorageOrchestrator, id: UUID) -> None;
-    def commit(self: StorageOrchestrator, anchor: (Anchor | None) = None) -> None;
     def close(self: StorageOrchestrator) -> None;
+    # Memory-compatible query interface
+    def is_cached(self: StorageOrchestrator, id: UUID) -> bool;
+    def query(
+        self: StorageOrchestrator, filter: (Callable[[Anchor], bool] | None) = None
+    ) -> Generator[Anchor, None, None];
+
+    def all_root(self: StorageOrchestrator) -> Generator[Root, None, None];
+    def find(
+        self: StorageOrchestrator,
+        ids: (UUID | Iterable[UUID]),
+        filter: (Callable[[Anchor], Anchor] | None) = None
+    ) -> Generator[Anchor, None, None];
+
+    def find_one(
+        self: StorageOrchestrator,
+        ids: (UUID | Iterable[UUID]),
+        filter: (Callable[[Anchor], Anchor] | None) = None
+    ) -> (Anchor | None);
+
+    # Commit and garbage collection
+    def commit(self: StorageOrchestrator, anchor: (Anchor | None) = None) -> None;
     def get_gc(self: StorageOrchestrator) -> list[Anchor];
     def remove_from_gc(self: StorageOrchestrator, anchor: Anchor) -> None;
     def get_mem(self: StorageOrchestrator) -> dict[(UUID, Anchor)];
+    def remove_from_mem(self: StorageOrchestrator, anchor: UUID) -> None;
+    # Internal backend coordination
     def _sync_to_backends(self: StorageOrchestrator, anchors: Iterable[Anchor]) -> None;
     def _delete_from_backends(self: StorageOrchestrator, id: UUID) -> None;
 }

@@ -6,27 +6,19 @@ import from uuid { UUID }
 
 import from jaclang.pycore.archetype { Anchor, NodeAnchor, Root }
 import from jaclang.pycore.constant { Constants as Con }
-import from jaclang.runtimelib.memory { Memory }
-import from jaclang.runtimelib.storage { ShelfStorage }
+import from jaclang.runtimelib.storage { ShelfStorage, StorageOrchestrator }
 
 """Initialize ExecutionContext."""
 impl ExecutionContext.init(
     self: ExecutionContext, session: (str | None) = None, <>root: (str | None) = None
 ) -> None {
-    self.mem = Memory[(UUID, Anchor)]();
-    self.persistence = ShelfStorage(session) if session else None;
+    # Create StorageOrchestrator with optional persistence
+    persistence = ShelfStorage(session) if session else None;
+    self.mem = StorageOrchestrator(persistence);
     self.reports = [];
     self.custom = MISSING;
-    # Try to load system root from persistence first
-    system_root: (NodeAnchor | None) = None;
-    if self.persistence {
-        system_root = cast(
-            (NodeAnchor | None), self.persistence.get(UUID(Con.SUPER_ROOT_UUID))
-        );
-        if isinstance(system_root, NodeAnchor) {
-            self.mem.put(system_root);
-        }
-    }
+    # Try to load system root from storage (orchestrator handles L1/L3 lookup)
+    system_root = cast((NodeAnchor | None), self.mem.get(UUID(Con.SUPER_ROOT_UUID)));
     # Create system root if not found
     if not isinstance(system_root, NodeAnchor) {
         system_root = cast(NodeAnchor, Root().__jac__);
@@ -42,14 +34,8 @@ impl ExecutionContext.init(
 """Get anchor by ID or raise error."""
 impl ExecutionContext._get_anchor(self: ExecutionContext, anchor_id: str) -> NodeAnchor {
     id = UUID(anchor_id);
+    # Orchestrator handles L1/L3 lookup with read-through caching
     anchor = self.mem.get(id);
-    # Try loading from persistence if not in memory
-    if not anchor and self.persistence {
-        anchor = self.persistence.get(id);
-        if isinstance(anchor, NodeAnchor) {
-            self.mem.put(anchor);
-        }
-    }
     if not isinstance(anchor, NodeAnchor) {
         raise ValueError(f"Invalid anchor id {anchor_id} !") ;
     }
@@ -65,11 +51,7 @@ impl ExecutionContext.set_entry_node(
 
 """Close current ExecutionContext."""
 impl ExecutionContext.close(self: ExecutionContext) -> None {
-    # Sync memory to persistence before closing
-    if self.persistence {
-        self.persistence.sync_from_memory(self.mem.get_mem(), self.mem.get_gc());
-        self.persistence.close();
-    }
+    # Orchestrator handles syncing memory to persistence and closing all backends
     self.mem.close();
 }
 
