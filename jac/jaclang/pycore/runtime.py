@@ -451,9 +451,6 @@ class JacWalker:
             if walker.disengaged:
                 return warch
 
-        # Add initial node to next queue so triggered entry funcs run for it
-        walker.next = [node]
-
         while len(walker.next):
             if current_loc := walker.next.pop(0).archetype:
                 # walker ability with loc entry
