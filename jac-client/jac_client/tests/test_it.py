@@ -412,7 +412,9 @@ def test_all_in_one_app_endpoints() -> None:
                         # Basic sanity check: created TestData message should appear in the response payload.
                         assert "Test message from all-in-one app" in create_body
                 except (URLError, HTTPError) as exc:
-                    print(f"[DEBUG] Error while requesting /walker/create_test_data: {exc}")
+                    print(
+                        f"[DEBUG] Error while requesting /walker/create_test_data: {exc}"
+                    )
                     pytest.fail("Failed to POST /walker/create_test_data")
 
                 # POST /walker/test_string_methods – test string manipulation via walker HTTP API
@@ -443,7 +445,9 @@ def test_all_in_one_app_endpoints() -> None:
                         assert "HELLO WORLD TEST" in string_body  # uppercase result
                         assert "hello world test" in string_body  # original/lowercase
                 except (URLError, HTTPError) as exc:
-                    print(f"[DEBUG] Error while requesting /walker/test_string_methods: {exc}")
+                    print(
+                        f"[DEBUG] Error while requesting /walker/test_string_methods: {exc}"
+                    )
                     pytest.fail("Failed to POST /walker/test_string_methods")
 
                 # POST /user/register – register a new user
