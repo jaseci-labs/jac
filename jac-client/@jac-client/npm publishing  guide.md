@@ -1,12 +1,12 @@
 # npm Publishing Guide for jac-client Packages
 
-This guide covers how to publish and setup the jac-client npm packages (`@jac-client/deps` and `@jac-client/dev-deps`) for release.
+This guide covers how to publish and setup the jac-client npm packages (`jac-client-node` and `@jac-client/dev-deps`) for release.
 
 ## Overview
 
 The jac-client project uses two separate npm packages to manage default dependencies:
 
-- **`@jac-client/deps`**: Runtime dependencies (React, React DOM, React Router)
+- **`jac-client-node`**: Runtime dependencies (React, React DOM, React Router)
 - **`@jac-client/dev-deps`**: Development dependencies (Vite, Babel, TypeScript, etc.)
 
 ## Prerequisites
@@ -47,7 +47,7 @@ Before publishing, ensure your `package.json` has all required fields:
 
 ```json
 {
-  "name": "@jac-client/deps",
+  "name": "jac-client-node",
   "version": "1.0.0",
   "description": "Default dependencies for Jac-client",
   "license": "MIT",
@@ -67,7 +67,7 @@ Before publishing, ensure your `package.json` has all required fields:
 
 ### 2. Publish to npm
 
-#### For @jac-client/deps:
+#### For jac-client-node:
 
 ```bash
 cd jac-client/@jac-client/jac-client-deps
@@ -88,13 +88,13 @@ npm publish --access public
 Check that your packages are published:
 
 ```bash
-npm view @jac-client/deps
+npm view jac-client-node
 npm view @jac-client/dev-deps
 ```
 
 Or visit:
 
-- https://www.npmjs.com/package/@jac-client/deps
+- https://www.npmjs.com/package/jac-client-node
 - https://www.npmjs.com/package/@jac-client/dev-deps
 
 ## Usage in Projects
@@ -103,7 +103,7 @@ After publishing, users can install the packages in their `jac. toml`:
 
 ```toml
 [dependencies.npm]
-"@jac-client/deps" = "1.0.0"
+"jac-client-node" = "1.0.0"
 
 [dependencies.npm.dev]
 "@jac-client/dev-deps" = "1.0.0"
@@ -123,7 +123,7 @@ npm login
 Ensure you're part of the `@jac-client` organization or create the scope:
 
 ```bash
-npm access public @jac-client/deps
+npm access public jac-client-node
 ```
 
 ### Version Conflicts
@@ -149,7 +149,7 @@ Once published, users can install the packages in their Jac client projects:
 
 ```toml
 [dependencies.npm]
-"@jac-client/deps" = "1.0.0"
+"jac-client-node" = "1.0.0"
 
 [dependencies.npm.dev]
 "@jac-client/dev-deps" = "1.0.0"
@@ -158,7 +158,7 @@ Once published, users can install the packages in their Jac client projects:
 ### Direct npm Installation
 
 ```bash
-npm install @jac-client/deps
+npm install jac-client-node
 npm install @jac-client/dev-deps
 ```
 
@@ -171,7 +171,7 @@ npm install @jac-client/dev-deps
 - **Solution**: Ensure you have publish permissions for the `@jac-client` organization
 
   ```bash
-  npm owner add <username> @jac-client/deps
+  npm owner add <username> jac-client-node
   ```
 
 **Issue**: `npm ERR! You do not have permission to publish`

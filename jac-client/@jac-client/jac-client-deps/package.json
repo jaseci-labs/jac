@@ -1,6 +1,6 @@
 {
-  "name": "@jac-client/deps",
-  "version": "1.0.0",
+  "name": "jac-client-node",
+  "version": "1.0.3",
   "description": "Default dependencies for Jac-client",
   "dependencies": {
     "react": "^18.2.0",

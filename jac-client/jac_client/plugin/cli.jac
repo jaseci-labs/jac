@@ -185,7 +185,7 @@ description = "Jac client application: {project_name}"
 entry-point = "src/app.jac"
 
 [dependencies.npm]
-"@jac-client/deps" = "1.0.0"
+"jac-client-node" = "1.0.0"
 
 [dependencies.npm.dev]
 "@jac-client/dev-deps" = "1.0.0"

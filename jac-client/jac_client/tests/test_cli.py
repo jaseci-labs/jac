@@ -91,7 +91,7 @@ def test_create_jac_app() -> None:
                     package_data = json.load(f)
 
                 # Verify default dependencies are in package.json
-                assert "@jac-client/deps" in package_data.get("dependencies", {})
+                assert "jac-client-node" in package_data.get("dependencies", {})
                 assert "@jac-client/dev-deps" in package_data.get("devDependencies", {})
 
         finally:
@@ -244,7 +244,7 @@ def test_create_jac_app_with_typescript() -> None:
                     package_data = json.load(f)
 
                 # Verify default dependencies are in package.json
-                assert "@jac-client/deps" in package_data.get("dependencies", {})
+                assert "jac-client-node" in package_data.get("dependencies", {})
                 assert "@jac-client/dev-deps" in package_data.get("devDependencies", {})
 
         finally:
@@ -341,7 +341,7 @@ def test_create_jac_app_installs_default_packages() -> None:
                     package_data = json.load(f)
 
                 # Verify default dependencies are in package.
-                assert "@jac-client/deps" in package_data.get("dependencies", {})
+                assert "jac-client-node" in package_data.get("dependencies", {})
                 assert "@jac-client/dev-deps" in package_data.get("devDependencies", {})
 
         finally:
