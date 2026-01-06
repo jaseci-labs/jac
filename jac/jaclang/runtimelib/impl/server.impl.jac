@@ -83,18 +83,13 @@ impl UserManager.create_user(username: str, password: str) -> dict[str, str] {
     if (username in self._users) {
         return {'error': 'User already exists'};
     }
-    ctx = Jac.create_j_context(session=self.session_path);
-    Jac.set_context(ctx);
-    try {
-        user_root = Root();
-        root_anchor = user_root.__jac__;
-        Jac.save(root_anchor);
-        Jac.commit(root_anchor);
-        root_id = root_anchor.id.hex;
-    } finally {
-        ctx.mem.close();
-        Jac.set_context(Jac.create_j_context());
-    }
+    # Use existing context instead of creating new one (avoids shelf locking issues)
+    ctx = Jac.get_context();
+    user_root = Root();
+    root_anchor = user_root.__jac__;
+    Jac.save(root_anchor);
+    Jac.commit(root_anchor);
+    root_id = root_anchor.id.hex;
     token = secrets.token_urlsafe(32);
     password_hash = hashlib.sha256(password.encode()).hexdigest();
     self._users[username] = {
@@ -158,8 +153,10 @@ impl ExecutionManager.execute_function(
     if not root_id {
         return {'error': 'User not found'};
     }
-    ctx = Jac.create_j_context(session=self.session_path, <>root=root_id);
-    Jac.set_context(ctx);
+    # Use existing context and set entry node to user's root (avoids shelf locking issues)
+    ctx = Jac.get_context();
+    ctx.set_entry_node(root_id);
+    ctx.reports = [];  # Clear reports for this request
     try {
         result = func(**args);
         Jac.commit();
@@ -169,9 +166,6 @@ impl ExecutionManager.execute_function(
         };
     } except Exception as e {
         return {'error': str(e)};
-    } finally {
-        ctx.mem.close();
-        Jac.set_context(Jac.create_j_context());
     }
 }
 
@@ -185,8 +179,10 @@ impl ExecutionManager.spawn_walker(
         return {'error': 'User not found'};
     }
     target_node_id = fields.pop('_jac_spawn_node', None);
-    ctx = Jac.create_j_context(session=self.session_path, <>root=root_id);
-    Jac.set_context(ctx);
+    # Use existing context and set entry node to user's root (avoids shelf locking issues)
+    ctx = Jac.get_context();
+    ctx.set_entry_node(root_id);
+    ctx.reports = [];  # Clear reports for this request
     try {
         <>walker = walker_cls(**fields);
         if target_node_id {
@@ -205,9 +201,6 @@ impl ExecutionManager.spawn_walker(
     } except Exception as e {
         import traceback;
         return {'error': str(e), 'traceback': traceback.format_exc()};
-    } finally {
-        ctx.mem.close();
-        Jac.set_context(Jac.create_j_context());
     }
 }
 

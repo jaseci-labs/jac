@@ -5,6 +5,7 @@ import from collections.abc { Callable, Iterator }
 import from contextlib { contextmanager }
 import from types { UnionType }
 import from typing { TYPE_CHECKING }
+import from uuid { UUID }
 import jaclang.pycore.unitree as uni;
 import from jaclang.pycore.helpers {
     read_file_with_encoding as read_file_with_encoding
@@ -56,3 +57,16 @@ def is_instance(
 def all_issubclass(
     classes: type | UnionType | tuple[((type | UnionType), ...)], target: type
 ) -> bool;
+
+"""Generate a storage key for an anchor ID."""
+def storage_key(id: UUID) -> str {
+    return f"anchor:{str(id)}";
+}
+
+"""Convert string or UUID to UUID."""
+def to_uuid(id: (UUID | str)) -> UUID {
+    if isinstance(id, UUID) {
+        return id;
+    }
+    return UUID(str(id));
+}

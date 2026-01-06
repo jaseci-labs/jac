@@ -227,8 +227,10 @@ class Anchor:
         """Retrieve the Archetype from db and return."""
         from jaclang import JacRuntimeInterface as Jac
 
-        jsrc = Jac.get_context().mem
-        if anchor := jsrc.find_by_id(self.id):
+        ctx = Jac.get_context()
+        # Orchestrator handles read-through caching (L1 -> L3)
+        anchor = ctx.mem.get(self.id)
+        if anchor:
             self.__dict__.update(anchor.__dict__)
 
     def __getattr__(self, name: str) -> object:

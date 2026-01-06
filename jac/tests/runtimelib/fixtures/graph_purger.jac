@@ -97,6 +97,6 @@ walker purge {
 
 walker check {
     can enter with `root entry {
-        print(len(Jac.get_context().mem.__shelf__.values()));
+        print(len(Jac.get_context().mem.l3.__shelf__.values()));
     }
 }

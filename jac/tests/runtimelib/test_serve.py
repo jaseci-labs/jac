@@ -60,8 +60,10 @@ class ServerFixture:
         """Start the API server in a background thread."""
         from http.server import HTTPServer
 
-        # Load the module
-        base, mod, mach = cli.proc_file_sess(fixture_abs_path(api_file), "")
+        # Load the module with the same session_file for persistence
+        base, mod, mach = cli.proc_file_sess(
+            fixture_abs_path(api_file), self.session_file
+        )
         Jac.set_base_path(base)
         Jac.jac_import(
             target=mod,
@@ -70,7 +72,7 @@ class ServerFixture:
             lng="jac",
         )
 
-        # Create server
+        # Create server with same session path
         self.server = JacAPIServer(
             module_name="__main__",
             session_path=self.session_file,
@@ -748,9 +750,13 @@ def test_root_data_persistence_across_server_restarts(
     assert "result" in list_before
 
     # Shutdown first server instance
-    # Close user manager first to release the shelf lock
+    # Close user manager first
     if server_fixture.server and hasattr(server_fixture.server, "user_manager"):
         server_fixture.server.user_manager.close()
+
+    # Commit and close the ExecutionContext to release the shelf lock
+    Jac.commit()
+    Jac.get_context().close()
 
     if server_fixture.httpd:
         server_fixture.httpd.shutdown()

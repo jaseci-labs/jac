@@ -6,13 +6,18 @@ import from uuid { UUID }
 
 import from jaclang.pycore.archetype { Anchor, NodeAnchor, Root }
 import from jaclang.pycore.constant { Constants as Con }
-import from jaclang.runtimelib.memory { Memory, ShelfStorage }
+import from jaclang.runtimelib.memory { Memory, TieredMemory }
 
 glob __all__ = ['ExecutionContext'];
 
-"""Execution Context."""
+"""Execution Context.
+
+The `mem` field is a Memory implementation (typically TieredMemory) that provides
+a unified interface to all storage tiers. TieredMemory handles read-through
+caching and write-through persistence with access control internally.
+"""
 class ExecutionContext {
-    has mem: Memory[UUID, Anchor],
+    has mem: Memory,
         reports: list[Any],
         custom: Any,
         system_root: NodeAnchor,

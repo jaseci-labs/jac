@@ -142,7 +142,17 @@ impl serve(
     _ensure_jac_runtime();
     import from jaclang.pycore.runtime { JacRuntime as Jac }
     import from jaclang.runtimelib.server { JacAPIServer }
-    (base, mod, mach) = proc_file_sess(filename, session);
+    # Compute session_path BEFORE proc_file_sess so context has proper persistence
+    (base, mod) = os.path.split(filename);
+    base = base or os.getcwd();
+    if (filename.endswith('.jac') or filename.endswith('.jir')) {
+        mod = mod[:-4];
+    } elif filename.endswith('.py') {
+        mod = mod[:-3];
+    }
+    session_path = session or os.path.join(base, f"{mod}.session");
+    # Now call proc_file_sess with the computed session_path
+    (base, mod, mach) = proc_file_sess(filename, session_path);
     lng = filename.split('.')[-1];
     Jac.set_base_path(base);
     try {
@@ -166,7 +176,6 @@ impl serve(
         mach.close();
         <>exit(1);
     }
-    session_path = session or os.path.join(base, f"{mod}.session");
     server = JacAPIServer(
         module_name=mod, session_path=session_path, port=port, base_path=base
     );

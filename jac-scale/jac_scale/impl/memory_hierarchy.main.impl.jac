@@ -1,105 +1,58 @@
-impl MultiHierarchyMemory.<>set(anchor: TANCH) {
-    self.mem.set(anchor);
+"""ScaleTieredMemory Implementation - Multi-tier storage coordination."""
+import logging;
+import from jaclang.runtimelib.memory { ShelfMemory }
+
+glob logger = logging.getLogger(__name__);
+
+"""Initialize ScaleTieredMemory with distributed backends."""
+impl ScaleTieredMemory.init(
+    session: (str | None) = None, use_cache: bool = True
+) -> None {
+    # Store session path for reference
+    self.session_path = session;
+    # L1: Initialize volatile memory (inherited from VolatileMemory via TieredMemory)
+    self.__mem__ = {};
+    self.__gc__ = set();
+    # L2: Try to initialize Redis cache (replaces LocalCacheMemory)
+    redis_backend = RedisBackend();
+    self._cache_available = redis_backend.is_available();
+    if self._cache_available and use_cache {
+        self.l2 = redis_backend;
+        logger.info("Redis cache backend initialized");
+    } else {
+        self.l2 = None;
+        logger.debug("Redis not available, running without distributed cache");
+    }
+    # L3: Try MongoDB first (replaces ShelfMemory), fall back to ShelfMemory
+    mongo_backend = MongoBackend();
+    if mongo_backend.is_available() {
+        self.l3 = mongo_backend;
+        self._persistence_type = 'mongodb';
+        logger.info("MongoDB persistence backend initialized");
+    } else {
+        # Fall back to jaclang's ShelfMemory
+        if session {
+            self.l3 = ShelfMemory(path=session);
+        } else {
+            self.l3 = ShelfMemory(path=_db_config['shelf_db_path']);
+        }
+        self._persistence_type = 'shelf';
+        logger.info("MongoDB not available, using ShelfMemory for persistence");
+    }
 }
 
-impl MultiHierarchyMemory.remove(anchor: Anchor) {
-    self.mem.remove(anchor.id);
-    if self.redis_available {
-        self.redis.remove(anchor);
+"""Close all backends."""
+impl ScaleTieredMemory.close -> None {
+    # Sync and close L3 persistence
+    if self.l3 {
+        self.l3.sync();
+        self.l3.close();
     }
-    if self.mongo_available {
-        self.mongo.remove(anchor);
-    } elif self.shelf {
-        self.shelf.remove(anchor);
+    # Close L2 cache
+    if self.l2 {
+        self.l2.close();
     }
-}
-
-impl MultiHierarchyMemory.sync(anchors: Iterable[Anchor]) -> None {
-    try {
-        if self.redis_available {
-            self.redis.commit(keys=anchors);
-        }
-        if self.mongo_available {
-            self.mongo.commit(keys=anchors);
-        } elif self.shelf {
-            self.shelf.commit(keys=anchors);
-        }
-    } except Exception { }
-}
-
-impl MultiHierarchyMemory.close{
-    self.commit();
-    self.mem.close();
-    if self.mongo {
-        self.mongo.close();
-    }
-    if self.shelf {
-        self.shelf.close();
-    }
-}
-
-impl MultiHierarchyMemory.commit(anchor: (Anchor | None) = None) {
-    try {
-        gc = self.mem.get_gc();
-        memory = self.mem.get_mem();
-        if (anchor) {
-            if (anchor in gc) {
-                self.delete(anchor);
-                self.mem.remove_from_gc(anchor);
-            } else {
-                if (self.mongo_available) {
-                    self.mongo.set(anchor);
-                } elif (self.shelf) {
-                    self.shelf.set(anchor);
-                }
-            }
-            return;
-        }
-        for anchor in gc {
-            self.delete(anchor);
-            self.mem.remove_from_gc(anchor);
-        }
-        anchors = <>set(memory.values());
-        self.sync(anchors);
-    } except Exception { }
-}
-
-impl MultiHierarchyMemory.find_by_id(id: UUID) -> (Anchor | None) {
-    if (anchor := self.mem.find_by_id(id)) {
-        return anchor;
-    }
-    if (self.redis_available) {
-        if (anchor := self.redis.find_by_id(id)) {
-            self.mem.set(anchor);
-            return anchor;
-        }
-    }
-    if (self.mongo_available) {
-        if (anchor := self.mongo.find_by_id(id)) {
-            self.mem.set(anchor);
-            if (self.redis_available) {
-                self.redis.set(anchor);
-            }
-            return anchor;
-        }
-    } elif self.shelf {
-        if (anchor := self.shelf.find_by_id(id)) {
-            self.mem.set(anchor);
-            return anchor;
-        }
-    }
-    return None;
-}
-
-impl MultiHierarchyMemory.init -> None {
-    super.init();
-    self.mem = Memory[(UUID, Anchor)]();
-    self.redis = RedisDB();
-    self.mongo = MongoDB();
-    self.shelf: (ShelfDB | None) = None;
-    self.redis_available = self.redis.redis_is_available();
-    self.mongo_available = self.mongo.mongo_is_available();
-    if (not self.redis_available and not self.mongo_available) {
-        self.shelf = ShelfDB();
-    }
+    # Clear L1 (inherited from VolatileMemory)
+    self.__mem__.clear();
+    self.__gc__.clear();
 }
