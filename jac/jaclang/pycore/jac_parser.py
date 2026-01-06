@@ -115,6 +115,19 @@ class JacParser(Transform[uni.Source, uni.Module]):
             child.parent = node
             JacParser._recalculate_parents(child)
 
+    def _log_python_only_keyword_error(
+        self, keyword: str, node: uni.Token | None = None
+    ) -> None:
+        """Log error for Python-only keywords that are not valid in Jac."""
+        self.log_error(
+            f"'{keyword}' is not a valid keyword in Jac",
+            node_override=node,
+        )
+        self.log_error(
+            "It is a Python keyword and is not allowed because Jac targets Python code generation",
+            node_override=node,
+        )
+
     @classmethod
     def _coerce_client_module(cls, module: uni.Module) -> None:
         """Treat a `.cl.jac` file as client code without wrapping in ClientBlock.
@@ -256,20 +269,14 @@ class JacParser(Transform[uni.Source, uni.Module]):
                 else None
             )
 
-            # Check for unsupported 'pass' keyword in code blocks
+            # Check for unsupported python keywords in code blocks
             if (
                 e.token
-                and e.token.value == "pass"
+                and e.token.value in PYTHON_ONLY_KEYWORDS
                 and (Tok.RBRACE.name in e.accepts or Tok.SEMI.name in e.accepts)
             ):
-                self.log_error(
-                    "'pass' is a keyword not allowed in jac",
-                    self.error_to_token(e),
-                )
-
-                self.log_error(
-                    "If need an empty code block, simply leave it empty.",
-                    self.error_to_token(e),
+                self._log_python_only_keyword_error(
+                    e.token.value, self.error_to_token(e)
                 )
                 return True
 
@@ -367,21 +374,6 @@ class JacParser(Transform[uni.Source, uni.Module]):
                 self.parse_ref._node_ids.add(node_id)
                 self.parse_ref.node_list.append(node)
             return node
-
-        def _check_python_keywords_in_expr(
-            self, expr: uni.Expr, context: str = "identifier"
-        ) -> None:
-            """Check if Python-only keywords are used as names in expressions (recursively)."""
-            if isinstance(expr, uni.Name) and expr.sym_name in PYTHON_ONLY_KEYWORDS:
-                self.parse_ref.log_error(
-                    f"'{expr.sym_name}' is a keyword not allowed as {context} in jac",
-                    node_override=expr,
-                )
-            elif hasattr(expr, "kid") and expr.kid:
-                # Recursively check all child nodes
-                for child in expr.kid:
-                    if isinstance(child, (uni.Expr, uni.Name)):
-                        self._check_python_keywords_in_expr(child, context)
 
         def _call_userfunc(
             self, tree: jl.Tree, new_children: None | list[uni.UniNode] = None
@@ -1098,11 +1090,6 @@ class JacParser(Transform[uni.Source, uni.Module]):
             self.consume_token(Tok.KW_CAN)
             access = self.match(uni.SubTag)
             name = self.match(uni.NameAtom)
-
-            # Check if ability name is a Python reserved keyword
-            if name:
-                self._check_python_keywords_in_expr(name, context="an ability name")  # type: ignore[arg-type]
-
             signature = self.consume(uni.EventSignature)
 
             # Handle block_tail
@@ -1143,10 +1130,6 @@ class JacParser(Transform[uni.Source, uni.Module]):
             self.consume_token(Tok.KW_DEF)
             access = self.match(uni.SubTag)
             name = self.consume(uni.NameAtom)
-
-            # Check if function name is a Python reserved keyword
-            self._check_python_keywords_in_expr(name, context="a function name")  # type: ignore[arg-type]
-
             signature = self.match(uni.FuncSignature)
 
             # Handle block_tail
@@ -1323,10 +1306,6 @@ class JacParser(Transform[uni.Source, uni.Module]):
             type_tag = self.consume(uni.SubTag)
             value = self.consume(uni.Expr) if self.match_token(Tok.EQ) else None
 
-            self._check_python_keywords_in_expr(
-                name, "a parameter name"
-            )  # Check if Python keywords are used as parameter names
-
             return uni.ParamVar(
                 name=name,
                 type_tag=type_tag,
@@ -1497,26 +1476,6 @@ class JacParser(Transform[uni.Source, uni.Module]):
                     kid=[expr],
                 )
             elif isinstance(kid[0], uni.Expr):
-                # Check if this is a 'pass' statement (pass;) in a code block
-                if (
-                    len(kid) >= 2
-                    and isinstance(kid[0], uni.Name)
-                    and kid[0].sym_name == "pass"
-                    and isinstance(kid[1], uni.Token)
-                    and kid[1].name == Tok.SEMI.name
-                ):
-                    self.parse_ref.log_error(
-                        "'pass' is a keyword not allowed in jac",
-                        node_override=kid[0],
-                    )
-
-                    self.parse_ref.log_error(
-                        "If need an empty code block, simply leave it empty.",
-                        node_override=kid[0],
-                    )
-                else:
-                    # Check if Python keywords are used in the expression (ex: print(pass); )
-                    self._check_python_keywords_in_expr(kid[0], "an identifier")
                 return uni.ExprStmt(
                     expr=kid[0],
                     in_fstring=False,
@@ -1816,10 +1775,6 @@ class JacParser(Transform[uni.Source, uni.Module]):
             self.consume_token(Tok.KW_RETURN)
             expr = self.match(uni.Expr)
 
-            # Check if Python keywords are used in return expression
-            if expr:
-                self._check_python_keywords_in_expr(expr, "an identifier")
-
             return uni.ReturnStmt(
                 expr=expr,
                 kid=self.cur_nodes,
@@ -1920,13 +1875,6 @@ class JacParser(Transform[uni.Source, uni.Module]):
                 value = self.consume(uni.Expr) if self.match_token(Tok.EQ) else None
 
             valid_assignees = [i for i in assignees if isinstance(i, (uni.Expr))]
-
-            # Check if Python keywords are being used as variable names
-            for assignee in valid_assignees:
-                self._check_python_keywords_in_expr(assignee, "a variable name")
-            # Also check the value being assigned
-            if value:
-                self._check_python_keywords_in_expr(value, "an identifier")
 
             if is_aug:
                 return uni.Assignment(
@@ -3890,8 +3838,12 @@ class JacParser(Transform[uni.Source, uni.Module]):
                 pos_start=token.start_pos if token.start_pos is not None else 0,
                 pos_end=token.end_pos if token.end_pos is not None else 0,
             )
-            if isinstance(ret, uni.Name) and token.type == Tok.KWESC_NAME:
-                ret.is_kwesc = True
+            if isinstance(ret, uni.Name):
+                if token.type == Tok.KWESC_NAME:
+                    ret.is_kwesc = True
+                # Check if Python-only keywords are used as names
+                elif ret.sym_name in PYTHON_ONLY_KEYWORDS:
+                    self.parse_ref._log_python_only_keyword_error(ret.sym_name, ret)
 
             self.terminals.append(ret)
             return ret

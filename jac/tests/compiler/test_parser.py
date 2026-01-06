@@ -273,19 +273,11 @@ def test_pass_keyword_errors(fixture_path: Callable[[str], str]) -> None:
     prog = JacProgram()
     prog.compile(fixture_path("pass_keyword_errors.jac"))
     sys.stdout = sys.__stdout__
-    assert len(prog.errors_had) == 27
-    expected_substrings = (
-        10
-        * [
-            "'pass' is a keyword not allowed in jac",
-            "If need an empty code block, simply leave it empty",
-        ]
-        + ["'pass' is a keyword not allowed as a variable name in jac"]
-        + 3 * ["'pass' is a keyword not allowed as an identifier in jac"]
-        + ["'pass' is a keyword not allowed as a parameter name in jac"]
-        + ["'pass' is a keyword not allowed as an identifier in jac"]
-        + ["'pass' is a keyword not allowed as a function name in jac"]
-    )
+    assert len(prog.errors_had) == 34
+    expected_substrings = 17 * [
+        "'pass' is not a valid keyword in Jac",
+        "It is a Python keyword and is not allowed because Jac targets Python code generation",
+    ]
     for alrt, expected in zip(prog.errors_had, expected_substrings, strict=True):
         pretty = alrt.pretty_print()
         assert expected in pretty
