@@ -231,6 +231,11 @@ impl TypeVarType.init -> None {
     super.init();
 }
 
+"""Initialize obviously."""
+impl ModuleType.postinit -> None {
+    super.init();
+}
+
 """Return whether the class is an instance."""
 impl TypeBase.is_class_instance -> bool {
     return ((self.category == TypeCategory.Class) and self.is_instance());

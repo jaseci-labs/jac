@@ -121,6 +121,8 @@ obj ModuleType(TypeBase) {
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Module;
     }
+
+    def postinit -> None;
 }
 
 """Represents a type variable."""
