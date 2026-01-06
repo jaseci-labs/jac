@@ -85,9 +85,7 @@ impl Memory.remove(self: Memory, ids: (ID | Iterable[ID])) -> None {
 }
 
 """Commit all data from memory to datasource."""
-impl Memory.commit(self: Memory, anchor: (TANCH | None) = None) -> None {
-    pass;
-}
+impl Memory.commit(self: Memory, anchor: (TANCH | None) = None) -> None { }
 
 """Get garbage collection list."""
 impl Memory.get_gc(self: Memory) -> list[TANCH] {
