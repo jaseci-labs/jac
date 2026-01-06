@@ -1,23 +1,29 @@
 """Memory management for Jac Language."""
 
-import shelve;
 import from collections.abc { Callable, Generator, Iterable }
 import from dataclasses { dataclass, field }
-import from pickle { dumps }
-import from typing { Any, Generic, TypeVar, cast }
+import from typing { Generic, TypeVar, cast }
 import from uuid { UUID }
 
-import from jaclang.pycore.archetype { TANCH, Anchor, NodeAnchor, Root }
+import from jaclang.pycore.archetype { TANCH, Root }
 
 glob ID = TypeVar('ID'),
-     __all__ = ['Memory', 'ShelfStorage'];
+     __all__ = ['Memory'];
 
-"""Generic Memory Handler."""
+"""Generic Memory Handler.
+
+Implements DataBackend protocol for L1 caching in the storage hierarchy.
+Provides additional query and filtering capabilities beyond the base protocol.
+"""
 @dataclass
 class Memory(Generic[ID, TANCH]) {
     has __mem__: dict[(ID | UUID), TANCH] = field(default_factory=dict),
         __gc__: set[TANCH] = field(default_factory=set);
 
+    def is_available(self: Memory) -> bool;
+    def get(self: Memory, id: ID) -> (TANCH | None);
+    def put(self: Memory, data: TANCH) -> None;
+    def delete(self: Memory, id: ID) -> None;
     def close(self: Memory) -> None;
     def is_cached(self: Memory, id: ID) -> bool;
     def query(
@@ -37,9 +43,6 @@ class Memory(Generic[ID, TANCH]) {
         filter: (Callable[[TANCH], TANCH] | None) = None
     ) -> (TANCH | None);
 
-    def find_by_id(self: Memory, id: ID) -> (TANCH | None);
-    def set(self: Memory, data: TANCH) -> None;
-    def remove(self: Memory, ids: (ID | Iterable[ID])) -> None;
     def commit(self: Memory, anchor: (TANCH | None) = None) -> None;
     def get_gc(self: Memory) -> list[TANCH];
     def remove_from_gc(self: Memory, anchor: TANCH) -> None;
@@ -47,24 +50,3 @@ class Memory(Generic[ID, TANCH]) {
     def remove_from_mem(self: Memory, anchor: (ID | UUID)) -> None;
 }
 
-"""Shelf Handler."""
-@dataclass
-class ShelfStorage(Memory[UUID, Anchor]) {
-    has __shelf__: (shelve.Shelf[Anchor] | None) = None;
-
-    def init(self: ShelfStorage, session: (str | None) = None) -> None;
-    def commit(self: ShelfStorage, anchor: (Anchor | None) = None) -> None;
-    def close(self: ShelfStorage) -> None;
-    def sync_mem_to_db(self: ShelfStorage, keys: Iterable[UUID]) -> None;
-    def query(
-        self: ShelfStorage, filter: (Callable[[Anchor], bool] | None) = None
-    ) -> Generator[Any, None, None];
-
-    def find(
-        self: ShelfStorage,
-        ids: (UUID | Iterable[UUID]),
-        filter: (Callable[[Anchor], Anchor] | None) = None
-    ) -> Generator[Anchor, None, None];
-
-    def find_by_id(self: ShelfStorage, id: UUID) -> (Anchor | None);
-}

@@ -1,105 +1,154 @@
-impl MultiHierarchyMemory.<>set(anchor: TANCH) {
-    self.mem.set(anchor);
-}
+"""StorageOrchestrator Implementation - Multi-tier storage coordination."""
+import from uuid { UUID }
+import from collections.abc { Iterable }
+import from jaclang.pycore.archetype { Anchor }
+import from jaclang.runtimelib.storage { logger }
 
-impl MultiHierarchyMemory.remove(anchor: Anchor) {
-    self.mem.remove(anchor.id);
-    if self.redis_available {
-        self.redis.remove(anchor);
+
+"""Initialize StorageOrchestrator with multi-tier storage."""
+impl StorageOrchestrator.init -> None {
+    # L2: Try to initialize Redis cache
+    redis_backend = RedisBackend();
+    self._cache_available = redis_backend.is_available();
+    if self._cache_available {
+        self.cache = redis_backend;
+        logger.info("Redis cache backend initialized");
+    } else {
+        self.cache = None;
+        logger.info("Redis not available, running without distributed cache");
     }
-    if self.mongo_available {
-        self.mongo.remove(anchor);
-    } elif self.shelf {
-        self.shelf.remove(anchor);
+
+    # L3: Try MongoDB first, fall back to Shelf
+    mongo_backend = MongoBackend();
+    persistence: (PersistenceBackend | None) = None;
+    if mongo_backend.is_available() {
+        persistence = mongo_backend;
+        self._persistence_type = 'mongodb';
+        logger.info("MongoDB persistence backend initialized");
+    } else {
+        persistence = ShelfBackend();
+        self._persistence_type = 'shelf';
+        logger.info("MongoDB not available, using Shelf for persistence");
     }
+
+    # Initialize base class with persistence (creates L1 memory)
+    super.init(persistence);
 }
 
-impl MultiHierarchyMemory.sync(anchors: Iterable[Anchor]) -> None {
-    try {
-        if self.redis_available {
-            self.redis.commit(keys=anchors);
-        }
-        if self.mongo_available {
-            self.mongo.commit(keys=anchors);
-        } elif self.shelf {
-            self.shelf.commit(keys=anchors);
-        }
-    } except Exception { }
-}
 
-impl MultiHierarchyMemory.close{
-    self.commit();
-    self.mem.close();
-    if self.mongo {
-        self.mongo.close();
-    }
-    if self.shelf {
-        self.shelf.close();
-    }
-}
-
-impl MultiHierarchyMemory.commit(anchor: (Anchor | None) = None) {
-    try {
-        gc = self.mem.get_gc();
-        memory = self.mem.get_mem();
-        if (anchor) {
-            if (anchor in gc) {
-                self.delete(anchor);
-                self.mem.remove_from_gc(anchor);
-            } else {
-                if (self.mongo_available) {
-                    self.mongo.set(anchor);
-                } elif (self.shelf) {
-                    self.shelf.set(anchor);
-                }
-            }
-            return;
-        }
-        for anchor in gc {
-            self.delete(anchor);
-            self.mem.remove_from_gc(anchor);
-        }
-        anchors = <>set(memory.values());
-        self.sync(anchors);
-    } except Exception { }
-}
-
-impl MultiHierarchyMemory.find_by_id(id: UUID) -> (Anchor | None) {
-    if (anchor := self.mem.find_by_id(id)) {
+"""Retrieve anchor with read-through caching. L1 -> L2 -> L3."""
+impl StorageOrchestrator.get(id: UUID) -> (Anchor | None) {
+    # L1: Check in-memory cache
+    if (anchor := self.memory.get(id)) {
         return anchor;
     }
-    if (self.redis_available) {
-        if (anchor := self.redis.find_by_id(id)) {
-            self.mem.set(anchor);
+
+    # L2: Check distributed cache (Redis)
+    if self._cache_available and self.cache {
+        if (anchor := self.cache.get(id)) {
+            # Promote to L1
+            self.memory.put(anchor);
             return anchor;
         }
     }
-    if (self.mongo_available) {
-        if (anchor := self.mongo.find_by_id(id)) {
-            self.mem.set(anchor);
-            if (self.redis_available) {
-                self.redis.set(anchor);
+
+    # L3: Check persistence (MongoDB or Shelf)
+    if self.persistence {
+        if (anchor := self.persistence.get(id)) {
+            # Promote to L1
+            self.memory.put(anchor);
+            # Promote to L2 if available
+            if self._cache_available and self.cache {
+                self.cache.put(anchor);
             }
             return anchor;
         }
-    } elif self.shelf {
-        if (anchor := self.shelf.find_by_id(id)) {
-            self.mem.set(anchor);
-            return anchor;
-        }
     }
+
     return None;
 }
 
-impl MultiHierarchyMemory.init -> None {
-    super.init();
-    self.mem = Memory[(UUID, Anchor)]();
-    self.redis = RedisDB();
-    self.mongo = MongoDB();
-    self.shelf: (ShelfDB | None) = None;
-    self.redis_available = self.redis.redis_is_available();
-    self.mongo_available = self.mongo.mongo_is_available();
-    if (not self.redis_available and not self.mongo_available) {
-        self.shelf = ShelfDB();
+
+"""Commit changes to persistence layer."""
+impl StorageOrchestrator.commit(anchor: (Anchor | None) = None) -> None {
+    try {
+        gc = self.memory.get_gc();
+
+        # Handle garbage collected anchors (deletions)
+        for anc in gc {
+            self._delete_from_backends(anc.id);
+            self.memory.remove_from_gc(anc);
+        }
+
+        # Handle single anchor commit
+        if anchor {
+            if self.persistence {
+                self.persistence.put(anchor);
+            }
+            # Update cache if key exists (conditional write)
+            if self._cache_available and self.cache {
+                self.cache.put_if_exists(anchor);
+            }
+            return;
+        }
+
+        # Handle bulk commit of all memory contents
+        anchors = list(self.memory.get_mem().values());
+        self._sync_to_backends(anchors);
+
+    } except Exception as e {
+        logger.error(f"Commit failed: {e}");
+    }
+}
+
+
+"""Commit pending changes and close all backends."""
+impl StorageOrchestrator.close -> None {
+    self.commit();
+    self.memory.close();
+
+    if self.cache {
+        self.cache.close();
+    }
+
+    if self.persistence {
+        self.persistence.close();
+    }
+}
+
+
+"""Sync anchors to cache and persistence backends."""
+impl StorageOrchestrator._sync_to_backends(anchors: Iterable[Anchor]) -> None {
+    anchor_list = list(anchors);
+
+    try {
+        # Update cache for existing keys only
+        if self._cache_available and self.cache {
+            for anchor in anchor_list {
+                self.cache.put_if_exists(anchor);
+            }
+        }
+
+        # Write to persistence
+        if self.persistence {
+            self.persistence.bulk_put(anchor_list);
+        }
+    } except Exception as e {
+        logger.error(f"Sync to backends failed: {e}");
+    }
+}
+
+
+"""Delete anchor from all backend tiers."""
+impl StorageOrchestrator._delete_from_backends(id: UUID) -> None {
+    try {
+        if self._cache_available and self.cache {
+            self.cache.delete(id);
+        }
+        if self.persistence {
+            self.persistence.delete(id);
+        }
+    } except Exception as e {
+        logger.error(f"Delete from backends failed: {e}");
     }
 }

@@ -1,147 +1,81 @@
-impl MongoDB.commit(anchor: (TANCH | None) = None, keys: Iterable[Anchor] = []) -> None {
-    if anchor {
-        self.set(anchor);
-        return;
-    }
-    if keys {
-        self.commit_bulk(keys);
+"""MongoDB PersistenceBackend Implementation."""
+import from pymongo { MongoClient, UpdateOne }
+import from pymongo.errors { ConnectionFailure }
+import from uuid { UUID }
+import from typing { Any }
+import from collections.abc { Iterable }
+import from jaclang.pycore.archetype { Anchor }
+import logging;
+import from jaclang.runtimelib.storage { AnchorMergeStrategy }
+import from jaclang.runtimelib.utils { storage_key, to_uuid }
+
+glob logger = logging.getLogger(__name__);
+
+
+impl MongoBackend.postinit -> None {
+    if self.client is None and self.mongo_url {
+        self.client = MongoClient(self.mongo_url);
+        self.db = self.client[self.db_name];
+        self.collection = self.db[self.collection_name];
     }
 }
 
-"""
-Faster bulk commit:
-- Save all anchors (no empty NodeAnchor skipping)
-- Update NodeAnchor edges
-- Respect write and connect access
-"""
-impl MongoDB.commit_bulk(anchors: Iterable[Anchor]) -> None {
-    import from jaclang.pycore.archetype { NodeAnchor }
-    import from jaclang.pycore.runtime { JacRuntimeInterface as Jac }
-    ops: list = [];
-    for anc in anchors {
-        _id = self._to_uuid(anc.id);
-        try {
-            current_hash = hash(dumps(anc));
-        } except Exception {
-            continue;
-        }
-        if (getattr(anc, 'hash', None) == current_hash) {
-            continue;
-        }
-        db_doc = self.collection.find_one({'_id': str(_id)});
-        stored_anchor = self._load_anchor(db_doc) if db_doc else None;
-        if (
-            stored_anchor
-            and isinstance(stored_anchor, NodeAnchor)
-            and isinstance(anc, NodeAnchor)
-            and (getattr(stored_anchor, 'edges', None) != getattr(anc, 'edges', None))
-            and Jac.check_connect_access(anc)
-        ) {
-            stored_anchor.edges = anc.edges;
-            working_anchor = stored_anchor;
-        } else {
-            working_anchor = anc;
-        }
-        if (stored_anchor and Jac.check_write_access(anc)) {
+
+impl MongoBackend.is_available -> bool {
+    if not self.mongo_url {
+        return False;
+    }
+    client = None;
+    try {
+        client = MongoClient(self.mongo_url);
+        client.admin.command('ping', maxTimeMS=100);
+        return True;
+    } except ConnectionFailure {
+        return False;
+    } except Exception as e {
+        logger.debug(f"MongoDB availability check failed: {e}");
+        return False;
+    } finally {
+        if client {
             try {
-                if (hash(dumps(stored_anchor.access)) != hash(dumps(anc.access))) {
-                    stored_anchor.access = anc.access;
-                }
-                if (hash(dumps(stored_anchor.archetype)) != hash(dumps(anc.archetype))) {
-                    stored_anchor.archetype = anc.archetype;
-                }
-                working_anchor = stored_anchor;
-            } except Exception {
-                working_anchor = anc;
-            }
+                client.close();
+            } except Exception { }
         }
-        try {
-            blob = dumps(working_anchor);
-        } except Exception {
-            continue;
-        }
-        ops.append(
-            UpdateOne(
-                {'_id': str(_id)},
-                {'$set': {'data': blob, 'type': <>type(working_anchor).__name__}},
-                upsert=True
-            )
-        );
-    }
-    if ops {
-        self.collection.bulk_write(ops);
     }
 }
 
-impl MongoDB.find_by_id(id: UUID) -> (Anchor | None) {
-    _id = self._to_uuid(id);
+
+impl MongoBackend.get(id: UUID) -> (Anchor | None) {
+    _id = to_uuid(id);
     db_obj = self.collection.find_one({'_id': str(_id)});
     if db_obj {
-        anchor = self._load_anchor(db_obj);
-        if anchor {
-            return anchor;
-        }
+        return self._load_anchor(db_obj);
     }
     return None;
 }
 
-impl MongoDB.remove(anchor: TANCH) -> None {
-    _id = self._to_uuid(anchor.id);
-    self.collection.delete_one({'_id': str(_id)});
-}
 
-"""
-Save anchor to MongoDB, exactly like ShelfStorage:
-- Save all anchors (no empty NodeAnchor skipping)
-- Update NodeAnchor edges
-- Respect write and connect access
-"""
-impl MongoDB.<>set(anchor: Anchor) -> None {
-    import from jaclang.pycore.archetype { NodeAnchor }
-    import from jaclang.pycore.runtime { JacRuntimeInterface as Jac }
-    _id = self._to_uuid(anchor.id);
-    try {
-        current_hash = hash(dumps(anchor));
-    } except Exception {
+impl MongoBackend.put(anchor: Anchor) -> None {
+    if not AnchorMergeStrategy.needs_persist(anchor) {
         return;
     }
-    if (getattr(anchor, 'hash', None) == current_hash) {
-        return;
-    }
+
+    _id = to_uuid(anchor.id);
+
+    # Load existing anchor for merge
     db_doc = self.collection.find_one({'_id': str(_id)});
     stored_anchor = self._load_anchor(db_doc) if db_doc else None;
-    if (
-        stored_anchor
-        and isinstance(stored_anchor, NodeAnchor)
-        and isinstance(anchor, NodeAnchor)
-        and (getattr(stored_anchor, 'edges', None) != getattr(anchor, 'edges', None))
-        and Jac.check_connect_access(anchor)
-    ) {
-        stored_anchor.edges = anchor.edges;
-        base_anchor = stored_anchor;
-    } else {
-        base_anchor = anchor;
-    }
-    if (stored_anchor and Jac.check_write_access(anchor)) {
-        try {
-            if (hash(dumps(stored_anchor.access)) != hash(dumps(anchor.access))) {
-                stored_anchor.access = anchor.access;
-            }
-            if (hash(dumps(stored_anchor.archetype)) != hash(dumps(anchor.archetype))) {
-                stored_anchor.archetype = anchor.archetype;
-            }
-            final_anchor = stored_anchor;
-        } except Exception {
-            final_anchor = anchor;
-        }
-    } else {
-        final_anchor = base_anchor;
-    }
-    try {
-        data_blob = dumps(final_anchor);
-    } except Exception {
+
+    # Merge with access control
+    final_anchor = AnchorMergeStrategy.merge(anchor, stored_anchor);
+
+    # Serialize
+    data_blob = AnchorMergeStrategy.serialize(final_anchor);
+    if data_blob is None {
         return;
     }
+
+    # Upsert to MongoDB
     self.collection.update_one(
         {'_id': str(_id)},
         {'$set': {'data': data_blob, 'type': <>type(final_anchor).__name__}},
@@ -149,63 +83,67 @@ impl MongoDB.<>set(anchor: Anchor) -> None {
     );
 }
 
-impl MongoDB._load_anchor(raw: dict[(str, Any)]) -> (TANCH | None) {
-    try {
-        return loads(raw['data']);
-    } except Exception {
-        return None;
-    }
+
+impl MongoBackend.delete(id: UUID) -> None {
+    _id = to_uuid(id);
+    self.collection.delete_one({'_id': str(_id)});
 }
 
-impl MongoDB._to_uuid(id: (UUID | str)) -> UUID {
-    if not isinstance(id, UUID) {
-        return UUID(str(id));
-    }
-    return id;
-}
 
-impl MongoDB.mongo_is_available -> bool {
-    client = None;
-    if (self.mongo_url) {
-        try {
-            client = MongoClient(self.mongo_url);
+impl MongoBackend.bulk_put(anchors: Iterable[Anchor]) -> None {
+    ops: list = [];
 
-            try {
-                client.admin.command('ping', maxTimeMS=100);
-                return True;
-            } except Exception {
-                return False;
-            }
-        } except ConnectionFailure {
-            return False;
-        } except Exception {
-            return False;
-        } finally {
-            if (client) {
-                try {
-                    client.close();
-                } except Exception { }
-            }
+    for anchor in anchors {
+        if not AnchorMergeStrategy.needs_persist(anchor) {
+            continue;
         }
-    } else {
-        return False;
+
+        _id = to_uuid(anchor.id);
+
+        # Load existing anchor for merge
+        db_doc = self.collection.find_one({'_id': str(_id)});
+        stored_anchor = self._load_anchor(db_doc) if db_doc else None;
+
+        # Merge with access control
+        final_anchor = AnchorMergeStrategy.merge(anchor, stored_anchor);
+
+        # Serialize
+        data_blob = AnchorMergeStrategy.serialize(final_anchor);
+        if data_blob is None {
+            continue;
+        }
+
+        ops.append(
+            UpdateOne(
+                {'_id': str(_id)},
+                {'$set': {'data': data_blob, 'type': <>type(final_anchor).__name__}},
+                upsert=True
+            )
+        );
+    }
+
+    if ops {
+        self.collection.bulk_write(ops);
     }
 }
 
-impl MongoDB.close -> None {
+
+impl MongoBackend.close -> None {
     if self.client {
         try {
             self.client.close();
-        } except Exception { }
+        } except Exception as e {
+            logger.warning(f"Error closing MongoDB connection: {e}");
+        }
         self.client = None;
     }
 }
 
-"""Initialize Mongodb."""
-impl MongoDB.postinit -> None {
-    if (self.client is None) {
-        self.client = MongoClient(self.mongo_url);
+
+impl MongoBackend._load_anchor(raw: dict[(str, Any)]) -> (Anchor | None) {
+    if 'data' not in raw {
+        return None;
     }
-    self.db = self.client[self.db_name];
-    self.collection = self.db[self.collection_name];
+    data: bytes = raw['data'];
+    return AnchorMergeStrategy.deserialize(data);
 }

@@ -6,13 +6,15 @@ import from uuid { UUID }
 
 import from jaclang.pycore.archetype { Anchor, NodeAnchor, Root }
 import from jaclang.pycore.constant { Constants as Con }
-import from jaclang.runtimelib.memory { Memory, ShelfStorage }
+import from jaclang.runtimelib.memory { Memory }
+import from jaclang.runtimelib.storage { ShelfStorage }
 
 glob __all__ = ['ExecutionContext'];
 
 """Execution Context."""
 class ExecutionContext {
     has mem: Memory[UUID, Anchor],
+        persistence: (ShelfStorage | None),
         reports: list[Any],
         custom: Any,
         system_root: NodeAnchor,

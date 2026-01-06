@@ -787,30 +787,37 @@ class JacBasics:
         if isinstance(anchor, Archetype):
             anchor = anchor.__jac__
 
-        mem = JacRuntimeInterface.get_context().mem
-        mem.commit(anchor)
+        ctx = JacRuntimeInterface.get_context()
+        if ctx.persistence:
+            if anchor:
+                # Commit single anchor to persistence
+                ctx.persistence.put(anchor)
+            else:
+                # Sync all memory to persistence
+                ctx.persistence.sync_from_memory(ctx.mem.get_mem(), ctx.mem.get_gc())
 
     @staticmethod
     def reset_graph(root: Root | None = None) -> int:
         """Purge current or target graph."""
         from shelve import Shelf
 
-        from jaclang.runtimelib.memory import ShelfStorage
-
         ctx = JacRuntimeInterface.get_context()
-        mem = cast(ShelfStorage, ctx.mem)
+        mem = ctx.mem
         ranchor = root.__jac__ if root else ctx.root_state
 
         deleted_count = 0
-        for anchor in (
-            anchors.values()
-            if isinstance(anchors := mem.__shelf__, Shelf)
-            else mem.__mem__.values()
-        ):
+        # Get anchors from persistence if available, otherwise from memory
+        persistence = ctx.persistence
+        if persistence and isinstance(getattr(persistence, '__shelf__', None), Shelf):
+            anchors = persistence.__shelf__.values()
+        else:
+            anchors = mem.get_mem().values()
+
+        for anchor in anchors:
             if anchor == ranchor or anchor.root != ranchor.id:
                 continue
 
-            if loaded_anchor := mem.find_by_id(anchor.id):
+            if loaded_anchor := mem.get(anchor.id):
                 deleted_count += 1
                 JacRuntimeInterface.destroy([loaded_anchor])
 
@@ -821,7 +828,7 @@ class JacBasics:
         """Get object given id."""
         if id == "root":
             return JacRuntimeInterface.get_context().root_state.archetype
-        elif obj := JacRuntimeInterface.get_context().mem.find_by_id(UUID(id)):
+        elif obj := JacRuntimeInterface.get_context().mem.get(UUID(id)):
             return obj.archetype
 
         return None
@@ -1374,7 +1381,7 @@ class JacBasics:
             anchor.persistent = True
             anchor.root = jctx.root_state.id
 
-        jctx.mem.set(anchor)
+        jctx.mem.put(anchor)
 
         match anchor:
             case NodeAnchor():

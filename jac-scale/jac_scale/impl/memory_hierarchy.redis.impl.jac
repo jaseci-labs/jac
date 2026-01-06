@@ -1,109 +1,126 @@
-"""Commit behaves like MongoDB but also syncs Redis."""
+"""Redis CacheBackend Implementation."""
+import redis;
+import from uuid { UUID }
+import from jaclang.pycore.archetype { Anchor }
+import logging;
+import from jaclang.runtimelib.storage { AnchorMergeStrategy }
+import from jaclang.runtimelib.utils { storage_key, to_uuid }
 
-impl RedisDB.redis_key_exists(id: UUID) -> bool {
-    try {
-        return bool(self.redis_client.exists(self._redis_key(id)));
-    } except Exception {
+glob logger = logging.getLogger(__name__);
+
+
+"""Post-initialization: connect to Redis."""
+impl RedisBackend.postinit -> None {
+    if self.redis_url and self.redis_client is None {
+        self.redis_client = redis.from_url(self.redis_url);
+    }
+}
+
+
+"""Check if Redis is available and connected."""
+impl RedisBackend.is_available -> bool {
+    if not self.redis_url {
         return False;
     }
-}
-
-impl RedisDB.commit(
-    anchor: (Anchor | None) = None, keys: Iterable[Anchor] = []
-) -> None {
-    if (anchor) {
-        if (self.redis_key_exists(anchor.id)) {
-            self.set(anchor);
+    client = None;
+    try {
+        client = redis.from_url(self.redis_url);
+        client.ping();
+        return True;
+    } except Exception as e {
+        logger.debug(f"Redis availability check failed: {e}");
+        return False;
+    } finally {
+        if client {
+            try {
+                client.close();
+            } except Exception { }
         }
-        return;
-    }
-    for anc in keys {
-        if (self.redis_key_exists(anc.id)) {
-            self.set(anc);
-        }
     }
 }
 
-impl RedisDB.find_by_id(id: UUID) -> (Anchor | None) {
-    _id = self._to_uuid(id);
-    data = self._load_anchor_from_redis(_id);
-    return data;
-}
 
-"""Delete from MongoDB AND Redis."""
-impl RedisDB.remove(anchor: Anchor) -> None {
-    if (self.redis_client is None) {
+"""Get anchor by UUID from Redis cache."""
+impl RedisBackend.get(id: UUID) -> (Anchor | None) {
+    if self.redis_client is None {
         return None;
     }
-    self.redis_client.delete(self._redis_key(anchor.id));
-}
-
-"""Save to MongoDB AND Redis."""
-impl RedisDB.<>set(anchor: Anchor) -> None {
-    if (self.redis_client is None) {
-        return;
-    }
-    self.redis_client.set(self._redis_key(anchor.id), dumps(anchor));
-}
-
-impl RedisDB._load_anchor_from_redis(id: UUID) -> (Anchor | None) {
-    if (self.redis_client is None) {
-        return None;
-    }
-    key = self._redis_key(id);
+    key = storage_key(to_uuid(id));
     raw = self.redis_client.get(key);
     if not raw {
         return None;
     }
-    try {
-        return loads(raw);
-    } except Exception {
-        return None;
+    return AnchorMergeStrategy.deserialize(raw);
+}
+
+
+"""Store anchor in Redis cache."""
+impl RedisBackend.put(anchor: Anchor) -> None {
+    if self.redis_client is None {
+        return;
     }
-}
-
-impl RedisDB._to_uuid(id: (UUID | str)) -> UUID {
-    if not isinstance(id, UUID) {
-        return UUID(str(id));
+    data = AnchorMergeStrategy.serialize(anchor);
+    if data is None {
+        return;
     }
-    return id;
+    key = storage_key(anchor.id);
+    self.redis_client.set(key, data);
 }
 
-impl RedisDB._redis_key(id: UUID) -> str {
-    return f"anchor:{str(id)}";
+
+"""Delete anchor from Redis cache."""
+impl RedisBackend.delete(id: UUID) -> None {
+    if self.redis_client is None {
+        return;
+    }
+    key = storage_key(to_uuid(id));
+    self.redis_client.delete(key);
 }
 
-"""Check whether Redis connection is alive and reachable."""
-impl RedisDB.redis_is_available -> bool {
-    client = None;
-    if (self.redis_url) {
+
+"""Close Redis connection."""
+impl RedisBackend.close -> None {
+    if self.redis_client {
         try {
-            client = redis.from_url(self.redis_url);
-
-            try {
-                client.ping();
-                return True;
-            } except Exception {
-                return False;
-            }
-        } except Exception {
-            return False;
-        } finally {
-            if (client) {
-                try {
-                    client.close();
-                } except Exception { }
-            }
+            self.redis_client.close();
+        } except Exception as e {
+            logger.warning(f"Error closing Redis connection: {e}");
         }
-    } else {
+        self.redis_client = None;
+    }
+}
+
+
+# CacheBackend specific methods
+
+"""Check if key exists in cache."""
+impl RedisBackend.exists(id: UUID) -> bool {
+    if self.redis_client is None {
+        return False;
+    }
+    try {
+        key = storage_key(to_uuid(id));
+        return bool(self.redis_client.exists(key));
+    } except Exception {
         return False;
     }
 }
 
-"""Initialize Redis."""
-impl RedisDB.postinit -> None {
-    # Only initialize if redis_url is not empty and client is None
-    if (self.redis_url and self.redis_client is None) {
-        self.redis_client = redis.from_url(self.redis_url);
+
+"""Store anchor only if it already exists in cache. Returns True if stored."""
+impl RedisBackend.put_if_exists(anchor: Anchor) -> bool {
+    if self.redis_client is None {
+        return False;
     }
+    if not self.exists(anchor.id) {
+        return False;
+    }
+    self.put(anchor);
+    return True;
+}
+
+
+"""Remove an entry from cache."""
+impl RedisBackend.invalidate(id: UUID) -> None {
+    self.delete(id);
 }

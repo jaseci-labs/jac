@@ -1,37 +1,49 @@
-"""Commit one or many anchors."""
+"""Shelf PersistenceBackend Implementation."""
+import os;
+import shelve;
+import dbm.dumb;
+import from threading { RLock }
+import from typing { cast }
+import from collections.abc { Iterable, MutableMapping }
+import from uuid { UUID }
+import from jaclang.pycore.archetype { Anchor }
+import logging;
+import from jaclang.runtimelib.storage { AnchorMergeStrategy }
+import from jaclang.runtimelib.utils { storage_key, to_uuid }
 
-impl ShelfDB.commit(
-    anchor: (Anchor | None) = None, keys: Iterable[Anchor] = []
-) -> None {
-    if anchor {
-        self.set(anchor);
-        return;
-    }
-    for anc in keys {
-        self.set(anc);
-    }
+glob logger = logging.getLogger(__name__);
+
+
+"""Post-initialization: set up threading lock."""
+impl ShelfBackend.postinit -> None {
+    self._lock = RLock();
+    # Don't open shelf immediately - lazy initialization
 }
 
-impl ShelfDB.find_by_id(id: UUID) -> (Anchor | None) {
-    _id = self._to_uuid(id);
-    return self._load_anchor_from_shelf(_id);
+
+"""Check if Shelf backend is available (always true as fallback)."""
+impl ShelfBackend.is_available -> bool {
+    # Shelf is always available as a fallback (file-based)
+    return True;
 }
 
-"""Remove anchor from shelf."""
-impl ShelfDB.remove(anchor: Anchor) -> None {
-    key = self._redis_key(anchor.id);
+
+"""Get anchor by UUID from shelf."""
+impl ShelfBackend.get(id: UUID) -> (Anchor | None) {
+    key = storage_key(to_uuid(id));
     shelf = self._ensure_shelf();
     with self._lock {
-        if (key in shelf) {
-            del (shelf[key], ) ;
-            shelf.sync();
+        if key not in shelf {
+            return None;
         }
+        return shelf[key];
     }
 }
 
-"""Save anchor to shelf."""
-impl ShelfDB.<>set(anchor: Anchor) -> None {
-    key = self._redis_key(anchor.id);
+
+"""Store anchor in shelf."""
+impl ShelfBackend.put(anchor: Anchor) -> None {
+    key = storage_key(anchor.id);
     shelf = self._ensure_shelf();
     with self._lock {
         shelf[key] = anchor;
@@ -39,41 +51,50 @@ impl ShelfDB.<>set(anchor: Anchor) -> None {
     }
 }
 
-impl ShelfDB._load_anchor_from_shelf(id: UUID) -> (Anchor | None) {
-    key = self._redis_key(id);
+
+"""Delete anchor from shelf."""
+impl ShelfBackend.delete(id: UUID) -> None {
+    key = storage_key(to_uuid(id));
     shelf = self._ensure_shelf();
     with self._lock {
-        if (key not in shelf) {
-            return None;
+        if key in shelf {
+            del (shelf[key], );
+            shelf.sync();
         }
-        return shelf[key];
     }
 }
 
-impl ShelfDB._to_uuid(id: (UUID | str)) -> UUID {
-    if not isinstance(id, UUID) {
-        return UUID(str(id));
+
+"""Bulk store anchors in shelf."""
+impl ShelfBackend.bulk_put(anchors: Iterable[Anchor]) -> None {
+    shelf = self._ensure_shelf();
+    with self._lock {
+        for anchor in anchors {
+            key = storage_key(anchor.id);
+            shelf[key] = anchor;
+        }
+        shelf.sync();
     }
-    return id;
 }
 
-"""Match key format used by Redis for consistency."""
-impl ShelfDB._redis_key(id: UUID) -> str {
-    return f"anchor:{str(id)}";
-}
 
-"""Cleanly close shelf storage."""
-impl ShelfDB.close{
-    if (self._shelf is not None) {
-        self._shelf.close();
+"""Close shelf and release resources."""
+impl ShelfBackend.close -> None {
+    if self._shelf is not None {
+        try {
+            self._shelf.close();
+        } except Exception as e {
+            logger.warning(f"Error closing shelf: {e}");
+        }
         self._shelf = None;
     }
 }
 
-impl ShelfDB._ensure_shelf -> shelve.Shelf {
-    if (self._shelf is None) {
+
+"""Ensure shelf is opened, lazy initialization."""
+impl ShelfBackend._ensure_shelf -> shelve.Shelf {
+    if self._shelf is None {
         # Ensure parent directory exists
-        import os;
         parent_dir = os.path.dirname(self.shelf_path);
         if parent_dir {
             os.makedirs(parent_dir, exist_ok=True);
@@ -83,19 +104,14 @@ impl ShelfDB._ensure_shelf -> shelve.Shelf {
     return self._shelf;
 }
 
-"""Always use dbm.dumb backend to avoid Linux gdbm locking."""
-impl ShelfDB._open_shelf -> shelve.Shelf {
-    import dbm.dumb;
-    if (self._shelf is None) {
+
+"""Open shelf using dbm.dumb backend to avoid Linux gdbm locking issues."""
+impl ShelfBackend._open_shelf -> shelve.Shelf {
+    if self._shelf is None {
         raw_db = dbm.dumb.open(self.shelf_path, 'c');
-        db_as_mapping = cast(MutableMapping[(<>bytes, <>bytes)], raw_db);
+        # Type annotation instead of cast to avoid generic type issues
+        db_as_mapping: MutableMapping[(<>bytes, <>bytes)] = raw_db;
         self._shelf = shelve.Shelf(db_as_mapping, writeback=False);
     }
     return self._shelf;
-}
-
-"""Initialize shelf DB on startup."""
-impl ShelfDB.postinit{
-    self._lock = RLock();
-    self._open_shelf();
 }

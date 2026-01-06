@@ -228,7 +228,7 @@ class Anchor:
         from jaclang import JacRuntimeInterface as Jac
 
         jsrc = Jac.get_context().mem
-        if anchor := jsrc.find_by_id(self.id):
+        if anchor := jsrc.get(self.id):
             self.__dict__.update(anchor.__dict__)
 
     def __getattr__(self, name: str) -> object:
