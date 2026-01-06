@@ -49,4 +49,3 @@ class Memory(Generic[ID, TANCH]) {
     def get_mem(self: Memory) -> dict[(ID | UUID), TANCH];
     def remove_from_mem(self: Memory, anchor: (ID | UUID)) -> None;
 }
-

@@ -808,7 +808,7 @@ class JacBasics:
         deleted_count = 0
         # Get anchors from persistence if available, otherwise from memory
         persistence = ctx.persistence
-        if persistence and isinstance(getattr(persistence, '__shelf__', None), Shelf):
+        if persistence and isinstance(getattr(persistence, "__shelf__", None), Shelf):
             anchors = persistence.__shelf__.values()
         else:
             anchors = mem.get_mem().values()

@@ -84,18 +84,18 @@ impl AnchorMergeStrategy.deserialize(data: bytes) -> (Anchor | None) {
 }
 
 """Initialize shelf storage with a file path."""
-impl ShelfStorage.init(self: ShelfStorage, path: str) -> None {
+impl ShelfStorage.init(path: str) -> None {
     self.__path__ = path;
     self.__shelf__ = shelve.open(path);
 }
 
 """Check if the shelf is available."""
-impl ShelfStorage.is_available(self: ShelfStorage) -> bool {
+impl ShelfStorage.is_available -> bool {
     return self.__shelf__ is not None;
 }
 
 """Get an anchor by ID from shelf."""
-impl ShelfStorage.get(self: ShelfStorage, id: UUID) -> (Anchor | None) {
+impl ShelfStorage.get(id: UUID) -> (Anchor | None) {
     if isinstance(self.__shelf__, shelve.Shelf) {
         return self.__shelf__.get(str(id));
     }
@@ -103,21 +103,21 @@ impl ShelfStorage.get(self: ShelfStorage, id: UUID) -> (Anchor | None) {
 }
 
 """Store an anchor to shelf."""
-impl ShelfStorage.put(self: ShelfStorage, anchor: Anchor) -> None {
+impl ShelfStorage.put(anchor: Anchor) -> None {
     if isinstance(self.__shelf__, shelve.Shelf) {
         self.__shelf__[str(anchor.id)] = anchor;
     }
 }
 
 """Delete an anchor from shelf."""
-impl ShelfStorage.delete(self: ShelfStorage, id: UUID) -> None {
+impl ShelfStorage.delete(id: UUID) -> None {
     if isinstance(self.__shelf__, shelve.Shelf) {
         self.__shelf__.pop(str(id), None);
     }
 }
 
 """Close the shelf connection."""
-impl ShelfStorage.close(self: ShelfStorage) -> None {
+impl ShelfStorage.close -> None {
     if isinstance(self.__shelf__, shelve.Shelf) {
         self.__shelf__.close();
         self.__shelf__ = None;
@@ -125,7 +125,7 @@ impl ShelfStorage.close(self: ShelfStorage) -> None {
 }
 
 """Bulk store multiple anchors."""
-impl ShelfStorage.bulk_put(self: ShelfStorage, anchors: Iterable[Anchor]) -> None {
+impl ShelfStorage.bulk_put(anchors: Iterable[Anchor]) -> None {
     if isinstance(self.__shelf__, shelve.Shelf) {
         for anchor in anchors {
             self.__shelf__[str(anchor.id)] = anchor;
@@ -135,7 +135,7 @@ impl ShelfStorage.bulk_put(self: ShelfStorage, anchors: Iterable[Anchor]) -> Non
 
 """Sync memory cache to shelf with merge strategy."""
 impl ShelfStorage.sync_from_memory(
-    self: ShelfStorage, memory: dict[UUID, Anchor], gc_set: set[Anchor]
+    memory: dict[UUID, Anchor], gc_set: set[Anchor]
 ) -> None {
     import from jaclang { JacRuntimeInterface as Jac }
     import from jaclang.runtimelib.storage { AnchorMergeStrategy }
@@ -193,7 +193,7 @@ impl ShelfStorage.sync_from_memory(
 }
 
 """Load all anchors from shelf into memory dict."""
-impl ShelfStorage.load_all(self: ShelfStorage, memory: dict[UUID, Anchor]) -> None {
+impl ShelfStorage.load_all(memory: dict[UUID, Anchor]) -> None {
     if isinstance(self.__shelf__, shelve.Shelf) {
         for anchor in self.__shelf__.values() {
             if anchor.id not in memory {

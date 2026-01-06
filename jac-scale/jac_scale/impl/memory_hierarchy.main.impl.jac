@@ -4,7 +4,6 @@ import from collections.abc { Iterable }
 import from jaclang.pycore.archetype { Anchor }
 import from jaclang.runtimelib.storage { logger }
 
-
 """Initialize StorageOrchestrator with multi-tier storage."""
 impl StorageOrchestrator.init -> None {
     # L2: Try to initialize Redis cache
@@ -17,7 +16,6 @@ impl StorageOrchestrator.init -> None {
         self.cache = None;
         logger.info("Redis not available, running without distributed cache");
     }
-
     # L3: Try MongoDB first, fall back to Shelf
     mongo_backend = MongoBackend();
     persistence: (PersistenceBackend | None) = None;
@@ -30,11 +28,9 @@ impl StorageOrchestrator.init -> None {
         self._persistence_type = 'shelf';
         logger.info("MongoDB not available, using Shelf for persistence");
     }
-
     # Initialize base class with persistence (creates L1 memory)
     super.init(persistence);
 }
-
 
 """Retrieve anchor with read-through caching. L1 -> L2 -> L3."""
 impl StorageOrchestrator.get(id: UUID) -> (Anchor | None) {
@@ -42,7 +38,6 @@ impl StorageOrchestrator.get(id: UUID) -> (Anchor | None) {
     if (anchor := self.memory.get(id)) {
         return anchor;
     }
-
     # L2: Check distributed cache (Redis)
     if self._cache_available and self.cache {
         if (anchor := self.cache.get(id)) {
@@ -51,7 +46,6 @@ impl StorageOrchestrator.get(id: UUID) -> (Anchor | None) {
             return anchor;
         }
     }
-
     # L3: Check persistence (MongoDB or Shelf)
     if self.persistence {
         if (anchor := self.persistence.get(id)) {
@@ -64,10 +58,8 @@ impl StorageOrchestrator.get(id: UUID) -> (Anchor | None) {
             return anchor;
         }
     }
-
     return None;
 }
-
 
 """Commit changes to persistence layer."""
 impl StorageOrchestrator.commit(anchor: (Anchor | None) = None) -> None {
@@ -95,32 +87,26 @@ impl StorageOrchestrator.commit(anchor: (Anchor | None) = None) -> None {
         # Handle bulk commit of all memory contents
         anchors = list(self.memory.get_mem().values());
         self._sync_to_backends(anchors);
-
     } except Exception as e {
         logger.error(f"Commit failed: {e}");
     }
 }
 
-
 """Commit pending changes and close all backends."""
 impl StorageOrchestrator.close -> None {
     self.commit();
     self.memory.close();
-
     if self.cache {
         self.cache.close();
     }
-
     if self.persistence {
         self.persistence.close();
     }
 }
 
-
 """Sync anchors to cache and persistence backends."""
 impl StorageOrchestrator._sync_to_backends(anchors: Iterable[Anchor]) -> None {
     anchor_list = list(anchors);
-
     try {
         # Update cache for existing keys only
         if self._cache_available and self.cache {
@@ -137,7 +123,6 @@ impl StorageOrchestrator._sync_to_backends(anchors: Iterable[Anchor]) -> None {
         logger.error(f"Sync to backends failed: {e}");
     }
 }
-
 
 """Delete anchor from all backend tiers."""
 impl StorageOrchestrator._delete_from_backends(id: UUID) -> None {

@@ -13,20 +13,17 @@ import from jaclang.runtimelib.utils { storage_key, to_uuid }
 
 glob logger = logging.getLogger(__name__);
 
-
 """Post-initialization: set up threading lock."""
 impl ShelfBackend.postinit -> None {
     self._lock = RLock();
     # Don't open shelf immediately - lazy initialization
 }
 
-
 """Check if Shelf backend is available (always true as fallback)."""
 impl ShelfBackend.is_available -> bool {
     # Shelf is always available as a fallback (file-based)
     return True;
 }
-
 
 """Get anchor by UUID from shelf."""
 impl ShelfBackend.get(id: UUID) -> (Anchor | None) {
@@ -40,7 +37,6 @@ impl ShelfBackend.get(id: UUID) -> (Anchor | None) {
     }
 }
 
-
 """Store anchor in shelf."""
 impl ShelfBackend.put(anchor: Anchor) -> None {
     key = storage_key(anchor.id);
@@ -51,19 +47,17 @@ impl ShelfBackend.put(anchor: Anchor) -> None {
     }
 }
 
-
 """Delete anchor from shelf."""
 impl ShelfBackend.delete(id: UUID) -> None {
     key = storage_key(to_uuid(id));
     shelf = self._ensure_shelf();
     with self._lock {
         if key in shelf {
-            del (shelf[key], );
+            del (shelf[key], ) ;
             shelf.sync();
         }
     }
 }
-
 
 """Bulk store anchors in shelf."""
 impl ShelfBackend.bulk_put(anchors: Iterable[Anchor]) -> None {
@@ -77,7 +71,6 @@ impl ShelfBackend.bulk_put(anchors: Iterable[Anchor]) -> None {
     }
 }
 
-
 """Close shelf and release resources."""
 impl ShelfBackend.close -> None {
     if self._shelf is not None {
@@ -89,7 +82,6 @@ impl ShelfBackend.close -> None {
         self._shelf = None;
     }
 }
-
 
 """Ensure shelf is opened, lazy initialization."""
 impl ShelfBackend._ensure_shelf -> shelve.Shelf {
@@ -103,7 +95,6 @@ impl ShelfBackend._ensure_shelf -> shelve.Shelf {
     }
     return self._shelf;
 }
-
 
 """Open shelf using dbm.dumb backend to avoid Linux gdbm locking issues."""
 impl ShelfBackend._open_shelf -> shelve.Shelf {

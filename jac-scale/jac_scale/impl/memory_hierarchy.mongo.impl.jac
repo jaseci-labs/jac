@@ -11,7 +11,6 @@ import from jaclang.runtimelib.utils { storage_key, to_uuid }
 
 glob logger = logging.getLogger(__name__);
 
-
 impl MongoBackend.postinit -> None {
     if self.client is None and self.mongo_url {
         self.client = MongoClient(self.mongo_url);
@@ -19,7 +18,6 @@ impl MongoBackend.postinit -> None {
         self.collection = self.db[self.collection_name];
     }
 }
-
 
 impl MongoBackend.is_available -> bool {
     if not self.mongo_url {
@@ -44,7 +42,6 @@ impl MongoBackend.is_available -> bool {
     }
 }
 
-
 impl MongoBackend.get(id: UUID) -> (Anchor | None) {
     _id = to_uuid(id);
     db_obj = self.collection.find_one({'_id': str(_id)});
@@ -54,27 +51,21 @@ impl MongoBackend.get(id: UUID) -> (Anchor | None) {
     return None;
 }
 
-
 impl MongoBackend.put(anchor: Anchor) -> None {
     if not AnchorMergeStrategy.needs_persist(anchor) {
         return;
     }
-
     _id = to_uuid(anchor.id);
-
     # Load existing anchor for merge
     db_doc = self.collection.find_one({'_id': str(_id)});
     stored_anchor = self._load_anchor(db_doc) if db_doc else None;
-
     # Merge with access control
     final_anchor = AnchorMergeStrategy.merge(anchor, stored_anchor);
-
     # Serialize
     data_blob = AnchorMergeStrategy.serialize(final_anchor);
     if data_blob is None {
         return;
     }
-
     # Upsert to MongoDB
     self.collection.update_one(
         {'_id': str(_id)},
@@ -83,16 +74,13 @@ impl MongoBackend.put(anchor: Anchor) -> None {
     );
 }
 
-
 impl MongoBackend.delete(id: UUID) -> None {
     _id = to_uuid(id);
     self.collection.delete_one({'_id': str(_id)});
 }
 
-
 impl MongoBackend.bulk_put(anchors: Iterable[Anchor]) -> None {
     ops: list = [];
-
     for anchor in anchors {
         if not AnchorMergeStrategy.needs_persist(anchor) {
             continue;
@@ -121,12 +109,10 @@ impl MongoBackend.bulk_put(anchors: Iterable[Anchor]) -> None {
             )
         );
     }
-
     if ops {
         self.collection.bulk_write(ops);
     }
 }
-
 
 impl MongoBackend.close -> None {
     if self.client {
@@ -138,7 +124,6 @@ impl MongoBackend.close -> None {
         self.client = None;
     }
 }
-
 
 impl MongoBackend._load_anchor(raw: dict[(str, Any)]) -> (Anchor | None) {
     if 'data' not in raw {

@@ -10,9 +10,7 @@ impl JScaleExecutionContext.init(
     self.mem: StorageOrchestrator = StorageOrchestrator();
     self.reports: list[Any] = [];
     self.custom: Any = MISSING;
-    system_root_anchor: (Anchor | None) = self.mem.get(
-        UUID(Con.SUPER_ROOT_UUID)
-    );
+    system_root_anchor: (Anchor | None) = self.mem.get(UUID(Con.SUPER_ROOT_UUID));
     if not isinstance(system_root_anchor, NodeAnchor) {
         system_root_anchor = Root().__jac__;
         system_root_anchor.id = UUID(Con.SUPER_ROOT_UUID);

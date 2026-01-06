@@ -37,7 +37,6 @@ import from jac_scale.config_loader { get_scale_config }
 glob _db_config = get_scale_config().get_database_config(),
      logger = logging.getLogger(__name__);
 
-
 """
 MongoDB persistence backend.
 Implements PersistenceBackend for durable anchor storage.
@@ -49,21 +48,17 @@ obj MongoBackend(PersistenceBackend) {
         mongo_url: str = _db_config['mongodb_uri'];
 
     def postinit -> None;
-
     # DataBackend protocol
     def is_available -> bool;
     def get(id: UUID) -> (Anchor | None);
     def put(anchor: Anchor) -> None;
     def delete(id: UUID) -> None;
     def close -> None;
-
     # PersistenceBackend protocol
     def bulk_put(anchors: Iterable[Anchor]) -> None;
-
     # Internal
     def _load_anchor(raw: dict[(str, Any)]) -> (Anchor | None);
 }
-
 
 """
 Redis cache backend.
@@ -74,20 +69,17 @@ obj RedisBackend(CacheBackend) {
         redis_client: (redis.Redis | None) = None;
 
     def postinit -> None;
-
     # DataBackend protocol
     def is_available -> bool;
     def get(id: UUID) -> (Anchor | None);
     def put(anchor: Anchor) -> None;
     def delete(id: UUID) -> None;
     def close -> None;
-
     # CacheBackend protocol
     def exists(id: UUID) -> bool;
     def put_if_exists(anchor: Anchor) -> bool;
     def invalidate(id: UUID) -> None;
 }
-
 
 """
 Shelf persistence backend.
@@ -100,22 +92,18 @@ obj ShelfBackend(PersistenceBackend) {
         _lock: (RLock | None) = None;
 
     def postinit -> None;
-
     # DataBackend protocol
     def is_available -> bool;
     def get(id: UUID) -> (Anchor | None);
     def put(anchor: Anchor) -> None;
     def delete(id: UUID) -> None;
     def close -> None;
-
     # PersistenceBackend protocol
     def bulk_put(anchors: Iterable[Anchor]) -> None;
-
     # Internal
     def _open_shelf -> shelve.Shelf;
     def _ensure_shelf -> shelve.Shelf;
 }
-
 
 """
 Storage Orchestrator - manages multi-tier storage hierarchy.
@@ -134,12 +122,10 @@ obj StorageOrchestrator(BaseStorageOrchestrator) {
         _persistence_type: str = 'none';
 
     def init -> None;
-
     # Override base class methods to add L2 cache layer
     def get(id: UUID) -> (Anchor | None);
     def commit(anchor: (Anchor | None) = None) -> None;
     def close -> None;
-
     # Override internal coordination to include cache
     def _sync_to_backends(anchors: Iterable[Anchor]) -> None;
     def _delete_from_backends(id: UUID) -> None;

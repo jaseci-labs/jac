@@ -8,14 +8,12 @@ import from jaclang.runtimelib.utils { storage_key, to_uuid }
 
 glob logger = logging.getLogger(__name__);
 
-
 """Post-initialization: connect to Redis."""
 impl RedisBackend.postinit -> None {
     if self.redis_url and self.redis_client is None {
         self.redis_client = redis.from_url(self.redis_url);
     }
 }
-
 
 """Check if Redis is available and connected."""
 impl RedisBackend.is_available -> bool {
@@ -39,7 +37,6 @@ impl RedisBackend.is_available -> bool {
     }
 }
 
-
 """Get anchor by UUID from Redis cache."""
 impl RedisBackend.get(id: UUID) -> (Anchor | None) {
     if self.redis_client is None {
@@ -52,7 +49,6 @@ impl RedisBackend.get(id: UUID) -> (Anchor | None) {
     }
     return AnchorMergeStrategy.deserialize(raw);
 }
-
 
 """Store anchor in Redis cache."""
 impl RedisBackend.put(anchor: Anchor) -> None {
@@ -67,7 +63,6 @@ impl RedisBackend.put(anchor: Anchor) -> None {
     self.redis_client.set(key, data);
 }
 
-
 """Delete anchor from Redis cache."""
 impl RedisBackend.delete(id: UUID) -> None {
     if self.redis_client is None {
@@ -76,7 +71,6 @@ impl RedisBackend.delete(id: UUID) -> None {
     key = storage_key(to_uuid(id));
     self.redis_client.delete(key);
 }
-
 
 """Close Redis connection."""
 impl RedisBackend.close -> None {
@@ -90,9 +84,7 @@ impl RedisBackend.close -> None {
     }
 }
 
-
 # CacheBackend specific methods
-
 """Check if key exists in cache."""
 impl RedisBackend.exists(id: UUID) -> bool {
     if self.redis_client is None {
@@ -106,7 +98,6 @@ impl RedisBackend.exists(id: UUID) -> bool {
     }
 }
 
-
 """Store anchor only if it already exists in cache. Returns True if stored."""
 impl RedisBackend.put_if_exists(anchor: Anchor) -> bool {
     if self.redis_client is None {
@@ -118,7 +109,6 @@ impl RedisBackend.put_if_exists(anchor: Anchor) -> bool {
     self.put(anchor);
     return True;
 }
-
 
 """Remove an entry from cache."""
 impl RedisBackend.invalidate(id: UUID) -> None {
