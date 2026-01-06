@@ -131,6 +131,11 @@ impl ClassType.is_data_class(self: ClassType) -> bool {
     return self.shared.is_data_class;
 }
 
+"""Return true if this class is an enum class."""
+impl ClassType.is_enum_class(self: ClassType) -> bool {
+    return self.shared.is_enum_class;
+}
+
 """
         Return true if this class is a builtin class.
 
@@ -236,7 +241,8 @@ impl ClassType.ClassDetailsShared.init(
     base_classes: (list[TypeBase] | None) = None,
     is_builtin_class: bool = False,
     is_data_class: bool = False,
-    is_root_class: bool = False
+    is_root_class: bool = False,
+    is_enum_class: bool = False
 ) -> None {
     self.class_name = class_name;
     self.symbol_table = symbol_table;
@@ -246,6 +252,7 @@ impl ClassType.ClassDetailsShared.init(
     self.is_builtin_class = is_builtin_class;
     self.is_data_class = is_data_class;
     self.is_root_class = is_root_class;
+    self.is_enum_class = is_enum_class;
 }
 
 """Initialize obviously."""
@@ -296,4 +303,17 @@ impl TypeBase.category(self: TypeBase) -> TypeCategory {
 """Initialize obviously."""
 impl TypeBase.init(self: TypeBase, flags: TypeFlags = TypeFlags.Null) -> None {
     self.flags: TypeFlags = flags;
+}
+
+"""Return true if this type is UnknownType, AnyType, TypeVarType, or object."""
+impl TypeBase.is_any_type(self: TypeBase) -> bool {
+    # Check for UnknownType, AnyType, or TypeVarType using category
+    if self.category in (TypeCategory.Unknown, TypeCategory.Any, TypeCategory.TypeVar) {
+        return True;
+    }
+    # Check for object type
+    if isinstance(self, ClassType) {
+        return self.is_builtin("object");
+    }
+    return False;
 }

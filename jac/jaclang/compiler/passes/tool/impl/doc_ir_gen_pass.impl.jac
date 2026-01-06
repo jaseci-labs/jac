@@ -1,8 +1,10 @@
-"""Generate DocIR for JSX expressions."""
+"""Initialize the DocIRGenPass."""
+impl DocIRGenPass.init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) -> None {
+    super.init(ir_in, prog, cancel_token);
+}
 
-impl DocIRGenPass.exit_jsx_expression(
-    self: DocIRGenPass, <>node: uni.JsxExpression
-) -> None {
+"""Generate DocIR for JSX expressions."""
+impl DocIRGenPass.exit_jsx_expression(<>node: uni.JsxExpression) -> None {
     parts: list[doc.DocType] = [];
     for i in <>node.kid {
         parts.append(i.gen.doc_ir);
@@ -11,7 +13,7 @@ impl DocIRGenPass.exit_jsx_expression(
 }
 
 """Generate DocIR for JSX text."""
-impl DocIRGenPass.exit_jsx_text(self: DocIRGenPass, <>node: uni.JsxText) -> None {
+impl DocIRGenPass.exit_jsx_text(<>node: uni.JsxText) -> None {
     parts: list[doc.DocType] = [];
     for i in <>node.kid {
         parts.append(i.gen.doc_ir);
@@ -20,9 +22,7 @@ impl DocIRGenPass.exit_jsx_text(self: DocIRGenPass, <>node: uni.JsxText) -> None
 }
 
 """Generate DocIR for JSX normal attributes."""
-impl DocIRGenPass.exit_jsx_normal_attribute(
-    self: DocIRGenPass, <>node: uni.JsxNormalAttribute
-) -> None {
+impl DocIRGenPass.exit_jsx_normal_attribute(<>node: uni.JsxNormalAttribute) -> None {
     parts: list[doc.DocType] = [];
     for child in <>node.kid {
         parts.append(child.gen.doc_ir);
@@ -31,9 +31,7 @@ impl DocIRGenPass.exit_jsx_normal_attribute(
 }
 
 """Generate DocIR for JSX spread attributes."""
-impl DocIRGenPass.exit_jsx_spread_attribute(
-    self: DocIRGenPass, <>node: uni.JsxSpreadAttribute
-) -> None {
+impl DocIRGenPass.exit_jsx_spread_attribute(<>node: uni.JsxSpreadAttribute) -> None {
     parts: list[doc.DocType] = [];
     for i in <>node.kid {
         parts.append(i.gen.doc_ir);
@@ -42,9 +40,7 @@ impl DocIRGenPass.exit_jsx_spread_attribute(
 }
 
 """Generate DocIR for JSX element names."""
-impl DocIRGenPass.exit_jsx_element_name(
-    self: DocIRGenPass, <>node: uni.JsxElementName
-) -> None {
+impl DocIRGenPass.exit_jsx_element_name(<>node: uni.JsxElementName) -> None {
     parts: list[doc.DocType] = [];
     for i in <>node.kid {
         parts.append(i.gen.doc_ir);
@@ -53,7 +49,7 @@ impl DocIRGenPass.exit_jsx_element_name(
 }
 
 """Generate DocIR for JSX elements with prettier-inspired formatting."""
-impl DocIRGenPass.exit_jsx_element(self: DocIRGenPass, <>node: uni.JsxElement) -> None {
+impl DocIRGenPass.exit_jsx_element(<>node: uni.JsxElement) -> None {
     has_tokens = <>any(isinstance(kid, uni.Token) for kid in <>node.kid);
     if has_tokens {
         first_child = <>node.kid[0] if <>node.kid else None;
@@ -185,9 +181,7 @@ impl DocIRGenPass.exit_jsx_element(self: DocIRGenPass, <>node: uni.JsxElement) -
 }
 
 """Return True if JSX attributes should be split across multiple lines."""
-impl DocIRGenPass._jsx_attrs_need_multiline(
-    self: DocIRGenPass, <>node: uni.JsxElement
-) -> bool {
+impl DocIRGenPass._jsx_attrs_need_multiline(<>node: uni.JsxElement) -> bool {
     if (len(<>node.attributes) > 1) {
         return True;
     }
@@ -204,29 +198,27 @@ impl DocIRGenPass._jsx_attrs_need_multiline(
 }
 
 """Generate DocIR for ellipsis."""
-impl DocIRGenPass.exit_ellipsis(self: DocIRGenPass, <>node: uni.Ellipsis) -> None {
+impl DocIRGenPass.exit_ellipsis(<>node: uni.Ellipsis) -> None {
     <>node.gen.doc_ir = self.text(<>node.value, source_token=<>node);
 }
 
 """Generate DocIR for null values."""
-impl DocIRGenPass.exit_null(self: DocIRGenPass, <>node: uni.Null) -> None {
+impl DocIRGenPass.exit_null(<>node: uni.Null) -> None {
     <>node.gen.doc_ir = self.text(<>node.value, source_token=<>node);
 }
 
 """Generate DocIR for boolean values."""
-impl DocIRGenPass.exit_bool(self: DocIRGenPass, <>node: uni.Bool) -> None {
+impl DocIRGenPass.exit_bool(<>node: uni.Bool) -> None {
     <>node.gen.doc_ir = self.text(<>node.value, source_token=<>node);
 }
 
 """Generate DocIR for special variable references."""
-impl DocIRGenPass.exit_special_var_ref(
-    self: DocIRGenPass, <>node: uni.SpecialVarRef
-) -> None {
+impl DocIRGenPass.exit_special_var_ref(<>node: uni.SpecialVarRef) -> None {
     <>node.gen.doc_ir = self.text(<>node.value.replace('_', ''), source_token=<>node);
 }
 
 """Generate DocIR for strings."""
-impl DocIRGenPass.exit_string(self: DocIRGenPass, <>node: uni.String) -> None {
+impl DocIRGenPass.exit_string(<>node: uni.String) -> None {
     is_escaped_curly = (
         (<>node.lit_value in ['{', '}'])
         and <>node.parent
@@ -245,24 +237,22 @@ impl DocIRGenPass.exit_string(self: DocIRGenPass, <>node: uni.String) -> None {
 }
 
 """Generate DocIR for floats."""
-impl DocIRGenPass.exit_float(self: DocIRGenPass, <>node: uni.Float) -> None {
+impl DocIRGenPass.exit_float(<>node: uni.Float) -> None {
     <>node.gen.doc_ir = self.text(<>node.value, source_token=<>node);
 }
 
 """Generate DocIR for builtin type nodes."""
-impl DocIRGenPass.exit_builtin_type(
-    self: DocIRGenPass, <>node: uni.BuiltinType
-) -> None {
+impl DocIRGenPass.exit_builtin_type(<>node: uni.BuiltinType) -> None {
     <>node.gen.doc_ir = self.text(<>node.value, source_token=<>node);
 }
 
 """Generate DocIR for integers."""
-impl DocIRGenPass.exit_int(self: DocIRGenPass, <>node: uni.Int) -> None {
+impl DocIRGenPass.exit_int(<>node: uni.Int) -> None {
     <>node.gen.doc_ir = self.text(<>node.value, source_token=<>node);
 }
 
 """Generate DocIR for names."""
-impl DocIRGenPass.exit_name(self: DocIRGenPass, <>node: uni.Name) -> None {
+impl DocIRGenPass.exit_name(<>node: uni.Name) -> None {
     if <>node.is_kwesc {
         <>node.gen.doc_ir = self.text(f"<>{node.value}", source_token=<>node);
     } else {
@@ -271,19 +261,17 @@ impl DocIRGenPass.exit_name(self: DocIRGenPass, <>node: uni.Name) -> None {
 }
 
 """Generate DocIR for semicolons."""
-impl DocIRGenPass.exit_semi(self: DocIRGenPass, <>node: uni.Semi) -> None {
+impl DocIRGenPass.exit_semi(<>node: uni.Semi) -> None {
     <>node.gen.doc_ir = self.text(<>node.value, source_token=<>node);
 }
 
 """Generate DocIR for tokens."""
-impl DocIRGenPass.exit_token(self: DocIRGenPass, <>node: uni.Token) -> None {
+impl DocIRGenPass.exit_token(<>node: uni.Token) -> None {
     <>node.gen.doc_ir = self.text(<>node.value, source_token=<>node);
 }
 
 """Generate DocIR for typed context blocks."""
-impl DocIRGenPass.exit_typed_ctx_block(
-    self: DocIRGenPass, <>node: uni.TypedCtxBlock
-) -> None {
+impl DocIRGenPass.exit_typed_ctx_block(<>node: uni.TypedCtxBlock) -> None {
     parts: list[doc.DocType] = [];
     for i in <>node.kid {
         parts.append(i.gen.doc_ir);
@@ -294,14 +282,12 @@ impl DocIRGenPass.exit_typed_ctx_block(
 }
 
 """Generate DocIR for event signatures."""
-impl DocIRGenPass.exit_event_signature(
-    self: DocIRGenPass, <>node: uni.EventSignature
-) -> None {
+impl DocIRGenPass.exit_event_signature(<>node: uni.EventSignature) -> None {
     self._assign_space_group(<>node);
 }
 
 """Generate DocIR for semantic definitions."""
-impl DocIRGenPass.exit_sem_def(self: DocIRGenPass, <>node: uni.SemDef) -> None {
+impl DocIRGenPass.exit_sem_def(<>node: uni.SemDef) -> None {
     parts: list[doc.DocType] = [];
     for i in <>node.kid {
         if (i in <>node.target) {
@@ -321,7 +307,7 @@ impl DocIRGenPass.exit_sem_def(self: DocIRGenPass, <>node: uni.SemDef) -> None {
 }
 
 """Generate DocIR for implementation definitions."""
-impl DocIRGenPass.exit_impl_def(self: DocIRGenPass, <>node: uni.ImplDef) -> None {
+impl DocIRGenPass.exit_impl_def(<>node: uni.ImplDef) -> None {
     parts: list[doc.DocType] = [];
     body_parts: list[doc.DocType] = [];
     in_body = False;
@@ -374,7 +360,7 @@ impl DocIRGenPass.exit_impl_def(self: DocIRGenPass, <>node: uni.ImplDef) -> None
 }
 
 """Generate DocIR for sub-tag nodes."""
-impl DocIRGenPass.exit_sub_tag(self: DocIRGenPass, <>node: uni.SubTag) -> None {
+impl DocIRGenPass.exit_sub_tag(<>node: uni.SubTag) -> None {
     before_colon: list[doc.DocType] = [];
     after_colon: list[doc.DocType] = [];
     seen_colon = False;
@@ -404,7 +390,7 @@ impl DocIRGenPass.exit_sub_tag(self: DocIRGenPass, <>node: uni.SubTag) -> None {
 }
 
 """Generate DocIR for enum declarations."""
-impl DocIRGenPass.exit_enum(self: DocIRGenPass, <>node: uni.Enum) -> None {
+impl DocIRGenPass.exit_enum(<>node: uni.Enum) -> None {
     parts: list[doc.DocType] = [];
     body_parts: list[doc.DocType] = [];
     in_body = False;
@@ -448,7 +434,7 @@ impl DocIRGenPass.exit_enum(self: DocIRGenPass, <>node: uni.Enum) -> None {
 }
 
 """Generate DocIR for match architecture patterns."""
-impl DocIRGenPass.exit_match_arch(self: DocIRGenPass, <>node: uni.MatchArch) -> None {
+impl DocIRGenPass.exit_match_arch(<>node: uni.MatchArch) -> None {
     parts: list[doc.DocType] = [];
     for i in <>node.kid {
         if (isinstance(i, uni.Token) and (i.name == Tok.COMMA)) {
@@ -464,9 +450,7 @@ impl DocIRGenPass.exit_match_arch(self: DocIRGenPass, <>node: uni.MatchArch) -> 
 }
 
 """Generate DocIR for match key-value pairs."""
-impl DocIRGenPass.exit_match_k_v_pair(
-    self: DocIRGenPass, <>node: uni.MatchKVPair
-) -> None {
+impl DocIRGenPass.exit_match_k_v_pair(<>node: uni.MatchKVPair) -> None {
     parts: list[doc.DocType] = [];
     for i in <>node.kid {
         if (isinstance(i, uni.Token) and (i.name in [Tok.STAR_POW, Tok.STAR_MUL])) {
@@ -483,53 +467,47 @@ impl DocIRGenPass.exit_match_k_v_pair(
 }
 
 """Generate DocIR for match star patterns (e.g., *args, **kwargs)."""
-impl DocIRGenPass.exit_match_star(self: DocIRGenPass, <>node: uni.MatchStar) -> None {
+impl DocIRGenPass.exit_match_star(<>node: uni.MatchStar) -> None {
     self._assign_space_group(<>node);
 }
 
 """Generate DocIR for match wildcard patterns."""
-impl DocIRGenPass.exit_match_wild(self: DocIRGenPass, <>node: uni.MatchWild) -> None {
+impl DocIRGenPass.exit_match_wild(<>node: uni.MatchWild) -> None {
     self._assign_space_group(<>node);
 }
 
 """Generate DocIR for match AS patterns."""
-impl DocIRGenPass.exit_match_as(self: DocIRGenPass, <>node: uni.MatchAs) -> None {
+impl DocIRGenPass.exit_match_as(<>node: uni.MatchAs) -> None {
     self._assign_space_group(<>node);
 }
 
 """Generate DocIR for match OR patterns."""
-impl DocIRGenPass.exit_match_or(self: DocIRGenPass, <>node: uni.MatchOr) -> None {
+impl DocIRGenPass.exit_match_or(<>node: uni.MatchOr) -> None {
     self._assign_space_group(<>node);
 }
 
 """Generate DocIR for match mapping patterns."""
-impl DocIRGenPass.exit_match_mapping(
-    self: DocIRGenPass, <>node: uni.MatchMapping
-) -> None {
+impl DocIRGenPass.exit_match_mapping(<>node: uni.MatchMapping) -> None {
     self._assign_space_group(<>node);
 }
 
 """Generate DocIR for match sequence patterns."""
-impl DocIRGenPass.exit_match_sequence(
-    self: DocIRGenPass, <>node: uni.MatchSequence
-) -> None {
+impl DocIRGenPass.exit_match_sequence(<>node: uni.MatchSequence) -> None {
     self._assign_space_group(<>node);
 }
 
 """Generate DocIR for match singleton patterns."""
-impl DocIRGenPass.exit_match_singleton(
-    self: DocIRGenPass, <>node: uni.MatchSingleton
-) -> None {
+impl DocIRGenPass.exit_match_singleton(<>node: uni.MatchSingleton) -> None {
     self._assign_space_group(<>node);
 }
 
 """Generate DocIR for match value patterns."""
-impl DocIRGenPass.exit_match_value(self: DocIRGenPass, <>node: uni.MatchValue) -> None {
+impl DocIRGenPass.exit_match_value(<>node: uni.MatchValue) -> None {
     self._assign_space_group(<>node);
 }
 
 """Generate DocIR for switch cases."""
-impl DocIRGenPass.exit_switch_case(self: DocIRGenPass, <>node: uni.SwitchCase) -> None {
+impl DocIRGenPass.exit_switch_case(<>node: uni.SwitchCase) -> None {
     parts: list[doc.DocType] = [];
     indent_parts: list[doc.DocType] = [];
     prev_body_item: (uni.UniNode | None) = None;
@@ -554,7 +532,7 @@ impl DocIRGenPass.exit_switch_case(self: DocIRGenPass, <>node: uni.SwitchCase) -
 }
 
 """Generate DocIR for switch statements."""
-impl DocIRGenPass.exit_switch_stmt(self: DocIRGenPass, <>node: uni.SwitchStmt) -> None {
+impl DocIRGenPass.exit_switch_stmt(<>node: uni.SwitchStmt) -> None {
     parts: list[doc.DocType] = [];
     switch_parts: list[doc.DocType] = [self.hard_line()];
     for i in <>node.kid {
@@ -587,7 +565,7 @@ impl DocIRGenPass.exit_switch_stmt(self: DocIRGenPass, <>node: uni.SwitchStmt) -
 }
 
 """Generate DocIR for match cases."""
-impl DocIRGenPass.exit_match_case(self: DocIRGenPass, <>node: uni.MatchCase) -> None {
+impl DocIRGenPass.exit_match_case(<>node: uni.MatchCase) -> None {
     parts: list[doc.DocType] = [];
     indent_parts: list[doc.DocType] = [];
     prev_body_item: (uni.UniNode | None) = None;
@@ -612,7 +590,7 @@ impl DocIRGenPass.exit_match_case(self: DocIRGenPass, <>node: uni.MatchCase) -> 
 }
 
 """Generate DocIR for match statements."""
-impl DocIRGenPass.exit_match_stmt(self: DocIRGenPass, <>node: uni.MatchStmt) -> None {
+impl DocIRGenPass.exit_match_stmt(<>node: uni.MatchStmt) -> None {
     parts: list[doc.DocType] = [];
     match_parts: list[doc.DocType] = [self.hard_line()];
     for i in <>node.kid {
@@ -643,7 +621,7 @@ impl DocIRGenPass.exit_match_stmt(self: DocIRGenPass, <>node: uni.MatchStmt) -> 
 }
 
 """Generate DocIR for test nodes."""
-impl DocIRGenPass.exit_test(self: DocIRGenPass, <>node: uni.Test) -> None {
+impl DocIRGenPass.exit_test(<>node: uni.Test) -> None {
     parts: list[doc.DocType] = [];
     body_parts: list[doc.DocType] = [];
     in_body = False;
@@ -686,9 +664,7 @@ impl DocIRGenPass.exit_test(self: DocIRGenPass, <>node: uni.Test) -> None {
 }
 
 """Generate DocIR for Python inline code blocks."""
-impl DocIRGenPass.exit_py_inline_code(
-    self: DocIRGenPass, <>node: uni.PyInlineCode
-) -> None {
+impl DocIRGenPass.exit_py_inline_code(<>node: uni.PyInlineCode) -> None {
     parts: list[doc.DocType] = [];
     for i in <>node.kid {
         if (i == <>node.doc) {
@@ -710,9 +686,7 @@ impl DocIRGenPass.exit_py_inline_code(
 }
 
 """Generate DocIR for assignment comprehensions."""
-impl DocIRGenPass.exit_assign_compr(
-    self: DocIRGenPass, <>node: uni.AssignCompr
-) -> None {
+impl DocIRGenPass.exit_assign_compr(<>node: uni.AssignCompr) -> None {
     parts: list[doc.DocType] = [];
     for i in <>node.kid {
         parts.append(i.gen.doc_ir);
@@ -722,9 +696,7 @@ impl DocIRGenPass.exit_assign_compr(
 }
 
 """Generate DocIR for filter comprehensions."""
-impl DocIRGenPass.exit_filter_compr(
-    self: DocIRGenPass, <>node: uni.FilterCompr
-) -> None {
+impl DocIRGenPass.exit_filter_compr(<>node: uni.FilterCompr) -> None {
     parts: list[doc.DocType] = [];
     for i in <>node.kid {
         parts.append(i.gen.doc_ir);
@@ -734,12 +706,12 @@ impl DocIRGenPass.exit_filter_compr(
 }
 
 """Generate DocIR for expression as item nodes."""
-impl DocIRGenPass.exit_expr_as_item(self: DocIRGenPass, <>node: uni.ExprAsItem) -> None {
+impl DocIRGenPass.exit_expr_as_item(<>node: uni.ExprAsItem) -> None {
     self._assign_space_group(<>node);
 }
 
 """Generate DocIR for atom units (parenthesized expressions)."""
-impl DocIRGenPass.exit_atom_unit(self: DocIRGenPass, <>node: uni.AtomUnit) -> None {
+impl DocIRGenPass.exit_atom_unit(<>node: uni.AtomUnit) -> None {
     parts: list[doc.DocType] = [];
     prev_item: (uni.UniNode | None) = None;
     for i in <>node.kid {
@@ -788,26 +760,22 @@ impl DocIRGenPass.exit_atom_unit(self: DocIRGenPass, <>node: uni.AtomUnit) -> No
 }
 
 """Generate DocIR for comparison expressions."""
-impl DocIRGenPass.exit_compare_expr(
-    self: DocIRGenPass, <>node: uni.CompareExpr
-) -> None {
+impl DocIRGenPass.exit_compare_expr(<>node: uni.CompareExpr) -> None {
     self._assign_space_group(<>node);
 }
 
 """Generate DocIR for disconnect operator."""
-impl DocIRGenPass.exit_disconnect_op(
-    self: DocIRGenPass, <>node: uni.DisconnectOp
-) -> None {
+impl DocIRGenPass.exit_disconnect_op(<>node: uni.DisconnectOp) -> None {
     self._assign_space_group(<>node);
 }
 
 """Generate DocIR for connect operator."""
-impl DocIRGenPass.exit_connect_op(self: DocIRGenPass, <>node: uni.ConnectOp) -> None {
+impl DocIRGenPass.exit_connect_op(<>node: uni.ConnectOp) -> None {
     self._assign_space_group(<>node);
 }
 
 """Generate DocIR for visit statements."""
-impl DocIRGenPass.exit_visit_stmt(self: DocIRGenPass, <>node: uni.VisitStmt) -> None {
+impl DocIRGenPass.exit_visit_stmt(<>node: uni.VisitStmt) -> None {
     parts: list[doc.DocType] = [];
     for i in <>node.kid {
         if (isinstance(i, uni.Token) and (i.name == Tok.SEMI)) {
@@ -825,14 +793,12 @@ impl DocIRGenPass.exit_visit_stmt(self: DocIRGenPass, <>node: uni.VisitStmt) -> 
 }
 
 """Generate DocIR for nonlocal statements."""
-impl DocIRGenPass.exit_non_local_stmt(
-    self: DocIRGenPass, <>node: uni.NonLocalStmt
-) -> None {
+impl DocIRGenPass.exit_non_local_stmt(<>node: uni.NonLocalStmt) -> None {
     self._assign_space_group(<>node);
 }
 
 """Generate DocIR for global statements."""
-impl DocIRGenPass.exit_global_stmt(self: DocIRGenPass, <>node: uni.GlobalStmt) -> None {
+impl DocIRGenPass.exit_global_stmt(<>node: uni.GlobalStmt) -> None {
     parts: list[doc.DocType] = [];
     for i in <>node.kid {
         parts.append(i.gen.doc_ir);
@@ -846,7 +812,7 @@ impl DocIRGenPass.exit_global_stmt(self: DocIRGenPass, <>node: uni.GlobalStmt) -
 }
 
 """Generate DocIR for module code."""
-impl DocIRGenPass.exit_module_code(self: DocIRGenPass, <>node: uni.ModuleCode) -> None {
+impl DocIRGenPass.exit_module_code(<>node: uni.ModuleCode) -> None {
     parts: list[doc.DocType] = [];
     body_parts: list[doc.DocType] = [];
     in_body = False;
@@ -890,9 +856,7 @@ impl DocIRGenPass.exit_module_code(self: DocIRGenPass, <>node: uni.ModuleCode) -
 }
 
 """Generate DocIR for client blocks (cl { ... })."""
-impl DocIRGenPass.exit_client_block(
-    self: DocIRGenPass, <>node: uni.ClientBlock
-) -> None {
+impl DocIRGenPass.exit_client_block(<>node: uni.ClientBlock) -> None {
     parts: list[doc.DocType] = [];
     body_parts: list[doc.DocType] = [];
     in_body = False;
@@ -930,7 +894,7 @@ impl DocIRGenPass.exit_client_block(
 }
 
 """Generate DocIR for global variables."""
-impl DocIRGenPass.exit_global_vars(self: DocIRGenPass, <>node: uni.GlobalVars) -> None {
+impl DocIRGenPass.exit_global_vars(<>node: uni.GlobalVars) -> None {
     prefix_parts: list[doc.DocType] = [];
     assignment_parts: list[doc.DocType] = [];
     semi_doc: (doc.DocType | None) = None;
@@ -973,12 +937,12 @@ impl DocIRGenPass.exit_global_vars(self: DocIRGenPass, <>node: uni.GlobalVars) -
 }
 
 """Generate DocIR for raise statements."""
-impl DocIRGenPass.exit_raise_stmt(self: DocIRGenPass, <>node: uni.RaiseStmt) -> None {
+impl DocIRGenPass.exit_raise_stmt(<>node: uni.RaiseStmt) -> None {
     self._assign_space_group(<>node);
 }
 
 """Generate DocIR for assert statements."""
-impl DocIRGenPass.exit_assert_stmt(self: DocIRGenPass, <>node: uni.AssertStmt) -> None {
+impl DocIRGenPass.exit_assert_stmt(<>node: uni.AssertStmt) -> None {
     parts: list[doc.DocType] = [];
     for i in <>node.kid {
         if (isinstance(i, uni.Token) and (i.name == Tok.SEMI) and len(parts)) {
@@ -994,44 +958,42 @@ impl DocIRGenPass.exit_assert_stmt(self: DocIRGenPass, <>node: uni.AssertStmt) -
 }
 
 """Generate DocIR for report statements."""
-impl DocIRGenPass.exit_report_stmt(self: DocIRGenPass, <>node: uni.ReportStmt) -> None {
+impl DocIRGenPass.exit_report_stmt(<>node: uni.ReportStmt) -> None {
     self._assign_space_group(<>node);
 }
 
 """Generate DocIR for disengage statements."""
-impl DocIRGenPass.exit_disengage_stmt(
-    self: DocIRGenPass, <>node: uni.DisengageStmt
-) -> None {
+impl DocIRGenPass.exit_disengage_stmt(<>node: uni.DisengageStmt) -> None {
     self._assign_group_concat(<>node);
 }
 
 """Generate DocIR for delete statements."""
-impl DocIRGenPass.exit_delete_stmt(self: DocIRGenPass, <>node: uni.DeleteStmt) -> None {
+impl DocIRGenPass.exit_delete_stmt(<>node: uni.DeleteStmt) -> None {
     self._assign_space_group(<>node);
 }
 
 """Generate DocIR for control statements (break, continue, skip)."""
-impl DocIRGenPass.exit_ctrl_stmt(self: DocIRGenPass, <>node: uni.CtrlStmt) -> None {
+impl DocIRGenPass.exit_ctrl_stmt(<>node: uni.CtrlStmt) -> None {
     self._assign_group_concat(<>node);
 }
 
 """Generate DocIR for yield expressions."""
-impl DocIRGenPass.exit_yield_expr(self: DocIRGenPass, <>node: uni.YieldExpr) -> None {
+impl DocIRGenPass.exit_yield_expr(<>node: uni.YieldExpr) -> None {
     self._assign_space_group(<>node);
 }
 
 """Generate DocIR for await expressions."""
-impl DocIRGenPass.exit_await_expr(self: DocIRGenPass, <>node: uni.AwaitExpr) -> None {
+impl DocIRGenPass.exit_await_expr(<>node: uni.AwaitExpr) -> None {
     self._assign_space_group(<>node);
 }
 
 """Generate DocIR for keyword arguments."""
-impl DocIRGenPass.exit_k_w_pair(self: DocIRGenPass, <>node: uni.KWPair) -> None {
+impl DocIRGenPass.exit_k_w_pair(<>node: uni.KWPair) -> None {
     self._assign_group_concat(<>node);
 }
 
 """Generate DocIR for dictionary comprehensions."""
-impl DocIRGenPass.exit_dict_compr(self: DocIRGenPass, <>node: uni.DictCompr) -> None {
+impl DocIRGenPass.exit_dict_compr(<>node: uni.DictCompr) -> None {
     parts: list[doc.DocType] = [];
     for i in <>node.kid {
         if (isinstance(i, uni.Token) and (i.name in [Tok.STAR_POW, Tok.STAR_MUL])) {
@@ -1051,7 +1013,7 @@ impl DocIRGenPass.exit_dict_compr(self: DocIRGenPass, <>node: uni.DictCompr) -> 
 }
 
 """Generate DocIR for set comprehensions."""
-impl DocIRGenPass.exit_set_compr(self: DocIRGenPass, <>node: uni.SetCompr) -> None {
+impl DocIRGenPass.exit_set_compr(<>node: uni.SetCompr) -> None {
     parts: list[doc.DocType] = [];
     for i in <>node.kid {
         if isinstance(i, uni.InnerCompr) {
@@ -1065,7 +1027,7 @@ impl DocIRGenPass.exit_set_compr(self: DocIRGenPass, <>node: uni.SetCompr) -> No
 }
 
 """Generate DocIR for generator comprehensions."""
-impl DocIRGenPass.exit_gen_compr(self: DocIRGenPass, <>node: uni.GenCompr) -> None {
+impl DocIRGenPass.exit_gen_compr(<>node: uni.GenCompr) -> None {
     parts: list[doc.DocType] = [];
     for i in <>node.kid {
         if isinstance(i, uni.InnerCompr) {
@@ -1079,7 +1041,7 @@ impl DocIRGenPass.exit_gen_compr(self: DocIRGenPass, <>node: uni.GenCompr) -> No
 }
 
 """Generate DocIR for index slices."""
-impl DocIRGenPass.exit_index_slice(self: DocIRGenPass, <>node: uni.IndexSlice) -> None {
+impl DocIRGenPass.exit_index_slice(<>node: uni.IndexSlice) -> None {
     parts: list[doc.DocType] = [];
     for i in <>node.kid {
         parts.append(i.gen.doc_ir);
@@ -1090,7 +1052,7 @@ impl DocIRGenPass.exit_index_slice(self: DocIRGenPass, <>node: uni.IndexSlice) -
 }
 
 """Generate DocIR for edge operation references."""
-impl DocIRGenPass.exit_edge_op_ref(self: DocIRGenPass, <>node: uni.EdgeOpRef) -> None {
+impl DocIRGenPass.exit_edge_op_ref(<>node: uni.EdgeOpRef) -> None {
     parts: list[doc.DocType] = [];
     for i in <>node.kid {
         parts.append(i.gen.doc_ir);
@@ -1101,9 +1063,7 @@ impl DocIRGenPass.exit_edge_op_ref(self: DocIRGenPass, <>node: uni.EdgeOpRef) ->
 }
 
 """Generate DocIR for edge reference trailers."""
-impl DocIRGenPass.exit_edge_ref_trailer(
-    self: DocIRGenPass, <>node: uni.EdgeRefTrailer
-) -> None {
+impl DocIRGenPass.exit_edge_ref_trailer(<>node: uni.EdgeRefTrailer) -> None {
     parts: list[doc.DocType] = [];
     for i in <>node.kid {
         if (isinstance(i, uni.Token) and (i.name in [Tok.KW_EDGE, Tok.KW_NODE])) {
@@ -1119,7 +1079,7 @@ impl DocIRGenPass.exit_edge_ref_trailer(
 }
 
 """Generate DocIR for lambda expressions."""
-impl DocIRGenPass.exit_lambda_expr(self: DocIRGenPass, <>node: uni.LambdaExpr) -> None {
+impl DocIRGenPass.exit_lambda_expr(<>node: uni.LambdaExpr) -> None {
     parts: list[doc.DocType] = [];
     for i in <>node.kid {
         if isinstance(i, uni.Token) {
@@ -1148,7 +1108,7 @@ impl DocIRGenPass.exit_lambda_expr(self: DocIRGenPass, <>node: uni.LambdaExpr) -
 }
 
 """Generate DocIR for unary expressions."""
-impl DocIRGenPass.exit_unary_expr(self: DocIRGenPass, <>node: uni.UnaryExpr) -> None {
+impl DocIRGenPass.exit_unary_expr(<>node: uni.UnaryExpr) -> None {
     parts: list[doc.DocType] = [];
     for i in <>node.kid {
         if (
@@ -1167,7 +1127,7 @@ impl DocIRGenPass.exit_unary_expr(self: DocIRGenPass, <>node: uni.UnaryExpr) -> 
 }
 
 """Generate DocIR for boolean expressions (and/or)."""
-impl DocIRGenPass.exit_bool_expr(self: DocIRGenPass, <>node: uni.BoolExpr) -> None {
+impl DocIRGenPass.exit_bool_expr(<>node: uni.BoolExpr) -> None {
     exprs: list[uni.UniNode] = [];
     parts: list[doc.DocType] = [];
     def __flatten_bool_expr(expr: uni.Expr) -> list[uni.UniNode] {
@@ -1195,7 +1155,7 @@ impl DocIRGenPass.exit_bool_expr(self: DocIRGenPass, <>node: uni.BoolExpr) -> No
 }
 
 """Generate DocIR for conditional expressions."""
-impl DocIRGenPass.exit_if_else_expr(self: DocIRGenPass, <>node: uni.IfElseExpr) -> None {
+impl DocIRGenPass.exit_if_else_expr(<>node: uni.IfElseExpr) -> None {
     parts: list[doc.DocType] = [];
     for i in <>node.kid {
         if isinstance(i, uni.Expr) {
@@ -1216,9 +1176,7 @@ impl DocIRGenPass.exit_if_else_expr(self: DocIRGenPass, <>node: uni.IfElseExpr) 
 }
 
 """Generate DocIR for formatted value expressions."""
-impl DocIRGenPass.exit_formatted_value(
-    self: DocIRGenPass, <>node: uni.FormattedValue
-) -> None {
+impl DocIRGenPass.exit_formatted_value(<>node: uni.FormattedValue) -> None {
     parts: list[doc.DocType] = [];
     for i in <>node.kid {
         parts.append(i.gen.doc_ir);
@@ -1229,7 +1187,7 @@ impl DocIRGenPass.exit_formatted_value(
 }
 
 """Generate DocIR for formatted strings."""
-impl DocIRGenPass.exit_f_string(self: DocIRGenPass, <>node: uni.FString) -> None {
+impl DocIRGenPass.exit_f_string(<>node: uni.FString) -> None {
     parts: list[doc.DocType] = [];
     for i in <>node.kid {
         parts.append(i.gen.doc_ir);
@@ -1240,7 +1198,7 @@ impl DocIRGenPass.exit_f_string(self: DocIRGenPass, <>node: uni.FString) -> None
 }
 
 """Generate DocIR for inner comprehension clauses."""
-impl DocIRGenPass.exit_inner_compr(self: DocIRGenPass, <>node: uni.InnerCompr) -> None {
+impl DocIRGenPass.exit_inner_compr(<>node: uni.InnerCompr) -> None {
     parts: list[doc.DocType] = [];
     for i in <>node.kid {
         if (isinstance(i, uni.Token) and (i.name == Tok.KW_IF)) {
@@ -1259,7 +1217,7 @@ impl DocIRGenPass.exit_inner_compr(self: DocIRGenPass, <>node: uni.InnerCompr) -
 }
 
 """Generate DocIR for list comprehensions."""
-impl DocIRGenPass.exit_list_compr(self: DocIRGenPass, <>node: uni.ListCompr) -> None {
+impl DocIRGenPass.exit_list_compr(<>node: uni.ListCompr) -> None {
     parts: list[doc.DocType] = [];
     for i in <>node.kid {
         if isinstance(i, uni.InnerCompr) {
@@ -1273,7 +1231,7 @@ impl DocIRGenPass.exit_list_compr(self: DocIRGenPass, <>node: uni.ListCompr) -> 
 }
 
 """Generate DocIR for with statements."""
-impl DocIRGenPass.exit_with_stmt(self: DocIRGenPass, <>node: uni.WithStmt) -> None {
+impl DocIRGenPass.exit_with_stmt(<>node: uni.WithStmt) -> None {
     parts: list[doc.DocType] = [];
     body_parts: list[doc.DocType] = [self.hard_line()];
     for i in <>node.kid {
@@ -1299,7 +1257,7 @@ impl DocIRGenPass.exit_with_stmt(self: DocIRGenPass, <>node: uni.WithStmt) -> No
 }
 
 """Generate DocIR for set values."""
-impl DocIRGenPass.exit_set_val(self: DocIRGenPass, <>node: uni.SetVal) -> None {
+impl DocIRGenPass.exit_set_val(<>node: uni.SetVal) -> None {
     parts: list[doc.DocType] = [];
     for i in <>node.kid {
         parts.append(i.gen.doc_ir);
@@ -1310,9 +1268,7 @@ impl DocIRGenPass.exit_set_val(self: DocIRGenPass, <>node: uni.SetVal) -> None {
 }
 
 """Generate DocIR for multiline strings."""
-impl DocIRGenPass.exit_multi_string(
-    self: DocIRGenPass, <>node: uni.MultiString
-) -> None {
+impl DocIRGenPass.exit_multi_string(<>node: uni.MultiString) -> None {
     parts: list[doc.DocType] = [];
     for i in <>node.kid {
         parts.append(i.gen.doc_ir);
@@ -1324,7 +1280,7 @@ impl DocIRGenPass.exit_multi_string(
 }
 
 """Generate DocIR for tuple values."""
-impl DocIRGenPass.exit_tuple_val(self: DocIRGenPass, <>node: uni.TupleVal) -> None {
+impl DocIRGenPass.exit_tuple_val(<>node: uni.TupleVal) -> None {
     parts: list[doc.DocType] = [];
     for i in <>node.kid {
         if (isinstance(i, uni.Token) and (i.name == Tok.COMMA)) {
@@ -1360,41 +1316,37 @@ impl DocIRGenPass.exit_tuple_val(self: DocIRGenPass, <>node: uni.TupleVal) -> No
 }
 
 """Generate DocIR for finally statements."""
-impl DocIRGenPass.exit_finally_stmt(
-    self: DocIRGenPass, <>node: uni.FinallyStmt
-) -> None {
+impl DocIRGenPass.exit_finally_stmt(<>node: uni.FinallyStmt) -> None {
     <>node.gen.doc_ir = self.format_simple_stmt_with_body(<>node, <>node.body);
 }
 
 """Generate DocIR for except clauses."""
-impl DocIRGenPass.exit_except(self: DocIRGenPass, <>node: uni.Except) -> None {
+impl DocIRGenPass.exit_except(<>node: uni.Except) -> None {
     <>node.gen.doc_ir = self.format_simple_stmt_with_body(<>node, <>node.body);
 }
 
 """Generate DocIR for try statements."""
-impl DocIRGenPass.exit_try_stmt(self: DocIRGenPass, <>node: uni.TryStmt) -> None {
+impl DocIRGenPass.exit_try_stmt(<>node: uni.TryStmt) -> None {
     <>node.gen.doc_ir = self.format_simple_stmt_with_body(<>node, <>node.body);
 }
 
 """Generate DocIR for iterative for statements."""
-impl DocIRGenPass.exit_iter_for_stmt(
-    self: DocIRGenPass, <>node: uni.IterForStmt
-) -> None {
+impl DocIRGenPass.exit_iter_for_stmt(<>node: uni.IterForStmt) -> None {
     <>node.gen.doc_ir = self.format_simple_stmt_with_body(<>node, <>node.body);
 }
 
 """Generate DocIR for for-in statements."""
-impl DocIRGenPass.exit_in_for_stmt(self: DocIRGenPass, <>node: uni.InForStmt) -> None {
+impl DocIRGenPass.exit_in_for_stmt(<>node: uni.InForStmt) -> None {
     <>node.gen.doc_ir = self.format_simple_stmt_with_body(<>node, <>node.body);
 }
 
 """Generate DocIR for while statements."""
-impl DocIRGenPass.exit_while_stmt(self: DocIRGenPass, <>node: uni.WhileStmt) -> None {
+impl DocIRGenPass.exit_while_stmt(<>node: uni.WhileStmt) -> None {
     <>node.gen.doc_ir = self.format_simple_stmt_with_body(<>node, <>node.body);
 }
 
 """Generate DocIR for architecture has declarations."""
-impl DocIRGenPass.exit_arch_has(self: DocIRGenPass, <>node: uni.ArchHas) -> None {
+impl DocIRGenPass.exit_arch_has(<>node: uni.ArchHas) -> None {
     parts: list[doc.DocType] = [];
     indent_parts: list[doc.DocType] = [];
     first_comma_seen = False;
@@ -1450,7 +1402,7 @@ impl DocIRGenPass.exit_arch_has(self: DocIRGenPass, <>node: uni.ArchHas) -> None
 }
 
 """Generate DocIR for has variable declarations."""
-impl DocIRGenPass.exit_has_var(self: DocIRGenPass, <>node: uni.HasVar) -> None {
+impl DocIRGenPass.exit_has_var(<>node: uni.HasVar) -> None {
     parts: list[doc.DocType] = [];
     for i in <>node.kid {
         if (isinstance(i, uni.Token) and (i.name == Tok.EQ)) {
@@ -1470,7 +1422,7 @@ impl DocIRGenPass.exit_has_var(self: DocIRGenPass, <>node: uni.HasVar) -> None {
 }
 
 """Generate DocIR for key-value pairs."""
-impl DocIRGenPass.exit_k_v_pair(self: DocIRGenPass, <>node: uni.KVPair) -> None {
+impl DocIRGenPass.exit_k_v_pair(<>node: uni.KVPair) -> None {
     parts: list[doc.DocType] = [];
     kid_count = len(<>node.kid);
     for (idx, kid) in enumerate(<>node.kid) {
@@ -1492,7 +1444,7 @@ impl DocIRGenPass.exit_k_v_pair(self: DocIRGenPass, <>node: uni.KVPair) -> None 
 }
 
 """Generate DocIR for dictionary values."""
-impl DocIRGenPass.exit_dict_val(self: DocIRGenPass, <>node: uni.DictVal) -> None {
+impl DocIRGenPass.exit_dict_val(<>node: uni.DictVal) -> None {
     if not <>node.kid {
         <>node.gen.doc_ir = self.group(self.concat([]));
         return;
@@ -1545,7 +1497,7 @@ impl DocIRGenPass.exit_dict_val(self: DocIRGenPass, <>node: uni.DictVal) -> None
 }
 
 """Generate DocIR for list values."""
-impl DocIRGenPass.exit_list_val(self: DocIRGenPass, <>node: uni.ListVal) -> None {
+impl DocIRGenPass.exit_list_val(<>node: uni.ListVal) -> None {
     parts: list[doc.DocType] = [];
     for i in <>node.kid {
         if (isinstance(i, uni.Token) and (i.name == Tok.COMMA)) {
@@ -1585,9 +1537,7 @@ impl DocIRGenPass.exit_list_val(self: DocIRGenPass, <>node: uni.ListVal) -> None
 }
 
 """Generate DocIR for atom trailers."""
-impl DocIRGenPass.exit_atom_trailer(
-    self: DocIRGenPass, <>node: uni.AtomTrailer
-) -> None {
+impl DocIRGenPass.exit_atom_trailer(<>node: uni.AtomTrailer) -> None {
     parts: list[doc.DocType] = [];
     for i in <>node.kid {
         parts.append(i.gen.doc_ir);
@@ -1601,7 +1551,7 @@ impl DocIRGenPass.exit_atom_trailer(
 }
 
 """Generate DocIR for function calls."""
-impl DocIRGenPass.exit_func_call(self: DocIRGenPass, <>node: uni.FuncCall) -> None {
+impl DocIRGenPass.exit_func_call(<>node: uni.FuncCall) -> None {
     parts: list[doc.DocType] = [];
     indent_parts: list[doc.DocType] = [];
     in_params = False;
@@ -1644,7 +1594,7 @@ impl DocIRGenPass.exit_func_call(self: DocIRGenPass, <>node: uni.FuncCall) -> No
 }
 
 """Generate DocIR for return statements."""
-impl DocIRGenPass.exit_return_stmt(self: DocIRGenPass, <>node: uni.ReturnStmt) -> None {
+impl DocIRGenPass.exit_return_stmt(<>node: uni.ReturnStmt) -> None {
     parts: list[doc.DocType] = [];
     for i in <>node.kid {
         if (isinstance(i, uni.Token) and (i.name == Tok.SEMI)) {
@@ -1661,9 +1611,7 @@ impl DocIRGenPass.exit_return_stmt(self: DocIRGenPass, <>node: uni.ReturnStmt) -
 }
 
 """Generate DocIR for concurrent expressions."""
-impl DocIRGenPass.exit_concurrent_expr(
-    self: DocIRGenPass, <>node: uni.ConcurrentExpr
-) -> None {
+impl DocIRGenPass.exit_concurrent_expr(<>node: uni.ConcurrentExpr) -> None {
     parts: list[doc.DocType] = [];
     for i in <>node.kid {
         parts.append(i.gen.doc_ir);
@@ -1673,17 +1621,17 @@ impl DocIRGenPass.exit_concurrent_expr(
 }
 
 """Generate DocIR for expression statements."""
-impl DocIRGenPass.exit_expr_stmt(self: DocIRGenPass, <>node: uni.ExprStmt) -> None {
+impl DocIRGenPass.exit_expr_stmt(<>node: uni.ExprStmt) -> None {
     self._assign_group_concat(<>node);
 }
 
 """Generate DocIR for binary expressions."""
-impl DocIRGenPass.exit_binary_expr(self: DocIRGenPass, <>node: uni.BinaryExpr) -> None {
+impl DocIRGenPass.exit_binary_expr(<>node: uni.BinaryExpr) -> None {
     self._assign_space_group(<>node);
 }
 
 """Generate DocIR for else statements."""
-impl DocIRGenPass.exit_else_stmt(self: DocIRGenPass, <>node: uni.ElseStmt) -> None {
+impl DocIRGenPass.exit_else_stmt(<>node: uni.ElseStmt) -> None {
     parts: list[doc.DocType] = [];
     body_parts: list[doc.DocType] = [self.hard_line()];
     for i in <>node.kid {
@@ -1710,7 +1658,7 @@ impl DocIRGenPass.exit_else_stmt(self: DocIRGenPass, <>node: uni.ElseStmt) -> No
 }
 
 """Generate DocIR for else if statements."""
-impl DocIRGenPass.exit_else_if(self: DocIRGenPass, <>node: uni.ElseIf) -> None {
+impl DocIRGenPass.exit_else_if(<>node: uni.ElseIf) -> None {
     parts: list[doc.DocType] = [];
     body_parts: list[doc.DocType] = [self.hard_line()];
     for i in <>node.kid {
@@ -1737,7 +1685,7 @@ impl DocIRGenPass.exit_else_if(self: DocIRGenPass, <>node: uni.ElseIf) -> None {
 }
 
 """Generate DocIR for if statements."""
-impl DocIRGenPass.exit_if_stmt(self: DocIRGenPass, <>node: uni.IfStmt) -> None {
+impl DocIRGenPass.exit_if_stmt(<>node: uni.IfStmt) -> None {
     parts: list[doc.DocType] = [];
     body_parts: list[doc.DocType] = [self.hard_line()];
     for i in <>node.kid {
@@ -1765,7 +1713,7 @@ impl DocIRGenPass.exit_if_stmt(self: DocIRGenPass, <>node: uni.IfStmt) -> None {
 }
 
 """Generate DocIR for assignments."""
-impl DocIRGenPass.exit_assignment(self: DocIRGenPass, <>node: uni.Assignment) -> None {
+impl DocIRGenPass.exit_assignment(<>node: uni.Assignment) -> None {
     lhs_parts: list[doc.DocType] = [];
     rhs_parts: list[doc.DocType] = [];
     eq_tok: (doc.DocType | None) = None;
@@ -1804,7 +1752,7 @@ impl DocIRGenPass.exit_assignment(self: DocIRGenPass, <>node: uni.Assignment) ->
 }
 
 """Generate DocIR for type references."""
-impl DocIRGenPass.exit_type_ref(self: DocIRGenPass, <>node: uni.TypeRef) -> None {
+impl DocIRGenPass.exit_type_ref(<>node: uni.TypeRef) -> None {
     parts: list[doc.DocType] = [];
     for i in <>node.kid {
         parts.append(i.gen.doc_ir);
@@ -1815,7 +1763,7 @@ impl DocIRGenPass.exit_type_ref(self: DocIRGenPass, <>node: uni.TypeRef) -> None
 }
 
 """Generate DocIR for parameter variables."""
-impl DocIRGenPass.exit_param_var(self: DocIRGenPass, <>node: uni.ParamVar) -> None {
+impl DocIRGenPass.exit_param_var(<>node: uni.ParamVar) -> None {
     parts: list[doc.DocType] = [];
     for i in <>node.kid {
         if (isinstance(i, uni.Token) and (i.name == Tok.EQ)) {
@@ -1832,9 +1780,7 @@ impl DocIRGenPass.exit_param_var(self: DocIRGenPass, <>node: uni.ParamVar) -> No
 }
 
 """Generate DocIR for function signatures."""
-impl DocIRGenPass.exit_func_signature(
-    self: DocIRGenPass, <>node: uni.FuncSignature
-) -> None {
+impl DocIRGenPass.exit_func_signature(<>node: uni.FuncSignature) -> None {
     parts: list[doc.DocType] = [];
     indent_parts: list[doc.DocType] = [];
     in_params = False;
@@ -1887,7 +1833,7 @@ impl DocIRGenPass.exit_func_signature(
 }
 
 """Generate DocIR for abilities."""
-impl DocIRGenPass.exit_ability(self: DocIRGenPass, <>node: uni.Ability) -> None {
+impl DocIRGenPass.exit_ability(<>node: uni.Ability) -> None {
     parts: list[doc.DocType] = [];
     body_parts: list[doc.DocType] = [];
     in_body = False;
@@ -1936,7 +1882,7 @@ impl DocIRGenPass.exit_ability(self: DocIRGenPass, <>node: uni.Ability) -> None 
 }
 
 """Generate DocIR for archetypes."""
-impl DocIRGenPass.exit_archetype(self: DocIRGenPass, <>node: uni.Archetype) -> None {
+impl DocIRGenPass.exit_archetype(<>node: uni.Archetype) -> None {
     parts: list[doc.DocType] = [];
     body_parts: list[doc.DocType] = [];
     prev_item = None;
@@ -2002,7 +1948,7 @@ impl DocIRGenPass.exit_archetype(self: DocIRGenPass, <>node: uni.Archetype) -> N
 }
 
 """Generate DocIR for module paths."""
-impl DocIRGenPass.exit_module_path(self: DocIRGenPass, <>node: uni.ModulePath) -> None {
+impl DocIRGenPass.exit_module_path(<>node: uni.ModulePath) -> None {
     parts: list[doc.DocType] = [];
     for i in <>node.kid {
         if (isinstance(i, uni.Token) and (i.name == Tok.KW_AS)) {
@@ -2017,7 +1963,7 @@ impl DocIRGenPass.exit_module_path(self: DocIRGenPass, <>node: uni.ModulePath) -
 }
 
 """Generate DocIR for module items."""
-impl DocIRGenPass.exit_module_item(self: DocIRGenPass, <>node: uni.ModuleItem) -> None {
+impl DocIRGenPass.exit_module_item(<>node: uni.ModuleItem) -> None {
     parts: list[doc.DocType] = [];
     for i in <>node.kid {
         if (isinstance(i, uni.Token) and (i.name == Tok.KW_AS)) {
@@ -2032,7 +1978,7 @@ impl DocIRGenPass.exit_module_item(self: DocIRGenPass, <>node: uni.ModuleItem) -
 }
 
 """Exit import node."""
-impl DocIRGenPass.exit_import(self: DocIRGenPass, <>node: uni.Import) -> None {
+impl DocIRGenPass.exit_import(<>node: uni.Import) -> None {
     parts: list[doc.DocType] = [];
     mod_items: list[doc.DocType] = [];
     is_in_items: bool = False;
@@ -2081,7 +2027,7 @@ impl DocIRGenPass.exit_import(self: DocIRGenPass, <>node: uni.Import) -> None {
 }
 
 """Exit module."""
-impl DocIRGenPass.exit_module(self: DocIRGenPass, <>node: uni.Module) -> None {
+impl DocIRGenPass.exit_module(<>node: uni.Module) -> None {
     parts: list[doc.DocType] = [];
     prev_kid = None;
     first_kid = True;
@@ -2128,9 +2074,7 @@ impl DocIRGenPass.exit_module(self: DocIRGenPass, <>node: uni.Module) -> None {
 }
 
 """Recursively remove all space nodes from a doc_ir tree."""
-impl DocIRGenPass.remove_all_spaces(
-    self: DocIRGenPass, doc_node: doc.DocType
-) -> doc.DocType {
+impl DocIRGenPass.remove_all_spaces(doc_node: doc.DocType) -> doc.DocType {
     if isinstance(doc_node, doc.Text) {
         if (doc_node.text == ' ') {
             return self.concat([]);
@@ -2166,9 +2110,7 @@ impl DocIRGenPass.remove_all_spaces(
 }
 
 """Recursively trim trailing Line (soft or hard) nodes from parts."""
-impl DocIRGenPass.trim_trailing_line(
-    self: DocIRGenPass, parts: list[doc.DocType]
-) -> None {
+impl DocIRGenPass.trim_trailing_line(parts: list[doc.DocType]) -> None {
     if not parts {
         return;
     }
@@ -2202,7 +2144,7 @@ impl DocIRGenPass.trim_trailing_line(
 
 """Check if kid node is within the block."""
 impl DocIRGenPass.is_within(
-    self: DocIRGenPass, kid_node: uni.UniNode, block: Sequence[uni.UniNode]
+    kid_node: uni.UniNode, block: Sequence[uni.UniNode]
 ) -> bool {
     if not block {
         return False;
@@ -2223,10 +2165,7 @@ impl DocIRGenPass.is_within(
 
 """Add a body statement preserving single blank lines from source."""
 impl DocIRGenPass.add_body_stmt_with_spacing(
-    self: DocIRGenPass,
-    body_parts: list[doc.DocType],
-    current: uni.UniNode,
-    previous: (uni.UniNode | None)
+    body_parts: list[doc.DocType], current: uni.UniNode, previous: (uni.UniNode | None)
 ) -> None {
     if (previous and self.has_gap(previous, current)) {
         body_parts.append(self.hard_line());
@@ -2236,14 +2175,12 @@ impl DocIRGenPass.add_body_stmt_with_spacing(
 }
 
 """Check if there is a gap between the previous and current node."""
-impl DocIRGenPass.has_gap(
-    self: DocIRGenPass, prev_kid: uni.UniNode, curr_kid: uni.UniNode
-) -> bool {
+impl DocIRGenPass.has_gap(prev_kid: uni.UniNode, curr_kid: uni.UniNode) -> bool {
     return ((prev_kid.loc.last_line + 1) < curr_kid.loc.first_line);
 }
 
 """Check if the node is a one line node."""
-impl DocIRGenPass.is_one_line(self: DocIRGenPass, <>node: uni.UniNode) -> bool {
+impl DocIRGenPass.is_one_line(<>node: uni.UniNode) -> bool {
     return (
         bool(<>node.kid)
         and (<>node.kid[0].loc.first_line == <>node.kid[-1].loc.last_line)
@@ -2256,9 +2193,7 @@ impl DocIRGenPass.is_one_line(self: DocIRGenPass, <>node: uni.UniNode) -> bool {
         Expected structure: [opening, space, expr, space, inner_compr..., space, closing, space]
         We need to remove spaces adjacent to brackets.
 """
-impl DocIRGenPass.format_comprehension(
-    self: DocIRGenPass, parts: list[doc.DocType]
-) -> doc.DocType {
+impl DocIRGenPass.format_comprehension(parts: list[doc.DocType]) -> doc.DocType {
     if (parts and isinstance(parts[-1], doc.Text) and (parts[-1].text == ' ')) {
         parts.pop();
     }
@@ -2296,10 +2231,7 @@ impl DocIRGenPass.format_comprehension(
         - possible trailing elements
 """
 impl DocIRGenPass.format_simple_stmt_with_body(
-    self: DocIRGenPass,
-    <>node: uni.UniNode,
-    body: Sequence[uni.UniNode],
-    space_between_parts: bool = True
+    <>node: uni.UniNode, body: Sequence[uni.UniNode], space_between_parts: bool = True
 ) -> doc.DocType {
     parts: list[doc.DocType] = [];
     body_parts: list[doc.DocType] = [self.hard_line()];
@@ -2330,7 +2262,7 @@ impl DocIRGenPass.format_simple_stmt_with_body(
 
 """Intersperse separator between items (returns flat list)."""
 impl DocIRGenPass.intersperse(
-    self: DocIRGenPass, items: list[doc.DocType], separator: doc.DocType
+    items: list[doc.DocType], separator: doc.DocType
 ) -> list[doc.DocType] {
     if not items {
         return [];
@@ -2344,28 +2276,26 @@ impl DocIRGenPass.intersperse(
 }
 
 """Assign a grouped, space-joined document for the children."""
-impl DocIRGenPass._assign_space_group(self: DocIRGenPass, <>node: uni.UniNode) -> None {
+impl DocIRGenPass._assign_space_group(<>node: uni.UniNode) -> None {
     <>node.gen.doc_ir = self.group(
         self.join_with_space(self._child_docs(<>node)), ast_node=<>node
     );
 }
 
 """Assign a grouped Concat of child documents."""
-impl DocIRGenPass._assign_group_concat(self: DocIRGenPass, <>node: uni.UniNode) -> None {
+impl DocIRGenPass._assign_group_concat(<>node: uni.UniNode) -> None {
     <>node.gen.doc_ir = self.group(
         self.concat(self._child_docs(<>node), ast_node=<>node), ast_node=<>node
     );
 }
 
 """Assign a simple Concat of child documents."""
-impl DocIRGenPass._assign_concat(self: DocIRGenPass, <>node: uni.UniNode) -> None {
+impl DocIRGenPass._assign_concat(<>node: uni.UniNode) -> None {
     <>node.gen.doc_ir = self.concat(self._child_docs(<>node), ast_node=<>node);
 }
 
 """Return generated DocIR for each child."""
-impl DocIRGenPass._child_docs(
-    self: DocIRGenPass, <>node: uni.UniNode
-) -> list[doc.DocType] {
+impl DocIRGenPass._child_docs(<>node: uni.UniNode) -> list[doc.DocType] {
     docs: list[doc.DocType] = [];
     for kid in <>node.kid {
         docs.append(kid.gen.doc_ir);
@@ -2374,23 +2304,17 @@ impl DocIRGenPass._child_docs(
 }
 
 """Join parts with line separator."""
-impl DocIRGenPass.join_with_line(
-    self: DocIRGenPass, parts: list[doc.DocType]
-) -> doc.DocType {
+impl DocIRGenPass.join_with_line(parts: list[doc.DocType]) -> doc.DocType {
     return self.join(self.line(), parts);
 }
 
 """Join parts with space separator."""
-impl DocIRGenPass.join_with_space(
-    self: DocIRGenPass, parts: list[doc.DocType]
-) -> doc.DocType {
+impl DocIRGenPass.join_with_space(parts: list[doc.DocType]) -> doc.DocType {
     return self.join(self.space(), parts);
 }
 
 """Join parts with separator."""
-impl DocIRGenPass.join(
-    self: DocIRGenPass, separator: doc.DocType, parts: list[doc.DocType]
-) -> doc.DocType {
+impl DocIRGenPass.join(separator: doc.DocType, parts: list[doc.DocType]) -> doc.DocType {
     if not parts {
         return self.concat([]);
     }
@@ -2403,29 +2327,27 @@ impl DocIRGenPass.join(
 }
 
 """Create an Align node."""
-impl DocIRGenPass.align(
-    self: DocIRGenPass, contents: doc.DocType, n: (int | None) = None
-) -> doc.Align {
+impl DocIRGenPass.align(contents: doc.DocType, n: (int | None) = None) -> doc.Align {
     return doc.Align(contents, n);
 }
 
 """Create an IfBreak node."""
 impl DocIRGenPass.if_break(
-    self: DocIRGenPass, break_contents: doc.DocType, flat_contents: doc.DocType
+    break_contents: doc.DocType, flat_contents: doc.DocType
 ) -> doc.IfBreak {
     return doc.IfBreak(break_contents, flat_contents);
 }
 
 """Create a Concat node."""
 impl DocIRGenPass.concat(
-    self: DocIRGenPass, parts: list[doc.DocType], ast_node: (uni.UniNode | None) = None
+    parts: list[doc.DocType], ast_node: (uni.UniNode | None) = None
 ) -> doc.Concat {
     return doc.Concat(parts, ast_node=ast_node);
 }
 
 """Create an Indent node."""
 impl DocIRGenPass.indent(
-    self: DocIRGenPass, contents: doc.DocType, ast_node: (uni.UniNode | None) = None
+    contents: doc.DocType, ast_node: (uni.UniNode | None) = None
 ) -> doc.Indent {
     return doc.Indent(contents, ast_node=ast_node);
 }
@@ -2439,7 +2361,6 @@ impl DocIRGenPass.indent(
             ast_node: Optional reference to the AST node this represents
 """
 impl DocIRGenPass.group(
-    self: DocIRGenPass,
     contents: doc.DocType,
     break_contiguous: bool = False,
     ast_node: (uni.UniNode | None) = None
@@ -2448,35 +2369,31 @@ impl DocIRGenPass.group(
 }
 
 """Create a literal line break."""
-impl DocIRGenPass.literal_line(self: DocIRGenPass) -> doc.Line {
+impl DocIRGenPass.literal_line -> doc.Line {
     return doc.Line(literal=True);
 }
 
 """Create a tight line break."""
-impl DocIRGenPass.tight_line(self: DocIRGenPass) -> doc.Line {
+impl DocIRGenPass.tight_line -> doc.Line {
     return doc.Line(tight=True);
 }
 
 """Create a hard line break."""
-impl DocIRGenPass.hard_line(self: DocIRGenPass) -> doc.Line {
+impl DocIRGenPass.hard_line -> doc.Line {
     return doc.Line(hard=True);
 }
 
 """Create a Line node."""
-impl DocIRGenPass.line(
-    self: DocIRGenPass, hard: bool = False, literal: bool = False
-) -> doc.Line {
+impl DocIRGenPass.line(hard: bool = False, literal: bool = False) -> doc.Line {
     return doc.Line(hard, literal);
 }
 
 """Create a space node."""
-impl DocIRGenPass.space(self: DocIRGenPass) -> doc.Text {
+impl DocIRGenPass.space -> doc.Text {
     return doc.Text(' ');
 }
 
 """Create a Text node."""
-impl DocIRGenPass.text(
-    self: DocIRGenPass, text: str, source_token: (uni.Token | None) = None
-) -> doc.Text {
+impl DocIRGenPass.text(text: str, source_token: (uni.Token | None) = None) -> doc.Text {
     return doc.Text(text, source_token=source_token);
 }

@@ -9,8 +9,6 @@ transpilers, and code analysis tools.
 
 Reference: https://github.com/estree/estree
 """
-
-import from dataclasses { dataclass, field }
 import from typing { Any, TypeAlias }
 import from typing { Literal as TypingLiteral }
 
@@ -22,773 +20,553 @@ glob SourceType: TypeAlias = TypingLiteral[('script', 'module')],
      ];
 
 """Source location information for a node."""
-@dataclass
-class SourceLocation {
+obj SourceLocation {
     has source: (str | None) = None,
         start: (Position | None) = None,
         end: (Position | None) = None;
 }
 
 """Position in source code."""
-@dataclass
-class Position {
+obj Position {
     has line: int = 0,
         column: int = 0;
 }
 
-"""Base class for all ESTree nodes."""
-@dataclass
-class Node {
+"""Base obj for all ESTree nodes."""
+obj Node {
     has <>type: str,
-        loc: (SourceLocation | None) = field(<>default=None);
+        loc: (SourceLocation | None) = None;
 }
 
 """Identifier node."""
-@dataclass
-class Identifier(Node) {
+obj Identifier(Node) {
     has name: str = '',
-        <>type: TypingLiteral['Identifier'] = field(
-            <>default='Identifier', <>init=False
-        );
+        <>type: TypingLiteral['Identifier'] = 'Identifier';
 }
 
-"""Private identifier for class members (ES2022)."""
-@dataclass
-class PrivateIdentifier(Node) {
+"""Private identifier for obj members (ES2022)."""
+obj PrivateIdentifier(Node) {
     has name: str = '',
-        <>type: TypingLiteral['PrivateIdentifier'] = field(
-            <>default='PrivateIdentifier', <>init=False
-        );
+        <>type: TypingLiteral['PrivateIdentifier'] = 'PrivateIdentifier';
 }
 
 """Literal value node (supports BigInt in ES2020)."""
-@dataclass
-class Literal(Node) {
+obj Literal(Node) {
     has value: str | bool | None | int | float = None,
         raw: (str | None) = None,
         bigint: (str | None) = None,
-        <>type: TypingLiteral['Literal'] = field(<>default='Literal', <>init=False);
+        <>type: TypingLiteral['Literal'] = 'Literal';
 }
 
 """Root node of an ESTree."""
-@dataclass
-class Program(Node) {
-    has body: list[(Statement | ModuleDeclaration)] = field(default_factory=<>list),
+obj Program(Node) {
+    has body: list[(Statement | ModuleDeclaration)] = [],
         sourceType: SourceType = 'script',
-        <>type: TypingLiteral['Program'] = field(<>default='Program', <>init=False);
+        <>type: TypingLiteral['Program'] = 'Program';
 }
 
 """Expression statement."""
-@dataclass
-class ExpressionStatement(Node) {
+obj ExpressionStatement(Node) {
     has expression: (Expression | None) = None,
-        <>type: TypingLiteral['ExpressionStatement'] = field(
-            <>default='ExpressionStatement', <>init=False
-        );
+        <>type: TypingLiteral['ExpressionStatement'] = 'ExpressionStatement';
 }
 
 """Directive (e.g., 'use strict') - ES5."""
-@dataclass
-class Directive(ExpressionStatement) {
+obj Directive(ExpressionStatement) {
     has directive: str = '',
-        <>type: TypingLiteral['ExpressionStatement'] = field(
-            <>default='ExpressionStatement', <>init=False
-        );
+        <>type: TypingLiteral['ExpressionStatement'] = 'ExpressionStatement';
 }
 
 """Block statement."""
-@dataclass
-class BlockStatement(Node) {
-    has body: list[Statement] = field(default_factory=<>list),
-        <>type: TypingLiteral['BlockStatement'] = field(
-            <>default='BlockStatement', <>init=False
-        );
+obj BlockStatement(Node) {
+    has body: List[Statement] = [],
+        <>type: TypingLiteral['BlockStatement'] = 'BlockStatement';
 }
 
 """Empty statement (;)."""
-@dataclass
-class EmptyStatement(Node) {
-    has <>type: TypingLiteral['EmptyStatement'] = field(
-        <>default='EmptyStatement', <>init=False
-    );
+obj EmptyStatement(Node) {
+    has <>type: TypingLiteral['EmptyStatement'] = 'EmptyStatement';
 }
 
 """Debugger statement."""
-@dataclass
-class DebuggerStatement(Node) {
-    has <>type: TypingLiteral['DebuggerStatement'] = field(
-        <>default='DebuggerStatement', <>init=False
-    );
+obj DebuggerStatement(Node) {
+    has <>type: TypingLiteral['DebuggerStatement'] = 'DebuggerStatement';
 }
 
 """With statement."""
-@dataclass
-class WithStatement(Node) {
+obj WithStatement(Node) {
     has object: (Expression | None) = None,
         body: (Statement | None) = None,
-        <>type: TypingLiteral['WithStatement'] = field(
-            <>default='WithStatement', <>init=False
-        );
+        <>type: TypingLiteral['WithStatement'] = 'WithStatement';
 }
 
 """Return statement."""
-@dataclass
-class ReturnStatement(Node) {
+obj ReturnStatement(Node) {
     has argument: (Expression | None) = None,
-        <>type: TypingLiteral['ReturnStatement'] = field(
-            <>default='ReturnStatement', <>init=False
-        );
+        <>type: TypingLiteral['ReturnStatement'] = 'ReturnStatement';
 }
 
 """Labeled statement."""
-@dataclass
-class LabeledStatement(Node) {
+obj LabeledStatement(Node) {
     has label: (Identifier | None) = None,
         body: (Statement | None) = None,
-        <>type: TypingLiteral['LabeledStatement'] = field(
-            <>default='LabeledStatement', <>init=False
-        );
+        <>type: TypingLiteral['LabeledStatement'] = 'LabeledStatement';
 }
 
 """Break statement."""
-@dataclass
-class BreakStatement(Node) {
+obj BreakStatement(Node) {
     has label: (Identifier | None) = None,
-        <>type: TypingLiteral['BreakStatement'] = field(
-            <>default='BreakStatement', <>init=False
-        );
+        <>type: TypingLiteral['BreakStatement'] = 'BreakStatement';
 }
 
 """Continue statement."""
-@dataclass
-class ContinueStatement(Node) {
+obj ContinueStatement(Node) {
     has label: (Identifier | None) = None,
-        <>type: TypingLiteral['ContinueStatement'] = field(
-            <>default='ContinueStatement', <>init=False
-        );
+        <>type: TypingLiteral['ContinueStatement'] = 'ContinueStatement';
 }
 
 """If statement."""
-@dataclass
-class IfStatement(Node) {
+obj IfStatement(Node) {
     has <>test: (Expression | None) = None,
         consequent: (Statement | None) = None,
         alternate: (Statement | None) = None,
-        <>type: TypingLiteral['IfStatement'] = field(
-            <>default='IfStatement', <>init=False
-        );
+        <>type: TypingLiteral['IfStatement'] = 'IfStatement';
 }
 
 """Switch statement."""
-@dataclass
-class SwitchStatement(Node) {
+obj SwitchStatement(Node) {
     has discriminant: (Expression | None) = None,
-        cases: list[SwitchCase] = field(default_factory=<>list),
-        <>type: TypingLiteral['SwitchStatement'] = field(
-            <>default='SwitchStatement', <>init=False
-        );
+        cases: list[SwitchCase] = [],
+        <>type: TypingLiteral['SwitchStatement'] = 'SwitchStatement';
 }
 
 """Switch case clause."""
-@dataclass
-class SwitchCase(Node) {
+obj SwitchCase(Node) {
     has <>test: (Expression | None) = None,
-        consequent: list[Statement] = field(default_factory=<>list),
-        <>type: TypingLiteral['SwitchCase'] = field(
-            <>default='SwitchCase', <>init=False
-        );
+        consequent: list[Statement] = [],
+        <>type: TypingLiteral['SwitchCase'] = 'SwitchCase';
 }
 
 """Throw statement."""
-@dataclass
-class ThrowStatement(Node) {
+obj ThrowStatement(Node) {
     has argument: (Expression | None) = None,
-        <>type: TypingLiteral['ThrowStatement'] = field(
-            <>default='ThrowStatement', <>init=False
-        );
+        <>type: TypingLiteral['ThrowStatement'] = 'ThrowStatement';
 }
 
 """Try statement."""
-@dataclass
-class TryStatement(Node) {
+obj TryStatement(Node) {
     has block: (BlockStatement | None) = None,
         handler: (CatchClause | None) = None,
         finalizer: (BlockStatement | None) = None,
-        <>type: TypingLiteral['TryStatement'] = field(
-            <>default='TryStatement', <>init=False
-        );
+        <>type: TypingLiteral['TryStatement'] = 'TryStatement';
 }
 
 """Catch clause."""
-@dataclass
-class CatchClause(Node) {
+obj CatchClause(Node) {
     has param: (Pattern | None) = None,
         body: (BlockStatement | None) = None,
-        <>type: TypingLiteral['CatchClause'] = field(
-            <>default='CatchClause', <>init=False
-        );
+        <>type: TypingLiteral['CatchClause'] = 'CatchClause';
 }
 
 """While statement."""
-@dataclass
-class WhileStatement(Node) {
+obj WhileStatement(Node) {
     has <>test: (Expression | None) = None,
         body: (Statement | None) = None,
-        <>type: TypingLiteral['WhileStatement'] = field(
-            <>default='WhileStatement', <>init=False
-        );
+        <>type: TypingLiteral['WhileStatement'] = 'WhileStatement';
 }
 
 """Do-while statement."""
-@dataclass
-class DoWhileStatement(Node) {
+obj DoWhileStatement(Node) {
     has body: (Statement | None) = None,
         <>test: (Expression | None) = None,
-        <>type: TypingLiteral['DoWhileStatement'] = field(
-            <>default='DoWhileStatement', <>init=False
-        );
+        <>type: TypingLiteral['DoWhileStatement'] = 'DoWhileStatement';
 }
 
 """For statement."""
-@dataclass
-class ForStatement(Node) {
+obj ForStatement(Node) {
     has <>init: VariableDeclaration | Expression | None = None,
         <>test: (Expression | None) = None,
         update: (Expression | None) = None,
         body: (Statement | None) = None,
-        <>type: TypingLiteral['ForStatement'] = field(
-            <>default='ForStatement', <>init=False
-        );
+        <>type: TypingLiteral['ForStatement'] = 'ForStatement';
 }
 
 """For-in statement."""
-@dataclass
-class ForInStatement(Node) {
+obj ForInStatement(Node) {
     has left: VariableDeclaration | Pattern | None = None,
         right: (Expression | None) = None,
         body: (Statement | None) = None,
-        <>type: TypingLiteral['ForInStatement'] = field(
-            <>default='ForInStatement', <>init=False
-        );
+        <>type: TypingLiteral['ForInStatement'] = 'ForInStatement';
 }
 
 """For-of statement (ES6)."""
-@dataclass
-class ForOfStatement(Node) {
+obj ForOfStatement(Node) {
     has left: VariableDeclaration | Pattern | None = None,
         right: (Expression | None) = None,
         body: (Statement | None) = None,
         await_: bool = False,
-        <>type: TypingLiteral['ForOfStatement'] = field(
-            <>default='ForOfStatement', <>init=False
-        );
+        <>type: TypingLiteral['ForOfStatement'] = 'ForOfStatement';
 }
 
 """Function declaration."""
-@dataclass
-class FunctionDeclaration(Node) {
+obj FunctionDeclaration(Node) {
     has id: (Identifier | None) = None,
-        params: list[Pattern] = field(default_factory=<>list),
+        params: list[Pattern] = [],
         body: (BlockStatement | None) = None,
         generator: bool = False,
         async_: bool = False,
-        <>type: TypingLiteral['FunctionDeclaration'] = field(
-            <>default='FunctionDeclaration', <>init=False
-        );
+        <>type: TypingLiteral['FunctionDeclaration'] = 'FunctionDeclaration';
 }
 
 """Variable declaration."""
-@dataclass
-class VariableDeclaration(Node) {
-    has declarations: list[VariableDeclarator] = field(default_factory=<>list),
+obj VariableDeclaration(Node) {
+    has declarations: list[VariableDeclarator] = [],
         kind: VariableDeclarationKind = 'var',
-        <>type: TypingLiteral['VariableDeclaration'] = field(
-            <>default='VariableDeclaration', <>init=False
-        );
+        <>type: TypingLiteral['VariableDeclaration'] = 'VariableDeclaration';
 }
 
 """Variable declarator."""
-@dataclass
-class VariableDeclarator(Node) {
+obj VariableDeclarator(Node) {
     has id: (Pattern | None) = None,
         <>init: (Expression | None) = None,
-        <>type: TypingLiteral['VariableDeclarator'] = field(
-            <>default='VariableDeclarator', <>init=False
-        );
+        <>type: TypingLiteral['VariableDeclarator'] = 'VariableDeclarator';
 }
 
 """This expression."""
-@dataclass
-class ThisExpression(Node) {
-    has <>type: TypingLiteral['ThisExpression'] = field(
-        <>default='ThisExpression', <>init=False
-    );
+obj ThisExpression(Node) {
+    has <>type: TypingLiteral['ThisExpression'] = 'ThisExpression';
 }
 
 """Array expression."""
-@dataclass
-class ArrayExpression(Node) {
-    has elements: list[Expression | SpreadElement | None] = field(
-        default_factory=<>list
-    ),
-        <>type: TypingLiteral['ArrayExpression'] = field(
-            <>default='ArrayExpression', <>init=False
-        );
+obj ArrayExpression(Node) {
+    has elements: list[Expression | SpreadElement | None] = [],
+        <>type: TypingLiteral['ArrayExpression'] = 'ArrayExpression';
 }
 
 """Object expression."""
-@dataclass
-class ObjectExpression(Node) {
-    has properties: list[(Property | SpreadElement)] = field(default_factory=<>list),
-        <>type: TypingLiteral['ObjectExpression'] = field(
-            <>default='ObjectExpression', <>init=False
-        );
+obj ObjectExpression(Node) {
+    has properties: list[(Property | SpreadElement)] = [],
+        <>type: TypingLiteral['ObjectExpression'] = 'ObjectExpression';
 }
 
 """Object property."""
-@dataclass
-class Property(Node) {
+obj Property(Node) {
     has key: (Expression | Identifier | Literal | None) = None,
         value: (Expression | None) = None,
         kind: PropertyKind = 'init',
         method: bool = False,
         shorthand: bool = False,
         computed: bool = False,
-        <>type: TypingLiteral['Property'] = field(<>default='Property', <>init=False);
+        <>type: TypingLiteral['Property'] = 'Property';
 }
 
 """Function expression."""
-@dataclass
-class FunctionExpression(Node) {
+obj FunctionExpression(Node) {
     has id: (Identifier | None) = None,
-        params: list[Pattern] = field(default_factory=<>list),
+        params: list[Pattern] = [],
         body: (BlockStatement | None) = None,
         generator: bool = False,
         async_: bool = False,
-        <>type: TypingLiteral['FunctionExpression'] = field(
-            <>default='FunctionExpression', <>init=False
-        );
+        <>type: TypingLiteral['FunctionExpression'] = 'FunctionExpression';
 }
 
 """Arrow function expression (ES6)."""
-@dataclass
-class ArrowFunctionExpression(Node) {
-    has params: list[Pattern] = field(default_factory=<>list),
+obj ArrowFunctionExpression(Node) {
+    has params: list[Pattern] = [],
         body: BlockStatement | Expression | None = None,
         expression: bool = False,
         async_: bool = False,
-        <>type: TypingLiteral['ArrowFunctionExpression'] = field(
-            <>default='ArrowFunctionExpression', <>init=False
-        );
+        <>type: TypingLiteral['ArrowFunctionExpression'] = 'ArrowFunctionExpression';
 }
 
 """Unary expression."""
-@dataclass
-class UnaryExpression(Node) {
+obj UnaryExpression(Node) {
     has operator: str = '',
         prefix: bool = True,
         argument: (Expression | None) = None,
-        <>type: TypingLiteral['UnaryExpression'] = field(
-            <>default='UnaryExpression', <>init=False
-        );
+        <>type: TypingLiteral['UnaryExpression'] = 'UnaryExpression';
 }
 
 """Update expression."""
-@dataclass
-class UpdateExpression(Node) {
+obj UpdateExpression(Node) {
     has operator: str = '++',
         argument: (Expression | None) = None,
         prefix: bool = True,
-        <>type: TypingLiteral['UpdateExpression'] = field(
-            <>default='UpdateExpression', <>init=False
-        );
+        <>type: TypingLiteral['UpdateExpression'] = 'UpdateExpression';
 }
 
 """Binary expression."""
-@dataclass
-class BinaryExpression(Node) {
+obj BinaryExpression(Node) {
     has operator: str = '',
         left: (Expression | None) = None,
         right: (Expression | None) = None,
-        <>type: TypingLiteral['BinaryExpression'] = field(
-            <>default='BinaryExpression', <>init=False
-        );
+        <>type: TypingLiteral['BinaryExpression'] = 'BinaryExpression';
 }
 
 """Assignment expression."""
-@dataclass
-class AssignmentExpression(Node) {
+obj AssignmentExpression(Node) {
     has operator: str = '=',
         left: Pattern | Expression | None = None,
         right: (Expression | None) = None,
-        <>type: TypingLiteral['AssignmentExpression'] = field(
-            <>default='AssignmentExpression', <>init=False
-        );
+        <>type: TypingLiteral['AssignmentExpression'] = 'AssignmentExpression';
 }
 
 """Logical expression."""
-@dataclass
-class LogicalExpression(Node) {
+obj LogicalExpression(Node) {
     has operator: str = '&&',
         left: (Expression | None) = None,
         right: (Expression | None) = None,
-        <>type: TypingLiteral['LogicalExpression'] = field(
-            <>default='LogicalExpression', <>init=False
-        );
+        <>type: TypingLiteral['LogicalExpression'] = 'LogicalExpression';
 }
 
 """Member expression."""
-@dataclass
-class MemberExpression(Node) {
+obj MemberExpression(Node) {
     has object: Expression | Super | None = None,
         property: (Expression | None) = None,
         computed: bool = False,
         optional: bool = False,
-        <>type: TypingLiteral['MemberExpression'] = field(
-            <>default='MemberExpression', <>init=False
-        );
+        <>type: TypingLiteral['MemberExpression'] = 'MemberExpression';
 }
 
 """Conditional (ternary) expression."""
-@dataclass
-class ConditionalExpression(Node) {
+obj ConditionalExpression(Node) {
     has <>test: (Expression | None) = None,
         consequent: (Expression | None) = None,
         alternate: (Expression | None) = None,
-        <>type: TypingLiteral['ConditionalExpression'] = field(
-            <>default='ConditionalExpression', <>init=False
-        );
+        <>type: TypingLiteral['ConditionalExpression'] = 'ConditionalExpression';
 }
 
 """Call expression."""
-@dataclass
-class CallExpression(Node) {
+obj CallExpression(Node) {
     has callee: Expression | Super | None = None,
-        arguments: list[(Expression | SpreadElement)] = field(default_factory=<>list),
+        arguments: list[(Expression | SpreadElement)] = [],
         optional: bool = False,
-        <>type: TypingLiteral['CallExpression'] = field(
-            <>default='CallExpression', <>init=False
-        );
+        <>type: TypingLiteral['CallExpression'] = 'CallExpression';
 }
 
 """Optional chaining expression (ES2020)."""
-@dataclass
-class ChainExpression(Node) {
+obj ChainExpression(Node) {
     has expression: CallExpression | MemberExpression | None = None,
-        <>type: TypingLiteral['ChainExpression'] = field(
-            <>default='ChainExpression', <>init=False
-        );
+        <>type: TypingLiteral['ChainExpression'] = 'ChainExpression';
 }
 
 """New expression."""
-@dataclass
-class NewExpression(Node) {
+obj NewExpression(Node) {
     has callee: (Expression | None) = None,
-        arguments: list[(Expression | SpreadElement)] = field(default_factory=<>list),
-        <>type: TypingLiteral['NewExpression'] = field(
-            <>default='NewExpression', <>init=False
-        );
+        arguments: list[(Expression | SpreadElement)] = [],
+        <>type: TypingLiteral['NewExpression'] = 'NewExpression';
 }
 
 """Sequence expression."""
-@dataclass
-class SequenceExpression(Node) {
-    has expressions: list[Expression] = field(default_factory=<>list),
-        <>type: TypingLiteral['SequenceExpression'] = field(
-            <>default='SequenceExpression', <>init=False
-        );
+obj SequenceExpression(Node) {
+    has expressions: list[Expression] = [],
+        <>type: TypingLiteral['SequenceExpression'] = 'SequenceExpression';
 }
 
 """Yield expression."""
-@dataclass
-class YieldExpression(Node) {
+obj YieldExpression(Node) {
     has argument: (Expression | None) = None,
         delegate: bool = False,
-        <>type: TypingLiteral['YieldExpression'] = field(
-            <>default='YieldExpression', <>init=False
-        );
+        <>type: TypingLiteral['YieldExpression'] = 'YieldExpression';
 }
 
 """Await expression (ES2017)."""
-@dataclass
-class AwaitExpression(Node) {
+obj AwaitExpression(Node) {
     has argument: (Expression | None) = None,
-        <>type: TypingLiteral['AwaitExpression'] = field(
-            <>default='AwaitExpression', <>init=False
-        );
+        <>type: TypingLiteral['AwaitExpression'] = 'AwaitExpression';
 }
 
 """Template literal (ES6)."""
-@dataclass
-class TemplateLiteral(Node) {
-    has quasis: list[TemplateElement] = field(default_factory=<>list),
-        expressions: list[Expression] = field(default_factory=<>list),
-        <>type: TypingLiteral['TemplateLiteral'] = field(
-            <>default='TemplateLiteral', <>init=False
-        );
+obj TemplateLiteral(Node) {
+    has quasis: list[TemplateElement] = [],
+        expressions: list[Expression] = [],
+        <>type: TypingLiteral['TemplateLiteral'] = 'TemplateLiteral';
 }
 
 """Template element."""
-@dataclass
-class TemplateElement(Node) {
+obj TemplateElement(Node) {
     has tail: bool = False,
-        value: dict[(str, str)] = field(default_factory=<>dict),
-        <>type: TypingLiteral['TemplateElement'] = field(
-            <>default='TemplateElement', <>init=False
-        );
+        value: dict[(str, str)] = {},
+        <>type: TypingLiteral['TemplateElement'] = 'TemplateElement';
 }
 
 """Tagged template expression (ES6)."""
-@dataclass
-class TaggedTemplateExpression(Node) {
+obj TaggedTemplateExpression(Node) {
     has tag: (Expression | None) = None,
         quasi: (TemplateLiteral | None) = None,
-        <>type: TypingLiteral['TaggedTemplateExpression'] = field(
-            <>default='TaggedTemplateExpression', <>init=False
-        );
+        <>type: TypingLiteral['TaggedTemplateExpression'] = 'TaggedTemplateExpression';
 }
 
 """Spread element (ES6)."""
-@dataclass
-class SpreadElement(Node) {
+obj SpreadElement(Node) {
     has argument: (Expression | None) = None,
-        <>type: TypingLiteral['SpreadElement'] = field(
-            <>default='SpreadElement', <>init=False
-        );
+        <>type: TypingLiteral['SpreadElement'] = 'SpreadElement';
 }
 
 """Super keyword."""
-@dataclass
-class Super(Node) {
-    has <>type: TypingLiteral['Super'] = field(<>default='Super', <>init=False);
+obj Super(Node) {
+    has <>type: TypingLiteral['Super'] = 'Super';
 }
 
 """Meta property (e.g., new.target)."""
-@dataclass
-class MetaProperty(Node) {
+obj MetaProperty(Node) {
     has meta: (Identifier | None) = None,
         property: (Identifier | None) = None,
-        <>type: TypingLiteral['MetaProperty'] = field(
-            <>default='MetaProperty', <>init=False
-        );
+        <>type: TypingLiteral['MetaProperty'] = 'MetaProperty';
 }
 
 """Assignment pattern (default parameters)."""
-@dataclass
-class AssignmentPattern(Node) {
+obj AssignmentPattern(Node) {
     has left: (Pattern | None) = None,
         right: (Expression | None) = None,
-        <>type: TypingLiteral['AssignmentPattern'] = field(
-            <>default='AssignmentPattern', <>init=False
-        );
+        <>type: TypingLiteral['AssignmentPattern'] = 'AssignmentPattern';
 }
 
 """Array destructuring pattern."""
-@dataclass
-class ArrayPattern(Node) {
-    has elements: list[(Pattern | None)] = field(default_factory=<>list),
-        <>type: TypingLiteral['ArrayPattern'] = field(
-            <>default='ArrayPattern', <>init=False
-        );
+obj ArrayPattern(Node) {
+    has elements: list[(Pattern | None)] = [],
+        <>type: TypingLiteral['ArrayPattern'] = 'ArrayPattern';
 }
 
 """Object destructuring pattern."""
-@dataclass
-class ObjectPattern(Node) {
-    has properties: list[(AssignmentProperty | RestElement)] = field(
-        default_factory=<>list
-    ),
-        <>type: TypingLiteral['ObjectPattern'] = field(
-            <>default='ObjectPattern', <>init=False
-        );
+obj ObjectPattern(Node) {
+    has properties: list[(AssignmentProperty | RestElement)] = [],
+        <>type: TypingLiteral['ObjectPattern'] = 'ObjectPattern';
 }
 
 """Assignment property in object pattern."""
-@dataclass
-class AssignmentProperty(Node) {
+obj AssignmentProperty(Node) {
     has key: (Expression | Identifier | Literal | None) = None,
         value: (Pattern | None) = None,
         kind: PropertyKind = 'init',
         method: bool = False,
         shorthand: bool = False,
         computed: bool = False,
-        <>type: TypingLiteral['Property'] = field(<>default='Property', <>init=False);
+        <>type: TypingLiteral['Property'] = 'Property';
 }
 
 """Rest element."""
-@dataclass
-class RestElement(Node) {
+obj RestElement(Node) {
     has argument: (Pattern | None) = None,
-        <>type: TypingLiteral['RestElement'] = field(
-            <>default='RestElement', <>init=False
-        );
+        <>type: TypingLiteral['RestElement'] = 'RestElement';
 }
 
 """Class declaration."""
-@dataclass
-class ClassDeclaration(Node) {
+obj ClassDeclaration(Node) {
     has id: (Identifier | None) = None,
         superClass: (Expression | None) = None,
         body: (ClassBody | None) = None,
-        <>type: TypingLiteral['ClassDeclaration'] = field(
-            <>default='ClassDeclaration', <>init=False
-        );
+        <>type: TypingLiteral['ClassDeclaration'] = 'ClassDeclaration';
 }
 
 """Class expression."""
-@dataclass
-class ClassExpression(Node) {
+obj ClassExpression(Node) {
     has id: (Identifier | None) = None,
         superClass: (Expression | None) = None,
         body: (ClassBody | None) = None,
-        <>type: TypingLiteral['ClassExpression'] = field(
-            <>default='ClassExpression', <>init=False
-        );
+        <>type: TypingLiteral['ClassExpression'] = 'ClassExpression';
 }
 
 """Class body (ES2022: supports methods, properties, and static blocks)."""
-@dataclass
-class ClassBody(Node) {
-    has body: list[MethodDefinition | PropertyDefinition | StaticBlock] = field(
-        default_factory=<>list
-    ),
-        <>type: TypingLiteral['ClassBody'] = field(<>default='ClassBody', <>init=False);
+obj ClassBody(Node) {
+    has body: list[MethodDefinition | PropertyDefinition | StaticBlock] = [],
+        <>type: TypingLiteral['ClassBody'] = 'ClassBody';
 }
 
 """Method definition (ES2022: supports private identifiers)."""
-@dataclass
-class MethodDefinition(Node) {
+obj MethodDefinition(Node) {
     has key: (Expression | Identifier | PrivateIdentifier | None) = None,
         value: (FunctionExpression | None) = None,
         kind: MethodDefinitionKind = 'method',
         computed: bool = False,
         <>static: bool = False,
-        <>type: TypingLiteral['MethodDefinition'] = field(
-            <>default='MethodDefinition', <>init=False
-        );
+        <>type: TypingLiteral['MethodDefinition'] = 'MethodDefinition';
 }
 
 """Class field definition (ES2022)."""
-@dataclass
-class PropertyDefinition(Node) {
+obj PropertyDefinition(Node) {
     has key: (Expression | Identifier | PrivateIdentifier | None) = None,
         value: (Expression | None) = None,
         computed: bool = False,
         <>static: bool = False,
-        <>type: TypingLiteral['PropertyDefinition'] = field(
-            <>default='PropertyDefinition', <>init=False
-        );
+        <>type: TypingLiteral['PropertyDefinition'] = 'PropertyDefinition';
 }
 
 """Static initialization block (ES2022)."""
-@dataclass
-class StaticBlock(Node) {
-    has body: list[Statement] = field(default_factory=<>list),
-        <>type: TypingLiteral['StaticBlock'] = field(
-            <>default='StaticBlock', <>init=False
-        );
+obj StaticBlock(Node) {
+    has body: list[Statement] = [],
+        <>type: TypingLiteral['StaticBlock'] = 'StaticBlock';
 }
 
 """Import declaration."""
-@dataclass
-class ImportDeclaration(Node) {
+obj ImportDeclaration(Node) {
     has specifiers:
-        list[ImportSpecifier | ImportDefaultSpecifier | ImportNamespaceSpecifier] = field(
-        default_factory=<>list
-    ),
+        list[ImportSpecifier | ImportDefaultSpecifier | ImportNamespaceSpecifier] = [],
         source: (Literal | None) = None,
-        <>type: TypingLiteral['ImportDeclaration'] = field(
-            <>default='ImportDeclaration', <>init=False
-        );
+        <>type: TypingLiteral['ImportDeclaration'] = 'ImportDeclaration';
 }
 
 """Dynamic import expression (ES2020)."""
-@dataclass
-class ImportExpression(Node) {
+obj ImportExpression(Node) {
     has source: (Expression | None) = None,
-        <>type: TypingLiteral['ImportExpression'] = field(
-            <>default='ImportExpression', <>init=False
-        );
+        <>type: TypingLiteral['ImportExpression'] = 'ImportExpression';
 }
 
 """Import specifier."""
-@dataclass
-class ImportSpecifier(Node) {
+obj ImportSpecifier(Node) {
     has imported: (Identifier | None) = None,
         local: (Identifier | None) = None,
-        <>type: TypingLiteral['ImportSpecifier'] = field(
-            <>default='ImportSpecifier', <>init=False
-        );
+        <>type: TypingLiteral['ImportSpecifier'] = 'ImportSpecifier';
 }
 
 """Import default specifier."""
-@dataclass
-class ImportDefaultSpecifier(Node) {
+obj ImportDefaultSpecifier(Node) {
     has local: (Identifier | None) = None,
-        <>type: TypingLiteral['ImportDefaultSpecifier'] = field(
-            <>default='ImportDefaultSpecifier', <>init=False
-        );
+        <>type: TypingLiteral['ImportDefaultSpecifier'] = 'ImportDefaultSpecifier';
 }
 
 """Import namespace specifier."""
-@dataclass
-class ImportNamespaceSpecifier(Node) {
+obj ImportNamespaceSpecifier(Node) {
     has local: (Identifier | None) = None,
-        <>type: TypingLiteral['ImportNamespaceSpecifier'] = field(
-            <>default='ImportNamespaceSpecifier', <>init=False
-        );
+        <>type: TypingLiteral['ImportNamespaceSpecifier'] = 'ImportNamespaceSpecifier';
 }
 
 """Export named declaration."""
-@dataclass
-class ExportNamedDeclaration(Node) {
+obj ExportNamedDeclaration(Node) {
     has declaration: Declaration | Expression | None = None,
-        specifiers: list[ExportSpecifier] = field(default_factory=<>list),
+        specifiers: list[ExportSpecifier] = [],
         source: (Literal | None) = None,
-        <>type: TypingLiteral['ExportNamedDeclaration'] = field(
-            <>default='ExportNamedDeclaration', <>init=False
-        );
+        <>type: TypingLiteral['ExportNamedDeclaration'] = 'ExportNamedDeclaration';
 }
 
 """Export specifier."""
-@dataclass
-class ExportSpecifier(Node) {
+obj ExportSpecifier(Node) {
     has exported: (Identifier | None) = None,
         local: (Identifier | None) = None,
-        <>type: TypingLiteral['ExportSpecifier'] = field(
-            <>default='ExportSpecifier', <>init=False
-        );
+        <>type: TypingLiteral['ExportSpecifier'] = 'ExportSpecifier';
 }
 
 """Export default declaration."""
-@dataclass
-class ExportDefaultDeclaration(Node) {
+obj ExportDefaultDeclaration(Node) {
     has declaration: Declaration | Expression | None = None,
-        <>type: TypingLiteral['ExportDefaultDeclaration'] = field(
-            <>default='ExportDefaultDeclaration', <>init=False
-        );
+        <>type: TypingLiteral['ExportDefaultDeclaration'] = 'ExportDefaultDeclaration';
 }
 
 """Export all declaration."""
-@dataclass
-class ExportAllDeclaration(Node) {
+obj ExportAllDeclaration(Node) {
     has source: (Literal | None) = None,
         exported: (Identifier | None) = None,
-        <>type: TypingLiteral['ExportAllDeclaration'] = field(
-            <>default='ExportAllDeclaration', <>init=False
-        );
+        <>type: TypingLiteral['ExportAllDeclaration'] = 'ExportAllDeclaration';
 }
 
 """Represents slice operation info (e.g., arr[start:stop])."""
-@dataclass
-class SliceInfo {
+obj SliceInfo {
     has start: (Node | None) = None,
         stop: (Node | None) = None;
 }
 
 """Represents index operation info (e.g., arr[index])."""
-@dataclass
-class IndexInfo {
+obj IndexInfo {
     has value: (Node | None) = None;
 }
 

@@ -8,8 +8,9 @@ import from typing { Any, TypeVar, cast }
 import from uuid { UUID }
 import redis;
 import from pymongo { MongoClient, UpdateOne }
+import from pymongo.errors { ConnectionFailure }
 import from jaclang.pycore.archetype { TANCH, Anchor }
-import from jaclang.pycore.memory { Memory }
+import from jaclang.runtimelib.memory { Memory }
 import from jac_scale.config_loader { get_scale_config }
 
 # Load database configuration from jac.toml with env var overrides
@@ -22,7 +23,7 @@ obj MultiHierarchyMemory(Memory[(UUID, Anchor)]) {
     def commit(anchor: (Anchor | None) = None);
     def close;
     def sync(anchors: Iterable[Anchor]) -> None;
-    def delete(anchor: Anchor);
+    def remove(anchor: Anchor);
     def <>set(anchor: TANCH);
 }
 
@@ -33,7 +34,11 @@ obj MongoDB {
         collection_name: str = 'anchors',
         mongo_url: str = _db_config['mongodb_uri'];
 
+    """Initialize Mongodb."""
     def postinit -> None;
+
+    def close -> None;
+    def mongo_is_available -> bool;
     def _to_uuid(id: (UUID | str)) -> UUID;
     def _load_anchor(raw: dict[(str, Any)]) -> (TANCH | None);
     def <>set(anchor: Anchor) -> None;
@@ -57,6 +62,7 @@ obj RedisDB {
     def remove(anchor: Anchor) -> None;
     def find_by_id(id: UUID) -> (Anchor | None);
     def commit(anchor: (Anchor | None) = None, keys: Iterable[Anchor] = []) -> None;
+    def redis_key_exists(id: UUID) -> bool;
 }
 
 """

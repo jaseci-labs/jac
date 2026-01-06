@@ -1,8 +1,13 @@
-"""Extract literal value from an expression."""
+"""Initialize EsastGenPass."""
 
-impl EsastGenPass._literal_value(
-    self: EsastGenPass, expr: (uni.UniNode | None)
-) -> (object | None) {
+impl EsastGenPass.init(
+    ir_in: uni.Module, prog: Any, cancel_token: (Any | None) = None
+) -> None {
+    super.init(ir_in, prog, cancel_token);
+}
+
+"""Extract literal value from an expression."""
+impl EsastGenPass._literal_value(expr: (uni.UniNode | None)) -> (object | None) {
     if (expr is None) {
         return None;
     }
@@ -51,17 +56,17 @@ impl EsastGenPass._literal_value(
 }
 
 """Process semicolon."""
-impl EsastGenPass.exit_semi(self: EsastGenPass, <>node: uni.Semi) -> None {
+impl EsastGenPass.exit_semi(<>node: uni.Semi) -> None {
     ;
 }
 
 """Process token."""
-impl EsastGenPass.exit_token(self: EsastGenPass, <>node: uni.Token) -> None {
+impl EsastGenPass.exit_token(<>node: uni.Token) -> None {
     ;
 }
 
 """Process test as a function."""
-impl EsastGenPass.exit_test(self: EsastGenPass, <>node: uni.Test) -> None {
+impl EsastGenPass.exit_test(<>node: uni.Test) -> None {
     params: list[es.Pattern] = [];
     body_stmts: list[es.Statement] = [];
     if <>node.body {
@@ -87,9 +92,7 @@ impl EsastGenPass.exit_test(self: EsastGenPass, <>node: uni.Test) -> None {
 }
 
 """Process client block (cl { ... })."""
-impl EsastGenPass.exit_client_block(
-    self: EsastGenPass, <>node: uni.ClientBlock
-) -> None {
+impl EsastGenPass.exit_client_block(<>node: uni.ClientBlock) -> None {
     body_stmts: list[es.Statement] = [];
     if <>node.body {
         for stmt in <>node.body {
@@ -106,7 +109,7 @@ impl EsastGenPass.exit_client_block(
 }
 
 """Process module code (with entry block)."""
-impl EsastGenPass.exit_module_code(self: EsastGenPass, <>node: uni.ModuleCode) -> None {
+impl EsastGenPass.exit_module_code(<>node: uni.ModuleCode) -> None {
     body_stmts: list[es.Statement] = [];
     if <>node.body {
         for stmt in <>node.body {
@@ -123,14 +126,12 @@ impl EsastGenPass.exit_module_code(self: EsastGenPass, <>node: uni.ModuleCode) -
 }
 
 """Process non-local statement."""
-impl EsastGenPass.exit_non_local_stmt(
-    self: EsastGenPass, <>node: uni.NonLocalStmt
-) -> None {
+impl EsastGenPass.exit_non_local_stmt(<>node: uni.NonLocalStmt) -> None {
     <>node.gen.es_ast = [];
 }
 
 """Process global variables."""
-impl EsastGenPass.exit_global_vars(self: EsastGenPass, <>node: uni.GlobalVars) -> None {
+impl EsastGenPass.exit_global_vars(<>node: uni.GlobalVars) -> None {
     if getattr(<>node, 'is_client_decl', False) {
         self.client_manifest.has_client = True;
         for assignment in <>node.assignments {
@@ -175,7 +176,7 @@ impl EsastGenPass.exit_global_vars(self: EsastGenPass, <>node: uni.GlobalVars) -
 }
 
 """Process name/identifier."""
-impl EsastGenPass.exit_name(self: EsastGenPass, <>node: uni.Name) -> None {
+impl EsastGenPass.exit_name(<>node: uni.Name) -> None {
     name_map = {'None': 'null', 'True': 'true', 'False': 'false', 'self': 'this'};
     name = name_map.get(<>node.sym_name, <>node.sym_name);
     identifier = self.sync_loc(es.Identifier(name=name), jac_node=<>node);
@@ -183,13 +184,13 @@ impl EsastGenPass.exit_name(self: EsastGenPass, <>node: uni.Name) -> None {
 }
 
 """Process null/None literal."""
-impl EsastGenPass.exit_null(self: EsastGenPass, <>node: uni.Null) -> None {
+impl EsastGenPass.exit_null(<>node: uni.Null) -> None {
     null_lit = self.sync_loc(es.Literal(value=None, raw='null'), jac_node=<>node);
     <>node.gen.es_ast = null_lit;
 }
 
 """Process await expression."""
-impl EsastGenPass.exit_await_expr(self: EsastGenPass, <>node: uni.AwaitExpr) -> None {
+impl EsastGenPass.exit_await_expr(<>node: uni.AwaitExpr) -> None {
     argument = cast(
         es.Expression,
         <>node.target.gen.es_ast
@@ -200,7 +201,7 @@ impl EsastGenPass.exit_await_expr(self: EsastGenPass, <>node: uni.AwaitExpr) -> 
 }
 
 """Process ternary expression."""
-impl EsastGenPass.exit_if_else_expr(self: EsastGenPass, <>node: uni.IfElseExpr) -> None {
+impl EsastGenPass.exit_if_else_expr(<>node: uni.IfElseExpr) -> None {
     <>test = cast(
         es.Expression,
         <>node.condition.gen.es_ast
@@ -226,7 +227,7 @@ impl EsastGenPass.exit_if_else_expr(self: EsastGenPass, <>node: uni.IfElseExpr) 
 }
 
 """Process f-string literal as template literal."""
-impl EsastGenPass.exit_f_string(self: EsastGenPass, <>node: uni.FString) -> None {
+impl EsastGenPass.exit_f_string(<>node: uni.FString) -> None {
     quasis: list[es.TemplateElement] = [];
     expressions: list[es.Expression] = [];
     for (i, part) in enumerate(<>node.parts) {
@@ -288,16 +289,14 @@ impl EsastGenPass.exit_f_string(self: EsastGenPass, <>node: uni.FString) -> None
 }
 
 """Process formatted value in f-string."""
-impl EsastGenPass.exit_formatted_value(
-    self: EsastGenPass, <>node: uni.FormattedValue
-) -> None {
+impl EsastGenPass.exit_formatted_value(<>node: uni.FormattedValue) -> None {
     expr = <>node.format_part.gen.es_ast
     or self.sync_loc(es.Literal(value=''), jac_node=<>node.format_part);
     <>node.gen.es_ast = expr;
 }
 
 """Process string literal."""
-impl EsastGenPass.exit_string(self: EsastGenPass, <>node: uni.String) -> None {
+impl EsastGenPass.exit_string(<>node: uni.String) -> None {
     value = <>node.value;
     if value.startswith(('"""', "'''")) {
         value = value[3:-3];
@@ -313,9 +312,7 @@ impl EsastGenPass.exit_string(self: EsastGenPass, <>node: uni.String) -> None {
 }
 
 """Process multi-string literal."""
-impl EsastGenPass.exit_multi_string(
-    self: EsastGenPass, <>node: uni.MultiString
-) -> None {
+impl EsastGenPass.exit_multi_string(<>node: uni.MultiString) -> None {
     if not <>node.strings {
         null_lit = self.sync_loc(es.Literal(value='', raw='""'), jac_node=<>node);
         <>node.gen.es_ast = null_lit;
@@ -378,7 +375,7 @@ impl EsastGenPass.exit_multi_string(
 }
 
 """Process float literal."""
-impl EsastGenPass.exit_float(self: EsastGenPass, <>node: uni.Float) -> None {
+impl EsastGenPass.exit_float(<>node: uni.Float) -> None {
     float_lit = self.sync_loc(
         es.Literal(value=float(<>node.value), raw=<>node.value), jac_node=<>node
     );
@@ -386,7 +383,7 @@ impl EsastGenPass.exit_float(self: EsastGenPass, <>node: uni.Float) -> None {
 }
 
 """Process integer literal."""
-impl EsastGenPass.exit_int(self: EsastGenPass, <>node: uni.Int) -> None {
+impl EsastGenPass.exit_int(<>node: uni.Int) -> None {
     int_lit = self.sync_loc(
         es.Literal(value=int(<>node.value, 0), raw=<>node.value), jac_node=<>node
     );
@@ -394,7 +391,7 @@ impl EsastGenPass.exit_int(self: EsastGenPass, <>node: uni.Int) -> None {
 }
 
 """Process boolean literal."""
-impl EsastGenPass.exit_bool(self: EsastGenPass, <>node: uni.Bool) -> None {
+impl EsastGenPass.exit_bool(<>node: uni.Bool) -> None {
     value = <>node.value.lower() == 'true';
     raw_value = 'true' if value else 'false';
     bool_lit = self.sync_loc(es.Literal(value=value, raw=raw_value), jac_node=<>node);
@@ -402,17 +399,17 @@ impl EsastGenPass.exit_bool(self: EsastGenPass, <>node: uni.Bool) -> None {
 }
 
 """Process list comprehension."""
-impl EsastGenPass.exit_inner_compr(self: EsastGenPass, <>node: uni.InnerCompr) -> None {
+impl EsastGenPass.exit_inner_compr(<>node: uni.InnerCompr) -> None {
     <>node.gen.es_ast = self.sync_loc(es.ArrayExpression(elements=[]), jac_node=<>node);
 }
 
 """Process key-value pair."""
-impl EsastGenPass.exit_k_v_pair(self: EsastGenPass, <>node: uni.KVPair) -> None {
+impl EsastGenPass.exit_k_v_pair(<>node: uni.KVPair) -> None {
     ;
 }
 
 """Process dictionary literal."""
-impl EsastGenPass.exit_dict_val(self: EsastGenPass, <>node: uni.DictVal) -> None {
+impl EsastGenPass.exit_dict_val(<>node: uni.DictVal) -> None {
     properties: list[(es.Property | es.SpreadElement)] = [];
     for kv_pair in <>node.kv_pairs {
         if (not isinstance(kv_pair, uni.KVPair) or (kv_pair.value is None)) {
@@ -453,7 +450,7 @@ impl EsastGenPass.exit_dict_val(self: EsastGenPass, <>node: uni.DictVal) -> None
 }
 
 """Process tuple as array."""
-impl EsastGenPass.exit_tuple_val(self: EsastGenPass, <>node: uni.TupleVal) -> None {
+impl EsastGenPass.exit_tuple_val(<>node: uni.TupleVal) -> None {
     elements: list[es.Expression | es.SpreadElement | None] = [];
     for item in <>node.values {
         if item.gen.es_ast {
@@ -465,7 +462,7 @@ impl EsastGenPass.exit_tuple_val(self: EsastGenPass, <>node: uni.TupleVal) -> No
 }
 
 """Process set literal as new Set()."""
-impl EsastGenPass.exit_set_val(self: EsastGenPass, <>node: uni.SetVal) -> None {
+impl EsastGenPass.exit_set_val(<>node: uni.SetVal) -> None {
     elements: list[es.Expression | es.SpreadElement | None] = [];
     for item in <>node.values {
         if item.gen.es_ast {
@@ -485,7 +482,7 @@ impl EsastGenPass.exit_set_val(self: EsastGenPass, <>node: uni.SetVal) -> None {
 }
 
 """Process list literal."""
-impl EsastGenPass.exit_list_val(self: EsastGenPass, <>node: uni.ListVal) -> None {
+impl EsastGenPass.exit_list_val(<>node: uni.ListVal) -> None {
     elements: list[es.Expression | es.SpreadElement | None] = [];
     for item in <>node.values {
         if item.gen.es_ast {
@@ -497,7 +494,7 @@ impl EsastGenPass.exit_list_val(self: EsastGenPass, <>node: uni.ListVal) -> None
 }
 
 """Process parenthesized atom."""
-impl EsastGenPass.exit_atom_unit(self: EsastGenPass, <>node: uni.AtomUnit) -> None {
+impl EsastGenPass.exit_atom_unit(<>node: uni.AtomUnit) -> None {
     if (isinstance(<>node.value, uni.Ability) and <>node.value.gen.es_ast) {
         func_decl = <>node.value.gen.es_ast;
         if isinstance(func_decl, es.FunctionDeclaration) {
@@ -522,7 +519,7 @@ impl EsastGenPass.exit_atom_unit(self: EsastGenPass, <>node: uni.AtomUnit) -> No
 }
 
 """Process lambda expression as arrow function."""
-impl EsastGenPass.exit_lambda_expr(self: EsastGenPass, <>node: uni.LambdaExpr) -> None {
+impl EsastGenPass.exit_lambda_expr(<>node: uni.LambdaExpr) -> None {
     params: list[es.Pattern] = [];
     if isinstance(<>node.signature, uni.FuncSignature) {
         for param in <>node.signature.params {
@@ -564,9 +561,7 @@ impl EsastGenPass.exit_lambda_expr(self: EsastGenPass, <>node: uni.LambdaExpr) -
 }
 
 """Process attribute access."""
-impl EsastGenPass.exit_atom_trailer(
-    self: EsastGenPass, <>node: uni.AtomTrailer
-) -> None {
+impl EsastGenPass.exit_atom_trailer(<>node: uni.AtomTrailer) -> None {
     <>obj = cast(
         es.Expression,
         <>node.target.gen.es_ast
@@ -637,14 +632,12 @@ impl EsastGenPass.exit_atom_trailer(
 }
 
 """Process special variable reference."""
-impl EsastGenPass.exit_special_var_ref(
-    self: EsastGenPass, <>node: uni.SpecialVarRef
-) -> None {
+impl EsastGenPass.exit_special_var_ref(<>node: uni.SpecialVarRef) -> None {
     self.exit_name(<>node);
 }
 
 """Process index/slice - just store the slice info, actual member access is handled by AtomTrailer."""
-impl EsastGenPass.exit_index_slice(self: EsastGenPass, <>node: uni.IndexSlice) -> None {
+impl EsastGenPass.exit_index_slice(<>node: uni.IndexSlice) -> None {
     if (<>node.slices and (len(<>node.slices) > 0)) {
         first_slice = <>node.slices[0];
         if <>node.is_range {
@@ -679,7 +672,7 @@ impl EsastGenPass.exit_index_slice(self: EsastGenPass, <>node: uni.IndexSlice) -
 }
 
 """Process function call."""
-impl EsastGenPass.exit_func_call(self: EsastGenPass, <>node: uni.FuncCall) -> None {
+impl EsastGenPass.exit_func_call(<>node: uni.FuncCall) -> None {
     import from jaclang.compiler.type_system { types as jtypes }
     target_is_type = False;
     if isinstance(<>node.target, (uni.Name, uni.BuiltinType)) {
@@ -848,7 +841,7 @@ impl EsastGenPass.exit_func_call(self: EsastGenPass, <>node: uni.FuncCall) -> No
 }
 
 """Process assignment expression."""
-impl EsastGenPass.exit_assignment(self: EsastGenPass, <>node: uni.Assignment) -> None {
+impl EsastGenPass.exit_assignment(<>node: uni.Assignment) -> None {
     if not <>node.target {
         <>node.gen.es_ast = None;
         return;
@@ -988,9 +981,7 @@ impl EsastGenPass.exit_assignment(self: EsastGenPass, <>node: uni.Assignment) ->
 }
 
 """Determine whether a name node corresponds to the first definition in its scope."""
-impl EsastGenPass._is_name_first_definition(
-    self: EsastGenPass, name_node: uni.Name
-) -> bool {
+impl EsastGenPass._is_name_first_definition(name_node: uni.Name) -> bool {
     sym = getattr(name_node, 'sym', None);
     if (sym and (name_node.name_spec in sym.defn)) {
         return (sym.defn.index(name_node.name_spec) == 0);
@@ -1000,7 +991,7 @@ impl EsastGenPass._is_name_first_definition(
 
 """Collect identifier names from a (possibly nested) destructuring target."""
 impl EsastGenPass._collect_pattern_names(
-    self: EsastGenPass, target: uni.UniNode
+    target: uni.UniNode
 ) -> list[tuple[(str, uni.Name)]] {
     names: list[tuple[(str, uni.Name)]] = [];
     if isinstance(target, uni.Name) {
@@ -1023,7 +1014,7 @@ impl EsastGenPass._collect_pattern_names(
 
 """Convert a Jac assignment target into an ESTree pattern/expression."""
 impl EsastGenPass._convert_assignment_target(
-    self: EsastGenPass, target: uni.UniNode
+    target: uni.UniNode
 ) -> tuple[(es.Pattern | es.Expression), (es.Expression | None), (str | None)] {
     if isinstance(target, uni.Name) {
         identifier = self.sync_loc(
@@ -1083,7 +1074,7 @@ impl EsastGenPass._convert_assignment_target(
 }
 
 """Process unary expression."""
-impl EsastGenPass.exit_unary_expr(self: EsastGenPass, <>node: uni.UnaryExpr) -> None {
+impl EsastGenPass.exit_unary_expr(<>node: uni.UnaryExpr) -> None {
     operand = cast(
         es.Expression,
         self._get_ast_or_default(
@@ -1101,9 +1092,7 @@ impl EsastGenPass.exit_unary_expr(self: EsastGenPass, <>node: uni.UnaryExpr) -> 
 }
 
 """Process compare expression."""
-impl EsastGenPass.exit_compare_expr(
-    self: EsastGenPass, <>node: uni.CompareExpr
-) -> None {
+impl EsastGenPass.exit_compare_expr(<>node: uni.CompareExpr) -> None {
     if (not <>node.rights or not <>node.ops) {
         <>node.gen.es_ast = self.sync_loc(es.Literal(value=True), jac_node=<>node);
         return;
@@ -1167,7 +1156,7 @@ impl EsastGenPass.exit_compare_expr(
 }
 
 """Process boolean expression (and/or)."""
-impl EsastGenPass.exit_bool_expr(self: EsastGenPass, <>node: uni.BoolExpr) -> None {
+impl EsastGenPass.exit_bool_expr(<>node: uni.BoolExpr) -> None {
     if (not <>node.values or (len(<>node.values) < 2)) {
         <>node.gen.es_ast = self.sync_loc(es.Literal(value=None), jac_node=<>node);
         return;
@@ -1197,7 +1186,7 @@ impl EsastGenPass.exit_bool_expr(self: EsastGenPass, <>node: uni.BoolExpr) -> No
 }
 
 """Process binary expression."""
-impl EsastGenPass.exit_binary_expr(self: EsastGenPass, <>node: uni.BinaryExpr) -> None {
+impl EsastGenPass.exit_binary_expr(<>node: uni.BinaryExpr) -> None {
     left = cast(
         es.Expression,
         self._get_ast_or_default(
@@ -1255,7 +1244,7 @@ impl EsastGenPass.exit_binary_expr(self: EsastGenPass, <>node: uni.BinaryExpr) -
 }
 
 """Process switch case."""
-impl EsastGenPass.exit_switch_case(self: EsastGenPass, <>node: uni.SwitchCase) -> None {
+impl EsastGenPass.exit_switch_case(<>node: uni.SwitchCase) -> None {
     case_test: (es.Expression | None) = None;
     if (<>node.pattern and isinstance(<>node.pattern, uni.MatchValue)) {
         case_test = self._get_ast_or_default(
@@ -1270,7 +1259,7 @@ impl EsastGenPass.exit_switch_case(self: EsastGenPass, <>node: uni.SwitchCase) -
 }
 
 """Process switch statement."""
-impl EsastGenPass.exit_switch_stmt(self: EsastGenPass, <>node: uni.SwitchStmt) -> None {
+impl EsastGenPass.exit_switch_stmt(<>node: uni.SwitchStmt) -> None {
     <>test = self._get_ast_or_default(
         <>node.target, default_factory=lambda  _src: Any: es.Literal(value=None)
     );
@@ -1287,7 +1276,7 @@ impl EsastGenPass.exit_switch_stmt(self: EsastGenPass, <>node: uni.SwitchStmt) -
 }
 
 """Process expression statement."""
-impl EsastGenPass.exit_expr_stmt(self: EsastGenPass, <>node: uni.ExprStmt) -> None {
+impl EsastGenPass.exit_expr_stmt(<>node: uni.ExprStmt) -> None {
     expr = cast(
         es.Expression,
         self._get_ast_or_default(
@@ -1299,7 +1288,7 @@ impl EsastGenPass.exit_expr_stmt(self: EsastGenPass, <>node: uni.ExprStmt) -> No
 }
 
 """Process control statement (break/continue)."""
-impl EsastGenPass.exit_ctrl_stmt(self: EsastGenPass, <>node: uni.CtrlStmt) -> None {
+impl EsastGenPass.exit_ctrl_stmt(<>node: uni.CtrlStmt) -> None {
     stmt: (es.BreakStatement | es.ContinueStatement);
     if (<>node.ctrl.name == Tok.KW_BREAK) {
         stmt = self.sync_loc(es.BreakStatement(), jac_node=<>node);
@@ -1310,7 +1299,7 @@ impl EsastGenPass.exit_ctrl_stmt(self: EsastGenPass, <>node: uni.CtrlStmt) -> No
 }
 
 """Process return statement."""
-impl EsastGenPass.exit_return_stmt(self: EsastGenPass, <>node: uni.ReturnStmt) -> None {
+impl EsastGenPass.exit_return_stmt(<>node: uni.ReturnStmt) -> None {
     argument: (es.Expression | None) = None;
     if (<>node.expr and <>node.expr.gen.es_ast) {
         argument = cast(es.Expression, <>node.expr.gen.es_ast);
@@ -1320,7 +1309,7 @@ impl EsastGenPass.exit_return_stmt(self: EsastGenPass, <>node: uni.ReturnStmt) -
 }
 
 """Process assert statement as if-throw."""
-impl EsastGenPass.exit_assert_stmt(self: EsastGenPass, <>node: uni.AssertStmt) -> None {
+impl EsastGenPass.exit_assert_stmt(<>node: uni.AssertStmt) -> None {
     <>test: es.Expression = cast(es.Expression, <>node.condition.gen.es_ast)
     if <>node.condition.gen.es_ast
     else self.sync_loc(es.Literal(value=True), jac_node=<>node.condition);
@@ -1362,7 +1351,7 @@ impl EsastGenPass.exit_assert_stmt(self: EsastGenPass, <>node: uni.AssertStmt) -
 }
 
 """Process raise statement."""
-impl EsastGenPass.exit_raise_stmt(self: EsastGenPass, <>node: uni.RaiseStmt) -> None {
+impl EsastGenPass.exit_raise_stmt(<>node: uni.RaiseStmt) -> None {
     argument: es.Expression = cast(es.Expression, <>node.cause.gen.es_ast)
     if (<>node.cause and <>node.cause.gen.es_ast)
     else self.sync_loc(es.Identifier(name='Error'), jac_node=<>node);
@@ -1387,14 +1376,12 @@ impl EsastGenPass.exit_raise_stmt(self: EsastGenPass, <>node: uni.RaiseStmt) -> 
 }
 
 """Process finally clause."""
-impl EsastGenPass.exit_finally_stmt(
-    self: EsastGenPass, <>node: uni.FinallyStmt
-) -> None {
+impl EsastGenPass.exit_finally_stmt(<>node: uni.FinallyStmt) -> None {
     <>node.gen.es_ast = self._build_block_statement(<>node, <>node.body);
 }
 
 """Process except clause."""
-impl EsastGenPass.exit_except(self: EsastGenPass, <>node: uni.Except) -> None {
+impl EsastGenPass.exit_except(<>node: uni.Except) -> None {
     param: (es.Pattern | None) = None;
     if <>node.name {
         param = self.sync_loc(
@@ -1409,7 +1396,7 @@ impl EsastGenPass.exit_except(self: EsastGenPass, <>node: uni.Except) -> None {
 }
 
 """Process try statement."""
-impl EsastGenPass.exit_try_stmt(self: EsastGenPass, <>node: uni.TryStmt) -> None {
+impl EsastGenPass.exit_try_stmt(<>node: uni.TryStmt) -> None {
     block = self._build_block_statement(<>node, <>node.body);
     handler: (es.CatchClause | None) = None;
     if <>node.excepts {
@@ -1434,7 +1421,7 @@ impl EsastGenPass.exit_try_stmt(self: EsastGenPass, <>node: uni.TryStmt) -> None
 }
 
 """Process for-in statement."""
-impl EsastGenPass.exit_in_for_stmt(self: EsastGenPass, <>node: uni.InForStmt) -> None {
+impl EsastGenPass.exit_in_for_stmt(<>node: uni.InForStmt) -> None {
     target_ast = <>node.target.gen.es_ast;
     left: es.Node = target_ast
     if isinstance(target_ast, es.Node)
@@ -1476,9 +1463,7 @@ impl EsastGenPass.exit_in_for_stmt(self: EsastGenPass, <>node: uni.InForStmt) ->
 }
 
 """Process traditional for statement."""
-impl EsastGenPass.exit_iter_for_stmt(
-    self: EsastGenPass, <>node: uni.IterForStmt
-) -> None {
+impl EsastGenPass.exit_iter_for_stmt(<>node: uni.IterForStmt) -> None {
     <>init: es.VariableDeclaration | es.Expression | None = None;
     if (<>node.iter and <>node.iter.gen.es_ast) {
         <>init = cast('es.VariableDeclaration | es.Expression', <>node.iter.gen.es_ast);
@@ -1503,7 +1488,7 @@ impl EsastGenPass.exit_iter_for_stmt(
 }
 
 """Process while statement."""
-impl EsastGenPass.exit_while_stmt(self: EsastGenPass, <>node: uni.WhileStmt) -> None {
+impl EsastGenPass.exit_while_stmt(<>node: uni.WhileStmt) -> None {
     <>test = self._get_ast_or_default(
         <>node.condition, default_factory=lambda  _src: Any: es.Literal(value=True)
     );
@@ -1515,7 +1500,7 @@ impl EsastGenPass.exit_while_stmt(self: EsastGenPass, <>node: uni.WhileStmt) -> 
 }
 
 """Process else clause."""
-impl EsastGenPass.exit_else_stmt(self: EsastGenPass, <>node: uni.ElseStmt) -> None {
+impl EsastGenPass.exit_else_stmt(<>node: uni.ElseStmt) -> None {
     stmts = self._collect_stmt_body(<>node.body);
     stmts = self._prepend_hoisted(<>node, stmts);
     block = self.sync_loc(es.BlockStatement(body=stmts), jac_node=<>node);
@@ -1523,7 +1508,7 @@ impl EsastGenPass.exit_else_stmt(self: EsastGenPass, <>node: uni.ElseStmt) -> No
 }
 
 """Process else-if clause."""
-impl EsastGenPass.exit_else_if(self: EsastGenPass, <>node: uni.ElseIf) -> None {
+impl EsastGenPass.exit_else_if(<>node: uni.ElseIf) -> None {
     <>test = self._get_ast_or_default(
         <>node.condition, default_factory=lambda  _src: Any: es.Literal(value=True)
     );
@@ -1540,7 +1525,7 @@ impl EsastGenPass.exit_else_if(self: EsastGenPass, <>node: uni.ElseIf) -> None {
 }
 
 """Process if statement."""
-impl EsastGenPass.exit_if_stmt(self: EsastGenPass, <>node: uni.IfStmt) -> None {
+impl EsastGenPass.exit_if_stmt(<>node: uni.IfStmt) -> None {
     <>test = self._get_ast_or_default(
         <>node.condition, default_factory=lambda  _src: Any: es.Literal(value=True)
     );
@@ -1557,55 +1542,47 @@ impl EsastGenPass.exit_if_stmt(self: EsastGenPass, <>node: uni.IfStmt) -> None {
 }
 
 """Process JSX expression child."""
-impl EsastGenPass.exit_jsx_expression(
-    self: EsastGenPass, <>node: uni.JsxExpression
-) -> None {
+impl EsastGenPass.exit_jsx_expression(<>node: uni.JsxExpression) -> None {
     self.jsx_processor.expression(<>node);
 }
 
 """Process JSX text node."""
-impl EsastGenPass.exit_jsx_text(self: EsastGenPass, <>node: uni.JsxText) -> None {
+impl EsastGenPass.exit_jsx_text(<>node: uni.JsxText) -> None {
     self.jsx_processor.text(<>node);
 }
 
 """Process JSX normal attribute."""
-impl EsastGenPass.exit_jsx_normal_attribute(
-    self: EsastGenPass, <>node: uni.JsxNormalAttribute
-) -> None {
+impl EsastGenPass.exit_jsx_normal_attribute(<>node: uni.JsxNormalAttribute) -> None {
     self.jsx_processor.normal_attribute(<>node);
 }
 
 """Process JSX spread attribute."""
-impl EsastGenPass.exit_jsx_spread_attribute(
-    self: EsastGenPass, <>node: uni.JsxSpreadAttribute
-) -> None {
+impl EsastGenPass.exit_jsx_spread_attribute(<>node: uni.JsxSpreadAttribute) -> None {
     self.jsx_processor.spread_attribute(<>node);
 }
 
 """Process JSX element name."""
-impl EsastGenPass.exit_jsx_element_name(
-    self: EsastGenPass, <>node: uni.JsxElementName
-) -> None {
+impl EsastGenPass.exit_jsx_element_name(<>node: uni.JsxElementName) -> None {
     self.jsx_processor.element_name(<>node);
 }
 
 """Process JSX element."""
-impl EsastGenPass.exit_jsx_element(self: EsastGenPass, <>node: uni.JsxElement) -> None {
+impl EsastGenPass.exit_jsx_element(<>node: uni.JsxElement) -> None {
     <>node.gen.es_ast = self.jsx_processor.element(<>node);
 }
 
 """Process has variable."""
-impl EsastGenPass.exit_has_var(self: EsastGenPass, <>node: uni.HasVar) -> None {
+impl EsastGenPass.exit_has_var(<>node: uni.HasVar) -> None {
     <>node.gen.es_ast = None;
 }
 
 """Process class field declarations."""
-impl EsastGenPass.exit_arch_has(self: EsastGenPass, <>node: uni.ArchHas) -> None {
+impl EsastGenPass.exit_arch_has(<>node: uni.ArchHas) -> None {
     <>node.gen.es_ast = None;
 }
 
 """Process parameter variable."""
-impl EsastGenPass.exit_param_var(self: EsastGenPass, <>node: uni.ParamVar) -> None {
+impl EsastGenPass.exit_param_var(<>node: uni.ParamVar) -> None {
     param_id = self.sync_loc(
         es.Identifier(name=<>node.name.sym_name), jac_node=<>node.name
     );
@@ -1614,14 +1591,12 @@ impl EsastGenPass.exit_param_var(self: EsastGenPass, <>node: uni.ParamVar) -> No
 }
 
 """Process function signature."""
-impl EsastGenPass.exit_func_signature(
-    self: EsastGenPass, <>node: uni.FuncSignature
-) -> None {
+impl EsastGenPass.exit_func_signature(<>node: uni.FuncSignature) -> None {
     <>node.gen.es_ast = None;
 }
 
 """Process ability (function/method) declaration."""
-impl EsastGenPass.exit_ability(self: EsastGenPass, <>node: uni.Ability) -> None {
+impl EsastGenPass.exit_ability(<>node: uni.Ability) -> None {
     if (getattr(<>node, 'is_client_decl', False) and not <>node.is_method) {
         self.client_manifest.has_client = True;
         name = <>node.name_ref.sym_name;
@@ -1746,7 +1721,7 @@ impl EsastGenPass.exit_ability(self: EsastGenPass, <>node: uni.Ability) -> None 
 }
 
 """Track entry into ability to manage client scope."""
-impl EsastGenPass.enter_ability(self: EsastGenPass, <>node: uni.Ability) -> None {
+impl EsastGenPass.enter_ability(<>node: uni.Ability) -> None {
     is_client = getattr(<>node, 'is_client_decl', False);
     self.client_scope_stack.append(is_client);
     if isinstance(<>node.body, uni.ImplDef) and (<>node.body not in <>node.kid) {
@@ -1756,7 +1731,7 @@ impl EsastGenPass.enter_ability(self: EsastGenPass, <>node: uni.Ability) -> None
 }
 
 """Process enum declaration as an object."""
-impl EsastGenPass.exit_enum(self: EsastGenPass, <>node: uni.Enum) -> None {
+impl EsastGenPass.exit_enum(<>node: uni.Enum) -> None {
     properties: list[(es.Property | es.SpreadElement)] = [];
     inner = (
         <>node.body.body
@@ -1817,7 +1792,7 @@ impl EsastGenPass.exit_enum(self: EsastGenPass, <>node: uni.Enum) -> None {
 }
 
 """Process archetype (class) declaration."""
-impl EsastGenPass.exit_archetype(self: EsastGenPass, <>node: uni.Archetype) -> None {
+impl EsastGenPass.exit_archetype(<>node: uni.Archetype) -> None {
     if getattr(<>node, 'is_client_decl', False) {
         self.client_manifest.has_client = True;
         self.client_manifest.exports.append(<>node.name.sym_name);
@@ -1997,7 +1972,7 @@ impl EsastGenPass.exit_archetype(self: EsastGenPass, <>node: uni.Archetype) -> N
 }
 
 """Process import statement."""
-impl EsastGenPass.exit_import(self: EsastGenPass, <>node: uni.Import) -> None {
+impl EsastGenPass.exit_import(<>node: uni.Import) -> None {
     if (<>node.from_loc and <>node.items and <>node.is_client_decl) {
         resolved_path = <>node.from_loc.resolve_relative_path();
         import_key = <>node.from_loc.dot_path_str;
@@ -2079,16 +2054,14 @@ impl EsastGenPass.exit_import(self: EsastGenPass, <>node: uni.Import) -> None {
 }
 
 """Process SubTag node."""
-impl EsastGenPass.exit_sub_tag(self: EsastGenPass, <>node: uni.SubTag[uni.T]) -> None {
+impl EsastGenPass.exit_sub_tag(<>node: uni.SubTag[uni.T]) -> None {
     if <>node.tag.gen.es_ast {
         <>node.gen.es_ast = <>node.tag.gen.es_ast;
     }
 }
 
 """Recursively populate client manifest from module declarations."""
-impl EsastGenPass._populate_client_manifest(
-    self: EsastGenPass, <>node: uni.Module
-) -> None {
+impl EsastGenPass._populate_client_manifest(<>node: uni.Module) -> None {
     for item in <>node.gen.client_manifest.exports {
         self.client_manifest.exports.append(item);
     }
@@ -2106,16 +2079,14 @@ impl EsastGenPass._populate_client_manifest(
 }
 
 """Populate client manifest from module declarations."""
-impl EsastGenPass.populate_client_manifest(
-    self: EsastGenPass, <>node: uni.Module
-) -> None {
+impl EsastGenPass.populate_client_manifest(<>node: uni.Module) -> None {
     for mod in <>node.impl_mod {
         self._populate_client_manifest(mod);
     }
 }
 
 """Process module node."""
-impl EsastGenPass.exit_module(self: EsastGenPass, <>node: uni.Module) -> None {
+impl EsastGenPass.exit_module(<>node: uni.Module) -> None {
     body: list[(es.Statement | es.ModuleDeclaration)] = [];
     body.extend(self.imports);
     for mod in <>node.impl_mod {
@@ -2161,9 +2132,7 @@ impl EsastGenPass.exit_module(self: EsastGenPass, <>node: uni.Module) -> None {
 
 """Construct a block statement from a Jac scope node."""
 impl EsastGenPass._build_block_statement(
-    self: EsastGenPass,
-    scope_node: uni.UniScopeNode,
-    body_nodes: (Sequence[uni.UniNode] | None)
+    scope_node: uni.UniScopeNode, body_nodes: (Sequence[uni.UniNode] | None)
 ) -> es.BlockStatement {
     statements = self._collect_stmt_body(body_nodes);
     statements = self._prepend_hoisted(scope_node, statements);
@@ -2177,7 +2146,6 @@ Return an existing ESTree node or synthesize a fallback.
         that if node.gen.es_ast exists, it will be compatible with the expected type.
 """
 impl EsastGenPass._get_ast_or_default(
-    self: EsastGenPass,
     <>node: (uni.UniNode | None),
     default_factory: Callable[([(uni.UniNode | None)], _T)]
 ) -> _T {
@@ -2194,7 +2162,7 @@ impl EsastGenPass._get_ast_or_default(
 
 """Convert a sequence of Jac statements into ESTree statements."""
 impl EsastGenPass._collect_stmt_body(
-    self: EsastGenPass, body: (Sequence[uni.UniNode] | None)
+    body: (Sequence[uni.UniNode] | None)
 ) -> list[es.Statement] {
     if not body {
         return [];
@@ -2220,7 +2188,7 @@ impl EsastGenPass._collect_stmt_body(
 
 """Emit the await __jacSpawn(...) expression for a spawn call."""
 impl EsastGenPass._build_spawn_runtime_call(
-    self: EsastGenPass, <>node: uni.BinaryExpr, parts: SpawnCallParts
+    <>node: uni.BinaryExpr, parts: SpawnCallParts
 ) -> es.AwaitExpression {
     walker_literal = self.sync_loc(
         es.Literal(value=parts.walker.walker_name), jac_node=parts.walker.call_node
@@ -2241,10 +2209,7 @@ impl EsastGenPass._build_spawn_runtime_call(
 
 """Split a spawn expression into walker and target parts."""
 impl EsastGenPass._prepare_spawn_call(
-    self: EsastGenPass,
-    <>node: uni.BinaryExpr,
-    left_expr: es.Expression,
-    right_expr: es.Expression
+    <>node: uni.BinaryExpr, left_expr: es.Expression, right_expr: es.Expression
 ) -> (SpawnCallParts | None) {
     left_walker = self._resolve_spawn_walker(<>node.left, left_expr);
     right_walker = self._resolve_spawn_walker(<>node.right, right_expr);
@@ -2273,7 +2238,7 @@ impl EsastGenPass._prepare_spawn_call(
 
 """Convert a spawn target expression into a runtime-ready reference."""
 impl EsastGenPass._resolve_spawn_target(
-    self: EsastGenPass, expr: uni.Expr, es_expr: es.Expression
+    expr: uni.Expr, es_expr: es.Expression
 ) -> SpawnTargetInfo {
     (stripped_node, stripped_es) = self._strip_spawn_await(expr, es_expr);
     if self._is_root_reference(stripped_node) {
@@ -2284,7 +2249,7 @@ impl EsastGenPass._resolve_spawn_target(
 }
 
 """Check if an expression refers to the root node."""
-impl EsastGenPass._is_root_reference(self: EsastGenPass, expr: uni.Expr) -> bool {
+impl EsastGenPass._is_root_reference(expr: uni.Expr) -> bool {
     if (isinstance(expr, uni.Name) and (expr.sym_name == 'root')) {
         return True;
     }
@@ -2293,7 +2258,7 @@ impl EsastGenPass._is_root_reference(self: EsastGenPass, expr: uni.Expr) -> bool
 
 """Return walker call info if the expression instantiates a walker."""
 impl EsastGenPass._resolve_spawn_walker(
-    self: EsastGenPass, expr: uni.Expr, es_expr: es.Expression
+    expr: uni.Expr, es_expr: es.Expression
 ) -> (SpawnWalkerInfo | None) {
     (stripped_node, _) = self._strip_spawn_await(expr, es_expr);
     if not isinstance(stripped_node, uni.FuncCall) {
@@ -2312,7 +2277,7 @@ impl EsastGenPass._resolve_spawn_walker(
 
 """Convert walker constructor arguments into a JSON payload."""
 impl EsastGenPass._build_spawn_arg_object(
-    self: EsastGenPass, call_node: uni.FuncCall, walker_symbol: (uni.Symbol | None)
+    call_node: uni.FuncCall, walker_symbol: (uni.Symbol | None)
 ) -> es.ObjectExpression {
     ordered_fields = self._collect_walker_field_names(walker_symbol);
     properties: list[(es.Property | es.SpreadElement)] = [];
@@ -2380,7 +2345,7 @@ impl EsastGenPass._build_spawn_arg_object(
 
 """Return an expression ESTree node, synthesizing a literal if needed."""
 impl EsastGenPass._expr_from_node(
-    self: EsastGenPass, <>node: (uni.UniNode | None), <>default: LiteralValue = None
+    <>node: (uni.UniNode | None), <>default: LiteralValue = None
 ) -> es.Expression {
     generated = self._get_ast_or_default(
         <>node, default_factory=lambda  src: Any: es.Literal(value=<>default)
@@ -2396,7 +2361,7 @@ impl EsastGenPass._expr_from_node(
 
 """Collect walker has-var field names for positional argument mapping."""
 impl EsastGenPass._collect_walker_field_names(
-    self: EsastGenPass, walker_symbol: (uni.Symbol | None)
+    walker_symbol: (uni.Symbol | None)
 ) -> list[str] {
     if not walker_symbol {
         return [];
@@ -2412,7 +2377,7 @@ impl EsastGenPass._collect_walker_field_names(
 }
 
 """Get the main module of the program."""
-impl EsastGenPass.get_main_mod(self: EsastGenPass) -> uni.Module {
+impl EsastGenPass.get_main_mod -> uni.Module {
     main_mod_path = self.ir_in.annexable_by or self.ir_in.loc.mod_path;
     mod = self.prog.mod.hub.get(main_mod_path);
     if not isinstance(mod, uni.Module) {
@@ -2422,9 +2387,7 @@ impl EsastGenPass.get_main_mod(self: EsastGenPass) -> uni.Module {
 }
 
 """Search for a symbol in the main module."""
-impl EsastGenPass.search_sym_in_main_mod(
-    self: EsastGenPass, expr: uni.Expr
-) -> (uni.Symbol | None) {
+impl EsastGenPass.search_sym_in_main_mod(expr: uni.Expr) -> (uni.Symbol | None) {
     if not isinstance(expr, uni.Name) {
         return None;
     }
@@ -2433,9 +2396,7 @@ impl EsastGenPass.search_sym_in_main_mod(
 }
 
 """Resolve a symbol from an expression (handles dotted access)."""
-impl EsastGenPass._resolve_expr_symbol(
-    self: EsastGenPass, expr: uni.Expr
-) -> (uni.Symbol | None) {
+impl EsastGenPass._resolve_expr_symbol(expr: uni.Expr) -> (uni.Symbol | None) {
     if (isinstance(expr, uni.AstSymbolNode) and expr.sym) {
         return expr.sym;
     }
@@ -2453,7 +2414,7 @@ impl EsastGenPass._resolve_expr_symbol(
 
 """Remove Jac/ES await wrappers for spawn analysis."""
 impl EsastGenPass._strip_spawn_await(
-    self: EsastGenPass, node_expr: uni.Expr, es_expr: es.Expression
+    node_expr: uni.Expr, es_expr: es.Expression
 ) -> tuple[uni.Expr, es.Expression] {
     cur_node = node_expr;
     cur_es = es_expr;
@@ -2469,13 +2430,13 @@ impl EsastGenPass._strip_spawn_await(
 }
 
 """Check if we're currently in a client-side function."""
-impl EsastGenPass._is_in_client_scope(self: EsastGenPass) -> bool {
+impl EsastGenPass._is_in_client_scope -> bool {
     return <>any(self.client_scope_stack);
 }
 
 """Insert hoisted declarations, if any, ahead of the given statements."""
 impl EsastGenPass._prepend_hoisted(
-    self: EsastGenPass, <>node: uni.UniScopeNode, statements: list[es.Statement]
+    <>node: uni.UniScopeNode, statements: list[es.Statement]
 ) -> list[es.Statement] {
     scope = self.scope_map.get(<>node);
     if (scope and scope.hoisted) {
@@ -2487,9 +2448,7 @@ impl EsastGenPass._prepend_hoisted(
 }
 
 """Hoist a declaration for identifiers introduced mid-expression (e.g., walrus)."""
-impl EsastGenPass._ensure_identifier_declared(
-    self: EsastGenPass, name: str, jac_node: uni.UniNode
-) -> None {
+impl EsastGenPass._ensure_identifier_declared(name: str, jac_node: uni.UniNode) -> None {
     scope = self._current_scope();
     if (not scope or (name in scope.declared)) {
         return;
@@ -2507,7 +2466,7 @@ impl EsastGenPass._ensure_identifier_declared(
 }
 
 """Mark a name as declared within the current scope."""
-impl EsastGenPass._register_declaration(self: EsastGenPass, name: str) -> None {
+impl EsastGenPass._register_declaration(name: str) -> None {
     scope = self._current_scope();
     if scope {
         scope.declared.add(name);
@@ -2520,23 +2479,23 @@ Check if a name is declared in the current scope or any parent scope.
         This is essential for proper closure support - we need to avoid re-declaring
         variables that exist in parent scopes when generating nested functions.
 """
-impl EsastGenPass._is_declared_in_any_scope(self: EsastGenPass, name: str) -> bool {
+impl EsastGenPass._is_declared_in_any_scope(name: str) -> bool {
     return <>any((name in scope.declared) for scope in reversed(self.scope_stack));
 }
 
 """Check if a name is already declared in the active scope."""
-impl EsastGenPass._is_declared_in_current_scope(self: EsastGenPass, name: str) -> bool {
+impl EsastGenPass._is_declared_in_current_scope(name: str) -> bool {
     scope = self._current_scope();
     return (name in scope.declared) if scope else False;
 }
 
 """Get the scope currently being populated."""
-impl EsastGenPass._current_scope(self: EsastGenPass) -> (ScopeInfo | None) {
+impl EsastGenPass._current_scope -> (ScopeInfo | None) {
     return self.scope_stack[-1] if self.scope_stack else None;
 }
 
 """Exit a lexical scope."""
-impl EsastGenPass._pop_scope(self: EsastGenPass, <>node: uni.UniScopeNode) -> None {
+impl EsastGenPass._pop_scope(<>node: uni.UniScopeNode) -> None {
     if (self.scope_stack and (self.scope_stack[-1].node is <>node)) {
         self.scope_stack.pop();
     }
@@ -2544,16 +2503,14 @@ impl EsastGenPass._pop_scope(self: EsastGenPass, <>node: uni.UniScopeNode) -> No
 }
 
 """Enter a new lexical scope."""
-impl EsastGenPass._push_scope(self: EsastGenPass, <>node: uni.UniScopeNode) -> None {
+impl EsastGenPass._push_scope(<>node: uni.UniScopeNode) -> None {
     info = ScopeInfo(<>node=<>node);
     self.scope_stack.append(info);
     self.scope_map[<>node] = info;
 }
 
 """Sync source locations from Jac node to ES node."""
-impl EsastGenPass.sync_loc(
-    self: EsastGenPass, es_node: _T, jac_node: (uni.UniNode | None) = None
-) -> _T {
+impl EsastGenPass.sync_loc(es_node: _T, jac_node: (uni.UniNode | None) = None) -> _T {
     if not jac_node {
         jac_node = self.cur_node;
     }
@@ -2565,7 +2522,7 @@ impl EsastGenPass.sync_loc(
 }
 
 """Exit node."""
-impl EsastGenPass.exit_node(self: EsastGenPass, <>node: uni.UniNode) -> None {
+impl EsastGenPass.exit_node(<>node: uni.UniNode) -> None {
     if (
         isinstance(<>node, uni.ElementStmt)
         and isinstance(<>node, uni.ClientFacingNode)
@@ -2581,7 +2538,7 @@ impl EsastGenPass.exit_node(self: EsastGenPass, <>node: uni.UniNode) -> None {
 }
 
 """Enter node."""
-impl EsastGenPass.enter_node(self: EsastGenPass, <>node: uni.UniNode) -> None {
+impl EsastGenPass.enter_node(<>node: uni.UniNode) -> None {
     if (
         isinstance(<>node, uni.ElementStmt)
         and isinstance(<>node, uni.ClientFacingNode)
@@ -2602,7 +2559,7 @@ impl EsastGenPass.enter_node(self: EsastGenPass, <>node: uni.UniNode) -> None {
 }
 
 """Initialize the pass."""
-impl EsastGenPass.before_pass(self: EsastGenPass) -> None {
+impl EsastGenPass.before_pass -> None {
     import from jaclang.pycore.codeinfo { ClientManifest }
     self.child_passes: list[EsastGenPass] = self._init_child_passes(EsastGenPass);
     self.imports: list[es.ImportDeclaration] = [];

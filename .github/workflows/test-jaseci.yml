@@ -60,7 +60,7 @@ jobs:
     - name: Run package tests
       run: pytest -x jac-client -n auto
 
-  test-packages:
+  test-packages-and-docs:
     runs-on: ubuntu-latest
     steps:
     - name: Check out code
@@ -89,6 +89,9 @@ jobs:
     - name: Run package tests
       run: pytest -x jac-byllm jac-streamlit
 
+    - name: Run documentation validation tests
+      run: pytest -q -x docs/tests/test_validate_md_files.py
+
   test-scale:
     runs-on: ubuntu-latest
     steps:
@@ -110,10 +113,15 @@ jobs:
         pip install pytest
         pip install pytest-asyncio
         pip install -e jac-client
+        pip install testcontainers
 
     - name: Run Backend tests
       run: |
         pytest -x -vv -s jac-scale/jac_scale/tests/test_serve.py
+
+    - name: Run Memory Hierarchy tests
+      run: |
+        pytest -x -vv -s jac-scale/jac_scale/tests/test_memory_hierarchy.py
 
     - name: Run jac-client examples
       run: |
@@ -143,6 +151,7 @@ jobs:
           pip install -e jac-scale
           pip install pytest
           pip install pytest-asyncio
+
 
       - name: Check for Kubernetes changes
         id: k8s-changes

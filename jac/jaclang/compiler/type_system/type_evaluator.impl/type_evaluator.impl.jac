@@ -1,7 +1,5 @@
 """Core function to get the type of the expression."""
-impl TypeEvaluator._get_type_of_expression_core(
-    self: TypeEvaluator, expr: uni.Expr
-) -> TypeBase {
+impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
     match expr {
         # ----------------------------------------------------------------------
         # Prefetched types: These types may not have prefetched and we need to
@@ -52,7 +50,13 @@ impl TypeEvaluator._get_type_of_expression_core(
                 } elif base_type.is_instantiable_class() {
                     assert isinstance(base_type, types.ClassType);
                     if member := self._lookup_class_member(base_type, expr.right.value) {
-                        return self._set_symbol_to_expr(expr.right, member.symbol);
+                        value = self._set_symbol_to_expr(expr.right, member.symbol);
+                        if base_type.is_enum_class() {
+                            # Because enum values are instances of the enum class,
+                            # we need to return the enum class as an instance type.
+                            return base_type.clone_as_instance();
+                        }
+                        return value;
                     }
                     return types.UnknownType();
                 } elif base_type.is_class_instance() {
@@ -317,9 +321,7 @@ impl TypeEvaluator._get_type_of_expression_core(
 }
 
 """Return the declared type of the symbol."""
-impl TypeEvaluator._get_type_of_symbol(
-    self: TypeEvaluator, symbol: uni.Symbol
-) -> TypeBase {
+impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
     node_ = symbol.decl.name_of;
     match node_ {
         case uni.Archetype() | uni.Enum():
@@ -444,7 +446,7 @@ impl TypeEvaluator._get_type_of_symbol(
 
 """Assign the source class type to the destination class type."""
 impl TypeEvaluator._assign_class(
-    self: TypeEvaluator, src_type: types.ClassType, dest_type: types.ClassType
+    src_type: types.ClassType, dest_type: types.ClassType
 ) -> bool {
     # If the type is Final[T], unwrap it to T.
     # TODO: We can actually check if the Final type is modified and
@@ -481,7 +483,7 @@ impl TypeEvaluator._assign_class(
 }
 
 impl TypeEvaluator.is_sub_class(
-    self: TypeEvaluator, super_cls: types.ClassType, sub_cls: types.ClassType
+    super_cls: types.ClassType, sub_cls: types.ClassType
 ) -> bool {
     for cls in sub_cls.shared.mro {
         if cls.shared == super_cls.shared {
@@ -493,7 +495,6 @@ impl TypeEvaluator.is_sub_class(
 
 """Return the effective return type of a magic method call."""
 impl TypeEvaluator.get_type_of_magic_method_call(
-    self: TypeEvaluator,
     obj_type: TypeBase,
     method_name: str,
     arg_nodes: list[uni.Expr],
@@ -546,9 +547,7 @@ impl TypeEvaluator.get_type_of_magic_method_call(
 }
 
 """Assign the source type to the destination type."""
-impl TypeEvaluator.assign_type(
-    self: TypeEvaluator, src_type: TypeBase, dest_type: TypeBase
-) -> bool {
+impl TypeEvaluator.assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool {
     if types.TypeCategory.Unknown in (src_type.category, dest_type.category) {
         # NOTE: For now if we don't have the type info, we assume it's compatible.
         # For strict mode we should disallow usage of unknown unless explicitly ignored.
@@ -584,9 +583,7 @@ impl TypeEvaluator.assign_type(
 }
 
 """Return the effective type of the expression."""
-impl TypeEvaluator.get_type_of_expression(
-    self: TypeEvaluator, node_: uni.Expr
-) -> TypeBase {
+impl TypeEvaluator.get_type_of_expression(node_: uni.Expr) -> TypeBase {
     # To support JS style IIFE, abilities should be treated as expressions.
     if isinstance(node_, uni.Ability) {
         return self.get_type_of_ability(node_);
@@ -603,9 +600,7 @@ impl TypeEvaluator.get_type_of_expression(
 }
 
 """Pop a symbol from the resolution stack."""
-impl TypeEvaluator.pop_symbol_resolution(
-    self: TypeEvaluator, symbol: uni.Symbol
-) -> bool {
+impl TypeEvaluator.pop_symbol_resolution(symbol: uni.Symbol) -> bool {
     popped_entry = self.symbol_resolution_stack.pop();
     assert popped_entry.symbol == symbol;
     return popped_entry.is_result_valid;
@@ -616,9 +611,7 @@ Push a symbol onto the resolution stack.
 
 Return False if recursion detected and in that case it won't push the symbol.
 """
-impl TypeEvaluator.push_symbol_resolution(
-    self: TypeEvaluator, symbol: uni.Symbol
-) -> bool {
+impl TypeEvaluator.push_symbol_resolution(symbol: uni.Symbol) -> bool {
     idx = self.get_index_of_symbol_resolution(symbol);
     if idx is not None {
         # Mark all of the entries between these two as invalid.
@@ -633,9 +626,7 @@ impl TypeEvaluator.push_symbol_resolution(
 }
 
 """Get the index of a symbol in the resolution stack."""
-impl TypeEvaluator.get_index_of_symbol_resolution(
-    self: TypeEvaluator, symbol: uni.Symbol
-) -> int | None {
+impl TypeEvaluator.get_index_of_symbol_resolution(symbol: uni.Symbol) -> int | None {
     for (i, entry_) in enumerate(self.symbol_resolution_stack) {
         if entry_.symbol == symbol {
             return i;
@@ -645,7 +636,7 @@ impl TypeEvaluator.get_index_of_symbol_resolution(
 }
 
 """Return the prefetched types for the type evaluator."""
-impl TypeEvaluator._prefetch_types(self: TypeEvaluator) {
+impl TypeEvaluator._prefetch_types{
     get_types_type = lambda  type_name: str  -> types.TypeBase:
         self._get_type_from_module(self.types_module, type_name);
     get_typing_type = lambda  type_name: str  -> types.TypeBase:
@@ -687,7 +678,7 @@ impl TypeEvaluator._prefetch_types(self: TypeEvaluator) {
 }
 
 """Load and return builtins stub module."""
-impl TypeEvaluator._load_stub_module(self: TypeEvaluator, path: str) -> uni.Module {
+impl TypeEvaluator._load_stub_module(path: str) -> uni.Module {
     if not os.path.exists(path) {
         raise FileNotFoundError(f"Stub file not found at {path}") ;
     }
@@ -712,7 +703,33 @@ and does the prefetch once, however if we forgot to call prefetch
 in some place then it will not be available in the evaluator, So we
 are prefetching the builtins at the constructor level once.
 """
-impl TypeEvaluator.init(self: TypeEvaluator, program: "JacProgram") -> None {
+impl TypeEvaluator.init(program: "JacProgram") -> None {
+    # Initialize constants that have defaults in the class definition
+    self._BUILTINS_STUB_FILE_PATH: str = os.path.join(
+        os.path.dirname(__file__), "../../vendor/typeshed/stdlib/builtins.pyi"
+    );
+    self._TYPING_STUB_FILE_PATH: str = os.path.join(
+        os.path.dirname(__file__), "../../vendor/typeshed/stdlib/typing.pyi"
+    );
+    self._TYPES_STUB_FILE_PATH: str = os.path.join(
+        os.path.dirname(__file__), "../../vendor/typeshed/stdlib/types.pyi"
+    );
+    self._JAC_BUILTINS_STUB_FILE_PATH: str = os.path.join(
+        os.path.dirname(__file__), "jac_builtins.pyi"
+    );
+    self._SPECIAL_FORM_CLASS_NAMES: tuple[(str, ...)] = (
+        "Union",
+        "Protocol",
+        "Callable",
+        "Type",
+        "NoReturn",
+        "ClassVar",
+        "Optional",
+        "Tuple",
+        "Final",
+        "Literal",
+        "TypedDict"
+    );
     self.program = program;
     self.symbol_resolution_stack: list[SymbolResolutionStackEntry] = [];
     self.prefetch: PrefetchedTypes = PrefetchedTypes();
@@ -721,17 +738,15 @@ impl TypeEvaluator.init(self: TypeEvaluator, program: "JacProgram") -> None {
     # Cache for module types by resolved path to avoid redundant lookups.
     self._module_type_cache: dict[str, types.ModuleType] = {};
     # NOTE: The initialization order here is important.
-    self.typing_module = self._load_stub_module(TypeEvaluator._TYPING_STUB_FILE_PATH);
-    self.types_module = self._load_stub_module(TypeEvaluator._TYPES_STUB_FILE_PATH);
+    self.typing_module = self._load_stub_module(self._TYPING_STUB_FILE_PATH);
+    self.types_module = self._load_stub_module(self._TYPES_STUB_FILE_PATH);
     # These prefetch type are essential for the builtin types.
     self.prefetch.type_var_class = self._get_type_from_module(
         self.typing_module, "TypeVar"
     );
-    self.builtins_module = self._load_stub_module(
-        TypeEvaluator._BUILTINS_STUB_FILE_PATH
-    );
+    self.builtins_module = self._load_stub_module(self._BUILTINS_STUB_FILE_PATH);
     self.jac_builtins_module = self._load_stub_module(
-        TypeEvaluator._JAC_BUILTINS_STUB_FILE_PATH
+        self._JAC_BUILTINS_STUB_FILE_PATH
     );
     self._prefetch_types();
 }

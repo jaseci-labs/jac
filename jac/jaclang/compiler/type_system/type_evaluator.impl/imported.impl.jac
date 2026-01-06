@@ -1,7 +1,5 @@
 """Return the effective type of the module item."""
-impl TypeEvaluator.get_type_of_module_item(
-    self: TypeEvaluator, node_: uni.ModuleItem
-) -> types.TypeBase {
+impl TypeEvaluator.get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeBase {
     # Module item can be both a module or a member of a module.
     # import from .. { mod }   # <-- Here mod is not a member but a module itself.
     # import from mod { item } # <-- Here item is not a module but a member of mod.
@@ -81,9 +79,7 @@ impl TypeEvaluator.get_type_of_module_item(
 }
 
 """Return the effective type of the module."""
-impl TypeEvaluator.get_type_of_module(
-    self: TypeEvaluator, node_: uni.ModulePath
-) -> types.TypeBase {
+impl TypeEvaluator.get_type_of_module(node_: uni.ModulePath) -> types.TypeBase {
     if node_.path {
         # If the type is already computed, return it.
         if node_.path[-1].type {
@@ -131,18 +127,16 @@ impl TypeEvaluator.get_type_of_module(
 }
 
 """Import a module from the given path."""
-impl TypeEvaluator._import_module_from_path(
-    self: TypeEvaluator, path: str
-) -> uni.Module {
+impl TypeEvaluator._import_module_from_path(path: str) -> uni.Module {
     # -----------------------------------------------------------------------
     # TODO: Implement stub file resolution properly, this is a ad-hoc mess.
     # FIXME: This is ad-hoc way to override the typeing.py with typeing.pyi file
     # implemented to make it work for now, please revisit this and implement it properly.
     if path.endswith("typing.py") {
-        path = TypeEvaluator._TYPING_STUB_FILE_PATH;
+        path = self._TYPING_STUB_FILE_PATH;
     }
     if path.endswith("abc.py") {
-        path = TypeEvaluator._TYPING_STUB_FILE_PATH;
+        path = self._TYPING_STUB_FILE_PATH;
     }
     # -----------------------------------------------------------------------
 
@@ -174,9 +168,7 @@ impl TypeEvaluator._import_module_from_path(
 }
 
 """Return the effective type of the symbol."""
-impl TypeEvaluator.get_type_of_symbol(
-    self: TypeEvaluator, symbol: uni.Symbol
-) -> TypeBase {
+impl TypeEvaluator.get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
     if self.push_symbol_resolution(symbol) {
         try {
             return self._get_type_of_symbol(symbol);

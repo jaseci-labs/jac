@@ -79,6 +79,7 @@ class TypeBase(ABC) {
     def is_instance(self: TypeBase) -> bool;
     def is_instantiable_class(self: TypeBase) -> bool;
     def is_class_instance(self: TypeBase) -> bool;
+    def is_any_type(self: TypeBase) -> bool;
 }
 
 """Represents a type that is not bound to a specific value or context."""
@@ -152,7 +153,8 @@ Holds the shared details of class type.
             base_classes: (list[TypeBase] | None) = None,
             is_builtin_class: bool = False,
             is_data_class: bool = False,
-            is_root_class: bool = False
+            is_root_class: bool = False,
+            is_enum_class: bool = False
         ) -> None;
     }
 
@@ -185,6 +187,7 @@ Holds the private details of class type.
 
     def is_builtin(self: ClassType, class_name: (str | None) = None) -> bool;
     def is_data_class(self: ClassType) -> bool;
+    def is_enum_class(self: ClassType) -> bool;
     def is_edge_type(self: ClassType) -> bool;
     def is_node_type(self: ClassType) -> bool;
 }
