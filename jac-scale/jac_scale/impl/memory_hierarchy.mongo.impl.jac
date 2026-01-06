@@ -182,13 +182,13 @@ impl MongoBackend.find_one(
 
 """Commit - no-op for MongoDB (writes are immediate)."""
 impl MongoBackend.commit(anchor: (Anchor | None) = None) -> None {
-    pass;
+# No-op: MongoDB writes are immediate
 }
 
 # PersistentMemory-specific methods
 """Sync - no-op for MongoDB (writes are immediate)."""
 impl MongoBackend.sync -> None {
-    pass;
+# No-op: MongoDB writes are immediate
 }
 
 """Bulk store multiple anchors."""

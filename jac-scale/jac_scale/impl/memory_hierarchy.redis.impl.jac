@@ -151,7 +151,7 @@ impl RedisBackend.find_one(
 
 """Commit - no-op for cache."""
 impl RedisBackend.commit(anchor: (Anchor | None) = None) -> None {
-    pass;
+# No-op: cache doesn't need commit
 }
 
 # CacheMemory-specific methods

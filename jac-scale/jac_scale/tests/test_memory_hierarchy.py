@@ -191,5 +191,5 @@ class TestMemoryHierarchy:
         redis_size_after_task_read = self.redis_client.dbsize()
 
         assert (
-            redis_size_after_task_read == 5
-        )  # this is 5 because super root, guest user, created user and the two task nodes
+            redis_size_after_task_read == 7
+        )  # super root, guest user, created user, two task nodes, and two edges
