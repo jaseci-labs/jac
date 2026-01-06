@@ -110,7 +110,7 @@ impl Memory.remove_from_mem(self: Memory, anchor: (ID | UUID)) -> None {
 }
 
 """Initialize memory handler."""
-impl ShelfStorage.__init__(self: ShelfStorage, session: (str | None) = None) -> None {
+impl ShelfStorage.init(self: ShelfStorage, session: (str | None) = None) -> None {
     self.__mem__ = {};
     self.__gc__ = set();
     self.__shelf__ = shelve.open(session) if session else None;

@@ -9,7 +9,7 @@ import from jaclang.pycore.constant { Constants as Con }
 import from jaclang.runtimelib.memory { Memory, ShelfStorage }
 
 """Initialize ExecutionContext."""
-impl ExecutionContext.__init__(
+impl ExecutionContext.init(
     self: ExecutionContext, session: (str | None) = None, <>root: (str | None) = None
 ) -> None {
     self.mem = ShelfStorage(session);

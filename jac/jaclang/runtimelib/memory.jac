@@ -53,7 +53,6 @@ class ShelfStorage(Memory[UUID, Anchor]) {
     has __shelf__: (shelve.Shelf[Anchor] | None) = None;
 
     def init(self: ShelfStorage, session: (str | None) = None) -> None;
-    def init(self: ShelfStorage, session: (str | None) = None) -> None;
     def commit(self: ShelfStorage, anchor: (Anchor | None) = None) -> None;
     def close(self: ShelfStorage) -> None;
     def sync_mem_to_db(self: ShelfStorage, keys: Iterable[UUID]) -> None;
