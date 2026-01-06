@@ -94,11 +94,24 @@ class JacAccessValidation:
         if level is None:
             level = AccessLevel.READ
         level = AccessLevel.cast(level)
-        access = archetype.__jac__.access.roots
 
+        # Get the anchor and ensure we're modifying the one in memory
+        anchor = archetype.__jac__
+        jctx = JacRuntimeInterface.get_context()
+
+        # If there's already an anchor in memory for this ID, use that one
+        # This ensures we don't have stale anchor objects with different access
+        mem_anchor = jctx.mem.get(anchor.id)
+        if mem_anchor and mem_anchor is not anchor:
+            # Use the memory anchor's access, but update it
+            anchor = mem_anchor
+
+        access = anchor.access.roots
         _root_id = str(root_id)
         if level != access.anchors.get(_root_id, AccessLevel.NO_ACCESS):
             access.anchors[_root_id] = level
+            # Ensure the modified anchor is in memory so it gets synced
+            jctx.mem.put(anchor)
 
     @staticmethod
     def disallow_root(
@@ -110,36 +123,69 @@ class JacAccessValidation:
         if level is None:
             level = AccessLevel.READ
         level = AccessLevel.cast(level)
-        access = archetype.__jac__.access.roots
 
+        # Get the anchor and ensure we're modifying the one in memory
+        anchor = archetype.__jac__
+        jctx = JacRuntimeInterface.get_context()
+
+        # If there's already an anchor in memory for this ID, use that one
+        mem_anchor = jctx.mem.get(anchor.id)
+        if mem_anchor and mem_anchor is not anchor:
+            anchor = mem_anchor
+
+        access = anchor.access.roots
         access.anchors.pop(str(root_id), None)
+        # Ensure the modified anchor is in memory so it gets synced
+        jctx.mem.put(anchor)
 
     @staticmethod
     def perm_grant(
         archetype: Archetype, level: AccessLevel | int | str | None = None
     ) -> None:
         """Allow everyone to access current Archetype."""
-        anchor = archetype.__jac__
         if level is None:
             level = AccessLevel.READ
         level = AccessLevel.cast(level)
+
+        # Get the anchor and ensure we're modifying the one in memory
+        anchor = archetype.__jac__
+        jctx = JacRuntimeInterface.get_context()
+
+        # If there's already an anchor in memory for this ID, use that one
+        # This ensures we don't have stale anchor objects with different access
+        mem_anchor = jctx.mem.get(anchor.id)
+        if mem_anchor and mem_anchor is not anchor:
+            anchor = mem_anchor
+
         if level != anchor.access.all:
             anchor.access.all = level
+            # Ensure the modified anchor is in memory so it gets synced
+            jctx.mem.put(anchor)
 
     @staticmethod
     def perm_revoke(archetype: Archetype) -> None:
         """Disallow others to access current Archetype."""
+        # Get the anchor and ensure we're modifying the one in memory
         anchor = archetype.__jac__
+        jctx = JacRuntimeInterface.get_context()
+
+        # If there's already an anchor in memory for this ID, use that one
+        # This ensures we don't have stale anchor objects with different access
+        mem_anchor = jctx.mem.get(anchor.id)
+        if mem_anchor and mem_anchor is not anchor:
+            anchor = mem_anchor
+
         if anchor.access.all > AccessLevel.NO_ACCESS:
             anchor.access.all = AccessLevel.NO_ACCESS
+            # Ensure the modified anchor is in memory so it gets synced
+            jctx.mem.put(anchor)
 
     @staticmethod
     def check_read_access(to: Anchor) -> bool:
         """Read Access Validation."""
-        if not (
-            access_level := JacRuntimeInterface.check_access_level(to)
-            > AccessLevel.NO_ACCESS
-        ):
+        raw_level = JacRuntimeInterface.check_access_level(to)
+        access_level = raw_level > AccessLevel.NO_ACCESS
+        if not access_level:
             logger.info(
                 "Current root doesn't have read access to "
                 f"{to.__class__.__name__} {to.archetype.__class__.__name__}[{to.id}]"
@@ -202,7 +248,8 @@ class JacAccessValidation:
 
         # if target anchor's root have set allowed roots
         # if current root is allowed to the whole graph of target anchor's root
-        if to.root and isinstance(to_root := jctx.mem.find_one(to.root), Anchor):
+        # Use get() instead of find_one() to check persistence for root lookup
+        if to.root and isinstance(to_root := jctx.mem.get(to.root), Anchor):
             if to_root.access.all > access_level:
                 access_level = to_root.access.all
 
@@ -397,12 +444,15 @@ class JacWalker:
         walker.path = []
         current_loc = node.archetype
 
-        # walker ability on any entry
+        # walker ability on any entry (runs once at spawn)
         for i in warch._jac_entry_funcs_:
             if not i.trigger:
                 i.func(warch, current_loc)
             if walker.disengaged:
                 return warch
+
+        # Add initial node to next queue so triggered entry funcs run for it
+        walker.next = [node]
 
         while len(walker.next):
             if current_loc := walker.next.pop(0).archetype:

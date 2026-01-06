@@ -7,7 +7,8 @@ impl JScaleExecutionContext.init(
 ) -> None {
     import from jac_scale.memory_hierarchy { MemoryOrchestrator }
     import from jaclang.pycore.constructs { Anchor, NodeAnchor, Root }
-    self.mem: MemoryOrchestrator = MemoryOrchestrator();
+    # Pass session to MemoryOrchestrator for proper storage isolation
+    self.mem: MemoryOrchestrator = MemoryOrchestrator(session=session);
     self.reports: list[Any] = [];
     self.custom: Any = MISSING;
     system_root_anchor: (Anchor | None) = self.mem.get(UUID(Con.SUPER_ROOT_UUID));

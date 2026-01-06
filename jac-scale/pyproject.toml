@@ -2,9 +2,7 @@
 name = "jac-scale"
 version = "0.1.0"
 description = ""
-authors = [
-    {name = "juzailmlwork", email = "juzailmlwork@gmail.com"}
-]
+authors = [{ name = "Jason Mars", email = "jason@mars.ninja" }]
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -17,7 +15,7 @@ dependencies = [
     "fastapi>=0.121.3,<0.122.0",
     "uvicorn>=0.38.0,<0.39.0",
     "pyjwt",
-    "fastapi-sso>=0.18.0,<1.0.0"
+    "fastapi-sso>=0.18.0,<1.0.0",
 ]
 
 [project.entry-points."jac"]

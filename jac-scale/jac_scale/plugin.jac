@@ -143,6 +143,20 @@ class JacScalePlugin {
     }
 }
 
+# Pluggy's varnames() puts parameters with defaults into kwargnames, not argnames.
+# But _multicall only passes argnames to hook implementations.
+# JacRuntimeInterfaceImpl strips defaults via generate_plugin_helpers, so we must too.
+import inspect;
+glob func = JacScalePlugin.create_j_context,
+     sig = inspect.signature(func),
+     sig_nodef = sig.replace(
+         parameters=[
+             p.replace(default=inspect.Parameter.empty)
+             for p in sig.parameters.values()
+         ]
+     );
+
 with entry {
+    func.__signature__ = sig_nodef;
     plugin_manager.register(JacScalePlugin());
 }

@@ -1,11 +1,13 @@
 """MemoryOrchestrator Implementation - Multi-tier storage coordination."""
 import from uuid { UUID }
-import from collections.abc { Iterable }
+import from collections.abc { Callable, Iterable }
 import from jaclang.pycore.archetype { Anchor }
 import from jaclang.runtimelib.storage { logger }
 
 """Initialize MemoryOrchestrator with multi-tier storage."""
-impl MemoryOrchestrator.init -> None {
+impl MemoryOrchestrator.init(session: (str | None) = None) -> None {
+    # Store session path for reference
+    self.session_path = session;
     # L2: Try to initialize Redis cache
     redis_backend = RedisBackend();
     self._cache_available = redis_backend.is_available();
@@ -24,7 +26,12 @@ impl MemoryOrchestrator.init -> None {
         self._persistence_type = 'mongodb';
         logger.info("MongoDB persistence backend initialized");
     } else {
-        persistence = ShelfBackend();
+        # Use session path if provided, otherwise use default config path
+        if session {
+            persistence = ShelfBackend(shelf_path=session);
+        } else {
+            persistence = ShelfBackend();
+        }
         self._persistence_type = 'shelf';
         logger.info("MongoDB not available, using Shelf for persistence");
     }
@@ -56,6 +63,27 @@ impl MemoryOrchestrator.get(id: UUID) -> (Anchor | None) {
                 self.cache.put(anchor);
             }
             return anchor;
+        }
+    }
+    return None;
+}
+
+"""Find one anchor by ID with persistence fallback for access control checks."""
+impl MemoryOrchestrator.find_one(
+    ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
+) -> (Anchor | None) {
+    import from collections.abc { Iterable as IterableType }
+    # First try L1 memory
+    if (anchor := self.memory.find_one(ids, filter)) {
+        return anchor;
+    }
+    # If not in L1, try to get from persistence (for access control checks)
+    # Only handle single UUID case for persistence lookup
+    if not isinstance(ids, IterableType) or isinstance(ids, UUID) {
+        if (anchor := self.get(ids)) {
+            if filter is None or filter(anchor) {
+                return anchor;
+            }
         }
     }
     return None;
@@ -94,7 +122,14 @@ impl MemoryOrchestrator.commit(anchor: (Anchor | None) = None) -> None {
 
 """Commit pending changes and close all backends."""
 impl MemoryOrchestrator.close -> None {
-    self.commit();
+    # Use sync_from_memory for ShelfBackend (handles access control merge strategy)
+    if isinstance(self.persistence, ShelfBackend) {
+        self.persistence.sync_from_memory(
+            self.memory.get_mem(), set(self.memory.get_gc())
+        );
+    } elif self.persistence {
+        self.commit();
+    }
     self.memory.close();
     if self.cache {
         self.cache.close();

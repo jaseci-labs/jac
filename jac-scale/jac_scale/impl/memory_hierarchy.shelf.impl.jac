@@ -106,3 +106,67 @@ impl ShelfBackend._open_shelf -> shelve.Shelf {
     }
     return self._shelf;
 }
+
+"""Sync memory cache to shelf with access control merge strategy."""
+impl ShelfBackend.sync_from_memory(
+    memory: dict[UUID, Anchor], gc_set: set[Anchor]
+) -> None {
+    import from jaclang { JacRuntimeInterface as Jac }
+    import from jaclang.pycore.archetype { NodeAnchor, Root }
+    import from pickle { dumps }
+    shelf = self._ensure_shelf();
+    with self._lock {
+        # Handle garbage collected anchors (deletions)
+        for anchor in gc_set {
+            key = storage_key(anchor.id);
+            if key in shelf {
+                del (shelf[key], ) ;
+            }
+        }
+        # Sync memory to shelf with access control
+        for (id, anchor) in memory.items() {
+            if not anchor.persistent {
+                continue;
+            }
+            if not AnchorMergeStrategy.needs_persist(anchor) {
+                continue;
+            }
+
+            key = storage_key(id);
+            stored = shelf.get(key);
+
+            if stored {
+                # Handle edge updates (CONNECT access)
+                if (
+                    isinstance(stored, NodeAnchor)
+                    and isinstance(anchor, NodeAnchor)
+                    and stored.edges != anchor.edges
+                    and Jac.check_connect_access(anchor)
+                ) {
+                    if not anchor.edges and not isinstance(anchor.archetype, Root) {
+                        del (shelf[key], ) ;
+                        continue;
+                    }
+                    stored.edges = anchor.edges;
+                }
+                # Handle access/archetype updates (WRITE access)
+                if Jac.check_write_access(anchor) {
+                    if hash(dumps(stored.access)) != hash(dumps(anchor.access)) {
+                        stored.access = anchor.access;
+                    }
+                    if hash(dumps(stored.archetype)) != hash(dumps(anchor.archetype)) {
+                        stored.archetype = anchor.archetype;
+                    }
+                }
+                shelf[key] = stored;
+            } elif not (
+                isinstance(anchor, NodeAnchor)
+                and not isinstance(anchor.archetype, Root)
+                and not anchor.edges
+            ) {
+                shelf[key] = anchor;
+            }
+        }
+        shelf.sync();
+    }
+}

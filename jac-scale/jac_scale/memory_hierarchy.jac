@@ -13,7 +13,7 @@ The MemoryOrchestrator manages data flow between tiers with:
 import os;
 import shelve;
 import logging;
-import from collections.abc { Iterable, MutableMapping }
+import from collections.abc { Callable, Iterable, MutableMapping }
 import from pickle { dumps, loads }
 import from threading { RLock }
 import from typing { Any }
@@ -100,6 +100,7 @@ obj ShelfBackend(PersistenceBackend) {
     def close -> None;
     # PersistenceBackend protocol
     def bulk_put(anchors: Iterable[Anchor]) -> None;
+    def sync_from_memory(memory: dict[UUID, Anchor], gc_set: set[Anchor]) -> None;
     # Internal
     def _open_shelf -> shelve.Shelf;
     def _ensure_shelf -> shelve.Shelf;
@@ -119,11 +120,17 @@ Coordinates data access across:
 obj MemoryOrchestrator(BaseMemoryOrchestrator) {
     has cache: (CacheBackend | None) = None,
         _cache_available: bool = False,
-        _persistence_type: str = 'none';
+        _persistence_type: str = 'none',
+        session_path: (str | None) = None;
 
-    def init -> None;
+    def init(session: (str | None) = None) -> None;
     # Override base class methods to add L2 cache layer
     def get(id: UUID) -> (Anchor | None);
+    def find_one(
+        ids: (UUID | Iterable[UUID]),
+        filter: (Callable[[Anchor], Anchor] | None) = None
+    ) -> (Anchor | None);
+
     def commit(anchor: (Anchor | None) = None) -> None;
     def close -> None;
     # Override internal coordination to include cache

@@ -147,8 +147,8 @@ impl ShelfStorage.sync_from_memory(
     for anchor in gc_set {
         self.__shelf__.pop(str(anchor.id), None);
     }
-    # Sync memory to shelf
-    for (id, anchor) in memory.items() {
+    # Sync memory to shelf - make a copy to avoid dict modification during iteration
+    for (id, anchor) in list(memory.items()) {
         if not anchor.persistent {
             continue;
         }
