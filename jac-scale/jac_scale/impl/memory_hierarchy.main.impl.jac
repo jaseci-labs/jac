@@ -3,7 +3,6 @@ import logging;
 import from uuid { UUID }
 import from collections.abc { Callable, Iterable }
 import from jaclang.pycore.archetype { Anchor }
-import from jaclang.runtimelib.memory { VolatileMemory, PersistentMemory, CacheMemory }
 
 glob logger = logging.getLogger(__name__);
 
@@ -13,8 +12,9 @@ impl ScaleTieredMemory.init(
 ) -> None {
     # Store session path for reference
     self.session_path = session;
-    # L1: Initialize volatile memory
-    self.l1 = VolatileMemory();
+    # L1: Initialize volatile memory (inherited from VolatileMemory via TieredMemory)
+    self.__mem__ = {};
+    self.__gc__ = set();
     # L2: Try to initialize Redis cache
     redis_backend = RedisBackend();
     self._cache_available = redis_backend.is_available();
@@ -47,14 +47,18 @@ impl ScaleTieredMemory.init(
 impl ScaleTieredMemory.close -> None {
     # Use sync_from_memory for ShelfBackend (handles access control merge strategy)
     if isinstance(self.l3, ShelfBackend) {
-        self.l3.sync_from_memory(self.l1.get_mem(), set(self.l1.get_gc()));
+        self.l3.sync_from_memory(self.__mem__, set(self.__gc__));
     } elif self.l3 {
         self.commit();
     }
-    self.l1.close();
+    # Clear L1 (inherited from VolatileMemory)
+    self.__mem__.clear();
+    self.__gc__.clear();
+    # Close L2
     if self.l2 {
         self.l2.close();
     }
+    # Close L3
     if self.l3 {
         self.l3.close();
     }

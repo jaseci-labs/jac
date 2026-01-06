@@ -159,46 +159,14 @@ obj VolatileMemory(Memory) {
 
 """Local Cache Memory - In-process cache implementing CacheMemory interface.
 
-This is the default L2 tier in a tiered memory hierarchy. Similar to VolatileMemory
-but implements the CacheMemory interface with exists/put_if_exists/invalidate.
-jac-scale overrides this with Redis-based distributed cache.
+Extends VolatileMemory with cache-specific methods (exists, put_if_exists, invalidate).
+This is the default L2 tier. jac-scale overrides with Redis-based distributed cache.
 """
-obj LocalCacheMemory(CacheMemory) {
-    has __mem__: dict[UUID, Anchor] = {},
-        __gc__: set[Anchor] = {};
-
-    def postinit -> None;
-    # Memory interface
-    def is_available -> bool;
-    def get(id: UUID) -> (Anchor | None);
-    def put(anchor: Anchor) -> None;
-    def delete(id: UUID) -> None;
-    def close -> None;
-    def has(id: UUID) -> bool;
-    def query(
-        filter: (Callable[[Anchor], bool] | None) = None
-    ) -> Generator[Anchor, None, None];
-
-    def get_roots -> Generator[Root, None, None];
-    def find(
-        ids: (UUID | Iterable[UUID]),
-        filter: (Callable[[Anchor], Anchor] | None) = None
-    ) -> Generator[Anchor, None, None];
-
-    def find_one(
-        ids: (UUID | Iterable[UUID]),
-        filter: (Callable[[Anchor], Anchor] | None) = None
-    ) -> (Anchor | None);
-
-    def commit(anchor: (Anchor | None) = None) -> None;
+obj LocalCacheMemory(VolatileMemory, CacheMemory) {
     # CacheMemory interface
     def exists(id: UUID) -> bool;
     def put_if_exists(anchor: Anchor) -> bool;
     def invalidate(id: UUID) -> None;
-    # Additional methods
-    def get_gc -> list[Anchor];
-    def remove_from_gc(anchor: Anchor) -> None;
-    def get_mem -> dict[UUID, Anchor];
 }
 
 """Shelf-based Persistent Memory.
@@ -245,46 +213,26 @@ obj ShelfMemory(PersistentMemory) {
     def get_mem -> dict[UUID, Anchor];
 }
 
-"""Tiered Memory - Composes L1 volatile + L2 cache + L3 persistent with write-through.
+"""Tiered Memory - Extends VolatileMemory with L2 cache + L3 persistent tiers.
 
 This is the main memory abstraction used by ExecutionContext. It provides:
-- Fast reads via L1 with L2/L3 fallback and automatic promotion
+- Fast reads via inherited L1 (VolatileMemory) with L2/L3 fallback and automatic promotion
 - Write-through to all tiers with access control
 - Configurable tiers (L2 and L3 are optional)
 
+TieredMemory IS the L1 tier (inherits __mem__, __gc__ from VolatileMemory).
 jac-scale extends this by providing Redis-based L2 and database L3.
 """
-obj TieredMemory(Memory) {
-    has l1: VolatileMemory,
-        l2: (CacheMemory | None) = None,
+obj TieredMemory(VolatileMemory) {
+    has l2: (CacheMemory | None) = None,
         l3: (PersistentMemory | None) = None;
 
     def init(session: (str | None) = None, use_cache: bool = False) -> None;
-    # Memory interface
-    def is_available -> bool;
+    # Override only methods that need tiering logic
     def get(id: UUID) -> (Anchor | None);
     def put(anchor: Anchor) -> None;
     def delete(id: UUID) -> None;
     def close -> None;
     def has(id: UUID) -> bool;
-    def query(
-        filter: (Callable[[Anchor], bool] | None) = None
-    ) -> Generator[Anchor, None, None];
-
-    def get_roots -> Generator[Root, None, None];
-    def find(
-        ids: (UUID | Iterable[UUID]),
-        filter: (Callable[[Anchor], Anchor] | None) = None
-    ) -> Generator[Anchor, None, None];
-
-    def find_one(
-        ids: (UUID | Iterable[UUID]),
-        filter: (Callable[[Anchor], Anchor] | None) = None
-    ) -> (Anchor | None);
-
     def commit(anchor: (Anchor | None) = None) -> None;
-    # Additional methods for compatibility
-    def get_gc -> list[Anchor];
-    def remove_from_gc(anchor: Anchor) -> None;
-    def get_mem -> dict[UUID, Anchor];
 }
