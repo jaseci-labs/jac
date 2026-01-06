@@ -5,6 +5,7 @@ This guide covers how to publish and setup the jac-client npm packages (`@jac-cl
 ## Overview
 
 The jac-client project uses two separate npm packages to manage default dependencies:
+
 - **`@jac-client/deps`**: Runtime dependencies (React, React DOM, React Router)
 - **`@jac-client/dev-deps`**: Development dependencies (Vite, Babel, TypeScript, etc.)
 
@@ -13,14 +14,17 @@ The jac-client project uses two separate npm packages to manage default dependen
 1. **npm account**: Create an account at [npmjs.com](https://www.npmjs.com/)
 2. **npm CLI**:  Ensure npm is installed (`npm --version`)
 3. **Authentication**: Login to npm via CLI
+
    ```bash
    npm login
    ```
+
 4. **Organization access**: You'll need access to publish under the `@jac-client` scope
 
 ## Package Structure
 
 Each package is located in its respective directory:
+
 ```
 jac-client/
 └── @jac-client/
@@ -36,7 +40,7 @@ jac-client/
 
 ```bash
 cd jac-client/@jac-client/jac-client-deps
-npm init 
+npm init
 ```
 
 Before publishing, ensure your `package.json` has all required fields:
@@ -63,7 +67,7 @@ Before publishing, ensure your `package.json` has all required fields:
 
 ### 2. Publish to npm
 
-#### For @jac-client/deps: 
+#### For @jac-client/deps:
 
 ```bash
 cd jac-client/@jac-client/jac-client-deps
@@ -82,12 +86,14 @@ npm publish --access public
 ### 3. Verify Publication
 
 Check that your packages are published:
+
 ```bash
 npm view @jac-client/deps
 npm view @jac-client/dev-deps
 ```
 
-Or visit: 
+Or visit:
+
 - https://www.npmjs.com/package/@jac-client/deps
 - https://www.npmjs.com/package/@jac-client/dev-deps
 
@@ -106,19 +112,24 @@ After publishing, users can install the packages in their `jac. toml`:
 ## Troubleshooting
 
 ### Authentication Errors
+
 ```bash
 npm logout
 npm login
 ```
 
 ### Scope Permission Issues
+
 Ensure you're part of the `@jac-client` organization or create the scope:
+
 ```bash
 npm access public @jac-client/deps
 ```
 
 ### Version Conflicts
-If version already exists: 
+
+If version already exists:
+
 ```bash
 npm version patch  # Increment version
 npm publish
@@ -156,21 +167,26 @@ npm install @jac-client/dev-deps
 ### Common Issues
 
 **Issue**: `npm ERR! 403 Forbidden`
+
 - **Solution**: Ensure you have publish permissions for the `@jac-client` organization
+
   ```bash
   npm owner add <username> @jac-client/deps
   ```
 
 **Issue**: `npm ERR! You do not have permission to publish`
+
 - **Solution**: Login with correct credentials
+
   ```bash
   npm logout
   npm login
   ```
 
 **Issue**: `npm ERR! You cannot publish over the previously published versions`
+
 - **Solution**: Increment the version number in `package.json`
+
   ```bash
   npm version patch
   ```
-
