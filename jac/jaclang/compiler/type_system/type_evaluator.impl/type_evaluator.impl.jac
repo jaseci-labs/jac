@@ -546,14 +546,41 @@ impl TypeEvaluator.get_type_of_magic_method_call(
     return None;
 }
 
-"""Assign the source type to the destination type."""
-impl TypeEvaluator.assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool {
-    if types.TypeCategory.Unknown in (src_type.category, dest_type.category) {
-        # NOTE: For now if we don't have the type info, we assume it's compatible.
-        # For strict mode we should disallow usage of unknown unless explicitly ignored.
+"""Check if a type is Any, object, Unknown, or TypeVar."""
+impl TypeEvaluator.is_any_type(ty: TypeBase) -> bool {
+    # Check for UnknownType
+    if isinstance(ty, types.UnknownType) {
         return True;
     }
+    # Check for TypeVarType
+    if isinstance(ty, types.TypeVarType) {
+        return True;
+    }
+    # Check for object, Any, or TypeVar class types
+    if isinstance(ty, types.ClassType) {
+        if ty.is_builtin("object") {
+            return True;
+        }
+        if (self.prefetch.any_class and ty.shared == self.prefetch.any_class.shared) {
+            return True;
+        }
+        if (
+            self.prefetch.type_var_class
+            and ty.shared == self.prefetch.type_var_class.shared
+        ) {
+            return True;
+        }
+    }
+    return False;
+}
+
+"""Assign the source type to the destination type."""
+impl TypeEvaluator.assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool {
     if src_type == dest_type {
+        return True;
+    }
+    # Everything is assignable to object, Any, Unknown, or TypeVar.
+    if self.is_any_type(dest_type) or self.is_any_type(src_type) {
         return True;
     }
     # If destination is a union type, check if source is compatible with any of the
@@ -565,14 +592,6 @@ impl TypeEvaluator.assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool 
                 return True;
             }
         }
-    }
-    # Everything is assignable to object or Any.
-    if isinstance(dest_type, types.ClassType)
-    and (
-        dest_type.is_builtin("object")
-        or dest_type.shared == self.prefetch.any_class.shared
-    ) {
-        return True;
     }
     if dest_type.is_class_instance() and src_type.is_class_instance() {
         assert isinstance(dest_type, types.ClassType);

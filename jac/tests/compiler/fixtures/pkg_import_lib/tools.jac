@@ -1,3 +1,3 @@
-def tool_func() {
+def tool_func() -> str {
     return 'Tool function executed';
 }

@@ -22,7 +22,7 @@ cl def component() {
     </div>;
 }
 
-def server_only() {
+def server_only() -> str {
     return "not included";
 }
 
