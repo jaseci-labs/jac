@@ -141,7 +141,16 @@ impl CommandRegistry._bind_command_to_argparse(name: str, cmd: Command) -> None 
             }
         } else {
             arg_msg += f", default: {param.default}";
-            if (param.annotation is bool or param.annotation == 'bool') {
+            # Check if this is a list type - make it positional with nargs='*'
+            annotation = eval(param.annotation)
+            if isinstance(param.annotation, str)
+            else param.annotation;
+            if annotation is list
+            or (annotation?.__origin__ and annotation?.__origin__ is list) {
+                cmd_parser.add_argument(
+                    f"{param_name}", <>default=param.default, nargs='*', help=arg_msg
+                );
+            } elif (param.annotation is bool or param.annotation == 'bool') {
                 cmd_parser.add_argument(
                     f"-{shorthand}",
                     f"--{param_name}",
@@ -192,7 +201,7 @@ impl CommandRegistry.register(
     func: (Callable | None) = None,
     *,
     priority: (int | CommandPriority) = CommandPriority.CORE,
-    source: str = 'core'
+    source: str = 'unknown'
 ) -> Callable {
     """Inner registration function.""";
     def _register(f: Callable) -> Callable {

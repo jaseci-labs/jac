@@ -87,7 +87,7 @@ obj CacheConfig {
 obj PluginsConfig {
     has discovery: str = "auto",
         enabled: list[str] = [],
-        disabled: list[str] = [];
+        disabled: list[str] = [];  # Plugins temporarily bypassed by user
 }
 
 """Environment configuration from [environment] section."""

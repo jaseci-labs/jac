@@ -13,32 +13,32 @@ glob _runtime_initialized = False;
 
 def _ensure_jac_runtime -> None;
 
-@cmd_registry.register
+@cmd_registry.register(source='jaclang')
 def gen_parser -> str;
 
-@cmd_registry.register
+@cmd_registry.register(source='jaclang')
 def format(paths: list, to_screen: bool = False, fix: bool = False) -> None;
 
 def proc_file_sess(filename: str, session: str, <>root: (str | None) = None) -> tuple;
 
-@cmd_registry.register
+@cmd_registry.register(source='jaclang')
 def run(
     filename: str, session: str = '', main: bool = True, cache: bool = True
 ) -> None;
 
-@cmd_registry.register
+@cmd_registry.register(source='jaclang')
 def get_object(filename: str, id: str, session: str = '', main: bool = True) -> dict;
 
-@cmd_registry.register
+@cmd_registry.register(source='jaclang')
 def build(filename: str, typecheck: bool = False) -> None;
 
-@cmd_registry.register
+@cmd_registry.register(source='jaclang')
 def check(paths: list, print_errs: bool = True, warnonly: bool = False) -> None;
 
-@cmd_registry.register
+@cmd_registry.register(source='jaclang')
 def lsp -> None;
 
-@cmd_registry.register
+@cmd_registry.register(source='jaclang')
 def enter(
     filename: str,
     entrypoint: str,
@@ -49,7 +49,7 @@ def enter(
     <>node: str = ''
 ) -> None;
 
-@cmd_registry.register
+@cmd_registry.register(source='jaclang')
 def <>test(
     filepath: str,
     test_name: str = '',
@@ -60,13 +60,13 @@ def <>test(
     verbose: bool = False
 ) -> None;
 
-@cmd_registry.register
+@cmd_registry.register(source='jaclang')
 def tool(tool: str, args: (list | None) = None) -> None;
 
-@cmd_registry.register
+@cmd_registry.register(source='jaclang')
 def debug(filename: str, main: bool = True, cache: bool = False) -> None;
 
-@cmd_registry.register
+@cmd_registry.register(source='jaclang')
 def dot(
     filename: str,
     session: str = '',
@@ -82,16 +82,16 @@ def dot(
     format: str = 'dot'
 ) -> None;
 
-@cmd_registry.register
+@cmd_registry.register(source='jaclang')
 def py2jac(filename: str) -> None;
 
-@cmd_registry.register
+@cmd_registry.register(source='jaclang')
 def jac2py(filename: str) -> None;
 
-@cmd_registry.register
+@cmd_registry.register(source='jaclang')
 def js(filename: str) -> None;
 
-@cmd_registry.register
+@cmd_registry.register(source='jaclang')
 def serve(
     filename: str,
     session: str = '',
@@ -103,13 +103,15 @@ def serve(
 #===============================================================================
 # PROJECT MANAGEMENT COMMANDS
 #===============================================================================
-@cmd_registry.register
+@cmd_registry.register(
+    source='jaclang'
+)
 def create(name: str = 'main', force: bool = False) -> None;
 
-@cmd_registry.register
+@cmd_registry.register(source='jaclang')
 def install(dev: bool = False, verbose: bool = False) -> None;
 
-@cmd_registry.register
+@cmd_registry.register(source='jaclang')
 def add(
     packages: list = [],
     dev: bool = False,
@@ -118,14 +120,14 @@ def add(
     verbose: bool = False
 ) -> None;
 
-@cmd_registry.register
+@cmd_registry.register(source='jaclang')
 def remove(packages: list = [], dev: bool = False, cl: bool = False) -> None;
 
-@cmd_registry.register
+@cmd_registry.register(source='jaclang')
 def script(name: str = '', list_scripts: bool = False) -> None;
 
-@cmd_registry.register
-def plugins(verbose: bool = False) -> None;
+@cmd_registry.register(source='jaclang')
+def plugins(action: str = 'list', names: list = [], verbose: bool = False) -> None;
 
 def start_cli -> None;
 

@@ -287,12 +287,21 @@ impl JacConfig.save -> None {
         }
     }
     # Update plugins configuration
-    if self.plugins {
+    # Always update plugins section if it exists in doc or we have data to write
+    has_existing_plugins = "plugins" in doc;
+    needs_update = self.plugins or self.plugins_config.disabled is not None;
+    if has_existing_plugins or needs_update {
         if "plugins" not in doc {
             doc["plugins"] = {};
         }
         for (plugin_name, plugin_config) in self.plugins.items() {
             doc["plugins"][plugin_name] = plugin_config;
+        }
+        # Persist disabled plugins list - handle both setting and clearing
+        if self.plugins_config.disabled {
+            doc["plugins"]["disabled"] = self.plugins_config.disabled;
+        } elif "disabled" in doc.get("plugins", {}) {
+            del doc["plugins"]["disabled"] ;  # Remove if empty
         }
     }
     # Write using simple TOML serializer

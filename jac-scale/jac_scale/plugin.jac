@@ -19,7 +19,7 @@ class JacCmd {
     @hookimpl
     static def create_cmd -> None {
         """Jac Scale functionality.""";
-        @cmd_registry.register
+        @cmd_registry.register(priority=CommandPriority.PLUGIN, source='jac-scale')
         def scale(file_path: str, build: bool = False) -> None {
             if not os.path.exists(file_path) {
                 raise FileNotFoundError(f"File not found: '{file_path}'") ;
@@ -36,7 +36,7 @@ class JacCmd {
             deploy_K8s(code_folder, base_file_path, build);
         }
         """Jac Destroys functionality.""";
-        @cmd_registry.register
+        @cmd_registry.register(priority=CommandPriority.PLUGIN, source='jac-scale')
         def destroy(file_path: str) -> None {
             if not os.path.exists(file_path) {
                 raise FileNotFoundError(f"File not found: '{file_path}'") ;

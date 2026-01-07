@@ -185,3 +185,80 @@ jac test <file_path>
 Parameters to execute the test command:
 
 - `file_path`: The path to the .jac file.
+
+## `jac plugins`
+
+The `plugins` command provides comprehensive plugin management for the Jac runtime. It allows you to list installed plugins, and enable or disable them.
+
+```bash
+jac plugins [action] [names...] [--verbose]
+```
+
+### Actions
+
+- `list` (default): Show all installed plugins organized by PyPI package
+- `disable`: Disable specified plugins (they won't be loaded on startup)
+- `enable`: Re-enable previously disabled plugins
+- `disabled`: Show currently disabled plugins
+
+### Parameters
+
+- `action`: The action to perform (`list`, `disable`, `enable`, or `disabled`)
+- `names`: Plugin or package names to disable/enable
+- `--verbose`: Show detailed plugin information including module paths and hooks
+
+### Plugin Naming
+
+Plugins use fully qualified names in the format `package:plugin` for unambiguous identification:
+
+- `jac-scale:JacScaleRuntimeImpl` - A specific plugin from jac-scale
+- `jac-client:serve` - A specific plugin from jac-client
+
+### Examples
+
+```bash
+# List all installed plugins
+jac plugins
+
+# List plugins with detailed information
+jac plugins list --verbose
+
+# Disable all plugins from a package
+jac plugins disable jac-scale
+
+# Disable a specific plugin using qualified name
+jac plugins disable jac-client:serve
+
+# Disable all external plugins
+jac plugins disable *
+
+# Enable a previously disabled plugin
+jac plugins enable jac-scale
+
+# Show currently disabled plugins
+jac plugins disabled
+```
+
+### Configuration
+
+Plugin settings are stored in `jac.toml` under the `[plugins]` section:
+
+```toml
+[plugins]
+disabled = ["jac-scale:JacScaleRuntimeImpl"]
+```
+
+You can also use the `JAC_DISABLED_PLUGINS` environment variable for runtime override:
+
+```bash
+# Disable all external plugins for this run
+JAC_DISABLED_PLUGINS=* jac run myapp.jac
+
+# Disable specific plugins
+JAC_DISABLED_PLUGINS=jac-scale:JacScaleRuntimeImpl,jac-client:serve jac run myapp.jac
+```
+
+### Wildcard Support
+
+- `*` - Disable all external plugins
+- `package:*` - Disable all plugins from a specific package

@@ -21,7 +21,7 @@ enum CommandPriority {
 obj Command {
     has func: Callable,
         priority: CommandPriority = CommandPriority.CORE,
-        source: str = 'core';
+        source: str = 'unknown';
 
     def postinit -> None;
     def call( *args: list , **kwargs: dict)  -> str;
@@ -36,7 +36,7 @@ obj CommandRegistry {
         func: (Callable | None) = None,
         *,
         priority: (int | CommandPriority) = CommandPriority.CORE,
-        source: str = 'core'
+        source: str = 'unknown'
     ) -> Callable;
 
     def _bind_command_to_argparse(name: str, cmd: Command) -> None;
