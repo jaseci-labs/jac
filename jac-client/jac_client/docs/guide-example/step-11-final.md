@@ -700,7 +700,7 @@ cl {
 3. **Open in browser:**
 
    ```
-   http://localhost:8000/page/app
+   http://localhost:8000/cl/app
    ```
 
 4. **Test it out:**

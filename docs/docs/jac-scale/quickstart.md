@@ -68,13 +68,13 @@ jac serve app.jac
 
 **Access your application:**
 
-- Frontend: http://localhost:8000/page/app
+- Frontend: http://localhost:8000/cl/app
 - Backend: http://localhost:8000
 - Swagger Documentation: http://localhost:8000/docs
 
 you can add new todo tasks
 
-- from the frontend at http://localhost:8000/page/app
+- from the frontend at http://localhost:8000/cl/app
 - from the swagger docs  at http://localhost:8000/docs using /walker/create-todo endpoint
 
 ### 9. Set Up Kubernetes (For JAC Scale)
@@ -105,7 +105,7 @@ jac scale app.jac
 
 **Access your application:**
 
-- Frontend: http://localhost:30001/page/app
+- Frontend: http://localhost:30001/cl/app
 - Backend: http://localhost:30001
 - Swagger Documentation: http://localhost:30001/docs
 
@@ -133,7 +133,7 @@ jac scale app.jac -b
 
 **Access your application:**
 
-- Frontend: http://localhost:30001/page/app
+- Frontend: http://localhost:30001/cl/app
 - Backend: http://localhost:30001
 - Swagger Documentation: http://localhost:30001/docs
 

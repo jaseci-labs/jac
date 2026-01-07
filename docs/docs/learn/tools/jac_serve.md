@@ -375,6 +375,57 @@ curl -X POST http://localhost:8000/walker/CompleteTask \
 5. **Standard Library Only**: Uses only Python standard libraries (http.server, json, hashlib, etc.)
 6. **CORS Support**: Includes CORS headers for web application integration
 
+## Client-Side Application Routing
+
+When using `jac-client` for client-side applications, `jac serve` provides additional endpoints for rendering client-side components.
+
+### Client Page Endpoints
+
+#### GET /cl/<name>
+
+Renders an HTML page for a client-side function defined with `cl def`.
+
+**Example:**
+
+```bash
+curl http://localhost:8000/cl/MyApp
+```
+
+This returns a fully rendered HTML page with the client-side application.
+
+### Routing Configuration
+
+You can customize client-side routing via `jac.toml`:
+
+```toml
+[serve]
+cl_route_prefix = "cl"      # URL prefix for client apps (default: "cl")
+base_route_app = "app"      # Client app to serve at root "/" (default: none)
+```
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `cl_route_prefix` | string | `"cl"` | The URL path prefix for client-side apps. Apps are served at `/<prefix>/<app_name>`. |
+| `base_route_app` | string | `""` | Name of a client app to serve at the root `/` path. When set, visiting `/` renders this app instead of the API info page. |
+
+**Example: Custom route prefix**
+
+```toml
+[serve]
+cl_route_prefix = "pages"
+```
+
+With this config, client apps are accessed at `/pages/MyApp` instead of `/cl/MyApp`.
+
+**Example: Serve app at root**
+
+```toml
+[serve]
+base_route_app = "app"
+```
+
+With this config, visiting `/` renders the `app` client function directly, making it the default landing page for your application.
+
 ## Notes
 
 - The `target_node` field for walkers is optional and defaults to the user's root node
