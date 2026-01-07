@@ -406,7 +406,7 @@ class TestJacClientExamples:
         ) as runner:
             assert "background-image" in runner.request_raw("GET", "/main.css")
             assert "PNG" in runner.request_raw("GET", "/static/assets/burger.png")
-            assert "/static/client.js" in runner.request_raw("GET", "/page/app")
+            assert "/static/client.js" in runner.request_raw("GET", "/cl/app")
             assert (
                 runner.request_raw("GET", "/static/client.js")
                 != "Static file not found"
