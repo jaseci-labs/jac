@@ -180,7 +180,7 @@ obj ShelfMemory(PersistentMemory) {
         __gc__: set[Anchor] = {},
         __shelf__: (shelve.Shelf | None) = None;
 
-    def init(path: str) -> None;
+    def postinit -> None;
     # Memory interface
     def is_available -> bool;
     def get(id: UUID) -> (Anchor | None);
@@ -225,9 +225,11 @@ jac-scale extends this by providing Redis-based L2 and database L3.
 """
 obj TieredMemory(VolatileMemory) {
     has l2: (CacheMemory | None) = None,
-        l3: (PersistentMemory | None) = None;
+        l3: (PersistentMemory | None) = None,
+        session: (str | None) = None,
+        use_cache: bool = False;
 
-    def init(session: (str | None) = None, use_cache: bool = False) -> None;
+    def postinit -> None;
     # Override only methods that need tiering logic
     def get(id: UUID) -> (Anchor | None);
     def put(anchor: Anchor) -> None;
