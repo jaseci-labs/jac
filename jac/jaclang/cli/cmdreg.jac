@@ -19,12 +19,11 @@ enum CommandPriority {
 
 """Represents a command in the command line interface."""
 obj Command {
-    def init(
-        func: Callable,
+    has func: Callable,
         priority: CommandPriority = CommandPriority.CORE,
-        source: str = 'core'
-    ) -> None;
+        source: str = 'core';
 
+    def postinit -> None;
     def call( *args: list , **kwargs: dict)  -> str;
 }
 

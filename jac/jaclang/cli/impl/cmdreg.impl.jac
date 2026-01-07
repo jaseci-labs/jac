@@ -289,13 +289,6 @@ impl Command.call( *args: list , **kwargs: dict)  -> str {
 }
 
 """Initialize a Command instance."""
-impl Command.init(
-    func: Callable,
-    priority: CommandPriority = CommandPriority.CORE,
-    source: str = 'core'
-) -> None {
-    self.func = func;
-    self.sig = inspect.signature(func);
-    self.priority = priority;
-    self.source = source;
+impl Command.postinit -> None {
+    self.sig = inspect.signature(self.func);
 }
