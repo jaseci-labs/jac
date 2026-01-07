@@ -932,9 +932,9 @@ class TestJacScaleServe:
         assert "result" in data
 
     def test_status_code_page_404_not_found(self) -> None:
-        """Test GET /page/{name} returns 404 for non-existent page."""
+        """Test GET /cl/{name} returns 404 for non-existent page."""
         response = requests.get(
-            f"{self.base_url}/page/nonexistent_page_xyz",
+            f"{self.base_url}/cl/nonexistent_page_xyz",
             timeout=5,
         )
         assert response.status_code == 404

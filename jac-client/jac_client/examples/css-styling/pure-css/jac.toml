@@ -8,3 +8,9 @@ entry-point = "src/app.jac"
 # Vite bundler configuration (optional overrides)
 # vite.plugins = []
 # vite.build = {}
+
+[dependencies.npm]
+"jac-client-node" = "1.0.3"
+
+[dependencies.npm.dev]
+"@jac-client/dev-deps" = "1.0.0"

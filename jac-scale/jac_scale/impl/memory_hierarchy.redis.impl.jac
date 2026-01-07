@@ -1,109 +1,186 @@
-"""Commit behaves like MongoDB but also syncs Redis."""
+"""Redis CacheBackend Implementation."""
+import redis;
+import logging;
+import from collections.abc { Callable, Generator, Iterable }
+import from pickle { dumps, loads }
+import from uuid { UUID }
+import from jaclang.pycore.archetype { Anchor, Root }
+import from jaclang.runtimelib.utils { storage_key, to_uuid }
 
-impl RedisDB.redis_key_exists(id: UUID) -> bool {
-    try {
-        return bool(self.redis_client.exists(self._redis_key(id)));
-    } except Exception {
-        return False;
-    }
-}
+glob logger = logging.getLogger(__name__);
 
-impl RedisDB.commit(
-    anchor: (Anchor | None) = None, keys: Iterable[Anchor] = []
-) -> None {
-    if (anchor) {
-        if (self.redis_key_exists(anchor.id)) {
-            self.set(anchor);
-        }
-        return;
-    }
-    for anc in keys {
-        if (self.redis_key_exists(anc.id)) {
-            self.set(anc);
-        }
-    }
-}
-
-impl RedisDB.find_by_id(id: UUID) -> (Anchor | None) {
-    _id = self._to_uuid(id);
-    data = self._load_anchor_from_redis(_id);
-    return data;
-}
-
-"""Delete from MongoDB AND Redis."""
-impl RedisDB.remove(anchor: Anchor) -> None {
-    if (self.redis_client is None) {
-        return None;
-    }
-    self.redis_client.delete(self._redis_key(anchor.id));
-}
-
-"""Save to MongoDB AND Redis."""
-impl RedisDB.<>set(anchor: Anchor) -> None {
-    if (self.redis_client is None) {
-        return;
-    }
-    self.redis_client.set(self._redis_key(anchor.id), dumps(anchor));
-}
-
-impl RedisDB._load_anchor_from_redis(id: UUID) -> (Anchor | None) {
-    if (self.redis_client is None) {
-        return None;
-    }
-    key = self._redis_key(id);
-    raw = self.redis_client.get(key);
-    if not raw {
-        return None;
-    }
-    try {
-        return loads(raw);
-    } except Exception {
-        return None;
-    }
-}
-
-impl RedisDB._to_uuid(id: (UUID | str)) -> UUID {
-    if not isinstance(id, UUID) {
-        return UUID(str(id));
-    }
-    return id;
-}
-
-impl RedisDB._redis_key(id: UUID) -> str {
-    return f"anchor:{str(id)}";
-}
-
-"""Check whether Redis connection is alive and reachable."""
-impl RedisDB.redis_is_available -> bool {
-    client = None;
-    if (self.redis_url) {
+"""Post-initialization: connect to Redis."""
+impl RedisBackend.postinit -> None {
+    if self.redis_url and self.redis_client is None {
         try {
-            client = redis.from_url(self.redis_url);
+            self.redis_client = redis.from_url(self.redis_url);
+        } except Exception as e {
+            logger.debug(f"Redis connection failed: {e}");
+            self.redis_client = None;
+        }
+    }
+}
 
+"""Check if Redis is available and connected."""
+impl RedisBackend.is_available -> bool {
+    if not self.redis_url {
+        return False;
+    }
+    client = None;
+    try {
+        client = redis.from_url(self.redis_url);
+        client.ping();
+        return True;
+    } except Exception as e {
+        logger.debug(f"Redis availability check failed: {e}");
+        return False;
+    } finally {
+        if client {
             try {
-                client.ping();
-                return True;
-            } except Exception {
-                return False;
-            }
-        } except Exception {
-            return False;
-        } finally {
-            if (client) {
-                try {
-                    client.close();
-                } except Exception { }
+                client.close();
+            } except Exception { }
+        }
+    }
+}
+
+"""Get anchor by UUID from Redis cache."""
+impl RedisBackend.get(id: UUID) -> (Anchor | None) {
+    if self.redis_client is None {
+        return None;
+    }
+    key = storage_key(to_uuid(id));
+    try {
+        raw = self.redis_client.get(key);
+        if not raw {
+            return None;
+        }
+        return loads(raw);
+    } except Exception as e {
+        logger.debug(f"Redis get failed: {e}");
+        return None;
+    }
+}
+
+"""Store anchor in Redis cache."""
+impl RedisBackend.put(anchor: Anchor) -> None {
+    if self.redis_client is None {
+        return;
+    }
+    try {
+        data = dumps(anchor);
+        key = storage_key(anchor.id);
+        self.redis_client.set(key, data);
+    } except Exception as e {
+        logger.debug(f"Redis put failed: {e}");
+    }
+}
+
+"""Delete anchor from Redis cache."""
+impl RedisBackend.delete(id: UUID) -> None {
+    if self.redis_client is None {
+        return;
+    }
+    try {
+        key = storage_key(to_uuid(id));
+        self.redis_client.delete(key);
+    } except Exception as e {
+        logger.debug(f"Redis delete failed: {e}");
+    }
+}
+
+"""Close Redis connection."""
+impl RedisBackend.close -> None {
+    if self.redis_client {
+        try {
+            self.redis_client.close();
+        } except Exception as e {
+            logger.warning(f"Error closing Redis connection: {e}");
+        }
+        self.redis_client = None;
+    }
+}
+
+"""Check if an anchor is in the cache."""
+impl RedisBackend.has(id: UUID) -> bool {
+    return self.exists(id);
+}
+
+"""Query all anchors - not supported for distributed cache."""
+impl RedisBackend.query(
+    filter: (Callable[[Anchor], bool] | None) = None
+) -> Generator[Anchor, None, None] {
+    # Redis doesn't support iteration efficiently
+    return;
+    yield ;
+}
+
+"""Get all root anchors - not supported for distributed cache."""
+impl RedisBackend.get_roots -> Generator[Root, None, None] {
+    return;
+    yield ;
+}
+
+"""Find anchors by IDs with optional filter."""
+impl RedisBackend.find(
+    ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
+) -> Generator[Anchor, None, None] {
+    id_list = [ids] if isinstance(ids, UUID) else list(ids);
+    for id in id_list {
+        if (anchor := self.get(id)) {
+            if filter is None or filter(anchor) {
+                yield anchor;
             }
         }
-    } else {
+    }
+}
+
+"""Find one anchor by ID(s) with optional filter."""
+impl RedisBackend.find_one(
+    ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
+) -> (Anchor | None) {
+    id_list = [ids] if isinstance(ids, UUID) else list(ids);
+    for id in id_list {
+        if (anchor := self.get(id)) {
+            if filter is None or filter(anchor) {
+                return anchor;
+            }
+        }
+    }
+    return None;
+}
+
+"""Commit - no-op for cache."""
+impl RedisBackend.commit(anchor: (Anchor | None) = None) -> None {
+# No-op: cache doesn't need commit
+}
+
+# CacheMemory-specific methods
+"""Check if key exists in cache."""
+impl RedisBackend.exists(id: UUID) -> bool {
+    if self.redis_client is None {
+        return False;
+    }
+    try {
+        key = storage_key(to_uuid(id));
+        return bool(self.redis_client.exists(key));
+    } except Exception {
         return False;
     }
 }
 
-"""Initialize Redis."""
-impl RedisDB.postinit -> None {
-    # Only initialize if redis_url is not empty and client is None
-    if (self.redis_url and self.redis_client is None) {
-        self.redis_client = redis.from_url(self.redis_url);
+"""Store anchor only if it already exists in cache."""
+impl RedisBackend.put_if_exists(anchor: Anchor) -> bool {
+    if self.redis_client is None {
+        return False;
     }
+    if not self.exists(anchor.id) {
+        return False;
+    }
+    self.put(anchor);
+    return True;
+}
+
+"""Remove an entry from cache."""
+impl RedisBackend.invalidate(id: UUID) -> None {
+    self.delete(id);
 }

@@ -195,10 +195,10 @@ with entry {
 
 # ===== Part 7: Mixed Jac and Python Methods =====
 obj Calculator {
-    has history: list = [];
+    has history: list[int] = [];
 
     # Jac method
-    def add_jac(value: int) {
+    def add_jac(value: int) -> int {
         self.history.append(value);
         return sum(self.history);
     }

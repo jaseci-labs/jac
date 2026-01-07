@@ -79,7 +79,7 @@ async def handleLogin(e: any) -> None {
 
     success = await jacLogin(username, password);
     if success {
-        window.location.href = "/page/app#/todos";  # Navigate to todos
+        window.location.href = "/cl/app#/todos";  # Navigate to todos
     } else {
         setError("Invalid credentials");
     }
@@ -101,7 +101,7 @@ async def handleSignup(e: any) -> None {
 
     result = await jacSignup(username, password);
     if result["success"] {
-        window.location.href = "/page/app#/todos";  # Navigate to todos
+        window.location.href = "/cl/app#/todos";  # Navigate to todos
     } else {
         setError(result["error"] if result["error"] else "Signup failed");
     }
@@ -136,7 +136,7 @@ def Navigation() -> any {
                     onClick={lambda e: any -> None {
                         e.preventDefault();
                         jacLogout();
-                        window.location.href = "/page/app#/login";
+                        window.location.href = "/cl/app#/login";
                     }}
                     style={{
                         "background": "none",
@@ -229,11 +229,11 @@ def:pub app() -> any {
 
 **Try it!**
 
-1. Go to `http://localhost:8000/page/app` - you'll be redirected to login
+1. Go to `http://localhost:8000/cl/app` - you'll be redirected to login
 2. Click "Sign up" - goes to signup page
 3. Create an account - redirects to todos
 4. Click "Logout" - redirects to login
-5. Try manually going to `/page/app#/todos` while logged out - redirects to login!
+5. Try manually going to `/cl/app#/todos` while logged out - redirects to login!
 
 ---
 
@@ -370,12 +370,12 @@ async def handleLogin() -> None {
 ### URL Structure in Jac
 
 ```
-http://localhost:8000/page/app#/todos
+http://localhost:8000/cl/app#/todos
                        ^^^^^^^  ^^^^^^
                        Jac app  Route
 ```
 
-- `/page/app` - Your Jac app
+- `/cl/app` - Your Jac app
 - `#/todos` - Client-side route (hash routing)
 
 ### Protected Routes Pattern

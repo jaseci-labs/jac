@@ -27,7 +27,7 @@ graph TD
     subgraph "Runtime - Serving"
         E --> H[JacAPIServer]
         F --> I[ClientBundleBuilder]
-        H --> J[GET /page/fn]
+        H --> J[GET /cl/fn]
         I --> K["/static/client.js"]
         J --> L[HTML shell + init payload]
         K --> M[Runtime + Module JS]
@@ -52,7 +52,7 @@ graph TD
    - Generates registration code that exposes functions globally
    - Includes polyfills (e.g., `Object.prototype.get()` for dict-like access)
 
-3. **Page Request**: When `GET /page/<function_name>` is requested:
+3. **Page Request**: When `GET /cl/<function_name>` is requested:
    - Server returns minimal HTML with empty `<div id="__jac_root"></div>`
    - Embeds `<script id="__jac_init__">` with JSON payload containing:
      - Module name and function name to execute
@@ -520,7 +520,7 @@ If guard returns `False`, the route renders `AccessDenied` component instead.
 | **Runtime Components** | | |
 | [client_bundle.py](../jaclang/runtimelib/client_bundle.py) | Bundle builder | Compiles runtime + module, generates registration code |
 | [client_runtime.cl.jac](../jaclang/runtimelib/client_runtime.cl.jac) | Client runtime | JSX rendering (`__jacJsx`, `renderJsxTree`), walker spawning (`__jacSpawn`), auth helpers |
-| [server.py](../jaclang/runtimelib/server.py) | HTTP server | Serves pages (`/page/<fn>`), bundles (`/static/client.js`), walkers |
+| [server.py](../jaclang/runtimelib/server.py) | HTTP server | Serves pages (`/cl/<fn>`), bundles (`/static/client.js`), walkers |
 | **Data Structures** | | |
 | [ClientManifest](../jaclang/compiler/codeinfo.py#L15-L25) | Metadata container (in codeinfo.py) | Stores `exports` (function names), `globals` (var names), `params` (arg order), `globals_values` (literal values), `has_client` (bool), `imports` (module mappings) |
 
@@ -571,7 +571,7 @@ From [server.py](../jaclang/runtimelib/server.py):
 
 | Endpoint | Method | Description | Implementation |
 |----------|--------|-------------|----------------|
-| `/page/<fn>` | GET | Render HTML page for client function | Lines 806-830 |
+| `/cl/<fn>` | GET | Render HTML page for client function | Lines 806-830 |
 | `/static/client.js` | GET | Serve compiled JavaScript bundle | Lines 772-781 |
 | `/walker/<name>` | POST | Spawn walker on node | Handled by ExecutionHandler |
 | `/function/<name>` | POST | Call server-side function | Handled by ExecutionHandler |
@@ -584,7 +584,7 @@ From [server.py](../jaclang/runtimelib/server.py):
 
 #### Page Rendering Flow
 
-When `GET /page/homepage?arg1=value1` is requested:
+When `GET /cl/homepage?arg1=value1` is requested:
 
 1. **Parse request** - Extract function name and query params
 2. **Authenticate** - Check auth token, or create guest user
@@ -730,7 +730,7 @@ jac myapp.jac
 jac serve myapp.jac
 
 # Access the page
-# Browser: http://localhost:8000/page/homepage
+# Browser: http://localhost:8000/cl/homepage
 ```
 
 ### Client-Server Interaction

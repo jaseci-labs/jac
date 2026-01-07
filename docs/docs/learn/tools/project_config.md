@@ -166,10 +166,20 @@ Server configuration for `jac serve`:
 
 ```toml
 [serve]
-port = 8000         # Server port
-session = ""        # Session name
-main = true         # Run as main module
+port = 8000              # Server port
+session = ""             # Session name
+main = true              # Run as main module
+cl_route_prefix = "cl"   # URL prefix for client apps (default: "cl")
+base_route_app = ""      # Client app to serve at root "/" (default: none)
 ```
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `port` | int | `8000` | Server port number |
+| `session` | string | `""` | Session file name for persistence |
+| `main` | bool | `true` | Run as main module |
+| `cl_route_prefix` | string | `"cl"` | URL prefix for client-side apps. Apps are served at `/<prefix>/<app_name>`. |
+| `base_route_app` | string | `""` | Name of a client app to serve at root `/`. When set, visiting `/` renders this app instead of the API info page. |
 
 ### [format] Section
 
@@ -401,6 +411,8 @@ fail_fast = false
 
 [serve]
 port = 8000
+cl_route_prefix = "cl"   # Client apps at /cl/<name>
+base_route_app = ""      # Set to app name to serve at /
 
 #===============================================================================
 # BUILD AND CACHE SETTINGS

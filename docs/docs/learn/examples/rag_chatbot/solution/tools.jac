@@ -21,7 +21,7 @@ obj RagEngine {
         self.add_to_chroma(chunks);
     }
 
-    def load_documents {
+    def load_documents -> list[Document] {
         document_loader = PyPDFDirectoryLoader(self.file_path);
         docs = document_loader.load();
         for i in range(min(3, len(docs))) {
@@ -32,7 +32,7 @@ obj RagEngine {
         return docs;
     }
 
-    def load_document(file_path: str) {
+    def load_document(file_path: str) -> list[Document] {
         loader = PyPDFLoader(file_path);
         return loader.load();
     }
@@ -43,7 +43,7 @@ obj RagEngine {
         self.add_to_chroma(chunks);
     }
 
-    def split_documents(documents: list[Document]) {
+    def split_documents(documents: list[Document]) -> list[Document] {
         text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=800,
             chunk_overlap=80,
@@ -58,7 +58,7 @@ obj RagEngine {
         return embeddings;
     }
 
-    def add_chunk_id(chunks: str) {
+    def add_chunk_id(chunks: list[Document]) -> list[Document] {
         last_page_id = None;
         current_chunk_index = 0;
 
@@ -108,7 +108,7 @@ obj RagEngine {
         }
     }
 
-    def get_from_chroma(query: str, chunck_nos: int = 5) {
+    def get_from_chroma(query: str, chunck_nos: int = 5) -> list {
         db = Chroma(
             persist_directory=self.chroma_path,
             embedding_function=self.get_embedding_function()
@@ -117,7 +117,7 @@ obj RagEngine {
         return results;
     }
 
-    def search(query: str, chunck_nos: int = 5) {
+    def search(query: str, chunck_nos: int = 5) -> str {
         results = self.get_from_chroma(query=query, chunck_nos=chunck_nos);
         summary = "";
         for i in range(len(results)) {
@@ -139,7 +139,7 @@ obj WebSearch {
     has api_key: str = SERPER_API_KEY,
         base_url: str = "https://google.serper.dev/search";
 
-    def search(query: str) {
+    def search(query: str) -> str {
         headers = {"X-API-KEY": self.api_key, "Content-Type": "application/json"};
         payload = {"q": query};
         resp = requests.post(self.base_url, headers=headers, json=payload);

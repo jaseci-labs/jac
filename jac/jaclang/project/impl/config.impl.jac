@@ -550,7 +550,9 @@ impl _parse_toml_data(
         config.serve = ServeConfig(
             port=serve_data.get("port", 8000),
             session=serve_data.get("session", ""),
-            main=serve_data.get("main", True)
+            main=serve_data.get("main", True),
+            cl_route_prefix=serve_data.get("cl_route_prefix", "cl"),
+            base_route_app=serve_data.get("base_route_app", "")
         );
     }
     if "format" in data {

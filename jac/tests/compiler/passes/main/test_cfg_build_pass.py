@@ -51,10 +51,10 @@ def test_cfg_abilities_and_objects(fixture_path: Callable[[str], str]) -> None:
     expected_dot = (
         "digraph G {\n"
         '  0 [label="BB0\\nobj math_mod", shape=box];\n'
-        '  1 [label="BB1\\ncan divide( x : int , y : int )\\nif y == 0", shape=box];\n'
+        '  1 [label="BB1\\ncan divide( x : int , y : int ) -> int\\nif y == 0", shape=box];\n'
         '  2 [label="BB2\\nreturn 0 ;", shape=box];\n'
-        '  3 [label="BB3\\nreturn x / y ;", shape=box];\n'
-        '  4 [label="BB4\\ncan multiply( x : int , y : int )\\nreturn x * y ;", shape=box];\n'
+        '  3 [label="BB3\\nreturn x // y ;", shape=box];\n'
+        '  4 [label="BB4\\ncan multiply( x : int , y : int ) -> int\\nreturn x * y ;", shape=box];\n'
         '  5 [label="BB5\\nx = 5 ;\\ny = 0 ;\\nmath = math_mod ( ) ;\\nz = math.divide ( x , y ) '
         ';\\nprint ( z ) ;", shape=box];\n'
         "  0 -> 1;\n"

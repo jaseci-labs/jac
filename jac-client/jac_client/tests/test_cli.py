@@ -65,6 +65,10 @@ def test_create_jac_app() -> None:
 
             assert config_data["project"]["name"] == test_project_name
 
+            # Verify serve config includes base_route_app for CL apps
+            assert "serve" in config_data
+            assert config_data["serve"]["base_route_app"] == "app"
+
             # Verify .gitignore was created with correct content
             gitignore_path = os.path.join(project_path, ".gitignore")
             assert os.path.exists(gitignore_path)
@@ -91,9 +95,8 @@ def test_create_jac_app() -> None:
                     package_data = json.load(f)
 
                 # Verify default dependencies are in package.json
-                assert "react" in package_data.get("dependencies", {})
-                assert "react-dom" in package_data.get("dependencies", {})
-                assert "vite" in package_data.get("devDependencies", {})
+                assert "jac-client-node" in package_data.get("dependencies", {})
+                assert "@jac-client/dev-deps" in package_data.get("devDependencies", {})
 
         finally:
             # Return to original directory
@@ -196,6 +199,10 @@ def test_create_jac_app_with_typescript() -> None:
 
             assert config_data["project"]["name"] == test_project_name
 
+            # Verify serve config includes base_route_app for CL apps
+            assert "serve" in config_data
+            assert config_data["serve"]["base_route_app"] == "app"
+
             # Verify src/components directory and Button.tsx were created
             components_dir = os.path.join(project_path, "src", "components")
             assert os.path.exists(components_dir)
@@ -245,10 +252,8 @@ def test_create_jac_app_with_typescript() -> None:
                     package_data = json.load(f)
 
                 # Verify default dependencies are in package.json
-                assert "react" in package_data.get("dependencies", {})
-                assert "react-dom" in package_data.get("dependencies", {})
-                assert "vite" in package_data.get("devDependencies", {})
-                assert "typescript" in package_data.get("devDependencies", {})
+                assert "jac-client-node" in package_data.get("dependencies", {})
+                assert "@jac-client/dev-deps" in package_data.get("devDependencies", {})
 
         finally:
             # Return to original directory
@@ -343,17 +348,9 @@ def test_create_jac_app_installs_default_packages() -> None:
                 with open(package_json_path) as f:
                     package_data = json.load(f)
 
-                # Verify default dependencies are in package.json
-                deps = package_data.get("dependencies", {})
-                dev_deps = package_data.get("devDependencies", {})
-
-                assert "react" in deps
-                assert "react-dom" in deps
-                assert "react-router-dom" in deps
-                assert "vite" in dev_deps
-                assert "@babel/core" in dev_deps
-                assert "typescript" in dev_deps
-                assert "@types/react" in dev_deps
+                # Verify default dependencies are in package.
+                assert "jac-client-node" in package_data.get("dependencies", {})
+                assert "@jac-client/dev-deps" in package_data.get("devDependencies", {})
 
         finally:
             # Return to original directory

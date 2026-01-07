@@ -109,7 +109,7 @@ cl with entry {
                 count = count + 1;
             }
             if count > 0 {
-                return sum / count;
+                return sum // count;
             } else {
                 return 0;
             }
@@ -163,7 +163,7 @@ cl with entry {
     counter = (
         def create_counter() {
             count = 0;
-            return lambda  (){ count = count + 1;return count; } ;
+            return lambda () -> int { count = count + 1; return count; } ;
         }
     )();
 
