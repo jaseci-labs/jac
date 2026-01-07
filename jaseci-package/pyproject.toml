@@ -24,7 +24,7 @@ dependencies = [
     "jaclang>=0.9.6",
     "byllm>=0.4.11",
     "jac-client>=0.2.6",
-    "jac-streamlit>=0.0.5",
+    "jac-streamlit>=0.0.6",
 ]
 
 [project.urls]
