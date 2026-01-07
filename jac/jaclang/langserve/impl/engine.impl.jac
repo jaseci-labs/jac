@@ -319,11 +319,71 @@ impl JacLangServer.get_ast_of_file(file_path: str) -> Optional[uni.AstNode] {
     return None;
 }
 
+impl JacLangServer.wait_till_idle -> None {
+    self.debug("Waiting for queue to empty...");
+    await asyncio.to_thread(self.queue.join);
+    self.debug("Queue is now empty");
+}
+
 """Synchronous version of wait_till_idle for testing."""
 impl JacLangServer.wait_till_idle_sync -> None {
     self.debug("Waiting for queue to empty (sync)...");
     self.queue.join();
     self.debug("Queue is now empty");
+}
+
+"""Return completion for a file."""
+impl JacLangServer.get_completion(
+    file_uri: str, position: lspt.Position, completion_trigger: Optional[str]
+) -> lspt.CompletionList {
+    # NOTE: We may only need to wait for the current file's type check.
+    await self.wait_till_idle();
+    self.debug("Getting completion for " + file_uri + " at " + str(position));
+    try {
+        file_path = uris.to_fs_path(file_uri);
+        if (
+            node_at_pos := self.get_node_at_position(
+                file_path, position.line, position.character - 1
+            )
+        ) {
+            self.debug(
+                "found the node at pos " + str(position) + " " + str(node_at_pos)
+            );
+            # For each trigger character we need to handle the completion differently
+            if isinstance(node_at_pos, uni.Token) {
+                if node_at_pos.name == "DOT" {
+                    member_access = node_at_pos.parent;
+                    self.debug("found dot " + str(member_access));
+                    if isinstance(member_access, uni.AtomTrailer) {
+                        self.debug("before returning the list");
+                        return self.get_completion_of_node(member_access.target);
+                    }
+                    # FIXME: This is wrong but imma do it anyways like this for now.
+                } elif node_at_pos.name == "NAME" {
+                    # Name of atom trailer.
+                    if (
+                        node_at_pos.parent
+                        and isinstance(node_at_pos.parent, uni.AtomTrailer)
+                    ) {
+                        self.debug(
+                            "found name in atom trailer " + str(node_at_pos.parent)
+                        );
+                        return self.get_completion_of_node(node_at_pos.parent.target);
+                    }
+                    # Just a name field.
+                    if scope_node := node_at_pos.find_parent_of_type(uni.UniScopeNode) {
+                        self.debug("found name in scope node " + str(scope_node));
+                        return self.get_completion_of_node(scope_node);
+                    }
+                }
+            }
+        }
+        return lspt.CompletionList(is_incomplete=False, items=[]);
+    } except Exception as e {
+        self.log_py(f"'Error during completion: '{e}");
+        return lspt.CompletionList(is_incomplete=False, items=[]);
+    }
+    self.debug("returning empty list");
 }
 
 impl JacLangServer.debug(msg: str) -> None {
