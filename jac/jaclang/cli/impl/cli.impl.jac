@@ -137,7 +137,7 @@ def _compile_module(
     filename: str, session_path: str
 ) -> FileSessionResult {
     """Compile and load the module from file.
-    
+
     Returns:
         FileSessionResult: Contains base_path, module_name, and execution_context
     """
@@ -192,7 +192,7 @@ def _initialize_server(
     module_name: str, session_path: str, port: int, base_path: str
 ) -> JacAPIServer {
     """Initialize the API server and build endpoint mapping.
-    
+
     Returns:
         JacAPIServer instance
     """
@@ -209,7 +209,7 @@ def _initialize_server(
 """Register endpoints with server framework."""
 def _register_endpoints(server: JacAPIServer) -> None {
     """Register endpoints using plugin hook.
-    
+
     This calls build_endpoints() which triggers the register_endpoints hook.
     """
     import from jaclang.runtimelib.server { JacAPIServer }
@@ -221,7 +221,7 @@ def _register_endpoints(server: JacAPIServer) -> None {
 """Configure documentation endpoints."""
 def _configure_docs(server: JacAPIServer, faux: bool) -> None {
     """Configure documentation endpoints.
-    
+
     If faux is True, print endpoint docs and return early.
     Otherwise, register docs endpoint via hook.
     """
@@ -244,7 +244,7 @@ def _configure_docs(server: JacAPIServer, faux: bool) -> None {
 """Attach components to server."""
 def _attach_to_server(server: JacAPIServer) -> None {
     """Attach execution manager and user manager to server.
-    
+
     This ensures all components are properly connected.
     """
     import from jaclang.runtimelib.server { JacAPIServer }
@@ -260,7 +260,7 @@ def _attach_to_server(server: JacAPIServer) -> None {
 """Start the server."""
 def _start_server(server: JacAPIServer, machine: ExecutionContext) -> None {
     """Start the server and handle shutdown.
-    
+
     Args:
         server: JacAPIServer instance
         machine: ExecutionContext instance to close on shutdown
@@ -288,7 +288,7 @@ impl serve(
     faux: bool = False
 ) -> None {
     """Start a REST API server for the specified .jac file.
-    
+
     Execution chain:
     1. Compile module
     2. Map walkers to endpoints
@@ -299,7 +299,7 @@ impl serve(
     7. Get user manager
     8. Attach to server
     9. Start server
-    
+
     Args:
         filename: Path to the .jac file to serve
         session: Session identifier for persistent state (default: auto-generated)
@@ -308,24 +308,24 @@ impl serve(
         faux: Perform introspection and print endpoint docs without starting server (default: False)
     """
     _ensure_jac_runtime();
-    
+
     # Step 1: Compile module
     file_session = _compile_module(filename, session);
     base = file_session.base_path;
     mod = file_session.module_name;
     mach = file_session.execution_context;
     session_path = session or os.path.join(base, f"{mod}.session");
-    
+
     # Step 2: Initialize server and map walkers to endpoints
     import from jaclang.runtimelib.server { JacAPIServer, Server }
     server: JacAPIServer = _initialize_server(mod, session_path, port, base);
-    
+
     # Step 3: Get server instance via hook (using server method)
     server_instance: Server = server.get_server_instance(port);
-    
+
     # Step 4: Register endpoints
     _register_endpoints(server);
-    
+
     # Step 5: Configure docs (if faux, print and exit)
     try {
         _configure_docs(server, faux);
@@ -337,17 +337,17 @@ impl serve(
         mach.close();
         <>exit(1);
     }
-    
+
     # Step 6: Get execution manager (using server method)
     import from jaclang.runtimelib.server { ExecutionManager, UserManager }
     execution_manager: ExecutionManager = server.get_execution_manager();
-    
+
     # Step 7: Get user manager (using server method)
     user_manager: UserManager = server.get_user_manager();
-    
+
     # Step 8: Attach to server
     _attach_to_server(server);
-    
+
     # Step 9: Start server
     _start_server(server, mach);
 }

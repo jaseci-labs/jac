@@ -186,11 +186,11 @@ class Server(ABC) {
     """Start the server."""
     @abstractmethod
     def start(self: Server, port: int = 8000) -> None;
-    
+
     """Stop the server."""
     @abstractmethod
     def stop(self: Server) -> None;
-    
+
     """Get the underlying server instance."""
     @abstractmethod
     def get_instance(self: Server) -> Any;
@@ -199,7 +199,7 @@ class Server(ABC) {
 """Core HTTPServer implementation."""
 class JacHTTPServer(Server) {
     has _httpd: HTTPServer;
-    
+
     def init(self: JacHTTPServer, handler_class: type[BaseHTTPRequestHandler], port: int = 8000) -> None;
     def start(self: JacHTTPServer, port: int = 8000) -> None;
     def stop(self: JacHTTPServer) -> None;
@@ -264,40 +264,40 @@ obj JacAPIServer {
 
     def get_client_bundle_code -> str;
     def print_endpoint_docs -> None;
-    
+
     """Map walkers and functions to endpoints at compile time."""
     def map_walkers_to_endpoints -> None;
-    
+
     """Build endpoint definitions from walkers and functions at compile time."""
     def build_endpoints -> None;
-    
+
     """Get built endpoint definitions."""
     def get_endpoint_definitions -> list[EndpointDefinition];
-    
+
     """Get route mapping for fast endpoint lookup."""
     def get_route_mapping -> dict[(str, RouteMapping)];
-    
+
     """Save route mapping to JSON file for persistence."""
     def save_route_mapping(file_path: str = "route_mapping.json") -> None;
-    
+
     """Load route mapping from JSON file."""
     def load_route_mapping(file_path: str = "route_mapping.json") -> None;
-    
+
     """Get server instance via plugin hook."""
     def get_server_instance(port: int = 8000) -> Server;
-    
+
     """Get execution manager instance."""
     def get_execution_manager -> ExecutionManager;
-    
+
     """Get user manager instance."""
     def get_user_manager -> UserManager;
-    
+
     """Get module introspector instance."""
     def get_introspector -> ModuleIntrospector;
-    
+
     """Apply server configurations."""
     def apply_config -> None;
-    
+
     """Start the server with pre-built endpoints."""
     def start -> None;
 }

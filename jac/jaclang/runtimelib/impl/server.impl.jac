@@ -11,7 +11,7 @@ impl JacHTTPServer.init(
 """Start the HTTPServer."""
 impl JacHTTPServer.start(self: JacHTTPServer, port: int = 8000) -> None {
     """Start the HTTP server.
-    
+
     Note: port parameter is ignored as server is already bound during init.
     This method blocks until the server is stopped.
     """
@@ -1009,14 +1009,14 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
             route_mapping = server.get_route_mapping();
             route_key = f"GET:{path}";
             route_info = route_mapping.get(route_key);
-            
+
             # Handle /function/{name} introspection
             if not route_info and path.startswith('/function/') {
                 name = path.split('/')[-1];
                 route_key = f"GET:/function/{name}";
                 route_info = route_mapping.get(route_key);
             }
-            
+
             # Handle /walker/{name} introspection
             if not route_info and path.startswith('/walker/') {
                 name = path.split('/')[-1];
@@ -1027,7 +1027,7 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                     name = path.split('/')[-1];
                 }
             }
-            
+
             # Route to appropriate handler
             if route_info {
                 # Handle authentication
@@ -1038,7 +1038,7 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                         return;
                     }
                 }
-                
+
                 # Route based on endpoint type
                 if route_info.endpoint_type == 'introspection' {
                     if route_info.name == 'list_functions' {
@@ -1095,14 +1095,14 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                 Jac.send_json(self, 400, {'error': 'Invalid JSON'});
                 return;
             }
-            
+
             # Get route mapping for fast lookup
             route_mapping = server.get_route_mapping();
             route_key = f"POST:{path}";
-            
+
             # Check for exact match first
             route_info = route_mapping.get(route_key);
-            
+
             # For walkers, check if path has node parameter (extra segment)
             if not route_info and path.startswith('/walker/') {
                 path_parts = path.split('/');
@@ -1113,13 +1113,13 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                     route_info = route_mapping.get(route_key_pattern);
                 }
             }
-            
+
             # Handle route based on mapping
             if not route_info {
                 Jac.send_json(self, 404, {'error': 'Not found'});
                 return;
             }
-            
+
             # Handle authentication
             username = None;
             if route_info.requires_auth {
@@ -1139,7 +1139,7 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                     }
                 }
             }
-            
+
             # Route to appropriate handler based on endpoint type
             if route_info.endpoint_type == 'auth' {
                 if route_info.name == 'register' {
@@ -1241,7 +1241,7 @@ impl JacAPIServer.print_endpoint_docs -> None {
 """Map walkers and functions to endpoints at compile time."""
 impl JacAPIServer.map_walkers_to_endpoints -> None {
     """Map walkers and functions to endpoint routes for fast lookup.
-    
+
     This method creates a route mapping dictionary that maps URL paths to
     endpoint information. This allows O(1) lookup instead of string matching
     on every request, making the server faster.
@@ -1250,15 +1250,15 @@ impl JacAPIServer.map_walkers_to_endpoints -> None {
         return;  # Already mapped
     }
     self.introspector.load();
-    
+
     # Clear existing mapping
     self._route_mapping = {};
-    
+
     # Map walkers to endpoints
     walkers = self.get_walkers();
     for (walker_name, walker_cls) in walkers.items() {
         requires_auth = self.introspector.is_auth_required_for_walker(walker_name);
-        
+
         # POST /walker/{name}/{node} - with node parameter
         path_with_node = f"/walker/{walker_name}";
         self._route_mapping[f"POST:{path_with_node}"] = RouteMapping(
@@ -1268,7 +1268,7 @@ impl JacAPIServer.map_walkers_to_endpoints -> None {
             requires_auth=requires_auth,
             has_node_param=False
         );
-        
+
         # POST /walker/{name}/{node} - pattern for paths with node
         # We'll handle this in the handler by checking if path has extra segments
         path_pattern = f"/walker/{walker_name}/";
@@ -1280,12 +1280,12 @@ impl JacAPIServer.map_walkers_to_endpoints -> None {
             has_node_param=True
         );
     }
-    
+
     # Map functions to endpoints
     functions = self.get_functions();
     for (func_name, func) in functions.items() {
         requires_auth = self.introspector.is_auth_required_for_function(func_name);
-        
+
         # POST /function/{name}
         post_path = f"/function/{func_name}";
         self._route_mapping[f"POST:{post_path}"] = RouteMapping(
@@ -1295,7 +1295,7 @@ impl JacAPIServer.map_walkers_to_endpoints -> None {
             requires_auth=requires_auth,
             has_node_param=False
         );
-        
+
         # GET /function/{name} (for introspection)
         get_path = f"/function/{func_name}";
         self._route_mapping[f"GET:{get_path}"] = RouteMapping(
@@ -1306,7 +1306,7 @@ impl JacAPIServer.map_walkers_to_endpoints -> None {
             has_node_param=False
         );
     }
-    
+
     # Map standard endpoints
     self._route_mapping['POST:/user/register'] = RouteMapping(
         method='POST', name='register', endpoint_type='auth', requires_auth=False, has_node_param=False
@@ -1331,7 +1331,7 @@ impl JacAPIServer.map_walkers_to_endpoints -> None {
 """Build endpoints from walkers and functions at compile time."""
 impl JacAPIServer.build_endpoints -> None {
     """Convert walkers and functions to endpoint definitions.
-    
+
     This method is called at compile time to build endpoint definitions
     from walkers and functions. Core handles introspection and definition creation.
     Plugins handle server-specific registration.
@@ -1339,21 +1339,21 @@ impl JacAPIServer.build_endpoints -> None {
     if self._endpoints_built {
         return;
     }
-    
+
     # First, map walkers to endpoints for fast lookup
     self.map_walkers_to_endpoints();
-    
+
     self.introspector.load();
-    
+
     # Clear existing definitions
     self._endpoint_definitions = [];
-    
+
     # Build endpoint definitions for walkers
     walkers = self.get_walkers();
     for (walker_name, walker_cls) in walkers.items() {
         walker_info = self.introspect_walker(walker_cls);
         requires_auth = self.introspector.is_auth_required_for_walker(walker_name);
-        
+
         # Create endpoint definitions for walker (with and without node parameter)
         # POST /walker/{name}/{node}
         self._endpoint_definitions.append(
@@ -1378,13 +1378,13 @@ impl JacAPIServer.build_endpoints -> None {
             )
         );
     }
-    
+
     # Build endpoint definitions for functions
     functions = self.get_functions();
     for (func_name, func) in functions.items() {
         func_info = self.introspect_callable(func);
         requires_auth = self.introspector.is_auth_required_for_function(func_name);
-        
+
         # POST /function/{name}
         self._endpoint_definitions.append(
             EndpointDefinition(
@@ -1408,17 +1408,17 @@ impl JacAPIServer.build_endpoints -> None {
             )
         );
     }
-    
+
     # Use hook to register endpoints with server framework
     # Core: No-op (handled via route matching in handler)
     # Plugins: Convert EndpointDefinition to framework-specific format and register
     Jac.register_endpoints(self._endpoint_definitions, self);
-    
+
     # Register /docs endpoint via hook
     # Core: Simple HTML listing (handled in request handler)
     # Plugins: Can register Swagger/OpenAPI docs
     Jac.register_docs_endpoint(self);
-    
+
     # Endpoints are built - mark as complete
     self._endpoints_built = True;
 }
@@ -1435,14 +1435,14 @@ impl JacAPIServer.get_route_mapping -> dict[(str, RouteMapping)] {
 """Save route mapping to JSON file for persistence."""
 impl JacAPIServer.save_route_mapping(file_path: str = "route_mapping.json") -> None {
     """Save the route mapping to a JSON file for persistence.
-    
+
     This allows the route mapping to be cached and loaded faster on subsequent runs.
     """
     import json;
     if not self._route_mapping {
         self.map_walkers_to_endpoints();
     }
-    
+
     # Convert RouteMapping objects to dictionaries for JSON serialization
     mapping_dict = {};
     for (route_key, route_info) in self._route_mapping.items() {
@@ -1454,7 +1454,7 @@ impl JacAPIServer.save_route_mapping(file_path: str = "route_mapping.json") -> N
             'has_node_param': route_info.has_node_param
         };
     }
-    
+
     with open(file_path, 'w') as f {
         json.dump(mapping_dict, f, indent=2);
     }
@@ -1463,24 +1463,24 @@ impl JacAPIServer.save_route_mapping(file_path: str = "route_mapping.json") -> N
 """Load route mapping from JSON file."""
 impl JacAPIServer.load_route_mapping(file_path: str = "route_mapping.json") -> None {
     """Load the route mapping from a JSON file.
-    
+
     This allows faster startup by using a cached route mapping instead of
     introspecting walkers and functions at runtime.
     """
     import json;
     import os;
-    
+
     if not os.path.exists(file_path) {
         # If file doesn't exist, build mapping from scratch
         self.map_walkers_to_endpoints();
         return;
     }
-    
+
     try {
         with open(file_path, 'r') as f {
             mapping_dict = json.load(f);
         }
-        
+
         # Convert dictionaries back to RouteMapping objects
         self._route_mapping = {};
         for (route_key, route_data) in mapping_dict.items() {
@@ -1510,7 +1510,7 @@ impl JacAPIServer.get_endpoint_definitions -> list[EndpointDefinition] {
 """Get server instance via plugin hook."""
 impl JacAPIServer.get_server_instance(port: int = 8000) -> Server {
     """Get server instance using plugin hook.
-    
+
     Returns:
         Server instance (JacHTTPServer or plugin implementation)
     """
@@ -1522,7 +1522,7 @@ impl JacAPIServer.get_server_instance(port: int = 8000) -> Server {
 """Get execution manager instance."""
 impl JacAPIServer.get_execution_manager -> ExecutionManager {
     """Get execution manager instance.
-    
+
     Returns:
         ExecutionManager instance
     """
@@ -1532,7 +1532,7 @@ impl JacAPIServer.get_execution_manager -> ExecutionManager {
 """Get user manager instance."""
 impl JacAPIServer.get_user_manager -> UserManager {
     """Get user manager instance.
-    
+
     Returns:
         UserManager instance
     """
@@ -1542,7 +1542,7 @@ impl JacAPIServer.get_user_manager -> UserManager {
 """Get module introspector instance."""
 impl JacAPIServer.get_introspector -> ModuleIntrospector {
     """Get module introspector instance.
-    
+
     Returns:
         ModuleIntrospector instance
     """
@@ -1552,7 +1552,7 @@ impl JacAPIServer.get_introspector -> ModuleIntrospector {
 """Apply server configurations."""
 impl JacAPIServer.apply_config -> None {
     """Apply server configurations before starting.
-    
+
     This method applies any server-specific configurations such as:
     - CORS settings
     - Security headers
@@ -1567,7 +1567,7 @@ impl JacAPIServer.apply_config -> None {
 """Start the HTTP server."""
 impl JacAPIServer.start -> None {
     """Start the server with pre-built endpoints.
-    
+
     Flow:
     1. Map walkers to endpoints (compile-time route mapping)
     2. Build endpoints (if not already built)
@@ -1578,25 +1578,25 @@ impl JacAPIServer.start -> None {
     if not self._route_mapping {
         self.map_walkers_to_endpoints();
     }
-    
+
     # Step 2: Build endpoints if not already built
     if not self._endpoints_built {
         self.build_endpoints();
     }
-    
+
     # Step 2: Apply configurations
     self.apply_config();
-    
+
     # Step 3: Start the server
     self.introspector.load();
     handler_class = self.create_handler();
     config = get_config();
     cl_route_prefix = config.serve.cl_route_prefix if config else "cl";
     base_route_app = config.serve.base_route_app if config else "";
-    
+
     # Use hook to get server instance (allows plugins to override)
     server_instance = Jac.get_server(handler_class, self.port);
-    
+
     # Use Server interface - works for both JacHTTPServer and plugin implementations
     print(f"Jac API Server running on http://0.0.0.0:{self.port}");
     print(f"Module: {self.module_name}");

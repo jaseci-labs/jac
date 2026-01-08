@@ -55,14 +55,13 @@ from jaclang.pycore.mtp import MTIR, MTRuntime
 from jaclang.vendor import pluggy
 
 if TYPE_CHECKING:
-    from http.server import BaseHTTPRequestHandler, HTTPServer
+    from http.server import BaseHTTPRequestHandler
 
     from jaclang.pycore.program import JacProgram
     from jaclang.runtimelib.client_bundle import ClientBundle, ClientBundleBuilder
     from jaclang.runtimelib.context import ExecutionContext
     from jaclang.runtimelib.server import (
         ExecutionManager,
-        JacHTTPServer,
         ModuleIntrospector,
         Server,
         UserManager,
@@ -1522,14 +1521,14 @@ class JacAPIServer:
     @staticmethod
     def get_user_management(session_path: str) -> UserManager:
         """Get user management instance.
-        
+
         This hook allows plugins to provide custom user management implementations.
         Core returns a basic UserManager with JSON file storage.
         Plugins can return enhanced implementations with JWT, SSO etc.
-        
+
         Args:
             session_path: Path for session storage
-            
+
         Returns:
             UserManager instance (or compatible implementation)
         """
@@ -1542,15 +1541,15 @@ class JacAPIServer:
         session_path: str, user_manager: UserManager
     ) -> ExecutionManager:
         """Get execution management instance.
-        
+
         This hook allows plugins to provide custom execution management implementations.
         Core returns a basic ExecutionManager.
         Plugins can return enhanced implementations with custom execution strategies.
-        
+
         Args:
             session_path: Path for session storage
             user_manager: UserManager instance (already obtained via get_user_management hook)
-            
+
         Returns:
             ExecutionManager instance (or compatible implementation)
         """
@@ -1564,15 +1563,15 @@ class JacAPIServer:
         port: int = 8000,
     ) -> Server:
         """Get server instance.
-        
+
         This hook allows plugins to provide custom server implementations.
         Core returns a JacHTTPServer instance (wraps HTTPServer).
         Plugins can return FastAPIServer or other Server implementations.
-        
+
         Args:
             handler_class: Request handler class (for core HTTPServer)
             port: Port to bind the server to
-            
+
         Returns:
             Server instance (JacHTTPServer for core, FastAPIServer for plugins, etc.)
         """
@@ -1586,12 +1585,12 @@ class JacAPIServer:
         api_server: Any,  # noqa: ANN401
     ) -> None:
         """Register endpoint definitions with the server.
-        
+
         This hook allows plugins to register endpoint definitions with their server framework.
         Core implementation: No-op, endpoints are handled via route matching in the request handler.
         Plugin implementation (e.g., FastAPI): Converts EndpointDefinition to JEndPoint objects
         and registers them with the FastAPI server.
-        
+
         Args:
             endpoint_definitions: List of EndpointDefinition objects from core
             api_server: The JacAPIServer instance
@@ -1603,12 +1602,12 @@ class JacAPIServer:
     @staticmethod
     def register_docs_endpoint(api_server: Any) -> None:  # noqa: ANN401
         """Register the /docs endpoint for API documentation.
-        
+
         This hook allows plugins to register a /docs endpoint for API documentation.
         Core implementation: No-op, /docs is handled via route matching in request handler.
         Plugin implementation (e.g., FastAPI): FastAPI automatically provides /docs for Swagger,
         but plugins can customize it or ensure it's properly configured.
-        
+
         Args:
             api_server: The JacAPIServer instance
         """
