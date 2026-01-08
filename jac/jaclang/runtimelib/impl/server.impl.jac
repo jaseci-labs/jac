@@ -683,7 +683,8 @@ impl ExecutionHandler.spawn_walker(
 
 """Initialize the API server."""
 impl JacAPIServer.postinit -> None {
-    self.user_manager = UserManager(session_path=self.session_path);
+    # Use hook to get user management (allows plugins to override)
+    self.user_manager = Jac.get_user_management(self.session_path);
     self.introspector = Jac.get_module_introspector(self.module_name, self.base_path);
     self.execution_manager = ExecutionManager(
         session_path=self.session_path, user_manager=self.user_manager
@@ -871,6 +872,29 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                 } except Exception as exc {
                     Jac.send_json(self, 500, {'error': str(exc)});
                 }
+                return;
+            }
+            if (path == '/docs') {
+                # Core implementation: Generate simple HTML docs
+                # Plugins can override register_docs_endpoint() hook to provide Swagger/OpenAPI
+                server.introspector.load();
+                endpoints_html = '<!DOCTYPE html><html><head><title>Jac API Documentation</title><style>body{font-family:Arial,sans-serif;margin:40px;}h1{color:#333;}h2{color:#666;margin-top:30px;}ul{list-style-type:none;padding:0;}li{margin:10px 0;padding:10px;background:#f5f5f5;border-left:3px solid #007bff;}</style></head><body><h1>Jac API Documentation</h1><h2>Endpoints</h2><ul>';
+                functions = server.get_functions();
+                walkers = server.get_walkers();
+                endpoints_html += '<li><strong>POST /user/register</strong> - Create a new user</li>';
+                endpoints_html += '<li><strong>POST /user/login</strong> - Authenticate and get token</li>';
+                endpoints_html += '<li><strong>GET /functions</strong> - List all available functions</li>';
+                endpoints_html += '<li><strong>GET /walkers</strong> - List all available walkers</li>';
+                for func_name in functions.keys() {
+                    endpoints_html += f'<li><strong>POST /function/{func_name}</strong> - Call function {func_name}</li>';
+                    endpoints_html += f'<li><strong>GET /function/{func_name}</strong> - Get function signature</li>';
+                }
+                for walker_name in walkers.keys() {
+                    endpoints_html += f'<li><strong>POST /walker/{walker_name}</strong> - Spawn walker {walker_name}</li>';
+                    endpoints_html += f'<li><strong>POST /walker/{walker_name}/{{node}}</strong> - Spawn walker on node</li>';
+                }
+                endpoints_html += '</ul></body></html>';
+                Jac.send_html(self, 200, endpoints_html);
                 return;
             }
             if (path == '/') {
@@ -1136,38 +1160,185 @@ impl JacAPIServer.print_endpoint_docs -> None {
     print_endpoint_docs(self);
 }
 
+"""Build endpoints from walkers and functions at compile time."""
+impl JacAPIServer.build_endpoints -> None {
+    """Convert walkers and functions to endpoint definitions.
+    
+    This method is called at compile time to build endpoint definitions
+    from walkers and functions. Core handles introspection and definition creation.
+    Plugins handle server-specific registration.
+    """
+    if self._endpoints_built {
+        return;
+    }
+    self.introspector.load();
+    
+    # Clear existing definitions
+    self._endpoint_definitions = [];
+    
+    # Build endpoint definitions for walkers
+    walkers = self.get_walkers();
+    for (walker_name, walker_cls) in walkers.items() {
+        walker_info = self.introspect_walker(walker_cls);
+        requires_auth = self.introspector.is_auth_required_for_walker(walker_name);
+        
+        # Create endpoint definitions for walker (with and without node parameter)
+        # POST /walker/{name}/{node}
+        self._endpoint_definitions.append(
+            EndpointDefinition(
+                method='POST',
+                path=f"/walker/{walker_name}/{{node}}",
+                name=walker_name,
+                endpoint_type='walker',
+                requires_auth=requires_auth,
+                parameters=walker_info.get('fields', {})
+            )
+        );
+        # POST /walker/{name}
+        self._endpoint_definitions.append(
+            EndpointDefinition(
+                method='POST',
+                path=f"/walker/{walker_name}",
+                name=walker_name,
+                endpoint_type='walker',
+                requires_auth=requires_auth,
+                parameters=walker_info.get('fields', {})
+            )
+        );
+    }
+    
+    # Build endpoint definitions for functions
+    functions = self.get_functions();
+    for (func_name, func) in functions.items() {
+        func_info = self.introspect_callable(func);
+        requires_auth = self.introspector.is_auth_required_for_function(func_name);
+        
+        # POST /function/{name}
+        self._endpoint_definitions.append(
+            EndpointDefinition(
+                method='POST',
+                path=f"/function/{func_name}",
+                name=func_name,
+                endpoint_type='function',
+                requires_auth=requires_auth,
+                parameters=func_info.get('parameters', {})
+            )
+        );
+        # GET /function/{name} (for introspection)
+        self._endpoint_definitions.append(
+            EndpointDefinition(
+                method='GET',
+                path=f"/function/{func_name}",
+                name=func_name,
+                endpoint_type='function',
+                requires_auth=requires_auth,
+                parameters={}
+            )
+        );
+    }
+    
+    # Use hook to register endpoints with server framework
+    # Core: No-op (handled via route matching in handler)
+    # Plugins: Convert EndpointDefinition to framework-specific format and register
+    Jac.register_endpoints(self._endpoint_definitions, self);
+    
+    # Register /docs endpoint via hook
+    # Core: Simple HTML listing (handled in request handler)
+    # Plugins: Can register Swagger/OpenAPI docs
+    Jac.register_docs_endpoint(self);
+    
+    # Endpoints are built - mark as complete
+    self._endpoints_built = True;
+}
+
+"""Get built endpoint definitions."""
+impl JacAPIServer.get_endpoint_definitions -> list[EndpointDefinition] {
+    """Return the list of endpoint definitions built from walkers and functions."""
+    if not self._endpoints_built {
+        self.build_endpoints();
+    }
+    return self._endpoint_definitions;
+}
+
+"""Apply server configurations."""
+impl JacAPIServer.apply_config -> None {
+    """Apply server configurations before starting.
+    
+    This method applies any server-specific configurations such as:
+    - CORS settings
+    - Security headers
+    - Route prefixes
+    - Base route apps
+    """
+    # Core implementation - configurations are read in start()
+    # Plugins can override this to apply framework-specific configs
+    pass;
+}
+
 """Start the HTTP server."""
 impl JacAPIServer.start -> None {
+    """Start the server with pre-built endpoints.
+    
+    Flow:
+    1. Build endpoints (if not already built)
+    2. Apply configurations
+    3. Start the server
+    """
+    # Step 1: Build endpoints if not already built
+    if not self._endpoints_built {
+        self.build_endpoints();
+    }
+    
+    # Step 2: Apply configurations
+    self.apply_config();
+    
+    # Step 3: Start the server
     self.introspector.load();
     handler_class = self.create_handler();
     config = get_config();
     cl_route_prefix = config.serve.cl_route_prefix if config else "cl";
     base_route_app = config.serve.base_route_app if config else "";
-    with HTTPServer(('0.0.0.0', self.port), handler_class) as httpd {
-        print(f"Jac API Server running on http://0.0.0.0:{self.port}");
-        print(f"Module: {self.module_name}");
-        print(f"Session: {self.session_path}");
-        print('\nAvailable endpoints:');
-        print('  POST /user/register - Create a new user');
-        print('  POST /user/login - Login and get auth token');
-        print('  GET /functions - List all functions');
-        print('  GET /walkers - List all walkers');
-        print('  GET /function/<name> - Get function signature');
-        print('  GET /walker/<name> - Get walker info');
-        print('  POST /function/<name> - Call a function');
-        print('  POST /walker/<name> - Spawn a walker');
-        print(
-            f'  GET /{cl_route_prefix}/<name> - Render HTML page for client function'
+    
+    # Use hook to get server instance (allows plugins to override)
+    import from http.server { HTTPServer }
+    server_instance = Jac.get_server(handler_class, self.port);
+    
+    # For core HTTPServer, use context manager
+    # Plugins can override start() to handle their server type differently
+    if isinstance(server_instance, HTTPServer) {
+        with server_instance as httpd {
+            print(f"Jac API Server running on http://0.0.0.0:{self.port}");
+            print(f"Module: {self.module_name}");
+            print(f"Session: {self.session_path}");
+            print('\nAvailable endpoints:');
+            print('  POST /user/register - Create a new user');
+            print('  POST /user/login - Login and get auth token');
+            print('  GET /functions - List all functions');
+            print('  GET /walkers - List all walkers');
+            print('  GET /function/<name> - Get function signature');
+            print('  GET /walker/<name> - Get walker info');
+            print('  POST /function/<name> - Call a function');
+            print('  POST /walker/<name> - Spawn a walker');
+            print(
+                f'  GET /{cl_route_prefix}/<name> - Render HTML page for client function'
+            );
+            if base_route_app {
+                print(f'\nBase route (/) configured to serve: {base_route_app}');
+            }
+            print('\nPress Ctrl+C to stop the server');
+            try {
+                httpd.serve_forever();
+            } except KeyboardInterrupt {
+                print('\nShutting down server...');
+            }
+        }
+    } else {
+        # For plugin servers (e.g., FastAPI), they should override start()
+        # This is a fallback that raises an error
+        raise RuntimeError(
+            f"Server instance type {type(server_instance)} not supported by core. "
+            "Plugins should override start() method to handle their server type."
         );
-        if base_route_app {
-            print(f'\nBase route (/) configured to serve: {base_route_app}');
-        }
-        print('\nPress Ctrl+C to stop the server');
-        try {
-            httpd.serve_forever();
-        } except KeyboardInterrupt {
-            print('\nShutting down server...');
-        }
     }
 }
 

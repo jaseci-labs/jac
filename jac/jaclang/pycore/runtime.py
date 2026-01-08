@@ -1513,6 +1513,83 @@ class JacAPIServer:
         """Get the module introspector instance."""
         return ModuleIntrospector(module_name, base_path)
 
+    @staticmethod
+    def get_user_management(session_path: str) -> Any:  # noqa: ANN401
+        """Get user management instance.
+        
+        This hook allows plugins to provide custom user management implementations.
+        Core returns a basic UserManager with JSON file storage.
+        Plugins can return enhanced implementations with JWT, SSO, database backends, etc.
+        
+        Args:
+            session_path: Path for session storage
+            
+        Returns:
+            UserManager instance (or compatible implementation)
+        """
+        from jaclang.runtimelib.server import UserManager
+
+        return UserManager(session_path=session_path)
+
+    @staticmethod
+    def get_server(
+        handler_class: type[BaseHTTPRequestHandler],
+        port: int = 8000,
+    ) -> Any:  # noqa: ANN401
+        """Get server instance.
+        
+        This hook allows plugins to provide custom server implementations.
+        Core returns an HTTPServer instance.
+        Plugins can return FastAPI, Flask, or other server instances.
+        
+        Args:
+            handler_class: Request handler class (for core HTTPServer)
+            port: Port to bind the server to
+            
+        Returns:
+            Server instance (HTTPServer, FastAPI app, etc.)
+        """
+        from http.server import HTTPServer
+
+        return HTTPServer(("0.0.0.0", port), handler_class)
+
+    @staticmethod
+    def register_endpoints(
+        endpoint_definitions: list[Any],  # noqa: ANN401
+        api_server: Any,  # noqa: ANN401
+    ) -> None:
+        """Register endpoint definitions with the server.
+        
+        This hook allows plugins to register endpoint definitions with their server framework.
+        Core implementation: No-op, endpoints are handled via route matching in the request handler.
+        Plugin implementation (e.g., FastAPI): Converts EndpointDefinition to JEndPoint objects
+        and registers them with the FastAPI server.
+        
+        Args:
+            endpoint_definitions: List of EndpointDefinition objects from core
+            api_server: The JacAPIServer instance
+        """
+        # Core implementation: No-op, endpoints are handled via route matching
+        # Plugins should override this to register endpoints with their server framework
+        pass
+
+    @staticmethod
+    def register_docs_endpoint(api_server: Any) -> None:  # noqa: ANN401
+        """Register the /docs endpoint for API documentation.
+        
+        This hook allows plugins to register a /docs endpoint for API documentation.
+        Core implementation: No-op, /docs is handled via route matching in request handler.
+        Plugin implementation (e.g., FastAPI): FastAPI automatically provides /docs for Swagger,
+        but plugins can customize it or ensure it's properly configured.
+        
+        Args:
+            api_server: The JacAPIServer instance
+        """
+        # Core implementation: No-op, /docs is handled in request handler's do_GET
+        # Plugins should override this to configure their documentation endpoint
+        # (e.g., FastAPI already has /docs, but can customize OpenAPI schema)
+        pass
+
 
 class JacResponseBuilder:
     """Jac Response Builder."""

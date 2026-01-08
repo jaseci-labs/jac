@@ -170,12 +170,24 @@ obj ExecutionHandler {
     def spawn_walker(name: str, fields: dict[(str, Any)], username: str) -> Response;
 }
 
+"""Core-agnostic endpoint definition."""
+obj EndpointDefinition {
+    has method: str,  # 'GET', 'POST', etc.
+        path: str,
+        name: str,  # walker/function name
+        endpoint_type: str,  # 'walker' or 'function'
+        requires_auth: bool = False,
+        parameters: dict[str, Any] = {};  # Parameter metadata
+}
+
 """REST API Server for Jac programs."""
 obj JacAPIServer {
     has module_name: str,
         session_path: str,
         port: int = 8000,
-        base_path: (str | None) = None;
+        base_path: (str | None) = None,
+        _endpoints_built: bool = False,
+        _endpoint_definitions: list[EndpointDefinition] = [];
 
     def postinit -> None;
     def create_handler -> type[BaseHTTPRequestHandler];
@@ -193,6 +205,17 @@ obj JacAPIServer {
 
     def get_client_bundle_code -> str;
     def print_endpoint_docs -> None;
+    
+    """Build endpoint definitions from walkers and functions at compile time."""
+    def build_endpoints -> None;
+    
+    """Get built endpoint definitions."""
+    def get_endpoint_definitions -> list[EndpointDefinition];
+    
+    """Apply server configurations."""
+    def apply_config -> None;
+    
+    """Start the server with pre-built endpoints."""
     def start -> None;
 }
 
