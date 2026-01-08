@@ -6,7 +6,6 @@ cl import from "@jac-client/utils" {
 
 }
 
-cl import "..styles.landing.css";
 
 
 cl {

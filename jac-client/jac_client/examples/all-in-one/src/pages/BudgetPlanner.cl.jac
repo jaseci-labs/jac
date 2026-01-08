@@ -13,7 +13,7 @@ cl import from ..components.TransactionList { TransactionList }
 cl import from ..components.CategoryFilter { CategoryFilter }
 cl import from ..constants.categories { CATEGORY_COLORS }
 
-cl import from "..components.PieChart.tsx" { PieChart }
+# cl import from "..components.PieChart.tsx" { PieChart }
 
 
 cl def:pub BudgetPlanner() -> any {
@@ -61,11 +61,11 @@ cl def:pub BudgetPlanner() -> any {
                 </div>
 
                 <div className="right-panel">
-                    <PieChart
-                        data={chartData}
-                        title="Expense Breakdown"
-                        colors={CATEGORY_COLORS}
-                    />
+                    # <PieChart
+                    #     data={chartData}
+                    #     title="Expense Breakdown"
+                    #     colors={CATEGORY_COLORS}
+                    # />
                 </div>
             </main>
         </div>;

@@ -6,7 +6,7 @@ import from "@jac-client/utils" { Link, useNavigate }
 import from react { useState, useEffect }
 
 # # Import TypeScript component
-import from ..components.PieChart { PieChart }
+# import from ..components.PieChart { PieChart }
 
 # # Import JavaScript helpers
 import from ..utils.helpers { generateId, calculatePercentage, sumBy }
@@ -475,17 +475,17 @@ import from ..utils.formatters { formatCurrency }
             </TestCard>
 
             # # Section 4: TypeScript Component Integration
-            <TestCard title="4. TypeScript Component (PieChart.tsx)" color="#ccfbf1">
-                <div>
-                    <p style={{"color": "#4b5563", "marginBottom": "10px"}}>
-                        Imported TypeScript React component with data from JAC.
-                    </p>
-                    <PieChart data={chart_data} title="Feature Test Distribution" />
-                    <p style={{"marginTop": "10px", "color": "#6b7280", "fontSize": "14px"}}>
-                        Total tests: {total_tests} (calculated using JS helper: sumBy)
-                    </p>
-                </div>
-            </TestCard>
+            # <TestCard title="4. TypeScript Component (PieChart.tsx)" color="#ccfbf1">
+            #     <div>
+            #         <p style={{"color": "#4b5563", "marginBottom": "10px"}}>
+            #             Imported TypeScript React component with data from JAC.
+            #         </p>
+            #         # <PieChart data={chart_data} title="Feature Test Distribution" />
+            #         <p style={{"marginTop": "10px", "color": "#6b7280", "fontSize": "14px"}}>
+            #             Total tests: {total_tests} (calculated using JS helper: sumBy)
+            #         </p>
+            #     </div>
+            # </TestCard>
 
             # # Section 5: Import Demonstrations
             <TestCard title="5. Import Demonstrations" color="#fed7aa">
@@ -497,7 +497,7 @@ import from ..utils.formatters { formatCurrency }
                     <ul style={{"color": "#374151", "lineHeight": "1.8"}}>
                         <li><strong>JAC-Client Utils:</strong> Router components (Link, useNavigate)</li>
                         <li><strong>React:</strong> Hooks (useState, useEffect)</li>
-                        <li><strong>TypeScript:</strong> PieChart component from .tsx file</li>
+                        # <li><strong>TypeScript:</strong> PieChart component from .tsx file</li>
                         <li><strong>JavaScript:</strong> Helper functions from .js file (generateId, sumBy)</li>
                         <li><strong>JAC Files:</strong> formatCurrency from utils/formatters.jac</li>
                     </ul>
