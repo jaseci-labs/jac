@@ -1499,6 +1499,7 @@ class JacClientBundle:
         builder = JacRuntimeInterface.get_client_bundle_builder()
         return builder.build(module, force=force)
 
+
 class JacHMR:
     """Jac HMR (Hot Module Replacement) Operations - Generic interface for dev server."""
 
@@ -1524,6 +1525,7 @@ class JacHMR:
         raise NotImplementedError(
             "HMR dev server not implemented. Install jac-client plugin to enable HMR."
         )
+
 
 class JacAPIServer:
     """Jac API Server Operations - Generic interface for API server."""

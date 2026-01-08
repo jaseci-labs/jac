@@ -21,17 +21,15 @@ export function __jacSpawn(walker, target) {
 }
 
 export default { __jacJsx, __jacSpawn };
-''';
-
-glob MAIN_JS: str = '''import React from 'react';
+''',
+     MAIN_JS: str = '''import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { app } from './app.js';
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(React.createElement(app));
-''';
-
-glob INDEX_HTML: str = '''<!DOCTYPE html>
+''',
+     INDEX_HTML: str = '''<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -52,9 +50,11 @@ def write_file(path: Path, content: str) -> None {
 }
 
 """Check if Vite is available in the project."""
-impl ViteDevServer.is_vite_available {
+impl ViteDevServer.is_vite_available{
     try {
-        subprocess.run(['npx', '--version'], capture_output=True, check=True, cwd=self.project_dir);
+        subprocess.run(
+            ['npx', '--version'], capture_output=True, check=True, cwd=self.project_dir
+        );
         return True;
     } except (subprocess.CalledProcessError, FileNotFoundError) {
         return False;
@@ -67,16 +67,18 @@ impl ViteDevServer._create_runtime_stub(runtime_path: Path) -> None {
 }
 
 """Compile .jac files recursively following imports, copy .js/.tsx files."""
-impl ViteDevServer.compile_all_jac_files {
+impl ViteDevServer.compile_all_jac_files{
     client_dir = get_client_dir(self.project_dir);
     compiler = HMRCompiler(project_dir=self.project_dir, verbose=self.verbose);
     if self.module_path.exists() {
-        self.compiled_modules = compiler.compile_recursively(self.module_path, client_dir);
+        self.compiled_modules = compiler.compile_recursively(
+            self.module_path, client_dir
+        );
     }
 }
 
 """Start file watcher for .jac files."""
-impl ViteDevServer.start_file_watcher {
+impl ViteDevServer.start_file_watcher{
     watcher = JacFileWatcher(
         project_dir=self.project_dir,
         compiled_modules=self.compiled_modules,
@@ -90,10 +92,9 @@ impl ViteDevServer.start_file_watcher {
 }
 
 """Create vite.config.js for dev server."""
-impl ViteDevServer.create_vite_config {
+impl ViteDevServer.create_vite_config{
     client_dir = get_client_dir(self.project_dir);
     client_dir.mkdir(parents=True, exist_ok=True);
-    
     # Write vite.config.js
     config_content = f'''import {{ defineConfig }} from 'vite';
 import react from '@vitejs/plugin-react';
@@ -112,15 +113,12 @@ export default defineConfig({{
     write_file(client_dir / 'vite.config.js', config_content);
     write_file(client_dir / 'main.js', MAIN_JS);
     write_file(client_dir / 'index.html', INDEX_HTML);
-    
     # Compile client_runtime from plugin source
     runtime_path = client_dir / 'client_runtime.js';
     import from jaclang.pycore.program { JacProgram }
     import from pathlib { Path as PathLib }
-    
     plugin_dir = PathLib(__file__).parent.parent.parent;
     runtime_source = plugin_dir / 'client_runtime.cl.jac';
-    
     if runtime_source.exists() {
         prog = JacProgram();
         ir = prog.compile(file_path=str(runtime_source));
@@ -134,42 +132,53 @@ export default defineConfig({{
                 print(f"Compiled client_runtime.js from {runtime_source}");
             }
         } else {
-            if self.verbose { print("Warning: Failed to compile client_runtime, using stub"); }
+            if self.verbose {
+                print("Warning: Failed to compile client_runtime, using stub");
+            }
             self._create_runtime_stub(runtime_path);
         }
     } else {
-        if self.verbose { print(f"Warning: {runtime_source} not found, using stub"); }
+        if self.verbose {
+            print(f"Warning: {runtime_source} not found, using stub");
+        }
         self._create_runtime_stub(runtime_path);
     }
-    
-    if self.verbose { print(f"Created Vite config at {client_dir / 'vite.config.js'}"); }
+    if self.verbose {
+        print(f"Created Vite config at {client_dir / 'vite.config.js'}");
+    }
 }
 
 """Start the Vite dev server."""
-impl ViteDevServer.start {
+impl ViteDevServer.start{
     if not self.is_vite_available() {
-        print("Error: npx/npm not found. Please install Node.js and npm.", file=sys.stderr);
+        print(
+            "Error: npx/npm not found. Please install Node.js and npm.",
+            file=sys.stderr
+        );
         sys.exit(1);
     }
-    
     print("Compiling .jac files...");
     self.compile_all_jac_files();
     print("Generating Vite configuration...");
     self.create_vite_config();
     self.start_file_watcher();
-    
     client_dir = get_client_dir(self.project_dir);
     print(f"\nStarting Vite dev server at http://{self.host}:{self.port}");
     print("   Press Ctrl+C to stop\n");
-    
     try {
         self.vite_process = subprocess.Popen(
             ['npx', 'vite', '--host', self.host, '--port', str(self.port)],
-            cwd=client_dir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1
+            cwd=client_dir,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1
         );
         if self.vite_process.stdout {
             for line in iter(self.vite_process.stdout.readline, '') {
-                if line { print(line, end=''); }
+                if line {
+                    print(line, end='');
+                }
             }
         }
         self.vite_process.wait();
@@ -184,7 +193,7 @@ impl ViteDevServer.start {
 }
 
 """Stop the Vite dev server."""
-impl ViteDevServer.stop {
+impl ViteDevServer.stop{
     if self.vite_process {
         try {
             self.vite_process.terminate();
@@ -198,34 +207,42 @@ impl ViteDevServer.stop {
 }
 
 """Start watching .jac files for changes."""
-impl JacFileWatcher.start {
+impl JacFileWatcher.start{
     import from watchdog.events { FileSystemEventHandler }
     watcher_ref = self;
-    
     class JacChangeHandler(FileSystemEventHandler) {
         def on_modified(self: JacChangeHandler, event: FileSystemEvent) -> None {
             event_path = Path(event.src_path);
             try {
-                if event_path.is_relative_to(watcher_ref.project_dir / '.jac') { return; }
-            } except (ValueError, AttributeError) { pass; }
-            
-            ext = '.' + event.src_path.rsplit('.', 1)[-1] if '.' in event.src_path else '';
+                if event_path.is_relative_to(watcher_ref.project_dir / '.jac') {
+                    return;
+                }
+            } except (ValueError, AttributeError) {
+                pass;
+            }
+
+            ext = '.' + event.src_path.rsplit('.', 1)[-1]
+            if '.' in event.src_path
+            else '';
             if not event.is_directory and (ext == '.jac' or ext in JS_EXTENSIONS) {
                 watcher_ref.on_file_changed(event_path);
             }
         }
     }
-    
     self.observer = Observer();
     self.observer.schedule(JacChangeHandler(), str(self.project_dir), recursive=True);
     self.observer.start();
     try {
-        while True { time.sleep(1); }
-    } except KeyboardInterrupt { self.stop(); }
+        while True {
+            time.sleep(1);
+        }
+    } except KeyboardInterrupt {
+        self.stop();
+    }
 }
 
 """Stop watching .jac files."""
-impl JacFileWatcher.stop {
+impl JacFileWatcher.stop{
     if self.observer {
         self.observer.stop();
         self.observer.join();
@@ -234,47 +251,55 @@ impl JacFileWatcher.stop {
 
 """Handle file changes and recompile or copy."""
 impl JacFileWatcher.on_file_changed(file_path: Path) -> None {
-    if self.verbose { print(f"[HMR] Detected change in: {file_path}"); }
-    
+    if self.verbose {
+        print(f"[HMR] Detected change in: {file_path}");
+    }
     client_dir = get_client_dir(self.project_dir);
     file_resolved: Path = file_path.resolve();
     is_in_graph = file_resolved in self.compiled_modules;
-    
     src_dir = self.project_dir / 'src';
     source_root: Path;
     try {
-        source_root = src_dir if file_path.is_relative_to(src_dir) else file_path.parent;
+        source_root = src_dir
+        if file_path.is_relative_to(src_dir)
+        else file_path.parent;
     } except ValueError {
         source_root = file_path.parent;
     }
-    
     compiler = HMRCompiler(project_dir=self.project_dir, verbose=self.verbose);
-    
     try {
         if file_path.suffix == '.jac' {
             (js_output, _) = compiler._compile_to_js(file_path);
             output_path = calc_output_path(file_path, source_root, client_dir, '.js');
             write_file(output_path, js_output);
-            
             if self.verbose {
-                status = "✅ Recompiled" if is_in_graph else "⚠️  Compiled (not in import graph)";
+                status = "✅ Recompiled"
+                if is_in_graph
+                else "⚠️  Compiled (not in import graph)";
                 print(f"[HMR] {status}: {file_path.name}");
             }
             print("[compiled_modules]", self.compiled_modules);
             if not is_in_graph {
                 self.compiled_modules.add(file_resolved);
-                if self.verbose { print(f"[HMR] ℹ️  To see changes, import {file_path.name} in your module graph"); }
+                if self.verbose {
+                    print(
+                        f"[HMR] ℹ️  To see changes, import {file_path.name} in your module graph"
+                    );
+                }
             }
         } elif file_path.suffix in JS_EXTENSIONS {
             output_path = calc_output_path(file_path, source_root, client_dir);
             output_path.parent.mkdir(parents=True, exist_ok=True);
             shutil.copy2(file_path, output_path);
-            
             if self.verbose {
-                status = "✅ Copied" if is_in_graph else "⚠️  Copied (not in import graph)";
+                status = "✅ Copied"
+                if is_in_graph
+                else "⚠️  Copied (not in import graph)";
                 print(f"[HMR] {status}: {file_path.name}");
             }
-            if not is_in_graph { self.compiled_modules.add(file_resolved); }
+            if not is_in_graph {
+                self.compiled_modules.add(file_resolved);
+            }
         }
     } except Exception as e {
         print(f"[HMR] ❌ Error processing {file_path.name}: {e}", file=sys.stderr);
@@ -283,27 +308,33 @@ impl JacFileWatcher.on_file_changed(file_path: Path) -> None {
 
 """Recursively compile .jac files following imports, copy .js/.tsx files."""
 impl HMRCompiler.compile_recursively(
-    module_path: Path, client_dir: Path,
-    visited: (set[Path] | None) = None, source_root: (Path | None) = None
+    module_path: Path,
+    client_dir: Path,
+    visited: (set[Path] | None) = None,
+    source_root: (Path | None) = None
 ) -> set[Path] {
     visited = visited or set();
     module_path = module_path.resolve();
-    if module_path in visited { return visited; }
+    if module_path in visited {
+        return visited;
+    }
     visited.add(module_path);
     source_root = source_root or module_path.parent.resolve();
-    
     if module_path.suffix == '.jac' {
         (js_output, manifest) = self._compile_to_js(module_path);
         output_path = calc_output_path(module_path, source_root, client_dir, '.js');
         write_file(output_path, js_output);
-        if self.verbose { print(f"Compiled: {module_path} -> {output_path}"); }
-        
+        if self.verbose {
+            print(f"Compiled: {module_path} -> {output_path}");
+        }
         # Recursively process imports
         if manifest and manifest.imports {
             for (_, import_path) in manifest.imports.items() {
                 path_obj = Path(import_path).resolve();
                 if path_obj not in visited and path_obj.exists() {
-                    self.compile_recursively(path_obj, client_dir, visited, source_root);
+                    self.compile_recursively(
+                        path_obj, client_dir, visited, source_root
+                    );
                 }
             }
         }
@@ -311,7 +342,9 @@ impl HMRCompiler.compile_recursively(
         output_path = calc_output_path(module_path, source_root, client_dir);
         output_path.parent.mkdir(parents=True, exist_ok=True);
         shutil.copy2(module_path, output_path);
-        if self.verbose { print(f"Copied: {module_path} -> {output_path}"); }
+        if self.verbose {
+            print(f"Copied: {module_path} -> {output_path}");
+        }
     }
     return visited;
 }
@@ -319,19 +352,17 @@ impl HMRCompiler.compile_recursively(
 """Compile a .jac module to JavaScript and return output with manifest."""
 impl HMRCompiler._compile_to_js(module_path: Path) -> tuple[str, Any] {
     import from jaclang.pycore.program { JacProgram }
-    
     prog = JacProgram();
     ir = prog.compile(file_path=str(module_path));
-    
     if prog.errors_had {
-        raise Exception(f"Compilation errors: {', '.join(str(e) for e in prog.errors_had)}");
+        raise Exception(
+            f"Compilation errors: {', '.join(str(e) for e in prog.errors_had)}"
+        ) ;
     }
-    
     js_output = ir.gen.js or '';
     if not js_output.strip() {
-        raise Exception('ECMAScript code generation produced no output');
+        raise Exception('ECMAScript code generation produced no output') ;
     }
-    
     manifest = ir.gen.client_manifest;
     if manifest {
         js_output = f'import {{__jacJsx, __jacSpawn}} from "@jac-client/utils";\n{js_output}';
@@ -343,5 +374,7 @@ impl HMRCompiler._compile_to_js(module_path: Path) -> tuple[str, Any] {
 impl HMRCompiler.compile_module(module_path: Path, output_path: Path) -> None {
     (js_output, _) = self._compile_to_js(module_path);
     write_file(output_path, js_output);
-    if self.verbose { print(f"Compiled {module_path} -> {output_path}"); }
+    if self.verbose {
+        print(f"Compiled {module_path} -> {output_path}");
+    }
 }

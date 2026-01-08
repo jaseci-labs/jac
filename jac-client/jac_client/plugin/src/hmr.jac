@@ -21,11 +21,18 @@ def get_client_dir(project_dir: Path) -> Path {
 }
 
 """Calculate output path preserving relative structure."""
-def calc_output_path(file_path: Path, source_root: Path, client_dir: Path, new_suffix: (str | None) = None) -> Path {
+def calc_output_path(
+    file_path: Path,
+    source_root: Path,
+    client_dir: Path,
+    new_suffix: (str | None) = None
+) -> Path {
     out: Path;
     try {
         relative = file_path.relative_to(source_root);
-        out = client_dir / (relative.with_suffix(new_suffix) if new_suffix else relative);
+        out = client_dir / (
+            relative.with_suffix(new_suffix) if new_suffix else relative
+        );
     } except ValueError {
         name = file_path.with_suffix(new_suffix).name if new_suffix else file_path.name;
         out = client_dir / name;
@@ -70,7 +77,12 @@ obj HMRCompiler {
     has project_dir: Path,
         verbose: bool = False;
 
-    def compile_recursively(module_path: Path, client_dir: Path, visited: (set[Path] | None) = None, source_root: (Path | None) = None) -> set[Path];
+    def compile_recursively(
+        module_path: Path,
+        client_dir: Path,
+        visited: (set[Path] | None) = None,
+        source_root: (Path | None) = None
+    ) -> set[Path];
     def _compile_to_js(module_path: Path) -> tuple[str, Any];
     def compile_module(module_path: Path, output_path: Path) -> None;
 }

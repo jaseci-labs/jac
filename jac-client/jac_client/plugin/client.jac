@@ -53,8 +53,6 @@ class JacClient {
 
     @hookimpl
     static def start_dev_server(
-        module_path: Path,
-        host: str = 'localhost',
-        port: int = 3000
+        module_path: Path, host: str = 'localhost', port: int = 3000
     ) -> None;
 }

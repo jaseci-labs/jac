@@ -57,11 +57,7 @@ class JacCmd {
             }
         }
 
-        def dev(
-            filename: str,
-            host: str = 'localhost',
-            port: int = 3000
-        ) -> None {
+        def dev(filename: str, host: str = 'localhost', port: int = 3000) -> None {
             """Start development server with Hot Module Replacement (HMR).
 
             Starts a Vite dev server that watches .jac files for changes and
@@ -78,7 +74,10 @@ class JacCmd {
             """;
             if not filename {
                 print("Error: filename is required", file=sys.stderr);
-                print("Usage: jac dev <file.jac> [--host HOST] [--port PORT]", file=sys.stderr);
+                print(
+                    "Usage: jac dev <file.jac> [--host HOST] [--port PORT]",
+                    file=sys.stderr
+                );
                 <>exit(1);
             }
 
@@ -100,11 +99,7 @@ class JacCmd {
             print(f"Dev server will be available at http://{host}:{port}");
 
             # Call the HMR hook from runtime
-            Jac.start_dev_server(
-                module_path=file_path,
-                host=host,
-                port=port
-            );
+            Jac.start_dev_server(module_path=file_path, host=host, port=port);
         }
 
         # Register with PLUGIN priority to override core's create command

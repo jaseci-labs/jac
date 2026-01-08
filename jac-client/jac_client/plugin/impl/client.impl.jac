@@ -140,14 +140,10 @@ impl JacClientModuleIntrospector.render_page(
     return {'html': page, 'bundle_hash': bundle_hash, 'bundle_code': self._bundle.code};
 }
 
-
 """Start the Vite dev server with HMR support."""
 impl JacClient.start_dev_server(
-    module_path: Path,
-    host: str = 'localhost',
-    port: int = 3000
+    module_path: Path, host: str = 'localhost', port: int = 3000
 ) -> None {
-
     # Find project root
     project_dir = module_path.parent;
     if (project_dir / 'jac.toml').exists() {
@@ -157,7 +153,6 @@ impl JacClient.start_dev_server(
         # module_path is in src/
         project_dir = project_dir.parent;
     }
-    
     # Create and start dev server
     dev_server = ViteDevServer(
         project_dir=project_dir,
@@ -166,6 +161,5 @@ impl JacClient.start_dev_server(
         port=port,
         verbose=True
     );
-    
     dev_server.start();
 }
