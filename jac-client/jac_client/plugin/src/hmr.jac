@@ -83,6 +83,7 @@ obj HMRCompiler {
         visited: (set[Path] | None) = None,
         source_root: (Path | None) = None
     ) -> set[Path];
+
     def _compile_to_js(module_path: Path) -> tuple[str, Any];
     def compile_module(module_path: Path, output_path: Path) -> None;
 }
