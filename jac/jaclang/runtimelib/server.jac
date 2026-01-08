@@ -206,6 +206,15 @@ class JacHTTPServer(Server) {
     def get_instance(self: JacHTTPServer) -> HTTPServer;
 }
 
+"""Route mapping entry for fast endpoint lookup."""
+obj RouteMapping {
+    has method: str,  # 'GET', 'POST', etc.
+        name: str,  # walker/function name
+        endpoint_type: str,  # 'walker' or 'function'
+        requires_auth: bool = False,
+        has_node_param: bool = False;  # For walkers: true if path includes /{node}
+}
+
 """REST API Server for Jac programs."""
 obj JacAPIServer {
     has module_name: str,
@@ -213,7 +222,8 @@ obj JacAPIServer {
         port: int = 8000,
         base_path: (str | None) = None,
         _endpoints_built: bool = False,
-        _endpoint_definitions: list[EndpointDefinition] = [];
+        _endpoint_definitions: list[EndpointDefinition] = [],
+        _route_mapping: dict[(str, RouteMapping)] = {};  # path -> RouteMapping
 
     def postinit -> None;
     def create_handler -> type[BaseHTTPRequestHandler];
@@ -232,11 +242,23 @@ obj JacAPIServer {
     def get_client_bundle_code -> str;
     def print_endpoint_docs -> None;
     
+    """Map walkers and functions to endpoints at compile time."""
+    def map_walkers_to_endpoints -> None;
+    
     """Build endpoint definitions from walkers and functions at compile time."""
     def build_endpoints -> None;
     
     """Get built endpoint definitions."""
     def get_endpoint_definitions -> list[EndpointDefinition];
+    
+    """Get route mapping for fast endpoint lookup."""
+    def get_route_mapping -> dict[(str, RouteMapping)];
+    
+    """Save route mapping to JSON file for persistence."""
+    def save_route_mapping(file_path: str = "route_mapping.json") -> None;
+    
+    """Load route mapping from JSON file."""
+    def load_route_mapping(file_path: str = "route_mapping.json") -> None;
     
     """Apply server configurations."""
     def apply_config -> None;

@@ -1004,38 +1004,72 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                 }
                 return;
             }
-            if (path == '/functions') {
-                self._send_response(server.introspection_handler.list_functions());
-                return;
-            } elif (path == '/walkers') {
-                self._send_response(server.introspection_handler.list_walkers());
-                return;
-            } elif path.startswith('/function/') {
+            # Get route mapping for fast lookup
+            route_mapping = server.get_route_mapping();
+            route_key = f"GET:{path}";
+            route_info = route_mapping.get(route_key);
+            
+            # Handle /function/{name} introspection
+            if not route_info and path.startswith('/function/') {
                 name = path.split('/')[-1];
-                server.introspector.load();
-                if server.introspector.is_auth_required_for_function(name) {
+                route_key = f"GET:/function/{name}";
+                route_info = route_mapping.get(route_key);
+            }
+            
+            # Handle /walker/{name} introspection
+            if not route_info and path.startswith('/walker/') {
+                name = path.split('/')[-1];
+                route_key = f"GET:/walker/";
+                route_info = route_mapping.get(route_key);
+                if route_info {
+                    # Extract walker name from path
+                    name = path.split('/')[-1];
+                }
+            }
+            
+            # Route to appropriate handler
+            if route_info {
+                # Handle authentication
+                if route_info.requires_auth {
                     username = self._authenticate();
                     if not username {
                         Jac.send_json(self, 401, {'error': 'Unauthorized'});
                         return;
                     }
                 }
-                self._send_response(
-                    server.introspection_handler.get_function_info(name)
-                );
-                return;
-            } elif path.startswith('/walker/') {
-                name = path.split('/')[-1];
-                server.introspector.load();
-                if server.introspector.is_auth_required_for_walker(name) {
-                    username = self._authenticate();
-                    if not username {
-                        Jac.send_json(self, 401, {'error': 'Unauthorized'});
-                        return;
+                
+                # Route based on endpoint type
+                if route_info.endpoint_type == 'introspection' {
+                    if route_info.name == 'list_functions' {
+                        self._send_response(server.introspection_handler.list_functions());
+                    } elif route_info.name == 'list_walkers' {
+                        self._send_response(server.introspection_handler.list_walkers());
+                    } elif route_info.name == 'get_walker_info' {
+                        name = path.split('/')[-1];
+                        self._send_response(server.introspection_handler.get_walker_info(name));
+                    } else {
+                        Jac.send_json(self, 404, {'error': 'Not found'});
                     }
+                } elif route_info.endpoint_type == 'function' {
+                    # GET /function/{name} introspection
+                    name = path.split('/')[-1];
+                    server.introspector.load();
+                    if server.introspector.is_auth_required_for_function(name) {
+                        username = self._authenticate();
+                        if not username {
+                            Jac.send_json(self, 401, {'error': 'Unauthorized'});
+                            return;
+                        }
+                    }
+                    self._send_response(
+                        server.introspection_handler.get_function_info(name)
+                    );
+                } elif route_info.endpoint_type == 'docs' {
+                    # /docs endpoint
+                    self._send_response(server.introspection_handler.get_docs());
+                } else {
+                    Jac.send_json(self, 404, {'error': 'Not found'});
                 }
-                self._send_response(server.introspection_handler.get_walker_info(name));
-                return;
             } elif (path == '/protected') {
                 username = self._authenticate();
                 if not username {
@@ -1060,69 +1094,83 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                 Jac.send_json(self, 400, {'error': 'Invalid JSON'});
                 return;
             }
-            if (path == '/user/register') {
-                response = server.auth_handler.create_user(
-                    data.get('username', ''), data.get('password', '')
-                );
-                self._send_response(response);
+            
+            # Get route mapping for fast lookup
+            route_mapping = server.get_route_mapping();
+            route_key = f"POST:{path}";
+            
+            # Check for exact match first
+            route_info = route_mapping.get(route_key);
+            
+            # For walkers, check if path has node parameter (extra segment)
+            if not route_info and path.startswith('/walker/') {
+                path_parts = path.split('/');
+                if len(path_parts) > 3 {
+                    # Path like /walker/{name}/{node} - check pattern
+                    base_path = '/walker/' + path_parts[2] + '/';
+                    route_key_pattern = f"POST:{base_path}";
+                    route_info = route_mapping.get(route_key_pattern);
+                }
+            }
+            
+            # Handle route based on mapping
+            if not route_info {
+                Jac.send_json(self, 404, {'error': 'Not found'});
                 return;
             }
-            if (path == '/user/login') {
-                response = server.auth_handler.login(
-                    data.get('username', ''), data.get('password', '')
-                );
-                self._send_response(response);
-                return;
-            }
-            if path.startswith('/function/') {
-                name = path.split('/')[-1];
-                server.introspector.load();
-                if server.introspector.is_auth_required_for_function(name) {
-                    username = self._authenticate();
-                    if not username {
-                        Jac.send_json(self, 401, {'error': 'Unauthorized'});
-                        return;
-                    }
-                } else {
-                    username = self._authenticate();
-                    if not username {
-                        username = '__guest__';
-                        if (username not in server.user_manager._users) {
-                            server.user_manager.create_user(
-                                username, '__no_password__'
-                            );
-                        }
+            
+            # Handle authentication
+            username = None;
+            if route_info.requires_auth {
+                username = self._authenticate();
+                if not username {
+                    Jac.send_json(self, 401, {'error': 'Unauthorized'});
+                    return;
+                }
+            } else {
+                username = self._authenticate();
+                if not username {
+                    username = '__guest__';
+                    if (username not in server.user_manager._users) {
+                        server.user_manager.create_user(
+                            username, '__no_password__'
+                        );
                     }
                 }
+            }
+            
+            # Route to appropriate handler based on endpoint type
+            if route_info.endpoint_type == 'auth' {
+                if route_info.name == 'register' {
+                    response = server.auth_handler.create_user(
+                        data.get('username', ''), data.get('password', '')
+                    );
+                    self._send_response(response);
+                } elif route_info.name == 'login' {
+                    response = server.auth_handler.login(
+                        data.get('username', ''), data.get('password', '')
+                    );
+                    self._send_response(response);
+                } else {
+                    Jac.send_json(self, 404, {'error': 'Not found'});
+                }
+            } elif route_info.endpoint_type == 'function' {
                 response = server.execution_handler.call_function(
-                    name, data.get('args', {}), username
+                    route_info.name, data.get('args', {}), username
                 );
                 self._send_response(response);
-            } elif path.startswith('/walker/') {
-                name_parts = path.split('/');
-                name = name_parts[-2] if (len(name_parts) > 3) else name_parts[-1];
-                node_id = name_parts[-1] if (len(name_parts) > 3) else '';
-                server.introspector.load();
-                if server.introspector.is_auth_required_for_walker(name) {
-                    username = self._authenticate();
-                    if not username {
-                        Jac.send_json(self, 401, {'error': 'Unauthorized'});
-                        return;
-                    }
-                } else {
-                    username = self._authenticate();
-                    if not username {
-                        username = '__guest__';
-                        if (username not in server.user_manager._users) {
-                            server.user_manager.create_user(
-                                username, '__no_password__'
-                            );
-                        }
+            } elif route_info.endpoint_type == 'walker' {
+                # Extract node_id if present
+                node_id = '';
+                if route_info.has_node_param {
+                    path_parts = path.split('/');
+                    if len(path_parts) > 3 {
+                        node_id = path_parts[-1];
                     }
                 }
                 fields = data | {'_jac_spawn_node': node_id};
                 response = server.execution_handler.spawn_walker(
-                    name, fields, username
+                    route_info.name, fields, username
                 );
                 self._send_response(response);
             } else {
@@ -1189,6 +1237,96 @@ impl JacAPIServer.print_endpoint_docs -> None {
     print_endpoint_docs(self);
 }
 
+"""Map walkers and functions to endpoints at compile time."""
+impl JacAPIServer.map_walkers_to_endpoints -> None {
+    """Map walkers and functions to endpoint routes for fast lookup.
+    
+    This method creates a route mapping dictionary that maps URL paths to
+    endpoint information. This allows O(1) lookup instead of string matching
+    on every request, making the server faster.
+    """
+    if self._route_mapping {
+        return;  # Already mapped
+    }
+    self.introspector.load();
+    
+    # Clear existing mapping
+    self._route_mapping = {};
+    
+    # Map walkers to endpoints
+    walkers = self.get_walkers();
+    for (walker_name, walker_cls) in walkers.items() {
+        requires_auth = self.introspector.is_auth_required_for_walker(walker_name);
+        
+        # POST /walker/{name}/{node} - with node parameter
+        path_with_node = f"/walker/{walker_name}";
+        self._route_mapping[f"POST:{path_with_node}"] = RouteMapping(
+            method='POST',
+            name=walker_name,
+            endpoint_type='walker',
+            requires_auth=requires_auth,
+            has_node_param=False
+        );
+        
+        # POST /walker/{name}/{node} - pattern for paths with node
+        # We'll handle this in the handler by checking if path has extra segments
+        path_pattern = f"/walker/{walker_name}/";
+        self._route_mapping[f"POST:{path_pattern}"] = RouteMapping(
+            method='POST',
+            name=walker_name,
+            endpoint_type='walker',
+            requires_auth=requires_auth,
+            has_node_param=True
+        );
+    }
+    
+    # Map functions to endpoints
+    functions = self.get_functions();
+    for (func_name, func) in functions.items() {
+        requires_auth = self.introspector.is_auth_required_for_function(func_name);
+        
+        # POST /function/{name}
+        post_path = f"/function/{func_name}";
+        self._route_mapping[f"POST:{post_path}"] = RouteMapping(
+            method='POST',
+            name=func_name,
+            endpoint_type='function',
+            requires_auth=requires_auth,
+            has_node_param=False
+        );
+        
+        # GET /function/{name} (for introspection)
+        get_path = f"/function/{func_name}";
+        self._route_mapping[f"GET:{get_path}"] = RouteMapping(
+            method='GET',
+            name=func_name,
+            endpoint_type='function',
+            requires_auth=requires_auth,
+            has_node_param=False
+        );
+    }
+    
+    # Map standard endpoints
+    self._route_mapping['POST:/user/register'] = RouteMapping(
+        method='POST', name='register', endpoint_type='auth', requires_auth=False, has_node_param=False
+    );
+    self._route_mapping['POST:/user/login'] = RouteMapping(
+        method='POST', name='login', endpoint_type='auth', requires_auth=False, has_node_param=False
+    );
+    self._route_mapping['GET:/functions'] = RouteMapping(
+        method='GET', name='list_functions', endpoint_type='introspection', requires_auth=False, has_node_param=False
+    );
+    self._route_mapping['GET:/walkers'] = RouteMapping(
+        method='GET', name='list_walkers', endpoint_type='introspection', requires_auth=False, has_node_param=False
+    );
+    self._route_mapping['GET:/walker/'] = RouteMapping(
+        method='GET', name='get_walker_info', endpoint_type='introspection', requires_auth=False, has_node_param=False
+    );
+    self._route_mapping['GET:/docs'] = RouteMapping(
+        method='GET', name='docs', endpoint_type='docs', requires_auth=False, has_node_param=False
+    );
+}
+
 """Build endpoints from walkers and functions at compile time."""
 impl JacAPIServer.build_endpoints -> None {
     """Convert walkers and functions to endpoint definitions.
@@ -1200,6 +1338,10 @@ impl JacAPIServer.build_endpoints -> None {
     if self._endpoints_built {
         return;
     }
+    
+    # First, map walkers to endpoints for fast lookup
+    self.map_walkers_to_endpoints();
+    
     self.introspector.load();
     
     # Clear existing definitions
@@ -1280,6 +1422,81 @@ impl JacAPIServer.build_endpoints -> None {
     self._endpoints_built = True;
 }
 
+"""Get route mapping for fast endpoint lookup."""
+impl JacAPIServer.get_route_mapping -> dict[(str, RouteMapping)] {
+    """Return the route mapping dictionary for fast endpoint lookup."""
+    if not self._route_mapping {
+        self.map_walkers_to_endpoints();
+    }
+    return self._route_mapping;
+}
+
+"""Save route mapping to JSON file for persistence."""
+impl JacAPIServer.save_route_mapping(file_path: str = "route_mapping.json") -> None {
+    """Save the route mapping to a JSON file for persistence.
+    
+    This allows the route mapping to be cached and loaded faster on subsequent runs.
+    """
+    import json;
+    if not self._route_mapping {
+        self.map_walkers_to_endpoints();
+    }
+    
+    # Convert RouteMapping objects to dictionaries for JSON serialization
+    mapping_dict = {};
+    for (route_key, route_info) in self._route_mapping.items() {
+        mapping_dict[route_key] = {
+            'method': route_info.method,
+            'name': route_info.name,
+            'endpoint_type': route_info.endpoint_type,
+            'requires_auth': route_info.requires_auth,
+            'has_node_param': route_info.has_node_param
+        };
+    }
+    
+    with open(file_path, 'w') as f {
+        json.dump(mapping_dict, f, indent=2);
+    }
+}
+
+"""Load route mapping from JSON file."""
+impl JacAPIServer.load_route_mapping(file_path: str = "route_mapping.json") -> None {
+    """Load the route mapping from a JSON file.
+    
+    This allows faster startup by using a cached route mapping instead of
+    introspecting walkers and functions at runtime.
+    """
+    import json;
+    import os;
+    
+    if not os.path.exists(file_path) {
+        # If file doesn't exist, build mapping from scratch
+        self.map_walkers_to_endpoints();
+        return;
+    }
+    
+    try {
+        with open(file_path, 'r') as f {
+            mapping_dict = json.load(f);
+        }
+        
+        # Convert dictionaries back to RouteMapping objects
+        self._route_mapping = {};
+        for (route_key, route_data) in mapping_dict.items() {
+            self._route_mapping[route_key] = RouteMapping(
+                method=route_data.get('method', 'GET'),
+                name=route_data.get('name', ''),
+                endpoint_type=route_data.get('endpoint_type', 'function'),
+                requires_auth=route_data.get('requires_auth', False),
+                has_node_param=route_data.get('has_node_param', False)
+            );
+        }
+    } except (json.JSONDecodeError, KeyError, Exception) {
+        # If loading fails, build mapping from scratch
+        self.map_walkers_to_endpoints();
+    }
+}
+
 """Get built endpoint definitions."""
 impl JacAPIServer.get_endpoint_definitions -> list[EndpointDefinition] {
     """Return the list of endpoint definitions built from walkers and functions."""
@@ -1309,11 +1526,17 @@ impl JacAPIServer.start -> None {
     """Start the server with pre-built endpoints.
     
     Flow:
-    1. Build endpoints (if not already built)
-    2. Apply configurations
-    3. Start the server
+    1. Map walkers to endpoints (compile-time route mapping)
+    2. Build endpoints (if not already built)
+    3. Apply configurations
+    4. Start the server
     """
-    # Step 1: Build endpoints if not already built
+    # Step 1: Map walkers to endpoints for fast lookup
+    if not self._route_mapping {
+        self.map_walkers_to_endpoints();
+    }
+    
+    # Step 2: Build endpoints if not already built
     if not self._endpoints_built {
         self.build_endpoints();
     }

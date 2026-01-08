@@ -48,8 +48,16 @@ impl JacClient.build_client_bundle(
 """Get the client bundle builder instance."""
 impl JacClient.get_client_bundle_builder -> ViteClientBundleBuilder {
     import from jaclang.project.config { find_project_root }
+    import os;
+    
     # Find project root by looking for jac.toml (base_path_dir might be src/ for entry files)
-    base_path_dir = Path(Jac.base_path_dir);
+    base_path_dir = Path(Jac.base_path_dir) if Jac.base_path_dir else Path.cwd();
+    
+    # Ensure base_path_dir is absolute
+    if not base_path_dir.is_absolute() {
+        base_path_dir = base_path_dir.resolve();
+    }
+    
     project_root_result = find_project_root(base_path_dir);
     if project_root_result {
         (base_path, _) = project_root_result;
@@ -57,32 +65,65 @@ impl JacClient.get_client_bundle_builder -> ViteClientBundleBuilder {
         # Fallback to base_path_dir if no project root found
         base_path = base_path_dir;
     }
+    
+    # Ensure base_path is absolute
+    if not base_path.is_absolute() {
+        base_path = base_path.resolve();
+    }
+    
     # Use ViteBundler to get the client directory
     bundler = ViteBundler(base_path);
     client_dir = bundler._get_client_dir();
+    
+    # Ensure client_dir exists
+    client_dir.mkdir(parents=True, exist_ok=True);
+    (client_dir / 'configs').mkdir(parents=True, exist_ok=True);
+    
     # package.json should only exist in .jac/client/configs/
     generated_package_json = client_dir / 'configs' / 'package.json';
+    
     # Generate package.json if it doesn't exist
     if not generated_package_json.exists() {
-        generated_path = bundler.create_package_json();
-        # Verify the file was created and resolve to absolute path
-        if not generated_path.exists() {
+        try {
+            generated_path = bundler.create_package_json();
+            # Verify the file was created and resolve to absolute path
+            if not generated_path or not generated_path.exists() {
+                raise ClientBundleError(
+                    f'Failed to generate package.json at {generated_package_json}. '
+                    f'create_package_json() returned: {generated_path}'
+                ) ;
+            }
+            package_json_path = generated_path.resolve();
+        } except Exception as e {
             raise ClientBundleError(
-                f'Failed to generate package.json at {generated_path}'
-            ) ;
+                f'Failed to create package.json at {generated_package_json}: {e}'
+            ) from e;
         }
-        package_json_path = generated_path.resolve();
     } else {
         package_json_path = generated_package_json.resolve();
     }
+    
     # Final verification that package.json exists before creating builder
     if not package_json_path.exists() {
         raise ClientBundleError(
-            f'package.json not found at {package_json_path}. Expected at {generated_package_json}'
+            f'package.json not found at {package_json_path}. '
+            f'Expected at {generated_package_json}. '
+            f'Base path: {base_path}, Client dir: {client_dir}'
         ) ;
     }
+    
     output_dir = client_dir / 'dist';
+    output_dir.mkdir(parents=True, exist_ok=True);
+    
     runtime_path = Path(__file__).with_name('client_runtime.cl.jac');
+    
+    # Verify runtime_path exists
+    if not runtime_path.exists() {
+        raise ClientBundleError(
+            f'client_runtime.cl.jac not found at {runtime_path}'
+        ) ;
+    }
+    
     return ViteClientBundleBuilder(
         runtime_path=runtime_path,
         vite_package_json=package_json_path,
