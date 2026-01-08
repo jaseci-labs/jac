@@ -150,25 +150,40 @@ impl JacClientModuleIntrospector.render_page(
         viewport
     )}"/>\n            <title>{html.escape(title)}</title>';
     head_content += f'\n            <meta name="robots" content="{html.escape(robots)}"/>';
-    head_content += f'\n            <meta name="theme-color" content="{html.escape(theme_color)}"/>';
-    head_content += f'\n            <meta property="og:type" content="{html.escape(og_type)}"/>';
-    head_content += f'\n            <meta property="og:title" content="{html.escape(og_title)}"/>';
-    head_content += f'\n            <meta property="og:description" content="{html.escape(og_description)}"/>';
+    head_content += f'\n            <meta name="theme-color" content="{html.escape(
+        theme_color
+    )}"/>';
+    head_content += f'\n            <meta property="og:type" content="{html.escape(
+        og_type
+    )}"/>';
+    head_content += f'\n            <meta property="og:title" content="{html.escape(
+        og_title
+    )}"/>';
+    head_content += f'\n            <meta property="og:description" content="{html.escape(
+        og_description
+    )}"/>';
     if description {
-        head_content += f'\n            <meta name="description" content="{html.escape(description)}"/>';
+        head_content += f'\n            <meta name="description" content="{html.escape(
+            description
+        )}"/>';
     }
     if canonical {
-        head_content += f'\n            <link rel="canonical" href="{html.escape(canonical)}"/>';
+        head_content += f'\n            <link rel="canonical" href="{html.escape(
+            canonical
+        )}"/>';
     }
     if icon {
         head_content += f'\n            <link rel="icon" href="{html.escape(icon)}"/>';
     }
     if og_url {
-        head_content += f'\n            <meta property="og:url" content="{html.escape(og_url)}"/>';
+        head_content += f'\n            <meta property="og:url" content="{html.escape(
+            og_url
+        )}"/>';
     }
-    
     if og_image {
-        head_content += f'\n            <meta property="og:image" content="{html.escape(og_image)}"/>';
+        head_content += f'\n            <meta property="og:image" content="{html.escape(
+            og_image
+        )}"/>';
     }
     if css_link {
         head_content += f"\n            {css_link}";
