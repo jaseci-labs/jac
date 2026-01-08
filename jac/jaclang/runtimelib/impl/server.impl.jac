@@ -6,7 +6,11 @@ import from pathlib { Path }
 import from typing { Any }
 import from urllib.parse { parse_qs, urlparse }
 import from jaclang.project.config { get_config }
-import from jaclang.runtimelib.server.handlers { AuthHandler, IntrospectionHandler, ExecutionHandler }
+import from jaclang.runtimelib.server.handlers {
+    AuthHandler,
+    IntrospectionHandler,
+    ExecutionHandler
+}
 import from jaclang.runtimelib.server.infra { Infra }
 import from jaclang.runtimelib.server.response_builder { ResponseBuilder }
 import from jaclang.runtimelib.server.types { Response }
@@ -15,21 +19,21 @@ import from jaclang.runtimelib.server.execution_manager { ExecutionManager }
 import from jaclang.runtimelib.server { JacAPIServer }
 import from jaclang { JacRuntime as Jac }
 
-with entry {
-    import from jaclang.pycore.constructs { WalkerArchetype }
-}
+import from jaclang.pycore.constructs { WalkerArchetype }
 
 """Initialize the API server."""
 impl JacAPIServer.postinit -> None {
     # Get persistent data store from Infra (or use default file store)
     config = get_config();
     persistent_config = None;
-    if config and hasattr(config, 'environments') and config.environments {
+    if config and config?.environments and config.environments {
         db_config = config.environments.get('database', {});
         if db_config {
             persistent_config = {
                 'type': db_config.get('type', 'file'),
-                'path': f"{self.session_path}.users.json" if db_config.get('type') == 'file' else None,
+                'path': f"{self.session_path}.users.json"
+                if db_config.get('type') == 'file'
+                else None,
                 'connection_string': db_config.get('connection_string'),
                 'db_name': db_config.get('db_name'),
                 'collection_name': db_config.get('collection_name', 'users')

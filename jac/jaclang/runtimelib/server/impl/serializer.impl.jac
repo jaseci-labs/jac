@@ -54,4 +54,3 @@ impl JacSerializer._serialize_archetype(arch: Archetype) -> dict[str, JsonValue]
     }
     return result;
 }
-

@@ -13,4 +13,3 @@ obj JacSerializer {
     static def serialize(<>obj: object) -> JsonValue;
     static def _serialize_archetype(arch: Archetype) -> dict[str, JsonValue];
 }
-

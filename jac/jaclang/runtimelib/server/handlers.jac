@@ -43,4 +43,3 @@ obj ExecutionHandler {
     def call_function(name: str, args: dict[(str, Any)], username: str) -> Response;
     def spawn_walker(name: str, fields: dict[(str, Any)], username: str) -> Response;
 }
-

@@ -11,7 +11,11 @@ import from jaclang.runtimelib.server.user_manager { UserManager }
 import from jaclang.runtimelib.server.execution_manager { ExecutionManager }
 import from jaclang.runtimelib.server.introspector { ModuleIntrospector }
 import from jaclang.runtimelib.server.response_builder { ResponseBuilder }
-import from jaclang.runtimelib.server.handlers { AuthHandler, IntrospectionHandler, ExecutionHandler }
+import from jaclang.runtimelib.server.handlers {
+    AuthHandler,
+    IntrospectionHandler,
+    ExecutionHandler
+}
 import from jaclang { JacRuntime as Jac }
 
 with entry {

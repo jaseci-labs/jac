@@ -1,7 +1,13 @@
 """Infrastructure implementations."""
 import json;
 import from typing { Any }
-import from jaclang.runtimelib.server.infra { DataStore, FileStore, RedisStore, MongoStore, Infra }
+import from jaclang.runtimelib.server.infra {
+    DataStore,
+    FileStore,
+    RedisStore,
+    MongoStore,
+    Infra
+}
 
 """Initialize FileStore with config."""
 impl FileStore.init(config: dict[str, Any]) -> None {
@@ -11,7 +17,7 @@ impl FileStore.init(config: dict[str, Any]) -> None {
 }
 
 """Load data from file."""
-impl FileStore._load() -> None {
+impl FileStore._load -> None {
     if not self._file_path {
         return;
     }
@@ -25,7 +31,7 @@ impl FileStore._load() -> None {
 }
 
 """Save data to file."""
-impl FileStore._save() -> None {
+impl FileStore._save -> None {
     if not self._file_path {
         return;
     }
@@ -52,7 +58,7 @@ impl FileStore.set(key: str, value: Any) -> None {
 """Delete data by key."""
 impl FileStore.delete(key: str) -> None {
     if key in self._data {
-        del self._data[key];
+        del self._data[key] ;
         self._save();
     }
 }
@@ -70,25 +76,28 @@ impl FileStore.keys(pattern: (str | None) = None) -> list[str] {
     # Simple pattern matching (can be enhanced)
     import re;
     regex = re.compile(pattern.replace('*', '.*'));
-    return [key for key in self._data.keys() if regex.match(key)];
+    return [
+        key
+        for key in self._data.keys()
+        if regex.match(key)
+    ];
 }
 
 """Flush all data."""
-impl FileStore.flush() -> None {
+impl FileStore.flush -> None {
     self._data = {};
     self._save();
 }
 
 """Close the store."""
-impl FileStore.close() -> None {
+impl FileStore.close -> None {
     self._save();
 }
 
 # RedisStore implementations will be provided in jac-scale
 # MongoStore implementations will be provided in jac-scale
-
 """Get default configuration."""
-impl Infra._get_default_config() -> dict[str, Any] {
+impl Infra._get_default_config -> dict[str, Any] {
     return {
         'cache': {
             'type': 'redis',  # In scale this will be Redis instance (file storage not suitable for cache)
@@ -108,12 +117,14 @@ impl Infra._get_default_config() -> dict[str, Any] {
 }
 
 """Get cache memory instance.
-    
+
 In scale, this will return a Redis instance for distributed caching.
 For local development, file storage is not suitable for cache, so returns None.
 RedisStore implementation will be provided in jac-scale.
 """
-impl Infra.get_cache_memory(config: (dict[str, Any] | None) = None) -> (DataStore | None) {
+impl Infra.get_cache_memory(
+    config: (dict[str, Any] | None) = None
+) -> (DataStore | None) {
     if config is None {
         default_config = Infra._get_default_config();
         config = default_config.get('cache', {});
@@ -131,12 +142,14 @@ impl Infra.get_cache_memory(config: (dict[str, Any] | None) = None) -> (DataStor
 }
 
 """Get persistent memory instance.
-    
+
 File storage is the persistent storage for local development.
 In scale, this will return a MongoDB instance for distributed persistent storage.
 MongoStore implementation will be provided in jac-scale.
 """
-impl Infra.get_persistent_memory(config: (dict[str, Any] | None) = None) -> (DataStore | None) {
+impl Infra.get_persistent_memory(
+    config: (dict[str, Any] | None) = None
+) -> (DataStore | None) {
     if config is None {
         default_config = Infra._get_default_config();
         config = default_config.get('persistent', {});
@@ -156,6 +169,7 @@ impl Infra.get_persistent_memory(config: (dict[str, Any] | None) = None) -> (Dat
         return store;
     }
 }
+<<<<<<< HEAD
 
 """Get orchestration storage instance.
     
@@ -201,3 +215,5 @@ impl Infra.get_object_storage(config: (dict[str, Any] | None) = None) -> (DataSt
     return None;
 }
 
+=======
+>>>>>>> a7881543a5520ba8c7c2fe1706f5d66e3652cd74
