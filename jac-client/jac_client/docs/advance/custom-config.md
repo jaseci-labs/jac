@@ -22,6 +22,9 @@ entry-point = "src/app.jac"
 plugins = []
 lib_imports = []
 
+[plugins.client.app_meta_data]
+# Application Metadata Configuration
+
 [plugins.client.vite.build]
 # Build options
 
@@ -194,7 +197,54 @@ Custom headers can be added by using an enviornmental variable and mentioning th
 "Cross-Origin-Opener-Policy" = "same-origin"
 "Cross-Origin-Embedder-Policy" = "require-corp"
 ```
+### Application Metadata Configuration
 
+#### Configure Custom Meta Tags
+
+Custom application metadata can be configured to enhance SEO, social sharing, and browser display. Add metadata configuration under `[plugins.client. app_meta_data]`:
+
+```toml
+[plugins.client.app_meta_data]
+title = "My Awesome App"
+description = "A powerful application built with Jac Client"
+icon = "/favicon.ico"
+viewport = "width=device-width, initial-scale=1.0"
+```
+
+**Available Options**: 
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `charset` | Character encoding for the HTML document | `"UTF-8"` |
+| `title` | Application title displayed in browser tab and search results | Function name |
+| `viewport` | Viewport meta tag for responsive design | `"width=device-width, initial-scale=1"` |
+| `description` | Application description for SEO and social sharing | `None` |
+| `robots` | Instructs search engine crawlers how to index the page | `"index, follow"` |
+| `canonical` | Canonical URL to prevent duplicate content issues | `None` |
+| `og_type` | Open Graph type (e.g., "website", "article") | `"website"` |
+| `og_title` | Open Graph title for social media sharing | Same as `title` |
+| `og_description` | Open Graph description for social media sharing | Same as `description` |
+| `og_url` | Open Graph URL for social media sharing | `None` |
+| `og_image` | Open Graph image URL for social media previews | `None` |
+| `theme_color` | Browser theme color (affects mobile browser UI) | `"#ffffff"` |
+| `icon` | Path to favicon file (relative to assets directory) | `None` |
+
+#### How Metadata Rendering Works
+
+1. **Configuration** is defined in `jac.toml` under `[plugins.client.app_meta_data]`
+2. **HTML head content** is dynamically generated based on the configuration
+3. **Standard meta tags**, Open Graph tags, and favicon links are automatically included
+4. The `render_page` method processes the metadata and injects it into the HTML `<head>` section
+
+#### Example: Complete Metadata Configuration
+
+```toml
+[plugins.client.app_meta_data]
+title = "E-Commerce Dashboard"
+description = "Manage your online store with real-time analytics and insights"
+icon = "/assets/favicon.ico"
+viewport = "width=device-width, initial-scale=1.0, maximum-scale=5.0"
+```
 ## How It Works
 
 ### Configuration Workflow

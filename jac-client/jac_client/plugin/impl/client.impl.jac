@@ -131,7 +131,8 @@ impl JacClientModuleIntrospector.render_page(
         css_link = f'<link rel="stylesheet" href="/static/main.css?hash={css_hash}"/>';
     }
     # Get meta data from config
-    meta_data = config.get_plugin_config("client").get("app_meta_data", {});
+    client_cfg = config.get_plugin_config("client") if config else None;
+    meta_data = client_cfg.get("app_meta_data", {}) if client_cfg else {};
     charset = meta_data.get("charset", "UTF-8");
     title = meta_data.get("title", function_name);
     viewport = meta_data.get("viewport", "width=device-width, initial-scale=1");
@@ -140,7 +141,7 @@ impl JacClientModuleIntrospector.render_page(
     canonical = meta_data.get("canonical", None);
     og_type = meta_data.get("og_type", "website");
     og_title = meta_data.get("og_title", title);
-    og_description = meta_data.get("og_description", description);
+    og_description = meta_data.get("og_description", None);
     og_url = meta_data.get("og_url", None);
     og_image = meta_data.get("og_image", None);
     theme_color = meta_data.get("theme_color", "#ffffff");
@@ -158,9 +159,6 @@ impl JacClientModuleIntrospector.render_page(
     )}"/>';
     head_content += f'\n            <meta property="og:title" content="{html.escape(
         og_title
-    )}"/>';
-    head_content += f'\n            <meta property="og:description" content="{html.escape(
-        og_description
     )}"/>';
     if description {
         head_content += f'\n            <meta name="description" content="{html.escape(
@@ -183,6 +181,11 @@ impl JacClientModuleIntrospector.render_page(
     if og_image {
         head_content += f'\n            <meta property="og:image" content="{html.escape(
             og_image
+        )}"/>';
+    }
+    if og_description {
+        head_content += f'\n            <meta property="og:description" content="{html.escape(
+            og_description
         )}"/>';
     }
     if css_link {
