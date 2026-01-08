@@ -130,9 +130,65 @@ impl JacClientModuleIntrospector.render_page(
         css_hash = hashlib.sha256(css_file.read_bytes()).hexdigest()[:8];
         css_link = f'<link rel="stylesheet" href="/static/main.css?hash={css_hash}"/>';
     }
-    head_content = f'<meta charset="utf-8"/>\n            <title>{html.escape(
-        function_name
-    )}</title>';
+    # Get meta data from config
+    meta_config = config.get_plugin_config("client");
+    meta_data = meta_config.get("app_meta_data", {});
+    charset = meta_data.get("charset", "UTF-8");
+    title = meta_data.get("title", function_name);
+    viewport = meta_data.get("viewport", "width=device-width, initial-scale=1");
+    description = meta_data.get("description", "");
+    robots = meta_data.get("robots", "index, follow");
+    canonical = meta_data.get("canonical", "");
+    og_type = meta_data.get("og_type", "website");
+    og_title = meta_data.get("og_title", title);
+    og_description = meta_data.get("og_description", description);
+    og_url = meta_data.get("og_url", "");
+    og_image = meta_data.get("og_image", "");
+    theme_color = meta_data.get("theme_color", "#ffffff");
+    icon = meta_data.get("icon", "");
+    # Build head content from TOML metadata
+    head_content = f'<meta charset="{html.escape(charset)}"/>\n            <meta name="viewport" content="{html.escape(
+        viewport
+    )}"/>\n            <title>{html.escape(title)}</title>';
+    if description {
+        head_content += f'\n            <meta name="description" content="{html.escape(description)}"/>';
+    }
+    
+    if robots {
+        head_content += f'\n            <meta name="robots" content="{html.escape(robots)}"/>';
+    }
+    
+    if canonical {
+        head_content += f'\n            <link rel="canonical" href="{html.escape(canonical)}"/>';
+    }
+    
+    if theme_color {
+        head_content += f'\n            <meta name="theme-color" content="{html.escape(theme_color)}"/>';
+    }
+
+    if icon {
+        head_content += f'\n            <link rel="icon" href="{html.escape(icon)}"/>';
+    }
+    
+    if og_type {
+        head_content += f'\n            <meta property="og:type" content="{html.escape(og_type)}"/>';
+    }
+    
+    if og_title {
+        head_content += f'\n            <meta property="og:title" content="{html.escape(og_title)}"/>';
+    }
+    
+    if og_description {
+        head_content += f'\n            <meta property="og:description" content="{html.escape(og_description)}"/>';
+    }
+    
+    if og_url {
+        head_content += f'\n            <meta property="og:url" content="{html.escape(og_url)}"/>';
+    }
+    
+    if og_image {
+        head_content += f'\n            <meta property="og:image" content="{html.escape(og_image)}"/>';
+    }
     if css_link {
         head_content += f"\n            {css_link}";
     }
