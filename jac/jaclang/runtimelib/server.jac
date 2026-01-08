@@ -1,173 +1,23 @@
 """REST API Server for Jac Programs."""
-import hashlib;
-import html;
-import inspect;
 import json;
-import os;
-import secrets;
 import from collections.abc { Callable }
-import from contextlib { suppress }
 import from http.server { BaseHTTPRequestHandler, HTTPServer }
 import from pathlib { Path }
-import from typing { TYPE_CHECKING, Any, Literal, TypeAlias, get_type_hints }
+import from typing { TYPE_CHECKING, Any }
 import from urllib.parse { parse_qs, urlparse }
-import from jaclang.runtimelib.client_bundle { ClientBundleError }
+import from jaclang.runtimelib.server.types { Response }
+import from jaclang.runtimelib.server.serializer { JacSerializer }
+import from jaclang.runtimelib.server.user_manager { UserManager }
+import from jaclang.runtimelib.server.execution_manager { ExecutionManager }
+import from jaclang.runtimelib.server.introspector { ModuleIntrospector }
+import from jaclang.runtimelib.server.response_builder { ResponseBuilder }
+import from jaclang.runtimelib.server.handlers { AuthHandler, IntrospectionHandler, ExecutionHandler }
 import from jaclang { JacRuntime as Jac }
 
 with entry {
     if TYPE_CHECKING {
-        import from jaclang.pycore.constructs { Archetype, WalkerArchetype }
+        import from jaclang.pycore.constructs { WalkerArchetype }
     }
-}
-
-glob JsonValue: TypeAlias = None | str | int | float | bool | <>list['JsonValue'] | <>dict[
-         (str, 'JsonValue')
-     ],
-     StatusCode: TypeAlias = Literal[(200, 201, 400, 401, 404, 500, 503)];
-
-"""Base response container."""
-obj Response {
-    has status: StatusCode,
-        body: JsonValue,
-        content_type: str = 'application/json';
-}
-
-"""User authentication data."""
-obj UserData {
-    has username: str,
-        token: str,
-        root_id: str;
-}
-
-"""Type-safe serializer for Jac objects."""
-obj JacSerializer {
-    static def serialize(<>obj: object) -> JsonValue;
-    static def _serialize_archetype(arch: Archetype) -> dict[str, JsonValue];
-}
-
-"""Manage users and their persistent roots."""
-obj UserManager {
-    has session_path: str,
-        _users: dict[(str, dict[(str, str)])] = {},
-        _tokens: dict[(str, str)] = {},
-        _db_path: str = "";
-
-    def postinit -> None;
-    def _load_db -> None;
-    def _persist -> None;
-    def create_user(username: str, password: str) -> dict[str, str];
-    def authenticate(username: str, password: str) -> (dict[(str, str)] | None);
-    def validate_token(token: str) -> (str | None);
-    def get_root_id(username: str) -> (str | None);
-    def get_user(username: str) -> (dict[(str, str)] | None);
-    def close -> None;
-}
-
-"""Manages execution contexts for user operations."""
-obj ExecutionManager {
-    has session_path: str,
-        user_manager: UserManager;
-
-    def execute_function(
-        func: Callable[(..., Any)], args: dict[(str, Any)], username: str
-    ) -> dict[str, JsonValue];
-
-    def spawn_walker(
-        walker_cls: type[WalkerArchetype], fields: dict[(str, Any)], username: str
-    ) -> dict[str, JsonValue];
-}
-
-"""Introspects and caches module metadata."""
-obj ModuleIntrospector {
-    has module_name: str,
-        base_path: (str | None),
-        _module: Any = None,
-        _functions: dict[(str, Callable[(..., Any)])] = {},
-        _walkers: dict[(str, type[WalkerArchetype])] = {},
-        _client_functions: dict[(str, Callable[(..., Any)])] = {},
-        _client_manifest: dict[(str, Any)] = {},
-        _bundle: Any = None,
-        _bundle_error: (str | None) = None,
-        _bundle_builder: Any = None,
-        _function_access: dict[(str, bool)] = {},
-        _walker_access: dict[(str, bool)] = {};
-
-    def postinit -> None;
-    def load(force_reload: bool = False) -> None;
-    def _load_manifest -> None;
-    def _extract_access_levels -> None;
-    def _collect_functions -> dict[str, Callable[(..., Any)]];
-    def _collect_walkers -> dict[str, type[WalkerArchetype]];
-    def get_functions -> dict[str, Callable[(..., Any)]];
-    def get_walkers -> dict[str, type[WalkerArchetype]];
-    def get_client_functions -> dict[str, Callable[(..., Any)]];
-    def introspect_callable(func: Callable[(..., Any)]) -> dict[str, Any];
-    def introspect_walker(walker_cls: type[WalkerArchetype]) -> dict[str, Any];
-    def ensure_bundle -> str;
-    def render_page(
-        function_name: str, args: dict[(str, Any)], username: str
-    ) -> dict[str, Any];
-
-    def is_auth_required_for_function(func_name: str) -> bool;
-    def is_auth_required_for_walker(walker_name: str) -> bool;
-    def _collect_client_globals -> dict[str, Any];
-}
-
-"""Build and send HTTP responses."""
-obj ResponseBuilder {
-    static def send_json(
-        handler: BaseHTTPRequestHandler,
-        status: StatusCode,
-        data: dict[(str, JsonValue)]
-    ) -> None;
-
-    static def send_html(
-        handler: BaseHTTPRequestHandler, status: StatusCode, body: str
-    ) -> None;
-
-    static def send_javascript(handler: BaseHTTPRequestHandler, code: str) -> None;
-    static def send_css(handler: BaseHTTPRequestHandler, css: str) -> None;
-    static def _add_cors_headers(handler: BaseHTTPRequestHandler) -> None;
-    static def _add_custom_headers(handler: BaseHTTPRequestHandler) -> None;
-}
-
-"""Base route handler."""
-obj RouteHandler {
-    has introspector: ModuleIntrospector,
-        execution_manager: ExecutionManager,
-        user_manager: UserManager;
-}
-
-"""Handle authentication routes."""
-obj AuthHandler {
-    has introspector: ModuleIntrospector,
-        execution_manager: ExecutionManager,
-        user_manager: UserManager;
-
-    def create_user(username: str, password: str) -> Response;
-    def login(username: str, password: str) -> Response;
-}
-
-"""Handle introspection routes."""
-obj IntrospectionHandler {
-    has introspector: ModuleIntrospector,
-        execution_manager: ExecutionManager,
-        user_manager: UserManager;
-
-    def list_functions -> Response;
-    def list_walkers -> Response;
-    def get_function_info(name: str) -> Response;
-    def get_walker_info(name: str) -> Response;
-}
-
-"""Handle execution routes."""
-obj ExecutionHandler {
-    has introspector: ModuleIntrospector,
-        execution_manager: ExecutionManager,
-        user_manager: UserManager;
-
-    def call_function(name: str, args: dict[(str, Any)], username: str) -> Response;
-    def spawn_walker(name: str, fields: dict[(str, Any)], username: str) -> Response;
 }
 
 """REST API Server for Jac programs."""
