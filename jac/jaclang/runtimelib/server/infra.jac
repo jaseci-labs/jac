@@ -79,7 +79,6 @@ obj FileStore(DataStore) {
     def _save -> None;
 }
 
-<<<<<<< HEAD
 # """Redis-based storage (cache).
 
 # In scale, this will be used for distributed caching.
@@ -97,29 +96,9 @@ obj FileStore(DataStore) {
 # obj MongoStore(DataStore) {
 #     # Implementation will be provided in jac-scale
 # }
-=======
-"""Redis-based storage (cache).
-
-In scale, this will be used for distributed caching.
-Implementation will be provided in jac-scale.
-"""
-obj RedisStore(DataStore) {
-# Implementation will be provided in jac-scale
-}
-
-"""MongoDB-based storage (persistent).
-
-In scale, this will replace FileStore for distributed persistent storage.
-Implementation will be provided in jac-scale.
-"""
-obj MongoStore(DataStore) {
-# Implementation will be provided in jac-scale
-}
->>>>>>> a7881543a5520ba8c7c2fe1706f5d66e3652cd74
 
 """Infrastructure factory for getting storage instances and third-party services."""
 obj Infra {
-<<<<<<< HEAD
     static def get_cache_memory(config: (dict[str, Any] | None) = None) -> (DataStore | None);
     static def get_persistent_memory(config: (dict[str, Any] | None) = None) -> (DataStore | None);
     static def _get_default_config() -> dict[str, Any];
@@ -139,13 +118,4 @@ obj Infra {
 #     """Get object storage service (e.g., S3, Azure Blob, Google Cloud Storage).
 #     """
 #     static def get_object_storage(config: (dict[str, Any] | None) = None) -> (DataStore | None);
-=======
-    static def get_cache_memory(
-        config: (dict[str, Any] | None) = None
-    ) -> (DataStore | None);
-    static def get_persistent_memory(
-        config: (dict[str, Any] | None) = None
-    ) -> (DataStore | None);
-    static def _get_default_config -> dict[str, Any];
->>>>>>> a7881543a5520ba8c7c2fe1706f5d66e3652cd74
 }
