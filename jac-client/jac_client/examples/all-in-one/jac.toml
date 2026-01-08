@@ -11,7 +11,7 @@ entry-point = "src/app.jac"
 
 [plugins.client.app_meta_data]
 "title" = "all-in-one"
-"description" = "hoohoooo"
+"description" = "All-in-one Jac client application"
 "icon" = "/assets/burger.png"
 "viewport" = "width=device-width, initial-scale=1.0"
 
