@@ -23,4 +23,3 @@ obj ExecutionManager {
         walker_cls: type[WalkerArchetype], fields: dict[(str, Any)], username: str
     ) -> dict[str, JsonValue];
 }
-

@@ -78,4 +78,3 @@ impl ResponseBuilder._add_custom_headers(handler: BaseHTTPRequestHandler) -> Non
         }
     }
 }
-

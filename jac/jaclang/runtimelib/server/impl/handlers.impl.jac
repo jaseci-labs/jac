@@ -1,6 +1,10 @@
 """Handler implementations."""
 import from typing { Any }
-import from jaclang.runtimelib.server.handlers { AuthHandler, IntrospectionHandler, ExecutionHandler }
+import from jaclang.runtimelib.server.handlers {
+    AuthHandler,
+    IntrospectionHandler,
+    ExecutionHandler
+}
 import from jaclang.runtimelib.server.types { Response }
 
 """Create new user."""
@@ -91,4 +95,3 @@ impl ExecutionHandler.spawn_walker(
     result = self.execution_manager.spawn_walker(walkers[name], fields, username);
     return Response(status=200, body=result);
 }
-

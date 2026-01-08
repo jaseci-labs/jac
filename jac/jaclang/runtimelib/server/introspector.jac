@@ -44,4 +44,3 @@ obj ModuleIntrospector {
     def is_auth_required_for_walker(walker_name: str) -> bool;
     def _collect_client_globals -> dict[str, Any];
 }
-

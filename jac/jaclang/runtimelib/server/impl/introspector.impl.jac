@@ -10,10 +10,8 @@ import from jaclang.runtimelib.server.introspector { ModuleIntrospector }
 import from jaclang.runtimelib.server.serializer { JacSerializer }
 import from jaclang { JacRuntime as Jac }
 
-with entry {
-    import from jaclang.pycore.constructs { WalkerArchetype }
-    import html;
-}
+import from jaclang.pycore.constructs { WalkerArchetype }
+import html;
 
 impl ModuleIntrospector.postinit -> None {
     self._bundle_builder = Jac.get_client_bundle_builder();
@@ -328,4 +326,3 @@ impl ModuleIntrospector._collect_client_globals -> dict[str, Any] {
     }
     return result;
 }
-

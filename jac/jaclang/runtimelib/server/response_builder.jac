@@ -19,4 +19,3 @@ obj ResponseBuilder {
     static def _add_cors_headers(handler: BaseHTTPRequestHandler) -> None;
     static def _add_custom_headers(handler: BaseHTTPRequestHandler) -> None;
 }
-

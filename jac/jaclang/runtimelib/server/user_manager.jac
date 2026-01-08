@@ -20,4 +20,3 @@ obj UserManager {
     def get_user(username: str) -> (dict[(str, str)] | None);
     def close -> None;
 }
-

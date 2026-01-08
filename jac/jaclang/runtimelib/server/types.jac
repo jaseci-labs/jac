@@ -19,4 +19,3 @@ obj UserData {
         token: str,
         root_id: str;
 }
-

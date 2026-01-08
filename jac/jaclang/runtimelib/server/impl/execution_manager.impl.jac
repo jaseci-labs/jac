@@ -6,9 +6,7 @@ import from jaclang.runtimelib.server.serializer { JacSerializer }
 import from jaclang.runtimelib.server.types { JsonValue }
 import from jaclang { JacRuntime as Jac }
 
-with entry {
-    import from jaclang.pycore.constructs { WalkerArchetype }
-}
+import from jaclang.pycore.constructs { WalkerArchetype }
 
 """Execute a function in user's context."""
 impl ExecutionManager.execute_function(
@@ -68,4 +66,3 @@ impl ExecutionManager.spawn_walker(
         return {'error': str(e), 'traceback': traceback.format_exc()};
     }
 }
-

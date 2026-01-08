@@ -38,8 +38,8 @@ impl UserManager._load_db -> None {
     try {
         users_data = self._data_store.get('__jac_users__');
         tokens_data = self._data_store.get('__jac_tokens__');
-        self._users = users_data if users_data else {};
-        self._tokens = tokens_data if tokens_data else {};
+        self._users = users_data or {};
+        self._tokens = tokens_data or {};
     } except Exception {
         (self._users, self._tokens) = ({}, {});
     }
@@ -128,4 +128,3 @@ impl UserManager.close -> None {
         self._data_store.close();
     }
 }
-
