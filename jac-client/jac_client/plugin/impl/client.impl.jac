@@ -168,23 +168,26 @@ impl JacClient.start_dev_server(
 Returns True to indicate jac-client handles the frontend server."""
 impl JacClient.on_dev_server_start(dev_server: Any) -> bool {
     import threading;
-
     # Get configuration from the core dev server
     # JacDevServer has: module_name, session_path, base_path, module_path, be_port, fe_port, fe_host, verbose
-    project_dir = Path(dev_server.base_path) if hasattr(dev_server, 'base_path') else Path(Jac.base_path_dir);
-    module_path = Path(dev_server.module_path) if hasattr(dev_server, 'module_path') and dev_server.module_path else None;
-    fe_host = dev_server.fe_host if hasattr(dev_server, 'fe_host') else 'localhost';
-    fe_port = dev_server.fe_port if hasattr(dev_server, 'fe_port') else 3000;
-    be_port = dev_server.be_port if hasattr(dev_server, 'be_port') else 8000;
-    verbose = dev_server.verbose if hasattr(dev_server, 'verbose') else False;
-
+    project_dir = Path(dev_server.base_path)
+    if dev_server?.base_path
+    else Path(Jac.base_path_dir);
+    module_path = Path(dev_server.module_path)
+    if dev_server?.module_path and dev_server.module_path
+    else None;
+    fe_host = dev_server?.fe_host or 'localhost';
+    fe_port = dev_server?.fe_port or 3000;
+    be_port = dev_server?.be_port or 8000;
+    verbose = dev_server?.verbose or False;
     if module_path is None {
-        print("[jac-client] Warning: No module path provided, cannot start Vite dev server");
+        print(
+            "[jac-client] Warning: No module path provided, cannot start Vite dev server"
+        );
         return False;  # Let core handle FE
+
     }
-
     print(f"[jac-client] Initializing Vite dev server for {module_path.name}");
-
     # Create Vite dev server for frontend HMR
     vite_server = ViteDevServer(
         project_dir=project_dir,
@@ -194,31 +197,27 @@ impl JacClient.on_dev_server_start(dev_server: Any) -> bool {
         be_port=be_port,
         verbose=verbose
     );
-
     # Store reference on the dev server for cleanup
     dev_server._vite_server = vite_server;
-
     # Start Vite in a separate thread to not block the backend server
     # File watching is handled by core's file watcher + on_frontend_file_change hook
-    def run_vite() -> None {
+    def run_vite -> None {
         try {
             vite_server.start();
         } except Exception as e {
             print(f"[jac-client] Vite server error: {e}");
         }
     }
-
     vite_thread = threading.Thread(target=run_vite, daemon=True);
     vite_thread.start();
-
     return True;  # jac-client handles frontend server
+
 }
 
 """Hook called when a frontend file changes - triggers HMR recompilation."""
 impl JacClient.on_frontend_file_change(file_path: Path, change_type: str) -> None {
     # Resolve file path to absolute
     file_path = file_path.resolve();
-    
     # Find project root by looking for jac.toml
     project_dir = file_path.parent;
     search_dir = file_path.parent;
@@ -229,16 +228,14 @@ impl JacClient.on_frontend_file_change(file_path: Path, change_type: str) -> Non
         }
         search_dir = search_dir.parent;
     }
-
     # Get client directory
     client_dir = get_client_dir(project_dir);
-
     # Calculate source root - resolve to absolute path for proper comparison
     src_dir = (project_dir / 'src').resolve();
-    source_root = src_dir if file_path.is_relative_to(src_dir) else project_dir.resolve();
-
+    source_root = src_dir
+    if file_path.is_relative_to(src_dir)
+    else project_dir.resolve();
     compiler = HMRCompiler(project_dir=project_dir, verbose=True);
-
     if change_type == 'deleted' {
         # Handle file deletion - remove compiled output
         output_path = calc_output_path(

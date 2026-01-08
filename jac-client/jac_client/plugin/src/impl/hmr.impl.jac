@@ -25,17 +25,15 @@ export function jacSpawn(walker, target, fields = {}) {
 }
 
 export default { __jacJsx, __jacSpawn, jacSpawn };
-''';
-
-glob MAIN_JS: str = '''import React from 'react';
+''',
+     MAIN_JS: str = '''import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { app } from './app.js';
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(React.createElement(app));
-''';
-
-glob ERROR_OVERLAY: str = '''
+''',
+     ERROR_OVERLAY: str = '''
 export default function ErrorOverlay({ error }) {
   return (
     <div style={{
@@ -53,9 +51,8 @@ export default function ErrorOverlay({ error }) {
     </div>
   );
 }
-''';
-
-glob INDEX_HTML: str = '''<!DOCTYPE html>
+''',
+     INDEX_HTML: str = '''<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -193,11 +190,15 @@ if (import.meta.hot) {{
             runtime_js = ir.gen.js;
             write_file(runtime_path, runtime_js);
             if self.verbose {
-                print(f"[jac-client] ✅ Compiled client_runtime.js from {runtime_source.name}");
+                print(
+                    f"[jac-client] ✅ Compiled client_runtime.js from {runtime_source.name}"
+                );
             }
         } else {
             if self.verbose {
-                print(f"[jac-client] ⚠️  Failed to compile {runtime_source.name}, using minimal stub");
+                print(
+                    f"[jac-client] ⚠️  Failed to compile {runtime_source.name}, using minimal stub"
+                );
                 if prog.errors_had {
                     for error in prog.errors_had {
                         print(f"  Error: {error}");

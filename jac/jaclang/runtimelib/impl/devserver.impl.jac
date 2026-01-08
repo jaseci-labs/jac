@@ -13,7 +13,9 @@ impl FileChangeDispatcher.register_backend_handler(handler: FileChangeCallback) 
 }
 
 """Register a handler for frontend file changes."""
-impl FileChangeDispatcher.register_frontend_handler(handler: FileChangeCallback) -> None {
+impl FileChangeDispatcher.register_frontend_handler(
+    handler: FileChangeCallback
+) -> None {
     if handler not in self._frontend_handlers {
         self._frontend_handlers.append(handler);
     }
@@ -27,7 +29,9 @@ impl FileChangeDispatcher.register_handler(handler: FileChangeCallback) -> None 
 }
 
 """Dispatch a backend file change to all registered handlers."""
-impl FileChangeDispatcher.dispatch_backend_change(file_path: Path, change_type: str) -> None {
+impl FileChangeDispatcher.dispatch_backend_change(
+    file_path: Path, change_type: str
+) -> None {
     for handler in self._backend_handlers {
         try {
             handler(file_path, change_type);
@@ -39,7 +43,9 @@ impl FileChangeDispatcher.dispatch_backend_change(file_path: Path, change_type: 
 }
 
 """Dispatch a frontend file change to all registered handlers."""
-impl FileChangeDispatcher.dispatch_frontend_change(file_path: Path, change_type: str) -> None {
+impl FileChangeDispatcher.dispatch_frontend_change(
+    file_path: Path, change_type: str
+) -> None {
     for handler in self._frontend_handlers {
         try {
             handler(file_path, change_type);
@@ -51,7 +57,9 @@ impl FileChangeDispatcher.dispatch_frontend_change(file_path: Path, change_type:
 }
 
 """Dispatch to generic handlers."""
-impl FileChangeDispatcher.dispatch_change(file_path: Path, change_type: str, is_frontend: bool) -> None {
+impl FileChangeDispatcher.dispatch_change(
+    file_path: Path, change_type: str, is_frontend: bool
+) -> None {
     for handler in self._generic_handlers {
         try {
             handler(file_path, change_type);
@@ -72,13 +80,10 @@ impl FileChangeDispatcher.clear_handlers -> None {
 impl JacFileWatcher.start -> None {
     import from watchdog.observers { Observer }
     import from watchdog.events { FileSystemEventHandler, FileSystemEvent }
-
     if self._running {
         return;
     }
-
     watcher_ref = self;
-
     class JacEventHandler(FileSystemEventHandler) {
         """Handle file system events."""
         def on_modified(self: JacEventHandler, event: FileSystemEvent) -> None {
@@ -99,10 +104,8 @@ impl JacFileWatcher.start -> None {
             }
         }
     }
-
     self._observer = Observer();
     handler = JacEventHandler();
-
     for watch_path in self.config.watch_paths {
         if watch_path.exists() {
             self._observer.schedule(handler, str(watch_path), recursive=True);
@@ -111,10 +114,8 @@ impl JacFileWatcher.start -> None {
             }
         }
     }
-
     self._observer.start();
     self._running = True;
-
     if self.verbose {
         print("[Watcher] File watcher started");
     }
@@ -125,15 +126,12 @@ impl JacFileWatcher.stop -> None {
     if not self._running {
         return;
     }
-
     if self._observer {
         self._observer.stop();
         self._observer.join(timeout=5);
         self._observer = None;
     }
-
     self._running = False;
-
     if self.verbose {
         print("[Watcher] File watcher stopped");
     }
@@ -147,7 +145,6 @@ impl JacFileWatcher.is_running -> bool {
 """Check if a file path should be ignored."""
 impl JacFileWatcher._should_ignore(file_path: Path) -> bool {
     path_str = str(file_path);
-
     for pattern in self.config.ignore_patterns {
         if pattern in path_str {
             return True;
@@ -156,27 +153,22 @@ impl JacFileWatcher._should_ignore(file_path: Path) -> bool {
             return True;
         }
     }
-
     return False;
 }
 
 """Check if file is a frontend file."""
 impl JacFileWatcher._is_frontend_file(file_path: Path) -> bool {
     suffix = file_path.suffix.lower();
-
     if suffix in ('.js', '.jsx', '.ts', '.tsx', '.css', '.html') {
         return True;
     }
-
     path_str = str(file_path).lower();
     frontend_indicators = ('/src/components/', '/src/pages/', '/client/', '/frontend/');
-
     for indicator in frontend_indicators {
         if indicator in path_str {
             return True;
         }
     }
-
     return False;
 }
 
@@ -192,11 +184,9 @@ impl JacFileWatcher._handle_event(file_path: Path, change_type: str) -> None {
     if self._should_ignore(file_path) {
         return;
     }
-
     # Debounce: skip if same file changed too recently
     path_key = str(file_path);
     current_time = time.time() * 1000;  # ms
-
     with self._lock {
         last_time = self._last_change.get(path_key, 0);
         if current_time - last_time < self.config.debounce_ms {
@@ -204,16 +194,15 @@ impl JacFileWatcher._handle_event(file_path: Path, change_type: str) -> None {
         }
         self._last_change[path_key] = current_time;
     }
-
     # Determine file type and dispatch
     is_frontend = self._is_frontend_file(file_path);
     is_backend = self._is_backend_file(file_path);
-
     if self.verbose {
-        file_type = "frontend" if is_frontend else ("backend" if is_backend else "unknown");
+        file_type = "frontend"
+        if is_frontend
+        else ("backend" if is_backend else "unknown");
         print(f"[Watcher] {change_type}: {file_path.name} ({file_type})");
     }
-
     # .jac files can be both frontend and backend - dispatch to both
     # Let handlers decide based on content (cl blocks, etc.)
     if file_path.suffix == '.jac' {
@@ -228,9 +217,7 @@ impl JacFileWatcher._handle_event(file_path: Path, change_type: str) -> None {
 
 """Create a file watcher with default configuration."""
 impl create_watcher(
-    project_root: Path,
-    watch_paths: (list[Path] | None) = None,
-    verbose: bool = False
+    project_root: Path, watch_paths: (list[Path] | None) = None, verbose: bool = False
 ) -> JacFileWatcher {
     # Default to watching src/ and the project root
     if watch_paths is None {
@@ -242,10 +229,8 @@ impl create_watcher(
             watch_paths.append(project_root);
         }
     }
-
     config = WatchConfig(watch_paths=watch_paths);
     dispatcher = FileChangeDispatcher();
-
     return JacFileWatcher(
         project_root=project_root,
         config=config,
@@ -255,13 +240,13 @@ impl create_watcher(
 }
 
 glob PROXY_PREFIXES: tuple = (
-    '/user/',
-    '/function/',
-    '/walker/',
-    '/functions',
-    '/walkers',
-    '/protected'
-);
+         '/user/',
+         '/function/',
+         '/walker/',
+         '/functions',
+         '/walkers',
+         '/protected'
+     );
 
 """Check if path should be proxied to backend."""
 def should_proxy_path(path: str) -> bool {
@@ -276,22 +261,19 @@ def should_proxy_path(path: str) -> bool {
 """Start the backend API server in a separate thread."""
 impl JacDevServer._start_backend -> None {
     import from jaclang.runtimelib.server { JacAPIServer }
-
     self._be_server = JacAPIServer(
         module_name=self.module_name,
         session_path=self.session_path,
         port=self.be_port,
         base_path=self.base_path
     );
-
-    def run_backend() -> None {
+    def run_backend -> None {
         self._be_server.introspector.load();
         handler_class = self._be_server.create_handler();
         self._be_httpd = HTTPServer(('0.0.0.0', self.be_port), handler_class);
         print(f"  Backend API server running on http://localhost:{self.be_port}");
         self._be_httpd.serve_forever();
     }
-
     self._be_thread = threading.Thread(target=run_backend, daemon=True);
     self._be_thread.start();
 }
@@ -304,20 +286,16 @@ impl JacDevServer._restart_backend -> None {
         }
         self._restart_pending = True;
     }
-
     print("\n[Dev] Restarting backend server...");
-
     # Stop current backend
     if self._be_httpd {
         self._be_httpd.shutdown();
         self._be_httpd = None;
     }
-
     # Wait for thread to finish
     if self._be_thread and self._be_thread.is_alive() {
         self._be_thread.join(timeout=2);
     }
-
     # Reload the module
     try {
         self._be_server.introspector.load(force_reload=True);
@@ -325,14 +303,11 @@ impl JacDevServer._restart_backend -> None {
     } except Exception as e {
         print(f"[Dev] Error reloading module: {e}");
     }
-
     # Start new backend
     self._start_backend();
-
     with self._restart_lock {
         self._restart_pending = False;
     }
-
     print("[Dev] Backend server restarted\n");
 }
 
@@ -343,12 +318,10 @@ impl JacDevServer._on_backend_change(file_path: Path, change_type: str) -> None 
         if file_path.suffix == '.jac' {
             # Use a small delay to batch rapid changes
             import time;
-
-            def delayed_restart() -> None {
+            def delayed_restart -> None {
                 time.sleep(0.5);  # Wait for file writes to complete
                 self._restart_backend();
             }
-
             restart_thread = threading.Thread(target=delayed_restart, daemon=True);
             restart_thread.start();
         }
@@ -367,33 +340,30 @@ impl JacDevServer._on_frontend_change(file_path: Path, change_type: str) -> None
 """Setup file watcher for development mode."""
 impl JacDevServer._setup_file_watcher -> None {
     project_root = Path(self.base_path);
-
     # Create watcher
     self._file_watcher = create_watcher(
-        project_root=project_root,
-        verbose=self.verbose
+        project_root=project_root, verbose=self.verbose
     );
-
     # Register backend change handler
     self._file_watcher.dispatcher.register_backend_handler(self._on_backend_change);
-
     # Register frontend change handler (delegates to plugin hooks)
     self._file_watcher.dispatcher.register_frontend_handler(self._on_frontend_change);
-
     # Start watching
     watcher_thread = threading.Thread(target=self._file_watcher.start, daemon=True);
     watcher_thread.start();
-
     if self.verbose {
         print("[Dev] File watcher started");
     }
-
     # Call plugin hook to allow plugins to setup their dev servers
     # Returns True if plugin handles FE (e.g., jac-client with Vite)
     # pluggy returns a list of results from all plugins, check if any is True
     hook_results = Jac.on_dev_server_start(self);
     if isinstance(hook_results, list) {
-        self._plugin_handles_fe = any(r for r in hook_results if r);
+        self._plugin_handles_fe = any(
+            r
+            for r in hook_results
+            if r
+        );
     } else {
         self._plugin_handles_fe = bool(hook_results);
     }
@@ -409,7 +379,6 @@ impl JacDevServer._create_fe_handler -> type[BaseHTTPRequestHandler] {
     dev_server = self;
     be_port = self.be_port;
     base_path = Path(self.base_path);
-
     """Frontend request handler with proxy to backend.""";
     class FERequestHandler(BaseHTTPRequestHandler) {
         """Proxy request to backend server."""
@@ -425,7 +394,12 @@ impl JacDevServer._create_fe_handler -> type[BaseHTTPRequestHandler] {
                 # Forward headers (excluding hop-by-hop headers)
                 headers = {};
                 for (key, value) in self.headers.items() {
-                    if key.lower() not in ('host', 'connection', 'keep-alive', 'transfer-encoding') {
+                    if key.lower() not in (
+                        'host',
+                        'connection',
+                        'keep-alive',
+                        'transfer-encoding'
+                    ) {
                         headers[key] = value;
                     }
                 }
@@ -447,7 +421,9 @@ impl JacDevServer._create_fe_handler -> type[BaseHTTPRequestHandler] {
                 # Add CORS headers
                 self.send_header('Access-Control-Allow-Origin', '*');
                 self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-                self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+                self.send_header(
+                    'Access-Control-Allow-Headers', 'Content-Type, Authorization'
+                );
                 self.end_headers();
 
                 # Send response body
@@ -457,7 +433,9 @@ impl JacDevServer._create_fe_handler -> type[BaseHTTPRequestHandler] {
                 self.send_response(502);
                 self.send_header('Content-Type', 'application/json');
                 self.end_headers();
-                self.wfile.write(json.dumps({'error': f'Backend proxy error: {str(e)}'}).encode());
+                self.wfile.write(
+                    json.dumps({'error': f'Backend proxy error: {str(e)}'}).encode()
+                );
             }
         }
 
@@ -465,8 +443,12 @@ impl JacDevServer._create_fe_handler -> type[BaseHTTPRequestHandler] {
         def do_OPTIONS(self: FERequestHandler) -> None {
             self.send_response(200);
             self.send_header('Access-Control-Allow-Origin', '*');
-            self.send_header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-            self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+            self.send_header(
+                'Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS'
+            );
+            self.send_header(
+                'Access-Control-Allow-Headers', 'Content-Type, Authorization'
+            );
             self.send_header('Access-Control-Max-Age', '86400');
             self.end_headers();
         }
@@ -525,7 +507,6 @@ impl JacDevServer._create_fe_handler -> type[BaseHTTPRequestHandler] {
                 relative_path = path.lstrip('/');
                 dist_path = project_root / '.jac' / 'client' / 'dist' / relative_path;
                 assets_path = project_root / 'assets' / relative_path;
-
                 if dist_path.exists() {
                     file_path = dist_path;
                 } elif assets_path.exists() {
@@ -594,7 +575,6 @@ impl JacDevServer._create_fe_handler -> type[BaseHTTPRequestHandler] {
             print(f"[FE] {self.address_string()} - {(format % args)}");
         }
     }
-
     return FERequestHandler;
 }
 
@@ -606,18 +586,14 @@ impl JacDevServer.start -> None {
     print(f'\nModule: {self.module_name}');
     print(f'Session: {self.session_path}');
     print('\nStarting servers...');
-
     # Start backend in a thread
     self._start_backend();
-
     # Give backend a moment to start
     import time;
     time.sleep(0.5);
-
     # Setup file watcher for hot reload (this also calls plugin hooks)
     self._setup_file_watcher();
     print('  File watcher active (watching for changes)');
-
     # Only start core FE server if no plugin is handling it
     if not self._plugin_handles_fe {
         handler_class = self._create_fe_handler();
@@ -626,7 +602,6 @@ impl JacDevServer.start -> None {
     } else {
         print(f'  Frontend handled by plugin (port {self.fe_port})');
     }
-
     print('\n' + '-' * 60);
     print('ENDPOINTS:');
     print('-' * 60);
@@ -643,7 +618,6 @@ impl JacDevServer.start -> None {
     print('  Frontend files     → Handled by plugins (jac-client)');
     print('\nPress Ctrl+C to stop both servers');
     print('=' * 60 + '\n');
-
     try {
         # If plugin handles FE, we just keep the main thread alive
         if self._plugin_handles_fe {
@@ -663,21 +637,17 @@ impl JacDevServer.start -> None {
 """Stop both servers."""
 impl JacDevServer.stop -> None {
     print('\n\nShutting down development servers...');
-
     # Stop file watcher
     if self._file_watcher {
         self._file_watcher.stop();
     }
-
     # Stop backend
     if self._be_httpd {
         self._be_httpd.shutdown();
     }
-
     # Stop frontend
     if self._fe_server {
         self._fe_server.shutdown();
     }
-
     print('Servers stopped.');
 }

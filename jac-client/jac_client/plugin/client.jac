@@ -12,7 +12,14 @@ import from jaclang.runtimelib.runtime { hookimpl }
 import from jaclang.runtimelib.server { ModuleIntrospector }
 import from .vite_client_bundle { ViteClientBundleBuilder }
 import from .src.vite_bundler { ViteBundler }
-import from .src.hmr { ViteDevServer, HMRCompiler, get_client_dir, calc_output_path, write_file, JS_EXTENSIONS }
+import from .src.hmr {
+    ViteDevServer,
+    HMRCompiler,
+    get_client_dir,
+    calc_output_path,
+    write_file,
+    JS_EXTENSIONS
+}
 
 glob JsonValue: TypeAlias = None | str | int | float | bool | list['JsonValue'] | dict[
          (str, 'JsonValue')

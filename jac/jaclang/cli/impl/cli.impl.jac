@@ -230,7 +230,6 @@ impl dev(
     _ensure_jac_runtime();
     import from jaclang.pycore.runtime { JacRuntime as Jac }
     import from jaclang.runtimelib.devserver { JacDevServer }
-
     # Compute session_path BEFORE proc_file_sess so context has proper persistence
     (base, mod) = os.path.split(filename);
     base = base or os.getcwd();
@@ -239,14 +238,11 @@ impl dev(
     } elif filename.endswith('.py') {
         mod = mod[:-3];
     }
-
     session_path = session or os.path.join(base, f"{mod}.session");
-
     # Now call proc_file_sess with the computed session_path
     (base, mod, mach) = proc_file_sess(filename, session_path);
     lng = filename.split('.')[-1];
     Jac.set_base_path(base);
-
     try {
         if filename.endswith(('.jac', '.py')) {
             Jac.jac_import(target=mod, base_path=base, lng=lng);
@@ -268,7 +264,6 @@ impl dev(
         mach.close();
         <>exit(1);
     }
-
     dev_server = JacDevServer(
         module_name=mod,
         session_path=session_path,
@@ -277,7 +272,6 @@ impl dev(
         be_port=be_port,
         fe_port=fe_port
     );
-
     try {
         dev_server.start();
     } except KeyboardInterrupt {

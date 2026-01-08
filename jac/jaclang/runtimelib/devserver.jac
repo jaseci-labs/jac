@@ -12,23 +12,32 @@ import from collections.abc { Set }
 import from jaclang { JacRuntime as Jac }
 
 """Type alias for file change callback."""
-glob FileChangeCallback: type = Callable[[Path, str], None];
-
-"""Supported change types."""
-glob CHANGE_MODIFIED: str = 'modified';
-glob CHANGE_CREATED: str = 'created';
-glob CHANGE_DELETED: str = 'deleted';
-
-"""File extensions for backend files."""
-glob BACKEND_EXTENSIONS: tuple = ('.jac', '.py');
-
-"""File extensions for frontend files."""
-glob FRONTEND_EXTENSIONS: tuple = ('.jac', '.js', '.jsx', '.ts', '.tsx', '.css', '.html');
+glob FileChangeCallback: type = Callable[([Path, str], None)],
+     CHANGE_MODIFIED: str = 'modified',
+     CHANGE_CREATED: str = 'created',
+     CHANGE_DELETED: str = 'deleted',
+     BACKEND_EXTENSIONS: tuple = ('.jac', '.py'),
+     FRONTEND_EXTENSIONS: tuple = (
+         '.jac',
+         '.js',
+         '.jsx',
+         '.ts',
+         '.tsx',
+         '.css',
+         '.html'
+     );
 
 """Configuration for file watching."""
 obj WatchConfig {
     has watch_paths: list[Path],
-        ignore_patterns: list[str] = ['.jac/', '__pycache__/', 'node_modules/', '.git/', '*.pyc', '*.session'],
+        ignore_patterns: list[str] = [
+            '.jac/',
+            '__pycache__/',
+            'node_modules/',
+            '.git/',
+            '*.pyc',
+            '*.session'
+        ],
         backend_extensions: tuple = BACKEND_EXTENSIONS,
         frontend_extensions: tuple = FRONTEND_EXTENSIONS,
         debounce_ms: int = 300;
@@ -71,9 +80,7 @@ obj JacFileWatcher {
 
 """Creates a file watcher with default configuration."""
 def create_watcher(
-    project_root: Path,
-    watch_paths: (list[Path] | None) = None,
-    verbose: bool = False
+    project_root: Path, watch_paths: (list[Path] | None) = None, verbose: bool = False
 ) -> JacFileWatcher;
 
 """Development server that runs FE on one port and proxies API calls to BE."""

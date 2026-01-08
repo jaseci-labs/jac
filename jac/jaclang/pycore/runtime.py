@@ -1527,7 +1527,7 @@ class JacHMR:
         )
 
     @staticmethod
-    def on_dev_server_start(dev_server: "Any") -> bool:
+    def on_dev_server_start(dev_server: Any) -> bool:
         """Called when dev server starts.
 
         Plugins can use this hook to register additional handlers on the file watcher,

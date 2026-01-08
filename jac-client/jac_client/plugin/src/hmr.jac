@@ -54,6 +54,7 @@ obj ViteDevServer {
         verbose: bool = False;
 
     def start -> None;  # Start Vite dev server (core handles file watching via plugin hooks)
+
     def stop -> None;
     def create_vite_config -> None;
     def compile_all_jac_files -> None;
