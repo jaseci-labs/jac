@@ -197,6 +197,7 @@ Custom headers can be added by using an enviornmental variable and mentioning th
 "Cross-Origin-Opener-Policy" = "same-origin"
 "Cross-Origin-Embedder-Policy" = "require-corp"
 ```
+
 ### Application Metadata Configuration
 
 #### Configure Custom Meta Tags
@@ -211,7 +212,7 @@ icon = "/favicon.ico"
 viewport = "width=device-width, initial-scale=1.0"
 ```
 
-**Available Options**: 
+**Available Options**:
 
 | Option | Description | Default |
 |--------|-------------|---------|
@@ -245,6 +246,7 @@ description = "Manage your online store with real-time analytics and insights"
 icon = "/assets/favicon.ico"
 viewport = "width=device-width, initial-scale=1.0, maximum-scale=5.0"
 ```
+
 ## How It Works
 
 ### Configuration Workflow
