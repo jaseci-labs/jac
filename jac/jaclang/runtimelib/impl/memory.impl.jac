@@ -4,7 +4,6 @@ Implementations for VolatileMemory, LocalCacheMemory, ShelfMemory, and TieredMem
 """
 
 import logging;
-import shelve;
 import from collections.abc { Callable, Generator, Iterable }
 import from pickle { dumps }
 import from typing { cast }
@@ -152,28 +151,31 @@ impl LocalCacheMemory.invalidate(id: UUID) -> None {
 # =============================================================================
 # ShelfMemory Implementation (L3 Persistent)
 # =============================================================================
-"""Initialize ShelfMemory with a file path."""
+"""Initialize ShelfMemory with a file path, using DataStore from Infra."""
 impl ShelfMemory.init(path: str) -> None {
+    import from jaclang.runtimelib.server.infra { Infra }
     self.path = path;
     self.__mem__ = {};
     self.__gc__ = set();
-    self.__shelf__ = shelve.open(path);
+    # Get DataStore from Infra (FileStore for local dev, MongoStore at scale)
+    config = {'file_path': path};
+    self.__store__ = Infra.get_persistent_memory(config=config);
 }
 
-"""Check if shelf is available."""
+"""Check if DataStore is available."""
 impl ShelfMemory.is_available -> bool {
-    return self.__shelf__ is not None;
+    return self.__store__ is not None;
 }
 
-"""Get an anchor by ID. Check memory first, then shelf."""
+"""Get an anchor by ID. Check memory first, then DataStore."""
 impl ShelfMemory.get(id: UUID) -> (Anchor | None) {
     # Check in-memory cache first
     if (anchor := self.__mem__.get(id)) {
         return anchor;
     }
-    # Check shelf
-    if isinstance(self.__shelf__, shelve.Shelf) {
-        if (anchor := self.__shelf__.get(str(id))) {
+    # Check DataStore (convert UUID to string for key)
+    if self.__store__ {
+        if (anchor := self.__store__.get(str(id))) {
             # Promote to memory cache
             self.__mem__[id] = anchor;
             return anchor;
@@ -192,29 +194,30 @@ impl ShelfMemory.delete(id: UUID) -> None {
     if (anchor := self.__mem__.pop(id, None)) {
         self.__gc__.add(anchor);
     }
-    # Also remove from shelf immediately
-    if isinstance(self.__shelf__, shelve.Shelf) {
-        self.__shelf__.pop(str(id), None);
+    # Also remove from DataStore immediately
+    if self.__store__ {
+        self.__store__.delete(str(id));
     }
 }
 
-"""Close shelf and clear memory."""
+"""Close DataStore and clear memory."""
 impl ShelfMemory.close -> None {
-    if isinstance(self.__shelf__, shelve.Shelf) {
-        self.__shelf__.close();
-        self.__shelf__ = None;
+    if self.__store__ {
+        self.sync();  # Flush pending changes
+        self.__store__.close();
+        self.__store__ = None;
     }
     self.__mem__.clear();
     self.__gc__.clear();
 }
 
-"""Check if an anchor is in memory or shelf."""
+"""Check if an anchor is in memory or DataStore."""
 impl ShelfMemory.has(id: UUID) -> bool {
     if id in self.__mem__ {
         return True;
     }
-    if isinstance(self.__shelf__, shelve.Shelf) {
-        return str(id) in self.__shelf__;
+    if self.__store__ {
+        return self.__store__.exists(str(id));
     }
     return False;
 }
@@ -223,9 +226,29 @@ impl ShelfMemory.has(id: UUID) -> bool {
 impl ShelfMemory.query(
     filter: (Callable[[Anchor], bool] | None) = None
 ) -> Generator[Anchor, None, None] {
+    # Query from memory cache first
     for anchor in self.__mem__.values() {
         if filter is None or filter(anchor) {
             yield anchor;
+        }
+    }
+    # Query from DataStore
+    if self.__store__ {
+        for key_str in self.__store__.keys() {
+            # Try to parse as UUID (graph anchors use UUID strings as keys)
+            try {
+                key = UUID(key_str);
+                if key not in self.__mem__ {
+                    if (anchor := self.__store__.get(key_str)) {
+                        if filter is None or filter(anchor) {
+                            yield anchor;
+                        }
+                    }
+                }
+            } except ValueError {
+                # Skip non-UUID keys (might be user data mixed in)
+                continue;
+            }
         }
     }
 }
@@ -268,25 +291,25 @@ impl ShelfMemory.find_one(
     return None;
 }
 
-"""Sync memory to shelf with access control checks."""
+"""Sync memory to DataStore with access control checks."""
 impl ShelfMemory.sync -> None {
     import from jaclang { JacRuntimeInterface as Jac }
-    if not isinstance(self.__shelf__, shelve.Shelf) {
+    if not self.__store__ {
         return;
     }
     # Handle garbage collected anchors (deletions)
     for anchor in self.__gc__ {
-        self.__shelf__.pop(str(anchor.id), None);
+        self.__store__.delete(str(anchor.id));
     }
     self.__gc__.clear();
-    # Sync memory to shelf with access control
+    # Sync memory to DataStore with access control
     for (id, anchor) in list(self.__mem__.items()) {
         if not anchor.persistent {
             continue;
         }
 
         key = str(id);
-        stored = self.__shelf__.get(key);
+        stored = self.__store__.get(key);
 
         if stored {
             # Handle edge updates (CONNECT access)
@@ -297,7 +320,7 @@ impl ShelfMemory.sync -> None {
                 and Jac.check_connect_access(anchor)
             ) {
                 if not anchor.edges and not isinstance(anchor.archetype, Root) {
-                    self.__shelf__.pop(key, None);
+                    self.__store__.delete(key);
                     continue;
                 }
                 stored.edges = anchor.edges;
@@ -311,7 +334,7 @@ impl ShelfMemory.sync -> None {
                     stored.archetype = anchor.archetype;
                 }
             }
-            self.__shelf__[key] = stored;
+            self.__store__.set(key, stored);
         } elif not (
             isinstance(anchor, NodeAnchor)
             and not isinstance(anchor.archetype, Root)
@@ -319,7 +342,7 @@ impl ShelfMemory.sync -> None {
         ) {
             # New anchor - check write access before persisting
             if Jac.check_write_access(anchor) {
-                self.__shelf__[key] = anchor;
+                self.__store__.set(key, anchor);
             }
         }
     }

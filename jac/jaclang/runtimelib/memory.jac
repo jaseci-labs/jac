@@ -17,12 +17,12 @@ jac-scale extends this to override L2 (Redis) and L3 (database).
 """
 
 import logging;
-import shelve;
 import from collections.abc { Callable, Generator, Iterable }
 import from pickle { dumps }
 import from uuid { UUID }
 
 import from jaclang.pycore.archetype { Anchor, NodeAnchor, Root }
+import from jaclang.runtimelib.server.infra { DataStore }
 
 glob logger = logging.getLogger(__name__),
      __all__ = [
@@ -169,16 +169,17 @@ obj LocalCacheMemory(VolatileMemory, CacheMemory) {
     def invalidate(id: UUID) -> None;
 }
 
-"""Shelf-based Persistent Memory.
+"""Persistent Memory using DataStore from Infra.
 
-Uses Python's shelve module for file-based durable storage.
-Maintains an in-memory cache for fast reads with write-through to shelf.
+Uses DataStore from Infra abstraction layer for durable storage.
+Maintains an in-memory cache for fast reads with write-through to DataStore.
+At scale, DataStore will be MongoDB; for local dev, it's FileStore.
 """
 obj ShelfMemory(PersistentMemory) {
     has path: str,
         __mem__: dict[UUID, Anchor] = {},
         __gc__: set[Anchor] = {},
-        __shelf__: (shelve.Shelf | None) = None;
+        __store__: (DataStore | None) = None;  # DataStore from Infra
 
     def init(path: str) -> None;
     # Memory interface
