@@ -31,7 +31,7 @@ print("Hello world!")
 class MyClass2:
     """This is a docstring for MyClass."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Constructor docstring."""
         pass
 
@@ -56,18 +56,18 @@ class MyClass:
     def __init__(self, x):
         self.x = x
 
-    def my_method(self):
+    def my_method(self) -> None:
         print("My method")
 
 
 class Student(MyClass):
     """Student class"""
 
-    def __init__(self, x, y):
+    def __init__(self, x, y) -> None:
         super().__init__(x)
         self.y = y
 
-    def my_method(self):
+    def my_method(self) -> None:
         print("My method")
 
 
@@ -108,16 +108,16 @@ print(result78)
 class Car:
     wheels: int = 4
 
-    def __init__(self, make: str, model: str, year: int):
+    def __init__(self, make: str, model: str, year: int) -> None:
         self.make = make
         self.model = model
         self.year = year
 
-    def display_car_info(self):
+    def display_car_info(self) -> None:
         print(f"Car Info: {self.year} {self.make} {self.model}")
 
     @staticmethod
-    def get_wheels():
+    def get_wheels() -> int:
         return Car.wheels
 
 
@@ -233,7 +233,7 @@ greet("Alice")
 greet("Bob", greeting="Hi")
 
 
-def average(*args):
+def average(*args) -> float:
     """Average function"""
     return sum(args) / len(args)
 
@@ -241,7 +241,7 @@ def average(*args):
 avg = average(1, 2, 3, 4, 5)
 
 
-def greet2(**kwargs):
+def greet2(**kwargs) -> None:
     """Greet someone."""
     print(f"Hello, {kwargs['name']}!")
 
@@ -270,7 +270,7 @@ else:
     print("uu is not 9 or 10")
 
 
-def my_functionx():
+def my_functionx() -> None:
     """My function"""
 
     def my_inner_function():
