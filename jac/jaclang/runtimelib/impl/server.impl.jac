@@ -1,4 +1,33 @@
 import from jaclang.project.config { get_config }
+import from threading { Thread }
+
+"""Initialize JacHTTPServer."""
+impl JacHTTPServer.init(
+    self: JacHTTPServer, handler_class: type[BaseHTTPRequestHandler], port: int = 8000
+) -> None {
+    self._httpd = HTTPServer(('0.0.0.0', port), handler_class);
+}
+
+"""Start the HTTPServer."""
+impl JacHTTPServer.start(self: JacHTTPServer, port: int = 8000) -> None {
+    """Start the HTTP server.
+    
+    Note: port parameter is ignored as server is already bound during init.
+    This method blocks until the server is stopped.
+    """
+    self._httpd.serve_forever();
+}
+
+"""Stop the HTTPServer."""
+impl JacHTTPServer.stop(self: JacHTTPServer) -> None {
+    """Stop the HTTP server."""
+    self._httpd.shutdown();
+
+"""Get the underlying HTTPServer instance."""
+impl JacHTTPServer.get_instance(self: JacHTTPServer) -> HTTPServer {
+    """Return the underlying HTTPServer instance."""
+    return self._httpd;
+}
 
 """Serialize objects to JSON-compatible format."""
 impl JacSerializer.serialize(<>obj: object) -> JsonValue {
@@ -1300,45 +1329,36 @@ impl JacAPIServer.start -> None {
     base_route_app = config.serve.base_route_app if config else "";
     
     # Use hook to get server instance (allows plugins to override)
-    import from http.server { HTTPServer }
     server_instance = Jac.get_server(handler_class, self.port);
     
-    # For core HTTPServer, use context manager
-    # Plugins can override start() to handle their server type differently
-    if isinstance(server_instance, HTTPServer) {
-        with server_instance as httpd {
-            print(f"Jac API Server running on http://0.0.0.0:{self.port}");
-            print(f"Module: {self.module_name}");
-            print(f"Session: {self.session_path}");
-            print('\nAvailable endpoints:');
-            print('  POST /user/register - Create a new user');
-            print('  POST /user/login - Login and get auth token');
-            print('  GET /functions - List all functions');
-            print('  GET /walkers - List all walkers');
-            print('  GET /function/<name> - Get function signature');
-            print('  GET /walker/<name> - Get walker info');
-            print('  POST /function/<name> - Call a function');
-            print('  POST /walker/<name> - Spawn a walker');
-            print(
-                f'  GET /{cl_route_prefix}/<name> - Render HTML page for client function'
-            );
-            if base_route_app {
-                print(f'\nBase route (/) configured to serve: {base_route_app}');
-            }
-            print('\nPress Ctrl+C to stop the server');
-            try {
-                httpd.serve_forever();
-            } except KeyboardInterrupt {
-                print('\nShutting down server...');
-            }
-        }
-    } else {
-        # For plugin servers (e.g., FastAPI), they should override start()
-        # This is a fallback that raises an error
-        raise RuntimeError(
-            f"Server instance type {type(server_instance)} not supported by core. "
-            "Plugins should override start() method to handle their server type."
-        );
+    # Use Server interface - works for both JacHTTPServer and plugin implementations
+    print(f"Jac API Server running on http://0.0.0.0:{self.port}");
+    print(f"Module: {self.module_name}");
+    print(f"Session: {self.session_path}");
+    print('\nAvailable endpoints:');
+    print('  POST /user/register - Create a new user');
+    print('  POST /user/login - Login and get auth token');
+    print('  GET /functions - List all functions');
+    print('  GET /walkers - List all walkers');
+    print('  GET /function/<name> - Get function signature');
+    print('  GET /walker/<name> - Get walker info');
+    print('  POST /function/<name> - Call a function');
+    print('  POST /walker/<name> - Spawn a walker');
+    print(
+        f'  GET /{cl_route_prefix}/<name> - Render HTML page for client function'
+    );
+    if base_route_app {
+        print(f'\nBase route (/) configured to serve: {base_route_app}');
+    }
+    print('\nPress Ctrl+C to stop the server');
+    try {
+        # Use Server interface - start() method works for all implementations
+        # For JacHTTPServer, this will use serve_forever()
+        # For plugin servers (FastAPI), they should override start() method
+        server_instance.start(self.port);
+    } except KeyboardInterrupt {
+        print('\nShutting down server...');
+        server_instance.stop();
     }
 }
 

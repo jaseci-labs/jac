@@ -5,6 +5,7 @@ import inspect;
 import json;
 import os;
 import secrets;
+import from abc { ABC, abstractmethod }
 import from collections.abc { Callable }
 import from contextlib { suppress }
 import from http.server { BaseHTTPRequestHandler, HTTPServer }
@@ -178,6 +179,31 @@ obj EndpointDefinition {
         endpoint_type: str,  # 'walker' or 'function'
         requires_auth: bool = False,
         parameters: dict[str, Any] = {};  # Parameter metadata
+}
+
+"""Abstract base class for server implementations."""
+class Server(ABC) {
+    """Start the server."""
+    @abstractmethod
+    def start(self: Server, port: int = 8000) -> None;
+    
+    """Stop the server."""
+    @abstractmethod
+    def stop(self: Server) -> None;
+    
+    """Get the underlying server instance."""
+    @abstractmethod
+    def get_instance(self: Server) -> Any;
+}
+
+"""Core HTTPServer implementation."""
+class JacHTTPServer(Server) {
+    has _httpd: HTTPServer;
+    
+    def init(self: JacHTTPServer, handler_class: type[BaseHTTPRequestHandler], port: int = 8000) -> None;
+    def start(self: JacHTTPServer, port: int = 8000) -> None;
+    def stop(self: JacHTTPServer) -> None;
+    def get_instance(self: JacHTTPServer) -> HTTPServer;
 }
 
 """REST API Server for Jac programs."""

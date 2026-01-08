@@ -55,12 +55,17 @@ from jaclang.pycore.mtp import MTIR, MTRuntime
 from jaclang.vendor import pluggy
 
 if TYPE_CHECKING:
-    from http.server import BaseHTTPRequestHandler
+    from http.server import BaseHTTPRequestHandler, HTTPServer
 
     from jaclang.pycore.program import JacProgram
     from jaclang.runtimelib.client_bundle import ClientBundle, ClientBundleBuilder
     from jaclang.runtimelib.context import ExecutionContext
-    from jaclang.runtimelib.server import ModuleIntrospector
+    from jaclang.runtimelib.server import (
+        JacHTTPServer,
+        ModuleIntrospector,
+        Server,
+        UserManager,
+    )
 
 plugin_manager = pluggy.PluginManager("jac")
 hookspec = pluggy.HookspecMarker("jac")
@@ -1514,12 +1519,12 @@ class JacAPIServer:
         return ModuleIntrospector(module_name, base_path)
 
     @staticmethod
-    def get_user_management(session_path: str) -> Any:  # noqa: ANN401
+    def get_user_management(session_path: str) -> UserManager:
         """Get user management instance.
         
         This hook allows plugins to provide custom user management implementations.
         Core returns a basic UserManager with JSON file storage.
-        Plugins can return enhanced implementations with JWT, SSO, database backends, etc.
+        Plugins can return enhanced implementations with JWT, SSO etc.
         
         Args:
             session_path: Path for session storage
@@ -1535,23 +1540,23 @@ class JacAPIServer:
     def get_server(
         handler_class: type[BaseHTTPRequestHandler],
         port: int = 8000,
-    ) -> Any:  # noqa: ANN401
+    ) -> Server:
         """Get server instance.
         
         This hook allows plugins to provide custom server implementations.
-        Core returns an HTTPServer instance.
-        Plugins can return FastAPI, Flask, or other server instances.
+        Core returns a JacHTTPServer instance (wraps HTTPServer).
+        Plugins can return FastAPIServer or other Server implementations.
         
         Args:
             handler_class: Request handler class (for core HTTPServer)
             port: Port to bind the server to
             
         Returns:
-            Server instance (HTTPServer, FastAPI app, etc.)
+            Server instance (JacHTTPServer for core, FastAPIServer for plugins, etc.)
         """
-        from http.server import HTTPServer
+        from jaclang.runtimelib.server import JacHTTPServer
 
-        return HTTPServer(("0.0.0.0", port), handler_class)
+        return JacHTTPServer(handler_class, port)
 
     @staticmethod
     def register_endpoints(
