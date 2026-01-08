@@ -331,8 +331,8 @@ export const theme = createTheme({
 ## Next Steps
 
 - Explore [Material-UI Documentation](https://mui.com/)
-- Check out [Chakra UI](./chakra-ui.md) for alternative component library (coming soon)
-- Learn about [Ant Design](./ant-design.md) for enterprise components (coming soon)
+- Check out Chakra UI for alternative component library (coming soon)
+- Learn about Ant Design for enterprise components (coming soon)
 - See [Styled Components](./styled-components.md) for CSS-in-JS approach
 
 ## Resources

@@ -1,5 +1,8 @@
 # Cloud Deployment Guide
 
+!!! warning "Deprecated"
+    **Jac Cloud is deprecated.** Use [jac-scale](../../production/index.md) for new projects.
+
 ## Overview
 
 Jac Cloud provides a Kubernetes-based deployment template to easily deploy your service into your cluster. This setup includes:

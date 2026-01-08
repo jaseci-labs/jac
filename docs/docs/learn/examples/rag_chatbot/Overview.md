@@ -44,7 +44,7 @@ We'll create six main files:
 Here's what you'll build - a full AI-powered multimodal MCP chatbot:
 
 === "Frontend Preview"
-    ![Chatbot Workflow](images/image.png)
+    ![Chatbot Workflow](images/chatbot.jpg)
 
 === "client.jac"
     ```jac linenums="1"

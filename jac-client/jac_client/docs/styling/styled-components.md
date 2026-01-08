@@ -385,10 +385,10 @@ cl import from "styled-components" { default as styled }
 
 ## Next Steps
 
-- Explore [Emotion](./emotion.md) for similar CSS-in-JS (coming soon)
-- Check out [Vanilla Extract](./vanilla-extract.md) for zero-runtime CSS-in-JS (coming soon)
+- Explore Emotion for similar CSS-in-JS (coming soon)
+- Check out Vanilla Extract for zero-runtime CSS-in-JS (coming soon)
 - Learn about [JavaScript Styling](./js-styling.md) for inline styles
-- See [CSS Modules](./css-modules.md) for scoped CSS (coming soon)
+- See CSS Modules for scoped CSS (coming soon)
 
 ## Resources
 

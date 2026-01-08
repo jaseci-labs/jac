@@ -1,5 +1,8 @@
 # Webhooks: External API Integration
 
+!!! warning "Deprecated"
+    **Jac Cloud is deprecated.** Use [jac-scale](../../production/index.md) for new projects.
+
 ## What are Webhooks?
 
 Webhooks are a way for external services to securely call your Jac Cloud application when certain events occur. Unlike regular authenticated walkers (which are associated with a specific user), webhook walkers are directly linked to the root node and are secured with API keys rather than user tokens.

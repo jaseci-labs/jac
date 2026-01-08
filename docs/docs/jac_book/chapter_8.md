@@ -1,5 +1,8 @@
 # Chapter 8: OSP Introduction and Paradigm Shift
 
+!!! tip "Quick Reference"
+    For a condensed OSP reference, see the [Object-Spatial Programming Guide](../language/osp/index.md) which summarizes nodes, edges, walkers, and traversal patterns.
+
 ---
 So far, we have explored Jac's enhancements to familiar programming concepts. Now, we will introduce the paradigm that makes Jac truly unique, Object-Spatial Programming (OSP). This represents a fundamental shift in how we structure and execute our programs.
 

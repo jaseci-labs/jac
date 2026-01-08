@@ -1,5 +1,8 @@
 # WebSocket: Real-Time Communication
 
+!!! warning "Deprecated"
+    **Jac Cloud is deprecated.** Use [jac-scale](../../production/index.md) for new projects.
+
 ## Overview
 
 WebSockets enable real-time, bidirectional communication between clients and your Jac application. This is particularly useful for:

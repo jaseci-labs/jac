@@ -1,5 +1,8 @@
 # Task Scheduling: Automate Your Jac Applications
 
+!!! warning "Deprecated"
+    **Jac Cloud is deprecated.** Use [jac-scale](../../production/index.md) for new projects.
+
 ## Overview
 
 Jac Cloud's scheduler allows you to run walkers automatically at specific times or intervals. This is useful for:

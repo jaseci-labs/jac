@@ -1405,82 +1405,405 @@ impl script(name: str = '', list_scripts: bool = False) -> None {
     }
 }
 
-"""List all installed Jac plugins.
+"""Manage Jac plugins - list, disable, or enable plugins.
 
-Shows all plugins registered with the Jac runtime, including those loaded via
-setuptools entry points in the 'jac' group. Plugins can extend CLI commands,
-add dependency types, and provide runtime hooks.
+Shows all plugins registered with the Jac runtime, organized by PyPI package.
+Plugins can be disabled (bypassed) and the settings persist in jac.toml.
+Uses fully qualified names (package:plugin) for unambiguous identification.
 
 Args:
+    action: Action to perform - 'list' (default), 'disable', 'enable', or 'disabled'
+    names: Plugin or package names to disable/enable
     verbose: Show detailed plugin information including module path and hooks
 
 Examples:
-    jac plugins
-    jac plugins --verbose
+    jac plugins                            # List all plugins
+    jac plugins list --verbose             # List with detailed info
+    jac plugins disable jac-scale          # Disable all plugins from jac-scale package
+    jac plugins disable jac-client:serve   # Disable specific plugin (qualified name)
+    jac plugins enable jac-scale           # Enable all plugins from package
+    jac plugins enable jac-client:serve    # Enable specific plugin
+    jac plugins disabled                   # Show currently disabled plugins
 """
-impl plugins(verbose: bool = False) -> None {
+impl plugins(action: str = 'list', names: list = [], verbose: bool = False) -> None {
     import from jaclang.pycore.runtime { plugin_manager }
     import from jaclang.cli.cmdreg { cmd_registry }
-    # Get all registered plugins
+    import from jaclang.project.config { get_config, JacConfig, find_project_root }
+    import from pathlib { Path }
+    # Build a mapping from plugin object to its distribution info using pluggy's tracking
+    plugin_to_dist: dict[int, tuple[str, str]] = {};
+    for (plugin, dist_facade) in plugin_manager.list_plugin_distinfo() {
+        dist_name = dist_facade.project_name;
+        dist_version = dist_facade.version;
+        plugin_to_dist[id(plugin)] = (dist_name, dist_version);
+    }
+    # Build mappings for plugin identification
     plugin_list = plugin_manager.list_name_plugin();
-    if not plugin_list {
+    # Map: short_name -> list of (qualified_name, plugin) for detecting ambiguity
+    short_to_qualified: dict[str, list[tuple[str, object]]] = {};
+    # Map: qualified_name -> plugin
+    qualified_to_plugin: dict[str, object] = {};
+    # Map: package_name -> list of qualified_names
+    package_to_qualified: dict[str, list[str]] = {};
+    for (short_name, plugin) in plugin_list {
+        if short_name.isdigit() {
+            continue;  # Skip unnamed plugins
+        }
+        if id(plugin) in plugin_to_dist {
+            (pkg_name, pkg_version) = plugin_to_dist[id(plugin)];
+            qualified_name = f"{pkg_name}:{short_name}";
+            # Track qualified name
+            qualified_to_plugin[qualified_name] = plugin;
+            # Track short name -> qualified mappings (for ambiguity detection)
+            if short_name not in short_to_qualified {
+                short_to_qualified[short_name] = [];
+            }
+            short_to_qualified[short_name].append((qualified_name, plugin));
+            # Track package -> qualified names
+            if pkg_name not in package_to_qualified {
+                package_to_qualified[pkg_name] = [];
+            }
+            package_to_qualified[pkg_name].append(qualified_name);
+            # Also support version-qualified package names
+            pkg_with_version = f"{pkg_name}=={pkg_version}";
+            if pkg_with_version not in package_to_qualified {
+                package_to_qualified[pkg_with_version] = [];
+            }
+            package_to_qualified[pkg_with_version].append(qualified_name);
+        } else {
+            # Core plugin - use jaclang:name as qualified name
+            qualified_name = f"jaclang:{short_name}";
+            qualified_to_plugin[qualified_name] = plugin;
+            if short_name not in short_to_qualified {
+                short_to_qualified[short_name] = [];
+            }
+            short_to_qualified[short_name].append((qualified_name, plugin));
+            # Also track under jaclang package
+            if "jaclang" not in package_to_qualified {
+                package_to_qualified["jaclang"] = [];
+            }
+            package_to_qualified["jaclang"].append(qualified_name);
+        }
+    }
+    # Get config for disabled plugins info
+    config = get_config();
+    disabled_plugins: list[str] = [];
+    if config {
+        disabled_plugins = config.plugins_config.disabled;
+    }
+    # Helper to check if a plugin is from an external package (can be disabled)
+    def is_external_plugin(plugin: object) -> bool {
+        return id(plugin) in plugin_to_dist;
+    }
+    # Helper to check if a qualified name is disabled
+    def is_disabled(qualified_name: str) -> bool {
+        return qualified_name in disabled_plugins;
+    }
+    # Handle disable action
+    if action == 'disable' {
+        if not names {
+            print("Error: Plugin or package name required for disable action.");
+            print("Usage: jac plugins disable <package> | <package:plugin> | *");
+            return;
+        }
+        # Get or create config - auto-create jac.toml if needed
+        if not config {
+            result = find_project_root();
+            if result {
+                (_, toml_path) = result;
+                config = JacConfig.load(toml_path);
+            } else {
+                toml_path = Path.cwd() / "jac.toml";
+                config = JacConfig();
+                config.toml_path = toml_path;
+                config.project_root = Path.cwd();
+                print(f"Creating {toml_path}...");
+            }
+        }
+        for target in names {
+            # Case 0: Wildcard - disable all external plugins
+            if target == '*' {
+                if '*' not in config.plugins_config.disabled {
+                    config.plugins_config.disabled = ['*'];  # Replace with just wildcard
+                    print("Disabled: * (all external plugins)");
+                } else {
+                    print("Already disabled: * (all external plugins)");
+                }
+                continue;
+            }
+            # Case 1: Qualified name (package:plugin)
+            if ':' in target {
+                if target in qualified_to_plugin {
+                    plugin = qualified_to_plugin[target];
+                    if not is_external_plugin(plugin) {
+                        print(f"Error: Cannot disable core plugin '{target}'.");
+                        continue;
+                    }
+                    if target not in config.plugins_config.disabled {
+                        config.plugins_config.disabled.append(target);
+                        print(f"Disabled: {target}");
+                    } else {
+                        print(f"Already disabled: {target}");
+                    }
+                } else {
+                    print(f"Warning: '{target}' not found.");
+                }
+                # Case 2: Package name (disable all plugins from package)
+            } elif target in package_to_qualified {
+                qualified_names = package_to_qualified[target];
+                for qname in qualified_names {
+                    if qname not in config.plugins_config.disabled {
+                        config.plugins_config.disabled.append(qname);
+                        print(f"Disabled: {qname}");
+                    } else {
+                        print(f"Already disabled: {qname}");
+                    }
+                }
+                # Case 3: Short name - check for ambiguity
+            } elif target in short_to_qualified {
+                matches = short_to_qualified[target];
+                if len(matches) == 1 {
+                    (qname, plugin) = matches[0];
+                    if not is_external_plugin(plugin) {
+                        print(f"Error: Cannot disable core plugin '{target}'.");
+                        continue;
+                    }
+                    if qname not in config.plugins_config.disabled {
+                        config.plugins_config.disabled.append(qname);
+                        print(f"Disabled: {qname}");
+                    } else {
+                        print(f"Already disabled: {qname}");
+                    }
+                } else {
+                    print(
+                        f"Ambiguous: '{target}' exists in multiple packages. Use qualified name:"
+                    );
+                    for (qname, _) in matches {
+                        print(f"  jac plugins disable {qname}");
+                    }
+                }
+            } else {
+                print(f"Warning: '{target}' not found as a plugin or package name.");
+            }
+        }
+        config.save();
+        print(f"\nSaved to {config.toml_path}");
+        return;
+    }
+    # Handle enable action
+    if action == 'enable' {
+        if not names {
+            print("Error: Plugin or package name required for enable action.");
+            print("Usage: jac plugins enable <package> | <package:plugin> | *");
+            return;
+        }
+        if not config {
+            print("Error: No jac.toml found. Nothing to enable.");
+            return;
+        }
+        enabled_any = False;
+        for target in names {
+            # Case 0: Wildcard - enable all (remove wildcard from disabled list)
+            if target == '*' {
+                if '*' in config.plugins_config.disabled {
+                    config.plugins_config.disabled.remove('*');
+                    print("Enabled: * (all external plugins will now load)");
+                    enabled_any = True;
+                } else {
+                    print("Wildcard '*' is not currently disabled.");
+                }
+                continue;
+            }
+            # Case 1: Exact match in disabled list (qualified or legacy short name)
+            if target in config.plugins_config.disabled {
+                config.plugins_config.disabled.remove(target);
+                print(f"Enabled: {target}");
+                enabled_any = True;
+                # Case 2: Package name - enable all from that package
+            } elif target in package_to_qualified {
+                for qname in package_to_qualified[target] {
+                    if qname in config.plugins_config.disabled {
+                        config.plugins_config.disabled.remove(qname);
+                        print(f"Enabled: {qname}");
+                        enabled_any = True;
+                    }
+                }
+                # Case 3: Check if it's a package prefix in disabled entries
+            } else {
+                # Find all disabled entries that start with this package
+                matching = [
+                    m
+                    for m in config.plugins_config.disabled
+                    if m.startswith(f"{target}:")
+                ];
+                if matching {
+                    for qname in matching {
+                        config.plugins_config.disabled.remove(qname);
+                        print(f"Enabled: {qname}");
+                        enabled_any = True;
+                    }
+                } else {
+                    print(
+                        f"'{target}' is not disabled. Use 'jac plugins disabled' to see disabled plugins."
+                    );
+                }
+            }
+        }
+        if not enabled_any {
+            print("\nNo plugins were enabled.");
+            return;
+        }
+        config.save();
+        print(f"\nSaved to {config.toml_path}");
+        return;
+    }
+    # Handle disabled action - show currently disabled plugins
+    if action == 'disabled' {
+        if not disabled_plugins {
+            print("No plugins are currently disabled.");
+        } elif '*' in disabled_plugins {
+            print("All external plugins are disabled (wildcard *)");
+            if config and config.toml_path {
+                print(f"\nConfigured in: {config.toml_path}");
+            }
+        } else {
+            print(f"Currently disabled ({len(disabled_plugins)}):");
+            for name in sorted(disabled_plugins) {
+                print(f"  {name}");
+            }
+            if config and config.toml_path {
+                print(f"\nConfigured in: {config.toml_path}");
+            }
+        }
+        return;
+    }
+    # Handle list action (default)
+    if action != 'list' {
+        print(
+            f"Error: Unknown action '{action}'. Use 'list', 'disable', 'enable', or 'disabled'."
+        );
+        return;
+    }
+    # Organize plugins by PyPI distribution for display
+    # Use the already-built mappings from above
+    plugins_by_dist: dict[str, list[tuple[str, str, object, str]]] = {};  # dist_key -> [(short_name, qualified_name, plugin, class_name)]
+    named_plugin_count = 0;
+    for (short_name, plugin) in plugin_list {
+        if short_name.isdigit() {
+            continue;
+        }
+        named_plugin_count += 1;
+
+        if id(plugin) in plugin_to_dist {
+            (dist_name, dist_version) = plugin_to_dist[id(plugin)];
+            dist_key = f"{dist_name}=={dist_version}" if dist_version else dist_name;
+            qualified_name = f"{dist_name}:{short_name}";
+        } else {
+            dist_key = "jaclang (built-in)";
+            qualified_name = f"jaclang:{short_name}";
+        }
+
+        if dist_key not in plugins_by_dist {
+            plugins_by_dist[dist_key] = [];
+        }
+        plugin_type = type(plugin);
+        plugin_class_name = plugin_type?.__name__ or str(plugin_type);
+        plugins_by_dist[dist_key].append(
+            (short_name, qualified_name, plugin, plugin_class_name)
+        );
+    }
+    if not plugins_by_dist {
         print("No Jac plugins installed.");
         return;
     }
-    print(f"Installed Jac plugins ({len(plugin_list)}):\n");
-    for (name, plugin) in plugin_list {
-        plugin_type = type(plugin);
-        plugin_name = plugin_type?.__name__ or str(plugin_type);
-        print(f"  {name}");
+    # Build mapping of package -> commands for display
+    commands_by_package: dict[str, list[str]] = {};
+    for (cmd_name, command) in cmd_registry.registry.items() {
+        if command?.source and command?.source != 'core' {
+            pkg = command.source;
+            if pkg not in commands_by_package {
+                commands_by_package[pkg] = [];
+            }
+            commands_by_package[pkg].append(cmd_name);
+        }
+    }
+    print(
+        f"Installed Jac plugins ({named_plugin_count} plugins from {len(
+            plugins_by_dist
+        )} packages):\n"
+    );
+    # Print plugins organized by distribution
+    for dist_key in sorted(plugins_by_dist.keys()) {
+        plugins_in_dist = plugins_by_dist[dist_key];
+        print(f"[{dist_key}]");
 
-        if verbose {
-            # Show module info
-            module = getattr(plugin_type, '__module__', 'unknown');
-            print(f"    Class: {plugin_name}");
-            print(f"    Module: {module}");
-            # Show implemented hooks
-            hooks = [];
-            for attr_name in dir(plugin) {
-                if not attr_name.startswith('_') {
-                    attr = getattr(plugin, attr_name, None);
-                    if callable(attr)
-                    and attr?.__wrapped__
-                    or (hasattr(plugin_manager.hook, attr_name)) {
-                        # Check if plugin implements this hook
-                        try {
-                            hook = getattr(plugin_manager.hook, attr_name, None);
-                            if hook is not None {
-                                impls = hook.get_hookimpls();
-                                for impl in impls {
-                                    if impl.plugin is plugin {
-                                        hooks.append(attr_name);
-                                        break;
+        # Extract package name from dist_key (remove version if present)
+        pkg_name = dist_key.split("==")[0].strip();
+        if pkg_name.endswith(" (built-in)") {
+            pkg_name = pkg_name.replace(" (built-in)", "");
+        }
+
+        for (short_name, qualified_name, plugin, plugin_class_name) in plugins_in_dist {
+            # Check disabled status using qualified name
+            disabled_marker = " [DISABLED]"
+            if qualified_name in disabled_plugins
+            else "";
+            print(f"  {qualified_name}{disabled_marker}");
+
+            if verbose {
+                plugin_type = type(plugin);
+                module = getattr(plugin_type, '__module__', 'unknown');
+                print(f"    Class: {plugin_class_name}");
+                print(f"    Module: {module}");
+                # Show implemented hooks
+                hooks = [];
+                for attr_name in dir(plugin) {
+                    if not attr_name.startswith('_') {
+                        attr = getattr(plugin, attr_name, None);
+                        if callable(attr)
+                        and attr?.__wrapped__
+                        or (hasattr(plugin_manager.hook, attr_name)) {
+                            try {
+                                hook = getattr(plugin_manager.hook, attr_name, None);
+                                if hook is not None {
+                                    impls = hook.get_hookimpls();
+                                    for impl in impls {
+                                        if impl.plugin is plugin {
+                                            hooks.append(attr_name);
+                                            break;
+                                        }
                                     }
                                 }
+                            } except Exception {
+                                pass;
                             }
-                        } except Exception {
-                            pass;
                         }
                     }
                 }
+                if hooks {
+                    print(f"    Hooks: {', '.join(sorted(hooks))}");
+                }
+                print();
             }
-            if hooks {
-                print(f"    Hooks: {', '.join(sorted(hooks))}");
+        }
+
+        # Show commands provided by this package
+        pkg_commands = commands_by_package.get(pkg_name, []);
+        if pkg_commands {
+            print(f"  Commands: {', '.join(sorted(pkg_commands))}");
+        }
+
+        print();
+    }
+    # Show disabled plugins summary if any
+    if disabled_plugins {
+        if '*' in disabled_plugins {
+            print("Disabled: * (all external plugins bypassed on load)");
+        } else {
+            print("Disabled plugins (bypassed on load):");
+            for name in sorted(disabled_plugins) {
+                print(f"  {name}");
             }
-            print();
-        }
-    }
-    # Show commands registered by plugins
-    plugin_commands = [];
-    for (cmd_name, command) in cmd_registry.registry.items() {
-        if command?.source and command?.source and command?.source != 'core' {
-            plugin_commands.append((cmd_name, command.source));
-        }
-    }
-    if plugin_commands {
-        print("\nPlugin-provided commands:");
-        for (cmd_name, source) in sorted(plugin_commands) {
-            print(f"  {cmd_name} (from {source})");
         }
     }
 }

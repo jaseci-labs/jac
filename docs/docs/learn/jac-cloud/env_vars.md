@@ -1,5 +1,8 @@
 # Environment Variables: Configuration Made Easy
 
+!!! warning "Deprecated"
+    **Jac Cloud is deprecated.** Use [jac-scale](../../production/index.md) for new projects.
+
 ## What Are Environment Variables?
 
 Environment variables are a simple way to configure your Jac Cloud application without changing code. Think of them as settings you can adjust from outside your application. They're perfect for:

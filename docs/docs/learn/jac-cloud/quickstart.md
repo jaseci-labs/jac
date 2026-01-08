@@ -1,5 +1,8 @@
 # Quick Start Guide
 
+!!! warning "Deprecated"
+    **Jac Cloud is deprecated.** Use [jac-scale](../../production/index.md) for new projects.
+
 This guide will help you quickly get up and running with Jac Cloud, with step-by-step instructions designed for beginners.
 
 ## Your First Jac Cloud Server in 30 Seconds

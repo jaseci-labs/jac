@@ -1,5 +1,8 @@
 # Logging and Monitoring Your Application
 
+!!! warning "Deprecated"
+    **Jac Cloud is deprecated.** Use [jac-scale](../../production/index.md) for new projects.
+
 ## Why Logging Matters
 
 Effective logging is crucial for:

@@ -219,6 +219,9 @@ jobs:
         pip install pytest
         pip install pytest-asyncio
 
+    - name: Run integration tests
+      run: python scripts/integration_tests.py
+
     - name: Run tests on built packages
       run: |
         jac check jac/tests/compiler/passes/main/fixtures/checker_type_ref.jac

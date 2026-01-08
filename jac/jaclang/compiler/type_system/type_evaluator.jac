@@ -53,6 +53,7 @@ obj PrefetchedTypes {
         float_class: TypeBase | None = None,
         str_class: TypeBase | None = None,
         dict_class: TypeBase | None = None,
+        list_class: TypeBase | None = None,
         module_type_class: TypeBase | None = None,
         typed_dict_class: TypeBase | None = None,
         typed_dict_private_class: TypeBase | None = None,
