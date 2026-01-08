@@ -66,11 +66,12 @@ Maps to pyright's TypeBase<T> in the types.ts file.
     utilities to analyze type information and provide type checking.
 """
 obj TypeBase(ABC) {
+    has flags: TypeFlags = TypeFlags.Null;
+
     with entry {
         CATEGORY: ClassVar[TypeCategory];
     }
 
-    def init(flags: TypeFlags = TypeFlags.Null) -> None;
     @property
     def category -> TypeCategory;
 
@@ -91,8 +92,6 @@ obj UnboundType(TypeBase) {
 
 """Represents a type that is not known or cannot be determined."""
 obj UnknownType(TypeBase) {
-    has flags: TypeFlags = TypeFlags.Null;
-
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Unknown;
     }
@@ -114,15 +113,13 @@ obj AnyType(TypeBase) {
 
 """Represents a module type."""
 obj ModuleType(TypeBase) {
-    has mod_name: str,
-        file_uri: Path,
-        symbol_table: SymbolTable;
+    has mod_name: str = "",
+        file_uri: Path = Path(""),
+        symbol_table: SymbolTable = None;
 
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Module;
     }
-
-    def postinit -> None;
 }
 
 """Represents a type variable."""
@@ -130,12 +127,13 @@ obj TypeVarType(TypeBase) {
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.TypeVar;
     }
-
-    def init -> None;
 }
 
 """Represents a class type."""
 obj ClassType(TypeBase) {
+    has shared: (ClassType.ClassDetailsShared | None) = None,
+        private: (ClassType.ClassDetailsPrivate | None) = None;
+
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Class;
     }
@@ -148,17 +146,17 @@ Holds the shared details of class type.
         same shared object, that means they both are the same class (with different context).
     """
     obj ClassDetailsShared {
-        def init(
-            class_name: str,
+        has class_name: str,
             symbol_table: SymbolTable,
-            *,
+            mro: list[ClassType],
             type_params: (list[TypeVarType] | None) = None,
             base_classes: (list[TypeBase] | None) = None,
             is_builtin_class: bool = False,
             is_data_class: bool = False,
             is_root_class: bool = False,
-            is_enum_class: bool = False
-        ) -> None;
+            is_enum_class: bool = False;
+
+        def postinit -> None;
     }
 
     """
@@ -172,12 +170,7 @@ Holds the private details of class type.
         def postinit -> None;
     }
 
-    def init(
-        shared: ClassType.ClassDetailsShared,
-        private: (ClassType.ClassDetailsPrivate | None) = None,
-        flags: TypeFlags = TypeFlags.Null
-    ) -> None;
-
+    def postinit -> None;
     def __str__ -> str;
     def clone_as_instance -> ClassType;
     def clone_as_class -> ClassType;
@@ -218,24 +211,22 @@ obj Parameter {
 
 """Represents a function type."""
 obj FunctionType(TypeBase) {
+    has func_name: str = "",
+        return_type: (TypeBase | None) = None,
+        parameters: (list[Parameter] | None) = None;
+
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Function;
     }
 
-    def init(
-        func_name: str,
-        return_type: (TypeBase | None) = None,
-        parameters: (list[Parameter] | None) = None,
-        flags: TypeFlags = TypeFlags.Null
-    ) -> None;
-
+    def postinit -> None;
     def specialize(class_type: ClassType) -> FunctionType;
     def _index_of_type_param(class_type: ClassType, type_var: TypeVarType) -> int;
 }
 
 """Represents an overloaded type."""
 obj OverloadedType(TypeBase) {
-    has overloads: list[FunctionType];
+    has overloads: (list[FunctionType] | None) = None;
 
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Overload;
@@ -246,9 +237,11 @@ obj OverloadedType(TypeBase) {
 
 """Represents a union type."""
 obj UnionType(TypeBase) {
+    has types: (list[TypeBase] | None) = None;
+
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Union;
     }
 
-    def init(types: list[TypeBase]) -> None;
+    def postinit -> None;
 }

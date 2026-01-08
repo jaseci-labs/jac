@@ -95,7 +95,7 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
             }
             overloaded_ty: types.OverloadedType | None = None;
             if len(overloaded_fns) > 1 {
-                overloaded_ty = types.OverloadedType(overloaded_fns);
+                overloaded_ty = types.OverloadedType(overloads=overloaded_fns);
             }
             if not is_from_object {
                 validated = self._validate_constructor_method(

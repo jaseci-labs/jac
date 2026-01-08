@@ -45,7 +45,6 @@ obj PluginConfigBase {
         _config: dict[str, Any] | None = None,
         _jac_config: JacConfig | None = None;
 
-    # def init(project_dir: Path | None = None);
     def postinit -> None;
     def get_plugin_name -> str abs;
     def get_default_config -> dict[str, Any] abs;

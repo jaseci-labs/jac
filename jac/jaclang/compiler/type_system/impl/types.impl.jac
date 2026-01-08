@@ -1,10 +1,8 @@
 """Initialize obviously."""
-
-impl UnionType.init(types: list[TypeBase]) -> None {
-    super.init();
+impl UnionType.postinit -> None {
     # Flatten nested union types
     flattened_types: list[TypeBase] = [];
-    for ty in types {
+    for ty in self.types {
         if isinstance(ty, UnionType) {
             flattened_types.extend(ty.types);
         } else {
@@ -65,21 +63,12 @@ impl FunctionType.specialize(class_type: ClassType) -> FunctionType {
     return clone;
 }
 
-"""Initialize obviously."""
-impl FunctionType.init(
-    func_name: str,
-    return_type: (TypeBase | None) = None,
-    parameters: (list[Parameter] | None) = None,
-    flags: TypeFlags = TypeFlags.Null
-) -> None {
-    super.init(flags=flags);
-    self.func_name = func_name;
-    self.return_type = return_type;
-    self.parameters = parameters or [];
+impl FunctionType.postinit -> None {
+    self.parameters = self.parameters or [];
 }
 
 impl OverloadedType.postinit -> None {
-    super.init();
+    self.overloads = self.overloads or [];
 }
 
 """Return true if this class is the built-in Node type."""
@@ -153,7 +142,7 @@ impl ClassType.get_class_symbol -> Symbol {
 """Return a new class type specialized with the given type arguments."""
 impl ClassType.specialize_generics(type_args: list[TypeBase]) -> ClassType {
     new_private = ClassType.ClassDetailsPrivate(type_args=type_args);
-    return ClassType(self.shared, private=new_private, flags=self.flags);
+    return ClassType(shared=self.shared, private=new_private, flags=self.flags);
 }
 
 impl ClassType.clone_as_class -> ClassType {
@@ -164,7 +153,7 @@ impl ClassType.clone_as_class -> ClassType {
     new_flag = self.flags;
     new_flag = TypeFlags((new_flag & ~TypeFlags.Instance));
     new_flags = TypeFlags((new_flag | TypeFlags.Instantiable));
-    new_class = ClassType(self.shared, private=private, flags=new_flags);
+    new_class = ClassType(shared=self.shared, private=private, flags=new_flags);
     return new_class;
 }
 
@@ -174,7 +163,7 @@ impl ClassType.clone_as_instance -> ClassType {
         return self;
     }
     private = ClassType.ClassDetailsPrivate(type_args=self.private.type_args[:]);
-    new_instance = ClassType(self.shared, private=private, flags=self.flags);
+    new_instance = ClassType(shared=self.shared, private=private, flags=self.flags);
     new_flag = self.flags;
     new_flag = TypeFlags((new_flag & ~TypeFlags.Instantiable));
     new_flags = TypeFlags((new_flag | TypeFlags.Instance));
@@ -188,14 +177,8 @@ impl ClassType.__str__ -> str {
 }
 
 """Initialize the class type."""
-impl ClassType.init(
-    shared: ClassType.ClassDetailsShared,
-    private: (ClassType.ClassDetailsPrivate | None) = None,
-    flags: TypeFlags = TypeFlags.Null
-) -> None {
-    super.init(flags=flags);
-    self.shared = shared;
-    self.private = private or ClassType.ClassDetailsPrivate();
+impl ClassType.postinit -> None {
+    self.private = self.private or ClassType.ClassDetailsPrivate();
 }
 
 """Initialize obviously."""
@@ -204,36 +187,10 @@ impl ClassType.ClassDetailsPrivate.postinit -> None {
 }
 
 """Initialize obviously."""
-impl ClassType.ClassDetailsShared.init(
-    class_name: str,
-    symbol_table: SymbolTable,
-    *,
-    type_params: (list[TypeVarType] | None) = None,
-    base_classes: (list[TypeBase] | None) = None,
-    is_builtin_class: bool = False,
-    is_data_class: bool = False,
-    is_root_class: bool = False,
-    is_enum_class: bool = False
-) -> None {
-    self.class_name = class_name;
-    self.symbol_table = symbol_table;
-    self.type_params = type_params or [];
-    self.base_classes = base_classes or [];
+impl ClassType.ClassDetailsShared.postinit -> None {
+    self.type_params = self.type_params or [];
+    self.base_classes = self.base_classes or [];
     self.mro: list[ClassType] = [];
-    self.is_builtin_class = is_builtin_class;
-    self.is_data_class = is_data_class;
-    self.is_root_class = is_root_class;
-    self.is_enum_class = is_enum_class;
-}
-
-"""Initialize obviously."""
-impl TypeVarType.init -> None {
-    super.init();
-}
-
-"""Initialize obviously."""
-impl ModuleType.postinit -> None {
-    super.init();
 }
 
 """Return whether the class is an instance."""
@@ -264,11 +221,6 @@ impl TypeBase.unknown -> UnknownType {
 """Returns the category of the type."""
 impl TypeBase.category -> TypeCategory {
     return self.CATEGORY;
-}
-
-"""Initialize obviously."""
-impl TypeBase.init(flags: TypeFlags = TypeFlags.Null) -> None {
-    self.flags: TypeFlags = flags;
 }
 
 """Return true if this type is UnknownType, AnyType, TypeVarType, or object."""
