@@ -21,17 +21,15 @@ export function __jacSpawn(walker, target) {
 }
 
 export default { __jacJsx, __jacSpawn };
-''';
-
-glob MAIN_JS: str = '''import React from 'react';
+''',
+     MAIN_JS: str = '''import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { app } from './app.js';
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(React.createElement(app));
-''';
-
-glob INDEX_HTML: str = '''<!DOCTYPE html>
+''',
+     INDEX_HTML: str = '''<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -362,7 +360,8 @@ impl HMRCompiler._compile_to_js(module_path: Path) -> tuple[str, Any] {
     }
     js_output = ir.gen.js or '';
     if not js_output.strip() {
-        raise Exception('No output generated.'); ;
+        raise Exception('No output generated.') ;
+        ;
     }
     manifest = ir.gen.client_manifest;
     if manifest {
