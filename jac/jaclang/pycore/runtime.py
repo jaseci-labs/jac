@@ -1554,6 +1554,23 @@ class JacHMR:
         """
         pass  # Default: no-op, plugins implement HMR
 
+    @staticmethod
+    def on_backend_file_change(file_path: Path, change_type: str) -> bool:
+        """Called when a backend file changes.
+
+        Plugins can implement this to provide custom backend HMR behavior.
+        If any plugin returns True, the default backend restart is skipped.
+
+        Args:
+            file_path: Path to the changed file
+            change_type: Type of change ('modified', 'created', 'deleted')
+
+        Returns:
+            True if plugin handled the change (skip default restart),
+            False to proceed with default backend restart.
+        """
+        return False  # Default: core handles restart
+
 
 class JacAPIServer:
     """Jac API Server Operations - Generic interface for API server."""

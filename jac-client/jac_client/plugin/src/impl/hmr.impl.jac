@@ -121,6 +121,10 @@ export default defineConfig({{
     host: '{self.host}',
     port: {self.port},
     strictPort: true,
+    watch: {{
+      usePolling: true,
+      interval: 100
+    }},
     proxy: {{
       '/user': {{
         target: 'http://localhost:{self.be_port}',

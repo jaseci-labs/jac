@@ -311,12 +311,28 @@ impl JacDevServer._restart_backend -> None {
     print("[Dev] Backend server restarted\n");
 }
 
-"""Handle backend file changes."""
+"""Handle backend file changes - calls plugin hook then falls back to restart."""
 impl JacDevServer._on_backend_change(file_path: Path, change_type: str) -> None {
     if change_type in (CHANGE_MODIFIED, CHANGE_CREATED) {
-        # Only restart for .jac files (backend logic)
+        # Only handle .jac files (backend logic)
         if file_path.suffix == '.jac' {
-            # Use a small delay to batch rapid changes
+            # Call plugin hook first - if any plugin handles it, skip default restart
+            hook_results = Jac.on_backend_file_change(file_path, change_type);
+            plugin_handled: bool;
+            if isinstance(hook_results, list) {
+                plugin_handled = any(r for r in hook_results if r);
+            } else {
+                plugin_handled = bool(hook_results);
+            }
+            
+            if plugin_handled {
+                if self.verbose {
+                    print(f"[Dev] Backend change handled by plugin: {file_path.name}");
+                }
+                return;
+            }
+            
+            # Default behavior: restart backend with delay to batch rapid changes
             import time;
             def delayed_restart -> None {
                 time.sleep(0.5);  # Wait for file writes to complete
