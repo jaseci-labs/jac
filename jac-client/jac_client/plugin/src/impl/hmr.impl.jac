@@ -5,7 +5,7 @@ import shutil;
 import from watchdog.events { FileSystemEvent }
 
 # Template strings for generated files
-glob RUNTIME_STUB: str = '''// Minimal Jac client runtime (fallback)
+glob RUNTIME_STUB: str = '''
 import React from 'react';
 
 export function __jacJsx(component, props, children) {
