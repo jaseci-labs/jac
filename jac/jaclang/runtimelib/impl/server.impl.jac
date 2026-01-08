@@ -715,8 +715,9 @@ impl JacAPIServer.postinit -> None {
     # Use hook to get user management (allows plugins to override)
     self.user_manager = Jac.get_user_management(self.session_path);
     self.introspector = Jac.get_module_introspector(self.module_name, self.base_path);
-    self.execution_manager = ExecutionManager(
-        session_path=self.session_path, user_manager=self.user_manager
+    # Use hook to get execution management (allows plugins to override)
+    self.execution_manager = Jac.get_execution_management(
+        self.session_path, self.user_manager
     );
     self.auth_handler = AuthHandler(
         introspector=self.introspector,
@@ -1504,6 +1505,48 @@ impl JacAPIServer.get_endpoint_definitions -> list[EndpointDefinition] {
         self.build_endpoints();
     }
     return self._endpoint_definitions;
+}
+
+"""Get server instance via plugin hook."""
+impl JacAPIServer.get_server_instance(port: int = 8000) -> Server {
+    """Get server instance using plugin hook.
+    
+    Returns:
+        Server instance (JacHTTPServer or plugin implementation)
+    """
+    import from jaclang.pycore.runtime { JacRuntime as Jac }
+    handler_class = self.create_handler();
+    return Jac.get_server(handler_class, port);
+}
+
+"""Get execution manager instance."""
+impl JacAPIServer.get_execution_manager -> ExecutionManager {
+    """Get execution manager instance.
+    
+    Returns:
+        ExecutionManager instance
+    """
+    return self.execution_manager;
+}
+
+"""Get user manager instance."""
+impl JacAPIServer.get_user_manager -> UserManager {
+    """Get user manager instance.
+    
+    Returns:
+        UserManager instance
+    """
+    return self.user_manager;
+}
+
+"""Get module introspector instance."""
+impl JacAPIServer.get_introspector -> ModuleIntrospector {
+    """Get module introspector instance.
+    
+    Returns:
+        ModuleIntrospector instance
+    """
+    return self.introspector;
 }
 
 """Apply server configurations."""

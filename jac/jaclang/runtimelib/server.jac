@@ -215,7 +215,30 @@ obj RouteMapping {
         has_node_param: bool = False;  # For walkers: true if path includes /{node}
 }
 
-"""REST API Server for Jac programs."""
+"""REST API Server Orchestrator for Jac programs.
+
+This class orchestrates the setup and execution of a REST API server for Jac programs.
+It coordinates multiple components:
+- ModuleIntrospector: Discovers and introspects walkers/functions
+- ExecutionManager: Executes walkers and functions
+- UserManager: Handles user authentication and persistence
+- Server: HTTP server implementation (via plugin hook)
+- Route mapping: Fast endpoint lookup
+
+The class follows a clear execution chain:
+1. Compile module (via jac_import)
+2. Map walkers to endpoints (compile-time route mapping)
+3. Get server instance (via plugin hook)
+4. Register endpoints (via plugin hook)
+5. Configure documentation
+6. Get execution manager
+7. Get user manager
+8. Attach components to server
+9. Start server
+
+Note: This is an orchestrator/facade pattern - it coordinates components
+but delegates actual work to specialized classes.
+"""
 obj JacAPIServer {
     has module_name: str,
         session_path: str,
@@ -259,6 +282,18 @@ obj JacAPIServer {
     
     """Load route mapping from JSON file."""
     def load_route_mapping(file_path: str = "route_mapping.json") -> None;
+    
+    """Get server instance via plugin hook."""
+    def get_server_instance(port: int = 8000) -> Server;
+    
+    """Get execution manager instance."""
+    def get_execution_manager -> ExecutionManager;
+    
+    """Get user manager instance."""
+    def get_user_manager -> UserManager;
+    
+    """Get module introspector instance."""
+    def get_introspector -> ModuleIntrospector;
     
     """Apply server configurations."""
     def apply_config -> None;

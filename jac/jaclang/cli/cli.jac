@@ -8,10 +8,18 @@ import types;
 import from importlib.metadata { version as pkg_version }
 import from pathlib { Path }
 import from jaclang.cli.cmdreg { cmd_registry }
+import from jaclang.runtimelib.context { ExecutionContext }
 
 glob _runtime_initialized = False;
 
 def _ensure_jac_runtime -> None;
+
+"""Result of processing a file and creating a session."""
+obj FileSessionResult {
+    has base_path: str,
+        module_name: str,
+        execution_context: ExecutionContext;
+}
 
 @cmd_registry.register(source='jaclang')
 def gen_parser -> str;
@@ -19,7 +27,7 @@ def gen_parser -> str;
 @cmd_registry.register(source='jaclang')
 def format(paths: list, to_screen: bool = False, fix: bool = False) -> None;
 
-def proc_file_sess(filename: str, session: str, <>root: (str | None) = None) -> tuple;
+def proc_file_sess(filename: str, session: str, <>root: (str | None) = None) -> FileSessionResult;
 
 @cmd_registry.register(source='jaclang')
 def run(

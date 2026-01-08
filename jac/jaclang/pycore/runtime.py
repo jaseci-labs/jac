@@ -61,6 +61,7 @@ if TYPE_CHECKING:
     from jaclang.runtimelib.client_bundle import ClientBundle, ClientBundleBuilder
     from jaclang.runtimelib.context import ExecutionContext
     from jaclang.runtimelib.server import (
+        ExecutionManager,
         JacHTTPServer,
         ModuleIntrospector,
         Server,
@@ -1535,6 +1536,27 @@ class JacAPIServer:
         from jaclang.runtimelib.server import UserManager
 
         return UserManager(session_path=session_path)
+
+    @staticmethod
+    def get_execution_management(
+        session_path: str, user_manager: UserManager
+    ) -> ExecutionManager:
+        """Get execution management instance.
+        
+        This hook allows plugins to provide custom execution management implementations.
+        Core returns a basic ExecutionManager.
+        Plugins can return enhanced implementations with custom execution strategies.
+        
+        Args:
+            session_path: Path for session storage
+            user_manager: UserManager instance (already obtained via get_user_management hook)
+            
+        Returns:
+            ExecutionManager instance (or compatible implementation)
+        """
+        from jaclang.runtimelib.server import ExecutionManager
+
+        return ExecutionManager(session_path=session_path, user_manager=user_manager)
 
     @staticmethod
     def get_server(

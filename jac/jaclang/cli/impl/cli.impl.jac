@@ -132,16 +132,17 @@ jac serve myprogram.jac --port 8080
 jac serve myprogram.jac --session myapp.session
 jac serve myprogram.jac --faux
 """
-impl serve(
-    filename: str,
-    session: str = '',
-    port: int = 8000,
-    main: bool = True,
-    faux: bool = False
-) -> None {
-    _ensure_jac_runtime();
+"""Compile and load the module."""
+def _compile_module(
+    filename: str, session_path: str
+) -> FileSessionResult {
+    """Compile and load the module from file.
+    
+    Returns:
+        FileSessionResult: Contains base_path, module_name, and execution_context
+    """
     import from jaclang.pycore.runtime { JacRuntime as Jac }
-    import from jaclang.runtimelib.server { JacAPIServer }
+    import from jaclang.cli.cli { FileSessionResult }
     # Compute session_path BEFORE proc_file_sess so context has proper persistence
     (base, mod) = os.path.split(filename);
     base = base or os.getcwd();
@@ -150,9 +151,12 @@ impl serve(
     } elif filename.endswith('.py') {
         mod = mod[:-3];
     }
-    session_path = session or os.path.join(base, f"{mod}.session");
+    computed_session_path = session_path or os.path.join(base, f"{mod}.session");
     # Now call proc_file_sess with the computed session_path
-    (base, mod, mach) = proc_file_sess(filename, session_path);
+    file_session = proc_file_sess(filename, computed_session_path);
+    base = file_session.base_path;
+    mod = file_session.module_name;
+    mach = file_session.execution_context;
     lng = filename.split('.')[-1];
     Jac.set_base_path(base);
     try {
@@ -176,30 +180,176 @@ impl serve(
         mach.close();
         <>exit(1);
     }
-    server = JacAPIServer(
-        module_name=mod, session_path=session_path, port=port, base_path=base
+    return FileSessionResult(
+        base_path=base,
+        module_name=mod,
+        execution_context=mach
     );
+}
+
+"""Initialize server and build endpoint mapping."""
+def _initialize_server(
+    module_name: str, session_path: str, port: int, base_path: str
+) -> JacAPIServer {
+    """Initialize the API server and build endpoint mapping.
+    
+    Returns:
+        JacAPIServer instance
+    """
+    import from jaclang.runtimelib.server { JacAPIServer }
+    server = JacAPIServer(
+        module_name=module_name, session_path=session_path, port=port, base_path=base_path
+    );
+    # Step 1: Map walkers to endpoints (compile-time route mapping)
+    server.map_walkers_to_endpoints();
+    return server;
+}
+
+
+"""Register endpoints with server framework."""
+def _register_endpoints(server: JacAPIServer) -> None {
+    """Register endpoints using plugin hook.
+    
+    This calls build_endpoints() which triggers the register_endpoints hook.
+    """
+    import from jaclang.runtimelib.server { JacAPIServer }
+    if not server._endpoints_built {
+        server.build_endpoints();
+    }
+}
+
+"""Configure documentation endpoints."""
+def _configure_docs(server: JacAPIServer, faux: bool) -> None {
+    """Configure documentation endpoints.
+    
+    If faux is True, print endpoint docs and return early.
+    Otherwise, register docs endpoint via hook.
+    """
+    import from jaclang.runtimelib.server { JacAPIServer }
+    import from jaclang.pycore.runtime { JacRuntime as Jac }
     if faux {
         try {
             server.print_endpoint_docs();
-            mach.close();
-            return;
         } except Exception as e {
             print(f"Error generating endpoint documentation: {e}", file=sys.stderr);
-            mach.close();
-            <>exit(1);
+            raise;
         }
+        return;
     }
+    # Register /docs endpoint via hook (for non-faux mode)
+    Jac.register_docs_endpoint(server);
+}
+
+
+"""Attach components to server."""
+def _attach_to_server(server: JacAPIServer) -> None {
+    """Attach execution manager and user manager to server.
+    
+    This ensures all components are properly connected.
+    """
+    import from jaclang.runtimelib.server { JacAPIServer }
+    # Components are already attached in postinit(), but we can verify
+    if not server.execution_manager {
+        raise RuntimeError("ExecutionManager not initialized");
+    }
+    if not server.user_manager {
+        raise RuntimeError("UserManager not initialized");
+    }
+}
+
+"""Start the server."""
+def _start_server(server: JacAPIServer, machine: ExecutionContext) -> None {
+    """Start the server and handle shutdown.
+    
+    Args:
+        server: JacAPIServer instance
+        machine: ExecutionContext instance to close on shutdown
+    """
+    import from jaclang.runtimelib.server { JacAPIServer }
+    import from jaclang.runtimelib.context { ExecutionContext }
     try {
         server.start();
     } except KeyboardInterrupt {
         print('\nServer stopped.');
-        mach.close();
+        machine.close();
     } except Exception as e {
         print(f"Server error: {e}", file=sys.stderr);
+        machine.close();
+        <>exit(1);
+    }
+}
+
+"""Main serve function with execution chain."""
+impl serve(
+    filename: str,
+    session: str = '',
+    port: int = 8000,
+    main: bool = True,
+    faux: bool = False
+) -> None {
+    """Start a REST API server for the specified .jac file.
+    
+    Execution chain:
+    1. Compile module
+    2. Map walkers to endpoints
+    3. Get server instance
+    4. Register endpoints
+    5. Configure docs (if faux, print and exit)
+    6. Get execution manager
+    7. Get user manager
+    8. Attach to server
+    9. Start server
+    
+    Args:
+        filename: Path to the .jac file to serve
+        session: Session identifier for persistent state (default: auto-generated)
+        port: Port to run the server on (default: 8000)
+        main: Treat the module as __main__ (default: True)
+        faux: Perform introspection and print endpoint docs without starting server (default: False)
+    """
+    _ensure_jac_runtime();
+    
+    # Step 1: Compile module
+    file_session = _compile_module(filename, session);
+    base = file_session.base_path;
+    mod = file_session.module_name;
+    mach = file_session.execution_context;
+    session_path = session or os.path.join(base, f"{mod}.session");
+    
+    # Step 2: Initialize server and map walkers to endpoints
+    import from jaclang.runtimelib.server { JacAPIServer, Server }
+    server: JacAPIServer = _initialize_server(mod, session_path, port, base);
+    
+    # Step 3: Get server instance via hook (using server method)
+    server_instance: Server = server.get_server_instance(port);
+    
+    # Step 4: Register endpoints
+    _register_endpoints(server);
+    
+    # Step 5: Configure docs (if faux, print and exit)
+    try {
+        _configure_docs(server, faux);
+        if faux {
+            mach.close();
+            return;
+        }
+    } except Exception as e {
         mach.close();
         <>exit(1);
     }
+    
+    # Step 6: Get execution manager (using server method)
+    import from jaclang.runtimelib.server { ExecutionManager, UserManager }
+    execution_manager: ExecutionManager = server.get_execution_manager();
+    
+    # Step 7: Get user manager (using server method)
+    user_manager: UserManager = server.get_user_manager();
+    
+    # Step 8: Attach to server
+    _attach_to_server(server);
+    
+    # Step 9: Start server
+    _start_server(server, mach);
 }
 
 """Convert a Jac file to JavaScript code.
@@ -359,7 +509,11 @@ impl dot(
     _ensure_jac_runtime();
     import from jaclang.pycore.runtime { JacRuntime as Jac }
     import from jaclang.runtimelib.builtin { printgraph }
-    (base, mod, jac_machine) = proc_file_sess(filename, session);
+    import from jaclang.cli.cli { FileSessionResult }
+    file_session: FileSessionResult = proc_file_sess(filename, session);
+    base = file_session.base_path;
+    mod = file_session.module_name;
+    jac_machine = file_session.execution_context;
     if filename.endswith('.jac') {
         Jac.jac_import(target=mod, base_path=base, override_name='__main__');
         module = Jac.loaded_modules.get('__main__');
@@ -559,7 +713,11 @@ impl enter(
     _ensure_jac_runtime();
     import from jaclang.pycore.runtime { JacRuntime as Jac }
     import from jaclang.pycore.constructs { WalkerArchetype }
-    (base, mod, mach) = proc_file_sess(filename, session, <>root);
+    import from jaclang.cli.cli { FileSessionResult }
+    file_session: FileSessionResult = proc_file_sess(filename, session, <>root);
+    base = file_session.base_path;
+    mod = file_session.module_name;
+    mach = file_session.execution_context;
     if filename.endswith('.jac') {
         ret_module = Jac.jac_import(
             target=mod, base_path=base, override_name='__main__' if main else None
@@ -747,7 +905,11 @@ jac get_object myprogram.jac obj123 --session mysession
 impl get_object(filename: str, id: str, session: str = '', main: bool = True) -> dict {
     _ensure_jac_runtime();
     import from jaclang.pycore.runtime { JacRuntime as Jac }
-    (base, mod, mach) = proc_file_sess(filename, session);
+    import from jaclang.cli.cli { FileSessionResult }
+    file_session: FileSessionResult = proc_file_sess(filename, session);
+    base = file_session.base_path;
+    mod = file_session.module_name;
+    mach = file_session.execution_context;
     if filename.endswith('.jac') {
         Jac.jac_import(
             target=mod, base_path=base, override_name='__main__' if main else None
@@ -797,7 +959,11 @@ impl run(
 ) -> None {
     _ensure_jac_runtime();
     import from jaclang.pycore.runtime { JacRuntime as Jac }
-    (base, mod, mach) = proc_file_sess(filename, session);
+    import from jaclang.cli.cli { FileSessionResult }
+    file_session: FileSessionResult = proc_file_sess(filename, session);
+    base = file_session.base_path;
+    mod = file_session.module_name;
+    mach = file_session.execution_context;
     lng = filename.split('.')[-1];
     Jac.set_base_path(base);
     try {
@@ -829,9 +995,12 @@ impl run(
 }
 
 """Create JacRuntime and return the base path, module name, and runtime state."""
-impl proc_file_sess(filename: str, session: str, <>root: (str | None) = None) -> tuple {
+impl proc_file_sess(
+    filename: str, session: str, <>root: (str | None) = None
+) -> FileSessionResult {
     import from jaclang.pycore.runtime { JacRuntime as Jac }
     import from jaclang.pycore.runtime { JacUtils }
+    import from jaclang.cli.cli { FileSessionResult }
     if (session == '') {
         session = cmd_registry?.args?.session or '';
     }
@@ -850,7 +1019,11 @@ impl proc_file_sess(filename: str, session: str, <>root: (str | None) = None) ->
     }
     mach = Jac.create_j_context(session=session, <>root=<>root);
     Jac.set_context(mach);
-    return (base, mod, mach);
+    return FileSessionResult(
+        base_path=base,
+        module_name=mod,
+        execution_context=mach
+    );
 }
 
 """Format .jac files with improved code style.
