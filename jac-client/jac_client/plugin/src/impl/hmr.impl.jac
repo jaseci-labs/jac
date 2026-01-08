@@ -21,15 +21,37 @@ export function __jacSpawn(walker, target) {
 }
 
 export default { __jacJsx, __jacSpawn };
-''',
-     MAIN_JS: str = '''import React from 'react';
+''';
+
+glob MAIN_JS: str = '''import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { app } from './app.js';
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(React.createElement(app));
-''',
-     INDEX_HTML: str = '''<!DOCTYPE html>
+''';
+
+glob ERROR_OVERLAY: str = '''
+export default function ErrorOverlay({ error }) {
+  return (
+    <div style={{
+      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+      background: 'rgba(0, 0, 0, 0.9)', color: '#ff6b6b', padding: '2rem',
+      fontFamily: 'monospace', fontSize: '14px', overflow: 'auto', zIndex: 9999
+    }}>
+      <div style={{ maxWidth: '800px', margin: '0 auto' }}>
+        <h1 style={{ color: '#ff6b6b', fontSize: '24px', marginBottom: '1rem' }}>Compilation Error</h1>
+        <div style={{ background: '#1a1a1a', padding: '1rem', borderRadius: '4px', whiteSpace: 'pre-wrap' }}>
+          {error}
+        </div>
+        <p style={{ marginTop: '1rem', color: '#888' }}>Fix the error and save to continue.</p>
+      </div>
+    </div>
+  );
+}
+''';
+
+glob INDEX_HTML: str = '''<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -47,6 +69,15 @@ root.render(React.createElement(app));
 def write_file(path: Path, content: str) -> None {
     path.parent.mkdir(parents=True, exist_ok=True);
     path.write_text(content, encoding='utf-8');
+}
+
+"""Generate error display JS module."""
+def generate_error_js(file_path: Path, error_msg: str) -> str {
+    escaped = error_msg.replace('\\', '\\\\').replace("'", "\\'").replace('\n', '\\n');
+    return f'''import React from 'react';
+{ERROR_OVERLAY}
+export const {file_path.stem} = () => ErrorOverlay({{ error: '{escaped}' }});
+''';
 }
 
 """Check if Vite is available in the project."""
@@ -228,6 +259,30 @@ impl JacFileWatcher.start{
                 watcher_ref.on_file_changed(event_path);
             }
         }
+
+        def on_deleted(self: JacChangeHandler, event: FileSystemEvent) -> None {
+            if event.is_directory {
+                return;
+            }
+            event_path = Path(event.src_path);
+            ext = event_path.suffix;
+            if ext == '.jac' or ext in JS_EXTENSIONS {
+                client_dir = get_client_dir(watcher_ref.project_dir);
+                src_dir = watcher_ref.project_dir / 'src';
+                source_root = src_dir if event_path.is_relative_to(src_dir) else event_path.parent;
+                output_path = calc_output_path(
+                    event_path.with_suffix('.js') if ext == '.jac' else event_path,
+                    source_root, client_dir
+                );
+                if output_path.exists() {
+                    output_path.unlink();
+                    if watcher_ref.verbose {
+                        print(f"[HMR] Deleted: {output_path.name}");
+                    }
+                }
+                watcher_ref.compiled_modules.discard(event_path.resolve());
+            }
+        }
     }
     self.observer = Observer();
     self.observer.schedule(JacChangeHandler(), str(self.project_dir), recursive=True);
@@ -267,26 +322,31 @@ impl JacFileWatcher.on_file_changed(file_path: Path) -> None {
         source_root = file_path.parent;
     }
     compiler = HMRCompiler(project_dir=self.project_dir, verbose=self.verbose);
-    try {
-        if file_path.suffix == '.jac' {
-            (js_output, _) = compiler._compile_to_js(file_path);
-            output_path = calc_output_path(file_path, source_root, client_dir, '.js');
-            write_file(output_path, js_output);
-            if self.verbose {
+    if file_path.suffix == '.jac' {
+        (js_output, _) = compiler._compile_to_js(file_path);
+        output_path = calc_output_path(file_path, source_root, client_dir, '.js');
+        write_file(output_path, js_output);
+        has_error = 'ErrorOverlay' in js_output;
+        if self.verbose {
+            if has_error {
+                print(f"[HMR] ❌ Error in {file_path.name} (see browser)");
+            } else {
                 status = "✅ Recompiled"
                 if is_in_graph
                 else "⚠️  Compiled (not in import graph)";
                 print(f"[HMR] {status}: {file_path.name}");
             }
-            if not is_in_graph {
-                self.compiled_modules.add(file_resolved);
-                if self.verbose {
-                    print(
-                        f"[HMR] ℹ️  To see changes, import {file_path.name} in your module graph"
-                    );
-                }
+        }
+        if not is_in_graph {
+            self.compiled_modules.add(file_resolved);
+            if self.verbose and not has_error {
+                print(
+                    f"[HMR] ℹ️  To see changes, import {file_path.name} in your module graph"
+                );
             }
-        } elif file_path.suffix in JS_EXTENSIONS {
+        }
+    } elif file_path.suffix in JS_EXTENSIONS {
+        try {
             output_path = calc_output_path(file_path, source_root, client_dir);
             output_path.parent.mkdir(parents=True, exist_ok=True);
             shutil.copy2(file_path, output_path);
@@ -299,9 +359,9 @@ impl JacFileWatcher.on_file_changed(file_path: Path) -> None {
             if not is_in_graph {
                 self.compiled_modules.add(file_resolved);
             }
+        } except Exception as e {
+            print(f"[HMR] ❌ Error copying {file_path.name}: {e}", file=sys.stderr);
         }
-    } except Exception as e {
-        print(f"[HMR] ❌ Error processing {file_path.name}: {e}", file=sys.stderr);
     }
 }
 
@@ -354,14 +414,12 @@ impl HMRCompiler._compile_to_js(module_path: Path) -> tuple[str, Any] {
     prog = JacProgram();
     ir = prog.compile(file_path=str(module_path));
     if prog.errors_had {
-        raise Exception(
-            f"Compilation errors: {', '.join(str(e) for e in prog.errors_had)}"
-        ) ;
+        error_msg = '\n'.join(str(e) for e in prog.errors_had);
+        return (generate_error_js(module_path, error_msg), None);
     }
     js_output = ir.gen.js or '';
     if not js_output.strip() {
-        raise Exception('No output generated.') ;
-        ;
+        return (generate_error_js(module_path, 'No output generated.'), None);
     }
     manifest = ir.gen.client_manifest;
     if manifest {
