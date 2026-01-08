@@ -41,6 +41,7 @@ from jaclang.pycore.archetype import (
 )
 from jaclang.pycore.constant import Constants as Con
 from jaclang.pycore.constant import EdgeDir, colors
+from jaclang.pycore import unitree as uni
 from jaclang.pycore.constructs import (
     AccessLevel,
     Anchor,
@@ -1668,6 +1669,21 @@ class JacByLLM:
             "The 'by' operator is not yet implemented. "
             "This feature is reserved for future use."
         )
+    
+    @staticmethod
+    def add_mtir_to_map(node: uni.Ability, mtir: MTIR) -> None:
+        """Add MTIR to the node's MTIR map."""
+        JacRuntime.program.mtir_map[node] = mtir
+    
+    @staticmethod
+    def get_mtir_from_map(node: uni.Ability) -> MTIR | None:
+        """Get MTIR from the node's MTIR map."""
+        try:
+            if node not in JacRuntime.program.mtir_map.keys():
+                raise KeyError(f"MTIR not found for node {node}")
+            return JacRuntime.program.mtir_map[node]
+        except AttributeError:
+            raise AttributeError("JacRuntime.program.mtir_map is not initialized")
 
 
 class JacUtils:

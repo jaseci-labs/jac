@@ -11,6 +11,7 @@ impl _type_to_schema(ty: type, title: str = "", desc: str = "") -> dict {
     semstr: str = ty?._jac_semstr or "";
     semstr = semstr or ty?.__doc__ or "";  # type: ignore
     semstr_inner: dict[str, str] = ty?._jac_semstr_inner or {};
+    print(semstr);
     # Raise on unsupported types
     if ty in (list, dict, set, tuple) {
         raise ValueError(

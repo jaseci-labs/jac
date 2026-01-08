@@ -25,6 +25,7 @@ from jaclang.pycore.passes import (
     SemanticAnalysisPass,
     SymTabBuildPass,
     Transform,
+    MTIRGenPass,
 )
 from jaclang.pycore.tsparser import TypeScriptParser
 
@@ -48,6 +49,7 @@ def get_ir_gen_sched() -> list[type[Transform[uni.Module, uni.Module]]]:
         SemanticAnalysisPass,
         SemDefMatchPass,
         CFGBuildPass,
+        MTIRGenPass,
     ]
 
 
@@ -134,6 +136,7 @@ class JacProgram:
         """
         self.mod: uni.ProgramModule = main_mod if main_mod else uni.ProgramModule()
         self.py_raise_map: dict[str, str] = {}
+        self.mtir_map: dict[uni.UniNode, any] = {}
         self.errors_had: list[Alert] = []
         self.warnings_had: list[Alert] = []
         self.type_evaluator: TypeEvaluator | None = None

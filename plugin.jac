@@ -10,12 +10,40 @@ with entry {
     }
 }
 
+def get_function_scope(func:Callable) -> str {
+
+    module = func.__module__;
+    qualname = func.__qualname__;
+    
+    # For methods: qualname is "ClassName.method_name"
+    # For functions: qualname is just "function_name"
+
+    import from jaclang.pycore.runtime {JacRuntime as Jac}
+    ir = Jac.program.mod;
+
+    if module == "__main__" and ir.main {
+        module = ir.main;
+    } else {
+        module = ir.hub.get(module);
+    }
+
+    module
+
+
+
+    return f"{module}.{qualname}";
+}
+
 """Jac's with_llm feature."""
 class JacRuntime {
     """Call JacLLM and return the result."""
     @hookimpl
     static def get_mtir(caller: Callable, args: dict, call_params: dict) -> object {
         import from byllm.mtir { MTIR, MTRuntime }
+        # Full example:
+
+        print(get_function_scope(caller));
+        
         return MTIR(caller, args, call_params).runtime;
     }
 

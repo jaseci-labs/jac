@@ -15,12 +15,19 @@ Builds the message history with system persona, user input, and any media.
 Prepares tools including the finish_tool for ReAct-style interactions.
 """
 impl MTRuntime.factory(
-    caller: Callable, args: dict[int | str, object], call_params: dict[str, object]
+    mtir: MTIR
 ) -> MTRuntime {
     # Prepare the tools for the LLM call.
+    caller = mtir.caller;
+    args = mtir.args;
+    call_params = mtir.call_params;
+    ir_info = mtir.ir_info;
     tools = [Tool(func) for func in call_params.get("tools", [])];  # type: ignore
     # Construct the input information from the arguments.
-    param_names = list(inspect.signature(caller).parameters.keys());
+    param_names = [param.name for param in ir_info.params];
+    # if not param_names {
+    #     param_names = list(inspect.signature(caller).parameters.keys());
+    # }
     inputs_detail: list[str] = [];
     media_inputs: list[Media] = [];
     for (key, value) in args.items() {
