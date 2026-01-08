@@ -157,3 +157,47 @@ impl Infra.get_persistent_memory(config: (dict[str, Any] | None) = None) -> (Dat
     }
 }
 
+"""Get orchestration storage instance.
+    
+In scale, this will return a storage instance for container orchestration platforms
+(e.g., Kubernetes ConfigMaps, Secrets).
+Implementation will be provided in jac-scale.
+"""
+impl Infra.get_orchestration_storage(config: (dict[str, Any] | None) = None) -> (DataStore | None) {
+    # Orchestration storage implementation will be provided in jac-scale
+    return None;
+}
+
+"""Get distributed file storage instance.
+    
+In scale, this will return a storage instance for distributed file systems
+(e.g., NFS, Ceph, GlusterFS).
+Implementation will be provided in jac-scale.
+"""
+impl Infra.get_file_storage(config: (dict[str, Any] | None) = None) -> (DataStore | None) {
+    # Distributed file storage implementation will be provided in jac-scale
+    return None;
+}
+
+"""Get message queue service instance.
+    
+In scale, this will return a message queue instance for asynchronous messaging
+(e.g., RabbitMQ, Kafka, AWS SQS).
+Implementation will be provided in jac-scale.
+"""
+impl Infra.get_message_queue(config: (dict[str, Any] | None) = None) -> (DataStore | None) {
+    # Message queue implementation will be provided in jac-scale
+    return None;
+}
+
+"""Get object storage service instance.
+    
+In scale, this will return an object storage instance for distributed blob storage
+(e.g., S3, Azure Blob, Google Cloud Storage).
+Implementation will be provided in jac-scale.
+"""
+impl Infra.get_object_storage(config: (dict[str, Any] | None) = None) -> (DataStore | None) {
+    # Object storage implementation will be provided in jac-scale
+    return None;
+}
+
