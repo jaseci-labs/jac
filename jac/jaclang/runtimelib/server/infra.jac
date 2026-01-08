@@ -81,7 +81,7 @@ obj FileStore(DataStore) {
 
 <<<<<<< HEAD
 # """Redis-based storage (cache).
-    
+
 # In scale, this will be used for distributed caching.
 # Implementation will be provided in jac-scale.
 # """
@@ -90,7 +90,7 @@ obj FileStore(DataStore) {
 # }
 
 # """MongoDB-based storage (persistent).
-    
+
 # In scale, this will replace FileStore for distributed persistent storage.
 # Implementation will be provided in jac-scale.
 # """
@@ -123,19 +123,19 @@ obj Infra {
     static def get_cache_memory(config: (dict[str, Any] | None) = None) -> (DataStore | None);
     static def get_persistent_memory(config: (dict[str, Any] | None) = None) -> (DataStore | None);
     static def _get_default_config() -> dict[str, Any];
-    
+
 #     """Get orchestration storage (e.g., Kubernetes ConfigMaps, Secrets).
 #     """
 #     static def get_orchestration_storage(config: (dict[str, Any] | None) = None) -> (DataStore | None);
-    
+
 #     """Get distributed file storage (e.g., NFS, Ceph, GlusterFS).
 #     """
 #     static def get_file_storage(config: (dict[str, Any] | None) = None) -> (DataStore | None);
-    
+
 #     """Get message queue service (e.g., RabbitMQ, Kafka, AWS SQS).
 #     """
 #     static def get_message_queue(config: (dict[str, Any] | None) = None) -> (DataStore | None);
-    
+
 #     """Get object storage service (e.g., S3, Azure Blob, Google Cloud Storage).
 #     """
 #     static def get_object_storage(config: (dict[str, Any] | None) = None) -> (DataStore | None);
