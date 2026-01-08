@@ -65,6 +65,10 @@ def test_create_jac_app() -> None:
 
             assert config_data["project"]["name"] == test_project_name
 
+            # Verify serve config includes base_route_app for CL apps
+            assert "serve" in config_data
+            assert config_data["serve"]["base_route_app"] == "app"
+
             # Verify .gitignore was created with correct content
             gitignore_path = os.path.join(project_path, ".gitignore")
             assert os.path.exists(gitignore_path)
@@ -194,6 +198,10 @@ def test_create_jac_app_with_typescript() -> None:
                 config_data = tomllib.load(f)
 
             assert config_data["project"]["name"] == test_project_name
+
+            # Verify serve config includes base_route_app for CL apps
+            assert "serve" in config_data
+            assert config_data["serve"]["base_route_app"] == "app"
 
             # Verify src/components directory and Button.tsx were created
             components_dir = os.path.join(project_path, "src", "components")

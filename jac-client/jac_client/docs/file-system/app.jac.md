@@ -161,7 +161,7 @@ The `jac serve` command (without arguments) reads the `entry-point` from `jac.to
 entry-point = "src/app.jac"
 ```
 
-Both commands compile `src/app.jac`, create the build entry point, and serve your app at `http://localhost:8000/page/app`.
+Both commands compile `src/app.jac`, create the build entry point, and serve your app at `http://localhost:8000/cl/app`.
 
 ---
 

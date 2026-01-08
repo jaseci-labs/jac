@@ -1,6 +1,6 @@
 [project]
 name = "jac-streamlit"
-version = "0.0.5"
+version = "0.0.6"
 description = "Streamlit integration plugin for Jac programming language - enables running and visualizing Jac applications in Streamlit"
 authors = [{name = "Jason Mars", email = "jason@mars.ninja"}]
 license = "MIT"
@@ -8,7 +8,7 @@ readme = "README.md"
 keywords = ["jac", "jaclang", "jaseci", "streamlit", "visualization", "graph", "object-spatial"]
 requires-python = ">=3.12"
 dependencies = [
-    "jaclang>=0.9.0",
+    "jaclang>=0.9.6",
     "streamlit>=1.38.0",
     "pydot>=3.0.1",
     "streamlit-agraph>=0.0.45",
@@ -24,6 +24,9 @@ streamlit = "jaclang_streamlit.commands:JacCmd"
 
 [tool.setuptools.packages.find]
 include = ["jaclang_streamlit*"]
+
+[tool.setuptools.package-data]
+"*" = ["*.jac", "*.impl/*.jac", "*.cl/*.jac"]
 
 [build-system]
 requires = ["setuptools>=61.0"]

@@ -83,18 +83,13 @@ impl UserManager.create_user(username: str, password: str) -> dict[str, str] {
     if (username in self._users) {
         return {'error': 'User already exists'};
     }
-    ctx = Jac.create_j_context(session=self.session_path);
-    Jac.set_context(ctx);
-    try {
-        user_root = Root();
-        root_anchor = user_root.__jac__;
-        Jac.save(root_anchor);
-        Jac.commit(root_anchor);
-        root_id = root_anchor.id.hex;
-    } finally {
-        ctx.mem.close();
-        Jac.set_context(Jac.create_j_context());
-    }
+    # Use existing context instead of creating new one (avoids shelf locking issues)
+    ctx = Jac.get_context();
+    user_root = Root();
+    root_anchor = user_root.__jac__;
+    Jac.save(root_anchor);
+    Jac.commit(root_anchor);
+    root_id = root_anchor.id.hex;
     token = secrets.token_urlsafe(32);
     password_hash = hashlib.sha256(password.encode()).hexdigest();
     self._users[username] = {
@@ -158,8 +153,10 @@ impl ExecutionManager.execute_function(
     if not root_id {
         return {'error': 'User not found'};
     }
-    ctx = Jac.create_j_context(session=self.session_path, <>root=root_id);
-    Jac.set_context(ctx);
+    # Use existing context and set entry node to user's root (avoids shelf locking issues)
+    ctx = Jac.get_context();
+    ctx.set_entry_node(root_id);
+    ctx.reports = [];  # Clear reports for this request
     try {
         result = func(**args);
         Jac.commit();
@@ -169,9 +166,6 @@ impl ExecutionManager.execute_function(
         };
     } except Exception as e {
         return {'error': str(e)};
-    } finally {
-        ctx.mem.close();
-        Jac.set_context(Jac.create_j_context());
     }
 }
 
@@ -185,8 +179,10 @@ impl ExecutionManager.spawn_walker(
         return {'error': 'User not found'};
     }
     target_node_id = fields.pop('_jac_spawn_node', None);
-    ctx = Jac.create_j_context(session=self.session_path, <>root=root_id);
-    Jac.set_context(ctx);
+    # Use existing context and set entry node to user's root (avoids shelf locking issues)
+    ctx = Jac.get_context();
+    ctx.set_entry_node(root_id);
+    ctx.reports = [];  # Clear reports for this request
     try {
         <>walker = walker_cls(**fields);
         if target_node_id {
@@ -205,9 +201,6 @@ impl ExecutionManager.spawn_walker(
     } except Exception as e {
         import traceback;
         return {'error': str(e), 'traceback': traceback.format_exc()};
-    } finally {
-        ctx.mem.close();
-        Jac.set_context(Jac.create_j_context());
     }
 }
 
@@ -774,10 +767,12 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
             client_cfg = config.get_plugin_config("client") if config else None;
             assets_config = client_cfg.get("assets", {}) if client_cfg else {};
             custom_asset_extensions = set(assets_config.get("custom_extensions", []));
+            cl_route_prefix = config.serve.cl_route_prefix if config else "cl";
+            cl_route_path = f"/{cl_route_prefix}/";
             is_asset_file = (
                 not is_static_path
                 and (path != '/')
-                and not path.startswith('/page/')
+                and not path.startswith(cl_route_path)
                 and not path.startswith('/function/')
                 and not path.startswith('/walker/')
                 and not path.startswith('/user/')
@@ -879,6 +874,36 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                 return;
             }
             if (path == '/') {
+                base_route_app = config.serve.base_route_app if config else "";
+                if base_route_app {
+                    # Serve the configured base route app at /
+                    query_params = parse_qs(parsed_path.query, keep_blank_values=True);
+                    args = {
+                        key: values[0] if (len(values) == 1) else values
+                        for (key, values) in query_params.items()
+                        if (key != 'mode')
+                    };
+                    username = self._authenticate();
+                    if not username {
+                        username = '__guest__';
+                        if (username not in server.user_manager._users) {
+                            server.user_manager.create_user(
+                                username, '__no_password__'
+                            );
+                        }
+                    }
+                    try {
+                        render_payload = server.introspector.render_page(
+                            base_route_app, args, username
+                        );
+                        Jac.send_html(self, 200, render_payload['html']);
+                    } except ValueError as exc {
+                        Jac.send_json(self, 404, {'error': str(exc)});
+                    } except RuntimeError as exc {
+                        Jac.send_json(self, 500, {'error': str(exc)});
+                    }
+                    return;
+                }
                 Jac.send_json(
                     self,
                     200,
@@ -893,13 +918,13 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                             'GET /walker/<name>': 'Get walker fields',
                             'POST /function/<name>': 'Call a function',
                             'POST /walker/<name>': 'Spawn a walker',
-                            'GET /page/<name>': 'Render HTML page for client function'
+                            f'GET /{cl_route_prefix}/<name>': 'Render HTML page for client function'
                         }
                     }
                 );
                 return;
             }
-            if path.startswith('/page/') {
+            if path.startswith(cl_route_path) {
                 func_name = path.split('/')[-1];
                 query_params = parse_qs(parsed_path.query, keep_blank_values=True);
                 args = {
@@ -1115,6 +1140,9 @@ impl JacAPIServer.print_endpoint_docs -> None {
 impl JacAPIServer.start -> None {
     self.introspector.load();
     handler_class = self.create_handler();
+    config = get_config();
+    cl_route_prefix = config.serve.cl_route_prefix if config else "cl";
+    base_route_app = config.serve.base_route_app if config else "";
     with HTTPServer(('0.0.0.0', self.port), handler_class) as httpd {
         print(f"Jac API Server running on http://0.0.0.0:{self.port}");
         print(f"Module: {self.module_name}");
@@ -1128,6 +1156,12 @@ impl JacAPIServer.start -> None {
         print('  GET /walker/<name> - Get walker info');
         print('  POST /function/<name> - Call a function');
         print('  POST /walker/<name> - Spawn a walker');
+        print(
+            f'  GET /{cl_route_prefix}/<name> - Render HTML page for client function'
+        );
+        if base_route_app {
+            print(f'\nBase route (/) configured to serve: {base_route_app}');
+        }
         print('\nPress Ctrl+C to stop the server');
         try {
             httpd.serve_forever();
@@ -1213,6 +1247,9 @@ impl print_endpoint_docs(server: JacAPIServer) -> None {
             );
         }
     }
+    config = get_config();
+    cl_route_prefix = config.serve.cl_route_prefix if config else "cl";
+    base_route_app = config.serve.base_route_app if config else "";
     section('CLIENT PAGES', 'Public');
     if client_exports {
         funcs_list = ', '.join(sorted(client_exports)[:8]);
@@ -1222,9 +1259,9 @@ impl print_endpoint_docs(server: JacAPIServer) -> None {
         print(f"Available ({len(client_exports)}): {funcs_list}");
         endpoint(
             'GET',
-            '/page/<name>',
+            f'/{cl_route_prefix}/<name>',
             'Render HTML for client function',
-            'Example: /page/App?arg1=value1'
+            f'Example: /{cl_route_prefix}/App?arg1=value1'
         );
     } else {
         print(
@@ -1232,7 +1269,11 @@ impl print_endpoint_docs(server: JacAPIServer) -> None {
         );
     }
     section('STATIC');
-    endpoint('GET', '/', 'API information and endpoint list');
+    if base_route_app {
+        endpoint('GET', '/', f'Serves client app: {base_route_app}');
+    } else {
+        endpoint('GET', '/', 'API information and endpoint list');
+    }
     endpoint('GET', '/static/client.js', 'Client JavaScript bundle');
     total = 2 + 2 + (len(functions) * 2) + (len(walkers) * 2) + 2;
     print(('\n' + ('=' * 80)));

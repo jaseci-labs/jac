@@ -38,7 +38,7 @@ jac serve app.jac
 1. Open your browser and navigate to:
 
 ```
-http://localhost:8000/page/app
+http://localhost:8000/cl/app
 ```
 
 ## How It Works

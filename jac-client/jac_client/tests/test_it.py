@@ -263,43 +263,43 @@ def test_all_in_one_app_endpoints() -> None:
                     print(f"[DEBUG] Error while requesting root endpoint: {exc}")
                     pytest.fail(f"Failed to GET root endpoint: {exc}")
 
-                # "/page/app" – main page is loading
+                # "/cl/app" – main page is loading
                 # Note: This endpoint may return 503 (temporary) while the page is being compiled,
                 # or 500 (permanent) if there's a compilation error. We use _wait_for_endpoint
                 # to retry on 503 until it's ready, but it will fail immediately on 500.
                 try:
                     print(
-                        "[DEBUG] Sending GET request to /page/app endpoint (with retry)"
+                        "[DEBUG] Sending GET request to /cl/app endpoint (with retry)"
                     )
                     page_bytes = _wait_for_endpoint(
-                        "http://127.0.0.1:8000/page/app",
+                        "http://127.0.0.1:8000/cl/app",
                         timeout=120.0,
                         poll_interval=2.0,
                         request_timeout=30.0,
                     )
                     page_body = page_bytes.decode("utf-8", errors="ignore")
                     print(
-                        "[DEBUG] Received response from /page/app endpoint\n"
+                        "[DEBUG] Received response from /cl/app endpoint\n"
                         f"Body (truncated to 500 chars):\n{page_body[:500]}"
                     )
                     assert "<html" in page_body.lower()
                 except (URLError, HTTPError, TimeoutError, RemoteDisconnected) as exc:
-                    print(f"[DEBUG] Error while requesting /page/app endpoint: {exc}")
-                    pytest.fail(f"Failed to GET /page/app endpoint: {exc}")
+                    print(f"[DEBUG] Error while requesting /cl/app endpoint: {exc}")
+                    pytest.fail(f"Failed to GET /cl/app endpoint: {exc}")
 
-                # "/page/app#/nested" – relative paths / nested route
+                # "/cl/app#/nested" – relative paths / nested route
                 # (hash fragment is client-side only but server should still serve the app shell)
                 try:
-                    print("[DEBUG] Sending GET request to /page/app#/nested endpoint")
+                    print("[DEBUG] Sending GET request to /cl/app#/nested endpoint")
                     with urlopen(
-                        "http://127.0.0.1:8000/page/app#/nested",
+                        "http://127.0.0.1:8000/cl/app#/nested",
                         timeout=200,
                     ) as resp_nested:
                         nested_body = resp_nested.read().decode(
                             "utf-8", errors="ignore"
                         )
                         print(
-                            "[DEBUG] Received response from /page/app#/nested endpoint\n"
+                            "[DEBUG] Received response from /cl/app#/nested endpoint\n"
                             f"Status: {resp_nested.status}\n"
                             f"Body (truncated to 500 chars):\n{nested_body[:500]}"
                         )
@@ -307,9 +307,9 @@ def test_all_in_one_app_endpoints() -> None:
                         assert "<html" in nested_body.lower()
                 except (URLError, HTTPError) as exc:
                     print(
-                        f"[DEBUG] Error while requesting /page/app#/nested endpoint: {exc}"
+                        f"[DEBUG] Error while requesting /cl/app#/nested endpoint: {exc}"
                     )
-                    pytest.fail("Failed to GET /page/app#/nested endpoint")
+                    pytest.fail("Failed to GET /cl/app#/nested endpoint")
 
                 # "/static/main.css" – CSS compiled and serving
                 # Note: CSS may be compiled asynchronously, so we retry if it's not ready
@@ -559,7 +559,7 @@ def test_all_in_one_app_endpoints() -> None:
                     pytest.fail("Unexpected error testing invalid login")
 
                 # Verify TypeScript component is working - check that page loads with TS component
-                # The /page/app endpoint should serve the app which includes the TypeScript Card component
+                # The /cl/app endpoint should serve the app which includes the TypeScript Card component
                 try:
                     print("[DEBUG] Verifying TypeScript component integration")
                     # The page should load successfully (already tested above)
@@ -570,12 +570,10 @@ def test_all_in_one_app_endpoints() -> None:
                     print(f"[DEBUG] Error verifying TypeScript component: {exc}")
                     pytest.fail("Failed to verify TypeScript component integration")
 
-                # Verify nested folder imports are working - /page/app#/nested route
+                # Verify nested folder imports are working - /cl/app#/nested route
                 # This route uses nested folder imports (components.button and button)
                 try:
-                    print(
-                        "[DEBUG] Verifying nested folder imports via /page/app#/nested"
-                    )
+                    print("[DEBUG] Verifying nested folder imports via /cl/app#/nested")
                     # The nested route should load successfully (already tested above)
                     # Nested imports are compiled and included in the bundle
                     assert "<html" in nested_body.lower(), (

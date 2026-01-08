@@ -82,7 +82,12 @@ impl JacAPIServer.serve_root_asset(self: JacAPIServer, file_path: str) -> Respon
     if (not file_ext or (file_ext not in allowed_extensions)) {
         return Response(status_code=404, content='Not found', media_type='text/plain');
     }
-    if file_path.startswith(('page/', 'walker/', 'function/', 'user/', 'static/')) {
+    import from jaclang.project.config { get_config }
+    config = get_config();
+    cl_route_prefix = config.serve.cl_route_prefix if config else "cl";
+    if file_path.startswith(
+        (f'{cl_route_prefix}/', 'walker/', 'function/', 'user/', 'static/')
+    ) {
         return Response(status_code=404, content='Not found', media_type='text/plain');
     }
     # Find project root (where jac.toml is) instead of using base_path_dir
@@ -292,10 +297,15 @@ impl JacAPIServer.serve_client_js_callback(
 
 """Register the page rendering endpoint using JEndPoint."""
 impl JacAPIServer.register_page_endpoint(self: JacAPIServer) -> None {
+    import from jaclang.project.config { get_config }
+    config = get_config();
+    cl_route_prefix = config.serve.cl_route_prefix if config else "cl";
+    base_route_app = config.serve.base_route_app if config else "";
+    # Register the configurable cl route (e.g., /cl/{page_name})
     self.server_impl.add_endpoint(
         JEndPoint(
             method=HTTPMethod.GET,
-            path='/page/{page_name}',
+            path=f'/{cl_route_prefix}/{{page_name}}',
             callback=self.render_page_callback(),
             parameters=[
                 APIParameter(
@@ -310,9 +320,24 @@ impl JacAPIServer.register_page_endpoint(self: JacAPIServer) -> None {
             response_model=None,
             tags=['Pages'],
             summary='Render a page',
-            description='Endpoint to render and retrieve a specific page by name. '
+            description=f'Endpoint to render and retrieve a specific page by name at /{cl_route_prefix}/{{name}}.'
         )
     );
+    # If base_route_app is configured, register it at /
+    if base_route_app {
+        self.server_impl.add_endpoint(
+            JEndPoint(
+                method=HTTPMethod.GET,
+                path='/',
+                callback=self.render_base_route_callback(base_route_app),
+                parameters=[],
+                response_model=None,
+                tags=['Pages'],
+                summary='Base route app',
+                description=f'Serves the {base_route_app} client app at the root path.'
+            )
+        );
+    }
 }
 
 """Create callback that extracts all query parameters from FastAPI Request."""
@@ -330,6 +355,29 @@ impl JacAPIServer.render_page_callback(
             return HTMLResponse(content=f"<h1>404 Not Found</h1>", status_code=404);
         } except RuntimeError as exc {
             print(f"Error rendering page '{page_name}': {exc}");
+            return HTMLResponse(
+                content=f"<h1>503 Service Unavailable</h1>", status_code=503
+            );
+        }
+    }
+    return callback;
+}
+
+"""Create callback for base route app rendering."""
+impl JacAPIServer.render_base_route_callback(
+    self: JacAPIServer, app_name: str
+) -> Callable[..., HTMLResponse] {
+    """Render the base route app.""";
+    def callback( **kwargs: JsonValue)  -> HTMLResponse {
+        try {
+            render_payload = self.introspector.render_page(
+                app_name, kwargs, '__guest__'
+            );
+            return HTMLResponse(content=render_payload['html']);
+        } except ValueError as exc {
+            return HTMLResponse(content=f"<h1>404 Not Found</h1>", status_code=404);
+        } except RuntimeError as exc {
+            print(f"Error rendering base route app '{app_name}': {exc}");
             return HTMLResponse(
                 content=f"<h1>503 Service Unavailable</h1>", status_code=503
             );

@@ -190,6 +190,9 @@ entry-point = "src/app.jac"
 [dependencies.npm.dev]
 "@jac-client/dev-deps" = "1.0.0"
 
+[serve]
+base_route_app = "app"
+
 [plugins.client]
 # Vite bundler configuration (optional overrides)
 # vite.plugins = []

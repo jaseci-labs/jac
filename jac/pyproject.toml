@@ -1,6 +1,6 @@
 [project]
 name = "jaclang"
-version = "0.9.5"
+version = "0.9.6"
 description = "Jac is a unique and powerful programming language that extends Python, offering an unprecedented level of awesomenss."
 authors = [{name = "Jason Mars", email = "jason@mars.ninja"}]
 maintainers = [{name = "Jason Mars", email = "jason@mars.ninja"}]
@@ -39,7 +39,7 @@ dev = [
 include = ["jaclang*"]
 
 [tool.setuptools.package-data]
-"*" = ["*.jac", "*.lark", "*.pyi", "py.typed", ".impl/*.jac", ".cl/*.jac"]
+"*" = ["*.jac", "*.impl/*.jac", "*.cl/*.jac", "*.lark", "*.pyi", "py.typed"]
 jaclang = ["sitecustomize.py"]
 
 [tool.setuptools]

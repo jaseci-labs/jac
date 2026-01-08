@@ -34,7 +34,9 @@ cd my-app
 jac serve src/app.jac
 ```
 
-Visit `http://localhost:8000/page/app` to see your app!
+Visit `http://localhost:8000` to see your app! (The `app` component is served at the root by default.)
+
+You can also access the app at `http://localhost:8000/cl/app`.
 
 > **Note**: The `--cl` flag creates a client-side project with an organized folder structure. Without `--cl`, `jac create` creates a standard Jac project.
 

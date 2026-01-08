@@ -90,6 +90,10 @@ class JacAPIServer(JServer) {
 
     def register_functions_endpoints(self: JacAPIServer) -> None;
     def render_page_callback(self: JacAPIServer) -> Callable[..., HTMLResponse];
+    def render_base_route_callback(
+        self: JacAPIServer, app_name: str
+    ) -> Callable[..., HTMLResponse];
+
     def register_page_endpoint(self: JacAPIServer) -> None;
     def serve_client_js_callback(self: JacAPIServer) -> Callable[..., Response];
     def register_client_js_endpoint(self: JacAPIServer) -> None;
