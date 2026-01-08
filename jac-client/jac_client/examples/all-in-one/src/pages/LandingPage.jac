@@ -3,7 +3,7 @@
 # Demonstrates: routing with Link, dark theme design, responsive layout
 cl import from "@jac-client/utils" {
     Link,
-  
+
 }
 
 cl import "..styles.landing.css";

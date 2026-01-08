@@ -27,4 +27,3 @@ walker get_server_message {
         report "hello from a basic walker!" ;
     }
 }
-
