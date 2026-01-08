@@ -320,18 +320,20 @@ impl JacDevServer._on_backend_change(file_path: Path, change_type: str) -> None 
             hook_results = Jac.on_backend_file_change(file_path, change_type);
             plugin_handled: bool;
             if isinstance(hook_results, list) {
-                plugin_handled = any(r for r in hook_results if r);
+                plugin_handled = any(
+                    r
+                    for r in hook_results
+                    if r
+                );
             } else {
                 plugin_handled = bool(hook_results);
             }
-            
             if plugin_handled {
                 if self.verbose {
                     print(f"[Dev] Backend change handled by plugin: {file_path.name}");
                 }
                 return;
             }
-            
             # Default behavior: restart backend with delay to batch rapid changes
             import time;
             def delayed_restart -> None {
