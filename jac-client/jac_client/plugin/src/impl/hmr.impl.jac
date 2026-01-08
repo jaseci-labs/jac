@@ -21,17 +21,15 @@ export function __jacSpawn(walker, target) {
 }
 
 export default { __jacJsx, __jacSpawn };
-''';
-
-glob MAIN_JS: str = '''import React from 'react';
+''',
+     MAIN_JS: str = '''import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { app } from './app.js';
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(React.createElement(app));
-''';
-
-glob ERROR_OVERLAY: str = '''
+''',
+     ERROR_OVERLAY: str = '''
 export default function ErrorOverlay({ error }) {
   return (
     <div style={{
@@ -49,9 +47,8 @@ export default function ErrorOverlay({ error }) {
     </div>
   );
 }
-''';
-
-glob INDEX_HTML: str = '''<!DOCTYPE html>
+''',
+     INDEX_HTML: str = '''<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -269,10 +266,13 @@ impl JacFileWatcher.start{
             if ext == '.jac' or ext in JS_EXTENSIONS {
                 client_dir = get_client_dir(watcher_ref.project_dir);
                 src_dir = watcher_ref.project_dir / 'src';
-                source_root = src_dir if event_path.is_relative_to(src_dir) else event_path.parent;
+                source_root = src_dir
+                if event_path.is_relative_to(src_dir)
+                else event_path.parent;
                 output_path = calc_output_path(
                     event_path.with_suffix('.js') if ext == '.jac' else event_path,
-                    source_root, client_dir
+                    source_root,
+                    client_dir
                 );
                 if output_path.exists() {
                     output_path.unlink();
