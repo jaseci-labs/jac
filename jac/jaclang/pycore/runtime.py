@@ -1499,6 +1499,31 @@ class JacClientBundle:
         builder = JacRuntimeInterface.get_client_bundle_builder()
         return builder.build(module, force=force)
 
+class JacHMR:
+    """Jac HMR (Hot Module Replacement) Operations - Generic interface for dev server."""
+
+    @staticmethod
+    def start_dev_server(
+        module_path: Path,
+        host: str = "localhost",
+        port: int = 3000,
+    ) -> None:
+        """Start Vite dev server with HMR support.
+
+        This is a plugin hook that should be implemented by jac-client plugin.
+        The default implementation raises NotImplementedError.
+
+        Args:
+            module_path: Path to the .jac entry file
+            host: Host to bind the dev server
+            port: Port for the dev server
+
+        Raises:
+            NotImplementedError: If HMR is not implemented (no jac-client plugin)
+        """
+        raise NotImplementedError(
+            "HMR dev server not implemented. Install jac-client plugin to enable HMR."
+        )
 
 class JacAPIServer:
     """Jac API Server Operations - Generic interface for API server."""
@@ -1996,6 +2021,7 @@ class JacRuntimeInterface(
     JacCmd,
     JacBasics,
     JacClientBundle,
+    JacHMR,
     JacAPIServer,
     JacByLLM,
     JacResponseBuilder,
