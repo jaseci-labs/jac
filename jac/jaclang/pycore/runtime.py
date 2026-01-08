@@ -27,7 +27,6 @@ from typing import (
     TypeAlias,
     TypeVar,
     cast,
-    get_type_hints,
 )
 from uuid import UUID
 
@@ -1583,32 +1582,14 @@ class JacByLLM:
 
     @staticmethod
     def call_llm(model: object, mtir: MTRuntime) -> Any:  # noqa: ANN401
-        """Call the LLM model."""
-        from jaclang.utils import NonGPT  # type: ignore[attr-defined]
+        """Call the LLM model.
 
-        try:
-            random_value_for_type = cast(
-                Callable[[Any], Any],
-                NonGPT.random_value_for_type,  # type: ignore[attr-defined]
-            )
-        except AttributeError:
-
-            def random_value_for_type(_t: object) -> object:
-                return None
-
-        try:
-            type_hints = get_type_hints(
-                mtir.caller,
-                globalns=getattr(mtir.caller, "__globals__", {}),
-                localns=None,
-                include_extras=True,
-            )
-        except Exception:
-            type_hints = getattr(mtir.caller, "__annotations__", {})
-        return_type = type_hints.get("return", Any)
-
-        # Generate and return a random value matching the return type
-        return random_value_for_type(return_type)
+        This is a stub implementation. Install byllm for actual LLM functionality.
+        """
+        raise NotImplementedError(
+            "LLM functionality requires byllm to be installed. "
+            "Install it with: pip install byllm"
+        )
 
     @staticmethod
     def by(model: object) -> Callable:
