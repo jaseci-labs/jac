@@ -21,15 +21,17 @@ export function __jacSpawn(walker, target) {
 }
 
 export default { __jacJsx, __jacSpawn };
-''',
-     MAIN_JS: str = '''import React from 'react';
+''';
+
+glob MAIN_JS: str = '''import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { app } from './app.js';
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(React.createElement(app));
-''',
-     INDEX_HTML: str = '''<!DOCTYPE html>
+''';
+
+glob INDEX_HTML: str = '''<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -278,7 +280,6 @@ impl JacFileWatcher.on_file_changed(file_path: Path) -> None {
                 else "⚠️  Compiled (not in import graph)";
                 print(f"[HMR] {status}: {file_path.name}");
             }
-            print("[compiled_modules]", self.compiled_modules);
             if not is_in_graph {
                 self.compiled_modules.add(file_resolved);
                 if self.verbose {
@@ -361,7 +362,7 @@ impl HMRCompiler._compile_to_js(module_path: Path) -> tuple[str, Any] {
     }
     js_output = ir.gen.js or '';
     if not js_output.strip() {
-        raise Exception('ECMAScript code generation produced no output') ;
+        raise Exception('No output generated.'); ;
     }
     manifest = ir.gen.client_manifest;
     if manifest {

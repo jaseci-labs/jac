@@ -159,7 +159,7 @@ impl JacClient.start_dev_server(
         module_path=module_path,
         host=host,
         port=port,
-        verbose=True
+        verbose=False
     );
     dev_server.start();
 }
