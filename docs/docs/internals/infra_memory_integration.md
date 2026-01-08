@@ -54,7 +54,7 @@ obj DataStore {
 ```jac
 obj ShelfMemory(PersistentMemory) {
     has __shelf__: (shelve.Shelf | None) = None;
-    
+
     def init(path: str) -> None {
         self.__shelf__ = shelve.open(path);
     }
@@ -66,7 +66,7 @@ obj ShelfMemory(PersistentMemory) {
 ```jac
 obj ShelfMemory(PersistentMemory) {
     has __store__: (DataStore | None) = None;
-    
+
     def init(path: str) -> None {
         import from jaclang.runtimelib.server.infra { Infra }
         config = {'file_path': path};
@@ -92,6 +92,7 @@ All shelve operations were replaced with `DataStore` operations:
 ### Graph Data Storage
 
 Graph anchors (nodes and edges) are stored as key-value pairs where:
+
 - **Key**: UUID string (e.g., `"550e8400-e29b-41d4-a716-446655440000"`)
 - **Value**: Anchor object (serialized via pickle for FileStore, or native format for MongoDB)
 
@@ -155,6 +156,7 @@ impl ShelfMemory.sync -> None {
 **Decision**: Use proper type `DataStore` instead of `Any` or string forward references.
 
 **Implementation**:
+
 ```jac
 import from jaclang.runtimelib.server.infra { DataStore }
 
@@ -168,6 +170,7 @@ obj ShelfMemory(PersistentMemory) {
 **Decision**: Memory hierarchy composes with Infra components rather than inheriting from them.
 
 **Rationale**: Each tier gets its relevant component from Infra:
+
 - L1: No Infra (pure in-memory)
 - L2: `Infra.get_cache_memory()` (optional, for Redis at scale)
 - L3: `Infra.get_persistent_memory()` (required for persistence)
@@ -212,4 +215,3 @@ The same `ShelfMemory` code works in both scenarios because it only depends on t
 
 - [Memory Hierarchy](../jaclang/runtimelib/memory.jac) - Base memory interfaces and implementations
 - [Infrastructure Module](../jaclang/runtimelib/server/infra.jac) - DataStore interface and factory methods
-
