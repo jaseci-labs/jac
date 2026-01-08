@@ -1526,6 +1526,34 @@ class JacHMR:
             "HMR dev server not implemented. Install jac-client plugin to enable HMR."
         )
 
+    @staticmethod
+    def on_dev_server_start(dev_server: "Any") -> bool:
+        """Called when dev server starts.
+
+        Plugins can use this hook to register additional handlers on the file watcher,
+        setup their own dev servers (like Vite), etc.
+
+        Args:
+            dev_server: The JacDevServer instance with access to file_watcher
+
+        Returns:
+            True if plugin handles frontend server (core should not start FE server),
+            False if core should start its own FE server.
+        """
+        return False  # Default: core handles FE server
+
+    @staticmethod
+    def on_frontend_file_change(file_path: Path, change_type: str) -> None:
+        """Called when a frontend file changes.
+
+        Plugins can implement this to trigger HMR, rebuild bundles, etc.
+
+        Args:
+            file_path: Path to the changed file
+            change_type: Type of change ('modified', 'created', 'deleted')
+        """
+        pass  # Default: no-op, plugins implement HMR
+
 
 class JacAPIServer:
     """Jac API Server Operations - Generic interface for API server."""

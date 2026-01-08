@@ -202,6 +202,94 @@ impl serve(
     }
 }
 
+"""Start a development server with separate FE and BE servers.
+
+Runs the backend API server on one port and a frontend dev server on another.
+The frontend server proxies API requests to the backend, enabling a clean
+separation between frontend and backend during development.
+
+Args:
+    filename: Path to the .jac file to serve
+    session: Session identifier for persistent state (default: auto-generated)
+    be_port: Port for backend API server (default: 8000)
+    fe_port: Port for frontend dev server (default: 3000)
+    main: Treat the module as __main__ (default: True)
+
+Examples:
+    jac dev src/app.jac
+    jac dev src/app.jac --be-port 8080 --fe-port 3001
+    jac dev myprogram.jac --session myapp.session
+"""
+impl dev(
+    filename: str,
+    session: str = '',
+    be_port: int = 8000,
+    fe_port: int = 3000,
+    main: bool = True
+) -> None {
+    _ensure_jac_runtime();
+    import from jaclang.pycore.runtime { JacRuntime as Jac }
+    import from jaclang.runtimelib.devserver { JacDevServer }
+
+    # Compute session_path BEFORE proc_file_sess so context has proper persistence
+    (base, mod) = os.path.split(filename);
+    base = base or os.getcwd();
+    if (filename.endswith('.jac') or filename.endswith('.jir')) {
+        mod = mod[:-4];
+    } elif filename.endswith('.py') {
+        mod = mod[:-3];
+    }
+
+    session_path = session or os.path.join(base, f"{mod}.session");
+
+    # Now call proc_file_sess with the computed session_path
+    (base, mod, mach) = proc_file_sess(filename, session_path);
+    lng = filename.split('.')[-1];
+    Jac.set_base_path(base);
+
+    try {
+        if filename.endswith(('.jac', '.py')) {
+            Jac.jac_import(target=mod, base_path=base, lng=lng);
+        } elif filename.endswith('.jir') {
+            with open(filename, 'rb') as f {
+                Jac.attach_program(pickle.load(f));
+                Jac.jac_import(target=mod, base_path=base, lng=lng);
+            }
+        }
+        if Jac.program.errors_had {
+            for error in Jac.program.errors_had {
+                print(f"Error: {error}", file=sys.stderr);
+            }
+            mach.close();
+            <>exit(1);
+        }
+    } except Exception as e {
+        print(f"Error loading {filename}: {e}", file=sys.stderr);
+        mach.close();
+        <>exit(1);
+    }
+
+    dev_server = JacDevServer(
+        module_name=mod,
+        session_path=session_path,
+        base_path=base,
+        module_path=Path(filename),
+        be_port=be_port,
+        fe_port=fe_port
+    );
+
+    try {
+        dev_server.start();
+    } except KeyboardInterrupt {
+        print('\nDevelopment servers stopped.');
+        mach.close();
+    } except Exception as e {
+        print(f"Dev server error: {e}", file=sys.stderr);
+        mach.close();
+        <>exit(1);
+    }
+}
+
 """Convert a Jac file to JavaScript code.
 
 Translates Jac source code to equivalent JavaScript/ECMAScript code using

@@ -12,7 +12,7 @@ import from jaclang.runtimelib.runtime { hookimpl }
 import from jaclang.runtimelib.server { ModuleIntrospector }
 import from .vite_client_bundle { ViteClientBundleBuilder }
 import from .src.vite_bundler { ViteBundler }
-import from .src.hmr { ViteDevServer }
+import from .src.hmr { ViteDevServer, HMRCompiler, get_client_dir, calc_output_path, write_file, JS_EXTENSIONS }
 
 glob JsonValue: TypeAlias = None | str | int | float | bool | list['JsonValue'] | dict[
          (str, 'JsonValue')
@@ -55,4 +55,10 @@ class JacClient {
     static def start_dev_server(
         module_path: Path, host: str = 'localhost', port: int = 3000
     ) -> None;
+
+    @hookimpl
+    static def on_dev_server_start(dev_server: Any) -> bool;
+
+    @hookimpl
+    static def on_frontend_file_change(file_path: Path, change_type: str) -> None;
 }

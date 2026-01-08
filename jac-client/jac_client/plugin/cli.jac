@@ -57,58 +57,9 @@ class JacCmd {
             }
         }
 
-        def dev(filename: str, host: str = 'localhost', port: int = 3000) -> None {
-            """Start development server with Hot Module Replacement (HMR).
-
-            Starts a Vite dev server that watches .jac files for changes and
-            automatically recompiles and hot-reloads them in the browser.
-
-            Args:
-                filename: Path to the .jac entry file
-                host: Host to bind the dev server (default: 'localhost')
-                port: Port for the dev server (default: 3000)
-
-            Examples:
-                jac dev src/app.jac
-                jac dev src/app.jac --host 0.0.0.0 --port 5000
-            """;
-            if not filename {
-                print("Error: filename is required", file=sys.stderr);
-                print(
-                    "Usage: jac dev <file.jac> [--host HOST] [--port PORT]",
-                    file=sys.stderr
-                );
-                <>exit(1);
-            }
-
-            if not filename.endswith('.jac') {
-                print("Error: file must be a .jac file", file=sys.stderr);
-                <>exit(1);
-            }
-
-            file_path = pathlib.Path(filename);
-            if not file_path.exists() {
-                print(f"Error: file not found: {filename}", file=sys.stderr);
-                <>exit(1);
-            }
-
-            # Import at runtime to avoid circular dependency
-            import from jaclang.pycore.runtime { JacRuntime as Jac }
-
-            print(f"Starting dev server for {filename}...");
-            print(f"Dev server will be available at http://{host}:{port}");
-
-            # Call the HMR hook from runtime
-            Jac.start_dev_server(module_path=file_path, host=host, port=port);
-        }
-
         # Register with PLUGIN priority to override core's create command
         cmd_registry.register(
             create, priority=CommandPriority.PLUGIN, source="jac-client"
-        );
-        # Register dev command with PLUGIN priority
-        cmd_registry.register(
-            dev, priority=CommandPriority.PLUGIN, source="jac-client"
         );
     }
 }
@@ -235,6 +186,7 @@ entry-point = "src/app.jac"
 
 [dependencies.npm]
 "jac-client-node" = "1.0.3"
+"vite" = "7.3.1"
 
 [dependencies.npm.dev]
 "@jac-client/dev-deps" = "1.0.0"

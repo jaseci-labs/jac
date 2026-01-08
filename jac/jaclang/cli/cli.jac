@@ -100,6 +100,15 @@ def serve(
     faux: bool = False
 ) -> None;
 
+@cmd_registry.register(source='jaclang')
+def dev(
+    filename: str,
+    session: str = '',
+    be_port: int = 8000,
+    fe_port: int = 3000,
+    main: bool = True
+) -> None;
+
 #===============================================================================
 # PROJECT MANAGEMENT COMMANDS
 #===============================================================================

@@ -2,11 +2,11 @@
 
 import sys;
 import shutil;
-import from watchdog.events { FileSystemEvent }
 
-# Template strings for generated files
 glob RUNTIME_STUB: str = '''
 import React from 'react';
+
+console.warn('Using minimal runtime stub. Full runtime failed to compile.');
 
 export function __jacJsx(component, props, children) {
   const validChildren = Array.isArray(children) ? children.flat() : (children ? [children] : []);
@@ -15,21 +15,27 @@ export function __jacJsx(component, props, children) {
     : React.createElement(component, { ...props, children: validChildren });
 }
 
-export function __jacSpawn(walker, target) {
-  console.warn('__jacSpawn not implemented in dev mode');
-  return null;
+export function __jacSpawn(walker, target, fields = {}) {
+  console.error('Runtime not properly loaded. Walker spawn unavailable.');
+  return Promise.reject(new Error('Runtime stub: __jacSpawn not available'));
 }
 
-export default { __jacJsx, __jacSpawn };
-''',
-     MAIN_JS: str = '''import React from 'react';
+export function jacSpawn(walker, target, fields = {}) {
+  return __jacSpawn(walker, target, fields);
+}
+
+export default { __jacJsx, __jacSpawn, jacSpawn };
+''';
+
+glob MAIN_JS: str = '''import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { app } from './app.js';
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(React.createElement(app));
-''',
-     ERROR_OVERLAY: str = '''
+''';
+
+glob ERROR_OVERLAY: str = '''
 export default function ErrorOverlay({ error }) {
   return (
     <div style={{
@@ -47,8 +53,9 @@ export default function ErrorOverlay({ error }) {
     </div>
   );
 }
-''',
-     INDEX_HTML: str = '''<!DOCTYPE html>
+''';
+
+glob INDEX_HTML: str = '''<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -61,12 +68,6 @@ export default function ErrorOverlay({ error }) {
   </body>
 </html>
 ''';
-
-"""Write content to file, creating parent dirs if needed."""
-def write_file(path: Path, content: str) -> None {
-    path.parent.mkdir(parents=True, exist_ok=True);
-    path.write_text(content, encoding='utf-8');
-}
 
 """Generate error display JS module."""
 def generate_error_js(file_path: Path, error_msg: str) -> str {
@@ -105,69 +106,109 @@ impl ViteDevServer.compile_all_jac_files{
     }
 }
 
-"""Start file watcher for .jac files."""
-impl ViteDevServer.start_file_watcher{
-    watcher = JacFileWatcher(
-        project_dir=self.project_dir,
-        compiled_modules=self.compiled_modules,
-        verbose=self.verbose
-    );
-    self.watcher_thread = threading.Thread(target=watcher.start, daemon=True);
-    self.watcher_thread.start();
-    if self.verbose {
-        print("Watching .jac files for changes...");
-    }
-}
-
 """Create vite.config.js for dev server."""
 impl ViteDevServer.create_vite_config{
     client_dir = get_client_dir(self.project_dir);
     client_dir.mkdir(parents=True, exist_ok=True);
-    # Write vite.config.js
     config_content = f'''import {{ defineConfig }} from 'vite';
 import react from '@vitejs/plugin-react';
+import {{ fileURLToPath }} from 'url';
+import {{ dirname, resolve }} from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 export default defineConfig({{
   plugins: [react()],
-  server: {{ host: '{self.host}', port: {self.port}, strictPort: true }},
+  server: {{
+    host: '{self.host}',
+    port: {self.port},
+    strictPort: true,
+    proxy: {{
+      '/user': {{
+        target: 'http://localhost:{self.be_port}',
+        changeOrigin: true
+      }},
+      '/function': {{
+        target: 'http://localhost:{self.be_port}',
+        changeOrigin: true
+      }},
+      '/walker': {{
+        target: 'http://localhost:{self.be_port}',
+        changeOrigin: true
+      }},
+      '/functions': {{
+        target: 'http://localhost:{self.be_port}',
+        changeOrigin: true
+      }},
+      '/walkers': {{
+        target: 'http://localhost:{self.be_port}',
+        changeOrigin: true
+      }},
+      '/assets': {{
+        target: 'http://localhost:{self.be_port}',
+        changeOrigin: true
+      }}
+    }}
+  }},
   resolve: {{
     alias: {{
-      '@jac-client/utils': '{client_dir}/client_runtime.js',
-      '@jac-client/assets': '{self.project_dir}/assets'
+      '@jac-client/utils': resolve(__dirname, 'client_runtime.js'),
+      '@jac-client/assets': resolve('{self.project_dir}', 'assets')
     }}
   }}
 }});
 ''';
     write_file(client_dir / 'vite.config.js', config_content);
-    write_file(client_dir / 'main.js', MAIN_JS);
+    module_name = self.module_path.stem;
+    main_js_content = f'''import React from 'react';
+import ReactDOM from 'react-dom/client';
+import {{ {module_name} }} from './{module_name}.js';
+
+let root = ReactDOM.createRoot(document.getElementById('root'));
+
+function render() {{
+  root.render(React.createElement({module_name}));
+}}
+
+render();
+
+if (import.meta.hot) {{
+  import.meta.hot.on('vite:beforeFullReload', () => {{
+    console.log('[HMR] Full reload triggered');
+  }});
+}}
+''';
+    write_file(client_dir / 'main.js', main_js_content);
     write_file(client_dir / 'index.html', INDEX_HTML);
-    # Compile client_runtime from plugin source
     runtime_path = client_dir / 'client_runtime.js';
     import from jaclang.pycore.program { JacProgram }
     import from pathlib { Path as PathLib }
-    plugin_dir = PathLib(__file__).parent.parent.parent;
+    plugin_dir = PathLib(__file__).parent.parent;
     runtime_source = plugin_dir / 'client_runtime.cl.jac';
     if runtime_source.exists() {
         prog = JacProgram();
         ir = prog.compile(file_path=str(runtime_source));
         if not prog.errors_had and ir.gen.js {
             runtime_js = ir.gen.js;
-            if 'import React' not in runtime_js {
-                runtime_js = "import React from 'react';\n" + runtime_js;
-            }
             write_file(runtime_path, runtime_js);
             if self.verbose {
-                print(f"Compiled client_runtime.js from {runtime_source}");
+                print(f"[jac-client] ✅ Compiled client_runtime.js from {runtime_source.name}");
             }
         } else {
             if self.verbose {
-                print("Warning: Failed to compile client_runtime, using stub");
+                print(f"[jac-client] ⚠️  Failed to compile {runtime_source.name}, using minimal stub");
+                if prog.errors_had {
+                    for error in prog.errors_had {
+                        print(f"  Error: {error}");
+                    }
+                }
             }
             self._create_runtime_stub(runtime_path);
         }
     } else {
         if self.verbose {
-            print(f"Warning: {runtime_source} not found, using stub");
+            print(f"[jac-client] ⚠️  {runtime_source} not found, using minimal stub");
         }
         self._create_runtime_stub(runtime_path);
     }
@@ -176,23 +217,21 @@ export default defineConfig({{
     }
 }
 
-"""Start the Vite dev server."""
+"""Start the Vite dev server. Core handles file watching via on_frontend_file_change hook."""
 impl ViteDevServer.start{
     if not self.is_vite_available() {
         print(
-            "Error: npx/npm not found. Please install Node.js and npm.",
+            "[jac-client] Error: npx/npm not found. Please install Node.js and npm.",
             file=sys.stderr
         );
-        sys.exit(1);
+        return;
     }
-    print("Compiling .jac files...");
+    print("[jac-client] Compiling .jac files...");
     self.compile_all_jac_files();
-    print("Generating Vite configuration...");
+    print("[jac-client] Generating Vite configuration...");
     self.create_vite_config();
-    self.start_file_watcher();
     client_dir = get_client_dir(self.project_dir);
-    print(f"\nStarting Vite dev server at http://{self.host}:{self.port}");
-    print("   Press Ctrl+C to stop\n");
+    print(f"[jac-client] Starting Vite dev server at http://{self.host}:{self.port}");
     try {
         self.vite_process = subprocess.Popen(
             ['npx', 'vite', '--host', self.host, '--port', str(self.port)],
@@ -205,18 +244,17 @@ impl ViteDevServer.start{
         if self.vite_process.stdout {
             for line in iter(self.vite_process.stdout.readline, '') {
                 if line {
-                    print(line, end='');
+                    print(f"[Vite] {line}", end='');
                 }
             }
         }
         self.vite_process.wait();
     } except KeyboardInterrupt {
-        print("\n\nShutting down dev server...");
+        print("\n[jac-client] Shutting down Vite server...");
         self.stop();
     } except Exception as e {
-        print(f"Error starting Vite dev server: {e}", file=sys.stderr);
+        print(f"[jac-client] Error starting Vite dev server: {e}", file=sys.stderr);
         self.stop();
-        sys.exit(1);
     }
 }
 
@@ -231,138 +269,7 @@ impl ViteDevServer.stop{
         }
         self.vite_process = None;
     }
-    print("Dev server stopped.");
-}
-
-"""Start watching .jac files for changes."""
-impl JacFileWatcher.start{
-    import from watchdog.events { FileSystemEventHandler }
-    watcher_ref = self;
-    class JacChangeHandler(FileSystemEventHandler) {
-        def on_modified(self: JacChangeHandler, event: FileSystemEvent) -> None {
-            event_path = Path(event.src_path);
-            try {
-                if event_path.is_relative_to(watcher_ref.project_dir / '.jac') {
-                    return;
-                }
-            } except (ValueError, AttributeError) {
-                pass;
-            }
-
-            ext = '.' + event.src_path.rsplit('.', 1)[-1]
-            if '.' in event.src_path
-            else '';
-            if not event.is_directory and (ext == '.jac' or ext in JS_EXTENSIONS) {
-                watcher_ref.on_file_changed(event_path);
-            }
-        }
-
-        def on_deleted(self: JacChangeHandler, event: FileSystemEvent) -> None {
-            if event.is_directory {
-                return;
-            }
-            event_path = Path(event.src_path);
-            ext = event_path.suffix;
-            if ext == '.jac' or ext in JS_EXTENSIONS {
-                client_dir = get_client_dir(watcher_ref.project_dir);
-                src_dir = watcher_ref.project_dir / 'src';
-                source_root = src_dir
-                if event_path.is_relative_to(src_dir)
-                else event_path.parent;
-                output_path = calc_output_path(
-                    event_path.with_suffix('.js') if ext == '.jac' else event_path,
-                    source_root,
-                    client_dir
-                );
-                if output_path.exists() {
-                    output_path.unlink();
-                    if watcher_ref.verbose {
-                        print(f"[HMR] Deleted: {output_path.name}");
-                    }
-                }
-                watcher_ref.compiled_modules.discard(event_path.resolve());
-            }
-        }
-    }
-    self.observer = Observer();
-    self.observer.schedule(JacChangeHandler(), str(self.project_dir), recursive=True);
-    self.observer.start();
-    try {
-        while True {
-            time.sleep(1);
-        }
-    } except KeyboardInterrupt {
-        self.stop();
-    }
-}
-
-"""Stop watching .jac files."""
-impl JacFileWatcher.stop{
-    if self.observer {
-        self.observer.stop();
-        self.observer.join();
-    }
-}
-
-"""Handle file changes and recompile or copy."""
-impl JacFileWatcher.on_file_changed(file_path: Path) -> None {
-    if self.verbose {
-        print(f"[HMR] Detected change in: {file_path}");
-    }
-    client_dir = get_client_dir(self.project_dir);
-    file_resolved: Path = file_path.resolve();
-    is_in_graph = file_resolved in self.compiled_modules;
-    src_dir = self.project_dir / 'src';
-    source_root: Path;
-    try {
-        source_root = src_dir
-        if file_path.is_relative_to(src_dir)
-        else file_path.parent;
-    } except ValueError {
-        source_root = file_path.parent;
-    }
-    compiler = HMRCompiler(project_dir=self.project_dir, verbose=self.verbose);
-    if file_path.suffix == '.jac' {
-        (js_output, _) = compiler._compile_to_js(file_path);
-        output_path = calc_output_path(file_path, source_root, client_dir, '.js');
-        write_file(output_path, js_output);
-        has_error = 'ErrorOverlay' in js_output;
-        if self.verbose {
-            if has_error {
-                print(f"[HMR] ❌ Error in {file_path.name} (see browser)");
-            } else {
-                status = "✅ Recompiled"
-                if is_in_graph
-                else "⚠️  Compiled (not in import graph)";
-                print(f"[HMR] {status}: {file_path.name}");
-            }
-        }
-        if not is_in_graph {
-            self.compiled_modules.add(file_resolved);
-            if self.verbose and not has_error {
-                print(
-                    f"[HMR] ℹ️  To see changes, import {file_path.name} in your module graph"
-                );
-            }
-        }
-    } elif file_path.suffix in JS_EXTENSIONS {
-        try {
-            output_path = calc_output_path(file_path, source_root, client_dir);
-            output_path.parent.mkdir(parents=True, exist_ok=True);
-            shutil.copy2(file_path, output_path);
-            if self.verbose {
-                status = "✅ Copied"
-                if is_in_graph
-                else "⚠️  Copied (not in import graph)";
-                print(f"[HMR] {status}: {file_path.name}");
-            }
-            if not is_in_graph {
-                self.compiled_modules.add(file_resolved);
-            }
-        } except Exception as e {
-            print(f"[HMR] ❌ Error copying {file_path.name}: {e}", file=sys.stderr);
-        }
-    }
+    print("[jac-client] Dev server stopped.");
 }
 
 """Recursively compile .jac files following imports, copy .js/.tsx files."""
