@@ -9,6 +9,12 @@ entry-point = "src/app.jac"
 # vite.plugins = []
 # vite.build = {}
 
+[plugins.client.app_meta_data]
+"title" = "all-in-one"
+"description" = "hoohoooo"
+"icon" = "/assets/burger.png"
+"viewport" = "width=device-width, initial-scale=1.0"
+
 [plugins.client.assets]
 custom_extensions = [".py", ".js"]
 
