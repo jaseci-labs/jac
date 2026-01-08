@@ -11,16 +11,38 @@ import from pathlib { Path }
 import from watchdog.observers { Observer }
 import from watchdog.events { FileSystemEventHandler }
 
+glob JS_EXTENSIONS: tuple = ('.js', '.jsx', '.ts', '.tsx');
+
+"""Get client directory from config or fallback to default."""
+def get_client_dir(project_dir: Path) -> Path {
+    import from jaclang.project.config { get_config }
+    config = get_config();
+    return config.get_client_dir() if config else (project_dir / '.jac' / 'client');
+}
+
+"""Calculate output path preserving relative structure."""
+def calc_output_path(file_path: Path, source_root: Path, client_dir: Path, new_suffix: (str | None) = None) -> Path {
+    out: Path;
+    try {
+        relative = file_path.relative_to(source_root);
+        out = client_dir / (relative.with_suffix(new_suffix) if new_suffix else relative);
+    } except ValueError {
+        name = file_path.with_suffix(new_suffix).name if new_suffix else file_path.name;
+        out = client_dir / name;
+    }
+    return out;
+}
+
 """Vite development server manager."""
 obj ViteDevServer {
-    has project_dir: Path;
-    has module_path: Path;
-    has vite_process: (subprocess.Popen | None) = None;
-    has watcher_thread: (threading.Thread | None) = None;
-    has compiled_modules: set[Path] = set();
-    has host: str = 'localhost';
-    has port: int = 3000;
-    has verbose: bool = False;
+    has project_dir: Path,
+        module_path: Path,
+        vite_process: (subprocess.Popen | None) = None,
+        watcher_thread: (threading.Thread | None) = None,
+        compiled_modules: set[Path] = set(),
+        host: str = 'localhost',
+        port: int = 3000,
+        verbose: bool = False;
 
     def start -> None;
     def stop -> None;
