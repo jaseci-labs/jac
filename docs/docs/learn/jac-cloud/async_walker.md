@@ -1,5 +1,8 @@
 # Async Walker
 
+!!! warning "Deprecated"
+    **Jac Cloud is deprecated.** Use [jac-scale](../../production/index.md) for new projects.
+
 ## Overview
 
 Async walkers in Jac Cloud allow you to execute walkers asynchronously in separate threads. This is particularly useful for long-running operations that shouldn't block the main execution flow, such as intensive computations or external API calls.

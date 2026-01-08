@@ -4,6 +4,21 @@ repo_url: https://github.com/Jaseci-Labs/jaseci
 edit_uri: edit/main/docs/docs
 use_directory_urls: true
 nav:
+  - Quick Guide:
+    - Getting Started: "getting-started/index.md"
+    - Language Guide:
+      - Overview: "language/index.md"
+      - Syntax & Basics: "language/syntax/index.md"
+      - Object-Spatial Programming: "language/osp/index.md"
+      - Enhanced OOP: "language/oop/index.md"
+    - AI Integration (byLLM): "ai-integration/index.md"
+    - Full-Stack (jac-client): "full-stack/index.md"
+    - Production (jac-scale): "production/index.md"
+    - CLI Reference: "cli/index.md"
+    - Configuration: "configuration/index.md"
+    - Testing & Debugging: "testing-debugging/index.md"
+    - Advanced Topics: "advanced/index.md"
+    - Contributing: "contributing/index.md"
   - Learn:
     # - Getting Started: "learn/getting_started.md"
     - Getting Started:
@@ -66,22 +81,6 @@ nav:
         - LiteLLM Proxy Server: "learn/jac-byllm/litellm_proxy.md"
     - Scale-Native Programming:
       - Jac Lens: "learn/jac-lens.md"
-      - (Deprecated) Jac-Cloud:
-        - "learn/jac-cloud/introduction.md"
-        - "learn/jac-cloud/quickstart.md"
-        - Core Features:
-          - "learn/jac-cloud/permission.md"
-          - "learn/jac-cloud/logging.md"
-          - "learn/jac-cloud/env_vars.md"
-          - "learn/jac-cloud/sso_implementation.md"
-        - Real-time & Async:
-          - "learn/jac-cloud/websocket.md"
-          - "learn/jac-cloud/scheduler.md"
-          - "learn/jac-cloud/async_walker.md"
-          - "learn/jac-cloud/webhook.md"
-        - Operations:
-          - "learn/jac-cloud/deployment.md"
-          - "learn/jac-cloud/utilities.md"
     - Jac Client:
       - Getting Started: "jac-client/README.md"
       - Step-by-Step Tutorial:
@@ -135,6 +134,7 @@ nav:
       - "learn/tools/streamlit.md"
       - LLMDocs: "learn/tools/llmdocs.md"
     - Examples:
+      - Overview: "learn/examples/index.md"
       - LittleX (your own twitter): "learn/examples/littleX/tutorial.md"
       - Jac MCP Conversational Chatbot: "learn/examples/rag_chatbot/Overview.md"
       - RPG game with AI Genarated Maps: "learn/examples/mtp_examples/rpg_game.md"

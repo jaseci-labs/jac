@@ -1,5 +1,8 @@
 # Utility APIs
 
+!!! warning "Deprecated"
+    **Jac Cloud is deprecated.** Use [jac-scale](../../production/index.md) for new projects.
+
 **Base URL:** `/util`
 
 This section details the Utility APIs, which can be used to facilitate 3rd party Graph Access. Currently, there's two available endpoints, with plans for future expansion to include additional functionalities.

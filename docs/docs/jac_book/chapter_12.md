@@ -1,5 +1,8 @@
 # Chapter 12: Walkers as API Endpoints
 
+!!! note "About Jac Cloud vs Jac Scale"
+    This chapter references **Jac Cloud**, which has been superseded by **jac-scale**. The core concepts remain the same, but for new projects, please use [jac-scale](../production/index.md) instead. See the [Production & Scaling Guide](../production/index.md) for current REST API generation and deployment documentation.
+
 In this chapter, we'll explore how Jac automatically transforms walkers into RESTful API endpoints with our **Jac Cloud** Plugin. Jac Cloud, is a revolutionary cloud platform that transforms your Jac programs into scalable web services without code changes. This means you can focus on building your application logic while Jac handles the HTTP details for you.
 
 We'll build a simple shared notebook system that demonstrates automatic API generation, request handling, and parameter validation through a practical example.

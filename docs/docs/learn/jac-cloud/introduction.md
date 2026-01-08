@@ -1,5 +1,14 @@
 # Introduction to Jac Cloud
 
+!!! warning "Deprecated - Use jac-scale Instead"
+    **Jac Cloud has been deprecated and replaced by [jac-scale](../../production/index.md).**
+
+    jac-scale provides the same functionality with improved Kubernetes integration, better memory management (L1/L2/L3 tiers), and enhanced scalability features.
+
+    - For new projects, use `jac-scale` instead of `jac-cloud`
+    - Existing jac-cloud applications should migrate to jac-scale
+    - This documentation is preserved for reference only
+
 ## What is Jac Cloud?
 
 Jac Cloud is a powerful cloud-native framework that transforms your Jac applications into production-ready API servers with minimal configuration. It bridges the gap between local Jac development and scalable cloud deployment, providing enterprise-grade features out of the box.

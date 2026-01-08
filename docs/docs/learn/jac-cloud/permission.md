@@ -1,5 +1,8 @@
 # Permission Management: Secure Multi-User Access
 
+!!! warning "Deprecated"
+    **Jac Cloud is deprecated.** Use [jac-scale](../../production/index.md) for new projects.
+
 ## Why Permissions Matter
 
 Jac Cloud's permission system lets you control who can access different parts of your application. This is crucial for:

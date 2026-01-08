@@ -1,5 +1,8 @@
 # Chapter 15: Advanced Jac Cloud Features
 
+!!! note "About Jac Cloud vs Jac Scale"
+    This chapter references **Jac Cloud**, which has been superseded by **jac-scale**. The core concepts remain the same, but for new projects, please use [jac-scale](../production/index.md) instead. See the [Configuration Guide](../configuration/index.md) for jac.toml configuration options.
+
 In this chapter, we'll explore advanced Jac Cloud capabilities that enable configuration management, monitoring, and external integrations. We'll build a comprehensive chat room system that demonstrates environment configuration, logging, and webhook integration through practical examples.
 
 !!! info "What You'll Learn"

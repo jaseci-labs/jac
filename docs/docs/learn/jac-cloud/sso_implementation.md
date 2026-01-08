@@ -1,5 +1,8 @@
 # SSO integration made Easy
 
+!!! warning "Deprecated"
+    **Jac Cloud is deprecated.** Use [jac-scale](../../production/index.md) for new projects.
+
 ## What Is SSO?
 
 Single Sign-On (SSO) is an authentication process that allows users to log in once and gain access to multiple applications or services without needing to enter their credentials repeatedly. Think of it as a single key that opens multiple doors securely.

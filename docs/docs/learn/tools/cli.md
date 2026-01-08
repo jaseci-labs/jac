@@ -83,52 +83,61 @@ jac tool automate_ref
 
 ## `jac run`
 
-The `run` command is utilized to run the specified .jac or .jir file.
+The `run` command is utilized to run the specified .jac file.
 
 ```bash
-jac run <file_path> [main] [cache]
+jac run <filename> [options]
 ```
 
 Parameters to execute the run command:
 
-- `file_path`: Path of .jac or .jir file to run.
-- `main`: (Optional, bool) A flag indicating whether the module being executed is the main module. Defaults to True
-- `cache` :The cache flag to cache
-- To run file_path Jac file:
+- `filename`: Path of .jac file to run.
+- `-s, --session`: Session identifier for persistence. Enables state to persist between runs. Defaults to empty.
+- `-m, --main`: Run as main module. Defaults to True.
+- `-c, --cache`: Use cached compilation if available. Defaults to True.
+
+Examples:
 
 ```bash
-jac run <file_path>
+# Run a Jac file
+jac run app.jac
+
+# Run with a session for persistence
+jac run app.jac -s my_session
+
+# Run without caching
+jac run app.jac --no-cache
 ```
-
-## `jac clean`
-
-The `clean` command is utilized to remove the **jac_gen** , **pycache** folders from the current directory recursively.
-
-```bash
-jac clean
-```
-
-No Parameters needed to execute the clean command
 
 ## `jac format`
 
-The `format` command is utilized to run the specified .jac file or format all .jac files in a given directory.
+The `format` command is utilized to format the specified .jac file(s) or all .jac files in a given directory.
 
 ```bash
-jac format <file_path/directory_path> [outfile] [debug]
+jac format <paths...> [--to_screen] [--fix]
 ```
 
-  Parameters to execute the format command:
+Parameters to execute the format command:
 
-- `file_path/directory_path`: The path to the .jac file or directory containing .jac files.
-- `outfile`: (Optional) The output file path (only applies when formatting a single file).
-- `debug` :(Optional) If True, print debug information.  Defaults to False
+- `paths`: One or more paths to .jac files or directories containing .jac files.
+- `-t, --to_screen`: Print formatted output to screen instead of modifying files. Defaults to False.
+- `-f, --fix`: Apply formatting fixes directly to files. Defaults to False.
 
-  >To format all .jac files from walking through current located directory:
->
-  >```bash
-  >jac format .
-  >```
+Examples:
+
+```bash
+# Check formatting of all .jac files in current directory (no changes made)
+jac format .
+
+# Format and fix all .jac files in current directory
+jac format . --fix
+
+# Preview formatted output without modifying files
+jac format myfile.jac --to_screen
+
+# Format specific files
+jac format file1.jac file2.jac --fix
+```
 
 ## `jac check`
 
@@ -156,22 +165,33 @@ jac build <file_path>
 
 ## `jac enter`
 
-The `enter` command is utilized to run the specified entrypoint function in the given .jac file.
+The `enter` command is utilized to run a specified entrypoint (walker or function) in the given .jac file.
 
 ```bash
-jac enter <file_path> <entrypoint> <args>
+jac enter <filename> -e <entrypoint> [args...] [options]
 ```
 
 Parameters to execute the enter command:
 
-- `file_path`: The path to the .jac file.
-- `entrypoint`: The name of the entrypoint function.
-- `args`: Arguments to pass to the entrypoint function.
+- `filename`: The path to the .jac file.
+- `-e, --entrypoint`: (Required) The name of the entrypoint walker or function.
+- `args`: Additional arguments to pass to the entrypoint.
+- `-s, --session`: Session identifier for persistence. Defaults to empty.
+- `-m, --main`: Run as main module. Defaults to True.
+- `-r, --root`: Root node identifier. Defaults to empty.
+- `-n, --node`: Target node identifier. Defaults to empty.
 
-- To enter file_path Jac file
+Examples:
 
 ```bash
-jac enter <file_path>
+# Run a walker named 'my_walker' in app.jac
+jac enter app.jac -e my_walker
+
+# Run with a session for persistence
+jac enter app.jac -e my_walker -s my_session
+
+# Pass arguments to the entrypoint
+jac enter app.jac -e my_walker -- arg1 arg2
 ```
 
 ## `jac test`
@@ -262,3 +282,123 @@ JAC_DISABLED_PLUGINS=jac-scale:JacScaleRuntimeImpl,jac-client:serve jac run myap
 
 - `*` - Disable all external plugins
 - `package:*` - Disable all plugins from a specific package
+
+## `jac dot`
+
+The `dot` command generates a DOT graph visualization of your Jac graph data. This is useful for visualizing node relationships and debugging graph structures.
+
+```bash
+jac dot <filename> [connection...] [options]
+```
+
+Parameters:
+
+- `filename`: Path to the .jac file.
+- `connection`: Optional connection strings to filter the graph.
+- `-s, --session`: Session identifier for persistence. Defaults to empty.
+- `-i, --initial`: Initial node identifier. Defaults to empty.
+- `-d, --depth`: Maximum depth to traverse. -1 for unlimited. Defaults to -1.
+- `-t, --traverse`: Enable traversal mode. Defaults to False.
+- `-b, --bfs`: Use breadth-first search instead of depth-first. Defaults to False.
+- `-e, --edge_limit`: Maximum number of edges to include. Defaults to 512.
+- `-n, --node_limit`: Maximum number of nodes to include. Defaults to 512.
+- `-sa, --saveto`: File path to save the output. Defaults to empty (stdout).
+- `-to, --to_screen`: Print output to screen. Defaults to False.
+- `-f, --format`: Output format (e.g., 'dot', 'svg', 'png'). Defaults to 'dot'.
+
+Examples:
+
+```bash
+# Generate DOT output for a graph
+jac dot app.jac
+
+# Save graph visualization to a file
+jac dot app.jac --saveto graph.dot
+
+# Limit traversal depth
+jac dot app.jac -d 3
+
+# Use BFS traversal
+jac dot app.jac --bfs
+```
+
+## `jac script`
+
+The `script` command runs predefined scripts from your project's `jac.toml` configuration file.
+
+```bash
+jac script <name> [options]
+```
+
+Parameters:
+
+- `name`: The name of the script to run (as defined in jac.toml).
+- `-l, --list_scripts`: List all available scripts instead of running one.
+
+Scripts are defined in your `jac.toml` file:
+
+```toml
+[scripts]
+test = "jac test ."
+build = "jac build app.jac"
+deploy = "jac scale app.jac"
+```
+
+Examples:
+
+```bash
+# List available scripts
+jac script --list_scripts
+
+# Run a named script
+jac script test
+
+# Run the build script
+jac script build
+```
+
+## `jac get_object`
+
+The `get_object` command retrieves a specific object by its ID from a running Jac session.
+
+```bash
+jac get_object <filename> -i <id> [options]
+```
+
+Parameters:
+
+- `filename`: Path to the .jac file.
+- `-i, --id`: (Required) The object ID to retrieve.
+- `-s, --session`: Session identifier for persistence. Defaults to empty.
+- `-m, --main`: Run as main module. Defaults to True.
+
+Examples:
+
+```bash
+# Get an object by ID from a session
+jac get_object app.jac -i "node_abc123" -s my_session
+
+# Get object from default session
+jac get_object app.jac -i "some_object_id"
+```
+
+## `jac destroy`
+
+The `destroy` command removes a Kubernetes deployment created by `jac scale`. This is part of the jac-scale plugin.
+
+```bash
+jac destroy <file_path>
+```
+
+Parameters:
+
+- `file_path`: Path to the .jac file that was deployed.
+
+Examples:
+
+```bash
+# Remove a scaled deployment
+jac destroy app.jac
+```
+
+> **Note**: This command requires the jac-scale plugin and an active Kubernetes cluster connection.

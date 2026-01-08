@@ -26,6 +26,12 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                 return self._convert_to_instance(self.prefetch.none_type_class);
             }
 
+        case uni.ListVal():
+            if self.prefetch and self.prefetch.list_class {
+                # TODO: We can do some inference inside the list to get the element type.
+                return self._convert_to_instance(self.prefetch.list_class);
+            }
+
         # TODO: Boolean literals.
 
         # ----------------------------------------------------------------------
@@ -259,7 +265,9 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
             }
 
             if scope := expr.find_parent_of_type(uni.UniScopeNode) {
-                if symbol := scope.lookup(expr.value, deep=True, incl_inner_scope=True) {
+                if symbol := type_utils.lookup_symtab(
+                    scope, expr.value, self.builtins_module
+                ) {
                     symbol = self.resolve_imported_symbols(symbol);
                     symbol.add_use(expr);
                     # Only set sym if not already set (preserves existing symbol info for declarations)
@@ -333,6 +341,20 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
         case uni.ParamVar():
             if node_.type_tag {
                 annotation_type = self.get_type_of_expression(node_.type_tag.tag);
+                if node_.is_vararg {
+                    # FIXME: *args are actually a tuple, not a list. But tuples are
+                    # complicated to handle, so we'll use list for now. Will revisit this later.
+                    param_type = self.prefetch.list_class.clone_as_instance();
+                    param_type.private.type_args = [annotation_type];
+                    return param_type;
+                } elif node_.is_kwargs {
+                    param_type = self.prefetch.dict_class.clone_as_instance();
+                    param_type.private.type_args = [
+                        self.prefetch.str_class,
+                        annotation_type
+                    ];
+                    return param_type;
+                }
                 return self._convert_to_instance(annotation_type);
             }
 
@@ -514,6 +536,13 @@ impl TypeEvaluator.get_type_of_magic_method_call(
             if isinstance(member_ty, types.FunctionType) {
                 member_ty = member_ty.specialize(obj_type);
                 overloaded_fns.append(member_ty);
+                for overload in member.overloads {
+                    overload_member_ty = self.get_type_of_symbol(overload);
+                    if isinstance(overload_member_ty, types.FunctionType) {
+                        overload_member_ty = overload_member_ty.specialize(obj_type);
+                        overloaded_fns.append(overload_member_ty);
+                    }
+                }
                 # Validate arguments for each overloaded function.
                 for fn in overloaded_fns {
                     arg_param_match = self.match_args_to_params(
@@ -586,6 +615,27 @@ impl TypeEvaluator.assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool 
     # If destination is a union type, check if source is compatible with any of the
     # constituent types.
     if isinstance(dest_type, types.UnionType) {
+        # TODO: pre mature optimization is the root of all evil.
+        # If source is also union, we need to check if the source type args are subset of the dest type args.
+        if isinstance(src_type, types.UnionType) {
+            for src_type_arg in src_type.types {
+                matched = False;
+                src_type_inst = self._convert_to_instance(src_type_arg);
+                for dest_type_arg in dest_type.types {
+                    dest_type_inst = self._convert_to_instance(dest_type_arg);
+                    if self.assign_type(src_type_inst, dest_type_inst) {
+                        matched = True;
+                        break;  # Break out of the inner loop.
+                    }
+                }
+                # If we didn't find a match for this src_type_arg, return False.
+                if not matched {
+                    return False;
+                }
+            }
+            # If we reached here, all src_type_args matched at least one dest_type_arg.
+            return True;
+        }
         for union_type in dest_type.types {
             new_dest_type = self._convert_to_instance(union_type);
             if self.assign_type(src_type, new_dest_type) {
@@ -680,6 +730,7 @@ impl TypeEvaluator._prefetch_types{
     self.prefetch.float_class = get_builtin_type("float");
     self.prefetch.str_class = get_builtin_type("str");
     self.prefetch.dict_class = get_builtin_type("dict");
+    self.prefetch.list_class = get_builtin_type("list");
     # self.prefetch.module_type_class =
     # self.prefetch.typed_dict_class =
     # self.prefetch.typed_dict_private_class =
