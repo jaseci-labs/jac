@@ -2,7 +2,7 @@
 
 import from byllm.lib { Model }
 
-glob llm = Model(model_name="mockllm", outputs=["SecureP@ss1"]);
+glob llm = Model(model_name="mockllm", config={"outputs": ["SecureP@ss1"]});
 
 # Function implemented by LLM
 def generate_password -> str by llm();

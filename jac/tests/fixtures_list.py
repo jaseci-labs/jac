@@ -234,6 +234,8 @@ MICRO_JAC_FILES: list[str] = [
     "jaclang/runtimelib/server.jac",
     "jaclang/runtimelib/test.jac",
     "jaclang/runtimelib/utils.jac",
+    "jaclang/utils/NonGPT.jac",
+    "jaclang/utils/impl/NonGPT.impl.jac",
     "jaclang/utils/impl/lang_tools.impl.jac",
     "jaclang/utils/lang_tools.jac",
     "jaclang/utils/symtable_test_helpers.jac",
