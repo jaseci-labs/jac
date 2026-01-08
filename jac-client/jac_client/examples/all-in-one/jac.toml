@@ -9,15 +9,22 @@ entry-point = "src/app.jac"
 # vite.plugins = []
 # vite.build = {}
 
+[plugins.client.vite]
+plugins = ["tailwindcss()"]
+lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
+
 [plugins.client.assets]
 custom_extensions = [".py", ".js"]
 
 [dependencies.npm]
 antd = "^6.0.0"
 "jac-client-node" = "1.0.3"
+recharts = "latest"
+tailwindcss = "latest"
 
 [dependencies.npm.dev]
 "@jac-client/dev-deps" = "1.0.0"
+"@tailwindcss/vite" = "^4.1.17"
 
 [environments.response.headers]
 "Cross-Origin-Opener-Policy" = "same-origin"
