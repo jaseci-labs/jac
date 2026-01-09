@@ -84,10 +84,10 @@ Here's what you'll build - an intelligent task routing system in just **two file
 1. Install dependencies:
 
    ```bash
-   pip install jac-streamlit requests jaclang jac-cloud byllm
+   pip install jac-streamlit requests jaclang jac-scale byllm
    ```
 
-1. Start the Jac Cloud server:
+1. Start the backend server:
 
    ```bash
    jac serve task_manager.jac
@@ -139,7 +139,7 @@ glob llm = Model(model_name="gpt-4o");
 1. **Install required dependencies:**
 
    ```bash
-   pip install jac-streamlit jaclang datetime byllm jac-cloud
+   pip install jac-streamlit jaclang datetime byllm jac-scale
    ```
 
 ### Running the Application

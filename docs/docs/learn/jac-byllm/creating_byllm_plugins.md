@@ -360,7 +360,7 @@ from my_byllm_plugin.plugin import MybyllmRuntime
 
 def test_plugin():
     runtime = MybyllmRuntime()
-    model = Model("mockllm", outputs=["test response"])
+    model = Model("mockllm", config={"outputs": ["test response"]})
 
     def test_function(x: str) -> str:
         """Test function."""

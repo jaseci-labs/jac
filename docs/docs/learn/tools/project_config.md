@@ -9,11 +9,31 @@ The `jac.toml` file is the central configuration file for Jac projects. Similar 
 To create a new Jac project with a `jac.toml` file:
 
 ```bash
-jac init my-project
+jac create my-project
 cd my-project
 ```
 
-This creates a new directory with a basic `jac.toml`:
+The `jac create` command supports several options:
+
+- `-f, --force`: Overwrite existing `jac.toml` if present
+- `-c, --cl`: Include client-side (frontend) setup with Vite bundling
+- `-s, --skip`: Skip installing default packages (only for `--cl` projects)
+- `-v, --verbose`: Show detailed output during package installation
+
+Examples:
+
+```bash
+# Create a basic project
+jac create myapp
+
+# Create with frontend support
+jac create --cl myapp
+
+# Create in current directory (overwrites existing jac.toml)
+jac create --force
+```
+
+This creates a project with a basic `jac.toml`:
 
 ```toml
 [project]
@@ -201,6 +221,29 @@ print_errs = true   # Print errors to console
 warnonly = false    # Treat errors as warnings
 ```
 
+### [dot] Section
+
+Graph visualization configuration for `jac dot`:
+
+```toml
+[dot]
+depth = -1          # Traversal depth (-1 = unlimited)
+traverse = false    # Traverse connections
+bfs = false         # Use BFS traversal (vs DFS)
+edge_limit = 512    # Maximum edges in output
+node_limit = 512    # Maximum nodes in output
+format = "dot"      # Output format
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `depth` | int | `-1` | How deep to traverse (-1 = unlimited) |
+| `traverse` | bool | `false` | Whether to traverse connections |
+| `bfs` | bool | `false` | Use breadth-first search (default is DFS) |
+| `edge_limit` | int | `512` | Maximum number of edges to include |
+| `node_limit` | int | `512` | Maximum number of nodes to include |
+| `format` | string | `"dot"` | Output format for the graph |
+
 ### [cache] Section
 
 Bytecode cache configuration:
@@ -230,7 +273,7 @@ dev = "jac run main.jac"
 build = "jac build main.jac --typecheck"
 test = "jac test tests/"
 lint = "jac check ."
-clean = "jac clean"
+format = "jac format . --fix"
 ```
 
 Run scripts with:
@@ -401,9 +444,6 @@ private-utils = { git = "https://github.com/myorg/utils.git", branch = "main" }
 main = true
 cache = true
 
-[build]
-typecheck = true
-
 [test]
 directory = "tests"
 verbose = true
@@ -414,11 +454,24 @@ port = 8000
 cl_route_prefix = "cl"   # Client apps at /cl/<name>
 base_route_app = ""      # Set to app name to serve at /
 
+[format]
+fix = false
+
+[check]
+print_errs = true
+warnonly = false
+
+[dot]
+depth = -1               # Unlimited depth
+edge_limit = 512
+node_limit = 512
+
 #===============================================================================
 # BUILD AND CACHE SETTINGS
 #===============================================================================
 
 [build]
+typecheck = true
 dir = ".jac"             # All build artifacts go here (.jac/cache, .jac/packages, etc.)
 
 [cache]
@@ -465,7 +518,7 @@ dev = "jac run main.jac"
 build = "jac build main.jac --typecheck"
 test = "jac test"
 serve = "jac serve --port 8000"
-clean = "jac clean"
+format = "jac format . --fix"
 ```
 
 ## Project Discovery

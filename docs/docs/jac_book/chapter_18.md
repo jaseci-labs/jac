@@ -1,12 +1,15 @@
-# Chapter 19: Deployment Strategies
+# Chapter 18: Deployment Strategies
 
-In this chapter, we'll explore how to deploy Jac applications to production environments. We'll take our weather API from development to production using various deployment strategies including Docker, Kubernetes, and Jac Cloud.
+!!! note "About Jac Cloud vs Jac Scale"
+    This chapter includes references to **Jac Cloud**, which has been superseded by **jac-scale**. For current deployment best practices, see the [Production & Scaling Guide](../production/index.md) which covers the modern `jac scale` and `jac serve` commands.
+
+In this chapter, we'll explore how to deploy Jac applications to production environments. We'll take our weather API from development to production using various deployment strategies including Docker, Kubernetes, and jac-scale.
 
 !!! info "What You'll Learn"
     - Local vs cloud deployment comparison
     - Docker containerization for Jac applications
     - Kubernetes orchestration and scaling
-    - Jac Cloud deployment with real examples
+    - jac-scale deployment with real examples
     - Production monitoring and maintenance
 
 ---
@@ -410,9 +413,17 @@ curl -X POST http://localhost:8080/walker/get_weather \
 
 ---
 
-## Jac Cloud Deployment
+## Kubernetes Deployment
 
-Jac Cloud provides a Kubernetes-based deployment template to easily deploy your service into your cluster.
+!!! warning "jac-cloud is Deprecated"
+    The jac-cloud deployment method described below is deprecated. For new deployments, use **jac-scale** which provides:
+
+    - Simplified deployment with `jac scale app.jac`
+    - Auto-provisioned MongoDB and Redis
+    - Built-in health checks and scaling
+    - See the [Production (jac-scale) documentation](../production/index.md) for current deployment instructions.
+
+The following section shows the legacy jac-cloud Kubernetes deployment approach for reference.
 
 ### Jac Cloud Setup
 
