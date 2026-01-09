@@ -258,7 +258,7 @@ def test_all_in_one_app_endpoints() -> None:
                 _wait_for_port("127.0.0.1", 8000, timeout=90.0)
                 print("[DEBUG] Server is now accepting connections on 127.0.0.1:8000")
 
-                # "/" – server up
+                # "/" – server up (serves client app HTML due to base_route_app="app")
                 try:
                     print("[DEBUG] Sending GET request to root endpoint /")
                     with urlopen(
@@ -272,8 +272,9 @@ def test_all_in_one_app_endpoints() -> None:
                             f"Body (truncated to 500 chars):\n{root_body[:500]}"
                         )
                         assert resp_root.status == 200
-                        assert '"Jac API Server"' in root_body
-                        assert '"endpoints"' in root_body
+                        # With base_route_app="app", root serves client HTML
+                        assert "<!DOCTYPE html>" in root_body or "<html" in root_body
+                        assert '<div id="root">' in root_body
 
                         # Verify custom headers from jac.toml are present
                         assert (
