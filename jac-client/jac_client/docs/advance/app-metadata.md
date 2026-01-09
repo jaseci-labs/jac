@@ -34,7 +34,7 @@ my-jac-project/
 │   └── app. jac
 └── assets/
     └── favicon.ico      # Application icon
-    
+
 ```
 
 ## Metadata Configuration Keys
