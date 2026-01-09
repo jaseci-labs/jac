@@ -792,8 +792,7 @@ def test_default_client_app_renders() -> None:
                     # The page should include the bundled JavaScript
                     # that will render "Hello, World!" client-side
                     assert (
-                        "<script" in page_body.lower()
-                        or "src=" in page_body.lower()
+                        "<script" in page_body.lower() or "src=" in page_body.lower()
                     ), "Response should include script tags for React app"
 
                 except (URLError, HTTPError, TimeoutError) as exc:
