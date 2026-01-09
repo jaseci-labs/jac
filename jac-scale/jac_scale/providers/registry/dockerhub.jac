@@ -8,7 +8,7 @@ import from jac_scale.config_loader { get_scale_config }
 """DockerHub registry implementation."""
 class DockerHubRegistry(ImageRegistry) {
     has config: dict;
-    
+
     def init(self: DockerHubRegistry, config: dict = {}) -> None {
         scale_config = get_scale_config();
         k8s_config = scale_config.get_kubernetes_config();
@@ -20,7 +20,7 @@ class DockerHubRegistry(ImageRegistry) {
             **config
         };
     }
-    
+
     def build_image(self: DockerHubRegistry, image_name: str, code_folder: str) -> str {
         """Build Docker image."""
         docker_file_path = os.path.join(code_folder, 'Dockerfile');
@@ -42,7 +42,7 @@ class DockerHubRegistry(ImageRegistry) {
             raise RuntimeError(f'Image build failed: {e}') from e;
         }
     }
-    
+
     def push_image(self: DockerHubRegistry, image_name: str) -> None {
         """Push image to DockerHub."""
         docker_client = docker.from_env();
@@ -55,13 +55,13 @@ class DockerHubRegistry(ImageRegistry) {
             }
         }
     }
-    
+
     def get_image_url(self: DockerHubRegistry, image_name: str) -> str {
         """Get full image URL for DockerHub."""
         username = self.config['docker_username'];
         return f"{username}/{image_name}";
     }
-    
+
     def build_and_push(self: DockerHubRegistry, code_folder: str) -> str {
         """Build and push image - convenience method."""
         app_name = self.config['app_name'];
@@ -72,4 +72,3 @@ class DockerHubRegistry(ImageRegistry) {
         return repository_name;
     }
 }
-

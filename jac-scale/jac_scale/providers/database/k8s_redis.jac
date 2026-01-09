@@ -6,20 +6,20 @@ import from jac_scale.engine.deployment_target { DeploymentTarget }
 class K8sRedis(DatabaseProvider) {
     has app_name: str;
     has namespace: str;
-    
+
     def init(self: K8sRedis, target: DeploymentTarget, app_name: str, namespace: str) -> None {
         self.target = target;
         self.app_name = app_name;
         self.namespace = namespace;
     }
-    
+
     def deploy(self: K8sRedis, config: dict) -> dict {
         """Deploy Redis to Kubernetes."""
         redis_name = f"{self.app_name}-redis";
         redis_port = 6379;
         redis_service_name = f"{redis_name}-service";
         env_vars = config.get('env_vars', []);
-        
+
         redis_deployment = {
             'apiVersion': 'apps/v1',
             'kind': 'Deployment',
@@ -46,7 +46,7 @@ class K8sRedis(DatabaseProvider) {
                 }
             }
         };
-        
+
         redis_service = {
             'apiVersion': 'v1',
             'kind': 'Service',
@@ -58,12 +58,12 @@ class K8sRedis(DatabaseProvider) {
                 ]
             }
         };
-        
+
         env_vars.append({
             'name': 'REDIS_URL',
             'value': f"redis://{redis_service_name}:{redis_port}/0"
         });
-        
+
         return {
             'deployment': redis_deployment,
             'service': redis_service,
@@ -71,18 +71,18 @@ class K8sRedis(DatabaseProvider) {
             'service_name': redis_service_name
         };
     }
-    
+
     def get_connection_string(self: K8sRedis) -> str {
         """Get Redis connection string."""
         redis_service_name = f"{self.app_name}-redis-service";
         return f"redis://{redis_service_name}:6379/0";
     }
-    
+
     def is_available(self: K8sRedis) -> bool {
         """Check if Redis is available."""
         return True;
     }
-    
+
     def cleanup(self: K8sRedis) -> None {
         """Cleanup Redis resources."""
         import from kubernetes { client, config }
@@ -91,7 +91,7 @@ class K8sRedis(DatabaseProvider) {
         core_v1 = client.CoreV1Api();
         redis_name = f"{self.app_name}-redis";
         redis_service_name = f"{redis_name}-service";
-        
+
         try {
             apps_v1.delete_namespaced_deployment(redis_name, self.namespace);
         } except Exception {
@@ -104,4 +104,3 @@ class K8sRedis(DatabaseProvider) {
         }
     }
 }
-

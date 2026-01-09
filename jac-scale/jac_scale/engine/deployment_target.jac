@@ -9,13 +9,13 @@ import from typing { Any }
 abstract class DeploymentTarget {
     """Deploy an application to the target platform."""
     def deploy(app_config: Any) -> Any abs;
-    
+
     """Destroy/cleanup an application deployment."""
     def destroy(app_name: str) -> None abs;
-    
+
     """Get the service URL for a deployed application."""
     def get_service_url(app_name: str) -> str abs;
-    
+
     """Check the status of a deployment."""
     def check_status(app_name: str) -> dict[str, Any] abs;
 }

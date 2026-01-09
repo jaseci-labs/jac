@@ -32,11 +32,11 @@ class JacCmd {
             import from jac_scale.engine.config.k8s_config { KubernetesConfig }
             import from jac_scale.engine.models.app_config { AppConfig }
             import from jac_scale.config_loader { get_scale_config }
-            
+
 
             scale_config = get_scale_config();
             k8s_config_dict = scale_config.get_kubernetes_config();
-            
+
             # Create config object
             config = KubernetesConfig(
                 app_name=k8s_config_dict.get('app_name', 'jaseci'),
@@ -48,16 +48,16 @@ class JacCmd {
                 node_port=k8s_config_dict.get('node_port', 30001),
                 container_port=k8s_config_dict.get('container_port', 8000)
             );
-            
+
             # Create deployment target via factory
             target = DeploymentTargetFactory.create('kubernetes', config);
-            
+
             # Create app config
             app_config = AppConfig(
                 name=config.app_name,
                 image=k8s_config_dict.get('docker_image_name', f"{config.app_name}:latest")
             );
-            
+
             # Deploy using new architecture
             if build {
                 import from jac_scale.providers.registry.dockerhub { DockerHubRegistry }
@@ -65,7 +65,7 @@ class JacCmd {
                 registry.build_and_push(code_folder);
             }
             result = target.deploy(app_config);
-            
+
             if not result.success {
                 raise RuntimeError(f"Deployment failed: {result.errors}");
             }
@@ -79,15 +79,15 @@ class JacCmd {
             code_folder = os.path.dirname(file_path) or '.';
             dotenv_path = os.path.join(code_folder, '.env');
             load_dotenv(dotenv_path);
-            
+
             import from jac_scale.factories.deployment_factory { DeploymentTargetFactory }
             import from jac_scale.engine.config.k8s_config { KubernetesConfig }
             import from jac_scale.config_loader { get_scale_config }
-            
+
             # Load configuration
             scale_config = get_scale_config();
             k8s_config_dict = scale_config.get_kubernetes_config();
-            
+
             # Create config object
             config = KubernetesConfig(
                 app_name=k8s_config_dict.get('app_name', 'jaseci'),
@@ -97,7 +97,7 @@ class JacCmd {
                 code_folder=code_folder,
                 file_name=''
             );
-            
+
             # Create deployment target and destroy
             target = DeploymentTargetFactory.create('kubernetes', config);
             target.destroy(config.app_name);

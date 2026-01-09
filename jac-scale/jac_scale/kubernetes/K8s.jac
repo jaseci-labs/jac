@@ -18,35 +18,32 @@ def deploy_K8s(
     # Load configuration
     scale_config = get_scale_config();
     k8s_config_dict = scale_config.get_kubernetes_config();
-    
+
     # Create config object
     config = KubernetesConfig(
         app_name=k8s_config_dict.get('app_name', 'jaseci'),
-        namespace=os.getenv('K8s_NAMESPACE') or k8s_config_dict.get('namespace', 'default'),
+        namespace=os.getenv('K8s_NAMESPACE')
+        or k8s_config_dict.get('namespace', 'default'),
         target_type='kubernetes',
         build=build,
         code_folder=code_folder,
         file_name=file_name
     );
-    
+
     # Create target and deploy
     target = KubernetesTarget(config=config);
-    
+
     # Create app config
     app_name = os.getenv('APP_NAME') or k8s_config_dict.get('app_name', 'jaseci');
     image_name = k8s_config_dict.get('docker_image_name', f"{app_name}:latest");
-    
+
     app_config = AppConfig(
-        name=app_name,
-        image=image_name,
-        env_vars=[],
-        resources=None,
-        health_check=None
+        name=app_name, image=image_name, env_vars=[], resources=None, health_check=None
     );
-    
+
     # Deploy
     result = target.deploy(app_config);
     if not result.success {
-        raise RuntimeError(f"Deployment failed: {result.errors}");
+        raise RuntimeError(f"Deployment failed: {result.errors}") ;
     }
 }

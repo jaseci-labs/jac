@@ -3,10 +3,9 @@ import from typing { Any }
 
 """Application deployment configuration."""
 class AppConfig {
-    has name: str;
-    has image: str;
-    has env_vars: list[dict[str, Any]] = [];
-    has resources: (dict[str, Any] | None) = None;
-    has health_check: (dict[str, Any] | None) = None;
+    has name: str,
+        image: str,
+        env_vars: list[dict[(str, Any)]] = [],
+        resources: (dict[(str, Any)] | None) = None,
+        health_check: (dict[(str, Any)] | None) = None;
 }
-

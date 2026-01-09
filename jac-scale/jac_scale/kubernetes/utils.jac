@@ -23,24 +23,25 @@ import from jac_scale.targets.kubernetes.k8s_utils {
 }
 
 # Cleanup function wrapper
-def cleanup_K8s_resources() -> None {
+def cleanup_K8s_resources -> None {
     import from jac_scale.targets.kubernetes.kubernetes_target { KubernetesTarget }
     import from jac_scale.engine.config.k8s_config { KubernetesConfig }
     import from jac_scale.config_loader { get_scale_config }
     import os;
-    
+
     scale_config = get_scale_config();
     k8s_config_dict = scale_config.get_kubernetes_config();
-    
+
     config = KubernetesConfig(
         app_name=os.getenv('APP_NAME', 'jaseci'),
-        namespace=os.getenv('K8s_NAMESPACE') or k8s_config_dict.get('namespace', 'default'),
+        namespace=os.getenv('K8s_NAMESPACE')
+        or k8s_config_dict.get('namespace', 'default'),
         target_type='kubernetes',
         build=False,
         code_folder='',
         file_name=''
     );
-    
+
     target = KubernetesTarget(config=config);
     app_name = os.getenv('APP_NAME', 'jaseci');
     target.destroy(app_name);

@@ -37,7 +37,7 @@ import from jac_scale.engine.models.deployment_result { DeploymentResult }
 class EKSTarget(KubernetesTarget) {
     # Inherit most behavior from KubernetesTarget
     # Only override what's different for EKS
-    
+
     def _build_service(self: EKSTarget, app_config: AppConfig) -> dict {
         service = super()._build_service(app_config);
         # Add EKS-specific annotations
@@ -46,7 +46,7 @@ class EKSTarget(KubernetesTarget) {
         };
         return service;
     }
-    
+
     def get_service_url(self: EKSTarget, app_name: str) -> str {
         # EKS-specific: Get NLB URL
         return self._get_nlb_url(app_name);
@@ -106,15 +106,15 @@ class DocumentDBProvider(DatabaseProvider) {
         # Deploy DocumentDB via AWS API
         # Return deployment info
     }
-    
+
     def get_connection_string(self: DocumentDBProvider) -> str {
         # Return MongoDB connection string
     }
-    
+
     def is_available(self: DocumentDBProvider) -> bool {
         # Check if DocumentDB is available
     }
-    
+
     def cleanup(self: DocumentDBProvider) -> None {
         # Cleanup DocumentDB resources
     }
@@ -148,11 +148,11 @@ import from jac_scale.engine.logger { Logger }
 class CloudWatchLogger(Logger) {
     has log_group: str;
     has client: CloudWatchLogsClient;
-    
+
     def info(self: CloudWatchLogger, message: str, context: dict = {}) -> None {
         # Send to CloudWatch
     }
-    
+
     # Implement other methods...
 }
 ```
@@ -253,4 +253,3 @@ class TargetConfig(BaseConfig) {
 - Check existing implementations in `targets/kubernetes/` for examples
 - Review the audit document (`AUDIT.md`) for architecture decisions
 - See the proposal plan (`PROPOSAL_PLAN.md`) for the migration strategy
-

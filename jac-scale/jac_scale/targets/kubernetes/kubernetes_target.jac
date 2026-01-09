@@ -17,7 +17,7 @@ import from jac_scale.engine.logger { Logger }
 class KubernetesTarget(DeploymentTarget) {
     has config: DeploymentConfig;
     has logger: Logger;
-    
+
     def init(
         self: KubernetesTarget,
         config: DeploymentConfig,
@@ -31,18 +31,18 @@ class KubernetesTarget(DeploymentTarget) {
             self.logger = logger;
         }
     }
-    
+
     def deploy(self: KubernetesTarget, app_config: AppConfig) -> DeploymentResult;
-    
+
     def destroy(self: KubernetesTarget, app_name: str) -> None;
-    
+
     def get_service_url(self: KubernetesTarget, app_name: str) -> str {
         """Get the service URL for the deployed application."""
         k8s_config = self.config as KubernetesConfig;
         node_port = k8s_config.node_port;
         return f"http://localhost:{node_port}/docs";
     }
-    
+
     def check_status(self: KubernetesTarget, app_name: str) -> dict[str, Any] {
         """Check deployment status."""
         # Simple implementation - can be enhanced later

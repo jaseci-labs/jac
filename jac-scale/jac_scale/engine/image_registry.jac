@@ -7,11 +7,10 @@ without changing deployment logic.
 abstract class ImageRegistry {
     """Build a Docker image."""
     def build_image(image_name: str, code_folder: str) -> str abs;
-    
+
     """Push an image to the registry."""
     def push_image(image_name: str) -> None abs;
-    
+
     """Get the full image URL for the registry."""
     def get_image_url(image_name: str) -> str abs;
 }
-

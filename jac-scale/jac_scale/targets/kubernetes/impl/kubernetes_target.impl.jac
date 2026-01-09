@@ -29,7 +29,7 @@ impl KubernetesTarget.deploy(self: KubernetesTarget, app_config: AppConfig) -> D
         scale_config = get_scale_config();
         k8s_config_dict = scale_config.get_kubernetes_config();
         k8s_config = self.config as KubernetesConfig;
-        
+
         # Get config values
         app_name = os.getenv('APP_NAME') or k8s_config.app_name or app_config.name;
         image_name = k8s_config_dict.get('docker_image_name') or f"{app_name}:latest";
@@ -39,7 +39,7 @@ impl KubernetesTarget.deploy(self: KubernetesTarget, app_config: AppConfig) -> D
         build = k8s_config.build;
         file_name = k8s_config.file_name;
         code_folder = k8s_config.code_folder;
-        
+
         # Resource limits
         cpu_request = k8s_config_dict.get('cpu_request');
         cpu_limit = k8s_config_dict.get('cpu_limit');
@@ -50,46 +50,46 @@ impl KubernetesTarget.deploy(self: KubernetesTarget, app_config: AppConfig) -> D
         liveness_initial_delay = int(k8s_config_dict.get('liveness_initial_delay', 10));
         liveness_period = int(k8s_config_dict.get('liveness_period', 20));
         liveness_failure_threshold = int(k8s_config_dict.get('liveness_failure_threshold', 80));
-        
+
         validate_resource_limits(cpu_request, cpu_limit, memory_request, memory_limit);
-        
+
         # Image configuration
         docker_username = k8s_config_dict.get('docker_username') or 'juzailmlwork';
         repository_name = f"{docker_username}/{image_name}" if build else 'python:3.12-slim';
-        
+
         # Database configuration
         mongodb_enabled = k8s_config_dict.get('mongodb_enabled', True);
         redis_enabled = k8s_config_dict.get('redis_enabled', True);
-        
+
         self.logger.info(f"Deploying {app_name} to Kubernetes namespace '{namespace}'");
-        
+
         # Initialize K8s clients
         config.load_kube_config();
         apps_v1 = client.AppsV1Api();
         core_v1 = client.CoreV1Api();
         check_K8s_status();
         ensure_namespace_exists(namespace);
-        
+
         # Load environment variables
         env_list = load_env_variables(code_folder);
-        
+
         # Detect cluster type
         cluster_env = cluster_type();
         is_aws = cluster_env == 'aws';
         service_type = 'LoadBalancer' if is_aws else 'NodePort';
-        
+
         # Initialize containers
         init_containers: list[dict[str, Any]] = [];
         default_health_path = '/docs';
         health_check_path = os.getenv('K8s_HEALTHCHECK_PATH', default_health_path);
-        
+
         # Deploy databases if enabled
         if mongodb_enabled {
             mongodb_provider = K8sMongoDB(target=self, app_name=app_name, namespace=namespace);
         mongodb_result = mongodb_provider.deploy({'env_vars': env_list});
         mongodb_name = mongodb_result['name'];
         mongodb_service_name = mongodb_result['service_name'];
-        
+
         init_containers.append({
             'name': 'wait-for-mongodb',
             'image': 'busybox',
@@ -98,7 +98,7 @@ impl KubernetesTarget.deploy(self: KubernetesTarget, app_config: AppConfig) -> D
                 f"until nc -z {mongodb_service_name} 27017; do echo waiting for mongodb; sleep 3; done"
             ]
         });
-        
+
         # Create MongoDB resources
         try {
             apps_v1.read_namespaced_stateful_set(name=mongodb_name, namespace=namespace);
@@ -122,13 +122,13 @@ impl KubernetesTarget.deploy(self: KubernetesTarget, app_config: AppConfig) -> D
                 raise;
             }
         }
-        
+
         if redis_enabled {
         redis_provider = K8sRedis(target=self, app_name=app_name, namespace=namespace);
         redis_result = redis_provider.deploy({'env_vars': env_list});
         redis_name = redis_result['name'];
         redis_service_name = redis_result['service_name'];
-        
+
         init_containers.append({
             'name': 'wait-for-redis',
             'image': 'busybox',
@@ -137,7 +137,7 @@ impl KubernetesTarget.deploy(self: KubernetesTarget, app_config: AppConfig) -> D
                 f"until nc -z {redis_service_name} 6379; do echo waiting for redis; sleep 3; done"
             ]
         });
-        
+
         # Create Redis resources
         try {
             apps_v1.read_namespaced_deployment(name=redis_name, namespace=namespace);
@@ -161,7 +161,7 @@ impl KubernetesTarget.deploy(self: KubernetesTarget, app_config: AppConfig) -> D
                 raise;
             }
         }
-        
+
         # Build container configuration
     volumes = [];
     probe_config = {
@@ -177,7 +177,7 @@ impl KubernetesTarget.deploy(self: KubernetesTarget, app_config: AppConfig) -> D
     liveness_probe['initialDelaySeconds'] = liveness_initial_delay;
     liveness_probe['periodSeconds'] = liveness_period;
     liveness_probe['failureThreshold'] = liveness_failure_threshold;
-    
+
     resource_requests: dict[str, str] = {};
     if cpu_request {
         resource_requests['cpu'] = cpu_request;
@@ -199,7 +199,7 @@ impl KubernetesTarget.deploy(self: KubernetesTarget, app_config: AppConfig) -> D
     if resource_limits {
         resources_config['limits'] = resource_limits;
     }
-    
+
     container_config = {
         'name': app_name,
         'image': repository_name,
@@ -211,7 +211,7 @@ impl KubernetesTarget.deploy(self: KubernetesTarget, app_config: AppConfig) -> D
     if resources_config {
         container_config['resources'] = resources_config;
     }
-    
+
     # Handle non-build mode (sync code to PVC)
     if not build {
         pvc_name = f"{app_name}-code-pvc";
@@ -220,7 +220,7 @@ impl KubernetesTarget.deploy(self: KubernetesTarget, app_config: AppConfig) -> D
         ensure_pvc_exists(core_v1, namespace, pvc_name, pvc_size);
         self.logger.info('Syncing application code');
         sync_code_to_pvc(core_v1, namespace, pvc_name, code_folder, app_name, sync_image);
-        
+
         build_container = {
             'name': 'build-app',
             'image': 'python:3.12-slim',
@@ -238,7 +238,7 @@ impl KubernetesTarget.deploy(self: KubernetesTarget, app_config: AppConfig) -> D
             {'name': 'code-source', 'persistentVolumeClaim': {'claimName': pvc_name}}
         ];
         init_containers.append(build_container);
-        
+
         if 'requirements.txt' in os.listdir(code_folder) {
             install_part = f"pip install -r /app/requirements.txt && jac serve src/{file_name}";
         } else {
@@ -263,7 +263,7 @@ impl KubernetesTarget.deploy(self: KubernetesTarget, app_config: AppConfig) -> D
             container_config['resources'] = resources_config;
         }
     }
-    
+
     # Build service configuration
     service_port = 80 if is_aws else container_port;
     port_config: dict[str, Any] = {
@@ -274,13 +274,13 @@ impl KubernetesTarget.deploy(self: KubernetesTarget, app_config: AppConfig) -> D
     if not is_aws {
         port_config['nodePort'] = node_port;
     }
-    
+
     service_spec: dict[str, Any] = {
         'selector': {'app': app_name},
         'ports': [port_config],
         'type': service_type
     };
-    
+
     service_metadata: dict[str, Any] = {'name': f"{app_name}-service"};
     if is_aws {
         service_metadata['annotations'] = {
@@ -289,14 +289,14 @@ impl KubernetesTarget.deploy(self: KubernetesTarget, app_config: AppConfig) -> D
             'service.beta.kubernetes.io/aws-load-balancer-healthcheck-path': health_check_path
         };
     }
-    
+
     service = {
         'apiVersion': 'v1',
         'kind': 'Service',
         'metadata': service_metadata,
         'spec': service_spec
     };
-    
+
     # Build deployment configuration
     deployment = {
         'apiVersion': 'apps/v1',
@@ -315,7 +315,7 @@ impl KubernetesTarget.deploy(self: KubernetesTarget, app_config: AppConfig) -> D
             }
         }
     };
-    
+
     # Delete existing resources
     delete_if_exists(
         apps_v1.delete_namespaced_deployment, app_name, namespace, 'Deployment'
@@ -324,12 +324,12 @@ impl KubernetesTarget.deploy(self: KubernetesTarget, app_config: AppConfig) -> D
         core_v1.delete_namespaced_service, f"{app_name}-service", namespace, 'Service'
     );
     time.sleep(5);
-    
+
     # Create deployment and service
     self.logger.info(f'Deploying {app_name} app...');
     apps_v1.create_namespaced_deployment(namespace=namespace, body=deployment);
     core_v1.create_namespaced_service(namespace=namespace, body=service);
-    
+
     # Check deployment status
     path = health_check_path;
     if is_aws {
@@ -361,7 +361,7 @@ impl KubernetesTarget.deploy(self: KubernetesTarget, app_config: AppConfig) -> D
             deployment_id=f"{app_name}-{int(time.time())}"
         );
     }
-    
+
     # Return success even if health check didn't pass (deployment might still be starting)
     service_url = self.get_service_url(app_name);
     return DeploymentResult(
@@ -376,30 +376,30 @@ impl KubernetesTarget.destroy(self: KubernetesTarget, app_name: str) -> None {
     scale_config = get_scale_config();
     k8s_config_dict = scale_config.get_kubernetes_config();
     k8s_config = self.config as KubernetesConfig;
-    
+
     app_name = os.getenv('APP_NAME', app_name);
     namespace = os.getenv('K8s_NAMESPACE') or k8s_config.namespace;
-    
+
     self.logger.info(f"Destroying deployment: {app_name}");
-    
+
     config.load_kube_config();
     apps_v1 = client.AppsV1Api();
     core_v1 = client.CoreV1Api();
-    
+
     deployment_name = app_name;
     service_name = f"{app_name}-service";
-    
+
     delete_if_exists(
         apps_v1.delete_namespaced_deployment, deployment_name, namespace, 'Deployment'
     );
     delete_if_exists(
         core_v1.delete_namespaced_service, service_name, namespace, 'Service'
     );
-    
+
     # Cleanup databases
     mongodb_name = f"{app_name}-mongodb";
     redis_name = f"{app_name}-redis";
-    
+
     delete_if_exists(
         apps_v1.delete_namespaced_stateful_set, mongodb_name, namespace, 'StatefulSet'
     );
@@ -421,7 +421,7 @@ impl KubernetesTarget.destroy(self: KubernetesTarget, app_name: str) -> None {
     delete_if_exists(
         core_v1.delete_namespaced_pod, f"{app_name}-code-sync", namespace, 'Pod'
     );
-    
+
     # Cleanup PVCs
     pvcs = core_v1.list_namespaced_persistent_volume_claim(namespace);
     for pvc in pvcs.items {
@@ -435,7 +435,6 @@ impl KubernetesTarget.destroy(self: KubernetesTarget, app_name: str) -> None {
             }
         }
     }
-    
+
     self.logger.info(f"All Kubernetes resources for '{app_name}' cleaned up successfully.");
 }
-

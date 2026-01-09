@@ -6,13 +6,13 @@ import from jac_scale.engine.deployment_target { DeploymentTarget }
 class K8sMongoDB(DatabaseProvider) {
     has app_name: str;
     has namespace: str;
-    
+
     def init(self: K8sMongoDB, target: DeploymentTarget, app_name: str, namespace: str) -> None {
         self.target = target;
         self.app_name = app_name;
         self.namespace = namespace;
     }
-    
+
     def deploy(self: K8sMongoDB, config: dict) -> dict {
         """Deploy MongoDB to Kubernetes."""
         mongodb_name = f"{self.app_name}-mongodb";
@@ -20,7 +20,7 @@ class K8sMongoDB(DatabaseProvider) {
         mongodb_service_name = f"{mongodb_name}-service";
         mongodb_volume_name = f"{self.app_name}-mongo-data";
         env_vars = config.get('env_vars', []);
-        
+
         mongodb_statefulset = {
             'apiVersion': 'apps/v1',
             'kind': 'StatefulSet',
@@ -59,7 +59,7 @@ class K8sMongoDB(DatabaseProvider) {
                 ]
             }
         };
-        
+
         mongodb_service = {
             'apiVersion': 'v1',
             'kind': 'Service',
@@ -72,12 +72,12 @@ class K8sMongoDB(DatabaseProvider) {
                 ]
             }
         };
-        
+
         env_vars.append({
             'name': 'MONGODB_URI',
             'value': f"mongodb://admin:password@{mongodb_service_name}:{mongodb_port}"
         });
-        
+
         return {
             'statefulset': mongodb_statefulset,
             'service': mongodb_service,
@@ -85,19 +85,19 @@ class K8sMongoDB(DatabaseProvider) {
             'service_name': mongodb_service_name
         };
     }
-    
+
     def get_connection_string(self: K8sMongoDB) -> str {
         """Get MongoDB connection string."""
         mongodb_service_name = f"{self.app_name}-mongodb-service";
         return f"mongodb://admin:password@{mongodb_service_name}:27017";
     }
-    
+
     def is_available(self: K8sMongoDB) -> bool {
         """Check if MongoDB is available."""
         # Simple check - can be enhanced
         return True;
     }
-    
+
     def cleanup(self: K8sMongoDB) -> None {
         """Cleanup MongoDB resources."""
         import from kubernetes { client, config }
@@ -106,7 +106,7 @@ class K8sMongoDB(DatabaseProvider) {
         core_v1 = client.CoreV1Api();
         mongodb_name = f"{self.app_name}-mongodb";
         mongodb_service_name = f"{mongodb_name}-service";
-        
+
         try {
             apps_v1.delete_namespaced_stateful_set(mongodb_name, self.namespace);
         } except Exception {
@@ -119,4 +119,3 @@ class K8sMongoDB(DatabaseProvider) {
         }
     }
 }
-

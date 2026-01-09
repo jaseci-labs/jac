@@ -1,2 +1,1 @@
 # Registry providers module
-

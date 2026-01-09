@@ -29,21 +29,23 @@ def load_env_variables(code_folder: str) -> list[dict[str, str]] {
 }
 
 """Check Kubernetes cluster status."""
-def check_K8s_status() -> None {
+def check_K8s_status -> None {
     try {
         config.load_kube_config();
     } except ConfigException {
         try {
             config.load_incluster_config();
         } except ConfigException {
-            raise Exception('Kubernetes is not configured on this machine.');
+            raise Exception('Kubernetes is not configured on this machine.') ;
         }
     }
     try {
         v1 = client.CoreV1Api();
         v1.get_api_resources();
     } except (ApiException, urllib3.exceptions.HTTPError, OSError) {
-        raise Exception('Unable to connect to kubernetes API. Check whether kubernetes cluster is up');
+        raise Exception(
+            'Unable to connect to kubernetes API. Check whether kubernetes cluster is up'
+        ) ;
     }
 }
 
@@ -66,7 +68,7 @@ def ensure_namespace_exists(namespace: str) -> None {
                 }
             );
         } else {
-            raise;
+            raise ;
         }
     }
 }
@@ -79,13 +81,13 @@ def delete_if_exists(
         delete_func(name, namespace);
     } except ApiException as e {
         if e.status != 404 {
-            raise;
+            raise ;
         }
     }
 }
 
 """Detect cluster type (aws or local)."""
-def cluster_type() -> str {
+def cluster_type -> str {
     try {
         v1 = client.CoreV1Api();
         nodes = v1.list_node();
@@ -170,7 +172,7 @@ def ensure_pvc_exists(
         return;
     } except ApiException as exc {
         if exc.status != 404 {
-            raise;
+            raise ;
         }
     }
     pvc_body: dict[str, Any] = {
@@ -227,7 +229,7 @@ def sync_code_to_pvc(
             wait_for_pod_deletion(core_v1, namespace, sync_pod_name);
             core_v1.create_namespaced_pod(namespace, pod_body);
         } else {
-            raise;
+            raise ;
         }
     }
     wait_for_pod_phase(core_v1, namespace, sync_pod_name, {'Running'});
@@ -238,27 +240,45 @@ def sync_code_to_pvc(
         create_tarball(code_folder, str(temp_tar_path));
         run_kubectl_command(
             [
-                'exec', '-n', namespace, sync_pod_name, '--',
-                'sh', '-c', 'rm -rf /data/* && mkdir -p /data/workspace'
+                'exec',
+                '-n',
+                namespace,
+                sync_pod_name,
+                '--',
+                'sh',
+                '-c',
+                'rm -rf /data/* && mkdir -p /data/workspace'
             ]
         );
         run_kubectl_command(
             [
-                'cp', '-n', namespace, temp_tar_path.name,
+                'cp',
+                '-n',
+                namespace,
+                temp_tar_path.name,
                 f"{sync_pod_name}:/tmp/jaseci-code.tar.gz"
             ],
             cwd=temp_tar_path.parent
         );
         run_kubectl_command(
             [
-                'exec', '-n', namespace, sync_pod_name, '--',
-                'sh', '-c', 'tar -xzf /tmp/jaseci-code.tar.gz -C /data/workspace && rm -f /tmp/jaseci-code.tar.gz'
+                'exec',
+                '-n',
+                namespace,
+                sync_pod_name,
+                '--',
+                'sh',
+                '-c',
+                'tar -xzf /tmp/jaseci-code.tar.gz -C /data/workspace && rm -f /tmp/jaseci-code.tar.gz'
             ]
         );
         if toml_path.is_file() {
             run_kubectl_command(
                 [
-                    'cp', '-n', namespace, 'jac.toml',
+                    'cp',
+                    '-n',
+                    namespace,
+                    'jac.toml',
                     f"{sync_pod_name}:/data/workspace/jac.toml"
                 ],
                 cwd=parent_dir
@@ -271,7 +291,7 @@ def sync_code_to_pvc(
             wait_for_pod_deletion(core_v1, namespace, sync_pod_name);
         } except ApiException as exc {
             if exc.status != 404 {
-                raise;
+                raise ;
             }
         }
     }
@@ -280,14 +300,14 @@ def sync_code_to_pvc(
 """Run kubectl command."""
 def run_kubectl_command(args: list[str], cwd: (str | Path | None) = None) -> None {
     if shutil.which('kubectl') is None {
-        raise RuntimeError('kubectl is required to sync code to the PVC.');
+        raise RuntimeError('kubectl is required to sync code to the PVC.') ;
     }
     try {
         subprocess.run(
             ['kubectl', *args], check=True, text=True, cwd=str(cwd) if cwd else None
         );
     } except subprocess.CalledProcessError as exc {
-        raise RuntimeError(f"kubectl command failed: {' '.join(['kubectl', *args])}") from exc;
+        raise RuntimeError(f"kubectl command failed: {' '.join(['kubectl', *args])}") from exc ;
     }
 }
 
@@ -303,11 +323,11 @@ def wait_for_pod_deletion(
             if exc.status == 404 {
                 return;
             }
-            raise;
+            raise ;
         }
         time.sleep(2);
     }
-    raise TimeoutError(f"Timed out waiting for pod '{pod_name}' deletion.");
+    raise TimeoutError(f"Timed out waiting for pod '{pod_name}' deletion.") ;
 }
 
 """Wait for pod phase."""
@@ -327,26 +347,26 @@ def wait_for_pod_phase(
                 time.sleep(2);
                 continue;
             }
-            raise;
+            raise ;
         }
         phase = (pod.status.phase or '').strip();
         if phase in target_phases {
             return;
         }
         if phase == 'Failed' {
-            raise RuntimeError(f"Sync pod '{pod_name}' entered Failed state.");
+            raise RuntimeError(f"Sync pod '{pod_name}' entered Failed state.") ;
         }
         time.sleep(2);
     }
     raise TimeoutError(
         f"Timed out while waiting for pod '{pod_name}' to reach phase {target_phases}."
-    );
+    ) ;
 }
 
 """Create tarball."""
 def create_tarball(source_dir: str, tar_path: str) -> None {
     if not os.path.exists(source_dir) {
-        raise FileNotFoundError(f"Source directory not found: {source_dir}");
+        raise FileNotFoundError(f"Source directory not found: {source_dir}") ;
     }
     os.makedirs(os.path.dirname(tar_path) or '.', exist_ok=True);
     with tarfile.open(tar_path, 'w:gz') as tar {
@@ -358,13 +378,15 @@ def create_tarball(source_dir: str, tar_path: str) -> None {
 def parse_cpu_quantity(quantity: str) -> float {
     trimmed = quantity.strip();
     if trimmed == '' {
-        raise ValueError('CPU quantity cannot be empty.');
+        raise ValueError('CPU quantity cannot be empty.') ;
     }
     lower = trimmed.lower();
     if lower.endswith('m') {
         value = lower[:-1].strip();
         if value == '' {
-            raise ValueError(f"CPU quantity '{quantity}' is missing a numeric component.");
+            raise ValueError(
+                f"CPU quantity '{quantity}' is missing a numeric component."
+            ) ;
         }
         return float(value) / 1000.0;
     }
@@ -375,7 +397,7 @@ def parse_cpu_quantity(quantity: str) -> float {
 def parse_memory_quantity(quantity: str) -> float {
     trimmed = quantity.strip();
     if trimmed == '' {
-        raise ValueError('Memory quantity cannot be empty.');
+        raise ValueError('Memory quantity cannot be empty.') ;
     }
     suffixes = [
         ('EI', float(1024 ** 6)),
@@ -396,7 +418,9 @@ def parse_memory_quantity(quantity: str) -> float {
         if upper.endswith(unit) {
             number_part = trimmed[:(-len(unit))].strip();
             if number_part == '' {
-                raise ValueError(f"Memory quantity '{quantity}' is missing a numeric component.");
+                raise ValueError(
+                    f"Memory quantity '{quantity}' is missing a numeric component."
+                ) ;
             }
             return float(number_part) * multiplier;
         }
@@ -416,12 +440,12 @@ def validate_resource_limits(
             cpu_request_value = parse_cpu_quantity(cpu_request);
             cpu_limit_value = parse_cpu_quantity(cpu_limit);
         } except ValueError as exc {
-            raise ValueError(f"Invalid CPU quantity: {exc}") from exc;
+            raise ValueError(f"Invalid CPU quantity: {exc}") from exc ;
         }
         if cpu_limit_value < cpu_request_value {
             raise ValueError(
                 f"K8s_CPU_LIMIT ({cpu_limit}) must not be lower than K8s_CPU_REQUEST ({cpu_request})."
-            );
+            ) ;
         }
     }
     if memory_request and memory_limit {
@@ -429,13 +453,12 @@ def validate_resource_limits(
             memory_request_value = parse_memory_quantity(memory_request);
             memory_limit_value = parse_memory_quantity(memory_limit);
         } except ValueError as exc {
-            raise ValueError(f"Invalid memory quantity: {exc}") from exc;
+            raise ValueError(f"Invalid memory quantity: {exc}") from exc ;
         }
         if memory_limit_value < memory_request_value {
             raise ValueError(
                 f"K8s_MEMORY_LIMIT ({memory_limit}) must not be lower than K8s_MEMORY_REQUEST ({memory_request})."
-            );
+            ) ;
         }
     }
 }
-
