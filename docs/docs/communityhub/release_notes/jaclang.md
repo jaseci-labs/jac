@@ -8,6 +8,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Format Command Auto-Formats Related Files**: The `jac format` command now automatically formats all associated annex files (`.impl.jac` and `.cl.jac`) when formatting a main `.jac` file. The format passes traverse impl modules in a single pass, and all related files are written together, ensuring consistent formatting across module boundaries.
 - **Auto-Lint: Empty Parentheses Removal for Impl Blocks**: The `jac format --fix` command now removes unnecessary empty parentheses from `impl` block signatures, matching the existing behavior for function declarations. For example, `impl Foo.bar() -> int` becomes `impl Foo.bar -> int`.
 - **Enhanced Plugin Management CLI**: The `jac plugins` command now provides comprehensive plugin management with `list`, `disable`, `enable`, and `disabled` subcommands. Plugins are displayed organized by PyPI package with fully qualified names (`package:plugin`) for unambiguous identification. Plugin settings persist in `jac.toml` under `[plugins].disabled`, and the `JAC_DISABLED_PLUGINS` environment variable provides runtime override support. Use `*` to disable all external plugins, or `package:*` to disable all plugins from a specific package.
+- **Simplified NonGPT Implementation**: NonGPT is now a native default that activates automatically when no LLM plugin is installed. The implementation no longer fakes the `byllm` import, providing cleaner behavior out of the box.
 
 ## jaclang 0.9.4 (Latest Release)
 

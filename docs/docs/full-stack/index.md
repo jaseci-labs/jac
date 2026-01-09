@@ -1,0 +1,511 @@
+# Full-Stack Development with Jac Client
+
+Build complete web applications using Jac for both frontend and backend. Jac Client provides React-style components with JSX syntax, state management, and seamless backend integration.
+
+## Why Jac Client?
+
+| Traditional Stack | Jac Full-Stack |
+|-------------------|----------------|
+| Separate frontend/backend languages | Single language for everything |
+| HTTP boilerplate (fetch, axios) | Direct walker calls via `spawn` |
+| Manual API integration | Seamless frontend-backend bridge |
+| Separate type systems | Type safety across boundaries |
+
+---
+
+## Quick Start
+
+```bash
+# Create a new full-stack project
+jac create --cl myapp
+cd myapp
+jac serve
+```
+
+Visit `http://localhost:8000/cl/app` to see your app.
+
+---
+
+## Project Structure
+
+```
+myapp/
+├── jac.toml              # Configuration
+├── src/
+│   ├── app.jac           # Backend logic (nodes, walkers)
+│   └── app.cl.jac        # Frontend components (optional)
+├── assets/               # Static files (images, fonts)
+└── .jac/                 # Build artifacts (gitignored)
+```
+
+---
+
+## Basic Component
+
+```jac
+cl {
+    import from react { useState }
+
+    def:pub app() -> any {
+        [count, setCount] = useState(0);
+
+        return <div>
+            <h1>Count: {count}</h1>
+            <button onClick={lambda -> None { setCount(count + 1); }}>
+                Increment
+            </button>
+        </div>;
+    }
+}
+```
+
+**Key Points:**
+
+- `cl { }` block marks frontend code
+- `def:pub app()` is the required entry point
+- React hooks work naturally in Jac
+
+---
+
+## State Management
+
+### useState
+
+```jac
+cl {
+    import from react { useState }
+
+    def:pub Counter() -> any {
+        [count, setCount] = useState(0);
+        [name, setName] = useState("World");
+
+        return <div>
+            <h1>Hello, {name}! Count: {count}</h1>
+            <input
+                value={name}
+                onChange={lambda e: any -> None { setName(e.target.value); }}
+            />
+            <button onClick={lambda -> None { setCount(count + 1); }}>+1</button>
+        </div>;
+    }
+}
+```
+
+### useEffect
+
+```jac
+cl {
+    import from react { useState, useEffect }
+
+    def:pub DataLoader() -> any {
+        [data, setData] = useState([]);
+
+        # Run once on mount
+        useEffect(lambda -> None {
+            async def load() -> None {
+                result = root spawn get_items();
+                setData(result.reports);
+            }
+            load();
+        }, []);
+
+        return <ul>
+            {data.map(lambda item: any -> any {
+                return <li key={item._jac_id}>{item.name}</li>;
+            })}
+        </ul>;
+    }
+}
+```
+
+### useContext (Global State)
+
+```jac
+cl {
+    import from react { createContext, useContext, useState }
+
+    AppContext = createContext(None);
+
+    def:pub AppProvider(props: dict) -> any {
+        [user, setUser] = useState(None);
+
+        return <AppContext.Provider value={{ "user": user, "setUser": setUser }}>
+            {props.children}
+        </AppContext.Provider>;
+    }
+
+    def:pub UserDisplay() -> any {
+        ctx = useContext(AppContext);
+        return <div>User: {ctx.user or "Not logged in"}</div>;
+    }
+}
+```
+
+---
+
+## Backend Integration
+
+### Define Backend Walker
+
+```jac
+# Backend code (outside cl block)
+node Todo {
+    has text: str;
+    has done: bool = False;
+}
+
+walker create_todo {
+    has text: str;
+
+    can create with `root entry {
+        new_todo = here ++> Todo(text=self.text);
+        report new_todo;
+    }
+}
+
+walker get_todos {
+    can fetch with `root entry {
+        for todo in [-->(`?Todo)] {
+            report todo;
+        }
+    }
+}
+```
+
+### Call from Frontend
+
+```jac
+cl {
+    import from react { useState, useEffect }
+
+    def:pub TodoApp() -> any {
+        [todos, setTodos] = useState([]);
+        [text, setText] = useState("");
+
+        # Load todos on mount
+        useEffect(lambda -> None {
+            async def load() -> None {
+                result = root spawn get_todos();
+                setTodos(result.reports);
+            }
+            load();
+        }, []);
+
+        # Add todo handler
+        def add_todo() -> None {
+            async def create() -> None {
+                result = root spawn create_todo(text=text);
+                setTodos([...todos, result.reports[0]]);
+                setText("");
+            }
+            create();
+        }
+
+        return <div>
+            <input value={text} onChange={lambda e: any -> None { setText(e.target.value); }} />
+            <button onClick={lambda -> None { add_todo(); }}>Add</button>
+            <ul>
+                {todos.map(lambda t: any -> any {
+                    return <li key={t._jac_id}>{t.text}</li>;
+                })}
+            </ul>
+        </div>;
+    }
+}
+```
+
+---
+
+## Routing
+
+```jac
+cl {
+    import from "@jac-client/utils" { Router, Routes, Route, Link, useParams, useNavigate }
+
+    def:pub Home() -> any {
+        return <div>
+            <h1>Home</h1>
+            <Link to="/about">About</Link>
+            <Link to="/user/123">User 123</Link>
+        </div>;
+    }
+
+    def:pub About() -> any {
+        return <h1>About Page</h1>;
+    }
+
+    def:pub UserProfile() -> any {
+        params = useParams();
+        return <h1>User: {params.id}</h1>;
+    }
+
+    def:pub app() -> any {
+        return <Router>
+            <Routes>
+                <Route path="/" element={<Home />} />
+                <Route path="/about" element={<About />} />
+                <Route path="/user/:id" element={<UserProfile />} />
+            </Routes>
+        </Router>;
+    }
+}
+```
+
+**Available Hooks:**
+
+- `useNavigate()`: Programmatic navigation
+- `useLocation()`: Current pathname, search, hash
+- `useParams()`: URL parameters (`:id`)
+
+---
+
+## Authentication
+
+```jac
+cl {
+    import from "@jac-client/utils" {
+        jacLogin, jacSignup, jacLogout, jacIsLoggedIn
+    }
+    import from react { useState }
+
+    def:pub LoginForm() -> any {
+        [username, setUsername] = useState("");
+        [password, setPassword] = useState("");
+        [error, setError] = useState("");
+
+        def handle_login() -> None {
+            async def login() -> None {
+                success = await jacLogin(username, password);
+                if success {
+                    # Redirect or update state
+                    print("Logged in!");
+                } else {
+                    setError("Login failed");
+                }
+            }
+            login();
+        }
+
+        def handle_signup() -> None {
+            async def signup() -> None {
+                result = await jacSignup(username, password);
+                if result.success {
+                    print("Account created!");
+                }
+            }
+            signup();
+        }
+
+        return <div>
+            <input placeholder="Username" value={username}
+                   onChange={lambda e: any -> None { setUsername(e.target.value); }} />
+            <input type="password" placeholder="Password" value={password}
+                   onChange={lambda e: any -> None { setPassword(e.target.value); }} />
+            <button onClick={lambda -> None { handle_login(); }}>Login</button>
+            <button onClick={lambda -> None { handle_signup(); }}>Sign Up</button>
+            {error and <p style={{"color": "red"}}>{error}</p>}
+        </div>;
+    }
+
+    def:pub ProtectedRoute(props: dict) -> any {
+        if not jacIsLoggedIn() {
+            return <Navigate to="/login" />;
+        }
+        return props.children;
+    }
+}
+```
+
+---
+
+## Styling Options
+
+### Inline Styles
+
+```jac
+cl {
+    def:pub StyledButton() -> any {
+        return <button style={{
+            "backgroundColor": "blue",
+            "color": "white",
+            "padding": "10px 20px",
+            "borderRadius": "5px"
+        }}>
+            Click Me
+        </button>;
+    }
+}
+```
+
+### CSS Files
+
+```jac
+cl {
+    import ".styles.css"
+
+    def:pub MyComponent() -> any {
+        return <div className="container">
+            <h1 className="title">Hello</h1>
+        </div>;
+    }
+}
+```
+
+### Tailwind CSS
+
+Configure in `jac.toml`:
+
+```toml
+[plugins.client.vite]
+# Add Tailwind plugin configuration
+```
+
+```jac
+cl {
+    def:pub TailwindComponent() -> any {
+        return <div className="bg-blue-500 text-white p-4 rounded-lg">
+            Tailwind Styled
+        </div>;
+    }
+}
+```
+
+---
+
+## TypeScript Integration
+
+```jac
+cl {
+    # Import TypeScript components
+    import from ".Button.tsx" { Button }
+
+    def:pub app() -> any {
+        return <div>
+            <Button label="Click me" onClick={lambda -> None { print("Clicked!"); }} />
+        </div>;
+    }
+}
+```
+
+---
+
+## Package Management
+
+```bash
+# Add npm packages
+jac add --cl lodash
+jac add --cl --dev @types/react
+
+# Remove packages
+jac remove --cl lodash
+
+# Install all dependencies
+jac add --cl
+```
+
+Or in `jac.toml`:
+
+```toml
+[dependencies.npm]
+lodash = "^4.17.21"
+axios = "^1.6.0"
+
+[dependencies.npm.dev]
+sass = "^1.77.8"
+```
+
+---
+
+## Exports (`:pub` keyword)
+
+For jac-client >= 0.2.4, use `:pub` to export:
+
+```jac
+cl {
+    # Exported function
+    def:pub MyComponent() -> any { ... }
+
+    # Exported variable
+    glob:pub API_URL: str = "https://api.example.com";
+
+    # Not exported (internal use only)
+    def helper() -> any { ... }
+}
+```
+
+---
+
+## File Organization
+
+### Separate Files
+
+```
+src/
+├── app.jac           # Backend (nodes, walkers)
+├── app.cl.jac        # Frontend (no cl block needed)
+├── components/
+│   ├── Button.jac
+│   └── Modal.jac
+└── pages/
+    ├── Home.jac
+    └── About.jac
+```
+
+### Mixed in Single File
+
+```jac
+# Backend code
+node Todo { has text: str; }
+walker get_todos { ... }
+
+# Frontend code
+cl {
+    def:pub app() -> any {
+        # Uses backend walkers directly
+        result = root spawn get_todos();
+        ...
+    }
+}
+```
+
+---
+
+## Build Commands
+
+```bash
+# Development server
+jac serve src/app.jac
+
+# Production build
+jac build src/app.jac
+
+# Using jac.toml entry-point
+jac serve  # Uses [project].entry-point
+```
+
+---
+
+## Learn More
+
+| Topic | Resource |
+|-------|----------|
+| Getting Started | [README](../jac-client/README.md) |
+| Components | [Step 2: Components](../jac-client/guide-example/step-02-components.md) |
+| Lifecycle Hooks | [Hooks Guide](../jac-client/lifecycle-hooks.md) |
+| Advanced State | [State Patterns](../jac-client/advanced-state.md) |
+| Styling Guide | [6 Styling Methods](../jac-client/styling/intro.md) |
+| Routing | [Client-side Routing](../jac-client/routing.md) |
+| Backend Integration | [Walkers as APIs](../jac-client/guide-example/step-08-walkers.md) |
+| Authentication | [Auth Flows](../jac-client/guide-example/step-09-authentication.md) |
+| TypeScript | [TS Integration](../jac-client/working-with-ts.md) |
+| Configuration | [Advanced Config](../jac-client/advance/intro.md) |
+
+## Tutorial Path
+
+1. [Project Setup](../jac-client/guide-example/step-01-setup.md)
+2. [First Component](../jac-client/guide-example/step-02-components.md)
+3. [Styling](../jac-client/guide-example/step-03-styling.md)
+4. [State Management](../jac-client/guide-example/step-05-local-state.md)
+5. [Backend Integration](../jac-client/guide-example/step-08-walkers.md)
+6. [Authentication](../jac-client/guide-example/step-09-authentication.md)
+7. [Routing](../jac-client/guide-example/step-10-routing.md)

@@ -337,7 +337,7 @@ def test_deep_imports_interp_mode(
         if "deep_import_interp" in mod_name:
             del sys.modules[mod_name]
     # Delete bytecode cache files to force recompilation
-    cache_dir = Path.cwd() / ".jaccache"
+    cache_dir = Path.cwd() / ".jac" / "cache"
     if cache_dir.exists():
         for cache_file in cache_dir.glob("deep_import_interp*.jbc"):
             cache_file.unlink()
@@ -599,12 +599,12 @@ def test_pyfunc_1(fixture_path: Callable[[str], str]) -> None:
             ),
             prog=JacProgram(),
         ).ir_out.unparse()
-    assert "def greet2( **kwargs: Any) {" in output
+    assert "def greet2( **kwargs: Any)  -> None {" in output
     assert output.count("with entry {") == 14
     assert "assert (x == 5) , 'x should be equal to 5';" in output
     assert "if not (x == y) {" in output
     assert "squares_dict = {x: (x ** 2) for x in numbers};" in output
-    assert '\n\n"""Say hello"""\n@my_decorator\n\n def say_hello() {' in output
+    assert '\n"""Say hello"""\n@my_decorator\n\n def say_hello()  -> object {' in output
 
 
 def test_pyfunc_2(fixture_path: Callable[[str], str]) -> None:

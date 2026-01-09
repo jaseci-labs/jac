@@ -1,5 +1,8 @@
 # Chapter 13: Persistence and the Root Node
 
+!!! note "About Jac Cloud vs Jac Scale"
+    This chapter uses `jac serve` which works with both the deprecated Jac Cloud and the newer **jac-scale**. For production deployments, use [jac-scale](../production/index.md). See the [Advanced Topics - Persistence](../advanced/index.md#persistence-deep-dive) for detailed memory architecture documentation.
+
 In this chapter, you will learn about one of Jac's most powerful features: automatic persistence. We will build a simple counter application to show you how Jac can automatically save your program's state when running as a service, eliminating the need for a traditional database setup.
 
 !!! info "What You'll Learn"
@@ -160,9 +163,9 @@ Jac is designed to make this process effortless. When you run your Jac program a
 
 ---
 
-## Setting Up a Jac Cloud Project
+## Setting Up a Jac Scale Project
 
-To demonstrate persistence, we need to create a proper jac-cloud project structure:
+To demonstrate persistence, we need to create a proper jac-scale project structure:
 
 !!! example "Project Structure"
     ```
