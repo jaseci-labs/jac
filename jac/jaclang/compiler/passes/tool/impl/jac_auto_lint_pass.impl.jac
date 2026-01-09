@@ -1093,16 +1093,32 @@ impl JacAutoLintPass._fix_impl_signature_mismatch(impl_node: uni.ImplDef) -> Non
             return;
         }
         # Use the stored main_module reference
-        if self.main_module is None or not self.main_module.sym_tab {
+        if self.main_module is None {
             return;
         }
-        # Look up root archetype
-        arch_sym = self.main_module.sym_tab.lookup(root_arch_name);
-        if not arch_sym or not arch_sym.decl {
-            return;
+        # Look up root archetype - try symbol table first, then fall back to body scan
+        arch_node: uni.Archetype | None = None;
+        if self.main_module.sym_tab {
+            arch_sym = self.main_module.sym_tab.lookup(root_arch_name);
+            if arch_sym and arch_sym.decl {
+                candidate = arch_sym.decl.name_of;
+                if isinstance(candidate, uni.Archetype) {
+                    arch_node = candidate;
+                }
+            }
         }
-        arch_node = arch_sym.decl.name_of;
-        if not isinstance(arch_node, uni.Archetype) or not arch_node.body {
+        # Fallback: scan module body directly (for formatting without sym_tab)
+        if arch_node is None {
+            for stmt in self.main_module.body {
+                if isinstance(stmt, uni.Archetype) {
+                    if stmt.name_spec and stmt.name_spec.sym_name == root_arch_name {
+                        arch_node = stmt;
+                        break;
+                    }
+                }
+            }
+        }
+        if arch_node is None or not arch_node.body {
             return;
         }
         # Navigate through nested classes if target has more than 2 elements

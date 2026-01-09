@@ -234,7 +234,7 @@ def test_go_to_definition_md_path(fixture_path: Callable[[str], str]) -> None:
             (7, 17, "typing.py:0:0-0:0"),
             (9, 18, "jaclang/pycore/__init__.py:0:0-0:0"),
             (9, 25, "jaclang/pycore/unitree.py:0:0-0:0"),
-            (10, 34, "jac/jaclang/__init__.py:18:3-18:22"),
+            (10, 34, "jac/jaclang/__init__.py:19:3-19:22"),
             (11, 35, "jaclang/pycore/constant.py:0:0-0:0"),
             (11, 47, "jaclang/pycore/constant.py:5:0-34:9"),
             (13, 47, "jaclang/compiler/type_system/type_utils.jac:0:0-0:0"),

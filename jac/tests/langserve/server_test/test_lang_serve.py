@@ -28,8 +28,8 @@ from jaclang.vendor.pygls.uris import from_fs_path
 
 CIRCLE_TEMPLATE = "circle_template.jac"
 GLOB_TEMPLATE = "glob_template.jac"
-EXPECTED_CIRCLE_TOKEN_COUNT = 345
-EXPECTED_CIRCLE_TOKEN_COUNT_ERROR = 345
+EXPECTED_CIRCLE_TOKEN_COUNT = 355
+EXPECTED_CIRCLE_TOKEN_COUNT_ERROR = 355
 EXPECTED_GLOB_TOKEN_COUNT = 15
 EXPECTED_GLOB_ERROR_TOKEN_COUNT = 15
 
@@ -46,7 +46,7 @@ def test_open_valid_file_no_diagnostics():
         # helper.assert_no_diagnostics()
         helper.assert_has_diagnostics(
             count=1,
-            message_contains="Cannot assign <class str> to parameter 'radius' of type <class float>",
+            message_contains="Cannot assign <class ShapeType> to parameter 'radius' of type <class float>",
         )
     finally:
         ls.shutdown()
@@ -66,7 +66,7 @@ def test_open_with_syntax_error():
         helper.assert_has_diagnostics(count=2, message_contains="Unexpected token")
 
         diagnostics = helper.get_diagnostics()
-        assert str(diagnostics[0].range) == "59:0-59:5"
+        assert str(diagnostics[0].range) == "57:0-57:5"
     finally:
         ls.shutdown()
         test_file.cleanup()
@@ -86,7 +86,7 @@ def test_did_open_and_simple_syntax_error():
         # helper.assert_no_diagnostics()
         helper.assert_has_diagnostics(
             count=1,
-            message_contains="Cannot assign <class str> to parameter 'radius' of type <class float>",
+            message_contains="Cannot assign <class ShapeType> to parameter 'radius' of type <class float>",
         )
 
         # Introduce syntax error
@@ -115,7 +115,7 @@ def test_did_save():
         # helper.assert_no_diagnostics()
         helper.assert_has_diagnostics(
             count=1,
-            message_contains="Cannot assign <class str> to parameter 'radius' of type <class float>",
+            message_contains="Cannot assign <class ShapeType> to parameter 'radius' of type <class float>",
         )
 
         # Save with syntax error
@@ -146,7 +146,7 @@ def test_did_change():
         # helper.assert_no_diagnostics()
         helper.assert_has_diagnostics(
             count=1,
-            message_contains="Cannot assign <class str> to parameter 'radius' of type <class float>",
+            message_contains="Cannot assign <class ShapeType> to parameter 'radius' of type <class float>",
         )
 
         # Change with syntax error

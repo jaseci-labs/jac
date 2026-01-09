@@ -98,9 +98,11 @@ def get_format_sched(
     from jaclang.compiler.passes.tool.doc_ir_gen_pass import DocIRGenPass
     from jaclang.compiler.passes.tool.jac_auto_lint_pass import JacAutoLintPass
     from jaclang.compiler.passes.tool.jac_formatter_pass import JacFormatPass
+    from jaclang.pycore.passes.annex_pass import JacAnnexPass
 
     if auto_lint:
         return [
+            JacAnnexPass,  # Load impl modules before auto-linting
             JacAutoLintPass,
             DocIRGenPass,
             CommentInjectionPass,
