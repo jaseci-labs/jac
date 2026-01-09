@@ -7,7 +7,6 @@ from lsprotocol.types import (
     TextDocumentIdentifier,
     TextEdit,
 )
-
 from tests.langserve.server_test.utils import (
     JacTestFile,
     LanguageServerTestHelper,
