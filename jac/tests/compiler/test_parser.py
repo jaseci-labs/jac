@@ -276,7 +276,7 @@ def test_pass_keyword_errors(fixture_path: Callable[[str], str]) -> None:
     assert len(prog.errors_had) == 34
     expected_substrings = 17 * [
         "'pass' is not a valid keyword in Jac",
-        "It is a Python keyword and is not allowed because Jac targets Python code generation",
+        "Jac codegen to Python,Python-only keywords are disallowed in Jac.",
     ]
     for alrt, expected in zip(prog.errors_had, expected_substrings, strict=True):
         pretty = alrt.pretty_print()

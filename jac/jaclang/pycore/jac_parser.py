@@ -124,7 +124,7 @@ class JacParser(Transform[uni.Source, uni.Module]):
             node_override=node,
         )
         self.log_error(
-            "It is a Python keyword and is not allowed because Jac targets Python code generation",
+            "Jac codegen to Python,Python-only keywords are disallowed in Jac.",
             node_override=node,
         )
 
