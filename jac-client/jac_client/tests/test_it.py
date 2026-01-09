@@ -327,27 +327,27 @@ def test_all_in_one_app_endpoints() -> None:
                     )
                     pytest.fail("Failed to GET /cl/app#/nested endpoint")
 
-                # "/static/main.css" – CSS compiled and serving
+                # "/static/styles.css" – CSS compiled and serving
                 # Note: CSS may be compiled asynchronously, so we retry if it's not ready
                 try:
                     print(
-                        "[DEBUG] Sending GET request to /static/main.css (with retry)"
+                        "[DEBUG] Sending GET request to /static/styles.css (with retry)"
                     )
                     css_bytes = _wait_for_endpoint(
-                        "http://127.0.0.1:8000/static/main.css",
+                        "http://127.0.0.1:8000/static/styles.css",
                         timeout=60.0,
                         poll_interval=2.0,
                         request_timeout=20.0,
                     )
                     css_body = css_bytes.decode("utf-8", errors="ignore")
                     print(
-                        "[DEBUG] Received response from /static/main.css\n"
+                        "[DEBUG] Received response from /static/styles.css\n"
                         f"Body (truncated to 500 chars):\n{css_body[:500]}"
                     )
                     assert len(css_body.strip()) > 0, "CSS file should not be empty"
                 except (URLError, HTTPError, TimeoutError, RemoteDisconnected) as exc:
-                    print(f"[DEBUG] Error while requesting /static/main.css: {exc}")
-                    pytest.fail(f"Failed to GET /static/main.css after retries: {exc}")
+                    print(f"[DEBUG] Error while requesting /static/styles.css: {exc}")
+                    pytest.fail(f"Failed to GET /static/styles.css after retries: {exc}")
 
                 # "/static/assets/burger.png" – static files are loading
                 try:
