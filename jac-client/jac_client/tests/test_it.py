@@ -693,15 +693,14 @@ def test_default_client_app_renders() -> None:
             print(f"[DEBUG] Created default Jac client app at {project_path}")
             assert os.path.isdir(project_path)
 
-            # Verify expected files were created
-            app_jac_path = os.path.join(project_path, "src", "app.jac")
-            assert os.path.isfile(app_jac_path), "src/app.jac should exist"
+            # Verify expected files were created (new structure: main.jac at root)
+            main_jac_path = os.path.join(project_path, "main.jac")
+            assert os.path.isfile(main_jac_path), "main.jac should exist at project root"
 
-            button_tsx_path = os.path.join(
-                project_path, "src", "components", "Button.tsx"
-            )
+            # Components are now at root level (not src/components)
+            button_tsx_path = os.path.join(project_path, "components", "Button.tsx")
             assert os.path.isfile(button_tsx_path), (
-                "src/components/Button.tsx should exist"
+                "components/Button.tsx should exist"
             )
 
             jac_toml_path = os.path.join(project_path, "jac.toml")
@@ -733,12 +732,12 @@ def test_default_client_app_renders() -> None:
                         f"STDERR:\n{jac_add_result.stderr}\n"
                     )
 
-            # 3. Start the server
+            # 3. Start the server (now uses main.jac at project root)
             server: Popen[bytes] | None = None
             try:
-                print("[DEBUG] Starting server with 'jac serve src/app.jac'")
+                print("[DEBUG] Starting server with 'jac serve main.jac'")
                 server = Popen(
-                    [*jac_cmd, "serve", "src/app.jac"],
+                    [*jac_cmd, "serve", "main.jac"],
                     cwd=project_path,
                     env=env,
                 )
@@ -791,7 +790,8 @@ def test_default_client_app_renders() -> None:
                     # The page should include the bundled JavaScript
                     # that will render "Hello, World!" client-side
                     assert (
-                        "<script" in page_body.lower() or "src=" in page_body.lower()
+                        "<script" in page_body.lower()
+                        or "src=" in page_body.lower()
                     ), "Response should include script tags for React app"
 
                 except (URLError, HTTPError, TimeoutError) as exc:
