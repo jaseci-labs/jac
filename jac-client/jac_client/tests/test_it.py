@@ -253,7 +253,6 @@ def test_all_in_one_app_endpoints() -> None:
                     ["jac", "serve", "src/app.jac"],
                     cwd=project_path,
                 )
-
                 # Wait for localhost:8000 to become available
                 print("[DEBUG] Waiting for server to be available on 127.0.0.1:8000")
                 _wait_for_port("127.0.0.1", 8000, timeout=90.0)

@@ -2,6 +2,8 @@ node_modules
 app.session.bak
 app.session.dat
 app.session.dir
+app.session-shm
+app.session-wal
 app.session.users.json
 compiled/
 .jac/
