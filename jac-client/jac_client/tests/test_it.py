@@ -273,8 +273,10 @@ def test_all_in_one_app_endpoints() -> None:
                             f"Body (truncated to 500 chars):\n{root_body[:500]}"
                         )
                         assert resp_root.status == 200
-                        assert '"Jac API Server"' in root_body
-                        assert '"endpoints"' in root_body
+                        # assert '"Jac API Server"' in root_body
+                        # assert '"endpoints"' in root_body
+                        assert "<html" in root_body.lower(), "Root should serve HTML app"
+                        assert "<title>" in root_body. lower(), "HTML should have title"
 
                         # Verify custom headers from jac.toml are present
                         assert (
