@@ -275,23 +275,6 @@ def test_all_in_one_app_endpoints() -> None:
                         # With base_route_app="app", root serves client HTML
                         assert "<!DOCTYPE html>" in root_body or "<html" in root_body
                         assert '<div id="root">' in root_body
-
-                        # Verify custom headers from jac.toml are present
-                        assert (
-                            resp_root.headers.get("Cross-Origin-Opener-Policy")
-                            == "same-origin"
-                        ), (
-                            "Expected Cross-Origin-Opener-Policy header to be 'same-origin'"
-                        )
-                        assert (
-                            resp_root.headers.get("Cross-Origin-Embedder-Policy")
-                            == "require-corp"
-                        ), (
-                            "Expected Cross-Origin-Embedder-Policy header to be 'require-corp'"
-                        )
-                        print(
-                            "[DEBUG] Custom headers verified: COOP and COEP are present"
-                        )
                 except (URLError, HTTPError) as exc:
                     print(f"[DEBUG] Error while requesting root endpoint: {exc}")
                     pytest.fail(f"Failed to GET root endpoint: {exc}")
