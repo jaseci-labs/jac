@@ -66,17 +66,32 @@ class JacCmd {
 
 """Create a standard Jac project (core behavior)."""
 def _create_core_project(cwd: pathlib.Path, name: str, force: bool) -> None {
-    existing = find_project_root(cwd);
-    if existing and not force {
-        (project_root, toml_path) = existing;
-        print(f"Already in a Jac project: {toml_path}", file=sys.stderr);
-        print("Use --force to reinitialize.", file=sys.stderr);
-        <>exit(1);
-    }
-
     project_name = name or cwd.name;
 
-    toml_path = cwd / "jac.toml";
+    # Create project directory if name is provided
+    if name {
+        project_path = cwd / name;
+        if project_path.exists() and not force {
+            print(
+                f"Directory '{name}' already exists. Use --force to overwrite.",
+                file=sys.stderr
+            );
+            <>exit(1);
+        }
+        project_path.mkdir(parents=True, exist_ok=True);
+    } else {
+        project_path = cwd;
+        # Check if already in a project (only when not creating a new folder)
+        existing = find_project_root(cwd);
+        if existing and not force {
+            (project_root, toml_path) = existing;
+            print(f"Already in a Jac project: {toml_path}", file=sys.stderr);
+            print("Use --force to reinitialize.", file=sys.stderr);
+            <>exit(1);
+        }
+    }
+
+    toml_path = project_path / "jac.toml";
     if toml_path.exists() and not force {
         print("jac.toml already exists. Use --force to overwrite.", file=sys.stderr);
         <>exit(1);
@@ -88,7 +103,7 @@ def _create_core_project(cwd: pathlib.Path, name: str, force: bool) -> None {
     }
     print(f"Created {toml_path}");
 
-    main_jac = cwd / f"{name}.jac";
+    main_jac = project_path / "main.jac";
     if not main_jac.exists() {
         with open(main_jac, "w") as f {
             f.write(
@@ -103,16 +118,35 @@ with entry {{
         print(f"Created {main_jac}");
     }
 
-    packages_dir = cwd / "packages";
+    packages_dir = project_path / "packages";
     if not packages_dir.exists() {
         packages_dir.mkdir(parents=True, exist_ok=True);
         print(f"Created {packages_dir}/");
     }
 
-    _create_gitignore(cwd, client=False);
+    _create_gitignore(project_path, client=False);
+
+    # Pre-generate cache for the jac compiler
+    main_jac_path = project_path / "main.jac";
+    try {
+        result = subprocess.run(
+            [sys.executable, "-m", "jaclang.cli.cli", "check", str(main_jac_path)],
+            capture_output=True,
+            text=True,
+            cwd=str(project_path)
+        );
+        if result.returncode == 0 {
+            print("Pre-generated compiler cache");
+        }
+    } except Exception {
+    # Silently ignore cache generation failures
+    }
 
     print(f"\nProject '{project_name}' initialized successfully!");
     print("\nNext steps:");
+    if name {
+        print(f"  cd {name}");
+    }
     print("  jac run main.jac    # Run the main entry point");
     print("  jac add <package>   # Add dependencies");
     print("  jac install         # Install all dependencies");
@@ -166,10 +200,7 @@ def _create_client_project(
 
     print(f"Creating Jac client application: {project_name}");
 
-    src_dir = project_path / "src";
-    src_dir.mkdir(parents=True, exist_ok=True);
-
-    components_dir = src_dir / "components";
+    components_dir = project_path / "components";
     components_dir.mkdir(parents=True, exist_ok=True);
 
     assets_dir = project_path / "assets";
@@ -182,7 +213,7 @@ def _create_client_project(
 name = "{project_name}"
 version = "1.0.0"
 description = "Jac client application: {project_name}"
-entry-point = "src/app.jac"
+entry-point = "main.jac"
 
 [dependencies.npm]
 "jac-client-node" = "1.0.3"
@@ -203,11 +234,11 @@ base_route_app = "app"
     }
     print(f"Created {toml_path}");
 
-    app_jac_content = '''"""Main entry point for the Jac client application."""
+    main_jac_content = '''"""Main entry point for the Jac client application."""
 
 # Client-side imports
 cl import from react { useState, useEffect }
-cl import from ".components/Button.tsx" { Button }
+cl import from "./components/Button.tsx" { Button }
 
 # Client-side component
 cl {
@@ -237,10 +268,10 @@ cl {
     }
 }
 ''';
-    with open(src_dir / "app.jac", 'w') as f {
-        f.write(app_jac_content);
+    with open(project_path / "main.jac", 'w') as f {
+        f.write(main_jac_content);
     }
-    print("Created src/app.jac");
+    print("Created main.jac");
 
     button_tsx_content = '''import React from 'react';
 
@@ -294,7 +325,7 @@ export default Button;
     with open(components_dir / "Button.tsx", 'w') as f {
         f.write(button_tsx_content);
     }
-    print("Created src/components/Button.tsx");
+    print("Created components/Button.tsx");
 
     readme_content = f'''  # {project_name}
 
@@ -306,10 +337,9 @@ A Jac client-side application with React and TypeScript support.
 ```
 {project_name}/
 ├── jac.toml              # Project configuration
-├── src/                  # Source files
-│   ├── app.jac           # Main application entry
-│   └── components/       # Reusable components
-│       └── Button.tsx    # Example TypeScript component
+├── main.jac              # Main application entry
+├── components/           # Reusable components
+│   └── Button.tsx        # Example TypeScript component
 ├── assets/               # Static assets (images, fonts, etc.)
 └── build/                # Build output (generated)
 ```
@@ -319,12 +349,12 @@ A Jac client-side application with React and TypeScript support.
 Start the development server:
 
 ```bash
-jac serve src/app.jac
+jac serve main.jac
 ```
 
 ## TypeScript Support
 
-Create TypeScript components in `src/components/` and import them in your Jac files:
+Create TypeScript components in `components/` and import them in your Jac files:
 
 ```jac
 cl import from "./components/Button.tsx" {{ Button }}
@@ -355,10 +385,10 @@ jac add --cl react-router-dom
     if name and name != cwd.name {
         print("\nNext steps:");
         print(f"  cd {name}");
-        print("  jac serve src/app.jac");
+        print("  jac serve main.jac");
     } else {
         print("\nNext steps:");
-        print("  jac serve src/app.jac");
+        print("  jac serve main.jac");
     }
 }
 
