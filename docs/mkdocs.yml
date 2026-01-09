@@ -121,6 +121,8 @@ nav:
         - Configuration System Overview: "jac-client/advance/configuration-overview.md"
         - Custom Configuration: "jac-client/advance/custom-config.md"
         - Package Management: "jac-client/advance/package-management.md"
+        - Custom Assets Handling: "jac-client/advance/custom-assets-handling.md"
+        - App Metadata: "jac-client/advance/app-metadata.md"
     - Jac Scale:
       - Getting Started: "jac-scale/README.md"
       - Quickstart: "jac-scale/quickstart.md"
