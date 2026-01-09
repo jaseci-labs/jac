@@ -12,14 +12,7 @@ import from typing { Any, Callable }
 obj Interface {
     has functions: list[callable] = [];
 
-    def register(
-    # Run CLI or Shell mode
-    # interface.run_from_cli()
-
-    #***Implementation***#
-
-        func: callable
-    ) -> callable;
+    def register(func: callable) -> callable;
     def create_parser -> ArgumentParser;
     def run_from_cli;
     def run_shell;
@@ -49,11 +42,13 @@ def function_two(x: float, y: float) {
 def function_three(name: str, age: int, country: str = 'Unknown') {
     print(f"Function Three -> name: {name}, age: {age}, country: {country}");
 }
-
+# Run CLI or Shell mode
+# interface.run_from_cli()
 with entry {
     interface.run_shell();
 }
 
+#***Implementation***#
 impl Interface.register(func: callable) -> callable {
     self.functions.append(func);
     return func;

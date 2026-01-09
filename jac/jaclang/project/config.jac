@@ -95,17 +95,18 @@ obj EnvironmentConfig {
     has default_profile: str = "";
 }
 
-def interpolate_env_vars(
-    value: str
 # Interpolate environment variables in a string value.
 # Supports ${VAR_NAME}, ${VAR_NAME:-default}, ${VAR_NAME:?error message}
+def interpolate_env_vars(
+    value: str
 ) -> str;
 
+# Find project root by looking for jac.toml.
 def find_project_root(
     start: Path | None = None
-# Find project root by looking for jac.toml.
 ) -> tuple[Path, Path] | None;
 
+# Check if currently in a Jac project.
 def is_in_project -> bool;
 
 """Central configuration class for Jac projects.
@@ -141,29 +142,14 @@ obj JacConfig {
         toml_path: Path | None = None,
         _raw_data: dict[str, Any] = {};
 
-    static def discover(
-        start_path: Path | None = None
-    # Check if currently in a Jac project.
-    ) -> JacConfig | None;
+    static def discover(start_path: Path | None = None) -> JacConfig | None;
     static def load(toml_path: Path) -> JacConfig;
     static def from_toml_str(toml_str: str, toml_path: Path | None = None) -> JacConfig;
     def apply_env_interpolation -> None;
     def apply_cli_overrides(args: dict[(str, Any)]) -> None;
     def apply_profile(profile_name: str) -> None;
-    def get_plugin_deps(
-    # Parse TOML data into JacConfig object
-
-    # Recursively apply environment variable interpolation
-
-    # Get the global configuration, discovering it if necessary
-
-        dep_type: str
-    ) -> dict[str, Any];
-    def get_plugin_config(
-    # Set the global configuration
-
-        plugin_name: str
-    ) -> dict[str, Any];
+    def get_plugin_deps(dep_type: str) -> dict[str, Any];
+    def get_plugin_config(plugin_name: str) -> dict[str, Any];
     def get_build_dir -> Path;
     def get_cache_dir -> Path;
     def get_packages_dir -> Path;
@@ -181,12 +167,22 @@ obj JacConfig {
     ) -> bool;
 }
 
-def _parse_toml_data(data: dict[str, Any], toml_path: Path | None = None) -> JacConfig;
+# Parse TOML data into JacConfig object
+def _parse_toml_data(
+    data: dict[str, Any], toml_path: Path | None = None
+) -> JacConfig;
 
-def _interpolate_recursive(obj: Any) -> Any;
+# Recursively apply environment variable interpolation
+def _interpolate_recursive(
+    obj: Any
+) -> Any;
 
 glob _config: JacConfig | None = None;
 
-def get_config(force_discover: bool = False) -> JacConfig | None;
+# Get the global configuration, discovering it if necessary
+def get_config(
+    force_discover: bool = False
+) -> JacConfig | None;
 
+# Set the global configuration
 def set_config(config: JacConfig) -> None;

@@ -35,6 +35,9 @@ glob logger = logging.getLogger(__name__),
          'TieredMemory'
      ];
 
+# =============================================================================
+# Abstract Interfaces
+# =============================================================================
 """Base Memory Interface.
 
 All memory implementations (volatile, cache, persistent, tiered) implement this interface.
@@ -113,6 +116,9 @@ obj PersistentMemory(Memory) {
     def bulk_put(anchors: Iterable[Anchor]) -> None abs;
 }
 
+# =============================================================================
+# Concrete Implementations
+# =============================================================================
 """Volatile Memory - Simple in-memory storage with no persistence.
 
 This is the L1 tier in a tiered memory hierarchy. All data is lost when
@@ -124,16 +130,7 @@ obj VolatileMemory(Memory) {
 
     def postinit -> None;
     def is_available -> bool;
-    def get(
-        id: UUID
-    # =============================================================================
-    # Abstract Interfaces
-    # =============================================================================
-
-    # =============================================================================
-    # Concrete Implementations
-    # =============================================================================
-    ) -> (Anchor | None);
+    def get(id: UUID) -> (Anchor | None);
     def put(anchor: Anchor) -> None;
     def delete(id: UUID) -> None;
     def close -> None;
@@ -166,10 +163,8 @@ Extends VolatileMemory with cache-specific methods (exists, put_if_exists, inval
 This is the default L2 tier. jac-scale overrides with Redis-based distributed cache.
 """
 obj LocalCacheMemory(VolatileMemory, CacheMemory) {
-    def exists(
-        id: UUID
     # CacheMemory interface
-    ) -> bool;
+    def exists(id: UUID) -> bool;
     def put_if_exists(anchor: Anchor) -> bool;
     def invalidate(id: UUID) -> None;
 }
@@ -208,11 +203,7 @@ obj ShelfMemory(PersistentMemory) {
         filter: (Callable[[Anchor], Anchor] | None) = None
     ) -> (Anchor | None);
 
-    def commit(
-    # Override only methods that need tiering logic
-
-        anchor: (Anchor | None) = None
-    ) -> None;
+    def commit(anchor: (Anchor | None) = None) -> None;
     # PersistentMemory interface
     def sync -> None;
     def bulk_put(anchors: Iterable[Anchor]) -> None;
@@ -237,6 +228,7 @@ obj TieredMemory(VolatileMemory) {
         l3: (PersistentMemory | None) = None;
 
     def init(session: (str | None) = None, use_cache: bool = False) -> None;
+    # Override only methods that need tiering logic
     def get(id: UUID) -> (Anchor | None);
     def put(anchor: Anchor) -> None;
     def delete(id: UUID) -> None;

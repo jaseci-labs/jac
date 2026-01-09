@@ -35,7 +35,7 @@ obj DependencyRegistry {
         _flag_map: dict[str, str] = {};
 
     """Register a new dependency type from plugin hook data."""
-    def register(dep_type_info: dict[str, Any]) -> None;
+    def register(dep_type_info: dict[(str, Any)]) -> None;
 
     """Get dependency type by name (e.g., 'npm')."""
     def get_by_name(name: str) -> DependencyType | None;
@@ -50,16 +50,13 @@ obj DependencyRegistry {
     def get_all_flags -> list[str];
 
     """Check if a dependency type is registered."""
-    def has_type(
-    # Global singleton instance
-
-        name: str
-    ) -> bool;
+    def has_type(name: str) -> bool;
 
     """Clear all registered types (for testing)."""
     def clear -> None;
 }
 
+# Global singleton instance
 glob _registry: DependencyRegistry | None = None;
 
 """Get or create the global dependency registry."""

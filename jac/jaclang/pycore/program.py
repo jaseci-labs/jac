@@ -99,15 +99,11 @@ def get_format_sched(
     from jaclang.compiler.passes.tool.jac_auto_lint_pass import JacAutoLintPass
     from jaclang.compiler.passes.tool.jac_formatter_pass import JacFormatPass
     from jaclang.pycore.passes.annex_pass import JacAnnexPass
-    from jaclang.pycore.passes.def_impl_match_pass import DeclImplMatchPass
-    from jaclang.pycore.passes.sym_tab_build_pass import SymTabBuildPass
 
     if auto_lint:
         return [
-            SymTabBuildPass,  # Build symbol tables
-            JacAnnexPass,  # Load impl modules
-            JacAutoLintPass,  # Fix signatures before linking (DeclImplMatchPass copies impl->decl)
-            DeclImplMatchPass,  # Link impls to declarations
+            JacAnnexPass,  # Load impl modules before auto-linting
+            JacAutoLintPass,
             DocIRGenPass,
             CommentInjectionPass,
             JacFormatPass,

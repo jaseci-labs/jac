@@ -26,11 +26,14 @@ import from byllm.types {
 }
 import from byllm.config_loader { get_byllm_config }
 
+# Load configuration purely from jac.toml
 glob _byllm_config = get_byllm_config(),
      _litellm_config = _byllm_config.get_litellm_config(),
      _model_config = _byllm_config.get_model_config(),
      _call_params_config = _byllm_config.get_call_params_config();
 
+# Configure LiteLLM based on jac.toml settings
+# Note: LiteLLM reads this env var directly, so we set it based on config
 with entry {
     if _litellm_config['local_cost_map'] {
         os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True";
@@ -53,13 +56,7 @@ obj BaseLLM {
         call_params: dict[(str, object)] = {};
 
     def __call__( **kwargs: object)  -> BaseLLM;
-    def invoke(
-        mtir: MTRuntime
-    # Load configuration purely from jac.toml
-
-    # Configure LiteLLM based on jac.toml settings
-    # Note: LiteLLM reads this env var directly, so we set it based on config
-    ) -> object;
+    def invoke(mtir: MTRuntime) -> object;
     def make_model_params(mtir: MTRuntime) -> dict;
     def log_info(message: str) -> None;
     def format_prompt(params: dict) -> str;

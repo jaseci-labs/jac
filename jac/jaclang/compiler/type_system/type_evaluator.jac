@@ -24,11 +24,19 @@ with entry {
     }
 }
 
-import from jaclang.compiler.type_system { operations }
+# FIXME: Conver the bellow to dot import (from . import ...)
+# Currently its not possible with jac+python hybrid repos.
+import from jaclang.compiler.type_system {
+    operations
+}
 import from jaclang.compiler.type_system { type_utils }
 import from jaclang.compiler.type_system.types { TypeBase }
 
-glob DiagnosticCallback = Callable[[uni.UniNode, str, bool], None];
+# The callback type definition for the diagnostic messages.
+glob DiagnosticCallback = Callable[
+         [uni.UniNode, str, bool],
+         None
+     ];
 
 """Types whose definitions are prefetched and cached by the type evaluator."""
 obj PrefetchedTypes {
@@ -84,18 +92,7 @@ obj MatchArgsToParamsResult {
 
 """Type evaluator for JacLang."""
 obj TypeEvaluator {
-    def init(
-    # FIXME: This class implementation is modified from pyright to make it
-    # simple and work for now, however this needs to be revisited and
-    # implemented properly.
-
-    # NOTE: This is done in the binder pass of pyright, however I'm doing this
-    # here, cause this will be the entry point of the type checker and we're not
-    # relying on the binder pass at the moment and we can go back to binder pass
-    # in the future if we needed it.
-
-        program: "JacProgram"
-    ) -> None;
+    def init(program: "JacProgram") -> None;
     def _load_stub_module(path: str) -> uni.Module;
     def _get_type_from_module(module: uni.Module, name: str) -> TypeBase;
     def _prefetch_types;
@@ -113,13 +110,7 @@ obj TypeEvaluator {
     # for the following functions.
     def _import_module_from_path(path: str) -> uni.Module;
     def get_type_of_module(node_: uni.ModulePath) -> types.TypeBase;
-    def get_type_of_module_item(
-        node_: uni.ModuleItem
-    # FIXME: Conver the bellow to dot import (from . import ...)
-    # Currently its not possible with jac+python hybrid repos.
-
-    # The callback type definition for the diagnostic messages.
-    ) -> types.TypeBase;
+    def get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeBase;
     def _extract_type_params(node_: uni.Archetype) -> list[types.TypeVarType];
     def get_type_of_class(node_: uni.Archetype) -> types.ClassType;
     def get_type_of_ability(node_: uni.Ability) -> TypeBase;
@@ -159,8 +150,11 @@ obj TypeEvaluator {
     # type and inferred type, we're going to unify them (if it's required
     # in the future, we can refactor this).
     def _get_type_of_symbol(symbol: uni.Symbol) -> TypeBase;
-    def _get_type_of_expression_core(expr: uni.Expr) -> TypeBase;
     # Pyright equivalent function name = getTypeOfExpressionCore();
+    def _get_type_of_expression_core(expr: uni.Expr) -> TypeBase;
+    # -----------------------------------------------------------------------------
+    # Helper functions
+    # -----------------------------------------------------------------------------
     def _set_module_item_symbol_and_type(
         node_: uni.ModuleItem, sym: uni.Symbol
     ) -> TypeBase;
@@ -197,8 +191,14 @@ obj TypeEvaluator {
     def _create_dataclass_init_method(
         class_type: types.ClassType
     ) -> types.FunctionType;
-    # -----------------------------------------------------------------------------
-    # Helper functions
-    # -----------------------------------------------------------------------------
+
     def _validate_constructor_method(expr: uni.FuncCall, method_type: TypeBase) -> bool;
 }
+# FIXME: This class implementation is modified from pyright to make it
+# simple and work for now, however this needs to be revisited and
+# implemented properly.
+
+# NOTE: This is done in the binder pass of pyright, however I'm doing this
+# here, cause this will be the entry point of the type checker and we're not
+# relying on the binder pass at the moment and we can go back to binder pass
+# in the future if we needed it.

@@ -48,14 +48,7 @@ obj AbstractCalculator {
     # Abstract method - must be implemented by subclasses
     def compute(x: int, y: int) -> int abs;
     # Forward declaration with params
-    def process(
-    # Implement abstract method
-
-    # ===== Part 4: Implementation Blocks =====
-    # Implement forward-declared methods using impl
-
-        value: float
-    ) -> float;
+    def process(value: float) -> float;
     # Forward declaration with variadic args
     def aggregate( *numbers: int)  -> float;
     # Forward declaration with kwargs
@@ -63,12 +56,17 @@ obj AbstractCalculator {
 }
 
 obj ConcreteCalculator(AbstractCalculator) {
+    # Implement abstract method
     def compute(x: int, y: int) -> int {
         return x - y;
     }
 }
 
-impl AbstractCalculator.process(value: float) -> float {
+# ===== Part 4: Implementation Blocks =====
+# Implement forward-declared methods using impl
+impl AbstractCalculator.process(
+    value: float
+) -> float {
     return value * 1.5;
 }
 
