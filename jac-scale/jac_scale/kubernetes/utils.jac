@@ -1,86 +1,47 @@
-import base64;
-import os;
-import tarfile;
-import time;
-import from collections.abc { Callable }
-import from pathlib { Path }
-import requests;
-import urllib3;
-import from dotenv { dotenv_values }
-import from kubernetes { client, config }
-import from kubernetes.client.rest { ApiException }
-import from kubernetes.config.config_exception { ConfigException }
-import from requests.exceptions { RequestException }
-def debug_print(statement: str, debug_only: bool = False) -> None;
+"""Kubernetes utility functions - compatibility wrapper.
 
-def parse_cpu_quantity(quantity: str) -> float;
+This file now re-exports from the new architecture in targets/kubernetes/k8s_utils.jac.
+Kept for backward compatibility with existing code.
+"""
+# Re-export all utility functions from the new location
+import from jac_scale.targets.kubernetes.k8s_utils {
+    load_env_variables,
+    check_K8s_status,
+    ensure_namespace_exists,
+    delete_if_exists,
+    cluster_type,
+    check_deployment_status,
+    ensure_pvc_exists,
+    sync_code_to_pvc,
+    validate_resource_limits,
+    create_tarball,
+    wait_for_pod_phase,
+    wait_for_pod_deletion,
+    run_kubectl_command,
+    parse_cpu_quantity,
+    parse_memory_quantity
+}
 
-def parse_memory_quantity(quantity: str) -> float;
-
-def validate_resource_limits(
-    cpu_request: (str | None),
-    cpu_limit: (str | None),
-    memory_request: (str | None),
-    memory_limit: (str | None)
-) -> None;
-
-def load_env_variables(code_folder: str) -> list;
-
-def check_K8s_status -> None;
-
-def delete_if_exists(
-    delete_func: Callable, name: str, namespace: str, kind: str
-) -> None;
-
-def cleanup_K8s_resources -> None;
-
-def ensure_namespace_exists(namespace: str) -> None;
-
-def create_tarball(source_dir: str, tar_path: str) -> None;
-
-def create_or_update_configmap(
-    namespace: str, configmap_name: str, tar_path: str
-) -> None;
-
-def check_deployment_status(
-    node_port: int,
-    path: str = '/docs',
-    initial_wait: int = 60,
-    interval: int = 30,
-    max_retries: int = 10,
-    nlb_url: (str | None) = None
-) -> bool;
-
-def cluster_type -> str;
-
-def ensure_pvc_exists(
-    core_v1: client.CoreV1Api,
-    namespace: str,
-    pvc_name: str,
-    storage_size: str,
-    storage_class: (str | None) = None,
-    access_mode: str = 'ReadWriteOnce'
-) -> None;
-
-def wait_for_pod_phase(
-    core_v1: client.CoreV1Api,
-    namespace: str,
-    pod_name: str,
-    target_phases: set[str],
-    timeout: int = 180
-) -> None;
-
-def wait_for_pod_deletion(
-    core_v1: client.CoreV1Api, namespace: str, pod_name: str, timeout: int = 120
-) -> None;
-
-def run_kubectl_command(args: list[str], cwd: str | Path | None = None) -> None;
-
-def sync_code_to_pvc(
-    core_v1: client.CoreV1Api,
-    namespace: str,
-    pvc_name: str,
-    code_folder: str,
-    app_name: str,
-    sync_image: str
-) -> None;
+# Cleanup function wrapper
+def cleanup_K8s_resources() -> None {
+    import from jac_scale.targets.kubernetes.kubernetes_target { KubernetesTarget }
+    import from jac_scale.engine.config.k8s_config { KubernetesConfig }
+    import from jac_scale.config_loader { get_scale_config }
+    import os;
+    
+    scale_config = get_scale_config();
+    k8s_config_dict = scale_config.get_kubernetes_config();
+    
+    config = KubernetesConfig(
+        app_name=os.getenv('APP_NAME', 'jaseci'),
+        namespace=os.getenv('K8s_NAMESPACE') or k8s_config_dict.get('namespace', 'default'),
+        target_type='kubernetes',
+        build=False,
+        code_folder='',
+        file_name=''
+    );
+    
+    target = KubernetesTarget(config=config);
+    app_name = os.getenv('APP_NAME', 'jaseci');
+    target.destroy(app_name);
+}
