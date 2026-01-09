@@ -225,7 +225,7 @@ def test_create_jac_app_with_typescript() -> None:
                 app_jac_content = f.read()
 
             assert (
-                'cl import from "./components/Button.tsx" { Button }' in app_jac_content
+                'cl import from ".components/Button.tsx" { Button }' in app_jac_content
             )
             assert "<Button" in app_jac_content
 

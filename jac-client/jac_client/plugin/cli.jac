@@ -357,7 +357,7 @@ jac serve main.jac
 Create TypeScript components in `components/` and import them in your Jac files:
 
 ```jac
-cl import from "./components/Button.tsx" {{ Button }}
+cl import from ".components/Button.tsx" {{ Button }}
 ```
 
 ## Adding Dependencies
