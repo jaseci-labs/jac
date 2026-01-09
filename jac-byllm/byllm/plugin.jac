@@ -47,4 +47,47 @@ class JacRuntime {
         }
         return _decorator;
     }
+
+    """by operator for LLM-guided routing."""
+    @hookimpl
+    static def by_operator(lhs: object, rhs: object) -> object {
+        import from byllm.lib { MockLLM, Model }
+        import from jaclang.pycore.archetype { NodeArchetype, EdgeArchetype }
+
+        lhs_list = lhs if isinstance(lhs, list) else [lhs];
+        if all(
+            isinstance(element, (NodeArchetype, EdgeArchetype)) for element in lhs_list
+        )
+        and isinstance(rhs, (Model, MockLLM)) {
+            return JacRuntime.filter_visitable_by(lhs_list, rhs);
+        }
+        raise NotImplementedError(
+            "The 'by' operator requires visitable nodes on the left and an LLM model on the right."
+        ) ;
+    }
+
+    """Filter visitable nodes using LLM-based semantic reasoning."""
+    static def filter_visitable_by(connected_nodes: list, model: object) -> list {
+        # Build node descriptions
+        descriptions = "\n".join(
+            f"{i}) {type(node).__name__}" for (i, node) in enumerate(connected_nodes)
+        );
+
+        @JacRuntime.by(model=model)
+        def _filter_visitable_by(
+            connected_nodes: list, descriptions: str = ""
+        ) -> list[int] {
+            """Determine which connected nodes are visitable using an LLM.
+            Returns indexes of nodes to visit in priority order.
+            """;
+            return [];
+        }
+
+        indexes = _filter_visitable_by(connected_nodes, descriptions);
+        return [
+            connected_nodes[idx]
+            for idx in indexes
+            if isinstance(idx, int) and 0 <= idx < len(connected_nodes)
+        ];
+    }
 }
