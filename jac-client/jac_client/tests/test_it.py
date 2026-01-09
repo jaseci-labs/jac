@@ -171,6 +171,7 @@ def test_all_in_one_app_endpoints() -> None:
             print(f"[DEBUG] Changed working directory to {temp_dir}")
 
             # 1. Create a new Jac app via CLI (requires jac + jac-client plugin installed)
+            # Send Enter to accept default "Plain starter" selection
             print(f"[DEBUG] Running 'jac create --cl {app_name}'")
             process = Popen(
                 ["jac", "create", "--cl", app_name],
@@ -179,7 +180,7 @@ def test_all_in_one_app_endpoints() -> None:
                 stderr=PIPE,
                 text=True,
             )
-            stdout, stderr = process.communicate()
+            stdout, stderr = process.communicate(input="\n")
             returncode = process.returncode
 
             print(
@@ -660,6 +661,7 @@ def test_default_client_app_renders() -> None:
             print(f"[DEBUG] Changed working directory to {temp_dir}")
 
             # 1. Create a new default Jac client app
+            # Send Enter to accept default "Plain starter" selection (needed for Button.tsx)
             jac_cmd = _get_jac_command()
             env = _get_env_with_npm()
             print(f"[DEBUG] Running '{' '.join(jac_cmd)} create --cl {app_name}'")
@@ -671,7 +673,7 @@ def test_default_client_app_renders() -> None:
                 text=True,
                 env=env,
             )
-            stdout, stderr = process.communicate()
+            stdout, stderr = process.communicate(input="\n")
             returncode = process.returncode
 
             print(
