@@ -20,7 +20,7 @@ You'll see an interactive prompt asking you to select a starter type:
 
 ```
 ? Select starter type: (Use arrow keys)
-  ❯ Plain starter (basic React app)
+   Plain starter (basic React app)
     Fullstack starter (with auth & router)
 ```
 

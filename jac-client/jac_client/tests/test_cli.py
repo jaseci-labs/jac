@@ -54,7 +54,10 @@ def test_create_jac_app() -> None:
             with open(readme_path) as f:
                 readme_content = f.read()
 
-            assert f"# {test_project_name}" in readme_content or test_project_name in readme_content
+            assert (
+                f"# {test_project_name}" in readme_content
+                or test_project_name in readme_content
+            )
             assert "jac serve src/app.jac" in readme_content
 
             # Verify jac.toml was created
@@ -241,7 +244,10 @@ def test_create_jac_app_with_typescript() -> None:
 
             assert "TypeScript Support" in readme_content
             assert "components/Button.tsx" in readme_content
-            assert "Plain Starter" in readme_content or "plain-starter" in readme_content.lower()
+            assert (
+                "Plain Starter" in readme_content
+                or "plain-starter" in readme_content.lower()
+            )
 
             # Verify default packages installation (package.json should be generated)
             package_json_path = os.path.join(
@@ -320,7 +326,10 @@ def test_create_jac_app_plain_starter() -> None:
             with open(readme_path) as f:
                 readme_content = f.read()
 
-            assert "Plain Starter" in readme_content or "plain-starter" in readme_content.lower()
+            assert (
+                "Plain Starter" in readme_content
+                or "plain-starter" in readme_content.lower()
+            )
             assert "TypeScript Support" in readme_content
 
             # Verify jac.toml has npm dependencies section (plain starter)
@@ -364,20 +373,22 @@ def test_create_jac_app_fullstack_starter() -> None:
 
             # Check what was actually created
             project_path = os.path.join(temp_dir, test_project_name)
-            
+
             # The test should verify fullstack starter if it was created
             # If prompt didn't work and plain was created, that's also valid to test
             if result_code == 0 and os.path.exists(project_path):
                 app_jac_path = os.path.join(project_path, "src", "app.jac")
                 assert os.path.exists(app_jac_path)
-                
+
                 with open(app_jac_path) as f:
                     app_jac_content = f.read()
 
                 # Check if it's fullstack starter (has Router, auth functions)
                 if "Router" in app_jac_content and "jacLogin" in app_jac_content:
                     # It's fullstack starter - verify fullstack-specific content
-                    assert "Simple Authentication App with React Router" in app_jac_content
+                    assert (
+                        "Simple Authentication App with React Router" in app_jac_content
+                    )
                     assert "Router" in app_jac_content
                     assert "Routes" in app_jac_content
                     assert "Route" in app_jac_content
@@ -394,16 +405,19 @@ def test_create_jac_app_fullstack_starter() -> None:
                     # Verify README mentions authentication
                     readme_path = os.path.join(project_path, "README.md")
                     assert os.path.exists(readme_path)
-                    
+
                     with open(readme_path) as f:
                         readme_content = f.read()
-                    assert "Authentication" in readme_content or "auth" in readme_content.lower()
+                    assert (
+                        "Authentication" in readme_content
+                        or "auth" in readme_content.lower()
+                    )
                     assert "Router" in readme_content
 
                     # Verify jac.toml exists
                     jac_toml_path = os.path.join(project_path, "jac.toml")
                     assert os.path.exists(jac_toml_path)
-                    
+
                     with open(jac_toml_path, "rb") as f:
                         config_data = tomllib.load(f)
                     assert config_data["project"]["name"] == test_project_name
@@ -413,7 +427,11 @@ def test_create_jac_app_fullstack_starter() -> None:
                     assert "def:pub app()" in app_jac_content
             else:
                 # Command should have succeeded or shown prompt
-                assert result_code == 0 or "Select starter type" in stdout or "Select starter type" in stderr
+                assert (
+                    result_code == 0
+                    or "Select starter type" in stdout
+                    or "Select starter type" in stderr
+                )
 
         finally:
             os.chdir(original_cwd)

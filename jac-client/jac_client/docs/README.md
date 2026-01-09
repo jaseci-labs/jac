@@ -70,17 +70,19 @@ You'll be prompted to select a starter type:
 
 ```
 ? Select starter type: (Use arrow keys)
-  ❯ Plain starter (basic React app)
+   Plain starter (basic React app)
     Fullstack starter (with auth & router)
 ```
 
 **Plain starter** (default):
+
 - Basic React app with `useState` and `useEffect` hooks
 - Example TypeScript component (`Button.tsx`)
 - Simple counter app demonstration
 - Perfect for learning the basics
 
 **Fullstack starter**:
+
 - Complete authentication system (login, signup, logout)
 - React Router integration for multi-page apps
 - Protected routes example
@@ -759,10 +761,12 @@ Ready to dive deeper? Explore these advanced topics:
 Check out the `examples/` directory for working applications and starter templates:
 
 **Starter Templates:**
+
 - **[plain-starter](../../examples/plain-starter/)**: Basic React app with TypeScript component example
 - **[basic-auth-with-router](../../examples/basic-auth-with-router/)**: Full authentication system with React Router
 
 **Additional Examples:**
+
 - **[basic](../../examples/basic/)**: Simple counter app using React hooks
 - **[with-router](../../examples/with-router/)**: Multi-page app with declarative routing
 - **[little-x](../../examples/little-x/)**: Social media app with third-party libraries

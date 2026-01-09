@@ -17,5 +17,3 @@ base_route_app = "app"
 # Vite bundler configuration (optional overrides)
 # vite.plugins = []
 # vite.build = {}
-
-

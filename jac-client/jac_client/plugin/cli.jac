@@ -119,9 +119,9 @@ with entry {{
 }
 
 """Prompt user to select project starter type."""
-def _prompt_starter_type() -> str {
+def _prompt_starter_type -> str {
     """Show interactive prompt for starter type selection with arrow key navigation.
-    
+
     Returns:
         'plain' or 'fullstack' based on user selection
     """;
@@ -131,11 +131,13 @@ def _prompt_starter_type() -> str {
             "Select starter type:",
             choices=[
                 questionary.Choice("Plain starter (basic React app)", "plain"),
-                questionary.Choice("Fullstack starter (with auth & router)", "fullstack")
+                questionary.Choice(
+                    "Fullstack starter (with auth & router)", "fullstack"
+                )
             ],
             default="plain"
         ).ask();
-        return choice if choice else "plain";
+        return choice or "plain";
     } except KeyboardInterrupt {
         print("\nCancelled.", file=sys.stderr);
         <>exit(1);
@@ -151,12 +153,10 @@ def _prompt_starter_type() -> str {
 
 """Scaffold project from template in examples folder."""
 def _scaffold_from_template(
-    project_path: pathlib.Path,
-    project_name: str,
-    template_name: str
+    project_path: pathlib.Path, project_name: str, template_name: str
 ) -> None {
     """Copy template files from examples folder to project directory.
-    
+
     Args:
         project_path: Target project directory
         project_name: Name of the project
@@ -184,41 +184,46 @@ def _scaffold_from_template(
             }
         }
     } except Exception as e {
-        raise RuntimeError(f"Could not locate template directory: {e}") from e;
+        raise RuntimeError(f"Could not locate template directory: {e}") from e ;
     }
-    
+
     if template_dir is None or not template_dir.exists() {
-        raise RuntimeError(f"Template '{template_name}' not found. Searched at: {template_dir if template_dir else 'unknown'}");
+        raise RuntimeError(
+            f"Template '{template_name}' not found. Searched at: {template_dir
+            or 'unknown'}"
+        ) ;
     }
-    
+
     # Copy template files
     for item in template_dir.rglob("*") {
         if item.is_dir() {
             continue;
         }
-        
+
         # Skip .gitignore and other hidden/system files
         if item.name.startswith('.') and item.name != '.gitignore' {
             continue;
         }
-        
+
         # Calculate relative path from template directory
         rel_path = item.relative_to(template_dir);
         target_path = project_path / rel_path;
-        
+
         # Create parent directories
         target_path.parent.mkdir(parents=True, exist_ok=True);
-        
+
         # Copy file
         shutil.copy2(item, target_path);
-        
+
         # Update project name in jac.toml and README.md
         if item.name == "jac.toml" {
             with open(target_path, 'r') as f {
                 content = f.read();
             }
             # Replace template name with project name
-            content = content.replace(f'name = "{template_name}"', f'name = "{project_name}"');
+            content = content.replace(
+                f'name = "{template_name}"', f'name = "{project_name}"'
+            );
             content = content.replace(
                 f'description = "Jac client application: {template_name}"',
                 f'description = "Jac client application: {project_name}"'
@@ -236,10 +241,10 @@ def _scaffold_from_template(
                 f.write(content);
             }
         }
-        
+
         print(f"Created {rel_path}");
     }
-    
+
     # Ensure .jac/client directory exists
     (project_path / ".jac" / "client").mkdir(parents=True, exist_ok=True);
 }
@@ -292,7 +297,7 @@ def _create_client_project(
 
     # Prompt user for starter type
     starter_type = _prompt_starter_type();
-    
+
     print(f"Creating Jac client application: {project_name}");
 
     if starter_type == "fullstack" {
