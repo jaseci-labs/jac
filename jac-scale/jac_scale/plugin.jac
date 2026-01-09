@@ -9,16 +9,13 @@ import from jaclang.pycore.runtime { hookimpl, plugin_manager }
 import from jaclang.runtimelib.context { ExecutionContext }
 import from jaclang.pycore.runtime { JacRuntime as Jac }
 import from .context { JScaleExecutionContext }
-import from .kubernetes.docker_impl { build_and_push_docker }
-import from .kubernetes.K8s { deploy_K8s }
-import from .kubernetes.utils { cleanup_K8s_resources }
 import from .serve { JacAPIServer }
 """Jac CLI."""
 class JacCmd {
     """Create Jac CLI cmds."""
     @hookimpl
     static def create_cmd -> None {
-        """Jac Scale functionality.""";
+        """Jac Scale functionality."""
         @cmd_registry.register(priority=CommandPriority.PLUGIN, source='jac-scale')
         def scale(file_path: str, build: bool = False) -> None {
             if not os.path.exists(file_path) {
@@ -30,12 +27,50 @@ class JacCmd {
             code_folder = os.path.relpath(code_folder);
             code_folder = pathlib.Path(code_folder).as_posix();
             base_file_path = os.path.basename(file_path);
+
+            import from jac_scale.factories.deployment_factory { DeploymentTargetFactory }
+            import from jac_scale.engine.config.k8s_config { KubernetesConfig }
+            import from jac_scale.engine.models.app_config { AppConfig }
+            import from jac_scale.config_loader { get_scale_config }
+            
+
+            scale_config = get_scale_config();
+            k8s_config_dict = scale_config.get_kubernetes_config();
+            
+            # Create config object
+            config = KubernetesConfig(
+                app_name=k8s_config_dict.get('app_name', 'jaseci'),
+                namespace=k8s_config_dict.get('namespace', 'default'),
+                target_type='kubernetes',
+                build=build,
+                code_folder=code_folder,
+                file_name=base_file_path,
+                node_port=k8s_config_dict.get('node_port', 30001),
+                container_port=k8s_config_dict.get('container_port', 8000)
+            );
+            
+            # Create deployment target via factory
+            target = DeploymentTargetFactory.create('kubernetes', config);
+            
+            # Create app config
+            app_config = AppConfig(
+                name=config.app_name,
+                image=k8s_config_dict.get('docker_image_name', f"{config.app_name}:latest")
+            );
+            
+            # Deploy using new architecture
             if build {
-                build_and_push_docker(code_folder);
+                import from jac_scale.providers.registry.dockerhub { DockerHubRegistry }
+                registry = DockerHubRegistry();
+                registry.build_and_push(code_folder);
             }
-            deploy_K8s(code_folder, base_file_path, build);
+            result = target.deploy(app_config);
+            
+            if not result.success {
+                raise RuntimeError(f"Deployment failed: {result.errors}");
+            }
         }
-        """Jac Destroys functionality.""";
+        """Jac Destroys functionality."""
         @cmd_registry.register(priority=CommandPriority.PLUGIN, source='jac-scale')
         def destroy(file_path: str) -> None {
             if not os.path.exists(file_path) {
@@ -44,7 +79,28 @@ class JacCmd {
             code_folder = os.path.dirname(file_path) or '.';
             dotenv_path = os.path.join(code_folder, '.env');
             load_dotenv(dotenv_path);
-            cleanup_K8s_resources();
+            
+            import from jac_scale.factories.deployment_factory { DeploymentTargetFactory }
+            import from jac_scale.engine.config.k8s_config { KubernetesConfig }
+            import from jac_scale.config_loader { get_scale_config }
+            
+            # Load configuration
+            scale_config = get_scale_config();
+            k8s_config_dict = scale_config.get_kubernetes_config();
+            
+            # Create config object
+            config = KubernetesConfig(
+                app_name=k8s_config_dict.get('app_name', 'jaseci'),
+                namespace=k8s_config_dict.get('namespace', 'default'),
+                target_type='kubernetes',
+                build=False,
+                code_folder=code_folder,
+                file_name=''
+            );
+            
+            # Create deployment target and destroy
+            target = DeploymentTargetFactory.create('kubernetes', config);
+            target.destroy(config.app_name);
         }
         """Start a REST API server for the specified .jac file.
 
